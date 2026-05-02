@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, MoreHorizontal, Mail, Shield, Crown } from 'lucide-react'
+import { Plus, MoreHorizontal, Shield, Crown } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 
 interface Member {

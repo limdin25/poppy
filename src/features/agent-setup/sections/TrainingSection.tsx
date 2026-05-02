@@ -17,7 +17,7 @@ const INITIAL_DOCS: Document[] = [
 ]
 
 export default function TrainingSection() {
-  const [docs, setDocs] = useState(INITIAL_DOCS)
+  const [docs] = useState(INITIAL_DOCS)
   const [syncing, setSyncing] = useState(false)
 
   function rescan() {

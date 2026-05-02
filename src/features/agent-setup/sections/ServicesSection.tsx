@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Plus, X, Pencil } from 'lucide-react'
-import { cn } from '@/core/lib/cn'
+import { Plus, X } from 'lucide-react'
 
 const INITIAL_SERVICES = [
   'Emergency Plumbing',

@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/integrations/supabase/browser'
-import type { PostgrestFilterBuilder } from '@supabase/postgrest-js'
 
 interface QueryResult<T> {
   data: T[]
@@ -10,7 +9,7 @@ interface QueryResult<T> {
 }
 
 export function useSupabaseQuery<T>(
-  queryFn: () => PostgrestFilterBuilder<any, any, any>,
+  queryFn: () => PromiseLike<{ data: unknown; error: { message: string } | null }>,
   deps: unknown[] = []
 ): QueryResult<T> {
   const [data, setData] = useState<T[]>([])
@@ -32,7 +31,7 @@ export function useSupabaseQuery<T>(
 }
 
 export function useSupabaseRow<T>(
-  queryFn: () => PostgrestFilterBuilder<any, any, any>,
+  queryFn: () => PromiseLike<{ data: unknown; error: { message: string } | null }>,
   deps: unknown[] = []
 ) {
   const [data, setData] = useState<T | null>(null)

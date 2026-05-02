@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { cn } from '@/core/lib/cn'
 
 const DEFAULT_INSTRUCTIONS = `Always be polite and professional. If you don't know the answer to something, say "Let me take your details and have someone call you back" rather than guessing.
 

@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
-import { cn } from '@/core/lib/cn'
 
 interface FAQ {
   id: string

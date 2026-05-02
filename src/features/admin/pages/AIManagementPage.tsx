@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Bot, Volume2, Star, ChevronDown, ChevronUp } from 'lucide-react'
-import { cn } from '@/core/lib/cn'
 
 interface PromptEntry {
   id: string
