@@ -117,31 +117,42 @@ export default async function handler(req: Request): Promise<Response> {
       const acct = await fetchUnipileAccount(accountId);
       const phone = toE164(acct?.phone ?? '');
 
-      // Find which business triggered this connect — stored in the link name
-      // Format: "{businessName} WhatsApp" or just businessId
-      // We look for any channel row with this unipile_account_id, or create one
-      // The connect endpoint passes businessId in metadata, but hosted-auth
-      // callbacks don't reliably carry it. We'll upsert by unipile_account_id.
+      // Map Unipile account type to our channel type
+      const unipileType = (acct?.type || '').toUpperCase();
+      const channelType = unipileType.startsWith('GOOGLE') ? 'email_gmail' : 'whatsapp';
 
-      // Check if channel already exists for this account
-      const { data: existingChannel } = await supabase
+      // Try to find channel by unipile_account_id first
+      let { data: existingChannel } = await supabase
         .from('channels')
         .select('id, business_id')
         .eq('unipile_account_id', accountId)
         .single();
+
+      // If not found, find a disconnected channel of the matching type
+      if (!existingChannel) {
+        const { data: pendingChannel } = await supabase
+          .from('channels')
+          .select('id, business_id')
+          .eq('type', channelType)
+          .eq('status', 'disconnected')
+          .is('unipile_account_id', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        existingChannel = pendingChannel;
+      }
 
       if (existingChannel) {
         await supabase
           .from('channels')
           .update({
             status: 'connected',
+            unipile_account_id: accountId,
             connected_at: new Date().toISOString(),
             config: { phone, unipile_type: acct?.type },
           })
           .eq('id', existingChannel.id);
       }
-      // If no existing channel, the connect endpoint should have created one.
-      // If not, we can't link it without a businessId — log and move on.
 
       return new Response(JSON.stringify({ ok: true, note: 'account_connected', accountId }), { status: 200 });
     }
