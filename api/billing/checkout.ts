@@ -7,7 +7,7 @@ const supabase = createClient(
 );
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
+  apiVersion: '2024-06-20' as any,
 });
 
 const APP_URL = process.env.APP_URL || 'https://app.poppy.ai';
@@ -18,7 +18,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { businessId, priceId } = await req.json();
+    const { businessId, priceId } = await req.json() as { businessId?: string; priceId?: string };
 
     if (!businessId || !priceId) {
       return new Response(

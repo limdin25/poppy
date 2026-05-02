@@ -11,7 +11,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { name, email, businessId } = await req.json();
+    const { name, email, businessId } = await req.json() as { name?: string; email?: string; businessId?: string };
 
     if (!name || !email || !businessId) {
       return new Response(

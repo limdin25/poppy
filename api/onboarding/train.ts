@@ -15,7 +15,7 @@ async function fetchPlaceDetails(placeId: string): Promise<string> {
     const res = await fetch(
       `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_address,formatted_phone_number,website,types,opening_hours,reviews&key=${apiKey}`,
     );
-    const data = await res.json();
+    const data = await res.json() as { result?: any };
     if (data.result) {
       const r = data.result;
       const parts = [
@@ -95,7 +95,7 @@ UK English only. Prices in GBP.`,
     }),
   });
 
-  const data = await res.json();
+  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error('OpenAI returned empty response');
   return JSON.parse(content);
@@ -107,7 +107,13 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { businessId, googlePlaceId, websiteUrl, businessName, industry } = await req.json();
+    const { businessId, googlePlaceId, websiteUrl, businessName, industry } = await req.json() as {
+      businessId?: string;
+      googlePlaceId?: string;
+      websiteUrl?: string;
+      businessName?: string;
+      industry?: string;
+    };
 
     if (!businessId) {
       return new Response(JSON.stringify({ error: 'businessId is required' }), { status: 400 });
@@ -165,7 +171,7 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('id', businessId);
 
     // Build and store system prompt
-    const { buildSystemPrompt } = await import('../src/prompts/system-builder.js');
+    const { buildSystemPrompt } = await import('../src/prompts/system-builder.js') as { buildSystemPrompt: (business: any, services: any[], faqs: any[], hours: any[]) => string };
     const business = { name: businessName || 'the business', industry, greeting: generated.greeting };
     const prompt = buildSystemPrompt(business, generated.services, generated.faqs, []);
 

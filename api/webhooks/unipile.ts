@@ -53,7 +53,7 @@ async function generateAIReply(systemPrompt: string, messageText: string): Promi
       ],
     }),
   });
-  const data = await res.json();
+  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content || '';
 }
 
@@ -79,7 +79,14 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const payload = await req.json();
+    const payload = await req.json() as {
+      event?: string;
+      account_id?: string;
+      status?: string;
+      name?: string;
+      message?: { id?: string; text?: string };
+      sender?: { provider_id?: string; name?: string };
+    };
 
     // Detect payload type: account_connected vs messaging event
     const looksLikeHostedNotify =

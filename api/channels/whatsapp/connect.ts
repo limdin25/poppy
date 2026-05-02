@@ -15,7 +15,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { businessId, provider } = await req.json();
+    const { businessId, provider } = (await req.json()) as { businessId?: string; provider?: string };
 
     if (!businessId) {
       return new Response(JSON.stringify({ error: 'businessId is required' }), { status: 400 });
@@ -59,7 +59,7 @@ export default async function handler(req: Request): Promise<Response> {
       }),
     });
 
-    const data = await res.json();
+    const data = (await res.json()) as { url?: string };
 
     if (!data.url) {
       return new Response(

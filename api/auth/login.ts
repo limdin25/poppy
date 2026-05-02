@@ -11,7 +11,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { email, password } = await req.json();
+    const { email, password } = await req.json() as { email?: string; password?: string };
 
     if (!email || !password) {
       return new Response(

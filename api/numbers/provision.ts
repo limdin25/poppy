@@ -21,7 +21,7 @@ async function twilioFetch(path: string, method: string, body?: Record<string, s
     },
     body: body ? new URLSearchParams(body).toString() : undefined,
   });
-  return res.json();
+  return res.json() as Promise<any>;
 }
 
 async function retellFetch(path: string, method: string, body?: object) {
@@ -33,7 +33,7 @@ async function retellFetch(path: string, method: string, body?: object) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  return res.json();
+  return res.json() as Promise<any>;
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -42,7 +42,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { businessId } = await req.json();
+    const { businessId } = await req.json() as { businessId?: string };
 
     if (!businessId) {
       return new Response(JSON.stringify({ error: 'businessId is required' }), { status: 400 });

@@ -62,7 +62,7 @@ export default async function handler(req: Request): Promise<Response> {
         { status: 502 },
       );
     }
-    const accountsJson = await accountsRes.json();
+    const accountsJson = await accountsRes.json() as { items?: any[] };
     const accounts = accountsJson.items ?? [];
 
     const summary: any[] = [];
@@ -113,7 +113,7 @@ export default async function handler(req: Request): Promise<Response> {
         summary.push({ account_id: accountId, error: `messages ${msgRes.status}` });
         continue;
       }
-      const msgJson = await msgRes.json();
+      const msgJson = await msgRes.json() as { items?: any[] };
       const msgs = msgJson.items ?? [];
 
       let inserted = 0;
