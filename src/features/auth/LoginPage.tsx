@@ -168,8 +168,22 @@ export default function LoginPage() {
           </button>
         </div>
 
+        {/* Demo access */}
+        <div className="mt-6 border-t border-border pt-4">
+          <button
+            onClick={() => {
+              setEmail('demo@poppy.ai')
+              setPassword('demo1234')
+              setMode('password')
+            }}
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-brand/40 text-[13px] font-medium text-brand transition hover:bg-brand/5"
+          >
+            Try demo account
+          </button>
+        </div>
+
         {/* Register link */}
-        <p className="mt-8 text-center text-[13px] text-ink-muted">
+        <p className="mt-6 text-center text-[13px] text-ink-muted">
           Don't have an account?{' '}
           <Link to="/register" className="font-medium text-brand hover:underline">
             Get started free
