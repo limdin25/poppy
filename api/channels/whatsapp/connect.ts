@@ -23,9 +23,9 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'businessId is required' }), { status: 400 });
     }
 
-    const selectedProvider: 'WHATSAPP' | 'GMAIL' =
-      provider === 'GMAIL' ? 'GMAIL' : 'WHATSAPP';
-    const channelType = selectedProvider === 'GMAIL' ? 'email_gmail' : 'whatsapp';
+    const isGmail = provider === 'GMAIL';
+    const selectedProvider = isGmail ? 'GOOGLE' : 'WHATSAPP';
+    const channelType = isGmail ? 'email_gmail' : 'whatsapp';
 
     const { data: business } = await supabase
       .from('businesses')
@@ -57,7 +57,7 @@ export default async function handler(req: Request): Promise<Response> {
         success_redirect_url: successUrl,
         failure_redirect_url: failureUrl,
         notify_url: notifyUrl,
-        name: `${business.name} ${selectedProvider === 'GMAIL' ? 'Gmail' : 'WhatsApp'}`,
+        name: `${business.name} ${isGmail ? 'Gmail' : 'WhatsApp'}`,
       }),
     });
 
