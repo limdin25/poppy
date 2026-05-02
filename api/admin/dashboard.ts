@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../src/integrations/supabase/client'
+import { supabaseAdmin } from '../../src/integrations/supabase/client.js'
 
 async function requireAdmin(req: Request): Promise<{ email: string } | Response> {
   const authHeader = req.headers.get('Authorization')

@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../../src/integrations/supabase/client'
+import { supabaseAdmin } from '../../../src/integrations/supabase/client.js'
 
 export default async function handler(req: Request) {
   const authHeader = req.headers.get('Authorization')
