@@ -1,0 +1,79 @@
+import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2024-06-20',
+});
+
+const APP_URL = process.env.APP_URL || 'https://app.poppy.ai';
+
+export default async function handler(req: Request): Promise<Response> {
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+  }
+
+  try {
+    const { businessId, priceId } = await req.json();
+
+    if (!businessId || !priceId) {
+      return new Response(
+        JSON.stringify({ error: 'businessId and priceId are required' }),
+        { status: 400 },
+      );
+    }
+
+    // Get business to check for existing Stripe customer
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('stripe_customer_id, owner_id')
+      .eq('id', businessId)
+      .single();
+
+    if (!business) {
+      return new Response(JSON.stringify({ error: 'Business not found' }), { status: 404 });
+    }
+
+    // Get owner email for Stripe
+    let customerId = business.stripe_customer_id;
+
+    if (!customerId && business.owner_id) {
+      const { data: userData } = await supabase.auth.admin.getUserById(business.owner_id);
+      const email = userData?.user?.email;
+
+      if (email) {
+        const customer = await stripe.customers.create({
+          email,
+          metadata: { business_id: businessId },
+        });
+        customerId = customer.id;
+        await supabase
+          .from('businesses')
+          .update({ stripe_customer_id: customerId })
+          .eq('id', businessId);
+      }
+    }
+
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      mode: 'subscription',
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${APP_URL}/billing?success=true`,
+      cancel_url: `${APP_URL}/billing?cancelled=true`,
+      metadata: { business_id: businessId },
+    };
+
+    if (customerId) {
+      sessionParams.customer = customerId;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    return new Response(JSON.stringify({ url: session.url }), { status: 200 });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+  }
+}

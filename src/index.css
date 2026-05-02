@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Poppy — clean, minimal (Roger Roger inspired) */
+    --bg: 255 255 255;          /* #FFFFFF pure white */
+    --surface: 255 255 255;     /* cards */
+    --elevated: 245 245 245;    /* #F5F5F5 alt sections */
+    --border: 229 229 229;      /* #E5E5E5 */
+    --ring: 66 142 244;         /* #428EF4 */
+
+    --ink: 29 29 29;            /* #1D1D1D primary text */
+    --ink-muted: 95 95 95;      /* #5F5F5F */
+    --ink-subtle: 135 135 135;  /* #878787 */
+
+    --brand: 66 142 244;        /* #428EF4 blue CTA */
+    --brand-50: 238 246 255;
+    --brand-100: 220 237 255;
+    --brand-600: 50 120 220;
+    --brand-700: 35 100 200;
+
+    --success: 22 163 74;
+    --warning: 234 179 8;
+    --danger: 220 38 38;
+  }
+
+  html, body, #root { height: 100%; }
+  body {
+    margin: 0;
+    background: rgb(var(--bg));
+    color: rgb(var(--ink));
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgb(var(--brand) / 0.18);
+    color: rgb(var(--ink));
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 999px;
+  }
+  .glass {
+    background: rgb(255 255 255 / 0.72);
+    backdrop-filter: saturate(160%) blur(14px);
+    -webkit-backdrop-filter: saturate(160%) blur(14px);
+  }
+  .focus-ring {
+    @apply outline-none ring-2 ring-brand/30 ring-offset-2 ring-offset-bg;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--border) / 0.4) 0%,
+    rgb(var(--border) / 0.7) 50%,
+    rgb(var(--border) / 0.4) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 8px;
+}
