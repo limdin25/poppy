@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -9,12 +8,14 @@ const supabase = createClient(
 const RETELL_WEBHOOK_SECRET = process.env.RETELL_WEBHOOK_SECRET!;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
-function verifyRetellSignature(body: string, signature: string): boolean {
-  const hash = crypto
-    .createHmac('sha256', RETELL_WEBHOOK_SECRET)
-    .update(body)
-    .digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature));
+async function verifyRetellSignature(body: string, signature: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(RETELL_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(body));
+  const hash = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return hash === signature;
 }
 
 async function extractCallerInfo(transcript: string, businessName: string): Promise<{
@@ -64,7 +65,7 @@ export default async function handler(req: Request): Promise<Response> {
     const signature = new URL(req.url).searchParams.get('signature') ||
       (req.headers as any).get?.('x-retell-signature') || '';
 
-    if (RETELL_WEBHOOK_SECRET && !verifyRetellSignature(rawBody, signature)) {
+    if (RETELL_WEBHOOK_SECRET && !(await verifyRetellSignature(rawBody, signature))) {
       return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401 });
     }
 
