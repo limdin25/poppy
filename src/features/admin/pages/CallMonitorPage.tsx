@@ -2,43 +2,61 @@ import { useState } from 'react'
 import { Search, PhoneIncoming, PhoneMissed, Phone, Play } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { DataTable } from '../components/DataTable'
+import { useAdminApi } from '../hooks/useAdminApi'
 
 interface AdminCall {
   id: string
-  business: string
-  caller: string
-  phone: string
-  status: 'completed' | 'missed' | 'voicemail'
-  duration: string
-  time: string
-  date: string
-  summary: string
+  business_id: string
+  status: string | null
+  direction: string | null
+  duration_seconds: number | null
+  ai_summary: string | null
+  started_at: string | null
+  created_at: string
+  recording_url: string | null
+  contact_id: string | null
+  businesses: { name: string } | null
 }
 
-const MOCK_CALLS: AdminCall[] = [
-  { id: '1', business: 'Smith & Sons Plumbing', caller: 'John Peterson', phone: '07912 345678', status: 'completed', duration: '3:24', time: '09:14', date: 'Today', summary: 'Emergency plumbing callout — burst pipe' },
-  { id: '2', business: 'Smith & Sons Plumbing', caller: 'Sarah Mitchell', phone: '07834 567890', status: 'completed', duration: '1:52', time: '08:42', date: 'Today', summary: 'Boiler service pricing enquiry' },
-  { id: '3', business: 'Brighton Heating Co', caller: 'Tom Brown', phone: '07555 123456', status: 'completed', duration: '2:45', time: '10:30', date: 'Today', summary: 'Central heating quote request' },
-  { id: '4', business: 'D&M Electrical', caller: 'Unknown', phone: '07700 900111', status: 'missed', duration: '0:12', time: '09:55', date: 'Today', summary: 'Caller hung up' },
-  { id: '5', business: "Sarah's Salon", caller: 'Emma White', phone: '07111 222333', status: 'completed', duration: '1:18', time: '11:20', date: 'Today', summary: 'Haircut booking for Saturday' },
-  { id: '6', business: 'Smith & Sons Plumbing', caller: 'David Chen', phone: '07456 789012', status: 'completed', duration: '4:11', time: '17:22', date: 'Yesterday', summary: 'Bathroom refit consultation' },
-]
-
-const STATUS_ICON = {
+const STATUS_ICON: Record<string, { icon: typeof Phone; color: string }> = {
   completed: { icon: PhoneIncoming, color: 'text-success' },
   missed: { icon: PhoneMissed, color: 'text-danger' },
-  voicemail: { icon: Phone, color: 'text-warning' },
+  failed: { icon: PhoneMissed, color: 'text-danger' },
+  ringing: { icon: Phone, color: 'text-warning' },
+  in_progress: { icon: Phone, color: 'text-brand' },
 }
 
-const FILTERS = ['All', 'Completed', 'Missed', 'Voicemail'] as const
+const FILTERS = ['All', 'Completed', 'Missed', 'Failed'] as const
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds) return '0:00'
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return '—'
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
 
 export default function CallMonitorPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<string>('All')
+  const { data: calls } = useAdminApi<AdminCall[]>('calls', [])
 
-  const filtered = MOCK_CALLS.filter((c) => {
+  const filtered = calls.filter((c) => {
     if (filter !== 'All' && c.status !== filter.toLowerCase()) return false
-    if (search && !c.caller.toLowerCase().includes(search.toLowerCase()) && !c.business.toLowerCase().includes(search.toLowerCase())) return false
+    if (search) {
+      const q = search.toLowerCase()
+      if (!(c.businesses?.name || '').toLowerCase().includes(q) && !(c.ai_summary || '').toLowerCase().includes(q)) return false
+    }
     return true
   })
 
@@ -54,7 +72,7 @@ export default function CallMonitorPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by caller or business..."
+            placeholder="Search by business or summary..."
             className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-3 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </div>
@@ -81,55 +99,42 @@ export default function CallMonitorPage() {
               key: 'status',
               header: '',
               render: (c) => {
-                const s = STATUS_ICON[c.status]
+                const s = STATUS_ICON[c.status || 'missed'] || STATUS_ICON.missed
                 const Icon = s.icon
                 return <Icon size={14} className={s.color} />
               },
               className: 'w-10',
             },
             {
-              key: 'caller',
-              header: 'Caller',
-              render: (c) => (
-                <div>
-                  <p className="font-medium text-ink">{c.caller}</p>
-                  <p className="text-[11px] text-ink-muted">{c.phone}</p>
-                </div>
-              ),
-            },
-            {
               key: 'business',
               header: 'Business',
-              render: (c) => <span className="text-ink-muted">{c.business}</span>,
+              render: (c) => <span className="font-medium text-ink">{c.businesses?.name || '—'}</span>,
             },
             {
               key: 'summary',
               header: 'Summary',
-              render: (c) => <span className="truncate text-ink-muted">{c.summary}</span>,
+              render: (c) => <span className="truncate text-ink-muted">{c.ai_summary || '—'}</span>,
             },
             {
               key: 'duration',
               header: 'Duration',
-              render: (c) => c.duration,
+              render: (c) => formatDuration(c.duration_seconds),
               className: 'w-20',
             },
             {
               key: 'time',
               header: 'Time',
-              render: (c) => (
-                <span className="text-ink-muted">
-                  {c.date} {c.time}
-                </span>
-              ),
+              render: (c) => <span className="text-ink-muted">{timeAgo(c.started_at || c.created_at)}</span>,
             },
             {
               key: 'play',
               header: '',
-              render: () => (
-                <button className="rounded-full bg-brand/10 p-1.5 text-brand hover:bg-brand/20">
-                  <Play size={10} className="ml-px" />
-                </button>
-              ),
+              render: (c) =>
+                c.recording_url ? (
+                  <button className="rounded-full bg-brand/10 p-1.5 text-brand hover:bg-brand/20">
+                    <Play size={10} className="ml-px" />
+                  </button>
+                ) : null,
               className: 'w-10',
             },
           ]}

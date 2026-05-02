@@ -1,52 +1,81 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Flag, Search } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 
 interface FlagDefinition {
+  id: string
   key: string
   name: string
   description: string
-  defaultEnabled: boolean
+  default_enabled: boolean
 }
 
-interface BusinessFlag {
+interface FlagRow {
+  id: string
+  business_id: string
+  flag_key: string
+  enabled: boolean
+  businesses: { name: string } | null
+}
+
+interface BusinessFlags {
   businessId: string
   businessName: string
   flags: Record<string, boolean>
 }
 
-const MOCK_DEFINITIONS: FlagDefinition[] = [
-  { key: 'voice_ai', name: 'Voice AI', description: 'AI-powered phone answering', defaultEnabled: true },
-  { key: 'sms_channel', name: 'SMS Channel', description: 'Two-way SMS messaging', defaultEnabled: false },
-  { key: 'whatsapp_channel', name: 'WhatsApp Channel', description: 'WhatsApp Business messaging', defaultEnabled: false },
-  { key: 'email_channel', name: 'Email Channel', description: 'Email auto-reply', defaultEnabled: false },
-  { key: 'booking_integration', name: 'Booking', description: 'Cal.com calendar booking', defaultEnabled: false },
-  { key: 'quote_builder', name: 'Quotes', description: 'Generate and send quotes', defaultEnabled: false },
-  { key: 'invoice_builder', name: 'Invoices', description: 'Generate and send invoices', defaultEnabled: false },
-  { key: 'multi_user', name: 'Multi-user', description: 'Team member invitations', defaultEnabled: false },
-  { key: 'custom_voice', name: 'Custom Voice', description: 'Custom Retell voice selection', defaultEnabled: false },
-  { key: 'api_access', name: 'API Access', description: 'External API access', defaultEnabled: false },
-]
-
-const MOCK_BUSINESSES: BusinessFlag[] = [
-  { businessId: '1', businessName: 'Smith & Sons Plumbing', flags: { voice_ai: true, sms_channel: true, whatsapp_channel: true, email_channel: false, booking_integration: true, quote_builder: true, invoice_builder: false, multi_user: true, custom_voice: true, api_access: false } },
-  { businessId: '2', businessName: 'Brighton Heating Co', flags: { voice_ai: true, sms_channel: false, whatsapp_channel: false, email_channel: false, booking_integration: false, quote_builder: false, invoice_builder: false, multi_user: false, custom_voice: false, api_access: false } },
-  { businessId: '3', businessName: "Sarah's Salon", flags: { voice_ai: true, sms_channel: true, whatsapp_channel: false, email_channel: false, booking_integration: true, quote_builder: false, invoice_builder: false, multi_user: false, custom_voice: false, api_access: false } },
-  { businessId: '4', businessName: 'D&M Electrical', flags: { voice_ai: true, sms_channel: true, whatsapp_channel: true, email_channel: true, booking_integration: true, quote_builder: true, invoice_builder: true, multi_user: true, custom_voice: true, api_access: true } },
-]
-
 export default function FeatureFlagsPage() {
   const [search, setSearch] = useState('')
-  const [flags, setFlags] = useState(MOCK_BUSINESSES)
+  const [businessFlags, setBusinessFlags] = useState<BusinessFlags[]>([])
+  const { data: definitions } = useAdminApi<FlagDefinition[]>('feature-flags/definitions', [])
+  const { data: flags } = useAdminApi<FlagRow[]>('feature-flags', [])
+  const toggleMutation = useAdminMutation('feature-flags', 'PUT')
 
-  const filtered = flags.filter((b) => b.businessName.toLowerCase().includes(search.toLowerCase()))
+  useEffect(() => {
+    if (!flags.length && !definitions.length) return
+    const byBusiness = new Map<string, BusinessFlags>()
+    for (const f of flags) {
+      if (!byBusiness.has(f.business_id)) {
+        byBusiness.set(f.business_id, {
+          businessId: f.business_id,
+          businessName: f.businesses?.name || f.business_id,
+          flags: {},
+        })
+      }
+      byBusiness.get(f.business_id)!.flags[f.flag_key] = f.enabled
+    }
+    setBusinessFlags(Array.from(byBusiness.values()))
+  }, [flags, definitions])
 
-  function toggleFlag(businessId: string, flagKey: string) {
-    setFlags(flags.map((b) =>
-      b.businessId === businessId
-        ? { ...b, flags: { ...b.flags, [flagKey]: !b.flags[flagKey] } }
-        : b
-    ))
+  const filtered = businessFlags.filter((b) =>
+    b.businessName.toLowerCase().includes(search.toLowerCase())
+  )
+
+  async function toggleFlag(businessId: string, flagKey: string) {
+    const biz = businessFlags.find((b) => b.businessId === businessId)
+    if (!biz) return
+    const newValue = !biz.flags[flagKey]
+
+    setBusinessFlags((prev) =>
+      prev.map((b) =>
+        b.businessId === businessId
+          ? { ...b, flags: { ...b.flags, [flagKey]: newValue } }
+          : b
+      )
+    )
+
+    try {
+      await toggleMutation({ businessId, flagKey, enabled: newValue })
+    } catch {
+      setBusinessFlags((prev) =>
+        prev.map((b) =>
+          b.businessId === businessId
+            ? { ...b, flags: { ...b.flags, [flagKey]: !newValue } }
+            : b
+        )
+      )
+    }
   }
 
   return (
@@ -75,7 +104,7 @@ export default function FeatureFlagsPage() {
               <th className="sticky left-0 bg-elevated/50 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">
                 Business
               </th>
-              {MOCK_DEFINITIONS.map((d) => (
+              {definitions.map((d) => (
                 <th key={d.key} className="px-3 py-2.5 text-center text-[10px] font-semibold uppercase tracking-wide text-ink-subtle" title={d.description}>
                   {d.name}
                 </th>
@@ -88,7 +117,7 @@ export default function FeatureFlagsPage() {
                 <td className="sticky left-0 bg-surface px-4 py-2.5 text-[13px] font-medium text-ink">
                   {biz.businessName}
                 </td>
-                {MOCK_DEFINITIONS.map((d) => (
+                {definitions.map((d) => (
                   <td key={d.key} className="px-3 py-2.5 text-center">
                     <button
                       onClick={() => toggleFlag(biz.businessId, d.key)}
@@ -108,6 +137,13 @@ export default function FeatureFlagsPage() {
                 ))}
               </tr>
             ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={definitions.length + 1} className="px-4 py-6 text-center text-[13px] text-ink-muted">
+                  No businesses found
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -3,42 +3,44 @@ import { useNavigate } from 'react-router-dom'
 import { Search, Eye } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
+import { useAdminApi } from '../hooks/useAdminApi'
 
 interface Business {
   id: string
   name: string
-  ownerEmail: string
-  plan: 'trial' | 'starter' | 'pro' | 'enterprise'
-  status: 'active' | 'suspended' | 'trial' | 'churned'
-  totalCalls: number
-  createdAt: string
-  lastActive: string
+  plan: string | null
+  status: string | null
+  created_at: string
+  updated_at: string
+  team_members: Array<{ email: string; role: string }>
 }
 
-const MOCK_BUSINESSES: Business[] = [
-  { id: '1', name: 'Smith & Sons Plumbing', ownerEmail: 'john@smithsons.co.uk', plan: 'pro', status: 'active', totalCalls: 234, createdAt: '2026-03-15', lastActive: '2 hours ago' },
-  { id: '2', name: 'Brighton Heating Co', ownerEmail: 'sarah@brightonheating.com', plan: 'starter', status: 'active', totalCalls: 89, createdAt: '2026-04-01', lastActive: '1 day ago' },
-  { id: '3', name: "Sarah's Hair Salon", ownerEmail: 'sarah@hairsalon.co.uk', plan: 'trial', status: 'trial', totalCalls: 12, createdAt: '2026-04-28', lastActive: '3 hours ago' },
-  { id: '4', name: 'D&M Electrical Services', ownerEmail: 'dave@dmelectrical.co.uk', plan: 'pro', status: 'active', totalCalls: 156, createdAt: '2026-03-20', lastActive: '30 min ago' },
-  { id: '5', name: 'ABC Plumbing', ownerEmail: 'alice@abcplumbing.co.uk', plan: 'starter', status: 'suspended', totalCalls: 45, createdAt: '2026-02-10', lastActive: '2 weeks ago' },
-  { id: '6', name: 'QuickFix Repairs', ownerEmail: 'tom@quickfix.co.uk', plan: 'trial', status: 'churned', totalCalls: 3, createdAt: '2026-04-15', lastActive: '5 days ago' },
-]
-
-const PLAN_STYLES = {
+const PLAN_STYLES: Record<string, string> = {
   trial: 'bg-ink-subtle/10 text-ink-muted',
   starter: 'bg-brand/10 text-brand',
   pro: 'bg-success/10 text-success',
   enterprise: 'bg-violet-500/10 text-violet-600',
 }
 
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
 export default function BusinessesPage() {
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
+  const { data: businesses, loading } = useAdminApi<Business[]>('businesses', [])
 
-  const filtered = MOCK_BUSINESSES.filter(
+  const filtered = businesses.filter(
     (b) =>
       b.name.toLowerCase().includes(search.toLowerCase()) ||
-      b.ownerEmail.toLowerCase().includes(search.toLowerCase())
+      b.team_members?.some((t) => t.email.toLowerCase().includes(search.toLowerCase()))
   )
 
   return (
@@ -46,7 +48,9 @@ export default function BusinessesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink">Businesses</h1>
-          <p className="mt-1 text-[13px] text-ink-muted">{MOCK_BUSINESSES.length} total clients</p>
+          <p className="mt-1 text-[13px] text-ink-muted">
+            {loading ? '...' : `${businesses.length} total clients`}
+          </p>
         </div>
       </div>
 
@@ -70,7 +74,7 @@ export default function BusinessesPage() {
               render: (b) => (
                 <div>
                   <p className="font-medium text-ink">{b.name}</p>
-                  <p className="text-[11px] text-ink-muted">{b.ownerEmail}</p>
+                  <p className="text-[11px] text-ink-muted">{b.team_members?.[0]?.email || '—'}</p>
                 </div>
               ),
             },
@@ -78,25 +82,20 @@ export default function BusinessesPage() {
               key: 'plan',
               header: 'Plan',
               render: (b) => (
-                <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium capitalize ${PLAN_STYLES[b.plan]}`}>
-                  {b.plan}
+                <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium capitalize ${PLAN_STYLES[b.plan || 'trial'] || PLAN_STYLES.trial}`}>
+                  {b.plan || 'trial'}
                 </span>
               ),
             },
             {
               key: 'status',
               header: 'Status',
-              render: (b) => <StatusBadge status={b.status} />,
-            },
-            {
-              key: 'calls',
-              header: 'Calls',
-              render: (b) => b.totalCalls,
+              render: (b) => <StatusBadge status={b.status || 'active'} />,
             },
             {
               key: 'lastActive',
               header: 'Last Active',
-              render: (b) => <span className="text-ink-muted">{b.lastActive}</span>,
+              render: (b) => <span className="text-ink-muted">{timeAgo(b.updated_at)}</span>,
             },
             {
               key: 'actions',

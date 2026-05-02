@@ -89,6 +89,53 @@ The owner also receives a notification (email/SMS/WhatsApp) via their configured
 
 ---
 
+## Data Flow — Inbound WhatsApp Message
+
+```
+Inbound WhatsApp message
+  → Unipile webhook POST /api/webhooks/unipile (event: message_received)
+    → Vercel function:
+        • Upserts contact (by phone, scoped to business)
+        • Creates or finds conversation (channel='whatsapp')
+        • Stores message in messages table (direction=inbound, sender=contact)
+        • If ai_handling enabled on conversation:
+            → Calls OpenAI gpt-4o-mini with business ai_system_prompt
+            → Sends AI reply via Unipile /chats endpoint
+            → Stores outbound message (sender=ai)
+  → Supabase Realtime pushes update
+    → Inbox refreshes live
+```
+
+### WhatsApp Channel Connection
+
+```
+Business clicks "Connect WhatsApp" in settings
+  → GET /api/channels/whatsapp/connect
+    → Pre-creates channel row (status='pending')
+    → Creates Unipile hosted-auth link
+    → Redirects to Unipile QR scan page
+  → User scans QR code
+  → Unipile webhook POST /api/webhooks/unipile (event: account_connected)
+    → Updates channel status to 'connected', stores unipile_account_id
+```
+
+### Polling Fallback
+
+`GET /api/messages/poll` runs on a schedule (or manually). Fetches the last 24 hours of WhatsApp messages from all Unipile accounts, deduplicates by `external_id` in message metadata, and creates any missing contacts/conversations/messages. Safety net for unreliable webhooks.
+
+---
+
+## API Routes (Vercel Serverless)
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/webhooks/unipile` | POST | Handles `account_connected` and `message_received` events |
+| `/api/channels/whatsapp/connect` | GET | Creates Unipile hosted-auth link, pre-creates channel row |
+| `/api/messages/send` | POST | Outbound WhatsApp sending (resolves contact + channel, sends via Unipile) |
+| `/api/messages/poll` | GET | Polling fallback — fetches last 24h of messages, deduplicates |
+
+---
+
 ## Mobile-First
 
 - Bottom tab bar on mobile, sidebar on desktop.

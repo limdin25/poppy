@@ -23,8 +23,13 @@
 
 - [ ] Inbox UI (conversation list, message thread, real-time updates)
 - [ ] SMS channel (Twilio inbound/outbound)
-- [ ] WhatsApp channel (Unipile integration)
-- [ ] AI-powered auto-replies across text channels
+- [x] WhatsApp channel (Unipile integration) — **Done 2026-05-02**
+  - [x] Webhook handler (`api/webhooks/unipile.ts`) — account_connected + message_received
+  - [x] WhatsApp connect flow (`api/channels/whatsapp/connect.ts`) — hosted-auth QR scan
+  - [x] Outbound sending (`api/messages/send.ts`)
+  - [x] Polling fallback (`api/messages/poll.ts`) — 24h dedup safety net
+  - [x] Integration wrapper (`src/integrations/unipile/client.ts`) — sendToChat method
+- [x] AI-powered auto-replies across text channels — **Done 2026-05-02** (WhatsApp via gpt-4o-mini)
 - [ ] Human takeover flow (assign conversation, disable AI)
 - [ ] Contact management page (list, search, tags, merge)
 - [ ] Conversation search and filters

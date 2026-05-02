@@ -3,35 +3,41 @@ import { ArrowLeft, Eye, Ban, Phone, MessageSquare, Bot, CreditCard } from 'luci
 import { StatusBadge } from '../components/StatusBadge'
 import { MetricCard } from '../components/MetricCard'
 import { useAdmin } from '../context/AdminContext'
+import { useAdminApi } from '../hooks/useAdminApi'
 
-const MOCK_BUSINESS = {
-  id: '1',
-  name: 'Smith & Sons Plumbing',
-  ownerEmail: 'john@smithsons.co.uk',
-  phone: '+44 7700 900123',
-  website: 'www.smithsonsplumbing.co.uk',
-  address: '14 High Street, Brighton, BN1 1AA',
-  plan: 'pro' as const,
-  status: 'active' as const,
-  totalCalls: 234,
-  totalMessages: 89,
-  createdAt: '2026-03-15',
-  trialEnds: '2026-03-22',
-  greeting: "Good morning, Smith & Sons Plumbing, you're speaking with Poppy. How can I help you today?",
-  tone: 'friendly',
-  adminNotes: '',
-  services: ['Emergency Plumbing', 'Boiler Service', 'Bathroom Refits', 'Central Heating', 'Drain Clearance'],
-  team: [
-    { name: 'John Smith', email: 'john@smithsons.co.uk', role: 'owner' },
-    { name: 'Mike Smith', email: 'mike@smithsons.co.uk', role: 'admin' },
-  ],
+interface BusinessDetail {
+  id: string
+  name: string
+  phone: string | null
+  website: string | null
+  address: string | null
+  plan: string | null
+  status: string | null
+  greeting: string | null
+  tone: string | null
+  admin_notes: string | null
+  created_at: string
+  team_members: Array<{ name: string | null; email: string; role: string }>
+  services: Array<{ id: string; name: string }>
+  channels: Array<{ type: string; status: string }>
+  calls: Array<{ id: string }>
 }
 
 export default function BusinessDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { startImpersonation } = useAdmin()
-  const biz = MOCK_BUSINESS
+  const { data: biz, loading } = useAdminApi<BusinessDetail | null>(`businesses/${id}`, null, [id])
+
+  if (loading) {
+    return <p className="py-12 text-center text-[13px] text-ink-muted">Loading...</p>
+  }
+
+  if (!biz) {
+    return <p className="py-12 text-center text-[13px] text-ink-muted">Business not found</p>
+  }
+
+  const ownerEmail = biz.team_members?.find((t) => t.role === 'owner')?.email || biz.team_members?.[0]?.email || '—'
 
   return (
     <div>
@@ -43,16 +49,15 @@ export default function BusinessDetailPage() {
         Back to businesses
       </button>
 
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink">{biz.name}</h1>
-          <p className="mt-1 text-[13px] text-ink-muted">{biz.ownerEmail}</p>
+          <p className="mt-1 text-[13px] text-ink-muted">{ownerEmail}</p>
         </div>
         <div className="flex items-center gap-2">
-          <StatusBadge status={biz.status} />
+          <StatusBadge status={biz.status || 'active'} />
           <button
-            onClick={() => startImpersonation(id || '1', biz.name)}
+            onClick={() => startImpersonation(biz.id, biz.name)}
             className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-brand-600"
           >
             <Eye size={13} />
@@ -65,26 +70,23 @@ export default function BusinessDetailPage() {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard label="Total Calls" value={biz.totalCalls} icon={<Phone size={14} />} />
-        <MetricCard label="Messages" value={biz.totalMessages} icon={<MessageSquare size={14} />} />
-        <MetricCard label="Plan" value={biz.plan} icon={<CreditCard size={14} />} />
-        <MetricCard label="Services" value={biz.services.length} icon={<Bot size={14} />} />
+        <MetricCard label="Total Calls" value={biz.calls?.length || 0} icon={<Phone size={14} />} />
+        <MetricCard label="Channels" value={biz.channels?.length || 0} icon={<MessageSquare size={14} />} />
+        <MetricCard label="Plan" value={biz.plan || 'trial'} icon={<CreditCard size={14} />} />
+        <MetricCard label="Services" value={biz.services?.length || 0} icon={<Bot size={14} />} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* Business info */}
         <div className="rounded-xl border border-border p-4">
           <h2 className="text-[14px] font-semibold text-ink">Business Info</h2>
           <div className="mt-3 space-y-2.5">
             {[
-              ['Website', biz.website],
-              ['Phone', biz.phone],
-              ['Address', biz.address],
-              ['Created', biz.createdAt],
-              ['Trial ends', biz.trialEnds],
-              ['Tone', biz.tone],
+              ['Website', biz.website || '—'],
+              ['Phone', biz.phone || '—'],
+              ['Address', biz.address || '—'],
+              ['Created', biz.created_at?.split('T')[0] || '—'],
+              ['Tone', biz.tone || '—'],
             ].map(([label, value]) => (
               <div key={label} className="flex items-start justify-between">
                 <span className="text-[12px] text-ink-muted">{label}</span>
@@ -94,14 +96,13 @@ export default function BusinessDetailPage() {
           </div>
         </div>
 
-        {/* Team members */}
         <div className="rounded-xl border border-border p-4">
           <h2 className="text-[14px] font-semibold text-ink">Team Members</h2>
           <div className="mt-3 space-y-2">
-            {biz.team.map((member) => (
+            {(biz.team_members || []).map((member) => (
               <div key={member.email} className="flex items-center justify-between rounded-lg bg-elevated px-3 py-2">
                 <div>
-                  <p className="text-[13px] font-medium text-ink">{member.name}</p>
+                  <p className="text-[13px] font-medium text-ink">{member.name || member.email}</p>
                   <p className="text-[11px] text-ink-muted">{member.email}</p>
                 </div>
                 <span className="rounded-md bg-brand/10 px-2 py-0.5 text-[10px] font-medium capitalize text-brand">
@@ -109,34 +110,37 @@ export default function BusinessDetailPage() {
                 </span>
               </div>
             ))}
+            {(!biz.team_members || biz.team_members.length === 0) && (
+              <p className="text-[12px] text-ink-muted">No team members</p>
+            )}
           </div>
         </div>
 
-        {/* Greeting */}
         <div className="rounded-xl border border-border p-4">
           <h2 className="text-[14px] font-semibold text-ink">AI Greeting</h2>
           <p className="mt-2 rounded-lg bg-elevated p-3 text-[13px] leading-relaxed text-ink-muted">
-            {biz.greeting}
+            {biz.greeting || 'No greeting set'}
           </p>
         </div>
 
-        {/* Services */}
         <div className="rounded-xl border border-border p-4">
           <h2 className="text-[14px] font-semibold text-ink">Services</h2>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {biz.services.map((s) => (
-              <span key={s} className="rounded-md bg-elevated px-2.5 py-1 text-[12px] text-ink-muted">
-                {s}
+            {(biz.services || []).map((s) => (
+              <span key={s.id} className="rounded-md bg-elevated px-2.5 py-1 text-[12px] text-ink-muted">
+                {s.name}
               </span>
             ))}
+            {(!biz.services || biz.services.length === 0) && (
+              <p className="text-[12px] text-ink-muted">No services configured</p>
+            )}
           </div>
         </div>
 
-        {/* Admin notes */}
         <div className="rounded-xl border border-border p-4 lg:col-span-2">
           <h2 className="text-[14px] font-semibold text-ink">Admin Notes</h2>
           <textarea
-            defaultValue={biz.adminNotes}
+            defaultValue={biz.admin_notes || ''}
             placeholder="Internal notes about this business..."
             rows={3}
             className="mt-2 w-full resize-none rounded-lg border border-border bg-elevated px-3 py-2 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"

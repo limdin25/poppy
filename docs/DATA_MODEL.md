@@ -263,6 +263,28 @@ Multi-user access per business.
 
 ---
 
+## WhatsApp Data Flow Through Tables
+
+When a WhatsApp message arrives, the tables interact as follows:
+
+1. **channels** — The business must have a row with `type='whatsapp'`, `provider='unipile'`, `status='connected'`. The `provider_channel_id` field is not used; instead the channel is matched by `unipile_account_id` stored in `config` or a dedicated column (added during connect flow). The webhook uses `business_id` from the channel to scope all downstream writes.
+
+2. **contacts** — Upserted by phone number (E.164 format) scoped to `business_id`. The `whatsapp` field is set to `true`. If the contact doesn't exist, one is created with `name` set to the phone number initially.
+
+3. **conversations** — Looked up by `contact_id` + `channel_type='whatsapp'` + `status='open'`. If none exists, a new one is created linked to both the contact and the channel. The `ai_handling` field controls whether auto-reply is enabled. `last_message_at` and `unread_count` are updated on each inbound message.
+
+4. **messages** — Each message is stored with:
+   - `direction`: `'inbound'` or `'outbound'`
+   - `sent_by`: `'contact'` (inbound), `'ai'` (auto-reply), or `'human'` (manual reply)
+   - `content`: message body text
+   - `metadata`: `{ "external_id": "<unipile_message_id>" }` — used for deduplication by the polling fallback
+
+### Deduplication
+
+The polling endpoint (`/api/messages/poll`) checks `metadata->>'external_id'` before inserting. If a message with that external_id already exists in the conversation, it's skipped. This prevents duplicates when both webhook and polling capture the same message.
+
+---
+
 ## Row Level Security (RLS)
 
 Every table has RLS enabled. Access is controlled via a helper function:

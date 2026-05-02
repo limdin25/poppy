@@ -116,10 +116,17 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 - All 7 user pages wired to real Supabase queries (no more mock data)
 - Admin pages still use mock data (to be wired separately)
 - Data hooks: useCalls, useContacts, useConversations, useMessages, useAppointments, useQuotes, useInvoices, useBusiness
+- **Deployed to Vercel**: `https://poppy-henna.vercel.app` (demo: `demo@poppy.ai` / `demo1234`)
+- **Unipile WhatsApp integration live**: webhook registered, 4 API routes (connect, webhook, send, poll), AI auto-reply wired
+- Vercel env vars set: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, UNIPILE_TOKEN, UNIPILE_DSN, UNIPILE_WEBHOOK_SECRET, APP_URL
 
 ### What's next
-1. Deploy to Vercel
-2. Wire admin pages to real Supabase queries
+1. Wire admin pages to real Supabase queries
+2. Integrate Retell AI + Twilio for voice calls
+3. Set up Stripe billing
+4. Wire onboarding flow end-to-end
+5. Set up cron job for Unipile polling fallback
+6. Custom domain
 
 ---
 

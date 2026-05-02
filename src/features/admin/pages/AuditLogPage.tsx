@@ -2,47 +2,42 @@ import { useState } from 'react'
 import { ScrollText, Search } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { DataTable } from '../components/DataTable'
+import { useAdminApi } from '../hooks/useAdminApi'
 
 interface AuditEntry {
   id: string
-  adminEmail: string
+  admin_email: string
   action: string
-  targetType: string
-  targetName: string
-  timestamp: string
-  details: string
+  target_type: string
+  target_id: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
 }
-
-const MOCK_AUDIT: AuditEntry[] = [
-  { id: '1', adminEmail: 'hugo@poppy.ai', action: 'impersonate', targetType: 'business', targetName: 'Smith & Sons Plumbing', timestamp: '2026-05-02 09:30', details: 'Started impersonation session' },
-  { id: '2', adminEmail: 'hugo@poppy.ai', action: 'edit_prompt', targetType: 'business', targetName: 'Brighton Heating Co', timestamp: '2026-05-02 09:15', details: 'Updated greeting text' },
-  { id: '3', adminEmail: 'hugo@poppy.ai', action: 'suspend_business', targetType: 'business', targetName: 'ABC Plumbing', timestamp: '2026-05-01 16:45', details: 'Suspended for non-payment' },
-  { id: '4', adminEmail: 'hugo@poppy.ai', action: 'override_plan', targetType: 'business', targetName: 'D&M Electrical', timestamp: '2026-05-01 14:20', details: 'Upgraded to Professional (courtesy)' },
-  { id: '5', adminEmail: 'hugo@poppy.ai', action: 'toggle_flag', targetType: 'feature_flag', targetName: 'whatsapp_channel', timestamp: '2026-05-01 11:00', details: 'Enabled WhatsApp for Smith & Sons' },
-  { id: '6', adminEmail: 'hugo@poppy.ai', action: 'release_number', targetType: 'number', targetName: '+44 7700 900999', timestamp: '2026-04-30 17:30', details: 'Released unassigned number' },
-  { id: '7', adminEmail: 'hugo@poppy.ai', action: 'view_call', targetType: 'call', targetName: 'Call #4521', timestamp: '2026-04-30 15:10', details: 'Listened to recording (quality check)' },
-  { id: '8', adminEmail: 'hugo@poppy.ai', action: 'create_business', targetType: 'business', targetName: 'QuickFix Repairs', timestamp: '2026-04-30 10:00', details: 'Manual business creation' },
-]
 
 const ACTION_STYLES: Record<string, string> = {
   impersonate: 'bg-violet-500/10 text-violet-600',
   edit_prompt: 'bg-brand/10 text-brand',
+  edit_business: 'bg-brand/10 text-brand',
   suspend_business: 'bg-danger/10 text-danger',
+  activate_business: 'bg-success/10 text-success',
   override_plan: 'bg-warning/10 text-warning',
   toggle_flag: 'bg-success/10 text-success',
-  release_number: 'bg-elevated text-ink-muted',
-  view_call: 'bg-elevated text-ink-muted',
-  create_business: 'bg-success/10 text-success',
+}
+
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 export default function AuditLogPage() {
   const [search, setSearch] = useState('')
+  const { data: entries } = useAdminApi<AuditEntry[]>('audit-log', [])
 
-  const filtered = MOCK_AUDIT.filter(
+  const filtered = entries.filter(
     (e) =>
       e.action.toLowerCase().includes(search.toLowerCase()) ||
-      e.targetName.toLowerCase().includes(search.toLowerCase()) ||
-      e.details.toLowerCase().includes(search.toLowerCase())
+      (e.target_id || '').toLowerCase().includes(search.toLowerCase()) ||
+      JSON.stringify(e.metadata || {}).toLowerCase().includes(search.toLowerCase())
   )
 
   return (
@@ -81,25 +76,30 @@ export default function AuditLogPage() {
               header: 'Target',
               render: (e) => (
                 <div>
-                  <p className="font-medium text-ink">{e.targetName}</p>
-                  <p className="text-[11px] capitalize text-ink-muted">{e.targetType.replace(/_/g, ' ')}</p>
+                  <p className="font-medium text-ink">{e.target_id?.slice(0, 12) || '—'}</p>
+                  <p className="text-[11px] capitalize text-ink-muted">{e.target_type?.replace(/_/g, ' ') || '—'}</p>
                 </div>
               ),
             },
             {
               key: 'details',
               header: 'Details',
-              render: (e) => <span className="text-ink-muted">{e.details}</span>,
+              render: (e) => {
+                const meta = e.metadata
+                if (!meta) return <span className="text-ink-muted">—</span>
+                const summary = Object.entries(meta).map(([k, v]) => `${k}: ${v}`).join(', ')
+                return <span className="text-ink-muted">{summary.slice(0, 80)}</span>
+              },
             },
             {
               key: 'admin',
               header: 'Admin',
-              render: (e) => <span className="text-ink-muted">{e.adminEmail}</span>,
+              render: (e) => <span className="text-ink-muted">{e.admin_email}</span>,
             },
             {
               key: 'time',
               header: 'Time',
-              render: (e) => <span className="whitespace-nowrap text-ink-muted">{e.timestamp}</span>,
+              render: (e) => <span className="whitespace-nowrap text-ink-muted">{formatTimestamp(e.created_at)}</span>,
             },
           ]}
           data={filtered}

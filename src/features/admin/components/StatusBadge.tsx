@@ -8,12 +8,13 @@ const STYLES = {
 } as const
 
 interface StatusBadgeProps {
-  status: keyof typeof STYLES
+  status: string
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
+  const style = STYLES[status as keyof typeof STYLES] || 'bg-elevated text-ink-muted'
   return (
-    <span className={cn('inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium capitalize', STYLES[status])}>
+    <span className={cn('inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium capitalize', style)}>
       {status}
     </span>
   )

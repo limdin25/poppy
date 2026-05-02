@@ -111,6 +111,26 @@ export async function sendWhatsApp(
   return res.json();
 }
 
+/** Send a WhatsApp message to a new chat (by phone number). */
+export async function sendToChat(
+  accountId: string,
+  recipientPhone: string,
+  text: string
+): Promise<SendMessageResponse> {
+  const { baseUrl } = getConfig();
+  const res = await fetch(`${baseUrl}/chats`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({
+      account_id: accountId,
+      attendees_ids: [recipientPhone],
+      text,
+    }),
+  });
+  if (!res.ok) throw new Error(`Unipile sendToChat failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 /** Send an email via a connected email account. */
 export async function sendEmail(
   accountId: string,

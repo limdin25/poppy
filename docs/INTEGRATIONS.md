@@ -12,7 +12,7 @@ All API keys are stored as environment variables. Never hardcoded.
 | Stripe | Billing, subscriptions, payment links | `VITE_STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Pending |
 | Anthropic | Claude Sonnet 4.6 (AI brain for tool use) | `ANTHROPIC_API_KEY` | Pending |
 | OpenAI | GPT-4o (transcript extraction/summaries) | `OPENAI_API_KEY` | Pending |
-| Unipile | WhatsApp + Email channels | `UNIPILE_API_KEY`, `UNIPILE_DSN` | Pending (Phase 2) |
+| Unipile | WhatsApp + Email channels | `UNIPILE_TOKEN`, `UNIPILE_DSN`, `UNIPILE_WEBHOOK_SECRET` | **Live** (WhatsApp) |
 | Resend | Transactional email (notifications, quotes) | `RESEND_API_KEY` | Pending |
 | Cal.com | Booking/calendar integration | `CALCOM_API_KEY` | Pending (Phase 3) |
 | Google Cloud | Places API (business search in onboarding) | `GOOGLE_PLACES_API_KEY` | Pending |
@@ -48,9 +48,40 @@ All API keys are stored as environment variables. Never hardcoded.
 - Transcript post-processing: extracting structured data from call transcripts
 - Summarisation of long conversations
 
-### Unipile (Phase 2)
-- WhatsApp Business and Email channel connectivity
-- Unified messaging API
+### Unipile (Live — WhatsApp)
+
+**Credentials:** Shared with marketplace10/hub.nfstay.com. Stored in Vercel env vars.
+
+| Env Var | Purpose |
+|---------|---------|
+| `UNIPILE_TOKEN` | API authentication token |
+| `UNIPILE_DSN` | Unipile API base URL |
+| `UNIPILE_WEBHOOK_SECRET` | Webhook auth header value (`poppy-webhook-secret-2026-05-02`) |
+| `OPENAI_API_KEY` | Used by webhook for AI auto-replies (gpt-4o-mini) |
+| `APP_URL` | Redirect URL after QR scan (`https://poppy-henna.vercel.app`) |
+
+**Webhook registration:**
+- Webhook ID: `V0dsQmpRQiW79wPqc6E6kQ`
+- URL: `https://poppy-henna.vercel.app/api/webhooks/unipile`
+- Events: `message_received`
+- Auth: `Unipile-Auth` header string equality check (not HMAC)
+
+**API routes:**
+| Route | Purpose |
+|-------|---------|
+| `api/webhooks/unipile.ts` | Handles `account_connected` + `message_received` events |
+| `api/channels/whatsapp/connect.ts` | Creates hosted-auth link for QR scan, pre-creates channel row |
+| `api/messages/send.ts` | Outbound WhatsApp — resolves contact phone + channel account, sends via Unipile `/chats` |
+| `api/messages/poll.ts` | Polling fallback — fetches last 24h, deduplicates by `external_id` in metadata |
+
+**Integration wrapper:** `src/integrations/unipile/client.ts`
+- `sendToChat()` — sends WhatsApp message to a new chat by phone number
+
+**Architecture pattern (from marketplace10):**
+- Unipile owns QR-scan UX via hosted auth links (no WhatsApp Business API approval needed)
+- Dual ingestion: webhook + polling fallback (belt and braces — Unipile webhooks are unreliable)
+- AI auto-reply uses business `ai_system_prompt` via OpenAI gpt-4o-mini
+- All messages stored in unified `messages` table regardless of channel
 
 ### Resend
 - Transactional emails: quote PDFs, invoice notifications, missed call alerts, daily summaries

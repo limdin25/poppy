@@ -5,8 +5,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const UNIPILE_API_URL = process.env.UNIPILE_API_URL!;
-const UNIPILE_API_KEY = process.env.UNIPILE_API_KEY!;
+const UNIPILE_TOKEN = process.env.UNIPILE_TOKEN!;
+const UNIPILE_DSN = process.env.UNIPILE_DSN!;
+const APP_URL = process.env.APP_URL || 'https://poppy-henna.vercel.app';
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
@@ -14,13 +15,16 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { businessId } = await req.json();
+    const { businessId, provider } = await req.json();
 
     if (!businessId) {
       return new Response(JSON.stringify({ error: 'businessId is required' }), { status: 400 });
     }
 
-    // Verify business exists
+    const validProviders = ['WHATSAPP', 'GMAIL'] as const;
+    const selectedProvider = validProviders.includes(provider) ? provider : 'WHATSAPP';
+    const channelType = selectedProvider === 'GMAIL' ? 'email_gmail' : 'whatsapp';
+
     const { data: business } = await supabase
       .from('businesses')
       .select('id, name')
@@ -31,21 +35,27 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'Business not found' }), { status: 404 });
     }
 
-    // Create hosted auth link via Unipile
-    const res = await fetch(`${UNIPILE_API_URL}/api/v1/hosted/accounts/link`, {
+    const expiresOn = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const notifyUrl = `${APP_URL}/api/webhooks/unipile`;
+    const successUrl = `${APP_URL}/account/integrations?unipile=connected`;
+    const failureUrl = `${APP_URL}/account/integrations?unipile=failed`;
+
+    const res = await fetch(`https://${UNIPILE_DSN}/api/v1/hosted/accounts/link`, {
       method: 'POST',
       headers: {
-        'X-API-KEY': UNIPILE_API_KEY,
+        'X-API-KEY': UNIPILE_TOKEN,
         'Content-Type': 'application/json',
+        accept: 'application/json',
       },
       body: JSON.stringify({
         type: 'create',
-        providers: ['WHATSAPP'],
-        api_url: UNIPILE_API_URL,
-        expiresOn: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min
-        notify_url: `${process.env.APP_URL || 'https://app.poppy.ai'}/api/webhooks/unipile`,
-        name: `${business.name} WhatsApp`,
-        metadata: JSON.stringify({ business_id: businessId }),
+        providers: [selectedProvider],
+        api_url: `https://${UNIPILE_DSN}`,
+        expiresOn,
+        success_redirect_url: successUrl,
+        failure_redirect_url: failureUrl,
+        notify_url: notifyUrl,
+        name: `${business.name} ${selectedProvider === 'GMAIL' ? 'Gmail' : 'WhatsApp'}`,
       }),
     });
 
@@ -53,12 +63,24 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!data.url) {
       return new Response(
-        JSON.stringify({ error: 'Failed to create connection link' }),
+        JSON.stringify({ error: 'Failed to create connection link', detail: data }),
         { status: 500 },
       );
     }
 
-    return new Response(JSON.stringify({ url: data.url }), { status: 200 });
+    await supabase
+      .from('channels')
+      .upsert(
+        {
+          business_id: businessId,
+          type: channelType,
+          status: 'disconnected',
+          auto_reply_enabled: true,
+        },
+        { onConflict: 'business_id,type' },
+      );
+
+    return new Response(JSON.stringify({ url: data.url, expires_at: expiresOn }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

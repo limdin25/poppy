@@ -2,47 +2,54 @@ import { useState } from 'react'
 import { Search, MessageSquare, Phone, Mail, Bot } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { DataTable } from '../components/DataTable'
+import { useAdminApi } from '../hooks/useAdminApi'
 
 interface AdminConversation {
   id: string
-  business: string
-  contact: string
-  channel: 'sms' | 'whatsapp' | 'email' | 'voice'
-  lastMessage: string
-  aiHandling: boolean
-  messageCount: number
-  updatedAt: string
+  channel: string
+  status: string
+  ai_handling: boolean
+  last_message_at: string | null
+  last_message_preview: string | null
+  unread_count: number
+  businesses: { name: string } | null
+  contacts: { name: string | null } | null
+  messages: Array<{ id: string }>
 }
 
-const MOCK_CONVERSATIONS: AdminConversation[] = [
-  { id: '1', business: 'Smith & Sons Plumbing', contact: 'John Peterson', channel: 'sms', lastMessage: "Thanks, I'll see you tomorrow!", aiHandling: true, messageCount: 5, updatedAt: '2 min ago' },
-  { id: '2', business: 'Brighton Heating Co', contact: 'Tom Brown', channel: 'whatsapp', lastMessage: 'Can I get a quote for underfloor heating?', aiHandling: true, messageCount: 3, updatedAt: '15 min ago' },
-  { id: '3', business: 'D&M Electrical', contact: 'Lisa Green', channel: 'email', lastMessage: 'Re: Invoice #1234', aiHandling: false, messageCount: 8, updatedAt: '1 hour ago' },
-  { id: '4', business: "Sarah's Salon", contact: 'Emma White', channel: 'sms', lastMessage: 'Confirmed for Saturday 10am', aiHandling: true, messageCount: 4, updatedAt: '3 hours ago' },
-  { id: '5', business: 'Smith & Sons Plumbing', contact: 'David Chen', channel: 'whatsapp', lastMessage: 'Perfect, Friday 2pm works for me.', aiHandling: false, messageCount: 3, updatedAt: 'Yesterday' },
-]
-
-const CHANNEL_ICON = {
+const CHANNEL_ICON: Record<string, typeof MessageSquare> = {
   sms: MessageSquare,
   whatsapp: MessageSquare,
   email: Mail,
   voice: Phone,
 }
 
-const CHANNEL_COLOR = {
+const CHANNEL_COLOR: Record<string, string> = {
   sms: 'text-brand',
   whatsapp: 'text-emerald-500',
   email: 'text-violet-500',
   voice: 'text-success',
 }
 
+function timeAgo(iso: string | null): string {
+  if (!iso) return '—'
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
 export default function ConversationMonitorPage() {
   const [search, setSearch] = useState('')
+  const { data: conversations } = useAdminApi<AdminConversation[]>('conversations', [])
 
-  const filtered = MOCK_CONVERSATIONS.filter(
+  const filtered = conversations.filter(
     (c) =>
-      c.contact.toLowerCase().includes(search.toLowerCase()) ||
-      c.business.toLowerCase().includes(search.toLowerCase())
+      (c.contacts?.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.businesses?.name || '').toLowerCase().includes(search.toLowerCase())
   )
 
   return (
@@ -68,8 +75,8 @@ export default function ConversationMonitorPage() {
               key: 'channel',
               header: '',
               render: (c) => {
-                const Icon = CHANNEL_ICON[c.channel]
-                return <Icon size={14} className={cn(CHANNEL_COLOR[c.channel])} />
+                const Icon = CHANNEL_ICON[c.channel] || MessageSquare
+                return <Icon size={14} className={cn(CHANNEL_COLOR[c.channel] || 'text-ink-muted')} />
               },
               className: 'w-10',
             },
@@ -78,7 +85,7 @@ export default function ConversationMonitorPage() {
               header: 'Contact',
               render: (c) => (
                 <div>
-                  <p className="font-medium text-ink">{c.contact}</p>
+                  <p className="font-medium text-ink">{c.contacts?.name || 'Unknown'}</p>
                   <p className="text-[11px] capitalize text-ink-muted">{c.channel}</p>
                 </div>
               ),
@@ -86,24 +93,24 @@ export default function ConversationMonitorPage() {
             {
               key: 'business',
               header: 'Business',
-              render: (c) => <span className="text-ink-muted">{c.business}</span>,
+              render: (c) => <span className="text-ink-muted">{c.businesses?.name || '—'}</span>,
             },
             {
               key: 'lastMessage',
               header: 'Last Message',
-              render: (c) => <span className="truncate text-ink-muted">{c.lastMessage}</span>,
+              render: (c) => <span className="truncate text-ink-muted">{c.last_message_preview || '—'}</span>,
             },
             {
               key: 'messages',
               header: 'Messages',
-              render: (c) => c.messageCount,
+              render: (c) => c.messages?.length || 0,
               className: 'w-20',
             },
             {
               key: 'ai',
               header: 'AI',
               render: (c) =>
-                c.aiHandling ? (
+                c.ai_handling ? (
                   <span className="flex items-center gap-1 text-[11px] font-medium text-brand">
                     <Bot size={11} /> On
                   </span>
@@ -115,7 +122,7 @@ export default function ConversationMonitorPage() {
             {
               key: 'updated',
               header: 'Updated',
-              render: (c) => <span className="text-ink-muted">{c.updatedAt}</span>,
+              render: (c) => <span className="text-ink-muted">{timeAgo(c.last_message_at)}</span>,
             },
           ]}
           data={filtered}
