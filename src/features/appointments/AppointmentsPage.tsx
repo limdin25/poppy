@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Calendar, Clock, MapPin, Phone, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calendar, Clock, Phone, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAppointments } from '@/core/hooks/useAppointments'
 import type { Appointment } from '@/core/types/database'

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, FileText, Send, Download, ExternalLink, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useInvoices } from '@/core/hooks/useInvoices'
-import type { Invoice } from '@/core/types/database'
+
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return '—'
