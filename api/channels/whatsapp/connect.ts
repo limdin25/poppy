@@ -21,8 +21,8 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'businessId is required' }), { status: 400 });
     }
 
-    const validProviders = ['WHATSAPP', 'GMAIL'] as const;
-    const selectedProvider = validProviders.includes(provider) ? provider : 'WHATSAPP';
+    const selectedProvider: 'WHATSAPP' | 'GMAIL' =
+      provider === 'GMAIL' ? 'GMAIL' : 'WHATSAPP';
     const channelType = selectedProvider === 'GMAIL' ? 'email_gmail' : 'whatsapp';
 
     const { data: business } = await supabase

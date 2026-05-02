@@ -171,7 +171,7 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('id', businessId);
 
     // Build and store system prompt
-    const { buildSystemPrompt } = await import('../src/prompts/system-builder.js') as { buildSystemPrompt: (business: any, services: any[], faqs: any[], hours: any[]) => string };
+    const { buildSystemPrompt } = await import('../../src/prompts/system-builder.js') as { buildSystemPrompt: (business: any, services: any[], faqs: any[], hours: any[]) => string };
     const business = { name: businessName || 'the business', industry, greeting: generated.greeting };
     const prompt = buildSystemPrompt(business, generated.services, generated.faqs, []);
 
