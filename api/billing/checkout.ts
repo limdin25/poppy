@@ -12,6 +12,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 const APP_URL = process.env.APP_URL || 'https://app.poppy.ai';
 
+export const config = { runtime: 'edge' };
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });

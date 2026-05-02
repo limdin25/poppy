@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../../../src/integrations/supabase/client.js'
 
+export const config = { runtime: 'edge' };
+
 export default async function handler(req: Request) {
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) return new Response('Unauthorized', { status: 401 })

@@ -9,6 +9,8 @@ const UNIPILE_TOKEN = process.env.UNIPILE_TOKEN!;
 const UNIPILE_DSN = process.env.UNIPILE_DSN!;
 const APP_URL = process.env.APP_URL || 'https://poppy-henna.vercel.app';
 
+export const config = { runtime: 'edge' };
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });

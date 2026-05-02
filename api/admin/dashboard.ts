@@ -18,6 +18,8 @@ async function requireAdmin(req: Request): Promise<{ email: string } | Response>
   return { email: admin.email }
 }
 
+export const config = { runtime: 'edge' };
+
 export default async function handler(req: Request) {
   const auth = await requireAdmin(req)
   if (auth instanceof Response) return auth
