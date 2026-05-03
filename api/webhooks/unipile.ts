@@ -465,7 +465,7 @@ export default async function handler(req: Request): Promise<Response> {
       const senderEmail = isEmail ? senderProviderId : '';
       const senderPhone = isEmail ? '' : toE164(isOutboundWA && recipientId ? recipientId : senderProviderId);
       // WhatsApp LIDs (e.g. "184322967507111@lid") are not real names
-      const cleanSenderName = (senderName && !senderName.includes('@lid')) ? senderName : '';
+      const cleanSenderName = (senderName && !senderName.includes('@lid') && !senderName.includes('@s.whatsapp')) ? senderName : '';
       const senderDisplay = cleanSenderName || senderEmail || senderPhone;
 
       if (!senderEmail && !senderPhone) {

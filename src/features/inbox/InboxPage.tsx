@@ -11,7 +11,7 @@ import type { Conversation, Message } from '@/core/types/database'
 
 function isRawIdentifier(name: string | null | undefined): boolean {
   if (!name) return true
-  if (name.includes('@lid')) return true
+  if (name.includes('@lid') || name.includes('@s.whatsapp')) return true
   if (name === 'Unknown') return true
   const digitsOnly = name.replace(/[^0-9]/g, '')
   return digitsOnly.length >= 10 && digitsOnly.length === name.replace(/[+ ()-]/g, '').length
@@ -233,7 +233,7 @@ export default function InboxPage() {
                     )}
 
                     <p className={cn('mt-0.5 truncate text-[12px]', unread ? 'font-medium text-ink' : 'text-ink-muted')}>
-                      {(conv.last_message_preview ?? 'No messages').replace(/\{\{?\d+@lid\}?\}?/g, '').trim() || 'No messages'}
+                      {(conv.last_message_preview ?? 'No messages').replace(/\{\{?\d+@(lid|s\.whatsapp\.net)\}?\}?/g, '').trim() || 'No messages'}
                     </p>
 
                     {conv.ai_handling && (

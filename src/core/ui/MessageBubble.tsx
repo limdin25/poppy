@@ -42,7 +42,7 @@ function formatTime(dateStr: string): string {
 }
 
 function cleanWhatsAppIds(text: string): string {
-  return text.replace(/\{\{?\d+@lid\}?\}?/g, '').trim()
+  return text.replace(/\{\{?\d+@(lid|s\.whatsapp\.net)\}?\}?/g, '').trim()
 }
 
 function stripQuotedReply(text: string): string {
