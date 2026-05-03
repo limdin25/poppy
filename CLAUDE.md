@@ -117,7 +117,7 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 - Admin pages still use mock data (to be wired separately)
 - Data hooks: useCalls, useContacts, useConversations, useMessages, useAppointments, useQuotes, useInvoices, useBusiness
 - **Deployed to Vercel**: `https://poppy-henna.vercel.app` (demo: `demo@poppy.ai` / `demo1234`)
-- **Unipile WhatsApp integration live**: webhook + polling, 6 API routes (connect, webhook, send, poll, compose, attachment)
+- **Unipile WhatsApp integration live**: webhook + polling, 8 API routes (connect, webhook, send, poll, compose, attachment, approve, rewrite)
 - **AI auto-reply**: Claude Sonnet 4.6 (switched from OpenAI gpt-4o-mini)
 - **Media support**: images, audio, video, files — downloaded from Unipile → Supabase Storage → rendered in inbox
 - **Reactions**: synced from Unipile, displayed as badges below message bubbles

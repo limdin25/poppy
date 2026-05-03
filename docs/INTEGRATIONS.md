@@ -75,6 +75,8 @@ All API keys are stored as environment variables. Never hardcoded.
 | `api/messages/poll.ts` | Polling fallback — fetches last 24h, deduplicates, downloads media, syncs reactions |
 | `api/messages/compose.ts` | Compose new message to contact (creates conversation if needed) |
 | `api/messages/attachment.ts` | Proxy attachment download from Unipile API |
+| `api/messages/approve.ts` | Approve draft → send via Unipile (WhatsApp or email), update status to `sent` |
+| `api/messages/rewrite.ts` | Regenerate AI reply for a draft using Claude Sonnet 4.6 |
 
 **Integration wrapper:** `src/integrations/unipile/client.ts`
 - `sendToChat()` — sends WhatsApp message to a new chat by phone number

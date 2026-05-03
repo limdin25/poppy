@@ -140,6 +140,8 @@ Business clicks "Connect WhatsApp" in settings
 | `/api/messages/poll` | GET/POST | Polling fallback — fetches last 24h of messages, deduplicates, downloads attachments |
 | `/api/messages/compose` | POST | Compose new message to a contact (creates conversation if needed) |
 | `/api/messages/attachment` | GET | Proxy attachment download from Unipile |
+| `/api/messages/approve` | POST | Approve a draft message — sends via Unipile, updates status to `sent` |
+| `/api/messages/rewrite` | POST | Regenerate AI reply for a draft message (keeps status `draft`) |
 
 ---
 
