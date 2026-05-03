@@ -250,6 +250,37 @@ async function getConversationHistory(conversationId: string): Promise<Array<{ro
   }));
 }
 
+async function downloadAndStoreAttachment(messageId: string, attachment: { id: string; type?: string; mimetype?: string }): Promise<string | null> {
+  try {
+    const res = await fetch(`https://${UNIPILE_DSN}/api/v1/messages/${messageId}/attachments/${attachment.id}`, {
+      headers: { 'X-API-KEY': UNIPILE_TOKEN, accept: '*/*' },
+    });
+    if (!res.ok) {
+      console.error('[attachment] download failed:', res.status);
+      return null;
+    }
+    const blob = await res.arrayBuffer();
+    const mime = attachment.mimetype || res.headers.get('content-type') || 'image/jpeg';
+    const ext = mime.includes('png') ? 'png' : mime.includes('gif') ? 'gif' : mime.includes('webp') ? 'webp' : 'jpg';
+    const fileName = `attachments/${Date.now()}_${attachment.id}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('media')
+      .upload(fileName, blob, { contentType: mime, upsert: false });
+
+    if (error) {
+      console.error('[attachment] upload failed:', error.message);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from('media').getPublicUrl(fileName);
+    return urlData?.publicUrl || null;
+  } catch (err: any) {
+    console.error('[attachment] error:', err.message);
+    return null;
+  }
+}
+
 async function sendUnipileMessage(accountId: string, recipientPhone: string, text: string) {
   await fetch(`https://${UNIPILE_DSN}/api/v1/chats`, {
     method: 'POST',
@@ -380,6 +411,11 @@ export default async function handler(req: Request): Promise<Response> {
         (typeof payload.message === 'string' ? payload.message : payload.message?.text) || '';
       const messageSubject = payload.subject || payload.message?.subject || '';
 
+      // Attachments from WhatsApp messages (images, files, audio)
+      const rawAttachments: Array<{ id: string; type?: string; mimetype?: string }> =
+        payload.attachments || payload.message?.attachments || [];
+      const hasAttachments = rawAttachments.length > 0;
+
       // sender can be { display_name, identifier } (flat) or { provider_id, name } (nested)
       const senderObj = payload.sender || {};
       const senderProviderId =
@@ -387,8 +423,9 @@ export default async function handler(req: Request): Promise<Response> {
       const senderName =
         senderObj.display_name || senderObj.name || '';
 
-      if (!messageText) {
-        return new Response(JSON.stringify({ ok: true, skipped: 'no text' }), { status: 200 });
+      // Allow messages with attachments even if no text (e.g. photo-only)
+      if (!messageText && !hasAttachments) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no text or attachments' }), { status: 200 });
       }
 
       // Find channel by unipile_account_id
@@ -407,13 +444,26 @@ export default async function handler(req: Request): Promise<Response> {
       const isEmail = channel.type === 'email_gmail' || channel.type === 'email_outlook' || channel.type === 'email_smtp';
       const conversationChannel = isEmail ? 'email' : 'whatsapp';
 
+      // Detect outbound WhatsApp messages (sent from Hugo's phone)
+      // Unipile sets is_sender=true or the sender matches the channel's own phone/email
+      const isSentByMe = payload.is_sender === true ||
+        (payload.message?.is_sender === true) ||
+        (payload.role === 'sent');
+      const ownPhone = ((channel as any).config as any)?.phone || '';
+      const ownEmail = ((channel as any).config as any)?.email || '';
+      const isOutboundWA = !isEmail && (isSentByMe || (ownPhone && toE164(senderProviderId) === toE164(ownPhone)));
+
+      // For outbound WhatsApp, the "sender" in the payload is ourselves — the recipient is in receiver/attendees
+      const recipientObj = payload.receiver || payload.to || {};
+      const recipientId = recipientObj.identifier || recipientObj.provider_id || '';
+
       // Strip HTML from email bodies + clean quoted replies
       const rawClean = isEmail && messageText.includes('<') ? stripHtml(messageText) : messageText;
       const cleanText = isEmail ? cleanEmailBody(rawClean) : rawClean;
 
-      // Determine sender identifier
+      // Determine the counterparty (for outbound = recipient, for inbound = sender)
       const senderEmail = isEmail ? senderProviderId : '';
-      const senderPhone = isEmail ? '' : toE164(senderProviderId);
+      const senderPhone = isEmail ? '' : toE164(isOutboundWA && recipientId ? recipientId : senderProviderId);
       // WhatsApp LIDs (e.g. "184322967507111@lid") are not real names
       const cleanSenderName = (senderName && !senderName.includes('@lid')) ? senderName : '';
       const senderDisplay = cleanSenderName || senderEmail || senderPhone;
@@ -512,17 +562,29 @@ export default async function handler(req: Request): Promise<Response> {
         return new Response(JSON.stringify({ ok: true, skipped: 'conversation failed' }), { status: 200 });
       }
 
-      // Store inbound message
-      const preview = cleanText.slice(0, 100);
+      // Download and store attachments (images, files)
+      let mediaUrl: string | null = null;
+      let contentType: 'text' | 'image' | 'file' = 'text';
+      if (hasAttachments && messageId) {
+        const firstAtt = rawAttachments[0];
+        const attType = (firstAtt.type || firstAtt.mimetype || '').toLowerCase();
+        const isImage = attType.includes('img') || attType.includes('image');
+        contentType = isImage ? 'image' : 'file';
+        mediaUrl = await downloadAndStoreAttachment(messageId, firstAtt);
+      }
+
+      // Store message
+      const preview = cleanText.slice(0, 100) || (contentType === 'image' ? '📷 Photo' : '📎 Attachment');
 
       await supabase.from('messages').insert({
         conversation_id: conversationId,
-        direction: 'inbound',
-        sender: 'contact',
-        content_type: 'text',
-        body: cleanText,
+        direction: isOutboundWA ? 'outbound' : 'inbound',
+        sender: isOutboundWA ? 'human' : 'contact',
+        content_type: contentType,
+        body: cleanText || null,
+        media_url: mediaUrl,
         metadata: {
-          sender_name: senderDisplay,
+          sender_name: isOutboundWA ? 'You' : senderDisplay,
           ...(isEmail
             ? { sender_email: senderEmail, subject: messageSubject }
             : { sender_phone: senderPhone }),
@@ -536,15 +598,15 @@ export default async function handler(req: Request): Promise<Response> {
         .update({
           last_message_at: new Date().toISOString(),
           last_message_preview: preview,
-          unread_count: (existingConvo ? 1 : 1),
+          unread_count: isOutboundWA ? (existingConvo ? 0 : 0) : 1,
         })
         .eq('id', conversationId);
 
-      // AI auto-reply if enabled on this channel + conversation (skip spam)
+      // AI auto-reply if enabled — skip for outbound (sent from phone), spam, or image-only
       const spam = isEmail && isSpamEmail(senderEmail, messageSubject, cleanText);
       const draftMode = (channel as any).draft_mode !== false;
 
-      if (channel.auto_reply_enabled && convoAiHandling && !spam) {
+      if (channel.auto_reply_enabled && convoAiHandling && !spam && !isOutboundWA && cleanText) {
         const [systemPrompt, history] = await Promise.all([
           buildBusinessContext(businessId, { contactName: resolvedName || undefined, channel: conversationChannel }),
           getConversationHistory(conversationId!),
