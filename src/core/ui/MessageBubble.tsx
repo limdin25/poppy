@@ -34,7 +34,7 @@ interface MessageBubbleProps {
   metadata?: EmailMeta
   contactLabel?: string
   mediaUrl?: string | null
-  contentType?: 'text' | 'image' | 'file' | 'audio' | 'call_summary'
+  contentType?: 'text' | 'image' | 'video' | 'file' | 'audio' | 'call_summary'
 }
 
 function formatFileSize(bytes: number): string {
@@ -131,8 +131,9 @@ export function MessageBubble({ sender, text, timestamp, className, metadata, co
   const isInbound = sender === 'customer'
   const hasAttachments = metadata?.has_attachments && metadata?.attachments && metadata.attachments.length > 0
   const hasHtml = isInbound && metadata?.body_html
-  const isImage = contentType === 'image' && mediaUrl
+  const isImage = (contentType === 'image') && mediaUrl
   const isAudio = contentType === 'audio' && mediaUrl
+  const isVideo = contentType === 'video' && mediaUrl
 
   const cleanText = cleanWhatsAppIds(stripQuotedReply(text))
   const segments = parseTextWithLinks(cleanText)
@@ -208,8 +209,17 @@ export function MessageBubble({ sender, text, timestamp, className, metadata, co
         {isAudio && (
           <div className="mb-1">
             <audio controls preload="metadata" className="max-w-full h-9" style={{ minWidth: '200px' }}>
+              <source src={mediaUrl!} type="audio/ogg" />
               <source src={mediaUrl!} />
             </audio>
+          </div>
+        )}
+
+        {isVideo && (
+          <div className="mb-1">
+            <video controls preload="metadata" className="max-w-full max-h-[300px] rounded-lg">
+              <source src={mediaUrl!} type="video/mp4" />
+            </video>
           </div>
         )}
 

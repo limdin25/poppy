@@ -1,32 +1,86 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { useBusiness } from '@/core/hooks/useBusiness'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 
-const DEFAULT_INSTRUCTIONS = `Always be polite and professional. If you don't know the answer to something, say "Let me take your details and have someone call you back" rather than guessing.
+const PLACEHOLDER = `Always be polite and professional. If you don't know the answer to something, say "Let me take your details and have someone call you back" rather than guessing.
 
 Never quote exact prices unless they're listed in the FAQ. Instead, offer to arrange a free quote.
 
 If a caller sounds distressed (e.g. flooding, gas leak), prioritise getting their address and reassure them we'll send someone as soon as possible.`
 
+const TONE_OPTIONS = [
+  { value: 'professional', label: 'Professional' },
+  { value: 'friendly', label: 'Friendly' },
+  { value: 'casual', label: 'Casual' },
+  { value: 'formal', label: 'Formal' },
+]
+
 export default function BehaviourSection() {
-  const [instructions, setInstructions] = useState(DEFAULT_INSTRUCTIONS)
+  const { businessId } = useAuth()
+  const { data: business, refetch } = useBusiness()
+  const [instructions, setInstructions] = useState('')
+  const [tone, setTone] = useState('professional')
+  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  function handleSave() {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  useEffect(() => {
+    if (business) {
+      setInstructions(business.ai_system_prompt || '')
+      setTone(business.tone || 'professional')
+    }
+  }, [business])
+
+  async function handleSave() {
+    if (!businessId) return
+    setSaving(true)
+    const { error } = await supabase
+      .from('businesses')
+      .update({ ai_system_prompt: instructions, tone })
+      .eq('id', businessId)
+    setSaving(false)
+    if (!error) {
+      setSaved(true)
+      refetch()
+      setTimeout(() => setSaved(false), 2000)
+    }
   }
 
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+        <h2 className="text-[15px] font-semibold text-ink">Tone</h2>
+        <p className="mt-1 text-[13px] text-ink-muted">
+          Set the overall tone for how Poppy communicates with your customers.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {TONE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setTone(opt.value)}
+              className={`rounded-full px-4 py-1.5 text-[13px] font-medium transition ${
+                tone === opt.value
+                  ? 'bg-brand text-white'
+                  : 'bg-elevated text-ink-muted hover:bg-brand/10 hover:text-brand'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h2 className="text-[15px] font-semibold text-ink">Custom Instructions</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          Give Poppy specific instructions about how to handle calls. Write these as if
-          you're briefing a new receptionist on their first day.
+          Give Poppy specific instructions about how to handle calls and messages.
+          Write these as if you're briefing a new receptionist on their first day.
         </p>
 
         <textarea
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
+          placeholder={PLACEHOLDER}
           rows={10}
           className="mt-4 w-full rounded-xl border border-border bg-surface p-4 text-[14px] leading-relaxed text-ink outline-none resize-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
@@ -37,9 +91,10 @@ export default function BehaviourSection() {
           </span>
           <button
             onClick={handleSave}
-            className="h-10 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600"
+            disabled={saving}
+            className="h-10 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
           >
-            {saved ? '✓ Saved' : 'Save changes'}
+            {saving ? 'Saving...' : saved ? 'Saved' : 'Save changes'}
           </button>
         </div>
       </div>

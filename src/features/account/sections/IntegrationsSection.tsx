@@ -13,6 +13,8 @@ interface ChannelRow {
   type: string
   status: string
   config: Record<string, unknown> | null
+  auto_reply_enabled: boolean
+  draft_mode: boolean
 }
 
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
@@ -59,7 +61,7 @@ export default function IntegrationsSection() {
   async function loadChannels() {
     const { data } = await supabase
       .from('channels')
-      .select('id, type, status, config')
+      .select('id, type, status, config, auto_reply_enabled, draft_mode')
       .eq('business_id', businessId!)
     setChannels(data ?? [])
   }
@@ -70,14 +72,14 @@ export default function IntegrationsSection() {
 
   function isConnected(id: ChannelId): boolean {
     if (id === 'whatsapp') return getChannel('whatsapp')?.status === 'connected'
-    if (id === 'email') return getChannel('email_gmail')?.status === 'connected'
+    if (id === 'email') return getChannel('email_gmail')?.status === 'connected' || getChannel('email_outlook')?.status === 'connected' || getChannel('email_smtp')?.status === 'connected'
     if (id === 'voice') return getChannel('voice')?.status === 'connected'
     if (id === 'sms') return getChannel('sms')?.status === 'connected'
     if (id === 'calendar') return false
     return false
   }
 
-  async function connectViaUnipile(provider: 'WHATSAPP' | 'GMAIL') {
+  async function connectViaUnipile(provider: 'WHATSAPP' | 'GMAIL' | 'OUTLOOK') {
     if (!businessId || !session) return
     setConnecting(provider)
     try {
@@ -106,6 +108,49 @@ export default function IntegrationsSection() {
     { id: 'calendar' as ChannelId, name: 'Calendar', description: 'Auto-book appointments during calls', icon: Calendar },
   ]
 
+  async function toggleChannelSetting(channelId: string, field: 'auto_reply_enabled' | 'draft_mode', value: boolean) {
+    await supabase.from('channels').update({ [field]: value }).eq('id', channelId)
+    loadChannels()
+  }
+
+  function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+    return (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        onClick={onToggle}
+        className={cn(
+          'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+          on ? 'bg-brand' : 'bg-gray-300'
+        )}
+      >
+        <span className={cn(
+          'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+          on ? 'translate-x-6' : 'translate-x-1'
+        )} />
+      </button>
+    )
+  }
+
+  function ChannelToggles({ channel }: { channel: ChannelRow }) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-[13px] font-medium text-ink">AI auto-reply</span>
+          <Toggle on={channel.auto_reply_enabled} onToggle={() => toggleChannelSetting(channel.id, 'auto_reply_enabled', !channel.auto_reply_enabled)} />
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <span className="text-[13px] font-medium text-ink">Draft mode</span>
+            <p className="text-[11px] text-ink-muted">Review AI replies before sending</p>
+          </div>
+          <Toggle on={channel.draft_mode} onToggle={() => toggleChannelSetting(channel.id, 'draft_mode', !channel.draft_mode)} />
+        </div>
+      </div>
+    )
+  }
+
   const whatsappChannel = getChannel('whatsapp')
   const voiceChannel = getChannel('voice')
   const whatsappPhone = (whatsappChannel?.config as Record<string, string> | null)?.phone
@@ -119,48 +164,60 @@ export default function IntegrationsSection() {
         </p>
 
         <div className="mt-4 space-y-3">
-          {channelList.map((channel) => {
-            const connected = isConnected(channel.id)
+          {channelList.map((ch) => {
+            const connected = isConnected(ch.id)
+            const channelRow = ch.id === 'whatsapp' ? whatsappChannel
+              : ch.id === 'email' ? (getChannel('email_gmail') || getChannel('email_outlook') || getChannel('email_smtp'))
+              : ch.id === 'voice' ? voiceChannel
+              : null
             return (
-              <div key={channel.id} className="flex items-center gap-4 rounded-xl border border-border p-4 transition hover:border-brand/20">
-                <div className={cn(
-                  'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
-                  connected ? 'bg-success/10' : 'bg-elevated'
-                )}>
-                  <channel.icon size={20} className={cn(connected ? 'text-success' : 'text-ink-muted')} />
+              <div key={ch.id} className="rounded-xl border border-border overflow-hidden transition hover:border-brand/20">
+                <div className="flex items-center gap-4 p-4">
+                  <div className={cn(
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
+                    connected ? 'bg-success/10' : 'bg-elevated'
+                  )}>
+                    <ch.icon size={20} className={cn(connected ? 'text-success' : 'text-ink-muted')} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-medium text-ink">{ch.name}</p>
+                    <p className="text-[12px] text-ink-muted">{ch.description}</p>
+                    {connected && ch.id === 'whatsapp' && whatsappPhone && (
+                      <p className="mt-0.5 text-[12px] text-success">{whatsappPhone}</p>
+                    )}
+                    {connected && ch.id === 'voice' && (
+                      <p className="mt-0.5 text-[12px] text-success">
+                        {(voiceChannel?.config as Record<string, string> | null)?.phone || 'Connected'}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    {connected ? (
+                      <button
+                        onClick={() => setActiveModal(ch.id)}
+                        className="flex items-center gap-1.5 text-[12px] font-medium text-success transition hover:text-success/80"
+                      >
+                        <CheckCircle2 size={14} />
+                        {ch.id === 'voice' ? 'Manage' : 'Connected'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setActiveModal(ch.id)}
+                        className="h-8 rounded-lg bg-brand px-3 text-[12px] font-semibold text-white transition hover:bg-brand/90"
+                      >
+                        Connect
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-medium text-ink">{channel.name}</p>
-                  <p className="text-[12px] text-ink-muted">{channel.description}</p>
-                  {connected && channel.id === 'whatsapp' && whatsappPhone && (
-                    <p className="mt-0.5 text-[12px] text-success">{whatsappPhone}</p>
-                  )}
-                  {connected && channel.id === 'voice' && (
-                    <p className="mt-0.5 text-[12px] text-success">
-                      {(voiceChannel?.config as Record<string, string> | null)?.phone || 'Connected'}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  {connected ? (
-                    <button
-                      onClick={() => setActiveModal(channel.id)}
-                      className="flex items-center gap-1.5 text-[12px] font-medium text-success transition hover:text-success/80"
-                    >
-                      <CheckCircle2 size={14} />
-                      {channel.id === 'voice' ? 'Manage' : 'Connected'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setActiveModal(channel.id)}
-                      className="h-8 rounded-lg bg-brand px-3 text-[12px] font-semibold text-white transition hover:bg-brand/90"
-                    >
-                      Connect
-                    </button>
-                  )}
-                </div>
+                {connected && channelRow && (ch.id === 'whatsapp' || ch.id === 'email') && (
+                  <div className="border-t border-border bg-elevated/30 px-4 py-3">
+                    <ChannelToggles channel={channelRow} />
+                  </div>
+                )}
               </div>
             )
           })}
@@ -183,6 +240,7 @@ export default function IntegrationsSection() {
             <p className="text-[13px] text-ink-muted">
               Your WhatsApp Business account is linked. Poppy will respond to customer messages automatically.
             </p>
+            {whatsappChannel && <ChannelToggles channel={whatsappChannel} />}
           </div>
         ) : (
           <div className="space-y-5">
@@ -280,12 +338,18 @@ export default function IntegrationsSection() {
               </div>
               <div>
                 <p className="text-[14px] font-semibold text-ink">Email Connected</p>
-                <p className="text-[13px] text-ink-muted">Gmail</p>
+                <p className="text-[13px] text-ink-muted">
+                  {getChannel('email_gmail')?.status === 'connected' ? 'Gmail' : getChannel('email_outlook')?.status === 'connected' ? 'Outlook' : 'Email'}
+                </p>
               </div>
             </div>
             <p className="text-[13px] text-ink-muted">
               Poppy is monitoring your inbox and will respond to customer enquiries automatically.
             </p>
+            {(() => {
+              const emailChannel = getChannel('email_gmail') || getChannel('email_outlook') || getChannel('email_smtp')
+              return emailChannel ? <ChannelToggles channel={emailChannel} /> : null
+            })()}
           </div>
         ) : (
           <div className="space-y-5">
@@ -311,6 +375,24 @@ export default function IntegrationsSection() {
                 <div className="flex-1 text-left">
                   <p className="text-[14px] font-medium text-ink">Connect Gmail</p>
                   <p className="text-[12px] text-ink-muted">Google Workspace or personal Gmail</p>
+                </div>
+                <ArrowRight size={16} className="text-ink-muted" />
+              </button>
+              <button
+                onClick={() => connectViaUnipile('OUTLOOK')}
+                disabled={connecting === 'OUTLOOK'}
+                className="flex w-full items-center gap-3 rounded-xl border border-border p-4 transition hover:border-brand/20 hover:bg-elevated/50 disabled:opacity-60"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
+                  {connecting === 'OUTLOOK' ? (
+                    <Loader2 size={18} className="animate-spin text-blue-500" />
+                  ) : (
+                    <Mail size={18} className="text-blue-500" />
+                  )}
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-[14px] font-medium text-ink">Connect Outlook</p>
+                  <p className="text-[12px] text-ink-muted">Microsoft 365 or personal Outlook</p>
                 </div>
                 <ArrowRight size={16} className="text-ink-muted" />
               </button>

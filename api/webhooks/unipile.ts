@@ -576,12 +576,13 @@ export default async function handler(req: Request): Promise<Response> {
 
       // Download and store attachments (images, files, audio)
       let mediaUrl: string | null = null;
-      let contentType: 'text' | 'image' | 'audio' | 'file' = 'text';
+      let contentType: 'text' | 'image' | 'audio' | 'video' | 'file' = 'text';
       if (hasAttachments && messageId) {
         const firstAtt = rawAttachments[0];
         const attType = (firstAtt.type || firstAtt.mimetype || '').toLowerCase();
         if (attType.includes('img') || attType.includes('image')) contentType = 'image';
         else if (attType.includes('audio') || attType.includes('ptt') || attType.includes('voice')) contentType = 'audio';
+        else if (attType.includes('video')) contentType = 'video';
         else contentType = 'file';
         mediaUrl = await downloadAndStoreAttachment(messageId, firstAtt);
       }

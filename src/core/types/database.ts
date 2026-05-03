@@ -45,6 +45,8 @@ export interface Conversation {
   last_message_at: string | null
   last_message_preview: string | null
   unread_count: number
+  subject: string | null
+  is_spam: boolean
   created_at: string
   contact?: Contact
 }
@@ -54,10 +56,11 @@ export interface Message {
   conversation_id: string
   direction: 'inbound' | 'outbound'
   sender: 'contact' | 'ai' | 'human'
-  content_type: 'text' | 'audio' | 'image' | 'file' | 'call_summary'
+  content_type: 'text' | 'audio' | 'image' | 'video' | 'file' | 'call_summary'
   body: string | null
   media_url: string | null
   metadata: Record<string, unknown>
+  status: 'sent' | 'draft' | 'failed'
   created_at: string
 }
 

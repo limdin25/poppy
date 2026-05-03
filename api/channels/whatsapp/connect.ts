@@ -24,8 +24,10 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const isGmail = provider === 'GMAIL';
-    const selectedProvider = isGmail ? 'GOOGLE' : 'WHATSAPP';
-    const channelType = isGmail ? 'email_gmail' : 'whatsapp';
+    const isOutlook = provider === 'OUTLOOK';
+    const selectedProvider = isGmail ? 'GOOGLE' : isOutlook ? 'MICROSOFT' : 'WHATSAPP';
+    const channelType = isGmail ? 'email_gmail' : isOutlook ? 'email_outlook' : 'whatsapp';
+    const providerLabel = isGmail ? 'Gmail' : isOutlook ? 'Outlook' : 'WhatsApp';
 
     const { data: business } = await supabase
       .from('businesses')
@@ -57,7 +59,7 @@ export default async function handler(req: Request): Promise<Response> {
         success_redirect_url: successUrl,
         failure_redirect_url: failureUrl,
         notify_url: notifyUrl,
-        name: `${business.name} ${isGmail ? 'Gmail' : 'WhatsApp'}`,
+        name: `${business.name} ${providerLabel}`,
       }),
     });
 
