@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Search, Phone, MessageSquare, Mail, Send, ArrowLeft, Bot, MoreHorizontal, Plus, X, Paperclip, Pencil, Check } from 'lucide-react'
+import { Search, Phone, MessageSquare, Mail, Send, ArrowLeft, Bot, MoreHorizontal, Plus, X, Paperclip, Pencil, Check, RefreshCw } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { MessageBubble } from '@/core/ui/MessageBubble'
@@ -294,6 +294,9 @@ function ThreadView({
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const [localName, setLocalName] = useState<string | null>(null)
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
+  const [editingDraftText, setEditingDraftText] = useState('')
+  const [rewritingDraftId, setRewritingDraftId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const Icon = CHANNEL_ICON[conversation.channel]
@@ -368,6 +371,28 @@ function ThreadView({
 
   async function discardDraft(messageId: string) {
     await supabase.from('messages').delete().eq('id', messageId)
+    refetchMessages()
+  }
+
+  async function rewriteDraft(messageId: string) {
+    setRewritingDraftId(messageId)
+    try {
+      const res = await fetch('/api/messages/rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ messageId }),
+      })
+      if (res.ok) refetchMessages()
+    } finally {
+      setRewritingDraftId(null)
+    }
+  }
+
+  async function saveEditedDraft(messageId: string) {
+    const trimmed = editingDraftText.trim()
+    if (!trimmed) return
+    await supabase.from('messages').update({ body: trimmed }).eq('id', messageId)
+    setEditingDraftId(null)
     refetchMessages()
   }
 
@@ -491,29 +516,70 @@ function ThreadView({
                   </div>
                 )}
                 <div className={isDraft ? 'rounded-xl border-2 border-dashed border-amber-300 p-1' : ''}>
-                  <MessageBubble
-                    sender={senderLabel(msg)}
-                    text={msg.body ?? ''}
-                    timestamp={msg.created_at}
-                    contactLabel={contactName}
-                    mediaUrl={msg.media_url}
-                    contentType={msg.content_type}
-                    metadata={meta ? {
-                      has_attachments: meta.has_attachments,
-                      attachments: meta.attachments,
-                      external_id: meta.external_id,
-                      body_html: meta.body_html,
-                      reactions: meta.reactions,
-                    } : undefined}
-                  />
+                  {isDraft && editingDraftId === msg.id ? (
+                    <div className="rounded-xl bg-brand/90 p-3">
+                      <textarea
+                        autoFocus
+                        value={editingDraftText}
+                        onChange={(e) => setEditingDraftText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingDraftId(null) }}
+                        className="w-full min-h-[80px] rounded-lg bg-white/10 text-white text-[13px] p-2 resize-none outline-none placeholder:text-white/50"
+                      />
+                      <div className="flex justify-end gap-2 mt-2">
+                        <button
+                          onClick={() => setEditingDraftId(null)}
+                          className="rounded-md px-3 py-1 text-[11px] font-medium text-white/70 hover:text-white transition"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => saveEditedDraft(msg.id)}
+                          className="rounded-md px-3 py-1 text-[11px] font-medium text-white bg-white/20 hover:bg-white/30 transition flex items-center gap-1"
+                        >
+                          <Check size={12} /> Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <MessageBubble
+                      sender={senderLabel(msg)}
+                      text={msg.body ?? ''}
+                      timestamp={msg.created_at}
+                      contactLabel={contactName}
+                      mediaUrl={msg.media_url}
+                      contentType={msg.content_type}
+                      metadata={meta ? {
+                        has_attachments: meta.has_attachments,
+                        attachments: meta.attachments,
+                        external_id: meta.external_id,
+                        body_html: meta.body_html,
+                        reactions: meta.reactions,
+                      } : undefined}
+                    />
+                  )}
                 </div>
-                {isDraft && (
+                {isDraft && editingDraftId !== msg.id && (
                   <div className="flex justify-end gap-2 mt-1">
                     <button
                       onClick={() => discardDraft(msg.id)}
                       className="rounded-md px-3 py-1 text-[11px] font-medium text-ink-muted bg-elevated hover:bg-red-50 hover:text-red-600 transition"
                     >
                       Discard
+                    </button>
+                    <button
+                      onClick={() => rewriteDraft(msg.id)}
+                      disabled={rewritingDraftId === msg.id}
+                      className="rounded-md p-1.5 text-ink-muted bg-elevated hover:bg-amber-50 hover:text-amber-600 transition disabled:opacity-50"
+                      title="Rewrite"
+                    >
+                      <RefreshCw size={14} className={rewritingDraftId === msg.id ? 'animate-spin' : ''} />
+                    </button>
+                    <button
+                      onClick={() => { setEditingDraftId(msg.id); setEditingDraftText(msg.body ?? '') }}
+                      className="rounded-md p-1.5 text-ink-muted bg-elevated hover:bg-blue-50 hover:text-blue-600 transition"
+                      title="Edit"
+                    >
+                      <Pencil size={14} />
                     </button>
                     <button
                       onClick={() => approveDraft(msg.id)}
