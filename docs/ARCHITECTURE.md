@@ -97,14 +97,19 @@ Inbound WhatsApp message
     → Vercel function:
         • Upserts contact (by phone, scoped to business)
         • Creates or finds conversation (channel='whatsapp')
+        • Downloads attachments (image/audio/video/file) → Supabase Storage
         • Stores message in messages table (direction=inbound, sender=contact)
         • If ai_handling enabled on conversation:
-            → Calls OpenAI gpt-4o-mini with business ai_system_prompt
+            → Calls Claude Sonnet 4.6 with business ai_system_prompt
             → Sends AI reply via Unipile /chats endpoint
             → Stores outbound message (sender=ai)
   → Supabase Realtime pushes update
     → Inbox refreshes live
 ```
+
+### Attachment Handling
+
+Media messages (images, audio, video, files) are downloaded from Unipile's attachment API and uploaded to Supabase Storage (`media` bucket, `attachments/` prefix). The public URL is stored in `messages.media_url`. The frontend renders the appropriate element (`<img>`, `<audio>`, `<video>`) based on `content_type`.
 
 ### WhatsApp Channel Connection
 
@@ -131,8 +136,10 @@ Business clicks "Connect WhatsApp" in settings
 |-------|--------|---------|
 | `/api/webhooks/unipile` | POST | Handles `account_connected` and `message_received` events |
 | `/api/channels/whatsapp/connect` | GET | Creates Unipile hosted-auth link, pre-creates channel row |
-| `/api/messages/send` | POST | Outbound WhatsApp sending (resolves contact + channel, sends via Unipile) |
-| `/api/messages/poll` | GET | Polling fallback — fetches last 24h of messages, deduplicates |
+| `/api/messages/send` | POST | Outbound WhatsApp/email sending (resolves contact + channel, sends via Unipile) |
+| `/api/messages/poll` | GET/POST | Polling fallback — fetches last 24h of messages, deduplicates, downloads attachments |
+| `/api/messages/compose` | POST | Compose new message to a contact (creates conversation if needed) |
+| `/api/messages/attachment` | GET | Proxy attachment download from Unipile |
 
 ---
 
@@ -158,8 +165,7 @@ Business clicks "Connect WhatsApp" in settings
 | Retell AI | Voice agent — handles the live call |
 | Twilio | Phone numbers + SIP connectivity |
 | Stripe | Subscription billing |
-| OpenAI | LLM for prompt tasks |
-| Anthropic | LLM fallback |
+| Anthropic | Claude Sonnet 4.6 — AI brain for auto-replies and tool use |
 | Resend | Transactional email delivery |
 | Cal.com | Appointment scheduling |
 | Vercel | Hosting (frontend + serverless API routes) |

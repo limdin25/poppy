@@ -43,11 +43,12 @@ Communication channels connected to a business.
 | business_id | uuid FK businesses | |
 | type | text | `'voice'` \| `'whatsapp'` \| `'sms'` \| `'email'` |
 | provider | text | `'twilio'` \| `'unipile'` |
-| provider_channel_id | text | |
+| unipile_account_id | text | Unipile's account ID for this connection |
 | phone_number | text | |
 | email_address | text | |
-| status | text | |
-| config | jsonb | |
+| status | text | `'pending'` \| `'connected'` \| `'disconnected'` |
+| draft_mode | bool | When true, AI replies are held for review |
+| config | jsonb | `{ phone, polled_at }` |
 | created_at | timestamptz | |
 
 ### 3. contacts
@@ -78,11 +79,14 @@ Groups messages/calls into threads.
 | business_id | uuid FK businesses | |
 | contact_id | uuid FK contacts | |
 | channel_id | uuid FK channels | |
-| channel_type | text | |
+| channel | text | `'whatsapp'` \| `'email'` \| `'sms'` \| `'voice'` |
 | status | text | `'open'` \| `'closed'` \| `'archived'` |
-| subject | text | |
+| subject | text | Email subject line |
 | last_message_at | timestamptz | |
+| last_message_preview | text | First 100 chars of last message |
 | unread_count | int | |
+| ai_handling | bool | Whether AI auto-reply is enabled |
+| is_spam | bool | Default false — spam filter flag |
 | assigned_to | uuid | |
 | created_at | timestamptz | |
 
@@ -95,11 +99,11 @@ Individual messages within a conversation.
 | id | uuid PK | |
 | conversation_id | uuid FK conversations | |
 | direction | text | `'inbound'` \| `'outbound'` |
-| content | text | |
-| content_type | text | `'text'` \| `'audio'` \| `'image'` \| `'document'` |
-| sent_by | text | `'ai'` \| `'human'` \| `'system'` \| `'contact'` |
-| provider_message_id | text | |
-| metadata | jsonb | |
+| body | text | Message text content |
+| content_type | text | `'text'` \| `'audio'` \| `'image'` \| `'video'` \| `'file'` \| `'call_summary'` |
+| sender | text | `'ai'` \| `'human'` \| `'contact'` |
+| media_url | text | Public URL to attachment in Supabase Storage |
+| metadata | jsonb | `{ external_id, via, from_phone, to_phone, reactions[] }` |
 | created_at | timestamptz | |
 
 ### 6. calls
@@ -275,13 +279,23 @@ When a WhatsApp message arrives, the tables interact as follows:
 
 4. **messages** — Each message is stored with:
    - `direction`: `'inbound'` or `'outbound'`
-   - `sent_by`: `'contact'` (inbound), `'ai'` (auto-reply), or `'human'` (manual reply)
-   - `content`: message body text
-   - `metadata`: `{ "external_id": "<unipile_message_id>" }` — used for deduplication by the polling fallback
+   - `sender`: `'contact'` (inbound), `'ai'` (auto-reply), or `'human'` (manual/phone-sent)
+   - `body`: message text
+   - `content_type`: `'text'`, `'image'`, `'audio'`, `'video'`, `'file'`, or `'call_summary'`
+   - `media_url`: public Supabase Storage URL for attachments
+   - `metadata`: `{ external_id, via, from_phone, to_phone, reactions[] }`
 
 ### Deduplication
 
-The polling endpoint (`/api/messages/poll`) checks `metadata->>'external_id'` before inserting. If a message with that external_id already exists in the conversation, it's skipped. This prevents duplicates when both webhook and polling capture the same message.
+The polling endpoint (`/api/messages/poll`) checks `metadata @> '{"external_id": "..."}` before inserting. If a message with that external_id already exists in the conversation, it's skipped. This prevents duplicates when both webhook and polling capture the same message.
+
+### Reactions
+
+WhatsApp reactions are stored in message metadata as `reactions: [{ emoji, sender_id }]`. When a duplicate message is found during polling, reactions are still synced (updated on the existing row). The frontend renders reaction badges below the message bubble.
+
+### Filtering
+
+Poll.ts filters out: event messages (`is_event=true`), hidden messages, and reaction notification texts (e.g. "{{phone@s.whatsapp.net}} reacted 👍") which Unipile sometimes sends with `is_event=0`.
 
 ---
 

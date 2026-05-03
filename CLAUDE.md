@@ -106,10 +106,10 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 
 ---
 
-## Current state (2026-05-02)
+## Current state (2026-05-03)
 
 - Supabase project live: `loggyxryrhqsbtqpteog` (EU West 2)
-- Both migrations applied: `20260501000001_init.sql` + `20260502000001_admin.sql`
+- Migrations applied: init, admin, email_subject, enable_realtime, conversation_spam, add_video_content_type
 - 14 user tables + 4 admin tables + RLS + 10 feature flags seeded
 - `.env` configured with real Supabase keys
 - AuthProvider + ProtectedRoute wired — login/register use real Supabase Auth
@@ -117,8 +117,13 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 - Admin pages still use mock data (to be wired separately)
 - Data hooks: useCalls, useContacts, useConversations, useMessages, useAppointments, useQuotes, useInvoices, useBusiness
 - **Deployed to Vercel**: `https://poppy-henna.vercel.app` (demo: `demo@poppy.ai` / `demo1234`)
-- **Unipile WhatsApp integration live**: webhook registered, 4 API routes (connect, webhook, send, poll), AI auto-reply wired
-- Vercel env vars set: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, UNIPILE_TOKEN, UNIPILE_DSN, UNIPILE_WEBHOOK_SECRET, APP_URL
+- **Unipile WhatsApp integration live**: webhook + polling, 6 API routes (connect, webhook, send, poll, compose, attachment)
+- **AI auto-reply**: Claude Sonnet 4.6 (switched from OpenAI gpt-4o-mini)
+- **Media support**: images, audio, video, files — downloaded from Unipile → Supabase Storage → rendered in inbox
+- **Reactions**: synced from Unipile, displayed as badges below message bubbles
+- **Realtime**: enabled on conversations + messages tables
+- Vercel env vars set: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, UNIPILE_TOKEN, UNIPILE_DSN, UNIPILE_WEBHOOK_SECRET, ANTHROPIC_API_KEY, APP_URL
+- **Deploy method**: Vercel CLI with `.git` hide trick (project linked to different repo than git remote)
 
 ### What's next
 1. Wire admin pages to real Supabase queries
@@ -127,6 +132,7 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 4. Wire onboarding flow end-to-end
 5. Set up cron job for Unipile polling fallback
 6. Custom domain
+7. Email channel (Unipile supports it — channel type already in DB)
 
 ---
 

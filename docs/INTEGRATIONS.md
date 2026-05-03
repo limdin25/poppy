@@ -57,7 +57,7 @@ All API keys are stored as environment variables. Never hardcoded.
 | `UNIPILE_TOKEN` | API authentication token |
 | `UNIPILE_DSN` | Unipile API base URL |
 | `UNIPILE_WEBHOOK_SECRET` | Webhook auth header value (`poppy-webhook-secret-2026-05-02`) |
-| `OPENAI_API_KEY` | Used by webhook for AI auto-replies (gpt-4o-mini) |
+| `ANTHROPIC_API_KEY` | Used by webhook for AI auto-replies (Claude Sonnet 4.6) |
 | `APP_URL` | Redirect URL after QR scan (`https://poppy-henna.vercel.app`) |
 
 **Webhook registration:**
@@ -69,10 +69,12 @@ All API keys are stored as environment variables. Never hardcoded.
 **API routes:**
 | Route | Purpose |
 |-------|---------|
-| `api/webhooks/unipile.ts` | Handles `account_connected` + `message_received` events |
+| `api/webhooks/unipile.ts` | Handles `account_connected` + `message_received` events, downloads attachments |
 | `api/channels/whatsapp/connect.ts` | Creates hosted-auth link for QR scan, pre-creates channel row |
-| `api/messages/send.ts` | Outbound WhatsApp — resolves contact phone + channel account, sends via Unipile `/chats` |
-| `api/messages/poll.ts` | Polling fallback — fetches last 24h, deduplicates by `external_id` in metadata |
+| `api/messages/send.ts` | Outbound WhatsApp/email — resolves contact + channel, sends via Unipile |
+| `api/messages/poll.ts` | Polling fallback — fetches last 24h, deduplicates, downloads media, syncs reactions |
+| `api/messages/compose.ts` | Compose new message to contact (creates conversation if needed) |
+| `api/messages/attachment.ts` | Proxy attachment download from Unipile API |
 
 **Integration wrapper:** `src/integrations/unipile/client.ts`
 - `sendToChat()` — sends WhatsApp message to a new chat by phone number
@@ -80,8 +82,11 @@ All API keys are stored as environment variables. Never hardcoded.
 **Architecture pattern (from marketplace10):**
 - Unipile owns QR-scan UX via hosted auth links (no WhatsApp Business API approval needed)
 - Dual ingestion: webhook + polling fallback (belt and braces — Unipile webhooks are unreliable)
-- AI auto-reply uses business `ai_system_prompt` via OpenAI gpt-4o-mini
+- AI auto-reply uses business `ai_system_prompt` via Claude Sonnet 4.6
 - All messages stored in unified `messages` table regardless of channel
+- Media attachments downloaded from Unipile → uploaded to Supabase Storage (`media` bucket)
+- Reactions synced from Unipile and stored in message metadata
+- Reaction notification texts filtered out (Unipile sends them with unreliable `is_event` flag)
 
 ### Resend
 - Transactional emails: quote PDFs, invoice notifications, missed call alerts, daily summaries
