@@ -8,7 +8,94 @@ const supabase = createClient(
 const UNIPILE_TOKEN = process.env.UNIPILE_TOKEN!;
 const UNIPILE_DSN = process.env.UNIPILE_DSN!;
 const UNIPILE_WEBHOOK_SECRET = process.env.UNIPILE_WEBHOOK_SECRET || '';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#?\w+;/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripQuotedReply(text: string): string {
+  // First: cut inline "On ... wrote:" (e.g. "oiiii On Sat, 2 May 2026 at 20:12, Hugo wrote:")
+  const inlineMatch = text.match(/\s+On\s.{5,120}\swrote:\s*/i);
+  if (inlineMatch && inlineMatch.index !== undefined) {
+    text = text.substring(0, inlineMatch.index);
+  }
+
+  const lines = text.split('\n');
+  const cutPatterns = [
+    /^On .{5,80} wrote:\s*$/i,
+    /^-{3,}\s*Original Message\s*-{3,}/i,
+    /^From:\s*.+/i,
+    /^_{3,}/,
+    /^>{3,}/,
+    /^\*{3,}/,
+  ];
+
+  let cutIndex = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (cutPatterns.some((p) => p.test(line))) {
+      cutIndex = i;
+      break;
+    }
+    if (line.startsWith('>') && i > 0 && lines[i - 1].trim() === '') {
+      cutIndex = i;
+      break;
+    }
+  }
+
+  return lines
+    .slice(0, cutIndex)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function cleanEmailBody(text: string): string {
+  let cleaned = stripQuotedReply(text);
+  // Remove long tracking URLs (keep short URLs)
+  cleaned = cleaned.replace(/\(\s*https?:\/\/\S{80,}\s*\)/g, '');
+  cleaned = cleaned.replace(/https?:\/\/\S{120,}/g, '[link]');
+  // Remove rows of asterisks/dashes used as separators
+  cleaned = cleaned.replace(/^\*{5,}\s*$/gm, '');
+  cleaned = cleaned.replace(/^-{5,}\s*$/gm, '');
+  // Collapse excessive blank lines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+  return cleaned.trim();
+}
+
+function isSpamEmail(fromEmail: string, subject: string, body: string): boolean {
+  const lowerFrom = fromEmail.toLowerCase();
+  const lowerBody = body.toLowerCase().slice(0, 3000);
+
+  const spamPrefixes = ['noreply@', 'no-reply@', 'newsletter@', 'marketing@', 'promo@', 'notifications@', 'digest@', 'updates@', 'mailer@', 'bulk@', 'campaign@'];
+  const spamDomains = ['cyberimpact.com', 'skool.com', 'etsy.com', 'mailchimp.com', 'sendgrid.net', 'constantcontact.com', 'hubspot.com', 'klaviyo.com', 'mailerlite.com', 'convertkit.com', 'signalheadline.com', 'theharmonydiaries.com', 'substack.com', 'beehiiv.com'];
+
+  if (spamPrefixes.some(p => lowerFrom.startsWith(p))) return true;
+  if (spamDomains.some(d => lowerFrom.includes(d))) return true;
+
+  if (lowerBody.includes('unsubscribe') || lowerBody.includes('opt out') || lowerBody.includes('opt-out') || lowerBody.includes('manage your preferences') || lowerBody.includes('email preferences') || lowerBody.includes('view in browser') || lowerBody.includes('view this email in')) return true;
+
+  const spamSubjectPatterns = [/\$\d+.*waiting/i, /finalize receipt/i, /claim your/i, /act now/i, /limited time/i, /congratulations/i, /you('ve| have) been selected/i, /winner/i, /free gift/i, /lbs per day/i, /weight loss/i, /new notifications? since/i, /\d+ new notifications/i];
+  if (spamSubjectPatterns.some(p => p.test(subject))) return true;
+
+  const spamBodySignals = [/eliminate.*pain/i, /restore energy/i, /lose \d+ lbs/i, /miracle cure/i, /limited offer/i, /click here to claim/i, /wire transfer/i, /dear (sir|madam|friend|winner)/i, /you have been chosen/i];
+  if (spamBodySignals.filter(p => p.test(body)).length >= 2) return true;
+
+  return false;
+}
 
 function toE164(raw: string): string {
   if (!raw) return '';
@@ -29,32 +116,121 @@ async function fetchUnipileAccount(accountId: string) {
     j?.params?.phone_number ??
     j?.phone_number ??
     null;
+  const email =
+    j?.connection_params?.imap?.email ??
+    j?.connection_params?.email ??
+    j?.email ??
+    j?.identifier ??
+    null;
   return {
     phone,
+    email,
     type: j?.type ?? j?.provider,
     status: j?.sources?.[0]?.status ?? j?.status,
     name: j?.name ?? j?.display_name,
   };
 }
 
-async function generateAIReply(systemPrompt: string, messageText: string): Promise<string> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>): Promise<string> {
+  let messages = history.length > 0 ? history : [{ role: 'user' as const, content: '(new conversation)' }];
+  // Anthropic requires first message to be role 'user'
+  if (messages[0]?.role === 'assistant') {
+    messages = [{ role: 'user' as const, content: '(prior context)' }, ...messages];
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      temperature: 0.5,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: messageText },
-      ],
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages,
     }),
   });
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content || '';
+  if (!res.ok) {
+    console.error('[ai-reply] Anthropic error:', res.status, await res.text().catch(() => ''));
+    return '';
+  }
+  const data = await res.json() as { content?: Array<{ text?: string }> };
+  return data.content?.[0]?.text || '';
+}
+
+async function buildBusinessContext(businessId: string, opts?: { contactName?: string; channel?: string }): Promise<string> {
+  const [bizRes, svcRes, faqRes] = await Promise.all([
+    supabase.from('businesses').select('name, industry, address, phone, website, tone, greeting, ai_system_prompt').eq('id', businessId).single(),
+    supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', businessId),
+    supabase.from('faqs').select('question, answer').eq('business_id', businessId),
+  ]);
+
+  const biz = bizRes.data;
+  if (!biz) return '';
+
+  let prompt = `You are an AI assistant for ${biz.name || 'this business'}.`;
+  if (biz.industry) prompt += ` Industry: ${biz.industry}.`;
+  if (biz.address) prompt += ` Location: ${biz.address}.`;
+  if (biz.phone) prompt += ` Phone: ${biz.phone}.`;
+  if (biz.website) prompt += ` Website: ${biz.website}.`;
+  if (biz.tone) prompt += ` Tone: ${biz.tone}.`;
+  if (biz.greeting) prompt += `\n\nGreeting: ${biz.greeting}`;
+
+  const services = svcRes.data || [];
+  if (services.length > 0) {
+    prompt += '\n\nServices offered:\n';
+    services.forEach(s => {
+      prompt += `- ${s.name}`;
+      if (s.description) prompt += `: ${s.description}`;
+      if (s.price_from != null) prompt += ` (from £${s.price_from}${s.price_to ? ` to £${s.price_to}` : ''})`;
+      if (s.bookable) prompt += ' [bookable]';
+      prompt += '\n';
+    });
+  }
+
+  const faqs = faqRes.data || [];
+  if (faqs.length > 0) {
+    prompt += '\nFAQs:\n';
+    faqs.forEach(f => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
+  }
+
+  if (biz.ai_system_prompt) {
+    prompt += `\nCustom instructions:\n${biz.ai_system_prompt}`;
+  }
+
+  prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting (no **, no *, no #, no bullet points with -). Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name]. Use the actual contact name provided or skip the greeting name entirely.';
+
+  if (opts?.contactName) {
+    prompt += `\n- The customer's name is: ${opts.contactName}. Use their first name naturally.`;
+  } else {
+    prompt += '\n- You do not know the customer\'s name. Do not guess or use placeholders — just skip the name in greetings.';
+  }
+
+  if (opts?.channel === 'whatsapp') {
+    prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational. No formal greetings like "Dear X" — just reply naturally as you would in a chat.';
+  } else if (opts?.channel === 'email') {
+    prompt += '\n- This is an email reply. Be professional but concise. Use the customer\'s first name in the greeting (e.g. "Hi Hugo,").';
+  }
+
+  return prompt;
+}
+
+async function getConversationHistory(conversationId: string): Promise<Array<{role: 'user' | 'assistant', content: string}>> {
+  const { data: rows } = await supabase
+    .from('messages')
+    .select('body, sender')
+    .eq('conversation_id', conversationId)
+    .neq('status', 'draft')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (!rows || rows.length === 0) return [];
+
+  return rows.reverse().map(m => ({
+    role: m.sender === 'contact' ? 'user' as const : 'assistant' as const,
+    content: (m.body || '').slice(0, 2000),
+  }));
 }
 
 async function sendUnipileMessage(accountId: string, recipientPhone: string, text: string) {
@@ -73,6 +249,28 @@ async function sendUnipileMessage(accountId: string, recipientPhone: string, tex
   });
 }
 
+async function sendUnipileEmail(accountId: string, to: string, subject: string, body: string, replyToEmailId?: string) {
+  const htmlBody = body.replace(/\n/g, '<br>');
+  const payload: Record<string, any> = {
+    account_id: accountId,
+    to: [{ identifier: to }],
+    subject,
+    body: htmlBody,
+  };
+  if (replyToEmailId) {
+    payload.reply_to = replyToEmailId;
+  }
+  await fetch(`https://${UNIPILE_DSN}/api/v1/emails`, {
+    method: 'POST',
+    headers: {
+      'X-API-KEY': UNIPILE_TOKEN,
+      'Content-Type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export const config = { runtime: 'edge' };
 
 export default async function handler(req: Request): Promise<Response> {
@@ -81,14 +279,9 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const payload = await req.json() as {
-      event?: string;
-      account_id?: string;
-      status?: string;
-      name?: string;
-      message?: { id?: string; text?: string };
-      sender?: { provider_id?: string; name?: string };
-    };
+    const payload = await req.json() as Record<string, any>;
+
+    console.log('[unipile-webhook] payload:', JSON.stringify(payload).slice(0, 2000));
 
     // Detect payload type: account_connected vs messaging event
     const looksLikeHostedNotify =
@@ -119,7 +312,10 @@ export default async function handler(req: Request): Promise<Response> {
 
       // Map Unipile account type to our channel type
       const unipileType = (acct?.type || '').toUpperCase();
-      const channelType = unipileType.startsWith('GOOGLE') ? 'email_gmail' : 'whatsapp';
+      let channelType = 'whatsapp';
+      if (unipileType.startsWith('GOOGLE') || unipileType.includes('GMAIL')) channelType = 'email_gmail';
+      else if (unipileType.includes('OUTLOOK') || unipileType.includes('MICROSOFT')) channelType = 'email_outlook';
+      else if (unipileType.includes('IMAP') || unipileType.includes('SMTP') || unipileType.includes('MAIL')) channelType = 'email_smtp';
 
       // Try to find channel by unipile_account_id first
       let { data: existingChannel } = await supabase
@@ -149,7 +345,7 @@ export default async function handler(req: Request): Promise<Response> {
             status: 'connected',
             unipile_account_id: accountId,
             connected_at: new Date().toISOString(),
-            config: { phone, unipile_type: acct?.type },
+            config: { phone, email: acct?.email, unipile_type: acct?.type },
           })
           .eq('id', existingChannel.id);
       }
@@ -160,19 +356,28 @@ export default async function handler(req: Request): Promise<Response> {
     // ── Branch 2: Inbound message ──
     if (payload.event === 'message_received' && payload.account_id) {
       const accountId = payload.account_id;
-      const messageId = payload.message?.id;
-      const messageText = payload.message?.text || '';
-      const senderPhone = toE164(payload.sender?.provider_id || '');
-      const senderName = payload.sender?.name || senderPhone;
 
-      if (!messageText || !senderPhone) {
-        return new Response(JSON.stringify({ ok: true, skipped: 'no text or sender' }), { status: 200 });
+      // Unipile webhook sends flat payload — handle both flat and nested formats
+      const messageId = payload.message_id || payload.message?.id || '';
+      const messageText =
+        (typeof payload.message === 'string' ? payload.message : payload.message?.text) || '';
+      const messageSubject = payload.subject || payload.message?.subject || '';
+
+      // sender can be { display_name, identifier } (flat) or { provider_id, name } (nested)
+      const senderObj = payload.sender || {};
+      const senderProviderId =
+        senderObj.identifier || senderObj.provider_id || '';
+      const senderName =
+        senderObj.display_name || senderObj.name || '';
+
+      if (!messageText) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no text' }), { status: 200 });
       }
 
       // Find channel by unipile_account_id
       const { data: channel } = await supabase
         .from('channels')
-        .select('id, business_id, auto_reply_enabled')
+        .select('id, business_id, auto_reply_enabled, type, draft_mode')
         .eq('unipile_account_id', accountId)
         .eq('status', 'connected')
         .single();
@@ -182,30 +387,71 @@ export default async function handler(req: Request): Promise<Response> {
       }
 
       const businessId = channel.business_id;
+      const isEmail = channel.type === 'email_gmail' || channel.type === 'email_outlook' || channel.type === 'email_smtp';
+      const conversationChannel = isEmail ? 'email' : 'whatsapp';
+
+      // Strip HTML from email bodies + clean quoted replies
+      const rawClean = isEmail && messageText.includes('<') ? stripHtml(messageText) : messageText;
+      const cleanText = isEmail ? cleanEmailBody(rawClean) : rawClean;
+
+      // Determine sender identifier
+      const senderEmail = isEmail ? senderProviderId : '';
+      const senderPhone = isEmail ? '' : toE164(senderProviderId);
+      // WhatsApp LIDs (e.g. "184322967507111@lid") are not real names
+      const cleanSenderName = (senderName && !senderName.includes('@lid')) ? senderName : '';
+      const senderDisplay = cleanSenderName || senderEmail || senderPhone;
+
+      if (!senderEmail && !senderPhone) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no sender' }), { status: 200 });
+      }
 
       // Find or create contact
       let contactId: string | null = null;
-      const { data: existing } = await supabase
-        .from('contacts')
-        .select('id')
-        .eq('business_id', businessId)
-        .eq('phone', senderPhone)
-        .maybeSingle();
-
-      if (existing) {
-        contactId = existing.id;
-      } else {
-        const { data: newContact } = await supabase
+      if (isEmail) {
+        const { data: existing } = await supabase
           .from('contacts')
-          .insert({
-            business_id: businessId,
-            phone: senderPhone,
-            whatsapp: senderPhone,
-            name: senderName,
-          })
           .select('id')
-          .single();
-        contactId = newContact?.id || null;
+          .eq('business_id', businessId)
+          .eq('email', senderEmail)
+          .maybeSingle();
+
+        if (existing) {
+          contactId = existing.id;
+        } else {
+          const { data: newContact } = await supabase
+            .from('contacts')
+            .insert({
+              business_id: businessId,
+              email: senderEmail,
+              name: cleanSenderName || senderEmail,
+            })
+            .select('id')
+            .single();
+          contactId = newContact?.id || null;
+        }
+      } else {
+        const { data: existing } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('business_id', businessId)
+          .eq('phone', senderPhone)
+          .maybeSingle();
+
+        if (existing) {
+          contactId = existing.id;
+        } else {
+          const { data: newContact } = await supabase
+            .from('contacts')
+            .insert({
+              business_id: businessId,
+              phone: senderPhone,
+              whatsapp: senderPhone,
+              name: cleanSenderName || null,
+            })
+            .select('id')
+            .single();
+          contactId = newContact?.id || null;
+        }
       }
 
       if (!contactId) {
@@ -214,24 +460,26 @@ export default async function handler(req: Request): Promise<Response> {
 
       // Find or create conversation
       let conversationId: string | null = null;
+      let convoAiHandling = true;
       const { data: existingConvo } = await supabase
         .from('conversations')
-        .select('id')
+        .select('id, ai_handling')
         .eq('business_id', businessId)
         .eq('contact_id', contactId)
-        .eq('channel', 'whatsapp')
+        .eq('channel', conversationChannel)
         .eq('status', 'open')
         .maybeSingle();
 
       if (existingConvo) {
         conversationId = existingConvo.id;
+        convoAiHandling = existingConvo.ai_handling !== false;
       } else {
         const { data: newConvo } = await supabase
           .from('conversations')
           .insert({
             business_id: businessId,
             contact_id: contactId,
-            channel: 'whatsapp',
+            channel: conversationChannel,
             status: 'open',
             ai_handling: true,
           })
@@ -245,15 +493,19 @@ export default async function handler(req: Request): Promise<Response> {
       }
 
       // Store inbound message
+      const preview = cleanText.slice(0, 100);
+
       await supabase.from('messages').insert({
         conversation_id: conversationId,
         direction: 'inbound',
         sender: 'contact',
         content_type: 'text',
-        body: messageText,
+        body: cleanText,
         metadata: {
-          sender_name: senderName,
-          sender_phone: senderPhone,
+          sender_name: senderDisplay,
+          ...(isEmail
+            ? { sender_email: senderEmail, subject: messageSubject }
+            : { sender_phone: senderPhone }),
           external_id: messageId,
         },
       });
@@ -263,24 +515,36 @@ export default async function handler(req: Request): Promise<Response> {
         .from('conversations')
         .update({
           last_message_at: new Date().toISOString(),
-          last_message_preview: messageText.slice(0, 100),
-          unread_count: (existingConvo ? 1 : 1), // increment handled by trigger if needed
+          last_message_preview: preview,
+          unread_count: (existingConvo ? 1 : 1),
         })
         .eq('id', conversationId);
 
-      // AI auto-reply if enabled on this channel
-      if (channel.auto_reply_enabled) {
-        const { data: business } = await supabase
-          .from('businesses')
-          .select('ai_system_prompt, name')
-          .eq('id', businessId)
-          .single();
+      // AI auto-reply if enabled on this channel + conversation (skip spam)
+      const spam = isEmail && isSpamEmail(senderEmail, messageSubject, cleanText);
+      const draftMode = (channel as any).draft_mode !== false;
 
-        if (business?.ai_system_prompt) {
-          const reply = await generateAIReply(business.ai_system_prompt, messageText);
+      if (channel.auto_reply_enabled && convoAiHandling && !spam) {
+        const [systemPrompt, history] = await Promise.all([
+          buildBusinessContext(businessId, { contactName: cleanSenderName || undefined, channel: conversationChannel }),
+          getConversationHistory(conversationId!),
+        ]);
+
+        if (systemPrompt) {
+          const fullPrompt = isEmail
+            ? `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`
+            : systemPrompt;
+
+          const reply = await generateAIReply(fullPrompt, history);
 
           if (reply) {
-            await sendUnipileMessage(accountId, senderPhone, reply);
+            if (!draftMode) {
+              if (isEmail) {
+                await sendUnipileEmail(accountId, senderEmail, messageSubject ? `Re: ${messageSubject.replace(/^Re:\s*/i, '')}` : `Re: Your message`, reply);
+              } else {
+                await sendUnipileMessage(accountId, senderPhone, reply);
+              }
+            }
 
             await supabase.from('messages').insert({
               conversation_id: conversationId,
@@ -288,21 +552,300 @@ export default async function handler(req: Request): Promise<Response> {
               sender: 'ai',
               content_type: 'text',
               body: reply,
-              metadata: { via: 'unipile_auto_reply' },
+              status: draftMode ? 'draft' : 'sent',
+              metadata: { via: isEmail ? 'unipile_email_auto_reply' : 'unipile_auto_reply' },
             });
 
-            await supabase
-              .from('conversations')
-              .update({
-                last_message_at: new Date().toISOString(),
-                last_message_preview: reply.slice(0, 100),
-              })
-              .eq('id', conversationId);
+            if (!draftMode) {
+              await supabase
+                .from('conversations')
+                .update({
+                  last_message_at: new Date().toISOString(),
+                  last_message_preview: reply.slice(0, 100),
+                })
+                .eq('id', conversationId);
+            }
           }
         }
       }
 
-      return new Response(JSON.stringify({ ok: true, note: 'message_received' }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, note: 'message_received', channel: conversationChannel }), { status: 200 });
+    }
+
+    // ── Branch 3: Email webhook (source: email) ──
+    // Events: mail_received, mail_sent, mail_moved
+    // Payload: from_attendee, to_attendees, cc_attendees, bcc_attendees,
+    //          subject, body, body_plain, has_attachments, attachments,
+    //          email_id, message_id, in_reply_to, date, folders, role, origin
+    if (payload.from_attendee && payload.account_id) {
+      const event = payload.event || 'mail_received';
+      const accountId = payload.account_id;
+      const emailId = payload.email_id || '';
+      const messageRfcId = payload.message_id || '';
+      const htmlBody = payload.body || '';
+      const rawBody = payload.body_plain || htmlBody;
+      const rawCleanEmail = rawBody.includes('<') ? stripHtml(rawBody) : rawBody;
+      const emailText = cleanEmailBody(rawCleanEmail);
+      const emailSubject = payload.subject || '';
+      const fromEmail = payload.from_attendee?.identifier || '';
+      const fromName = payload.from_attendee?.display_name || '';
+      const toAttendees = payload.to_attendees || [];
+      const ccAttendees = payload.cc_attendees || [];
+      const bccAttendees = payload.bcc_attendees || [];
+      const replyToAttendees = payload.reply_to_attendees || [];
+      const hasAttachments = payload.has_attachments || false;
+      const attachments = payload.attachments || [];
+      const inReplyTo = payload.in_reply_to || null;
+      const emailDate = payload.date || new Date().toISOString();
+      const origin = payload.origin || 'external';
+
+      // Skip mail_moved events — we only care about received and sent
+      if (event === 'mail_moved') {
+        return new Response(JSON.stringify({ ok: true, skipped: 'mail_moved' }), { status: 200 });
+      }
+
+      if (!fromEmail) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no sender' }), { status: 200 });
+      }
+
+      // Find channel
+      const { data: channel } = await supabase
+        .from('channels')
+        .select('id, business_id, auto_reply_enabled, type, config, draft_mode')
+        .eq('unipile_account_id', accountId)
+        .eq('status', 'connected')
+        .single();
+
+      if (!channel) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no channel for email' }), { status: 200 });
+      }
+
+      const businessId = channel.business_id;
+      const ownEmail = ((channel.config as any)?.email || '').toLowerCase();
+
+      // Determine direction: mail_sent or own email in from = outbound
+      const isOutbound = event === 'mail_sent' || (ownEmail && fromEmail.toLowerCase() === ownEmail);
+
+      // For outbound, the counterparty is the TO recipient; for inbound, it's the FROM sender
+      const counterpartyEmail = isOutbound
+        ? (toAttendees[0]?.identifier || '')
+        : fromEmail;
+      const counterpartyName = isOutbound
+        ? (toAttendees[0]?.display_name || toAttendees[0]?.identifier || '')
+        : (fromName || fromEmail);
+
+      if (!counterpartyEmail) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no counterparty' }), { status: 200 });
+      }
+
+      // Skip outbound emails sent via Unipile (we already stored them when sending)
+      if (isOutbound && origin === 'unipile') {
+        return new Response(JSON.stringify({ ok: true, skipped: 'own outbound via unipile' }), { status: 200 });
+      }
+
+      // Find or create contact by email
+      let contactId: string | null = null;
+      const { data: existing } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('email', counterpartyEmail)
+        .maybeSingle();
+
+      if (existing) {
+        contactId = existing.id;
+        if (counterpartyName && counterpartyName !== counterpartyEmail) {
+          await supabase.from('contacts').update({ name: counterpartyName }).eq('id', contactId);
+        }
+      } else {
+        const { data: newContact } = await supabase
+          .from('contacts')
+          .insert({
+            business_id: businessId,
+            email: counterpartyEmail,
+            name: counterpartyName,
+          })
+          .select('id')
+          .single();
+        contactId = newContact?.id || null;
+      }
+
+      if (!contactId) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'contact failed' }), { status: 200 });
+      }
+
+      // For email: each unique subject thread = separate conversation
+      // Normalise subject for matching (strip Re:/Fwd: prefixes)
+      const normalSubject = emailSubject
+        .replace(/^(Re|Fwd|Fw):\s*/gi, '')
+        .trim()
+        .toLowerCase() || null;
+
+      let conversationId: string | null = null;
+      let existingConvo: { id: string; unread_count: number; ai_handling: boolean } | null = null;
+
+      if (normalSubject) {
+        const { data: threadConvo } = await supabase
+          .from('conversations')
+          .select('id, unread_count, ai_handling')
+          .eq('business_id', businessId)
+          .eq('contact_id', contactId)
+          .eq('channel', 'email')
+          .eq('status', 'open')
+          .ilike('subject', normalSubject)
+          .maybeSingle();
+        existingConvo = threadConvo;
+      }
+
+      if (!existingConvo && !normalSubject) {
+        const { data: fallbackConvo } = await supabase
+          .from('conversations')
+          .select('id, unread_count, ai_handling')
+          .eq('business_id', businessId)
+          .eq('contact_id', contactId)
+          .eq('channel', 'email')
+          .eq('status', 'open')
+          .is('subject', null)
+          .maybeSingle();
+        existingConvo = fallbackConvo;
+      }
+
+      if (existingConvo) {
+        conversationId = existingConvo.id;
+      } else {
+        const { data: newConvo } = await supabase
+          .from('conversations')
+          .insert({
+            business_id: businessId,
+            contact_id: contactId,
+            channel: 'email',
+            status: 'open',
+            ai_handling: true,
+            subject: normalSubject,
+          })
+          .select('id, unread_count')
+          .single();
+        conversationId = newConvo?.id || null;
+        existingConvo = newConvo as any;
+      }
+
+      if (!conversationId) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'conversation failed' }), { status: 200 });
+      }
+
+      // Deduplicate by email_id
+      if (emailId) {
+        const { data: dup } = await supabase
+          .from('messages')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .contains('metadata', { external_id: emailId })
+          .maybeSingle();
+        if (dup) {
+          return new Response(JSON.stringify({ ok: true, skipped: 'duplicate' }), { status: 200 });
+        }
+      }
+
+      const emailIsSpam = !isOutbound && isSpamEmail(counterpartyEmail, emailSubject, emailText);
+
+      const preview = emailText.slice(0, 100);
+
+      await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        direction: isOutbound ? 'outbound' : 'inbound',
+        sender: isOutbound ? 'human' : 'contact',
+        content_type: 'text',
+        body: emailText.slice(0, 10000),
+        metadata: {
+          sender_name: fromName,
+          sender_email: fromEmail,
+          subject: emailSubject,
+          external_id: emailId,
+          message_id: messageRfcId,
+          thread_id: inReplyTo || null,
+          in_reply_to: inReplyTo,
+          to_attendees: toAttendees,
+          cc_attendees: ccAttendees,
+          bcc_attendees: bccAttendees,
+          reply_to_attendees: replyToAttendees,
+          has_attachments: hasAttachments,
+          attachments: attachments,
+          date: emailDate,
+          origin,
+          is_spam: emailIsSpam,
+          body_html: htmlBody.includes('<') ? htmlBody.slice(0, 50000) : null,
+        },
+      });
+
+      // Update conversation preview and unread count
+      const currentUnread = (existingConvo as any)?.unread_count || 0;
+      await supabase
+        .from('conversations')
+        .update({
+          last_message_at: emailDate,
+          last_message_preview: preview,
+          unread_count: isOutbound ? currentUnread : currentUnread + 1,
+        })
+        .eq('id', conversationId);
+
+      if (emailIsSpam) {
+        await supabase
+          .from('conversations')
+          .update({ is_spam: true } as any)
+          .eq('id', conversationId)
+          .then(() => {}, () => {});
+      }
+      const convoAiOn = existingConvo?.ai_handling !== false;
+      const emailDraftMode = (channel as any).draft_mode !== false;
+
+      if (!isOutbound && channel.auto_reply_enabled && convoAiOn && !emailIsSpam) {
+        const [systemPrompt, history] = await Promise.all([
+          buildBusinessContext(businessId, { contactName: counterpartyName !== counterpartyEmail ? counterpartyName : undefined, channel: 'email' }),
+          getConversationHistory(conversationId!),
+        ]);
+
+        if (systemPrompt) {
+          const fullPrompt = `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`;
+          const reply = await generateAIReply(fullPrompt, history);
+
+          if (reply) {
+            const replySubject = emailSubject
+              ? `Re: ${emailSubject.replace(/^Re:\s*/i, '')}`
+              : 'Re: Your message';
+
+            if (!emailDraftMode) {
+              await sendUnipileEmail(accountId, counterpartyEmail, replySubject, reply, emailId);
+            }
+
+            await supabase.from('messages').insert({
+              conversation_id: conversationId,
+              direction: 'outbound',
+              sender: 'ai',
+              content_type: 'text',
+              body: reply,
+              status: emailDraftMode ? 'draft' : 'sent',
+              metadata: {
+                via: 'unipile_email_auto_reply',
+                subject: replySubject,
+                reply_to_email_id: emailId,
+                to_attendees: [{ identifier: counterpartyEmail, display_name: counterpartyName }],
+              },
+            });
+
+            if (!emailDraftMode) {
+              await supabase
+                .from('conversations')
+                .update({
+                  last_message_at: new Date().toISOString(),
+                  last_message_preview: reply.slice(0, 100),
+                })
+                .eq('id', conversationId);
+            }
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ ok: true, note: event, direction: isOutbound ? 'outbound' : 'inbound' }), { status: 200 });
     }
 
     // Unknown event — acknowledge
