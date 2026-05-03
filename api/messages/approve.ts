@@ -95,10 +95,11 @@ export default async function handler(req: Request): Promise<Response> {
       const phone = contact.whatsapp || contact.phone;
       if (!phone) return new Response(JSON.stringify({ error: 'No phone for contact' }), { status: 400 });
 
+      const waId = phone.replace('+', '') + '@s.whatsapp.net';
       await fetch(`https://${UNIPILE_DSN}/api/v1/chats`, {
         method: 'POST',
         headers: { 'X-API-KEY': UNIPILE_TOKEN, 'Content-Type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ account_id: accountId, attendees_ids: [phone], text: msg.body }),
+        body: JSON.stringify({ account_id: accountId, attendees_ids: [waId], text: msg.body }),
       });
     }
 

@@ -8,6 +8,7 @@ const supabase = createClient(
 const UNIPILE_TOKEN = process.env.UNIPILE_TOKEN!;
 const UNIPILE_DSN = process.env.UNIPILE_DSN!;
 const POLL_SECRET = process.env.UNIPILE_POLL_SECRET || '';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -42,6 +43,130 @@ function previewForType(ct: string): string {
   if (ct === 'audio') return '🎤 Voice message';
   if (ct === 'file') return '📎 Attachment';
   return '';
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*]\s+/gm, '- ');
+}
+
+async function buildBusinessContext(businessId: string, opts?: { contactName?: string }): Promise<string> {
+  const [bizRes, svcRes, faqRes] = await Promise.all([
+    supabase.from('businesses').select('name, industry, address, phone, website, tone, greeting, ai_system_prompt').eq('id', businessId).single(),
+    supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', businessId),
+    supabase.from('faqs').select('question, answer').eq('business_id', businessId),
+  ]);
+
+  const biz = bizRes.data;
+  if (!biz) return '';
+
+  let prompt = `You are an AI assistant for ${biz.name || 'this business'}.`;
+  if (biz.industry) prompt += ` Industry: ${biz.industry}.`;
+  if (biz.address) prompt += ` Location: ${biz.address}.`;
+  if (biz.phone) prompt += ` Phone: ${biz.phone}.`;
+  if (biz.website) prompt += ` Website: ${biz.website}.`;
+  if (biz.tone) prompt += ` Tone: ${biz.tone}.`;
+  if (biz.greeting) prompt += `\n\nGreeting: ${biz.greeting}`;
+
+  const services = svcRes.data || [];
+  if (services.length > 0) {
+    prompt += '\n\nServices offered:\n';
+    services.forEach((s: any) => {
+      prompt += `- ${s.name}`;
+      if (s.description) prompt += `: ${s.description}`;
+      if (s.price_from != null) prompt += ` (from £${s.price_from}${s.price_to ? ` to £${s.price_to}` : ''})`;
+      if (s.bookable) prompt += ' [bookable]';
+      prompt += '\n';
+    });
+  }
+
+  const faqs = faqRes.data || [];
+  if (faqs.length > 0) {
+    prompt += '\nFAQs:\n';
+    faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
+  }
+
+  if (biz.ai_system_prompt) {
+    prompt += `\nCustom instructions:\n${biz.ai_system_prompt}`;
+  }
+
+  prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting (no **, no *, no #, no bullet points with -). Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name]. Use the actual contact name provided or skip the greeting name entirely.';
+
+  if (opts?.contactName) {
+    prompt += `\n- The customer's name is: ${opts.contactName}. Use their first name naturally.`;
+  } else {
+    prompt += '\n- You do not know the customer\'s name. Do not guess or use placeholders — just skip the name in greetings.';
+  }
+
+  prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational. No formal greetings like "Dear X" — just reply naturally as you would in a chat.';
+
+  return prompt;
+}
+
+async function getConversationHistory(conversationId: string): Promise<Array<{role: 'user' | 'assistant', content: string}>> {
+  const { data: rows } = await supabase
+    .from('messages')
+    .select('body, sender')
+    .eq('conversation_id', conversationId)
+    .neq('status', 'draft')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (!rows || rows.length === 0) return [];
+
+  return rows.reverse().map((m: any) => ({
+    role: m.sender === 'contact' ? 'user' as const : 'assistant' as const,
+    content: (m.body || '').slice(0, 2000),
+  }));
+}
+
+async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>): Promise<string> {
+  if (!ANTHROPIC_API_KEY) return '';
+  let messages = history.length > 0 ? history : [{ role: 'user' as const, content: '(new conversation)' }];
+  if (messages[0]?.role === 'assistant') {
+    messages = [{ role: 'user' as const, content: '(prior context)' }, ...messages];
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages,
+    }),
+  });
+  if (!res.ok) {
+    console.error('[poll/ai-reply] Anthropic error:', res.status);
+    return '';
+  }
+  const data = await res.json() as { content?: Array<{ text?: string }> };
+  const raw = data.content?.[0]?.text || '';
+  return stripMarkdown(raw);
+}
+
+async function sendUnipileMessage(accountId: string, recipientPhone: string, text: string) {
+  await fetch(`https://${UNIPILE_DSN}/api/v1/chats`, {
+    method: 'POST',
+    headers: {
+      'X-API-KEY': UNIPILE_TOKEN,
+      'Content-Type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({
+      account_id: accountId,
+      text,
+      attendees_ids: [recipientPhone.replace('+', '') + '@s.whatsapp.net'],
+    }),
+  });
 }
 
 async function downloadAttachment(messageId: string, attachment: any): Promise<string | null> {
@@ -128,7 +253,7 @@ export default async function handler(req: Request): Promise<Response> {
 
       const { data: channel } = await supabase
         .from('channels')
-        .select('id, business_id')
+        .select('id, business_id, auto_reply_enabled, draft_mode')
         .eq('unipile_account_id', accountId)
         .single();
 
@@ -185,15 +310,17 @@ export default async function handler(req: Request): Promise<Response> {
 
         // Find or create contact
         let contactId: string | null = null;
+        let contactName: string | null = null;
         const { data: existing } = await supabase
           .from('contacts')
-          .select('id')
+          .select('id, name')
           .eq('business_id', businessId)
           .eq('phone', counterparty)
           .maybeSingle();
 
         if (existing) {
           contactId = existing.id;
+          contactName = existing.name;
         } else if (direction === 'inbound') {
           const { data: newContact } = await supabase
             .from('contacts')
@@ -207,9 +334,10 @@ export default async function handler(req: Request): Promise<Response> {
 
         // Find or create conversation
         let conversationId: string | null = null;
+        let convoAiHandling = true;
         const { data: convo } = await supabase
           .from('conversations')
-          .select('id')
+          .select('id, ai_handling')
           .eq('business_id', businessId)
           .eq('contact_id', contactId)
           .eq('channel', 'whatsapp')
@@ -220,6 +348,7 @@ export default async function handler(req: Request): Promise<Response> {
 
         if (convo) {
           conversationId = convo.id;
+          convoAiHandling = convo.ai_handling !== false;
         } else {
           const { data: newConvo } = await supabase
             .from('conversations')
@@ -306,6 +435,51 @@ export default async function handler(req: Request): Promise<Response> {
             last_message_preview: preview,
           })
           .eq('id', conversationId);
+
+        // AI auto-reply for new inbound text messages
+        const draftMode = (channel as any).draft_mode !== false;
+        if (
+          direction === 'inbound' &&
+          text &&
+          (channel as any).auto_reply_enabled &&
+          convoAiHandling &&
+          ANTHROPIC_API_KEY
+        ) {
+          const resolvedName = contactName && !contactName.startsWith('+') ? contactName : undefined;
+          const [systemPrompt, history] = await Promise.all([
+            buildBusinessContext(businessId, { contactName: resolvedName }),
+            getConversationHistory(conversationId!),
+          ]);
+
+          if (systemPrompt) {
+            const reply = await generateAIReply(systemPrompt, history);
+            if (reply) {
+              if (!draftMode) {
+                await sendUnipileMessage(accountId, counterparty, reply);
+              }
+
+              await supabase.from('messages').insert({
+                conversation_id: conversationId,
+                direction: 'outbound',
+                sender: 'ai',
+                content_type: 'text',
+                body: reply,
+                status: draftMode ? 'draft' : 'sent',
+                metadata: { via: 'unipile_auto_reply_poll' },
+              });
+
+              if (!draftMode) {
+                await supabase
+                  .from('conversations')
+                  .update({
+                    last_message_at: new Date().toISOString(),
+                    last_message_preview: reply.slice(0, 100),
+                  })
+                  .eq('id', conversationId);
+              }
+            }
+          }
+        }
       }
 
       summary.push({ account_id: accountId, pulled: msgs.length, inserted, skipped, reactionsStored });
