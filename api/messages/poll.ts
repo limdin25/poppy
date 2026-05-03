@@ -166,18 +166,16 @@ export default async function handler(req: Request): Promise<Response> {
         if (Number.isFinite(msgMs) && msgMs < cutoffMs) { skipped++; continue; }
 
         // Skip event messages (reactions, system notifications)
-        if (m.is_event === 1 || m.is_event === true) {
-          // If this is a reaction event, store the reaction on the target message
-          if (m.reactions?.length > 0 || (m.text && /reacted\s+./u.test(m.text))) {
-            skipped++;
-            continue;
-          }
-          skipped++;
-          continue;
-        }
+        if (m.is_event === 1 || m.is_event === true) { skipped++; continue; }
 
         // Skip hidden messages
         if (m.hidden === 1 || m.hidden === true) { skipped++; continue; }
+
+        // Skip reaction notification texts (e.g. "{{447863992555@s.whatsapp.net}} reacted 👍")
+        // These come through with is_event=0 sometimes
+        if (m.text && /reacted\s+./u.test(m.text) && /\{?\{?\d+@(s\.whatsapp\.net|lid)\}?\}?/.test(m.text)) {
+          skipped++; continue;
+        }
 
         const counterparty = counterpartyPhone(m);
         if (!counterparty) { skipped++; continue; }
