@@ -97,6 +97,22 @@ function isSpamEmail(fromEmail: string, subject: string, body: string): boolean 
   return false;
 }
 
+function isRawId(name: string): boolean {
+  if (!name) return true;
+  if (name.includes('@lid') || name.includes('@')) return true;
+  const digits = name.replace(/[^0-9]/g, '');
+  return digits.length >= 8 && digits.length === name.replace(/[+ ()-]/g, '').length;
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*]\s+/gm, '- ');
+}
+
 function toE164(raw: string): string {
   if (!raw) return '';
   const trimmed = raw.replace(/^whatsapp:/, '').trim();
@@ -156,7 +172,8 @@ async function generateAIReply(systemPrompt: string, history: Array<{role: 'user
     return '';
   }
   const data = await res.json() as { content?: Array<{ text?: string }> };
-  return data.content?.[0]?.text || '';
+  const raw = data.content?.[0]?.text || '';
+  return stripMarkdown(raw);
 }
 
 async function buildBusinessContext(businessId: string, opts?: { contactName?: string; channel?: string }): Promise<string> {
@@ -407,16 +424,18 @@ export default async function handler(req: Request): Promise<Response> {
 
       // Find or create contact
       let contactId: string | null = null;
+      let resolvedName = cleanSenderName;
       if (isEmail) {
         const { data: existing } = await supabase
           .from('contacts')
-          .select('id')
+          .select('id, name')
           .eq('business_id', businessId)
           .eq('email', senderEmail)
           .maybeSingle();
 
         if (existing) {
           contactId = existing.id;
+          if (!resolvedName && existing.name && !isRawId(existing.name)) resolvedName = existing.name;
         } else {
           const { data: newContact } = await supabase
             .from('contacts')
@@ -432,13 +451,14 @@ export default async function handler(req: Request): Promise<Response> {
       } else {
         const { data: existing } = await supabase
           .from('contacts')
-          .select('id')
+          .select('id, name')
           .eq('business_id', businessId)
           .eq('phone', senderPhone)
           .maybeSingle();
 
         if (existing) {
           contactId = existing.id;
+          if (!resolvedName && existing.name && !isRawId(existing.name)) resolvedName = existing.name;
         } else {
           const { data: newContact } = await supabase
             .from('contacts')
@@ -526,7 +546,7 @@ export default async function handler(req: Request): Promise<Response> {
 
       if (channel.auto_reply_enabled && convoAiHandling && !spam) {
         const [systemPrompt, history] = await Promise.all([
-          buildBusinessContext(businessId, { contactName: cleanSenderName || undefined, channel: conversationChannel }),
+          buildBusinessContext(businessId, { contactName: resolvedName || undefined, channel: conversationChannel }),
           getConversationHistory(conversationId!),
         ]);
 
@@ -645,17 +665,20 @@ export default async function handler(req: Request): Promise<Response> {
 
       // Find or create contact by email
       let contactId: string | null = null;
+      let resolvedContactName = '';
       const { data: existing } = await supabase
         .from('contacts')
-        .select('id')
+        .select('id, name')
         .eq('business_id', businessId)
         .eq('email', counterpartyEmail)
         .maybeSingle();
 
       if (existing) {
         contactId = existing.id;
+        resolvedContactName = existing.name || '';
         if (counterpartyName && counterpartyName !== counterpartyEmail) {
           await supabase.from('contacts').update({ name: counterpartyName }).eq('id', contactId);
+          resolvedContactName = counterpartyName;
         }
       } else {
         const { data: newContact } = await supabase
@@ -668,6 +691,9 @@ export default async function handler(req: Request): Promise<Response> {
           .select('id')
           .single();
         contactId = newContact?.id || null;
+        if (counterpartyName && counterpartyName !== counterpartyEmail) {
+          resolvedContactName = counterpartyName;
+        }
       }
 
       if (!contactId) {
@@ -800,7 +826,7 @@ export default async function handler(req: Request): Promise<Response> {
 
       if (!isOutbound && channel.auto_reply_enabled && convoAiOn && !emailIsSpam) {
         const [systemPrompt, history] = await Promise.all([
-          buildBusinessContext(businessId, { contactName: counterpartyName !== counterpartyEmail ? counterpartyName : undefined, channel: 'email' }),
+          buildBusinessContext(businessId, { contactName: resolvedContactName || undefined, channel: 'email' }),
           getConversationHistory(conversationId!),
         ]);
 
