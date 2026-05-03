@@ -126,6 +126,7 @@ export function MessageBubble({ sender, text, timestamp, className, metadata, co
   const hasAttachments = metadata?.has_attachments && metadata?.attachments && metadata.attachments.length > 0
   const hasHtml = isInbound && metadata?.body_html
   const isImage = contentType === 'image' && mediaUrl
+  const isAudio = contentType === 'audio' && mediaUrl
 
   const cleanText = cleanWhatsAppIds(stripQuotedReply(text))
   const segments = parseTextWithLinks(cleanText)
@@ -195,6 +196,14 @@ export function MessageBubble({ sender, text, timestamp, className, metadata, co
               loading="lazy"
             />
           </a>
+        )}
+
+        {isAudio && (
+          <div className="mb-1">
+            <audio controls preload="metadata" className="max-w-full h-9" style={{ minWidth: '200px' }}>
+              <source src={mediaUrl!} />
+            </audio>
+          </div>
         )}
 
         {segments.map((seg, i) =>

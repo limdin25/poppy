@@ -260,8 +260,14 @@ async function downloadAndStoreAttachment(messageId: string, attachment: { id: s
       return null;
     }
     const blob = await res.arrayBuffer();
-    const mime = attachment.mimetype || res.headers.get('content-type') || 'image/jpeg';
-    const ext = mime.includes('png') ? 'png' : mime.includes('gif') ? 'gif' : mime.includes('webp') ? 'webp' : 'jpg';
+    const mime = attachment.mimetype || res.headers.get('content-type') || 'application/octet-stream';
+    const extMap: Record<string, string> = {
+      'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/jpeg': 'jpg',
+      'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac',
+      'audio/opus': 'opus', 'audio/webm': 'webm', 'audio/amr': 'amr',
+      'video/mp4': 'mp4', 'application/pdf': 'pdf',
+    };
+    const ext = extMap[mime] || Object.entries(extMap).find(([k]) => mime.includes(k.split('/')[1]))?.[1] || 'bin';
     const fileName = `attachments/${Date.now()}_${attachment.id}.${ext}`;
 
     const { error } = await supabase.storage
@@ -562,19 +568,21 @@ export default async function handler(req: Request): Promise<Response> {
         return new Response(JSON.stringify({ ok: true, skipped: 'conversation failed' }), { status: 200 });
       }
 
-      // Download and store attachments (images, files)
+      // Download and store attachments (images, files, audio)
       let mediaUrl: string | null = null;
-      let contentType: 'text' | 'image' | 'file' = 'text';
+      let contentType: 'text' | 'image' | 'audio' | 'file' = 'text';
       if (hasAttachments && messageId) {
         const firstAtt = rawAttachments[0];
         const attType = (firstAtt.type || firstAtt.mimetype || '').toLowerCase();
-        const isImage = attType.includes('img') || attType.includes('image');
-        contentType = isImage ? 'image' : 'file';
+        if (attType.includes('img') || attType.includes('image')) contentType = 'image';
+        else if (attType.includes('audio') || attType.includes('ptt') || attType.includes('voice')) contentType = 'audio';
+        else contentType = 'file';
         mediaUrl = await downloadAndStoreAttachment(messageId, firstAtt);
       }
 
       // Store message
-      const preview = cleanText.slice(0, 100) || (contentType === 'image' ? '📷 Photo' : '📎 Attachment');
+      const previewMap = { text: '', image: '📷 Photo', audio: '🎤 Voice message', file: '📎 Attachment' };
+      const preview = cleanText.slice(0, 100) || previewMap[contentType] || '📎 Attachment';
 
       await supabase.from('messages').insert({
         conversation_id: conversationId,
