@@ -429,6 +429,12 @@ export default async function handler(req: Request): Promise<Response> {
       const senderName =
         senderObj.display_name || senderObj.name || '';
 
+      // Skip reaction notification messages (e.g. "{{447863992555@s.whatsapp.net}} reacted 👍")
+      const isReactionNotification = /reacted\s+./u.test(messageText) && /\{?\{?\d+@(s\.whatsapp\.net|lid)\}?\}?/.test(messageText);
+      if (isReactionNotification) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'reaction notification' }), { status: 200 });
+      }
+
       // Allow messages with attachments even if no text (e.g. photo-only)
       if (!messageText && !hasAttachments) {
         return new Response(JSON.stringify({ ok: true, skipped: 'no text or attachments' }), { status: 200 });
@@ -660,6 +666,39 @@ export default async function handler(req: Request): Promise<Response> {
       }
 
       return new Response(JSON.stringify({ ok: true, note: 'message_received', channel: conversationChannel }), { status: 200 });
+    }
+
+    // ── Branch 2b: Reaction event ──
+    if (payload.event === 'message_reaction' && payload.account_id) {
+      const reactionEmoji = payload.reaction || '';
+      const reactedMessageId = payload.message_id || '';
+      const reactionSender = payload.reaction_sender || {};
+
+      if (!reactionEmoji || !reactedMessageId) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'no reaction data' }), { status: 200 });
+      }
+
+      // Find the message this reaction is for
+      const { data: targetMsg } = await supabase
+        .from('messages')
+        .select('id, metadata')
+        .contains('metadata', { external_id: reactedMessageId })
+        .maybeSingle();
+
+      if (targetMsg) {
+        const meta = (targetMsg.metadata as Record<string, any>) || {};
+        const existingReactions: Array<{ emoji: string; sender_id?: string }> = meta.reactions || [];
+        existingReactions.push({
+          emoji: reactionEmoji,
+          sender_id: reactionSender.attendee_provider_id || reactionSender.identifier || '',
+        });
+        await supabase
+          .from('messages')
+          .update({ metadata: { ...meta, reactions: existingReactions } })
+          .eq('id', targetMsg.id);
+      }
+
+      return new Response(JSON.stringify({ ok: true, note: 'reaction_stored' }), { status: 200 });
     }
 
     // ── Branch 3: Email webhook (source: email) ──

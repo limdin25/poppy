@@ -503,6 +503,7 @@ function ThreadView({
                       attachments: meta.attachments,
                       external_id: meta.external_id,
                       body_html: meta.body_html,
+                      reactions: meta.reactions,
                     } : undefined}
                   />
                 </div>

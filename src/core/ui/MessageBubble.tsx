@@ -10,6 +10,11 @@ interface Attachment {
   mime_type: string
 }
 
+interface Reaction {
+  emoji: string
+  sender_id?: string
+}
+
 interface EmailMeta {
   subject?: string
   sender_email?: string
@@ -18,6 +23,7 @@ interface EmailMeta {
   attachments?: Attachment[]
   external_id?: string
   body_html?: string
+  reactions?: Reaction[]
 }
 
 interface MessageBubbleProps {
@@ -174,10 +180,11 @@ export function MessageBubble({ sender, text, timestamp, className, metadata, co
     <div className={cn('flex', isInbound ? 'justify-start' : 'justify-end', className)}>
       <div
         className={cn(
-          'max-w-[75%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed',
+          'relative max-w-[75%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed',
           isInbound
             ? 'rounded-bl-md bg-elevated text-ink'
-            : 'rounded-br-md bg-brand text-white'
+            : 'rounded-br-md bg-brand text-white',
+          metadata?.reactions?.length ? 'mb-4' : ''
         )}
       >
         {sender === 'ai' && (
@@ -258,6 +265,16 @@ export function MessageBubble({ sender, text, timestamp, className, metadata, co
           )}>
             {formatTime(timestamp)}
           </p>
+        )}
+
+        {metadata?.reactions && metadata.reactions.length > 0 && (
+          <div className="absolute -bottom-3 left-2 flex gap-0.5">
+            {metadata.reactions.map((r, i) => (
+              <span key={i} className="rounded-full bg-white border border-border px-1.5 py-0.5 text-[12px] shadow-sm">
+                {r.emoji}
+              </span>
+            ))}
+          </div>
         )}
       </div>
     </div>
