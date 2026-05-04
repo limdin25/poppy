@@ -1,6 +1,8 @@
-import { useState } from 'react'
-import { Play, Check } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Play, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 
 interface Voice {
   id: string
@@ -10,18 +12,43 @@ interface Voice {
 }
 
 const VOICES: Voice[] = [
-  { id: 'emma', name: 'Emma', description: 'Warm and professional', accent: 'British' },
-  { id: 'sophie', name: 'Sophie', description: 'Friendly and upbeat', accent: 'British' },
-  { id: 'olivia', name: 'Olivia', description: 'Calm and reassuring', accent: 'British' },
-  { id: 'james', name: 'James', description: 'Confident and clear', accent: 'British' },
-  { id: 'harry', name: 'Harry', description: 'Energetic and engaging', accent: 'British' },
-  { id: 'charlotte', name: 'Charlotte', description: 'Polished and articulate', accent: 'British' },
+  { id: 'retell-Willa', name: 'Willa', description: 'Warm and professional', accent: 'British' },
+  { id: 'retell-Maren', name: 'Maren', description: 'Friendly and upbeat', accent: 'British' },
+  { id: '11labs-Dorothy', name: 'Dorothy', description: 'Calm and reassuring', accent: 'British' },
+  { id: '11labs-Amy', name: 'Amy', description: 'Bright and clear', accent: 'British' },
+  { id: '11labs-Anthony', name: 'Anthony', description: 'Confident and clear', accent: 'British' },
+  { id: 'cartesia-Adam', name: 'Adam', description: 'Polished and articulate', accent: 'British' },
 ]
 
 export default function VoiceSection() {
-  const [selected, setSelected] = useState('emma')
+  const { businessId, session } = useAuth()
+  const [selected, setSelected] = useState('retell-Willa')
   const [speed, setSpeed] = useState(1.0)
   const [playing, setPlaying] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function save() {
+    if (!businessId || !session) return
+    setSaving(true)
+    setSaved(false)
+    try {
+      await fetch('/api/agent/update-voice', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ businessId, voiceId: selected }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      console.error('[voice] save error:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -91,8 +118,13 @@ export default function VoiceSection() {
         </div>
       </div>
 
-      <button className="h-10 w-full rounded-lg bg-brand text-[14px] font-semibold text-white transition hover:bg-brand-600 sm:w-auto sm:px-6">
-        Save changes
+      <button
+        onClick={save}
+        disabled={saving}
+        className="flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+      >
+        {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+        {saved ? 'Saved!' : 'Save changes'}
       </button>
     </div>
   )

@@ -1,15 +1,43 @@
-import { useState } from 'react'
-import { RotateCcw, Phone } from 'lucide-react'
-
-const DEFAULT_GREETING = "Good morning, Smith & Sons Plumbing, you're speaking with Poppy. How can I help you today?"
+import { useState, useEffect } from 'react'
+import { RotateCcw, Phone, Loader2 } from 'lucide-react'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { useBusiness } from '@/core/hooks/useBusiness'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
+import { useSyncPrompt } from '../useSyncPrompt'
 
 export default function GreetingSection() {
-  const [greeting, setGreeting] = useState(DEFAULT_GREETING)
+  const { businessId } = useAuth()
+  const { data: business, loading: bizLoading } = useBusiness()
+  const { syncPrompt, syncing } = useSyncPrompt()
+  const [greeting, setGreeting] = useState('')
+  const [defaultGreeting, setDefaultGreeting] = useState('')
+  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  function handleSave() {
+  useEffect(() => {
+    if (business) {
+      const def = `Hello, ${business.name}, you're speaking with Poppy. How can I help you today?`
+      setDefaultGreeting(def)
+      setGreeting(business.greeting || def)
+    }
+  }, [business])
+
+  async function handleSave() {
+    if (!businessId) return
+    setSaving(true)
+    await supabase.from('businesses').update({ greeting }).eq('id', businessId)
+    await syncPrompt()
+    setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  if (bizLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 size={20} className="animate-spin text-ink-muted" />
+      </div>
+    )
   }
 
   return (
@@ -29,7 +57,7 @@ export default function GreetingSection() {
 
         <div className="mt-3 flex items-center justify-between">
           <button
-            onClick={() => setGreeting(DEFAULT_GREETING)}
+            onClick={() => setGreeting(defaultGreeting)}
             className="flex items-center gap-1.5 text-[13px] text-ink-muted hover:text-ink"
           >
             <RotateCcw size={14} />
@@ -42,13 +70,14 @@ export default function GreetingSection() {
 
         <button
           onClick={handleSave}
-          className="mt-4 h-10 w-full rounded-lg bg-brand text-[14px] font-semibold text-white transition hover:bg-brand-600 sm:w-auto sm:px-6"
+          disabled={saving || syncing}
+          className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60 sm:w-auto"
         >
-          {saved ? '✓ Saved' : 'Save changes'}
+          {(saving || syncing) && <Loader2 size={16} className="animate-spin" />}
+          {saved ? 'Saved!' : (saving || syncing) ? 'Saving & syncing...' : 'Save changes'}
         </button>
       </div>
 
-      {/* Preview */}
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <div className="flex items-center gap-2">
           <Phone size={16} className="text-ink-muted" />

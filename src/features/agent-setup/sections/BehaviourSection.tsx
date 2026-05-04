@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useBusiness } from '@/core/hooks/useBusiness'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
+import { useSyncPrompt } from '../useSyncPrompt'
 
 const PLACEHOLDER = `Always be polite and professional. If you don't know the answer to something, say "Let me take your details and have someone call you back" rather than guessing.
 
@@ -18,7 +20,8 @@ const TONE_OPTIONS = [
 
 export default function BehaviourSection() {
   const { businessId } = useAuth()
-  const { data: business, refetch } = useBusiness()
+  const { data: business, loading: bizLoading, refetch } = useBusiness()
+  const { syncPrompt, syncing } = useSyncPrompt()
   const [instructions, setInstructions] = useState('')
   const [tone, setTone] = useState('professional')
   const [saving, setSaving] = useState(false)
@@ -38,12 +41,13 @@ export default function BehaviourSection() {
       .from('businesses')
       .update({ ai_system_prompt: instructions, tone })
       .eq('id', businessId)
-    setSaving(false)
     if (!error) {
-      setSaved(true)
+      await syncPrompt()
       refetch()
+      setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     }
+    setSaving(false)
   }
 
   return (
@@ -91,10 +95,11 @@ export default function BehaviourSection() {
           </span>
           <button
             onClick={handleSave}
-            disabled={saving}
-            className="h-10 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+            disabled={saving || syncing}
+            className="flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
           >
-            {saving ? 'Saving...' : saved ? 'Saved' : 'Save changes'}
+            {(saving || syncing) && <Loader2 size={16} className="animate-spin" />}
+            {saved ? 'Saved!' : (saving || syncing) ? 'Saving & syncing...' : 'Save changes'}
           </button>
         </div>
       </div>

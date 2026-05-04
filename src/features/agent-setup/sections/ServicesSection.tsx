@@ -1,32 +1,75 @@
-import { useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Plus, X, Loader2 } from 'lucide-react'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
+import { useSyncPrompt } from '../useSyncPrompt'
 
-const INITIAL_SERVICES = [
-  'Emergency Plumbing',
-  'Boiler Service & Repair',
-  'Bathroom Installation',
-  'Central Heating',
-  'Drain Unblocking',
-  'Radiator Installation',
-  'Leak Detection',
-  'Gas Safety Checks',
-]
+interface ServiceRow {
+  id: string
+  name: string
+  sort_order: number
+}
 
 export default function ServicesSection() {
-  const [services, setServices] = useState(INITIAL_SERVICES)
+  const { businessId } = useAuth()
+  const { syncPrompt, syncing } = useSyncPrompt()
+  const [services, setServices] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [newService, setNewService] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => {
+    if (!businessId) return
+    supabase
+      .from('services')
+      .select('id, name, sort_order')
+      .eq('business_id', businessId)
+      .order('sort_order')
+      .then(({ data }) => {
+        if (data) setServices((data as ServiceRow[]).map((s) => s.name))
+        setLoading(false)
+      })
+  }, [businessId])
 
   function addService() {
     if (newService.trim()) {
       setServices([...services, newService.trim()])
       setNewService('')
       setAdding(false)
+      setDirty(true)
     }
   }
 
   function removeService(index: number) {
     setServices(services.filter((_, i) => i !== index))
+    setDirty(true)
+  }
+
+  async function handleSave() {
+    if (!businessId) return
+    setSaving(true)
+    const { error: delErr } = await supabase.from('services').delete().eq('business_id', businessId)
+    if (!delErr && services.length > 0) {
+      await supabase.from('services').insert(
+        services.map((name, i) => ({ business_id: businessId, name, sort_order: i }))
+      )
+    }
+    await syncPrompt()
+    setSaving(false)
+    setSaved(true)
+    setDirty(false)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 size={20} className="animate-spin text-ink-muted" />
+      </div>
+    )
   }
 
   return (
@@ -83,8 +126,22 @@ export default function ServicesSection() {
               </button>
             </div>
           ))}
+          {services.length === 0 && (
+            <p className="text-[13px] text-ink-muted">No services added yet. Click "Add" to get started.</p>
+          )}
         </div>
       </div>
+
+      {dirty && (
+        <button
+          onClick={handleSave}
+          disabled={saving || syncing}
+          className="flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+        >
+          {(saving || syncing) && <Loader2 size={16} className="animate-spin" />}
+          {saved ? 'Saved!' : (saving || syncing) ? 'Saving & syncing...' : 'Save changes'}
+        </button>
+      )}
 
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h3 className="text-[14px] font-medium text-ink">How Poppy uses this</h3>
