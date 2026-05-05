@@ -7,8 +7,8 @@ All API keys are stored as environment variables. Never hardcoded.
 | Integration | Purpose | Env Vars | Status |
 |---|---|---|---|
 | Supabase | DB + Auth + Realtime | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Pending |
-| Retell AI | Voice AI agent (handles live calls) | `RETELL_API_KEY`, `RETELL_WEBHOOK_SECRET` | Pending |
-| Twilio | UK phone numbers + SMS delivery | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_TRUNKING_SID` | Pending |
+| Retell AI | Voice AI agent (handles live calls) | `RETELL_API_KEY` | **Live** |
+| Twilio | UK phone numbers + SIP trunking | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | **Live** |
 | Stripe | Billing, subscriptions, payment links | `VITE_STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Pending |
 | Anthropic | Claude Sonnet 4.6 (AI brain for tool use) | `ANTHROPIC_API_KEY` | Pending |
 | OpenAI | GPT-4o (transcript extraction/summaries) | `OPENAI_API_KEY` | Pending |
@@ -26,14 +26,54 @@ All API keys are stored as environment variables. Never hardcoded.
 - Database (Postgres), Auth (email + magic link), Realtime (live subscriptions on conversations/messages/calls)
 - RLS on all tables via `user_business_ids()` helper
 
-### Retell AI
-- Manages the voice agent: receives calls via Twilio SIP trunk, runs the AI conversation, posts webhook events (call started, ended, transcript ready)
-- Webhook endpoint: `POST /api/webhooks/retell`
+### Retell AI — **Live**
 
-### Twilio
-- Provisions UK phone numbers per business
-- SIP trunking connects numbers to Retell AI
-- SMS sending for notifications and AI replies
+**Credentials:** Stored in `.env` and Vercel env vars.
+
+| Env Var | Purpose |
+|---------|---------|
+| `RETELL_API_KEY` | API authentication (`key_c094a5f399a55...`) |
+
+**Current setup:**
+- Agent ID: `agent_adb8cb0848bc2d3b3a4551933e` (Inbound Call Agent)
+- LLM ID: `llm_c2071f7699e2fb91f68f49957bdf` (system prompt lives here)
+- Voice: `retell-Willa` (British female, platform provider)
+- Language: `en-GB`
+- Phone: `+447426495169` (imported custom number via Twilio SIP trunk)
+- SIP termination URI: `retellerminationsipuri.pstn.twilio.com`
+- Webhook: `https://poppy-henna.vercel.app/api/webhooks/retell`
+
+**Two-step agent setup:**
+1. Create/update Retell LLM (with `general_prompt`) → returns `llm_id`
+2. Create/update Retell Agent (references `llm_id`, sets `voice_id`, `language`, `webhook_url`) → returns `agent_id`
+
+**Webhook events handled:** `call_ended` (creates call record, contact, conversation) and `call_analyzed` (updates call with summary/sentiment)
+
+**Webhook signature:** `x-retell-signature` header with format `v={timestamp},d={hmac_hex}`. Secret is the RETELL_API_KEY itself. HMAC-SHA256 of `rawBody + timestamp`.
+
+**API routes:**
+| Route | Purpose |
+|-------|---------|
+| `api/webhooks/retell.ts` | Handles call_ended + call_analyzed events |
+| `api/numbers/provision.ts` | Creates LLM + Agent + channel row for new businesses |
+| `api/agent/sync-prompt.ts` | Rebuilds system prompt from business data → updates Retell LLM |
+| `api/agent/update-voice.ts` | Changes voice_id on the Retell Agent |
+
+### Twilio — **Live**
+
+**Credentials:** Stored in `.env` and Vercel env vars.
+
+| Env Var | Purpose |
+|---------|---------|
+| `TWILIO_ACCOUNT_SID` | Twilio account SID (`ACa694e1c2c51e...`) |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token |
+
+**Current setup:**
+- Dedicated Poppy Twilio account (separate from NFStay)
+- UK number: `+447426495169`
+- Elastic SIP Trunk: origination → `sip:sip.retellai.com`, termination secured via credential auth
+- Retell IP whitelist: `18.98.16.120/30`
+- Number assigned to the SIP trunk
 
 ### Stripe
 - Subscription billing (trial -> paid conversion)

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { stripHtml, cleanEmailBody, isEmailSpam, normalizeSubject } from '../lib/email-utils.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -169,6 +170,16 @@ async function sendUnipileMessage(accountId: string, recipientPhone: string, tex
   });
 }
 
+async function sendUnipileEmail(accountId: string, to: string, subject: string, body: string, replyToEmailId?: string) {
+  const payload: any = { account_id: accountId, to: [{ identifier: to }], subject, body };
+  if (replyToEmailId) payload.in_reply_to = replyToEmailId;
+  await fetch(`https://${UNIPILE_DSN}/api/v1/emails`, {
+    method: 'POST',
+    headers: { 'X-API-KEY': UNIPILE_TOKEN, 'Content-Type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
 async function downloadAttachment(messageId: string, attachment: any): Promise<string | null> {
   try {
     const res = await fetch(`https://${UNIPILE_DSN}/api/v1/messages/${messageId}/attachments/${attachment.id}`, {
@@ -199,6 +210,240 @@ async function downloadAttachment(messageId: string, attachment: any): Promise<s
   } catch {
     return null;
   }
+}
+
+async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
+  const accountId = acct.id;
+
+  if (acct.sources?.[0]?.status !== 'OK') {
+    return { account_id: accountId, type: 'email', error: 'not OK' };
+  }
+
+  const { data: channel } = await supabase
+    .from('channels')
+    .select('id, business_id, auto_reply_enabled, draft_mode, config')
+    .eq('unipile_account_id', accountId)
+    .single();
+
+  if (!channel) {
+    return { account_id: accountId, type: 'email', error: 'no channel row' };
+  }
+
+  const businessId = channel.business_id;
+  const ownEmail = ((channel.config as any)?.email || '').toLowerCase();
+
+  await supabase
+    .from('channels')
+    .update({ status: 'connected', config: { ...(channel.config as any), polled_at: new Date().toISOString() } })
+    .eq('id', channel.id);
+
+  const emailsRes = await fetch(
+    `https://${UNIPILE_DSN}/api/v1/emails?account_id=${accountId}&limit=50`,
+    { headers: { 'X-API-KEY': UNIPILE_TOKEN, accept: 'application/json' } },
+  );
+  if (!emailsRes.ok) {
+    return { account_id: accountId, type: 'email', error: `emails ${emailsRes.status}` };
+  }
+  const emailsJson = await emailsRes.json() as { items?: any[] };
+  const emails = emailsJson.items ?? [];
+
+  let inserted = 0;
+  let skipped = 0;
+
+  for (const email of emails) {
+    const emailId = email.id || '';
+    if (!emailId) { skipped++; continue; }
+
+    const emailDate = email.date || email.timestamp || '';
+    if (emailDate) {
+      const msgMs = Date.parse(emailDate);
+      if (Number.isFinite(msgMs) && msgMs < cutoffMs) { skipped++; continue; }
+    }
+
+    const fromAttendee = email.from_attendee || email.from || {};
+    const fromEmail = (fromAttendee.identifier || fromAttendee.email || '').toLowerCase();
+    const fromName = fromAttendee.display_name || fromAttendee.name || fromEmail;
+    const subject = email.subject || '';
+    const htmlBody = email.body || '';
+    const plainBody = email.body_plain || (htmlBody.includes('<') ? stripHtml(htmlBody) : htmlBody);
+    const emailText = cleanEmailBody(plainBody);
+    const toAttendees = email.to_attendees || [];
+
+    if (!fromEmail) { skipped++; continue; }
+
+    const isOutbound = (ownEmail && fromEmail === ownEmail) || email.role === 'sent';
+
+    if (isOutbound && email.origin === 'unipile') { skipped++; continue; }
+
+    const counterpartyEmail = isOutbound
+      ? (toAttendees[0]?.identifier || '').toLowerCase()
+      : fromEmail;
+    const counterpartyName = isOutbound
+      ? (toAttendees[0]?.display_name || counterpartyEmail)
+      : (fromName || fromEmail);
+
+    if (!counterpartyEmail) { skipped++; continue; }
+
+    // Find or create contact by email
+    let contactId: string | null = null;
+    let resolvedContactName = '';
+    const { data: existing } = await supabase
+      .from('contacts')
+      .select('id, name')
+      .eq('business_id', businessId)
+      .eq('email', counterpartyEmail)
+      .maybeSingle();
+
+    if (existing) {
+      contactId = existing.id;
+      resolvedContactName = existing.name || '';
+      if (counterpartyName && counterpartyName !== counterpartyEmail && !existing.name) {
+        await supabase.from('contacts').update({ name: counterpartyName }).eq('id', contactId);
+        resolvedContactName = counterpartyName;
+      }
+    } else if (!isOutbound) {
+      const { data: newContact } = await supabase
+        .from('contacts')
+        .insert({ business_id: businessId, email: counterpartyEmail, name: counterpartyName })
+        .select('id')
+        .single();
+      contactId = newContact?.id || null;
+      resolvedContactName = counterpartyName;
+    }
+
+    if (!contactId) { skipped++; continue; }
+
+    // Find or create conversation by subject thread
+    const normalSub = normalizeSubject(subject);
+    let conversationId: string | null = null;
+    let convoAiHandling = true;
+
+    if (normalSub) {
+      const { data: threadConvo } = await supabase
+        .from('conversations')
+        .select('id, ai_handling')
+        .eq('business_id', businessId)
+        .eq('contact_id', contactId)
+        .eq('channel', 'email')
+        .eq('status', 'open')
+        .ilike('subject', normalSub)
+        .maybeSingle();
+
+      if (threadConvo) {
+        conversationId = threadConvo.id;
+        convoAiHandling = threadConvo.ai_handling !== false;
+      }
+    }
+
+    if (!conversationId) {
+      const { data: newConvo } = await supabase
+        .from('conversations')
+        .insert({ business_id: businessId, contact_id: contactId, channel: 'email', status: 'open', ai_handling: true, subject: normalSub || null })
+        .select('id')
+        .single();
+      conversationId = newConvo?.id || null;
+    }
+
+    if (!conversationId) { skipped++; continue; }
+
+    // Deduplicate by external_id
+    const { data: dup } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .contains('metadata', { external_id: emailId })
+      .maybeSingle();
+
+    if (dup) { skipped++; continue; }
+
+    // Spam check
+    const spam = !isOutbound && isEmailSpam(fromEmail, subject, emailText);
+
+    const direction: 'inbound' | 'outbound' = isOutbound ? 'outbound' : 'inbound';
+    const preview = emailText.slice(0, 100);
+
+    await supabase.from('messages').insert({
+      conversation_id: conversationId,
+      direction,
+      sender: isOutbound ? 'human' : 'contact',
+      content_type: 'text',
+      body: emailText.slice(0, 10000) || null,
+      metadata: {
+        sender_email: fromEmail,
+        sender_name: fromName,
+        subject,
+        external_id: emailId,
+        to_attendees: toAttendees,
+        is_spam: spam,
+        via: 'unipile_email_poll',
+      },
+    });
+
+    await supabase
+      .from('conversations')
+      .update({ last_message_at: emailDate || new Date().toISOString(), last_message_preview: preview })
+      .eq('id', conversationId);
+
+    if (spam) {
+      await supabase.from('conversations').update({ is_spam: true } as any).eq('id', conversationId);
+      inserted++;
+      continue;
+    }
+
+    inserted++;
+
+    // AI auto-reply for inbound non-spam emails
+    const draftMode = (channel as any).draft_mode !== false;
+    if (
+      direction === 'inbound' &&
+      emailText &&
+      (channel as any).auto_reply_enabled &&
+      convoAiHandling &&
+      ANTHROPIC_API_KEY
+    ) {
+      const resolvedName = resolvedContactName && !resolvedContactName.includes('@') ? resolvedContactName : undefined;
+      const [systemPrompt, history] = await Promise.all([
+        buildBusinessContext(businessId, { contactName: resolvedName }),
+        getConversationHistory(conversationId!),
+      ]);
+
+      if (systemPrompt) {
+        const emailPrompt = `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`;
+        const reply = await generateAIReply(emailPrompt, history);
+        if (reply) {
+          const replySubject = subject ? `Re: ${subject.replace(/^Re:\s*/i, '')}` : 'Re: Your message';
+
+          if (!draftMode) {
+            await sendUnipileEmail(accountId, counterpartyEmail, replySubject, reply, emailId);
+          }
+
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            direction: 'outbound',
+            sender: 'ai',
+            content_type: 'text',
+            body: reply,
+            status: draftMode ? 'draft' : 'sent',
+            metadata: {
+              via: 'unipile_email_auto_reply_poll',
+              subject: replySubject,
+              reply_to_email_id: emailId,
+              to_attendees: [{ identifier: counterpartyEmail, display_name: counterpartyName }],
+            },
+          });
+
+          if (!draftMode) {
+            await supabase.from('conversations').update({
+              last_message_at: new Date().toISOString(),
+              last_message_preview: reply.slice(0, 100),
+            }).eq('id', conversationId);
+          }
+        }
+      }
+    }
+  }
+
+  return { account_id: accountId, type: 'email', pulled: emails.length, inserted, skipped };
 }
 
 export const config = { runtime: 'edge' };
@@ -239,7 +484,14 @@ export default async function handler(req: Request): Promise<Response> {
     const summary: any[] = [];
 
     for (const acct of accounts) {
-      if (acct.type !== 'WHATSAPP') continue;
+      if (acct.type !== 'WHATSAPP' && acct.type !== 'GOOGLE' && !acct.type?.includes('MICROSOFT') && !acct.type?.includes('OUTLOOK')) continue;
+
+      // Route to email handler for non-WhatsApp accounts
+      if (acct.type !== 'WHATSAPP') {
+        const emailResult = await pollEmailAccount(acct, cutoffMs);
+        summary.push(emailResult);
+        continue;
+      }
       const accountId = acct.id;
 
       if (acct.sources?.[0]?.status !== 'OK') {

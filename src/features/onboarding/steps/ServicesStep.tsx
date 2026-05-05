@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, X, Sparkles } from 'lucide-react'
 
 const AI_SUGGESTED = [
@@ -12,9 +12,15 @@ const AI_SUGGESTED = [
   'Gas Safety Checks',
 ]
 
-export default function ServicesStep() {
+interface Props {
+  onChange: (services: string[]) => void
+}
+
+export default function ServicesStep({ onChange }: Props) {
   const [services, setServices] = useState(AI_SUGGESTED)
   const [newService, setNewService] = useState('')
+
+  useEffect(() => { onChange(services) }, [services])
 
   function add() {
     if (newService.trim() && !services.includes(newService.trim())) {
@@ -34,13 +40,11 @@ export default function ServicesStep() {
         Poppy will tell callers about these services. Add, edit, or remove any that don't fit.
       </p>
 
-      {/* AI generated badge */}
       <div className="mt-4 flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-[13px] text-brand">
         <Sparkles size={14} />
         <span>AI-generated from your website — check these are correct</span>
       </div>
 
-      {/* Service tags */}
       <div className="mt-5 flex flex-wrap gap-2">
         {services.map((service, i) => (
           <div
@@ -58,7 +62,6 @@ export default function ServicesStep() {
         ))}
       </div>
 
-      {/* Add new */}
       <div className="mt-4 flex gap-2">
         <input
           type="text"

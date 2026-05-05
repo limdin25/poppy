@@ -122,17 +122,25 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 - **Media support**: images, audio, video, files — downloaded from Unipile → Supabase Storage → rendered in inbox
 - **Reactions**: synced from Unipile, displayed as badges below message bubbles
 - **Realtime**: enabled on conversations + messages tables
-- Vercel env vars set: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, UNIPILE_TOKEN, UNIPILE_DSN, UNIPILE_WEBHOOK_SECRET, ANTHROPIC_API_KEY, APP_URL
-- **Deploy method**: Vercel CLI with `.git` hide trick (project linked to different repo than git remote)
+- Vercel env vars set: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, UNIPILE_TOKEN, UNIPILE_DSN, UNIPILE_WEBHOOK_SECRET, ANTHROPIC_API_KEY, APP_URL, RETELL_API_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, CRON_SECRET
+- **Deploy method**: Vercel CLI with `.git` hide trick and `--token` flag (project linked to different repo than git remote)
+- **Onboarding persistence**: saves services, FAQs, greeting, call info fields to Supabase on each step
+- **Email channel**: polling + webhook both handle email (GOOGLE/MICROSOFT accounts via Unipile)
+- **Cron job**: Vercel cron hits `/api/messages/poll` every minute (CRON_SECRET set)
+- **Retell AI + Twilio voice integration live**:
+  - Agent: `agent_adb8cb0848bc2d3b3a4551933e`, LLM: `llm_c2071f7699e2fb91f68f49957bdf`
+  - Voice: `retell-Willa` (British female), Language: `en-GB`
+  - Phone: `+447426495169` (imported via SIP trunk)
+  - Webhook: `https://poppy-henna.vercel.app/api/webhooks/retell` (call_ended + call_analyzed)
+  - Transcript extraction via Claude Sonnet, contact creation, call records
+  - Agent setup page wired: voice selection saves to Retell API, sync-prompt rebuilds LLM prompt from business data
 
 ### What's next
 1. Wire admin pages to real Supabase queries
-2. Integrate Retell AI + Twilio for voice calls
-3. Set up Stripe billing
-4. Wire onboarding flow end-to-end
-5. Set up cron job for Unipile polling fallback
-6. Custom domain
-7. Email channel (Unipile supports it — channel type already in DB)
+2. Set up Stripe billing
+3. Custom domain
+4. Wire agent setup "Save" to sync prompt to Retell (services, FAQs, greeting, behaviour changes)
+5. Test live call end-to-end
 
 ---
 

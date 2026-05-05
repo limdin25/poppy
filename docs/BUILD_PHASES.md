@@ -8,9 +8,9 @@
 - [ ] Supabase project creation + schema migration (all 14 tables)
 - [ ] Auth flow (email sign-up, magic link, session management)
 - [ ] Onboarding wizard (business details, Google Places lookup, greeting setup)
-- [ ] Twilio number provisioning + SIP trunk to Retell
-- [ ] Retell AI agent configuration (voice, prompt, tools)
-- [ ] Retell webhook handler (call events, transcript ingestion)
+- [x] Twilio number provisioning + SIP trunk to Retell — **Done 2026-05-03**
+- [x] Retell AI agent configuration (voice, prompt, tools) — **Done 2026-05-03**
+- [x] Retell webhook handler (call events, transcript ingestion) — **Done 2026-05-03**
 - [ ] Dashboard home (call stats, recent activity)
 - [ ] Calls page (list, detail view with transcript + summary)
 - [ ] Agent setup page (greeting, behaviour prompt, FAQs, services, call info types)

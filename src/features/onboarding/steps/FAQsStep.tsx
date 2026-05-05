@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Pencil, Trash2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface FAQ {
@@ -14,9 +14,17 @@ const AI_FAQS: FAQ[] = [
   { id: '4', question: 'Are you Gas Safe registered?', answer: 'Yes, we are fully Gas Safe registered. All our engineers hold valid Gas Safe ID cards.' },
 ]
 
-export default function FAQsStep() {
+interface Props {
+  onChange: (faqs: { question: string; answer: string }[]) => void
+}
+
+export default function FAQsStep({ onChange }: Props) {
   const [faqs, setFaqs] = useState(AI_FAQS)
   const [expanded, setExpanded] = useState<string | null>(null)
+
+  useEffect(() => {
+    onChange(faqs.map((f) => ({ question: f.question, answer: f.answer })))
+  }, [faqs])
 
   function remove(id: string) {
     setFaqs(faqs.filter((f) => f.id !== id))

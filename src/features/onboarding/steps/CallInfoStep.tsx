@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '@/core/lib/cn'
 
 interface Field {
@@ -18,8 +18,16 @@ const INITIAL_FIELDS: Field[] = [
   { id: '8', label: 'How they heard about you', enabled: false },
 ]
 
-export default function CallInfoStep() {
+interface Props {
+  onChange: (fields: { label: string; enabled: boolean }[]) => void
+}
+
+export default function CallInfoStep({ onChange }: Props) {
   const [fields, setFields] = useState(INITIAL_FIELDS)
+
+  useEffect(() => {
+    onChange(fields.map((f) => ({ label: f.label, enabled: f.enabled })))
+  }, [fields])
 
   function toggle(id: string) {
     setFields(fields.map((f) => f.id === id ? { ...f, enabled: !f.enabled } : f))

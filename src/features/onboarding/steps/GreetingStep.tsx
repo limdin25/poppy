@@ -1,10 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { RotateCcw, Sparkles } from 'lucide-react'
 
 const DEFAULT_GREETING = "Good morning, Smith & Sons Plumbing, you're speaking with Poppy. How can I help you today?"
 
-export default function GreetingStep() {
+interface Props {
+  onChange: (greeting: string) => void
+}
+
+export default function GreetingStep({ onChange }: Props) {
   const [greeting, setGreeting] = useState(DEFAULT_GREETING)
+
+  useEffect(() => { onChange(greeting) }, [greeting])
 
   return (
     <div>
@@ -36,7 +42,6 @@ export default function GreetingStep() {
         <span className="text-[12px] text-ink-subtle">{greeting.length} chars</span>
       </div>
 
-      {/* Preview */}
       <div className="mt-6 rounded-xl border border-border bg-elevated p-4">
         <p className="text-[12px] font-medium text-ink-muted">How it sounds:</p>
         <div className="mt-3 flex gap-3">
