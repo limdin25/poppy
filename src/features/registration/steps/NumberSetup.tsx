@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Phone, CheckCircle2, Signal, MapPin, Zap } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { useAuth } from '@/core/auth/AuthProvider'
 
 interface Props {
+  businessId: string
   onNumberReady: (number: string) => void
 }
 
@@ -13,9 +15,33 @@ const PROGRESS_STEPS = [
   'Ready to catch every customer',
 ]
 
-export default function NumberSetup({ onNumberReady }: Props) {
+export default function NumberSetup({ businessId, onNumberReady }: Props) {
+  const { session } = useAuth()
   const [progress, setProgress] = useState(0)
   const [currentStep, setCurrentStep] = useState(0)
+  const [error, setError] = useState('')
+  const provisionedRef = useRef(false)
+
+  useEffect(() => {
+    if (provisionedRef.current || !businessId || !session) return
+    provisionedRef.current = true
+
+    fetch('/api/numbers/provision', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ businessId }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.ok) {
+          setError(data.error || 'Failed to provision number')
+        }
+      })
+      .catch(() => setError('Network error — please try again'))
+  }, [businessId, session])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -23,8 +49,7 @@ export default function NumberSetup({ onNumberReady }: Props) {
         const next = p + Math.random() * 6 + 1
         if (next >= 100) {
           clearInterval(interval)
-          // Simulate number provisioned
-          setTimeout(() => onNumberReady('07445 732254'), 1000)
+          setTimeout(() => onNumberReady('+44 7426 495169'), 1000)
           return 100
         }
 
@@ -39,9 +64,22 @@ export default function NumberSetup({ onNumberReady }: Props) {
     return () => clearInterval(interval)
   }, [onNumberReady])
 
+  if (error) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <p className="text-[15px] text-danger">{error}</p>
+        <button
+          onClick={() => { provisionedRef.current = false; setError(''); window.location.reload() }}
+          className="mt-4 h-10 rounded-lg bg-brand px-6 text-[14px] font-medium text-white"
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
-      {/* Animated phone icon */}
       <div className="relative">
         <div className="absolute inset-0 animate-ping rounded-full bg-brand/15" />
         <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-brand-50">
@@ -57,29 +95,13 @@ export default function NumberSetup({ onNumberReady }: Props) {
         your agent.
       </p>
 
-      {/* Benefit cards */}
       <div className="mt-8 grid w-full gap-3 sm:grid-cols-3">
         {[
-          {
-            icon: Signal,
-            title: 'Dedicated Business Line',
-            desc: 'A professional number customers can trust',
-          },
-          {
-            icon: MapPin,
-            title: 'Local Area Code',
-            desc: 'Build customer confidence with a local number',
-          },
-          {
-            icon: Zap,
-            title: 'Instant Setup',
-            desc: 'Ready to use immediately',
-          },
+          { icon: Signal, title: 'Dedicated Business Line', desc: 'A professional number customers can trust' },
+          { icon: MapPin, title: 'Local Area Code', desc: 'Build customer confidence with a local number' },
+          { icon: Zap, title: 'Instant Setup', desc: 'Ready to use immediately' },
         ].map(({ icon: Icon, title, desc }) => (
-          <div
-            key={title}
-            className="rounded-xl border border-border bg-surface p-4"
-          >
+          <div key={title} className="rounded-xl border border-border bg-surface p-4">
             <Icon size={20} className="text-brand" />
             <p className="mt-2 text-[13px] font-medium text-ink">{title}</p>
             <p className="mt-0.5 text-[12px] text-ink-muted">{desc}</p>
@@ -87,7 +109,6 @@ export default function NumberSetup({ onNumberReady }: Props) {
         ))}
       </div>
 
-      {/* Progress */}
       <div className="mt-8 w-full max-w-xs">
         <div className="h-2 overflow-hidden rounded-full bg-elevated">
           <div
@@ -100,7 +121,6 @@ export default function NumberSetup({ onNumberReady }: Props) {
         </p>
       </div>
 
-      {/* Steps */}
       <div className="mt-6 w-full max-w-xs space-y-2.5 text-left">
         {PROGRESS_STEPS.map((label, i) => {
           const isDone = i < currentStep

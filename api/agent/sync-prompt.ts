@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { buildSystemPrompt } from '../../src/prompts/system-builder';
 import type { Business, Service, FAQ, CallInfoType } from '../../src/prompts/system-builder';
+import { requireAuth } from '../lib/auth';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -16,12 +17,11 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
-  try {
-    const { businessId } = await req.json() as { businessId?: string };
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const { businessId } = auth;
 
-    if (!businessId) {
-      return new Response(JSON.stringify({ error: 'businessId is required' }), { status: 400 });
-    }
+  try {
 
     const { data: channel } = await supabase
       .from('channels')

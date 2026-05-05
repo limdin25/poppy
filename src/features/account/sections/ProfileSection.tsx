@@ -1,20 +1,47 @@
-import { useState } from 'react'
-import { User, Mail, Lock } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { User, Mail, Lock, Loader2 } from 'lucide-react'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { supabase } from '@/integrations/supabase/browser'
 
 export default function ProfileSection() {
-  const [name, setName] = useState('Hugo de Souza')
-  const [email, setEmail] = useState('hugo@smithplumbing.co.uk')
+  const { user } = useAuth()
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
 
-  function handleSave() {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  useEffect(() => {
+    if (user) {
+      setName(user.user_metadata?.name || '')
+      setEmail(user.email || '')
+    }
+  }, [user])
+
+  async function handleSave() {
+    setSaving(true)
+    setError('')
+    const { error: updateError } = await supabase.auth.updateUser({
+      email: email !== user?.email ? email : undefined,
+      data: { name },
+    })
+    setSaving(false)
+    if (updateError) {
+      setError(updateError.message)
+    } else {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }
   }
 
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h2 className="text-[15px] font-semibold text-ink">Personal Details</h2>
+
+        {error && (
+          <div className="mt-3 rounded-lg bg-danger/10 px-4 py-2 text-[13px] text-danger">{error}</div>
+        )}
 
         <div className="mt-4 space-y-4">
           <div>
@@ -46,20 +73,29 @@ export default function ProfileSection() {
 
         <button
           onClick={handleSave}
-          className="mt-4 h-10 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600"
+          disabled={saving}
+          className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
         >
-          {saved ? '✓ Saved' : 'Save changes'}
+          {saving && <Loader2 size={16} className="animate-spin" />}
+          {saved ? 'Saved!' : 'Save changes'}
         </button>
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h2 className="text-[15px] font-semibold text-ink">Password</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          You signed up with a magic link. Set a password if you'd prefer to log in that way.
+          Change your password or set one if you signed up with a magic link.
         </p>
-        <button className="mt-4 flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-[13px] font-medium text-ink-muted transition hover:bg-elevated">
+        <button
+          onClick={() => {
+            supabase.auth.resetPasswordForEmail(email, {
+              redirectTo: `${window.location.origin}/reset-password`,
+            })
+          }}
+          className="mt-4 flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-[13px] font-medium text-ink-muted transition hover:bg-elevated"
+        >
           <Lock size={14} />
-          Set password
+          Send password reset email
         </button>
       </div>
 

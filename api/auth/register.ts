@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { sendWelcomeEmail } from '../../src/integrations/resend/client';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -13,18 +14,24 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { name, email, businessId } = await req.json() as { name?: string; email?: string; businessId?: string };
+    const { name, email, password, businessId } = await req.json() as {
+      name?: string;
+      email?: string;
+      password?: string;
+      businessId?: string;
+    };
 
-    if (!name || !email || !businessId) {
+    if (!name || !email || !password || !businessId) {
       return new Response(
-        JSON.stringify({ error: 'name, email, and businessId are required' }),
+        JSON.stringify({ error: 'name, email, password, and businessId are required' }),
         { status: 400 },
       );
     }
 
-    // Create user with email confirm
+    // Create user with password
     const { data: userData, error: userError } = await supabase.auth.admin.createUser({
       email,
+      password,
       email_confirm: true,
       user_metadata: { name },
     });
@@ -45,22 +52,38 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: bizError.message }), { status: 500 });
     }
 
-    // Generate magic link for auto sign-in
-    const { data: linkData, error: linkError } =
-      await supabase.auth.admin.generateLink({
-        type: 'magiclink',
-        email,
-      });
+    // Create team_members entry so AuthProvider can find businessId
+    const { error: teamError } = await supabase.from('team_members').insert({
+      business_id: businessId,
+      user_id: userId,
+      email,
+      name,
+      role: 'owner',
+      joined_at: new Date().toISOString(),
+    });
 
-    if (linkError) {
-      return new Response(JSON.stringify({ error: linkError.message }), { status: 500 });
+    if (teamError) {
+      return new Response(JSON.stringify({ error: teamError.message }), { status: 500 });
     }
+
+    // Sign in the user to get a session
+    const { data: signInData, error: signInError } =
+      await supabase.auth.signInWithPassword({ email, password });
+
+    if (signInError) {
+      return new Response(JSON.stringify({ error: signInError.message }), { status: 500 });
+    }
+
+    // Send welcome email (non-blocking — don't fail registration if email fails)
+    const appUrl = process.env.APP_URL || 'https://poppy-henna.vercel.app';
+    sendWelcomeEmail(name, email, `${appUrl}/login`).catch(() => {});
 
     return new Response(
       JSON.stringify({
         ok: true,
         userId,
-        signInUrl: linkData.properties?.action_link,
+        access_token: signInData.session?.access_token,
+        refresh_token: signInData.session?.refresh_token,
       }),
       { status: 200 },
     );

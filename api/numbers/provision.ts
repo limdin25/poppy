@@ -1,39 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
+import { requireAuth } from '../lib/auth';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
 const RETELL_API_KEY = process.env.RETELL_API_KEY!;
 
-async function twilioFetch(path: string, method: string, body?: Record<string, string>) {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}${path}`;
-  const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
-
-  const res = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: body ? new URLSearchParams(body).toString() : undefined,
-  });
-  return res.json() as Promise<any>;
-}
-
-async function retellFetch(path: string, method: string, body?: object) {
-  const res = await fetch(`https://api.retellai.com${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${RETELL_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return res.json() as Promise<any>;
+function retellHeaders(): Record<string, string> {
+  return {
+    Authorization: `Bearer ${RETELL_API_KEY}`,
+    'Content-Type': 'application/json',
+  };
 }
 
 export const config = { runtime: 'edge' };
@@ -43,17 +22,15 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const { businessId } = auth;
+
   try {
-    const { businessId } = await req.json() as { businessId?: string };
 
-    if (!businessId) {
-      return new Response(JSON.stringify({ error: 'businessId is required' }), { status: 400 });
-    }
-
-    // Fetch business and its system prompt
     const { data: business, error: bizErr } = await supabase
       .from('businesses')
-      .select('id, name, system_prompt')
+      .select('id, name, ai_system_prompt, greeting, tone')
       .eq('id', businessId)
       .single();
 
@@ -61,61 +38,55 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'Business not found' }), { status: 404 });
     }
 
-    // 1. Provision a UK number from Twilio
-    const availableNumbers = await twilioFetch(
-      '/AvailablePhoneNumbers/GB/Local.json?PageSize=1',
-      'GET',
-    );
+    // Step 1: Create Retell LLM with the business system prompt
+    const llmRes = await fetch('https://api.retellai.com/create-retell-llm', {
+      method: 'POST',
+      headers: retellHeaders(),
+      body: JSON.stringify({
+        general_prompt: business.ai_system_prompt || `You are the AI receptionist for ${business.name}.`,
+        model: 'gpt-4.1-mini',
+        general_tools: [{ name: 'end_call', type: 'end_call' }],
+      }),
+    });
 
-    if (!availableNumbers.available_phone_numbers?.length) {
-      return new Response(
-        JSON.stringify({ error: 'No UK numbers available' }),
-        { status: 503 },
-      );
+    if (!llmRes.ok) {
+      const err = await llmRes.text();
+      return new Response(JSON.stringify({ error: `Failed to create LLM: ${err}` }), { status: 500 });
     }
 
-    const phoneNumber = availableNumbers.available_phone_numbers[0].phone_number;
+    const llm = await llmRes.json() as { llm_id: string };
 
-    // Purchase the number
-    await twilioFetch('/IncomingPhoneNumbers.json', 'POST', {
-      PhoneNumber: phoneNumber,
+    // Step 2: Create Retell Agent referencing the LLM
+    const agentRes = await fetch('https://api.retellai.com/create-agent', {
+      method: 'POST',
+      headers: retellHeaders(),
+      body: JSON.stringify({
+        agent_name: `${business.name} Receptionist`,
+        response_engine: { type: 'retell-llm', llm_id: llm.llm_id },
+        voice_id: 'retell-Willa',
+        language: 'en-GB',
+        enable_backchannel: true,
+        begin_message: business.greeting || null,
+        webhook_url: `${process.env.APP_URL || 'https://poppy-henna.vercel.app'}/api/webhooks/retell`,
+      }),
     });
 
-    // 2. Create Retell AI agent with the business system prompt
-    const agent = await retellFetch('/create-agent', 'POST', {
-      agent_name: `${business.name} Receptionist`,
-      voice_id: 'eleven_turbo_v2', // Default — can be changed later
-      general_prompt: business.system_prompt || `You are the AI receptionist for ${business.name}.`,
-      enable_backchannel: true,
-      language: 'en-GB',
-    });
-
-    if (!agent.agent_id) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to create Retell agent' }),
-        { status: 500 },
-      );
+    if (!agentRes.ok) {
+      const err = await agentRes.text();
+      return new Response(JSON.stringify({ error: `Failed to create agent: ${err}` }), { status: 500 });
     }
 
-    // 3. Create SIP trunk in Retell and link number
-    const phoneNumberResource = await retellFetch('/create-phone-number', 'POST', {
-      phone_number: phoneNumber,
-      agent_id: agent.agent_id,
-      area_code: null,
-    });
+    const agent = await agentRes.json() as { agent_id: string };
 
-    // 4. Store in channels table
+    // Step 3: Store in channels table
     const { error: channelErr } = await supabase.from('channels').insert({
       business_id: businessId,
       type: 'voice',
-      provider: 'retell',
-      provider_id: agent.agent_id,
-      phone_number: phoneNumber,
+      status: 'connected',
       config: {
         retell_agent_id: agent.agent_id,
-        retell_phone_id: phoneNumberResource.phone_number_id,
+        retell_llm_id: llm.llm_id,
       },
-      enabled: true,
     });
 
     if (channelErr) {
@@ -125,8 +96,8 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(
       JSON.stringify({
         ok: true,
-        phoneNumber,
         agentId: agent.agent_id,
+        llmId: llm.llm_id,
       }),
       { status: 200 },
     );

@@ -1,22 +1,59 @@
 import { useState } from 'react'
-import { User, Mail, ShieldCheck, Star, Clock } from 'lucide-react'
+import { User, Mail, Lock, ShieldCheck, Star, Clock } from 'lucide-react'
+import { supabase } from '@/integrations/supabase/browser'
 
 interface Props {
+  businessId: string
   businessName: string
   onSubmit: (name: string, email: string) => void
 }
 
-export default function AccountCreation({ businessName, onSubmit }: Props) {
+export default function AccountCreation({ businessId, businessName, onSubmit }: Props) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !email.trim()) return
+    if (!name.trim() || !email.trim() || !password.trim()) return
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+
     setSubmitting(true)
-    // TODO: API call to register
-    setTimeout(() => onSubmit(name, email), 1500)
+    setError('')
+
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password, businessId }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok || !data.ok) {
+        setError(data.error || 'Registration failed')
+        setSubmitting(false)
+        return
+      }
+
+      // Set the session in the client so AuthProvider picks it up
+      if (data.access_token && data.refresh_token) {
+        await supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+        })
+      }
+
+      onSubmit(name, email)
+    } catch {
+      setError('Network error — please try again')
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -29,7 +66,6 @@ export default function AccountCreation({ businessName, onSubmit }: Props) {
         <span className="font-medium text-ink">{businessName}</span>
       </p>
 
-      {/* Trust bullets */}
       <div className="mt-6 space-y-3">
         {[
           { icon: Clock, text: 'Grow your business while Poppy answers calls 24/7' },
@@ -43,7 +79,6 @@ export default function AccountCreation({ businessName, onSubmit }: Props) {
         ))}
       </div>
 
-      {/* Testimonial */}
       <div className="mt-6 rounded-xl border border-border bg-elevated/50 p-4">
         <p className="text-[13px] italic text-ink-muted">
           "Poppy just works. Setup was fast and it sounds so real, customers
@@ -54,15 +89,17 @@ export default function AccountCreation({ businessName, onSubmit }: Props) {
         </p>
       </div>
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+        {error && (
+          <div className="rounded-lg bg-danger/10 px-4 py-2 text-[13px] text-danger">
+            {error}
+          </div>
+        )}
+
         <div>
           <label className="text-[13px] font-medium text-ink">Your name</label>
           <div className="relative mt-1.5">
-            <User
-              size={18}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle"
-            />
+            <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
             <input
               type="text"
               value={name}
@@ -75,14 +112,9 @@ export default function AccountCreation({ businessName, onSubmit }: Props) {
         </div>
 
         <div>
-          <label className="text-[13px] font-medium text-ink">
-            Email address
-          </label>
+          <label className="text-[13px] font-medium text-ink">Email address</label>
           <div className="relative mt-1.5">
-            <Mail
-              size={18}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle"
-            />
+            <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
             <input
               type="email"
               value={email}
@@ -94,9 +126,25 @@ export default function AccountCreation({ businessName, onSubmit }: Props) {
           </div>
         </div>
 
+        <div>
+          <label className="text-[13px] font-medium text-ink">Password</label>
+          <div className="relative mt-1.5">
+            <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 6 characters"
+              required
+              minLength={6}
+              className="h-12 w-full rounded-xl border border-border bg-surface pl-10 pr-4 text-[15px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+        </div>
+
         <button
           type="submit"
-          disabled={!name.trim() || !email.trim() || submitting}
+          disabled={!name.trim() || !email.trim() || !password.trim() || submitting}
           className="h-12 w-full rounded-xl bg-brand text-[15px] font-semibold text-white shadow-soft transition-all hover:bg-brand-600 active:scale-[0.98] disabled:opacity-40"
         >
           {submitting ? (

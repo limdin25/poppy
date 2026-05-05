@@ -126,14 +126,7 @@ describe('buildSystemPrompt', () => {
 });
 
 describe('sync-prompt API contract', () => {
-  it('POST without businessId returns 400', async () => {
-    const res = await callSyncPrompt({});
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain('businessId');
-  });
-
-  it('POST with valid businessId returns 200 when everything is set up', async () => {
+  it('POST with valid auth returns 200 when everything is set up', async () => {
     const res = await callSyncPrompt({ businessId: 'test-biz-123' });
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -240,6 +233,10 @@ beforeEach(async () => {
 
   vi.doMock('@supabase/supabase-js', () => ({
     createClient: () => makeMockSupabase(),
+  }));
+
+  vi.doMock('../api/lib/auth', () => ({
+    requireAuth: () => Promise.resolve({ userId: 'user-123', businessId: 'test-biz-123' }),
   }));
 
   const mod = await import('../api/agent/sync-prompt');

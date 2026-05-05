@@ -1,15 +1,45 @@
-import { useState } from 'react'
-import { Building2, Globe, MapPin, Camera } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Building2, Globe, MapPin, Camera, Loader2 } from 'lucide-react'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { useBusiness } from '@/core/hooks/useBusiness'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 
 export default function CompanySection() {
-  const [businessName, setBusinessName] = useState('Smith & Sons Plumbing')
-  const [website, setWebsite] = useState('https://smithplumbing.co.uk')
-  const [address, setAddress] = useState('14 High Street, Brighton BN1 3FG')
+  const { businessId } = useAuth()
+  const { data: business, loading, refetch } = useBusiness()
+  const [businessName, setBusinessName] = useState('')
+  const [website, setWebsite] = useState('')
+  const [address, setAddress] = useState('')
+  const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  function handleSave() {
+  useEffect(() => {
+    if (business) {
+      setBusinessName(business.name || '')
+      setWebsite(business.website || '')
+      setAddress(business.address || '')
+    }
+  }, [business])
+
+  async function handleSave() {
+    if (!businessId) return
+    setSaving(true)
+    await supabase
+      .from('businesses')
+      .update({ name: businessName, website, address })
+      .eq('id', businessId)
+    refetch()
+    setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 size={20} className="animate-spin text-ink-muted" />
+      </div>
+    )
   }
 
   return (
@@ -17,7 +47,6 @@ export default function CompanySection() {
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h2 className="text-[15px] font-semibold text-ink">Business Details</h2>
 
-        {/* Logo */}
         <div className="mt-4 flex items-center gap-4">
           <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-elevated text-ink-subtle">
             <Building2 size={24} />
@@ -74,9 +103,11 @@ export default function CompanySection() {
 
         <button
           onClick={handleSave}
-          className="mt-4 h-10 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600"
+          disabled={saving}
+          className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
         >
-          {saved ? '✓ Saved' : 'Save changes'}
+          {saving && <Loader2 size={16} className="animate-spin" />}
+          {saved ? 'Saved!' : 'Save changes'}
         </button>
       </div>
     </div>

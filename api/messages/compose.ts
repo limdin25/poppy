@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { requireAuth } from '../lib/auth';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -15,6 +16,10 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const { businessId } = auth;
+
   try {
     const { to, subject, body } = await req.json() as {
       to?: string;
@@ -27,29 +32,6 @@ export default async function handler(req: Request): Promise<Response> {
         JSON.stringify({ error: 'to and body are required' }),
         { status: 400 },
       );
-    }
-
-    // Get the auth user's business
-    const authHeader = req.headers.get('authorization') || '';
-    const token = authHeader.replace(/^Bearer\s+/i, '');
-    let businessId: string | null = null;
-
-    if (token) {
-      const userClient = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-      const { data: { user } } = await userClient.auth.getUser(token);
-      if (user) {
-        const { data: membership } = await supabase
-          .from('team_members')
-          .select('business_id')
-          .eq('user_id', user.id)
-          .limit(1)
-          .single();
-        businessId = membership?.business_id || null;
-      }
-    }
-
-    if (!businessId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
 
     // Get connected email channel (gmail, outlook, or smtp)

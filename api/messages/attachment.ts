@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { requireAuth } from '../lib/auth';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -14,6 +15,9 @@ export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'GET') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
+
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
 
   try {
     const url = new URL(req.url);

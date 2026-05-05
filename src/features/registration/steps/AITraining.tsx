@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Brain, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import type { BusinessData } from '../RegistrationPage'
 
 interface Props {
   business: BusinessData
+  onBusinessCreated: (businessId: string) => void
   onNext: () => void
 }
 
@@ -16,10 +17,39 @@ const STEPS = [
   'Almost done...',
 ]
 
-export default function AITraining({ business, onNext }: Props) {
+export default function AITraining({ business, onBusinessCreated, onNext }: Props) {
   const [progress, setProgress] = useState(0)
   const [currentStep, setCurrentStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<number[]>([])
+  const [error, setError] = useState('')
+  const createdRef = useRef(false)
+
+  useEffect(() => {
+    if (createdRef.current) return
+    createdRef.current = true
+
+    fetch('/api/auth/create-business', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: business.name,
+        address: business.address,
+        phone: business.phone,
+        website: business.website,
+        googlePlaceId: business.googlePlaceId,
+        industry: business.industry,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok && data.businessId) {
+          onBusinessCreated(data.businessId)
+        } else {
+          setError(data.error || 'Failed to set up business')
+        }
+      })
+      .catch(() => setError('Network error — please try again'))
+  }, [business, onBusinessCreated])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -55,9 +85,22 @@ export default function AITraining({ business, onNext }: Props) {
     return () => clearInterval(interval)
   }, [currentStep, onNext])
 
+  if (error) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <p className="text-[15px] text-danger">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 h-10 rounded-lg bg-brand px-6 text-[14px] font-medium text-white"
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
-      {/* Animated brain */}
       <div className="relative">
         <div className="absolute inset-0 animate-ping rounded-full bg-brand/20" />
         <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-brand-50">
@@ -75,7 +118,6 @@ export default function AITraining({ business, onNext }: Props) {
         </span>
       </p>
 
-      {/* Progress bar */}
       <div className="mt-8 w-full max-w-xs">
         <div className="h-2 overflow-hidden rounded-full bg-elevated">
           <div
@@ -88,7 +130,6 @@ export default function AITraining({ business, onNext }: Props) {
         </p>
       </div>
 
-      {/* Status steps */}
       <div className="mt-8 w-full max-w-xs space-y-3 text-left">
         {STEPS.map((label, i) => {
           const isComplete = completedSteps.includes(i)

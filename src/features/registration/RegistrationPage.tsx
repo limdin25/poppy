@@ -18,6 +18,7 @@ export interface BusinessData {
 export interface RegistrationState {
   step: number
   business: BusinessData
+  businessId: string
   userName: string
   userEmail: string
   agentNumber: string
@@ -33,6 +34,7 @@ const INITIAL_STATE: RegistrationState = {
     googlePlaceId: '',
     industry: '',
   },
+  businessId: '',
   userName: '',
   userEmail: '',
   agentNumber: '',
@@ -55,6 +57,10 @@ export default function RegistrationPage() {
 
   function updateBusiness(business: BusinessData) {
     setState((s) => ({ ...s, business }))
+  }
+
+  function updateBusinessId(businessId: string) {
+    setState((s) => ({ ...s, businessId }))
   }
 
   function updateAccount(userName: string, userEmail: string) {
@@ -87,10 +93,15 @@ export default function RegistrationPage() {
           />
         )}
         {state.step === 2 && (
-          <AITraining business={state.business} onNext={goNext} />
+          <AITraining
+            business={state.business}
+            onBusinessCreated={updateBusinessId}
+            onNext={goNext}
+          />
         )}
         {state.step === 3 && (
           <AccountCreation
+            businessId={state.businessId}
             businessName={state.business.name}
             onSubmit={(name, email) => {
               updateAccount(name, email)
@@ -100,6 +111,7 @@ export default function RegistrationPage() {
         )}
         {state.step === 4 && (
           <NumberSetup
+            businessId={state.businessId}
             onNumberReady={(number) => {
               updateNumber(number)
               goNext()

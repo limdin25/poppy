@@ -7,6 +7,7 @@ const RegistrationPage = lazy(() => import('@/features/registration/Registration
 const OnboardingPage = lazy(() => import('@/features/onboarding/OnboardingPage'))
 const LoginPage = lazy(() => import('@/features/auth/LoginPage'))
 const ForgotPasswordPage = lazy(() => import('@/features/auth/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('@/features/auth/ResetPasswordPage'))
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'))
 const CallsPage = lazy(() => import('@/features/calls/CallsPage'))
 const InboxPage = lazy(() => import('@/features/inbox/InboxPage'))
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="onboarding" element={<OnboardingPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
 
         {/* Admin panel — own layout */}
         <Route path="admin/*" element={<AdminApp />} />
