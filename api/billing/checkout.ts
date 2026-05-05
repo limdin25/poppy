@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
+import { requireAuth } from '../lib/auth';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -19,12 +20,16 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
-  try {
-    const { businessId, priceId } = await req.json() as { businessId?: string; priceId?: string };
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const { businessId } = auth;
 
-    if (!businessId || !priceId) {
+  try {
+    const { priceId } = await req.json() as { priceId?: string };
+
+    if (!priceId) {
       return new Response(
-        JSON.stringify({ error: 'businessId and priceId are required' }),
+        JSON.stringify({ error: 'priceId is required' }),
         { status: 400 },
       );
     }

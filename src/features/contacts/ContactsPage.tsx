@@ -180,18 +180,33 @@ function ContactDetail({ contact, onBack, desktop }: { contact: Contact; onBack:
 
       <div className="border-t border-border p-3">
         <div className="flex gap-2">
-          <button className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12px] font-medium text-ink-muted transition hover:bg-elevated">
-            <Phone size={13} />
-            Call
-          </button>
-          <button className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12px] font-medium text-ink-muted transition hover:bg-elevated">
-            <MessageSquare size={13} />
-            SMS
-          </button>
-          <button className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12px] font-medium text-ink-muted transition hover:bg-elevated">
-            <Mail size={13} />
-            Email
-          </button>
+          {contact.phone && (
+            <a
+              href={`tel:${contact.phone}`}
+              className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12px] font-medium text-ink-muted transition hover:bg-elevated"
+            >
+              <Phone size={13} />
+              Call
+            </a>
+          )}
+          {contact.phone && (
+            <a
+              href={`sms:${contact.phone}`}
+              className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12px] font-medium text-ink-muted transition hover:bg-elevated"
+            >
+              <MessageSquare size={13} />
+              SMS
+            </a>
+          )}
+          {contact.email && (
+            <a
+              href={`mailto:${contact.email}`}
+              className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12px] font-medium text-ink-muted transition hover:bg-elevated"
+            >
+              <Mail size={13} />
+              Email
+            </a>
+          )}
         </div>
       </div>
     </div>

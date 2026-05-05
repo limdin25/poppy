@@ -34,9 +34,29 @@ const STATUS_STYLES = {
   no_show: 'bg-danger/10 text-danger',
 }
 
+function getCalendarDays(year: number, month: number) {
+  const firstDay = new Date(year, month, 1).getDay()
+  const offset = firstDay === 0 ? 6 : firstDay - 1
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: (number | null)[] = Array(offset).fill(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  return cells
+}
+
 export default function AppointmentsPage() {
   const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [calMonth, setCalMonth] = useState(new Date().getMonth())
+  const [calYear, setCalYear] = useState(new Date().getFullYear())
   const { data: appointments, loading } = useAppointments()
+
+  function prevMonth() {
+    if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1) }
+    else setCalMonth(calMonth - 1)
+  }
+  function nextMonth() {
+    if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1) }
+    else setCalMonth(calMonth + 1)
+  }
 
   return (
     <div>
@@ -89,19 +109,19 @@ export default function AppointmentsPage() {
       ) : (
         <div className="mt-4 rounded-xl border border-border bg-surface p-6 shadow-soft">
           <div className="flex items-center justify-between">
-            <button className="text-ink-muted hover:text-ink"><ChevronLeft size={20} /></button>
+            <button onClick={prevMonth} className="text-ink-muted hover:text-ink"><ChevronLeft size={20} /></button>
             <h3 className="text-[16px] font-semibold text-ink">
-              {new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+              {new Date(calYear, calMonth).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
             </h3>
-            <button className="text-ink-muted hover:text-ink"><ChevronRight size={20} /></button>
+            <button onClick={nextMonth} className="text-ink-muted hover:text-ink"><ChevronRight size={20} /></button>
           </div>
           <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[12px]">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
               <div key={d} className="py-2 font-medium text-ink-subtle">{d}</div>
             ))}
-            {Array.from({ length: 31 }, (_, i) => (
-              <div key={i} className="rounded-lg py-2 text-[13px] text-ink-muted hover:bg-elevated">
-                {i + 1}
+            {getCalendarDays(calYear, calMonth).map((day, i) => (
+              <div key={i} className={cn('rounded-lg py-2 text-[13px]', day ? 'text-ink-muted hover:bg-elevated' : '')}>
+                {day ?? ''}
               </div>
             ))}
           </div>
@@ -165,9 +185,9 @@ function AppointmentCard({ appt }: { appt: Appointment }) {
         </span>
         <div className="flex gap-2">
           {appt.contact?.phone && (
-            <button className="flex items-center gap-1 text-[12px] text-brand hover:underline">
+            <a href={`tel:${appt.contact.phone}`} className="flex items-center gap-1 text-[12px] text-brand hover:underline">
               <Phone size={12} /> Call
-            </button>
+            </a>
           )}
           {appt.status !== 'cancelled' && appt.status !== 'completed' && (
             <button className="text-[12px] text-ink-muted hover:text-danger">Cancel</button>

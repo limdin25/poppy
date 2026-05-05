@@ -1,24 +1,68 @@
-import { useState } from 'react'
-import { Plus, MoreHorizontal, Shield, Crown } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Plus, MoreHorizontal, Shield, Crown, Loader2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 
 interface Member {
   id: string
-  name: string
+  name: string | null
   email: string
-  role: 'owner' | 'admin' | 'member'
-  status: 'active' | 'pending'
+  role: string
+  status: string
+  joined_at: string | null
 }
 
-const MEMBERS: Member[] = [
-  { id: '1', name: 'Hugo de Souza', email: 'hugo@smithplumbing.co.uk', role: 'owner', status: 'active' },
-  { id: '2', name: 'Mike Smith', email: 'mike@smithplumbing.co.uk', role: 'admin', status: 'active' },
-  { id: '3', name: 'sarah@smithplumbing.co.uk', email: 'sarah@smithplumbing.co.uk', role: 'member', status: 'pending' },
-]
-
 export default function TeamSection() {
+  const { businessId } = useAuth()
+  const [members, setMembers] = useState<Member[]>([])
+  const [loading, setLoading] = useState(true)
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+
+  useEffect(() => {
+    if (!businessId) return
+    supabase
+      .from('team_members')
+      .select('id, name, email, role, status, joined_at')
+      .eq('business_id', businessId)
+      .order('joined_at', { ascending: true })
+      .then(({ data }) => {
+        setMembers(data || [])
+        setLoading(false)
+      })
+  }, [businessId])
+
+  async function sendInvite() {
+    if (!businessId || !inviteEmail.trim()) return
+    setInviting(true)
+    const { data, error } = await supabase.from('team_members').insert({
+      business_id: businessId,
+      email: inviteEmail.trim(),
+      name: inviteEmail.trim(),
+      role: 'member',
+      status: 'pending',
+      joined_at: new Date().toISOString(),
+    }).select('id, name, email, role, status, joined_at').single()
+
+    if (!error && data) {
+      setMembers([...members, data])
+      setInviteEmail('')
+      setShowInvite(false)
+    }
+    setInviting(false)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 size={20} className="animate-spin text-ink-muted" />
+      </div>
+    )
+  }
+
+  const activeCount = members.filter(m => m.status === 'active').length
 
   return (
     <div className="space-y-6">
@@ -27,7 +71,7 @@ export default function TeamSection() {
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Team Members</h2>
             <p className="mt-1 text-[13px] text-ink-muted">
-              2 of 3 seats used on your Professional plan.
+              {activeCount} active member{activeCount !== 1 ? 's' : ''}.
             </p>
           </div>
           <button
@@ -47,22 +91,29 @@ export default function TeamSection() {
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="colleague@business.co.uk"
               autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && sendInvite()}
               className="h-10 flex-1 rounded-lg border border-border bg-white px-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
             />
-            <button className="h-10 rounded-lg bg-brand px-4 text-[13px] font-medium text-white">Send invite</button>
+            <button
+              onClick={sendInvite}
+              disabled={inviting}
+              className="h-10 rounded-lg bg-brand px-4 text-[13px] font-medium text-white disabled:opacity-60"
+            >
+              {inviting ? 'Sending...' : 'Send invite'}
+            </button>
             <button onClick={() => setShowInvite(false)} className="h-10 rounded-lg border border-border bg-white px-3 text-[13px] text-ink-muted">Cancel</button>
           </div>
         )}
 
         <div className="mt-4 space-y-2">
-          {MEMBERS.map((member) => (
+          {members.map((member) => (
             <div key={member.id} className="flex items-center gap-3 rounded-xl border border-border px-4 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-elevated text-[13px] font-semibold text-ink-muted">
-                {member.name[0]}
+                {(member.name || member.email)[0].toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-[14px] font-medium text-ink">{member.name}</p>
+                  <p className="truncate text-[14px] font-medium text-ink">{member.name || member.email}</p>
                   {member.status === 'pending' && (
                     <span className="rounded bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-warning">Pending</span>
                   )}

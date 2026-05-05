@@ -20,7 +20,7 @@ export default async function handler(req: Request): Promise<Response> {
   const { businessId } = auth;
 
   try {
-    const { voiceId } = await req.json() as { voiceId?: string };
+    const { voiceId, speed } = await req.json() as { voiceId?: string; speed?: number };
 
     if (!voiceId) {
       return new Response(JSON.stringify({ error: 'voiceId is required' }), { status: 400 });
@@ -49,13 +49,28 @@ export default async function handler(req: Request): Promise<Response> {
         Authorization: `Bearer ${RETELL_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ voice_id: voiceId }),
+      body: JSON.stringify({
+        voice_id: voiceId,
+        ...(speed != null && { voice_speed: speed }),
+      }),
     });
 
     if (!res.ok) {
       const err = await res.text();
       return new Response(JSON.stringify({ error: `Retell update failed: ${err}` }), { status: 500 });
     }
+
+    await supabase
+      .from('channels')
+      .update({
+        config: {
+          ...config,
+          voice_id: voiceId,
+          ...(speed != null && { voice_speed: speed }),
+        },
+      })
+      .eq('business_id', businessId)
+      .eq('type', 'voice');
 
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   } catch (err: any) {

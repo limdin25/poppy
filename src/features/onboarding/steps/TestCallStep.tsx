@@ -23,12 +23,12 @@ export default function TestCallStep() {
 
       {/* Phone number */}
       <a
-        href="tel:07445732254"
+        href="tel:+447426495169"
         className="mt-8 flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl border-2 border-brand bg-brand-50 p-6 transition hover:bg-brand-100 active:scale-[0.98]"
       >
         <Phone size={22} className="text-brand" />
         <span className="text-[22px] font-bold tracking-wide text-brand">
-          07445 732254
+          0742 649 5169
         </span>
       </a>
       <p className="mt-2 text-[13px] text-ink-subtle">Tap to call</p>

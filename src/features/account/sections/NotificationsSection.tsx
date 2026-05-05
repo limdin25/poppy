@@ -1,21 +1,44 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 
-interface NotifSetting {
-  id: string
-  label: string
-  description: string
-  email: boolean
-  push: boolean
+interface NotifRow {
+  id?: string
+  notify_on_call: boolean
+  notify_on_message: boolean
+  notify_on_booking: boolean
+  notify_on_quote_accepted: boolean
+  email_enabled: boolean
+  push_enabled: boolean
 }
 
-const INITIAL_SETTINGS: NotifSetting[] = [
-  { id: 'call_complete', label: 'Call completed', description: 'After every call Poppy handles', email: true, push: true },
-  { id: 'call_missed', label: 'Missed call', description: 'When a caller hangs up before Poppy answers', email: true, push: true },
-  { id: 'booking', label: 'New booking', description: 'When Poppy books an appointment for you', email: true, push: true },
-  { id: 'daily_summary', label: 'Daily summary', description: 'End-of-day report of all calls', email: true, push: false },
-  { id: 'weekly_report', label: 'Weekly report', description: 'Performance stats every Monday', email: true, push: false },
-  { id: 'billing', label: 'Billing alerts', description: 'Payment confirmations and subscription changes', email: true, push: false },
+const DEFAULTS: NotifRow = {
+  notify_on_call: true,
+  notify_on_message: true,
+  notify_on_booking: true,
+  notify_on_quote_accepted: true,
+  email_enabled: true,
+  push_enabled: true,
+}
+
+interface SettingDef {
+  key: keyof NotifRow
+  label: string
+  description: string
+}
+
+const SETTINGS: SettingDef[] = [
+  { key: 'notify_on_call', label: 'Call completed', description: 'After every call Poppy handles' },
+  { key: 'notify_on_message', label: 'New message', description: 'When a new WhatsApp or email arrives' },
+  { key: 'notify_on_booking', label: 'New booking', description: 'When Poppy books an appointment for you' },
+  { key: 'notify_on_quote_accepted', label: 'Quote accepted', description: 'When a customer accepts a quote' },
+]
+
+const CHANNEL_SETTINGS: SettingDef[] = [
+  { key: 'email_enabled', label: 'Email notifications', description: 'Receive notifications via email' },
+  { key: 'push_enabled', label: 'Push notifications', description: 'Browser and mobile push alerts' },
 ]
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
@@ -36,48 +59,102 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void 
 }
 
 export default function NotificationsSection() {
-  const [settings, setSettings] = useState(INITIAL_SETTINGS)
+  const { businessId } = useAuth()
+  const [settings, setSettings] = useState<NotifRow>(DEFAULTS)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
-  function toggle(id: string, channel: 'email' | 'push') {
-    setSettings(settings.map((s) => s.id === id ? { ...s, [channel]: !s[channel] } : s))
+  useEffect(() => {
+    if (!businessId) return
+    supabase
+      .from('notification_settings')
+      .select('*')
+      .eq('business_id', businessId)
+      .single()
+      .then(({ data }) => {
+        if (data) setSettings(data as NotifRow)
+        setLoading(false)
+      })
+  }, [businessId])
+
+  async function toggle(key: keyof NotifRow) {
+    const updated = { ...settings, [key]: !settings[key] }
+    setSettings(updated)
+    setSaving(true)
+
+    const payload = {
+      notify_on_call: updated.notify_on_call,
+      notify_on_message: updated.notify_on_message,
+      notify_on_booking: updated.notify_on_booking,
+      notify_on_quote_accepted: updated.notify_on_quote_accepted,
+      email_enabled: updated.email_enabled,
+      push_enabled: updated.push_enabled,
+    }
+
+    if (settings.id) {
+      await supabase.from('notification_settings').update(payload).eq('business_id', businessId)
+    } else {
+      const { data } = await supabase
+        .from('notification_settings')
+        .upsert({ business_id: businessId, ...payload })
+        .select('id')
+        .single()
+      if (data) setSettings({ ...updated, id: data.id })
+    }
+    setSaving(false)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 size={20} className="animate-spin text-ink-muted" />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
-        <h2 className="text-[15px] font-semibold text-ink">Notification Preferences</h2>
+        <h2 className="text-[15px] font-semibold text-ink">Event Notifications</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          Choose how and when you want to be notified.
+          Choose which events trigger notifications.
         </p>
 
-        <div className="mt-6">
-          {/* Header */}
-          <div className="mb-3 hidden items-center gap-4 px-4 sm:flex">
-            <div className="flex-1" />
-            <span className="w-16 text-center text-[12px] font-medium text-ink-subtle">Email</span>
-            <span className="w-16 text-center text-[12px] font-medium text-ink-subtle">Push</span>
-          </div>
-
-          <div className="space-y-2">
-            {settings.map((setting) => (
-              <div key={setting.id} className="flex items-center gap-4 rounded-xl border border-border px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-medium text-ink">{setting.label}</p>
-                  <p className="text-[12px] text-ink-muted">{setting.description}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex w-16 justify-center">
-                    <Toggle enabled={setting.email} onChange={() => toggle(setting.id, 'email')} />
-                  </div>
-                  <div className="flex w-16 justify-center">
-                    <Toggle enabled={setting.push} onChange={() => toggle(setting.id, 'push')} />
-                  </div>
-                </div>
+        <div className="mt-4 space-y-2">
+          {SETTINGS.map((s) => (
+            <div key={s.key} className="flex items-center gap-4 rounded-xl border border-border px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-medium text-ink">{s.label}</p>
+                <p className="text-[12px] text-ink-muted">{s.description}</p>
               </div>
-            ))}
-          </div>
+              <Toggle enabled={settings[s.key] as boolean} onChange={() => toggle(s.key)} />
+            </div>
+          ))}
         </div>
       </div>
+
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+        <h2 className="text-[15px] font-semibold text-ink">Channels</h2>
+        <p className="mt-1 text-[13px] text-ink-muted">
+          How you want to receive notifications.
+        </p>
+
+        <div className="mt-4 space-y-2">
+          {CHANNEL_SETTINGS.map((s) => (
+            <div key={s.key} className="flex items-center gap-4 rounded-xl border border-border px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-medium text-ink">{s.label}</p>
+                <p className="text-[12px] text-ink-muted">{s.description}</p>
+              </div>
+              <Toggle enabled={settings[s.key] as boolean} onChange={() => toggle(s.key)} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {saving && (
+        <p className="text-center text-[12px] text-ink-subtle">Saving...</p>
+      )}
     </div>
   )
 }

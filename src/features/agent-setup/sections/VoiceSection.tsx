@@ -28,21 +28,40 @@ export default function VoiceSection() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  useEffect(() => {
+    if (!businessId) return
+    supabase
+      .from('channels')
+      .select('config')
+      .eq('business_id', businessId)
+      .eq('type', 'voice')
+      .single()
+      .then(({ data }) => {
+        if (data?.config) {
+          const cfg = data.config as Record<string, unknown>
+          if (cfg.voice_id) setSelected(cfg.voice_id as string)
+          if (cfg.voice_speed) setSpeed(cfg.voice_speed as number)
+        }
+      })
+  }, [businessId])
+
   async function save() {
     if (!businessId || !session) return
     setSaving(true)
     setSaved(false)
     try {
-      await fetch('/api/agent/update-voice', {
+      const res = await fetch('/api/agent/update-voice', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ businessId, voiceId: selected }),
+        body: JSON.stringify({ businessId, voiceId: selected, speed }),
       })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      if (res.ok) {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+      }
     } catch (err) {
       console.error('[voice] save error:', err)
     } finally {

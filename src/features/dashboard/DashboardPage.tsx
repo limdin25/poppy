@@ -1,5 +1,6 @@
 import { Phone, Clock, PhoneMissed, PhoneIncoming, ArrowUpRight, Copy, Check, ExternalLink } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { cn } from '@/core/lib/cn'
 import { useCalls } from '@/core/hooks/useCalls'
 import { useBusiness } from '@/core/hooks/useBusiness'
@@ -24,6 +25,7 @@ function timeAgo(dateStr: string) {
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
   const { data: calls, loading } = useCalls()
   const { data: business } = useBusiness()
@@ -62,7 +64,10 @@ export default function DashboardPage() {
             <p className="text-[14px] font-semibold text-ink">You're on the free trial</p>
             <p className="mt-0.5 text-[13px] text-ink-muted">Upgrade to keep Poppy answering your calls.</p>
           </div>
-          <button className="shrink-0 rounded-lg bg-brand px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-brand-600">
+          <button
+            onClick={() => navigate('/account/billing')}
+            className="shrink-0 rounded-lg bg-brand px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-brand-600"
+          >
             Upgrade
           </button>
         </div>
@@ -108,7 +113,10 @@ export default function DashboardPage() {
               <p className="mt-1 text-[13px] text-ink-muted">
                 Set up call forwarding from your current business number so Poppy catches every call you miss.
               </p>
-              <button className="mt-3 text-[13px] font-semibold text-brand hover:underline">
+              <button
+                onClick={() => navigate('/onboarding')}
+                className="mt-3 text-[13px] font-semibold text-brand hover:underline"
+              >
                 Show me how →
               </button>
             </div>
