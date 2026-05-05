@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Search, Plus, Phone, Mail, MessageSquare, ArrowLeft, MoreHorizontal, Calendar } from 'lucide-react'
+import { Search, Plus, Phone, Mail, MessageSquare, ArrowLeft, MoreHorizontal, Calendar, X, Loader2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { EmptyState } from '@/core/ui/EmptyState'
 import { useContacts } from '@/core/hooks/useContacts'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 import type { Contact } from '@/core/types/database'
 
 function timeAgo(dateStr: string) {
@@ -21,7 +23,9 @@ function timeAgo(dateStr: string) {
 export default function ContactsPage() {
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const { data: contacts, loading } = useContacts()
+  const [showAdd, setShowAdd] = useState(false)
+  const { businessId } = useAuth()
+  const { data: contacts, loading, refetch } = useContacts()
 
   const selected = contacts.find((c) => c.id === selectedId)
 
@@ -47,7 +51,10 @@ export default function ContactsPage() {
       <div className={cn('flex w-full flex-col border-r border-border lg:w-[300px] lg:shrink-0', selected && 'hidden lg:flex')}>
         <div className="flex items-center justify-between px-4 pt-4">
           <h1 className="text-lg font-semibold text-ink">Contacts</h1>
-          <button className="flex h-8 items-center gap-1.5 rounded-lg bg-brand px-2.5 text-[12px] font-medium text-white transition hover:bg-brand-600">
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-brand px-2.5 text-[12px] font-medium text-white transition hover:bg-brand-600"
+          >
             <Plus size={13} />
             Add
           </button>
@@ -114,6 +121,81 @@ export default function ContactsPage() {
             />
           </div>
         )}
+      </div>
+
+      {showAdd && (
+        <AddContactModal
+          businessId={businessId!}
+          onClose={() => setShowAdd(false)}
+          onAdded={() => { setShowAdd(false); refetch() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function AddContactModal({ businessId, onClose, onAdded }: { businessId: string; onClose: () => void; onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!name.trim() && !phone.trim()) return
+    setSaving(true)
+    await supabase.from('contacts').insert({
+      business_id: businessId,
+      name: name.trim() || null,
+      phone: phone.trim() || null,
+      email: email.trim() || null,
+      tags: [],
+    })
+    setSaving(false)
+    onAdded()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-pop" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-[15px] font-semibold text-ink">Add Contact</h2>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink"><X size={18} /></button>
+        </div>
+        <div className="mt-4 space-y-3">
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Name"
+            autoFocus
+            className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
+          />
+          <input
+            type="tel"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            placeholder="Phone number"
+            className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
+          />
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="Email (optional)"
+            className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
+          />
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button onClick={onClose} className="h-10 flex-1 rounded-lg border border-border text-[13px] font-medium text-ink-muted">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving || (!name.trim() && !phone.trim())}
+            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-brand text-[13px] font-semibold text-white disabled:opacity-60"
+          >
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            Save
+          </button>
+        </div>
       </div>
     </div>
   )

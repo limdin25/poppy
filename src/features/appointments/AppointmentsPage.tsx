@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { Calendar, Clock, Phone, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calendar, Clock, Phone, Plus, ChevronLeft, ChevronRight, X, Loader2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAppointments } from '@/core/hooks/useAppointments'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 import type { Appointment } from '@/core/types/database'
 
 function formatDate(dateStr: string) {
@@ -47,7 +49,9 @@ export default function AppointmentsPage() {
   const [view, setView] = useState<'list' | 'calendar'>('list')
   const [calMonth, setCalMonth] = useState(new Date().getMonth())
   const [calYear, setCalYear] = useState(new Date().getFullYear())
-  const { data: appointments, loading } = useAppointments()
+  const [showNew, setShowNew] = useState(false)
+  const { businessId } = useAuth()
+  const { data: appointments, loading, refetch } = useAppointments()
 
   function prevMonth() {
     if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1) }
@@ -65,7 +69,10 @@ export default function AppointmentsPage() {
           <h1 className="text-xl font-semibold text-ink">Appointments</h1>
           <p className="mt-1 text-[13px] text-ink-muted">Manage bookings made by Poppy and your team.</p>
         </div>
-        <button className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-600">
+        <button
+          onClick={() => setShowNew(true)}
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-600"
+        >
           <Plus size={14} />
           New booking
         </button>
@@ -139,6 +146,94 @@ export default function AppointmentsPage() {
           )}
         </div>
       )}
+
+      {showNew && businessId && (
+        <NewBookingModal
+          businessId={businessId}
+          onClose={() => setShowNew(false)}
+          onCreated={() => { setShowNew(false); refetch() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function NewBookingModal({ businessId, onClose, onCreated }: { businessId: string; onClose: () => void; onCreated: () => void }) {
+  const [title, setTitle] = useState('')
+  const [contactName, setContactName] = useState('')
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!title.trim() || !date || !time) return
+    setSaving(true)
+    const startsAt = new Date(`${date}T${time}`).toISOString()
+    const endsAt = new Date(new Date(`${date}T${time}`).getTime() + 60 * 60 * 1000).toISOString()
+
+    await supabase.from('appointments').insert({
+      business_id: businessId,
+      title: title.trim(),
+      starts_at: startsAt,
+      ends_at: endsAt,
+      status: 'confirmed',
+      booked_via: 'manual',
+      description: contactName.trim() ? `Contact: ${contactName}` : null,
+    })
+    setSaving(false)
+    onCreated()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-pop" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-[15px] font-semibold text-ink">New Booking</h2>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink"><X size={18} /></button>
+        </div>
+        <div className="mt-4 space-y-3">
+          <input
+            type="text"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Service (e.g. Boiler Service)"
+            autoFocus
+            className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
+          />
+          <input
+            type="text"
+            value={contactName}
+            onChange={e => setContactName(e.target.value)}
+            placeholder="Customer name (optional)"
+            className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
+          />
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none focus:border-brand"
+            />
+            <input
+              type="time"
+              value={time}
+              onChange={e => setTime(e.target.value)}
+              className="h-10 w-28 rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none focus:border-brand"
+            />
+          </div>
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button onClick={onClose} className="h-10 flex-1 rounded-lg border border-border text-[13px] font-medium text-ink-muted">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !title.trim() || !date || !time}
+            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-brand text-[13px] font-semibold text-white disabled:opacity-60"
+          >
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            Create
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
