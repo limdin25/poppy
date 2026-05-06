@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { requireAuth } from '../lib/auth';
+import { requireAuth } from '../lib/auth.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -41,7 +41,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     const session = await stripe.billingPortal.sessions.create({
       customer: business.stripe_customer_id,
-      return_url: `${APP_URL}/billing`,
+      return_url: `${APP_URL}/account/billing`,
     });
 
     return new Response(JSON.stringify({ url: session.url }), { status: 200 });

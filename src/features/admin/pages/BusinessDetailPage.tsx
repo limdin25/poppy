@@ -1,9 +1,10 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Eye, Ban, Phone, MessageSquare, Bot, CreditCard } from 'lucide-react'
+import { ArrowLeft, Eye, Ban, CheckCircle, Phone, MessageSquare, Bot, CreditCard, Loader2 } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { MetricCard } from '../components/MetricCard'
 import { useAdmin } from '../context/AdminContext'
-import { useAdminApi } from '../hooks/useAdminApi'
+import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 
 interface BusinessDetail {
   id: string
@@ -27,7 +28,11 @@ export default function BusinessDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { startImpersonation } = useAdmin()
-  const { data: biz, loading } = useAdminApi<BusinessDetail | null>(`businesses/${id}`, null, [id])
+  const { data: biz, loading, refetch } = useAdminApi<BusinessDetail | null>(`businesses/${id}`, null, [id])
+  const suspendMutation = useAdminMutation(`businesses/${id}/suspend`, 'POST')
+  const patchBusiness = useAdminMutation(`businesses/${id}`, 'PATCH')
+  const [suspending, setSuspending] = useState(false)
+  const [notesSaved, setNotesSaved] = useState(false)
 
   if (loading) {
     return <p className="py-12 text-center text-[13px] text-ink-muted">Loading...</p>
@@ -63,9 +68,25 @@ export default function BusinessDetailPage() {
             <Eye size={13} />
             View as client
           </button>
-          <button className="flex items-center gap-1.5 rounded-lg border border-danger/30 px-3 py-1.5 text-[12px] font-medium text-danger transition hover:bg-danger/5">
-            <Ban size={13} />
-            Suspend
+          <button
+            disabled={suspending}
+            onClick={async () => {
+              const isSuspended = biz.status === 'suspended'
+              const action = isSuspended ? 'activate' : 'suspend'
+              if (!window.confirm(`${isSuspended ? 'Reactivate' : 'Suspend'} ${biz.name}?`)) return
+              setSuspending(true)
+              await suspendMutation({ action })
+              refetch()
+              setSuspending(false)
+            }}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition disabled:opacity-60 ${
+              biz.status === 'suspended'
+                ? 'border-success/30 text-success hover:bg-success/5'
+                : 'border-danger/30 text-danger hover:bg-danger/5'
+            }`}
+          >
+            {suspending ? <Loader2 size={13} className="animate-spin" /> : biz.status === 'suspended' ? <CheckCircle size={13} /> : <Ban size={13} />}
+            {biz.status === 'suspended' ? 'Reactivate' : 'Suspend'}
           </button>
         </div>
       </div>
@@ -138,11 +159,21 @@ export default function BusinessDetailPage() {
         </div>
 
         <div className="rounded-xl border border-border p-4 lg:col-span-2">
-          <h2 className="text-[14px] font-semibold text-ink">Admin Notes</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-[14px] font-semibold text-ink">Admin Notes</h2>
+            {notesSaved && <span className="text-[11px] text-success">Saved</span>}
+          </div>
           <textarea
             defaultValue={biz.admin_notes || ''}
             placeholder="Internal notes about this business..."
             rows={3}
+            onBlur={async (e) => {
+              const value = e.target.value.trim() || null
+              if (value === (biz.admin_notes || null)) return
+              await patchBusiness({ admin_notes: value })
+              setNotesSaved(true)
+              setTimeout(() => setNotesSaved(false), 2000)
+            }}
             className="mt-2 w-full resize-none rounded-lg border border-border bg-elevated px-3 py-2 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
           />
         </div>

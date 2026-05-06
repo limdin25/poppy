@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { stripHtml, cleanEmailBody, isEmailSpam, normalizeSubject } from '../lib/email-utils.js';
+import { fetchAndStoreAvatar } from '../lib/fetch-avatar.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -28,6 +29,7 @@ function counterpartyPhone(msg: any): string {
   }
   return '';
 }
+
 
 function detectContentType(attachments: any[]): 'text' | 'image' | 'audio' | 'video' | 'file' {
   if (!attachments || attachments.length === 0) return 'text';
@@ -563,9 +565,12 @@ export default async function handler(req: Request): Promise<Response> {
         // Find or create contact
         let contactId: string | null = null;
         let contactName: string | null = null;
+        const msgChatId = m.chat_id || '';
+        // Only use sender_attendee_id for inbound messages (outbound = Hugo's own attendee)
+        const contactAttendeeId = direction === 'inbound' ? (m.sender_attendee_id || '') : '';
         const { data: existing } = await supabase
           .from('contacts')
-          .select('id, name')
+          .select('id, name, avatar_url')
           .eq('business_id', businessId)
           .eq('phone', counterparty)
           .maybeSingle();
@@ -573,6 +578,9 @@ export default async function handler(req: Request): Promise<Response> {
         if (existing) {
           contactId = existing.id;
           contactName = existing.name;
+          if (!existing.avatar_url && (contactAttendeeId || msgChatId)) {
+            fetchAndStoreAvatar(existing.id, { attendeeId: contactAttendeeId || undefined, chatId: msgChatId || undefined }).catch(() => {});
+          }
         } else if (direction === 'inbound') {
           const { data: newContact } = await supabase
             .from('contacts')
@@ -580,6 +588,9 @@ export default async function handler(req: Request): Promise<Response> {
             .select('id')
             .single();
           contactId = newContact?.id || null;
+          if (contactId && (contactAttendeeId || msgChatId)) {
+            fetchAndStoreAvatar(contactId, { attendeeId: contactAttendeeId || undefined, chatId: msgChatId || undefined }).catch(() => {});
+          }
         }
 
         if (!contactId) { skipped++; continue; }

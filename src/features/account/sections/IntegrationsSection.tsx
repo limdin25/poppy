@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Phone, MessageSquare, Mail, Calendar, CheckCircle2, X, Smartphone, Send, Globe, ArrowRight, Loader2 } from 'lucide-react'
+import { Phone, MessageSquare, Mail, Calendar, CheckCircle2, X, Smartphone, Send, ArrowRight, Loader2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/integrations/supabase/browser'
@@ -41,12 +41,15 @@ export default function IntegrationsSection() {
   const [activeModal, setActiveModal] = useState<ModalId>(null)
   const [channels, setChannels] = useState<ChannelRow[]>([])
   const [connecting, setConnecting] = useState<string | null>(null)
-  const [smsReminders, setSmsReminders] = useState(true)
-  const [smsFollowups, setSmsFollowups] = useState(true)
+  const [smsReminders, setSmsReminders] = useState(false)
+  const [smsFollowups, setSmsFollowups] = useState(false)
+  const [calendarConnected, setCalendarConnected] = useState(false)
 
   useEffect(() => {
     if (!businessId) return
     loadChannels()
+    checkCalendar()
+    loadSmsSettings()
   }, [businessId])
 
   useEffect(() => {
@@ -54,6 +57,16 @@ export default function IntegrationsSection() {
     if (status === 'connected' || status === 'failed') {
       loadChannels()
       searchParams.delete('unipile')
+      setSearchParams(searchParams, { replace: true })
+    }
+    const calStatus = searchParams.get('calendar')
+    if (calStatus === 'connected') {
+      setCalendarConnected(true)
+      setActiveModal(null)
+      searchParams.delete('calendar')
+      setSearchParams(searchParams, { replace: true })
+    } else if (calStatus === 'error') {
+      searchParams.delete('calendar')
       setSearchParams(searchParams, { replace: true })
     }
   }, [searchParams])
@@ -66,6 +79,74 @@ export default function IntegrationsSection() {
     setChannels(data ?? [])
   }
 
+  async function checkCalendar() {
+    const { data } = await supabase
+      .from('businesses')
+      .select('google_calendar_tokens')
+      .eq('id', businessId!)
+      .single()
+    setCalendarConnected(!!data?.google_calendar_tokens)
+  }
+
+  async function loadSmsSettings() {
+    const { data } = await supabase
+      .from('notification_settings')
+      .select('sms_enabled, notify_on_booking, notify_on_call')
+      .eq('business_id', businessId!)
+      .single()
+    if (data) {
+      setSmsReminders(data.notify_on_booking ?? false)
+      setSmsFollowups(data.notify_on_call ?? false)
+    }
+  }
+
+  async function toggleSmsReminders() {
+    const next = !smsReminders
+    setSmsReminders(next)
+    await supabase.from('notification_settings').upsert({
+      business_id: businessId!,
+      sms_enabled: next || smsFollowups,
+      notify_on_booking: next,
+    }, { onConflict: 'business_id' })
+  }
+
+  async function toggleSmsFollowups() {
+    const next = !smsFollowups
+    setSmsFollowups(next)
+    await supabase.from('notification_settings').upsert({
+      business_id: businessId!,
+      sms_enabled: smsReminders || next,
+      notify_on_call: next,
+    }, { onConflict: 'business_id' })
+  }
+
+  async function connectCalendar() {
+    setConnecting('calendar')
+    try {
+      const res = await fetch('/api/calendar/connect', {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      const { url } = await res.json()
+      window.location.href = url
+    } catch {
+      setConnecting(null)
+    }
+  }
+
+  async function disconnectCalendar() {
+    setConnecting('calendar-disconnect')
+    try {
+      await fetch('/api/calendar/disconnect', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      setCalendarConnected(false)
+      setActiveModal(null)
+    } finally {
+      setConnecting(null)
+    }
+  }
+
   function getChannel(type: string): ChannelRow | undefined {
     return channels.find(c => c.type === type)
   }
@@ -75,7 +156,7 @@ export default function IntegrationsSection() {
     if (id === 'email') return getChannel('email_gmail')?.status === 'connected' || getChannel('email_outlook')?.status === 'connected' || getChannel('email_smtp')?.status === 'connected'
     if (id === 'voice') return getChannel('voice')?.status === 'connected'
     if (id === 'sms') return getChannel('sms')?.status === 'connected'
-    if (id === 'calendar') return false
+    if (id === 'calendar') return calendarConnected
     return false
   }
 
@@ -304,7 +385,7 @@ export default function IntegrationsSection() {
                   <span className="text-[13px] text-ink">Auto-send appointment reminders</span>
                 </div>
                 <button
-                  onClick={() => setSmsReminders(!smsReminders)}
+                  onClick={toggleSmsReminders}
                   className={cn('relative h-5 w-9 rounded-full transition', smsReminders ? 'bg-brand' : 'bg-ink-muted/30')}
                 >
                   <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', smsReminders ? 'translate-x-4' : 'translate-x-0.5')} />
@@ -316,14 +397,14 @@ export default function IntegrationsSection() {
                   <span className="text-[13px] text-ink">Auto-send follow-ups after calls</span>
                 </div>
                 <button
-                  onClick={() => setSmsFollowups(!smsFollowups)}
+                  onClick={toggleSmsFollowups}
                   className={cn('relative h-5 w-9 rounded-full transition', smsFollowups ? 'bg-brand' : 'bg-ink-muted/30')}
                 >
                   <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', smsFollowups ? 'translate-x-4' : 'translate-x-0.5')} />
                 </button>
               </div>
             </div>
-            <p className="text-center text-[12px] text-ink-muted">SMS integration coming soon</p>
+            <p className="text-center text-[12px] text-ink-muted">SMS is sent from your Poppy phone number</p>
           </div>
         )}
       </Modal>
@@ -405,37 +486,56 @@ export default function IntegrationsSection() {
       <Modal open={activeModal === 'calendar'} onClose={() => setActiveModal(null)}>
         <div className="space-y-5">
           <div>
-            <h3 className="text-[15px] font-semibold text-ink">Connect Calendar</h3>
+            <h3 className="text-[15px] font-semibold text-ink">
+              {calendarConnected ? 'Google Calendar Connected' : 'Connect Calendar'}
+            </h3>
             <p className="mt-1 text-[13px] text-ink-muted">
-              Let Poppy auto-book appointments during calls based on your real availability.
+              {calendarConnected
+                ? 'Poppy can now check your availability and book appointments during calls.'
+                : 'Let Poppy auto-book appointments during calls based on your real availability.'}
             </p>
           </div>
-          <div className="space-y-3">
+          {calendarConnected ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                  <CheckCircle2 size={18} className="text-success" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[14px] font-medium text-ink">Google Calendar</p>
+                  <p className="text-[12px] text-success">Connected</p>
+                </div>
+              </div>
+              <button
+                onClick={disconnectCalendar}
+                disabled={connecting === 'calendar-disconnect'}
+                className="w-full rounded-lg border border-border px-4 py-2 text-[13px] text-danger hover:bg-danger/5 disabled:opacity-60"
+              >
+                {connecting === 'calendar-disconnect' ? 'Disconnecting...' : 'Disconnect'}
+              </button>
+            </div>
+          ) : (
             <button
-              disabled
-              className="flex w-full items-center gap-3 rounded-xl border border-border p-4 opacity-60"
+              onClick={connectCalendar}
+              disabled={connecting === 'calendar'}
+              className="flex w-full items-center gap-3 rounded-xl border border-border p-4 transition hover:border-brand/30 disabled:opacity-60"
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
                 <Calendar size={18} className="text-blue-600" />
               </div>
               <div className="flex-1 text-left">
                 <p className="text-[14px] font-medium text-ink">Google Calendar</p>
-                <p className="text-[12px] text-ink-muted">Coming soon</p>
+                <p className="text-[12px] text-ink-muted">
+                  {connecting === 'calendar' ? 'Redirecting to Google...' : 'Sign in with your Google account'}
+                </p>
               </div>
+              {connecting === 'calendar' ? (
+                <Loader2 size={16} className="animate-spin text-ink-muted" />
+              ) : (
+                <ArrowRight size={16} className="text-ink-muted" />
+              )}
             </button>
-            <button
-              disabled
-              className="flex w-full items-center gap-3 rounded-xl border border-border p-4 opacity-60"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100">
-                <Globe size={18} className="text-neutral-700" />
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-[14px] font-medium text-ink">Cal.com</p>
-                <p className="text-[12px] text-ink-muted">Coming soon</p>
-              </div>
-            </button>
-          </div>
+          )}
         </div>
       </Modal>
 

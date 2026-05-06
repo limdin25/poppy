@@ -12,6 +12,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET!;
 
+const PRICE_TO_PLAN: Record<string, string> = {
+  'price_1TTj1DLdAEhwWg6w9uuBcjJl': 'starter',
+  'price_1TTj1DLdAEhwWg6wERoybYsY': 'professional',
+  'price_1TTj1DLdAEhwWg6w2l8IOzJ9': 'business',
+};
+
+function planFromSubscription(subscription: Stripe.Subscription): string | null {
+  const priceId = subscription.items?.data?.[0]?.price?.id;
+  return priceId ? PRICE_TO_PLAN[priceId] ?? null : null;
+}
+
 export const config = { runtime: 'edge' };
 
 export default async function handler(req: Request): Promise<Response> {
@@ -34,13 +45,16 @@ export default async function handler(req: Request): Promise<Response> {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const businessId = session.metadata?.business_id;
-        if (businessId) {
+        if (businessId && session.subscription) {
+          const sub = await stripe.subscriptions.retrieve(session.subscription as string);
+          const plan = planFromSubscription(sub);
           await supabase
             .from('businesses')
             .update({
               stripe_customer_id: session.customer as string,
               stripe_subscription_id: session.subscription as string,
               billing_status: 'active',
+              ...(plan && { plan }),
             })
             .eq('id', businessId);
         }
@@ -71,11 +85,13 @@ export default async function handler(req: Request): Promise<Response> {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
         const status = subscription.status === 'active' ? 'active' : subscription.status;
+        const plan = planFromSubscription(subscription);
         await supabase
           .from('businesses')
           .update({
             billing_status: status,
             stripe_subscription_id: subscription.id,
+            ...(plan && { plan }),
           })
           .eq('stripe_customer_id', customerId);
         break;
@@ -89,6 +105,7 @@ export default async function handler(req: Request): Promise<Response> {
           .update({
             billing_status: 'cancelled',
             stripe_subscription_id: null,
+            plan: 'trial',
           })
           .eq('stripe_customer_id', customerId);
         break;

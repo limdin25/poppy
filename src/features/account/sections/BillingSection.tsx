@@ -10,7 +10,7 @@ const PLANS = [
     name: 'Starter',
     price: '£49',
     period: '/month',
-    priceId: 'price_starter',
+    priceId: 'price_1TTj1DLdAEhwWg6w9uuBcjJl',
     features: ['Unlimited voice calls', '1 team member', '30-day call recordings', 'Email notifications'],
   },
   {
@@ -18,7 +18,7 @@ const PLANS = [
     name: 'Professional',
     price: '£99',
     period: '/month',
-    priceId: 'price_professional',
+    priceId: 'price_1TTj1DLdAEhwWg6wERoybYsY',
     features: ['Everything in Starter', 'SMS follow-ups', 'WhatsApp channel', '3 team members', '90-day recordings'],
   },
   {
@@ -26,7 +26,7 @@ const PLANS = [
     name: 'Business',
     price: '£199',
     period: '/month',
-    priceId: 'price_business',
+    priceId: 'price_1TTj1DLdAEhwWg6w2l8IOzJ9',
     features: ['Everything in Professional', 'Email channel', 'Unlimited team', '1-year recordings', 'Priority support'],
   },
 ]

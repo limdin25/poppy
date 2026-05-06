@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { sendWelcomeEmail } from '../../src/integrations/resend/client';
+import { sendWelcomeEmail } from '../../src/integrations/resend/client.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -75,7 +75,7 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     // Send welcome email (non-blocking — don't fail registration if email fails)
-    const appUrl = process.env.APP_URL || 'https://poppy-henna.vercel.app';
+    const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
     sendWelcomeEmail(name, email, `${appUrl}/login`).catch(() => {});
 
     return new Response(

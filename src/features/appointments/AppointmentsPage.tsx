@@ -109,7 +109,7 @@ export default function AppointmentsPage() {
         ) : (
           <div className="mt-4 space-y-3">
             {appointments.map((appt) => (
-              <AppointmentCard key={appt.id} appt={appt} />
+              <AppointmentCard key={appt.id} appt={appt} onCancel={refetch} />
             ))}
           </div>
         )
@@ -238,7 +238,7 @@ function NewBookingModal({ businessId, onClose, onCreated }: { businessId: strin
   )
 }
 
-function AppointmentCard({ appt }: { appt: Appointment }) {
+function AppointmentCard({ appt, onCancel }: { appt: Appointment; onCancel: () => void }) {
   const contactName = appt.contact?.name ?? 'Unknown'
   const initials = contactName.split(' ').map(n => n[0]).join('').slice(0, 2)
 
@@ -285,7 +285,16 @@ function AppointmentCard({ appt }: { appt: Appointment }) {
             </a>
           )}
           {appt.status !== 'cancelled' && appt.status !== 'completed' && (
-            <button className="text-[12px] text-ink-muted hover:text-danger">Cancel</button>
+            <button
+              onClick={async () => {
+                if (!window.confirm('Cancel this appointment?')) return
+                await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appt.id)
+                onCancel()
+              }}
+              className="text-[12px] text-ink-muted hover:text-danger"
+            >
+              Cancel
+            </button>
           )}
         </div>
       </div>

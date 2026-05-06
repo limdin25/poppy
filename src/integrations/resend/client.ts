@@ -39,7 +39,7 @@ export async function sendEmail(
     }),
   });
   if (!res.ok) throw new Error(`Resend sendEmail failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<SendEmailResponse>;
 }
 
 /** Send a welcome email with a link to set their password. */

@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { buildSystemPrompt } from '../../src/prompts/system-builder';
-import type { Business, Service, FAQ, CallInfoType } from '../../src/prompts/system-builder';
-import { requireAuth } from '../lib/auth';
+import { buildSystemPrompt } from '../../src/prompts/system-builder.js';
+import type { Business, Service, FAQ, CallInfoType } from '../../src/prompts/system-builder.js';
+import { requireAuth } from '../lib/auth.js';
+import { getBookingTools, getDefaultTools } from '../lib/booking-tools.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -50,53 +51,73 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'Business not found' }), { status: 404 });
     }
 
-    let prompt = business.ai_system_prompt;
+    const { data: services } = await supabase
+      .from('services')
+      .select('name, description, price_from, price_to, bookable')
+      .eq('business_id', businessId)
+      .order('sort_order');
 
-    if (!prompt) {
-      const { data: services } = await supabase
-        .from('services')
-        .select('name, description, price_from, price_to, bookable')
-        .eq('business_id', businessId)
-        .order('sort_order');
+    const { data: faqs } = await supabase
+      .from('faqs')
+      .select('question, answer')
+      .eq('business_id', businessId)
+      .order('sort_order');
 
-      const { data: faqs } = await supabase
-        .from('faqs')
-        .select('question, answer')
-        .eq('business_id', businessId)
-        .order('sort_order');
+    const { data: callInfoRows } = await supabase
+      .from('call_info_types')
+      .select('name, enabled, fields')
+      .eq('business_id', businessId)
+      .order('sort_order');
 
-      const { data: callInfoRows } = await supabase
-        .from('call_info_types')
-        .select('name, enabled, fields')
-        .eq('business_id', businessId)
-        .order('sort_order');
+    const biz: Business = {
+      name: business.name,
+      industry: business.industry ?? undefined,
+      address: business.address ?? undefined,
+      phone: business.phone ?? undefined,
+      website: business.website ?? undefined,
+      greeting: business.greeting ?? undefined,
+      tone: business.tone ?? undefined,
+    };
 
-      const biz: Business = {
-        name: business.name,
-        industry: business.industry ?? undefined,
-        address: business.address ?? undefined,
-        phone: business.phone ?? undefined,
-        website: business.website ?? undefined,
-        greeting: business.greeting ?? undefined,
-        tone: business.tone ?? undefined,
-      };
+    const callInfoTypes: CallInfoType[] = (callInfoRows || []).map((r: Record<string, unknown>) => ({
+      name: r.name as string,
+      enabled: r.enabled as boolean,
+      fields: (r.fields as Array<{ name: string; type: string; required?: boolean }>) || [
+        { name: (r.name as string).toLowerCase().replace(/\s+/g, '_'), type: 'text', required: false },
+      ],
+    }));
 
-      const callInfoTypes: CallInfoType[] = (callInfoRows || []).map((r: Record<string, unknown>) => ({
-        name: r.name as string,
-        enabled: r.enabled as boolean,
-        fields: (r.fields as Array<{ name: string; type: string; required?: boolean }>) || [
-          { name: (r.name as string).toLowerCase().replace(/\s+/g, '_'), type: 'text', required: false },
-        ],
-      }));
+    const { data: knowledgeSources } = await supabase
+      .from('knowledge_sources')
+      .select('summary')
+      .eq('business_id', businessId)
+      .eq('status', 'synced');
 
-      prompt = buildSystemPrompt(
-        biz,
-        (services || []) as Service[],
-        (faqs || []) as FAQ[],
-        callInfoTypes,
-        'VOICE',
-      );
+    const knowledgeContent = (knowledgeSources || [])
+      .map((s: { summary: string | null }) => s.summary)
+      .filter(Boolean)
+      .join('\n\n');
+
+    const hasBookable = (services || []).some((s: Record<string, unknown>) => s.bookable);
+
+    let prompt = buildSystemPrompt(
+      biz,
+      (services || []) as Service[],
+      (faqs || []) as FAQ[],
+      callInfoTypes,
+      'VOICE',
+      knowledgeContent || undefined,
+    );
+
+    if (business.ai_system_prompt?.trim()) {
+      prompt += `\n\n## Custom instructions from the business owner\n${business.ai_system_prompt.trim()}`;
     }
+
+    const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+    const toolSecret = process.env.TOOL_SECRET || '';
+    const tools = hasBookable && toolSecret
+      ? getBookingTools(appUrl, toolSecret, businessId)
+      : getDefaultTools();
 
     const res = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {
       method: 'PATCH',
@@ -104,7 +125,7 @@ export default async function handler(req: Request): Promise<Response> {
         Authorization: `Bearer ${RETELL_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ general_prompt: prompt }),
+      body: JSON.stringify({ general_prompt: prompt, general_tools: tools }),
     });
 
     if (!res.ok) {

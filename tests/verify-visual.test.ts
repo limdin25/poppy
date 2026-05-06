@@ -2,14 +2,14 @@ import { test, expect } from '@playwright/test'
 
 test('verify +351964888769 conversation renders media', async ({ page }) => {
   // Login
-  await page.goto('https://poppy-henna.vercel.app/login')
+  await page.goto('https://app.heyelsie.com/login')
   await page.getByText('Try demo account').click()
   await page.waitForTimeout(500)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await page.waitForURL('https://poppy-henna.vercel.app/', { timeout: 10_000 })
+  await page.waitForURL('https://app.heyelsie.com/', { timeout: 10_000 })
 
   // Navigate to inbox
-  await page.goto('https://poppy-henna.vercel.app/inbox')
+  await page.goto('https://app.heyelsie.com/inbox')
   await page.waitForTimeout(2000)
 
   // Click on +351964888769 conversation
@@ -31,13 +31,13 @@ test('verify +351964888769 conversation renders media', async ({ page }) => {
 })
 
 test('verify +40758891962 conversation - no fake reaction msg', async ({ page }) => {
-  await page.goto('https://poppy-henna.vercel.app/login')
+  await page.goto('https://app.heyelsie.com/login')
   await page.getByText('Try demo account').click()
   await page.waitForTimeout(500)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await page.waitForURL('https://poppy-henna.vercel.app/', { timeout: 10_000 })
+  await page.waitForURL('https://app.heyelsie.com/', { timeout: 10_000 })
 
-  await page.goto('https://poppy-henna.vercel.app/inbox')
+  await page.goto('https://app.heyelsie.com/inbox')
   await page.waitForTimeout(2000)
 
   // Check sidebar doesn't have @s.whatsapp.net

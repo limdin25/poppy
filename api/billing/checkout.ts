@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { requireAuth } from '../lib/auth';
+import { requireAuth } from '../lib/auth.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -68,8 +68,8 @@ export default async function handler(req: Request): Promise<Response> {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${APP_URL}/billing?success=true`,
-      cancel_url: `${APP_URL}/billing?cancelled=true`,
+      success_url: `${APP_URL}/account/billing?success=true`,
+      cancel_url: `${APP_URL}/account/billing?cancelled=true`,
       metadata: { business_id: businessId },
     };
 

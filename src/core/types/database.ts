@@ -17,6 +17,12 @@ export interface Business {
   status: string
   admin_notes: string | null
   plan: string
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  billing_status: string
+  bank_details: { account_name: string; sort_code: string; account_number: string; bank_name?: string } | null
+  google_calendar_tokens: { access_token: string; refresh_token: string; expiry_date: number } | null
+  google_calendar_id: string | null
   created_at: string
   updated_at: string
 }
@@ -30,6 +36,7 @@ export interface Contact {
   whatsapp: string | null
   notes: string | null
   tags: string[]
+  avatar_url: string | null
   created_at: string
   updated_at: string
 }
@@ -162,6 +169,7 @@ export interface Invoice {
   notes: string | null
   due_date: string | null
   pdf_url: string | null
+  payment_method: 'bank_transfer' | 'cash' | 'none'
   payment_link: string | null
   paid_at: string | null
   sent_at: string | null

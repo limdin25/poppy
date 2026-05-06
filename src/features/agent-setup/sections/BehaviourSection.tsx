@@ -20,7 +20,7 @@ const TONE_OPTIONS = [
 
 export default function BehaviourSection() {
   const { businessId } = useAuth()
-  const { data: business, loading: bizLoading, refetch } = useBusiness()
+  const { data: business, refetch } = useBusiness()
   const { syncPrompt, syncing } = useSyncPrompt()
   const [instructions, setInstructions] = useState('')
   const [tone, setTone] = useState('professional')

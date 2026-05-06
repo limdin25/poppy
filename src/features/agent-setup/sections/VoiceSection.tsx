@@ -27,6 +27,7 @@ export default function VoiceSection() {
   const [playing, setPlaying] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!businessId) return
@@ -49,6 +50,7 @@ export default function VoiceSection() {
     if (!businessId || !session) return
     setSaving(true)
     setSaved(false)
+    setSaveError(null)
     try {
       const res = await fetch('/api/agent/update-voice', {
         method: 'POST',
@@ -61,9 +63,11 @@ export default function VoiceSection() {
       if (res.ok) {
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
+      } else {
+        setSaveError('Failed to save voice settings')
       }
-    } catch (err) {
-      console.error('[voice] save error:', err)
+    } catch {
+      setSaveError('Failed to save voice settings')
     } finally {
       setSaving(false)
     }
@@ -137,6 +141,9 @@ export default function VoiceSection() {
         </div>
       </div>
 
+      {saveError && (
+        <p className="text-[13px] text-danger">{saveError}</p>
+      )}
       <button
         onClick={save}
         disabled={saving}

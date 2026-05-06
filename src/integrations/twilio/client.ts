@@ -51,7 +51,7 @@ export async function searchNumbers(
   const url = `${baseUrl()}/AvailablePhoneNumbers/${countryCode}/Local.json?${params}`;
   const res = await fetch(url, { headers: { Authorization: getAuthHeader() } });
   if (!res.ok) throw new Error(`Twilio searchNumbers failed: ${res.status} ${await res.text()}`);
-  const data = await res.json();
+  const data = await res.json() as { available_phone_numbers: TwilioNumber[] };
   return data.available_phone_numbers;
 }
 
@@ -69,7 +69,7 @@ export async function provisionNumber(
     body,
   });
   if (!res.ok) throw new Error(`Twilio provisionNumber failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<TwilioProvisionedNumber>;
 }
 
 /** Create a SIP trunk and associate a phone number with it. */
@@ -86,7 +86,7 @@ export async function createSipTrunk(
     body: new URLSearchParams({ FriendlyName: `trunk-${numberSid}` }),
   });
   if (!trunkRes.ok) throw new Error(`Twilio createSipTrunk failed: ${trunkRes.status} ${await trunkRes.text()}`);
-  const trunk = await trunkRes.json();
+  const trunk = await trunkRes.json() as TwilioSipTrunk;
 
   // Associate number with trunk
   const assocRes = await fetch(`${TRUNKING_BASE}/${trunk.sid}/PhoneNumbers`, {
@@ -109,4 +109,24 @@ export async function releaseNumber(numberSid: string): Promise<void> {
     headers: { Authorization: getAuthHeader() },
   });
   if (!res.ok) throw new Error(`Twilio releaseNumber failed: ${res.status} ${await res.text()}`);
+}
+
+/** Send an SMS message. Uses btoa() for Edge runtime compatibility. */
+export async function sendSMS(
+  from: string,
+  to: string,
+  body: string
+): Promise<{ sid: string }> {
+  const { accountSid, authToken } = getCredentials();
+  const auth = "Basic " + btoa(`${accountSid}:${authToken}`);
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    method: "POST",
+    headers: {
+      Authorization: auth,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ From: from, To: to, Body: body }),
+  });
+  if (!res.ok) throw new Error(`Twilio sendSMS failed: ${res.status} ${await res.text()}`);
+  return res.json() as Promise<{ sid: string }>;
 }

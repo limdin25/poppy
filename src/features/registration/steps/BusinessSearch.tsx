@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Search, MapPin, Globe, Building2, PenLine } from 'lucide-react'
 import type { BusinessData } from '../RegistrationPage'
+
+const GOOGLE_PLACES_KEY = import.meta.env.VITE_GOOGLE_PLACES_KEY || ''
 
 interface Props {
   business: BusinessData
@@ -8,45 +10,59 @@ interface Props {
   onNext: () => void
 }
 
-const MOCK_RESULTS = [
-  {
-    name: 'Smith & Sons Plumbing',
-    address: '14 High Street, Brighton BN1 3FG',
-    phone: '01273 456789',
-    website: 'https://smithplumbing.co.uk',
-    googlePlaceId: 'ChIJ_demo_1',
-    industry: 'Plumber',
-  },
-  {
-    name: 'Smith Electrical Services',
-    address: '42 Western Road, Brighton BN1 2EB',
-    phone: '01273 987654',
-    website: '',
-    googlePlaceId: 'ChIJ_demo_2',
-    industry: 'Electrician',
-  },
-]
-
 export default function BusinessSearch({ business, onUpdate, onNext }: Props) {
   const [query, setQuery] = useState(business.name)
   const [results, setResults] = useState<BusinessData[]>([])
   const [selected, setSelected] = useState(!!business.name)
   const [showManual, setShowManual] = useState(false)
   const [website, setWebsite] = useState(business.website)
+  const [searching, setSearching] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function handleSearch(value: string) {
     setQuery(value)
     setSelected(false)
-    if (value.length >= 3) {
-      // TODO: Replace with real Google Places API call
-      setResults(
-        MOCK_RESULTS.filter((r) =>
-          r.name.toLowerCase().includes(value.toLowerCase())
-        )
-      )
-    } else {
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    if (value.length < 3) {
       setResults([])
+      return
     }
+
+    debounceRef.current = setTimeout(async () => {
+      if (!GOOGLE_PLACES_KEY) return
+      setSearching(true)
+      try {
+        const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': GOOGLE_PLACES_KEY,
+            'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.primaryTypeDisplayName',
+          },
+          body: JSON.stringify({
+            textQuery: value,
+            locationBias: { rectangle: { low: { latitude: 49.9, longitude: -6.4 }, high: { latitude: 58.7, longitude: 1.8 } } },
+            maxResultCount: 5,
+          }),
+        })
+        const data = await res.json()
+        const places: BusinessData[] = (data.places ?? []).map((p: any) => ({
+          name: p.displayName?.text ?? '',
+          address: p.formattedAddress ?? '',
+          phone: p.nationalPhoneNumber ?? '',
+          website: p.websiteUri ?? '',
+          googlePlaceId: p.id ?? '',
+          industry: p.primaryTypeDisplayName?.text ?? '',
+        }))
+        setResults(places)
+      } catch {
+        setResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 350)
   }
 
   function selectResult(result: BusinessData) {
@@ -116,6 +132,12 @@ export default function BusinessSearch({ business, onUpdate, onNext }: Props) {
           placeholder="Search your business name..."
           className="h-12 w-full rounded-xl border border-border bg-surface pl-10 pr-4 text-[15px] text-ink outline-none transition-colors placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
+
+        {searching && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+          </div>
+        )}
 
         {/* Dropdown results */}
         {results.length > 0 && (

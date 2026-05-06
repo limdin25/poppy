@@ -7,7 +7,7 @@ const supabase = createClient(
 
 const UNIPILE_TOKEN = process.env.UNIPILE_TOKEN!;
 const UNIPILE_DSN = process.env.UNIPILE_DSN!;
-const APP_URL = process.env.APP_URL || 'https://poppy-henna.vercel.app';
+const APP_URL = process.env.APP_URL || 'https://app.heyelsie.com';
 
 export const config = { runtime: 'edge' };
 

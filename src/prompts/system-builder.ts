@@ -1,4 +1,4 @@
-import { CHANNEL_RULES, type Channel } from './channel-rules';
+import { CHANNEL_RULES, type Channel } from './channel-rules.js';
 
 export interface Business {
   name: string;
@@ -35,6 +35,7 @@ export function buildSystemPrompt(
   faqs: FAQ[],
   callInfoTypes: CallInfoType[],
   channel?: Channel,
+  knowledgeContent?: string,
 ): string {
   const sections: string[] = [];
 
@@ -92,6 +93,25 @@ export function buildSystemPrompt(
       return `### ${c.name}\nCollect the following:\n${fields}`;
     });
     sections.push(`## Information to collect\n${infoLines.join('\n\n')}`);
+  }
+
+  // Knowledge base
+  if (knowledgeContent?.trim()) {
+    sections.push(`## Knowledge base\nUse the following information to answer caller questions:\n${knowledgeContent.trim()}`);
+  }
+
+  // Qualification (only when bookable services exist)
+  const hasBookable = services.some((s) => s.bookable);
+  if (hasBookable) {
+    sections.push(`## Qualification
+When a caller wants to book a service marked [BOOKABLE], collect the following BEFORE offering appointment times:
+1. **Postcode** — to confirm they're in the service area
+2. **Issue details** — what specifically needs doing
+3. **Urgency** — is it an emergency (today), within a few days, or just planning ahead
+
+Ask these naturally during the conversation, one at a time. Once you have all three, use the check_availability tool to find available slots and offer the caller up to 3 options.
+
+If the caller doesn't want to book right now, take their name and number and let them know someone will follow up with available times.`);
   }
 
   // Behaviour rules

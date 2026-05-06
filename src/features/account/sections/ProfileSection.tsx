@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { User, Mail, Lock, Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { User, Mail, Lock, Loader2, Camera } from 'lucide-react'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/integrations/supabase/browser'
 
@@ -7,16 +7,36 @@ export default function ProfileSection() {
   const { user } = useAuth()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (user) {
       setName(user.user_metadata?.name || '')
       setEmail(user.email || '')
+      setAvatarUrl(user.user_metadata?.avatar_url || '')
     }
   }, [user])
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+    if (file.size > 2 * 1024 * 1024) { setError('File must be under 2MB'); return }
+    setUploading(true)
+    setError('')
+    const ext = file.name.split('.').pop()
+    const path = `avatars/${user.id}.${ext}`
+    const { error: uploadErr } = await supabase.storage.from('uploads').upload(path, file, { upsert: true })
+    if (uploadErr) { setError(uploadErr.message); setUploading(false); return }
+    const { data: { publicUrl } } = supabase.storage.from('uploads').getPublicUrl(path)
+    await supabase.auth.updateUser({ data: { avatar_url: publicUrl } })
+    setAvatarUrl(publicUrl)
+    setUploading(false)
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -42,6 +62,27 @@ export default function ProfileSection() {
         {error && (
           <div className="mt-3 rounded-lg bg-danger/10 px-4 py-2 text-[13px] text-danger">{error}</div>
         )}
+
+        <div className="mt-4 flex items-center gap-4">
+          <div className="relative">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Avatar" className="h-16 w-16 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-elevated text-[20px] font-semibold text-ink-muted">
+                {(name || email || '?')[0].toUpperCase()}
+              </div>
+            )}
+            {uploading && <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/30"><Loader2 size={16} className="animate-spin text-white" /></div>}
+          </div>
+          <div>
+            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 text-[13px] font-medium text-brand hover:underline">
+              <Camera size={14} />
+              {avatarUrl ? 'Change photo' : 'Upload photo'}
+            </button>
+            <p className="mt-0.5 text-[12px] text-ink-subtle">PNG or JPG, max 2MB</p>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+          </div>
+        </div>
 
         <div className="mt-4 space-y-4">
           <div>
@@ -104,7 +145,16 @@ export default function ProfileSection() {
         <p className="mt-1 text-[13px] text-ink-muted">
           Permanently delete your account and all associated data.
         </p>
-        <button className="mt-4 h-10 rounded-lg border border-danger/30 px-4 text-[13px] font-medium text-danger transition hover:bg-danger/5">
+        <button
+          onClick={async () => {
+            if (!window.confirm('Are you sure? This will permanently delete your account and all data. This cannot be undone.')) return
+            const { error: delErr } = await supabase.rpc('delete_user')
+            if (delErr) { setError(`Delete failed: ${delErr.message}`); return }
+            await supabase.auth.signOut()
+            window.location.href = '/'
+          }}
+          className="mt-4 h-10 rounded-lg border border-danger/30 px-4 text-[13px] font-medium text-danger transition hover:bg-danger/5"
+        >
           Delete account
         </button>
       </div>

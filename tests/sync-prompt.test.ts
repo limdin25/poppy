@@ -123,6 +123,21 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('## Information to collect');
     expect(prompt).toContain('## Behaviour rules');
   });
+
+  it('includes qualification section when bookable services exist', () => {
+    const prompt = buildSystemPrompt(BUSINESS, SERVICES, [], []);
+    expect(prompt).toContain('## Qualification');
+    expect(prompt).toContain('Postcode');
+    expect(prompt).toContain('Issue details');
+    expect(prompt).toContain('Urgency');
+    expect(prompt).toContain('check_availability');
+  });
+
+  it('omits qualification section when no bookable services', () => {
+    const nonBookable = [{ name: 'Consulting', bookable: false }];
+    const prompt = buildSystemPrompt(BUSINESS, nonBookable, [], []);
+    expect(prompt).not.toContain('## Qualification');
+  });
 });
 
 describe('sync-prompt API contract', () => {
@@ -145,14 +160,16 @@ describe('sync-prompt API contract', () => {
     expect(sentBody.general_prompt).toContain('Caller name');
   });
 
-  it('uses ai_system_prompt verbatim when set', async () => {
+  it('appends ai_system_prompt as custom instructions when set', async () => {
     mockBusinessData.ai_system_prompt = 'Custom prompt override';
     await callSyncPrompt({ businessId: 'test-biz-123' });
     const lastCall = mockRetellFetch.mock.calls.find(
       (c: [string, RequestInit]) => c[0].includes('update-retell-llm')
     );
     const sentBody = JSON.parse(lastCall![1].body as string);
-    expect(sentBody.general_prompt).toBe('Custom prompt override');
+    expect(sentBody.general_prompt).toContain('## Custom instructions from the business owner');
+    expect(sentBody.general_prompt).toContain('Custom prompt override');
+    expect(sentBody.general_prompt).toContain('Emergency Plumbing');
     mockBusinessData.ai_system_prompt = null;
   });
 });

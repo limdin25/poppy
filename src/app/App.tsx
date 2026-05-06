@@ -18,6 +18,7 @@ const InvoicesPage = lazy(() => import('@/features/invoices/InvoicesPage'))
 const AgentSetupPage = lazy(() => import('@/features/agent-setup/AgentSetupPage'))
 const AccountPage = lazy(() => import('@/features/account/AccountPage'))
 const AdminApp = lazy(() => import('@/features/admin/AdminApp'))
+const LandingPage = lazy(() => import('@/features/landing/LandingPage'))
 
 function LoadingFallback() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
         {/* Public — no layout */}
+        <Route path="welcome" element={<LandingPage />} />
         <Route path="register" element={<RegistrationPage />} />
         <Route path="onboarding" element={<OnboardingPage />} />
         <Route path="login" element={<LoginPage />} />

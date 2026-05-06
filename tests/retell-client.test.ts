@@ -103,7 +103,7 @@ describe('Retell Agent API', () => {
     mockFetchResponse = {
       ok: true,
       status: 200,
-      body: { agent_id: 'agent_test456', webhook_url: 'https://poppy-henna.vercel.app/api/webhooks/retell' },
+      body: { agent_id: 'agent_test456', webhook_url: 'https://app.heyelsie.com/api/webhooks/retell' },
     };
 
     const res = await fetch('https://api.retellai.com/update-agent/agent_test456', {
@@ -113,12 +113,12 @@ describe('Retell Agent API', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        webhook_url: 'https://poppy-henna.vercel.app/api/webhooks/retell',
+        webhook_url: 'https://app.heyelsie.com/api/webhooks/retell',
       }),
     });
 
     const data = await res.json();
-    expect(data.webhook_url).toBe('https://poppy-henna.vercel.app/api/webhooks/retell');
+    expect(data.webhook_url).toBe('https://app.heyelsie.com/api/webhooks/retell');
   });
 });
 

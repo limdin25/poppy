@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { requireAuth } from '../lib/auth';
+import { requireAuth } from '../lib/auth.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -67,7 +67,7 @@ export default async function handler(req: Request): Promise<Response> {
         language: 'en-GB',
         enable_backchannel: true,
         begin_message: business.greeting || null,
-        webhook_url: `${process.env.APP_URL || 'https://poppy-henna.vercel.app'}/api/webhooks/retell`,
+        webhook_url: `${process.env.APP_URL || 'https://app.heyelsie.com'}/api/webhooks/retell`,
       }),
     });
 

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchAndStoreAvatar } from '../lib/fetch-avatar.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -147,33 +148,151 @@ async function fetchUnipileAccount(accountId: string) {
   };
 }
 
-async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>): Promise<string> {
-  let messages = history.length > 0 ? history : [{ role: 'user' as const, content: '(new conversation)' }];
-  // Anthropic requires first message to be role 'user'
-  if (messages[0]?.role === 'assistant') {
-    messages = [{ role: 'user' as const, content: '(prior context)' }, ...messages];
-  }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
+const BOOKING_TOOLS = [
+  {
+    name: 'check_availability',
+    description: 'Check available appointment slots for a service. Call this after collecting postcode, issue details, and urgency.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        business_id: { type: 'string', description: 'The business ID' },
+        date_from: { type: 'string', description: 'Start date YYYY-MM-DD' },
+        date_to: { type: 'string', description: 'End date YYYY-MM-DD' },
+      },
+      required: ['business_id', 'date_from', 'date_to'],
     },
-    body: JSON.stringify({
+  },
+  {
+    name: 'book_appointment',
+    description: 'Book a confirmed appointment. Only call after the customer confirms a specific slot.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        business_id: { type: 'string', description: 'The business ID' },
+        service_name: { type: 'string', description: 'Service being booked' },
+        start_time: { type: 'string', description: 'ISO 8601 start time' },
+        caller_name: { type: 'string', description: 'Customer name' },
+        caller_phone: { type: 'string', description: 'Customer phone' },
+        caller_email: { type: 'string', description: 'Customer email if known' },
+        postcode: { type: 'string', description: 'Customer postcode' },
+        issue_details: { type: 'string', description: 'Description of job needed' },
+      },
+      required: ['business_id', 'service_name', 'start_time', 'caller_name'],
+    },
+  },
+];
+
+async function executeToolCall(name: string, input: Record<string, string>, conversationId?: string): Promise<string> {
+  const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+  const toolSecret = process.env.TOOL_SECRET || '';
+
+  if (name === 'check_availability') {
+    const res = await fetch(`${appUrl}/api/calendar/availability`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-tool-secret': toolSecret },
+      body: JSON.stringify(input),
+    });
+    const data = await res.json();
+    if (!res.ok) return JSON.stringify({ error: (data as Record<string, string>).error || 'Failed' });
+    if (conversationId) {
+      await supabase.from('conversations').update({ qualified_at: new Date().toISOString() }).eq('id', conversationId);
+    }
+    const slots = (data as { slots: Array<{ start: string; end: string }> }).slots || [];
+    if (slots.length === 0) return 'No available slots found in this date range.';
+    return slots.slice(0, 5).map((s: { start: string }) => {
+      const d = new Date(s.start);
+      return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) +
+        ' at ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }).join('\n');
+  }
+
+  if (name === 'book_appointment') {
+    const res = await fetch(`${appUrl}/api/calendar/book`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-tool-secret': toolSecret },
+      body: JSON.stringify({ ...input, channel: 'whatsapp' }),
+    });
+    const data = await res.json();
+    if (!res.ok) return JSON.stringify({ error: (data as Record<string, string>).error || 'Booking failed' });
+    return 'Appointment booked successfully.';
+  }
+
+  return 'Unknown tool.';
+}
+
+async function generateAIReply(
+  systemPrompt: string,
+  history: Array<{role: 'user' | 'assistant', content: string}>,
+  businessId?: string,
+  hasBookableServices?: boolean,
+  conversationId?: string,
+): Promise<string> {
+  let messages: Array<Record<string, unknown>> = history.length > 0 ? [...history] : [{ role: 'user', content: '(new conversation)' }];
+  if ((messages[0] as Record<string, unknown>)?.role === 'assistant') {
+    messages = [{ role: 'user', content: '(prior context)' }, ...messages];
+  }
+
+  const useTools = hasBookableServices && businessId;
+  const tools = useTools
+    ? BOOKING_TOOLS.map(t => ({
+        ...t,
+        input_schema: {
+          ...t.input_schema,
+          properties: {
+            ...t.input_schema.properties,
+            business_id: { ...t.input_schema.properties.business_id, description: `Always use: ${businessId}` },
+          },
+        },
+      }))
+    : undefined;
+
+  for (let round = 0; round < 3; round++) {
+    const body: Record<string, unknown> = {
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: systemPrompt,
       messages,
-    }),
-  });
-  if (!res.ok) {
-    console.error('[ai-reply] Anthropic error:', res.status, await res.text().catch(() => ''));
-    return '';
+    };
+    if (tools) body.tools = tools;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      console.error('[ai-reply] Anthropic error:', res.status, await res.text().catch(() => ''));
+      return '';
+    }
+
+    const data = await res.json() as {
+      content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, string> }>;
+      stop_reason: string;
+    };
+
+    if (data.stop_reason === 'tool_use') {
+      const toolResults: Array<Record<string, unknown>> = [];
+      for (const block of data.content) {
+        if (block.type === 'tool_use' && block.id && block.name) {
+          const result = await executeToolCall(block.name, block.input || {}, conversationId);
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+        }
+      }
+      messages.push({ role: 'assistant', content: data.content });
+      messages.push({ role: 'user', content: toolResults });
+      continue;
+    }
+
+    const textBlock = data.content.find(b => b.type === 'text');
+    return stripMarkdown(textBlock?.text || '');
   }
-  const data = await res.json() as { content?: Array<{ text?: string }> };
-  const raw = data.content?.[0]?.text || '';
-  return stripMarkdown(raw);
+
+  return '';
 }
 
 async function buildBusinessContext(businessId: string, opts?: { contactName?: string; channel?: string }): Promise<string> {
@@ -416,6 +535,8 @@ export default async function handler(req: Request): Promise<Response> {
       const messageText =
         (typeof payload.message === 'string' ? payload.message : payload.message?.text) || '';
       const messageSubject = payload.subject || payload.message?.subject || '';
+      const chatId = payload.chat_id || payload.message?.chat_id || '';
+      const senderAttendeeId = payload.sender_attendee_id || payload.message?.sender_attendee_id || '';
 
       // Attachments from WhatsApp messages (images, files, audio)
       const rawAttachments: Array<{ id: string; type?: string; mimetype?: string }> =
@@ -513,7 +634,7 @@ export default async function handler(req: Request): Promise<Response> {
       } else {
         const { data: existing } = await supabase
           .from('contacts')
-          .select('id, name')
+          .select('id, name, avatar_url')
           .eq('business_id', businessId)
           .eq('phone', senderPhone)
           .maybeSingle();
@@ -521,6 +642,11 @@ export default async function handler(req: Request): Promise<Response> {
         if (existing) {
           contactId = existing.id;
           if (!resolvedName && existing.name && !isRawId(existing.name)) resolvedName = existing.name;
+          // For outbound, senderAttendeeId is Hugo — use chatId lookup instead
+          const contactAttId = isOutboundWA ? undefined : (senderAttendeeId || undefined);
+          if (!existing.avatar_url && (contactAttId || chatId)) {
+            fetchAndStoreAvatar(existing.id, { attendeeId: contactAttId, chatId: chatId || undefined }).catch(() => {});
+          }
         } else {
           const { data: newContact } = await supabase
             .from('contacts')
@@ -533,6 +659,10 @@ export default async function handler(req: Request): Promise<Response> {
             .select('id')
             .single();
           contactId = newContact?.id || null;
+          const contactAttId = isOutboundWA ? undefined : (senderAttendeeId || undefined);
+          if (contactId && (contactAttId || chatId)) {
+            fetchAndStoreAvatar(contactId, { attendeeId: contactAttId, chatId: chatId || undefined }).catch(() => {});
+          }
         }
       }
 
@@ -622,17 +752,19 @@ export default async function handler(req: Request): Promise<Response> {
       const draftMode = (channel as any).draft_mode !== false;
 
       if (channel.auto_reply_enabled && convoAiHandling && !spam && !isOutboundWA && cleanText) {
-        const [systemPrompt, history] = await Promise.all([
+        const [systemPrompt, history, svcRes] = await Promise.all([
           buildBusinessContext(businessId, { contactName: resolvedName || undefined, channel: conversationChannel }),
           getConversationHistory(conversationId!),
+          supabase.from('services').select('bookable').eq('business_id', businessId).eq('bookable', true).limit(1),
         ]);
+        const hasBookable = (svcRes.data?.length ?? 0) > 0;
 
         if (systemPrompt) {
           const fullPrompt = isEmail
             ? `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`
             : systemPrompt;
 
-          const reply = await generateAIReply(fullPrompt, history);
+          const reply = await generateAIReply(fullPrompt, history, businessId, hasBookable, conversationId);
 
           if (reply) {
             if (!draftMode) {
@@ -935,14 +1067,16 @@ export default async function handler(req: Request): Promise<Response> {
       const emailDraftMode = (channel as any).draft_mode !== false;
 
       if (!isOutbound && channel.auto_reply_enabled && convoAiOn && !emailIsSpam) {
-        const [systemPrompt, history] = await Promise.all([
+        const [systemPrompt, history, emailSvcRes] = await Promise.all([
           buildBusinessContext(businessId, { contactName: resolvedContactName || undefined, channel: 'email' }),
           getConversationHistory(conversationId!),
+          supabase.from('services').select('bookable').eq('business_id', businessId).eq('bookable', true).limit(1),
         ]);
+        const emailHasBookable = (emailSvcRes.data?.length ?? 0) > 0;
 
         if (systemPrompt) {
           const fullPrompt = `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`;
-          const reply = await generateAIReply(fullPrompt, history);
+          const reply = await generateAIReply(fullPrompt, history, businessId, emailHasBookable, conversationId);
 
           if (reply) {
             const replySubject = emailSubject

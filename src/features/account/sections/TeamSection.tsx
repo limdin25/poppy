@@ -130,7 +130,15 @@ export default function TeamSection() {
                   {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
                 </span>
                 {member.role !== 'owner' && (
-                  <button className="text-ink-subtle hover:text-ink">
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`Remove ${member.name || member.email} from the team?`)) return
+                      await supabase.from('team_members').delete().eq('id', member.id)
+                      setMembers(members.filter(m => m.id !== member.id))
+                    }}
+                    className="text-ink-subtle hover:text-danger"
+                    title="Remove member"
+                  >
                     <MoreHorizontal size={16} />
                   </button>
                 )}

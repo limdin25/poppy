@@ -41,7 +41,7 @@ export default function ContactsPage() {
   if (selected && typeof window !== 'undefined' && window.innerWidth < 1024) {
     return (
       <div className="flex h-full flex-col">
-        <ContactDetail contact={selected} onBack={() => setSelectedId(null)} />
+        <ContactDetail contact={selected} onBack={() => setSelectedId(null)} onDeleted={() => { setSelectedId(null); refetch() }} />
       </div>
     )
   }
@@ -88,7 +88,7 @@ export default function ContactsPage() {
                   selectedId === contact.id ? 'bg-brand-50 border border-brand/20' : 'hover:bg-elevated border border-transparent'
                 )}
               >
-                <Avatar name={contact.name ?? 'Unknown'} size="sm" className="border-0" />
+                <Avatar src={contact.avatar_url ?? undefined} name={contact.name ?? 'Unknown'} size="sm" className="border-0" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
                     <p className="truncate text-[13px] font-medium text-ink">{contact.name ?? 'Unknown'}</p>
@@ -111,7 +111,7 @@ export default function ContactsPage() {
 
       <div className="hidden flex-1 lg:flex lg:flex-col">
         {selected ? (
-          <ContactDetail contact={selected} onBack={() => setSelectedId(null)} desktop />
+          <ContactDetail contact={selected} onBack={() => setSelectedId(null)} onDeleted={() => { setSelectedId(null); refetch() }} desktop />
         ) : (
           <div className="flex flex-1 items-center justify-center">
             <EmptyState
@@ -201,7 +201,7 @@ function AddContactModal({ businessId, onClose, onAdded }: { businessId: string;
   )
 }
 
-function ContactDetail({ contact, onBack, desktop }: { contact: Contact; onBack: () => void; desktop?: boolean }) {
+function ContactDetail({ contact, onBack, desktop, onDeleted }: { contact: Contact; onBack: () => void; desktop?: boolean; onDeleted?: () => void }) {
   return (
     <div className="flex flex-1 flex-col">
       <div className={cn('flex-1 overflow-y-auto', desktop ? 'p-5' : 'p-4')}>
@@ -214,7 +214,7 @@ function ContactDetail({ contact, onBack, desktop }: { contact: Contact; onBack:
 
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <Avatar name={contact.name ?? 'Unknown'} size="lg" className="border-0" />
+            <Avatar src={contact.avatar_url ?? undefined} name={contact.name ?? 'Unknown'} size="lg" className="border-0" />
             <div>
               <h2 className="text-lg font-semibold text-ink">{contact.name ?? 'Unknown'}</h2>
               {contact.tags.length > 0 && (
@@ -226,7 +226,15 @@ function ContactDetail({ contact, onBack, desktop }: { contact: Contact; onBack:
               )}
             </div>
           </div>
-          <button className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-ink">
+          <button
+            onClick={async () => {
+              if (!window.confirm(`Delete ${contact.name ?? 'this contact'}? This cannot be undone.`)) return
+              await supabase.from('contacts').delete().eq('id', contact.id)
+              onDeleted?.()
+            }}
+            className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-danger"
+            title="Delete contact"
+          >
             <MoreHorizontal size={16} />
           </button>
         </div>

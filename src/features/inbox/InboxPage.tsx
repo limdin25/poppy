@@ -202,7 +202,7 @@ export default function InboxPage() {
                   )}
                 >
                   <div className="relative">
-                    <Avatar name={contactLabel} size="sm" className="border-0" />
+                    <Avatar src={conv.contact?.avatar_url ?? undefined} name={contactLabel} size="sm" className="border-0" />
                     {unread && (
                       <div className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand" />
                     )}
@@ -415,7 +415,7 @@ function ThreadView({
               <ArrowLeft size={18} />
             </button>
           )}
-          <Avatar name={contactName} size="sm" className="border-0" />
+          <Avatar src={conversation.contact?.avatar_url ?? undefined} name={contactName} size="sm" className="border-0" />
           <div className="min-w-0 flex-1">
             {editingName ? (
               <div className="flex items-center gap-1.5">
@@ -515,7 +515,7 @@ function ThreadView({
                     </span>
                   </div>
                 )}
-                <div className={isDraft ? 'rounded-xl border-2 border-dashed border-amber-300 p-1' : ''}>
+                <div className={isDraft ? 'rounded-xl border-2 border-dashed border-amber-300 p-1 w-fit ml-auto' : ''}>
                   {isDraft && editingDraftId === msg.id ? (
                     <div className="rounded-xl bg-brand/90 p-3">
                       <textarea

@@ -116,7 +116,7 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 - All 7 user pages wired to real Supabase queries (no more mock data)
 - Admin pages still use mock data (to be wired separately)
 - Data hooks: useCalls, useContacts, useConversations, useMessages, useAppointments, useQuotes, useInvoices, useBusiness
-- **Deployed to Vercel**: `https://poppy-henna.vercel.app` (demo: `demo@poppy.ai` / `demo1234`)
+- **Deployed to Vercel**: `https://app.heyelsie.com` (demo: `demo@poppy.ai` / `demo1234`)
 - **Unipile WhatsApp integration live**: webhook + polling, 8 API routes (connect, webhook, send, poll, compose, attachment, approve, rewrite)
 - **AI auto-reply**: Claude Sonnet 4.6 (switched from OpenAI gpt-4o-mini)
 - **Media support**: images, audio, video, files — downloaded from Unipile → Supabase Storage → rendered in inbox
@@ -131,16 +131,23 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
   - Agent: `agent_adb8cb0848bc2d3b3a4551933e`, LLM: `llm_c2071f7699e2fb91f68f49957bdf`
   - Voice: `retell-Willa` (British female), Language: `en-GB`
   - Phone: `+447426495169` (imported via SIP trunk)
-  - Webhook: `https://poppy-henna.vercel.app/api/webhooks/retell` (call_ended + call_analyzed)
+  - Webhook: `https://app.heyelsie.com/api/webhooks/retell` (call_ended + call_analyzed)
   - Transcript extraction via Claude Sonnet, contact creation, call records
   - Agent setup page wired: voice selection saves to Retell API, sync-prompt rebuilds LLM prompt from business data
 
+- **Stripe billing live**:
+  - Product: `prod_USeJwGZ6Uyh9Sg` (Poppy AI Receptionist)
+  - Prices: Starter £49 (`price_1TTj1DLdAEhwWg6w9uuBcjJl`), Professional £99 (`price_1TTj1DLdAEhwWg6wERoybYsY`), Business £199 (`price_1TTj1DLdAEhwWg6w2l8IOzJ9`)
+  - Webhook: `we_1TTj28LdAEhwWg6wraqzHzdd` → updates plan + billing_status
+  - Shared Stripe account with Lemlin (`acct_1M9GXPLdAEhwWg6w`)
+- **Admin pages**: fully wired to real Supabase via `/api/admin/*` routes
+- **Build errors fixed**: all API route imports use `.js` extensions for Vercel node16 compat
+
 ### What's next
-1. Wire admin pages to real Supabase queries
-2. Set up Stripe billing
-3. Custom domain
-4. Wire agent setup "Save" to sync prompt to Retell (services, FAQs, greeting, behaviour changes)
-5. Test live call end-to-end
+1. Custom domain
+2. Wire agent setup "Save" to sync prompt to Retell (services, FAQs, greeting, behaviour changes)
+3. Test live call end-to-end
+4. Google Places API for business address autocomplete
 
 ---
 

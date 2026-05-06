@@ -41,7 +41,7 @@ All API keys are stored as environment variables. Never hardcoded.
 - Language: `en-GB`
 - Phone: `+447426495169` (imported custom number via Twilio SIP trunk)
 - SIP termination URI: `retellerminationsipuri.pstn.twilio.com`
-- Webhook: `https://poppy-henna.vercel.app/api/webhooks/retell`
+- Webhook: `https://app.heyelsie.com/api/webhooks/retell`
 
 **Two-step agent setup:**
 1. Create/update Retell LLM (with `general_prompt`) → returns `llm_id`
@@ -98,11 +98,11 @@ All API keys are stored as environment variables. Never hardcoded.
 | `UNIPILE_DSN` | Unipile API base URL |
 | `UNIPILE_WEBHOOK_SECRET` | Webhook auth header value (`poppy-webhook-secret-2026-05-02`) |
 | `ANTHROPIC_API_KEY` | Used by webhook for AI auto-replies (Claude Sonnet 4.6) |
-| `APP_URL` | Redirect URL after QR scan (`https://poppy-henna.vercel.app`) |
+| `APP_URL` | Redirect URL after QR scan (`https://app.heyelsie.com`) |
 
 **Webhook registration:**
 - Webhook ID: `V0dsQmpRQiW79wPqc6E6kQ`
-- URL: `https://poppy-henna.vercel.app/api/webhooks/unipile`
+- URL: `https://app.heyelsie.com/api/webhooks/unipile`
 - Events: `message_received`
 - Auth: `Unipile-Auth` header string equality check (not HMAC)
 

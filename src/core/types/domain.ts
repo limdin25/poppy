@@ -29,6 +29,7 @@ export type AppointmentStatus =
   | 'confirmed'
   | 'cancelled'
   | 'completed'
+  | 'no_show'
 
 export type QuoteStatus =
   | 'draft'

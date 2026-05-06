@@ -7,6 +7,14 @@
     {
       "path": "/api/messages/poll",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/follow-up",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/contacts/sync-avatars",
+      "schedule": "30 * * * *"
     }
   ]
 }

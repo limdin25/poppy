@@ -64,7 +64,7 @@ export async function createHostedLink(
     }),
   });
   if (!res.ok) throw new Error(`Unipile createHostedLink failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<HostedLinkResponse>;
 }
 
 /** Get a connected account by ID. */
@@ -74,7 +74,7 @@ export async function getAccount(accountId: string): Promise<UnipileAccount> {
     headers: getHeaders(),
   });
   if (!res.ok) throw new Error(`Unipile getAccount failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<UnipileAccount>;
 }
 
 /** List recent messages for a connected account. */
@@ -87,8 +87,8 @@ export async function listMessages(
     headers: getHeaders(),
   });
   if (!res.ok) throw new Error(`Unipile listMessages failed: ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  return data.items ?? data;
+  const data = await res.json() as { items?: UnipileMessage[] } | UnipileMessage[];
+  return (data as { items?: UnipileMessage[] }).items ?? (data as UnipileMessage[]);
 }
 
 /** Send a WhatsApp message via a connected account. */
@@ -108,7 +108,7 @@ export async function sendWhatsApp(
     }),
   });
   if (!res.ok) throw new Error(`Unipile sendWhatsApp failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<SendMessageResponse>;
 }
 
 /** Send a WhatsApp message to a new chat (by phone number). */
@@ -128,7 +128,7 @@ export async function sendToChat(
     }),
   });
   if (!res.ok) throw new Error(`Unipile sendToChat failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<SendMessageResponse>;
 }
 
 /** Send an email via a connected email account. */
@@ -150,5 +150,5 @@ export async function sendEmail(
     }),
   });
   if (!res.ok) throw new Error(`Unipile sendEmail failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<SendMessageResponse>;
 }

@@ -24,6 +24,16 @@ export interface RetellTool {
   name: string;
   type: string;
   description?: string;
+  url?: string;
+  method?: string;
+  headers?: Record<string, string>;
+  parameters?: {
+    type: string;
+    properties: Record<string, { type: string; description?: string }>;
+    required?: string[];
+  };
+  speak_during_execution?: boolean;
+  speak_after_execution?: boolean;
   variables?: Array<{ type: string; name: string; description: string }>;
 }
 
@@ -100,7 +110,7 @@ export async function createAgent(
       voice_id: voiceId,
       language: "en-GB",
       enable_backchannel: true,
-      webhook_url: `${process.env.APP_URL || "https://poppy-henna.vercel.app"}/api/webhooks/retell`,
+      webhook_url: `${process.env.APP_URL || "https://app.heyelsie.com"}/api/webhooks/retell`,
     }),
   });
   if (!res.ok) throw new Error(`Retell createAgent failed: ${res.status} ${await res.text()}`);

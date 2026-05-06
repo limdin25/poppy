@@ -22,6 +22,8 @@ export default function NumberSetup({ businessId, onNumberReady }: Props) {
   const [error, setError] = useState('')
   const provisionedRef = useRef(false)
 
+  const phoneRef = useRef<string | null>(null)
+
   useEffect(() => {
     if (provisionedRef.current || !businessId || !session) return
     provisionedRef.current = true
@@ -38,6 +40,8 @@ export default function NumberSetup({ businessId, onNumberReady }: Props) {
       .then((data) => {
         if (!data.ok) {
           setError(data.error || 'Failed to provision number')
+        } else {
+          phoneRef.current = data.phone_number || '+44 7426 495169'
         }
       })
       .catch(() => setError('Network error — please try again'))
@@ -49,7 +53,7 @@ export default function NumberSetup({ businessId, onNumberReady }: Props) {
         const next = p + Math.random() * 6 + 1
         if (next >= 100) {
           clearInterval(interval)
-          setTimeout(() => onNumberReady('+44 7426 495169'), 1000)
+          setTimeout(() => onNumberReady(phoneRef.current || '+44 7426 495169'), 1000)
           return 100
         }
 
