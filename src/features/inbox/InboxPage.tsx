@@ -511,7 +511,7 @@ function ThreadView({
                 {isDraft && (
                   <div className="flex justify-end">
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 mb-1">
-                      Draft — review before sending
+                      Draft - review before sending
                     </span>
                   </div>
                 )}
