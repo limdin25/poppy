@@ -12,7 +12,7 @@ const ALICE_FEATURES = [
   { icon: 'mail', label: 'Sends updates directly to your inbox' },
 ]
 
-const FEATURE_ICONS: Record<string, JSX.Element> = {
+const FEATURE_ICONS: Record<string, React.ReactNode> = {
   phone: <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8a19.79 19.79 0 01-3.07-8.62 2 2 0 011.99-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.91a16 16 0 006.72 6.72l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />,
   wrench: <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />,
   money: <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.86 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z" />,
@@ -29,29 +29,6 @@ const PARTNERS = [
   'Premier Salons',
   'Bright Dental',
   'Green Gardens',
-]
-
-const SLIDES = [
-  {
-    title: 'Voice',
-    desc: 'Answers calls 24/7 with no hold time, your customers always reach someone.',
-    mockup: 'voice',
-  },
-  {
-    title: 'Text / SMS',
-    desc: 'Sends appointment confirmations and reminders via SMS automatically.',
-    mockup: 'sms',
-  },
-  {
-    title: 'Email',
-    desc: 'Manages follow-ups and sends booking details straight to your customer\u2019s inbox.',
-    mockup: 'email',
-  },
-  {
-    title: 'WhatsApp',
-    desc: 'Responds to enquiries and sends confirmations on WhatsApp instantly.',
-    mockup: 'whatsapp',
-  },
 ]
 
 function FeatureIcon({ name }: { name: string }) {
