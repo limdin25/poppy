@@ -6,6 +6,7 @@ import GreetingSection from './sections/GreetingSection'
 import CallInfoSection from './sections/CallInfoSection'
 import VoiceSection from './sections/VoiceSection'
 import BehaviourSection from './sections/BehaviourSection'
+import TimingSection from './sections/TimingSection'
 import TrainingSection from './sections/TrainingSection'
 
 const tabs = [
@@ -15,6 +16,7 @@ const tabs = [
   { to: '/agent/call-info', label: 'Call Info' },
   { to: '/agent/voice', label: 'Voice' },
   { to: '/agent/behaviour', label: 'Behaviour' },
+  { to: '/agent/timing', label: 'Timing' },
   { to: '/agent/training', label: 'Training' },
 ]
 
@@ -57,6 +59,7 @@ export default function AgentSetupPage() {
           <Route path="call-info" element={<CallInfoSection />} />
           <Route path="voice" element={<VoiceSection />} />
           <Route path="behaviour" element={<BehaviourSection />} />
+          <Route path="timing" element={<TimingSection />} />
           <Route path="training" element={<TrainingSection />} />
         </Routes>
       </div>

@@ -1,6 +1,7 @@
 import { Hash, Phone } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { MetricCard } from '../components/MetricCard'
+import { AdminError } from '../components/AdminError'
 import { useAdminApi } from '../hooks/useAdminApi'
 
 interface ChannelRow {
@@ -13,7 +14,7 @@ interface ChannelRow {
 }
 
 export default function NumberManagementPage() {
-  const { data: channels, loading } = useAdminApi<ChannelRow[]>('numbers', [])
+  const { data: channels, loading, error } = useAdminApi<ChannelRow[]>('numbers', [])
 
   const activeCount = channels.filter((n) => n.status === 'connected').length
   const totalCost = channels.length * 1.5
@@ -21,6 +22,7 @@ export default function NumberManagementPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-ink">Number Management</h1>
+      {error && <AdminError error={error} />}
       <p className="mt-1 text-[13px] text-ink-muted">All provisioned voice channels</p>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-3">

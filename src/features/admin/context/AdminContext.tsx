@@ -1,13 +1,9 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
-
-interface Impersonation {
-  businessId: string
-  businessName: string
-}
+import { createContext, useContext, type ReactNode } from 'react'
+import { useAuth } from '@/core/auth/AuthProvider'
 
 interface AdminContextValue {
   isAdmin: boolean
-  impersonating: Impersonation | null
+  impersonating: { businessId: string; businessName: string } | null
   startImpersonation: (businessId: string, businessName: string) => void
   stopImpersonation: () => void
 }
@@ -20,15 +16,7 @@ const AdminContext = createContext<AdminContextValue>({
 })
 
 export function AdminProvider({ children }: { children: ReactNode }) {
-  const [impersonating, setImpersonating] = useState<Impersonation | null>(null)
-
-  function startImpersonation(businessId: string, businessName: string) {
-    setImpersonating({ businessId, businessName })
-  }
-
-  function stopImpersonation() {
-    setImpersonating(null)
-  }
+  const { impersonating, startImpersonation, stopImpersonation } = useAuth()
 
   return (
     <AdminContext.Provider value={{ isAdmin: true, impersonating, startImpersonation, stopImpersonation }}>

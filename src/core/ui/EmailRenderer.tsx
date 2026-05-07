@@ -61,7 +61,7 @@ export function EmailRenderer({ html, className }: EmailRendererProps) {
   return (
     <iframe
       ref={iframeRef}
-      sandbox="allow-same-origin"
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
       title="Email content"
       className={className}
       style={{

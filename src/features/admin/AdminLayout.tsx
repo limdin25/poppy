@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
+  BarChart3,
   Building2,
   Users,
   Phone,
@@ -15,8 +16,10 @@ import {
   Menu,
   X,
   ArrowLeft,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { useAuth } from '@/core/auth/AuthProvider'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
 
 const navGroups = [
@@ -24,6 +27,7 @@ const navGroups = [
     label: 'Overview',
     items: [
       { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+      { to: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
     ],
   },
   {
@@ -61,6 +65,7 @@ const navGroups = [
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const { signOut } = useAuth()
 
   function isActive(to: string, end?: boolean) {
     if (end) return location.pathname === to
@@ -137,9 +142,15 @@ export default function AdminLayout() {
           ))}
         </nav>
 
-        {/* Footer */}
+        {/* Sign out */}
         <div className="border-t border-white/10 p-3">
-          <p className="text-center text-[10px] text-white/30">Poppy Admin v1.0</p>
+          <button
+            onClick={() => signOut()}
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-white/50 transition hover:bg-white/5 hover:text-white/80"
+          >
+            <LogOut size={14} />
+            Sign out
+          </button>
         </div>
       </aside>
 

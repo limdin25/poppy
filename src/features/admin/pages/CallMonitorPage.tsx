@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Search, PhoneIncoming, PhoneMissed, Phone, Play } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { DataTable } from '../components/DataTable'
+import { AdminError } from '../components/AdminError'
 import { useAdminApi } from '../hooks/useAdminApi'
 
 interface AdminCall {
@@ -49,7 +50,7 @@ function timeAgo(iso: string | null): string {
 export default function CallMonitorPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<string>('All')
-  const { data: calls } = useAdminApi<AdminCall[]>('calls', [])
+  const { data: calls, error } = useAdminApi<AdminCall[]>('calls', [])
 
   const filtered = calls.filter((c) => {
     if (filter !== 'All' && c.status !== filter.toLowerCase()) return false
@@ -64,6 +65,7 @@ export default function CallMonitorPage() {
     <div>
       <h1 className="text-xl font-semibold text-ink">Call Monitor</h1>
       <p className="mt-1 text-[13px] text-ink-muted">All calls across all businesses</p>
+      {error && <AdminError error={error} />}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">

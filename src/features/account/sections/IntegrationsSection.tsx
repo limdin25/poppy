@@ -15,6 +15,7 @@ interface ChannelRow {
   config: Record<string, unknown> | null
   auto_reply_enabled: boolean
   draft_mode: boolean
+  auto_unsubscribe: boolean
 }
 
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
@@ -74,7 +75,7 @@ export default function IntegrationsSection() {
   async function loadChannels() {
     const { data } = await supabase
       .from('channels')
-      .select('id, type, status, config, auto_reply_enabled, draft_mode')
+      .select('id, type, status, config, auto_reply_enabled, draft_mode, auto_unsubscribe')
       .eq('business_id', businessId!)
     setChannels(data ?? [])
   }
@@ -189,7 +190,7 @@ export default function IntegrationsSection() {
     { id: 'calendar' as ChannelId, name: 'Calendar', description: 'Auto-book appointments during calls', icon: Calendar },
   ]
 
-  async function toggleChannelSetting(channelId: string, field: 'auto_reply_enabled' | 'draft_mode', value: boolean) {
+  async function toggleChannelSetting(channelId: string, field: 'auto_reply_enabled' | 'draft_mode' | 'auto_unsubscribe', value: boolean) {
     await supabase.from('channels').update({ [field]: value }).eq('id', channelId)
     loadChannels()
   }
@@ -214,7 +215,7 @@ export default function IntegrationsSection() {
     )
   }
 
-  function ChannelToggles({ channel }: { channel: ChannelRow }) {
+  function ChannelToggles({ channel, showUnsubscribe }: { channel: ChannelRow; showUnsubscribe?: boolean }) {
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-4">
@@ -228,6 +229,15 @@ export default function IntegrationsSection() {
           </div>
           <Toggle on={channel.draft_mode} onToggle={() => toggleChannelSetting(channel.id, 'draft_mode', !channel.draft_mode)} />
         </div>
+        {showUnsubscribe && (
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <span className="text-[13px] font-medium text-ink">Auto-unsubscribe</span>
+              <p className="text-[11px] text-ink-muted">Automatically unsubscribe from spam and marketing emails</p>
+            </div>
+            <Toggle on={channel.auto_unsubscribe} onToggle={() => toggleChannelSetting(channel.id, 'auto_unsubscribe', !channel.auto_unsubscribe)} />
+          </div>
+        )}
       </div>
     )
   }
@@ -296,7 +306,7 @@ export default function IntegrationsSection() {
 
                 {connected && channelRow && (ch.id === 'whatsapp' || ch.id === 'email') && (
                   <div className="border-t border-border bg-elevated/30 px-4 py-3">
-                    <ChannelToggles channel={channelRow} />
+                    <ChannelToggles channel={channelRow} showUnsubscribe={ch.id === 'email'} />
                   </div>
                 )}
               </div>
@@ -429,7 +439,7 @@ export default function IntegrationsSection() {
             </p>
             {(() => {
               const emailChannel = getChannel('email_gmail') || getChannel('email_outlook') || getChannel('email_smtp')
-              return emailChannel ? <ChannelToggles channel={emailChannel} /> : null
+              return emailChannel ? <ChannelToggles channel={emailChannel} showUnsubscribe /> : null
             })()}
           </div>
         ) : (

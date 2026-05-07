@@ -128,5 +128,45 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, synced, failed, total: contacts.length, details }), { status: 200 });
+  // --- Email avatar sync (unavatar.io) ---
+  const { data: emailContacts } = await supabase
+    .from('contacts')
+    .select('id, name, email')
+    .is('avatar_url', null)
+    .not('email', 'is', null)
+    .limit(10);
+
+  let emailSynced = 0;
+  let emailFailed = 0;
+
+  for (const contact of emailContacts || []) {
+    if (!contact.email) { emailFailed++; continue; }
+    try {
+      const res = await fetch(
+        `https://unavatar.io/${encodeURIComponent(contact.email)}?fallback=false`,
+        { headers: { accept: 'image/*' } },
+      );
+      if (!res.ok) { emailFailed++; continue; }
+      const blob = await res.arrayBuffer();
+      if (blob.byteLength < 100) { emailFailed++; continue; }
+      const mime = res.headers.get('content-type') || 'image/png';
+      const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+      const fileName = `avatars/${contact.id}.${ext}`;
+      const { error } = await supabase.storage.from('media').upload(fileName, blob, { contentType: mime, upsert: true });
+      if (error) { emailFailed++; continue; }
+      const { data: urlData } = supabase.storage.from('media').getPublicUrl(fileName);
+      if (urlData?.publicUrl) {
+        await supabase.from('contacts').update({ avatar_url: urlData.publicUrl }).eq('id', contact.id);
+        emailSynced++;
+      }
+    } catch {
+      emailFailed++;
+    }
+  }
+
+  return new Response(JSON.stringify({
+    ok: true,
+    whatsapp: { synced, failed, total: contacts.length, details },
+    email: { synced: emailSynced, failed: emailFailed, total: (emailContacts || []).length },
+  }), { status: 200 });
 }

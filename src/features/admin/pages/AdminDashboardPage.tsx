@@ -1,5 +1,6 @@
 import { Building2, Phone, Users } from 'lucide-react'
 import { MetricCard } from '../components/MetricCard'
+import { AdminError } from '../components/AdminError'
 import { useAdminApi } from '../hooks/useAdminApi'
 
 interface DashboardData {
@@ -29,13 +30,14 @@ function timeAgo(iso: string): string {
 }
 
 export default function AdminDashboardPage() {
-  const { data: stats, loading } = useAdminApi<DashboardData>('dashboard', { businesses: 0, calls: 0, users: 0 })
+  const { data: stats, loading, error } = useAdminApi<DashboardData>('dashboard', { businesses: 0, calls: 0, users: 0 })
   const { data: recent } = useAdminApi<AuditEntry[]>('audit-log?limit=5', [])
 
   return (
     <div>
       <h1 className="text-xl font-semibold text-ink">Dashboard</h1>
       <p className="mt-1 text-[13px] text-ink-muted">Platform-wide overview</p>
+      {error && <AdminError error={error} />}
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard

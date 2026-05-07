@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { stripHtml, cleanEmailBody, isEmailSpam, normalizeSubject } from '../lib/email-utils.js';
-import { fetchAndStoreAvatar } from '../lib/fetch-avatar.js';
+import { stripHtml, cleanEmailBody, isEmailSpam, normalizeSubject, extractUnsubscribeUrls } from '../lib/email-utils.js';
+import { fetchAndStoreAvatar, fetchEmailAvatar } from '../lib/fetch-avatar.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -24,6 +24,17 @@ function counterpartyPhone(msg: any): string {
   if (msg.chat_provider_id?.includes('@s.whatsapp.net')) {
     return toE164(msg.chat_provider_id);
   }
+  if (msg.sender_id?.includes('@s.whatsapp.net')) {
+    return toE164(msg.sender_id);
+  }
+  return '';
+}
+
+function isGroupMessage(msg: any): boolean {
+  return msg.chat_provider_id?.includes('@g.us') || msg.chat_id?.includes('@g.us') || false;
+}
+
+function groupSenderPhone(msg: any): string {
   if (msg.sender_id?.includes('@s.whatsapp.net')) {
     return toE164(msg.sender_id);
   }
@@ -217,13 +228,27 @@ async function downloadAttachment(messageId: string, attachment: any): Promise<s
 async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
   const accountId = acct.id;
 
-  if (acct.sources?.[0]?.status !== 'OK') {
-    return { account_id: accountId, type: 'email', error: 'not OK' };
+  const sourceStatus = acct.sources?.[0]?.status;
+
+  if (sourceStatus !== 'OK') {
+    const { data: ch } = await supabase
+      .from('channels')
+      .select('id, config')
+      .eq('unipile_account_id', accountId)
+      .single();
+    if (ch) {
+      await supabase.from('channels').update({
+        status: 'disconnected',
+        disconnected_at: new Date().toISOString(),
+        config: { ...(ch.config as any), disconnect_reason: sourceStatus || 'unknown' },
+      }).eq('id', ch.id);
+    }
+    return { account_id: accountId, type: 'email', error: `status: ${sourceStatus}` };
   }
 
   const { data: channel } = await supabase
     .from('channels')
-    .select('id, business_id, auto_reply_enabled, draft_mode, config')
+    .select('id, business_id, auto_reply_enabled, draft_mode, auto_unsubscribe, config')
     .eq('unipile_account_id', accountId)
     .single();
 
@@ -232,11 +257,12 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
   }
 
   const businessId = channel.business_id;
+  const autoUnsubscribe = (channel as any).auto_unsubscribe === true;
   const ownEmail = ((channel.config as any)?.email || '').toLowerCase();
 
   await supabase
     .from('channels')
-    .update({ status: 'connected', config: { ...(channel.config as any), polled_at: new Date().toISOString() } })
+    .update({ status: 'connected', config: { ...(channel.config as any), polled_at: new Date().toISOString(), disconnect_reason: null } })
     .eq('id', channel.id);
 
   const emailsRes = await fetch(
@@ -291,7 +317,7 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
     let resolvedContactName = '';
     const { data: existing } = await supabase
       .from('contacts')
-      .select('id, name')
+      .select('id, name, avatar_url')
       .eq('business_id', businessId)
       .eq('email', counterpartyEmail)
       .maybeSingle();
@@ -303,6 +329,9 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
         await supabase.from('contacts').update({ name: counterpartyName }).eq('id', contactId);
         resolvedContactName = counterpartyName;
       }
+      if (!existing.avatar_url) {
+        fetchEmailAvatar(existing.id, counterpartyEmail).catch(() => {});
+      }
     } else if (!isOutbound) {
       const { data: newContact } = await supabase
         .from('contacts')
@@ -311,6 +340,9 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
         .single();
       contactId = newContact?.id || null;
       resolvedContactName = counterpartyName;
+      if (contactId) {
+        fetchEmailAvatar(contactId, counterpartyEmail).catch(() => {});
+      }
     }
 
     if (!contactId) { skipped++; continue; }
@@ -358,8 +390,8 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
 
     if (dup) { skipped++; continue; }
 
-    // Spam check
-    const spam = !isOutbound && isEmailSpam(fromEmail, subject, emailText);
+    // Spam check — pass HTML body to detect marketing emails with unsubscribe links
+    const spam = !isOutbound && isEmailSpam(fromEmail, subject, emailText, htmlBody);
 
     const direction: 'inbound' | 'outbound' = isOutbound ? 'outbound' : 'inbound';
     const preview = emailText.slice(0, 100);
@@ -388,6 +420,27 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
 
     if (spam) {
       await supabase.from('conversations').update({ is_spam: true } as any).eq('id', conversationId);
+
+      if (autoUnsubscribe && htmlBody) {
+        const unsubUrls = extractUnsubscribeUrls(htmlBody);
+        if (unsubUrls.length > 0) {
+          const results: Array<{ url: string; status: number | string }> = [];
+          for (const url of unsubUrls.slice(0, 3)) {
+            try {
+              const r = await fetch(url, { method: 'GET', redirect: 'follow' });
+              results.push({ url, status: r.status });
+            } catch (e: any) {
+              results.push({ url, status: e.message || 'error' });
+            }
+          }
+          await supabase.from('messages')
+            .update({ metadata: { sender_email: fromEmail, sender_name: fromName, subject, external_id: emailId, to_attendees: toAttendees, is_spam: true, via: 'unipile_email_poll', auto_unsubscribed: true, unsubscribe_results: results } })
+            .eq('conversation_id', conversationId)
+            .contains('metadata', { external_id: emailId });
+          console.log(`[poll/auto-unsub] ${fromEmail}: hit ${results.length} unsubscribe URL(s)`);
+        }
+      }
+
       inserted++;
       continue;
     }
@@ -496,8 +549,21 @@ export default async function handler(req: Request): Promise<Response> {
       }
       const accountId = acct.id;
 
-      if (acct.sources?.[0]?.status !== 'OK') {
-        summary.push({ account_id: accountId, error: 'not OK' });
+      const waSourceStatus = acct.sources?.[0]?.status;
+      if (waSourceStatus !== 'OK') {
+        const { data: ch } = await supabase
+          .from('channels')
+          .select('id, config')
+          .eq('unipile_account_id', accountId)
+          .single();
+        if (ch) {
+          await supabase.from('channels').update({
+            status: 'disconnected',
+            disconnected_at: new Date().toISOString(),
+            config: { ...(ch.config as any), disconnect_reason: waSourceStatus || 'unknown' },
+          }).eq('id', ch.id);
+        }
+        summary.push({ account_id: accountId, error: `status: ${waSourceStatus}` });
         continue;
       }
 
@@ -520,7 +586,7 @@ export default async function handler(req: Request): Promise<Response> {
 
       await supabase
         .from('channels')
-        .update({ status: 'connected', config: { phone, polled_at: new Date().toISOString() } })
+        .update({ status: 'connected', config: { phone, polled_at: new Date().toISOString(), disconnect_reason: null } })
         .eq('id', channel.id);
 
       const msgRes = await fetch(
@@ -556,69 +622,141 @@ export default async function handler(req: Request): Promise<Response> {
           skipped++; continue;
         }
 
-        const counterparty = counterpartyPhone(m);
-        if (!counterparty) { skipped++; continue; }
+        const isGroup = isGroupMessage(m);
+        const counterparty = isGroup ? groupSenderPhone(m) : counterpartyPhone(m);
+        if (!isGroup && !counterparty) { skipped++; continue; }
 
         const isOutbound = m.is_sender === true || m.is_sender === 1;
         const direction: 'inbound' | 'outbound' = isOutbound ? 'outbound' : 'inbound';
 
-        // Find or create contact
+        // Find or create contact (for groups: resolve the sender as a contact)
         let contactId: string | null = null;
         let contactName: string | null = null;
         const msgChatId = m.chat_id || '';
-        // Only use sender_attendee_id for inbound messages (outbound = Hugo's own attendee)
         const contactAttendeeId = direction === 'inbound' ? (m.sender_attendee_id || '') : '';
-        const { data: existing } = await supabase
-          .from('contacts')
-          .select('id, name, avatar_url')
-          .eq('business_id', businessId)
-          .eq('phone', counterparty)
-          .maybeSingle();
 
-        if (existing) {
-          contactId = existing.id;
-          contactName = existing.name;
-          if (!existing.avatar_url && (contactAttendeeId || msgChatId)) {
-            fetchAndStoreAvatar(existing.id, { attendeeId: contactAttendeeId || undefined, chatId: msgChatId || undefined }).catch(() => {});
-          }
-        } else if (direction === 'inbound') {
-          const { data: newContact } = await supabase
+        if (counterparty) {
+          const { data: existing } = await supabase
             .from('contacts')
-            .insert({ business_id: businessId, phone: counterparty, whatsapp: counterparty, name: counterparty })
-            .select('id')
-            .single();
-          contactId = newContact?.id || null;
-          if (contactId && (contactAttendeeId || msgChatId)) {
-            fetchAndStoreAvatar(contactId, { attendeeId: contactAttendeeId || undefined, chatId: msgChatId || undefined }).catch(() => {});
+            .select('id, name, avatar_url')
+            .eq('business_id', businessId)
+            .eq('phone', counterparty)
+            .maybeSingle();
+
+          if (existing) {
+            contactId = existing.id;
+            contactName = existing.name;
+            if (!existing.avatar_url && (contactAttendeeId || msgChatId)) {
+              fetchAndStoreAvatar(existing.id, { attendeeId: contactAttendeeId || undefined, chatId: msgChatId || undefined }).catch(() => {});
+            }
+          } else if (direction === 'inbound') {
+            const { data: newContact } = await supabase
+              .from('contacts')
+              .insert({ business_id: businessId, phone: counterparty, whatsapp: counterparty, name: counterparty })
+              .select('id')
+              .single();
+            contactId = newContact?.id || null;
+            if (contactId && (contactAttendeeId || msgChatId)) {
+              fetchAndStoreAvatar(contactId, { attendeeId: contactAttendeeId || undefined, chatId: msgChatId || undefined }).catch(() => {});
+            }
           }
         }
 
-        if (!contactId) { skipped++; continue; }
+        if (!isGroup && !contactId) { skipped++; continue; }
 
         // Find or create conversation
         let conversationId: string | null = null;
         let convoAiHandling = true;
-        const { data: convo } = await supabase
-          .from('conversations')
-          .select('id, ai_handling')
-          .eq('business_id', businessId)
-          .eq('contact_id', contactId)
-          .eq('channel', 'whatsapp')
-          .in('status', ['open', 'closed'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
 
-        if (convo) {
-          conversationId = convo.id;
-          convoAiHandling = convo.ai_handling !== false;
+        if (isGroup) {
+          // m.chat_id is the Unipile internal ID, m.chat_provider_id is the WhatsApp @g.us ID
+          const unipileInternalId = m.chat_id || '';
+          const providerId = m.chat_provider_id || '';
+
+          // Look up existing group conversation by Unipile internal ID (primary) or provider_id (legacy)
+          let convo: Record<string, any> | null = null;
+          if (unipileInternalId) {
+            const { data: found } = await supabase
+              .from('conversations')
+              .select('id, ai_handling, group_name, unipile_chat_id')
+              .eq('business_id', businessId)
+              .eq('unipile_chat_id', unipileInternalId)
+              .order('created_at', { ascending: true })
+              .limit(1);
+            convo = found?.[0] || null;
+          }
+          if (!convo && providerId) {
+            const { data: found } = await supabase
+              .from('conversations')
+              .select('id, ai_handling, group_name, unipile_chat_id')
+              .eq('business_id', businessId)
+              .eq('unipile_chat_id', providerId)
+              .order('created_at', { ascending: true })
+              .limit(1);
+            convo = found?.[0] || null;
+          }
+
+          if (convo) {
+            conversationId = convo.id;
+            convoAiHandling = convo.ai_handling !== false;
+            // Migrate to Unipile internal ID if still using provider_id, and refresh name
+            if (unipileInternalId && convo.unipile_chat_id !== unipileInternalId) {
+              await supabase.from('conversations').update({ unipile_chat_id: unipileInternalId }).eq('id', convo.id);
+            }
+          } else {
+            // Fetch group name from Unipile
+            let groupName = 'Group Chat';
+            if (unipileInternalId) {
+              try {
+                const chatRes = await fetch(`https://${UNIPILE_DSN}/api/v1/chats/${unipileInternalId}`, {
+                  headers: { 'X-API-KEY': UNIPILE_TOKEN, accept: 'application/json' },
+                });
+                if (chatRes.ok) {
+                  const chatData = await chatRes.json() as Record<string, any>;
+                  groupName = chatData.name || chatData.title || 'Group Chat';
+                }
+              } catch {}
+            }
+            const { data: newConvo } = await supabase
+              .from('conversations')
+              .insert({
+                business_id: businessId,
+                contact_id: null,
+                channel: 'whatsapp',
+                status: 'open',
+                ai_handling: false,
+                is_group: true,
+                group_name: groupName,
+                unipile_chat_id: unipileInternalId || providerId,
+              })
+              .select('id')
+              .single();
+            conversationId = newConvo?.id || null;
+            convoAiHandling = false;
+          }
         } else {
-          const { data: newConvo } = await supabase
+          const { data: convo } = await supabase
             .from('conversations')
-            .insert({ business_id: businessId, contact_id: contactId, channel: 'whatsapp', status: 'open', ai_handling: true })
-            .select('id')
-            .single();
-          conversationId = newConvo?.id || null;
+            .select('id, ai_handling')
+            .eq('business_id', businessId)
+            .eq('contact_id', contactId)
+            .eq('channel', 'whatsapp')
+            .in('status', ['open', 'closed'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (convo) {
+            conversationId = convo.id;
+            convoAiHandling = convo.ai_handling !== false;
+          } else {
+            const { data: newConvo } = await supabase
+              .from('conversations')
+              .insert({ business_id: businessId, contact_id: contactId, channel: 'whatsapp', status: 'open', ai_handling: true })
+              .select('id')
+              .single();
+            conversationId = newConvo?.id || null;
+          }
         }
 
         if (!conversationId) { skipped++; continue; }
@@ -675,6 +813,8 @@ export default async function handler(req: Request): Promise<Response> {
           metadata.reactions = m.reactions.map((r: any) => ({ emoji: r.value, sender_id: r.sender_id || '' }));
         }
 
+        const senderDisplayName = isGroup ? (contactName && !contactName.startsWith('+') ? contactName : (counterparty || null)) : null;
+
         const { error: insErr } = await supabase
           .from('messages')
           .insert({
@@ -684,6 +824,8 @@ export default async function handler(req: Request): Promise<Response> {
             content_type: contentType,
             body: text || null,
             media_url: mediaUrl,
+            sender_name: senderDisplayName,
+            sender_contact_id: isGroup ? contactId : null,
             metadata,
           });
 
@@ -691,11 +833,12 @@ export default async function handler(req: Request): Promise<Response> {
 
         inserted++;
 
+        const groupPrefix = isGroup && direction === 'inbound' && senderDisplayName ? `${senderDisplayName}: ` : '';
         await supabase
           .from('conversations')
           .update({
             last_message_at: m.timestamp ?? new Date().toISOString(),
-            last_message_preview: preview,
+            last_message_preview: `${groupPrefix}${preview}`.slice(0, 100),
           })
           .eq('id', conversationId);
 
@@ -704,6 +847,7 @@ export default async function handler(req: Request): Promise<Response> {
         if (
           direction === 'inbound' &&
           text &&
+          !isGroup &&
           (channel as any).auto_reply_enabled &&
           convoAiHandling &&
           ANTHROPIC_API_KEY

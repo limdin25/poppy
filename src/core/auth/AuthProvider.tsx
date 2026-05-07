@@ -2,11 +2,19 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { supabase } from '@/integrations/supabase/browser'
 import type { User, Session } from '@supabase/supabase-js'
 
+interface Impersonation {
+  businessId: string
+  businessName: string
+}
+
 interface AuthState {
   user: User | null
   session: Session | null
   businessId: string | null
   loading: boolean
+  impersonating: Impersonation | null
+  startImpersonation: (businessId: string, businessName: string) => void
+  stopImpersonation: () => void
   signInWithPassword: (email: string, password: string) => Promise<{ error: Error | null }>
   signInWithOtp: (email: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
@@ -17,8 +25,27 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [businessId, setBusinessId] = useState<string | null>(null)
+  const [realBusinessId, setRealBusinessId] = useState<string | null>(null)
+  const [impersonating, setImpersonating] = useState<Impersonation | null>(() => {
+    try {
+      const stored = sessionStorage.getItem('poppy_impersonation')
+      return stored ? JSON.parse(stored) : null
+    } catch { return null }
+  })
   const [loading, setLoading] = useState(true)
+
+  const businessId = impersonating?.businessId ?? realBusinessId
+
+  function startImpersonation(bid: string, bname: string) {
+    const imp = { businessId: bid, businessName: bname }
+    setImpersonating(imp)
+    sessionStorage.setItem('poppy_impersonation', JSON.stringify(imp))
+  }
+
+  function stopImpersonation() {
+    setImpersonating(null)
+    sessionStorage.removeItem('poppy_impersonation')
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
@@ -32,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s)
       setUser(s?.user ?? null)
       if (s?.user) fetchBusinessId(s.user.id)
-      else setBusinessId(null)
+      else setRealBusinessId(null)
     })
 
     return () => subscription.unsubscribe()
@@ -45,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('user_id', userId)
       .limit(1)
       .single()
-    setBusinessId(data?.business_id ?? null)
+    setRealBusinessId(data?.business_id ?? null)
   }
 
   async function signInWithPassword(email: string, password: string) {
@@ -63,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, businessId, loading, signInWithPassword, signInWithOtp, signOut }}>
+    <AuthContext.Provider value={{ user, session, businessId, loading, impersonating, startImpersonation, stopImpersonation, signInWithPassword, signInWithOtp, signOut }}>
       {children}
     </AuthContext.Provider>
   )

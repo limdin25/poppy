@@ -1,9 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+import { supabaseAdmin } from '../../../src/integrations/supabase/client.js';
 
 export const config = { runtime: 'edge' };
 
@@ -14,20 +9,36 @@ export default async function handler(req: Request) {
   if (!authHeader) return new Response('Unauthorized', { status: 401 });
 
   const jwt = authHeader.replace('Bearer ', '');
-  const { data: { user } } = await supabase.auth.getUser(jwt);
+  const { data: { user } } = await supabaseAdmin.auth.getUser(jwt);
   if (!user?.email) return new Response('Unauthorized', { status: 401 });
 
-  const { data: admin } = await supabase
+  const { data: admin } = await supabaseAdmin
     .from('admin_users')
     .select('email')
     .eq('email', user.email)
     .single();
   if (!admin) return new Response('Forbidden', { status: 403 });
 
-  const { data, error } = await supabase
+  const { data: businesses, error: bizErr } = await supabaseAdmin
     .from('businesses')
-    .select('id, name, voice_id');
+    .select('id, name');
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data);
+  if (bizErr) return Response.json({ error: bizErr.message }, { status: 500 });
+
+  const { data: voiceChannels } = await supabaseAdmin
+    .from('channels')
+    .select('business_id, config')
+    .eq('type', 'voice');
+
+  const voiceMap = new Map(
+    (voiceChannels || []).map(c => [c.business_id, c.config])
+  );
+
+  const result = (businesses || []).map(b => ({
+    id: b.id,
+    name: b.name,
+    voiceConfig: voiceMap.get(b.id) || null,
+  }));
+
+  return Response.json(result);
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ScrollText, Search } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { DataTable } from '../components/DataTable'
+import { AdminError } from '../components/AdminError'
 import { useAdminApi } from '../hooks/useAdminApi'
 
 interface AuditEntry {
@@ -31,7 +32,7 @@ function formatTimestamp(iso: string): string {
 
 export default function AuditLogPage() {
   const [search, setSearch] = useState('')
-  const { data: entries } = useAdminApi<AuditEntry[]>('audit-log', [])
+  const { data: entries, error } = useAdminApi<AuditEntry[]>('audit-log', [])
 
   const filtered = entries.filter(
     (e) =>
@@ -45,6 +46,7 @@ export default function AuditLogPage() {
       <div className="flex items-center gap-2">
         <ScrollText size={18} className="text-ink-muted" />
         <h1 className="text-xl font-semibold text-ink">Audit Log</h1>
+        {error && <AdminError error={error} />}
       </div>
       <p className="mt-1 text-[13px] text-ink-muted">Complete history of admin actions</p>
 

@@ -57,7 +57,7 @@ export default async function handler(req: Request): Promise<Response> {
     // Get conversation + contact + channel
     const { data: convo } = await supabase
       .from('conversations')
-      .select('id, business_id, contact_id, channel')
+      .select('id, business_id, contact_id, channel, is_group, unipile_chat_id')
       .eq('id', conversationId)
       .single();
 
@@ -66,31 +66,41 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const isEmail = convo.channel === 'email';
+    const isGroup = convo.is_group === true;
 
-    const { data: contact } = await supabase
-      .from('contacts')
-      .select('id, phone, whatsapp, email, name')
-      .eq('id', convo.contact_id)
-      .single();
+    let contact: { id: string; phone: string | null; whatsapp: string | null; email: string | null; name: string | null } | null = null;
+    let recipient = '';
 
-    if (!contact) {
-      return new Response(JSON.stringify({ error: 'Contact not found' }), { status: 404 });
-    }
-
-    let channelType = isEmail ? 'email_gmail' : 'whatsapp';
-    let recipient: string;
-
-    if (isEmail) {
-      if (!contact.email) {
-        return new Response(JSON.stringify({ error: 'Contact has no email address' }), { status: 400 });
-      }
-      recipient = contact.email;
+    if (isGroup && convo.unipile_chat_id) {
+      // Groups send via chat_id, no recipient needed
+      recipient = '';
     } else {
-      const recipientPhone = contact.whatsapp || contact.phone;
-      if (!recipientPhone) {
-        return new Response(JSON.stringify({ error: 'Contact has no phone number' }), { status: 400 });
+      if (!convo.contact_id) {
+        return new Response(JSON.stringify({ error: 'No contact for this conversation' }), { status: 400 });
       }
-      recipient = recipientPhone;
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('id, phone, whatsapp, email, name')
+        .eq('id', convo.contact_id)
+        .single();
+
+      if (!contactData) {
+        return new Response(JSON.stringify({ error: 'Contact not found' }), { status: 404 });
+      }
+      contact = contactData;
+
+      if (isEmail) {
+        if (!contact.email) {
+          return new Response(JSON.stringify({ error: 'Contact has no email address' }), { status: 400 });
+        }
+        recipient = contact.email;
+      } else {
+        const recipientPhone = contact.whatsapp || contact.phone;
+        if (!recipientPhone) {
+          return new Response(JSON.stringify({ error: 'Contact has no phone number' }), { status: 400 });
+        }
+        recipient = recipientPhone;
+      }
     }
 
     // For email, try gmail first, then outlook, then smtp
@@ -200,6 +210,17 @@ export default async function handler(req: Request): Promise<Response> {
           body: JSON.stringify(emailPayload),
         });
       }
+    } else if (isGroup && convo.unipile_chat_id) {
+      // Send to group via existing chat_id
+      uRes = await fetch(`https://${UNIPILE_DSN}/api/v1/chats/${convo.unipile_chat_id}/messages`, {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': UNIPILE_TOKEN,
+          'Content-Type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({ text: body }),
+      });
     } else {
       const hasFiles = attachmentBuffers.length > 0;
 

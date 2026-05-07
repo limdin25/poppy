@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from './useSupabaseQuery'
 import type { Conversation, Message } from '@/core/types/database'
@@ -9,10 +9,12 @@ export function useConversations(channelFilter: ChannelFilter = 'all') {
   const { businessId } = useAuth()
   const [data, setData] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
+  const hasFetched = useRef(false)
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  const fetch = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     if (!businessId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     let query = supabase
       .from('conversations')
       .select('*, contact:contacts(*)')
@@ -26,11 +28,14 @@ export function useConversations(channelFilter: ChannelFilter = 'all') {
       : (rows ?? []).filter((r: any) => r.is_spam !== true)
     setData(safe as Conversation[])
     setLoading(false)
+    hasFetched.current = true
   }, [businessId, channelFilter])
 
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => {
+    hasFetched.current = false
+    loadData(false)
+  }, [loadData])
 
-  // Realtime: listen for any changes to conversations for this business
   useEffect(() => {
     if (!businessId) return
     const channel = supabase
@@ -43,23 +48,31 @@ export function useConversations(channelFilter: ChannelFilter = 'all') {
           table: 'conversations',
           filter: `business_id=eq.${businessId}`,
         },
-        () => { fetch() }
+        () => {
+          clearTimeout(debounceTimer.current)
+          debounceTimer.current = setTimeout(() => { loadData(true) }, 500)
+        }
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
-  }, [businessId, fetch])
+    return () => {
+      clearTimeout(debounceTimer.current)
+      supabase.removeChannel(channel)
+    }
+  }, [businessId, loadData])
 
-  return { data, loading, refetch: fetch }
+  return { data, loading, refetch: loadData }
 }
 
 export function useMessages(conversationId: string | null) {
   const [data, setData] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
+  const hasFetched = useRef(false)
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  const fetch = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     if (!conversationId) { setData([]); setLoading(false); return }
-    setLoading(true)
+    if (!silent) setLoading(true)
     const { data: rows } = await supabase
       .from('messages')
       .select('*')
@@ -67,11 +80,14 @@ export function useMessages(conversationId: string | null) {
       .order('created_at', { ascending: true })
     setData((rows ?? []) as Message[])
     setLoading(false)
+    hasFetched.current = true
   }, [conversationId])
 
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => {
+    hasFetched.current = false
+    loadData(false)
+  }, [loadData])
 
-  // Realtime: listen for new messages in this conversation
   useEffect(() => {
     if (!conversationId) return
     const channel = supabase
@@ -84,12 +100,18 @@ export function useMessages(conversationId: string | null) {
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        () => { fetch() }
+        () => {
+          clearTimeout(debounceTimer.current)
+          debounceTimer.current = setTimeout(() => { loadData(true) }, 300)
+        }
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
-  }, [conversationId, fetch])
+    return () => {
+      clearTimeout(debounceTimer.current)
+      supabase.removeChannel(channel)
+    }
+  }, [conversationId, loadData])
 
-  return { data, loading, refetch: fetch }
+  return { data, loading, refetch: loadData }
 }

@@ -1,5 +1,6 @@
 import { Activity, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { AdminError } from '../components/AdminError'
 import { useAdminApi } from '../hooks/useAdminApi'
 
 interface ServiceCheck {
@@ -20,7 +21,7 @@ const STATUS_CONFIG = {
 }
 
 export default function SystemHealthPage() {
-  const { data, loading } = useAdminApi<HealthData>('system/health', { checks: [], timestamp: '' })
+  const { data, loading, error } = useAdminApi<HealthData>('system/health', { checks: [], timestamp: '' })
   const checks = data.checks
 
   const healthyCount = checks.filter((s) => s.status === 'healthy').length
@@ -30,6 +31,7 @@ export default function SystemHealthPage() {
       <div className="flex items-center gap-2">
         <Activity size={18} className="text-ink-muted" />
         <h1 className="text-xl font-semibold text-ink">System Health</h1>
+        {error && <AdminError error={error} />}
       </div>
       <p className="mt-1 text-[13px] text-ink-muted">
         {loading ? 'Checking...' : `${healthyCount}/${checks.length} services healthy`}

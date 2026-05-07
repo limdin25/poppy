@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Search, Eye } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
+import { AdminError } from '../components/AdminError'
 import { useAdminApi } from '../hooks/useAdminApi'
 
 interface Business {
@@ -35,7 +36,7 @@ function timeAgo(iso: string): string {
 export default function BusinessesPage() {
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
-  const { data: businesses, loading } = useAdminApi<Business[]>('businesses', [])
+  const { data: businesses, loading, error } = useAdminApi<Business[]>('businesses', [])
 
   const filtered = businesses.filter(
     (b) =>
@@ -53,6 +54,8 @@ export default function BusinessesPage() {
           </p>
         </div>
       </div>
+
+      {error && <AdminError error={error} />}
 
       <div className="relative mt-4 max-w-sm">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />

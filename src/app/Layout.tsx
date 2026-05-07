@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Phone,
   Inbox,
+  BarChart3,
   Bot,
   User,
   Menu,
@@ -14,13 +15,22 @@ import {
   Calendar,
   FileText,
   Receipt,
+  CreditCard,
+  AlertTriangle,
+  Shield,
+  Eye,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { useBusiness } from '@/core/hooks/useBusiness'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 
 const primaryNav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/calls', icon: Phone, label: 'Calls' },
   { to: '/inbox', icon: Inbox, label: 'Inbox' },
+  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
 ]
 
 const agentNav = { to: '/agent', icon: Bot, label: 'Agent Setup' }
@@ -39,6 +49,7 @@ const secondaryNav = [
   { to: '/appointments', icon: Calendar, label: 'Bookings' },
   { to: '/quotes', icon: FileText, label: 'Quotes' },
   { to: '/invoices', icon: Receipt, label: 'Invoices' },
+  { to: '/billing', icon: CreditCard, label: 'Billing' },
 ]
 
 const accountNav = { to: '/account', icon: User, label: 'Account' }
@@ -66,7 +77,21 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [agentExpanded, setAgentExpanded] = useState(false)
   const [accountExpanded, setAccountExpanded] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const location = useLocation()
+  const { user, impersonating, stopImpersonation, signOut } = useAuth()
+  const { data: business } = useBusiness()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!user?.email) return
+    supabase
+      .from('admin_users')
+      .select('email')
+      .eq('email', user.email)
+      .single()
+      .then(({ data }) => setIsAdmin(!!data))
+  }, [user?.email])
 
   const isFullBleed = FULL_BLEED_ROUTES.includes(location.pathname)
 
@@ -142,7 +167,40 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col">
+      {impersonating && (
+        <div className="flex items-center justify-between bg-amber-500 px-4 py-2 text-[13px] font-medium text-black">
+          <div className="flex items-center gap-2">
+            <Eye size={14} />
+            <span>Viewing as: {impersonating.businessName}</span>
+          </div>
+          <button
+            onClick={() => {
+              stopImpersonation()
+              navigate('/admin')
+            }}
+            className="flex items-center gap-1 rounded-md bg-black/10 px-2 py-0.5 text-[12px] hover:bg-black/20"
+          >
+            <X size={12} />
+            Exit
+          </button>
+        </div>
+      )}
+      {business?.billing_active && !business.stripe_customer_id && !impersonating && (
+        <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-[13px] text-amber-800">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} className="text-amber-500" />
+            <span>Add a payment method to activate your account.</span>
+          </div>
+          <NavLink
+            to="/billing"
+            className="rounded-md bg-amber-500 px-3 py-1 text-[12px] font-medium text-white hover:bg-amber-600 transition-colors"
+          >
+            Add Card
+          </NavLink>
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -229,15 +287,39 @@ export default function Layout() {
           </div>
         </nav>
 
-        {/* Trial banner */}
-        {!collapsed && (
-          <div className="border-t border-border p-3">
-            <div className="rounded-lg bg-brand-50 p-2.5 text-center">
-              <p className="text-[12px] font-medium text-brand-700">7-day free trial</p>
-              <p className="mt-0.5 text-[11px] text-ink-muted">No credit card required</p>
-            </div>
+        {/* Admin link */}
+        {isAdmin && (
+          <div className={cn('border-t border-border', collapsed ? 'px-1.5 py-1.5' : 'px-2 py-1.5')}>
+            <NavLink
+              to="/admin"
+              onClick={() => setSidebarOpen(false)}
+              title={collapsed ? 'Admin Panel' : undefined}
+              className={cn(
+                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors',
+                'text-amber-600 hover:bg-amber-50',
+                collapsed && 'justify-center px-0'
+              )}
+            >
+              <Shield size={18} className="shrink-0" />
+              {!collapsed && <span>Admin Panel</span>}
+            </NavLink>
           </div>
         )}
+
+        {/* Sign out */}
+        <div className={cn('border-t border-border', collapsed ? 'px-1.5 py-1.5' : 'px-2 py-1.5')}>
+          <button
+            onClick={() => signOut()}
+            title={collapsed ? 'Sign out' : undefined}
+            className={cn(
+              'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-ink-muted transition-colors hover:bg-elevated hover:text-ink',
+              collapsed && 'justify-center px-0'
+            )}
+          >
+            <LogOut size={18} className="shrink-0" />
+            {!collapsed && <span>Sign out</span>}
+          </button>
+        </div>
       </aside>
 
       {/* Main content */}
@@ -286,6 +368,7 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+      </div>
       </div>
     </div>
   )

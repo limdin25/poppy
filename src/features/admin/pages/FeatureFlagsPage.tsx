@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Flag, Search } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { AdminError } from '../components/AdminError'
 import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 
 interface FlagDefinition {
@@ -28,7 +29,7 @@ interface BusinessFlags {
 export default function FeatureFlagsPage() {
   const [search, setSearch] = useState('')
   const [businessFlags, setBusinessFlags] = useState<BusinessFlags[]>([])
-  const { data: definitions } = useAdminApi<FlagDefinition[]>('feature-flags/definitions', [])
+  const { data: definitions, error } = useAdminApi<FlagDefinition[]>('feature-flags/definitions', [])
   const { data: flags } = useAdminApi<FlagRow[]>('feature-flags', [])
   const toggleMutation = useAdminMutation('feature-flags', 'PUT')
 
@@ -83,6 +84,7 @@ export default function FeatureFlagsPage() {
       <div className="flex items-center gap-2">
         <Flag size={18} className="text-ink-muted" />
         <h1 className="text-xl font-semibold text-ink">Feature Flags</h1>
+        {error && <AdminError error={error} />}
       </div>
       <p className="mt-1 text-[13px] text-ink-muted">Enable or disable features per business</p>
 

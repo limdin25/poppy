@@ -16,6 +16,7 @@ const NumberManagementPage = lazy(() => import('./pages/NumberManagementPage'))
 const FeatureFlagsPage = lazy(() => import('./pages/FeatureFlagsPage'))
 const SystemHealthPage = lazy(() => import('./pages/SystemHealthPage'))
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'))
+const AdminAnalyticsPage = lazy(() => import('./pages/AdminAnalyticsPage'))
 
 function AdminFallback() {
   return (
@@ -43,6 +44,7 @@ export default function AdminApp() {
               <Route path="numbers" element={<NumberManagementPage />} />
               <Route path="feature-flags" element={<FeatureFlagsPage />} />
               <Route path="system" element={<SystemHealthPage />} />
+              <Route path="analytics" element={<AdminAnalyticsPage />} />
               <Route path="audit-log" element={<AuditLogPage />} />
               <Route path="*" element={<Navigate to="/admin" replace />} />
             </Route>

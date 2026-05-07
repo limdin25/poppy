@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Search, Phone, MessageSquare, Mail, Send, ArrowLeft, Bot, MoreHorizontal, Plus, X, Paperclip, Pencil, Check, RefreshCw } from 'lucide-react'
+import { Search, Phone, MessageSquare, Mail, Send, ArrowLeft, Bot, MoreHorizontal, Plus, X, Paperclip, Pencil, Check, RefreshCw, Users, EyeOff, Eye, AlertTriangle } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { MessageBubble } from '@/core/ui/MessageBubble'
@@ -17,7 +17,9 @@ function isRawIdentifier(name: string | null | undefined): boolean {
   return digitsOnly.length >= 10 && digitsOnly.length === name.replace(/[+ ()-]/g, '').length
 }
 
-function displayName(contact: Conversation['contact']): string {
+function displayName(conv: Conversation): string {
+  if (conv.is_group && conv.group_name) return conv.group_name
+  const contact = conv.contact
   if (!contact) return 'Unknown'
   if (contact.name && !isRawIdentifier(contact.name)) return contact.name
   return contact.phone || contact.whatsapp || contact.email || 'Unknown'
@@ -69,24 +71,58 @@ const CHANNEL_COLOR = {
   email: 'text-violet-500',
 }
 
+function useChannelHealth() {
+  const { businessId } = useAuth()
+  const [disconnected, setDisconnected] = useState<Array<{ type: string; config: any }>>([])
+
+  useEffect(() => {
+    if (!businessId) return
+    let mounted = true
+
+    async function check() {
+      const { data } = await supabase
+        .from('channels')
+        .select('type, status, config')
+        .eq('business_id', businessId!)
+        .eq('status', 'disconnected')
+      if (mounted) setDisconnected(data ?? [])
+    }
+
+    check()
+    const interval = setInterval(check, 60_000)
+    return () => { mounted = false; clearInterval(interval) }
+  }, [businessId])
+
+  return disconnected
+}
+
 export default function InboxPage() {
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [reply, setReply] = useState('')
   const [showCompose, setShowCompose] = useState(false)
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all')
+  const [groupsOnly, setGroupsOnly] = useState(false)
+  const [hideGroups, setHideGroups] = useState(() => {
+    try { return localStorage.getItem('poppy_hide_groups') === '1' } catch { return false }
+  })
   const { data: conversations, loading, refetch: refetchConversations } = useConversations(channelFilter)
   const { session } = useAuth()
+  const disconnectedChannels = useChannelHealth()
 
   const selected = conversations.find((c) => c.id === selectedId)
 
   const filtered = conversations.filter((c) => {
+    if (groupsOnly) { if (!c.is_group) return false }
+    else if (hideGroups && c.is_group) return false
     const q = search.toLowerCase()
+    if (!q) return true
     const name = c.contact?.name?.toLowerCase() ?? ''
     const preview = c.last_message_preview?.toLowerCase() ?? ''
     const subject = c.subject?.toLowerCase() ?? ''
     const email = c.contact?.email?.toLowerCase() ?? ''
-    return name.includes(q) || preview.includes(q) || subject.includes(q) || email.includes(q)
+    const groupName = c.group_name?.toLowerCase() ?? ''
+    return name.includes(q) || preview.includes(q) || subject.includes(q) || email.includes(q) || groupName.includes(q)
   })
 
   const handleSend = useCallback(async (conversationId: string, body: string, attachments?: File[]) => {
@@ -146,6 +182,20 @@ export default function InboxPage() {
           </div>
         </div>
 
+        {disconnectedChannels.length > 0 && (
+          <div className="mx-4 mt-2 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+            <div className="text-[12px] text-amber-800">
+              <p className="font-semibold">Channel disconnected</p>
+              {disconnectedChannels.map((ch, i) => {
+                const label = ch.type === 'whatsapp' ? 'WhatsApp' : ch.type.includes('email') ? 'Email' : ch.type
+                const detail = ch.config?.phone || ch.config?.email || ''
+                return <p key={i}>{label}{detail ? ` (${detail})` : ''} — reconnect in Settings</p>
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="relative mt-3 px-4">
           <Search size={15} className="absolute left-7 top-1/2 -translate-y-1/2 text-ink-subtle" />
           <input
@@ -157,14 +207,14 @@ export default function InboxPage() {
           />
         </div>
 
-        <div className="mt-2 flex gap-1 px-4">
+        <div className="mt-2 flex flex-wrap items-center gap-1 px-4">
           {CHANNEL_FILTERS.map((f) => (
             <button
               key={f.value}
-              onClick={() => { setChannelFilter(f.value); setSelectedId(null) }}
+              onClick={() => { setChannelFilter(f.value); setGroupsOnly(false); setSelectedId(null) }}
               className={cn(
-                'rounded-full px-2.5 py-1 text-[11px] font-medium transition',
-                channelFilter === f.value
+                'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition',
+                channelFilter === f.value && !groupsOnly
                   ? 'bg-brand text-white'
                   : 'bg-elevated text-ink-muted hover:bg-brand/10 hover:text-brand'
               )}
@@ -172,6 +222,37 @@ export default function InboxPage() {
               {f.label}
             </button>
           ))}
+          <button
+            onClick={() => { setGroupsOnly(!groupsOnly); setChannelFilter('all'); setSelectedId(null) }}
+            className={cn(
+              'flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition',
+              groupsOnly
+                ? 'bg-emerald-600 text-white'
+                : 'bg-elevated text-ink-muted hover:bg-emerald-50 hover:text-emerald-600'
+            )}
+          >
+            <Users size={11} />
+            Groups
+          </button>
+          {!groupsOnly && (
+            <button
+              onClick={() => {
+                const next = !hideGroups
+                setHideGroups(next)
+                try { localStorage.setItem('poppy_hide_groups', next ? '1' : '0') } catch {}
+              }}
+              title={hideGroups ? 'Show groups in list' : 'Hide groups from list'}
+              className={cn(
+                'flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium transition',
+                hideGroups
+                  ? 'bg-amber-50 text-amber-600'
+                  : 'text-ink-subtle hover:bg-elevated'
+              )}
+            >
+              {hideGroups ? <EyeOff size={11} /> : <Eye size={11} />}
+              {hideGroups ? 'Hidden' : 'Hide'}
+            </button>
+          )}
         </div>
 
         <div className="mt-2 flex-1 space-y-0.5 overflow-y-auto px-2">
@@ -184,7 +265,7 @@ export default function InboxPage() {
           ) : (
             filtered.map((conv) => {
               const Icon = CHANNEL_ICON[conv.channel]
-              const contactLabel = displayName(conv.contact)
+              const contactLabel = displayName(conv)
               const hasRealName = conv.contact?.name != null && !isRawIdentifier(conv.contact.name)
               const contactPhone = conv.contact?.phone || conv.contact?.whatsapp
               const contactEmail = conv.contact?.email
@@ -202,7 +283,7 @@ export default function InboxPage() {
                   )}
                 >
                   <div className="relative">
-                    <Avatar src={conv.contact?.avatar_url ?? undefined} name={contactLabel} size="sm" className="border-0" />
+                    <Avatar src={conv.contact?.avatar_url ?? undefined} name={contactLabel} size="sm" channel={conv.channel} className="border-0" />
                     {unread && (
                       <div className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand" />
                     )}
@@ -300,7 +381,7 @@ function ThreadView({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const Icon = CHANNEL_ICON[conversation.channel]
-  const contactName = localName ?? displayName(conversation.contact)
+  const contactName = localName ?? displayName(conversation)
   const hasRealName = (localName != null && !isRawIdentifier(localName)) || (conversation.contact?.name != null && !isRawIdentifier(conversation.contact.name))
   const contactPhone = conversation.contact?.phone || conversation.contact?.whatsapp
   const contactEmail = conversation.contact?.email
@@ -415,7 +496,7 @@ function ThreadView({
               <ArrowLeft size={18} />
             </button>
           )}
-          <Avatar src={conversation.contact?.avatar_url ?? undefined} name={contactName} size="sm" className="border-0" />
+          <Avatar src={conversation.contact?.avatar_url ?? undefined} name={contactName} size="sm" channel={conversation.channel} className="border-0" />
           <div className="min-w-0 flex-1">
             {editingName ? (
               <div className="flex items-center gap-1.5">
@@ -438,12 +519,14 @@ function ThreadView({
             ) : (
               <div className="flex items-center gap-1.5">
                 <p className="text-[13px] font-semibold text-ink">{contactName}</p>
-                <button
-                  onClick={() => { setNameInput(isRawIdentifier(contactName) ? '' : contactName); setEditingName(true) }}
-                  className="rounded p-0.5 text-ink-subtle hover:bg-elevated hover:text-ink"
-                >
-                  <Pencil size={11} />
-                </button>
+                {!conversation.is_group && (
+                  <button
+                    onClick={() => { setNameInput(isRawIdentifier(contactName) ? '' : contactName); setEditingName(true) }}
+                    className="rounded p-0.5 text-ink-subtle hover:bg-elevated hover:text-ink"
+                  >
+                    <Pencil size={11} />
+                  </button>
+                )}
               </div>
             )}
             <div className="flex items-center gap-1.5">
@@ -545,7 +628,7 @@ function ThreadView({
                       sender={senderLabel(msg)}
                       text={msg.body ?? ''}
                       timestamp={msg.created_at}
-                      contactLabel={contactName}
+                      contactLabel={conversation.is_group && msg.sender_name ? msg.sender_name : contactName}
                       mediaUrl={msg.media_url}
                       contentType={msg.content_type}
                       metadata={meta ? {

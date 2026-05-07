@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Eye, Ban, CheckCircle, Phone, MessageSquare, Bot, CreditCard, Loader2 } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { MetricCard } from '../components/MetricCard'
-import { useAdmin } from '../context/AdminContext'
+import { useAuth } from '@/core/auth/AuthProvider'
 import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 
 interface BusinessDetail {
@@ -16,6 +16,7 @@ interface BusinessDetail {
   status: string | null
   greeting: string | null
   tone: string | null
+  ai_model: string | null
   admin_notes: string | null
   created_at: string
   team_members: Array<{ name: string | null; email: string; role: string }>
@@ -24,18 +25,50 @@ interface BusinessDetail {
   calls: Array<{ id: string }>
 }
 
+const AI_MODELS = [
+  { group: 'Default', models: [
+    { id: '', label: 'Use global default' },
+  ]},
+  { group: 'Anthropic (Claude)', models: [
+    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+  ]},
+  { group: 'OpenAI', models: [
+    { id: 'gpt-5.5', label: 'GPT-5.5' },
+    { id: 'gpt-5.4', label: 'GPT-5.4' },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+    { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
+    { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+  ]},
+  { group: 'xAI (Grok)', models: [
+    { id: 'grok-4.3', label: 'Grok 4.3' },
+    { id: 'grok-4.20', label: 'Grok 4.20' },
+    { id: 'grok-4.1-fast', label: 'Grok 4.1 Fast' },
+  ]},
+]
+
 export default function BusinessDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { startImpersonation } = useAdmin()
-  const { data: biz, loading, refetch } = useAdminApi<BusinessDetail | null>(`businesses/${id}`, null, [id])
+  const { startImpersonation } = useAuth()
+  const { data: biz, loading, error, refetch } = useAdminApi<BusinessDetail | null>(`businesses/${id}`, null, [id])
   const suspendMutation = useAdminMutation(`businesses/${id}/suspend`, 'POST')
   const patchBusiness = useAdminMutation(`businesses/${id}`, 'PATCH')
   const [suspending, setSuspending] = useState(false)
   const [notesSaved, setNotesSaved] = useState(false)
+  const [aiModelSaved, setAiModelSaved] = useState(false)
 
   if (loading) {
     return <p className="py-12 text-center text-[13px] text-ink-muted">Loading...</p>
+  }
+
+  if (error) {
+    return (
+      <div className="py-12">
+        <p className="text-center text-[13px] text-danger">{error}</p>
+      </div>
+    )
   }
 
   if (!biz) {
@@ -62,7 +95,10 @@ export default function BusinessDetailPage() {
         <div className="flex items-center gap-2">
           <StatusBadge status={biz.status || 'active'} />
           <button
-            onClick={() => startImpersonation(biz.id, biz.name)}
+            onClick={() => {
+              startImpersonation(biz.id, biz.name)
+              navigate('/')
+            }}
             className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-brand-600"
           >
             <Eye size={13} />
@@ -115,6 +151,32 @@ export default function BusinessDetailPage() {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[14px] font-semibold text-ink">AI Model</h2>
+            {aiModelSaved && <span className="text-[11px] text-success">Saved</span>}
+          </div>
+          <p className="mt-1 text-[12px] text-ink-muted">Override the global AI model for this business</p>
+          <select
+            defaultValue={biz.ai_model || ''}
+            onChange={async (e) => {
+              const value = e.target.value || null
+              await patchBusiness({ ai_model: value })
+              setAiModelSaved(true)
+              setTimeout(() => setAiModelSaved(false), 2000)
+            }}
+            className="mt-2 h-9 w-full rounded-lg border border-border bg-elevated px-3 text-[13px] text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+          >
+            {AI_MODELS.map((group) => (
+              <optgroup key={group.group} label={group.group}>
+                {group.models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </div>
 
         <div className="rounded-xl border border-border p-4">

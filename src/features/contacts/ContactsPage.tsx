@@ -88,7 +88,7 @@ export default function ContactsPage() {
                   selectedId === contact.id ? 'bg-brand-50 border border-brand/20' : 'hover:bg-elevated border border-transparent'
                 )}
               >
-                <Avatar src={contact.avatar_url ?? undefined} name={contact.name ?? 'Unknown'} size="sm" className="border-0" />
+                <Avatar src={contact.avatar_url ?? undefined} name={contact.name ?? 'Unknown'} size="sm" channel={contact.whatsapp ? 'whatsapp' : undefined} className="border-0" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
                     <p className="truncate text-[13px] font-medium text-ink">{contact.name ?? 'Unknown'}</p>
@@ -214,7 +214,7 @@ function ContactDetail({ contact, onBack, desktop, onDeleted }: { contact: Conta
 
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <Avatar src={contact.avatar_url ?? undefined} name={contact.name ?? 'Unknown'} size="lg" className="border-0" />
+            <Avatar src={contact.avatar_url ?? undefined} name={contact.name ?? 'Unknown'} size="lg" channel={contact.whatsapp ? 'whatsapp' : undefined} className="border-0" />
             <div>
               <h2 className="text-lg font-semibold text-ink">{contact.name ?? 'Unknown'}</h2>
               {contact.tags.length > 0 && (

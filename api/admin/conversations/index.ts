@@ -22,7 +22,7 @@ export default async function handler(req: Request) {
   const { data, error } = await supabaseAdmin
     .from('conversations')
     .select('*, businesses(name), contacts(name), messages(id)')
-    .order('updated_at', { ascending: false })
+    .order('last_message_at', { ascending: false })
     .limit(50)
 
   if (error) return Response.json({ error: error.message }, { status: 500 })

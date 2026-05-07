@@ -121,3 +121,42 @@ export async function fetchAndStoreAvatar(
     return null;
   }
 }
+
+export async function fetchEmailAvatar(
+  contactId: string,
+  email: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://unavatar.io/${encodeURIComponent(email)}?fallback=false`,
+      { headers: { accept: 'image/*' } },
+    );
+    if (!res.ok) return null;
+
+    const blob = await res.arrayBuffer();
+    if (blob.byteLength < 100) return null;
+
+    const mime = res.headers.get('content-type') || 'image/png';
+    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+    const fileName = `avatars/${contactId}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('media')
+      .upload(fileName, blob, { contentType: mime, upsert: true });
+
+    if (error) {
+      console.error('[email-avatar] upload failed:', error.message);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from('media').getPublicUrl(fileName);
+    const avatarUrl = urlData?.publicUrl || null;
+    if (avatarUrl) {
+      await supabase.from('contacts').update({ avatar_url: avatarUrl }).eq('id', contactId);
+    }
+    return avatarUrl;
+  } catch (err: any) {
+    console.error('[email-avatar] error:', err.message);
+    return null;
+  }
+}

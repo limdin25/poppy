@@ -16,9 +16,14 @@ const AppointmentsPage = lazy(() => import('@/features/appointments/Appointments
 const QuotesPage = lazy(() => import('@/features/quotes/QuotesPage'))
 const InvoicesPage = lazy(() => import('@/features/invoices/InvoicesPage'))
 const AgentSetupPage = lazy(() => import('@/features/agent-setup/AgentSetupPage'))
+const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'))
 const AccountPage = lazy(() => import('@/features/account/AccountPage'))
+const BillingPage = lazy(() => import('@/features/billing/BillingPage'))
 const AdminApp = lazy(() => import('@/features/admin/AdminApp'))
 const LandingPage = lazy(() => import('@/features/landing/LandingPage'))
+const PrivacyPolicyPage = lazy(() => import('@/features/legal/PrivacyPolicyPage'))
+const TermsPage = lazy(() => import('@/features/legal/TermsPage'))
+const DpaPage = lazy(() => import('@/features/legal/DpaPage'))
 
 function LoadingFallback() {
   return (
@@ -34,6 +39,9 @@ export default function App() {
       <Routes>
         {/* Public — no layout */}
         <Route path="welcome" element={<LandingPage />} />
+        <Route path="privacy" element={<PrivacyPolicyPage />} />
+        <Route path="terms" element={<TermsPage />} />
+        <Route path="dpa" element={<DpaPage />} />
         <Route path="register" element={<RegistrationPage />} />
         <Route path="onboarding" element={<OnboardingPage />} />
         <Route path="login" element={<LoginPage />} />
@@ -53,6 +61,8 @@ export default function App() {
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="quotes" element={<QuotesPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
+            <Route path="billing" element={<BillingPage />} />
+            <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="agent/*" element={<AgentSetupPage />} />
             <Route path="account/*" element={<AccountPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

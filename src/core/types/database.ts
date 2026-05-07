@@ -23,6 +23,21 @@ export interface Business {
   bank_details: { account_name: string; sort_code: string; account_number: string; bank_name?: string } | null
   google_calendar_tokens: { access_token: string; refresh_token: string; expiry_date: number } | null
   google_calendar_id: string | null
+  currency: 'GBP' | 'USD' | 'EUR'
+  billing_active: boolean
+  billing_started_at: string | null
+  contract_signed_at: string | null
+  activation_credit_paid: boolean
+  active_channels: string[]
+  country_code: string | null
+  takeover_delay_seconds: number
+  after_hours_delay_seconds: number
+  working_hours_start: number
+  working_hours_end: number
+  working_days: string[]
+  last_inbound_at: string | null
+  channels_paused: boolean
+  channels_paused_at: string | null
   created_at: string
   updated_at: string
 }
@@ -44,7 +59,7 @@ export interface Contact {
 export interface Conversation {
   id: string
   business_id: string
-  contact_id: string
+  contact_id: string | null
   channel: 'voice' | 'whatsapp' | 'sms' | 'email'
   status: 'open' | 'closed' | 'archived'
   assigned_to: string | null
@@ -54,6 +69,9 @@ export interface Conversation {
   unread_count: number
   subject: string | null
   is_spam: boolean
+  is_group: boolean
+  group_name: string | null
+  unipile_chat_id: string | null
   created_at: string
   contact?: Contact
 }
@@ -68,6 +86,8 @@ export interface Message {
   media_url: string | null
   metadata: Record<string, unknown>
   status: 'sent' | 'draft' | 'failed'
+  sender_name: string | null
+  sender_contact_id: string | null
   created_at: string
 }
 
@@ -187,4 +207,70 @@ export interface TeamMember {
   invited_at: string
   joined_at: string | null
   last_active_at: string | null
+}
+
+export interface BillingPeriod {
+  id: string
+  business_id: string
+  period_start: string
+  period_end: string
+  booking_count: number
+  total_amount: number
+  total_before_cap: number
+  cap_amount: number
+  cap_reached: boolean
+  cap_reached_at: string | null
+  currency: 'GBP' | 'USD' | 'EUR'
+  stripe_invoice_id: string | null
+  stripe_invoice_status: string | null
+  paid_at: string | null
+  status: 'active' | 'invoiced' | 'paid' | 'failed' | 'void'
+  created_at: string
+  updated_at: string
+}
+
+export interface BookingEvent {
+  id: string
+  business_id: string
+  billing_period_id: string
+  appointment_id: string | null
+  contact_id: string | null
+  contact_name: string | null
+  service_description: string | null
+  appointment_datetime: string | null
+  channel: string | null
+  amount_raw: number
+  amount_billed: number
+  currency: 'GBP' | 'USD' | 'EUR'
+  capped: boolean
+  created_at: string
+}
+
+export interface BookingDispute {
+  id: string
+  business_id: string
+  booking_event_id: string
+  reason: 'ai_error' | 'wrong_time' | 'wrong_service' | 'duplicate' | 'other'
+  description: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  credit_amount: number | null
+  resolved_by: string | null
+  resolved_at: string | null
+  created_at: string
+}
+
+export interface AiTakeoverEntry {
+  id: string
+  business_id: string
+  conversation_id: string
+  trigger_message_id: string
+  channel: string
+  message_received_at: string
+  takeover_at: string
+  grace_checked_at: string | null
+  status: 'pending' | 'owner_replied' | 'ai_replied' | 'cancelled' | 'expired'
+  owner_reply_message_id: string | null
+  ai_reply_message_id: string | null
+  created_at: string
+  processed_at: string | null
 }

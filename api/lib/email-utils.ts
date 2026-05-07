@@ -60,24 +60,75 @@ export function cleanEmailBody(text: string): string {
   return cleaned.trim();
 }
 
-export function isEmailSpam(fromEmail: string, subject: string, body: string): boolean {
+export function isEmailSpam(fromEmail: string, subject: string, body: string, htmlBody?: string): boolean {
   const lowerFrom = fromEmail.toLowerCase();
   const lowerSubject = subject.toLowerCase();
   const lowerBody = body.toLowerCase().slice(0, 3000);
 
-  const spamPrefixes = ['noreply', 'no-reply', 'donotreply', 'mailer-daemon', 'postmaster'];
+  const spamPrefixes = ['noreply', 'no-reply', 'donotreply', 'mailer-daemon', 'postmaster', 'notifications', 'newsletter', 'info@', 'hello@', 'team@', 'updates@', 'news@'];
   if (spamPrefixes.some((p) => lowerFrom.startsWith(p))) return true;
 
-  const marketingDomains = ['mailchimp.com', 'sendgrid.net', 'constantcontact.com', 'hubspot.com'];
+  const marketingDomains = ['mailchimp.com', 'sendgrid.net', 'constantcontact.com', 'hubspot.com', 'klaviyo.com', 'klclick', 'mailgun.org', 'convertkit', 'beehiiv.com'];
   if (marketingDomains.some((d) => lowerFrom.includes(d))) return true;
 
-  const spamPhrases = ['unsubscribe from this list', 'click here to unsubscribe', 'opt out of future'];
+  const spamPhrases = ['unsubscribe from this list', 'click here to unsubscribe', 'opt out of future', 'manage your preferences', 'email preferences', 'update your preferences'];
   if (spamPhrases.some((p) => lowerBody.includes(p))) return true;
 
-  const spamSubjects = ['your subscription', 'promotional', 'limited time offer'];
+  const spamSubjects = ['your subscription', 'promotional', 'limited time offer', 'exclusive offer', 'don\'t miss'];
   if (spamSubjects.some((s) => lowerSubject.includes(s))) return true;
 
+  // HTML body with unsubscribe link = marketing email
+  if (htmlBody) {
+    const lowerHtml = htmlBody.toLowerCase();
+    if (lowerHtml.includes('unsubscribe') || lowerHtml.includes('opt-out') || lowerHtml.includes('email preferences')) {
+      return true;
+    }
+  }
+
   return false;
+}
+
+export function extractUnsubscribeUrls(html: string): string[] {
+  if (!html) return [];
+  const urls: string[] = [];
+  let match: RegExpExecArray | null;
+
+  // 1. URL itself contains unsubscribe keywords
+  const hrefPattern = /href=["']([^"']*(?:unsub|opt[_-]?out|remove[_-]?me|manage[_-]?prefer)[^"']*)["']/gi;
+  while ((match = hrefPattern.exec(html)) !== null) {
+    const url = match[1].replace(/&amp;/g, '&');
+    if (url.startsWith('http')) urls.push(url);
+  }
+
+  // 2. Link anchor text contains "unsubscribe"
+  const anchorUnsub = /<a\s[^>]*href=["']([^"']+)["'][^>]*>[^<]*unsub[^<]*<\/a>/gi;
+  while ((match = anchorUnsub.exec(html)) !== null) {
+    const url = match[1].replace(/&amp;/g, '&');
+    if (url.startsWith('http') && !urls.includes(url)) urls.push(url);
+  }
+
+  // 3. href near "unsubscribe" text (within 500 chars)
+  if (urls.length === 0) {
+    const unsubIdx: number[] = [];
+    const unsubFind = /unsub(?:scribe)?/gi;
+    while ((match = unsubFind.exec(html)) !== null) {
+      unsubIdx.push(match.index);
+    }
+    for (const idx of unsubIdx) {
+      const start = Math.max(0, idx - 500);
+      const end = Math.min(html.length, idx + 500);
+      const context = html.slice(start, end);
+      const hrefInContext = /href=["']([^"']+)["']/gi;
+      while ((match = hrefInContext.exec(context)) !== null) {
+        const url = match[1].replace(/&amp;/g, '&');
+        if (url.startsWith('http') && !urls.includes(url) && !url.includes('mailto:')) {
+          urls.push(url);
+        }
+      }
+    }
+  }
+
+  return [...new Set(urls)];
 }
 
 export function normalizeSubject(subject: string): string {

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { fetchAndStoreAvatar } from '../lib/fetch-avatar.js';
+import { fetchAndStoreAvatar, fetchEmailAvatar } from '../lib/fetch-avatar.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -220,6 +220,21 @@ async function executeToolCall(name: string, input: Record<string, string>, conv
   return 'Unknown tool.';
 }
 
+async function getModelForBusiness(businessId: string): Promise<string> {
+  const { data } = await supabase
+    .from('businesses')
+    .select('ai_model')
+    .eq('id', businessId)
+    .single();
+  if (data?.ai_model) return data.ai_model;
+  const { data: setting } = await supabase
+    .from('platform_settings')
+    .select('value')
+    .eq('key', 'ai_model')
+    .single();
+  return setting?.value || 'claude-sonnet-4-6';
+}
+
 async function generateAIReply(
   systemPrompt: string,
   history: Array<{role: 'user' | 'assistant', content: string}>,
@@ -227,6 +242,7 @@ async function generateAIReply(
   hasBookableServices?: boolean,
   conversationId?: string,
 ): Promise<string> {
+  const model = businessId ? await getModelForBusiness(businessId) : 'claude-sonnet-4-6';
   let messages: Array<Record<string, unknown>> = history.length > 0 ? [...history] : [{ role: 'user', content: '(new conversation)' }];
   if ((messages[0] as Record<string, unknown>)?.role === 'assistant') {
     messages = [{ role: 'user', content: '(prior context)' }, ...messages];
@@ -248,7 +264,7 @@ async function generateAIReply(
 
   for (let round = 0; round < 3; round++) {
     const body: Record<string, unknown> = {
-      model: 'claude-sonnet-4-6',
+      model,
       max_tokens: 1024,
       system: systemPrompt,
       messages,
@@ -526,6 +542,39 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ ok: true, note: 'account_connected', accountId }), { status: 200 });
     }
 
+    // ── Branch 1b: Account status change (disconnect/reconnect) ──
+    if (payload.event === 'account_status' || payload.account_status) {
+      const statusData = payload.account_status || payload;
+      const accountId = statusData.account_id || payload.account_id;
+      const newStatus = statusData.status || '';
+
+      if (accountId) {
+        const isOk = newStatus === 'OK' || newStatus === 'CREATION_SUCCESS';
+        const { data: ch } = await supabase
+          .from('channels')
+          .select('id, config')
+          .eq('unipile_account_id', accountId)
+          .single();
+
+        if (ch) {
+          if (isOk) {
+            await supabase.from('channels').update({
+              status: 'connected',
+              config: { ...(ch.config as any), disconnect_reason: null },
+            }).eq('id', ch.id);
+          } else {
+            await supabase.from('channels').update({
+              status: 'disconnected',
+              disconnected_at: new Date().toISOString(),
+              config: { ...(ch.config as any), disconnect_reason: newStatus || 'unknown' },
+            }).eq('id', ch.id);
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ ok: true, note: 'account_status', status: newStatus }), { status: 200 });
+    }
+
     // ── Branch 2: Inbound message ──
     if (payload.event === 'message_received' && payload.account_id) {
       const accountId = payload.account_id;
@@ -536,6 +585,7 @@ export default async function handler(req: Request): Promise<Response> {
         (typeof payload.message === 'string' ? payload.message : payload.message?.text) || '';
       const messageSubject = payload.subject || payload.message?.subject || '';
       const chatId = payload.chat_id || payload.message?.chat_id || '';
+      const isGroupChat = chatId.includes('@g.us');
       const senderAttendeeId = payload.sender_attendee_id || payload.message?.sender_attendee_id || '';
 
       // Attachments from WhatsApp messages (images, files, audio)
@@ -666,38 +716,108 @@ export default async function handler(req: Request): Promise<Response> {
         }
       }
 
-      if (!contactId) {
+      if (!isGroupChat && !contactId) {
         return new Response(JSON.stringify({ ok: true, skipped: 'contact failed' }), { status: 200 });
       }
 
       // Find or create conversation
       let conversationId: string | null = null;
       let convoAiHandling = true;
-      const { data: existingConvo } = await supabase
-        .from('conversations')
-        .select('id, ai_handling')
-        .eq('business_id', businessId)
-        .eq('contact_id', contactId)
-        .eq('channel', conversationChannel)
-        .eq('status', 'open')
-        .maybeSingle();
 
-      if (existingConvo) {
-        conversationId = existingConvo.id;
-        convoAiHandling = existingConvo.ai_handling !== false;
-      } else {
-        const { data: newConvo } = await supabase
+      if (isGroupChat) {
+        // Resolve Unipile internal ID and group name from the provider_id
+        let unipileInternalId = chatId;
+        let resolvedGroupName = '';
+        try {
+          const chatRes = await fetch(`https://${UNIPILE_DSN}/api/v1/chats?provider_id=${encodeURIComponent(chatId)}`, {
+            headers: { 'X-API-KEY': UNIPILE_TOKEN, accept: 'application/json' },
+          });
+          if (chatRes.ok) {
+            const chatList = await chatRes.json() as Record<string, any>;
+            const first = chatList.items?.[0];
+            if (first) {
+              unipileInternalId = first.id || chatId;
+              resolvedGroupName = first.name || first.title || '';
+            }
+          }
+        } catch {}
+
+        // Look up existing group conversation — try Unipile internal ID first, then raw provider_id
+        let existingConvo: Record<string, any> | null = null;
+        const { data: byInternal } = await supabase
           .from('conversations')
-          .insert({
-            business_id: businessId,
-            contact_id: contactId,
-            channel: conversationChannel,
-            status: 'open',
-            ai_handling: true,
-          })
-          .select('id')
-          .single();
-        conversationId = newConvo?.id || null;
+          .select('id, ai_handling, group_name, unipile_chat_id')
+          .eq('business_id', businessId)
+          .eq('unipile_chat_id', unipileInternalId)
+          .order('created_at', { ascending: true })
+          .limit(1);
+        existingConvo = byInternal?.[0] || null;
+
+        if (!existingConvo && unipileInternalId !== chatId) {
+          const { data: byProvider } = await supabase
+            .from('conversations')
+            .select('id, ai_handling, group_name, unipile_chat_id')
+            .eq('business_id', businessId)
+            .eq('unipile_chat_id', chatId)
+            .order('created_at', { ascending: true })
+            .limit(1);
+          existingConvo = byProvider?.[0] || null;
+        }
+
+        if (existingConvo) {
+          conversationId = existingConvo.id;
+          convoAiHandling = existingConvo.ai_handling !== false;
+          const patch: Record<string, string> = {};
+          if (existingConvo.unipile_chat_id !== unipileInternalId) patch.unipile_chat_id = unipileInternalId;
+          if (resolvedGroupName && existingConvo.group_name !== resolvedGroupName) patch.group_name = resolvedGroupName;
+          if (Object.keys(patch).length > 0) {
+            await supabase.from('conversations').update(patch).eq('id', existingConvo.id);
+          }
+        } else {
+          const { data: newConvo } = await supabase
+            .from('conversations')
+            .insert({
+              business_id: businessId,
+              contact_id: null,
+              channel: conversationChannel,
+              status: 'open',
+              ai_handling: false,
+              is_group: true,
+              group_name: resolvedGroupName || 'Group Chat',
+              unipile_chat_id: unipileInternalId,
+            })
+            .select('id')
+            .single();
+          conversationId = newConvo?.id || null;
+          convoAiHandling = false;
+        }
+      } else {
+        const { data: existingConvo } = await supabase
+          .from('conversations')
+          .select('id, ai_handling')
+          .eq('business_id', businessId)
+          .eq('contact_id', contactId)
+          .eq('channel', conversationChannel)
+          .eq('status', 'open')
+          .maybeSingle();
+
+        if (existingConvo) {
+          conversationId = existingConvo.id;
+          convoAiHandling = existingConvo.ai_handling !== false;
+        } else {
+          const { data: newConvo } = await supabase
+            .from('conversations')
+            .insert({
+              business_id: businessId,
+              contact_id: contactId,
+              channel: conversationChannel,
+              status: 'open',
+              ai_handling: true,
+            })
+            .select('id')
+            .single();
+          conversationId = newConvo?.id || null;
+        }
       }
 
       if (!conversationId) {
@@ -728,6 +848,8 @@ export default async function handler(req: Request): Promise<Response> {
         content_type: contentType,
         body: cleanText || null,
         media_url: mediaUrl,
+        sender_name: isGroupChat ? (isOutboundWA ? 'You' : (cleanSenderName || senderPhone || null)) : null,
+        sender_contact_id: isGroupChat ? contactId : null,
         metadata: {
           sender_name: isOutboundWA ? 'You' : senderDisplay,
           ...(isEmail
@@ -737,13 +859,14 @@ export default async function handler(req: Request): Promise<Response> {
         },
       });
 
-      // Update conversation preview
+      // Update conversation preview (include sender name for groups)
+      const groupPrefix = isGroupChat && !isOutboundWA && cleanSenderName ? `${cleanSenderName}: ` : '';
       await supabase
         .from('conversations')
         .update({
           last_message_at: new Date().toISOString(),
-          last_message_preview: preview,
-          unread_count: isOutboundWA ? (existingConvo ? 0 : 0) : 1,
+          last_message_preview: `${groupPrefix}${preview}`.slice(0, 100),
+          unread_count: isOutboundWA ? 0 : 1,
         })
         .eq('id', conversationId);
 
@@ -751,7 +874,7 @@ export default async function handler(req: Request): Promise<Response> {
       const spam = isEmail && isSpamEmail(senderEmail, messageSubject, cleanText);
       const draftMode = (channel as any).draft_mode !== false;
 
-      if (channel.auto_reply_enabled && convoAiHandling && !spam && !isOutboundWA && cleanText) {
+      if (channel.auto_reply_enabled && convoAiHandling && !spam && !isOutboundWA && !isGroupChat && cleanText) {
         const [systemPrompt, history, svcRes] = await Promise.all([
           buildBusinessContext(businessId, { contactName: resolvedName || undefined, channel: conversationChannel }),
           getConversationHistory(conversationId!),
@@ -910,7 +1033,7 @@ export default async function handler(req: Request): Promise<Response> {
       let resolvedContactName = '';
       const { data: existing } = await supabase
         .from('contacts')
-        .select('id, name')
+        .select('id, name, avatar_url')
         .eq('business_id', businessId)
         .eq('email', counterpartyEmail)
         .maybeSingle();
@@ -921,6 +1044,9 @@ export default async function handler(req: Request): Promise<Response> {
         if (counterpartyName && counterpartyName !== counterpartyEmail) {
           await supabase.from('contacts').update({ name: counterpartyName }).eq('id', contactId);
           resolvedContactName = counterpartyName;
+        }
+        if (!existing.avatar_url) {
+          fetchEmailAvatar(existing.id, counterpartyEmail).catch(() => {});
         }
       } else {
         const { data: newContact } = await supabase
@@ -935,6 +1061,9 @@ export default async function handler(req: Request): Promise<Response> {
         contactId = newContact?.id || null;
         if (counterpartyName && counterpartyName !== counterpartyEmail) {
           resolvedContactName = counterpartyName;
+        }
+        if (contactId) {
+          fetchEmailAvatar(contactId, counterpartyEmail).catch(() => {});
         }
       }
 

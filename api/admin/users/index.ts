@@ -22,7 +22,7 @@ export default async function handler(req: Request) {
   const { data, error } = await supabaseAdmin
     .from('team_members')
     .select('*, businesses(name)')
-    .order('created_at', { ascending: false })
+    .order('invited_at', { ascending: false })
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json(data)

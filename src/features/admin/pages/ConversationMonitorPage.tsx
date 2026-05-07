@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Search, MessageSquare, Phone, Mail, Bot } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { DataTable } from '../components/DataTable'
+import { AdminError } from '../components/AdminError'
 import { useAdminApi } from '../hooks/useAdminApi'
 
 interface AdminConversation {
@@ -44,7 +45,7 @@ function timeAgo(iso: string | null): string {
 
 export default function ConversationMonitorPage() {
   const [search, setSearch] = useState('')
-  const { data: conversations } = useAdminApi<AdminConversation[]>('conversations', [])
+  const { data: conversations, error } = useAdminApi<AdminConversation[]>('conversations', [])
 
   const filtered = conversations.filter(
     (c) =>
@@ -55,6 +56,7 @@ export default function ConversationMonitorPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-ink">Conversations</h1>
+      {error && <AdminError error={error} />}
       <p className="mt-1 text-[13px] text-ink-muted">All messaging threads across businesses</p>
 
       <div className="relative mt-4 max-w-sm">

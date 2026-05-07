@@ -19,7 +19,11 @@ export function useAdminApi<T>(
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
-    if (!session?.access_token) return
+    if (!session?.access_token) {
+      setLoading(false)
+      setError('No session — please log out and log in again')
+      return
+    }
     setLoading(true)
     setError(null)
     try {

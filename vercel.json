@@ -1,4 +1,18 @@
 {
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/",
@@ -14,12 +28,32 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/messages/process-takeovers",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/follow-up",
       "schedule": "0 * * * *"
     },
     {
       "path": "/api/contacts/sync-avatars",
       "schedule": "30 * * * *"
+    },
+    {
+      "path": "/api/billing/create-invoice",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/notifications/daily-summary",
+      "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron/calendar-health",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/inactive-accounts",
+      "schedule": "0 3 * * *"
     }
   ]
 }

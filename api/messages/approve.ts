@@ -37,7 +37,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data: conv } = await supabase
       .from('conversations')
-      .select('id, channel, contact_id, business_id, subject')
+      .select('id, channel, contact_id, business_id, subject, is_group, unipile_chat_id')
       .eq('id', msg.conversation_id)
       .single();
 
@@ -65,18 +65,22 @@ export default async function handler(req: Request): Promise<Response> {
     const accountId = matchingChannel.unipile_account_id;
     const meta = msg.metadata as Record<string, any> || {};
 
-    const { data: contact } = await supabase
-      .from('contacts')
-      .select('phone, whatsapp, email')
-      .eq('id', conv.contact_id)
-      .single();
+    let contact: { phone: string | null; whatsapp: string | null; email: string | null } | null = null;
+    if (conv.contact_id) {
+      const { data } = await supabase
+        .from('contacts')
+        .select('phone, whatsapp, email')
+        .eq('id', conv.contact_id)
+        .single();
+      contact = data;
+    }
 
-    if (!contact) {
+    if (!conv.is_group && !contact) {
       return new Response(JSON.stringify({ error: 'Contact not found' }), { status: 404 });
     }
 
     if (isEmail) {
-      const to = contact.email;
+      const to = contact?.email;
       if (!to) return new Response(JSON.stringify({ error: 'No email for contact' }), { status: 400 });
 
       const subject = meta.subject || (conv.subject ? `Re: ${conv.subject}` : 'Re: Your message');
@@ -95,7 +99,15 @@ export default async function handler(req: Request): Promise<Response> {
         headers: { 'X-API-KEY': UNIPILE_TOKEN, 'Content-Type': 'application/json', accept: 'application/json' },
         body: JSON.stringify(payload),
       });
+    } else if (conv.is_group && conv.unipile_chat_id) {
+      // Send to group via chat_id
+      await fetch(`https://${UNIPILE_DSN}/api/v1/chats/${conv.unipile_chat_id}/messages`, {
+        method: 'POST',
+        headers: { 'X-API-KEY': UNIPILE_TOKEN, 'Content-Type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ text: msg.body }),
+      });
     } else {
+      if (!contact) return new Response(JSON.stringify({ error: 'Contact not found' }), { status: 404 });
       const phone = contact.whatsapp || contact.phone;
       if (!phone) return new Response(JSON.stringify({ error: 'No phone for contact' }), { status: 400 });
 
