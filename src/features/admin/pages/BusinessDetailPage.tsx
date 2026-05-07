@@ -17,6 +17,7 @@ interface BusinessDetail {
   greeting: string | null
   tone: string | null
   ai_model: string | null
+  channel_limits: Record<string, number> | null
   admin_notes: string | null
   created_at: string
   team_members: Array<{ name: string | null; email: string; role: string }>
@@ -58,6 +59,7 @@ export default function BusinessDetailPage() {
   const [suspending, setSuspending] = useState(false)
   const [notesSaved, setNotesSaved] = useState(false)
   const [aiModelSaved, setAiModelSaved] = useState(false)
+  const [limitsSaved, setLimitsSaved] = useState(false)
 
   if (loading) {
     return <p className="py-12 text-center text-[13px] text-ink-muted">Loading...</p>
@@ -217,6 +219,38 @@ export default function BusinessDetailPage() {
             {(!biz.services || biz.services.length === 0) && (
               <p className="text-[12px] text-ink-muted">No services configured</p>
             )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border p-4 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[14px] font-semibold text-ink">Channel Limits</h2>
+            {limitsSaved && <span className="text-[11px] text-success">Saved</span>}
+          </div>
+          <p className="mt-1 text-[12px] text-ink-muted">Max channels this business can connect (default 1 each)</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(['whatsapp', 'email', 'sms', 'voice'] as const).map((key) => {
+              const limits = biz.channel_limits || { whatsapp: 1, email: 1, sms: 1, voice: 1 }
+              return (
+                <div key={key}>
+                  <label className="text-[12px] font-medium capitalize text-ink-muted">{key}</label>
+                  <select
+                    defaultValue={limits[key] ?? 1}
+                    onChange={async (e) => {
+                      const newLimits = { ...(biz.channel_limits || { whatsapp: 1, email: 1, sms: 1, voice: 1 }), [key]: Number(e.target.value) }
+                      await patchBusiness({ channel_limits: newLimits })
+                      setLimitsSaved(true)
+                      setTimeout(() => setLimitsSaved(false), 2000)
+                    }}
+                    className="mt-1 block h-8 w-full rounded-lg border border-border bg-elevated px-2 text-[13px] text-ink outline-none focus:border-brand"
+                  >
+                    {[1, 2, 3, 4, 5, 10].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })}
           </div>
         </div>
 

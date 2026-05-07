@@ -34,7 +34,7 @@ export default function FAQsStep({ onChange }: Props) {
     <div>
       <h2 className="text-xl font-semibold text-ink">Check your FAQs</h2>
       <p className="mt-2 text-[15px] text-ink-muted">
-        Poppy uses these to answer common questions instantly on calls.
+        Elsie uses these to answer common questions instantly on calls.
       </p>
 
       <div className="mt-4 flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-[13px] text-brand">

@@ -57,18 +57,20 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-const CHANNEL_ICON = {
+const CHANNEL_ICON: Record<string, typeof Phone> = {
   voice: Phone,
   sms: MessageSquare,
   whatsapp: MessageSquare,
   email: Mail,
+  instagram: MessageSquare,
 }
 
-const CHANNEL_COLOR = {
+const CHANNEL_COLOR: Record<string, string> = {
   voice: 'text-success',
   sms: 'text-brand',
   whatsapp: 'text-emerald-500',
   email: 'text-violet-500',
+  instagram: 'text-pink-500',
 }
 
 function useChannelHealth() {

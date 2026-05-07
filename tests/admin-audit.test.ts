@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 const ADMIN_EMAIL = 'hugodesouzax@gmail.com'
-const ADMIN_PASS = 'Poppy2026!'
+const ADMIN_PASS = 'Elsie2026!'
 
 async function adminLogin(page: any) {
   await page.goto('https://app.heyelsie.com/login')

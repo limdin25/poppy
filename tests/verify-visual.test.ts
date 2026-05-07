@@ -25,9 +25,9 @@ test('verify +351964888769 conversation renders media', async ({ page }) => {
   const videos = await page.locator('video').count()
   console.log(`+351964888769: ${images} images, ${audios} audios, ${videos} videos`)
 
-  // Check no "Poppy AI" label on outbound messages (should be plain outbound)
-  const poppyAiLabels = await page.locator('text=Poppy AI').count()
-  console.log(`Poppy AI labels: ${poppyAiLabels}`)
+  // Check no "Elsie AI" label on outbound messages (should be plain outbound)
+  const elsieAiLabels = await page.locator('text=Elsie AI').count()
+  console.log(`Elsie AI labels: ${elsieAiLabels}`)
 })
 
 test('verify +40758891962 conversation - no fake reaction msg', async ({ page }) => {

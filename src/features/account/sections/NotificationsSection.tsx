@@ -40,9 +40,9 @@ interface SettingDef {
 }
 
 const SETTINGS: SettingDef[] = [
-  { key: 'notify_on_call', label: 'Call completed', description: 'After every call Poppy handles' },
+  { key: 'notify_on_call', label: 'Call completed', description: 'After every call Elsie handles' },
   { key: 'notify_on_message', label: 'New message', description: 'When a new WhatsApp or email arrives' },
-  { key: 'notify_on_booking', label: 'New booking', description: 'When Poppy books an appointment for you' },
+  { key: 'notify_on_booking', label: 'New booking', description: 'When Elsie books an appointment for you' },
   { key: 'notify_on_quote_accepted', label: 'Quote accepted', description: 'When a customer accepts a quote' },
 ]
 

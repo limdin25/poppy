@@ -67,7 +67,7 @@ export default function AppointmentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink">Appointments</h1>
-          <p className="mt-1 text-[13px] text-ink-muted">Manage bookings made by Poppy and your team.</p>
+          <p className="mt-1 text-[13px] text-ink-muted">Manage bookings made by Elsie and your team.</p>
         </div>
         <button
           onClick={() => setShowNew(true)}
@@ -276,7 +276,7 @@ function AppointmentCard({ appt, onCancel }: { appt: Appointment; onCancel: () =
 
       <div className="mt-3 flex items-center justify-between">
         <span className="text-[11px] text-ink-subtle">
-          {appt.booked_via === 'manual' ? 'Manual booking' : `Booked via ${appt.booked_via ?? 'Poppy'}`}
+          {appt.booked_via === 'manual' ? 'Manual booking' : `Booked via ${appt.booked_via ?? 'Elsie'}`}
         </span>
         <div className="flex gap-2">
           {appt.contact?.phone && (

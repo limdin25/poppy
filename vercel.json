@@ -32,6 +32,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/follow-up/enqueue",
+      "schedule": "15 * * * *"
+    },
+    {
       "path": "/api/cron/follow-up",
       "schedule": "0 * * * *"
     },

@@ -505,6 +505,7 @@ export default async function handler(req: Request): Promise<Response> {
       if (unipileType.startsWith('GOOGLE') || unipileType.includes('GMAIL')) channelType = 'email_gmail';
       else if (unipileType.includes('OUTLOOK') || unipileType.includes('MICROSOFT')) channelType = 'email_outlook';
       else if (unipileType.includes('IMAP') || unipileType.includes('SMTP') || unipileType.includes('MAIL')) channelType = 'email_smtp';
+      else if (unipileType.includes('INSTAGRAM')) channelType = 'instagram';
 
       // Try to find channel by unipile_account_id first
       let { data: existingChannel } = await supabase
@@ -625,7 +626,8 @@ export default async function handler(req: Request): Promise<Response> {
 
       const businessId = channel.business_id;
       const isEmail = channel.type === 'email_gmail' || channel.type === 'email_outlook' || channel.type === 'email_smtp';
-      const conversationChannel = isEmail ? 'email' : 'whatsapp';
+      const isInstagram = channel.type === 'instagram';
+      const conversationChannel = isEmail ? 'email' : isInstagram ? 'instagram' : 'whatsapp';
 
       // Detect outbound WhatsApp messages (sent from Hugo's phone)
       // Unipile sets is_sender=true or the sender matches the channel's own phone/email
@@ -841,7 +843,7 @@ export default async function handler(req: Request): Promise<Response> {
       const previewMap = { text: '', image: '📷 Photo', audio: '🎤 Voice message', file: '📎 Attachment' };
       const preview = cleanText.slice(0, 100) || previewMap[contentType] || '📎 Attachment';
 
-      await supabase.from('messages').insert({
+      const { data: insertedMsg } = await supabase.from('messages').insert({
         conversation_id: conversationId,
         direction: isOutboundWA ? 'outbound' : 'inbound',
         sender: isOutboundWA ? 'human' : 'contact',
@@ -857,68 +859,50 @@ export default async function handler(req: Request): Promise<Response> {
             : { sender_phone: senderPhone }),
           external_id: messageId,
         },
-      });
+      }).select('id').single();
 
       // Update conversation preview (include sender name for groups)
       const groupPrefix = isGroupChat && !isOutboundWA && cleanSenderName ? `${cleanSenderName}: ` : '';
+      const { data: currentConvo } = await supabase
+        .from('conversations')
+        .select('unread_count')
+        .eq('id', conversationId)
+        .single();
+      const currentUnreadWA = (currentConvo?.unread_count ?? 0);
       await supabase
         .from('conversations')
         .update({
           last_message_at: new Date().toISOString(),
           last_message_preview: `${groupPrefix}${preview}`.slice(0, 100),
-          unread_count: isOutboundWA ? 0 : 1,
+          unread_count: isOutboundWA ? 0 : currentUnreadWA + 1,
         })
         .eq('id', conversationId);
 
-      // AI auto-reply if enabled — skip for outbound (sent from phone), spam, or image-only
+      // Cancel pending follow-ups when contact replies
+      if (!isOutboundWA && conversationId) {
+        await supabase
+          .from('follow_up_queue')
+          .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+          .eq('conversation_id', conversationId)
+          .eq('status', 'pending');
+      }
+
+      // Queue AI takeover instead of replying inline — gives the business owner time to reply first
       const spam = isEmail && isSpamEmail(senderEmail, messageSubject, cleanText);
-      const draftMode = (channel as any).draft_mode !== false;
 
-      if (channel.auto_reply_enabled && convoAiHandling && !spam && !isOutboundWA && !isGroupChat && cleanText) {
-        const [systemPrompt, history, svcRes] = await Promise.all([
-          buildBusinessContext(businessId, { contactName: resolvedName || undefined, channel: conversationChannel }),
-          getConversationHistory(conversationId!),
-          supabase.from('services').select('bookable').eq('business_id', businessId).eq('bookable', true).limit(1),
-        ]);
-        const hasBookable = (svcRes.data?.length ?? 0) > 0;
-
-        if (systemPrompt) {
-          const fullPrompt = isEmail
-            ? `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`
-            : systemPrompt;
-
-          const reply = await generateAIReply(fullPrompt, history, businessId, hasBookable, conversationId);
-
-          if (reply) {
-            if (!draftMode) {
-              if (isEmail) {
-                await sendUnipileEmail(accountId, senderEmail, messageSubject ? `Re: ${messageSubject.replace(/^Re:\s*/i, '')}` : `Re: Your message`, reply);
-              } else {
-                await sendUnipileMessage(accountId, senderPhone, reply);
-              }
-            }
-
-            await supabase.from('messages').insert({
-              conversation_id: conversationId,
-              direction: 'outbound',
-              sender: 'ai',
-              content_type: 'text',
-              body: reply,
-              status: draftMode ? 'draft' : 'sent',
-              metadata: { via: isEmail ? 'unipile_email_auto_reply' : 'unipile_auto_reply' },
-            });
-
-            if (!draftMode) {
-              await supabase
-                .from('conversations')
-                .update({
-                  last_message_at: new Date().toISOString(),
-                  last_message_preview: reply.slice(0, 100),
-                })
-                .eq('id', conversationId);
-            }
-          }
-        }
+      if (channel.auto_reply_enabled && convoAiHandling && !spam && !isOutboundWA && !isGroupChat && cleanText && insertedMsg?.id) {
+        const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+        fetch(`${appUrl}/api/messages/queue-takeover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business_id: businessId,
+            conversation_id: conversationId,
+            message_id: insertedMsg.id,
+            channel: conversationChannel,
+            received_at: new Date().toISOString(),
+          }),
+        }).catch((err) => console.error('[unipile-webhook] queue-takeover failed:', err));
       }
 
       return new Response(JSON.stringify({ ok: true, note: 'message_received', channel: conversationChannel }), { status: 200 });
@@ -1147,7 +1131,7 @@ export default async function handler(req: Request): Promise<Response> {
 
       const preview = emailText.slice(0, 100);
 
-      await supabase.from('messages').insert({
+      const { data: insertedEmailMsg } = await supabase.from('messages').insert({
         conversation_id: conversationId,
         direction: isOutbound ? 'outbound' : 'inbound',
         sender: isOutbound ? 'human' : 'contact',
@@ -1172,7 +1156,7 @@ export default async function handler(req: Request): Promise<Response> {
           is_spam: emailIsSpam,
           body_html: htmlBody.includes('<') ? htmlBody.slice(0, 50000) : null,
         },
-      });
+      }).select('id').single();
 
       // Update conversation preview and unread count
       const currentUnread = (existingConvo as any)?.unread_count || 0;
@@ -1193,55 +1177,20 @@ export default async function handler(req: Request): Promise<Response> {
           .then(() => {}, () => {});
       }
       const convoAiOn = existingConvo?.ai_handling !== false;
-      const emailDraftMode = (channel as any).draft_mode !== false;
 
-      if (!isOutbound && channel.auto_reply_enabled && convoAiOn && !emailIsSpam) {
-        const [systemPrompt, history, emailSvcRes] = await Promise.all([
-          buildBusinessContext(businessId, { contactName: resolvedContactName || undefined, channel: 'email' }),
-          getConversationHistory(conversationId!),
-          supabase.from('services').select('bookable').eq('business_id', businessId).eq('bookable', true).limit(1),
-        ]);
-        const emailHasBookable = (emailSvcRes.data?.length ?? 0) > 0;
-
-        if (systemPrompt) {
-          const fullPrompt = `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`;
-          const reply = await generateAIReply(fullPrompt, history, businessId, emailHasBookable, conversationId);
-
-          if (reply) {
-            const replySubject = emailSubject
-              ? `Re: ${emailSubject.replace(/^Re:\s*/i, '')}`
-              : 'Re: Your message';
-
-            if (!emailDraftMode) {
-              await sendUnipileEmail(accountId, counterpartyEmail, replySubject, reply, emailId);
-            }
-
-            await supabase.from('messages').insert({
-              conversation_id: conversationId,
-              direction: 'outbound',
-              sender: 'ai',
-              content_type: 'text',
-              body: reply,
-              status: emailDraftMode ? 'draft' : 'sent',
-              metadata: {
-                via: 'unipile_email_auto_reply',
-                subject: replySubject,
-                reply_to_email_id: emailId,
-                to_attendees: [{ identifier: counterpartyEmail, display_name: counterpartyName }],
-              },
-            });
-
-            if (!emailDraftMode) {
-              await supabase
-                .from('conversations')
-                .update({
-                  last_message_at: new Date().toISOString(),
-                  last_message_preview: reply.slice(0, 100),
-                })
-                .eq('id', conversationId);
-            }
-          }
-        }
+      if (!isOutbound && channel.auto_reply_enabled && convoAiOn && !emailIsSpam && insertedEmailMsg?.id) {
+        const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+        fetch(`${appUrl}/api/messages/queue-takeover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business_id: businessId,
+            conversation_id: conversationId,
+            message_id: insertedEmailMsg.id,
+            channel: 'email',
+            received_at: new Date().toISOString(),
+          }),
+        }).catch((err) => console.error('[unipile-webhook] email queue-takeover failed:', err));
       }
 
       return new Response(JSON.stringify({ ok: true, note: event, direction: isOutbound ? 'outbound' : 'inbound' }), { status: 200 });

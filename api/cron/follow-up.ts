@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendSMS } from '../../src/integrations/twilio/client.js';
-import { sendToChat } from '../../src/integrations/unipile/client.js';
+import { sendToChat, sendEmail as sendUnipileEmail } from '../../src/integrations/unipile/client.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -16,102 +16,137 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
-  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: pending } = await supabase
+    .from('follow_up_queue')
+    .select('*')
+    .eq('status', 'pending')
+    .lte('scheduled_at', new Date().toISOString())
+    .order('scheduled_at', { ascending: true })
+    .limit(50);
 
-  const { data: leads, error } = await supabase
-    .from('conversations')
-    .select(`
-      id,
-      business_id,
-      contact_id,
-      channel,
-      contacts:contact_id ( name, phone, whatsapp )
-    `)
-    .not('qualified_at', 'is', null)
-    .is('follow_up_sent_at', null)
-    .lte('qualified_at', twoHoursAgo)
-    .gte('qualified_at', twentyFourHoursAgo);
-
-  if (error || !leads?.length) {
-    return new Response(JSON.stringify({ processed: 0 }), { status: 200 });
+  if (!pending?.length) {
+    return new Response(JSON.stringify({ processed: 0, sent: 0 }), { status: 200 });
   }
 
-  const appointmentCheck = await supabase
-    .from('appointments')
-    .select('conversation_id')
-    .in('conversation_id', leads.map(l => l.id))
-    .neq('status', 'cancelled');
-
-  const bookedIds = new Set((appointmentCheck.data || []).map(a => a.conversation_id));
-
   let sent = 0;
+  let cancelled = 0;
 
-  for (const lead of leads) {
-    if (bookedIds.has(lead.id)) {
-      await supabase.from('conversations').update({ follow_up_sent_at: new Date().toISOString() }).eq('id', lead.id);
+  for (const item of pending) {
+    const { data: appointment } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('conversation_id', item.conversation_id)
+      .neq('status', 'cancelled')
+      .limit(1)
+      .single();
+
+    if (appointment) {
+      await supabase
+        .from('follow_up_queue')
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+        .eq('id', item.id);
+      cancelled++;
       continue;
     }
 
-    const contact = lead.contacts as unknown as { name: string | null; phone: string | null; whatsapp: string | null } | null;
-    if (!contact) continue;
-
-    const { data: biz } = await supabase
-      .from('businesses')
-      .select('name')
-      .eq('id', lead.business_id)
+    const { data: recentInbound } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', item.conversation_id)
+      .eq('direction', 'inbound')
+      .gt('created_at', item.created_at)
+      .limit(1)
       .single();
 
-    const bizName = biz?.name || 'us';
-    const firstName = contact.name?.split(' ')[0] || 'there';
-    const message = `Hi ${firstName}! Just following up from ${bizName}. We noticed you were looking at booking an appointment — would you still like to go ahead? Just reply here and we can get you sorted. 😊`;
-
-    let didSend = false;
-
-    if (lead.channel === 'whatsapp' && contact.whatsapp) {
-      try {
-        const accountId = await getWhatsAppAccountId(lead.business_id);
-        if (accountId) {
-          await sendToChat(accountId, contact.whatsapp, message);
-          didSend = true;
-        }
-      } catch { /* log but don't fail */ }
+    if (recentInbound) {
+      await supabase
+        .from('follow_up_queue')
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+        .eq('id', item.id);
+      cancelled++;
+      continue;
     }
 
-    if (!didSend && contact.phone) {
-      try {
-        const fromNumber = await getSmsFromNumber(lead.business_id);
-        if (fromNumber) {
-          await sendSMS(fromNumber, contact.phone, message);
+    let didSend = false;
+    let error: string | null = null;
+
+    try {
+      if (item.channel === 'whatsapp') {
+        const accountId = await getWhatsAppAccountId(item.business_id);
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('whatsapp')
+          .eq('id', item.contact_id)
+          .single();
+        if (accountId && contact?.whatsapp) {
+          await sendToChat(accountId, contact.whatsapp, item.message);
           didSend = true;
         }
-      } catch { /* log but don't fail */ }
+      } else if (item.channel === 'sms') {
+        const fromNumber = await getSmsFromNumber(item.business_id);
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('phone')
+          .eq('id', item.contact_id)
+          .single();
+        if (fromNumber && contact?.phone) {
+          await sendSMS(fromNumber, contact.phone, item.message);
+          didSend = true;
+        }
+      } else if (item.channel === 'email') {
+        const emailAccount = await getEmailAccountId(item.business_id);
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('email')
+          .eq('id', item.contact_id)
+          .single();
+        if (emailAccount && contact?.email) {
+          const { data: biz } = await supabase
+            .from('businesses')
+            .select('name')
+            .eq('id', item.business_id)
+            .single();
+          await sendUnipileEmail(emailAccount, contact.email, `Following up from ${biz?.name || 'us'}`, item.message);
+          didSend = true;
+        }
+      }
+    } catch (err: any) {
+      error = err.message || 'Send failed';
     }
 
     if (didSend) {
+      await supabase
+        .from('follow_up_queue')
+        .update({ status: 'sent', sent_at: new Date().toISOString() })
+        .eq('id', item.id);
+
       await supabase.from('messages').insert({
-        conversation_id: lead.id,
+        conversation_id: item.conversation_id,
         direction: 'outbound',
         sender: 'ai',
         content_type: 'text',
-        body: message,
-        metadata: { via: 'follow_up_cron' },
+        body: item.message,
+        metadata: { via: 'follow_up_cron', attempt: item.attempt_number, reason: item.reason },
       });
 
       await supabase
         .from('conversations')
         .update({
-          follow_up_sent_at: new Date().toISOString(),
           last_message_at: new Date().toISOString(),
-          last_message_preview: message.slice(0, 100),
+          last_message_preview: item.message.slice(0, 100),
         })
-        .eq('id', lead.id);
+        .eq('id', item.conversation_id);
 
       sent++;
+    } else if (error) {
+      await supabase
+        .from('follow_up_queue')
+        .update({ status: 'failed', error })
+        .eq('id', item.id);
     }
   }
 
-  return new Response(JSON.stringify({ processed: leads.length, sent }), { status: 200 });
+  return new Response(JSON.stringify({ processed: pending.length, sent, cancelled }), { status: 200 });
 }
 
 async function getSmsFromNumber(businessId: string): Promise<string | null> {
@@ -121,19 +156,31 @@ async function getSmsFromNumber(businessId: string): Promise<string | null> {
     .eq('business_id', businessId)
     .eq('type', 'voice')
     .eq('status', 'connected')
+    .limit(1)
     .single();
-
   return (data?.config as Record<string, string> | null)?.phone ?? null;
 }
 
 async function getWhatsAppAccountId(businessId: string): Promise<string | null> {
   const { data } = await supabase
     .from('channels')
-    .select('config')
+    .select('unipile_account_id')
     .eq('business_id', businessId)
     .eq('type', 'whatsapp')
     .eq('status', 'connected')
+    .limit(1)
     .single();
+  return data?.unipile_account_id ?? null;
+}
 
-  return (data?.config as Record<string, string> | null)?.account_id ?? null;
+async function getEmailAccountId(businessId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('channels')
+    .select('unipile_account_id')
+    .eq('business_id', businessId)
+    .in('type', ['email_gmail', 'email_outlook'])
+    .eq('status', 'connected')
+    .limit(1)
+    .single();
+  return data?.unipile_account_id ?? null;
 }

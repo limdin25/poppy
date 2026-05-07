@@ -95,17 +95,17 @@ export default function BusinessSearch({ business, onUpdate, onNext }: Props) {
     <div className="flex flex-1 flex-col">
       {/* Heading */}
       <h1 className="text-2xl font-semibold text-ink">
-        Train Poppy on your business
+        Train Elsie on your business
       </h1>
       <p className="mt-2 text-[15px] text-ink-muted">
-        Find your business so Poppy can learn how to answer your calls.
+        Find your business so Elsie can learn how to answer your calls.
       </p>
 
       {/* Benefits */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         {[
           { icon: Search, title: 'Find your profile', desc: 'Search your business name' },
-          { icon: Building2, title: 'Train your AI', desc: 'Poppy learns from your listing' },
+          { icon: Building2, title: 'Train your AI', desc: 'Elsie learns from your listing' },
           { icon: Globe, title: 'Quick setup', desc: 'Less than a minute' },
         ].map(({ icon: Icon, title, desc }) => (
           <div
@@ -190,7 +190,7 @@ export default function BusinessSearch({ business, onUpdate, onNext }: Props) {
             />
           </div>
           <p className="mt-1 text-[12px] text-ink-subtle">
-            Poppy will scan your website to learn about your services
+            Elsie will scan your website to learn about your services
           </p>
         </div>
       )}

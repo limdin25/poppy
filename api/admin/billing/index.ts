@@ -22,7 +22,7 @@ export default async function handler(req: Request) {
   const [businessesRes, periodsRes] = await Promise.all([
     supabaseAdmin
       .from('businesses')
-      .select('id, name, currency, billing_active, activation_credit_paid, stripe_customer_id'),
+      .select('id, name, currency, billing_active, stripe_customer_id'),
     supabaseAdmin
       .from('billing_periods')
       .select('business_id, booking_count, total_amount, cap_reached, status, currency, paid_at')
@@ -41,7 +41,6 @@ export default async function handler(req: Request) {
   let activeCustomers = 0
   let customersAtCap = 0
   let failedPayments = 0
-  let activationCount = 0
 
   const customerRows = businesses.map((b: any) => {
     const period = periodMap.get(b.id)
@@ -51,7 +50,6 @@ export default async function handler(req: Request) {
     const status = period?.status || (b.billing_active ? 'active' : 'new')
 
     if (b.billing_active) activeCustomers++
-    if (b.activation_credit_paid) activationCount++
     if (capReached) customersAtCap++
     if (status === 'failed') failedPayments++
     totalRevenue += amount
@@ -77,7 +75,7 @@ export default async function handler(req: Request) {
     avg_revenue: avgRevenue,
     customers_at_cap: customersAtCap,
     failed_payments: failedPayments,
-    activation_rate: businesses.length > 0 ? activationCount / businesses.length : 0,
+    total_customers: businesses.length,
     customers: customerRows,
   })
 }

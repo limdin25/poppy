@@ -49,23 +49,24 @@ export default async function handler(req: Request): Promise<Response> {
         voided++;
       } else if (business?.stripe_customer_id && business?.stripe_subscription_id) {
         try {
-          const subscription = await stripe.subscriptions.retrieve(business.stripe_subscription_id);
-          const subscriptionItemId = subscription.items.data[0]?.id;
-
-          if (subscriptionItemId) {
-            await (stripe as any).subscriptionItems.createUsageRecord(subscriptionItemId, {
-              quantity: period.booking_count,
-              timestamp: Math.floor(Date.now() / 1000),
-              action: 'set',
-            });
-          }
+          const currencyCode = (period.currency || 'GBP').toLowerCase();
+          const amountInCents = Math.round(totalAmount * 100);
 
           const invoice = await stripe.invoices.create({
             customer: business.stripe_customer_id,
             auto_advance: true,
             collection_method: 'charge_automatically',
+            currency: currencyCode,
             description: `Hey Elsie — ${period.booking_count} bookings (${period.period_start} to ${period.period_end})`,
             metadata: { billing_period_id: period.id, business_id: period.business_id },
+          });
+
+          await stripe.invoiceItems.create({
+            customer: business.stripe_customer_id,
+            invoice: invoice.id,
+            amount: amountInCents,
+            currency: currencyCode,
+            description: `${period.booking_count} AI bookings × £10 (capped at £${period.cap_amount})`,
           });
 
           await stripe.invoices.finalizeInvoice(invoice.id);
@@ -100,7 +101,7 @@ export default async function handler(req: Request): Promise<Response> {
           period_start: nextStart.toISOString().split('T')[0],
           period_end: nextEnd.toISOString().split('T')[0],
           currency: period.currency,
-          cap_amount: 189,
+          cap_amount: 200,
         });
       }
     }

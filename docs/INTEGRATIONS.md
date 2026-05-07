@@ -69,7 +69,7 @@ All API keys are stored as environment variables. Never hardcoded.
 | `TWILIO_AUTH_TOKEN` | Twilio auth token |
 
 **Current setup:**
-- Dedicated Poppy Twilio account (separate from NFStay)
+- Dedicated Elsie Twilio account (separate from NFStay)
 - UK number: `+447426495169`
 - Elastic SIP Trunk: origination → `sip:sip.retellai.com`, termination secured via credential auth
 - Retell IP whitelist: `18.98.16.120/30`

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { notifyBusinessOwner } from '../lib/notify.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -7,6 +8,21 @@ const supabase = createClient(
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY!;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
+
+async function getModelForBusiness(businessId: string): Promise<string> {
+  const { data } = await supabase
+    .from('businesses')
+    .select('ai_model')
+    .eq('id', businessId)
+    .single();
+  if (data?.ai_model) return data.ai_model;
+  const { data: setting } = await supabase
+    .from('platform_settings')
+    .select('value')
+    .eq('key', 'ai_model')
+    .single();
+  return setting?.value || 'claude-sonnet-4-6';
+}
 
 async function verifySignature(rawBody: string, signatureHeader: string): Promise<boolean> {
   if (!RETELL_API_KEY) return false;
@@ -33,7 +49,7 @@ async function verifySignature(rawBody: string, signatureHeader: string): Promis
   return computed === digest;
 }
 
-async function extractCallerInfo(transcript: string, businessName: string): Promise<{
+async function extractCallerInfo(transcript: string, businessName: string, businessId?: string): Promise<{
   caller_name?: string;
   caller_phone?: string;
   caller_email?: string;
@@ -41,6 +57,7 @@ async function extractCallerInfo(transcript: string, businessName: string): Prom
   summary?: string;
   action_required?: string;
 }> {
+  const model = businessId ? await getModelForBusiness(businessId) : 'claude-sonnet-4-6';
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -49,7 +66,7 @@ async function extractCallerInfo(transcript: string, businessName: string): Prom
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6-20250514',
+      model,
       max_tokens: 512,
       messages: [
         {
@@ -99,22 +116,35 @@ export default async function handler(req: Request): Promise<Response> {
     const fromNumber = call.from_number;
     const collectedVars = call.collected_dynamic_variables || {};
 
-    // Find business by agent_id stored in channels.config
-    const { data: channels } = await supabase
-      .from('channels')
-      .select('business_id, id, config')
-      .eq('type', 'voice');
+    // Find business by retell_agent_id — check agents table first, then channels.config fallback
+    let businessId: string | undefined;
+    let elsieAgentId: string | undefined;
 
-    const channel = channels?.find(
-      (ch: any) => ch.config?.retell_agent_id === agentId
-    );
+    const { data: agentRow } = await supabase
+      .from('agents')
+      .select('id, business_id')
+      .eq('retell_agent_id', agentId)
+      .single();
 
-    if (!channel) {
-      console.error('[retell-webhook] No channel found for agent_id:', agentId);
-      return new Response(JSON.stringify({ error: 'Agent not found' }), { status: 404 });
+    if (agentRow) {
+      businessId = agentRow.business_id;
+      elsieAgentId = agentRow.id;
+    } else {
+      const { data: channels } = await supabase
+        .from('channels')
+        .select('business_id, id, config')
+        .eq('type', 'voice');
+
+      const channel = channels?.find(
+        (ch: any) => ch.config?.retell_agent_id === agentId
+      );
+      if (channel) businessId = channel.business_id;
     }
 
-    const businessId = channel.business_id;
+    if (!businessId) {
+      console.error('[retell-webhook] No agent/channel found for agent_id:', agentId);
+      return new Response(JSON.stringify({ error: 'Agent not found' }), { status: 404 });
+    }
 
     // For call_analyzed, update the existing call with analysis data
     if (event === 'call_analyzed') {
@@ -166,7 +196,7 @@ export default async function handler(req: Request): Promise<Response> {
       .single();
 
     // Extract caller info via Claude
-    const info = await extractCallerInfo(transcript, business?.name || 'the business');
+    const info = await extractCallerInfo(transcript, business?.name || 'the business', businessId);
 
     // Use collected variables from Retell as fallback
     const callerName = info.caller_name || collectedVars.name || collectedVars.customer_name || null;
@@ -213,6 +243,7 @@ export default async function handler(req: Request): Promise<Response> {
       .insert({
         business_id: businessId,
         contact_id: contactId,
+        agent_id: elsieAgentId || null,
         channel: 'voice',
         status: 'closed',
         last_message_at: new Date().toISOString(),
@@ -263,6 +294,15 @@ export default async function handler(req: Request): Promise<Response> {
         disconnection_reason: call.disconnection_reason,
       },
     });
+
+    notifyBusinessOwner(businessId, 'call', {
+      title: `Missed Call: ${callerName || callerPhone || 'Unknown'}`,
+      body: [
+        info.summary || `Call lasted ${durationSec}s`,
+        callerPhone ? `Phone: ${callerPhone}` : null,
+        info.action_required ? `Action: ${info.action_required}` : null,
+      ].filter(Boolean).join('\n'),
+    }).catch(() => {});
 
     return new Response(JSON.stringify({ ok: true, callId: call.call_id }), { status: 200 });
   } catch (err: any) {

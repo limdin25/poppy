@@ -42,7 +42,7 @@ const INITIAL_STATE: RegistrationState = {
 
 const STEP_LABELS = [
   'Find your business',
-  'Training Poppy',
+  'Training Elsie',
   'Create account',
   'Setting up number',
   'Test call',
@@ -75,7 +75,7 @@ export default function RegistrationPage() {
     <div className="flex min-h-screen flex-col bg-bg">
       {/* Header */}
       <header className="flex h-14 items-center justify-center border-b border-border bg-surface">
-        <span className="text-lg font-semibold text-ink">Poppy</span>
+        <span className="text-lg font-semibold text-ink">Elsie</span>
       </header>
 
       {/* Step indicator */}
@@ -123,7 +123,7 @@ export default function RegistrationPage() {
 
       {/* Trust footer */}
       <footer className="border-t border-border bg-surface py-4 text-center text-[12px] text-ink-subtle">
-        Free for 7 days · No credit card required · Cancel anytime
+        No setup fee · Only pay per booking · Cancel anytime
       </footer>
     </div>
   )

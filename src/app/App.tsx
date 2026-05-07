@@ -15,7 +15,9 @@ const ContactsPage = lazy(() => import('@/features/contacts/ContactsPage'))
 const AppointmentsPage = lazy(() => import('@/features/appointments/AppointmentsPage'))
 const QuotesPage = lazy(() => import('@/features/quotes/QuotesPage'))
 const InvoicesPage = lazy(() => import('@/features/invoices/InvoicesPage'))
-const AgentSetupPage = lazy(() => import('@/features/agent-setup/AgentSetupPage'))
+const AgentsListPage = lazy(() => import('@/features/agents/AgentsListPage'))
+const AgentEditorPage = lazy(() => import('@/features/agents/AgentEditorPage'))
+const ConnectionsPage = lazy(() => import('@/features/connections/ConnectionsPage'))
 const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'))
 const AccountPage = lazy(() => import('@/features/account/AccountPage'))
 const BillingPage = lazy(() => import('@/features/billing/BillingPage'))
@@ -63,7 +65,10 @@ export default function App() {
             <Route path="invoices" element={<InvoicesPage />} />
             <Route path="billing" element={<BillingPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
-            <Route path="agent/*" element={<AgentSetupPage />} />
+            <Route path="agents" element={<AgentsListPage />} />
+            <Route path="agents/:agentId" element={<AgentEditorPage />} />
+            <Route path="connections" element={<ConnectionsPage />} />
+            <Route path="agent/*" element={<AgentsListPage />} />
             <Route path="account/*" element={<AccountPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

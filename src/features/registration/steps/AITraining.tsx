@@ -112,7 +112,7 @@ export default function AITraining({ business, onBusinessCreated, onNext }: Prop
         Training your AI receptionist
       </h1>
       <p className="mt-2 text-[15px] text-ink-muted">
-        Poppy is learning the unique voice of{' '}
+        Elsie is learning the unique voice of{' '}
         <span className="font-medium text-ink">
           {business.name || 'your business'}
         </span>

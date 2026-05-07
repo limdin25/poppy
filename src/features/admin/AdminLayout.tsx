@@ -91,7 +91,7 @@ export default function AdminLayout() {
         {/* Logo */}
         <div className="flex h-12 items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] font-semibold text-white">Poppy</span>
+            <span className="text-[15px] font-semibold text-white">Elsie</span>
             <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/70">Admin</span>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="text-white/50 hover:text-white lg:hidden">
@@ -161,7 +161,7 @@ export default function AdminLayout() {
           <button onClick={() => setSidebarOpen(true)} className="text-ink-muted hover:text-ink">
             <Menu size={20} />
           </button>
-          <span className="text-[14px] font-semibold text-ink">Poppy Admin</span>
+          <span className="text-[14px] font-semibold text-ink">Elsie Admin</span>
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-6">

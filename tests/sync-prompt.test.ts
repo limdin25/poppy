@@ -8,7 +8,7 @@ const BUSINESS: Business = {
   address: '12 High Street, Brighton BN1 1AA',
   phone: '+447426495169',
   website: 'https://smithplumbing.co.uk',
-  greeting: "Hello, Smith & Sons Plumbing, you're speaking with Poppy. How can I help?",
+  greeting: "Hello, Smith & Sons Plumbing, you're speaking with Elsie. How can I help?",
   tone: 'friendly',
 };
 
@@ -45,7 +45,7 @@ describe('buildSystemPrompt', () => {
 
   it('includes greeting', () => {
     const prompt = buildSystemPrompt(BUSINESS, [], [], []);
-    expect(prompt).toContain("you're speaking with Poppy. How can I help?");
+    expect(prompt).toContain("you're speaking with Elsie. How can I help?");
   });
 
   it('includes tone', () => {
@@ -210,7 +210,7 @@ const mockChannelConfig = {
 function makeMockSupabase() {
   const chainable = (finalData: unknown) => {
     const chain: Record<string, unknown> = {};
-    const methods = ['select', 'eq', 'order', 'single', 'limit'];
+    const methods = ['select', 'eq', 'or', 'order', 'single', 'limit', 'maybeSingle'];
     for (const m of methods) {
       chain[m] = vi.fn(() => chain);
     }
@@ -225,6 +225,8 @@ function makeMockSupabase() {
       if (table === 'services') return chainable(mockServicesData);
       if (table === 'faqs') return chainable(mockFaqsData);
       if (table === 'call_info_types') return chainable(mockCallInfoData);
+      if (table === 'knowledge_sources') return chainable([]);
+      if (table === 'agents') return chainable(null);
       return chainable(null);
     }),
   };
@@ -237,14 +239,22 @@ beforeEach(async () => {
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-key');
   vi.stubEnv('RETELL_API_KEY', 'test-retell-key');
 
-  mockRetellFetch = vi.fn(() =>
-    Promise.resolve({
+  mockRetellFetch = vi.fn((url: string) => {
+    if (typeof url === 'string' && url.includes('list-phone-numbers')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([]),
+        text: () => Promise.resolve('[]'),
+      });
+    }
+    return Promise.resolve({
       ok: true,
       status: 200,
       json: () => Promise.resolve({ llm_id: 'llm_test123' }),
       text: () => Promise.resolve('ok'),
-    })
-  );
+    });
+  });
 
   vi.stubGlobal('fetch', mockRetellFetch);
 

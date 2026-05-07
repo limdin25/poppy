@@ -10,7 +10,7 @@ function getHeaders(): Record<string, string> {
 }
 
 function defaultFrom(): string {
-  return process.env.EMAIL_FROM || "Poppy <noreply@poppy.ai>";
+  return process.env.EMAIL_FROM || "Elsie <noreply@heyelsie.com>";
 }
 
 // --- Types ---
@@ -49,12 +49,12 @@ export async function sendWelcomeEmail(
   passwordSetUrl: string
 ): Promise<SendEmailResponse> {
   const html = `
-    <h1>Welcome to Poppy, ${name}!</h1>
+    <h1>Welcome to Elsie, ${name}!</h1>
     <p>Your AI receptionist is almost ready. Set your password to get started:</p>
     <p><a href="${passwordSetUrl}" style="background:#6366f1;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Set Password</a></p>
-    <p>If you didn't sign up for Poppy, you can safely ignore this email.</p>
+    <p>If you didn't sign up for Elsie, you can safely ignore this email.</p>
   `;
-  return sendEmail(email, "Welcome to Poppy — Set Your Password", html);
+  return sendEmail(email, "Welcome to Elsie — Set Your Password", html);
 }
 
 /** Send a notification email (plain text wrapped in minimal HTML). */

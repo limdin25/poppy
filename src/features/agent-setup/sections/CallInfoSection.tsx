@@ -104,7 +104,7 @@ export default function CallInfoSection() {
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Information to Collect</h2>
             <p className="mt-1 text-[13px] text-ink-muted">
-              Choose what Poppy asks callers for during the conversation.
+              Choose what Elsie asks callers for during the conversation.
             </p>
           </div>
           <button
@@ -195,7 +195,7 @@ export default function CallInfoSection() {
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h3 className="text-[14px] font-medium text-ink">How it works</h3>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
-          Poppy naturally weaves these questions into the conversation rather than asking
+          Elsie naturally weaves these questions into the conversation rather than asking
           them all at once. Required fields will always be collected before ending the call.
           Optional fields are collected if the conversation flows naturally.
         </p>

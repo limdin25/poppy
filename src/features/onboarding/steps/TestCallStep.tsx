@@ -15,7 +15,7 @@ export default function TestCallStep() {
       </div>
 
       <h2 className="mt-6 text-xl font-semibold text-ink">
-        Poppy is ready!
+        Elsie is ready!
       </h2>
       <p className="mt-2 text-[15px] text-ink-muted">
         Give her a test call and hear how she handles your customers.

@@ -189,7 +189,7 @@ export function MessageBubble({ sender, text, timestamp, className, metadata, co
         )}
       >
         {sender === 'ai' && (
-          <p className="mb-0.5 text-[10px] font-semibold opacity-70">Poppy AI</p>
+          <p className="mb-0.5 text-[10px] font-semibold opacity-70">Elsie AI</p>
         )}
         {isInbound && contactLabel && (
           <p className="mb-0.5 text-[10px] font-semibold text-ink-subtle">{contactLabel}</p>

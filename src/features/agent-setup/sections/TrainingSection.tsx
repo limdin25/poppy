@@ -97,7 +97,7 @@ export default function TrainingSection() {
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Knowledge Sources</h2>
             <p className="mt-1 text-[13px] text-ink-muted">
-              Poppy learns from these sources to answer caller questions accurately.
+              Elsie learns from these sources to answer caller questions accurately.
             </p>
           </div>
           <button
@@ -176,7 +176,7 @@ export default function TrainingSection() {
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h3 className="text-[14px] font-medium text-ink">Add website</h3>
         <p className="mt-1 text-[13px] text-ink-muted">
-          Poppy will scrape and learn from your website content.
+          Elsie will scrape and learn from your website content.
         </p>
         <div className="mt-3 flex gap-2">
           <input

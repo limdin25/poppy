@@ -16,7 +16,7 @@ export default function GreetingSection() {
 
   useEffect(() => {
     if (business) {
-      const def = `Hello, ${business.name}, you're speaking with Poppy. How can I help you today?`
+      const def = `Hello, ${business.name}, you're speaking with Elsie. How can I help you today?`
       setDefaultGreeting(def)
       setGreeting(business.greeting || def)
     }
@@ -45,7 +45,7 @@ export default function GreetingSection() {
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h2 className="text-[15px] font-semibold text-ink">Opening Greeting</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          This is what callers hear first when Poppy picks up.
+          This is what callers hear first when Elsie picks up.
         </p>
 
         <textarea
@@ -86,7 +86,7 @@ export default function GreetingSection() {
         <div className="mt-4 rounded-xl bg-elevated p-4">
           <div className="flex gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[12px] font-bold text-brand">
-              P
+              E
             </div>
             <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-3 shadow-sm">
               <p className="text-[14px] leading-relaxed text-ink">{greeting}</p>

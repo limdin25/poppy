@@ -55,7 +55,7 @@ export default function BehaviourSection() {
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h2 className="text-[15px] font-semibold text-ink">Tone</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          Set the overall tone for how Poppy communicates with your customers.
+          Set the overall tone for how Elsie communicates with your customers.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {TONE_OPTIONS.map((opt) => (
@@ -77,7 +77,7 @@ export default function BehaviourSection() {
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h2 className="text-[15px] font-semibold text-ink">Custom Instructions</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          Give Poppy specific instructions about how to handle calls and messages.
+          Give Elsie specific instructions about how to handle calls and messages.
           Write these as if you're briefing a new receptionist on their first day.
         </p>
 

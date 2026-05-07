@@ -4,7 +4,7 @@ interface AvatarProps {
   src?: string;
   name?: string;
   size?: "xs" | "sm" | "md" | "lg";
-  channel?: "whatsapp" | "email" | "sms" | "voice";
+  channel?: "whatsapp" | "email" | "sms" | "voice" | "instagram";
   className?: string;
 }
 

@@ -8,6 +8,21 @@ const supabase = createClient(
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
 
+async function getModelForBusiness(businessId: string): Promise<string> {
+  const { data } = await supabase
+    .from('businesses')
+    .select('ai_model')
+    .eq('id', businessId)
+    .single();
+  if (data?.ai_model) return data.ai_model;
+  const { data: setting } = await supabase
+    .from('platform_settings')
+    .select('value')
+    .eq('key', 'ai_model')
+    .single();
+  return setting?.value || 'claude-sonnet-4-6';
+}
+
 export const config = { runtime: 'edge' };
 
 function extractTextFromHtml(html: string): string {
@@ -76,7 +91,7 @@ export default async function handler(req: Request): Promise<Response> {
 async function scrapeInBackground(sourceId: string, url: string, businessId: string) {
   try {
     const pageRes = await fetch(url, {
-      headers: { 'User-Agent': 'PoppyBot/1.0 (+https://poppy.ai)' },
+      headers: { 'User-Agent': 'ElsieBot/1.0 (+https://heyelsie.com)' },
       signal: AbortSignal.timeout(10000),
     });
 
@@ -99,6 +114,7 @@ async function scrapeInBackground(sourceId: string, url: string, businessId: str
       return;
     }
 
+    const aiModel = await getModelForBusiness(businessId);
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -107,7 +123,7 @@ async function scrapeInBackground(sourceId: string, url: string, businessId: str
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: aiModel,
         max_tokens: 1500,
         messages: [{
           role: 'user',

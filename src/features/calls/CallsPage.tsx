@@ -367,7 +367,7 @@ function CallDetail({
                           : 'rounded-br-md bg-brand text-white'
                       )}>
                         <p className="mb-0.5 text-[10px] font-semibold opacity-60">
-                          {isCaller ? (call.contact?.name || 'Caller') : 'Poppy AI'}
+                          {isCaller ? (call.contact?.name || 'Caller') : 'Elsie AI'}
                         </p>
                         <p>{msg.text}</p>
                       </div>

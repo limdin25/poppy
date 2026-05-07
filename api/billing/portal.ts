@@ -11,7 +11,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-06-20' as any,
 });
 
-const APP_URL = process.env.APP_URL || 'https://app.poppy.ai';
+const APP_URL = process.env.APP_URL || 'https://app.heyelsie.com';
 
 export const config = { runtime: 'edge' };
 

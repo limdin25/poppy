@@ -66,7 +66,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-ink">Welcome back</h1>
-          <p className="mt-2 text-[15px] text-ink-muted">Sign in to your Poppy account</p>
+          <p className="mt-2 text-[15px] text-ink-muted">Sign in to your Elsie account</p>
         </div>
 
         {/* Magic link form */}
@@ -165,20 +165,6 @@ export default function LoginPage() {
             className="text-[13px] text-ink-muted hover:text-brand"
           >
             {mode === 'magic' ? 'Sign in with password instead' : 'Sign in with magic link instead'}
-          </button>
-        </div>
-
-        {/* Demo access */}
-        <div className="mt-6 border-t border-border pt-4">
-          <button
-            onClick={() => {
-              setEmail('demo@poppy.ai')
-              setPassword('demo1234')
-              setMode('password')
-            }}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-brand/40 text-[13px] font-medium text-brand transition hover:bg-brand/5"
-          >
-            Try demo account
           </button>
         </div>
 

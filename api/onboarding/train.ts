@@ -43,7 +43,7 @@ async function scrapeWebsite(url: string): Promise<string> {
   if (!url) return '';
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'PoppyBot/1.0 (onboarding scraper)' },
+      headers: { 'User-Agent': 'ElsieBot/1.0 (onboarding scraper)' },
       signal: AbortSignal.timeout(10000),
     });
     const html = await res.text();

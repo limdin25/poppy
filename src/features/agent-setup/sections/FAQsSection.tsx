@@ -97,7 +97,7 @@ export default function FAQsSection() {
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Frequently Asked Questions</h2>
             <p className="mt-1 text-[13px] text-ink-muted">
-              Poppy uses these to answer common questions instantly.
+              Elsie uses these to answer common questions instantly.
             </p>
           </div>
           <button

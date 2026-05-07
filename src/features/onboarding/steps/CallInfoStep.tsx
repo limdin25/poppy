@@ -35,9 +35,9 @@ export default function CallInfoStep({ onChange }: Props) {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-ink">What should Poppy collect?</h2>
+      <h2 className="text-xl font-semibold text-ink">What should Elsie collect?</h2>
       <p className="mt-2 text-[15px] text-ink-muted">
-        Choose what information Poppy asks callers for. She'll work it naturally into the conversation.
+        Choose what information Elsie asks callers for. She'll work it naturally into the conversation.
       </p>
 
       <div className="mt-6 space-y-2">

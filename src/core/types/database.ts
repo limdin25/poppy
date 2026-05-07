@@ -56,11 +56,62 @@ export interface Contact {
   updated_at: string
 }
 
+export type AgentType = 'voice' | 'whatsapp' | 'sms' | 'instagram' | 'email'
+
+export interface Agent {
+  id: string
+  business_id: string
+  name: string
+  description: string | null
+  agent_type: AgentType
+  is_default: boolean
+  status: 'active' | 'draft' | 'paused' | 'archived'
+  greeting: string | null
+  tone: string | null
+  ai_system_prompt: string | null
+  ai_model: string | null
+  takeover_delay_seconds: number | null
+  after_hours_delay_seconds: number | null
+  working_hours_start: number | null
+  working_hours_end: number | null
+  working_days: string[] | null
+  voice_id: string | null
+  voice_speed: number | null
+  retell_agent_id: string | null
+  retell_llm_id: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TrainingJob {
+  id: string
+  business_id: string
+  agent_id: string | null
+  source_type: 'website' | 'google_places' | 'document' | 'pasted_text'
+  source_url: string | null
+  source_file_url: string | null
+  source_text: string | null
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  error_message: string | null
+  generated_config: {
+    greeting?: string
+    faqs?: { question: string; answer: string }[]
+    services?: { name: string; description?: string; price_from?: number; price_to?: number; duration_minutes?: number; bookable?: boolean }[]
+    tone?: string
+    system_prompt_additions?: string
+  }
+  applied: boolean
+  applied_at: string | null
+  created_at: string
+}
+
 export interface Conversation {
   id: string
   business_id: string
   contact_id: string | null
-  channel: 'voice' | 'whatsapp' | 'sms' | 'email'
+  agent_id: string | null
+  channel: 'voice' | 'whatsapp' | 'sms' | 'email' | 'instagram'
   status: 'open' | 'closed' | 'archived'
   assigned_to: string | null
   ai_handling: boolean
@@ -112,9 +163,27 @@ export interface Call {
   contact?: Contact
 }
 
+export interface Channel {
+  id: string
+  business_id: string
+  agent_id: string | null
+  type: 'voice' | 'whatsapp' | 'sms' | 'instagram' | 'email_gmail' | 'email_outlook' | 'email_smtp'
+  label: string | null
+  status: 'connected' | 'disconnected' | 'reconnecting' | 'error'
+  auto_reply_enabled: boolean
+  draft_mode: boolean
+  auto_unsubscribe: boolean
+  config: Record<string, unknown>
+  unipile_account_id: string | null
+  connected_at: string | null
+  disconnected_at: string | null
+  created_at: string
+}
+
 export interface Service {
   id: string
   business_id: string
+  agent_id: string | null
   name: string
   description: string | null
   price_from: number | null
@@ -127,6 +196,7 @@ export interface Service {
 export interface Faq {
   id: string
   business_id: string
+  agent_id: string | null
   question: string
   answer: string
   sort_order: number

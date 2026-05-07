@@ -15,9 +15,9 @@ const mockCallEndedPayload = {
     end_timestamp: 1714700120000,
     duration_ms: 120000,
     disconnection_reason: 'user_hangup',
-    transcript: 'Agent: Good morning, Poppy speaking. How can I help?\nUser: Hi, I have a leaking pipe in my kitchen.\nAgent: I can help with that. Can I take your name please?\nUser: John Smith.\nAgent: Thanks John. What is the best number to reach you on?\nUser: 07700 900 456.\nAgent: Got it. We will get someone out to you shortly. Is there anything else?\nUser: No, that is all. Thank you.\nAgent: You are welcome, have a great day.',
+    transcript: 'Agent: Good morning, Elsie speaking. How can I help?\nUser: Hi, I have a leaking pipe in my kitchen.\nAgent: I can help with that. Can I take your name please?\nUser: John Smith.\nAgent: Thanks John. What is the best number to reach you on?\nUser: 07700 900 456.\nAgent: Got it. We will get someone out to you shortly. Is there anything else?\nUser: No, that is all. Thank you.\nAgent: You are welcome, have a great day.',
     transcript_object: [
-      { role: 'agent', content: 'Good morning, Poppy speaking. How can I help?', words: [] },
+      { role: 'agent', content: 'Good morning, Elsie speaking. How can I help?', words: [] },
       { role: 'user', content: 'Hi, I have a leaking pipe in my kitchen.', words: [] },
     ],
     metadata: {},

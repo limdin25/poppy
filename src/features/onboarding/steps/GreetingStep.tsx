@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { RotateCcw, Sparkles } from 'lucide-react'
 
-const DEFAULT_GREETING = "Good morning, Smith & Sons Plumbing, you're speaking with Poppy. How can I help you today?"
+const DEFAULT_GREETING = "Good morning, Smith & Sons Plumbing, you're speaking with Elsie. How can I help you today?"
 
 interface Props {
   onChange: (greeting: string) => void
@@ -46,7 +46,7 @@ export default function GreetingStep({ onChange }: Props) {
         <p className="text-[12px] font-medium text-ink-muted">How it sounds:</p>
         <div className="mt-3 flex gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[12px] font-bold text-brand">
-            P
+            E
           </div>
           <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-3 shadow-sm">
             <p className="text-[14px] leading-relaxed text-ink">{greeting}</p>

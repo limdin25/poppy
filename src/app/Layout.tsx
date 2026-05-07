@@ -20,6 +20,7 @@ import {
   Shield,
   Eye,
   LogOut,
+  Link2,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -33,15 +34,9 @@ const primaryNav = [
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
 ]
 
-const agentNav = { to: '/agent', icon: Bot, label: 'Agent Setup' }
-const agentSubNav = [
-  { to: '/agent/services', label: 'Services' },
-  { to: '/agent/faqs', label: 'FAQs' },
-  { to: '/agent/greeting', label: 'Greeting' },
-  { to: '/agent/call-info', label: 'Call Info' },
-  { to: '/agent/voice', label: 'Voice' },
-  { to: '/agent/behaviour', label: 'Behaviour' },
-  { to: '/agent/training', label: 'Training' },
+const agentNav = [
+  { to: '/agents', icon: Bot, label: 'Agents' },
+  { to: '/connections', icon: Link2, label: 'Connections' },
 ]
 
 const secondaryNav = [
@@ -66,7 +61,7 @@ const mobileNav = [
   { to: '/', icon: LayoutDashboard, label: 'Home' },
   { to: '/calls', icon: Phone, label: 'Calls' },
   { to: '/inbox', icon: Inbox, label: 'Inbox' },
-  { to: '/agent', icon: Bot, label: 'Agent' },
+  { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/account', icon: User, label: 'Account' },
 ]
 
@@ -75,7 +70,6 @@ const FULL_BLEED_ROUTES = ['/calls', '/inbox', '/contacts']
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [agentExpanded, setAgentExpanded] = useState(false)
   const [accountExpanded, setAccountExpanded] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const location = useLocation()
@@ -96,7 +90,6 @@ export default function Layout() {
   const isFullBleed = FULL_BLEED_ROUTES.includes(location.pathname)
 
   useEffect(() => {
-    if (location.pathname.startsWith('/agent')) setAgentExpanded(true)
     if (location.pathname.startsWith('/account')) setAccountExpanded(true)
   }, [location.pathname])
 
@@ -230,7 +223,7 @@ export default function Layout() {
             </button>
           ) : (
             <>
-              <span className="text-lg font-semibold text-ink">Poppy</span>
+              <span className="text-lg font-semibold text-ink">Elsie</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setCollapsed(true)}
@@ -260,12 +253,10 @@ export default function Layout() {
 
           <div className="my-2 h-px bg-border" />
 
-          <div>
-            {renderNavItem(agentNav, {
-              expanded: agentExpanded,
-              onToggle: () => setAgentExpanded(!agentExpanded),
-            })}
-            {agentExpanded && renderSubNav(agentSubNav)}
+          <div className="space-y-0.5">
+            {agentNav.map((item) => (
+              <div key={item.to}>{renderNavItem(item)}</div>
+            ))}
           </div>
 
           <div className="my-2 h-px bg-border" />
@@ -332,7 +323,7 @@ export default function Layout() {
           >
             <Menu size={22} />
           </button>
-          <span className="text-[15px] font-semibold text-ink">Poppy</span>
+          <span className="text-[15px] font-semibold text-ink">Elsie</span>
         </header>
 
         {/* Page content */}

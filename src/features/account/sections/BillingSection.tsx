@@ -1,73 +1,66 @@
-import { useState } from 'react'
-import { Check, CreditCard, ExternalLink, Loader2 } from 'lucide-react'
-import { cn } from '@/core/lib/cn'
+import { useState, useEffect } from 'react'
+import { CreditCard, ExternalLink, Loader2 } from 'lucide-react'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useBusiness } from '@/core/hooks/useBusiness'
+import { supabase } from '@/integrations/supabase/browser'
 
-const PLANS = [
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: '£49',
-    period: '/month',
-    priceId: 'price_1TTj1DLdAEhwWg6w9uuBcjJl',
-    features: ['Unlimited voice calls', '1 team member', '30-day call recordings', 'Email notifications'],
-  },
-  {
-    id: 'professional',
-    name: 'Professional',
-    price: '£99',
-    period: '/month',
-    priceId: 'price_1TTj1DLdAEhwWg6wERoybYsY',
-    features: ['Everything in Starter', 'SMS follow-ups', 'WhatsApp channel', '3 team members', '90-day recordings'],
-  },
-  {
-    id: 'business',
-    name: 'Business',
-    price: '£199',
-    period: '/month',
-    priceId: 'price_1TTj1DLdAEhwWg6w2l8IOzJ9',
-    features: ['Everything in Professional', 'Email channel', 'Unlimited team', '1-year recordings', 'Priority support'],
-  },
-]
-
-function getTrialInfo(createdAt: string | undefined) {
-  if (!createdAt) return { daysLeft: 0, expiresLabel: '' }
-  const created = new Date(createdAt)
-  const expires = new Date(created.getTime() + 14 * 24 * 60 * 60 * 1000)
-  const now = new Date()
-  const daysLeft = Math.max(0, Math.ceil((expires.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
-  const expiresLabel = expires.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-  return { daysLeft, expiresLabel }
+interface BillingPeriod {
+  id: string
+  period_start: string
+  period_end: string
+  booking_count: number
+  total_amount: string
+  cap_amount: string
+  cap_reached: boolean
+  status: string
+  currency: string
 }
 
 export default function BillingSection() {
-  const { session } = useAuth()
+  const { session, businessId } = useAuth()
   const { data: business } = useBusiness()
-  const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
   const [portalLoading, setPortalLoading] = useState(false)
+  const [activateLoading, setActivateLoading] = useState(false)
+  const [period, setPeriod] = useState<BillingPeriod | null>(null)
 
-  const currentPlan = (business as any)?.plan || 'trial'
-  const { daysLeft, expiresLabel } = getTrialInfo(business?.created_at)
+  useEffect(() => {
+    if (!businessId) return
+    supabase
+      .from('billing_periods')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('status', 'active')
+      .order('period_start', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setPeriod(data as BillingPeriod | null))
+  }, [businessId])
 
-  async function handleUpgrade(priceId: string, planId: string) {
+  const billingActive = (business as any)?.billing_active
+  const currency = (business as any)?.currency || 'GBP'
+  const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '£'
+  const totalAmount = period ? parseFloat(period.total_amount) || 0 : 0
+  const capAmount = period ? parseFloat(period.cap_amount) || 200 : 200
+  const bookings = period?.booking_count || 0
+
+  async function handleActivate() {
     if (!session) return
-    setLoadingPlan(planId)
+    setActivateLoading(true)
     try {
-      const res = await fetch('/api/billing/checkout', {
+      const res = await fetch('/api/billing/activate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({}),
       })
       const data = await res.json()
-      if (data.url) window.location.href = data.url
+      if (data.ok) window.location.reload()
     } catch (err) {
-      console.error('[billing] checkout error:', err)
+      console.error('[billing] activate error:', err)
     } finally {
-      setLoadingPlan(null)
+      setActivateLoading(false)
     }
   }
 
@@ -94,90 +87,78 @@ export default function BillingSection() {
 
   return (
     <div className="space-y-6">
-      {currentPlan === 'trial' && (
-        <div className="rounded-xl border border-brand/20 bg-brand-50 p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[14px] font-semibold text-ink">Free Trial</p>
-              <p className="mt-0.5 text-[13px] text-ink-muted">
-                {daysLeft} day{daysLeft !== 1 ? 's' : ''} remaining · Expires {expiresLabel}
-              </p>
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+        <h2 className="text-[15px] font-semibold text-ink">Pricing</h2>
+        <div className="mt-3 space-y-2 text-[13px] text-ink-muted">
+          <p><strong className="text-ink">{symbol}0 setup fee.</strong> No upfront cost — Elsie starts working for free.</p>
+          <p><strong className="text-ink">{symbol}10 per booking.</strong> You only pay when Elsie books an appointment into your calendar.</p>
+          <p><strong className="text-ink">{symbol}200/month cap.</strong> No matter how many bookings, you never pay more than {symbol}200 per 30-day cycle.</p>
+          <p>Calls, messages, and AI replies are always free. You only pay for completed bookings.</p>
+        </div>
+      </div>
+
+      {billingActive && period && (
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+          <h2 className="text-[15px] font-semibold text-ink">Current Billing Period</h2>
+          <p className="mt-1 text-[12px] text-ink-muted">
+            {new Date(period.period_start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — {new Date(period.period_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </p>
+
+          <div className="mt-4 grid grid-cols-3 gap-4">
+            <div className="rounded-lg bg-elevated p-3 text-center">
+              <p className="text-[22px] font-bold text-ink">{bookings}</p>
+              <p className="text-[11px] text-ink-muted">Bookings</p>
             </div>
-            <span className="rounded-lg bg-brand/10 px-3 py-1 text-[12px] font-semibold text-brand">
-              Trial
-            </span>
+            <div className="rounded-lg bg-elevated p-3 text-center">
+              <p className="text-[22px] font-bold text-ink">{symbol}{totalAmount.toFixed(0)}</p>
+              <p className="text-[11px] text-ink-muted">This cycle</p>
+            </div>
+            <div className="rounded-lg bg-elevated p-3 text-center">
+              <p className="text-[22px] font-bold text-ink">{symbol}{capAmount}</p>
+              <p className="text-[11px] text-ink-muted">Cap</p>
+            </div>
           </div>
+
+          {period.cap_reached && (
+            <div className="mt-3 rounded-lg bg-success/10 p-2 text-center text-[12px] font-medium text-success">
+              Cap reached — remaining bookings this cycle are free
+            </div>
+          )}
+
+          <div className="mt-3 h-2 rounded-full bg-elevated overflow-hidden">
+            <div
+              className="h-full rounded-full bg-brand transition-all"
+              style={{ width: `${Math.min(100, (totalAmount / capAmount) * 100)}%` }}
+            />
+          </div>
+          <p className="mt-1 text-right text-[11px] text-ink-subtle">
+            {symbol}{totalAmount.toFixed(0)} / {symbol}{capAmount}
+          </p>
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {PLANS.map((plan) => {
-          const isCurrent = currentPlan === plan.id
-          return (
-            <div
-              key={plan.id}
-              className={cn(
-                'rounded-xl border p-5 transition',
-                isCurrent ? 'border-brand bg-surface shadow-soft' : 'border-border bg-surface'
-              )}
-            >
-              {isCurrent && (
-                <span className="mb-3 inline-block rounded-md bg-brand/10 px-2 py-0.5 text-[11px] font-semibold text-brand">
-                  Current plan
-                </span>
-              )}
-              <h3 className="text-[16px] font-semibold text-ink">{plan.name}</h3>
-              <div className="mt-2 flex items-baseline gap-0.5">
-                <span className="text-[28px] font-bold text-ink">{plan.price}</span>
-                <span className="text-[14px] text-ink-muted">{plan.period}</span>
-              </div>
-
-              <ul className="mt-4 space-y-2">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-[13px] text-ink-muted">
-                    <Check size={14} className="shrink-0 text-success" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                onClick={() => !isCurrent && handleUpgrade(plan.priceId, plan.id)}
-                disabled={isCurrent || loadingPlan === plan.id}
-                className={cn(
-                  'mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-semibold transition',
-                  isCurrent
-                    ? 'border border-border text-ink-muted'
-                    : 'bg-brand text-white hover:bg-brand-600 disabled:opacity-60'
-                )}
-              >
-                {loadingPlan === plan.id && <Loader2 size={14} className="animate-spin" />}
-                {isCurrent ? 'Current plan' : 'Upgrade'}
-              </button>
-            </div>
-          )
-        })}
-      </div>
+      {!billingActive && (
+        <div className="rounded-xl border border-brand/20 bg-brand-50 p-5">
+          <p className="text-[14px] font-semibold text-ink">Free mode</p>
+          <p className="mt-1 text-[13px] text-ink-muted">
+            Elsie is working for you, but billing is not active yet. Bookings are being tracked.
+            Add a payment method to activate billing when you are ready.
+          </p>
+          <button
+            onClick={handleActivate}
+            disabled={activateLoading}
+            className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-[13px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+          >
+            {activateLoading ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
+            Add payment method
+          </button>
+        </div>
+      )}
 
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
-        <h2 className="text-[15px] font-semibold text-ink">Payment Method</h2>
+        <h2 className="text-[15px] font-semibold text-ink">Invoices & Payment</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          Manage your payment method through the billing portal.
-        </p>
-        <button
-          onClick={openPortal}
-          disabled={portalLoading}
-          className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-[13px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
-        >
-          {portalLoading ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-          Add payment method
-        </button>
-      </div>
-
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
-        <h2 className="text-[15px] font-semibold text-ink">Invoices & Billing Portal</h2>
-        <p className="mt-1 text-[13px] text-ink-muted">
-          View past invoices, update payment details, or cancel your subscription.
+          View past invoices, update payment details, or manage your billing.
         </p>
         <button
           onClick={openPortal}

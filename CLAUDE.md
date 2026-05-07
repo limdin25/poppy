@@ -1,6 +1,6 @@
-# Poppy — working agreement
+# Elsie — working agreement
 
-## What is Poppy
+## What is Elsie
 
 AI Receptionist SaaS for UK service businesses. Handles inbound calls, books appointments, sends confirmations via WhatsApp/email — all without human staff.
 
@@ -136,7 +136,7 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
   - Agent setup page wired: voice selection saves to Retell API, sync-prompt rebuilds LLM prompt from business data
 
 - **Stripe billing live**:
-  - Product: `prod_USeJwGZ6Uyh9Sg` (Poppy AI Receptionist)
+  - Product: `prod_USeJwGZ6Uyh9Sg` (Elsie AI Receptionist)
   - Prices: Starter £49 (`price_1TTj1DLdAEhwWg6w9uuBcjJl`), Professional £99 (`price_1TTj1DLdAEhwWg6wERoybYsY`), Business £199 (`price_1TTj1DLdAEhwWg6w2l8IOzJ9`)
   - Webhook: `we_1TTj28LdAEhwWg6wraqzHzdd` → updates plan + billing_status
   - Shared Stripe account with Lemlin (`acct_1M9GXPLdAEhwWg6w`)
@@ -153,4 +153,4 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 
 ## Identity — do not confuse with other projects
 
-This is **Poppy**, not Lemlin. Never reference Lemlin, instagrapi, iProyal, GHL, Fly.io workers, or any Lemlin-specific concepts. Hugo runs multiple projects — keep them separate.
+This is **Elsie** (formerly Poppy), not Lemlin. Never reference Lemlin, instagrapi, iProyal, GHL, Fly.io workers, or any Lemlin-specific concepts. Hugo runs multiple projects — keep them separate.

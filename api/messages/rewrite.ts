@@ -8,6 +8,21 @@ const supabase = createClient(
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
+async function getModelForBusiness(businessId: string): Promise<string> {
+  const { data } = await supabase
+    .from('businesses')
+    .select('ai_model')
+    .eq('id', businessId)
+    .single();
+  if (data?.ai_model) return data.ai_model;
+  const { data: setting } = await supabase
+    .from('platform_settings')
+    .select('value')
+    .eq('key', 'ai_model')
+    .single();
+  return setting?.value || 'claude-sonnet-4-6';
+}
+
 export const config = { runtime: 'edge' };
 
 function stripMarkdown(text: string): string {
@@ -45,7 +60,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data: conv } = await supabase
       .from('conversations')
-      .select('id, channel, contact_id, business_id')
+      .select('id, channel, contact_id, business_id, agent_id')
       .eq('id', msg.conversation_id)
       .single();
 
@@ -61,11 +76,16 @@ export default async function handler(req: Request): Promise<Response> {
 
     const contactName = contact?.name && !contact.name.startsWith('+') ? contact.name : undefined;
 
-    // Build system prompt
-    const [bizRes, svcRes, faqRes] = await Promise.all([
+    // Build system prompt — use agent overrides if conversation has an agent_id
+    const agentId = (conv as any).agent_id as string | null;
+    const svcFilter = agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null';
+    const faqFilter = agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null';
+
+    const [bizRes, svcRes, faqRes, agentRes] = await Promise.all([
       supabase.from('businesses').select('name, industry, address, phone, website, tone, greeting, ai_system_prompt').eq('id', conv.business_id).single(),
-      supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', conv.business_id),
-      supabase.from('faqs').select('question, answer').eq('business_id', conv.business_id),
+      supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', conv.business_id).or(svcFilter),
+      supabase.from('faqs').select('question, answer').eq('business_id', conv.business_id).or(faqFilter),
+      agentId ? supabase.from('agents').select('greeting, tone, ai_system_prompt').eq('id', agentId).single() : Promise.resolve({ data: null }),
     ]);
 
     const biz = bizRes.data;
@@ -73,13 +93,18 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'Business not found' }), { status: 404 });
     }
 
+    const agentData = agentRes.data as Record<string, unknown> | null;
+    const effectiveTone = (agentData?.tone as string) ?? biz.tone;
+    const effectiveGreeting = (agentData?.greeting as string) ?? biz.greeting;
+    const effectivePrompt = (agentData?.ai_system_prompt as string) ?? biz.ai_system_prompt;
+
     let prompt = `You are an AI assistant for ${biz.name || 'this business'}.`;
     if (biz.industry) prompt += ` Industry: ${biz.industry}.`;
     if (biz.address) prompt += ` Location: ${biz.address}.`;
     if (biz.phone) prompt += ` Phone: ${biz.phone}.`;
     if (biz.website) prompt += ` Website: ${biz.website}.`;
-    if (biz.tone) prompt += ` Tone: ${biz.tone}.`;
-    if (biz.greeting) prompt += `\n\nGreeting: ${biz.greeting}`;
+    if (effectiveTone) prompt += ` Tone: ${effectiveTone}.`;
+    if (effectiveGreeting) prompt += `\n\nGreeting: ${effectiveGreeting}`;
 
     const services = svcRes.data || [];
     if (services.length > 0) {
@@ -99,8 +124,8 @@ export default async function handler(req: Request): Promise<Response> {
       faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
     }
 
-    if (biz.ai_system_prompt) {
-      prompt += `\nCustom instructions:\n${biz.ai_system_prompt}`;
+    if (effectivePrompt) {
+      prompt += `\nCustom instructions:\n${effectivePrompt}`;
     }
 
     prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting (no **, no *, no #, no bullet points with -). Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
@@ -140,6 +165,7 @@ export default async function handler(req: Request): Promise<Response> {
       messages = [{ role: 'user', content: '(prior context)' }, ...messages];
     }
 
+    const aiModel = await getModelForBusiness(conv.business_id);
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -148,7 +174,7 @@ export default async function handler(req: Request): Promise<Response> {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: aiModel,
         max_tokens: 1024,
         system: prompt,
         messages,

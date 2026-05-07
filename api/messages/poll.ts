@@ -12,6 +12,21 @@ const UNIPILE_DSN = process.env.UNIPILE_DSN!;
 const POLL_SECRET = process.env.UNIPILE_POLL_SECRET || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
+async function getModelForBusiness(businessId: string): Promise<string> {
+  const { data } = await supabase
+    .from('businesses')
+    .select('ai_model')
+    .eq('id', businessId)
+    .single();
+  if (data?.ai_model) return data.ai_model;
+  const { data: setting } = await supabase
+    .from('platform_settings')
+    .select('value')
+    .eq('key', 'ai_model')
+    .single();
+  return setting?.value || 'claude-sonnet-4-6';
+}
+
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function toE164(raw: string): string {
@@ -68,7 +83,7 @@ function stripMarkdown(text: string): string {
     .replace(/^[-*]\s+/gm, '- ');
 }
 
-async function buildBusinessContext(businessId: string, opts?: { contactName?: string }): Promise<string> {
+async function buildBusinessContext(businessId: string, opts?: { contactName?: string; channel?: string }): Promise<string> {
   const [bizRes, svcRes, faqRes] = await Promise.all([
     supabase.from('businesses').select('name, industry, address, phone, website, tone, greeting, ai_system_prompt').eq('id', businessId).single(),
     supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', businessId),
@@ -116,7 +131,11 @@ async function buildBusinessContext(businessId: string, opts?: { contactName?: s
     prompt += '\n- You do not know the customer\'s name. Do not guess or use placeholders — just skip the name in greetings.';
   }
 
-  prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational. No formal greetings like "Dear X" — just reply naturally as you would in a chat.';
+  if (opts?.channel === 'email') {
+    prompt += '\n- This is an email reply. Be professional but concise. Use the customer\'s first name in the greeting (e.g. "Hi Hugo,").';
+  } else {
+    prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational. No formal greetings like "Dear X" — just reply naturally as you would in a chat.';
+  }
 
   return prompt;
 }
@@ -138,8 +157,9 @@ async function getConversationHistory(conversationId: string): Promise<Array<{ro
   }));
 }
 
-async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>): Promise<string> {
+async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>, businessId?: string): Promise<string> {
   if (!ANTHROPIC_API_KEY) return '';
+  const model = businessId ? await getModelForBusiness(businessId) : 'claude-sonnet-4-6';
   let messages = history.length > 0 ? history : [{ role: 'user' as const, content: '(new conversation)' }];
   if (messages[0]?.role === 'assistant') {
     messages = [{ role: 'user' as const, content: '(prior context)' }, ...messages];
@@ -152,7 +172,7 @@ async function generateAIReply(systemPrompt: string, history: Array<{role: 'user
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model,
       max_tokens: 1024,
       system: systemPrompt,
       messages,
@@ -248,7 +268,7 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
 
   const { data: channel } = await supabase
     .from('channels')
-    .select('id, business_id, auto_reply_enabled, draft_mode, auto_unsubscribe, config')
+    .select('id, business_id, agent_id, auto_reply_enabled, draft_mode, auto_unsubscribe, config')
     .eq('unipile_account_id', accountId)
     .single();
 
@@ -372,7 +392,7 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
     if (!conversationId) {
       const { data: newConvo } = await supabase
         .from('conversations')
-        .insert({ business_id: businessId, contact_id: contactId, channel: 'email', status: 'open', ai_handling: true, subject: normalSub || null })
+        .insert({ business_id: businessId, contact_id: contactId, agent_id: (channel as any).agent_id || null, channel: 'email', status: 'open', ai_handling: true, subject: normalSub || null })
         .select('id')
         .single();
       conversationId = newConvo?.id || null;
@@ -396,7 +416,7 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
     const direction: 'inbound' | 'outbound' = isOutbound ? 'outbound' : 'inbound';
     const preview = emailText.slice(0, 100);
 
-    await supabase.from('messages').insert({
+    const { data: insertedEmailPollMsg } = await supabase.from('messages').insert({
       conversation_id: conversationId,
       direction,
       sender: isOutbound ? 'human' : 'contact',
@@ -411,7 +431,7 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
         is_spam: spam,
         via: 'unipile_email_poll',
       },
-    });
+    }).select('id').single();
 
     await supabase
       .from('conversations')
@@ -447,54 +467,26 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
 
     inserted++;
 
-    // AI auto-reply for inbound non-spam emails
-    const draftMode = (channel as any).draft_mode !== false;
+    // Queue AI takeover for inbound non-spam emails
     if (
       direction === 'inbound' &&
       emailText &&
       (channel as any).auto_reply_enabled &&
       convoAiHandling &&
-      ANTHROPIC_API_KEY
+      insertedEmailPollMsg?.id
     ) {
-      const resolvedName = resolvedContactName && !resolvedContactName.includes('@') ? resolvedContactName : undefined;
-      const [systemPrompt, history] = await Promise.all([
-        buildBusinessContext(businessId, { contactName: resolvedName }),
-        getConversationHistory(conversationId!),
-      ]);
-
-      if (systemPrompt) {
-        const emailPrompt = `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`;
-        const reply = await generateAIReply(emailPrompt, history);
-        if (reply) {
-          const replySubject = subject ? `Re: ${subject.replace(/^Re:\s*/i, '')}` : 'Re: Your message';
-
-          if (!draftMode) {
-            await sendUnipileEmail(accountId, counterpartyEmail, replySubject, reply, emailId);
-          }
-
-          await supabase.from('messages').insert({
-            conversation_id: conversationId,
-            direction: 'outbound',
-            sender: 'ai',
-            content_type: 'text',
-            body: reply,
-            status: draftMode ? 'draft' : 'sent',
-            metadata: {
-              via: 'unipile_email_auto_reply_poll',
-              subject: replySubject,
-              reply_to_email_id: emailId,
-              to_attendees: [{ identifier: counterpartyEmail, display_name: counterpartyName }],
-            },
-          });
-
-          if (!draftMode) {
-            await supabase.from('conversations').update({
-              last_message_at: new Date().toISOString(),
-              last_message_preview: reply.slice(0, 100),
-            }).eq('id', conversationId);
-          }
-        }
-      }
+      const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+      fetch(`${appUrl}/api/messages/queue-takeover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: businessId,
+          conversation_id: conversationId,
+          message_id: insertedEmailPollMsg.id,
+          channel: 'email',
+          received_at: new Date().toISOString(),
+        }),
+      }).catch(() => {});
     }
   }
 
@@ -539,10 +531,10 @@ export default async function handler(req: Request): Promise<Response> {
     const summary: any[] = [];
 
     for (const acct of accounts) {
-      if (acct.type !== 'WHATSAPP' && acct.type !== 'GOOGLE' && !acct.type?.includes('MICROSOFT') && !acct.type?.includes('OUTLOOK')) continue;
+      if (acct.type !== 'WHATSAPP' && acct.type !== 'GOOGLE' && acct.type !== 'INSTAGRAM' && !acct.type?.includes('MICROSOFT') && !acct.type?.includes('OUTLOOK')) continue;
 
-      // Route to email handler for non-WhatsApp accounts
-      if (acct.type !== 'WHATSAPP') {
+      // Route to email handler for non-IM accounts
+      if (acct.type !== 'WHATSAPP' && acct.type !== 'INSTAGRAM') {
         const emailResult = await pollEmailAccount(acct, cutoffMs);
         summary.push(emailResult);
         continue;
@@ -573,7 +565,7 @@ export default async function handler(req: Request): Promise<Response> {
 
       const { data: channel } = await supabase
         .from('channels')
-        .select('id, business_id, auto_reply_enabled, draft_mode')
+        .select('id, business_id, agent_id, auto_reply_enabled, draft_mode, type')
         .eq('unipile_account_id', accountId)
         .single();
 
@@ -583,6 +575,7 @@ export default async function handler(req: Request): Promise<Response> {
       }
 
       const businessId = channel.business_id;
+      const imChannelType = (channel as any).type === 'instagram' ? 'instagram' : 'whatsapp';
 
       await supabase
         .from('channels')
@@ -722,7 +715,8 @@ export default async function handler(req: Request): Promise<Response> {
               .insert({
                 business_id: businessId,
                 contact_id: null,
-                channel: 'whatsapp',
+                agent_id: (channel as any).agent_id || null,
+                channel: imChannelType,
                 status: 'open',
                 ai_handling: false,
                 is_group: true,
@@ -740,7 +734,7 @@ export default async function handler(req: Request): Promise<Response> {
             .select('id, ai_handling')
             .eq('business_id', businessId)
             .eq('contact_id', contactId)
-            .eq('channel', 'whatsapp')
+            .eq('channel', imChannelType)
             .in('status', ['open', 'closed'])
             .order('created_at', { ascending: false })
             .limit(1)
@@ -752,7 +746,7 @@ export default async function handler(req: Request): Promise<Response> {
           } else {
             const { data: newConvo } = await supabase
               .from('conversations')
-              .insert({ business_id: businessId, contact_id: contactId, channel: 'whatsapp', status: 'open', ai_handling: true })
+              .insert({ business_id: businessId, contact_id: contactId, agent_id: (channel as any).agent_id || null, channel: imChannelType, status: 'open', ai_handling: true })
               .select('id')
               .single();
             conversationId = newConvo?.id || null;
@@ -815,7 +809,7 @@ export default async function handler(req: Request): Promise<Response> {
 
         const senderDisplayName = isGroup ? (contactName && !contactName.startsWith('+') ? contactName : (counterparty || null)) : null;
 
-        const { error: insErr } = await supabase
+        const { data: insertedPollMsg, error: insErr } = await supabase
           .from('messages')
           .insert({
             conversation_id: conversationId,
@@ -827,7 +821,7 @@ export default async function handler(req: Request): Promise<Response> {
             sender_name: senderDisplayName,
             sender_contact_id: isGroup ? contactId : null,
             metadata,
-          });
+          }).select('id').single();
 
         if (insErr) { skipped++; continue; }
 
@@ -842,50 +836,27 @@ export default async function handler(req: Request): Promise<Response> {
           })
           .eq('id', conversationId);
 
-        // AI auto-reply for new inbound text messages
-        const draftMode = (channel as any).draft_mode !== false;
+        // Queue AI takeover instead of replying inline
         if (
           direction === 'inbound' &&
           text &&
           !isGroup &&
           (channel as any).auto_reply_enabled &&
           convoAiHandling &&
-          ANTHROPIC_API_KEY
+          insertedPollMsg?.id
         ) {
-          const resolvedName = contactName && !contactName.startsWith('+') ? contactName : undefined;
-          const [systemPrompt, history] = await Promise.all([
-            buildBusinessContext(businessId, { contactName: resolvedName }),
-            getConversationHistory(conversationId!),
-          ]);
-
-          if (systemPrompt) {
-            const reply = await generateAIReply(systemPrompt, history);
-            if (reply) {
-              if (!draftMode) {
-                await sendUnipileMessage(accountId, counterparty, reply);
-              }
-
-              await supabase.from('messages').insert({
-                conversation_id: conversationId,
-                direction: 'outbound',
-                sender: 'ai',
-                content_type: 'text',
-                body: reply,
-                status: draftMode ? 'draft' : 'sent',
-                metadata: { via: 'unipile_auto_reply_poll' },
-              });
-
-              if (!draftMode) {
-                await supabase
-                  .from('conversations')
-                  .update({
-                    last_message_at: new Date().toISOString(),
-                    last_message_preview: reply.slice(0, 100),
-                  })
-                  .eq('id', conversationId);
-              }
-            }
-          }
+          const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+          fetch(`${appUrl}/api/messages/queue-takeover`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              business_id: businessId,
+              conversation_id: conversationId,
+              message_id: insertedPollMsg.id,
+              channel: imChannelType,
+              received_at: m.timestamp || new Date().toISOString(),
+            }),
+          }).catch(() => {});
         }
       }
 

@@ -27,8 +27,7 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const { data: businesses } = await supabase
       .from('businesses')
-      .select('id, name, owner_id, currency, billing_active')
-      .eq('billing_active', true);
+      .select('id, name, owner_id, currency, billing_active');
 
     if (!businesses || businesses.length === 0) {
       return new Response(JSON.stringify({ ok: true, sent: 0 }), { status: 200 });

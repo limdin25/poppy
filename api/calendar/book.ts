@@ -87,7 +87,7 @@ export default async function handler(req: Request): Promise<Response> {
     body.postcode ? `Postcode: ${body.postcode}` : null,
     body.issue_details ? `Details: ${body.issue_details}` : null,
     `Booked via: ${body.channel || 'voice'}`,
-    `Booked by: Poppy AI`,
+    `Booked by: Elsie AI`,
   ].filter(Boolean).join('\n');
 
   const event = await createEvent(
@@ -124,6 +124,14 @@ export default async function handler(req: Request): Promise<Response> {
   const dateStr = startDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
   const timeStr = startDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
+  if (body.conversation_id) {
+    await supabase
+      .from('follow_up_queue')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq('conversation_id', body.conversation_id)
+      .eq('status', 'pending');
+  }
+
   notifyBusinessOwner(businessId, 'booking', {
     title: `New Booking: ${body.service_name}`,
     body: [
@@ -134,6 +142,21 @@ export default async function handler(req: Request): Promise<Response> {
       body.issue_details ? `Details: ${body.issue_details}` : null,
     ].filter(Boolean).join('\n'),
   });
+
+  const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+  fetch(`${appUrl}/api/billing/record-booking`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      business_id: businessId,
+      appointment_id: appointment.id,
+      contact_id: body.contact_id || null,
+      contact_name: body.caller_name,
+      service_description: body.service_name,
+      appointment_datetime: startTime,
+      channel: body.channel || 'voice',
+    }),
+  }).catch((err) => console.error('[book] record-booking failed:', err));
 
   return new Response(JSON.stringify({ appointment, event }), { status: 201 });
 }

@@ -1,8 +1,8 @@
-# Poppy Architecture
+# Elsie Architecture
 
 ## Overview
 
-Poppy is an AI phone receptionist for UK service businesses. It answers inbound calls, captures caller details (name, reason, urgency), and sends a structured summary to the business owner via their preferred channel. The goal: no missed leads, no voicemail, no hiring a human receptionist.
+Elsie is an AI phone receptionist for UK service businesses. It answers inbound calls, captures caller details (name, reason, urgency), and sends a structured summary to the business owner via their preferred channel. The goal: no missed leads, no voicemail, no hiring a human receptionist.
 
 ---
 

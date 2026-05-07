@@ -59,16 +59,16 @@ export default function AccountCreation({ businessId, businessName, onSubmit }: 
   return (
     <div className="flex flex-1 flex-col">
       <h1 className="text-2xl font-semibold text-ink">
-        Poppy's almost ready to take your calls
+        Elsie's almost ready to take your calls
       </h1>
       <p className="mt-2 text-[15px] text-ink-muted">
-        Complete your registration to activate Poppy for{' '}
+        Complete your registration to activate Elsie for{' '}
         <span className="font-medium text-ink">{businessName}</span>
       </p>
 
       <div className="mt-6 space-y-3">
         {[
-          { icon: Clock, text: 'Grow your business while Poppy answers calls 24/7' },
+          { icon: Clock, text: 'Grow your business while Elsie answers calls 24/7' },
           { icon: ShieldCheck, text: 'Free for the first 7 days, no credit card required' },
           { icon: Star, text: 'Our support team is here for you and ready to help' },
         ].map(({ icon: Icon, text }) => (
@@ -81,7 +81,7 @@ export default function AccountCreation({ businessId, businessName, onSubmit }: 
 
       <div className="mt-6 rounded-xl border border-border bg-elevated/50 p-4">
         <p className="text-[13px] italic text-ink-muted">
-          "Poppy just works. Setup was fast and it sounds so real, customers
+          "Elsie just works. Setup was fast and it sounds so real, customers
           think it's an actual receptionist."
         </p>
         <p className="mt-2 text-[12px] font-medium text-ink-subtle">
@@ -153,7 +153,7 @@ export default function AccountCreation({ businessId, businessName, onSubmit }: 
               Creating account...
             </span>
           ) : (
-            'Try Poppy Now'
+            'Try Elsie Now'
           )}
         </button>
       </form>

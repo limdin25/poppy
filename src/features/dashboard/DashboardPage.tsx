@@ -54,7 +54,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-xl font-semibold text-ink">Good morning, {displayName}</h1>
         <p className="mt-1 text-[13px] text-ink-muted">
-          Here's what Poppy has been up to today.
+          Here's what Elsie has been up to today.
         </p>
       </div>
 
@@ -62,7 +62,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between rounded-xl border border-brand/20 bg-brand-50 px-5 py-4">
           <div>
             <p className="text-[14px] font-semibold text-ink">You're on the free trial</p>
-            <p className="mt-0.5 text-[13px] text-ink-muted">Upgrade to keep Poppy answering your calls.</p>
+            <p className="mt-0.5 text-[13px] text-ink-muted">Upgrade to keep Elsie answering your calls.</p>
           </div>
           <button
             onClick={() => navigate('/account/billing')}
@@ -77,7 +77,7 @@ export default function DashboardPage() {
         <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[13px] font-medium text-ink-muted">Your Poppy number</p>
+              <p className="text-[13px] font-medium text-ink-muted">Your Elsie number</p>
               <p className="mt-1 text-[20px] font-bold tracking-wide text-ink">{agentNumber}</p>
             </div>
             <div className="flex gap-2">
@@ -111,7 +111,7 @@ export default function DashboardPage() {
             <div className="flex-1">
               <p className="text-[14px] font-semibold text-ink">Forward your existing number</p>
               <p className="mt-1 text-[13px] text-ink-muted">
-                Set up call forwarding from your current business number so Poppy catches every call you miss.
+                Set up call forwarding from your current business number so Elsie catches every call you miss.
               </p>
               <button
                 onClick={() => navigate('/onboarding')}
@@ -134,7 +134,7 @@ export default function DashboardPage() {
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent" />
           </div>
         ) : recentCalls.length === 0 ? (
-          <p className="mt-4 text-center text-[13px] text-ink-muted py-8">No calls yet. Once Poppy takes a call, it'll show here.</p>
+          <p className="mt-4 text-center text-[13px] text-ink-muted py-8">No calls yet. Once Elsie takes a call, it'll show here.</p>
         ) : (
           <div className="mt-4 space-y-3">
             {recentCalls.map((call) => (

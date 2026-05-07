@@ -20,7 +20,7 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const { data: business } = await supabase
       .from('businesses')
-      .select('currency, billing_active, activation_credit_paid')
+      .select('currency, billing_active')
       .eq('id', businessId)
       .single();
 
@@ -43,12 +43,7 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({
         current_period: null,
         is_free: isFree,
-        activation_credit: {
-          paid: business.activation_credit_paid || false,
-          amount: 5,
-          applied: false,
-        },
-      }), { status: 200 });
+        }), { status: 200 });
     }
 
     const periodEnd = new Date(period.period_end);
@@ -66,18 +61,13 @@ export default async function handler(req: Request): Promise<Response> {
         booking_count: period.booking_count,
         total_amount: totalAmount,
         total_before_cap: totalBeforeCap,
-        cap_amount: parseFloat(period.cap_amount) || 189,
+        cap_amount: parseFloat(period.cap_amount) || 200,
         cap_reached: period.cap_reached,
         currency: period.currency,
         days_remaining: daysRemaining,
         amount_saved: amountSaved,
       },
       is_free: isFree,
-      activation_credit: {
-        paid: business.activation_credit_paid || false,
-        amount: 5,
-        applied: false,
-      },
     }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });

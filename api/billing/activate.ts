@@ -29,11 +29,7 @@ export default async function handler(req: Request): Promise<Response> {
   const { userId, businessId } = auth;
 
   try {
-    const { payment_method_id } = await req.json() as { payment_method_id: string };
-
-    if (!payment_method_id) {
-      return new Response(JSON.stringify({ error: 'payment_method_id required' }), { status: 400 });
-    }
+    const body = await req.json().catch(() => ({})) as { payment_method_id?: string };
 
     const { data: business } = await supabase
       .from('businesses')
@@ -62,37 +58,23 @@ export default async function handler(req: Request): Promise<Response> {
     let customerId = business.stripe_customer_id;
 
     if (!customerId) {
-      const customer = await stripe.customers.create({
+      const customerData: Stripe.CustomerCreateParams = {
         email,
         name: business.name,
         metadata: { business_id: business.id, currency },
-        payment_method: payment_method_id,
-        invoice_settings: { default_payment_method: payment_method_id },
-      });
+      };
+      if (body.payment_method_id) {
+        customerData.payment_method = body.payment_method_id;
+        customerData.invoice_settings = { default_payment_method: body.payment_method_id };
+      }
+      const customer = await stripe.customers.create(customerData);
       customerId = customer.id;
-    } else {
-      await stripe.paymentMethods.attach(payment_method_id, { customer: customerId });
+    } else if (body.payment_method_id) {
+      await stripe.paymentMethods.attach(body.payment_method_id, { customer: customerId });
       await stripe.customers.update(customerId, {
-        invoice_settings: { default_payment_method: payment_method_id },
+        invoice_settings: { default_payment_method: body.payment_method_id },
       });
     }
-
-    await stripe.paymentIntents.create({
-      amount: 500,
-      currency: currency.toLowerCase(),
-      customer: customerId,
-      payment_method: payment_method_id,
-      confirm: true,
-      automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
-      description: 'Hey Elsie activation credit — covers first booking',
-      metadata: { business_id: business.id, type: 'activation_credit' },
-    });
-
-    await stripe.customers.createBalanceTransaction(customerId, {
-      amount: -500,
-      currency: currency.toLowerCase(),
-      description: 'Activation credit — applied to first booking',
-    });
 
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
@@ -108,7 +90,6 @@ export default async function handler(req: Request): Promise<Response> {
       stripe_subscription_id: subscription.id,
       billing_active: true,
       billing_started_at: new Date().toISOString(),
-      activation_credit_paid: true,
     }).eq('id', business.id);
 
     await supabase.from('billing_periods').insert({
@@ -116,7 +97,7 @@ export default async function handler(req: Request): Promise<Response> {
       period_start: today,
       period_end: periodEnd.toISOString().split('T')[0],
       currency,
-      cap_amount: 189,
+      cap_amount: 200,
     });
 
     return new Response(JSON.stringify({ ok: true, subscription_id: subscription.id }), { status: 200 });

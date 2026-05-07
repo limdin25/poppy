@@ -79,7 +79,7 @@ export default function ServicesSection() {
           <div>
             <h2 className="text-[15px] font-semibold text-ink">Your Services</h2>
             <p className="mt-1 text-[13px] text-ink-muted">
-              Poppy will tell callers about these services when asked.
+              Elsie will tell callers about these services when asked.
             </p>
           </div>
           <button
@@ -144,9 +144,9 @@ export default function ServicesSection() {
       )}
 
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
-        <h3 className="text-[14px] font-medium text-ink">How Poppy uses this</h3>
+        <h3 className="text-[14px] font-medium text-ink">How Elsie uses this</h3>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
-          When a caller asks "what do you do?" or "do you offer X?", Poppy checks this list.
+          When a caller asks "what do you do?" or "do you offer X?", Elsie checks this list.
           If the service matches, she confirms it. If not, she'll let the caller know politely
           and offer to take a message.
         </p>

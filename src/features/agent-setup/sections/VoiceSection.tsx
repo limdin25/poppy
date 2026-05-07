@@ -120,7 +120,7 @@ export default function VoiceSection() {
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
         <h2 className="text-[15px] font-semibold text-ink">Speaking Speed</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          Adjust how fast Poppy speaks.
+          Adjust how fast Elsie speaks.
         </p>
 
         <div className="mt-4">

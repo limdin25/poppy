@@ -37,7 +37,7 @@ export default function ServicesStep({ onChange }: Props) {
     <div>
       <h2 className="text-xl font-semibold text-ink">Review your services</h2>
       <p className="mt-2 text-[15px] text-ink-muted">
-        Poppy will tell callers about these services. Add, edit, or remove any that don't fit.
+        Elsie will tell callers about these services. Add, edit, or remove any that don't fit.
       </p>
 
       <div className="mt-4 flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-[13px] text-brand">
