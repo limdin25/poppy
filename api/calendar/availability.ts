@@ -150,6 +150,7 @@ function generateAvailableSlots(
   const slots: { start: string; end: string }[] = [];
   const startDate = new Date(dateFrom);
   const endDate = new Date(dateTo);
+  endDate.setDate(endDate.getDate() + 1);
   const now = new Date();
 
   for (let d = new Date(startDate); d < endDate; d.setDate(d.getDate() + 1)) {

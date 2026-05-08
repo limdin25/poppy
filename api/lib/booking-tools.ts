@@ -17,8 +17,8 @@ export function getBookingTools(appUrl: string, toolSecret: string, businessId: 
       parameters: {
         type: 'object',
         properties: {
-          date_from: { type: 'string', description: 'Start date in YYYY-MM-DD format. Use today if the caller wants something soon.' },
-          date_to: { type: 'string', description: 'End date in YYYY-MM-DD format. Usually 3-5 days from date_from.' },
+          date_from: { type: 'string', description: 'First date to check in YYYY-MM-DD format. Use today if the caller wants something soon.' },
+          date_to: { type: 'string', description: 'Last date to check (inclusive) in YYYY-MM-DD format. For a single day, set date_to equal to date_from. Usually 3-5 days from date_from.' },
         },
         required: ['date_from', 'date_to'],
       },
