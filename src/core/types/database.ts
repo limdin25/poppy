@@ -91,6 +91,15 @@ export interface Agent {
   follow_up_preferred_channel: string
   follow_up_tone: string
   follow_up_prompt: string | null
+  confirmation_enabled: boolean
+  confirmation_delay_seconds: number
+  confirmation_channels: string[]
+  reminder_enabled: boolean
+  reminder_times_seconds: number[]
+  reminder_channels: string[]
+  owner_confirmation_enabled: boolean
+  owner_reminder_enabled: boolean
+  owner_reminder_times_seconds: number[]
   sort_order: number
   created_at: string
   updated_at: string

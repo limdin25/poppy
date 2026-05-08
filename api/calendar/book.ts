@@ -2,9 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import { createEvent, refreshAccessToken } from '../lib/google-calendar.js';
 import type { GoogleTokens } from '../lib/google-calendar.js';
 import { notifyBusinessOwner } from '../lib/notify.js';
-import { sendSMS } from '../../src/integrations/twilio/client.js';
-import { sendNotification } from '../../src/integrations/resend/client.js';
-import { sendToChat } from '../../src/integrations/unipile/client.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -166,58 +163,58 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('id', appointment.id);
   }
 
-  // Send confirmation to the customer/prospect
+  // Queue confirmation to the prospect (respects agent settings)
   const bizName = biz?.name || 'us';
-  const confirmMsg = `Hi ${body.caller_name}, your meeting with ${bizName} is confirmed for ${dateStr} at ${timeStr}. If you need to reschedule, please call us back.`;
+  const confirmMsg = `Hi ${body.caller_name}, your booking with ${bizName} is confirmed for ${dateStr} at ${timeStr}. If you need to reschedule, please call us back.`;
 
-  if (body.caller_email) {
-    try {
-      await sendNotification(
-        body.caller_email,
-        `Meeting Confirmed — ${dateStr} at ${timeStr}`,
-        `Hi ${body.caller_name},\n\nYour meeting with ${bizName} is confirmed:\n\nDate: ${dateStr}\nTime: ${timeStr}\nService: ${body.service_name}\n\nIf you need to change or cancel, please get in touch.\n\nBest regards,\n${bizName}`,
-      );
-    } catch { /* don't block on confirmation failure */ }
+  const agentId = reqUrl.searchParams.get('aid');
+  const { data: agentSettings } = await supabase
+    .from('agents')
+    .select('confirmation_enabled, confirmation_delay_seconds, confirmation_channels')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const confirmEnabled = agentSettings?.confirmation_enabled ?? true;
+  const confirmDelay = agentSettings?.confirmation_delay_seconds ?? 1;
+  const confirmChannels: string[] = agentSettings?.confirmation_channels ?? ['whatsapp', 'sms', 'email'];
+
+  if (confirmEnabled && (callerPhone || body.caller_email)) {
+    const channel = resolveChannel(confirmChannels, callerPhone, body.caller_email);
+    const scheduledAt = new Date(Date.now() + confirmDelay * 1000);
+
+    await supabase.from('appointment_notifications').insert({
+      appointment_id: appointment.id,
+      business_id: businessId,
+      contact_id: body.contact_id || null,
+      type: 'confirmation',
+      channel,
+      recipient_phone: callerPhone || null,
+      recipient_email: body.caller_email || null,
+      message: confirmMsg,
+      scheduled_at: scheduledAt.toISOString(),
+      status: 'pending',
+    });
   }
 
-  if (callerPhone) {
-    try {
-      const { data: voiceCh } = await supabase
-        .from('channels')
-        .select('config')
-        .eq('business_id', businessId)
-        .eq('type', 'voice')
-        .eq('status', 'connected')
-        .maybeSingle();
-      const twilioFrom = (voiceCh?.config as Record<string, string> | null)?.phone || null;
-      if (twilioFrom) {
-        await sendSMS(twilioFrom, callerPhone, confirmMsg);
-      }
-    } catch { /* don't block on SMS failure */ }
-  }
-
-  // Send WhatsApp confirmation to customer
-  if (callerPhone) {
-    try {
-      const { data: waCh } = await supabase
-        .from('channels')
-        .select('unipile_account_id')
-        .eq('business_id', businessId)
-        .eq('type', 'whatsapp')
-        .eq('status', 'connected')
-        .maybeSingle();
-      if (waCh?.unipile_account_id) {
-        await sendToChat(waCh.unipile_account_id, callerPhone, confirmMsg);
-      }
-    } catch (err) { console.error('[book] WhatsApp confirmation failed:', err); }
-  }
-
-  // Update customer_notified flag
-  if (body.caller_email || callerPhone) {
-    await supabase
-      .from('appointments')
-      .update({ customer_notified: true })
-      .eq('id', appointment.id);
+  // Queue owner confirmation
+  const ownerConfirmEnabled = agentSettings?.owner_confirmation_enabled ?? true;
+  if (ownerConfirmEnabled) {
+    // Owner already notified above via notifyBusinessOwner — mark it
+    if (ownerNotified) {
+      await supabase.from('appointment_notifications').insert({
+        appointment_id: appointment.id,
+        business_id: businessId,
+        type: 'owner_confirmation',
+        channel: 'email',
+        recipient_email: null,
+        message: `${body.caller_name} booked ${body.service_name} on ${dateStr} at ${timeStr}`,
+        scheduled_at: new Date().toISOString(),
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      });
+    }
   }
 
   const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
@@ -236,4 +233,17 @@ export default async function handler(req: Request): Promise<Response> {
   }).catch((err) => console.error('[book] record-booking failed:', err));
 
   return new Response(JSON.stringify({ appointment, event }), { status: 201 });
+}
+
+function resolveChannel(
+  priority: string[],
+  phone: string | null | undefined,
+  email: string | null | undefined,
+): string {
+  for (const ch of priority) {
+    if (ch === 'whatsapp' && phone) return 'whatsapp';
+    if (ch === 'sms' && phone) return 'sms';
+    if (ch === 'email' && email) return 'email';
+  }
+  return phone ? 'sms' : 'email';
 }

@@ -186,6 +186,7 @@ function getSections(agentType: AgentType): SectionDef[] {
       { id: 'call-info', label: 'Info to Collect' },
       { id: 'availability', label: 'Availability' },
       { id: 'automation', label: 'Automation' },
+      { id: 'confirmations', label: 'Confirmations & Reminders' },
     ]
   }
   return [
@@ -196,6 +197,7 @@ function getSections(agentType: AgentType): SectionDef[] {
     { id: 'faqs', label: 'FAQs' },
     { id: 'timing', label: 'Timing' },
     { id: 'automation', label: 'Automation' },
+    { id: 'confirmations', label: 'Confirmations & Reminders' },
   ]
 }
 
@@ -320,6 +322,17 @@ export default function AgentEditorPage() {
   const [followUpTone, setFollowUpTone] = useState('friendly')
   const [followUpPrompt, setFollowUpPrompt] = useState(DEFAULT_FOLLOWUP_PROMPT)
 
+  // ── Confirmation & Reminder state ──
+  const [confirmEnabled, setConfirmEnabled] = useState(true)
+  const [confirmDelay, setConfirmDelay] = useState(1)
+  const [confirmChannels, setConfirmChannels] = useState<string[]>(['whatsapp', 'sms', 'email'])
+  const [reminderEnabled, setReminderEnabled] = useState(true)
+  const [reminderTimes, setReminderTimes] = useState<number[]>([86400, 3600])
+  const [reminderChannels, setReminderChannels] = useState<string[]>(['whatsapp', 'sms', 'email'])
+  const [ownerConfirmEnabled, setOwnerConfirmEnabled] = useState(true)
+  const [ownerReminderEnabled, setOwnerReminderEnabled] = useState(true)
+  const [ownerReminderTimes, setOwnerReminderTimes] = useState<number[]>([86400])
+
   // ── Save state ──
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -393,6 +406,17 @@ export default function AgentEditorPage() {
     setFollowUpChannel(agent.follow_up_preferred_channel ?? 'same_channel')
     setFollowUpTone(agent.follow_up_tone ?? 'friendly')
     setFollowUpPrompt(agent.follow_up_prompt || DEFAULT_FOLLOWUP_PROMPT)
+
+    // Confirmations & Reminders
+    setConfirmEnabled(agent.confirmation_enabled ?? true)
+    setConfirmDelay(agent.confirmation_delay_seconds ?? 1)
+    setConfirmChannels(agent.confirmation_channels ?? ['whatsapp', 'sms', 'email'])
+    setReminderEnabled(agent.reminder_enabled ?? true)
+    setReminderTimes(agent.reminder_times_seconds ?? [86400, 3600])
+    setReminderChannels(agent.reminder_channels ?? ['whatsapp', 'sms', 'email'])
+    setOwnerConfirmEnabled(agent.owner_confirmation_enabled ?? true)
+    setOwnerReminderEnabled(agent.owner_reminder_enabled ?? true)
+    setOwnerReminderTimes(agent.owner_reminder_times_seconds ?? [86400])
 
     // Check custom delays
     const isStdDelay = DELAY_OPTIONS.some((o) => o.value === (agent.takeover_delay_seconds ?? 1200))
@@ -855,6 +879,15 @@ export default function AgentEditorPage() {
           follow_up_preferred_channel: followUpChannel,
           follow_up_tone: followUpTone,
           follow_up_prompt: followUpPrompt === DEFAULT_FOLLOWUP_PROMPT ? null : followUpPrompt || null,
+          confirmation_enabled: confirmEnabled,
+          confirmation_delay_seconds: confirmDelay,
+          confirmation_channels: confirmChannels,
+          reminder_enabled: reminderEnabled,
+          reminder_times_seconds: reminderTimes,
+          reminder_channels: reminderChannels,
+          owner_confirmation_enabled: ownerConfirmEnabled,
+          owner_reminder_enabled: ownerReminderEnabled,
+          owner_reminder_times_seconds: ownerReminderTimes,
         })
         .eq('id', agentId)
         .eq('business_id', businessId)
@@ -2606,6 +2639,239 @@ export default function AgentEditorPage() {
               </div>
             </div>
           </section>
+
+          {/* ════════════ CONFIRMATIONS & REMINDERS ════════════ */}
+          <section id="confirmations" data-section className="scroll-mt-20">
+            <h2 className="text-[16px] font-semibold text-ink">Confirmations & Reminders</h2>
+            <p className="mt-1 text-[13px] text-ink-muted">
+              Automatically confirm bookings and remind prospects before their appointment — like Calendly.
+            </p>
+            <div className="mt-5 space-y-6">
+
+              {/* ── Prospect Confirmation ── */}
+              <div className="rounded-2xl border border-border bg-surface p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-semibold text-ink">Booking Confirmation to Prospect</p>
+                    <p className="mt-0.5 text-[12px] text-ink-muted">Send the caller a confirmation after their booking</p>
+                  </div>
+                  <button
+                    onClick={() => setConfirmEnabled(!confirmEnabled)}
+                    className={`relative h-6 w-11 rounded-full transition ${confirmEnabled ? 'bg-brand' : 'bg-ink-subtle/30'}`}
+                  >
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${confirmEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+
+                {confirmEnabled && (
+                  <div className="mt-4 space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-[13px] font-medium text-ink">Send after</label>
+                      <select
+                        value={confirmDelay}
+                        onChange={(e) => setConfirmDelay(Number(e.target.value))}
+                        className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink"
+                      >
+                        <option value={1}>Immediately (1 second)</option>
+                        <option value={60}>1 minute</option>
+                        <option value={300}>5 minutes</option>
+                        <option value={600}>10 minutes</option>
+                        <option value={1800}>30 minutes</option>
+                        <option value={3600}>1 hour</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-[13px] font-medium text-ink">Channel priority (first available wins)</label>
+                      <div className="flex flex-wrap gap-2">
+                        {['whatsapp', 'sms', 'email'].map((ch) => {
+                          const active = confirmChannels.includes(ch)
+                          const label = ch === 'whatsapp' ? 'WhatsApp' : ch === 'sms' ? 'SMS' : 'Email'
+                          return (
+                            <button
+                              key={ch}
+                              onClick={() => {
+                                if (active) {
+                                  if (confirmChannels.length > 1) setConfirmChannels(confirmChannels.filter(c => c !== ch))
+                                } else {
+                                  setConfirmChannels([...confirmChannels, ch])
+                                }
+                              }}
+                              className={`rounded-lg border px-4 py-2 text-[13px] font-medium transition ${
+                                active ? 'border-brand bg-brand/10 text-brand' : 'border-border text-ink-muted hover:border-ink-subtle'
+                              }`}
+                            >
+                              {active && <span className="mr-1.5">{confirmChannels.indexOf(ch) + 1}.</span>}
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-ink-subtle">
+                        Sends via the first channel the prospect has. Order: {confirmChannels.map(c => c === 'whatsapp' ? 'WhatsApp' : c === 'sms' ? 'SMS' : 'Email').join(' → ')}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Prospect Reminders ── */}
+              <div className="rounded-2xl border border-border bg-surface p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-semibold text-ink">Appointment Reminders to Prospect</p>
+                    <p className="mt-0.5 text-[12px] text-ink-muted">Remind the prospect before their appointment</p>
+                  </div>
+                  <button
+                    onClick={() => setReminderEnabled(!reminderEnabled)}
+                    className={`relative h-6 w-11 rounded-full transition ${reminderEnabled ? 'bg-brand' : 'bg-ink-subtle/30'}`}
+                  >
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${reminderEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+
+                {reminderEnabled && (
+                  <div className="mt-4 space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-[13px] font-medium text-ink">Remind before appointment</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: 900, label: '15 min' },
+                          { value: 3600, label: '1 hour' },
+                          { value: 7200, label: '2 hours' },
+                          { value: 14400, label: '4 hours' },
+                          { value: 86400, label: '24 hours' },
+                          { value: 172800, label: '48 hours' },
+                        ].map((opt) => {
+                          const active = reminderTimes.includes(opt.value)
+                          return (
+                            <button
+                              key={opt.value}
+                              onClick={() => {
+                                if (active) {
+                                  setReminderTimes(reminderTimes.filter(t => t !== opt.value))
+                                } else {
+                                  setReminderTimes([...reminderTimes, opt.value].sort((a, b) => b - a))
+                                }
+                              }}
+                              className={`rounded-lg border px-4 py-2 text-[13px] font-medium transition ${
+                                active ? 'border-brand bg-brand/10 text-brand' : 'border-border text-ink-muted hover:border-ink-subtle'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-[13px] font-medium text-ink">Channel priority</label>
+                      <div className="flex flex-wrap gap-2">
+                        {['whatsapp', 'sms', 'email'].map((ch) => {
+                          const active = reminderChannels.includes(ch)
+                          const label = ch === 'whatsapp' ? 'WhatsApp' : ch === 'sms' ? 'SMS' : 'Email'
+                          return (
+                            <button
+                              key={ch}
+                              onClick={() => {
+                                if (active) {
+                                  if (reminderChannels.length > 1) setReminderChannels(reminderChannels.filter(c => c !== ch))
+                                } else {
+                                  setReminderChannels([...reminderChannels, ch])
+                                }
+                              }}
+                              className={`rounded-lg border px-4 py-2 text-[13px] font-medium transition ${
+                                active ? 'border-brand bg-brand/10 text-brand' : 'border-border text-ink-muted hover:border-ink-subtle'
+                              }`}
+                            >
+                              {active && <span className="mr-1.5">{reminderChannels.indexOf(ch) + 1}.</span>}
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Owner Notifications ── */}
+              <div className="rounded-2xl border border-border bg-surface p-5">
+                <p className="text-[14px] font-semibold text-ink">Notifications to You (Business Owner)</p>
+                <p className="mt-0.5 text-[12px] text-ink-muted">Get notified about bookings and upcoming appointments</p>
+
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between rounded-xl bg-elevated p-4">
+                    <div>
+                      <p className="text-[13px] font-medium text-ink">New booking alert</p>
+                      <p className="text-[11px] text-ink-muted">Notify me when a new booking is made</p>
+                    </div>
+                    <button
+                      onClick={() => setOwnerConfirmEnabled(!ownerConfirmEnabled)}
+                      className={`relative h-6 w-11 rounded-full transition ${ownerConfirmEnabled ? 'bg-brand' : 'bg-ink-subtle/30'}`}
+                    >
+                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${ownerConfirmEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-elevated p-4">
+                    <div>
+                      <p className="text-[13px] font-medium text-ink">Appointment reminders</p>
+                      <p className="text-[11px] text-ink-muted">Remind me before upcoming appointments</p>
+                    </div>
+                    <button
+                      onClick={() => setOwnerReminderEnabled(!ownerReminderEnabled)}
+                      className={`relative h-6 w-11 rounded-full transition ${ownerReminderEnabled ? 'bg-brand' : 'bg-ink-subtle/30'}`}
+                    >
+                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${ownerReminderEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+                    </button>
+                  </div>
+
+                  {ownerReminderEnabled && (
+                    <div className="ml-4">
+                      <label className="mb-1.5 block text-[13px] font-medium text-ink">Remind me before</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: 3600, label: '1 hour' },
+                          { value: 14400, label: '4 hours' },
+                          { value: 86400, label: '24 hours' },
+                          { value: 172800, label: '48 hours' },
+                        ].map((opt) => {
+                          const active = ownerReminderTimes.includes(opt.value)
+                          return (
+                            <button
+                              key={opt.value}
+                              onClick={() => {
+                                if (active) {
+                                  if (ownerReminderTimes.length > 1) setOwnerReminderTimes(ownerReminderTimes.filter(t => t !== opt.value))
+                                } else {
+                                  setOwnerReminderTimes([...ownerReminderTimes, opt.value].sort((a, b) => b - a))
+                                }
+                              }}
+                              className={`rounded-lg border px-4 py-2 text-[13px] font-medium transition ${
+                                active ? 'border-brand bg-brand/10 text-brand' : 'border-border text-ink-muted hover:border-ink-subtle'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-border bg-surface/50 p-4">
+                  <p className="text-[12px] leading-relaxed text-ink-muted">
+                    <strong className="text-ink">Notification channels</strong> are configured in{' '}
+                    <a href="/account" className="text-brand hover:underline">Account Settings → Notifications</a>.
+                    Enable WhatsApp, SMS, or email there to receive alerts.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          </section>
+
         </div>
       </div>
 
