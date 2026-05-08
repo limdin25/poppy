@@ -36,8 +36,8 @@ export default function TermsPage() {
             <h2 className="text-lg font-semibold text-gray-900">3. Pricing and billing</h2>
             <ul className="mt-2 list-disc pl-6 space-y-1">
               <li><strong>No setup fee:</strong> There is no activation fee or upfront cost. You pay nothing until Elsie books you a job.</li>
-              <li><strong>Per-booking fee:</strong> {'\u00a3'}10/$10/{'\u20ac'}10 per appointment booked by Elsie AI into your Google Calendar.</li>
-              <li><strong>Monthly cap:</strong> You will never pay more than {'\u00a3'}200/$200/{'\u20ac'}200 per 30-day billing cycle, regardless of the number of bookings.</li>
+              <li><strong>Per-booking fee:</strong> {'\u00a3'}20/$20/{'\u20ac'}20 per appointment booked by Elsie AI into your Google Calendar.</li>
+              <li><strong>Monthly cap:</strong> You will never pay more than {'\u00a3'}189/$189/{'\u20ac'}189 per 30-day billing cycle, regardless of the number of bookings.</li>
               <li><strong>Free services:</strong> AI-answered calls, AI-sent messages, and message handling are free. You only pay for completed bookings.</li>
               <li><strong>Manual bookings:</strong> Appointments you book yourself (not through Elsie) are never charged.</li>
               <li><strong>Billing cycle:</strong> 30 days from your activation date. Invoiced at the end of each cycle via Stripe.</li>

@@ -40,7 +40,7 @@ export default function BillingSection() {
   const currency = (business as any)?.currency || 'GBP'
   const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '£'
   const totalAmount = period ? parseFloat(period.total_amount) || 0 : 0
-  const capAmount = period ? parseFloat(period.cap_amount) || 200 : 200
+  const capAmount = period ? parseFloat(period.cap_amount) || 189 : 189
   const bookings = period?.booking_count || 0
 
   async function handleActivate() {
@@ -91,8 +91,8 @@ export default function BillingSection() {
         <h2 className="text-[15px] font-semibold text-ink">Pricing</h2>
         <div className="mt-3 space-y-2 text-[13px] text-ink-muted">
           <p><strong className="text-ink">{symbol}0 setup fee.</strong> No upfront cost — Elsie starts working for free.</p>
-          <p><strong className="text-ink">{symbol}10 per booking.</strong> You only pay when Elsie books an appointment into your calendar.</p>
-          <p><strong className="text-ink">{symbol}200/month cap.</strong> No matter how many bookings, you never pay more than {symbol}200 per 30-day cycle.</p>
+          <p><strong className="text-ink">{symbol}20 per booking.</strong> You only pay when Elsie books an appointment into your calendar.</p>
+          <p><strong className="text-ink">{symbol}189/month cap.</strong> No matter how many bookings, you never pay more than {symbol}189 per 30-day cycle.</p>
           <p>Calls, messages, and AI replies are always free. You only pay for completed bookings.</p>
         </div>
       </div>

@@ -18,40 +18,59 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
-  const auth = await requireAuth(req);
-  if (auth instanceof Response) return auth;
-  const { businessId } = auth;
+  let businessId: string;
+
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+
+  const cronSecret = process.env.CRON_SECRET;
+  const internalToolSecret = process.env.TOOL_SECRET;
+  const headerSecret = req.headers.get('x-tool-secret') || req.headers.get('x_tool_secret');
+  const headerCron = req.headers.get('x-cron-secret');
+  const isInternal = (cronSecret && headerCron === cronSecret) || (internalToolSecret && headerSecret === internalToolSecret);
+
+  if (isInternal) {
+    if (!body.businessId) {
+      return new Response(JSON.stringify({ error: 'businessId required for internal calls' }), { status: 400 });
+    }
+    businessId = body.businessId as string;
+  } else {
+    const auth = await requireAuth(req);
+    if (auth instanceof Response) return auth;
+    businessId = auth.businessId;
+  }
 
   try {
-    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const agentId = body.agentId as string | undefined;
 
     let llmId: string | undefined;
+    let retellAgentId: string | undefined;
 
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('retell_llm_id')
+        .select('retell_llm_id, retell_agent_id')
         .eq('id', agentId)
         .eq('business_id', businessId)
         .single();
       llmId = agent?.retell_llm_id ?? undefined;
+      retellAgentId = agent?.retell_agent_id ?? undefined;
     }
 
-    if (!llmId) {
+    if (!llmId || !retellAgentId) {
       const { data: channel } = await supabase
         .from('channels')
         .select('config')
         .eq('business_id', businessId)
         .eq('type', 'voice')
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!channel?.config) {
         return new Response(JSON.stringify({ error: 'No voice channel configured' }), { status: 404 });
       }
       const cfg = channel.config as Record<string, string>;
-      llmId = cfg.retell_llm_id;
+      if (!llmId) llmId = cfg.retell_llm_id;
+      if (!retellAgentId) retellAgentId = cfg.retell_agent_id;
     }
 
     if (!llmId) {
@@ -72,7 +91,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('greeting, tone, ai_system_prompt')
+        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model')
         .eq('id', agentId)
         .single();
       if (agent) agentOverrides = agent;
@@ -151,8 +170,17 @@ export default async function handler(req: Request): Promise<Response> {
     const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
     const toolSecret = process.env.TOOL_SECRET || '';
     const tools = hasBookable && toolSecret
-      ? getBookingTools(appUrl, toolSecret, businessId)
+      ? getBookingTools(appUrl, toolSecret, businessId, agentId)
       : getDefaultTools();
+
+    const aiModel = (agentOverrides.ai_model as string) || 'claude-4.6-sonnet';
+    const llmPayload: Record<string, unknown> = {
+      general_prompt: prompt,
+      general_tools: tools,
+      begin_message: effectiveGreeting || null,
+      start_speaker: effectiveGreeting ? 'agent' : 'user',
+      model: aiModel,
+    };
 
     const res = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {
       method: 'PATCH',
@@ -160,7 +188,7 @@ export default async function handler(req: Request): Promise<Response> {
         Authorization: `Bearer ${RETELL_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ general_prompt: prompt, general_tools: tools }),
+      body: JSON.stringify(llmPayload),
     });
 
     if (!res.ok) {
@@ -168,37 +196,32 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: `Retell update failed: ${err}` }), { status: 500 });
     }
 
-    // Find the Retell agent ID so we can publish + update phone number
-    let retellAgentId: string | undefined;
-    if (agentId) {
-      const { data: agentRow } = await supabase
-        .from('agents')
-        .select('retell_agent_id')
-        .eq('id', agentId)
-        .eq('business_id', businessId)
-        .single();
-      retellAgentId = agentRow?.retell_agent_id ?? undefined;
-    }
-    if (!retellAgentId) {
-      const { data: channel } = await supabase
-        .from('channels')
-        .select('config')
-        .eq('business_id', businessId)
-        .eq('type', 'voice')
-        .limit(1)
-        .maybeSingle();
-      retellAgentId = (channel?.config as Record<string, string>)?.retell_agent_id;
-    }
-
     if (retellAgentId) {
-      // Publish the agent so the new prompt goes live
+      const agentPayload: Record<string, unknown> = {
+        voice_id: (agentOverrides.voice_id as string) || undefined,
+        voice_speed: (agentOverrides.voice_speed as number) || undefined,
+        language: (agentOverrides.language as string) || 'en-GB',
+        interruption_sensitivity: (agentOverrides.interruption_sensitivity as number) ?? 0.9,
+        max_call_duration_ms: ((agentOverrides.max_call_duration_seconds as number) ?? 3600) * 1000,
+        post_call_analysis_model: (agentOverrides.post_call_analysis_model as string) || 'gpt-4.1-mini',
+      };
+
+      Object.keys(agentPayload).forEach(k => {
+        if (agentPayload[k] === undefined) delete agentPayload[k];
+      });
+
+      await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(agentPayload),
+      });
+
       await fetch(`https://api.retellai.com/publish-agent/${retellAgentId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
         body: '{}',
       });
 
-      // Update phone numbers to use the latest published version
       const phoneRes = await fetch('https://api.retellai.com/list-phone-numbers', {
         headers: { Authorization: `Bearer ${RETELL_API_KEY}` },
       });

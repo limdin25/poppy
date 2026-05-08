@@ -68,7 +68,7 @@ export default async function handler(req: Request): Promise<Response> {
           period_start: today,
           period_end: periodEnd.toISOString().split('T')[0],
           currency,
-          cap_amount: 200,
+          cap_amount: 189,
         })
         .select('*')
         .single();
@@ -80,9 +80,9 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const currentTotal = parseFloat(period.total_amount) || 0;
-    const capAmount = parseFloat(period.cap_amount) || 200;
+    const capAmount = parseFloat(period.cap_amount) || 189;
     const capped = currentTotal >= capAmount;
-    const amountBilled = capped ? 0 : Math.min(10, capAmount - currentTotal);
+    const amountBilled = capped ? 0 : Math.min(20, capAmount - currentTotal);
 
     const { data: bookingEvent, error: insertErr } = await supabase
       .from('booking_events')
@@ -95,7 +95,7 @@ export default async function handler(req: Request): Promise<Response> {
         service_description: service_description || null,
         appointment_datetime: appointment_datetime || null,
         channel: channel || null,
-        amount_raw: 10,
+        amount_raw: 20,
         amount_billed: amountBilled,
         currency,
         capped,
@@ -109,7 +109,7 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const newTotal = currentTotal + amountBilled;
-    const newTotalBeforeCap = (parseFloat(period.total_before_cap) || 0) + 10;
+    const newTotalBeforeCap = (parseFloat(period.total_before_cap) || 0) + 20;
     const newCapReached = newTotal >= capAmount;
 
     await supabase.from('billing_periods').update({

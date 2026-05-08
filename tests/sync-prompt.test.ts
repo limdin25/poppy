@@ -124,19 +124,17 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('## Behaviour rules');
   });
 
-  it('includes qualification section when bookable services exist', () => {
+  it('includes booking section when bookable services exist', () => {
     const prompt = buildSystemPrompt(BUSINESS, SERVICES, [], []);
-    expect(prompt).toContain('## Qualification');
-    expect(prompt).toContain('Postcode');
-    expect(prompt).toContain('Issue details');
-    expect(prompt).toContain('Urgency');
+    expect(prompt).toContain('## Booking');
     expect(prompt).toContain('check_availability');
+    expect(prompt).toContain('book_appointment');
   });
 
-  it('omits qualification section when no bookable services', () => {
+  it('omits booking section when no bookable services', () => {
     const nonBookable = [{ name: 'Consulting', bookable: false }];
     const prompt = buildSystemPrompt(BUSINESS, nonBookable, [], []);
-    expect(prompt).not.toContain('## Qualification');
+    expect(prompt).not.toContain('## Booking');
   });
 });
 

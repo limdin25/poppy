@@ -15,7 +15,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const toolSecret = process.env.TOOL_SECRET;
-  const headerSecret = req.headers.get('x-tool-secret');
+  const headerSecret = req.headers.get('x-tool-secret') || req.headers.get('x_tool_secret');
   const hasBearer = req.headers.get('authorization')?.startsWith('Bearer ');
   const validToolSecret = toolSecret && headerSecret === toolSecret;
   if (!hasBearer && !validToolSecret) {
@@ -32,7 +32,8 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const url = new URL(req.url);
-  const body = await req.json() as {
+  const rawBody = await req.json() as Record<string, unknown>;
+  const body = (rawBody.args ?? rawBody) as {
     business_id?: string;
     date_from: string;
     date_to: string;
@@ -48,30 +49,84 @@ export default async function handler(req: Request): Promise<Response> {
 
   const { data: biz, error: bizError } = await supabase
     .from('businesses')
-    .select('google_calendar_tokens, google_calendar_id, timezone')
+    .select('google_calendar_tokens, google_calendar_id, timezone, working_hours_start, working_hours_end, working_days')
     .eq('id', businessId)
     .single();
 
-  if (bizError || !biz?.google_calendar_tokens) {
-    return new Response(JSON.stringify({ error: 'Calendar not connected' }), { status: 400 });
+  if (bizError) {
+    return new Response(JSON.stringify({ error: 'Business not found' }), { status: 404 });
   }
 
-  let tokens = biz.google_calendar_tokens as GoogleTokens;
-  const calendarId = biz.google_calendar_id || 'primary';
+  let busy: { start: string; end: string }[] = [];
 
-  if (Date.now() >= tokens.expiry_date - 60_000) {
-    tokens = await refreshAccessToken(tokens);
-    await supabase
-      .from('businesses')
-      .update({ google_calendar_tokens: tokens })
-      .eq('id', businessId);
+  if (biz?.google_calendar_tokens) {
+    let tokens = biz.google_calendar_tokens as GoogleTokens;
+    const calendarId = biz.google_calendar_id || 'primary';
+
+    if (Date.now() >= tokens.expiry_date - 60_000) {
+      tokens = await refreshAccessToken(tokens);
+      await supabase
+        .from('businesses')
+        .update({ google_calendar_tokens: tokens })
+        .eq('id', businessId);
+    }
+
+    busy = await getFreeBusy(tokens, calendarId, body.date_from, body.date_to);
   }
 
-  const busy = await getFreeBusy(tokens, calendarId, body.date_from, body.date_to);
+  let workStart = biz?.working_hours_start ?? 9;
+  let workEnd = biz?.working_hours_end ?? 17;
+  let workDays = biz?.working_days ?? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
-  const slots = generateAvailableSlots(body.date_from, body.date_to, busy, biz.timezone || 'Europe/London');
+  const agentId = url.searchParams.get('aid');
+  if (agentId) {
+    const { data: agent } = await supabase
+      .from('agents')
+      .select('working_hours_start, working_hours_end, working_days')
+      .eq('id', agentId)
+      .eq('business_id', businessId)
+      .single();
+    if (agent?.working_hours_start != null) workStart = agent.working_hours_start;
+    if (agent?.working_hours_end != null) workEnd = agent.working_hours_end;
+    if (agent?.working_days?.length) workDays = agent.working_days;
+  }
+
+  const slots = generateAvailableSlots(body.date_from, body.date_to, busy, biz?.timezone || 'Europe/London', workStart, workEnd, workDays);
 
   return new Response(JSON.stringify({ slots, busy }), { status: 200 });
+}
+
+function toLocalDateParts(date: Date, tz: string): { year: number; month: number; day: number; dayName: string } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  }).formatToParts(date);
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
+  return {
+    year: parseInt(get('year')),
+    month: parseInt(get('month')),
+    day: parseInt(get('day')),
+    dayName: get('weekday'),
+  };
+}
+
+function localHourToUTC(year: number, month: number, day: number, hour: number, tz: string): Date {
+  const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00`;
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const target = new Date(dateStr + 'Z');
+  const formatted = formatter.formatToParts(target);
+  const get = (t: string) => parseInt(formatted.find(p => p.type === t)?.value ?? '0');
+  const localHour = get('hour');
+  const offset = localHour - hour;
+  return new Date(target.getTime() - offset * 3600_000);
 }
 
 function generateAvailableSlots(
@@ -79,6 +134,9 @@ function generateAvailableSlots(
   dateTo: string,
   busy: { start: string; end: string }[],
   timezone: string,
+  workStart = 9,
+  workEnd = 17,
+  workDays: string[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
 ): { start: string; end: string }[] {
   const slots: { start: string; end: string }[] = [];
   const startDate = new Date(dateFrom);
@@ -86,13 +144,12 @@ function generateAvailableSlots(
   const now = new Date();
 
   for (let d = new Date(startDate); d < endDate; d.setDate(d.getDate() + 1)) {
-    if (d.getDay() === 0 || d.getDay() === 6) continue;
+    const local = toLocalDateParts(d, timezone);
+    if (!workDays.includes(local.dayName)) continue;
 
-    for (let hour = 9; hour < 17; hour++) {
-      const slotStart = new Date(d);
-      slotStart.setHours(hour, 0, 0, 0);
-      const slotEnd = new Date(d);
-      slotEnd.setHours(hour + 1, 0, 0, 0);
+    for (let hour = workStart; hour < workEnd; hour++) {
+      const slotStart = localHourToUTC(local.year, local.month, local.day, hour, timezone);
+      const slotEnd = new Date(slotStart.getTime() + 3600_000);
 
       if (slotStart < now) continue;
 

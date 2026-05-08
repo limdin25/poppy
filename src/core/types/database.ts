@@ -77,8 +77,20 @@ export interface Agent {
   working_days: string[] | null
   voice_id: string | null
   voice_speed: number | null
+  language: string | null
+  interruption_sensitivity: number | null
+  max_call_duration_seconds: number | null
+  post_call_analysis_model: string | null
   retell_agent_id: string | null
   retell_llm_id: string | null
+  auto_reply_enabled: boolean
+  draft_mode: boolean
+  follow_up_enabled: boolean
+  follow_up_max_attempts: number
+  follow_up_delay_hours: number[]
+  follow_up_preferred_channel: string
+  follow_up_tone: string
+  follow_up_prompt: string | null
   sort_order: number
   created_at: string
   updated_at: string

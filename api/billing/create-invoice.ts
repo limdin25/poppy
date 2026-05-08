@@ -66,7 +66,7 @@ export default async function handler(req: Request): Promise<Response> {
             invoice: invoice.id,
             amount: amountInCents,
             currency: currencyCode,
-            description: `${period.booking_count} AI bookings × £10 (capped at £${period.cap_amount})`,
+            description: `${period.booking_count} AI bookings × £20 (capped at £${period.cap_amount})`,
           });
 
           await stripe.invoices.finalizeInvoice(invoice.id);
@@ -101,7 +101,7 @@ export default async function handler(req: Request): Promise<Response> {
           period_start: nextStart.toISOString().split('T')[0],
           period_end: nextEnd.toISOString().split('T')[0],
           currency: period.currency,
-          cap_amount: 200,
+          cap_amount: 189,
         });
       }
     }

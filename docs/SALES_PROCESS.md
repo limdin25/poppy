@@ -6,8 +6,8 @@
 |---|---|
 | Sign up | **£0** |
 | AI answers calls/messages | **Free** |
-| AI books a job | **£10** |
-| Monthly cap | **£200** |
+| AI books a job | **£20** |
+| Monthly cap | **£189** |
 | Card captured | **At first invoice (end of billing cycle)** |
 
 No setup fee. No activation credit. No monthly fee. Pay per job only.
@@ -51,7 +51,7 @@ One follow-up WhatsApp 2 days later to non-responders. No chasing beyond that.
 > "Hi [Name], I'm Hugo from Hey Elsie. Quick one — when you
 > miss a call because you're on a job, what happens to that
 > lead? ... Elsie answers for you, knows your prices, books
-> them into your diary. £10 a job, nothing if she doesn't
+> them into your diary. £20 a job, nothing if she doesn't
 > book. Can I WhatsApp you a quick 60-second video showing
 > how it works?"
 
@@ -90,8 +90,8 @@ VA sends:
 
 VA sends:
 
-> "Here's the simple agreement — just confirms £10/job,
-> £200 cap, cancel anytime: [DocuSign link]
+> "Here's the simple agreement — just confirms £20/job,
+> £189 cap, cancel anytime: [DocuSign link]
 >
 > No rush on that. Elsie's already live for you."
 
@@ -120,7 +120,7 @@ Test call (hear Elsie answer)
     ↓
 Contract link sent (sign whenever)
     ↓
-LIVE — first missed call → Elsie answers → job booked → £10
+LIVE — first missed call → Elsie answers → job booked → £20
 ```
 
 Total time from "I'm interested" to live: **under 10 minutes**.

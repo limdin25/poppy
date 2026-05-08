@@ -37,7 +37,7 @@ export async function notifyBusinessOwner(
     try {
       await sendNotification(settings.email_address, data.title, data.body);
       sent.push('email');
-    } catch { /* log but don't fail */ }
+    } catch (err) { console.error('[notify] email failed:', err); }
   }
 
   if (settings.sms_enabled && settings.sms_number) {
@@ -47,7 +47,7 @@ export async function notifyBusinessOwner(
         await sendSMS(fromNumber, settings.sms_number, `${data.title}\n\n${data.body}`);
         sent.push('sms');
       }
-    } catch { /* log but don't fail */ }
+    } catch (err) { console.error('[notify] sms failed:', err); }
   }
 
   if (settings.whatsapp_enabled && settings.whatsapp_number) {
@@ -57,7 +57,7 @@ export async function notifyBusinessOwner(
         await sendToChat(accountId, settings.whatsapp_number, `*${data.title}*\n\n${data.body}`);
         sent.push('whatsapp');
       }
-    } catch { /* log but don't fail */ }
+    } catch (err) { console.error('[notify] whatsapp failed:', err); }
   }
 
   return { sent };

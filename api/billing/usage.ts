@@ -61,7 +61,7 @@ export default async function handler(req: Request): Promise<Response> {
         booking_count: period.booking_count,
         total_amount: totalAmount,
         total_before_cap: totalBeforeCap,
-        cap_amount: parseFloat(period.cap_amount) || 200,
+        cap_amount: parseFloat(period.cap_amount) || 189,
         cap_reached: period.cap_reached,
         currency: period.currency,
         days_remaining: daysRemaining,

@@ -6,8 +6,6 @@ import BillingSection from './sections/BillingSection'
 import TeamSection from './sections/TeamSection'
 import NotificationsSection from './sections/NotificationsSection'
 import IntegrationsSection from './sections/IntegrationsSection'
-import FollowUpSection from './sections/FollowUpSection'
-
 const tabs = [
   { to: '/account/profile', label: 'Profile' },
   { to: '/account/company', label: 'Company' },
@@ -15,7 +13,6 @@ const tabs = [
   { to: '/account/team', label: 'Team' },
   { to: '/account/notifications', label: 'Notifications' },
   { to: '/account/integrations', label: 'Integrations' },
-  { to: '/account/follow-ups', label: 'Follow-ups' },
 ]
 
 export default function AccountPage() {
@@ -56,7 +53,6 @@ export default function AccountPage() {
           <Route path="team" element={<TeamSection />} />
           <Route path="notifications" element={<NotificationsSection />} />
           <Route path="integrations" element={<IntegrationsSection />} />
-          <Route path="follow-ups" element={<FollowUpSection />} />
         </Routes>
       </div>
     </div>

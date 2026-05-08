@@ -97,7 +97,7 @@ export default async function handler(req: Request): Promise<Response> {
       period_start: today,
       period_end: periodEnd.toISOString().split('T')[0],
       currency,
-      cap_amount: 200,
+      cap_amount: 189,
     });
 
     return new Response(JSON.stringify({ ok: true, subscription_id: subscription.id }), { status: 200 });

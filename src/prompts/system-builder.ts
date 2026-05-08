@@ -39,8 +39,11 @@ export function buildSystemPrompt(
 ): string {
   const sections: string[] = [];
 
-  // Identity
-  sections.push(`# You are the AI receptionist for ${business.name}`);
+  // Identity + current date so the model knows the real date/year
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const dayName = now.toLocaleDateString('en-GB', { weekday: 'long' });
+  sections.push(`# You are the AI receptionist for ${business.name}\n\nToday is ${dayName}, ${today}. Working days are Monday to Friday. Weekends (Saturday and Sunday) are not available for bookings — if a caller asks for a weekend, explain that and offer the next working day instead. Never say "fully booked" for weekends.`);
 
   // Business details
   const details: string[] = [];
@@ -54,7 +57,7 @@ export function buildSystemPrompt(
 
   // Greeting
   if (business.greeting) {
-    sections.push(`## Greeting\nWhen a conversation starts, greet the caller with:\n"${business.greeting}"`);
+    sections.push(`## Greeting\nWhen a conversation starts, greet the caller with:\n"${business.greeting}"\nAfter greeting, STOP and WAIT for the caller to speak. Do not continue until they respond.`);
   }
 
   // Tone
@@ -100,19 +103,28 @@ export function buildSystemPrompt(
     sections.push(`## Knowledge base\nUse the following information to answer caller questions:\n${knowledgeContent.trim()}`);
   }
 
-  // Qualification (only when bookable services exist)
+  // Booking instructions (only when bookable services exist)
   const hasBookable = services.some((s) => s.bookable);
   if (hasBookable) {
-    sections.push(`## Qualification
-When a caller wants to book a service marked [BOOKABLE], collect the following BEFORE offering appointment times:
-1. **Postcode** — to confirm they're in the service area
-2. **Issue details** — what specifically needs doing
-3. **Urgency** — is it an emergency (today), within a few days, or just planning ahead
+    sections.push(`## Booking
+When a caller wants to book a service marked [BOOKABLE]:
+1. Ask what the meeting or appointment is about (briefly).
+2. Use the check_availability tool to find available slots. Offer the caller up to 3 options.
+3. Once the caller confirms a slot, use the book_appointment tool to book it.
 
-Ask these naturally during the conversation, one at a time. Once you have all three, use the check_availability tool to find available slots and offer the caller up to 3 options.
+If the check_availability tool returns zero slots (e.g. weekends or fully booked days), do NOT say you cannot check — instead say something like "It looks like we're fully booked for those dates. Let me check the next few days…" and try again with a wider date range (e.g. the next 5 working days). If still no slots, offer to take the caller's details and have someone call back with available times.
 
-If the caller doesn't want to book right now, take their name and number and let them know someone will follow up with available times.`);
+If the caller doesn't want to book right now, take their name and let them know someone will follow up with available times.`);
   }
+
+  // Caller phone handling
+  sections.push(`## Caller phone number
+You already have the caller's phone number from the inbound call: {{from_number}}
+- Do NOT ask for their phone number — you already have it.
+- Instead, confirm: "Is this the best number to reach you on?" or "Can we contact you on this number?"
+- If they say yes, use {{from_number}} as their contact number.
+- If they say no, ask what number they'd prefer.
+- When booking, always pass the caller's phone number to the booking tool.`);
 
   // Behaviour rules
   sections.push(`## Behaviour rules

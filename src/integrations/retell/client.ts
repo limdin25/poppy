@@ -59,7 +59,7 @@ export async function createLLM(
 ): Promise<RetellLLM> {
   const body: Record<string, unknown> = {
     general_prompt: generalPrompt,
-    model: "gpt-4.1-mini",
+    model: "claude-4.6-sonnet",
     general_tools: tools || [{ name: "end_call", type: "end_call" }],
   };
 

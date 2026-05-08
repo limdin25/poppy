@@ -1,6 +1,7 @@
 import type { RetellTool } from '../../src/integrations/retell/client.js';
 
-export function getBookingTools(appUrl: string, toolSecret: string, businessId: string): RetellTool[] {
+export function getBookingTools(appUrl: string, toolSecret: string, businessId: string, agentId?: string): RetellTool[] {
+  const qs = agentId ? `bid=${businessId}&aid=${agentId}` : `bid=${businessId}`;
   return [
     {
       type: 'end_call',
@@ -9,8 +10,8 @@ export function getBookingTools(appUrl: string, toolSecret: string, businessId: 
     {
       type: 'custom',
       name: 'check_availability',
-      description: 'Check available appointment slots. Call this after collecting postcode, issue details, and urgency from the caller. Returns a list of free time slots.',
-      url: `${appUrl}/api/calendar/availability?bid=${businessId}`,
+      description: 'Check available appointment slots. Call this when the caller wants to book a meeting or appointment. Returns a list of free time slots. If the result has zero slots, try again with a wider date range covering the next working days.',
+      url: `${appUrl}/api/calendar/availability?${qs}`,
       method: 'POST',
       headers: { 'x-tool-secret': toolSecret },
       parameters: {
@@ -28,7 +29,7 @@ export function getBookingTools(appUrl: string, toolSecret: string, businessId: 
       type: 'custom',
       name: 'book_appointment',
       description: 'Book a confirmed appointment. Only call this after the caller has explicitly confirmed a specific time slot.',
-      url: `${appUrl}/api/calendar/book?bid=${businessId}`,
+      url: `${appUrl}/api/calendar/book?${qs}`,
       method: 'POST',
       headers: { 'x-tool-secret': toolSecret },
       parameters: {
@@ -37,10 +38,9 @@ export function getBookingTools(appUrl: string, toolSecret: string, businessId: 
           service_name: { type: 'string', description: 'Name of the service being booked' },
           start_time: { type: 'string', description: 'ISO 8601 start time of the confirmed slot' },
           caller_name: { type: 'string', description: 'Full name of the caller' },
-          caller_phone: { type: 'string', description: 'Phone number of the caller' },
+          caller_phone: { type: 'string', description: 'Phone number of the caller. Use the phone number shown in the system prompt unless the caller gave a different one.' },
           caller_email: { type: 'string', description: 'Email address if provided' },
-          postcode: { type: 'string', description: 'Caller postcode' },
-          issue_details: { type: 'string', description: 'Description of the issue or job needed' },
+          notes: { type: 'string', description: 'Brief description of what the meeting or appointment is about' },
         },
         required: ['service_name', 'start_time', 'caller_name'],
       },

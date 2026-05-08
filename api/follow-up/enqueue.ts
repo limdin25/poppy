@@ -30,6 +30,7 @@ interface ConversationForFollowUp {
   contact_id: string
   channel: string
   last_message_at: string
+  agent_id: string | null
 }
 
 async function classifyAndGenerateFollowUp(
@@ -148,7 +149,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const { data: staleConversations } = await supabase
     .from('conversations')
-    .select('id, business_id, contact_id, channel, last_message_at')
+    .select('id, business_id, contact_id, channel, last_message_at, agent_id')
     .lte('last_message_at', oneHourAgo)
     .gte('last_message_at', fortyEightHoursAgo)
     .eq('status', 'open');
@@ -239,6 +240,17 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('id', conv.business_id)
       .single();
 
+    // Check if the conversation's agent has a custom follow-up prompt
+    let agentFollowUpPrompt: string | null = null;
+    if ((conv as any).agent_id) {
+      const { data: agentRow } = await supabase
+        .from('agents')
+        .select('follow_up_prompt')
+        .eq('id', (conv as any).agent_id)
+        .single();
+      agentFollowUpPrompt = agentRow?.follow_up_prompt || null;
+    }
+
     const channel = resolveChannel(
       conv.channel,
       settings.preferred_channel as string,
@@ -249,15 +261,25 @@ export default async function handler(req: Request): Promise<Response> {
 
     const contactName = contact.name?.split(' ')[0] || 'there';
 
-    const { reason, message } = await classifyAndGenerateFollowUp(
-      conv.id,
-      conv.business_id,
-      biz?.name || 'us',
-      contactName,
-      channel,
-      settings.tone as string,
-      nextAttempt,
-    );
+    let reason: string;
+    let message: string;
+
+    if (agentFollowUpPrompt) {
+      reason = 'custom_prompt';
+      message = agentFollowUpPrompt.replace(/\{name\}/g, contactName);
+    } else {
+      const generated = await classifyAndGenerateFollowUp(
+        conv.id,
+        conv.business_id,
+        biz?.name || 'us',
+        contactName,
+        channel,
+        settings.tone as string,
+        nextAttempt,
+      );
+      reason = generated.reason;
+      message = generated.message;
+    }
 
     await supabase.from('follow_up_queue').insert({
       business_id: conv.business_id,

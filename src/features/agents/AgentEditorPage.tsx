@@ -5,7 +5,8 @@ import {
   ChevronDown, ChevronUp, Globe, FileText, RefreshCw,
   CheckCircle2, AlertCircle, RotateCcw, Phone,
   GripVertical, Clock, Moon, Calendar, Play, Check,
-  Upload, Type, Sparkles,
+  Upload, Type, Sparkles, Zap, MessageSquare,
+  Search, MapPin,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -21,6 +22,33 @@ const TONE_OPTIONS = [
   { value: 'friendly', label: 'Friendly' },
   { value: 'casual', label: 'Casual' },
   { value: 'formal', label: 'Formal' },
+]
+
+const AI_MODEL_OPTIONS = [
+  { value: 'claude-4.6-sonnet', label: 'Claude Sonnet 4.6', desc: 'Best reasoning, recommended' },
+  { value: 'claude-4.5-sonnet', label: 'Claude Sonnet 4.5', desc: 'Great reasoning' },
+  { value: 'gpt-4.1', label: 'GPT-4.1', desc: 'Smart, reliable' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', desc: 'Fast, affordable' },
+  { value: 'gpt-4o', label: 'GPT-4o', desc: 'Multimodal, fast' },
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Budget option' },
+]
+
+const LANGUAGE_OPTIONS = [
+  { value: 'en-GB', label: 'English (UK)' },
+  { value: 'en-US', label: 'English (US)' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'fr', label: 'French' },
+  { value: 'de', label: 'German' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'it', label: 'Italian' },
+  { value: 'nl', label: 'Dutch' },
+]
+
+const ANALYSIS_MODEL_OPTIONS = [
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+  { value: 'gpt-4.1', label: 'GPT-4.1' },
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+  { value: 'gpt-4o', label: 'GPT-4o' },
 ]
 
 const VOICES = [
@@ -51,6 +79,41 @@ const AFTER_HOURS_OPTIONS = [
 ]
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+const PERSISTENCE_OPTIONS = [
+  { value: 1, label: 'Light', description: 'One gentle nudge' },
+  { value: 2, label: 'Normal', description: 'Two follow-ups' },
+  { value: 3, label: 'Persistent', description: 'Three follow-ups' },
+]
+
+const DELAY_PRESETS = [
+  { value: 0.5, label: '30 min' },
+  { value: 1, label: '1 hour' },
+  { value: 2, label: '2 hours' },
+  { value: 4, label: '4 hours' },
+  { value: 8, label: '8 hours' },
+  { value: 12, label: '12 hours' },
+  { value: 24, label: '1 day' },
+  { value: 48, label: '2 days' },
+  { value: 72, label: '3 days' },
+]
+
+const FOLLOWUP_CHANNEL_OPTIONS = [
+  { value: 'same_channel', label: 'Same channel', desc: 'Reply where they messaged' },
+  { value: 'whatsapp', label: 'WhatsApp', desc: 'Always via WhatsApp' },
+  { value: 'sms', label: 'SMS', desc: 'Always via text' },
+  { value: 'email', label: 'Email', desc: 'Always via email' },
+]
+
+const FOLLOWUP_TONE_OPTIONS = [
+  { value: 'friendly', label: 'Friendly' },
+  { value: 'professional', label: 'Professional' },
+  { value: 'casual', label: 'Casual' },
+]
+
+const DEFAULT_FOLLOWUP_PROMPT = `Hi {name}, just following up on our conversation earlier. Is there anything else I can help with or would you like to book a time? We're here whenever you're ready.`
+
+const GOOGLE_PLACES_KEY = import.meta.env.VITE_GOOGLE_PLACES_KEY || ''
 
 const HOURS = Array.from({ length: 24 }, (_, i) => ({
   value: i,
@@ -103,7 +166,7 @@ function getSections(agentType: AgentType): SectionDef[] {
       { id: 'services', label: 'Services' },
       { id: 'faqs', label: 'FAQs' },
       { id: 'call-info', label: 'Info to Collect' },
-      { id: 'timing', label: 'Timing' },
+      { id: 'automation', label: 'Automation' },
     ]
   }
   return [
@@ -113,6 +176,7 @@ function getSections(agentType: AgentType): SectionDef[] {
     { id: 'services', label: 'Services' },
     { id: 'faqs', label: 'FAQs' },
     { id: 'timing', label: 'Timing' },
+    { id: 'automation', label: 'Automation' },
   ]
 }
 
@@ -159,9 +223,16 @@ export default function AgentEditorPage() {
   const [newRule, setNewRule] = useState('')
   const [addingRule, setAddingRule] = useState(false)
 
+  // ── AI Model state ──
+  const [aiModel, setAiModel] = useState('gpt-4.1-mini')
+
   // ── Voice state ──
   const [voiceId, setVoiceId] = useState('retell-Willa')
   const [voiceSpeed, setVoiceSpeed] = useState(1.0)
+  const [voiceLanguage, setVoiceLanguage] = useState('en-GB')
+  const [interruptionSensitivity, setInterruptionSensitivity] = useState(0.9)
+  const [maxCallDuration, setMaxCallDuration] = useState(3600)
+  const [analysisModel, setAnalysisModel] = useState('gpt-4.1-mini')
   const [playing, setPlaying] = useState<string | null>(null)
 
   // ── Greeting state ──
@@ -210,6 +281,23 @@ export default function AgentEditorPage() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [deletingSource, setDeletingSource] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [showGenerateConfirm, setShowGenerateConfirm] = useState(false)
+
+  // ── Google Places state ──
+  const [placeQuery, setPlaceQuery] = useState('')
+  const [placeResults, setPlaceResults] = useState<Array<{ id: string; name: string; address: string; website: string }>>([])
+  const [searchingPlaces, setSearchingPlaces] = useState(false)
+  const placeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Automation state ──
+  const [autoReply, setAutoReply] = useState(true)
+  const [draftMode, setDraftMode] = useState(false)
+  const [followUpEnabled, setFollowUpEnabled] = useState(true)
+  const [followUpAttempts, setFollowUpAttempts] = useState(2)
+  const [followUpDelays, setFollowUpDelays] = useState<number[]>([2, 24])
+  const [followUpChannel, setFollowUpChannel] = useState('same_channel')
+  const [followUpTone, setFollowUpTone] = useState('friendly')
+  const [followUpPrompt, setFollowUpPrompt] = useState(DEFAULT_FOLLOWUP_PROMPT)
 
   // ── Save state ──
   const [saving, setSaving] = useState(false)
@@ -227,6 +315,32 @@ export default function AgentEditorPage() {
   const isVoice = agent?.agent_type === 'voice'
   const sections = agent ? getSections(agent.agent_type) : []
 
+  // ── AI Refine helper ──
+  const [refining, setRefining] = useState<string | null>(null)
+
+  async function refineText(
+    text: string,
+    type: 'instructions' | 'greeting' | 'rules' | 'followup' | 'training_text',
+    setter: (val: string) => void,
+    refineKey: string,
+    toneOverride?: string,
+  ) {
+    if (!text.trim() || refining) return
+    setRefining(refineKey)
+    try {
+      const res = await fetch('/api/agent/refine', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text, type, tone: toneOverride || tone }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.refined) setter(data.refined)
+      }
+    } catch { /* silent */ }
+    setRefining(null)
+  }
+
   // ── Load agent data into state ──
   useEffect(() => {
     if (!agent) return
@@ -236,11 +350,26 @@ export default function AgentEditorPage() {
     setGreeting(agent.greeting || '')
     setVoiceId(agent.voice_id || 'retell-Willa')
     setVoiceSpeed(agent.voice_speed ?? 1.0)
+    setVoiceLanguage(agent.language || 'en-GB')
+    setInterruptionSensitivity(agent.interruption_sensitivity ?? 0.9)
+    setMaxCallDuration(agent.max_call_duration_seconds ?? 3600)
+    setAnalysisModel(agent.post_call_analysis_model || 'gpt-4.1-mini')
+    setAiModel(agent.ai_model || 'gpt-4.1-mini')
     setDelay(agent.takeover_delay_seconds ?? 1200)
     setAfterHoursDelay(agent.after_hours_delay_seconds ?? 0)
     setWorkStart(agent.working_hours_start ?? 8)
     setWorkEnd(agent.working_hours_end ?? 18)
     setWorkDays(agent.working_days?.length ? agent.working_days : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
+
+    // Automation
+    setAutoReply(agent.auto_reply_enabled ?? true)
+    setDraftMode(agent.draft_mode ?? false)
+    setFollowUpEnabled(agent.follow_up_enabled ?? true)
+    setFollowUpAttempts(agent.follow_up_max_attempts ?? 2)
+    setFollowUpDelays(agent.follow_up_delay_hours ?? [2, 24])
+    setFollowUpChannel(agent.follow_up_preferred_channel ?? 'same_channel')
+    setFollowUpTone(agent.follow_up_tone ?? 'friendly')
+    setFollowUpPrompt(agent.follow_up_prompt || DEFAULT_FOLLOWUP_PROMPT)
 
     // Check custom delays
     const isStdDelay = DELAY_OPTIONS.some((o) => o.value === (agent.takeover_delay_seconds ?? 1200))
@@ -426,8 +555,88 @@ export default function AgentEditorPage() {
     }
   }
 
-  async function handleGenerate() {
+  function searchPlaces(value: string) {
+    setPlaceQuery(value)
+    if (placeDebounceRef.current) clearTimeout(placeDebounceRef.current)
+    if (value.length < 3 || !GOOGLE_PLACES_KEY) {
+      setPlaceResults([])
+      return
+    }
+    placeDebounceRef.current = setTimeout(async () => {
+      setSearchingPlaces(true)
+      try {
+        const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': GOOGLE_PLACES_KEY,
+            'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.websiteUri',
+          },
+          body: JSON.stringify({
+            textQuery: value,
+            locationBias: { rectangle: { low: { latitude: 49.9, longitude: -6.4 }, high: { latitude: 58.7, longitude: 1.8 } } },
+            maxResultCount: 5,
+          }),
+        })
+        const data = await res.json()
+        setPlaceResults((data.places ?? []).map((p: Record<string, unknown>) => ({
+          id: (p.id as string) ?? '',
+          name: ((p.displayName as Record<string, string>)?.text) ?? '',
+          address: (p.formattedAddress as string) ?? '',
+          website: (p.websiteUri as string) ?? '',
+        })))
+      } catch {
+        setPlaceResults([])
+      } finally {
+        setSearchingPlaces(false)
+      }
+    }, 350)
+  }
+
+  async function selectPlace(place: { id: string; name: string; address: string; website: string }) {
+    setPlaceQuery('')
+    setPlaceResults([])
+    if (place.website) {
+      setTrainingUrl('')
+      setAddingUrl(true)
+      setFetchError(null)
+      try {
+        const res = await fetch('/api/training/scrape', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ url: place.website, agent_id: agentId }),
+        })
+        if (res.ok) await fetchSources()
+        else setFetchError('Failed to scrape business website')
+      } catch {
+        setFetchError('Failed to scrape business website')
+      } finally {
+        setAddingUrl(false)
+      }
+    }
+    const infoText = `Business: ${place.name}\nAddress: ${place.address}${place.website ? `\nWebsite: ${place.website}` : ''}`
+    try {
+      const res = await fetch('/api/training/scrape', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text: infoText, agent_id: agentId }),
+      })
+      if (res.ok) await fetchSources()
+    } catch { /* silent */ }
+  }
+
+  function handleGenerateClick() {
     if (generating) return
+    const hasSections = greeting.trim() || services.length > 0 || faqs.length > 0 || instructions.trim() || customRules.length > 0
+    if (hasSections) {
+      setShowGenerateConfirm(true)
+    } else {
+      runGenerate('fill')
+    }
+  }
+
+  async function runGenerate(mode: 'fill' | 'overwrite') {
+    setShowGenerateConfirm(false)
     setGenerating(true)
     try {
       const res = await fetch('/api/training/generate', {
@@ -438,15 +647,40 @@ export default function AgentEditorPage() {
       if (res.ok) {
         const data = await res.json()
         if (data.config) {
-          if (data.config.greeting) setGreeting(data.config.greeting)
-          if (data.config.services) setServices(data.config.services.map((s: { name: string }) => s.name))
-          if (data.config.faqs) setFaqs(data.config.faqs.map((f: { question: string; answer: string }, i: number) => ({
-            id: `gen-${i}`,
-            question: f.question,
-            answer: f.answer,
-          })))
-          if (data.config.tone) setTone(data.config.tone)
+          const fill = mode === 'fill'
+          if (data.config.greeting && (!fill || !greeting.trim())) setGreeting(data.config.greeting)
+          if (data.config.tone && (!fill || tone === 'professional')) setTone(data.config.tone)
+          if (data.config.instructions && (!fill || !instructions.trim())) setInstructions(data.config.instructions)
+          if (data.config.rules?.length && (!fill || customRules.length === 0)) {
+            setCustomRules(data.config.rules.map((r: string, i: number) => ({
+              id: `gen-${i}`,
+              text: typeof r === 'string' ? r : r,
+            })))
+          }
+          if (data.config.services?.length && (!fill || services.length === 0)) {
+            setServices(data.config.services.map((s: { name: string } | string) =>
+              typeof s === 'string' ? s : s.name
+            ))
+          }
+          if (data.config.faqs?.length && (!fill || faqs.length === 0)) {
+            setFaqs(data.config.faqs.map((f: { question: string; answer: string }, i: number) => ({
+              id: `gen-${i}`,
+              question: f.question,
+              answer: f.answer,
+            })))
+          }
+          if (data.config.info_fields?.length && (!fill || infoFields.every(f => ['Caller name', 'Phone number', 'Email address', 'Address / Location', 'Preferred date & time', 'Nature of enquiry'].includes(f.label)))) {
+            setInfoFields(data.config.info_fields.map((label: string, i: number) => ({
+              id: `gen-${i}`,
+              label: typeof label === 'string' ? label : label,
+              enabled: true,
+              required: i < 2,
+            })))
+          }
         }
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Generation failed' }))
+        setFetchError(err.error || 'Failed to generate')
       }
     } catch {
       setFetchError('Failed to generate from training data')
@@ -494,6 +728,11 @@ export default function AgentEditorPage() {
     setGreeting(source.greeting || '')
     if (source.voice_id) setVoiceId(source.voice_id)
     if (source.voice_speed) setVoiceSpeed(source.voice_speed)
+    if (source.ai_model) setAiModel(source.ai_model)
+    if (source.language) setVoiceLanguage(source.language)
+    if (source.interruption_sensitivity != null) setInterruptionSensitivity(source.interruption_sensitivity)
+    if (source.max_call_duration_seconds != null) setMaxCallDuration(source.max_call_duration_seconds)
+    if (source.post_call_analysis_model) setAnalysisModel(source.post_call_analysis_model)
     if (source.takeover_delay_seconds != null) setDelay(source.takeover_delay_seconds)
     if (source.after_hours_delay_seconds != null) setAfterHoursDelay(source.after_hours_delay_seconds)
     if (source.working_hours_start != null) setWorkStart(source.working_hours_start)
@@ -564,11 +803,24 @@ export default function AgentEditorPage() {
           ai_system_prompt: fullPrompt || null,
           voice_id: isVoice ? voiceId : agent?.voice_id ?? null,
           voice_speed: isVoice ? voiceSpeed : agent?.voice_speed ?? null,
+          ai_model: aiModel,
+          language: isVoice ? voiceLanguage : agent?.language ?? null,
+          interruption_sensitivity: isVoice ? interruptionSensitivity : agent?.interruption_sensitivity ?? null,
+          max_call_duration_seconds: isVoice ? maxCallDuration : agent?.max_call_duration_seconds ?? null,
+          post_call_analysis_model: isVoice ? analysisModel : agent?.post_call_analysis_model ?? null,
           takeover_delay_seconds: effectiveDelay,
           after_hours_delay_seconds: effectiveAfter,
           working_hours_start: workStart,
           working_hours_end: workEnd,
           working_days: workDays,
+          auto_reply_enabled: autoReply,
+          draft_mode: draftMode,
+          follow_up_enabled: followUpEnabled,
+          follow_up_max_attempts: followUpAttempts,
+          follow_up_delay_hours: followUpDelays,
+          follow_up_preferred_channel: followUpChannel,
+          follow_up_tone: followUpTone,
+          follow_up_prompt: followUpPrompt === DEFAULT_FOLLOWUP_PROMPT ? null : followUpPrompt || null,
         })
         .eq('id', agentId)
         .eq('business_id', businessId)
@@ -618,7 +870,26 @@ export default function AgentEditorPage() {
         }
       }
 
-      // 5. Sync prompt for voice agents
+      // 5. Sync auto-reply + draft mode to channels assigned to this agent
+      await supabase
+        .from('channels')
+        .update({ auto_reply_enabled: autoReply, draft_mode: draftMode })
+        .eq('agent_id', agentId)
+        .eq('business_id', businessId)
+
+      // 6. Sync follow-up settings to business-level table (backwards compat)
+      await supabase
+        .from('follow_up_settings')
+        .upsert({
+          business_id: businessId,
+          enabled: followUpEnabled,
+          max_attempts: followUpAttempts,
+          delay_hours: followUpDelays,
+          preferred_channel: followUpChannel,
+          tone: followUpTone,
+        }, { onConflict: 'business_id' })
+
+      // 7. Sync prompt for voice agents
       if (isVoice && session) {
         await fetch('/api/agent/sync-prompt', {
           method: 'POST',
@@ -789,7 +1060,7 @@ export default function AgentEditorPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleGenerate}
+                    onClick={handleGenerateClick}
                     disabled={generating || sources.length === 0}
                     className="flex h-9 items-center gap-1.5 rounded-lg border border-brand px-3 text-[13px] font-medium text-brand transition hover:bg-brand/5 disabled:opacity-50"
                   >
@@ -870,6 +1141,93 @@ export default function AgentEditorPage() {
               </div>
             </div>
 
+            {/* Generate confirmation modal */}
+            {showGenerateConfirm && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                <div className="mx-4 w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
+                  <h3 className="text-[16px] font-semibold text-ink">Generate from training data</h3>
+                  <p className="mt-2 text-[13px] text-ink-muted">
+                    Some sections already have content. What would you like to do?
+                  </p>
+                  <div className="mt-4 space-y-2">
+                    <button
+                      onClick={() => runGenerate('fill')}
+                      className="flex w-full items-center gap-3 rounded-xl border border-border px-4 py-3 text-left transition hover:border-brand/40 hover:bg-brand/5"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10">
+                        <Plus size={16} className="text-brand" />
+                      </div>
+                      <div>
+                        <p className="text-[14px] font-medium text-ink">Fill empty sections only</p>
+                        <p className="text-[12px] text-ink-muted">Keep what you have, fill in the blanks</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => runGenerate('overwrite')}
+                      className="flex w-full items-center gap-3 rounded-xl border border-border px-4 py-3 text-left transition hover:border-amber-400 hover:bg-amber-50"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+                        <RefreshCw size={16} className="text-amber-600" />
+                      </div>
+                      <div>
+                        <p className="text-[14px] font-medium text-ink">Overwrite everything</p>
+                        <p className="text-[12px] text-ink-muted">Replace all sections with fresh AI-generated content</p>
+                      </div>
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowGenerateConfirm(false)}
+                    className="mt-4 w-full rounded-lg border border-border py-2 text-[13px] text-ink-muted transition hover:bg-elevated"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Find business on Google */}
+            {GOOGLE_PLACES_KEY && (
+              <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <div className="flex items-center gap-2">
+                  <Search size={14} className="text-ink-muted" />
+                  <h3 className="text-[14px] font-medium text-ink">Find your business</h3>
+                </div>
+                <p className="mt-1 text-[13px] text-ink-muted">Search Google to pull in your business info automatically.</p>
+                <div className="relative mt-3">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                  <input
+                    type="text"
+                    value={placeQuery}
+                    onChange={(e) => searchPlaces(e.target.value)}
+                    placeholder="Search your business name..."
+                    className="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
+                  />
+                  {searchingPlaces && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 size={14} className="animate-spin text-brand" />
+                    </div>
+                  )}
+                  {placeResults.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-xl border border-border bg-surface shadow-lg">
+                      {placeResults.map((r) => (
+                        <button
+                          key={r.id}
+                          onClick={() => selectPlace(r)}
+                          className="flex w-full items-start gap-3 px-4 py-3 text-left transition first:rounded-t-xl last:rounded-b-xl hover:bg-elevated"
+                        >
+                          <MapPin size={16} className="mt-0.5 shrink-0 text-ink-subtle" />
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-medium text-ink">{r.name}</p>
+                            <p className="truncate text-[12px] text-ink-muted">{r.address}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Add website */}
             <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
               <h3 className="text-[14px] font-medium text-ink">Add website</h3>
@@ -917,14 +1275,24 @@ export default function AgentEditorPage() {
                 className="mt-3 w-full rounded-lg border border-border bg-surface p-3 text-[14px] text-ink outline-none resize-none placeholder:text-ink-subtle focus:border-brand"
               />
               {pasteText.trim() && (
-                <button
-                  onClick={addPastedText}
-                  disabled={pastingText}
-                  className="mt-2 flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[13px] font-medium text-white disabled:opacity-60"
-                >
-                  {pastingText && <Loader2 size={14} className="animate-spin" />}
-                  Add text
-                </button>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => refineText(pasteText, 'training_text', setPasteText, 'paste')}
+                    disabled={refining === 'paste'}
+                    className="flex h-9 items-center gap-1.5 rounded-lg border border-brand px-3 text-[13px] font-medium text-brand transition hover:bg-brand/5 disabled:opacity-60"
+                  >
+                    {refining === 'paste' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    Refine
+                  </button>
+                  <button
+                    onClick={addPastedText}
+                    disabled={pastingText}
+                    className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[13px] font-medium text-white disabled:opacity-60"
+                  >
+                    {pastingText && <Loader2 size={14} className="animate-spin" />}
+                    Add text
+                  </button>
+                </div>
               )}
             </div>
           </section>
@@ -968,9 +1336,21 @@ export default function AgentEditorPage() {
                 rows={8}
                 className="mt-4 w-full rounded-xl border border-border bg-surface p-4 text-[14px] leading-relaxed text-ink outline-none resize-none focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
-              <span className="mt-1 block text-[12px] text-ink-subtle">
-                {instructions.length} / 2000 characters
-              </span>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[12px] text-ink-subtle">
+                  {instructions.length} / 2000 characters
+                </span>
+                {instructions.trim() && (
+                  <button
+                    onClick={() => refineText(instructions, 'instructions', setInstructions, 'instructions')}
+                    disabled={refining === 'instructions'}
+                    className="flex items-center gap-1.5 rounded-lg border border-brand px-3 py-1.5 text-[12px] font-medium text-brand transition hover:bg-brand/5 disabled:opacity-60"
+                  >
+                    {refining === 'instructions' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    Refine with AI
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Custom rules */}
@@ -982,13 +1362,34 @@ export default function AgentEditorPage() {
                     Strict rules Elsie must always follow.
                   </p>
                 </div>
-                <button
-                  onClick={() => setAddingRule(true)}
-                  className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-600"
-                >
-                  <Plus size={14} />
-                  Add Rule
-                </button>
+                <div className="flex items-center gap-2">
+                  {customRules.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const allRules = customRules.map(r => r.text).join('\n')
+                        refineText(allRules, 'rules', (refined) => {
+                          const newRules = refined.split('\n').filter(l => l.trim()).map(text => ({
+                            id: Date.now().toString() + Math.random(),
+                            text: text.replace(/^[-•*]\s*/, '').trim(),
+                          }))
+                          setCustomRules(newRules)
+                        }, 'rules')
+                      }}
+                      disabled={refining === 'rules'}
+                      className="flex h-9 items-center gap-1.5 rounded-lg border border-brand px-3 text-[13px] font-medium text-brand transition hover:bg-brand/5 disabled:opacity-60"
+                    >
+                      {refining === 'rules' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      Refine
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setAddingRule(true)}
+                    className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-600"
+                  >
+                    <Plus size={14} />
+                    Add Rule
+                  </button>
+                </div>
               </div>
 
               {addingRule && (
@@ -1109,6 +1510,96 @@ export default function AgentEditorPage() {
                   </div>
                 </div>
               </div>
+
+              {/* AI Model */}
+              <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h2 className="text-[15px] font-semibold text-ink">AI Model</h2>
+                <p className="mt-1 text-[13px] text-ink-muted">The brain behind the conversation. Smarter models cost more per call.</p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {AI_MODEL_OPTIONS.map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => setAiModel(m.value)}
+                      className={cn(
+                        'rounded-xl border px-4 py-3 text-left transition',
+                        aiModel === m.value ? 'border-brand bg-brand-50 shadow-sm' : 'border-border hover:border-brand/30'
+                      )}
+                    >
+                      <p className="text-[14px] font-medium text-ink">{m.label}</p>
+                      <p className="text-[12px] text-ink-muted">{m.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Language */}
+              <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h2 className="text-[15px] font-semibold text-ink">Language</h2>
+                <p className="mt-1 text-[13px] text-ink-muted">Primary language for the AI receptionist.</p>
+                <select
+                  value={voiceLanguage}
+                  onChange={(e) => setVoiceLanguage(e.target.value)}
+                  className="mt-3 w-full rounded-lg border border-border bg-surface px-3 py-2 text-[14px] text-ink outline-none focus:border-brand"
+                >
+                  {LANGUAGE_OPTIONS.map((l) => (
+                    <option key={l.value} value={l.value}>{l.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Interruption Sensitivity */}
+              <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h2 className="text-[15px] font-semibold text-ink">Interruption Sensitivity</h2>
+                <p className="mt-1 text-[13px] text-ink-muted">How easily the caller can interrupt the AI. Higher = easier to interrupt.</p>
+                <div className="mt-4">
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={interruptionSensitivity}
+                    onChange={(e) => setInterruptionSensitivity(parseFloat(e.target.value))}
+                    className="w-full accent-brand"
+                  />
+                  <div className="mt-2 flex justify-between text-[12px] text-ink-subtle">
+                    <span>Hard to interrupt</span>
+                    <span className="font-medium text-ink">{interruptionSensitivity.toFixed(1)}</span>
+                    <span>Easy to interrupt</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Max Call Duration */}
+              <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h2 className="text-[15px] font-semibold text-ink">Max Call Duration</h2>
+                <p className="mt-1 text-[13px] text-ink-muted">Automatically ends the call after this duration.</p>
+                <select
+                  value={maxCallDuration}
+                  onChange={(e) => setMaxCallDuration(parseInt(e.target.value))}
+                  className="mt-3 w-full rounded-lg border border-border bg-surface px-3 py-2 text-[14px] text-ink outline-none focus:border-brand"
+                >
+                  <option value={300}>5 minutes</option>
+                  <option value={600}>10 minutes</option>
+                  <option value={900}>15 minutes</option>
+                  <option value={1800}>30 minutes</option>
+                  <option value={3600}>1 hour</option>
+                </select>
+              </div>
+
+              {/* Post-Call Analysis Model */}
+              <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h2 className="text-[15px] font-semibold text-ink">Post-Call Analysis</h2>
+                <p className="mt-1 text-[13px] text-ink-muted">AI model used to analyse calls after they end (sentiment, summary).</p>
+                <select
+                  value={analysisModel}
+                  onChange={(e) => setAnalysisModel(e.target.value)}
+                  className="mt-3 w-full rounded-lg border border-border bg-surface px-3 py-2 text-[14px] text-ink outline-none focus:border-brand"
+                >
+                  {ANALYSIS_MODEL_OPTIONS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
             </section>
           )}
 
@@ -1134,7 +1625,19 @@ export default function AgentEditorPage() {
                   <RotateCcw size={14} />
                   Reset to default
                 </button>
-                <span className="text-[12px] text-ink-subtle">{greeting.length} characters</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[12px] text-ink-subtle">{greeting.length} characters</span>
+                  {greeting.trim() && (
+                    <button
+                      onClick={() => refineText(greeting, 'greeting', setGreeting, 'greeting')}
+                      disabled={refining === 'greeting'}
+                      className="flex items-center gap-1.5 rounded-lg border border-brand px-3 py-1.5 text-[12px] font-medium text-brand transition hover:bg-brand/5 disabled:opacity-60"
+                    >
+                      {refining === 'greeting' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      Refine with AI
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1701,6 +2204,224 @@ export default function AgentEditorPage() {
               </div>
             </section>
           )}
+          {/* ════════ AUTOMATION ════════ */}
+          <section id="automation" data-section className="scroll-mt-20">
+            {/* Auto-reply + Draft mode */}
+            <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10">
+                  <Zap size={16} className="text-brand" />
+                </div>
+                <div>
+                  <h2 className="text-[15px] font-semibold text-ink">Auto-Reply</h2>
+                  <p className="text-[12px] text-ink-muted">
+                    Elsie automatically replies to incoming messages on this agent's channels.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
+                  <div>
+                    <p className="text-[14px] font-medium text-ink">Auto-reply enabled</p>
+                    <p className="text-[12px] text-ink-muted">Elsie responds to new messages automatically</p>
+                  </div>
+                  <button
+                    onClick={() => setAutoReply(!autoReply)}
+                    className={cn('relative h-6 w-11 rounded-full transition-colors', autoReply ? 'bg-brand' : 'bg-border')}
+                  >
+                    <div className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform', autoReply ? 'translate-x-5' : 'translate-x-0.5')} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
+                  <div>
+                    <p className="text-[14px] font-medium text-ink">Draft mode</p>
+                    <p className="text-[12px] text-ink-muted">Review AI replies before they're sent</p>
+                  </div>
+                  <button
+                    onClick={() => setDraftMode(!draftMode)}
+                    className={cn('relative h-6 w-11 rounded-full transition-colors', draftMode ? 'bg-brand' : 'bg-border')}
+                  >
+                    <div className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform', draftMode ? 'translate-x-5' : 'translate-x-0.5')} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Follow-ups master toggle */}
+            <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100">
+                    <MessageSquare size={16} className="text-purple-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-[15px] font-semibold text-ink">Automatic Follow-ups</h2>
+                    <p className="text-[12px] text-ink-muted">
+                      Elsie follows up with leads who don't book
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setFollowUpEnabled(!followUpEnabled)}
+                  className={cn('relative h-6 w-11 rounded-full transition-colors', followUpEnabled ? 'bg-brand' : 'bg-border')}
+                >
+                  <div className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform', followUpEnabled ? 'translate-x-5' : 'translate-x-0.5')} />
+                </button>
+              </div>
+            </div>
+
+            <div className={cn('space-y-4 transition-opacity', !followUpEnabled && 'pointer-events-none opacity-40')}>
+              {/* Persistence */}
+              <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h3 className="text-[14px] font-semibold text-ink">How persistent?</h3>
+                <p className="mt-1 text-[12px] text-ink-muted">How many times should Elsie follow up before stopping</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {PERSISTENCE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setFollowUpAttempts(opt.value)
+                        const defaults = opt.value === 1 ? [2] : opt.value === 2 ? [2, 24] : [2, 24, 72]
+                        setFollowUpDelays(defaults.slice(0, opt.value))
+                      }}
+                      className={cn(
+                        'rounded-xl border px-4 py-3 text-left transition',
+                        followUpAttempts === opt.value
+                          ? 'border-brand bg-brand/5 ring-1 ring-brand/20'
+                          : 'border-border hover:border-ink-subtle'
+                      )}
+                    >
+                      <p className="text-[13px] font-semibold text-ink">{opt.label}</p>
+                      <p className="mt-0.5 text-[11px] text-ink-muted">{opt.description}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {Array.from({ length: followUpAttempts }, (_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="w-24 shrink-0 text-[13px] font-medium text-ink">
+                        {i === 0 ? '1st follow-up' : i === 1 ? '2nd follow-up' : '3rd follow-up'}
+                      </span>
+                      <span className="text-[12px] text-ink-muted">after</span>
+                      <select
+                        value={followUpDelays[i] ?? (i === 0 ? 2 : i === 1 ? 24 : 72)}
+                        onChange={(e) => {
+                          const newDelays = [...followUpDelays]
+                          newDelays[i] = parseFloat(e.target.value)
+                          setFollowUpDelays(newDelays)
+                        }}
+                        className="rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none"
+                      >
+                        {DELAY_PRESETS.map((p) => (
+                          <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Follow-up channel */}
+              <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h3 className="text-[14px] font-semibold text-ink">Follow-up channel</h3>
+                <p className="mt-1 text-[12px] text-ink-muted">Which channel to use for follow-up messages</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {FOLLOWUP_CHANNEL_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setFollowUpChannel(opt.value)}
+                      className={cn(
+                        'rounded-xl border px-4 py-3 text-left transition',
+                        followUpChannel === opt.value
+                          ? 'border-brand bg-brand/5 ring-1 ring-brand/20'
+                          : 'border-border hover:border-ink-subtle'
+                      )}
+                    >
+                      <p className="text-[13px] font-semibold text-ink">{opt.label}</p>
+                      <p className="mt-0.5 text-[11px] text-ink-muted">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Follow-up tone */}
+              <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h3 className="text-[14px] font-semibold text-ink">Follow-up tone</h3>
+                <p className="mt-1 text-[12px] text-ink-muted">How the follow-up messages should sound</p>
+                <div className="mt-3 flex gap-2">
+                  {FOLLOWUP_TONE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setFollowUpTone(opt.value)}
+                      className={cn(
+                        'flex-1 rounded-xl border px-4 py-3 text-center transition',
+                        followUpTone === opt.value
+                          ? 'border-brand bg-brand/5 ring-1 ring-brand/20'
+                          : 'border-border hover:border-ink-subtle'
+                      )}
+                    >
+                      <p className="text-[12px] font-semibold text-ink">{opt.label}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Follow-up prompt */}
+              <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <h3 className="text-[14px] font-semibold text-ink">Follow-up prompt</h3>
+                <p className="mt-1 text-[12px] text-ink-muted">
+                  Customise what Elsie says when following up. Use {'{name}'} for the customer's first name.
+                </p>
+                <textarea
+                  value={followUpPrompt}
+                  onChange={(e) => setFollowUpPrompt(e.target.value)}
+                  rows={4}
+                  placeholder={DEFAULT_FOLLOWUP_PROMPT}
+                  className="mt-3 w-full rounded-xl border border-border bg-surface p-4 text-[14px] leading-relaxed text-ink outline-none resize-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+                <div className="mt-2 flex items-center justify-between">
+                  <button
+                    onClick={() => setFollowUpPrompt(DEFAULT_FOLLOWUP_PROMPT)}
+                    className="flex items-center gap-1.5 text-[12px] text-ink-muted hover:text-ink"
+                  >
+                    <RotateCcw size={12} />
+                    Reset to default
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] text-ink-subtle">{followUpPrompt.length} characters</span>
+                    {followUpPrompt.trim() && (
+                      <button
+                        onClick={() => refineText(followUpPrompt, 'followup', setFollowUpPrompt, 'followup', followUpTone)}
+                        disabled={refining === 'followup'}
+                        className="flex items-center gap-1.5 rounded-lg border border-brand px-3 py-1.5 text-[12px] font-medium text-brand transition hover:bg-brand/5 disabled:opacity-60"
+                      >
+                        {refining === 'followup' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                        Refine with AI
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl bg-elevated p-4">
+                  <p className="text-[11px] font-medium text-ink-muted">Preview:</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-ink">
+                    {followUpPrompt.replace('{name}', 'Sarah')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-surface/50 p-4">
+                <p className="text-[12px] leading-relaxed text-ink-muted">
+                  <strong className="text-ink">How it works:</strong> When a conversation ends without a booking,
+                  Elsie automatically sends a follow-up using your prompt above. If the lead replies or books,
+                  follow-ups stop immediately.
+                </p>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
