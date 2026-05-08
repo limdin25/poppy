@@ -78,11 +78,11 @@ async function getSmsFromNumber(businessId: string): Promise<string | null> {
 async function getWhatsAppAccountId(businessId: string): Promise<string | null> {
   const { data } = await supabase
     .from('channels')
-    .select('config')
+    .select('unipile_account_id')
     .eq('business_id', businessId)
     .eq('type', 'whatsapp')
     .eq('status', 'connected')
     .single();
 
-  return (data?.config as Record<string, string> | null)?.account_id ?? null;
+  return data?.unipile_account_id ?? null;
 }

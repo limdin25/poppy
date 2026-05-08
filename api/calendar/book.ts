@@ -4,6 +4,7 @@ import type { GoogleTokens } from '../lib/google-calendar.js';
 import { notifyBusinessOwner } from '../lib/notify.js';
 import { sendSMS } from '../../src/integrations/twilio/client.js';
 import { sendNotification } from '../../src/integrations/resend/client.js';
+import { sendToChat } from '../../src/integrations/unipile/client.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -193,6 +194,22 @@ export default async function handler(req: Request): Promise<Response> {
         await sendSMS(twilioFrom, callerPhone, confirmMsg);
       }
     } catch { /* don't block on SMS failure */ }
+  }
+
+  // Send WhatsApp confirmation to customer
+  if (callerPhone) {
+    try {
+      const { data: waCh } = await supabase
+        .from('channels')
+        .select('unipile_account_id')
+        .eq('business_id', businessId)
+        .eq('type', 'whatsapp')
+        .eq('status', 'connected')
+        .maybeSingle();
+      if (waCh?.unipile_account_id) {
+        await sendToChat(waCh.unipile_account_id, callerPhone, confirmMsg);
+      }
+    } catch (err) { console.error('[book] WhatsApp confirmation failed:', err); }
   }
 
   // Update customer_notified flag
