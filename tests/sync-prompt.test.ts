@@ -136,6 +136,23 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt(BUSINESS, nonBookable, [], []);
     expect(prompt).not.toContain('## Booking');
   });
+
+  it('uses custom working days when provided', () => {
+    const prompt = buildSystemPrompt(BUSINESS, [], [], [], undefined, undefined, 'Europe/London', ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+    expect(prompt).toContain('Mon, Tue, Wed, Thu, Fri, Sat, Sun');
+    expect(prompt).not.toContain('Saturday and Sunday) are not available');
+  });
+
+  it('includes timezone in booking instructions', () => {
+    const prompt = buildSystemPrompt(BUSINESS, SERVICES, [], [], undefined, undefined, 'Europe/London');
+    expect(prompt).toContain('Europe/London');
+    expect(prompt).toContain('UTC');
+  });
+
+  it('defaults to Mon-Fri when no working days provided', () => {
+    const prompt = buildSystemPrompt(BUSINESS, [], [], []);
+    expect(prompt).toContain('Monday to Friday');
+  });
 });
 
 describe('sync-prompt API contract', () => {

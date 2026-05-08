@@ -36,14 +36,31 @@ export function buildSystemPrompt(
   callInfoTypes: CallInfoType[],
   channel?: Channel,
   knowledgeContent?: string,
+  timezone?: string,
+  workingDays?: string[],
 ): string {
   const sections: string[] = [];
 
-  // Identity + current date so the model knows the real date/year
+  const tz = timezone || 'Europe/London';
+  const days = workingDays?.length ? workingDays : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const fullDayNames: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+  const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const offDays = allDays.filter(d => !days.includes(d));
+
   const now = new Date();
   const today = now.toISOString().split('T')[0];
   const dayName = now.toLocaleDateString('en-GB', { weekday: 'long' });
-  sections.push(`# You are the AI receptionist for ${business.name}\n\nToday is ${dayName}, ${today}. Working days are Monday to Friday. Weekends (Saturday and Sunday) are not available for bookings — if a caller asks for a weekend, explain that and offer the next working day instead. Never say "fully booked" for weekends.`);
+
+  let scheduleNote: string;
+  if (offDays.length === 0) {
+    scheduleNote = `Working days are ${days.join(', ')} (every day of the week).`;
+  } else if (days.length === 5 && !days.includes('Sat') && !days.includes('Sun')) {
+    scheduleNote = `Working days are Monday to Friday. Weekends (Saturday and Sunday) are not available for bookings — if a caller asks for a weekend, explain that and offer the next working day instead. Never say "fully booked" for weekends.`;
+  } else {
+    scheduleNote = `Working days are ${days.join(', ')}. ${offDays.map(d => fullDayNames[d]).join(' and ')} ${offDays.length === 1 ? 'is' : 'are'} not available for bookings.`;
+  }
+
+  sections.push(`# You are the AI receptionist for ${business.name}\n\nToday is ${dayName}, ${today}. ${scheduleNote}\n\nYour timezone is ${tz}. All times in this conversation should be treated as ${tz} local time.`);
 
   // Business details
   const details: string[] = [];
@@ -112,7 +129,14 @@ When a caller wants to book a service marked [BOOKABLE]:
 2. Use the check_availability tool to find available slots. Offer the caller up to 3 options.
 3. Once the caller confirms a slot, use the book_appointment tool to book it.
 
-If the check_availability tool returns zero slots (e.g. weekends or fully booked days), do NOT say you cannot check — instead say something like "It looks like we're fully booked for those dates. Let me check the next few days…" and try again with a wider date range (e.g. the next 5 working days). If still no slots, offer to take the caller's details and have someone call back with available times.
+**IMPORTANT — Time handling:**
+- The check_availability tool returns slot times in **UTC (ISO 8601)**.
+- Your timezone is **${tz}**. Convert UTC times to ${tz} local time when speaking to the caller.
+- When the caller says a time (e.g. "3pm"), they mean ${tz} local time.
+- When passing start_time to book_appointment, you MUST use the exact UTC ISO 8601 string from the check_availability result — do NOT convert the caller's spoken time to UTC yourself.
+- Example: if a slot is "2026-05-11T14:00:00.000Z" and ${tz} is UTC+1 (BST), tell the caller "3pm" and pass "2026-05-11T14:00:00.000Z" to book_appointment.
+
+If the check_availability tool returns zero slots (e.g. non-working days or fully booked days), do NOT say you cannot check — instead say something like "It looks like we're fully booked for those dates. Let me check the next few days…" and try again with a wider date range (e.g. the next 5 working days). If still no slots, offer to take the caller's details and have someone call back with available times.
 
 If the caller doesn't want to book right now, take their name and let them know someone will follow up with available times.`);
   }

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Calendar, Clock, Phone, Plus, ChevronLeft, ChevronRight, X, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Calendar, Clock, Phone, Plus, ChevronLeft, ChevronRight, X, Loader2, ChevronDown, ChevronUp, Mic } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAppointments } from '@/core/hooks/useAppointments'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -238,66 +238,177 @@ function NewBookingModal({ businessId, onClose, onCreated }: { businessId: strin
   )
 }
 
+interface CallData {
+  id: string
+  recording_url: string | null
+  transcript: { speaker: string; text: string }[] | null
+  duration_seconds: number | null
+  started_at: string | null
+  ended_at: string | null
+  ai_summary: string | null
+}
+
 function AppointmentCard({ appt, onCancel }: { appt: Appointment; onCancel: () => void }) {
   const contactName = appt.contact?.name ?? 'Unknown'
   const initials = contactName.split(' ').map(n => n[0]).join('').slice(0, 2)
+  const [expanded, setExpanded] = useState(false)
+  const [callData, setCallData] = useState<CallData | null>(null)
+  const [loadingCall, setLoadingCall] = useState(false)
+
+  useEffect(() => {
+    if (!expanded || callData || !appt.conversation_id) return
+    setLoadingCall(true)
+    supabase
+      .from('calls')
+      .select('id, recording_url, transcript, duration_seconds, started_at, ended_at, ai_summary')
+      .eq('conversation_id', appt.conversation_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setCallData(data as CallData)
+        setLoadingCall(false)
+      })
+  }, [expanded, callData, appt.conversation_id])
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4 shadow-soft transition hover:border-brand/20">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-elevated text-[13px] font-semibold text-ink-muted">
-            {initials}
+    <div className="rounded-xl border border-border bg-surface shadow-soft transition hover:border-brand/20">
+      <div className="p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-elevated text-[13px] font-semibold text-ink-muted">
+              {initials}
+            </div>
+            <div>
+              <p className="text-[14px] font-medium text-ink">{contactName}</p>
+              <p className="text-[13px] text-ink-muted">{appt.title}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-[14px] font-medium text-ink">{contactName}</p>
-            <p className="text-[13px] text-ink-muted">{appt.title}</p>
+          <span className={cn('rounded-md px-2 py-0.5 text-[11px] font-medium capitalize', STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending)}>
+            {appt.status}
+          </span>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-4 text-[13px] text-ink-muted">
+          <span className="flex items-center gap-1.5">
+            <Calendar size={14} />
+            {formatDate(appt.starts_at)}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Clock size={14} />
+            {formatTime(appt.starts_at)} ({durationLabel(appt.starts_at, appt.ends_at)})
+          </span>
+          <span className="text-[11px] text-ink-subtle">
+            Booked {new Date(appt.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} at {new Date(appt.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+
+        {appt.description && (
+          <p className="mt-3 rounded-lg bg-elevated px-3 py-2 text-[13px] text-ink-muted">{appt.description}</p>
+        )}
+
+        <div className="mt-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-ink-subtle">
+              {appt.booked_via === 'manual' ? 'Manual booking' : `Booked via ${appt.booked_via ?? 'Elsie'}`}
+            </span>
+            {appt.conversation_id && (
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="flex items-center gap-1 text-[12px] font-medium text-brand hover:underline"
+              >
+                <Mic size={12} />
+                {expanded ? 'Hide call' : 'View call'}
+                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            {appt.contact?.phone && (
+              <a href={`tel:${appt.contact.phone}`} className="flex items-center gap-1 text-[12px] text-brand hover:underline">
+                <Phone size={12} /> Call
+              </a>
+            )}
+            {appt.status !== 'cancelled' && appt.status !== 'completed' && (
+              <button
+                onClick={async () => {
+                  if (!window.confirm('Cancel this appointment?')) return
+                  await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appt.id)
+                  onCancel()
+                }}
+                className="text-[12px] text-ink-muted hover:text-danger"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </div>
-        <span className={cn('rounded-md px-2 py-0.5 text-[11px] font-medium capitalize', STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending)}>
-          {appt.status}
-        </span>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-4 text-[13px] text-ink-muted">
-        <span className="flex items-center gap-1.5">
-          <Calendar size={14} />
-          {formatDate(appt.starts_at)}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Clock size={14} />
-          {formatTime(appt.starts_at)} ({durationLabel(appt.starts_at, appt.ends_at)})
-        </span>
-      </div>
+      {expanded && (
+        <div className="border-t border-border bg-elevated/50 p-4">
+          {loadingCall ? (
+            <div className="flex items-center gap-2 text-[13px] text-ink-muted">
+              <Loader2 size={14} className="animate-spin" /> Loading call details...
+            </div>
+          ) : callData ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-4 text-[12px] text-ink-muted">
+                {callData.started_at && (
+                  <span className="flex items-center gap-1">
+                    <Phone size={12} />
+                    Call at {new Date(callData.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })},
+                    {' '}{new Date(callData.started_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </span>
+                )}
+                {callData.duration_seconds != null && (
+                  <span>
+                    Duration: {callData.duration_seconds < 60
+                      ? `${callData.duration_seconds}s`
+                      : `${Math.floor(callData.duration_seconds / 60)}m ${callData.duration_seconds % 60}s`}
+                  </span>
+                )}
+              </div>
 
-      {appt.description && (
-        <p className="mt-3 rounded-lg bg-elevated px-3 py-2 text-[13px] text-ink-muted">{appt.description}</p>
+              {callData.ai_summary && (
+                <div className="rounded-lg bg-surface p-3">
+                  <p className="text-[11px] font-medium text-ink-subtle">AI Summary</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-ink">{callData.ai_summary}</p>
+                </div>
+              )}
+
+              {callData.recording_url && (
+                <div className="rounded-lg bg-surface p-3">
+                  <p className="mb-2 text-[11px] font-medium text-ink-subtle">Recording</p>
+                  <audio controls className="w-full" preload="none">
+                    <source src={callData.recording_url} />
+                  </audio>
+                </div>
+              )}
+
+              {callData.transcript && callData.transcript.length > 0 && (
+                <div className="rounded-lg bg-surface p-3">
+                  <p className="mb-2 text-[11px] font-medium text-ink-subtle">Conversation</p>
+                  <div className="max-h-64 space-y-2 overflow-y-auto">
+                    {callData.transcript.map((line, i) => (
+                      <div key={i} className={cn('text-[13px] leading-relaxed', line.speaker === 'agent' ? 'text-brand' : 'text-ink')}>
+                        <span className="font-medium">{line.speaker === 'agent' ? 'Elsie' : contactName}:</span>{' '}
+                        {line.text}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!callData.recording_url && (!callData.transcript || callData.transcript.length === 0) && !callData.ai_summary && (
+                <p className="text-[12px] text-ink-muted">Call details not yet available.</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-[12px] text-ink-muted">No call data found for this booking.</p>
+          )}
+        </div>
       )}
-
-      <div className="mt-3 flex items-center justify-between">
-        <span className="text-[11px] text-ink-subtle">
-          {appt.booked_via === 'manual' ? 'Manual booking' : `Booked via ${appt.booked_via ?? 'Elsie'}`}
-        </span>
-        <div className="flex gap-2">
-          {appt.contact?.phone && (
-            <a href={`tel:${appt.contact.phone}`} className="flex items-center gap-1 text-[12px] text-brand hover:underline">
-              <Phone size={12} /> Call
-            </a>
-          )}
-          {appt.status !== 'cancelled' && appt.status !== 'completed' && (
-            <button
-              onClick={async () => {
-                if (!window.confirm('Cancel this appointment?')) return
-                await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appt.id)
-                onCancel()
-              }}
-              className="text-[12px] text-ink-muted hover:text-danger"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
     </div>
   )
 }

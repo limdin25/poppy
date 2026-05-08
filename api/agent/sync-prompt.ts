@@ -79,7 +79,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data: business } = await supabase
       .from('businesses')
-      .select('name, industry, address, phone, website, greeting, tone, ai_system_prompt')
+      .select('name, industry, address, phone, website, greeting, tone, ai_system_prompt, timezone')
       .eq('id', businessId)
       .single();
 
@@ -91,7 +91,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model')
+        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days')
         .eq('id', agentId)
         .single();
       if (agent) agentOverrides = agent;
@@ -154,6 +154,9 @@ export default async function handler(req: Request): Promise<Response> {
 
     const hasBookable = (services || []).some((s: Record<string, unknown>) => s.bookable);
 
+    const effectiveTimezone = (business as Record<string, unknown>).timezone as string || 'Europe/London';
+    const effectiveWorkDays = (agentOverrides.working_days as string[]) || undefined;
+
     let prompt = buildSystemPrompt(
       biz,
       (services || []) as Service[],
@@ -161,6 +164,8 @@ export default async function handler(req: Request): Promise<Response> {
       callInfoTypes,
       'VOICE',
       knowledgeContent || undefined,
+      effectiveTimezone,
+      effectiveWorkDays,
     );
 
     if (effectivePrompt?.trim()) {
