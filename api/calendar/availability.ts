@@ -71,7 +71,9 @@ export default async function handler(req: Request): Promise<Response> {
         .eq('id', businessId);
     }
 
-    busy = await getFreeBusy(tokens, calendarId, body.date_from, body.date_to);
+    const freeBusyEnd = new Date(body.date_to);
+    freeBusyEnd.setDate(freeBusyEnd.getDate() + 1);
+    busy = await getFreeBusy(tokens, calendarId, body.date_from, freeBusyEnd.toISOString().split('T')[0]);
   }
 
   let workStart = biz?.working_hours_start ?? 9;

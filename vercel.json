@@ -58,6 +58,10 @@
     {
       "path": "/api/cron/inactive-accounts",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/sync-prompts",
+      "schedule": "0 0 * * *"
     }
   ]
 }
