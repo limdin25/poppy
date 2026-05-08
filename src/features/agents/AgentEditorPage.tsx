@@ -6,7 +6,7 @@ import {
   CheckCircle2, AlertCircle, RotateCcw, Phone,
   GripVertical, Clock, Moon, Calendar, Play, Check,
   Upload, Type, Sparkles, Zap, MessageSquare,
-  Search, MapPin,
+  Search, MapPin, ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -27,10 +27,20 @@ const TONE_OPTIONS = [
 const AI_MODEL_OPTIONS = [
   { value: 'claude-4.6-sonnet', label: 'Claude Sonnet 4.6', desc: 'Best reasoning, recommended' },
   { value: 'claude-4.5-sonnet', label: 'Claude Sonnet 4.5', desc: 'Great reasoning' },
-  { value: 'gpt-4.1', label: 'GPT-4.1', desc: 'Smart, reliable' },
-  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', desc: 'Fast, affordable' },
-  { value: 'gpt-4o', label: 'GPT-4o', desc: 'Multimodal, fast' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Budget option' },
+  { value: 'claude-4.5-haiku', label: 'Claude Haiku 4.5', desc: 'Fast and light' },
+  { value: 'gpt-5.5', label: 'GPT-5.5', desc: 'Latest OpenAI, smartest' },
+  { value: 'gpt-5.4', label: 'GPT-5.4', desc: 'Fast and smart' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', desc: 'Fast, affordable' },
+  { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano', desc: 'Ultra-fast, cheapest' },
+  { value: 'gpt-5', label: 'GPT-5', desc: 'Reliable all-rounder' },
+  { value: 'gpt-5-mini', label: 'GPT-5 Mini', desc: 'Budget-friendly' },
+  { value: 'gpt-5-nano', label: 'GPT-5 Nano', desc: 'Lightweight' },
+  { value: 'gpt-4.1', label: 'GPT-4.1', desc: 'Older, still solid' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', desc: 'Older, fast' },
+  { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', desc: 'Older, cheapest' },
+  { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', desc: 'Ultra-fast Google model' },
+  { value: 'gemini-3.0-flash', label: 'Gemini 3.0 Flash', desc: 'Fast Google model' },
+  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', desc: 'Budget Google model' },
 ]
 
 const LANGUAGE_OPTIONS = [
@@ -45,10 +55,11 @@ const LANGUAGE_OPTIONS = [
 ]
 
 const ANALYSIS_MODEL_OPTIONS = [
+  { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+  { value: 'gpt-5.4', label: 'GPT-5.4' },
   { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
   { value: 'gpt-4.1', label: 'GPT-4.1' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-  { value: 'gpt-4o', label: 'GPT-4o' },
 ]
 
 const VOICES = [
@@ -86,16 +97,23 @@ const PERSISTENCE_OPTIONS = [
   { value: 3, label: 'Persistent', description: 'Three follow-ups' },
 ]
 
-const DELAY_PRESETS = [
-  { value: 0.5, label: '30 min' },
-  { value: 1, label: '1 hour' },
-  { value: 2, label: '2 hours' },
-  { value: 4, label: '4 hours' },
-  { value: 8, label: '8 hours' },
-  { value: 12, label: '12 hours' },
-  { value: 24, label: '1 day' },
-  { value: 48, label: '2 days' },
-  { value: 72, label: '3 days' },
+const FOLLOWUP_DELAY_PRESETS = [
+  { value: 1, label: '1 second' },
+  { value: 5, label: '5 seconds' },
+  { value: 10, label: '10 seconds' },
+  { value: 30, label: '30 seconds' },
+  { value: 60, label: '1 minute' },
+  { value: 300, label: '5 minutes' },
+  { value: 900, label: '15 minutes' },
+  { value: 1800, label: '30 minutes' },
+  { value: 3600, label: '1 hour' },
+  { value: 7200, label: '2 hours' },
+  { value: 14400, label: '4 hours' },
+  { value: 28800, label: '8 hours' },
+  { value: 43200, label: '12 hours' },
+  { value: 86400, label: '1 day' },
+  { value: 172800, label: '2 days' },
+  { value: 259200, label: '3 days' },
 ]
 
 const FOLLOWUP_CHANNEL_OPTIONS = [
@@ -166,6 +184,7 @@ function getSections(agentType: AgentType): SectionDef[] {
       { id: 'services', label: 'Services' },
       { id: 'faqs', label: 'FAQs' },
       { id: 'call-info', label: 'Info to Collect' },
+      { id: 'availability', label: 'Availability' },
       { id: 'automation', label: 'Automation' },
     ]
   }
@@ -270,6 +289,8 @@ export default function AgentEditorPage() {
   const [workStart, setWorkStart] = useState(8)
   const [workEnd, setWorkEnd] = useState(18)
   const [workDays, setWorkDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
+  const [calendarConnected, setCalendarConnected] = useState(false)
+  const [connectingCalendar, setConnectingCalendar] = useState(false)
 
   // ── Training state ──
   const [sources, setSources] = useState<TrainingSource[]>([])
@@ -294,7 +315,7 @@ export default function AgentEditorPage() {
   const [draftMode, setDraftMode] = useState(false)
   const [followUpEnabled, setFollowUpEnabled] = useState(true)
   const [followUpAttempts, setFollowUpAttempts] = useState(2)
-  const [followUpDelays, setFollowUpDelays] = useState<number[]>([2, 24])
+  const [followUpDelays, setFollowUpDelays] = useState<number[]>([7200, 86400])
   const [followUpChannel, setFollowUpChannel] = useState('same_channel')
   const [followUpTone, setFollowUpTone] = useState('friendly')
   const [followUpPrompt, setFollowUpPrompt] = useState(DEFAULT_FOLLOWUP_PROMPT)
@@ -366,7 +387,9 @@ export default function AgentEditorPage() {
     setDraftMode(agent.draft_mode ?? false)
     setFollowUpEnabled(agent.follow_up_enabled ?? true)
     setFollowUpAttempts(agent.follow_up_max_attempts ?? 2)
-    setFollowUpDelays(agent.follow_up_delay_hours ?? [2, 24])
+    const rawDelays = agent.follow_up_delay_hours ?? [7200, 86400]
+    const isLegacyHours = rawDelays.length > 0 && rawDelays.every(d => d <= 100)
+    setFollowUpDelays(isLegacyHours ? rawDelays.map(h => h * 3600) : rawDelays)
     setFollowUpChannel(agent.follow_up_preferred_channel ?? 'same_channel')
     setFollowUpTone(agent.follow_up_tone ?? 'friendly')
     setFollowUpPrompt(agent.follow_up_prompt || DEFAULT_FOLLOWUP_PROMPT)
@@ -385,6 +408,17 @@ export default function AgentEditorPage() {
       setCustomAfterSec(agent.after_hours_delay_seconds % 60)
     }
   }, [agent])
+
+  // ── Check calendar connection ──
+  useEffect(() => {
+    if (!businessId) return
+    supabase
+      .from('businesses')
+      .select('google_calendar_tokens')
+      .eq('id', businessId)
+      .single()
+      .then(({ data }) => setCalendarConnected(!!data?.google_calendar_tokens))
+  }, [businessId])
 
   // ── Load services ──
   useEffect(() => {
@@ -2204,6 +2238,156 @@ export default function AgentEditorPage() {
               </div>
             </section>
           )}
+          {/* ════════ AVAILABILITY (voice only) ════════ */}
+          {agent?.agent_type === 'voice' && (
+            <section id="availability" data-section className="scroll-mt-20">
+              {/* Working hours */}
+              <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100">
+                    <Clock size={18} className="text-emerald-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-[15px] font-semibold text-ink">Working Hours</h2>
+                    <p className="mt-1 text-[13px] text-ink-muted">
+                      Elsie will only offer appointment slots within these hours.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <p className="mb-2 text-[13px] font-medium text-ink">Working days</p>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_DAYS.map((day) => (
+                      <button
+                        key={day}
+                        onClick={() => setWorkDays((prev) => prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day])}
+                        className={cn(
+                          'rounded-full px-4 py-1.5 text-[13px] font-medium transition',
+                          workDays.includes(day)
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-elevated text-ink-muted hover:bg-emerald-100 hover:text-emerald-700'
+                        )}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-4">
+                  <div>
+                    <label className="text-[13px] font-medium text-ink">Opens at</label>
+                    <select
+                      value={workStart}
+                      onChange={(e) => setWorkStart(Number(e.target.value))}
+                      className="mt-1 block w-full rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                    >
+                      {HOURS.map((h) => (
+                        <option key={h.value} value={h.value}>{h.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="mt-6 text-ink-muted">to</span>
+                  <div>
+                    <label className="text-[13px] font-medium text-ink">Closes at</label>
+                    <select
+                      value={workEnd}
+                      onChange={(e) => setWorkEnd(Number(e.target.value))}
+                      className="mt-1 block w-full rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                    >
+                      {HOURS.map((h) => (
+                        <option key={h.value} value={h.value}>{h.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Google Calendar */}
+              <div className="mt-4 rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100">
+                    <Calendar size={18} className="text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-[15px] font-semibold text-ink">Google Calendar</h2>
+                    <p className="mt-1 text-[13px] text-ink-muted">
+                      {calendarConnected
+                        ? 'Connected — Elsie checks your real calendar for conflicts before booking.'
+                        : 'Optional — connect to avoid double-bookings. Without it, Elsie uses working hours above.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  {calendarConnected ? (
+                    <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-4">
+                      <CheckCircle2 size={18} className="text-success" />
+                      <div className="flex-1">
+                        <p className="text-[14px] font-medium text-ink">Google Calendar</p>
+                        <p className="text-[12px] text-success">Connected</p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          setConnectingCalendar(true)
+                          try {
+                            await fetch('/api/calendar/disconnect', {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${session?.access_token}` },
+                            })
+                            setCalendarConnected(false)
+                          } finally { setConnectingCalendar(false) }
+                        }}
+                        disabled={connectingCalendar}
+                        className="rounded-lg border border-border px-3 py-1.5 text-[12px] text-danger hover:bg-danger/5 disabled:opacity-60"
+                      >
+                        {connectingCalendar ? 'Disconnecting...' : 'Disconnect'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        setConnectingCalendar(true)
+                        try {
+                          const res = await fetch('/api/calendar/connect', {
+                            headers: { Authorization: `Bearer ${session?.access_token}` },
+                          })
+                          const { url } = await res.json()
+                          window.location.href = url
+                        } catch { setConnectingCalendar(false) }
+                      }}
+                      disabled={connectingCalendar}
+                      className="flex w-full items-center gap-3 rounded-xl border border-border p-4 transition hover:border-blue-300 disabled:opacity-60"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
+                        <Calendar size={18} className="text-blue-600" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-[14px] font-medium text-ink">Connect Google Calendar</p>
+                        <p className="text-[12px] text-ink-muted">
+                          {connectingCalendar ? 'Redirecting to Google...' : 'Sync your real availability'}
+                        </p>
+                      </div>
+                      {connectingCalendar ? (
+                        <Loader2 size={16} className="animate-spin text-ink-muted" />
+                      ) : (
+                        <ExternalLink size={16} className="text-ink-muted" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-border bg-surface/50 p-4">
+                <p className="text-[12px] leading-relaxed text-ink-muted">
+                  <strong className="text-ink">How it works:</strong> When a caller asks to book, Elsie checks
+                  the working hours above for available slots. If Google Calendar is connected, she also checks
+                  for conflicts so you never get double-booked.
+                </p>
+              </div>
+            </section>
+          )}
           {/* ════════ AUTOMATION ════════ */}
           <section id="automation" data-section className="scroll-mt-20">
             {/* Auto-reply + Draft mode */}
@@ -2283,7 +2467,7 @@ export default function AgentEditorPage() {
                       key={opt.value}
                       onClick={() => {
                         setFollowUpAttempts(opt.value)
-                        const defaults = opt.value === 1 ? [2] : opt.value === 2 ? [2, 24] : [2, 24, 72]
+                        const defaults = opt.value === 1 ? [7200] : opt.value === 2 ? [7200, 86400] : [7200, 86400, 259200]
                         setFollowUpDelays(defaults.slice(0, opt.value))
                       }}
                       className={cn(
@@ -2307,15 +2491,15 @@ export default function AgentEditorPage() {
                       </span>
                       <span className="text-[12px] text-ink-muted">after</span>
                       <select
-                        value={followUpDelays[i] ?? (i === 0 ? 2 : i === 1 ? 24 : 72)}
+                        value={followUpDelays[i] ?? (i === 0 ? 7200 : i === 1 ? 86400 : 259200)}
                         onChange={(e) => {
                           const newDelays = [...followUpDelays]
-                          newDelays[i] = parseFloat(e.target.value)
+                          newDelays[i] = parseInt(e.target.value)
                           setFollowUpDelays(newDelays)
                         }}
                         className="rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none"
                       >
-                        {DELAY_PRESETS.map((p) => (
+                        {FOLLOWUP_DELAY_PRESETS.map((p) => (
                           <option key={p.value} value={p.value}>{p.label}</option>
                         ))}
                       </select>

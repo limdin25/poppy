@@ -218,11 +218,13 @@ export default async function handler(req: Request): Promise<Response> {
     const nextAttempt = attempts.size + 1;
     if (nextAttempt > (settings.max_attempts as number)) continue;
 
-    const delayHours = (settings.delay_hours as number[]) || [2, 24];
-    const delayForAttempt = delayHours[nextAttempt - 1] || delayHours[delayHours.length - 1] || 24;
+    const rawDelays = (settings.delay_hours as number[]) || [7200, 86400];
+    const isLegacyHours = rawDelays.length > 0 && rawDelays.every(d => d <= 100);
+    const delaySeconds = isLegacyHours ? rawDelays.map(h => h * 3600) : rawDelays;
+    const delayForAttempt = delaySeconds[nextAttempt - 1] || delaySeconds[delaySeconds.length - 1] || 86400;
 
     const lastMessageTime = new Date(conv.last_message_at).getTime();
-    const scheduledAt = new Date(lastMessageTime + delayForAttempt * 60 * 60 * 1000);
+    const scheduledAt = new Date(lastMessageTime + delayForAttempt * 1000);
 
     if (scheduledAt.getTime() > Date.now()) continue;
 
