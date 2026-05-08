@@ -40,7 +40,17 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const agentId = body.agentId as string | undefined;
+    let agentId = body.agentId as string | undefined;
+
+    if (!agentId) {
+      const { data: defaultAgent } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('business_id', businessId)
+        .limit(1)
+        .maybeSingle();
+      if (defaultAgent) agentId = defaultAgent.id;
+    }
 
     let llmId: string | undefined;
     let retellAgentId: string | undefined;

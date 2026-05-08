@@ -78,7 +78,16 @@ export default async function handler(req: Request): Promise<Response> {
   let workEnd = biz?.working_hours_end ?? 17;
   let workDays = biz?.working_days ?? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
-  const agentId = url.searchParams.get('aid');
+  let agentId = url.searchParams.get('aid');
+  if (!agentId) {
+    const { data: defaultAgent } = await supabase
+      .from('agents')
+      .select('id')
+      .eq('business_id', businessId)
+      .limit(1)
+      .maybeSingle();
+    if (defaultAgent) agentId = defaultAgent.id;
+  }
   if (agentId) {
     const { data: agent } = await supabase
       .from('agents')
