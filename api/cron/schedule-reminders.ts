@@ -40,7 +40,10 @@ export default async function handler(req: Request): Promise<Response> {
     .neq('status', 'cancelled');
 
   const existingSet = new Set(
-    (existing || []).map(e => `${e.appointment_id}:${e.type}:${e.scheduled_at}`)
+    (existing || []).map(e => {
+      const ts = new Date(e.scheduled_at).getTime();
+      return `${e.appointment_id}:${e.type}:${ts}`;
+    })
   );
 
   let queued = 0;
@@ -79,12 +82,12 @@ export default async function handler(req: Request): Promise<Response> {
         const scheduledAt = new Date(startDate.getTime() - secsBefore * 1000);
         if (scheduledAt.getTime() <= Date.now()) continue;
 
-        const key = `${appt.id}:reminder:${scheduledAt.toISOString()}`;
+        const key = `${appt.id}:reminder:${scheduledAt.getTime()}`;
         if (existingSet.has(key)) continue;
 
         const contactName = contact.name?.split(' ')[0] || 'there';
-        const timeLabel = secsBefore >= 86400 ? `${Math.round(secsBefore / 86400)} day` : `${Math.round(secsBefore / 3600)} hour`;
-        const message = `Hi ${contactName}, just a reminder — your appointment with ${biz?.name || 'us'} is in ${timeLabel}${secsBefore >= 86400 ? '(s)' : '(s)'}: ${dateStr} at ${timeStr}. See you then!`;
+        const timeLabel = secsBefore >= 86400 ? `${Math.round(secsBefore / 86400)} day(s)` : `${Math.round(secsBefore / 3600)} hour(s)`;
+        const message = `Hi ${contactName}, just a reminder — your appointment with ${biz?.name || 'us'} is in ${timeLabel}: ${dateStr} at ${timeStr}. See you then!`;
 
         await supabase.from('appointment_notifications').insert({
           appointment_id: appt.id,
@@ -120,7 +123,7 @@ export default async function handler(req: Request): Promise<Response> {
             const scheduledAt = new Date(startDate.getTime() - secsBefore * 1000);
             if (scheduledAt.getTime() <= Date.now()) continue;
 
-            const key = `${appt.id}:owner_reminder:${scheduledAt.toISOString()}`;
+            const key = `${appt.id}:owner_reminder:${scheduledAt.getTime()}`;
             if (existingSet.has(key)) continue;
 
             const contactName = contact?.name || 'a customer';
