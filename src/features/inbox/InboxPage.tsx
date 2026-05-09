@@ -563,8 +563,8 @@ function ThreadView({
             <button
               onClick={async () => {
                 if (!confirm('Delete this conversation and all its messages? This cannot be undone.')) return
-                await supabase.from('messages').delete().eq('conversation_id', conversation.id)
                 await supabase.from('ai_takeover_queue').delete().eq('conversation_id', conversation.id)
+                await supabase.from('messages').delete().eq('conversation_id', conversation.id)
                 await supabase.from('conversations').delete().eq('id', conversation.id)
                 onDelete?.(conversation.id)
               }}
