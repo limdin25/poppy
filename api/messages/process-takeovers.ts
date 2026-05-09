@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { callLLM, getModelForAgent } from '../lib/llm.js';
+import { buildSystemPrompt } from '../../src/prompts/system-builder.js';
+import type { Business, Service, FAQ, CallInfoType } from '../../src/prompts/system-builder.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -20,117 +22,80 @@ function stripMarkdown(text: string): string {
 
 async function buildBusinessContext(businessId: string, opts?: { contactName?: string; channel?: string; agentId?: string | null }): Promise<string> {
   const agentId = opts?.agentId;
+  const channelType = opts?.channel === 'email' ? 'EMAIL' as const : 'WHATSAPP' as const;
 
-  // First fetch the agent to know if it has its own prompt
-  const agentRes = agentId ? await supabase.from('agents').select('greeting, tone, ai_system_prompt').eq('id', agentId).single() : { data: null };
-  const hasOwnPrompt = !!(agentRes.data as any)?.ai_system_prompt;
+  const agentRes = agentId
+    ? await supabase.from('agents').select('greeting, tone, ai_system_prompt, working_days').eq('id', agentId).single()
+    : { data: null };
+  const agentData = agentRes.data as Record<string, unknown> | null;
+  const hasOwnPrompt = !!(agentData?.ai_system_prompt as string);
 
-  // If agent has own prompt, only get agent-specific resources (not shared business ones)
-  const svcFilter = hasOwnPrompt ? `agent_id.eq.${agentId}` : (agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null');
-  const faqFilter = hasOwnPrompt ? `agent_id.eq.${agentId}` : (agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null');
+  const resourceFilter = hasOwnPrompt
+    ? `agent_id.eq.${agentId}`
+    : (agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null');
   const ksFilter = agentId ? `agent_id.eq.${agentId}` : 'agent_id.is.null';
 
-  const [bizRes, svcRes, faqRes, ksRes] = await Promise.all([
-    supabase.from('businesses').select('name, industry, address, phone, website, tone, greeting, ai_system_prompt').eq('id', businessId).single(),
-    supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', businessId).or(svcFilter),
-    supabase.from('faqs').select('question, answer').eq('business_id', businessId).or(faqFilter),
-    supabase.from('knowledge_sources').select('summary, content').eq('business_id', businessId).or(ksFilter).eq('status', 'synced'),
+  const [bizRes, svcRes, faqRes, callInfoRes, ksRes] = await Promise.all([
+    supabase.from('businesses').select('name, industry, address, phone, website, tone, greeting, ai_system_prompt, timezone').eq('id', businessId).single(),
+    supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', businessId).or(resourceFilter).order('sort_order'),
+    supabase.from('faqs').select('question, answer').eq('business_id', businessId).or(resourceFilter).order('sort_order'),
+    supabase.from('call_info_types').select('name, enabled, fields').eq('business_id', businessId).or(resourceFilter).order('sort_order'),
+    supabase.from('knowledge_sources').select('summary').eq('business_id', businessId).or(ksFilter).eq('status', 'synced'),
   ]);
 
   const biz = bizRes.data;
   if (!biz) return '';
 
-  const agentData = agentRes.data as Record<string, unknown> | null;
-  const effectiveTone = (agentData?.tone as string) ?? biz.tone;
   const effectiveGreeting = (agentData?.greeting as string) ?? biz.greeting;
+  const effectiveTone = (agentData?.tone as string) ?? biz.tone;
   const effectivePrompt = (agentData?.ai_system_prompt as string) ?? biz.ai_system_prompt;
+  const effectiveTimezone = (biz as Record<string, unknown>).timezone as string || 'Europe/London';
+  const effectiveWorkDays = (agentData?.working_days as string[]) || undefined;
 
-  // If agent has a custom system prompt, use it as the base (no "AI assistant" framing)
-  if (effectivePrompt) {
-    let prompt = effectivePrompt;
+  const business: Business = {
+    name: biz.name,
+    industry: biz.industry ?? undefined,
+    address: biz.address ?? undefined,
+    phone: biz.phone ?? undefined,
+    website: biz.website ?? undefined,
+    greeting: effectiveGreeting ?? undefined,
+    tone: effectiveTone ?? undefined,
+  };
 
-    const knowledgeSources = ksRes.data || [];
-    if (knowledgeSources.length > 0) {
-      prompt += '\n\nKnowledge base:\n';
-      knowledgeSources.forEach((ks: any) => {
-        if (ks.summary) prompt += `${ks.summary}\n`;
-        else if (ks.content) prompt += `${(ks.content as string).slice(0, 3000)}\n`;
-      });
-    }
+  const callInfoTypes: CallInfoType[] = (callInfoRes.data || []).map((r: Record<string, unknown>) => ({
+    name: r.name as string,
+    enabled: r.enabled as boolean,
+    fields: (r.fields as Array<{ name: string; type: string; required?: boolean }>) || [
+      { name: (r.name as string).toLowerCase().replace(/\s+/g, '_'), type: 'text', required: false },
+    ],
+  }));
 
-    const services = svcRes.data || [];
-    if (services.length > 0) {
-      prompt += '\n\nServices offered:\n';
-      services.forEach((s: any) => {
-        prompt += `- ${s.name}`;
-        if (s.description) prompt += `: ${s.description}`;
-        if (s.price_from != null) prompt += ` (from £${s.price_from}${s.price_to ? ` to £${s.price_to}` : ''})`;
-        if (s.bookable) prompt += ' [bookable]';
-        prompt += '\n';
-      });
-    }
+  const knowledgeContent = (ksRes.data || [])
+    .map((s: { summary: string | null }) => s.summary)
+    .filter(Boolean)
+    .join('\n\n');
 
-    const faqs = faqRes.data || [];
-    if (faqs.length > 0) {
-      prompt += '\nFAQs:\n';
-      faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
-    }
+  let prompt = buildSystemPrompt(
+    business,
+    (svcRes.data || []) as Service[],
+    (faqRes.data || []) as FAQ[],
+    callInfoTypes,
+    channelType,
+    knowledgeContent || undefined,
+    effectiveTimezone,
+    effectiveWorkDays,
+  );
 
-    prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting. Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
-    if (opts?.contactName) {
-      prompt += `\n- The contact's name is: ${opts.contactName}. Use their first name naturally.`;
-    }
-    return prompt;
+  if (effectivePrompt?.trim()) {
+    prompt += `\n\n## Custom instructions from the business owner\n${effectivePrompt.trim()}`;
   }
 
-  // Default business-assistant framing (no agent-specific prompt)
-  let prompt = `You are an AI assistant for ${biz.name || 'this business'}.`;
-  if (biz.industry) prompt += ` Industry: ${biz.industry}.`;
-  if (biz.address) prompt += ` Location: ${biz.address}.`;
-  if (biz.phone) prompt += ` Phone: ${biz.phone}.`;
-  if (biz.website) prompt += ` Website: ${biz.website}.`;
-  if (effectiveTone) prompt += ` Tone: ${effectiveTone}.`;
-  if (effectiveGreeting) prompt += `\n\nGreeting: ${effectiveGreeting}`;
-
-  const knowledgeSources = ksRes.data || [];
-  if (knowledgeSources.length > 0) {
-    prompt += '\n\nKnowledge base:\n';
-    knowledgeSources.forEach((ks: any) => {
-      if (ks.summary) prompt += `${ks.summary}\n`;
-      else if (ks.content) prompt += `${(ks.content as string).slice(0, 3000)}\n`;
-    });
-  }
-
-  const services = svcRes.data || [];
-  if (services.length > 0) {
-    prompt += '\n\nServices offered:\n';
-    services.forEach((s: any) => {
-      prompt += `- ${s.name}`;
-      if (s.description) prompt += `: ${s.description}`;
-      if (s.price_from != null) prompt += ` (from £${s.price_from}${s.price_to ? ` to £${s.price_to}` : ''})`;
-      if (s.bookable) prompt += ' [bookable]';
-      prompt += '\n';
-    });
-  }
-
-  const faqs = faqRes.data || [];
-  if (faqs.length > 0) {
-    prompt += '\nFAQs:\n';
-    faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
-  }
-
-  prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting. Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
+  prompt += '\n\n## Formatting rules\n- NEVER use markdown formatting (no **, no ##, no bullet asterisks). Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
 
   if (opts?.contactName) {
-    prompt += `\n- The customer's name is: ${opts.contactName}. Use their first name naturally.`;
+    prompt += `\n- The contact's name is: ${opts.contactName}. Use their first name naturally.`;
   } else {
     prompt += '\n- You do not know the customer\'s name. Do not guess or use placeholders.';
-  }
-
-  if (opts?.channel === 'email') {
-    prompt += '\n- This is an email reply. Be professional but concise.';
-  } else {
-    prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational.';
   }
 
   return prompt;
@@ -326,9 +291,7 @@ export default async function handler(req: Request): Promise<Response> {
         continue;
       }
 
-      const fullPrompt = isEmail
-        ? `${systemPrompt}\n\nYou are replying to an email. Write a professional, well-formatted email reply. Do not include a subject line — just the body text. Keep it concise and helpful.`
-        : systemPrompt;
+      const fullPrompt = systemPrompt;
 
       const reply = await generateAIReply(fullPrompt, history, conversation.business_id, convAgentId || undefined);
       if (!reply) {
