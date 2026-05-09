@@ -1,27 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '../lib/auth.js';
+import { callLLM, getModelForAgent } from '../lib/llm.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
-
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
-
-async function getModelForBusiness(businessId: string): Promise<string> {
-  const { data } = await supabase
-    .from('businesses')
-    .select('ai_model')
-    .eq('id', businessId)
-    .single();
-  if (data?.ai_model?.startsWith('claude')) return data.ai_model;
-  const { data: setting } = await supabase
-    .from('platform_settings')
-    .select('value')
-    .eq('key', 'ai_model')
-    .single();
-  return setting?.value || 'claude-sonnet-4-6';
-}
 
 export const config = { runtime: 'edge' };
 
@@ -57,10 +41,9 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'url or text is required' }), { status: 400 });
     }
 
-    // Handle pasted text synchronously (no web scrape needed)
+    // Handle pasted text — store immediately, summarize only if fast enough
     if (body.text?.trim() && !body.url) {
       const rawText = body.text.trim().slice(0, 15000);
-      const aiModel = await getModelForBusiness(businessId);
 
       const { data: source, error: insertErr } = await supabase
         .from('knowledge_sources')
@@ -70,7 +53,9 @@ export default async function handler(req: Request): Promise<Response> {
           name: 'Pasted text',
           type: 'document',
           url: null,
-          status: 'processing',
+          status: 'synced',
+          content: rawText.slice(0, 5000),
+          summary: rawText.slice(0, 3000),
         })
         .select('id')
         .single();
@@ -79,7 +64,6 @@ export default async function handler(req: Request): Promise<Response> {
         return new Response(JSON.stringify({ error: 'Failed to create source' }), { status: 500 });
       }
 
-      await summariseInBackground(source.id, rawText, businessId, aiModel);
       return new Response(JSON.stringify({ id: source.id, status: 'synced' }), { status: 200 });
     }
 
@@ -108,7 +92,7 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'Failed to create source' }), { status: 500 });
     }
 
-    scrapeInBackground(source.id, url, businessId);
+    scrapeInBackground(source.id, url, businessId, body.agent_id);
 
     return new Response(JSON.stringify({ id: source.id, status: 'processing' }), { status: 200 });
   } catch (err: any) {
@@ -132,34 +116,20 @@ async function summariseInBackground(sourceId: string, rawText: string, business
       return;
     }
 
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: aiModel,
-        max_tokens: 1500,
-        messages: [{
-          role: 'user',
-          content: `Summarise the following business information into a concise knowledge base that an AI phone receptionist can use to answer customer questions. Include: services offered, pricing if mentioned, opening hours, location, contact details, and any key policies.\n\nContent:\n${rawText}`,
-        }],
-      }),
-    });
+    const summary = await callLLM(
+      aiModel,
+      'Summarise the following text into a concise, well-structured knowledge base. Preserve ALL original content, meaning, intent, tone, and style. Do not censor, reinterpret, or editorialize. Just organise it clearly.',
+      [{ role: 'user', content: rawText }],
+      1500,
+    );
 
-    if (!aiRes.ok) {
-      // Store the raw text anyway so it's not lost
+    if (!summary) {
       await supabase
         .from('knowledge_sources')
         .update({ status: 'synced', content: rawText.slice(0, 5000), summary: rawText.slice(0, 2000) })
         .eq('id', sourceId);
       return;
     }
-
-    const aiData = await aiRes.json() as { content: Array<{ text: string }> };
-    const summary = aiData.content?.[0]?.text ?? rawText.slice(0, 2000);
 
     await supabase
       .from('knowledge_sources')
@@ -179,7 +149,7 @@ async function summariseInBackground(sourceId: string, rawText: string, business
   }
 }
 
-async function scrapeInBackground(sourceId: string, url: string, businessId: string) {
+async function scrapeInBackground(sourceId: string, url: string, businessId: string, agentId?: string) {
   try {
     const pageRes = await fetch(url, {
       headers: { 'User-Agent': 'ElsieBot/1.0 (+https://heyelsie.com)' },
@@ -205,34 +175,21 @@ async function scrapeInBackground(sourceId: string, url: string, businessId: str
       return;
     }
 
-    const aiModel = await getModelForBusiness(businessId);
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: aiModel,
-        max_tokens: 1500,
-        messages: [{
-          role: 'user',
-          content: `Summarise the following business website content into a concise knowledge base that an AI phone receptionist can use to answer customer questions. Include: services offered, pricing if mentioned, opening hours, location, contact details, and any key policies.\n\nWebsite content:\n${rawText}`,
-        }],
-      }),
-    });
+    const aiModel = await getModelForAgent(businessId, agentId);
+    const summary = await callLLM(
+      aiModel,
+      'Summarise the following website content into a concise, well-structured knowledge base. Preserve ALL original content, meaning, and intent. Just organise it clearly.',
+      [{ role: 'user', content: `Website content:\n${rawText}` }],
+      1500,
+    );
 
-    if (!aiRes.ok) {
+    if (!summary) {
       await supabase
         .from('knowledge_sources')
         .update({ status: 'failed', content: 'AI summarisation failed' })
         .eq('id', sourceId);
       return;
     }
-
-    const aiData = await aiRes.json() as { content: Array<{ text: string }> };
-    const summary = aiData.content?.[0]?.text ?? '';
 
     await supabase
       .from('knowledge_sources')

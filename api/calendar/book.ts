@@ -69,7 +69,16 @@ export default async function handler(req: Request): Promise<Response> {
   const startTime = body.start_time;
   const endTime = body.end_time || new Date(new Date(startTime).getTime() + 60 * 60 * 1000).toISOString();
 
-  const callerPhone = body.caller_phone && body.caller_phone.includes('{{') ? undefined : body.caller_phone;
+  let callerPhone = body.caller_phone && body.caller_phone.includes('{{') ? undefined : body.caller_phone;
+
+  if (!callerPhone && body.contact_id) {
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('phone, whatsapp')
+      .eq('id', body.contact_id)
+      .single();
+    if (contact) callerPhone = contact.whatsapp || contact.phone || undefined;
+  }
 
   const description = [
     `Customer: ${body.caller_name}`,
@@ -168,10 +177,12 @@ export default async function handler(req: Request): Promise<Response> {
   const confirmMsg = `Hi ${body.caller_name}, your booking with ${bizName} is confirmed for ${dateStr} at ${timeStr}. If you need to reschedule, please call us back.`;
 
   const agentId = reqUrl.searchParams.get('aid');
-  const { data: agentSettings } = await supabase
+  let agentQuery = supabase
     .from('agents')
-    .select('confirmation_enabled, confirmation_delay_seconds, confirmation_channels')
-    .eq('business_id', businessId)
+    .select('confirmation_enabled, confirmation_delay_seconds, confirmation_channels, owner_confirmation_enabled')
+    .eq('business_id', businessId);
+  if (agentId) agentQuery = agentQuery.eq('id', agentId);
+  const { data: agentSettings } = await agentQuery
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();

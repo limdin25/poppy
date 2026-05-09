@@ -236,7 +236,21 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
-    // Create conversation
+    // Check if a booking was made during this call (booking tool runs mid-call)
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: recentBooking } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('business_id', businessId)
+      .gte('created_at', fiveMinAgo)
+      .eq('booked_via', 'voice')
+      .ilike('title', `%${callerName || '___NOMATCH___'}%`)
+      .limit(1)
+      .maybeSingle();
+
+    const hasBooking = !!recentBooking;
+
+    // Create conversation — open if no booking (eligible for follow-up), closed if booked
     const durationSec = Math.round(durationMs / 1000);
     const { data: conversation } = await supabase
       .from('conversations')
@@ -245,7 +259,7 @@ export default async function handler(req: Request): Promise<Response> {
         contact_id: contactId,
         agent_id: elsieAgentId || null,
         channel: 'voice',
-        status: 'closed',
+        status: hasBooking ? 'closed' : 'open',
         last_message_at: new Date().toISOString(),
         last_message_preview: info.summary || `Call lasted ${durationSec}s`,
         unread_count: 1,
@@ -280,6 +294,14 @@ export default async function handler(req: Request): Promise<Response> {
       started_at: call.start_timestamp ? new Date(call.start_timestamp).toISOString() : null,
       ended_at: call.end_timestamp ? new Date(call.end_timestamp).toISOString() : null,
     });
+
+    // Link appointment to conversation if booking happened
+    if (hasBooking && recentBooking && conversation) {
+      await supabase
+        .from('appointments')
+        .update({ conversation_id: conversation.id, contact_id: contactId })
+        .eq('id', recentBooking.id);
+    }
 
     // Create a call_summary message
     await supabase.from('messages').insert({

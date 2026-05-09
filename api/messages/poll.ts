@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { stripHtml, cleanEmailBody, isEmailSpam, normalizeSubject, extractUnsubscribeUrls } from '../lib/email-utils.js';
 import { fetchAndStoreAvatar, fetchEmailAvatar } from '../lib/fetch-avatar.js';
+import { callLLM, getModelForAgent } from '../lib/llm.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -10,22 +11,6 @@ const supabase = createClient(
 const UNIPILE_TOKEN = process.env.UNIPILE_TOKEN!;
 const UNIPILE_DSN = process.env.UNIPILE_DSN!;
 const POLL_SECRET = process.env.UNIPILE_POLL_SECRET || '';
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-
-async function getModelForBusiness(businessId: string): Promise<string> {
-  const { data } = await supabase
-    .from('businesses')
-    .select('ai_model')
-    .eq('id', businessId)
-    .single();
-  if (data?.ai_model) return data.ai_model;
-  const { data: setting } = await supabase
-    .from('platform_settings')
-    .select('value')
-    .eq('key', 'ai_model')
-    .single();
-  return setting?.value || 'claude-sonnet-4-6';
-}
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -83,23 +68,84 @@ function stripMarkdown(text: string): string {
     .replace(/^[-*]\s+/gm, '- ');
 }
 
-async function buildBusinessContext(businessId: string, opts?: { contactName?: string; channel?: string }): Promise<string> {
-  const [bizRes, svcRes, faqRes] = await Promise.all([
+async function buildBusinessContext(businessId: string, opts?: { contactName?: string; channel?: string; agentId?: string | null }): Promise<string> {
+  const agentId = opts?.agentId;
+
+  const agentRes = agentId ? await supabase.from('agents').select('greeting, tone, ai_system_prompt').eq('id', agentId).single() : { data: null };
+  const hasOwnPrompt = !!(agentRes.data as any)?.ai_system_prompt;
+
+  const svcFilter = hasOwnPrompt ? `agent_id.eq.${agentId}` : (agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null');
+  const faqFilter = hasOwnPrompt ? `agent_id.eq.${agentId}` : (agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null');
+  const ksFilter = agentId ? `agent_id.eq.${agentId}` : 'agent_id.is.null';
+
+  const [bizRes, svcRes, faqRes, ksRes] = await Promise.all([
     supabase.from('businesses').select('name, industry, address, phone, website, tone, greeting, ai_system_prompt').eq('id', businessId).single(),
-    supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', businessId),
-    supabase.from('faqs').select('question, answer').eq('business_id', businessId),
+    supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', businessId).or(svcFilter),
+    supabase.from('faqs').select('question, answer').eq('business_id', businessId).or(faqFilter),
+    supabase.from('knowledge_sources').select('summary, content').eq('business_id', businessId).or(ksFilter).eq('status', 'synced'),
   ]);
 
   const biz = bizRes.data;
   if (!biz) return '';
+
+  const agentData = agentRes.data as Record<string, unknown> | null;
+  const effectiveTone = (agentData?.tone as string) ?? biz.tone;
+  const effectiveGreeting = (agentData?.greeting as string) ?? biz.greeting;
+  const effectivePrompt = (agentData?.ai_system_prompt as string) ?? biz.ai_system_prompt;
+
+  if (effectivePrompt) {
+    let prompt = effectivePrompt;
+
+    const knowledgeSources = ksRes.data || [];
+    if (knowledgeSources.length > 0) {
+      prompt += '\n\nKnowledge base:\n';
+      knowledgeSources.forEach((ks: any) => {
+        if (ks.summary) prompt += `${ks.summary}\n`;
+        else if (ks.content) prompt += `${(ks.content as string).slice(0, 3000)}\n`;
+      });
+    }
+
+    const services = svcRes.data || [];
+    if (services.length > 0) {
+      prompt += '\n\nServices offered:\n';
+      services.forEach((s: any) => {
+        prompt += `- ${s.name}`;
+        if (s.description) prompt += `: ${s.description}`;
+        if (s.price_from != null) prompt += ` (from £${s.price_from}${s.price_to ? ` to £${s.price_to}` : ''})`;
+        if (s.bookable) prompt += ' [bookable]';
+        prompt += '\n';
+      });
+    }
+
+    const faqs = faqRes.data || [];
+    if (faqs.length > 0) {
+      prompt += '\nFAQs:\n';
+      faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
+    }
+
+    prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting. Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
+    if (opts?.contactName) {
+      prompt += `\n- The contact's name is: ${opts.contactName}. Use their first name naturally.`;
+    }
+    return prompt;
+  }
 
   let prompt = `You are an AI assistant for ${biz.name || 'this business'}.`;
   if (biz.industry) prompt += ` Industry: ${biz.industry}.`;
   if (biz.address) prompt += ` Location: ${biz.address}.`;
   if (biz.phone) prompt += ` Phone: ${biz.phone}.`;
   if (biz.website) prompt += ` Website: ${biz.website}.`;
-  if (biz.tone) prompt += ` Tone: ${biz.tone}.`;
-  if (biz.greeting) prompt += `\n\nGreeting: ${biz.greeting}`;
+  if (effectiveTone) prompt += ` Tone: ${effectiveTone}.`;
+  if (effectiveGreeting) prompt += `\n\nGreeting: ${effectiveGreeting}`;
+
+  const knowledgeSources = ksRes.data || [];
+  if (knowledgeSources.length > 0) {
+    prompt += '\n\nKnowledge base:\n';
+    knowledgeSources.forEach((ks: any) => {
+      if (ks.summary) prompt += `${ks.summary}\n`;
+      else if (ks.content) prompt += `${(ks.content as string).slice(0, 3000)}\n`;
+    });
+  }
 
   const services = svcRes.data || [];
   if (services.length > 0) {
@@ -119,22 +165,18 @@ async function buildBusinessContext(businessId: string, opts?: { contactName?: s
     faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
   }
 
-  if (biz.ai_system_prompt) {
-    prompt += `\nCustom instructions:\n${biz.ai_system_prompt}`;
-  }
-
-  prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting (no **, no *, no #, no bullet points with -). Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name]. Use the actual contact name provided or skip the greeting name entirely.';
+  prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting. Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
 
   if (opts?.contactName) {
     prompt += `\n- The customer's name is: ${opts.contactName}. Use their first name naturally.`;
   } else {
-    prompt += '\n- You do not know the customer\'s name. Do not guess or use placeholders — just skip the name in greetings.';
+    prompt += '\n- You do not know the customer\'s name. Do not guess or use placeholders.';
   }
 
   if (opts?.channel === 'email') {
-    prompt += '\n- This is an email reply. Be professional but concise. Use the customer\'s first name in the greeting (e.g. "Hi Hugo,").';
+    prompt += '\n- This is an email reply. Be professional but concise.';
   } else {
-    prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational. No formal greetings like "Dear X" — just reply naturally as you would in a chat.';
+    prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational.';
   }
 
   return prompt;
@@ -157,33 +199,9 @@ async function getConversationHistory(conversationId: string): Promise<Array<{ro
   }));
 }
 
-async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>, businessId?: string): Promise<string> {
-  if (!ANTHROPIC_API_KEY) return '';
-  const model = businessId ? await getModelForBusiness(businessId) : 'claude-sonnet-4-6';
-  let messages = history.length > 0 ? history : [{ role: 'user' as const, content: '(new conversation)' }];
-  if (messages[0]?.role === 'assistant') {
-    messages = [{ role: 'user' as const, content: '(prior context)' }, ...messages];
-  }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages,
-    }),
-  });
-  if (!res.ok) {
-    console.error('[poll/ai-reply] Anthropic error:', res.status);
-    return '';
-  }
-  const data = await res.json() as { content?: Array<{ text?: string }> };
-  const raw = data.content?.[0]?.text || '';
+async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>, businessId?: string, agentId?: string): Promise<string> {
+  const model = await getModelForAgent(businessId || '', agentId);
+  const raw = await callLLM(model, systemPrompt, history);
   return stripMarkdown(raw);
 }
 

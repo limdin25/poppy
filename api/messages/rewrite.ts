@@ -1,27 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '../lib/auth.js';
+import { callLLM, getModelForAgent } from '../lib/llm.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
-
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-
-async function getModelForBusiness(businessId: string): Promise<string> {
-  const { data } = await supabase
-    .from('businesses')
-    .select('ai_model')
-    .eq('id', businessId)
-    .single();
-  if (data?.ai_model) return data.ai_model;
-  const { data: setting } = await supabase
-    .from('platform_settings')
-    .select('value')
-    .eq('key', 'ai_model')
-    .single();
-  return setting?.value || 'claude-sonnet-4-6';
-}
 
 export const config = { runtime: 'edge' };
 
@@ -78,14 +62,21 @@ export default async function handler(req: Request): Promise<Response> {
 
     // Build system prompt — use agent overrides if conversation has an agent_id
     const agentId = (conv as any).agent_id as string | null;
-    const svcFilter = agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null';
-    const faqFilter = agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null';
 
-    const [bizRes, svcRes, faqRes, agentRes] = await Promise.all([
+    // First fetch agent to check if it has its own prompt
+    const agentRes = agentId ? await supabase.from('agents').select('greeting, tone, ai_system_prompt').eq('id', agentId).single() : { data: null };
+    const hasOwnPrompt = !!(agentRes.data as any)?.ai_system_prompt;
+
+    // If agent has own prompt, only get agent-specific resources (not shared business ones)
+    const svcFilter = hasOwnPrompt ? `agent_id.eq.${agentId}` : (agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null');
+    const faqFilter = hasOwnPrompt ? `agent_id.eq.${agentId}` : (agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null');
+    const ksFilter = agentId ? `agent_id.eq.${agentId}` : 'agent_id.is.null';
+
+    const [bizRes, svcRes, faqRes, ksRes] = await Promise.all([
       supabase.from('businesses').select('name, industry, address, phone, website, tone, greeting, ai_system_prompt').eq('id', conv.business_id).single(),
       supabase.from('services').select('name, description, price_from, price_to, bookable').eq('business_id', conv.business_id).or(svcFilter),
       supabase.from('faqs').select('question, answer').eq('business_id', conv.business_id).or(faqFilter),
-      agentId ? supabase.from('agents').select('greeting, tone, ai_system_prompt').eq('id', agentId).single() : Promise.resolve({ data: null }),
+      supabase.from('knowledge_sources').select('summary, content').eq('business_id', conv.business_id).or(ksFilter).eq('status', 'synced'),
     ]);
 
     const biz = bizRes.data;
@@ -98,52 +89,98 @@ export default async function handler(req: Request): Promise<Response> {
     const effectiveGreeting = (agentData?.greeting as string) ?? biz.greeting;
     const effectivePrompt = (agentData?.ai_system_prompt as string) ?? biz.ai_system_prompt;
 
-    let prompt = `You are an AI assistant for ${biz.name || 'this business'}.`;
-    if (biz.industry) prompt += ` Industry: ${biz.industry}.`;
-    if (biz.address) prompt += ` Location: ${biz.address}.`;
-    if (biz.phone) prompt += ` Phone: ${biz.phone}.`;
-    if (biz.website) prompt += ` Website: ${biz.website}.`;
-    if (effectiveTone) prompt += ` Tone: ${effectiveTone}.`;
-    if (effectiveGreeting) prompt += `\n\nGreeting: ${effectiveGreeting}`;
-
-    const services = svcRes.data || [];
-    if (services.length > 0) {
-      prompt += '\n\nServices offered:\n';
-      services.forEach((s: any) => {
-        prompt += `- ${s.name}`;
-        if (s.description) prompt += `: ${s.description}`;
-        if (s.price_from != null) prompt += ` (from £${s.price_from}${s.price_to ? ` to £${s.price_to}` : ''})`;
-        if (s.bookable) prompt += ' [bookable]';
-        prompt += '\n';
-      });
-    }
-
-    const faqs = faqRes.data || [];
-    if (faqs.length > 0) {
-      prompt += '\nFAQs:\n';
-      faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
-    }
+    let prompt: string;
 
     if (effectivePrompt) {
-      prompt += `\nCustom instructions:\n${effectivePrompt}`;
-    }
+      // Agent has custom system prompt — use it as the base (no "AI assistant" framing)
+      prompt = effectivePrompt;
 
-    prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting (no **, no *, no #, no bullet points with -). Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
+      const knowledgeSources = ksRes.data || [];
+      if (knowledgeSources.length > 0) {
+        prompt += '\n\nKnowledge base:\n';
+        knowledgeSources.forEach((ks: any) => {
+          if (ks.summary) prompt += `${ks.summary}\n`;
+          else if (ks.content) prompt += `${(ks.content as string).slice(0, 3000)}\n`;
+        });
+      }
 
-    if (contactName) {
-      prompt += `\n- The customer's name is: ${contactName}. Use their first name naturally.`;
+      const services = svcRes.data || [];
+      if (services.length > 0) {
+        prompt += '\n\nServices offered:\n';
+        services.forEach((s: any) => {
+          prompt += `- ${s.name}`;
+          if (s.description) prompt += `: ${s.description}`;
+          if (s.price_from != null) prompt += ` (from £${s.price_from}${s.price_to ? ` to £${s.price_to}` : ''})`;
+          if (s.bookable) prompt += ' [bookable]';
+          prompt += '\n';
+        });
+      }
+
+      const faqs = faqRes.data || [];
+      if (faqs.length > 0) {
+        prompt += '\nFAQs:\n';
+        faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
+      }
+
+      prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting. Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
+      if (contactName) {
+        prompt += `\n- The contact's name is: ${contactName}. Use their first name naturally.`;
+      }
+      prompt += '\n- Write a DIFFERENT reply than before. Vary your phrasing and approach.';
     } else {
-      prompt += '\n- You do not know the customer\'s name. Do not guess or use placeholders.';
-    }
+      // Default business-assistant framing
+      prompt = `You are an AI assistant for ${biz.name || 'this business'}.`;
+      if (biz.industry) prompt += ` Industry: ${biz.industry}.`;
+      if (biz.address) prompt += ` Location: ${biz.address}.`;
+      if (biz.phone) prompt += ` Phone: ${biz.phone}.`;
+      if (biz.website) prompt += ` Website: ${biz.website}.`;
+      if (effectiveTone) prompt += ` Tone: ${effectiveTone}.`;
+      if (effectiveGreeting) prompt += `\n\nGreeting: ${effectiveGreeting}`;
 
-    const isEmail = conv.channel === 'email';
-    if (isEmail) {
-      prompt += '\n- This is an email reply. Be professional but concise.';
-    } else {
-      prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational.';
-    }
+      const knowledgeSources = ksRes.data || [];
+      if (knowledgeSources.length > 0) {
+        prompt += '\n\nKnowledge base:\n';
+        knowledgeSources.forEach((ks: any) => {
+          if (ks.summary) prompt += `${ks.summary}\n`;
+          else if (ks.content) prompt += `${(ks.content as string).slice(0, 3000)}\n`;
+        });
+      }
 
-    prompt += '\n- Write a DIFFERENT reply than before. Vary your phrasing and approach.';
+      const services = svcRes.data || [];
+      if (services.length > 0) {
+        prompt += '\n\nServices offered:\n';
+        services.forEach((s: any) => {
+          prompt += `- ${s.name}`;
+          if (s.description) prompt += `: ${s.description}`;
+          if (s.price_from != null) prompt += ` (from £${s.price_from}${s.price_to ? ` to £${s.price_to}` : ''})`;
+          if (s.bookable) prompt += ' [bookable]';
+          prompt += '\n';
+        });
+      }
+
+      const faqs = faqRes.data || [];
+      if (faqs.length > 0) {
+        prompt += '\nFAQs:\n';
+        faqs.forEach((f: any) => { prompt += `Q: ${f.question}\nA: ${f.answer}\n\n`; });
+      }
+
+      prompt += '\n\nIMPORTANT RULES:\n- NEVER use markdown formatting. Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
+
+      if (contactName) {
+        prompt += `\n- The customer's name is: ${contactName}. Use their first name naturally.`;
+      } else {
+        prompt += '\n- You do not know the customer\'s name. Do not guess or use placeholders.';
+      }
+
+      const isEmail = conv.channel === 'email';
+      if (isEmail) {
+        prompt += '\n- This is an email reply. Be professional but concise.';
+      } else {
+        prompt += '\n- This is a WhatsApp message. Keep replies short, casual, and conversational.';
+      }
+
+      prompt += '\n- Write a DIFFERENT reply than before. Vary your phrasing and approach.';
+    }
 
     // Get conversation history (excluding drafts)
     const { data: historyRows } = await supabase
@@ -165,28 +202,8 @@ export default async function handler(req: Request): Promise<Response> {
       messages = [{ role: 'user', content: '(prior context)' }, ...messages];
     }
 
-    const aiModel = await getModelForBusiness(conv.business_id);
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: aiModel,
-        max_tokens: 1024,
-        system: prompt,
-        messages,
-      }),
-    });
-
-    if (!res.ok) {
-      return new Response(JSON.stringify({ error: 'AI generation failed' }), { status: 502 });
-    }
-
-    const data = await res.json() as { content?: Array<{ text?: string }> };
-    const newBody = stripMarkdown(data.content?.[0]?.text || '');
+    const aiModel = await getModelForAgent(conv.business_id, conv.agent_id);
+    const newBody = stripMarkdown(await callLLM(aiModel, prompt, messages));
 
     if (!newBody) {
       return new Response(JSON.stringify({ error: 'Empty AI response' }), { status: 502 });

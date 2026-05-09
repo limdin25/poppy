@@ -107,25 +107,29 @@ export default async function handler(req: Request): Promise<Response> {
       if (agent) agentOverrides = agent;
     }
 
+    const hasOwnPrompt = !!(agentOverrides.ai_system_prompt as string);
+    const resourceFilter = hasOwnPrompt ? `agent_id.eq.${agentId}` : (agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null');
+    const ksFilter = agentId ? `agent_id.eq.${agentId}` : 'agent_id.is.null';
+
     const { data: services } = await supabase
       .from('services')
       .select('name, description, price_from, price_to, bookable')
       .eq('business_id', businessId)
-      .or(agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null')
+      .or(resourceFilter)
       .order('sort_order');
 
     const { data: faqs } = await supabase
       .from('faqs')
       .select('question, answer')
       .eq('business_id', businessId)
-      .or(agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null')
+      .or(resourceFilter)
       .order('sort_order');
 
     const { data: callInfoRows } = await supabase
       .from('call_info_types')
       .select('name, enabled, fields')
       .eq('business_id', businessId)
-      .or(agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null')
+      .or(resourceFilter)
       .order('sort_order');
 
     const effectiveGreeting = (agentOverrides.greeting as string) ?? business.greeting;
@@ -154,7 +158,7 @@ export default async function handler(req: Request): Promise<Response> {
       .from('knowledge_sources')
       .select('summary')
       .eq('business_id', businessId)
-      .or(agentId ? `agent_id.is.null,agent_id.eq.${agentId}` : 'agent_id.is.null')
+      .or(ksFilter)
       .eq('status', 'synced');
 
     const knowledgeContent = (knowledgeSources || [])
@@ -188,7 +192,7 @@ export default async function handler(req: Request): Promise<Response> {
       ? getBookingTools(appUrl, toolSecret, businessId, agentId)
       : getDefaultTools();
 
-    const aiModel = (agentOverrides.ai_model as string) || 'claude-4.6-sonnet';
+    const aiModel = (agentOverrides.ai_model as string) || 'claude-sonnet-4-6';
     const llmPayload: Record<string, unknown> = {
       general_prompt: prompt,
       general_tools: tools,

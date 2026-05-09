@@ -24,23 +24,29 @@ const TONE_OPTIONS = [
   { value: 'formal', label: 'Formal' },
 ]
 
-const AI_MODEL_OPTIONS = [
-  { value: 'claude-4.6-sonnet', label: 'Claude Sonnet 4.6', desc: 'Best reasoning, recommended' },
-  { value: 'claude-4.5-sonnet', label: 'Claude Sonnet 4.5', desc: 'Great reasoning' },
-  { value: 'claude-4.5-haiku', label: 'Claude Haiku 4.5', desc: 'Fast and light' },
-  { value: 'gpt-5.5', label: 'GPT-5.5', desc: 'Latest OpenAI, smartest' },
-  { value: 'gpt-5.4', label: 'GPT-5.4', desc: 'Fast and smart' },
-  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', desc: 'Fast, affordable' },
-  { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano', desc: 'Ultra-fast, cheapest' },
-  { value: 'gpt-5', label: 'GPT-5', desc: 'Reliable all-rounder' },
-  { value: 'gpt-5-mini', label: 'GPT-5 Mini', desc: 'Budget-friendly' },
-  { value: 'gpt-5-nano', label: 'GPT-5 Nano', desc: 'Lightweight' },
-  { value: 'gpt-4.1', label: 'GPT-4.1', desc: 'Older, still solid' },
-  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', desc: 'Older, fast' },
-  { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', desc: 'Older, cheapest' },
-  { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', desc: 'Ultra-fast Google model' },
-  { value: 'gemini-3.0-flash', label: 'Gemini 3.0 Flash', desc: 'Fast Google model' },
-  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', desc: 'Budget Google model' },
+// Voice models — these go to Retell which supports specific providers
+const VOICE_MODEL_OPTIONS = [
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', desc: 'Best reasoning, recommended', provider: 'Anthropic' },
+  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', desc: 'Fast and light', provider: 'Anthropic' },
+  { value: 'gpt-5.5', label: 'GPT-5.5', desc: 'Latest OpenAI', provider: 'OpenAI' },
+  { value: 'gpt-5.4', label: 'GPT-5.4', desc: 'Fast and smart', provider: 'OpenAI' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', desc: 'Fast, affordable', provider: 'OpenAI' },
+  { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano', desc: 'Ultra-fast, cheapest', provider: 'OpenAI' },
+]
+
+// Chat models — 2026 only, good for conversation
+const CHAT_MODEL_OPTIONS = [
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', desc: 'Best all-round, recommended', provider: 'Anthropic' },
+  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', desc: 'Most capable, premium', provider: 'Anthropic' },
+  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', desc: 'Fast and affordable', provider: 'Anthropic' },
+  { value: 'gpt-5.5', label: 'GPT-5.5', desc: 'Latest and smartest', provider: 'OpenAI' },
+  { value: 'gpt-5.4', label: 'GPT-5.4', desc: 'Fast and smart', provider: 'OpenAI' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', desc: 'Fast, affordable', provider: 'OpenAI' },
+  { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano', desc: 'Ultra-fast, cheapest', provider: 'OpenAI' },
+  { value: 'grok-4.3', label: 'Grok 4.3', desc: 'Latest, most capable', provider: 'xAI' },
+  { value: 'grok-4-fast-non-reasoning', label: 'Grok 4 Fast', desc: 'Fast conversational', provider: 'xAI' },
+  { value: 'grok-4-1-fast-non-reasoning', label: 'Grok 4.1 Fast', desc: 'Great for chat', provider: 'xAI' },
+  { value: 'grok-3-mini', label: 'Grok 3 Mini', desc: 'Lightweight, cheapest', provider: 'xAI' },
 ]
 
 const LANGUAGE_OPTIONS = [
@@ -58,7 +64,7 @@ const ANALYSIS_MODEL_OPTIONS = [
   { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
   { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
   { value: 'gpt-5.4', label: 'GPT-5.4' },
-  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+  { value: 'claude-sonnet-4-6', label: 'GPT-4.1 Mini' },
   { value: 'gpt-4.1', label: 'GPT-4.1' },
 ]
 
@@ -71,23 +77,6 @@ const VOICES = [
   { id: 'cartesia-Adam', name: 'Adam', description: 'Polished and articulate', accent: 'British' },
 ]
 
-const DELAY_OPTIONS = [
-  { value: 0, label: 'Immediately', desc: 'Responds right away' },
-  { value: 30, label: '30s', desc: 'Quick pause' },
-  { value: 60, label: '1m', desc: 'Short wait' },
-  { value: 120, label: '2m', desc: 'Moment to see message' },
-  { value: 300, label: '5m', desc: 'Finish a quick task' },
-  { value: 600, label: '10m', desc: 'Wrap up a conversation' },
-  { value: 1200, label: '20m', desc: 'Default for salons/trades' },
-  { value: 1800, label: '30m', desc: 'Long appointments' },
-]
-
-const AFTER_HOURS_OPTIONS = [
-  { value: 0, label: 'Immediately', desc: 'No one is around' },
-  { value: 30, label: '30s', desc: 'Feels natural' },
-  { value: 60, label: '1m', desc: 'Short wait' },
-  { value: 300, label: '5m', desc: 'Slight delay' },
-]
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -97,24 +86,148 @@ const PERSISTENCE_OPTIONS = [
   { value: 3, label: 'Persistent', description: 'Three follow-ups' },
 ]
 
-const FOLLOWUP_DELAY_PRESETS = [
-  { value: 1, label: '1 second' },
-  { value: 5, label: '5 seconds' },
-  { value: 10, label: '10 seconds' },
-  { value: 30, label: '30 seconds' },
-  { value: 60, label: '1 minute' },
-  { value: 300, label: '5 minutes' },
-  { value: 900, label: '15 minutes' },
-  { value: 1800, label: '30 minutes' },
-  { value: 3600, label: '1 hour' },
-  { value: 7200, label: '2 hours' },
-  { value: 14400, label: '4 hours' },
-  { value: 28800, label: '8 hours' },
-  { value: 43200, label: '12 hours' },
-  { value: 86400, label: '1 day' },
-  { value: 172800, label: '2 days' },
-  { value: 259200, label: '3 days' },
-]
+// ─── TimingPicker: +/- stepper with seconds/minutes/hours radio ────────────
+type TimeUnit = 'seconds' | 'minutes' | 'hours'
+
+function secondsToUnit(totalSeconds: number): { value: number; unit: TimeUnit } {
+  if (totalSeconds >= 3600 && totalSeconds % 3600 === 0) return { value: totalSeconds / 3600, unit: 'hours' }
+  if (totalSeconds >= 60 && totalSeconds % 60 === 0) return { value: totalSeconds / 60, unit: 'minutes' }
+  return { value: totalSeconds, unit: 'seconds' }
+}
+
+function unitToSeconds(value: number, unit: TimeUnit): number {
+  if (unit === 'hours') return value * 3600
+  if (unit === 'minutes') return value * 60
+  return value
+}
+
+function TimingPicker({ value, onChange, min = 0, max = 604800, label }: {
+  value: number
+  onChange: (seconds: number) => void
+  min?: number
+  max?: number
+  label?: string
+}) {
+  const parsed = secondsToUnit(value)
+  const [num, setNum] = useState(parsed.value)
+  const [unit, setUnit] = useState<TimeUnit>(parsed.unit)
+
+  useEffect(() => {
+    const p = secondsToUnit(value)
+    setNum(p.value)
+    setUnit(p.unit)
+  }, [value])
+
+  const commit = (n: number, u: TimeUnit) => {
+    const s = unitToSeconds(Math.max(0, n), u)
+    const clamped = Math.min(max, Math.max(min, s))
+    onChange(clamped)
+  }
+
+  const step = (dir: 1 | -1) => {
+    const next = Math.max(0, num + dir)
+    setNum(next)
+    commit(next, unit)
+  }
+
+  const switchUnit = (u: TimeUnit) => {
+    setUnit(u)
+    commit(num, u)
+  }
+
+  return (
+    <div>
+      {label && <label className="mb-1.5 block text-[13px] font-medium text-ink">{label}</label>}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center rounded-lg border border-border bg-white">
+          <button
+            type="button"
+            onClick={() => step(-1)}
+            className="flex h-10 w-10 items-center justify-center text-[18px] font-bold text-ink-muted hover:bg-ink-subtle/10 rounded-l-lg transition"
+          >−</button>
+          <input
+            type="number"
+            min={0}
+            value={num}
+            onChange={(e) => {
+              const n = parseInt(e.target.value) || 0
+              setNum(n)
+              commit(n, unit)
+            }}
+            className="h-10 w-16 border-x border-border bg-white text-center text-[14px] font-semibold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          <button
+            type="button"
+            onClick={() => step(1)}
+            className="flex h-10 w-10 items-center justify-center text-[18px] font-bold text-ink-muted hover:bg-ink-subtle/10 rounded-r-lg transition"
+          >+</button>
+        </div>
+        <div className="flex rounded-lg border border-border bg-white overflow-hidden">
+          {(['seconds', 'minutes', 'hours'] as TimeUnit[]).map((u) => (
+            <button
+              key={u}
+              type="button"
+              onClick={() => switchUnit(u)}
+              className={cn(
+                'h-10 px-3 text-[12px] font-medium transition border-r last:border-r-0 border-border',
+                unit === u ? 'bg-brand text-white' : 'text-ink-muted hover:bg-ink-subtle/10'
+              )}
+            >{u}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TimingMultiPicker({ values, onChange, label }: {
+  values: number[]
+  onChange: (seconds: number[]) => void
+  label?: string
+}) {
+  const addTiming = () => {
+    const next = values.length === 0 ? 3600 : values[values.length - 1] * 2
+    onChange([...values, next].sort((a, b) => b - a))
+  }
+
+  const removeTiming = (idx: number) => {
+    if (values.length <= 1) return
+    onChange(values.filter((_, i) => i !== idx))
+  }
+
+  const updateTiming = (idx: number, seconds: number) => {
+    const next = [...values]
+    next[idx] = seconds
+    onChange(next.sort((a, b) => b - a))
+  }
+
+  return (
+    <div>
+      {label && <label className="mb-1.5 block text-[13px] font-medium text-ink">{label}</label>}
+      <div className="space-y-2">
+        {values.sort((a, b) => b - a).map((v, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <TimingPicker value={v} onChange={(s) => updateTiming(i, s)} />
+            {values.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeTiming(i)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-red-50 hover:text-red-500 transition"
+              ><X size={14} /></button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={addTiming}
+          className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-[12px] font-medium text-ink-muted hover:border-brand hover:text-brand transition"
+        >
+          <Plus size={14} /> Add reminder time
+        </button>
+      </div>
+    </div>
+  )
+}
 
 const FOLLOWUP_CHANNEL_OPTIONS = [
   { value: 'same_channel', label: 'Same channel', desc: 'Reply where they messaged' },
@@ -195,6 +308,7 @@ function getSections(agentType: AgentType): SectionDef[] {
     { id: 'greeting', label: 'Greeting' },
     { id: 'services', label: 'Services' },
     { id: 'faqs', label: 'FAQs' },
+    { id: 'ai-model', label: 'AI Model' },
     { id: 'timing', label: 'Timing' },
     { id: 'automation', label: 'Automation' },
     { id: 'confirmations', label: 'Confirmations & Reminders' },
@@ -245,7 +359,7 @@ export default function AgentEditorPage() {
   const [addingRule, setAddingRule] = useState(false)
 
   // ── AI Model state ──
-  const [aiModel, setAiModel] = useState('gpt-4.1-mini')
+  const [aiModel, setAiModel] = useState('claude-sonnet-4-6')
 
   // ── Voice state ──
   const [voiceId, setVoiceId] = useState('retell-Willa')
@@ -253,7 +367,7 @@ export default function AgentEditorPage() {
   const [voiceLanguage, setVoiceLanguage] = useState('en-GB')
   const [interruptionSensitivity, setInterruptionSensitivity] = useState(0.9)
   const [maxCallDuration, setMaxCallDuration] = useState(3600)
-  const [analysisModel, setAnalysisModel] = useState('gpt-4.1-mini')
+  const [analysisModel, setAnalysisModel] = useState('claude-sonnet-4-6')
   const [playing, setPlaying] = useState<string | null>(null)
 
   // ── Greeting state ──
@@ -281,13 +395,7 @@ export default function AgentEditorPage() {
 
   // ── Timing state ──
   const [delay, setDelay] = useState(1200)
-  const [customDelayMin, setCustomDelayMin] = useState(0)
-  const [customDelaySec, setCustomDelaySec] = useState(0)
-  const [useCustomDelay, setUseCustomDelay] = useState(false)
   const [afterHoursDelay, setAfterHoursDelay] = useState(0)
-  const [customAfterMin, setCustomAfterMin] = useState(0)
-  const [customAfterSec, setCustomAfterSec] = useState(0)
-  const [useCustomAfter, setUseCustomAfter] = useState(false)
   const [workStart, setWorkStart] = useState(8)
   const [workEnd, setWorkEnd] = useState(18)
   const [workDays, setWorkDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
@@ -365,7 +473,7 @@ export default function AgentEditorPage() {
       const res = await fetch('/api/agent/refine', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ text, type, tone: toneOverride || tone }),
+        body: JSON.stringify({ text, type, tone: toneOverride || tone, agentId, businessId }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -387,8 +495,8 @@ export default function AgentEditorPage() {
     setVoiceLanguage(agent.language || 'en-GB')
     setInterruptionSensitivity(agent.interruption_sensitivity ?? 0.9)
     setMaxCallDuration(agent.max_call_duration_seconds ?? 3600)
-    setAnalysisModel(agent.post_call_analysis_model || 'gpt-4.1-mini')
-    setAiModel(agent.ai_model || 'gpt-4.1-mini')
+    setAnalysisModel(agent.post_call_analysis_model || 'claude-sonnet-4-6')
+    setAiModel(agent.ai_model || 'claude-sonnet-4-6')
     setDelay(agent.takeover_delay_seconds ?? 1200)
     setAfterHoursDelay(agent.after_hours_delay_seconds ?? 0)
     setWorkStart(agent.working_hours_start ?? 8)
@@ -418,19 +526,7 @@ export default function AgentEditorPage() {
     setOwnerReminderEnabled(agent.owner_reminder_enabled ?? true)
     setOwnerReminderTimes(agent.owner_reminder_times_seconds ?? [86400])
 
-    // Check custom delays
-    const isStdDelay = DELAY_OPTIONS.some((o) => o.value === (agent.takeover_delay_seconds ?? 1200))
-    if (!isStdDelay && agent.takeover_delay_seconds != null) {
-      setUseCustomDelay(true)
-      setCustomDelayMin(Math.floor(agent.takeover_delay_seconds / 60))
-      setCustomDelaySec(agent.takeover_delay_seconds % 60)
-    }
-    const isStdAfter = AFTER_HOURS_OPTIONS.some((o) => o.value === (agent.after_hours_delay_seconds ?? 0))
-    if (!isStdAfter && agent.after_hours_delay_seconds != null) {
-      setUseCustomAfter(true)
-      setCustomAfterMin(Math.floor(agent.after_hours_delay_seconds / 60))
-      setCustomAfterSec(agent.after_hours_delay_seconds % 60)
-    }
+    // No custom delay logic needed — TimingPicker handles any value
   }, [agent])
 
   // ── Check calendar connection ──
@@ -735,6 +831,34 @@ export default function AgentEditorPage() {
               required: i < 2,
             })))
           }
+
+          // Timing
+          if (data.config.takeover_delay_seconds != null) setDelay(data.config.takeover_delay_seconds)
+          if (data.config.after_hours_delay_seconds != null) setAfterHoursDelay(data.config.after_hours_delay_seconds)
+          if (data.config.working_hours_start != null) setWorkStart(data.config.working_hours_start)
+          if (data.config.working_hours_end != null) setWorkEnd(data.config.working_hours_end)
+          if (data.config.working_days?.length) setWorkDays(data.config.working_days)
+
+          // Automation
+          if (data.config.auto_reply_enabled != null) setAutoReply(data.config.auto_reply_enabled)
+          if (data.config.draft_mode != null) setDraftMode(data.config.draft_mode)
+          if (data.config.follow_up_enabled != null) setFollowUpEnabled(data.config.follow_up_enabled)
+          if (data.config.follow_up_max_attempts != null) setFollowUpAttempts(data.config.follow_up_max_attempts)
+          if (data.config.follow_up_delay_hours?.length) setFollowUpDelays(data.config.follow_up_delay_hours)
+          if (data.config.follow_up_preferred_channel) setFollowUpChannel(data.config.follow_up_preferred_channel)
+          if (data.config.follow_up_tone) setFollowUpTone(data.config.follow_up_tone)
+          if (data.config.follow_up_prompt) setFollowUpPrompt(data.config.follow_up_prompt)
+
+          // Confirmations & Reminders
+          if (data.config.confirmation_enabled != null) setConfirmEnabled(data.config.confirmation_enabled)
+          if (data.config.confirmation_delay_seconds != null) setConfirmDelay(data.config.confirmation_delay_seconds)
+          if (data.config.confirmation_channels?.length) setConfirmChannels(data.config.confirmation_channels)
+          if (data.config.reminder_enabled != null) setReminderEnabled(data.config.reminder_enabled)
+          if (data.config.reminder_times_seconds?.length) setReminderTimes(data.config.reminder_times_seconds)
+          if (data.config.reminder_channels?.length) setReminderChannels(data.config.reminder_channels)
+          if (data.config.owner_confirmation_enabled != null) setOwnerConfirmEnabled(data.config.owner_confirmation_enabled)
+          if (data.config.owner_reminder_enabled != null) setOwnerReminderEnabled(data.config.owner_reminder_enabled)
+          if (data.config.owner_reminder_times_seconds?.length) setOwnerReminderTimes(data.config.owner_reminder_times_seconds)
         }
       } else {
         const err = await res.json().catch(() => ({ error: 'Generation failed' }))
@@ -848,8 +972,8 @@ export default function AgentEditorPage() {
         fullPrompt = fullPrompt ? `${fullPrompt}\n${rulesBlock}` : rulesBlock
       }
 
-      const effectiveDelay = useCustomDelay ? customDelayMin * 60 + customDelaySec : delay
-      const effectiveAfter = useCustomAfter ? customAfterMin * 60 + customAfterSec : afterHoursDelay
+      const effectiveDelay = delay
+      const effectiveAfter = afterHoursDelay
 
       // 1. Update agent record
       const { error: agentErr } = await supabase
@@ -985,7 +1109,6 @@ export default function AgentEditorPage() {
   }
 
   const otherAgents = allAgents.filter((a) => a.id !== agentId)
-  const statusColor = agent.status === 'active' ? 'bg-success/10 text-success' : agent.status === 'paused' ? 'bg-amber-100 text-amber-700' : 'bg-elevated text-ink-muted'
 
   return (
     <div className="relative">
@@ -1018,9 +1141,27 @@ export default function AgentEditorPage() {
                 {name}
               </button>
             )}
-            <span className={cn('rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize', statusColor)}>
-              {agent.status}
-            </span>
+            {agent.status === 'active' ? (
+              <button
+                onClick={async () => {
+                  await supabase.from('agents').update({ status: 'paused' }).eq('id', agentId)
+                  window.location.reload()
+                }}
+                className="rounded-full bg-success/10 px-3 py-0.5 text-[11px] font-medium text-success transition hover:bg-amber-100 hover:text-amber-700"
+              >
+                Active — click to pause
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  await supabase.from('agents').update({ status: 'active' }).eq('id', agentId)
+                  window.location.reload()
+                }}
+                className="rounded-full bg-amber-100 px-3 py-0.5 text-[11px] font-semibold text-amber-700 transition hover:bg-success/10 hover:text-success"
+              >
+                {agent.status === 'draft' ? 'Draft' : 'Paused'} — click to activate
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -1583,7 +1724,7 @@ export default function AgentEditorPage() {
                 <h2 className="text-[15px] font-semibold text-ink">AI Model</h2>
                 <p className="mt-1 text-[13px] text-ink-muted">The brain behind the conversation. Smarter models cost more per call.</p>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  {AI_MODEL_OPTIONS.map((m) => (
+                  {VOICE_MODEL_OPTIONS.map((m) => (
                     <button
                       key={m.value}
                       onClick={() => setAiModel(m.value)}
@@ -2044,6 +2185,38 @@ export default function AgentEditorPage() {
             </section>
           )}
 
+          {/* ════════ AI MODEL (non-voice) ════════ */}
+          {!isVoice && (
+            <section id="ai-model" data-section className="scroll-mt-20">
+              <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10">
+                    <Sparkles size={18} className="text-brand" />
+                  </div>
+                  <div>
+                    <h2 className="text-[15px] font-semibold text-ink">AI Model</h2>
+                    <p className="mt-1 text-[13px] text-ink-muted">Choose which AI powers this agent's conversations.</p>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <select
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[14px] text-ink focus:border-brand focus:outline-none"
+                  >
+                    {['Anthropic', 'OpenAI', 'xAI'].map((provider) => (
+                      <optgroup key={provider} label={provider}>
+                        {CHAT_MODEL_OPTIONS.filter(m => m.provider === provider).map((m) => (
+                          <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* ════════ TIMING (non-voice only) ════════ */}
           {!isVoice && (
             <section id="timing" data-section className="scroll-mt-20">
@@ -2061,70 +2234,9 @@ export default function AgentEditorPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {DELAY_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => { setDelay(opt.value); setUseCustomDelay(false) }}
-                      className={cn(
-                        'rounded-xl border px-3 py-3 text-left transition',
-                        !useCustomDelay && delay === opt.value
-                          ? 'border-brand bg-brand/5 ring-1 ring-brand'
-                          : 'border-border hover:border-brand/40'
-                      )}
-                    >
-                      <p className={cn(
-                        'text-[13px] font-semibold',
-                        !useCustomDelay && delay === opt.value ? 'text-brand' : 'text-ink'
-                      )}>
-                        {opt.label}
-                      </p>
-                      <p className="mt-0.5 text-[11px] leading-tight text-ink-muted">{opt.desc}</p>
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setUseCustomDelay(true)}
-                    className={cn(
-                      'rounded-xl border px-3 py-3 text-left transition',
-                      useCustomDelay
-                        ? 'border-brand bg-brand/5 ring-1 ring-brand'
-                        : 'border-border hover:border-brand/40'
-                    )}
-                  >
-                    <p className={cn('text-[13px] font-semibold', useCustomDelay ? 'text-brand' : 'text-ink')}>Custom</p>
-                    <p className="mt-0.5 text-[11px] leading-tight text-ink-muted">Set your own</p>
-                  </button>
+                <div className="mt-4">
+                  <TimingPicker value={delay} onChange={setDelay} />
                 </div>
-
-                {useCustomDelay && (
-                  <div className="mt-4 flex items-center gap-3">
-                    <div>
-                      <label className="text-[12px] font-medium text-ink-muted">Minutes</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={60}
-                        value={customDelayMin}
-                        onChange={(e) => setCustomDelayMin(Number(e.target.value))}
-                        className="mt-1 block w-20 rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[12px] font-medium text-ink-muted">Seconds</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={59}
-                        value={customDelaySec}
-                        onChange={(e) => setCustomDelaySec(Number(e.target.value))}
-                        className="mt-1 block w-20 rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none"
-                      />
-                    </div>
-                    <p className="mt-5 text-[12px] text-ink-subtle">
-                      = {customDelayMin * 60 + customDelaySec}s total
-                    </p>
-                  </div>
-                )}
               </div>
 
               {/* After hours */}
@@ -2141,70 +2253,9 @@ export default function AgentEditorPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {AFTER_HOURS_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => { setAfterHoursDelay(opt.value); setUseCustomAfter(false) }}
-                      className={cn(
-                        'rounded-xl border px-3 py-3 text-left transition',
-                        !useCustomAfter && afterHoursDelay === opt.value
-                          ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500'
-                          : 'border-border hover:border-purple-300'
-                      )}
-                    >
-                      <p className={cn(
-                        'text-[13px] font-semibold',
-                        !useCustomAfter && afterHoursDelay === opt.value ? 'text-purple-700' : 'text-ink'
-                      )}>
-                        {opt.label}
-                      </p>
-                      <p className="mt-0.5 text-[11px] leading-tight text-ink-muted">{opt.desc}</p>
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setUseCustomAfter(true)}
-                    className={cn(
-                      'rounded-xl border px-3 py-3 text-left transition',
-                      useCustomAfter
-                        ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500'
-                        : 'border-border hover:border-purple-300'
-                    )}
-                  >
-                    <p className={cn('text-[13px] font-semibold', useCustomAfter ? 'text-purple-700' : 'text-ink')}>Custom</p>
-                    <p className="mt-0.5 text-[11px] leading-tight text-ink-muted">Set your own</p>
-                  </button>
+                <div className="mt-4">
+                  <TimingPicker value={afterHoursDelay} onChange={setAfterHoursDelay} />
                 </div>
-
-                {useCustomAfter && (
-                  <div className="mt-4 flex items-center gap-3">
-                    <div>
-                      <label className="text-[12px] font-medium text-ink-muted">Minutes</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={60}
-                        value={customAfterMin}
-                        onChange={(e) => setCustomAfterMin(Number(e.target.value))}
-                        className="mt-1 block w-20 rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[12px] font-medium text-ink-muted">Seconds</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={59}
-                        value={customAfterSec}
-                        onChange={(e) => setCustomAfterSec(Number(e.target.value))}
-                        className="mt-1 block w-20 rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none"
-                      />
-                    </div>
-                    <p className="mt-5 text-[12px] text-ink-subtle">
-                      = {customAfterMin * 60 + customAfterSec}s total
-                    </p>
-                  </div>
-                )}
               </div>
 
               {/* Working hours */}
@@ -2523,19 +2574,14 @@ export default function AgentEditorPage() {
                         {i === 0 ? '1st follow-up' : i === 1 ? '2nd follow-up' : '3rd follow-up'}
                       </span>
                       <span className="text-[12px] text-ink-muted">after</span>
-                      <select
+                      <TimingPicker
                         value={followUpDelays[i] ?? (i === 0 ? 7200 : i === 1 ? 86400 : 259200)}
-                        onChange={(e) => {
+                        onChange={(s) => {
                           const newDelays = [...followUpDelays]
-                          newDelays[i] = parseInt(e.target.value)
+                          newDelays[i] = s
                           setFollowUpDelays(newDelays)
                         }}
-                        className="rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink focus:border-brand focus:outline-none"
-                      >
-                        {FOLLOWUP_DELAY_PRESETS.map((p) => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                      </select>
+                      />
                     </div>
                   ))}
                 </div>
@@ -2665,21 +2711,7 @@ export default function AgentEditorPage() {
 
                 {confirmEnabled && (
                   <div className="mt-4 space-y-4">
-                    <div>
-                      <label className="mb-1.5 block text-[13px] font-medium text-ink">Send after</label>
-                      <select
-                        value={confirmDelay}
-                        onChange={(e) => setConfirmDelay(Number(e.target.value))}
-                        className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink"
-                      >
-                        <option value={1}>Immediately (1 second)</option>
-                        <option value={60}>1 minute</option>
-                        <option value={300}>5 minutes</option>
-                        <option value={600}>10 minutes</option>
-                        <option value={1800}>30 minutes</option>
-                        <option value={3600}>1 hour</option>
-                      </select>
-                    </div>
+                    <TimingPicker label="Send after" value={confirmDelay} onChange={setConfirmDelay} />
                     <div>
                       <label className="mb-1.5 block text-[13px] font-medium text-ink">Channel priority (first available wins)</label>
                       <div className="flex flex-wrap gap-2">
@@ -2731,38 +2763,7 @@ export default function AgentEditorPage() {
 
                 {reminderEnabled && (
                   <div className="mt-4 space-y-4">
-                    <div>
-                      <label className="mb-1.5 block text-[13px] font-medium text-ink">Remind before appointment</label>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { value: 900, label: '15 min' },
-                          { value: 3600, label: '1 hour' },
-                          { value: 7200, label: '2 hours' },
-                          { value: 14400, label: '4 hours' },
-                          { value: 86400, label: '24 hours' },
-                          { value: 172800, label: '48 hours' },
-                        ].map((opt) => {
-                          const active = reminderTimes.includes(opt.value)
-                          return (
-                            <button
-                              key={opt.value}
-                              onClick={() => {
-                                if (active) {
-                                  setReminderTimes(reminderTimes.filter(t => t !== opt.value))
-                                } else {
-                                  setReminderTimes([...reminderTimes, opt.value].sort((a, b) => b - a))
-                                }
-                              }}
-                              className={`rounded-lg border px-4 py-2 text-[13px] font-medium transition ${
-                                active ? 'border-brand bg-brand/10 text-brand' : 'border-border text-ink-muted hover:border-ink-subtle'
-                              }`}
-                            >
-                              {opt.label}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
+                    <TimingMultiPicker label="Remind before appointment" values={reminderTimes} onChange={setReminderTimes} />
                     <div>
                       <label className="mb-1.5 block text-[13px] font-medium text-ink">Channel priority</label>
                       <div className="flex flex-wrap gap-2">
@@ -2828,34 +2829,7 @@ export default function AgentEditorPage() {
 
                   {ownerReminderEnabled && (
                     <div className="ml-4">
-                      <label className="mb-1.5 block text-[13px] font-medium text-ink">Remind me before</label>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { value: 3600, label: '1 hour' },
-                          { value: 14400, label: '4 hours' },
-                          { value: 86400, label: '24 hours' },
-                          { value: 172800, label: '48 hours' },
-                        ].map((opt) => {
-                          const active = ownerReminderTimes.includes(opt.value)
-                          return (
-                            <button
-                              key={opt.value}
-                              onClick={() => {
-                                if (active) {
-                                  if (ownerReminderTimes.length > 1) setOwnerReminderTimes(ownerReminderTimes.filter(t => t !== opt.value))
-                                } else {
-                                  setOwnerReminderTimes([...ownerReminderTimes, opt.value].sort((a, b) => b - a))
-                                }
-                              }}
-                              className={`rounded-lg border px-4 py-2 text-[13px] font-medium transition ${
-                                active ? 'border-brand bg-brand/10 text-brand' : 'border-border text-ink-muted hover:border-ink-subtle'
-                              }`}
-                            >
-                              {opt.label}
-                            </button>
-                          )
-                        })}
-                      </div>
+                      <TimingMultiPicker label="Remind me before" values={ownerReminderTimes} onChange={setOwnerReminderTimes} />
                     </div>
                   )}
                 </div>

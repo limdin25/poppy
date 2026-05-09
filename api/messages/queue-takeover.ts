@@ -45,12 +45,28 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('id', business_id)
       .single();
 
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('agent_id')
+      .eq('id', conversation_id)
+      .single();
+
+    let agentTiming: Record<string, unknown> | null = null;
+    if (conv?.agent_id) {
+      const { data: agent } = await supabase
+        .from('agents')
+        .select('takeover_delay_seconds, after_hours_delay_seconds, working_hours_start, working_hours_end, working_days')
+        .eq('id', conv.agent_id)
+        .single();
+      agentTiming = agent;
+    }
+
     const timezone = business?.timezone || 'Europe/London';
-    const delaySeconds = business?.takeover_delay_seconds ?? 1200;
-    const afterHoursDelay = business?.after_hours_delay_seconds ?? 0;
-    const workStart = business?.working_hours_start ?? 8;
-    const workEnd = business?.working_hours_end ?? 18;
-    const workDays = business?.working_days || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    const delaySeconds = (agentTiming?.takeover_delay_seconds as number) ?? business?.takeover_delay_seconds ?? 1200;
+    const afterHoursDelay = (agentTiming?.after_hours_delay_seconds as number) ?? business?.after_hours_delay_seconds ?? 0;
+    const workStart = (agentTiming?.working_hours_start as number) ?? business?.working_hours_start ?? 8;
+    const workEnd = (agentTiming?.working_hours_end as number) ?? business?.working_hours_end ?? 18;
+    const workDays = (agentTiming?.working_days as string[]) || business?.working_days || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
     const afterHours = checkAfterHours(timezone, workStart, workEnd, workDays);
 

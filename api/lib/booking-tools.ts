@@ -42,7 +42,7 @@ export function getBookingTools(appUrl: string, toolSecret: string, businessId: 
           caller_email: { type: 'string', description: 'Email address if provided' },
           notes: { type: 'string', description: 'Brief description of what the meeting or appointment is about' },
         },
-        required: ['service_name', 'start_time', 'caller_name'],
+        required: ['service_name', 'start_time', 'caller_name', 'caller_phone'],
       },
       speak_during_execution: true,
       speak_after_execution: true,

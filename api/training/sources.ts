@@ -14,11 +14,19 @@ export default async function handler(req: Request): Promise<Response> {
   const { businessId } = auth;
 
   if (req.method === 'GET') {
-    const { data: sources, error } = await supabase
+    const url = new URL(req.url);
+    const agentIdParam = url.searchParams.get('agent_id');
+
+    let query = supabase
       .from('knowledge_sources')
       .select('id, name, type, url, status, summary, created_at, updated_at')
-      .eq('business_id', businessId)
-      .order('created_at', { ascending: false });
+      .eq('business_id', businessId);
+
+    if (agentIdParam) {
+      query = query.eq('agent_id', agentIdParam);
+    }
+
+    const { data: sources, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
