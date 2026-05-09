@@ -50,6 +50,7 @@ export function buildSystemPrompt(
   const now = new Date();
   const today = now.toISOString().split('T')[0];
   const dayName = now.toLocaleDateString('en-GB', { weekday: 'long' });
+  const currentTime = now.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
 
   let scheduleNote: string;
   if (offDays.length === 0) {
@@ -60,7 +61,7 @@ export function buildSystemPrompt(
     scheduleNote = `Working days are ${days.join(', ')}. ${offDays.map(d => fullDayNames[d]).join(' and ')} ${offDays.length === 1 ? 'is' : 'are'} not available for bookings.`;
   }
 
-  sections.push(`# You are the AI receptionist for ${business.name}\n\nToday is ${dayName}, ${today}. ${scheduleNote}\n\nYour timezone is ${tz}. All times in this conversation should be treated as ${tz} local time.`);
+  sections.push(`# You are the AI receptionist for ${business.name}\n\nToday is ${dayName}, ${today}. The current time is ${currentTime} (${tz}). ${scheduleNote}\n\nYour timezone is ${tz}. All times in this conversation should be treated as ${tz} local time.`);
 
   // Business details
   const details: string[] = [];
