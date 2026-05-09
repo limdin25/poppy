@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Search, Phone, MessageSquare, Mail, Send, ArrowLeft, Bot, MoreHorizontal, Plus, X, Paperclip, Pencil, Check, RefreshCw, Users, EyeOff, Eye, AlertTriangle } from 'lucide-react'
+import { Search, Phone, MessageSquare, Mail, Send, ArrowLeft, Bot, Plus, X, Paperclip, Pencil, Check, RefreshCw, Users, EyeOff, Eye, AlertTriangle, Trash2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { MessageBubble } from '@/core/ui/MessageBubble'
@@ -127,6 +127,11 @@ export default function InboxPage() {
     return name.includes(q) || preview.includes(q) || subject.includes(q) || email.includes(q) || groupName.includes(q)
   })
 
+  const handleDelete = useCallback((_id: string) => {
+    setSelectedId(null)
+    refetchConversations()
+  }, [refetchConversations])
+
   const handleSend = useCallback(async (conversationId: string, body: string, attachments?: File[]) => {
     const hasFiles = attachments && attachments.length > 0
 
@@ -159,7 +164,7 @@ export default function InboxPage() {
   if (selected && typeof window !== 'undefined' && window.innerWidth < 1024) {
     return (
       <div className="flex h-full flex-col">
-        <ThreadView conversation={selected} reply={reply} setReply={setReply} onBack={() => setSelectedId(null)} onSend={handleSend} session={session} />
+        <ThreadView conversation={selected} reply={reply} setReply={setReply} onBack={() => setSelectedId(null)} onSend={handleSend} onDelete={handleDelete} session={session} />
       </div>
     )
   }
@@ -335,7 +340,7 @@ export default function InboxPage() {
       {/* Thread view */}
       <div className="hidden flex-1 lg:flex lg:flex-col">
         {selected ? (
-          <ThreadView conversation={selected} reply={reply} setReply={setReply} onBack={() => setSelectedId(null)} onSend={handleSend} session={session} desktop />
+          <ThreadView conversation={selected} reply={reply} setReply={setReply} onBack={() => setSelectedId(null)} onSend={handleSend} onDelete={handleDelete} session={session} desktop />
         ) : (
           <div className="flex flex-1 items-center justify-center">
             <EmptyState
@@ -361,6 +366,7 @@ function ThreadView({
   setReply,
   onBack,
   onSend,
+  onDelete,
   desktop,
   session,
 }: {
@@ -369,6 +375,7 @@ function ThreadView({
   setReply: (v: string) => void
   onBack: () => void
   onSend: (conversationId: string, body: string, attachments?: File[]) => Promise<void>
+  onDelete?: (conversationId: string) => void
   desktop?: boolean
   session: { access_token: string } | null
 }) {
@@ -553,8 +560,18 @@ function ThreadView({
               <Bot size={12} />
               {aiHandling ? 'AI On' : 'AI Off'}
             </button>
-            <button className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-ink">
-              <MoreHorizontal size={16} />
+            <button
+              onClick={async () => {
+                if (!confirm('Delete this conversation and all its messages? This cannot be undone.')) return
+                await supabase.from('messages').delete().eq('conversation_id', conversation.id)
+                await supabase.from('ai_takeover_queue').delete().eq('conversation_id', conversation.id)
+                await supabase.from('conversations').delete().eq('id', conversation.id)
+                onDelete?.(conversation.id)
+              }}
+              className="rounded-md p-1 text-ink-subtle hover:bg-red-50 hover:text-red-600 transition"
+              title="Delete conversation"
+            >
+              <Trash2 size={16} />
             </button>
           </div>
         </div>
