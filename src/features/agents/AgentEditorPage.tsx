@@ -13,6 +13,7 @@ import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { useAgent } from './hooks/useAgent'
 import { useAgents } from './hooks/useAgents'
+import { AgentTestChat } from './AgentTestChat'
 import type { Agent, AgentType } from '@/core/types/database'
 
 // ─── Constants ────────────────────────────────────────────────────────
@@ -448,6 +449,7 @@ export default function AgentEditorPage() {
 
   // ── Copy from dropdown ──
   const [showCopyMenu, setShowCopyMenu] = useState(false)
+  const [showTestChat, setShowTestChat] = useState(false)
 
   const headers = {
     'Content-Type': 'application/json',
@@ -1195,7 +1197,16 @@ export default function AgentEditorPage() {
               </div>
             )}
 
-            {/* Save button (desktop) */}
+            {/* Test + Save buttons (desktop) */}
+            {!isVoice && agent && (
+              <button
+                onClick={() => setShowTestChat(v => !v)}
+                className="hidden h-9 items-center gap-2 rounded-lg border border-ink/15 bg-surface px-4 text-[13px] font-medium text-ink transition hover:bg-elevated sm:flex"
+              >
+                <MessageSquare size={14} />
+                Test Agent
+              </button>
+            )}
             <button
               onClick={handleSaveAll}
               disabled={saving}
@@ -2851,6 +2862,15 @@ export default function AgentEditorPage() {
 
       {/* ── Fixed save button (mobile) ── */}
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 p-4 backdrop-blur sm:hidden">
+        {!isVoice && agent && (
+          <button
+            onClick={() => setShowTestChat(v => !v)}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-ink/15 bg-surface text-[14px] font-medium text-ink transition hover:bg-elevated sm:hidden"
+          >
+            <MessageSquare size={16} />
+            Test Agent
+          </button>
+        )}
         <button
           onClick={handleSaveAll}
           disabled={saving}
@@ -2860,6 +2880,16 @@ export default function AgentEditorPage() {
           {saved ? 'Saved!' : saving ? 'Saving...' : 'Save All Changes'}
         </button>
       </div>
+
+      {showTestChat && agent && !isVoice && session && (
+        <AgentTestChat
+          agentId={agent.id}
+          agentName={agent.name}
+          agentType={agent.agent_type}
+          accessToken={session.access_token}
+          onClose={() => setShowTestChat(false)}
+        />
+      )}
     </div>
   )
 }

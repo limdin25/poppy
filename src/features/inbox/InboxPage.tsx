@@ -563,9 +563,12 @@ function ThreadView({
             <button
               onClick={async () => {
                 if (!confirm('Delete this conversation and all its messages? This cannot be undone.')) return
-                await supabase.from('ai_takeover_queue').delete().eq('conversation_id', conversation.id)
-                await supabase.from('messages').delete().eq('conversation_id', conversation.id)
-                await supabase.from('conversations').delete().eq('id', conversation.id)
+                const res = await fetch('/api/messages/delete-conversation', {
+                  method: 'DELETE',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+                  body: JSON.stringify({ conversationId: conversation.id }),
+                })
+                if (!res.ok) { alert('Failed to delete conversation'); return }
                 onDelete?.(conversation.id)
               }}
               className="rounded-md p-1 text-ink-subtle hover:bg-red-50 hover:text-red-600 transition"
