@@ -46,10 +46,13 @@ export default async function handler(req: Request) {
 
   const bName = business_name || `${name || email}'s Business`
   const isBillingActive = billing_active === true
+  const slug =
+    `${bName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'business'}-${newUser.user.id.slice(0, 8)}`
   const { data: business, error: bizErr } = await supabaseAdmin
     .from('businesses')
     .insert({
       name: bName,
+      slug,
       owner_id: newUser.user.id,
       billing_active: isBillingActive,
       currency: 'GBP',
