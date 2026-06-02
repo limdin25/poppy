@@ -1,9 +1,12 @@
+import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin as supabase } from '../../src/integrations/supabase/client.js';
 import { sendWelcomeEmail } from '../../src/integrations/resend/client.js';
 
-// Uses the shared admin client (persistSession:false) so signInWithPassword
-// never pollutes the module-level client's session — every DB write stays
-// service-role and bypasses RLS.
+// IMPORTANT: the shared supabaseAdmin client is used ONLY for admin/DB writes
+// (service-role, bypasses RLS). signInWithPassword sets an in-memory user
+// session on whatever client calls it — so we do that on a throwaway client
+// created per request, never on the shared admin client (which would then send
+// a user JWT on warm invocations and get blocked by RLS).
 
 export const config = { runtime: 'edge' };
 
@@ -80,9 +83,14 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: teamError.message }), { status: 500 });
     }
 
-    // Sign in the user to get a session
+    // Sign in on a throwaway client so the shared admin client is never polluted
+    const authClient = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    );
     const { data: signInData, error: signInError } =
-      await supabase.auth.signInWithPassword({ email, password });
+      await authClient.auth.signInWithPassword({ email, password });
 
     if (signInError) {
       return new Response(JSON.stringify({ error: signInError.message }), { status: 500 });
