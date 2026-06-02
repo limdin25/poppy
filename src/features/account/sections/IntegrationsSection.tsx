@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Phone, MessageSquare, Mail, Calendar, CheckCircle2, X, Smartphone, Send, ArrowRight, Loader2, Trash2, Plus, Camera } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
+import { useVoiceEnabled } from '@/core/hooks/useVoiceEnabled'
 import { supabase } from '@/integrations/supabase/browser'
 
 type ChannelId = 'voice' | 'sms' | 'whatsapp' | 'email' | 'calendar' | 'instagram'
@@ -46,6 +47,7 @@ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void
 
 export default function IntegrationsSection() {
   const { businessId, session } = useAuth()
+  const { enabled: voiceEnabled } = useVoiceEnabled()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeModal, setActiveModal] = useState<ModalId>(null)
   const [channels, setChannels] = useState<ChannelRow[]>([])
@@ -239,14 +241,17 @@ export default function IntegrationsSection() {
     }
   }
 
-  const channelList = [
-    { id: 'voice' as ChannelId, name: 'Voice (Phone)', description: 'AI answers your calls 24/7', icon: Phone },
-    { id: 'whatsapp' as ChannelId, name: 'WhatsApp', description: 'Reply to customers on WhatsApp', icon: MessageSquare },
-    { id: 'sms' as ChannelId, name: 'SMS', description: 'Automated text follow-ups after calls', icon: Smartphone },
-    { id: 'instagram' as ChannelId, name: 'Instagram', description: 'Reply to DMs automatically', icon: Camera },
-    { id: 'email' as ChannelId, name: 'Email', description: 'AI handles email enquiries', icon: Mail },
-    { id: 'calendar' as ChannelId, name: 'Calendar', description: 'Auto-book appointments during calls', icon: Calendar },
+  // Public WhatsApp accounts see only WhatsApp + Calendar. Voice/admin accounts
+  // additionally get Voice, SMS, Instagram and Email.
+  const allChannels = [
+    { id: 'voice' as ChannelId, name: 'Voice (Phone)', description: 'AI answers your calls 24/7', icon: Phone, voiceOnly: true },
+    { id: 'whatsapp' as ChannelId, name: 'WhatsApp', description: 'Reply to customers on WhatsApp', icon: MessageSquare, voiceOnly: false },
+    { id: 'sms' as ChannelId, name: 'SMS', description: 'Automated text follow-ups after calls', icon: Smartphone, voiceOnly: true },
+    { id: 'instagram' as ChannelId, name: 'Instagram', description: 'Reply to DMs automatically', icon: Camera, voiceOnly: true },
+    { id: 'email' as ChannelId, name: 'Email', description: 'AI handles email enquiries', icon: Mail, voiceOnly: true },
+    { id: 'calendar' as ChannelId, name: 'Calendar', description: 'Auto-book appointments', icon: Calendar, voiceOnly: false },
   ]
+  const channelList = allChannels.filter((c) => voiceEnabled || !c.voiceOnly)
 
   async function toggleChannelSetting(channelId: string, field: 'auto_reply_enabled' | 'draft_mode' | 'auto_unsubscribe', value: boolean) {
     await supabase.from('channels').update({ [field]: value }).eq('id', channelId)
