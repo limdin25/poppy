@@ -14,6 +14,7 @@ const CallsPage = lazy(() => import('@/features/calls/CallsPage'))
 const InboxPage = lazy(() => import('@/features/inbox/InboxPage'))
 const LeadsPage = lazy(() => import('@/features/leads/LeadsPage'))
 const CampaignsPage = lazy(() => import('@/features/campaigns/CampaignsPage'))
+const KnowledgeBasePage = lazy(() => import('@/features/knowledge/KnowledgeBasePage'))
 const ContactsPage = lazy(() => import('@/features/contacts/ContactsPage'))
 const AppointmentsPage = lazy(() => import('@/features/appointments/AppointmentsPage'))
 const QuotesPage = lazy(() => import('@/features/quotes/QuotesPage'))
@@ -68,6 +69,7 @@ export default function App() {
             <Route path="inbox" element={<InboxPage />} />
             <Route path="leads" element={<LeadsPage />} />
             <Route path="campaigns" element={<CampaignsPage />} />
+            <Route path="knowledge" element={<KnowledgeBasePage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="quotes" element={<QuotesPage />} />

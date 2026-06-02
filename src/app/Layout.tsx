@@ -23,6 +23,7 @@ import {
   Link2,
   Flame,
   Megaphone,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -44,6 +45,7 @@ const workNav: NavItem[] = [
 ]
 
 const aiNav: NavItem[] = [
+  { to: '/knowledge', icon: BookOpen, label: 'Knowledge Base' },
   { to: '/agents', icon: Bot, label: 'AI Agent' },
   { to: '/connections', icon: Link2, label: 'Integrations' },
 ]

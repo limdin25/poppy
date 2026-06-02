@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Phone, MessageCircle, MessageSquare, Camera, Mail, Plus, Loader2, Link2Off } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
+import { useVoiceEnabled } from '@/core/hooks/useVoiceEnabled'
 import { useSupabaseQuery, supabase } from '@/core/hooks/useSupabaseQuery'
 import type { Channel, Agent } from '@/core/types/database'
 
@@ -19,6 +21,7 @@ const CHANNEL_GROUPS = ['voice', 'whatsapp', 'sms', 'instagram', 'email_gmail', 
 
 export default function ConnectionsPage() {
   const { businessId } = useAuth()
+  const { enabled: voiceEnabled } = useVoiceEnabled()
   const { data: channels, loading, refetch } = useSupabaseQuery<Channel>(
     () => supabase.from('channels').select('*').eq('business_id', businessId!).order('created_at'),
     [businessId]
@@ -44,7 +47,8 @@ export default function ConnectionsPage() {
     )
   }
 
-  const grouped = CHANNEL_GROUPS.reduce<Record<string, Channel[]>>((acc, type) => {
+  const visibleGroups = voiceEnabled ? CHANNEL_GROUPS : CHANNEL_GROUPS.filter(t => t !== 'voice' && t !== 'sms')
+  const grouped = visibleGroups.reduce<Record<string, Channel[]>>((acc, type) => {
     const matches = channels.filter(c => c.type === type)
     if (matches.length > 0) acc[type] = matches
     return acc
@@ -61,10 +65,10 @@ export default function ConnectionsPage() {
             Manage your connected channels and assign agents to each one.
           </p>
         </div>
-        <button className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[13px] font-medium text-white transition hover:bg-brand-600">
+        <Link to="/account/integrations" className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[13px] font-medium text-white transition hover:bg-brand-600">
           <Plus size={14} />
           Add Channel
-        </button>
+        </Link>
       </div>
 
       {!hasChannels ? (
@@ -74,8 +78,12 @@ export default function ConnectionsPage() {
           </div>
           <h2 className="mt-4 text-[15px] font-semibold text-ink">No channels connected</h2>
           <p className="mt-1 text-[13px] text-ink-muted">
-            Connect a phone number, WhatsApp, Instagram, or email to get started.
+            Connect WhatsApp to start replying to your customers.
           </p>
+          <Link to="/account/integrations" className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[13px] font-medium text-white transition hover:bg-brand-600">
+            <Plus size={14} />
+            Connect a channel
+          </Link>
         </div>
       ) : (
         <div className="mt-6 space-y-6">
