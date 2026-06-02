@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './Layout'
 import { ProtectedRoute } from '@/core/auth/ProtectedRoute'
+import { VoiceRoute } from '@/core/auth/VoiceRoute'
 
 const RegistrationPage = lazy(() => import('@/features/registration/RegistrationPage'))
 const OnboardingPage = lazy(() => import('@/features/onboarding/OnboardingPage'))
@@ -11,6 +12,8 @@ const ResetPasswordPage = lazy(() => import('@/features/auth/ResetPasswordPage')
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'))
 const CallsPage = lazy(() => import('@/features/calls/CallsPage'))
 const InboxPage = lazy(() => import('@/features/inbox/InboxPage'))
+const LeadsPage = lazy(() => import('@/features/leads/LeadsPage'))
+const CampaignsPage = lazy(() => import('@/features/campaigns/CampaignsPage'))
 const ContactsPage = lazy(() => import('@/features/contacts/ContactsPage'))
 const AppointmentsPage = lazy(() => import('@/features/appointments/AppointmentsPage'))
 const QuotesPage = lazy(() => import('@/features/quotes/QuotesPage'))
@@ -50,15 +53,21 @@ export default function App() {
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />
 
-        {/* Admin panel — own layout */}
+        {/* Admin / super panel — own layout (same guarded app, two entry paths) */}
         <Route path="admin/*" element={<AdminApp />} />
+        <Route path="super/*" element={<AdminApp />} />
 
         {/* Authenticated app */}
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route index element={<DashboardPage />} />
-            <Route path="calls" element={<CallsPage />} />
+            {/* Voice-only — gated behind the per-business voice_ai flag */}
+            <Route element={<VoiceRoute />}>
+              <Route path="calls" element={<CallsPage />} />
+            </Route>
             <Route path="inbox" element={<InboxPage />} />
+            <Route path="leads" element={<LeadsPage />} />
+            <Route path="campaigns" element={<CampaignsPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="quotes" element={<QuotesPage />} />

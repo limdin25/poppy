@@ -42,6 +42,8 @@ export interface Business {
   updated_at: string
 }
 
+export type LeadStatus = 'new' | 'hot' | 'warm' | 'cold'
+
 export interface Contact {
   id: string
   business_id: string
@@ -52,8 +54,29 @@ export interface Contact {
   notes: string | null
   tags: string[]
   avatar_url: string | null
+  lead_status: LeadStatus | null
+  lead_score: number | null
+  lead_reason: string | null
+  lead_updated_at: string | null
   created_at: string
   updated_at: string
+}
+
+export type CampaignStatus = 'draft' | 'sending' | 'sent' | 'failed'
+
+export interface Campaign {
+  id: string
+  business_id: string
+  name: string
+  channel: string
+  message_template: string
+  audience_filter: Record<string, unknown>
+  status: CampaignStatus
+  recipient_count: number
+  sent_count: number
+  failed_count: number
+  created_at: string
+  sent_at: string | null
 }
 
 export type AgentType = 'voice' | 'whatsapp' | 'sms' | 'instagram' | 'email'

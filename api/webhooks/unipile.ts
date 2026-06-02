@@ -385,6 +385,63 @@ async function getConversationHistory(conversationId: string): Promise<Array<{ro
   }));
 }
 
+// Classify a contact's buying intent (HOT/WARM/COLD) from the conversation.
+// Cheap, best-effort — never throws into the webhook flow.
+async function classifyLead(businessId: string, conversationId: string, contactId: string): Promise<void> {
+  try {
+    const history = await getConversationHistory(conversationId);
+    if (history.length === 0) return;
+
+    const transcript = history
+      .map(m => `${m.role === 'user' ? 'Customer' : 'Business'}: ${m.content}`)
+      .join('\n')
+      .slice(0, 4000);
+
+    const model = await getModelForBusiness(businessId);
+    const system =
+      'You are a sales lead classifier for a small business. Read the WhatsApp conversation and rate the customer\'s buying intent. ' +
+      'Respond with ONLY a JSON object, no prose: {"status":"hot|warm|cold","score":0-100,"reason":"max 8 words"}. ' +
+      'hot = ready to book/buy now, asking price/availability with clear intent. ' +
+      'warm = interested, asking questions, comparing options. ' +
+      'cold = vague, just browsing, spam, or not a real customer.';
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 80,
+        system,
+        messages: [{ role: 'user', content: transcript }],
+      }),
+    });
+    if (!res.ok) return;
+    const data = await res.json() as { content?: Array<{ text?: string }> };
+    const raw = data.content?.[0]?.text || '';
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return;
+    const parsed = JSON.parse(match[0]) as { status?: string; score?: number; reason?: string };
+    const status = ['hot', 'warm', 'cold'].includes(parsed.status || '') ? parsed.status : null;
+    if (!status) return;
+
+    await supabase
+      .from('contacts')
+      .update({
+        lead_status: status,
+        lead_score: typeof parsed.score === 'number' ? Math.max(0, Math.min(100, Math.round(parsed.score))) : null,
+        lead_reason: (parsed.reason || '').slice(0, 200),
+        lead_updated_at: new Date().toISOString(),
+      })
+      .eq('id', contactId);
+  } catch (err: any) {
+    console.error('[classify-lead] error:', err?.message);
+  }
+}
+
 async function downloadAndStoreAttachment(messageId: string, attachment: { id: string; type?: string; mimetype?: string }): Promise<string | null> {
   try {
     const res = await fetch(`https://${UNIPILE_DSN}/api/v1/messages/${messageId}/attachments/${attachment.id}`, {
@@ -885,6 +942,11 @@ export default async function handler(req: Request): Promise<Response> {
           .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
           .eq('conversation_id', conversationId)
           .eq('status', 'pending');
+      }
+
+      // Classify lead intent on inbound contact messages (independent of AI reply)
+      if (!isOutboundWA && !isGroupChat && contactId && cleanText) {
+        await classifyLead(businessId, conversationId, contactId);
       }
 
       // Queue AI takeover instead of replying inline — gives the business owner time to reply first

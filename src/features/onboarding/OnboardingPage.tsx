@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { Check, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
-import { saveServices, saveFAQs, saveGreeting, saveCallInfoFields } from './hooks/useOnboardingSave'
+import { saveBusinessInfo, saveServices, saveFAQs, saveGreeting } from './hooks/useOnboardingSave'
+import BusinessInfoStep, { type BusinessInfo } from './steps/BusinessInfoStep'
 import ServicesStep from './steps/ServicesStep'
 import FAQsStep from './steps/FAQsStep'
 import GreetingStep from './steps/GreetingStep'
-import CallInfoStep from './steps/CallInfoStep'
-import TestCallStep from './steps/TestCallStep'
+import ConnectWhatsAppStep from './steps/ConnectWhatsAppStep'
 
-const STEPS = ['Services', 'FAQs', 'Greeting', 'Call Info', 'Test Call']
+const STEPS = ['Business', 'Train your AI', 'Connect WhatsApp']
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(0)
@@ -18,10 +18,10 @@ export default function OnboardingPage() {
   const navigate = useNavigate()
   const { businessId } = useAuth()
 
+  const businessRef = useRef<BusinessInfo>({ name: '', industry: '', address: '', website: '' })
   const servicesRef = useRef<string[]>([])
   const faqsRef = useRef<{ question: string; answer: string }[]>([])
   const greetingRef = useRef('')
-  const fieldsRef = useRef<{ label: string; enabled: boolean }[]>([])
 
   const isLast = step === STEPS.length - 1
 
@@ -34,10 +34,13 @@ export default function OnboardingPage() {
 
     setSaving(true)
     try {
-      if (step === 0) await saveServices(businessId, servicesRef.current)
-      else if (step === 1) await saveFAQs(businessId, faqsRef.current)
-      else if (step === 2) await saveGreeting(businessId, greetingRef.current)
-      else if (step === 3) await saveCallInfoFields(businessId, fieldsRef.current)
+      if (step === 0) {
+        await saveBusinessInfo(businessId, businessRef.current)
+      } else if (step === 1) {
+        await saveServices(businessId, servicesRef.current)
+        await saveFAQs(businessId, faqsRef.current)
+        await saveGreeting(businessId, greetingRef.current)
+      }
     } catch (err) {
       console.error('[onboarding] save error:', err)
     } finally {
@@ -100,11 +103,15 @@ export default function OnboardingPage() {
       {/* Step content */}
       <main className="flex flex-1 flex-col px-4 py-6 sm:px-6">
         <div className="mx-auto w-full max-w-2xl flex-1">
-          {step === 0 && <ServicesStep onChange={(s) => { servicesRef.current = s }} />}
-          {step === 1 && <FAQsStep onChange={(f) => { faqsRef.current = f }} />}
-          {step === 2 && <GreetingStep onChange={(g) => { greetingRef.current = g }} />}
-          {step === 3 && <CallInfoStep onChange={(f) => { fieldsRef.current = f }} />}
-          {step === 4 && <TestCallStep />}
+          {step === 0 && <BusinessInfoStep onChange={(b) => { businessRef.current = b }} />}
+          {step === 1 && (
+            <div className="space-y-10">
+              <ServicesStep onChange={(s) => { servicesRef.current = s }} />
+              <FAQsStep onChange={(f) => { faqsRef.current = f }} />
+              <GreetingStep onChange={(g) => { greetingRef.current = g }} />
+            </div>
+          )}
+          {step === 2 && <ConnectWhatsAppStep />}
         </div>
       </main>
 
@@ -125,7 +132,7 @@ export default function OnboardingPage() {
             className="flex h-10 items-center gap-2 rounded-lg bg-brand px-5 text-[14px] font-semibold text-white transition hover:bg-brand-600 active:scale-[0.98] disabled:opacity-60"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : null}
-            {isLast ? 'Go to Dashboard' : 'Next'}
+            {isLast ? 'Finish' : 'Next'}
             <ArrowRight size={16} />
           </button>
         </div>

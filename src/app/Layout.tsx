@@ -21,33 +21,43 @@ import {
   Eye,
   LogOut,
   Link2,
+  Flame,
+  Megaphone,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useBusiness } from '@/core/hooks/useBusiness'
+import { useVoiceEnabled } from '@/core/hooks/useVoiceEnabled'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 
-const primaryNav = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/calls', icon: Phone, label: 'Calls' },
+type NavItem = { to: string; icon: React.ElementType; label: string }
+
+// Waslo-style grouped sidebar. Calls is appended to WORK only when the
+// business has voice provisioned (voice_ai flag). WhatsApp is the core product.
+const workNav: NavItem[] = [
+  { to: '/', icon: LayoutDashboard, label: 'Overview' },
   { to: '/inbox', icon: Inbox, label: 'Inbox' },
-  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-]
-
-const agentNav = [
-  { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/connections', icon: Link2, label: 'Connections' },
-]
-
-const secondaryNav = [
+  { to: '/leads', icon: Flame, label: 'Leads' },
   { to: '/contacts', icon: Users, label: 'Contacts' },
   { to: '/appointments', icon: Calendar, label: 'Bookings' },
+  { to: '/campaigns', icon: Megaphone, label: 'Campaigns' },
+]
+
+const aiNav: NavItem[] = [
+  { to: '/agents', icon: Bot, label: 'AI Agent' },
+  { to: '/connections', icon: Link2, label: 'Integrations' },
+]
+
+const growthNav: NavItem[] = [
+  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/quotes', icon: FileText, label: 'Quotes' },
   { to: '/invoices', icon: Receipt, label: 'Invoices' },
   { to: '/billing', icon: CreditCard, label: 'Billing' },
 ]
 
-const accountNav = { to: '/account', icon: User, label: 'Account' }
+const callsNav: NavItem = { to: '/calls', icon: Phone, label: 'Calls' }
+
+const accountNav = { to: '/account', icon: User, label: 'Settings' }
 const accountSubNav = [
   { to: '/account/profile', label: 'Profile' },
   { to: '/account/company', label: 'Company' },
@@ -55,14 +65,6 @@ const accountSubNav = [
   { to: '/account/team', label: 'Team' },
   { to: '/account/notifications', label: 'Notifications' },
   { to: '/account/integrations', label: 'Integrations' },
-]
-
-const mobileNav = [
-  { to: '/', icon: LayoutDashboard, label: 'Home' },
-  { to: '/calls', icon: Phone, label: 'Calls' },
-  { to: '/inbox', icon: Inbox, label: 'Inbox' },
-  { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/account', icon: User, label: 'Account' },
 ]
 
 const FULL_BLEED_ROUTES = ['/calls', '/inbox', '/contacts']
@@ -75,7 +77,21 @@ export default function Layout() {
   const location = useLocation()
   const { user, impersonating, stopImpersonation, signOut } = useAuth()
   const { data: business } = useBusiness()
+  const { enabled: voiceEnabled } = useVoiceEnabled()
   const navigate = useNavigate()
+
+  // Voice accounts get Calls in WORK; WhatsApp-only accounts never see it.
+  const workItems: NavItem[] = voiceEnabled
+    ? [workNav[0], workNav[1], callsNav, ...workNav.slice(2)]
+    : workNav
+
+  const mobileNav: NavItem[] = [
+    { to: '/', icon: LayoutDashboard, label: 'Home' },
+    { to: '/inbox', icon: Inbox, label: 'Inbox' },
+    { to: '/leads', icon: Flame, label: 'Leads' },
+    { to: '/agents', icon: Bot, label: 'Agent' },
+    { to: '/account', icon: User, label: 'Settings' },
+  ]
 
   useEffect(() => {
     if (!user?.email) return
@@ -136,6 +152,21 @@ export default function Layout() {
     )
   }
 
+  function renderSection(heading: string, items: NavItem[]) {
+    return (
+      <div className="space-y-0.5">
+        {!collapsed && (
+          <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">
+            {heading}
+          </p>
+        )}
+        {items.map((item) => (
+          <div key={item.to}>{renderNavItem(item)}</div>
+        ))}
+      </div>
+    )
+  }
+
   function renderSubNav(items: { to: string; label: string }[]) {
     if (collapsed) return null
     return (
@@ -170,7 +201,7 @@ export default function Layout() {
           <button
             onClick={() => {
               stopImpersonation()
-              navigate('/admin')
+              navigate('/super')
             }}
             className="flex items-center gap-1 rounded-md bg-black/10 px-2 py-0.5 text-[12px] hover:bg-black/20"
           >
@@ -245,30 +276,20 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className={cn('flex-1 overflow-y-auto py-1.5 scrollbar-thin', collapsed ? 'px-1.5' : 'px-2')}>
-          <div className="space-y-0.5">
-            {primaryNav.map((item) => (
-              <div key={item.to}>{renderNavItem(item)}</div>
-            ))}
-          </div>
+          {renderSection('Work', workItems)}
 
-          <div className="my-2 h-px bg-border" />
+          {collapsed && <div className="my-2 h-px bg-border" />}
+          {renderSection('AI', aiNav)}
 
-          <div className="space-y-0.5">
-            {agentNav.map((item) => (
-              <div key={item.to}>{renderNavItem(item)}</div>
-            ))}
-          </div>
+          {collapsed && <div className="my-2 h-px bg-border" />}
+          {renderSection('Growth', growthNav)}
 
-          <div className="my-2 h-px bg-border" />
-
-          <div className="space-y-0.5">
-            {secondaryNav.map((item) => (
-              <div key={item.to}>{renderNavItem(item)}</div>
-            ))}
-          </div>
-
-          <div className="my-2 h-px bg-border" />
-
+          {collapsed && <div className="my-2 h-px bg-border" />}
+          {!collapsed && (
+            <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">
+              Admin
+            </p>
+          )}
           <div>
             {renderNavItem(accountNav, {
               expanded: accountExpanded,
@@ -282,9 +303,9 @@ export default function Layout() {
         {isAdmin && (
           <div className={cn('border-t border-border', collapsed ? 'px-1.5 py-1.5' : 'px-2 py-1.5')}>
             <NavLink
-              to="/admin"
+              to="/super"
               onClick={() => setSidebarOpen(false)}
-              title={collapsed ? 'Admin Panel' : undefined}
+              title={collapsed ? 'Super Panel' : undefined}
               className={cn(
                 'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors',
                 'text-amber-600 hover:bg-amber-50',
@@ -292,7 +313,7 @@ export default function Layout() {
               )}
             >
               <Shield size={18} className="shrink-0" />
-              {!collapsed && <span>Admin Panel</span>}
+              {!collapsed && <span>Super Panel</span>}
             </NavLink>
           </div>
         )}

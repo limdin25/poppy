@@ -147,6 +147,8 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [name, setName] = useState('')
   const [businessName, setBusinessName] = useState('')
   const [planType, setPlanType] = useState<'free' | 'paid'>('free')
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
 
@@ -157,7 +159,15 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
     setErr('')
     setSubmitting(true)
     try {
-      await createUser({ email, password, name, business_name: businessName || undefined, billing_active: planType === 'paid' })
+      await createUser({
+        email,
+        password,
+        name,
+        business_name: businessName || undefined,
+        billing_active: planType === 'paid',
+        is_admin: isAdmin,
+        voice_enabled: voiceEnabled,
+      })
       onCreated()
       onClose()
     } catch (ex: any) {
@@ -244,6 +254,34 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
               className="mt-1 h-9 w-full rounded-lg border border-border bg-elevated px-3 text-[13px] text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
+
+          <div className="space-y-2 rounded-lg border border-border bg-elevated p-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isAdmin}
+                onChange={(e) => setIsAdmin(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border text-brand focus:ring-brand/20"
+              />
+              <span>
+                <span className="block text-[13px] font-medium text-ink">Super-admin access</span>
+                <span className="block text-[11px] text-ink-muted">Can log in at /super and manage all businesses, voice &amp; billing.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={voiceEnabled}
+                onChange={(e) => setVoiceEnabled(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border text-brand focus:ring-brand/20"
+              />
+              <span>
+                <span className="block text-[13px] font-medium text-ink">Voice / calls enabled</span>
+                <span className="block text-[11px] text-ink-muted">Unlocks the phone receptionist (Calls + voice agent). Off = WhatsApp-only.</span>
+              </span>
+            </label>
+          </div>
+
           <button
             type="submit"
             disabled={submitting}

@@ -19,12 +19,14 @@ export default async function handler(req: Request) {
     .single()
   if (!admin) return new Response('Forbidden', { status: 403 })
 
-  const { email, password, name, business_name, billing_active } = await req.json() as {
+  const { email, password, name, business_name, billing_active, is_admin, voice_enabled } = await req.json() as {
     email: string
     password: string
     name?: string
     business_name?: string
     billing_active?: boolean
+    is_admin?: boolean
+    voice_enabled?: boolean
   }
 
   if (!email || !password) {
@@ -79,12 +81,31 @@ export default async function handler(req: Request) {
     cap_amount: 189,
   })
 
+  // Grant super-admin access (email present in admin_users = super-admin)
+  const makeAdmin = is_admin === true
+  if (makeAdmin) {
+    await supabaseAdmin
+      .from('admin_users')
+      .upsert({ email, name: name || null }, { onConflict: 'email' })
+  }
+
+  // Provision voice/calls for this business (else it stays WhatsApp-only)
+  const enableVoice = voice_enabled === true
+  if (enableVoice) {
+    await supabaseAdmin
+      .from('feature_flags')
+      .upsert(
+        { business_id: business.id, flag_key: 'voice_ai', enabled: true },
+        { onConflict: 'business_id,flag_key' },
+      )
+  }
+
   await supabaseAdmin.from('admin_audit_log').insert({
     admin_email: admin.email,
     action: isBillingActive ? 'create_paid_user' : 'create_free_user',
     target_type: 'user',
     target_id: newUser.user.id,
-    metadata: { email, business_name: bName },
+    metadata: { email, business_name: bName, is_admin: makeAdmin, voice_enabled: enableVoice },
   })
 
   return Response.json({

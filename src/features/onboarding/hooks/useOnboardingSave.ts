@@ -1,5 +1,18 @@
 import { supabase } from '@/integrations/supabase/browser';
 
+export async function saveBusinessInfo(
+  businessId: string,
+  info: { name: string; industry: string; address: string; website: string },
+) {
+  const patch: Record<string, string> = {};
+  if (info.name.trim()) patch.name = info.name.trim();
+  patch.industry = info.industry.trim();
+  patch.address = info.address.trim();
+  patch.website = info.website.trim();
+  const { error } = await supabase.from('businesses').update(patch).eq('id', businessId);
+  if (error) throw new Error(error.message);
+}
+
 export async function saveServices(businessId: string, services: string[]) {
   const { error: delErr } = await supabase.from('services').delete().eq('business_id', businessId);
   if (delErr) throw new Error(delErr.message);

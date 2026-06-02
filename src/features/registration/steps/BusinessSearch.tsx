@@ -129,7 +129,7 @@ export default function BusinessSearch({ business, onUpdate, onNext }: Props) {
           type="text"
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
-          placeholder="Search your business name..."
+          placeholder="Search your business on Google..."
           className="h-12 w-full rounded-xl border border-border bg-surface pl-10 pr-4 text-[15px] text-ink outline-none transition-colors placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
 
@@ -159,15 +159,18 @@ export default function BusinessSearch({ business, onUpdate, onNext }: Props) {
         )}
       </div>
 
-      {/* Manual entry link */}
+      {/* Google hint + manual entry link */}
       {!selected && !showManual && (
-        <button
-          onClick={() => setShowManual(true)}
-          className="mt-3 flex items-center gap-1.5 text-[13px] text-brand hover:underline"
-        >
-          <PenLine size={14} />
-          Can't find it? Add your business manually
-        </button>
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-[12px] text-ink-subtle">Powered by Google — suggestions appear as you type</span>
+          <button
+            onClick={() => setShowManual(true)}
+            className="flex items-center gap-1.5 text-[13px] text-brand hover:underline"
+          >
+            <PenLine size={14} />
+            Enter manually instead
+          </button>
+        </div>
       )}
 
       {/* Website field */}
