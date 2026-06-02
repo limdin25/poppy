@@ -88,12 +88,17 @@ export default function LandingPage() {
             <a href="#pricing" className="hover:text-gray-900 transition">Pricing</a>
             <a href="#faq" className="hover:text-gray-900 transition">FAQ</a>
           </div>
-          <Link
-            to="/register"
-            className="bg-[#25D366] hover:bg-[#128C7E] text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-all hover:shadow-lg hover:shadow-green-200"
-          >
-            Start Free Trial
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link to="/login" className="hidden md:inline text-sm font-medium text-gray-600 hover:text-gray-900 transition">
+              Log in
+            </Link>
+            <Link
+              to="/register"
+              className="bg-[#25D366] hover:bg-[#128C7E] text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-all hover:shadow-lg hover:shadow-green-200"
+            >
+              Start Free Trial
+            </Link>
+          </div>
         </div>
       </nav>
 
