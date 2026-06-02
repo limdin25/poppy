@@ -50,6 +50,7 @@ export default async function handler(req: Request) {
     .from('businesses')
     .insert({
       name: bName,
+      owner_id: newUser.user.id,
       billing_active: isBillingActive,
       currency: 'GBP',
     })
