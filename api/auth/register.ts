@@ -1,10 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin as supabase } from '../../src/integrations/supabase/client.js';
 import { sendWelcomeEmail } from '../../src/integrations/resend/client.js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+// Uses the shared admin client (persistSession:false) so signInWithPassword
+// never pollutes the module-level client's session — every DB write stays
+// service-role and bypasses RLS.
 
 export const config = { runtime: 'edge' };
 
