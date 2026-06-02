@@ -14,21 +14,22 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { name, email, password, businessId } = await req.json() as {
+    const { name, email, password, businessId, businessName } = await req.json() as {
       name?: string;
       email?: string;
       password?: string;
       businessId?: string;
+      businessName?: string;
     };
 
-    if (!name || !email || !password || !businessId) {
+    if (!name || !email || !password) {
       return new Response(
-        JSON.stringify({ error: 'name, email, password, and businessId are required' }),
+        JSON.stringify({ error: 'name, email, and password are required' }),
         { status: 400 },
       );
     }
 
-    // Create user with password
+    // Create user with password FIRST (owner must exist before the business FK)
     const { data: userData, error: userError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -42,19 +43,33 @@ export default async function handler(req: Request): Promise<Response> {
 
     const userId = userData.user.id;
 
-    // Link user to business as owner
-    const { error: bizError } = await supabase
-      .from('businesses')
-      .update({ owner_id: userId })
-      .eq('id', businessId);
-
-    if (bizError) {
-      return new Response(JSON.stringify({ error: bizError.message }), { status: 500 });
+    // Resolve the business: link an existing one, or create a fresh one now that the owner exists
+    let bizId = businessId;
+    if (bizId) {
+      const { error: bizError } = await supabase
+        .from('businesses')
+        .update({ owner_id: userId })
+        .eq('id', bizId);
+      if (bizError) {
+        return new Response(JSON.stringify({ error: bizError.message }), { status: 500 });
+      }
+    } else {
+      const bName = (businessName && businessName.trim()) || `${name}'s Business`;
+      const slug = `${bName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'business'}-${userId.slice(0, 8)}`;
+      const { data: newBiz, error: createBizError } = await supabase
+        .from('businesses')
+        .insert({ owner_id: userId, name: bName, slug, billing_active: false, currency: 'GBP' })
+        .select('id')
+        .single();
+      if (createBizError || !newBiz) {
+        return new Response(JSON.stringify({ error: createBizError?.message || 'Failed to create business' }), { status: 500 });
+      }
+      bizId = newBiz.id;
     }
 
     // Create team_members entry so AuthProvider can find businessId
     const { error: teamError } = await supabase.from('team_members').insert({
-      business_id: businessId,
+      business_id: bizId,
       user_id: userId,
       email,
       name,
@@ -82,6 +97,7 @@ export default async function handler(req: Request): Promise<Response> {
       JSON.stringify({
         ok: true,
         userId,
+        businessId: bizId,
         access_token: signInData.session?.access_token,
         refresh_token: signInData.session?.refresh_token,
       }),

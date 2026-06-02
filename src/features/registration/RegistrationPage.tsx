@@ -29,24 +29,11 @@ export default function RegistrationPage() {
     setSubmitting(true)
     setError('')
     try {
-      // 1. Create the business
-      const bizRes = await fetch('/api/auth/create-business', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: businessName }),
-      })
-      const biz = await bizRes.json()
-      if (!bizRes.ok || !biz.businessId) {
-        setError(biz.error || 'Could not create your business')
-        setSubmitting(false)
-        return
-      }
-
-      // 2. Create the user account against that business
+      // One call creates the user + business + team member
       const regRes = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, businessId: biz.businessId }),
+        body: JSON.stringify({ name, email, password, businessName }),
       })
       const reg = await regRes.json()
       if (!regRes.ok || !reg.ok) {
@@ -55,7 +42,7 @@ export default function RegistrationPage() {
         return
       }
 
-      // 3. Sign in, then into onboarding
+      // Sign in, then into onboarding
       if (reg.access_token && reg.refresh_token) {
         await supabase.auth.setSession({ access_token: reg.access_token, refresh_token: reg.refresh_token })
       }
