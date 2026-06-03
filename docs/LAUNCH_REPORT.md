@@ -63,6 +63,7 @@ All test artifacts were cleaned up afterwards (demo account restored).
 - **Team invites were fully broken** — `team_members` has no `status` column, but the code selected + inserted it → loading the team AND inviting both failed silently. Fixed (derive active/pending from `user_id`).
 - **"0 active members"** — owner has no `joined_at`; active-count now keys off `user_id`.
 - **Invites didn't email anyone** — now `/api/team/invite` creates the row **and** emails the invitee via Resend (verified in Gmail).
+- **Invites couldn't be accepted** — signing up with an invited email created a *new* business. Now `register` detects the pending invite (email match) and joins the **existing** business instead. Verified end-to-end: invite → signup → `joinedTeam:true`, no rogue business created.
 
 ### Notifications — important setup note
 New-booking / message alerts only send to destinations configured in **Settings →
