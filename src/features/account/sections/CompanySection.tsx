@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Building2, Globe, Camera, Loader2 } from 'lucide-react'
+import { Building2, Globe, Camera, Loader2, Coins } from 'lucide-react'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useBusiness } from '@/core/hooks/useBusiness'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
+import { CURRENCIES, type Currency } from '@/core/lib/currency'
 import AddressAutocomplete from '@/core/components/AddressAutocomplete'
 import TeamSection from './TeamSection'
 
@@ -12,6 +13,7 @@ export default function CompanySection() {
   const [businessName, setBusinessName] = useState('')
   const [website, setWebsite] = useState('')
   const [address, setAddress] = useState('')
+  const [currency, setCurrency] = useState<Currency>('GBP')
   const [logoUrl, setLogoUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -23,6 +25,7 @@ export default function CompanySection() {
       setBusinessName(business.name || '')
       setWebsite(business.website || '')
       setAddress(business.address || '')
+      setCurrency((business.currency as Currency) || 'GBP')
       setLogoUrl(business.logo_url || '')
     }
   }, [business])
@@ -46,7 +49,7 @@ export default function CompanySection() {
     setSaving(true)
     await supabase
       .from('businesses')
-      .update({ name: businessName, website, address })
+      .update({ name: businessName, website, address, currency })
       .eq('id', businessId)
     refetch()
     setSaving(false)
@@ -119,6 +122,22 @@ export default function CompanySection() {
             <label className="text-[13px] font-medium text-ink">Business address</label>
             <div className="mt-1.5">
               <AddressAutocomplete value={address} onChange={setAddress} />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[13px] font-medium text-ink">Currency</label>
+            <p className="text-[12px] text-ink-subtle">Used for deal values across the inbox and pipeline.</p>
+            <div className="relative mt-1.5">
+              <Coins size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle" />
+              <select
+                data-testid="currency-select"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as Currency)}
+                className="h-11 w-full rounded-lg border border-border bg-surface pl-10 pr-4 text-[14px] text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              >
+                {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
             </div>
           </div>
         </div>

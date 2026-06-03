@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { usePipelineStages } from '@/core/hooks/usePipeline'
+import { useCurrency } from '@/core/hooks/useCurrency'
+import { currencySymbol } from '@/core/lib/currency'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import type { Deal } from '@/core/types/database'
@@ -30,6 +32,7 @@ const field =
 export function DealModal({ open, onClose, onSaved, deal, prefill }: DealModalProps) {
   const { businessId } = useAuth()
   const { data: stages } = usePipelineStages()
+  const currency = useCurrency()
   const editing = !!deal
 
   const [title, setTitle] = useState('')
@@ -140,7 +143,7 @@ export function DealModal({ open, onClose, onSaved, deal, prefill }: DealModalPr
           <div className="space-y-1.5">
             <label className="text-[12px] font-medium text-ink-muted">Value (deal size)</label>
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-ink-subtle">£</span>
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-ink-subtle">{currencySymbol(currency)}</span>
               <input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="0" className={field + ' pl-6'} />
             </div>
           </div>

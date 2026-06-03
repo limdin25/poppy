@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, MoreHorizontal, Trash2, Loader2, GripVertical, Repeat, MessageCircle } from 'lucide-react'
+import { Plus, MoreHorizontal, Trash2, Loader2, GripVertical, Repeat, MessageCircle, StickyNote } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { usePipelineStages, useDeals } from '@/core/hooks/usePipeline'
+import { useCurrency } from '@/core/hooks/useCurrency'
+import { formatMoney } from '@/core/lib/currency'
 import { DealModal } from '@/core/ui/DealModal'
 import type { Deal, PipelineStage } from '@/core/types/database'
 
@@ -29,10 +31,6 @@ const STAGE_COLORS: Record<string, StageColor> = {
 }
 const COLOR_KEYS = Object.keys(STAGE_COLORS)
 const colorOf = (c: string): StageColor => STAGE_COLORS[c] ?? STAGE_COLORS.slate
-
-function money(n: number): string {
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(Number(n || 0))
-}
 
 function countdownTo(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now()
@@ -211,6 +209,7 @@ function StageColumn({
   onOpenChat: (d: Deal) => void
   followupDue: Record<string, string>
 }) {
+  const currency = useCurrency()
   const c = colorOf(stage.color)
   const total = deals.reduce((s, d) => s + Number(d.value || 0), 0)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -300,10 +299,15 @@ function StageColumn({
                       <MessageCircle size={13} />
                     </button>
                   )}
-                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold', c.soft, c.text)}>{money(d.value)}</span>
+                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold', c.soft, c.text)}>{formatMoney(d.value, currency)}</span>
                 </div>
                 {d.description && (
                   <p className="mt-1 line-clamp-2 pl-[18px] text-[11.5px] leading-snug text-ink-muted">{d.description}</p>
+                )}
+                {d.contact?.notes && (
+                  <p className="mt-1 flex items-start gap-1 pl-[18px] text-[11px] leading-snug text-amber-700">
+                    <StickyNote size={11} className="mt-0.5 shrink-0" /> <span className="line-clamp-2">{d.contact.notes}</span>
+                  </p>
                 )}
                 <div className="mt-2 flex items-center justify-between gap-2 pl-[18px]">
                   <span className="truncate text-[11.5px] text-ink-subtle">{contactName || 'No contact linked'}</span>
@@ -335,7 +339,7 @@ function StageColumn({
 
       {/* Total */}
       <div className="mt-1.5 px-1 text-[11px] font-medium text-ink-subtle">
-        {deals.length} deal{deals.length === 1 ? '' : 's'} · {money(total)}
+        {deals.length} deal{deals.length === 1 ? '' : 's'} · {formatMoney(total, currency)}
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Download, Plus, Table2, Columns3, MessageCircle, Trash2, ChevronDown, Loader2, UploadCloud } from 'lucide-react'
+import { Upload, Download, Plus, Table2, Columns3, MessageCircle, Trash2, ChevronDown, Loader2, UploadCloud, StickyNote } from 'lucide-react'
 import { PageHeader } from '@/core/ui/PageHeader'
 import { DataTable, type Column } from '@/core/ui/DataTable'
 import { DealPipeline } from './DealPipeline'
@@ -228,7 +228,10 @@ export default function LeadsPage() {
       render: (l) => (
         <div className="min-w-0">
           <p className="truncate font-semibold text-ink">{phoneOf(l)}</p>
-          <p className="truncate text-[12px] text-ink-subtle">{l.name || '—'}</p>
+          <p className="flex items-center gap-1 truncate text-[12px] text-ink-subtle">
+            {l.name || '—'}
+            {l.notes && <span title={l.notes} className="shrink-0"><StickyNote size={11} className="text-amber-600" /></span>}
+          </p>
         </div>
       ),
     },

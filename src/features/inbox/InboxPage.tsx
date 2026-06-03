@@ -20,6 +20,8 @@ import {
   Trash2,
   Archive,
   ChevronDown,
+  Coins,
+  StickyNote,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
@@ -29,8 +31,9 @@ import { Switch } from '@/core/ui/Switch'
 import { useConversations, useMessages } from '@/core/hooks/useConversations'
 import { useQuickReplies, fillTokens, type QuickReply } from '@/core/hooks/useQuickReplies'
 import { useTeamMembers, memberLabel } from '@/core/hooks/useTeamMembers'
-import { DealModal } from '@/core/ui/DealModal'
 import { useDeals, usePipelineStages } from '@/core/hooks/usePipeline'
+import { useCurrency } from '@/core/hooks/useCurrency'
+import { formatMoney, currencySymbol } from '@/core/lib/currency'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
@@ -138,9 +141,6 @@ const STAGE_TINT: Record<string, { badge: string; dot: string }> = {
 }
 const tintOf = (color: string | undefined) => STAGE_TINT[color ?? 'slate'] ?? STAGE_TINT.slate
 
-function money(n: number): string {
-  return '£' + Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 0 })
-}
 
 function countdownTo(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now()
@@ -171,6 +171,7 @@ export default function InboxPage() {
   const { data: conversations, loading } = useConversations('all')
   const { session, user, businessId } = useAuth()
   const uid = user?.id ?? null
+  const currency = useCurrency()
 
   // Add-lead modal (create a new contact from the inbox)
   const [addLeadOpen, setAddLeadOpen] = useState(false)
@@ -381,7 +382,7 @@ export default function InboxPage() {
                         <span className="text-[10.5px] font-medium text-ink-subtle">via {chLabel}</span>
                         {deal && (
                           <span className={cn('flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', tintOf(stageColorOf(deal.stage_id)).badge)} title={`Deal: ${deal.title}`}>
-                            {stageName(deal.stage_id)} · {money(deal.value)}
+                            {stageName(deal.stage_id)} · {formatMoney(deal.value, currency)}
                           </span>
                         )}
                         {followupDue[c.id] && (
@@ -499,7 +500,9 @@ function ThreadView({
   const [savingDraft, setSavingDraft] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showFollowups, setShowFollowups] = useState(false)
-  const [dealOpen, setDealOpen] = useState(false)
+  const [showNotes, setShowNotes] = useState(false)
+  const [dealValueOpen, setDealValueOpen] = useState(false)
+  const [dealValueInput, setDealValueInput] = useState('')
   const [assignedTo, setAssignedTo] = useState<string | null>(conversation.assigned_to)
   const [assignOpen, setAssignOpen] = useState(false)
   const [aiOn, setAiOn] = useState(conversation.ai_handling !== false)
@@ -507,6 +510,7 @@ function ThreadView({
   const menuRef = useRef<HTMLDivElement>(null)
   const assignRef = useRef<HTMLDivElement>(null)
   const { data: teamMembers } = useTeamMembers()
+  const dealCurrency = useCurrency()
   const assignable = teamMembers.filter((m) => m.user_id)
   const assignedMember = teamMembers.find((m) => m.user_id === assignedTo) ?? null
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -530,8 +534,28 @@ function ThreadView({
         business_id: conversation.business_id,
         title: dn && dn !== 'Unknown' ? `Deal — ${dn}` : 'New deal',
         value: 0,
-        currency: 'GBP',
+        currency: dealCurrency,
         stage_id: next,
+        contact_id: conversation.contact_id,
+        conversation_id: conversation.id,
+      } as never)
+    }
+    onDealSaved?.()
+  }
+
+  async function saveDealValue() {
+    setDealValueOpen(false)
+    const n = Number(dealValueInput.replace(/[^0-9.]/g, '')) || 0
+    if (deal) {
+      await supabase.from('deals').update({ value: n, updated_at: new Date().toISOString() }).eq('id', deal.id)
+    } else {
+      const dn = displayName(conversation)
+      await supabase.from('deals').insert({
+        business_id: conversation.business_id,
+        title: dn && dn !== 'Unknown' ? `Deal — ${dn}` : 'New deal',
+        value: n,
+        currency: dealCurrency,
+        stage_id: stageId || stages[0]?.id || null,
         contact_id: conversation.contact_id,
         conversation_id: conversation.id,
       } as never)
@@ -684,13 +708,6 @@ function ThreadView({
             via {chLabelOf(conversation.channel)}{conversation.status === 'needs_handoff' ? ' · needs handoff' : ''}
           </p>
         </div>
-        <button
-          onClick={() => setDealOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-[12px] font-medium text-ink-muted transition hover:bg-elevated hover:text-ink"
-          title="Add a deal from this conversation"
-        >
-          <Plus size={15} /> <span className="hidden sm:inline">Deal</span>
-        </button>
         <div ref={assignRef} className="relative">
           <button
             onClick={() => setAssignOpen((o) => !o)}
@@ -761,16 +778,9 @@ function ThreadView({
         <FollowupsPanel conversation={conversation} contactName={name} onClose={() => setShowFollowups(false)} />
       )}
 
-      <DealModal
-        open={dealOpen}
-        onClose={() => setDealOpen(false)}
-        onSaved={onDealSaved}
-        prefill={{
-          contactId: conversation.contact_id,
-          conversationId: conversation.id,
-          title: name && name !== 'Unknown' ? `Deal — ${name}` : '',
-        }}
-      />
+      {showNotes && (
+        <NotesPanel conversation={conversation} contactName={name} onClose={() => setShowNotes(false)} onSaved={onDealSaved} />
+      )}
 
       {/* Messages */}
       <div className="flex-1 space-y-3 overflow-y-auto scrollbar-thin px-4 py-5">
@@ -920,6 +930,41 @@ function ThreadView({
           >
             <Repeat size={13} /> Follow-up
           </button>
+          {dealValueOpen ? (
+            <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-300 bg-white px-2 py-1 text-[11.5px] font-medium text-emerald-800">
+              {currencySymbol(dealCurrency)}
+              <input
+                data-testid="deal-value-input"
+                autoFocus
+                value={dealValueInput}
+                onChange={(e) => setDealValueInput(e.target.value)}
+                onBlur={() => void saveDealValue()}
+                onKeyDown={(e) => { if (e.key === 'Enter') void saveDealValue() }}
+                inputMode="decimal"
+                placeholder="0"
+                className="w-14 bg-transparent text-ink outline-none"
+              />
+            </span>
+          ) : (
+            <button
+              data-testid="deal-value-trigger"
+              onClick={() => { setDealValueInput(deal && deal.value ? String(deal.value) : ''); setDealValueOpen(true) }}
+              title="Set deal value"
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+            >
+              <Coins size={13} /> {deal && Number(deal.value) > 0 ? formatMoney(deal.value, dealCurrency) : 'Deal value'}
+            </button>
+          )}
+          <button
+            data-testid="notes-btn"
+            onClick={() => setShowNotes((s) => !s)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition',
+              showNotes ? 'bg-accent text-white' : 'bg-elevated text-ink-muted hover:bg-border',
+            )}
+          >
+            <StickyNote size={13} /> Notes
+          </button>
         </div>
         <div className="flex items-end gap-2">
           <button
@@ -959,6 +1004,46 @@ function ThreadView({
         </div>
       </div>
     </>
+  )
+}
+
+/** Inline note editor for a lead (contacts.notes). Visible in Leads table + pipeline. */
+function NotesPanel({ conversation, contactName, onClose, onSaved }: {
+  conversation: Conversation
+  contactName: string
+  onClose: () => void
+  onSaved?: () => void
+}) {
+  const [note, setNote] = useState(conversation.contact?.notes ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  async function save() {
+    if (!conversation.contact_id) { onClose(); return }
+    setSaving(true)
+    await supabase.from('contacts').update({ notes: note }).eq('id', conversation.contact_id)
+    setSaving(false); setSaved(true); onSaved?.()
+    setTimeout(() => setSaved(false), 1500)
+  }
+  return (
+    <div className="mx-3 mt-2 rounded-xl border-2 border-amber-300 bg-amber-50/40 px-4 py-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2"><StickyNote size={14} className="text-amber-600" /><span className="text-[12.5px] font-semibold text-amber-800">Note · {contactName}</span></div>
+        <button onClick={onClose} className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-ink"><X size={14} /></button>
+      </div>
+      <textarea
+        data-testid="notes-input"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={3}
+        placeholder="Private note about this lead — shows in Leads (table + pipeline)"
+        className="w-full resize-none rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
+      />
+      <div className="mt-2 flex justify-end">
+        <button data-testid="notes-save-btn" onClick={() => void save()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">
+          {saving ? <Loader2 size={12} className="animate-spin" /> : null}{saved ? 'Saved' : 'Save note'}
+        </button>
+      </div>
+    </div>
   )
 }
 

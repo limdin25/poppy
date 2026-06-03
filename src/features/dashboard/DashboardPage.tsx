@@ -21,9 +21,16 @@ import { cn } from '@/core/lib/cn'
 import { useLeads } from '@/core/hooks/useLeads'
 import { useConversations } from '@/core/hooks/useConversations'
 import { useAppointments } from '@/core/hooks/useAppointments'
+import { useDeals, usePipelineStages } from '@/core/hooks/usePipeline'
 import { useAnalyticsApi } from '@/core/hooks/useAnalyticsApi'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
-import type { Conversation, LeadStatus } from '@/core/types/database'
+import type { Conversation } from '@/core/types/database'
+
+const STAGE_TINT: Record<string, string> = {
+  slate: 'bg-slate-100 text-slate-700', blue: 'bg-blue-100 text-blue-700', violet: 'bg-violet-100 text-violet-700',
+  amber: 'bg-amber-100 text-amber-700', orange: 'bg-orange-100 text-orange-700', emerald: 'bg-emerald-100 text-emerald-700',
+  red: 'bg-red-100 text-red-700', pink: 'bg-pink-100 text-pink-700', cyan: 'bg-cyan-100 text-cyan-700',
+}
 
 /**
  * Overview (waslo-faithful layout, Elsie voice + diffs). WhatsApp-only,
@@ -75,9 +82,6 @@ interface KbSource {
   status: 'processing' | 'synced' | 'failed'
 }
 
-function toneForLead(status: LeadStatus | null): 'hot' | 'warm' | 'cold' {
-  return status === 'hot' || status === 'warm' || status === 'cold' ? status : 'cold'
-}
 
 /** Short relative time for the "Needs your reply" list (4m / 22m / 1h / 2d). */
 function shortAgo(iso: string | null): string {
@@ -109,9 +113,21 @@ export default function DashboardPage() {
   const { data: leads, loading: leadsLoading } = useLeads()
   const { data: conversations, loading: convLoading } = useConversations('all')
   const { data: appointments, loading: apptLoading } = useAppointments()
+  const { data: deals } = useDeals()
+  const { data: stages } = usePipelineStages()
+
+  // Each contact's deal stage (status badge) — one taxonomy across the app.
+  const stageByContact: Record<string, { name: string; color: string }> = {}
+  for (const d of deals) {
+    if (!d.contact_id) continue
+    const s = stages.find((x) => x.id === d.stage_id)
+    if (s && (!stageByContact[d.contact_id] || d.value > 0)) stageByContact[d.contact_id] = { name: s.name, color: s.color }
+  }
 
   const [draftsCount, setDraftsCount] = useState<number | null>(null)
   const [kb, setKb] = useState<KbSource[] | null>(null)
+  // Pending follow-ups due in the next 6h (for the "Next 6 hours" panel)
+  const [dueFollowups, setDueFollowups] = useState<{ id: string; send_at: string; name: string }[]>([])
 
   // --- Real analytics (server-side aggregation) ---
   const days = range === '7d' ? 7 : 30
@@ -176,6 +192,21 @@ export default function DashboardPage() {
   const hotLeads = leads.filter((l) => l.lead_status === 'hot').length
   const conversationsAnswered = conversations.length
 
+  // Pending follow-ups due in the next 6 hours (merged into the "Next 6 hours" panel)
+  useEffect(() => {
+    if (!conversations.length) { setDueFollowups([]); return }
+    const ids = conversations.map((c) => c.id)
+    const nowIso = new Date().toISOString()
+    const in6h = new Date(Date.now() + 6 * 3600_000).toISOString()
+    supabase.from('scheduled_followups').select('id, send_at, conversation_id').eq('status', 'pending').in('conversation_id', ids).gte('send_at', nowIso).lte('send_at', in6h).order('send_at')
+      .then(({ data }) => {
+        const nameByConv: Record<string, string> = {}
+        for (const c of conversations) nameByConv[c.id] = c.contact?.name || c.group_name || c.contact?.whatsapp || c.contact?.phone || 'Lead'
+        setDueFollowups((data ?? []).map((r: { id: string; send_at: string; conversation_id: string }) => ({ id: r.id, send_at: r.send_at, name: nameByConv[r.conversation_id] || 'Lead' })))
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations])
+
   // Needs your reply — most recent conversations.
   const needsReply = useMemo(() => {
     return [...conversations]
@@ -186,20 +217,26 @@ export default function DashboardPage() {
         name: c.contact?.name || c.group_name || c.contact?.whatsapp || c.contact?.phone || 'Unknown',
         preview: c.last_message_preview || 'New conversation',
         time: shortAgo(c.last_message_at),
-        tone: toneForLead(c.contact?.lead_status ?? null),
+        avatar: c.contact?.avatar_url ?? undefined,
+        stage: c.contact_id ? stageByContact[c.contact_id] : undefined,
+        channel: c.channel,
       }))
-  }, [conversations])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, deals, stages])
 
-  // Next 6 hours — upcoming appointments within 6h; fall back to next few upcoming.
+  // Next 6 hours — appointments + scheduled follow-ups, merged and sorted by time.
   const upcoming = useMemo(() => {
     const now = Date.now()
     const sixHours = now + 6 * 60 * 60 * 1000
-    const future = appointments
+    type Item = { id: string; at: number; iso: string; label: string; kind: 'appt' | 'followup'; status?: string }
+    const appts: Item[] = appointments
       .filter((a) => a.status !== 'cancelled' && Date.parse(a.starts_at) >= now)
-      .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
-    const within6 = future.filter((a) => Date.parse(a.starts_at) <= sixHours)
-    return (within6.length ? within6 : future).slice(0, 4)
-  }, [appointments])
+      .map((a) => ({ id: 'a' + a.id, at: Date.parse(a.starts_at), iso: a.starts_at, label: a.title + (a.contact?.name ? ` — ${a.contact.name}` : ''), kind: 'appt' as const, status: a.status }))
+    const fups: Item[] = dueFollowups.map((f) => ({ id: 'f' + f.id, at: Date.parse(f.send_at), iso: f.send_at, label: `Follow-up — ${f.name}`, kind: 'followup' as const }))
+    const all = [...appts, ...fups].sort((a, b) => a.at - b.at)
+    const within6 = all.filter((i) => i.at <= sixHours)
+    return (within6.length ? within6 : all).slice(0, 6)
+  }, [appointments, dueFollowups])
 
   // Overview chart — real per-day message volume from /api/analytics/volume.
   const chart = useMemo(() => {
@@ -283,11 +320,13 @@ export default function DashboardPage() {
                   onClick={() => navigate('/inbox')}
                   className="flex cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-elevated/50"
                 >
-                  <Avatar name={c.name} channel="whatsapp" size="sm" />
+                  <Avatar name={c.name} src={c.avatar} channel={c.channel} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-[13.5px] font-medium text-ink">{c.name}</p>
-                      <StatusPill tone={c.tone}>{c.tone}</StatusPill>
+                      {c.stage && (
+                        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold', STAGE_TINT[c.stage.color] ?? STAGE_TINT.slate)}>{c.stage.name}</span>
+                      )}
                     </div>
                     <p className="truncate text-[12.5px] text-ink-muted">{c.preview}</p>
                   </div>
@@ -316,18 +355,19 @@ export default function DashboardPage() {
               <li className="px-5 py-8 text-center text-[13px] text-ink-subtle">Loading appointments…</li>
             )}
             {!apptLoading &&
-              upcoming.map((a) => (
-                <li key={a.id} className="flex items-center gap-3 px-5 py-3.5">
+              upcoming.map((item) => (
+                <li key={item.id} className="flex items-center gap-3 px-5 py-3.5">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-elevated text-[12px] font-semibold text-ink">
-                    {clockTime(a.starts_at)}
+                    {clockTime(item.iso)}
                   </div>
-                  <p className="min-w-0 flex-1 truncate text-[13px] text-ink">
-                    {a.title}
-                    {a.contact?.name ? ` — ${a.contact.name}` : ''}
-                  </p>
-                  <StatusPill tone={a.status === 'confirmed' ? 'success' : 'warning'} uppercase={false}>
-                    {a.status === 'confirmed' ? 'Confirmed' : 'Pending'}
-                  </StatusPill>
+                  <p className="min-w-0 flex-1 truncate text-[13px] text-ink">{item.label}</p>
+                  {item.kind === 'followup' ? (
+                    <StatusPill tone="warning" uppercase={false}>Follow-up</StatusPill>
+                  ) : (
+                    <StatusPill tone={item.status === 'confirmed' ? 'success' : 'warning'} uppercase={false}>
+                      {item.status === 'confirmed' ? 'Confirmed' : 'Pending'}
+                    </StatusPill>
+                  )}
                 </li>
               ))}
             {!apptLoading && upcoming.length === 0 && (
