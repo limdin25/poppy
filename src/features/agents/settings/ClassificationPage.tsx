@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Loader2 } from 'lucide-react'
+import { Check, Loader2, Plus } from 'lucide-react'
 import { SectionCard } from '@/core/ui/SectionCard'
 import { Textarea, Label } from '@/core/ui/Input'
 import { Switch } from '@/core/ui/Switch'
@@ -37,17 +37,19 @@ export function stripClassificationBlock(prompt: string | null | undefined): str
   return (before + after).replace(/\n{3,}/g, '\n\n').trim()
 }
 
-/** Parse the classification block back into { preset, criteria }. */
-function parseClassificationBlock(prompt: string | null | undefined): { preset: string; criteria: string; present: boolean } {
-  if (!prompt) return { preset: 'general', criteria: '', present: false }
+/** Parse the classification block back into { preset, goal, criteria }. */
+function parseClassificationBlock(prompt: string | null | undefined): { preset: string; goal: string; criteria: string; present: boolean } {
+  if (!prompt) return { preset: 'general', goal: '', criteria: '', present: false }
   const start = prompt.indexOf(CLASSIFICATION_START)
   const end = prompt.indexOf(CLASSIFICATION_END)
-  if (start === -1 || end === -1 || end < start) return { preset: 'general', criteria: '', present: false }
+  if (start === -1 || end === -1 || end < start) return { preset: 'general', goal: '', criteria: '', present: false }
   const inner = prompt.slice(start + CLASSIFICATION_START.length, end)
   const presetMatch = inner.match(/Preset:\s*(\w+)/)
+  const goalMatch = inner.match(/Goal:\s*(.+)/)
   const criteriaMatch = inner.match(/Criteria:\s*([\s\S]*)$/)
   return {
     preset: presetMatch?.[1] ?? 'general',
+    goal: (goalMatch?.[1] ?? '').trim(),
     criteria: (criteriaMatch?.[1] ?? '').trim(),
     present: true,
   }
@@ -60,10 +62,10 @@ interface Preset {
 }
 
 const PRESETS: Preset[] = [
-  { id: 'sales', label: 'Sales Pipeline', description: 'Classify by purchase intent and readiness' },
-  { id: 'support', label: 'Support Priority', description: 'Prioritise by issue urgency and value' },
-  { id: 'booking', label: 'Booking Intent', description: 'Classify by appointment readiness' },
-  { id: 'general', label: 'General', description: 'Balanced classification for any business' },
+  { id: 'sales', label: 'Sales Pipeline', description: 'Move leads through purchase stages' },
+  { id: 'booking', label: 'Book Intent', description: 'Score by appointment readiness' },
+  { id: 'general', label: 'General Priority', description: 'Balanced priority for any business' },
+  { id: 'support', label: 'Support', description: 'Prioritise by issue urgency and value' },
 ]
 
 const savedBtn =
@@ -75,6 +77,7 @@ export default function ClassificationPage() {
 
   const [enabled, setEnabled] = useState(true)
   const [preset, setPreset] = useState('general')
+  const [customName, setCustomName] = useState('')
   const [criteria, setCriteria] = useState('')
 
   const [saving, setSaving] = useState(false)
@@ -86,6 +89,7 @@ export default function ClassificationPage() {
     const parsed = parseClassificationBlock(agent.ai_system_prompt)
     setEnabled(parsed.present)
     setPreset(parsed.preset)
+    setCustomName(parsed.goal)
     setCriteria(parsed.criteria)
   }, [agent])
 
@@ -100,11 +104,12 @@ export default function ClassificationPage() {
       if (enabled) {
         const block = [
           CLASSIFICATION_START,
-          'Classify each lead as Hot, Warm, or Cold based on their messages.',
+          'Score and prioritise each lead based on their messages, toward the goal below.',
           `Preset: ${preset}`,
+          preset === 'custom' && customName.trim() ? `Goal: ${customName.trim()}` : '',
           criteria.trim() ? `Criteria: ${criteria.trim()}` : 'Criteria:',
           CLASSIFICATION_END,
-        ].join('\n')
+        ].filter(Boolean).join('\n')
         nextPrompt = base ? `${base}\n\n${block}` : block
       }
 
@@ -140,17 +145,17 @@ export default function ClassificationPage() {
       <SectionCard>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="text-[15px] font-semibold tracking-tight text-ink">AI Lead Classification</h3>
+            <h3 className="text-[15px] font-semibold tracking-tight text-ink">Goals</h3>
             <p className="mt-0.5 text-[13px] text-ink-muted">
-              Automatically classify leads as Hot / Warm / Cold from their messages.
+              Tell Elsie what to optimise for — she scores and prioritises every lead toward this goal.
             </p>
           </div>
-          <Switch checked={enabled} onChange={setEnabled} label="Enable classification" />
+          <Switch checked={enabled} onChange={setEnabled} label="Enable goal scoring" />
         </div>
 
         <div className={cn('mt-6 space-y-6', !enabled && 'pointer-events-none opacity-50')}>
           <div>
-            <Label>Classification presets</Label>
+            <Label>Goal presets</Label>
             <div className="grid gap-3 sm:grid-cols-2">
               {PRESETS.map((p) => {
                 const selected = preset === p.id
@@ -174,8 +179,35 @@ export default function ClassificationPage() {
                   </button>
                 )
               })}
+              <button
+                type="button"
+                onClick={() => setPreset('custom')}
+                className={cn(
+                  'relative rounded-xl border border-dashed bg-surface p-4 text-left transition',
+                  preset === 'custom' ? 'border-accent ring-2 ring-accent' : 'border-border hover:border-ink-subtle/50',
+                )}
+              >
+                {preset === 'custom' && (
+                  <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white"><Check size={12} /></span>
+                )}
+                <p className="flex items-center gap-1.5 text-[13.5px] font-semibold text-ink"><Plus size={14} /> Custom goal</p>
+                <p className="mt-0.5 text-[12px] text-ink-muted">Define your own goal for Elsie to score toward</p>
+              </button>
             </div>
           </div>
+
+          {preset === 'custom' && (
+            <div>
+              <Label htmlFor="customName">Custom goal name</Label>
+              <input
+                id="customName"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="e.g. Renewal pipeline, Upsell readiness…"
+                className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+          )}
 
           <div>
             <Label htmlFor="criteria">Custom criteria (optional)</Label>

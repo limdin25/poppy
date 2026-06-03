@@ -32,8 +32,8 @@ const NAV: NavItem[] = [
   },
   {
     to: '/agents/classification',
-    label: 'Classification',
-    description: 'How leads are scored as Hot / Warm / Cold',
+    label: 'Goals',
+    description: 'What Elsie optimises each lead toward',
     icon: Brain,
   },
   {
