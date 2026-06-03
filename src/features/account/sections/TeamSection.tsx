@@ -13,10 +13,10 @@ interface Member {
   joined_at: string | null
 }
 
-// There is no `status` column on team_members — a member is "active" once they've
-// joined (joined_at set), otherwise the row is a pending invite.
-const isActive = (m: Member) => !!m.joined_at
-const isPending = (m: Member) => !m.joined_at
+// There is no `status` column on team_members — a member is "active" once they're
+// linked to a real user (user_id set); an invite with no user yet is "pending".
+const isActive = (m: Member) => !!m.user_id
+const isPending = (m: Member) => !m.user_id
 
 export default function TeamSection() {
   const { businessId } = useAuth()
