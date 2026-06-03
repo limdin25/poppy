@@ -28,6 +28,7 @@ import { useConversations, useMessages } from '@/core/hooks/useConversations'
 import { useQuickReplies, fillTokens, type QuickReply } from '@/core/hooks/useQuickReplies'
 import { useTeamMembers, memberLabel } from '@/core/hooks/useTeamMembers'
 import { DealModal } from '@/core/ui/DealModal'
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import type { Conversation, Message } from '@/core/types/database'
@@ -117,6 +118,20 @@ function chLabelOf(channel: Conversation['channel']): string {
     : 'Instagram'
 }
 
+type LeadLifecycle = 'new' | 'contacted' | 'qualified' | 'won' | 'lost'
+const STATUS_KEYS: LeadLifecycle[] = ['new', 'contacted', 'qualified', 'won', 'lost']
+const STATUS_CFG: Record<LeadLifecycle, { label: string; badge: string; dot: string }> = {
+  new:       { label: 'New',       badge: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400' },
+  contacted: { label: 'Contacted', badge: 'bg-blue-100 text-blue-700',     dot: 'bg-blue-500' },
+  qualified: { label: 'Qualified', badge: 'bg-amber-100 text-amber-700',   dot: 'bg-amber-500' },
+  won:       { label: 'Won',       badge: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  lost:      { label: 'Lost',      badge: 'bg-red-100 text-red-700',       dot: 'bg-red-500' },
+}
+function statusOf(c: Conversation): LeadLifecycle {
+  const s = c.contact?.status ?? 'new'
+  return (STATUS_KEYS as string[]).includes(s) ? (s as LeadLifecycle) : 'new'
+}
+
 function initialsOf(name: string): string {
   return (
     name
@@ -134,8 +149,33 @@ export default function InboxPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const { data: conversations, loading } = useConversations('all')
-  const { session, user } = useAuth()
+  const { session, user, businessId } = useAuth()
   const uid = user?.id ?? null
+
+  // Add-lead modal (create a new contact from the inbox)
+  const [addLeadOpen, setAddLeadOpen] = useState(false)
+  const [leadName, setLeadName] = useState('')
+  const [leadPhone, setLeadPhone] = useState('')
+  const [leadBusy, setLeadBusy] = useState(false)
+  const [leadErr, setLeadErr] = useState<string | null>(null)
+  const [leadMsg, setLeadMsg] = useState<string | null>(null)
+
+  async function createLead() {
+    if (!leadName.trim() && !leadPhone.trim()) { setLeadErr('Add a name or phone number.'); return }
+    if (!businessId) { setLeadErr('No business found.'); return }
+    setLeadBusy(true); setLeadErr(null)
+    const { error } = await supabase.from('contacts').insert({
+      business_id: businessId,
+      name: leadName.trim() || null,
+      phone: leadPhone.trim() || null,
+      whatsapp: leadPhone.trim() || null,
+      status: 'new',
+    } as never)
+    setLeadBusy(false)
+    if (error) { setLeadErr(error.message); return }
+    setLeadName(''); setLeadPhone('')
+    setLeadMsg('Lead added — find them under Leads.')
+  }
 
   const counts: Record<InboxFolder, number> = { inbox: 0, unread: 0, mine: 0, team: 0, archived: 0, closed: 0 }
   for (const c of conversations) {
@@ -169,9 +209,18 @@ export default function InboxPage() {
           <div className="space-y-3 border-b border-border px-4 py-4">
             <div className="flex items-center justify-between">
               <h2 className="text-[17px] font-bold tracking-tight text-ink">{FOLDER_LABELS[folder]}</h2>
-              <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] font-medium text-ink-muted">
-                {visible.length}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] font-medium text-ink-muted">
+                  {visible.length}
+                </span>
+                <button
+                  onClick={() => { setAddLeadOpen(true); setLeadErr(null); setLeadMsg(null) }}
+                  title="Add a new lead"
+                  className="inline-flex items-center gap-1 rounded-lg bg-accent px-2 py-1 text-[12px] font-semibold text-white transition hover:opacity-90"
+                >
+                  <Plus size={14} /> New
+                </button>
+              </div>
             </div>
             <FilterChips
               options={FOLDER_ORDER.map((f) => ({ value: f, label: FOLDER_LABELS[f], count: counts[f] }))}
@@ -211,6 +260,11 @@ export default function InboxPage() {
                       </p>
                       <div className="mt-1 flex items-center gap-2">
                         <span className="text-[10.5px] font-medium text-ink-subtle">via {chLabel}</span>
+                        {c.contact?.status && c.contact.status !== 'new' && (
+                          <span className={cn('rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold', STATUS_CFG[statusOf(c)].badge)}>
+                            {STATUS_CFG[statusOf(c)].label}
+                          </span>
+                        )}
                         {c.unread_count > 0 && (
                           <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-whatsapp px-1 text-[10px] font-semibold text-white">
                             {c.unread_count}
@@ -243,6 +297,30 @@ export default function InboxPage() {
           )}
         </section>
       </div>
+
+      <Dialog open={addLeadOpen} onClose={() => !leadBusy && setAddLeadOpen(false)} width="sm">
+        <DialogHeader>Add a new lead</DialogHeader>
+        <DialogBody className="space-y-3">
+          {leadMsg ? (
+            <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-700">{leadMsg}</div>
+          ) : null}
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Name</label>
+            <input value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="e.g. Jane Smith" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Phone (WhatsApp)</label>
+            <input value={leadPhone} onChange={(e) => setLeadPhone(e.target.value)} placeholder="+44…" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" />
+          </div>
+          {leadErr && <p className="text-[12.5px] text-red-600">{leadErr}</p>}
+        </DialogBody>
+        <DialogFooter>
+          <button onClick={() => setAddLeadOpen(false)} disabled={leadBusy} className="rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted hover:bg-elevated disabled:opacity-40">Close</button>
+          <button onClick={() => void createLead()} disabled={leadBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50">
+            {leadBusy && <Loader2 size={14} className="animate-spin" />}{leadBusy ? 'Adding…' : 'Add lead'}
+          </button>
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }
@@ -271,7 +349,8 @@ function ThreadView({
   const [dealOpen, setDealOpen] = useState(false)
   const [assignedTo, setAssignedTo] = useState<string | null>(conversation.assigned_to)
   const [assignOpen, setAssignOpen] = useState(false)
-  const [cls, setCls] = useState<string>(conversation.contact?.lead_status ?? '')
+  const [aiOn, setAiOn] = useState(conversation.ai_handling !== false)
+  const [status, setStatus] = useState<LeadLifecycle>(statusOf(conversation))
   const menuRef = useRef<HTMLDivElement>(null)
   const assignRef = useRef<HTMLDivElement>(null)
   const { data: teamMembers } = useTeamMembers()
@@ -279,10 +358,15 @@ function ThreadView({
   const assignedMember = teamMembers.find((m) => m.user_id === assignedTo) ?? null
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  async function changeClassification(next: string) {
-    setCls(next)
+  async function toggleAi() {
+    const next = !aiOn
+    setAiOn(next)
+    await supabase.from('conversations').update({ ai_handling: next }).eq('id', conversation.id)
+  }
+  async function changeStatus(next: LeadLifecycle) {
+    setStatus(next)
     if (conversation.contact_id) {
-      await supabase.from('contacts').update({ lead_status: next || null, lead_updated_at: new Date().toISOString() }).eq('id', conversation.contact_id)
+      await supabase.from('contacts').update({ status: next }).eq('id', conversation.contact_id)
     }
   }
 
@@ -404,23 +488,6 @@ function ThreadView({
             via {chLabelOf(conversation.channel)}{conversation.status === 'needs_handoff' ? ' · needs handoff' : ''}
           </p>
         </div>
-        <select
-          value={cls}
-          onChange={(e) => void changeClassification(e.target.value)}
-          title="Lead classification"
-          className={cn(
-            'rounded-full border px-2.5 py-1 text-[11.5px] font-medium outline-none transition',
-            cls === 'hot' ? 'border-red-200 bg-red-50 text-red-700'
-              : cls === 'warm' ? 'border-amber-200 bg-amber-50 text-amber-700'
-              : cls === 'cold' ? 'border-blue-200 bg-blue-50 text-blue-700'
-              : 'border-border bg-surface text-ink-muted',
-          )}
-        >
-          <option value="">Unclassified</option>
-          <option value="hot">Hot</option>
-          <option value="warm">Warm</option>
-          <option value="cold">Cold</option>
-        </select>
         <button
           onClick={() => setDealOpen(true)}
           className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-[12px] font-medium text-ink-muted transition hover:bg-elevated hover:text-ink"
@@ -468,13 +535,6 @@ function ThreadView({
             </div>
           )}
         </div>
-        <button
-          onClick={() => setShowFollowups((s) => !s)}
-          className={cn('rounded-lg p-2 transition hover:bg-elevated', showFollowups ? 'bg-elevated text-ink' : 'text-ink-muted')}
-          title="Follow-ups"
-        >
-          <Repeat size={17} />
-        </button>
         <div ref={menuRef} className="relative">
           <button onClick={() => setMenuOpen((o) => !o)} className="rounded-lg p-2 text-ink-muted hover:bg-elevated" title="More">
             <MoreHorizontal size={17} />
@@ -599,6 +659,38 @@ function ThreadView({
             onClose={() => setShowQuick(false)}
           />
         )}
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => void toggleAi()}
+            title={aiOn ? 'Elsie auto-replies to this chat — click to pause the AI' : 'AI is paused — click to let Elsie auto-reply'}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition',
+              aiOn ? 'bg-violet-100 text-violet-700 hover:bg-violet-200' : 'bg-elevated text-ink-muted hover:bg-border',
+            )}
+          >
+            <Sparkles size={13} /> AI {aiOn ? 'on' : 'off'}
+          </button>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-elevated px-2 py-1 text-[11.5px] font-medium text-ink-muted">
+            <span className={cn('h-2 w-2 rounded-full', STATUS_CFG[status].dot)} />
+            <select
+              value={status}
+              onChange={(e) => void changeStatus(e.target.value as LeadLifecycle)}
+              title="Lead status"
+              className="bg-transparent text-ink outline-none"
+            >
+              {STATUS_KEYS.map((s) => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
+            </select>
+          </span>
+          <button
+            onClick={() => setShowFollowups((s) => !s)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition',
+              showFollowups ? 'bg-accent text-white' : 'bg-elevated text-ink-muted hover:bg-border',
+            )}
+          >
+            <Repeat size={13} /> Follow-up
+          </button>
+        </div>
         <div className="flex items-end gap-2">
           <button
             onClick={() => setShowQuick((s) => !s)}
