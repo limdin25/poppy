@@ -137,6 +137,16 @@ function statusOf(c: Conversation): LeadLifecycle {
   return (STATUS_KEYS as string[]).includes(s) ? (s as LeadLifecycle) : 'new'
 }
 
+function countdownTo(iso: string): string {
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return 'due'
+  const mins = Math.round(diff / 60000)
+  if (mins < 60) return `${mins}m`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h`
+  return `${Math.round(hrs / 24)}d`
+}
+
 function initialsOf(name: string): string {
   return (
     name
@@ -223,6 +233,22 @@ export default function InboxPage() {
     for (const f of FOLDER_ORDER) if (inFolder(c, f, uid)) counts[f]++
   }
   const visible = conversations.filter((c) => inFolder(c, folder, uid))
+
+  // Next pending follow-up per conversation (for the countdown badge on cards)
+  const [followupDue, setFollowupDue] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!conversations.length) { setFollowupDue({}); return }
+    const ids = conversations.map((c) => c.id)
+    supabase.from('scheduled_followups').select('conversation_id, send_at').eq('status', 'pending').in('conversation_id', ids)
+      .then(({ data }) => {
+        const map: Record<string, string> = {}
+        for (const r of (data ?? []) as { conversation_id: string; send_at: string }[]) {
+          if (!map[r.conversation_id] || r.send_at < map[r.conversation_id]) map[r.conversation_id] = r.send_at
+        }
+        setFollowupDue(map)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations])
 
   // Deep-link from Leads "View Chat": ?contact=<id> → open that contact's chat.
   useEffect(() => {
@@ -337,6 +363,11 @@ export default function InboxPage() {
                         {c.contact?.status && c.contact.status !== 'new' && (
                           <span className={cn('rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold', STATUS_CFG[statusOf(c)].badge)}>
                             {STATUS_CFG[statusOf(c)].label}
+                          </span>
+                        )}
+                        {followupDue[c.id] && (
+                          <span className="flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9.5px] font-semibold text-orange-700" title="Next follow-up">
+                            <Repeat size={9} /> {countdownTo(followupDue[c.id])}
                           </span>
                         )}
                         {c.unread_count > 0 && (
@@ -526,6 +557,8 @@ function ThreadView({
         body: JSON.stringify({ conversationId: conversation.id, body }),
       })
       if (!res.ok) throw new Error('Send failed')
+      // If a pending AI draft existed, the user just sent their own reply instead — clear it.
+      if (draftMsg) await supabase.from('messages').delete().eq('id', draftMsg.id)
       setComposer('')
       refetchMessages()
     } catch {
@@ -533,7 +566,7 @@ function ThreadView({
     } finally {
       setSending(false)
     }
-  }, [composer, sending, session?.access_token, conversation.id, refetchMessages])
+  }, [composer, sending, session?.access_token, conversation.id, refetchMessages, draftMsg])
 
   const approveDraft = useCallback(async (messageId: string) => {
     setApproving(true)
@@ -706,16 +739,9 @@ function ThreadView({
               />
             ))
         )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {error && (
-        <p className="mx-4 mb-1 text-[12px] text-red-500">{error}</p>
-      )}
-
-      {/* Draft banner — Elsie's pending reply (differentiator) */}
-      {draftMsg && (
-        <div className="mx-4 mb-2 rounded-xl border border-violet-200 border-l-4 border-l-violet-500 bg-violet-50 p-3 shadow-soft">
+        {/* Draft banner — Elsie's pending reply, inline at the end of the thread */}
+        {draftMsg && (
+        <div className="mt-1 rounded-xl border border-violet-200 border-l-4 border-l-violet-500 bg-violet-50 p-3 shadow-soft">
           <div className="mb-1.5 flex items-center gap-1.5">
             <Sparkles size={14} className="text-violet-600" />
             <span className="text-[12px] font-semibold text-violet-700">Elsie drafted a reply</span>
@@ -745,6 +771,12 @@ function ThreadView({
             </button>
           </div>
         </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {error && (
+        <p className="mx-4 mb-1 text-[12px] text-red-500">{error}</p>
       )}
 
       {/* Composer */}
@@ -785,7 +817,7 @@ function ThreadView({
             onClick={() => setShowFollowups((s) => !s)}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition',
-              showFollowups ? 'bg-accent text-white' : 'bg-elevated text-ink-muted hover:bg-border',
+              showFollowups ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 hover:bg-orange-100',
             )}
           >
             <Repeat size={13} /> Follow-up
@@ -903,19 +935,19 @@ function FollowupsPanel({
     await supabase.from('conversations').update({ followup_sequence_id: id }).eq('id', conversation.id)
   }
   async function scheduleNow() {
-    if (!sequenceId) return
+    if (!sequenceId || !selectedSeq) return
     setBusy(true)
-    const pendingCount = scheduled.filter((s) => s.status === 'pending').length
-    const sendAt = new Date(Date.now() + delayMins * 60_000).toISOString()
-    // Turn auto follow-ups on for this chat as soon as one is scheduled.
     if (!enabled) await toggleEnabled(true)
-    await supabase.from('scheduled_followups').insert({
-      conversation_id: conversation.id,
-      sequence_id: sequenceId,
-      step_index: pendingCount,
-      send_at: sendAt,
-      status: 'pending',
+    const steps = selectedSeq.steps.length ? selectedSeq.steps : [{ after_hours: 24, message: '' }]
+    // First step fires after the chosen "no reply within"; later steps use their own gaps.
+    let t = Date.now() + delayMins * 60_000
+    const rows = steps.map((st, i) => {
+      if (i > 0) t += (Number(st.after_hours) || 24) * 3_600_000
+      return { conversation_id: conversation.id, sequence_id: sequenceId, step_index: i, send_at: new Date(t).toISOString(), status: 'pending' as const }
     })
+    // Replace any existing pending schedule for this chat
+    await supabase.from('scheduled_followups').update({ status: 'cancelled' }).eq('conversation_id', conversation.id).eq('status', 'pending')
+    await supabase.from('scheduled_followups').insert(rows)
     await loadScheduled()
     setBusy(false)
   }
@@ -931,11 +963,11 @@ function FollowupsPanel({
   const selectedSeq = sequences.find((s) => s.id === sequenceId) ?? null
 
   return (
-    <div className="border-b border-border bg-surface px-4 py-3">
+    <div className="mx-3 mt-2 rounded-xl border-2 border-orange-300 bg-orange-50/50 px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Repeat size={14} className="text-ink-muted" />
-          <span className="text-[12.5px] font-semibold text-ink">Follow-ups for {contactName}</span>
+          <Repeat size={14} className="text-orange-600" />
+          <span className="text-[12.5px] font-semibold text-orange-800">Follow-ups for {contactName}</span>
         </div>
         <button onClick={onClose} className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-ink"><X size={14} /></button>
       </div>

@@ -749,18 +749,21 @@ export default async function handler(req: Request): Promise<Response> {
         } else {
           const { data: convo } = await supabase
             .from('conversations')
-            .select('id, ai_handling')
+            .select('id, ai_handling, status')
             .eq('business_id', businessId)
             .eq('contact_id', contactId)
             .eq('channel', imChannelType)
-            .in('status', ['open', 'closed'])
-            .order('created_at', { ascending: false })
+            .order('created_at', { ascending: true })
             .limit(1)
             .maybeSingle();
 
           if (convo) {
             conversationId = convo.id;
             convoAiHandling = convo.ai_handling !== false;
+            // A new inbound on an archived/closed thread should bring it back to the inbox
+            if (convo.status === 'archived' || convo.status === 'closed') {
+              await supabase.from('conversations').update({ status: 'open' }).eq('id', convo.id);
+            }
           } else {
             const { data: newConvo } = await supabase
               .from('conversations')

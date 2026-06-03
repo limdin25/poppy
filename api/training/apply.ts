@@ -25,6 +25,14 @@ export default async function handler(req: Request): Promise<Response> {
   if (auth instanceof Response) return auth;
   const { businessId } = auth;
 
+  const body = await req.json().catch(() => ({})) as { sections?: { personality?: boolean; services?: boolean; faqs?: boolean; followups?: boolean } };
+  const sec = {
+    personality: body.sections?.personality ?? true,
+    services: body.sections?.services ?? true,
+    faqs: body.sections?.faqs ?? true,
+    followups: body.sections?.followups ?? true,
+  };
+
   const { data: sources } = await supabase
     .from('knowledge_sources')
     .select('name, type, url, summary, content')
@@ -97,44 +105,43 @@ Rules:
 
   const applied = { business: false, agent: false, services: 0, faqs: 0, sequences: 0, channels: 0 };
 
-  // 1) Business personality + greeting + tone + system prompt
-  await supabase.from('businesses').update({
-    greeting: cfg.greeting || null,
-    tone: cfg.tone || 'friendly',
-    ai_system_prompt: sysPrompt || null,
-  }).eq('id', businessId);
-  applied.business = true;
-
-  // 2) Default agent (if one exists): same personality + draft-by-default + follow-ups on
-  const { data: agent } = await supabase
-    .from('agents')
-    .select('id')
-    .eq('business_id', businessId)
-    .eq('is_default', true)
-    .maybeSingle();
-  if (agent?.id) {
-    await supabase.from('agents').update({
+  // 1) Business + agent personality + greeting + tone + draft-by-default (only if ticked)
+  if (sec.personality) {
+    await supabase.from('businesses').update({
       greeting: cfg.greeting || null,
       tone: cfg.tone || 'friendly',
-      instructions: cfg.personality || null,
       ai_system_prompt: sysPrompt || null,
-      auto_reply_enabled: true,
-      draft_mode: true,
-      follow_up_enabled: true,
-    }).eq('id', agent.id);
-    applied.agent = true;
+    }).eq('id', businessId);
+    applied.business = true;
+
+    const { data: agent } = await supabase
+      .from('agents')
+      .select('id')
+      .eq('business_id', businessId)
+      .eq('is_default', true)
+      .maybeSingle();
+    if (agent?.id) {
+      await supabase.from('agents').update({
+        greeting: cfg.greeting || null,
+        tone: cfg.tone || 'friendly',
+        instructions: cfg.personality || null,
+        ai_system_prompt: sysPrompt || null,
+        auto_reply_enabled: true,
+        draft_mode: true,
+        follow_up_enabled: true,
+      }).eq('id', agent.id);
+      applied.agent = true;
+    }
+
+    const { data: chans } = await supabase.from('channels').select('id').eq('business_id', businessId);
+    if (chans?.length) {
+      await supabase.from('channels').update({ auto_reply_enabled: true, draft_mode: true }).eq('business_id', businessId);
+      applied.channels = chans.length;
+    }
   }
 
-  // 3) Draft-by-default across the business's channels (Elsie drafts, owner approves)
-  const { data: chans } = await supabase.from('channels').select('id').eq('business_id', businessId);
-  if (chans?.length) {
-    await supabase.from('channels').update({ auto_reply_enabled: true, draft_mode: true }).eq('business_id', businessId);
-    applied.channels = chans.length;
-  }
-
-  // 4) Services — only seed if the business has none yet
-  const { count: svcCount } = await supabase.from('services').select('id', { count: 'exact', head: true }).eq('business_id', businessId);
-  if (!svcCount && Array.isArray(cfg.services)) {
+  // 2) Services — replace existing when ticked
+  if (sec.services && Array.isArray(cfg.services)) {
     const rows = cfg.services.slice(0, 12).filter((s: any) => s?.name).map((s: any, i: number) => ({
       business_id: businessId,
       name: String(s.name).slice(0, 200),
@@ -143,22 +150,33 @@ Rules:
       bookable: false,
       sort_order: i,
     }));
-    if (rows.length) { await supabase.from('services').insert(rows); applied.services = rows.length; }
+    if (rows.length) {
+      await supabase.from('services').delete().eq('business_id', businessId);
+      await supabase.from('services').insert(rows);
+      applied.services = rows.length;
+    }
   }
 
-  // 5) FAQs — only seed if none yet
-  const { count: faqCount } = await supabase.from('faqs').select('id', { count: 'exact', head: true }).eq('business_id', businessId);
-  if (!faqCount && Array.isArray(cfg.faqs)) {
+  // 3) FAQs — replace existing when ticked
+  if (sec.faqs && Array.isArray(cfg.faqs)) {
     const rows = cfg.faqs.slice(0, 12).filter((f: any) => f?.question && f?.answer).map((f: any, i: number) => ({
       business_id: businessId,
       question: String(f.question).slice(0, 500),
       answer: String(f.answer).slice(0, 2000),
       sort_order: i,
     }));
-    if (rows.length) { await supabase.from('faqs').insert(rows); applied.faqs = rows.length; }
+    if (rows.length) {
+      await supabase.from('faqs').delete().eq('business_id', businessId);
+      await supabase.from('faqs').insert(rows);
+      applied.faqs = rows.length;
+    }
   }
 
-  // 6) Follow-up sequences — 3 ready-made, named types (fast + reliable; editable later)
+  if (!sec.followups) {
+    return new Response(JSON.stringify({ ok: true, applied, summary: { greeting: cfg.greeting || '', tone: cfg.tone || '', services: applied.services, faqs: applied.faqs, sequences: 0 } }), { status: 200 });
+  }
+
+  // 4) Follow-up sequences — 3 ready-made, named types (fast + reliable; editable later)
   const seqRows = [
     {
       business_id: businessId,

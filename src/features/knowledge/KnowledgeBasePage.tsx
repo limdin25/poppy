@@ -234,25 +234,37 @@ export default function KnowledgeBasePage() {
 
 interface ApplyResult { greeting: string; tone: string; services: number; faqs: number; sequences: number }
 
+const SETUP_SECTIONS: { key: 'personality' | 'services' | 'faqs' | 'followups'; label: string; desc: string }[] = [
+  { key: 'personality', label: 'Greeting, personality & lead rules', desc: 'How Elsie speaks + how she classifies leads' },
+  { key: 'services', label: 'Services', desc: 'Replaces your current services list' },
+  { key: 'faqs', label: 'FAQs', desc: 'Replaces your current FAQs' },
+  { key: 'followups', label: '3 follow-up sequences', desc: 'Replaces your follow-up types' },
+]
+
 function SetupCard({ token, canRun }: { token?: string; canRun: boolean }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [done, setDone] = useState<ApplyResult | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [sec, setSec] = useState({ personality: true, services: true, faqs: true, followups: true })
 
   async function run() {
     if (!token) return
     setBusy(true); setErr(null); setDone(null)
     try {
-      const res = await fetch('/api/training/apply', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: '{}' })
+      const res = await fetch('/api/training/apply', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ sections: sec }) })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data.error) { setErr(data.error || 'Setup failed — try again.'); return }
       setDone(data.summary as ApplyResult)
+      setPickerOpen(false)
     } catch {
       setErr('Setup failed — try again.')
     } finally {
       setBusy(false)
     }
   }
+
+  const anyChecked = Object.values(sec).some(Boolean)
 
   return (
     <SectionCard bodyClassName="p-5 sm:p-6">
@@ -269,22 +281,53 @@ function SetupCard({ token, canRun }: { token?: string; canRun: boolean }) {
           </div>
         </div>
         <button
-          onClick={() => void run()}
+          onClick={() => { setPickerOpen(true); setErr(null) }}
           disabled={busy || !canRun}
           title={canRun ? 'Set up Elsie from your knowledge' : 'Add some knowledge first'}
           className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-          {busy ? 'Setting up…' : 'Set up Elsie'}
+          <Sparkles size={15} /> Set up Elsie
         </button>
       </div>
-      {err && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-700">{err}</p>}
+
+      {pickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !busy && setPickerOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-pop" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[15px] font-semibold text-ink">What should Elsie set up?</h3>
+            <p className="mt-1 text-[12.5px] text-ink-muted">Tick what to (re)write from your knowledge. Ticked items overwrite what's there now.</p>
+            <div className="mt-4 space-y-2">
+              {SETUP_SECTIONS.map((s) => (
+                <label key={s.key} className="flex cursor-pointer items-start gap-3 rounded-xl border border-border p-3 transition hover:bg-elevated/40">
+                  <input
+                    type="checkbox"
+                    checked={sec[s.key]}
+                    onChange={(e) => setSec((p) => ({ ...p, [s.key]: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 accent-[rgb(var(--accent))]"
+                  />
+                  <span>
+                    <span className="block text-[13px] font-medium text-ink">{s.label}</span>
+                    <span className="block text-[11.5px] text-ink-subtle">{s.desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {err && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-700">{err}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setPickerOpen(false)} disabled={busy} className="rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted hover:bg-elevated disabled:opacity-40">Cancel</button>
+              <button onClick={() => void run()} disabled={busy || !anyChecked} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50">
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}{busy ? 'Setting up…' : 'Set up Elsie'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {err && !pickerOpen && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-700">{err}</p>}
       {done && (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="text-[13px] font-semibold text-emerald-800">Elsie is ready to go 🎉</p>
           <p className="mt-1 text-[12.5px] text-emerald-700">
-            Wrote her greeting &amp; personality{done.services ? `, ${done.services} services` : ''}{done.faqs ? `, ${done.faqs} FAQs` : ''} and {done.sequences} follow-up sequences.
-            {(!done.services && !done.faqs) ? ' (You already had services & FAQs, so those were left as they are.)' : ''} She'll draft replies for you to approve.
+            Set up the parts you ticked{done.services ? ` · ${done.services} services` : ''}{done.faqs ? ` · ${done.faqs} FAQs` : ''}{done.sequences ? ` · ${done.sequences} follow-up sequences` : ''}. She'll draft replies for you to approve.
           </p>
           <Link to="/agents" className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-emerald-800 hover:underline">
             Review &amp; edit in AI Agent <ArrowRight size={13} />

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, MoreHorizontal, Trash2, Loader2, GripVertical } from 'lucide-react'
+import { Plus, MoreHorizontal, Trash2, Loader2, GripVertical, Repeat } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
@@ -33,10 +33,27 @@ function money(n: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(Number(n || 0))
 }
 
+function countdownTo(iso: string): string {
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return 'due'
+  const mins = Math.round(diff / 60000)
+  if (mins < 60) return `${mins}m`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h`
+  return `${Math.round(hrs / 24)}d`
+}
+
 function dealContactName(d: Deal): string {
   const c = d.contact
   if (!c) return ''
   return c.name || c.phone || c.whatsapp || c.email || ''
+}
+
+const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  contacted: { label: 'Contacted', cls: 'bg-blue-100 text-blue-700' },
+  qualified: { label: 'Qualified', cls: 'bg-amber-100 text-amber-700' },
+  won: { label: 'Won', cls: 'bg-emerald-100 text-emerald-700' },
+  lost: { label: 'Lost', cls: 'bg-red-100 text-red-700' },
 }
 
 export function DealPipeline() {
@@ -51,6 +68,21 @@ export function DealPipeline() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editDeal, setEditDeal] = useState<Deal | null>(null)
   const [prefillStage, setPrefillStage] = useState<string | null>(null)
+
+  // Next pending follow-up per linked conversation (countdown on deal cards)
+  const [followupDue, setFollowupDue] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const ids = deals.map((d) => d.conversation_id).filter(Boolean) as string[]
+    if (!ids.length) { setFollowupDue({}); return }
+    supabase.from('scheduled_followups').select('conversation_id, send_at').eq('status', 'pending').in('conversation_id', ids)
+      .then(({ data }) => {
+        const map: Record<string, string> = {}
+        for (const r of (data ?? []) as { conversation_id: string; send_at: string }[]) {
+          if (!map[r.conversation_id] || r.send_at < map[r.conversation_id]) map[r.conversation_id] = r.send_at
+        }
+        setFollowupDue(map)
+      })
+  }, [deals])
 
   async function moveDeal(dealId: string, toStageId: string) {
     setDragId(null)
@@ -125,6 +157,7 @@ export function DealPipeline() {
             onDelete={() => void deleteStage(stage.id)}
             onAddDeal={() => openAddDeal(stage.id)}
             onCardClick={openEditDeal}
+            followupDue={followupDue}
           />
         ))}
 
@@ -153,7 +186,7 @@ export function DealPipeline() {
 function StageColumn({
   stage, deals, dragId, isOver,
   onCardDragStart, onCardDragEnd, onColDragOver, onColDragLeave, onDrop,
-  onRename, onRecolor, onDelete, onAddDeal, onCardClick,
+  onRename, onRecolor, onDelete, onAddDeal, onCardClick, followupDue,
 }: {
   stage: PipelineStage
   deals: Deal[]
@@ -169,6 +202,7 @@ function StageColumn({
   onDelete: () => void
   onAddDeal: () => void
   onCardClick: (d: Deal) => void
+  followupDue: Record<string, string>
 }) {
   const c = colorOf(stage.color)
   const total = deals.reduce((s, d) => s + Number(d.value || 0), 0)
@@ -250,12 +284,25 @@ function StageColumn({
                 <div className="flex items-start gap-1.5">
                   <GripVertical size={13} className="mt-0.5 shrink-0 text-ink-subtle opacity-0 transition group-hover:opacity-100" />
                   <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-ink">{d.title}</p>
+                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold', c.soft, c.text)}>{money(d.value)}</span>
                 </div>
+                {d.description && (
+                  <p className="mt-1 line-clamp-2 pl-[18px] text-[11.5px] leading-snug text-ink-muted">{d.description}</p>
+                )}
                 <div className="mt-2 flex items-center justify-between gap-2 pl-[18px]">
-                  <span className="truncate text-[11.5px] text-ink-subtle">{contactName || '—'}</span>
-                  {Number(d.value) > 0 && (
-                    <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold', c.soft, c.text)}>{money(d.value)}</span>
-                  )}
+                  <span className="truncate text-[11.5px] text-ink-subtle">{contactName || 'No contact linked'}</span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    {d.conversation_id && followupDue[d.conversation_id] && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9.5px] font-semibold text-orange-700" title="Next follow-up">
+                        <Repeat size={9} /> {countdownTo(followupDue[d.conversation_id])}
+                      </span>
+                    )}
+                    {d.contact?.status && STATUS_BADGE[d.contact.status] && (
+                      <span className={cn('rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold', STATUS_BADGE[d.contact.status].cls)}>
+                        {STATUS_BADGE[d.contact.status].label}
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
             )
