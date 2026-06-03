@@ -36,6 +36,8 @@ export function DealModal({ open, onClose, onSaved, deal, prefill }: DealModalPr
   const [description, setDescription] = useState('')
   const [value, setValue] = useState('')
   const [stageId, setStageId] = useState('')
+  const [contactName, setContactName] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -48,10 +50,14 @@ export function DealModal({ open, onClose, onSaved, deal, prefill }: DealModalPr
     setDescription(deal?.description ?? '')
     setValue(deal && deal.value != null ? String(deal.value) : '')
     setStageId(deal?.stage_id ?? prefill?.stageId ?? '')
+    setContactName('')
+    setContactPhone('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, deal?.id])
 
   const effectiveStage = stageId || stages[0]?.id || ''
+  // Offer to capture a contact only when creating a deal that isn't already linked to one
+  const showContactFields = !editing && !prefill?.contactId
 
   async function save() {
     const t = title.trim()
@@ -76,6 +82,19 @@ export function DealModal({ open, onClose, onSaved, deal, prefill }: DealModalPr
       if (error) { setErr(error.message); setBusy(false); return }
     } else {
       if (!businessId) { setErr('No business found.'); setBusy(false); return }
+      // Optionally create + link a contact (like Add lead) when one isn't already linked
+      let contactId = prefill?.contactId ?? null
+      if (showContactFields && (contactName.trim() || contactPhone.trim())) {
+        const { data: newContact, error: cErr } = await supabase.from('contacts').insert({
+          business_id: businessId,
+          name: contactName.trim() || null,
+          phone: contactPhone.trim() || null,
+          whatsapp: contactPhone.trim() || null,
+          status: 'new',
+        } as never).select('id').single()
+        if (cErr) { setErr(cErr.message); setBusy(false); return }
+        contactId = (newContact as { id: string } | null)?.id ?? null
+      }
       const { error } = await supabase.from('deals').insert({
         business_id: businessId,
         title: t,
@@ -83,7 +102,7 @@ export function DealModal({ open, onClose, onSaved, deal, prefill }: DealModalPr
         value: numValue,
         currency: 'GBP',
         stage_id: effectiveStage || null,
-        contact_id: prefill?.contactId ?? null,
+        contact_id: contactId,
         conversation_id: prefill?.conversationId ?? null,
       } as never)
       if (error) { setErr(error.message); setBusy(false); return }
@@ -132,6 +151,19 @@ export function DealModal({ open, onClose, onSaved, deal, prefill }: DealModalPr
             </select>
           </div>
         </div>
+        {showContactFields && (
+          <div className="grid grid-cols-2 gap-3 rounded-lg border border-dashed border-border p-3">
+            <div className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-ink-subtle">Link a contact (optional)</div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-ink-muted">Name</label>
+              <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="e.g. Jane Smith" className={field} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-ink-muted">Phone</label>
+              <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+44…" className={field} />
+            </div>
+          </div>
+        )}
         {err && <p className="text-[12.5px] text-red-600">{err}</p>}
       </DialogBody>
       <DialogFooter>

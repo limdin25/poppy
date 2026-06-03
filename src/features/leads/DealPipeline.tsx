@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, MoreHorizontal, Trash2, Loader2, GripVertical, Repeat } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, MoreHorizontal, Trash2, Loader2, GripVertical, Repeat, MessageCircle } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
@@ -58,6 +59,10 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 
 export function DealPipeline() {
   const { businessId } = useAuth()
+  const navigate = useNavigate()
+  const openChat = (d: Deal) => {
+    if (d.contact_id) navigate(`/inbox?contact=${d.contact_id}`)
+  }
   const { data: stages, refetch: refetchStages } = usePipelineStages()
   const { data: deals, loading, refetch: refetchDeals } = useDeals()
 
@@ -157,6 +162,7 @@ export function DealPipeline() {
             onDelete={() => void deleteStage(stage.id)}
             onAddDeal={() => openAddDeal(stage.id)}
             onCardClick={openEditDeal}
+            onOpenChat={openChat}
             followupDue={followupDue}
           />
         ))}
@@ -186,7 +192,7 @@ export function DealPipeline() {
 function StageColumn({
   stage, deals, dragId, isOver,
   onCardDragStart, onCardDragEnd, onColDragOver, onColDragLeave, onDrop,
-  onRename, onRecolor, onDelete, onAddDeal, onCardClick, followupDue,
+  onRename, onRecolor, onDelete, onAddDeal, onCardClick, onOpenChat, followupDue,
 }: {
   stage: PipelineStage
   deals: Deal[]
@@ -202,6 +208,7 @@ function StageColumn({
   onDelete: () => void
   onAddDeal: () => void
   onCardClick: (d: Deal) => void
+  onOpenChat: (d: Deal) => void
   followupDue: Record<string, string>
 }) {
   const c = colorOf(stage.color)
@@ -284,6 +291,15 @@ function StageColumn({
                 <div className="flex items-start gap-1.5">
                   <GripVertical size={13} className="mt-0.5 shrink-0 text-ink-subtle opacity-0 transition group-hover:opacity-100" />
                   <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-ink">{d.title}</p>
+                  {d.contact_id && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onOpenChat(d) }}
+                      title="Open chat"
+                      className="shrink-0 rounded-md p-1 text-ink-subtle opacity-0 transition hover:bg-elevated hover:text-accent group-hover:opacity-100"
+                    >
+                      <MessageCircle size={13} />
+                    </button>
+                  )}
                   <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold', c.soft, c.text)}>{money(d.value)}</span>
                 </div>
                 {d.description && (

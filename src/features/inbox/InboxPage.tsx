@@ -30,6 +30,7 @@ import { useConversations, useMessages } from '@/core/hooks/useConversations'
 import { useQuickReplies, fillTokens, type QuickReply } from '@/core/hooks/useQuickReplies'
 import { useTeamMembers, memberLabel } from '@/core/hooks/useTeamMembers'
 import { DealModal } from '@/core/ui/DealModal'
+import { useDeals, usePipelineStages } from '@/core/hooks/usePipeline'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
@@ -137,6 +138,10 @@ function statusOf(c: Conversation): LeadLifecycle {
   return (STATUS_KEYS as string[]).includes(s) ? (s as LeadLifecycle) : 'new'
 }
 
+function money(n: number): string {
+  return '£' + Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 0 })
+}
+
 function countdownTo(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now()
   if (diff <= 0) return 'due'
@@ -233,6 +238,18 @@ export default function InboxPage() {
     for (const f of FOLDER_ORDER) if (inFolder(c, f, uid)) counts[f]++
   }
   const visible = conversations.filter((c) => inFolder(c, folder, uid))
+
+  // Deals linked to chats — show stage label + value on the card
+  const { data: deals, refetch: refetchDeals } = useDeals()
+  const { data: pipelineStages } = usePipelineStages()
+  const stageName = (id: string | null) => pipelineStages.find((s) => s.id === id)?.name ?? 'Lead In'
+  const dealByConvId: Record<string, typeof deals[number]> = {}
+  const dealByContactId: Record<string, typeof deals[number]> = {}
+  for (const d of deals) {
+    if (d.conversation_id && (!dealByConvId[d.conversation_id] || d.value > dealByConvId[d.conversation_id].value)) dealByConvId[d.conversation_id] = d
+    if (d.contact_id && (!dealByContactId[d.contact_id] || d.value > dealByContactId[d.contact_id].value)) dealByContactId[d.contact_id] = d
+  }
+  const dealFor = (c: Conversation) => dealByConvId[c.id] ?? (c.contact_id ? dealByContactId[c.contact_id] : undefined)
 
   // Next pending follow-up per conversation (for the countdown badge on cards)
   const [followupDue, setFollowupDue] = useState<Record<string, string>>({})
@@ -337,6 +354,7 @@ export default function InboxPage() {
               visible.map((c) => {
                 const name = displayName(c)
                 const chLabel = chLabelOf(c.channel)
+                const deal = dealFor(c)
                 return (
                   <div
                     key={c.id}
@@ -363,6 +381,11 @@ export default function InboxPage() {
                         {c.contact?.status && c.contact.status !== 'new' && (
                           <span className={cn('rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold', STATUS_CFG[statusOf(c)].badge)}>
                             {STATUS_CFG[statusOf(c)].label}
+                          </span>
+                        )}
+                        {deal && (
+                          <span className="flex items-center gap-1 rounded-full bg-brand-50 px-1.5 py-0.5 text-[9.5px] font-semibold text-brand-700" title={`Deal: ${deal.title}`}>
+                            {stageName(deal.stage_id)} · {money(deal.value)}
                           </span>
                         )}
                         {followupDue[c.id] && (
@@ -411,6 +434,7 @@ export default function InboxPage() {
               onArchived={() => setSelectedId(null)}
               session={session}
               userId={user?.id ?? null}
+              onDealSaved={refetchDeals}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
@@ -453,12 +477,14 @@ function ThreadView({
   onArchived,
   session,
   userId,
+  onDealSaved,
 }: {
   conversation: Conversation
   onBack: () => void
   onArchived: () => void
   session: { access_token: string } | null
   userId: string | null
+  onDealSaved?: () => void
 }) {
   const [composer, setComposer] = useState('')
   const [showQuick, setShowQuick] = useState(false)
@@ -538,6 +564,17 @@ function ThreadView({
   // Latest message that is a pending AI draft (per old page: status === 'draft').
   const draftMsg = [...messages].reverse().find((m) => m.status === 'draft') ?? null
 
+  // Jump straight to the latest message when a chat opens (re-runs as media/layout settles).
+  useEffect(() => {
+    if (loading) return
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+    const t1 = setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }), 150)
+    const t2 = setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }), 500)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.id, loading])
+
+  // Follow new messages while viewing the thread.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
@@ -698,6 +735,7 @@ function ThreadView({
       <DealModal
         open={dealOpen}
         onClose={() => setDealOpen(false)}
+        onSaved={onDealSaved}
         prefill={{
           contactId: conversation.contact_id,
           conversationId: conversation.id,
