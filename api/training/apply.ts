@@ -62,27 +62,20 @@ ${trainingContent}
 
 ## Return EXACTLY this JSON (fill every field from the knowledge above):
 {
-  "greeting": "A warm opening line Elsie says first (under 200 chars), in the business's voice",
+  "greeting": "A warm opening line Elsie says first (under 160 chars), in the business's voice",
   "tone": "professional | friendly | casual | formal",
-  "personality": "2-4 sentences describing how Elsie should speak and behave for this business",
-  "rules": ["3-6 specific rules Elsie must always follow for this business"],
-  "services": [{"name": "Service name", "description": "1 line", "price_from": null}],
-  "faqs": [{"question": "A real customer question", "answer": "The answer from the knowledge"}],
-  "classification_guidance": "1-3 sentences: how to tell a HOT vs WARM vs COLD lead for this business",
-  "follow_up_sequences": [
-    {"name": "Gentle nudge", "steps": [{"after_hours": 24, "message": "Friendly check-in with {name}"}, {"after_hours": 72, "message": "Second gentle nudge"}]},
-    {"name": "Value reminder", "steps": [{"after_hours": 48, "message": "Reminder highlighting a benefit, with {name}"}, {"after_hours": 120, "message": "Another value point"}]},
-    {"name": "Last chance", "steps": [{"after_hours": 72, "message": "Final friendly nudge with {name}"}]}
-  ]
+  "personality": "2-3 sentences describing how Elsie should speak and behave for this business",
+  "rules": ["3-5 specific rules Elsie must always follow for this business"],
+  "services": [{"name": "Service name", "description": "short", "price_from": null}],
+  "faqs": [{"question": "A real customer question", "answer": "Short answer from the knowledge"}],
+  "classification_guidance": "1-2 sentences: how to tell a HOT vs WARM vs COLD lead for this business"
 }
 
 Rules:
-- 4-8 services and 5-8 FAQs, all grounded in the knowledge (never invent prices — use null if unknown).
-- Follow-up messages must be friendly, short, plain text, and include the {name} placeholder.
-- after_hours must be whole numbers of hours.
-- Return ONLY the JSON object.`;
+- 4-6 services and 4-6 FAQs, all grounded in the knowledge (never invent prices — use null if unknown).
+- Keep answers short (1-2 sentences). Return ONLY the JSON object, nothing else.`;
 
-  const text = await callLLM(model, systemPrompt, [{ role: 'user', content: userContent }], 4000);
+  const text = await callLLM(model, systemPrompt, [{ role: 'user', content: userContent }], 2000);
   if (!text) {
     return new Response(JSON.stringify({ error: 'AI setup failed — please try again.' }), { status: 500 });
   }
@@ -165,18 +158,35 @@ Rules:
     if (rows.length) { await supabase.from('faqs').insert(rows); applied.faqs = rows.length; }
   }
 
-  // 6) Follow-up sequences — replace with the 3 generated, named types
-  if (Array.isArray(cfg.follow_up_sequences) && cfg.follow_up_sequences.length) {
-    await supabase.from('followup_sequences').delete().eq('business_id', businessId);
-    const rows = cfg.follow_up_sequences.slice(0, 3).filter((s: any) => s?.name).map((s: any) => ({
+  // 6) Follow-up sequences — 3 ready-made, named types (fast + reliable; editable later)
+  const seqRows = [
+    {
       business_id: businessId,
-      name: String(s.name).slice(0, 80),
-      steps: Array.isArray(s.steps)
-        ? s.steps.slice(0, 5).map((st: any) => ({ after_hours: Number(st.after_hours) || 24, message: String(st.message || '').slice(0, 1000) }))
-        : [],
-    }));
-    if (rows.length) { await supabase.from('followup_sequences').insert(rows); applied.sequences = rows.length; }
-  }
+      name: 'Gentle nudge',
+      steps: [
+        { after_hours: 24, message: 'Hi {name}, just following up — did you still want to go ahead? Happy to help whenever suits you.' },
+        { after_hours: 72, message: 'Hi {name}, checking back in case my last message got buried. Any questions I can answer?' },
+      ],
+    },
+    {
+      business_id: businessId,
+      name: 'Value reminder',
+      steps: [
+        { after_hours: 48, message: 'Hi {name}, just a reminder we’d love to help — let me know if you’d like to get booked in.' },
+        { after_hours: 120, message: 'Hi {name}, still happy to sort this for you whenever you’re ready. Want me to find you a time?' },
+      ],
+    },
+    {
+      business_id: businessId,
+      name: 'Last chance',
+      steps: [
+        { after_hours: 72, message: 'Hi {name}, last quick nudge from me — shall I get you booked in, or is now not the right time?' },
+      ],
+    },
+  ];
+  await supabase.from('followup_sequences').delete().eq('business_id', businessId);
+  await supabase.from('followup_sequences').insert(seqRows);
+  applied.sequences = seqRows.length;
 
   return new Response(JSON.stringify({
     ok: true,
