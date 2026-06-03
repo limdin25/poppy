@@ -501,9 +501,9 @@ function ThreadView({
   const [menuOpen, setMenuOpen] = useState(false)
   const [showFollowups, setShowFollowups] = useState(false)
   const [composerTab, setComposerTab] = useState<'reply' | 'note'>('reply')
-  const [noteText, setNoteText] = useState(conversation.contact?.notes ?? '')
+  const [noteText, setNoteText] = useState('')
+  const [leadNotes, setLeadNotes] = useState<{ id: string; body: string; created_at: string }[]>([])
   const [savingNote, setSavingNote] = useState(false)
-  const [noteSaved, setNoteSaved] = useState(false)
   const [dealValueOpen, setDealValueOpen] = useState(false)
   const [dealValueInput, setDealValueInput] = useState('')
   const [assignedTo, setAssignedTo] = useState<string | null>(conversation.assigned_to)
@@ -511,20 +511,37 @@ function ThreadView({
   const [aiOn, setAiOn] = useState(conversation.ai_handling !== false)
   const [stageId, setStageId] = useState<string | null>(deal?.stage_id ?? null)
 
-  // Each conversation opens in Reply mode; load its saved note for the Note tab.
+  // Each conversation opens in Reply mode; load its note history for the Note tab.
   useEffect(() => {
     setComposerTab('reply')
-    setNoteText(conversation.contact?.notes ?? '')
-  }, [conversation.id, conversation.contact?.notes])
+    setNoteText('')
+    if (!conversation.contact_id) { setLeadNotes([]); return }
+    let active = true
+    supabase
+      .from('lead_notes')
+      .select('id, body, created_at')
+      .eq('contact_id', conversation.contact_id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { if (active) setLeadNotes(data ?? []) })
+    return () => { active = false }
+  }, [conversation.id, conversation.contact_id])
 
+  // Add a note to the history (kept forever). contacts.notes is also set to the
+  // latest note so the Pipeline + Table note indicators keep working.
   async function saveNote() {
-    if (!conversation.contact_id) return
+    const body = noteText.trim()
+    if (!body || !conversation.contact_id) return
     setSavingNote(true)
-    await supabase.from('contacts').update({ notes: noteText }).eq('id', conversation.contact_id)
+    const { data } = await supabase
+      .from('lead_notes')
+      .insert({ business_id: conversation.business_id, contact_id: conversation.contact_id, body })
+      .select('id, body, created_at')
+      .single()
+    await supabase.from('contacts').update({ notes: body }).eq('id', conversation.contact_id)
+    if (data) setLeadNotes((prev) => [data, ...prev])
+    setNoteText('')
     setSavingNote(false)
-    setNoteSaved(true)
     onDealSaved?.()
-    setTimeout(() => setNoteSaved(false), 1500)
   }
   const menuRef = useRef<HTMLDivElement>(null)
   const assignRef = useRef<HTMLDivElement>(null)
@@ -985,13 +1002,13 @@ function ThreadView({
           </button>
           <button
             data-testid="notes-btn"
-            onClick={() => { setComposerTab('note'); setNoteText(conversation.contact?.notes ?? '') }}
+            onClick={() => setComposerTab('note')}
             className={cn(
               '-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-[12.5px] font-semibold transition',
-              composerTab === 'note' ? 'border-amber-500 text-amber-700' : 'border-transparent text-ink-muted hover:text-ink',
+              composerTab === 'note' ? 'border-accent text-accent' : 'border-transparent text-ink-muted hover:text-ink',
             )}
           >
-            <StickyNote size={13} /> Note
+            <StickyNote size={13} /> Note{leadNotes.length > 0 ? ` (${leadNotes.length})` : ''}
           </button>
         </div>
 
@@ -1033,10 +1050,22 @@ function ThreadView({
             </button>
           </div>
         ) : (
-          <div className="rounded-xl border-2 border-amber-300 bg-amber-50/50 p-2.5">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-amber-700">
-              <StickyNote size={12} /> Internal note — only your team sees this. Shows on the lead in Pipeline + Table.
+          <div className="rounded-xl border border-border bg-elevated/40 p-2.5">
+            <div className="mb-2 flex items-center gap-1.5 text-[11.5px] font-medium text-ink-muted">
+              <StickyNote size={12} /> Internal notes — only your team sees these. The latest shows on the lead in Pipeline + Table.
             </div>
+            {leadNotes.length > 0 && (
+              <div className="mb-2 max-h-44 space-y-1.5 overflow-y-auto scrollbar-thin pr-1">
+                {leadNotes.map((n) => (
+                  <div key={n.id} className="rounded-lg border border-border bg-surface px-3 py-2">
+                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{n.body}</p>
+                    <p className="mt-1 text-[10.5px] text-ink-subtle">
+                      {new Date(n.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
             <textarea
               data-testid="notes-input"
               value={noteText}
@@ -1049,8 +1078,8 @@ function ThreadView({
               }}
               rows={2}
               autoFocus
-              placeholder="Add a private note about this lead…"
-              className="max-h-40 min-h-[44px] w-full resize-none rounded-lg border border-amber-200 bg-white px-3 py-2 text-[13.5px] text-ink outline-none placeholder:text-ink-subtle focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
+              placeholder="Add a note about this lead…"
+              className="max-h-40 min-h-[44px] w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-ink outline-none placeholder:text-ink-subtle focus:border-ink-subtle/50 focus:ring-2 focus:ring-accent/15"
             />
             <div className="mt-2 flex items-center justify-end gap-2">
               <button
@@ -1062,11 +1091,10 @@ function ThreadView({
               <button
                 data-testid="notes-save-btn"
                 onClick={() => void saveNote()}
-                disabled={savingNote}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-amber-600 disabled:opacity-50"
+                disabled={savingNote || !noteText.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-[12.5px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
               >
-                {savingNote ? <Loader2 size={13} className="animate-spin" /> : <StickyNote size={13} />}
-                {noteSaved ? 'Saved ✓' : 'Save note'}
+                {savingNote ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add note
               </button>
             </div>
           </div>
