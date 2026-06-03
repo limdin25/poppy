@@ -418,15 +418,15 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
 
     if (!conversationId) { skipped++; continue; }
 
-    // Deduplicate by external_id
-    const { data: dup } = await supabase
+    // Deduplicate by external_id (limit(1), not maybeSingle which errors on >1 dup)
+    const { data: dupRows } = await supabase
       .from('messages')
       .select('id')
       .eq('conversation_id', conversationId)
       .contains('metadata', { external_id: emailId })
-      .maybeSingle();
+      .limit(1);
 
-    if (dup) { skipped++; continue; }
+    if (dupRows?.[0]) { skipped++; continue; }
 
     // Spam check — pass HTML body to detect marketing emails with unsubscribe links
     const spam = !isOutbound && isEmailSpam(fromEmail, subject, emailText, htmlBody);
@@ -777,13 +777,15 @@ export default async function handler(req: Request): Promise<Response> {
 
         if (!conversationId) { skipped++; continue; }
 
-        // Check for duplicate
-        const { data: dup } = await supabase
+        // Check for duplicate (limit(1) — maybeSingle() ERRORS once >1 dup exists, which
+        // silently disabled dedup and caused runaway re-inserts)
+        const { data: dupRows } = await supabase
           .from('messages')
           .select('id')
           .eq('conversation_id', conversationId)
           .contains('metadata', { external_id: m.id })
-          .maybeSingle();
+          .limit(1);
+        const dup = dupRows?.[0];
 
         if (dup) {
           // Even if message exists, update reactions if present

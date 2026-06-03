@@ -494,6 +494,9 @@ function ThreadView({
   const [approving, setApproving] = useState(false)
   const [rewriting, setRewriting] = useState(false)
   const [error, setError] = useState('')
+  const [editingDraft, setEditingDraft] = useState(false)
+  const [draftEdit, setDraftEdit] = useState('')
+  const [savingDraft, setSavingDraft] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showFollowups, setShowFollowups] = useState(false)
   const [dealOpen, setDealOpen] = useState(false)
@@ -640,6 +643,14 @@ function ThreadView({
       setApproving(false)
     }
   }, [session?.access_token, refetchMessages])
+
+  async function saveDraftEdit(messageId: string) {
+    setSavingDraft(true)
+    await supabase.from('messages').update({ body: draftEdit }).eq('id', messageId)
+    setSavingDraft(false)
+    setEditingDraft(false)
+    refetchMessages()
+  }
 
   const rewriteDraft = useCallback(async (messageId: string) => {
     setRewriting(true)
@@ -803,29 +814,59 @@ function ThreadView({
             <span className="text-[12px] font-semibold text-violet-700">Elsie drafted a reply</span>
             <span className="ml-auto text-[10.5px] text-violet-500">Review before it sends</span>
           </div>
-          <p className="text-[13px] leading-relaxed text-ink">{draftMsg.body}</p>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            <button
-              onClick={() => approveDraft(draftMsg.id)}
-              disabled={approving || rewriting}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {approving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />} Approve & send
-            </button>
-            <button
-              onClick={() => rewriteDraft(draftMsg.id)}
-              disabled={approving || rewriting}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-elevated disabled:opacity-50"
-            >
-              <RefreshCw size={14} className={rewriting ? 'animate-spin' : ''} /> Rewrite
-            </button>
-            <button
-              onClick={() => setComposer(draftMsg.body ?? '')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-elevated"
-            >
-              <Pencil size={14} /> Edit
-            </button>
-          </div>
+          {editingDraft ? (
+            <>
+              <textarea
+                value={draftEdit}
+                onChange={(e) => setDraftEdit(e.target.value)}
+                rows={4}
+                autoFocus
+                className="w-full resize-none rounded-lg border border-violet-300 bg-white px-3 py-2 text-[13px] leading-relaxed text-ink outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+              />
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <button
+                  onClick={() => void saveDraftEdit(draftMsg.id)}
+                  disabled={savingDraft || !draftEdit.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {savingDraft ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />} Save
+                </button>
+                <button
+                  onClick={() => setEditingDraft(false)}
+                  disabled={savingDraft}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-elevated disabled:opacity-50"
+                >
+                  <X size={14} /> Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{draftMsg.body}</p>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <button
+                  onClick={() => approveDraft(draftMsg.id)}
+                  disabled={approving || rewriting}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {approving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />} Approve & send
+                </button>
+                <button
+                  onClick={() => rewriteDraft(draftMsg.id)}
+                  disabled={approving || rewriting}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-elevated disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={rewriting ? 'animate-spin' : ''} /> Rewrite
+                </button>
+                <button
+                  onClick={() => { setDraftEdit(draftMsg.body ?? ''); setEditingDraft(true) }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-elevated"
+                >
+                  <Pencil size={14} /> Edit
+                </button>
+              </div>
+            </>
+          )}
         </div>
         )}
         <div ref={messagesEndRef} />
@@ -927,13 +968,21 @@ interface Scheduled { id: string; step_index: number; send_at: string; status: s
 const FOLLOWUP_DELAYS: { label: string; mins: number }[] = [
   { label: '5 minutes', mins: 5 },
   { label: '10 minutes', mins: 10 },
+  { label: '30 minutes', mins: 30 },
   { label: '1 hour', mins: 60 },
+  { label: '3 hours', mins: 180 },
+  { label: '6 hours', mins: 360 },
+  { label: '12 hours', mins: 720 },
   { label: '1 day', mins: 1440 },
   { label: '2 days', mins: 2880 },
   { label: '3 days', mins: 4320 },
+  { label: '5 days', mins: 7200 },
   { label: '1 week', mins: 10080 },
+  { label: '2 weeks', mins: 20160 },
   { label: '1 month', mins: 43200 },
 ]
+const snapDelay = (mins: number) => FOLLOWUP_DELAYS.reduce((best, d) => (Math.abs(d.mins - mins) < Math.abs(best.mins - mins) ? d : best), FOLLOWUP_DELAYS[0]).mins
+interface EditStep { delayMins: number; message: string }
 
 /**
  * Per-conversation follow-up scheduling. Toggle follow-ups on/off, pick a
@@ -953,7 +1002,7 @@ function FollowupsPanel({
   const [scheduled, setScheduled] = useState<Scheduled[]>([])
   const [enabled, setEnabled] = useState(!!conversation.followups_enabled)
   const [sequenceId, setSequenceId] = useState<string | null>(conversation.followup_sequence_id)
-  const [delayMins, setDelayMins] = useState(1440)
+  const [editSteps, setEditSteps] = useState<EditStep[]>([])
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -983,6 +1032,17 @@ function FollowupsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.business_id])
 
+  // Load the chosen template's steps into the editable list (snap timings to options)
+  function loadStepsFromSequence(id: string | null) {
+    const seq = sequences.find((s) => s.id === id)
+    const steps = seq?.steps?.length ? seq.steps : [{ after_hours: 24, message: 'Hi {name}, just following up — happy to help whenever you are.' }]
+    setEditSteps(steps.map((st) => ({ delayMins: snapDelay((Number(st.after_hours) || 24) * 60), message: st.message || '' })))
+  }
+  useEffect(() => {
+    if (!loading) loadStepsFromSequence(sequenceId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sequenceId, loading])
+
   async function toggleEnabled(next: boolean) {
     setEnabled(next)
     await supabase.from('conversations').update({ followups_enabled: next }).eq('id', conversation.id)
@@ -991,18 +1051,22 @@ function FollowupsPanel({
     setSequenceId(id)
     await supabase.from('conversations').update({ followup_sequence_id: id }).eq('id', conversation.id)
   }
+  const setStepDelay = (i: number, mins: number) => setEditSteps((p) => p.map((s, j) => (j === i ? { ...s, delayMins: mins } : s)))
+  const setStepMsg = (i: number, message: string) => setEditSteps((p) => p.map((s, j) => (j === i ? { ...s, message } : s)))
+  const addStep = () => setEditSteps((p) => [...p, { delayMins: 4320, message: '' }])
+  const removeStep = (i: number) => setEditSteps((p) => p.filter((_, j) => j !== i))
+
   async function scheduleNow() {
-    if (!sequenceId || !selectedSeq) return
+    const steps = editSteps.filter((s) => s.message.trim())
+    if (!steps.length) return
     setBusy(true)
     if (!enabled) await toggleEnabled(true)
-    const steps = selectedSeq.steps.length ? selectedSeq.steps : [{ after_hours: 24, message: '' }]
-    // First step fires after the chosen "no reply within"; later steps use their own gaps.
-    let t = Date.now() + delayMins * 60_000
+    // Each step fires its delay after the previous one (first = "send if no reply within")
+    let t = Date.now()
     const rows = steps.map((st, i) => {
-      if (i > 0) t += (Number(st.after_hours) || 24) * 3_600_000
-      return { conversation_id: conversation.id, sequence_id: sequenceId, step_index: i, send_at: new Date(t).toISOString(), status: 'pending' as const }
+      t += (st.delayMins || 1440) * 60_000
+      return { conversation_id: conversation.id, sequence_id: sequenceId, step_index: i, send_at: new Date(t).toISOString(), message: st.message.trim(), status: 'pending' as const }
     })
-    // Replace any existing pending schedule for this chat
     await supabase.from('scheduled_followups').update({ status: 'cancelled' }).eq('conversation_id', conversation.id).eq('status', 'pending')
     await supabase.from('scheduled_followups').insert(rows)
     await loadScheduled()
@@ -1017,7 +1081,6 @@ function FollowupsPanel({
 
   const fmt = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
   const pendingCount = scheduled.filter((s) => s.status === 'pending').length
-  const selectedSeq = sequences.find((s) => s.id === sequenceId) ?? null
 
   return (
     <div className="mx-3 mt-2 rounded-xl border-2 border-orange-300 bg-orange-50/50 px-4 py-3">
@@ -1049,29 +1112,41 @@ function FollowupsPanel({
             </select>
           </div>
 
-          {selectedSeq && selectedSeq.steps.length > 0 && (
-            <div className="rounded-lg bg-page px-2.5 py-2">
-              <p className="text-[11px] font-semibold text-ink">{selectedSeq.name} · {selectedSeq.steps.length} message{selectedSeq.steps.length === 1 ? '' : 's'}</p>
-              {selectedSeq.steps.map((st, i) => (
-                <p key={i} className="mt-0.5 truncate text-[11px] text-ink-muted">+{st.after_hours}h · {st.message}</p>
-              ))}
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-ink-muted">Send first message if no reply within</label>
+          <div className="space-y-2">
+            <label className="block text-[11px] font-medium text-ink-muted">Messages — edit the text & timing, then schedule</label>
+            {editSteps.map((st, i) => (
+              <div key={i} className="rounded-lg border border-border bg-page p-2">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-ink-muted">
+                  <Repeat size={11} className="text-orange-500" />
+                  {i === 0 ? 'Send if no reply within' : 'Then after'}
+                  <select
+                    value={st.delayMins}
+                    onChange={(e) => setStepDelay(i, Number(e.target.value))}
+                    className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[11.5px] text-ink outline-none focus:border-orange-400"
+                  >
+                    {FOLLOWUP_DELAYS.map((d) => <option key={d.mins} value={d.mins}>{d.label}</option>)}
+                  </select>
+                  {editSteps.length > 1 && (
+                    <button onClick={() => removeStep(i)} className="ml-auto rounded p-0.5 text-ink-subtle hover:bg-red-50 hover:text-red-600" title="Remove message"><Trash2 size={12} /></button>
+                  )}
+                </div>
+                <textarea
+                  value={st.message}
+                  onChange={(e) => setStepMsg(i, e.target.value)}
+                  rows={2}
+                  placeholder="Message — use {name} for the customer's name"
+                  className="w-full resize-none rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+                />
+              </div>
+            ))}
             <div className="flex items-center gap-2">
-              <select
-                value={delayMins}
-                onChange={(e) => setDelayMins(Number(e.target.value))}
-                className="min-w-0 flex-1 rounded-lg border border-border bg-page px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink-subtle/40"
-              >
-                {FOLLOWUP_DELAYS.map((d) => <option key={d.mins} value={d.mins}>{d.label}</option>)}
-              </select>
+              <button onClick={addStep} className="inline-flex items-center gap-1 rounded-lg border border-dashed border-border px-2.5 py-1.5 text-[11.5px] font-medium text-ink-muted transition hover:border-ink-subtle hover:text-ink">
+                <Plus size={12} /> Add message
+              </button>
               <button
                 onClick={() => void scheduleNow()}
-                disabled={busy || !sequenceId}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                disabled={busy || !editSteps.some((s) => s.message.trim())}
+                className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
               >
                 {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Schedule
               </button>

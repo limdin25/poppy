@@ -29,7 +29,7 @@ export default async function handler(req: Request): Promise<Response> {
   const nowIso = new Date().toISOString();
   const { data: due } = await supabase
     .from('scheduled_followups')
-    .select('id, conversation_id, sequence_id, step_index')
+    .select('id, conversation_id, sequence_id, step_index, message')
     .eq('status', 'pending')
     .lte('send_at', nowIso)
     .limit(50);
@@ -54,9 +54,12 @@ export default async function handler(req: Request): Promise<Response> {
         continue;
       }
 
-      // Resolve the step message from the sequence (fall back to a generic nudge).
+      // Use the per-chat custom message if one was set when scheduling; else the
+      // sequence's step message; else a generic nudge.
       let message = 'Hi {name}, just following up — happy to help whenever you are.';
-      if (row.sequence_id) {
+      if (row.message) {
+        message = row.message;
+      } else if (row.sequence_id) {
         const { data: seq } = await supabase
           .from('followup_sequences')
           .select('steps')
