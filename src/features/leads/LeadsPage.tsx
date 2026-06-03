@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, Download, Plus, Table2, Columns3, MessageCircle, Trash2, ChevronDown, Loader2, UploadCloud } from 'lucide-react'
 import { PageHeader } from '@/core/ui/PageHeader'
 import { DataTable, type Column } from '@/core/ui/DataTable'
 import { DealPipeline } from './DealPipeline'
 import { StatusPill, type PillTone } from '@/core/ui/StatusPill'
-import { FilterChips } from '@/core/ui/FilterChips'
 import { Switch } from '@/core/ui/Switch'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { cn } from '@/core/lib/cn'
@@ -21,15 +20,6 @@ import type { Contact } from '@/core/types/database'
  * Pause-AI toggle, View Chat, delete, plus Import CSV / Export / Add Lead.
  */
 
-type Classification = 'hot' | 'warm' | 'cold'
-
-const CLASS_LABEL: Record<Classification, { label: string; tone: PillTone; dot: string }> = {
-  hot: { label: 'Hot', tone: 'hot', dot: 'bg-red-500' },
-  warm: { label: 'Warm', tone: 'warm', dot: 'bg-amber-500' },
-  cold: { label: 'Cold', tone: 'cold', dot: 'bg-blue-500' },
-}
-const CLASS_ORDER: Classification[] = ['hot', 'warm', 'cold']
-
 type Lifecycle = 'new' | 'contacted' | 'qualified' | 'won' | 'lost'
 const STATUS_META: Record<Lifecycle, { label: string; tone: PillTone }> = {
   new: { label: 'New', tone: 'neutral' },
@@ -42,9 +32,6 @@ const STATUS_ORDER: Lifecycle[] = ['new', 'contacted', 'qualified', 'won', 'lost
 
 function phoneOf(c: Contact): string { return c.phone || c.whatsapp || '—' }
 function whatsappOf(c: Contact): string { return c.whatsapp || c.phone || '—' }
-function classOf(c: Contact): Classification {
-  return c.lead_status === 'hot' || c.lead_status === 'warm' || c.lead_status === 'cold' ? c.lead_status : 'cold'
-}
 function statusOf(c: Contact): Lifecycle {
   return STATUS_ORDER.includes(c.status as Lifecycle) ? (c.status as Lifecycle) : 'new'
 }
@@ -121,7 +108,6 @@ export default function LeadsPage() {
   const { session } = useAuth()
   const { data: allLeads, loading, refetch } = useLeads()
   const [view, setView] = useState<'table' | 'kanban'>('table')
-  const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // Add Lead modal
@@ -140,16 +126,8 @@ export default function LeadsPage() {
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [importErr, setImportErr] = useState<string | null>(null)
 
-  const leads = useMemo(
-    () => allLeads.filter((l) => filter === 'all' || classOf(l) === filter),
-    [filter, allLeads]
-  )
+  const leads = allLeads
 
-  async function setClassification(id: string, c: Classification) {
-    const { error } = await supabase.from('contacts').update({ lead_status: c, lead_updated_at: new Date().toISOString() }).eq('id', id)
-    if (error) { console.error('classify failed:', error.message); return }
-    refetch()
-  }
   async function setStatus(id: string, s: Lifecycle) {
     const { error } = await supabase.from('contacts').update({ status: s }).eq('id', id)
     if (error) { console.error('status failed:', error.message); return }
@@ -219,9 +197,9 @@ export default function LeadsPage() {
 
   function exportCsv() {
     const data = allLeads.map((l) => [
-      l.name ?? '', phoneOf(l), l.email ?? '', STATUS_META[statusOf(l)].label, CLASS_LABEL[classOf(l)].label, lastActiveOf(l),
+      l.name ?? '', phoneOf(l), l.email ?? '', STATUS_META[statusOf(l)].label, lastActiveOf(l),
     ])
-    downloadFile('leads.csv', toCsv(['Name', 'Phone', 'Email', 'Status', 'Classification', 'Last Active'], data))
+    downloadFile('leads.csv', toCsv(['Name', 'Phone', 'Email', 'Status', 'Last Active'], data))
   }
 
   function toggle(id: string) {
@@ -231,9 +209,6 @@ export default function LeadsPage() {
     setSelected((prev) => (prev.size === leads.length ? new Set() : new Set(leads.map((l) => l.id))))
   }
 
-  const classPill = (c: Classification) => (
-    <StatusPill tone={CLASS_LABEL[c].tone}><span className={cn('h-1.5 w-1.5 rounded-full', CLASS_LABEL[c].dot)} />{CLASS_LABEL[c].label}</StatusPill>
-  )
   const statusPill = (s: Lifecycle) => <StatusPill tone={STATUS_META[s].tone} uppercase={false}>{STATUS_META[s].label}</StatusPill>
 
   const columns: Column<Contact>[] = [
@@ -249,10 +224,6 @@ export default function LeadsPage() {
     {
       key: 'status', header: 'Status',
       render: (l) => <PillDropdown value={statusOf(l)} options={STATUS_ORDER} render={statusPill} onChange={(s) => void setStatus(l.id, s)} />,
-    },
-    {
-      key: 'classification', header: 'AI Classification',
-      render: (l) => <PillDropdown value={classOf(l)} options={CLASS_ORDER} render={classPill} onChange={(c) => void setClassification(l.id, c)} />,
     },
     {
       key: 'ai', header: 'AI',
@@ -313,16 +284,7 @@ export default function LeadsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         {view === 'table' ? (
-          <FilterChips
-            options={[
-              { value: 'all', label: 'All', count: allLeads.length },
-              { value: 'hot', label: 'Hot' },
-              { value: 'warm', label: 'Warm' },
-              { value: 'cold', label: 'Cold' },
-            ]}
-            value={filter}
-            onChange={setFilter}
-          />
+          <p className="text-[12.5px] text-ink-muted">{allLeads.length} lead{allLeads.length === 1 ? '' : 's'}</p>
         ) : (
           <p className="text-[12.5px] text-ink-muted">Drag deals between stages · click a deal to edit · rename a stage by clicking its title</p>
         )}

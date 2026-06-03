@@ -68,17 +68,35 @@ export async function getModelForAgent(businessId: string, agentId?: string | nu
   return setting?.value || 'claude-sonnet-4-6';
 }
 
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
+
+/** Fix known-bad / legacy model ids so the API doesn't reject them. */
+function normalizeModel(model: string): string {
+  if (!model) return DEFAULT_MODEL;
+  // Common typo: "claude-4.6-sonnet" → "claude-sonnet-4-6"
+  if (/^claude-\d/.test(model)) return DEFAULT_MODEL;
+  return model;
+}
+
 export async function callLLM(
   model: string,
   systemPrompt: string,
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   maxTokens = 1024,
 ): Promise<string> {
-  const provider = getProvider(model);
-  const apiKey = await getApiKey(provider);
+  let resolvedModel = normalizeModel(model);
+  let provider = getProvider(resolvedModel);
+  let apiKey = await getApiKey(provider);
+
+  // No key for the chosen provider (e.g. a grok model with no xAI key) →
+  // fall back to the default Claude model if we have an Anthropic key.
+  if (!apiKey && provider !== 'anthropic') {
+    const anth = await getApiKey('anthropic');
+    if (anth) { provider = 'anthropic'; resolvedModel = DEFAULT_MODEL; apiKey = anth; }
+  }
 
   if (!apiKey) {
-    console.error(`[llm] No API key for provider ${provider} (model: ${model})`);
+    console.error(`[llm] No API key for provider ${provider} (model: ${resolvedModel})`);
     return '';
   }
 
@@ -88,15 +106,20 @@ export async function callLLM(
   }
 
   if (provider === 'anthropic') {
-    const res = await fetch(`${getBaseUrl(provider)}/v1/messages`, {
+    const callAnthropic = (m: string) => fetch(`${getBaseUrl('anthropic')}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        'x-api-key': apiKey!,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system: systemPrompt, messages: msgs }),
+      body: JSON.stringify({ model: m, max_tokens: maxTokens, system: systemPrompt, messages: msgs }),
     });
+    let res = await callAnthropic(resolvedModel);
+    if (!res.ok && resolvedModel !== DEFAULT_MODEL) {
+      console.error(`[llm] Anthropic rejected "${resolvedModel}" (${res.status}); retrying with ${DEFAULT_MODEL}`);
+      res = await callAnthropic(DEFAULT_MODEL);
+    }
     if (!res.ok) {
       console.error(`[llm] Anthropic error: ${res.status} ${await res.text()}`);
       return '';
@@ -112,7 +135,7 @@ export async function callLLM(
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model,
+      model: resolvedModel,
       max_tokens: maxTokens,
       messages: [{ role: 'system', content: systemPrompt }, ...msgs],
     }),

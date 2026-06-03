@@ -11,20 +11,20 @@
     --surface: 255 255 255;     /* cards */
     --elevated: 243 244 246;    /* #F3F4F6 hover/active fill (gray-100) */
     --border: 229 231 235;      /* #E5E7EB hairline (gray-200) */
-    --ring: 65 119 251;         /* #4177FB */
+    --ring: 60 90 135;          /* #3C5A87 slate-blue */
 
-    --accent: 65 119 251;       /* #4177FB indigo-blue — primary buttons, active nav, links */
+    --accent: 60 90 135;        /* #3C5A87 balanced slate-blue — blue mixed with grey, primary buttons/nav/links */
     --whatsapp: 37 211 102;     /* #25D366 */
 
     --ink: 28 28 40;            /* #1C1C28 headings/primary text (RogerRoger ink) */
     --ink-muted: 107 114 128;   /* #6B7280 secondary (gray-500) */
     --ink-subtle: 156 163 175;  /* #9CA3AF tertiary (gray-400) */
 
-    --brand: 65 119 251;        /* unified to the indigo primary */
-    --brand-50: 239 243 255;    /* indigo tint */
-    --brand-100: 219 228 254;
-    --brand-600: 47 92 224;
-    --brand-700: 37 71 178;
+    --brand: 60 90 135;         /* unified to the slate-blue primary */
+    --brand-50: 238 242 248;    /* slate-blue tint */
+    --brand-100: 216 225 238;
+    --brand-600: 50 75 114;
+    --brand-700: 40 60 92;
 
     --success: 22 163 74;
     --warning: 234 179 8;
