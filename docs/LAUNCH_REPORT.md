@@ -32,6 +32,26 @@ Self-healing Playwright suite — **140 passed / 0 failed (chromium)**, **mobile
 | K-011 A/B | Settings + currency | ✅ | Currency selector (GBP/USD/EUR), profile/company fields. (Live currency propagation = human check.) |
 | K-012 | Global + mobile | ✅ | All nav links reach pages, mobile bottom nav, sign-out (desktop + mobile drawer), no raw errors, no flicker. |
 
+## Human verification via Kimi WebBridge (real browser, this session)
+
+Driven by hand through the live app (clicking, filling forms, reading the screen):
+
+| Flow | Result | Evidence seen |
+|---|---|---|
+| Home routing | ✅ | `heyelsie.com/` = landing; `app.heyelsie.com/` + login → `/dashboard`. |
+| Sidebar rename | ✅ | AI-Agent sub-nav reads **Goals** (was Classification). |
+| **Currency propagation** | ✅ | Set GBP→USD, saved: inbox badge `$500` + pipeline cards/totals `$500`/`$1,000`. Reverted to GBP → all back to `£`. |
+| Inbox thread | ✅ | Correct chronological order; AI draft **inline** (Approve/Rewrite/Edit); footer = AI on · Status · Follow-up · £500 deal value · Notes; WhatsApp channel badges. |
+| **Follow-up delivery** | ✅ | Follow-up panel shows this chat's **Step 1 (16:17) + Step 2 (16:27) = sent**, and the delivered message appears in the thread. Editable message text + timing per step. (Cron sends for real.) |
+| Overview | ✅ | Stat cards numeric; "Needs your reply" shows **stage badges** (not Hot/Warm/Cold); avatars render. |
+| **Next 6 hours** | ✅ | Created a booking via the UI (test number) → it appeared as "20:41 · QA Consultation · Confirmed". Test data then deleted. |
+| Notes | ✅ | Added in inbox → shows full text on **Pipeline card** + note **indicator** in **Table**. Test note then cleared. |
+| Knowledge Base | ✅ | 4 tiles (website/upload/paste/Google), items with Synced/Processing status, "Set up Elsie". |
+
+Not yet human-run (they fire real WhatsApp messages / third-party connections —
+need a test recipient or your go-ahead): campaign send, KB website crawl→live AI
+answer, Google Calendar OAuth, CSV import/export, profile-photo upload, team invite.
+
 ## Bugs fixed this session
 
 **Critical (were launch-blockers):**
