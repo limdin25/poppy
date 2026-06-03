@@ -661,7 +661,11 @@ export default async function handler(req: Request): Promise<Response> {
             if (!existing.avatar_url && (contactAttendeeId || msgChatId)) {
               fetchAndStoreAvatar(existing.id, { attendeeId: contactAttendeeId || undefined, chatId: msgChatId || undefined }).catch(() => {});
             }
-          } else if (direction === 'inbound') {
+          } else {
+            // Create the contact for BOTH inbound and outbound. Previously only
+            // inbound created a contact, so a chat you START from WhatsApp (an
+            // outbound message to a new number) was silently skipped and never
+            // appeared in the inbox.
             const { data: newContact } = await supabase
               .from('contacts')
               .insert({ business_id: businessId, phone: counterparty, whatsapp: counterparty, name: counterparty })
