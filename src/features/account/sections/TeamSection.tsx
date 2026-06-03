@@ -44,23 +44,24 @@ export default function TeamSection() {
     if (!businessId || !inviteEmail.trim()) return
     setInviting(true)
     setInviteError(null)
-    // Pending invite: invited_at set, joined_at null (becomes "active" once they join).
-    const { data, error } = await supabase.from('team_members').insert({
-      business_id: businessId,
-      email: inviteEmail.trim(),
-      name: inviteEmail.trim(),
-      role: 'member',
-      invited_at: new Date().toISOString(),
-    }).select('id, name, email, role, user_id, joined_at').single()
-
-    if (!error && data) {
-      setMembers([...members, data])
+    try {
+      // Server endpoint creates the pending row AND emails the invitee via Resend.
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ email: inviteEmail.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to send invite')
+      setMembers([...members, json.member])
       setInviteEmail('')
       setShowInvite(false)
-    } else if (error) {
-      setInviteError(error.message)
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Failed to send invite')
+    } finally {
+      setInviting(false)
     }
-    setInviting(false)
   }
 
   if (loading) {

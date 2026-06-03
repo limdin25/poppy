@@ -57,6 +57,24 @@ export async function sendWelcomeEmail(
   return sendEmail(email, "Welcome to Elsie — Set Your Password", html);
 }
 
+/** Send a team-invite email with a link to join. */
+export async function sendInviteEmail(
+  email: string,
+  businessName: string,
+  inviterName: string,
+  joinUrl: string
+): Promise<SendEmailResponse> {
+  const html = `
+    <div style="font-family:sans-serif;line-height:1.5;color:#1c1c28;">
+      <h1 style="font-size:20px;">You're invited to join ${businessName} on Elsie</h1>
+      <p>${inviterName} has invited you to join <strong>${businessName}</strong>'s team on Elsie — the AI receptionist that answers calls, messages and books appointments automatically.</p>
+      <p><a href="${joinUrl}" style="background:#3C5A87;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600;">Accept invitation</a></p>
+      <p style="color:#6b7280;font-size:13px;">If you weren't expecting this, you can safely ignore this email.</p>
+    </div>
+  `;
+  return sendEmail(email, `${inviterName} invited you to ${businessName} on Elsie`, html);
+}
+
 /** Send a notification email (plain text wrapped in minimal HTML). */
 export async function sendNotification(
   to: string,
