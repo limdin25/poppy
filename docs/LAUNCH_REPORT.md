@@ -3,12 +3,16 @@
 _Generated 2026-06-03. Production: https://heyelsie.com (landing) ·
 https://app.heyelsie.com (app)._
 
-## Recommendation: **GO** — with a 15-minute human sign-off pass
+## Recommendation: **GO** ✅
 
-Everything structural is verified and live. The automated suite is green and the
-launch-blocking regressions are fixed. Before you announce, run the short
-**human checklist** at the bottom (the few flows that actually send WhatsApp
-messages / hit third parties, which automation must not do against production).
+Everything launch-critical is now verified **live, by hand, on production** —
+including the two that send real WhatsApp messages: **follow-up delivery** and
+**campaign send** both delivered to real phones (555 + …69). The automated suite is
+green (140/0) and the launch-blocking regressions are fixed.
+
+Only non-blocking items remain, deferred by choice: CSV/scan, Google Calendar OAuth,
+and a couple of minor flows (profile-photo upload, team invite, KB live-crawl answer)
+— none of which gate launch.
 
 ---
 
@@ -47,10 +51,13 @@ Driven by hand through the live app (clicking, filling forms, reading the screen
 | **Next 6 hours** | ✅ | Created a booking via the UI (test number) → it appeared as "20:41 · QA Consultation · Confirmed". Test data then deleted. |
 | Notes | ✅ | Added in inbox → shows full text on **Pipeline card** + note **indicator** in **Table**. Test note then cleared. |
 | Knowledge Base | ✅ | 4 tiles (website/upload/paste/Google), items with Synced/Processing status, "Set up Elsie". |
+| **Follow-up delivery (live send)** | ✅ | Scheduled via UI to 555 with a custom message → cron processed it → `status=sent`, outbound message in thread, **delivered to the 555 phone**. Confirms the inline-edited message is what's sent + multi-step scheduling. |
+| **Campaign send (live send)** | ✅ | Created + sent to 555 + 447414163669 → `{sent:2, failed:0}`, both recipients `sent`, **delivered to both phones**. (Targeted via tag filter so only those 2 were messaged.) |
 
-Not yet human-run (they fire real WhatsApp messages / third-party connections —
-need a test recipient or your go-ahead): campaign send, KB website crawl→live AI
-answer, Google Calendar OAuth, CSV import/export, profile-photo upload, team invite.
+All test artifacts were cleaned up afterwards (demo account restored).
+
+Still deferred (per your call): CSV import/export & "scan", Google Calendar OAuth.
+Minor / not yet run: KB website-crawl→live AI answer, profile-photo upload, team invite.
 
 ## Bugs fixed this session
 
