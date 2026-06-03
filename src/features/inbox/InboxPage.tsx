@@ -500,13 +500,32 @@ function ThreadView({
   const [savingDraft, setSavingDraft] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showFollowups, setShowFollowups] = useState(false)
-  const [showNotes, setShowNotes] = useState(false)
+  const [composerTab, setComposerTab] = useState<'reply' | 'note'>('reply')
+  const [noteText, setNoteText] = useState(conversation.contact?.notes ?? '')
+  const [savingNote, setSavingNote] = useState(false)
+  const [noteSaved, setNoteSaved] = useState(false)
   const [dealValueOpen, setDealValueOpen] = useState(false)
   const [dealValueInput, setDealValueInput] = useState('')
   const [assignedTo, setAssignedTo] = useState<string | null>(conversation.assigned_to)
   const [assignOpen, setAssignOpen] = useState(false)
   const [aiOn, setAiOn] = useState(conversation.ai_handling !== false)
   const [stageId, setStageId] = useState<string | null>(deal?.stage_id ?? null)
+
+  // Each conversation opens in Reply mode; load its saved note for the Note tab.
+  useEffect(() => {
+    setComposerTab('reply')
+    setNoteText(conversation.contact?.notes ?? '')
+  }, [conversation.id, conversation.contact?.notes])
+
+  async function saveNote() {
+    if (!conversation.contact_id) return
+    setSavingNote(true)
+    await supabase.from('contacts').update({ notes: noteText }).eq('id', conversation.contact_id)
+    setSavingNote(false)
+    setNoteSaved(true)
+    onDealSaved?.()
+    setTimeout(() => setNoteSaved(false), 1500)
+  }
   const menuRef = useRef<HTMLDivElement>(null)
   const assignRef = useRef<HTMLDivElement>(null)
   const { data: teamMembers } = useTeamMembers()
@@ -778,10 +797,6 @@ function ThreadView({
         <FollowupsPanel conversation={conversation} contactName={name} onClose={() => setShowFollowups(false)} />
       )}
 
-      {showNotes && (
-        <NotesPanel conversation={conversation} contactName={name} onClose={() => setShowNotes(false)} onSaved={onDealSaved} />
-      )}
-
       {/* Messages */}
       <div className="flex-1 space-y-3 overflow-y-auto scrollbar-thin px-4 py-5">
         {loading ? (
@@ -955,95 +970,109 @@ function ThreadView({
               <Coins size={13} /> {deal && Number(deal.value) > 0 ? formatMoney(deal.value, dealCurrency) : 'Deal value'}
             </button>
           )}
+        </div>
+
+        {/* Reply / Note tabs — switch the composer between messaging the lead and an internal note */}
+        <div className="mb-2 flex items-center gap-1 border-b border-border">
+          <button
+            onClick={() => setComposerTab('reply')}
+            className={cn(
+              '-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-[12.5px] font-semibold transition',
+              composerTab === 'reply' ? 'border-accent text-accent' : 'border-transparent text-ink-muted hover:text-ink',
+            )}
+          >
+            <Send size={13} /> Reply
+          </button>
           <button
             data-testid="notes-btn"
-            onClick={() => setShowNotes((s) => !s)}
+            onClick={() => { setComposerTab('note'); setNoteText(conversation.contact?.notes ?? '') }}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition',
-              showNotes ? 'bg-accent text-white' : 'bg-elevated text-ink-muted hover:bg-border',
+              '-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-[12.5px] font-semibold transition',
+              composerTab === 'note' ? 'border-amber-500 text-amber-700' : 'border-transparent text-ink-muted hover:text-ink',
             )}
           >
-            <StickyNote size={13} /> Notes
+            <StickyNote size={13} /> Note
           </button>
         </div>
-        <div className="flex items-end gap-2">
-          <button
-            onClick={() => setShowQuick((s) => !s)}
-            title="Insert quick reply"
-            className={cn(
-              'mb-0.5 rounded-lg p-2 text-ink-muted hover:bg-elevated',
-              showQuick && 'bg-elevated text-ink'
-            )}
-          >
-            <Zap size={18} />
-          </button>
-          <textarea
-            value={composer}
-            onChange={(e) => setComposer(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSend()
-              }
-            }}
-            rows={1}
-            placeholder="Type a message…"
-            className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-border bg-page px-3 py-2.5 text-[13.5px] text-ink outline-none placeholder:text-ink-subtle focus:border-ink-subtle/40"
-          />
-          <button
-            disabled={!composer.trim() || sending}
-            onClick={handleSend}
-            className="mb-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white transition hover:opacity-90 disabled:opacity-40"
-          >
-            {sending ? (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-            ) : (
-              <Send size={17} />
-            )}
-          </button>
-        </div>
+
+        {composerTab === 'reply' ? (
+          <div className="flex items-end gap-2">
+            <button
+              onClick={() => setShowQuick((s) => !s)}
+              title="Insert quick reply"
+              className={cn(
+                'mb-0.5 rounded-lg p-2 text-ink-muted hover:bg-elevated',
+                showQuick && 'bg-elevated text-ink',
+              )}
+            >
+              <Zap size={18} />
+            </button>
+            <textarea
+              value={composer}
+              onChange={(e) => setComposer(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSend()
+                }
+              }}
+              rows={1}
+              placeholder="Type a message…"
+              className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-border bg-page px-3 py-2.5 text-[13.5px] text-ink outline-none placeholder:text-ink-subtle focus:border-ink-subtle/40"
+            />
+            <button
+              disabled={!composer.trim() || sending}
+              onClick={handleSend}
+              className="mb-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white transition hover:opacity-90 disabled:opacity-40"
+            >
+              {sending ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <Send size={17} />
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50/50 p-2.5">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-amber-700">
+              <StickyNote size={12} /> Internal note — only your team sees this. Shows on the lead in Pipeline + Table.
+            </div>
+            <textarea
+              data-testid="notes-input"
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  void saveNote()
+                }
+              }}
+              rows={2}
+              autoFocus
+              placeholder="Add a private note about this lead…"
+              className="max-h-40 min-h-[44px] w-full resize-none rounded-lg border border-amber-200 bg-white px-3 py-2 text-[13.5px] text-ink outline-none placeholder:text-ink-subtle focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
+            />
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setComposerTab('reply')}
+                className="rounded-lg px-3 py-1.5 text-[12.5px] font-medium text-ink-muted transition hover:bg-elevated"
+              >
+                Cancel
+              </button>
+              <button
+                data-testid="notes-save-btn"
+                onClick={() => void saveNote()}
+                disabled={savingNote}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-amber-600 disabled:opacity-50"
+              >
+                {savingNote ? <Loader2 size={13} className="animate-spin" /> : <StickyNote size={13} />}
+                {noteSaved ? 'Saved ✓' : 'Save note'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
-  )
-}
-
-/** Inline note editor for a lead (contacts.notes). Visible in Leads table + pipeline. */
-function NotesPanel({ conversation, contactName, onClose, onSaved }: {
-  conversation: Conversation
-  contactName: string
-  onClose: () => void
-  onSaved?: () => void
-}) {
-  const [note, setNote] = useState(conversation.contact?.notes ?? '')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  async function save() {
-    if (!conversation.contact_id) { onClose(); return }
-    setSaving(true)
-    await supabase.from('contacts').update({ notes: note }).eq('id', conversation.contact_id)
-    setSaving(false); setSaved(true); onSaved?.()
-    setTimeout(() => setSaved(false), 1500)
-  }
-  return (
-    <div className="mx-3 mt-2 rounded-xl border-2 border-amber-300 bg-amber-50/40 px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2"><StickyNote size={14} className="text-amber-600" /><span className="text-[12.5px] font-semibold text-amber-800">Note · {contactName}</span></div>
-        <button onClick={onClose} className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-ink"><X size={14} /></button>
-      </div>
-      <textarea
-        data-testid="notes-input"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        rows={3}
-        placeholder="Private note about this lead — shows in Leads (table + pipeline)"
-        className="w-full resize-none rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
-      />
-      <div className="mt-2 flex justify-end">
-        <button data-testid="notes-save-btn" onClick={() => void save()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50">
-          {saving ? <Loader2 size={12} className="animate-spin" /> : null}{saved ? 'Saved' : 'Save note'}
-        </button>
-      </div>
-    </div>
   )
 }
 
