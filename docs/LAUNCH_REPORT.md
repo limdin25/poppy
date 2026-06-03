@@ -54,7 +54,20 @@ Driven by hand through the live app (clicking, filling forms, reading the screen
 | **Follow-up delivery (live send)** | ✅ | Scheduled via UI to 555 with a custom message → cron processed it → `status=sent`, outbound message in thread, **delivered to the 555 phone**. Confirms the inline-edited message is what's sent + multi-step scheduling. |
 | **Campaign send (live send)** | ✅ | Created + sent to 555 + 447414163669 → `{sent:2, failed:0}`, both recipients `sent`, **delivered to both phones**. (Targeted via tag filter so only those 2 were messaged.) |
 
+| **Notifications + invites (Resend, verified in Gmail)** | ✅ | Test alert, **new-booking** alert, and **team-invite** email all delivered to a real Gmail (confirmed in the inbox). |
+| Profile photo upload | ✅ | Confirmed working by Hugo. |
+
 All test artifacts were cleaned up afterwards (demo account restored).
+
+### Bugs found via live testing + Hugo's questions — fixed & deployed
+- **Team invites were fully broken** — `team_members` has no `status` column, but the code selected + inserted it → loading the team AND inviting both failed silently. Fixed (derive active/pending from `user_id`).
+- **"0 active members"** — owner has no `joined_at`; active-count now keys off `user_id`.
+- **Invites didn't email anyone** — now `/api/team/invite` creates the row **and** emails the invitee via Resend (verified in Gmail).
+
+### Notifications — important setup note
+New-booking / message alerts only send to destinations configured in **Settings →
+Notifications**. The account ships with **none**, so add your email/WhatsApp there
+to receive booking alerts (the pipeline itself is verified working via Resend).
 
 Still deferred (per your call): CSV import/export & "scan", Google Calendar OAuth.
 Minor / not yet run: KB website-crawl→live AI answer, profile-photo upload, team invite.
