@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   RotateCcw,
   Trash2,
+  Archive,
+  ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
@@ -79,6 +81,9 @@ function senderLabel(msg: Message): 'ai' | 'customer' | 'user' {
   if (msg.sender === 'ai') return 'ai'
   return 'user'
 }
+
+type AiMode = 'draft' | 'auto' | 'off'
+const AI_MODE_LABEL: Record<AiMode, string> = { draft: 'Draft & approve', auto: 'Auto-send', off: 'Off' }
 
 export type InboxFolder = 'inbox' | 'unread' | 'mine' | 'team' | 'archived' | 'closed'
 
@@ -177,6 +182,42 @@ export default function InboxPage() {
     setLeadMsg('Lead added — find them under Leads.')
   }
 
+  // Global AI reply mode (across the business's channels) — "turn all on/off"
+  const [aiMode, setAiMode] = useState<AiMode | null>(null)
+  const [aiMenuOpen, setAiMenuOpen] = useState(false)
+  const aiMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!businessId) return
+    supabase.from('channels').select('auto_reply_enabled, draft_mode').eq('business_id', businessId).then(({ data }) => {
+      if (!data || !data.length) { setAiMode('draft'); return }
+      if (!data.some((c: any) => c.auto_reply_enabled)) setAiMode('off')
+      else if (data.some((c: any) => c.draft_mode)) setAiMode('draft')
+      else setAiMode('auto')
+    })
+  }, [businessId])
+  useEffect(() => {
+    if (!aiMenuOpen) return
+    function onDoc(e: MouseEvent) { if (aiMenuRef.current && !aiMenuRef.current.contains(e.target as Node)) setAiMenuOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [aiMenuOpen])
+  async function setAllAi(mode: AiMode) {
+    setAiMode(mode); setAiMenuOpen(false)
+    if (!businessId) return
+    const patch = mode === 'off' ? { auto_reply_enabled: false } : { auto_reply_enabled: true, draft_mode: mode === 'draft' }
+    await supabase.from('channels').update(patch).eq('business_id', businessId)
+  }
+
+  // Card quick-actions (realtime refreshes the list afterwards)
+  async function quickArchive(c: Conversation) {
+    const next = c.status === 'archived' ? 'open' : 'archived'
+    await supabase.from('conversations').update({ status: next }).eq('id', c.id)
+  }
+  async function quickResolve(c: Conversation) {
+    const next = c.status === 'closed' ? 'open' : 'closed'
+    await supabase.from('conversations').update({ status: next }).eq('id', c.id)
+  }
+
   const counts: Record<InboxFolder, number> = { inbox: 0, unread: 0, mine: 0, team: 0, archived: 0, closed: 0 }
   for (const c of conversations) {
     for (const f of FOLDER_ORDER) if (inFolder(c, f, uid)) counts[f]++
@@ -227,6 +268,36 @@ export default function InboxPage() {
               value={folder}
               onChange={(v) => { setFolder(v as InboxFolder); setSelectedId(null) }}
             />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-medium text-ink-subtle">Elsie replies (all chats)</span>
+              <div ref={aiMenuRef} className="relative">
+                <button
+                  onClick={() => setAiMenuOpen((o) => !o)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11.5px] font-medium text-ink transition hover:bg-elevated"
+                >
+                  <Sparkles size={12} className="text-violet-600" /> {AI_MODE_LABEL[aiMode ?? 'draft']} <ChevronDown size={12} />
+                </button>
+                {aiMenuOpen && (
+                  <div className="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-border bg-surface py-1 shadow-pop">
+                    {(['draft', 'auto', 'off'] as AiMode[]).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => void setAllAi(m)}
+                        className={cn('flex w-full items-center justify-between px-3 py-2 text-left text-[12px] hover:bg-elevated', aiMode === m ? 'font-semibold text-accent' : 'text-ink')}
+                      >
+                        <span>
+                          {AI_MODE_LABEL[m]}
+                          <span className="block text-[10.5px] font-normal text-ink-subtle">
+                            {m === 'draft' ? 'Elsie drafts, you approve' : m === 'auto' ? 'Elsie sends automatically' : 'You reply manually'}
+                          </span>
+                        </span>
+                        {aiMode === m && <Check size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin">
@@ -241,11 +312,14 @@ export default function InboxPage() {
                 const name = displayName(c)
                 const chLabel = chLabelOf(c.channel)
                 return (
-                  <button
+                  <div
                     key={c.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedId(c.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') setSelectedId(c.id) }}
                     className={cn(
-                      'flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-elevated/50',
+                      'group relative flex w-full cursor-pointer items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-elevated/50',
                       c.id === selectedId && 'bg-elevated/60'
                     )}
                   >
@@ -272,7 +346,24 @@ export default function InboxPage() {
                         )}
                       </div>
                     </div>
-                  </button>
+                    {/* hover quick-actions */}
+                    <div className="absolute right-2 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-lg border border-border bg-surface p-0.5 shadow-soft group-hover:flex">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void quickResolve(c) }}
+                        title={c.status === 'closed' ? 'Reopen' : 'Mark resolved'}
+                        className={cn('rounded-md p-1.5 hover:bg-elevated', c.status === 'closed' ? 'text-emerald-600' : 'text-ink-subtle hover:text-emerald-600')}
+                      >
+                        <CheckCircle2 size={15} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void quickArchive(c) }}
+                        title={c.status === 'archived' ? 'Unarchive' : 'Archive'}
+                        className={cn('rounded-md p-1.5 hover:bg-elevated', c.status === 'archived' ? 'text-accent' : 'text-ink-subtle hover:text-ink')}
+                      >
+                        <Archive size={15} />
+                      </button>
+                    </div>
+                  </div>
                 )
               })
             )}
@@ -402,6 +493,12 @@ function ThreadView({
   async function reopenConversation() {
     setMenuOpen(false)
     await supabase.from('conversations').update({ status: 'open' }).eq('id', conversation.id)
+  }
+  async function archiveConversation() {
+    setMenuOpen(false)
+    const next = conversation.status === 'archived' ? 'open' : 'archived'
+    await supabase.from('conversations').update({ status: next }).eq('id', conversation.id)
+    if (next === 'archived') onArchived()
   }
 
   const { data: messages, loading, refetch: refetchMessages } = useMessages(conversation.id)
@@ -550,6 +647,9 @@ function ThreadView({
                   <CheckCircle2 size={14} /> Mark resolved
                 </button>
               )}
+              <button onClick={() => void archiveConversation()} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-ink hover:bg-elevated">
+                <Archive size={14} /> {conversation.status === 'archived' ? 'Unarchive' : 'Archive'}
+              </button>
               <button onClick={() => void markSpam()} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-red-600 hover:bg-red-50">
                 <Ban size={14} /> Mark as spam
               </button>
@@ -732,8 +832,19 @@ function ThreadView({
   )
 }
 
-interface Sequence { id: string; name: string; steps: unknown[] }
+interface Sequence { id: string; name: string; steps: { after_hours: number; message: string }[] }
 interface Scheduled { id: string; step_index: number; send_at: string; status: string }
+
+const FOLLOWUP_DELAYS: { label: string; mins: number }[] = [
+  { label: '5 minutes', mins: 5 },
+  { label: '10 minutes', mins: 10 },
+  { label: '1 hour', mins: 60 },
+  { label: '1 day', mins: 1440 },
+  { label: '2 days', mins: 2880 },
+  { label: '3 days', mins: 4320 },
+  { label: '1 week', mins: 10080 },
+  { label: '1 month', mins: 43200 },
+]
 
 /**
  * Per-conversation follow-up scheduling. Toggle follow-ups on/off, pick a
@@ -753,6 +864,7 @@ function FollowupsPanel({
   const [scheduled, setScheduled] = useState<Scheduled[]>([])
   const [enabled, setEnabled] = useState(!!conversation.followups_enabled)
   const [sequenceId, setSequenceId] = useState<string | null>(conversation.followup_sequence_id)
+  const [delayMins, setDelayMins] = useState(1440)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -794,11 +906,14 @@ function FollowupsPanel({
     if (!sequenceId) return
     setBusy(true)
     const pendingCount = scheduled.filter((s) => s.status === 'pending').length
+    const sendAt = new Date(Date.now() + delayMins * 60_000).toISOString()
+    // Turn auto follow-ups on for this chat as soon as one is scheduled.
+    if (!enabled) await toggleEnabled(true)
     await supabase.from('scheduled_followups').insert({
       conversation_id: conversation.id,
       sequence_id: sequenceId,
       step_index: pendingCount,
-      send_at: new Date().toISOString(),
+      send_at: sendAt,
       status: 'pending',
     })
     await loadScheduled()
@@ -813,6 +928,7 @@ function FollowupsPanel({
 
   const fmt = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
   const pendingCount = scheduled.filter((s) => s.status === 'pending').length
+  const selectedSeq = sequences.find((s) => s.id === sequenceId) ?? null
 
   return (
     <div className="border-b border-border bg-surface px-4 py-3">
@@ -832,22 +948,45 @@ function FollowupsPanel({
             <span className="text-[12px] text-ink-muted">Auto follow-ups for this chat</span>
             <Switch checked={enabled} onChange={(n) => void toggleEnabled(n)} />
           </div>
-          <div className="flex items-center gap-2">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-ink-muted">Follow-up type</label>
             <select
               value={sequenceId ?? ''}
               onChange={(e) => void pickSequence(e.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-border bg-page px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink-subtle/40"
+              className="w-full rounded-lg border border-border bg-page px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink-subtle/40"
             >
-              {sequences.length === 0 && <option value="">No sequences</option>}
+              {sequences.length === 0 && <option value="">No follow-up types yet — set up Elsie in Knowledge Base</option>}
               {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <button
-              onClick={() => void scheduleNow()}
-              disabled={busy || !sequenceId}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Schedule now
-            </button>
+          </div>
+
+          {selectedSeq && selectedSeq.steps.length > 0 && (
+            <div className="rounded-lg bg-page px-2.5 py-2">
+              <p className="text-[11px] font-semibold text-ink">{selectedSeq.name} · {selectedSeq.steps.length} message{selectedSeq.steps.length === 1 ? '' : 's'}</p>
+              {selectedSeq.steps.map((st, i) => (
+                <p key={i} className="mt-0.5 truncate text-[11px] text-ink-muted">+{st.after_hours}h · {st.message}</p>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-ink-muted">Send first message if no reply within</label>
+            <div className="flex items-center gap-2">
+              <select
+                value={delayMins}
+                onChange={(e) => setDelayMins(Number(e.target.value))}
+                className="min-w-0 flex-1 rounded-lg border border-border bg-page px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink-subtle/40"
+              >
+                {FOLLOWUP_DELAYS.map((d) => <option key={d.mins} value={d.mins}>{d.label}</option>)}
+              </select>
+              <button
+                onClick={() => void scheduleNow()}
+                disabled={busy || !sequenceId}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Schedule
+              </button>
+            </div>
           </div>
 
           {scheduled.length > 0 ? (
