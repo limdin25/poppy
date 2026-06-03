@@ -45,6 +45,51 @@ export default async function handler(req: Request): Promise<Response> {
 
     const userId = userData.user.id;
 
+    // ── Accept a pending team invite (join an existing business) ──────────────
+    // If this email was invited to a team (pending row, no user yet), link the new
+    // user to that business instead of spinning up a fresh one. Matches by email
+    // (invites are stored lowercased) so no token is needed.
+    if (!businessId) {
+      const { data: pendingInvite } = await supabase
+        .from('team_members')
+        .select('id, business_id')
+        .eq('email', email.trim().toLowerCase())
+        .is('user_id', null)
+        .order('invited_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingInvite) {
+        await supabase
+          .from('team_members')
+          .update({ user_id: userId, name, joined_at: new Date().toISOString() })
+          .eq('id', pendingInvite.id);
+
+        const authClient = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          { auth: { persistSession: false, autoRefreshToken: false } },
+        );
+        const { data: signInData, error: signInError } =
+          await authClient.auth.signInWithPassword({ email, password });
+        if (signInError) {
+          return new Response(JSON.stringify({ error: signInError.message }), { status: 500 });
+        }
+
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            joinedTeam: true,
+            userId,
+            businessId: pendingInvite.business_id,
+            access_token: signInData.session?.access_token,
+            refresh_token: signInData.session?.refresh_token,
+          }),
+          { status: 200 },
+        );
+      }
+    }
+
     // Resolve the business: link an existing one, or create a fresh one now that the owner exists
     let bizId = businessId;
     if (bizId) {
