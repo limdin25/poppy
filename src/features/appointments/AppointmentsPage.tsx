@@ -1,414 +1,418 @@
-import { useState, useEffect } from 'react'
-import { Calendar, Clock, Phone, Plus, ChevronLeft, ChevronRight, X, Loader2, ChevronDown, ChevronUp, Mic } from 'lucide-react'
-import { cn } from '@/core/lib/cn'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { CalendarPlus, CalendarCheck, CalendarDays, CheckCircle2, Loader2 } from 'lucide-react'
+import { PageHeader } from '@/core/ui/PageHeader'
+import { StatCard } from '@/core/ui/StatCard'
+import { SectionCard } from '@/core/ui/SectionCard'
+import { StatusPill, type PillTone } from '@/core/ui/StatusPill'
+import { FilterChips } from '@/core/ui/FilterChips'
+import { Avatar } from '@/core/ui/Avatar'
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { useAppointments } from '@/core/hooks/useAppointments'
 import { useAuth } from '@/core/auth/AuthProvider'
-import { supabase } from '@/core/hooks/useSupabaseQuery'
 import type { Appointment } from '@/core/types/database'
 
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr)
-  const today = new Date()
-  if (d.toDateString() === today.toDateString()) return 'Today'
+/**
+ * Appointments (waslo-faithful visual clone), wired to real data via
+ * useAppointments(). Buckets, chip counts, stat cards and rows are all
+ * computed from real appointment datetimes + status. WhatsApp-only copy,
+ * no credits. "New booking" is a no-op TODO for now.
+ */
+
+type Bucket = 'today' | 'upcoming' | 'past'
+
+const STATUS_LABEL: Record<Appointment['status'], string> = {
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  cancelled: 'Cancelled',
+  completed: 'Confirmed',
+  no_show: 'Cancelled',
+}
+
+const STATUS_TONE: Record<Appointment['status'], PillTone> = {
+  pending: 'warning',
+  confirmed: 'success',
+  cancelled: 'danger',
+  completed: 'success',
+  no_show: 'danger',
+}
+
+function startOfDay(d: Date) {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+function bucketFor(startsAt: string, todayStart: number, tomorrowStart: number): Bucket {
+  const t = new Date(startsAt).getTime()
+  if (t < todayStart) return 'past'
+  if (t < tomorrowStart) return 'today'
+  return 'upcoming'
+}
+
+function dayLabel(startsAt: string): string {
+  const d = new Date(startsAt)
+  const today = startOfDay(new Date())
   const tomorrow = new Date(today)
   tomorrow.setDate(tomorrow.getDate() + 1)
+  if (d.toDateString() === today.toDateString()) return 'Today'
   if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-function formatTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+function timeLabel(startsAt: string): string {
+  return new Date(startsAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
-function durationLabel(start: string, end: string) {
-  const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000)
-  if (mins < 60) return `${mins} min`
-  const hrs = Math.floor(mins / 60)
-  const rem = mins % 60
-  return rem ? `${hrs}h ${rem}m` : `${hrs} hour${hrs > 1 ? 's' : ''}`
-}
-
-const STATUS_STYLES = {
-  confirmed: 'bg-success/10 text-success',
-  pending: 'bg-warning/10 text-warning',
-  completed: 'bg-elevated text-ink-muted',
-  cancelled: 'bg-danger/10 text-danger',
-  no_show: 'bg-danger/10 text-danger',
-}
-
-function getCalendarDays(year: number, month: number) {
-  const firstDay = new Date(year, month, 1).getDay()
-  const offset = firstDay === 0 ? 6 : firstDay - 1
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const cells: (number | null)[] = Array(offset).fill(null)
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
-  return cells
+interface DayGroup {
+  day: string
+  sortKey: number
+  bucket: Bucket
+  items: Appointment[]
 }
 
 export default function AppointmentsPage() {
-  const [view, setView] = useState<'list' | 'calendar'>('list')
-  const [calMonth, setCalMonth] = useState(new Date().getMonth())
-  const [calYear, setCalYear] = useState(new Date().getFullYear())
-  const [showNew, setShowNew] = useState(false)
-  const { businessId } = useAuth()
+  const navigate = useNavigate()
+  const { session } = useAuth()
   const { data: appointments, loading, refetch } = useAppointments()
+  const [filter, setFilter] = useState<Bucket>('today')
 
-  function prevMonth() {
-    if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1) }
-    else setCalMonth(calMonth - 1)
+  // New-booking modal
+  const [bookingOpen, setBookingOpen] = useState(false)
+  const [bName, setBName] = useState('')
+  const [bPhone, setBPhone] = useState('')
+  const [bService, setBService] = useState('')
+  const [bWhen, setBWhen] = useState('')
+  const [bDuration, setBDuration] = useState(60)
+  const [bNotes, setBNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [bookError, setBookError] = useState<string | null>(null)
+
+  function openBooking() {
+    setBName(''); setBPhone(''); setBService(''); setBWhen(''); setBDuration(60); setBNotes('')
+    setBookError(null)
+    setBookingOpen(true)
   }
-  function nextMonth() {
-    if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1) }
-    else setCalMonth(calMonth + 1)
+
+  async function submitBooking() {
+    if (!session) return
+    if (!bWhen) { setBookError('Pick a date and time.'); return }
+    setSaving(true)
+    setBookError(null)
+    try {
+      const res = await fetch('/api/appointments/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          name: bName.trim(),
+          phone: bPhone.trim(),
+          service: bService.trim() || 'Appointment',
+          startsAt: new Date(bWhen).toISOString(),
+          durationMins: bDuration,
+          notes: bNotes.trim() || undefined,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.error) { setBookError(data.error || 'Could not create the booking.'); return }
+      setBookingOpen(false)
+      refetch()
+    } catch (e) {
+      setBookError(e instanceof Error ? e.message : 'Could not reach the server.')
+    } finally {
+      setSaving(false)
+    }
   }
+
+  const { groupsByBucket, counts, confirmedRate, todayPending, thisWeek } = useMemo(() => {
+    const now = new Date()
+    const todayStart = startOfDay(now).getTime()
+    const tomorrowStart = todayStart + 24 * 60 * 60 * 1000
+    // "This week" = today + the next 6 days.
+    const weekEnd = todayStart + 7 * 24 * 60 * 60 * 1000
+
+    const buckets: Record<Bucket, Map<string, DayGroup>> = {
+      today: new Map(),
+      upcoming: new Map(),
+      past: new Map(),
+    }
+
+    let todayCount = 0
+    let upcomingCount = 0
+    let pastCount = 0
+    let confirmedCount = 0
+    let activeTotal = 0
+    let todayPendingCount = 0
+    let thisWeekCount = 0
+
+    for (const appt of appointments) {
+      const bucket = bucketFor(appt.starts_at, todayStart, tomorrowStart)
+      const map = buckets[bucket]
+      const label = dayLabel(appt.starts_at)
+      const sortKey = startOfDay(new Date(appt.starts_at)).getTime()
+      const group = map.get(label)
+      if (group) group.items.push(appt)
+      else map.set(label, { day: label, sortKey, bucket, items: [appt] })
+
+      if (bucket === 'today') todayCount++
+      else if (bucket === 'upcoming') upcomingCount++
+      else pastCount++
+
+      const isCancelled = appt.status === 'cancelled' || appt.status === 'no_show'
+      if (!isCancelled) {
+        activeTotal++
+        if (appt.status === 'confirmed' || appt.status === 'completed') confirmedCount++
+      }
+      if (bucket === 'today' && appt.status === 'pending') todayPendingCount++
+
+      const t = new Date(appt.starts_at).getTime()
+      if (t >= todayStart && t < weekEnd && !isCancelled) thisWeekCount++
+    }
+
+    const sortGroups = (b: Bucket) => {
+      const arr = [...buckets[b].values()]
+      arr.sort((a, c) => (b === 'past' ? c.sortKey - a.sortKey : a.sortKey - c.sortKey))
+      for (const g of arr) {
+        g.items.sort((x, y) => new Date(x.starts_at).getTime() - new Date(y.starts_at).getTime())
+      }
+      return arr
+    }
+
+    return {
+      groupsByBucket: {
+        today: sortGroups('today'),
+        upcoming: sortGroups('upcoming'),
+        past: sortGroups('past'),
+      } as Record<Bucket, DayGroup[]>,
+      counts: { today: todayCount, upcoming: upcomingCount, past: pastCount },
+      confirmedRate: activeTotal ? Math.round((confirmedCount / activeTotal) * 100) : 0,
+      todayPending: todayPendingCount,
+      thisWeek: thisWeekCount,
+    }
+  }, [appointments])
+
+  const groups = groupsByBucket[filter]
+  const hasAny = appointments.length > 0
 
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">Appointments</h1>
-          <p className="mt-1 text-[13px] text-ink-muted">Manage bookings made by Elsie and your team.</p>
-        </div>
-        <button
-          onClick={() => setShowNew(true)}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-600"
-        >
-          <Plus size={14} />
-          New booking
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="Work"
+        title="Appointments"
+        description="Every booking Elsie has taken and confirmed for you, straight from WhatsApp."
+        actions={
+          <>
+            <FilterChips
+              options={[
+                { value: 'today', label: 'Today', count: counts.today },
+                { value: 'upcoming', label: 'Upcoming', count: counts.upcoming },
+                { value: 'past', label: 'Past', count: counts.past },
+              ]}
+              value={filter}
+              onChange={(v) => setFilter(v as Bucket)}
+            />
+            <button
+              onClick={openBooking}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+            >
+              <CalendarPlus size={15} /> New booking
+            </button>
+          </>
+        }
+      />
 
-      <div className="mt-6 flex items-center gap-2">
-        <button
-          onClick={() => setView('list')}
-          className={cn(
-            'rounded-lg px-3 py-1.5 text-[13px] font-medium transition',
-            view === 'list' ? 'bg-brand/10 text-brand' : 'text-ink-muted hover:bg-elevated'
-          )}
-        >
-          List
-        </button>
-        <button
-          onClick={() => setView('calendar')}
-          className={cn(
-            'rounded-lg px-3 py-1.5 text-[13px] font-medium transition',
-            view === 'calendar' ? 'bg-brand/10 text-brand' : 'text-ink-muted hover:bg-elevated'
-          )}
-        >
-          Calendar
-        </button>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          icon={<CalendarCheck />}
+          label="Today"
+          value={counts.today}
+          sub={`${counts.today} booked · ${todayPending} pending`}
+        />
+        <StatCard
+          icon={<CalendarDays />}
+          label="This week"
+          value={thisWeek}
+          sub="Booked via WhatsApp"
+        />
+        <StatCard
+          icon={<CheckCircle2 />}
+          label="Confirmed rate"
+          value={`${confirmedRate}%`}
+          sub="Auto-confirmed by Elsie"
+        />
       </div>
 
       {loading ? (
-        <div className="mt-8 flex justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+        <div className="flex justify-center py-16">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
         </div>
-      ) : view === 'list' ? (
-        appointments.length === 0 ? (
-          <p className="mt-8 text-center text-[13px] text-ink-muted">No appointments yet</p>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {appointments.map((appt) => (
-              <AppointmentCard key={appt.id} appt={appt} onCancel={refetch} />
-            ))}
-          </div>
-        )
-      ) : (
-        <div className="mt-4 rounded-xl border border-border bg-surface p-6 shadow-soft">
-          <div className="flex items-center justify-between">
-            <button onClick={prevMonth} className="text-ink-muted hover:text-ink"><ChevronLeft size={20} /></button>
-            <h3 className="text-[16px] font-semibold text-ink">
-              {new Date(calYear, calMonth).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-            </h3>
-            <button onClick={nextMonth} className="text-ink-muted hover:text-ink"><ChevronRight size={20} /></button>
-          </div>
-          <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[12px]">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-              <div key={d} className="py-2 font-medium text-ink-subtle">{d}</div>
-            ))}
-            {getCalendarDays(calYear, calMonth).map((day, i) => (
-              <div key={i} className={cn('rounded-lg py-2 text-[13px]', day ? 'text-ink-muted hover:bg-elevated' : '')}>
-                {day ?? ''}
-              </div>
-            ))}
-          </div>
-          {appointments.length > 0 && (
-            <div className="mt-4 space-y-2">
-              <p className="text-[12px] font-medium text-ink-subtle">Upcoming</p>
-              {appointments.slice(0, 3).map((a) => (
-                <div key={a.id} className="flex items-center gap-2 rounded-lg bg-elevated px-3 py-2 text-[13px]">
-                  <div className="h-2 w-2 rounded-full bg-brand" />
-                  <span className="font-medium text-ink">{formatTime(a.starts_at)}</span>
-                  <span className="text-ink-muted">{a.contact?.name ?? 'Unknown'} — {a.title}</span>
-                </div>
-              ))}
+      ) : !hasAny ? (
+        <SectionCard>
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-elevated">
+              <CalendarDays size={22} className="text-ink-subtle" />
             </div>
+            <p className="mt-3 text-[15px] font-semibold text-ink">No appointments yet</p>
+            <p className="mt-1 max-w-sm text-[13px] text-ink-muted">
+              Add a booking yourself, or let Elsie book straight from WhatsApp. Connecting Google
+              Calendar is optional — bookings are saved here either way.
+            </p>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                onClick={openBooking}
+                className="flex h-9 items-center gap-1.5 rounded-lg bg-accent px-4 text-[13px] font-semibold text-white transition hover:opacity-90"
+              >
+                <CalendarPlus size={14} />
+                New booking
+              </button>
+              <button
+                onClick={() => navigate('/connections')}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-4 text-[13px] font-medium text-ink transition hover:bg-elevated"
+              >
+                Connect Google Calendar
+              </button>
+            </div>
+          </div>
+        </SectionCard>
+      ) : (
+        <div className="space-y-5">
+          {groups.length === 0 ? (
+            <SectionCard>
+              <p className="py-8 text-center text-[13px] text-ink-muted">No bookings in this view.</p>
+            </SectionCard>
+          ) : (
+            groups.map((group) => (
+              <SectionCard
+                key={group.day}
+                title={group.day}
+                action={
+                  <span className="text-[12px] text-ink-subtle">
+                    {group.items.length} {group.items.length === 1 ? 'booking' : 'bookings'}
+                  </span>
+                }
+                bodyClassName="p-0"
+              >
+                <ul className="divide-y divide-border">
+                  {group.items.map((appt) => {
+                    const name = appt.contact?.name ?? 'Unknown'
+                    const service = appt.service?.name ?? appt.title
+                    return (
+                      <li
+                        key={appt.id}
+                        className="flex flex-col gap-2.5 px-5 py-3.5 transition-colors hover:bg-elevated/50 sm:flex-row sm:items-center sm:gap-3"
+                      >
+                        <div className="flex h-9 w-[52px] shrink-0 items-center justify-center rounded-lg bg-elevated text-[12.5px] font-semibold text-ink">
+                          {timeLabel(appt.starts_at)}
+                        </div>
+                        <div className="flex items-center gap-3 sm:contents">
+                          <Avatar name={name} channel="whatsapp" size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13.5px] font-medium text-ink">{name}</p>
+                            <p className="truncate text-[12.5px] text-ink-muted">{service}</p>
+                          </div>
+                        </div>
+                        <StatusPill
+                          tone={STATUS_TONE[appt.status]}
+                          uppercase={false}
+                          className="self-start sm:self-auto"
+                        >
+                          {STATUS_LABEL[appt.status]}
+                        </StatusPill>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </SectionCard>
+            ))
           )}
         </div>
       )}
 
-      {showNew && businessId && (
-        <NewBookingModal
-          businessId={businessId}
-          onClose={() => setShowNew(false)}
-          onCreated={() => { setShowNew(false); refetch() }}
-        />
-      )}
-    </div>
-  )
-}
-
-function NewBookingModal({ businessId, onClose, onCreated }: { businessId: string; onClose: () => void; onCreated: () => void }) {
-  const [title, setTitle] = useState('')
-  const [contactName, setContactName] = useState('')
-  const [date, setDate] = useState('')
-  const [time, setTime] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  async function handleSave() {
-    if (!title.trim() || !date || !time) return
-    setSaving(true)
-    const startsAt = new Date(`${date}T${time}`).toISOString()
-    const endsAt = new Date(new Date(`${date}T${time}`).getTime() + 60 * 60 * 1000).toISOString()
-
-    await supabase.from('appointments').insert({
-      business_id: businessId,
-      title: title.trim(),
-      starts_at: startsAt,
-      ends_at: endsAt,
-      status: 'confirmed',
-      booked_via: 'manual',
-      description: contactName.trim() ? `Contact: ${contactName}` : null,
-    })
-    setSaving(false)
-    onCreated()
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-pop" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-[15px] font-semibold text-ink">New Booking</h2>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink"><X size={18} /></button>
-        </div>
-        <div className="mt-4 space-y-3">
-          <input
-            type="text"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="Service (e.g. Boiler Service)"
-            autoFocus
-            className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
-          />
-          <input
-            type="text"
-            value={contactName}
-            onChange={e => setContactName(e.target.value)}
-            placeholder="Customer name (optional)"
-            className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand"
-          />
-          <div className="flex gap-2">
+      <Dialog open={bookingOpen} onClose={() => !saving && setBookingOpen(false)} width="md">
+        <DialogHeader>New booking</DialogHeader>
+        <DialogBody className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-ink-muted">Customer name</label>
+              <input
+                value={bName}
+                onChange={(e) => setBName(e.target.value)}
+                placeholder="Jane Smith"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-ink-muted">Phone (WhatsApp)</label>
+              <input
+                value={bPhone}
+                onChange={(e) => setBPhone(e.target.value)}
+                placeholder="+44…"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Service</label>
             <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              className="h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none focus:border-brand"
-            />
-            <input
-              type="time"
-              value={time}
-              onChange={e => setTime(e.target.value)}
-              className="h-10 w-28 rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none focus:border-brand"
+              value={bService}
+              onChange={(e) => setBService(e.target.value)}
+              placeholder="Consultation"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </div>
-        </div>
-        <div className="mt-5 flex gap-2">
-          <button onClick={onClose} className="h-10 flex-1 rounded-lg border border-border text-[13px] font-medium text-ink-muted">Cancel</button>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-ink-muted">Date &amp; time</label>
+              <input
+                type="datetime-local"
+                value={bWhen}
+                onChange={(e) => setBWhen(e.target.value)}
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-ink-muted">Duration (mins)</label>
+              <input
+                type="number"
+                min={15}
+                step={15}
+                value={bDuration}
+                onChange={(e) => setBDuration(Math.max(15, Number(e.target.value) || 60))}
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Notes (optional)</label>
+            <textarea
+              value={bNotes}
+              onChange={(e) => setBNotes(e.target.value)}
+              rows={2}
+              className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          {bookError && <p className="text-[12.5px] text-red-600">{bookError}</p>}
+          <p className="text-[11px] text-ink-subtle">
+            Saved to your appointments immediately. If Google Calendar is connected, the event is added there too.
+          </p>
+        </DialogBody>
+        <DialogFooter>
           <button
-            onClick={handleSave}
-            disabled={saving || !title.trim() || !date || !time}
-            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-brand text-[13px] font-semibold text-white disabled:opacity-60"
+            onClick={() => setBookingOpen(false)}
+            disabled={saving}
+            className="rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted transition hover:bg-elevated disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submitBooking}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {saving && <Loader2 size={14} className="animate-spin" />}
-            Create
+            {saving ? 'Saving…' : 'Create booking'}
           </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-interface CallData {
-  id: string
-  recording_url: string | null
-  transcript: { speaker: string; text: string }[] | null
-  duration_seconds: number | null
-  started_at: string | null
-  ended_at: string | null
-  ai_summary: string | null
-}
-
-function AppointmentCard({ appt, onCancel }: { appt: Appointment; onCancel: () => void }) {
-  const contactName = appt.contact?.name ?? 'Unknown'
-  const initials = contactName.split(' ').map(n => n[0]).join('').slice(0, 2)
-  const [expanded, setExpanded] = useState(false)
-  const [callData, setCallData] = useState<CallData | null>(null)
-  const [loadingCall, setLoadingCall] = useState(false)
-
-  useEffect(() => {
-    if (!expanded || callData || !appt.conversation_id) return
-    setLoadingCall(true)
-    supabase
-      .from('calls')
-      .select('id, recording_url, transcript, duration_seconds, started_at, ended_at, ai_summary')
-      .eq('conversation_id', appt.conversation_id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setCallData(data as CallData)
-        setLoadingCall(false)
-      })
-  }, [expanded, callData, appt.conversation_id])
-
-  return (
-    <div className="rounded-xl border border-border bg-surface shadow-soft transition hover:border-brand/20">
-      <div className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-elevated text-[13px] font-semibold text-ink-muted">
-              {initials}
-            </div>
-            <div>
-              <p className="text-[14px] font-medium text-ink">{contactName}</p>
-              <p className="text-[13px] text-ink-muted">{appt.title}</p>
-            </div>
-          </div>
-          <span className={cn('rounded-md px-2 py-0.5 text-[11px] font-medium capitalize', STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending)}>
-            {appt.status}
-          </span>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-4 text-[13px] text-ink-muted">
-          <span className="flex items-center gap-1.5">
-            <Calendar size={14} />
-            {formatDate(appt.starts_at)}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Clock size={14} />
-            {formatTime(appt.starts_at)} ({durationLabel(appt.starts_at, appt.ends_at)})
-          </span>
-          <span className="text-[11px] text-ink-subtle">
-            Booked {new Date(appt.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} at {new Date(appt.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        </div>
-
-        {appt.description && (
-          <p className="mt-3 rounded-lg bg-elevated px-3 py-2 text-[13px] text-ink-muted">{appt.description}</p>
-        )}
-
-        <div className="mt-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-ink-subtle">
-              {appt.booked_via === 'manual' ? 'Manual booking' : `Booked via ${appt.booked_via ?? 'Elsie'}`}
-            </span>
-            {appt.conversation_id && (
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="flex items-center gap-1 text-[12px] font-medium text-brand hover:underline"
-              >
-                <Mic size={12} />
-                {expanded ? 'Hide call' : 'View call'}
-                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              </button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            {appt.contact?.phone && (
-              <a href={`tel:${appt.contact.phone}`} className="flex items-center gap-1 text-[12px] text-brand hover:underline">
-                <Phone size={12} /> Call
-              </a>
-            )}
-            {appt.status !== 'cancelled' && appt.status !== 'completed' && (
-              <button
-                onClick={async () => {
-                  if (!window.confirm('Cancel this appointment?')) return
-                  await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appt.id)
-                  onCancel()
-                }}
-                className="text-[12px] text-ink-muted hover:text-danger"
-              >
-                Cancel
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="border-t border-border bg-elevated/50 p-4">
-          {loadingCall ? (
-            <div className="flex items-center gap-2 text-[13px] text-ink-muted">
-              <Loader2 size={14} className="animate-spin" /> Loading call details...
-            </div>
-          ) : callData ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-4 text-[12px] text-ink-muted">
-                {callData.started_at && (
-                  <span className="flex items-center gap-1">
-                    <Phone size={12} />
-                    Call at {new Date(callData.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })},
-                    {' '}{new Date(callData.started_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                  </span>
-                )}
-                {callData.duration_seconds != null && (
-                  <span>
-                    Duration: {callData.duration_seconds < 60
-                      ? `${callData.duration_seconds}s`
-                      : `${Math.floor(callData.duration_seconds / 60)}m ${callData.duration_seconds % 60}s`}
-                  </span>
-                )}
-              </div>
-
-              {callData.ai_summary && (
-                <div className="rounded-lg bg-surface p-3">
-                  <p className="text-[11px] font-medium text-ink-subtle">AI Summary</p>
-                  <p className="mt-1 text-[13px] leading-relaxed text-ink">{callData.ai_summary}</p>
-                </div>
-              )}
-
-              {callData.recording_url && (
-                <div className="rounded-lg bg-surface p-3">
-                  <p className="mb-2 text-[11px] font-medium text-ink-subtle">Recording</p>
-                  <audio controls className="w-full" preload="none">
-                    <source src={callData.recording_url} />
-                  </audio>
-                </div>
-              )}
-
-              {callData.transcript && callData.transcript.length > 0 && (
-                <div className="rounded-lg bg-surface p-3">
-                  <p className="mb-2 text-[11px] font-medium text-ink-subtle">Conversation</p>
-                  <div className="max-h-64 space-y-2 overflow-y-auto">
-                    {callData.transcript.map((line, i) => (
-                      <div key={i} className={cn('text-[13px] leading-relaxed', line.speaker === 'agent' ? 'text-brand' : 'text-ink')}>
-                        <span className="font-medium">{line.speaker === 'agent' ? 'Elsie' : contactName}:</span>{' '}
-                        {line.text}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!callData.recording_url && (!callData.transcript || callData.transcript.length === 0) && !callData.ai_summary && (
-                <p className="text-[12px] text-ink-muted">Call details not yet available.</p>
-              )}
-            </div>
-          ) : (
-            <p className="text-[12px] text-ink-muted">No call data found for this booking.</p>
-          )}
-        </div>
-      )}
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }

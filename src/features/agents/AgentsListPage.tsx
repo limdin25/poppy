@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Phone, MessageCircle, MessageSquare, Camera, Mail, Pencil, MoreHorizontal, Copy, Pause, Play, Trash2, X, Loader2, Bot } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { PageHeader } from '@/core/ui/PageHeader'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { useAgents } from './hooks/useAgents'
@@ -55,18 +56,24 @@ export default function AgentsListPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-4 pt-4 sm:px-6">
-        <h1 className="text-lg font-semibold text-ink">Agents</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12px] font-medium text-white transition hover:bg-brand-600"
-        >
-          <Plus size={13} />
-          New Agent
-        </button>
+      <div className="px-4 pt-4 sm:px-6">
+        <PageHeader
+          eyebrow="AI Agent"
+          title="AI Agent"
+          description="Manage the AI agents that handle your calls and messages."
+          actions={
+            <button
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+            >
+              <Plus size={15} />
+              New Agent
+            </button>
+          }
+        />
       </div>
 
-      <div className="mt-4 flex-1 overflow-y-auto px-4 pb-6 sm:px-6">
+      <div className="flex-1 overflow-y-auto px-4 pb-6 sm:px-6">
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent" />
@@ -80,7 +87,7 @@ export default function AgentsListPage() {
             <p className="mt-1 text-[13px] text-ink-muted">Create your first AI agent to start handling calls and messages.</p>
             <button
               onClick={() => setShowCreate(true)}
-              className="mt-4 flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[13px] font-medium text-white transition hover:bg-brand-600"
+              className="mt-4 flex h-9 items-center gap-1.5 rounded-lg bg-accent px-4 text-[13px] font-semibold text-white transition hover:opacity-90"
             >
               <Plus size={14} />
               New Agent

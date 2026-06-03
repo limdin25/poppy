@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/core/auth/AuthProvider'
 
+/** Fetches `/api/analytics/{path}` with auth + query params, typed result. */
 export function useAnalyticsApi<T>(
   path: string,
   params: Record<string, string | null>,

@@ -4,22 +4,27 @@
 
 @layer base {
   :root {
-    /* Elsie — clean, minimal (Roger Roger inspired) */
+    /* Elsie — RogerRoger design language: Inter, neutral Tailwind-gray scale,
+       indigo-blue primary, hairline borders, near-flat calm surfaces. */
     --bg: 255 255 255;          /* #FFFFFF pure white */
+    --page: 249 250 251;        /* #F9FAFB calm canvas (gray-50) */
     --surface: 255 255 255;     /* cards */
-    --elevated: 245 245 245;    /* #F5F5F5 alt sections */
-    --border: 229 229 229;      /* #E5E5E5 */
-    --ring: 40 51 72;           /* #283348 */
+    --elevated: 243 244 246;    /* #F3F4F6 hover/active fill (gray-100) */
+    --border: 229 231 235;      /* #E5E7EB hairline (gray-200) */
+    --ring: 65 119 251;         /* #4177FB */
 
-    --ink: 29 29 29;            /* #1D1D1D primary text */
-    --ink-muted: 95 95 95;      /* #5F5F5F */
-    --ink-subtle: 135 135 135;  /* #878787 */
+    --accent: 65 119 251;       /* #4177FB indigo-blue — primary buttons, active nav, links */
+    --whatsapp: 37 211 102;     /* #25D366 */
 
-    --brand: 40 51 72;          /* #283348 navy */
-    --brand-50: 245 246 248;    /* light navy tint */
-    --brand-100: 230 233 238;
-    --brand-600: 30 40 58;
-    --brand-700: 22 30 46;
+    --ink: 31 41 55;            /* #1F2937 headings/primary text (slate-800) */
+    --ink-muted: 107 114 128;   /* #6B7280 secondary (gray-500) */
+    --ink-subtle: 156 163 175;  /* #9CA3AF tertiary (gray-400) */
+
+    --brand: 65 119 251;        /* unified to the indigo primary */
+    --brand-50: 239 243 255;    /* indigo tint */
+    --brand-100: 219 228 254;
+    --brand-600: 47 92 224;
+    --brand-700: 37 71 178;
 
     --success: 22 163 74;
     --warning: 234 179 8;

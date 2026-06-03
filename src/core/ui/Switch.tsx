@@ -20,7 +20,7 @@ export function Switch({ checked, onChange, disabled, className, label }: Switch
       className={cn(
         "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors duration-200 ease-apple",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
-        checked ? "bg-brand" : "bg-border",
+        checked ? "bg-accent" : "bg-border",
         disabled && "opacity-50 cursor-not-allowed",
         className
       )}

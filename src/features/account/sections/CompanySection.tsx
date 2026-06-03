@@ -4,6 +4,7 @@ import { useAuth } from '@/core/auth/AuthProvider'
 import { useBusiness } from '@/core/hooks/useBusiness'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import AddressAutocomplete from '@/core/components/AddressAutocomplete'
+import TeamSection from './TeamSection'
 
 export default function CompanySection() {
   const { businessId } = useAuth()
@@ -125,12 +126,14 @@ export default function CompanySection() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+          className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-accent px-6 text-[14px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
         >
           {saving && <Loader2 size={16} className="animate-spin" />}
           {saved ? 'Saved!' : 'Save changes'}
         </button>
       </div>
+
+      <TeamSection />
     </div>
   )
 }

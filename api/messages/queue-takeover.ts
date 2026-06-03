@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { notifyBusinessOwner } from '../lib/notify.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -47,18 +48,59 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data: conv } = await supabase
       .from('conversations')
-      .select('agent_id')
+      .select('agent_id, contact_id')
       .eq('id', conversation_id)
       .single();
 
+    // ── Per-lead AI pause: if this contact is paused, never queue an AI reply ──
+    if (conv?.contact_id) {
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('ai_paused')
+        .eq('id', conv.contact_id)
+        .maybeSingle();
+      if (contact?.ai_paused) {
+        return new Response(JSON.stringify({ ok: true, note: 'ai_paused', skipped: true }), { status: 200 });
+      }
+    }
+
     let agentTiming: Record<string, unknown> | null = null;
+    let agentHandoff: { handoff_enabled?: boolean; handoff_keywords?: string[]; handoff_message?: string | null } | null = null;
     if (conv?.agent_id) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('takeover_delay_seconds, after_hours_delay_seconds, working_hours_start, working_hours_end, working_days')
+        .select('takeover_delay_seconds, after_hours_delay_seconds, working_hours_start, working_hours_end, working_days, handoff_enabled, handoff_keywords, handoff_message')
         .eq('id', conv.agent_id)
         .single();
       agentTiming = agent;
+      agentHandoff = agent;
+    }
+
+    // ── Human handoff: if the inbound message hits a handoff keyword, flag the
+    //    conversation for a human, pause AI, notify the owner, and don't queue. ──
+    if (agentHandoff?.handoff_enabled && Array.isArray(agentHandoff.handoff_keywords) && agentHandoff.handoff_keywords.length) {
+      const { data: trigMsg } = await supabase
+        .from('messages')
+        .select('body')
+        .eq('id', message_id)
+        .maybeSingle();
+      const text = (trigMsg?.body || '').toLowerCase();
+      const hit = text && agentHandoff.handoff_keywords.some((k) => k && text.includes(k.toLowerCase()));
+      if (hit) {
+        await supabase
+          .from('conversations')
+          .update({ status: 'needs_handoff', ai_handling: false })
+          .eq('id', conversation_id);
+        try {
+          await notifyBusinessOwner(business_id, 'message', {
+            title: 'Handoff requested',
+            body: 'A customer asked for a human — open the inbox to take over.',
+          });
+        } catch (err) {
+          console.error('[queue-takeover] handoff notify failed:', err);
+        }
+        return new Response(JSON.stringify({ ok: true, note: 'handoff_triggered', skipped: true }), { status: 200 });
+      }
     }
 
     const timezone = business?.timezone || 'Europe/London';

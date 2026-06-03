@@ -6,10 +6,13 @@ const config: Config = {
     extend: {
       colors: {
         bg: "rgb(var(--bg) / <alpha-value>)",
+        page: "rgb(var(--page) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",
         elevated: "rgb(var(--elevated) / <alpha-value>)",
         border: "rgb(var(--border) / <alpha-value>)",
         ring: "rgb(var(--ring) / <alpha-value>)",
+        accent: "rgb(var(--accent) / <alpha-value>)",
+        whatsapp: "rgb(var(--whatsapp) / <alpha-value>)",
         ink: {
           DEFAULT: "rgb(var(--ink) / <alpha-value>)",
           muted: "rgb(var(--ink-muted) / <alpha-value>)",

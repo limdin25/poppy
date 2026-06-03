@@ -66,7 +66,12 @@ export default function ProfileSection() {
         <div className="mt-4 flex items-center gap-4">
           <div className="relative">
             {avatarUrl ? (
-              <img src={avatarUrl} alt="Avatar" className="h-16 w-16 rounded-full object-cover" />
+              <img
+                src={avatarUrl}
+                alt="Avatar"
+                className="h-16 w-16 rounded-full object-cover"
+                onError={() => setAvatarUrl('')}
+              />
             ) : (
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-elevated text-[20px] font-semibold text-ink-muted">
                 {(name || email || '?')[0].toUpperCase()}
@@ -115,7 +120,7 @@ export default function ProfileSection() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-brand px-6 text-[14px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
+          className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-accent px-6 text-[14px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
         >
           {saving && <Loader2 size={16} className="animate-spin" />}
           {saved ? 'Saved!' : 'Save changes'}

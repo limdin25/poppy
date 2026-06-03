@@ -59,16 +59,26 @@ export default async function handler(req: Request): Promise<Response> {
       .from('channels')
       .select('id', { count: 'exact', head: true })
       .eq('business_id', businessId)
+      .eq('status', 'connected')
       .in('type', typeFilter);
 
     if ((count ?? 0) >= maxAllowed) {
       return new Response(JSON.stringify({ error: `Maximum ${maxAllowed} ${limitKey} channel(s) allowed. Contact admin to increase your limit.` }), { status: 403 });
     }
 
+    // Clear leftover non-connected rows for this type so we don't accumulate orphaned
+    // "disconnected" channels (and so a stale row never blocks a fresh connect).
+    await supabase
+      .from('channels')
+      .delete()
+      .eq('business_id', businessId)
+      .neq('status', 'connected')
+      .in('type', typeFilter);
+
     const expiresOn = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const notifyUrl = `${APP_URL}/api/webhooks/unipile`;
-    const successUrl = `${APP_URL}/account/integrations?unipile=connected`;
-    const failureUrl = `${APP_URL}/account/integrations?unipile=failed`;
+    const successUrl = `${APP_URL}/connections?unipile=connected`;
+    const failureUrl = `${APP_URL}/connections?unipile=failed`;
 
     const res = await fetch(`https://${UNIPILE_DSN}/api/v1/hosted/accounts/link`, {
       method: 'POST',

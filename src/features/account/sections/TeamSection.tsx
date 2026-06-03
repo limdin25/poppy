@@ -76,7 +76,7 @@ export default function TeamSection() {
           </div>
           <button
             onClick={() => setShowInvite(true)}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-600"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-[13px] font-medium text-white transition hover:opacity-90"
           >
             <Plus size={14} />
             Invite

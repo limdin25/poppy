@@ -3,8 +3,9 @@ import { useSupabaseQuery, supabase } from './useSupabaseQuery'
 import type { Contact } from '@/core/types/database'
 
 /**
- * Contacts that have been classified as leads (hot/warm/cold), most recently
- * updated first. New/unclassified contacts are excluded from the lead view.
+ * Every contact for the business, most recently active first. The Leads page
+ * shows the full list (lifecycle Status + AI Classification columns), matching
+ * the reference dashboard — not just AI-classified leads.
  */
 export function useLeads() {
   const { businessId } = useAuth()
@@ -15,8 +16,7 @@ export function useLeads() {
         .from('contacts')
         .select('*')
         .eq('business_id', businessId!)
-        .in('lead_status', ['hot', 'warm', 'cold'])
-        .order('lead_updated_at', { ascending: false, nullsFirst: false }),
+        .order('updated_at', { ascending: false, nullsFirst: false }),
     [businessId]
   )
 }

@@ -19,8 +19,12 @@ const ContactsPage = lazy(() => import('@/features/contacts/ContactsPage'))
 const AppointmentsPage = lazy(() => import('@/features/appointments/AppointmentsPage'))
 const QuotesPage = lazy(() => import('@/features/quotes/QuotesPage'))
 const InvoicesPage = lazy(() => import('@/features/invoices/InvoicesPage'))
-const AgentsListPage = lazy(() => import('@/features/agents/AgentsListPage'))
-const AgentEditorPage = lazy(() => import('@/features/agents/AgentEditorPage'))
+const AgentLayout = lazy(() => import('@/features/agents/AgentLayout'))
+const AiPersonalityPage = lazy(() => import('@/features/agents/settings/AiPersonalityPage'))
+const ClassificationPage = lazy(() => import('@/features/agents/settings/ClassificationPage'))
+const FollowupPage = lazy(() => import('@/features/agents/settings/FollowupPage'))
+const HandoffPage = lazy(() => import('@/features/agents/settings/HandoffPage'))
+const TemplatesPage = lazy(() => import('@/features/templates/TemplatesPage'))
 const ConnectionsPage = lazy(() => import('@/features/connections/ConnectionsPage'))
 const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'))
 const AccountPage = lazy(() => import('@/features/account/AccountPage'))
@@ -70,16 +74,22 @@ export default function App() {
             <Route path="leads" element={<LeadsPage />} />
             <Route path="campaigns" element={<CampaignsPage />} />
             <Route path="knowledge" element={<KnowledgeBasePage />} />
+            <Route path="templates" element={<TemplatesPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="quotes" element={<QuotesPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
             <Route path="billing" element={<BillingPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
-            <Route path="agents" element={<AgentsListPage />} />
-            <Route path="agents/:agentId" element={<AgentEditorPage />} />
+            <Route path="agents" element={<AgentLayout />}>
+              <Route index element={<Navigate to="personality" replace />} />
+              <Route path="personality" element={<AiPersonalityPage />} />
+              <Route path="classification" element={<ClassificationPage />} />
+              <Route path="followup" element={<FollowupPage />} />
+              <Route path="handoff" element={<HandoffPage />} />
+            </Route>
             <Route path="connections" element={<ConnectionsPage />} />
-            <Route path="agent/*" element={<AgentsListPage />} />
+            <Route path="agent/*" element={<Navigate to="/agents" replace />} />
             <Route path="account/*" element={<AccountPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

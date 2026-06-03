@@ -15,7 +15,8 @@ const sizeMap = {
   lg: "h-14 w-14 text-base",
 };
 
-const iconScale = { xs: 14, sm: 18, md: 22, lg: 30 };
+const badgeMap = { xs: "h-3 w-3", sm: "h-3.5 w-3.5", md: "h-4 w-4", lg: "h-5 w-5" };
+const badgeIcon = { xs: 7, sm: 9, md: 10, lg: 13 };
 
 function WhatsAppIcon({ size }: { size: number }) {
   return (
@@ -42,31 +43,33 @@ export function Avatar({ src, name = "?", size = "md", channel, className }: Ava
     .map((s) => s[0]?.toUpperCase())
     .join("");
 
-  const showWhatsApp = !src && channel === "whatsapp";
-  const showEmail = !src && channel === "email";
+  // Channel badge overlays the bottom-right of the photo/initials (waslo motif).
+  const badge =
+    channel === "whatsapp" ? (
+      <span className={cn("absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-white ring-2 ring-white", badgeMap[size])}>
+        <WhatsAppIcon size={badgeIcon[size]} />
+      </span>
+    ) : channel === "email" ? (
+      <span className={cn("absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full bg-white ring-2 ring-white", badgeMap[size])}>
+        <MailIcon size={badgeIcon[size]} />
+      </span>
+    ) : null;
 
   return (
-    <div
-      className={cn(
-        "rounded-full font-semibold flex items-center justify-center overflow-hidden shrink-0",
-        showWhatsApp
-          ? "bg-[#e7fce6] border border-[#25D366]/30"
-          : showEmail
-            ? "bg-indigo-50 border border-indigo-200/50"
-            : "bg-brand-50 text-brand-700 border border-border",
-        sizeMap[size],
-        className
-      )}
-    >
-      {src ? (
-        <img src={src} alt={name} className="h-full w-full object-cover" />
-      ) : showWhatsApp ? (
-        <WhatsAppIcon size={iconScale[size]} />
-      ) : showEmail ? (
-        <MailIcon size={iconScale[size]} />
-      ) : (
-        <span>{initials || "?"}</span>
-      )}
+    <div className={cn("relative shrink-0", sizeMap[size], className)}>
+      <div
+        className={cn(
+          "h-full w-full rounded-full font-semibold flex items-center justify-center overflow-hidden",
+          channel === "whatsapp"
+            ? "bg-[#e7fce6] text-[#0f5132] border border-[#25D366]/30"
+            : channel === "email"
+              ? "bg-indigo-50 text-indigo-700 border border-indigo-200/50"
+              : "bg-brand-50 text-brand-700 border border-border",
+        )}
+      >
+        {src ? <img src={src} alt={name} className="h-full w-full object-cover" /> : <span>{initials || "?"}</span>}
+      </div>
+      {badge}
     </div>
   );
 }

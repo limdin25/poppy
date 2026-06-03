@@ -58,6 +58,8 @@ export interface Contact {
   lead_score: number | null
   lead_reason: string | null
   lead_updated_at: string | null
+  ai_paused: boolean | null
+  status: string | null
   created_at: string
   updated_at: string
 }
@@ -123,6 +125,12 @@ export interface Agent {
   owner_confirmation_enabled: boolean
   owner_reminder_enabled: boolean
   owner_reminder_times_seconds: number[]
+  handoff_enabled: boolean | null
+  handoff_keywords: string[] | null
+  handoff_message: string | null
+  location: string | null
+  instructions: string | null
+  cancellation_policy: string | null
   sort_order: number
   created_at: string
   updated_at: string
@@ -156,7 +164,7 @@ export interface Conversation {
   contact_id: string | null
   agent_id: string | null
   channel: 'voice' | 'whatsapp' | 'sms' | 'email' | 'instagram'
-  status: 'open' | 'closed' | 'archived'
+  status: 'open' | 'closed' | 'archived' | 'needs_handoff'
   assigned_to: string | null
   ai_handling: boolean
   last_message_at: string | null
@@ -167,6 +175,8 @@ export interface Conversation {
   is_group: boolean
   group_name: string | null
   unipile_chat_id: string | null
+  followups_enabled: boolean | null
+  followup_sequence_id: string | null
   created_at: string
   contact?: Contact
 }

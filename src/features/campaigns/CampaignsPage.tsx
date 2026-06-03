@@ -1,235 +1,338 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Megaphone, Plus, Send, Loader2, X, CheckCircle2, Users } from 'lucide-react'
-import { cn } from '@/core/lib/cn'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Megaphone, Plus, Send, Users, Loader2 } from 'lucide-react'
+import { PageHeader } from '@/core/ui/PageHeader'
+import { StatCard } from '@/core/ui/StatCard'
+import { DataTable, type Column } from '@/core/ui/DataTable'
+import { StatusPill, type PillTone } from '@/core/ui/StatusPill'
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { useAuth } from '@/core/auth/AuthProvider'
-import type { Campaign } from '@/core/types/database'
+import { supabase } from '@/integrations/supabase/browser'
+import type { Campaign, CampaignStatus, LeadStatus } from '@/core/types/database'
 
-const STATUS_CHIP: Record<string, string> = {
-  draft: 'bg-elevated text-ink-muted',
-  sending: 'bg-amber-50 text-amber-600',
-  sent: 'bg-emerald-50 text-emerald-600',
-  failed: 'bg-red-50 text-red-600',
+/**
+ * Campaigns — wired to the real `campaigns` table + /api/campaigns/* routes.
+ * Outbound WhatsApp broadcasts to re-engage leads. Keeps the waslo visual
+ * (header + stat cards + table). WhatsApp-only, no credits/unlock anywhere.
+ */
+
+const STATUS_LABEL: Record<CampaignStatus, string> = {
+  draft: 'Draft',
+  sending: 'Sending',
+  sent: 'Sent',
+  failed: 'Failed',
+}
+
+const STATUS_TONE: Record<CampaignStatus, PillTone> = {
+  draft: 'neutral',
+  sending: 'active',
+  sent: 'success',
+  failed: 'danger',
+}
+
+const AUDIENCE_OPTIONS: { value: LeadStatus | 'all'; label: string }[] = [
+  { value: 'all', label: 'All WhatsApp contacts' },
+  { value: 'hot', label: 'Hot leads' },
+  { value: 'warm', label: 'Warm leads' },
+  { value: 'cold', label: 'Cold leads' },
+  { value: 'new', label: 'New contacts' },
+]
+
+/** Human-readable summary of a campaign's audience filter. */
+function audienceSummary(filter: Record<string, unknown>): string {
+  const statuses = Array.isArray(filter?.lead_status) ? (filter.lead_status as string[]) : []
+  if (statuses.length === 0) return 'All WhatsApp contacts'
+  const label = AUDIENCE_OPTIONS.find((o) => o.value === statuses[0])?.label
+  return label ?? `${statuses.join(', ')} leads`
 }
 
 export default function CampaignsPage() {
-  const { session } = useAuth()
-  const token = session?.access_token
+  const { businessId, session } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
-  const [showCreate, setShowCreate] = useState(false)
-  const [sending, setSending] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // New-campaign modal state
+  const [modalOpen, setModalOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [template, setTemplate] = useState('')
+  const [audience, setAudience] = useState<LeadStatus | 'all'>('all')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+
+  // Per-row send state
+  const [sendingId, setSendingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    if (!token) return
+    if (!businessId) return
     setLoading(true)
-    try {
-      const res = await fetch('/api/campaigns', { headers: { Authorization: `Bearer ${token}` } })
-      const data = await res.json()
-      setCampaigns(data.campaigns || [])
-    } finally {
-      setLoading(false)
+    setError(null)
+    const { data, error: err } = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+    if (err) setError(err.message)
+    else setCampaigns((data as Campaign[]) ?? [])
+    setLoading(false)
+  }, [businessId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const stats = useMemo(() => {
+    const active = campaigns.filter((c) => c.status === 'sending').length
+    const sent = campaigns.reduce((n, c) => n + (c.sent_count || 0), 0)
+    const reached = campaigns.reduce((n, c) => n + (c.recipient_count || 0), 0)
+    return { active, sent, reached }
+  }, [campaigns])
+
+  function resetModal() {
+    setName('')
+    setTemplate('')
+    setAudience('all')
+    setCreateError(null)
+  }
+
+  async function handleCreate() {
+    if (!session?.access_token) return
+    if (!name.trim() || !template.trim()) {
+      setCreateError('Name and message are required.')
+      return
     }
-  }, [token])
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const audience_filter = audience === 'all' ? {} : { lead_status: [audience] }
+      const res = await fetch('/api/campaigns/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ name: name.trim(), message_template: template.trim(), audience_filter }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to create campaign')
+      setModalOpen(false)
+      resetModal()
+      await load()
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create campaign')
+    } finally {
+      setCreating(false)
+    }
+  }
 
-  useEffect(() => { load() }, [load])
-
-  async function sendCampaign(id: string) {
-    if (!token) return
-    if (!window.confirm('Send this campaign now to all recipients?')) return
-    setSending(id)
+  async function handleSend(id: string) {
+    if (!session?.access_token) return
+    setSendingId(id)
+    setError(null)
     try {
       const res = await fetch('/api/campaigns/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ campaignId: id }),
       })
-      const data = await res.json()
-      if (data.error) alert(data.error)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to send campaign')
       await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send campaign')
     } finally {
-      setSending(null)
+      setSendingId(null)
     }
   }
 
-  return (
-    <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">Campaigns</h1>
-          <p className="mt-1 text-[13px] text-ink-muted">Send a WhatsApp message to a group of customers at once.</p>
+  const columns: Column<Campaign>[] = [
+    {
+      key: 'name',
+      header: 'Campaign',
+      render: (c) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium text-ink">{c.name}</p>
+          <p className="truncate text-[12px] text-ink-subtle">{audienceSummary(c.audience_filter)}</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[13px] font-medium text-white transition hover:bg-brand-600"
-        >
-          <Plus size={14} />
-          New Campaign
-        </button>
+      ),
+    },
+    {
+      key: 'channel',
+      header: 'Channel',
+      render: () => (
+        <StatusPill tone="neutral" uppercase={false}>
+          <span className="h-1.5 w-1.5 rounded-full bg-whatsapp" />
+          WhatsApp
+        </StatusPill>
+      ),
+    },
+    {
+      key: 'recipients',
+      header: 'Recipients',
+      align: 'right',
+      render: (c) => (
+        <span className="inline-flex items-center gap-1 text-ink-muted">
+          <Users size={13} className="text-ink-subtle" />
+          {c.recipient_count}
+        </span>
+      ),
+    },
+    {
+      key: 'progress',
+      header: 'Sent / Recipients',
+      render: (c) => (
+        <span className="whitespace-nowrap text-[12.5px] tabular-nums text-ink-muted">
+          <span className="font-medium text-ink">{c.sent_count}</span>{' '}
+          <span className="text-ink-subtle">/</span> {c.recipient_count}
+          {c.failed_count > 0 && (
+            <span className="ml-2 text-red-500">{c.failed_count} failed</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (c) => (
+        <StatusPill tone={STATUS_TONE[c.status]} uppercase={false}>
+          {STATUS_LABEL[c.status]}
+        </StatusPill>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (c) => {
+        const canSend = c.status === 'draft' || c.status === 'failed'
+        if (!canSend) return null
+        const busy = sendingId === c.id
+        return (
+          <button
+            onClick={() => handleSend(c.id)}
+            disabled={busy || c.recipient_count === 0}
+            title={c.recipient_count === 0 ? 'No recipients to send to' : 'Send now'}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] font-medium text-ink transition hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+            {busy ? 'Sending…' : 'Send'}
+          </button>
+        )
+      },
+    },
+  ]
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="Work"
+        title="Campaigns"
+        description="Re-engage past customers and warm up quiet leads with WhatsApp broadcasts — Elsie handles every reply."
+        actions={
+          <button
+            onClick={() => {
+              resetModal()
+              setModalOpen(true)
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+          >
+            <Plus size={15} /> New campaign
+          </button>
+        }
+      />
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard icon={<Megaphone />} label="Active campaigns" value={stats.active} sub="Sending right now" />
+        <StatCard icon={<Send />} label="Messages sent" value={stats.sent.toLocaleString()} sub="Across all campaigns" />
+        <StatCard icon={<Users />} label="Recipients reached" value={stats.reached.toLocaleString()} sub="Total audience targeted" />
       </div>
 
-      <div className="mt-5 space-y-2">
-        {loading ? (
-          <div className="flex items-center justify-center py-16"><Loader2 size={22} className="animate-spin text-ink-muted" /></div>
-        ) : campaigns.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border py-16 text-center">
-            <Megaphone size={28} className="mx-auto text-ink-subtle" />
-            <p className="mt-3 text-[14px] font-medium text-ink">No campaigns yet</p>
-            <p className="mt-1 text-[13px] text-ink-muted">Create one to reach your customers on WhatsApp.</p>
-          </div>
-        ) : (
-          campaigns.map((c) => (
-            <div key={c.id} className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-soft">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-elevated">
-                <Megaphone size={18} className="text-ink-muted" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-[14px] font-medium text-ink">{c.name}</p>
-                  <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize', STATUS_CHIP[c.status])}>
-                    {c.status}
-                  </span>
-                </div>
-                <p className="truncate text-[12px] text-ink-muted">{c.message_template}</p>
-              </div>
-              <div className="hidden sm:flex items-center gap-1.5 text-[12px] text-ink-muted">
-                <Users size={13} />
-                {c.status === 'sent' ? `${c.sent_count}/${c.recipient_count} sent` : `${c.recipient_count} recipients`}
-              </div>
-              {c.status === 'draft' ? (
-                <button
-                  onClick={() => sendCampaign(c.id)}
-                  disabled={sending === c.id || c.recipient_count === 0}
-                  className="flex h-8 items-center gap-1.5 rounded-lg bg-brand px-3 text-[12px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50"
-                >
-                  {sending === c.id ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                  Send
-                </button>
-              ) : c.status === 'sent' ? (
-                <CheckCircle2 size={18} className="text-emerald-500" />
-              ) : null}
-            </div>
-          ))
-        )}
-      </div>
+      {error && (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-600">{error}</p>
+      )}
 
-      {showCreate && (
-        <CreateCampaignModal
-          token={token}
-          onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); load() }}
+      {loading ? (
+        <div className="flex items-center justify-center rounded-2xl border border-border bg-surface py-16 text-[13px] text-ink-muted shadow-soft">
+          <Loader2 size={16} className="mr-2 animate-spin" /> Loading campaigns…
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={campaigns}
+          keyExtractor={(c) => c.id}
+          emptyMessage="No campaigns yet — create one to re-engage your leads."
         />
       )}
-    </div>
-  )
-}
 
-const LEAD_OPTIONS: Array<{ key: 'hot' | 'warm' | 'cold'; label: string }> = [
-  { key: 'hot', label: 'Hot leads' },
-  { key: 'warm', label: 'Warm leads' },
-  { key: 'cold', label: 'Cold leads' },
-]
+      <p className="px-1 text-[12px] leading-relaxed text-ink-subtle">
+        Campaigns send over WhatsApp with automatic throttling to protect your number, and every recipient is
+        checked against opt-outs before sending — anyone tagged unsubscribed is removed for you.
+      </p>
 
-function CreateCampaignModal({ token, onClose, onCreated }: { token?: string; onClose: () => void; onCreated: () => void }) {
-  const [name, setName] = useState('')
-  const [message, setMessage] = useState('')
-  const [statuses, setStatuses] = useState<string[]>([])
-  const [submitting, setSubmitting] = useState(false)
-  const [err, setErr] = useState('')
-
-  function toggle(key: string) {
-    setStatuses((s) => (s.includes(key) ? s.filter((x) => x !== key) : [...s, key]))
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!token) return
-    setErr('')
-    setSubmitting(true)
-    try {
-      const res = await fetch('/api/campaigns/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          name,
-          message_template: message,
-          audience_filter: statuses.length > 0 ? { lead_status: statuses } : {},
-        }),
-      })
-      const data = await res.json()
-      if (data.error) { setErr(data.error); return }
-      onCreated()
-    } catch (ex: any) {
-      setErr(ex.message || 'Failed to create campaign')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-[15px] font-semibold text-ink">New Campaign</h2>
-          <button onClick={onClose} className="text-ink-subtle hover:text-ink"><X size={16} /></button>
-        </div>
-
-        {err && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-700">{err}</p>}
-
-        <form onSubmit={submit} className="mt-4 space-y-3">
-          <div>
-            <label className="block text-[12px] font-medium text-ink-muted">Campaign name</label>
+      <Dialog open={modalOpen} onClose={() => !creating && setModalOpen(false)} width="md">
+        <DialogHeader>New campaign</DialogHeader>
+        <DialogBody className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Campaign name</label>
             <input
-              required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Spring offer"
-              className="mt-1 h-9 w-full rounded-lg border border-border bg-elevated px-3 text-[13px] text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              placeholder="Spring deep-clean offer"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </div>
-          <div>
-            <label className="block text-[12px] font-medium text-ink-muted">Message</label>
-            <textarea
-              required
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={4}
-              placeholder="Hi {name}, we've got 20% off this week…"
-              className="mt-1 w-full rounded-lg border border-border bg-elevated px-3 py-2 text-[13px] text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-            <p className="mt-1 text-[11px] text-ink-subtle">Use {'{name}'} to insert each customer's first name.</p>
-          </div>
-          <div>
-            <label className="block text-[12px] font-medium text-ink-muted">Audience</label>
-            <div className="mt-1.5 flex flex-wrap gap-2">
-              {LEAD_OPTIONS.map((o) => (
-                <button
-                  type="button"
-                  key={o.key}
-                  onClick={() => toggle(o.key)}
-                  className={cn(
-                    'rounded-lg border px-3 py-1.5 text-[12px] font-medium transition',
-                    statuses.includes(o.key)
-                      ? 'border-brand bg-brand-50 text-brand-700'
-                      : 'border-border text-ink-muted hover:text-ink'
-                  )}
-                >
+
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Audience</label>
+            <select
+              value={audience}
+              onChange={(e) => setAudience(e.target.value as LeadStatus | 'all')}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              {AUDIENCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
                   {o.label}
-                </button>
+                </option>
               ))}
-            </div>
-            <p className="mt-1 text-[11px] text-ink-subtle">
-              {statuses.length === 0 ? 'No filter = all WhatsApp contacts.' : 'Only the selected lead types will receive it.'}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Message</label>
+            <textarea
+              value={template}
+              onChange={(e) => setTemplate(e.target.value)}
+              rows={5}
+              placeholder="Hi {name}, we're running 20% off deep cleans this month — reply YES to book."
+              className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            <p className="text-[11px] text-ink-subtle">
+              Use <code className="rounded bg-elevated px-1">{'{name}'}</code> to personalise with each contact's first name.
             </p>
           </div>
+
+          {createError && <p className="text-[12.5px] text-red-600">{createError}</p>}
+        </DialogBody>
+        <DialogFooter>
           <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-brand py-2 text-[13px] font-medium text-white hover:bg-brand-600 disabled:opacity-50 transition-colors"
+            onClick={() => setModalOpen(false)}
+            disabled={creating}
+            className="rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted transition hover:bg-elevated disabled:opacity-40"
           >
-            {submitting ? 'Creating…' : 'Create Campaign'}
+            Cancel
           </button>
-        </form>
-      </div>
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            {creating && <Loader2 size={14} className="animate-spin" />}
+            {creating ? 'Creating…' : 'Create campaign'}
+          </button>
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }

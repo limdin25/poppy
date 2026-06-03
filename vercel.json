@@ -70,6 +70,10 @@
     {
       "path": "/api/cron/send-notifications",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/followups",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

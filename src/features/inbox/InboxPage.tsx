@@ -1,13 +1,44 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { Search, Phone, MessageSquare, Mail, Send, ArrowLeft, Bot, Plus, X, Paperclip, Pencil, Check, RefreshCw, Users, EyeOff, Eye, AlertTriangle, Trash2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import {
+  Send,
+  ArrowLeft,
+  Sparkles,
+  Check,
+  RefreshCw,
+  Pencil,
+  Zap,
+  UserPlus,
+  UserCheck,
+  MoreHorizontal,
+  MessageCircle,
+  Plus,
+  Loader2,
+  X,
+  Repeat,
+  Ban,
+  CheckCircle2,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { MessageBubble } from '@/core/ui/MessageBubble'
-import { EmptyState } from '@/core/ui/EmptyState'
+import { FilterChips } from '@/core/ui/FilterChips'
+import { Switch } from '@/core/ui/Switch'
 import { useConversations, useMessages, type ChannelFilter } from '@/core/hooks/useConversations'
+import { useQuickReplies, fillTokens, type QuickReply } from '@/core/hooks/useQuickReplies'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import type { Conversation, Message } from '@/core/types/database'
+
+/**
+ * Inbox — Elsie's "drafts a reply → you approve → it sends" flow.
+ *   chat list   → useConversations(channelFilter)
+ *   thread      → useMessages(conversationId)
+ *   draft       → /api/messages/approve + /api/messages/rewrite
+ *   composer    → /api/messages/send  (+ quick-reply insert)
+ */
 
 function isRawIdentifier(name: string | null | undefined): boolean {
   if (!name) return true
@@ -25,14 +56,6 @@ function displayName(conv: Conversation): string {
   return contact.phone || contact.whatsapp || contact.email || 'Unknown'
 }
 
-const CHANNEL_FILTERS: { value: ChannelFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'email', label: 'Email' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'sms', label: 'SMS' },
-  { value: 'voice', label: 'Calls' },
-]
-
 function timeAgo(dateStr: string | null) {
   if (!dateStr) return '—'
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -46,809 +69,736 @@ function timeAgo(dateStr: string | null) {
   return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+function cleanPreview(text: string | null | undefined): string {
+  return (text ?? '').replace(/\{\{?\d+@(lid|s\.whatsapp\.net)\}?\}?/g, '').trim() || 'No messages'
 }
 
-const CHANNEL_ICON: Record<string, typeof Phone> = {
-  voice: Phone,
-  sms: MessageSquare,
-  whatsapp: MessageSquare,
-  email: Mail,
-  instagram: MessageSquare,
-}
-
-const CHANNEL_COLOR: Record<string, string> = {
-  voice: 'text-success',
-  sms: 'text-brand',
-  whatsapp: 'text-emerald-500',
-  email: 'text-violet-500',
-  instagram: 'text-pink-500',
-}
-
-function useChannelHealth() {
-  const { businessId } = useAuth()
-  const [disconnected, setDisconnected] = useState<Array<{ type: string; config: any }>>([])
-
-  useEffect(() => {
-    if (!businessId) return
-    let mounted = true
-
-    async function check() {
-      const { data } = await supabase
-        .from('channels')
-        .select('type, status, config')
-        .eq('business_id', businessId!)
-        .eq('status', 'disconnected')
-      if (mounted) setDisconnected(data ?? [])
-    }
-
-    check()
-    const interval = setInterval(check, 60_000)
-    return () => { mounted = false; clearInterval(interval) }
-  }, [businessId])
-
-  return disconnected
+function senderLabel(msg: Message): 'ai' | 'customer' | 'user' {
+  if (msg.sender === 'contact') return 'customer'
+  if (msg.sender === 'ai') return 'ai'
+  return 'user'
 }
 
 export default function InboxPage() {
-  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<'all' | 'whatsapp'>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [reply, setReply] = useState('')
-  const [showCompose, setShowCompose] = useState(false)
-  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all')
-  const [groupsOnly, setGroupsOnly] = useState(false)
-  const [hideGroups, setHideGroups] = useState(() => {
-    try { return localStorage.getItem('poppy_hide_groups') === '1' } catch { return false }
-  })
-  const { data: conversations, loading, refetch: refetchConversations } = useConversations(channelFilter)
-  const { session } = useAuth()
-  const disconnectedChannels = useChannelHealth()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const selected = conversations.find((c) => c.id === selectedId)
+  const channelFilter: ChannelFilter = filter === 'whatsapp' ? 'whatsapp' : 'all'
+  const { data: conversations, loading } = useConversations(channelFilter)
+  const { session, user } = useAuth()
 
-  const filtered = conversations.filter((c) => {
-    if (groupsOnly) { if (!c.is_group) return false }
-    else if (hideGroups && c.is_group) return false
-    const q = search.toLowerCase()
-    if (!q) return true
-    const name = c.contact?.name?.toLowerCase() ?? ''
-    const preview = c.last_message_preview?.toLowerCase() ?? ''
-    const subject = c.subject?.toLowerCase() ?? ''
-    const email = c.contact?.email?.toLowerCase() ?? ''
-    const groupName = c.group_name?.toLowerCase() ?? ''
-    return name.includes(q) || preview.includes(q) || subject.includes(q) || email.includes(q) || groupName.includes(q)
-  })
+  // Deep-link from Leads "View Chat": ?contact=<id> → open that contact's chat.
+  useEffect(() => {
+    const contactId = searchParams.get('contact')
+    if (!contactId || !conversations.length) return
+    const match = conversations.find((c) => c.contact_id === contactId)
+    if (match) setSelectedId(match.id)
+    searchParams.delete('contact')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, searchParams])
 
-  const handleDelete = useCallback((_id: string) => {
-    setSelectedId(null)
-    refetchConversations()
-  }, [refetchConversations])
-
-  const handleSend = useCallback(async (conversationId: string, body: string, attachments?: File[]) => {
-    const hasFiles = attachments && attachments.length > 0
-
-    if (hasFiles) {
-      const formData = new FormData()
-      formData.append('conversationId', conversationId)
-      formData.append('body', body)
-      attachments.forEach((f) => formData.append('attachments', f))
-
-      const res = await fetch('/api/messages/send', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-        body: formData,
-      })
-      if (!res.ok) throw new Error('Send failed')
-    } else {
-      const res = await fetch('/api/messages/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({ conversationId, body }),
-      })
-      if (!res.ok) throw new Error('Send failed')
-    }
-    refetchConversations()
-  }, [session?.access_token, refetchConversations])
-
-  if (selected && typeof window !== 'undefined' && window.innerWidth < 1024) {
-    return (
-      <div className="flex h-full flex-col">
-        <ThreadView conversation={selected} reply={reply} setReply={setReply} onBack={() => setSelectedId(null)} onSend={handleSend} onDelete={handleDelete} session={session} />
-      </div>
-    )
-  }
+  const selected = conversations.find((c) => c.id === selectedId) ?? null
 
   return (
-    <div className="flex h-full">
-      {/* Sidebar */}
-      <div className={cn('flex w-full flex-col border-r border-border lg:w-[320px] lg:shrink-0', selected && 'hidden lg:flex')}>
-        <div className="flex items-center justify-between px-4 pt-4">
-          <h1 className="text-lg font-semibold text-ink">Inbox</h1>
-          <div className="flex items-center gap-2">
-            <span className="rounded-md bg-brand/10 px-2 py-0.5 text-[12px] font-semibold text-brand">
-              {conversations.filter((c) => c.unread_count > 0).length} new
-            </span>
-            <button
-              onClick={() => setShowCompose(true)}
-              className="flex h-7 w-7 items-center justify-center rounded-md bg-brand text-white hover:bg-brand-600 transition"
-              aria-label="Compose"
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-        </div>
-
-        {disconnectedChannels.length > 0 && (
-          <div className="mx-4 mt-2 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
-            <div className="text-[12px] text-amber-800">
-              <p className="font-semibold">Channel disconnected</p>
-              {disconnectedChannels.map((ch, i) => {
-                const label = ch.type === 'whatsapp' ? 'WhatsApp' : ch.type.includes('email') ? 'Email' : ch.type
-                const detail = ch.config?.phone || ch.config?.email || ''
-                return <p key={i}>{label}{detail ? ` (${detail})` : ''} — reconnect in Settings</p>
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="relative mt-3 px-4">
-          <Search size={15} className="absolute left-7 top-1/2 -translate-y-1/2 text-ink-subtle" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search conversations..."
-            className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-3 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center gap-1 px-4">
-          {CHANNEL_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => { setChannelFilter(f.value); setGroupsOnly(false); setSelectedId(null) }}
-              className={cn(
-                'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition',
-                channelFilter === f.value && !groupsOnly
-                  ? 'bg-brand text-white'
-                  : 'bg-elevated text-ink-muted hover:bg-brand/10 hover:text-brand'
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-          <button
-            onClick={() => { setGroupsOnly(!groupsOnly); setChannelFilter('all'); setSelectedId(null) }}
-            className={cn(
-              'flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition',
-              groupsOnly
-                ? 'bg-emerald-600 text-white'
-                : 'bg-elevated text-ink-muted hover:bg-emerald-50 hover:text-emerald-600'
-            )}
-          >
-            <Users size={11} />
-            Groups
-          </button>
-          {!groupsOnly && (
-            <button
-              onClick={() => {
-                const next = !hideGroups
-                setHideGroups(next)
-                try { localStorage.setItem('poppy_hide_groups', next ? '1' : '0') } catch {}
-              }}
-              title={hideGroups ? 'Show groups in list' : 'Hide groups from list'}
-              className={cn(
-                'flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium transition',
-                hideGroups
-                  ? 'bg-amber-50 text-amber-600'
-                  : 'text-ink-subtle hover:bg-elevated'
-              )}
-            >
-              {hideGroups ? <EyeOff size={11} /> : <Eye size={11} />}
-              {hideGroups ? 'Hidden' : 'Hide'}
-            </button>
+    <div className="h-full p-4 sm:p-6">
+      <div className="flex h-full overflow-hidden rounded-2xl border border-border bg-surface shadow-soft">
+        {/* Left: chat list */}
+        <aside
+          className={cn(
+            'flex w-full shrink-0 flex-col border-r border-border bg-surface lg:w-[360px]',
+            selected && 'hidden lg:flex'
           )}
-        </div>
-
-        <div className="mt-2 flex-1 space-y-0.5 overflow-y-auto px-2">
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+        >
+          <div className="space-y-3 border-b border-border px-4 py-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[17px] font-bold tracking-tight text-ink">Chats</h2>
+              <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] font-medium text-ink-muted">
+                {conversations.length}
+              </span>
             </div>
-          ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-[13px] text-ink-muted">No conversations yet</p>
-          ) : (
-            filtered.map((conv) => {
-              const Icon = CHANNEL_ICON[conv.channel]
-              const contactLabel = displayName(conv)
-              const hasRealName = conv.contact?.name != null && !isRawIdentifier(conv.contact.name)
-              const contactPhone = conv.contact?.phone || conv.contact?.whatsapp
-              const contactEmail = conv.contact?.email
-              const unread = conv.unread_count > 0
-              const isEmail = conv.channel === 'email'
-              return (
-                <button
-                  key={conv.id}
-                  onClick={() => setSelectedId(conv.id)}
-                  className={cn(
-                    'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2.5 text-left transition',
-                    selectedId === conv.id
-                      ? 'bg-brand-50 border border-brand/20'
-                      : 'hover:bg-elevated border border-transparent'
-                  )}
-                >
-                  <div className="relative">
-                    <Avatar src={conv.contact?.avatar_url ?? undefined} name={contactLabel} size="sm" channel={conv.channel} className="border-0" />
-                    {unread && (
-                      <div className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <p className={cn('truncate text-[13px] font-medium', unread ? 'text-ink' : 'text-ink-muted')}>
-                          {contactLabel}
-                        </p>
-                        <Icon size={12} className={cn('shrink-0', CHANNEL_COLOR[conv.channel])} />
-                      </div>
-                      <span className="shrink-0 text-[10px] text-ink-subtle">{timeAgo(conv.last_message_at)}</span>
-                    </div>
-
-                    {hasRealName && contactPhone && !isEmail && (
-                      <p className="truncate text-[10px] text-ink-subtle">{contactPhone}</p>
-                    )}
-
-                    {isEmail && contactEmail && (
-                      <p className="truncate text-[10px] text-ink-subtle">{contactEmail}</p>
-                    )}
-
-                    {isEmail && conv.subject && (
-                      <p className={cn('mt-0.5 truncate text-[11px] font-semibold', unread ? 'text-ink' : 'text-ink-muted')}>
-                        {conv.subject}
-                      </p>
-                    )}
-
-                    <p className={cn('mt-0.5 truncate text-[12px]', unread ? 'font-medium text-ink' : 'text-ink-muted')}>
-                      {(conv.last_message_preview ?? 'No messages').replace(/\{\{?\d+@(lid|s\.whatsapp\.net)\}?\}?/g, '').trim() || 'No messages'}
-                    </p>
-
-                    {conv.ai_handling && (
-                      <span className="mt-1 inline-flex items-center gap-1 rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brand">
-                        <Bot size={10} /> AI active
-                      </span>
-                    )}
-                  </div>
-                </button>
-              )
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Thread view */}
-      <div className="hidden flex-1 lg:flex lg:flex-col">
-        {selected ? (
-          <ThreadView conversation={selected} reply={reply} setReply={setReply} onBack={() => setSelectedId(null)} onSend={handleSend} onDelete={handleDelete} session={session} desktop />
-        ) : (
-          <div className="flex flex-1 items-center justify-center">
-            <EmptyState
-              icon={<MessageSquare size={24} />}
-              title="No conversation selected"
-              description="Choose a conversation from the list to view messages"
+            <FilterChips
+              options={[
+                { value: 'all', label: 'All', count: conversations.length },
+                { value: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle size={13} /> },
+              ]}
+              value={filter}
+              onChange={(v) => { setFilter(v as 'all' | 'whatsapp'); setSelectedId(null) }}
             />
           </div>
-        )}
-      </div>
 
-      {/* Compose modal */}
-      {showCompose && (
-        <ComposeModal onClose={() => setShowCompose(false)} onSent={() => { setShowCompose(false); refetchConversations() }} />
-      )}
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
+            {loading ? (
+              <div className="flex justify-center py-10">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+              </div>
+            ) : conversations.length === 0 ? (
+              <p className="px-4 py-10 text-center text-[13px] text-ink-muted">No conversations yet</p>
+            ) : (
+              conversations.map((c) => {
+                const name = displayName(c)
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedId(c.id)}
+                    className={cn(
+                      'flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-elevated/50',
+                      c.id === selectedId && 'bg-elevated/60'
+                    )}
+                  >
+                    <Avatar src={c.contact?.avatar_url ?? undefined} name={name} channel="whatsapp" size="md" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-[13.5px] font-medium text-ink">{name}</p>
+                        <span className="shrink-0 text-[11px] text-ink-subtle">{timeAgo(c.last_message_at)}</span>
+                      </div>
+                      <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">
+                        {cleanPreview(c.last_message_preview)}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-[10.5px] font-medium text-ink-subtle">via WhatsApp</span>
+                        {c.unread_count > 0 && (
+                          <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-whatsapp px-1 text-[10px] font-semibold text-white">
+                            {c.unread_count}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </aside>
+
+        {/* Right: thread */}
+        <section className={cn('flex min-w-0 flex-1 flex-col bg-page', !selected && 'hidden lg:flex')}>
+          {selected ? (
+            <ThreadView
+              key={selected.id}
+              conversation={selected}
+              onBack={() => setSelectedId(null)}
+              onArchived={() => setSelectedId(null)}
+              session={session}
+              userId={user?.id ?? null}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+              <p className="text-[15px] text-ink-muted">Select a conversation to start chatting</p>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   )
 }
 
 function ThreadView({
   conversation,
-  reply,
-  setReply,
   onBack,
-  onSend,
-  onDelete,
-  desktop,
+  onArchived,
   session,
+  userId,
 }: {
   conversation: Conversation
-  reply: string
-  setReply: (v: string) => void
   onBack: () => void
-  onSend: (conversationId: string, body: string, attachments?: File[]) => Promise<void>
-  onDelete?: (conversationId: string) => void
-  desktop?: boolean
+  onArchived: () => void
   session: { access_token: string } | null
+  userId: string | null
 }) {
+  const [composer, setComposer] = useState('')
+  const [showQuick, setShowQuick] = useState(false)
   const [sending, setSending] = useState(false)
-  const [attachments, setAttachments] = useState<File[]>([])
-  const [editingName, setEditingName] = useState(false)
-  const [nameInput, setNameInput] = useState('')
-  const [localName, setLocalName] = useState<string | null>(null)
-  const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
-  const [editingDraftText, setEditingDraftText] = useState('')
-  const [rewritingDraftId, setRewritingDraftId] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const nameInputRef = useRef<HTMLInputElement>(null)
-  const Icon = CHANNEL_ICON[conversation.channel]
-  const contactName = localName ?? displayName(conversation)
-  const hasRealName = (localName != null && !isRawIdentifier(localName)) || (conversation.contact?.name != null && !isRawIdentifier(conversation.contact.name))
-  const contactPhone = conversation.contact?.phone || conversation.contact?.whatsapp
-  const contactEmail = conversation.contact?.email
-  const isEmail = conversation.channel === 'email'
-  const { data: messages, loading, refetch: refetchMessages } = useMessages(conversation.id)
+  const [approving, setApproving] = useState(false)
+  const [rewriting, setRewriting] = useState(false)
+  const [error, setError] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [showFollowups, setShowFollowups] = useState(false)
+  const [assigned, setAssigned] = useState(conversation.assigned_to === userId && !!userId)
+  const [cls, setCls] = useState<string>(conversation.contact?.lead_status ?? '')
+  const menuRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const [aiHandling, setAiHandling] = useState(conversation.ai_handling)
-
-  useEffect(() => { setLocalName(null); setEditingName(false); setAiHandling(conversation.ai_handling) }, [conversation.id, conversation.ai_handling])
-
-  async function toggleAI() {
-    const next = !aiHandling
-    setAiHandling(next)
-    await supabase.from('conversations').update({ ai_handling: next }).eq('id', conversation.id)
+  async function changeClassification(next: string) {
+    setCls(next)
+    if (conversation.contact_id) {
+      await supabase.from('contacts').update({ lead_status: next || null, lead_updated_at: new Date().toISOString() }).eq('id', conversation.contact_id)
+    }
   }
 
-  async function saveContactName() {
-    const trimmed = nameInput.trim()
-    if (!trimmed || !conversation.contact_id) return
-    setEditingName(false)
-    setLocalName(trimmed)
-    await supabase.from('contacts').update({ name: trimmed }).eq('id', conversation.contact_id)
+  useEffect(() => {
+    if (!menuOpen) return
+    function onDoc(e: MouseEvent) { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [menuOpen])
+
+  async function assignToMe() {
+    if (!userId) return
+    const next = assigned ? null : userId
+    setAssigned(!assigned)
+    await supabase.from('conversations').update({ assigned_to: next }).eq('id', conversation.id)
   }
+  async function markSpam() {
+    setMenuOpen(false)
+    await supabase.from('conversations').update({ is_spam: true }).eq('id', conversation.id)
+    onArchived()
+  }
+  async function resolveConversation() {
+    setMenuOpen(false)
+    await supabase.from('conversations').update({ status: 'closed' }).eq('id', conversation.id)
+    onArchived()
+  }
+  async function reopenConversation() {
+    setMenuOpen(false)
+    await supabase.from('conversations').update({ status: 'open' }).eq('id', conversation.id)
+  }
+
+  const { data: messages, loading, refetch: refetchMessages } = useMessages(conversation.id)
+  const name = displayName(conversation)
+
+  // Latest message that is a pending AI draft (per old page: status === 'draft').
+  const draftMsg = [...messages].reverse().find((m) => m.status === 'draft') ?? null
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
 
-  async function handleSendReply() {
-    if (!reply.trim() || sending) return
+  const handleSend = useCallback(async () => {
+    const body = composer.trim()
+    if (!body || sending) return
     setSending(true)
+    setError('')
     try {
-      await onSend(conversation.id, reply.trim(), attachments.length > 0 ? attachments : undefined)
-      setReply('')
-      setAttachments([])
+      const res = await fetch('/api/messages/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ conversationId: conversation.id, body }),
+      })
+      if (!res.ok) throw new Error('Send failed')
+      setComposer('')
+      refetchMessages()
     } catch {
-      // toast could go here
+      setError('Could not send message. Please try again.')
     } finally {
       setSending(false)
     }
-  }
+  }, [composer, sending, session?.access_token, conversation.id, refetchMessages])
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || [])
-    setAttachments((prev) => [...prev, ...files])
-    e.target.value = ''
-  }
+  const approveDraft = useCallback(async (messageId: string) => {
+    setApproving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/messages/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ messageId }),
+      })
+      if (!res.ok) throw new Error('Approve failed')
+      refetchMessages()
+    } catch {
+      setError('Could not send the draft. Please try again.')
+    } finally {
+      setApproving(false)
+    }
+  }, [session?.access_token, refetchMessages])
 
-  function removeAttachment(index: number) {
-    setAttachments((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  async function approveDraft(messageId: string) {
-    const res = await fetch('/api/messages/approve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-      body: JSON.stringify({ messageId }),
-    })
-    if (res.ok) refetchMessages()
-  }
-
-  async function discardDraft(messageId: string) {
-    await supabase.from('messages').delete().eq('id', messageId)
-    refetchMessages()
-  }
-
-  async function rewriteDraft(messageId: string) {
-    setRewritingDraftId(messageId)
+  const rewriteDraft = useCallback(async (messageId: string) => {
+    setRewriting(true)
+    setError('')
     try {
       const res = await fetch('/api/messages/rewrite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
         body: JSON.stringify({ messageId }),
       })
-      if (res.ok) refetchMessages()
+      if (!res.ok) throw new Error('Rewrite failed')
+      refetchMessages()
+    } catch {
+      setError('Could not rewrite the draft. Please try again.')
     } finally {
-      setRewritingDraftId(null)
+      setRewriting(false)
     }
-  }
-
-  async function saveEditedDraft(messageId: string) {
-    const trimmed = editingDraftText.trim()
-    if (!trimmed) return
-    await supabase.from('messages').update({ body: trimmed }).eq('id', messageId)
-    setEditingDraftId(null)
-    refetchMessages()
-  }
-
-  function senderLabel(msg: Message): 'ai' | 'customer' | 'user' {
-    if (msg.sender === 'contact') return 'customer'
-    if (msg.sender === 'ai') return 'ai'
-    return 'user'
-  }
-
-  // Group messages by date for date dividers
-  let lastDate = ''
+  }, [session?.access_token, refetchMessages])
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="shrink-0 border-b border-border px-4 py-2.5">
-        <div className="flex items-center gap-3">
-          {!desktop && (
-            <button onClick={onBack} className="text-brand">
-              <ArrowLeft size={18} />
-            </button>
-          )}
-          <Avatar src={conversation.contact?.avatar_url ?? undefined} name={contactName} size="sm" channel={conversation.channel} className="border-0" />
-          <div className="min-w-0 flex-1">
-            {editingName ? (
-              <div className="flex items-center gap-1.5">
-                <input
-                  ref={nameInputRef}
-                  autoFocus
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') saveContactName(); if (e.key === 'Escape') setEditingName(false) }}
-                  placeholder="Enter name..."
-                  className="h-6 w-full max-w-[180px] rounded border border-brand bg-white px-2 text-[13px] font-semibold text-ink outline-none focus:ring-2 focus:ring-brand/20"
-                />
-                <button onClick={saveContactName} className="rounded p-0.5 text-brand hover:bg-brand/10">
-                  <Check size={14} />
-                </button>
-                <button onClick={() => setEditingName(false)} className="rounded p-0.5 text-ink-subtle hover:bg-elevated">
-                  <X size={14} />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <p className="text-[13px] font-semibold text-ink">{contactName}</p>
-                {!conversation.is_group && (
-                  <button
-                    onClick={() => { setNameInput(isRawIdentifier(contactName) ? '' : contactName); setEditingName(true) }}
-                    className="rounded p-0.5 text-ink-subtle hover:bg-elevated hover:text-ink"
-                  >
-                    <Pencil size={11} />
-                  </button>
-                )}
-              </div>
-            )}
-            <div className="flex items-center gap-1.5">
-              <Icon size={11} className={CHANNEL_COLOR[conversation.channel]} />
-              {isEmail && contactEmail ? (
-                <span className="truncate text-[11px] text-ink-subtle">{contactEmail}</span>
-              ) : hasRealName && contactPhone ? (
-                <span className="truncate text-[11px] text-ink-subtle">{contactPhone}</span>
-              ) : (
-                <span className="text-[11px] capitalize text-ink-subtle">{conversation.channel}</span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={toggleAI}
-              className={cn(
-                'flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition',
-                aiHandling ? 'bg-brand/10 text-brand' : 'bg-elevated text-ink-muted'
-              )}
-            >
-              <Bot size={12} />
-              {aiHandling ? 'AI On' : 'AI Off'}
-            </button>
-            <button
-              onClick={async () => {
-                if (!confirm('Delete this conversation and all its messages? This cannot be undone.')) return
-                const res = await fetch('/api/messages/delete-conversation', {
-                  method: 'DELETE',
-                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-                  body: JSON.stringify({ conversationId: conversation.id }),
-                })
-                if (!res.ok) { alert('Failed to delete conversation'); return }
-                onDelete?.(conversation.id)
-              }}
-              className="rounded-md p-1 text-ink-subtle hover:bg-red-50 hover:text-red-600 transition"
-              title="Delete conversation"
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
+    <>
+      {/* Thread header */}
+      <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
+        <button onClick={onBack} className="rounded-md p-1 text-ink-muted hover:bg-elevated lg:hidden">
+          <ArrowLeft size={18} />
+        </button>
+        <Avatar src={conversation.contact?.avatar_url ?? undefined} name={name} channel="whatsapp" size="md" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[14px] font-semibold text-ink">{name}</p>
+          <p className="text-[11.5px] text-ink-subtle">
+            via WhatsApp{conversation.status === 'needs_handoff' ? ' · needs handoff' : ''}
+          </p>
         </div>
+        <select
+          value={cls}
+          onChange={(e) => void changeClassification(e.target.value)}
+          title="Lead classification"
+          className={cn(
+            'rounded-full border px-2.5 py-1 text-[11.5px] font-medium outline-none transition',
+            cls === 'hot' ? 'border-red-200 bg-red-50 text-red-700'
+              : cls === 'warm' ? 'border-amber-200 bg-amber-50 text-amber-700'
+              : cls === 'cold' ? 'border-blue-200 bg-blue-50 text-blue-700'
+              : 'border-border bg-surface text-ink-muted',
+          )}
+        >
+          <option value="">Unclassified</option>
+          <option value="hot">Hot</option>
+          <option value="warm">Warm</option>
+          <option value="cold">Cold</option>
+        </select>
+        <button
+          onClick={() => void assignToMe()}
+          className={cn('rounded-lg p-2 transition hover:bg-elevated', assigned ? 'text-accent' : 'text-ink-muted')}
+          title={assigned ? 'Assigned to you — click to unassign' : 'Assign to me'}
+        >
+          {assigned ? <UserCheck size={17} /> : <UserPlus size={17} />}
+        </button>
+        <button
+          onClick={() => setShowFollowups((s) => !s)}
+          className={cn('rounded-lg p-2 transition hover:bg-elevated', showFollowups ? 'bg-elevated text-ink' : 'text-ink-muted')}
+          title="Follow-ups"
+        >
+          <Repeat size={17} />
+        </button>
+        <div ref={menuRef} className="relative">
+          <button onClick={() => setMenuOpen((o) => !o)} className="rounded-lg p-2 text-ink-muted hover:bg-elevated" title="More">
+            <MoreHorizontal size={17} />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-pop">
+              {conversation.status === 'closed' ? (
+                <button onClick={() => void reopenConversation()} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-ink hover:bg-elevated">
+                  <RotateCcw size={14} /> Reopen
+                </button>
+              ) : (
+                <button onClick={() => void resolveConversation()} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-ink hover:bg-elevated">
+                  <CheckCircle2 size={14} /> Mark resolved
+                </button>
+              )}
+              <button onClick={() => void markSpam()} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-red-600 hover:bg-red-50">
+                <Ban size={14} /> Mark as spam
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
 
-        {isEmail && conversation.subject && (
-          <p className="mt-1 text-[12px] font-semibold text-ink truncate">{conversation.subject}</p>
-        )}
-      </div>
+      {showFollowups && (
+        <FollowupsPanel conversation={conversation} contactName={name} onClose={() => setShowFollowups(false)} />
+      )}
 
       {/* Messages */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-1.5 bg-surface/50">
+      <div className="flex-1 space-y-3 overflow-y-auto scrollbar-thin px-4 py-5">
         {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+          <div className="flex justify-center py-10">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           </div>
         ) : messages.length === 0 ? (
-          <p className="py-8 text-center text-[13px] text-ink-muted">No messages yet</p>
+          <p className="py-10 text-center text-[13px] text-ink-muted">No messages yet</p>
         ) : (
-          messages.map((msg) => {
-            const meta = msg.metadata as Record<string, any> | undefined
-            const msgDate = formatDate(msg.created_at)
-            let showDate = false
-            if (msgDate !== lastDate) {
-              lastDate = msgDate
-              showDate = true
-            }
-
-            const isDraft = msg.status === 'draft'
-
-            return (
-              <div key={msg.id}>
-                {showDate && (
-                  <div className="flex justify-center py-2">
-                    <span className="rounded-full bg-elevated px-3 py-0.5 text-[10px] font-medium text-ink-subtle">
-                      {msgDate}
-                    </span>
-                  </div>
-                )}
-                {isDraft && (
-                  <div className="flex justify-end">
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 mb-1">
-                      Draft - review before sending
-                    </span>
-                  </div>
-                )}
-                <div className={isDraft ? 'rounded-xl border-2 border-dashed border-amber-300 p-1 w-fit ml-auto' : ''}>
-                  {isDraft && editingDraftId === msg.id ? (
-                    <div className="rounded-xl bg-brand/90 p-3">
-                      <textarea
-                        autoFocus
-                        value={editingDraftText}
-                        onChange={(e) => setEditingDraftText(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingDraftId(null) }}
-                        className="w-full min-h-[80px] rounded-lg bg-white/10 text-white text-[13px] p-2 resize-none outline-none placeholder:text-white/50"
-                      />
-                      <div className="flex justify-end gap-2 mt-2">
-                        <button
-                          onClick={() => setEditingDraftId(null)}
-                          className="rounded-md px-3 py-1 text-[11px] font-medium text-white/70 hover:text-white transition"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => saveEditedDraft(msg.id)}
-                          className="rounded-md px-3 py-1 text-[11px] font-medium text-white bg-white/20 hover:bg-white/30 transition flex items-center gap-1"
-                        >
-                          <Check size={12} /> Save
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <MessageBubble
-                      sender={senderLabel(msg)}
-                      text={msg.body ?? ''}
-                      timestamp={msg.created_at}
-                      contactLabel={conversation.is_group && msg.sender_name ? msg.sender_name : contactName}
-                      mediaUrl={msg.media_url}
-                      contentType={msg.content_type}
-                      metadata={meta ? {
-                        has_attachments: meta.has_attachments,
-                        attachments: meta.attachments,
-                        external_id: meta.external_id,
-                        body_html: meta.body_html,
-                        reactions: meta.reactions,
-                      } : undefined}
-                    />
-                  )}
-                </div>
-                {isDraft && editingDraftId !== msg.id && (
-                  <div className="flex justify-end gap-2 mt-1">
-                    <button
-                      onClick={() => discardDraft(msg.id)}
-                      className="rounded-md px-3 py-1 text-[11px] font-medium text-ink-muted bg-elevated hover:bg-red-50 hover:text-red-600 transition"
-                    >
-                      Discard
-                    </button>
-                    <button
-                      onClick={() => rewriteDraft(msg.id)}
-                      disabled={rewritingDraftId === msg.id}
-                      className="rounded-md p-1.5 text-ink-muted bg-elevated hover:bg-amber-50 hover:text-amber-600 transition disabled:opacity-50"
-                      title="Rewrite"
-                    >
-                      <RefreshCw size={14} className={rewritingDraftId === msg.id ? 'animate-spin' : ''} />
-                    </button>
-                    <button
-                      onClick={() => { setEditingDraftId(msg.id); setEditingDraftText(msg.body ?? '') }}
-                      className="rounded-md p-1.5 text-ink-muted bg-elevated hover:bg-blue-50 hover:text-blue-600 transition"
-                      title="Edit"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => approveDraft(msg.id)}
-                      className="rounded-md px-3 py-1 text-[11px] font-medium text-white bg-brand hover:bg-brand-600 transition"
-                    >
-                      Approve & Send
-                    </button>
-                  </div>
-                )}
-              </div>
-            )
-          })
+          messages
+            .filter((m) => m.status !== 'draft')
+            .map((m) => (
+              <MessageBubble
+                key={m.id}
+                sender={senderLabel(m)}
+                text={m.body ?? ''}
+                timestamp={m.created_at}
+                contactLabel={conversation.is_group && m.sender_name ? m.sender_name : name}
+                mediaUrl={m.media_url}
+                contentType={m.content_type}
+                metadata={
+                  m.metadata
+                    ? {
+                        has_attachments: (m.metadata as any).has_attachments,
+                        attachments: (m.metadata as any).attachments,
+                        external_id: (m.metadata as any).external_id,
+                        body_html: (m.metadata as any).body_html,
+                        reactions: (m.metadata as any).reactions,
+                      }
+                    : undefined
+                }
+              />
+            ))
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Reply bar */}
-      <div className="shrink-0 border-t border-border bg-white p-3">
-        {attachments.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {attachments.map((file, i) => (
-              <div key={i} className="flex items-center gap-1.5 rounded-md bg-elevated px-2 py-1 text-[11px] text-ink">
-                <Paperclip size={10} className="shrink-0 text-ink-subtle" />
-                <span className="max-w-[120px] truncate font-medium">{file.name}</span>
-                <span className="text-ink-subtle">({formatSize(file.size)})</span>
-                <button onClick={() => removeAttachment(i)} className="ml-0.5 rounded p-0.5 text-ink-subtle hover:bg-white hover:text-ink">
-                  <X size={10} />
-                </button>
-              </div>
-            ))}
+      {error && (
+        <p className="mx-4 mb-1 text-[12px] text-red-500">{error}</p>
+      )}
+
+      {/* Draft banner — Elsie's pending reply (differentiator) */}
+      {draftMsg && (
+        <div className="mx-4 mb-2 rounded-xl border border-violet-200 border-l-4 border-l-violet-500 bg-violet-50 p-3 shadow-soft">
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <Sparkles size={14} className="text-violet-600" />
+            <span className="text-[12px] font-semibold text-violet-700">Elsie drafted a reply</span>
+            <span className="ml-auto text-[10.5px] text-violet-500">Review before it sends</span>
           </div>
+          <p className="text-[13px] leading-relaxed text-ink">{draftMsg.body}</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              onClick={() => approveDraft(draftMsg.id)}
+              disabled={approving || rewriting}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {approving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />} Approve & send
+            </button>
+            <button
+              onClick={() => rewriteDraft(draftMsg.id)}
+              disabled={approving || rewriting}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-elevated disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={rewriting ? 'animate-spin' : ''} /> Rewrite
+            </button>
+            <button
+              onClick={() => setComposer(draftMsg.body ?? '')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-elevated"
+            >
+              <Pencil size={14} /> Edit
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Composer */}
+      <div className="relative border-t border-border bg-surface px-4 py-3">
+        {showQuick && (
+          <QuickReplyPicker
+            contactName={name}
+            onInsert={(text) => {
+              setComposer(text)
+              setShowQuick(false)
+            }}
+            onClose={() => setShowQuick(false)}
+          />
         )}
         <div className="flex items-end gap-2">
-          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
           <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-subtle transition hover:bg-elevated hover:text-ink"
-            aria-label="Attach file"
+            onClick={() => setShowQuick((s) => !s)}
+            title="Insert quick reply"
+            className={cn(
+              'mb-0.5 rounded-lg p-2 text-ink-muted hover:bg-elevated',
+              showQuick && 'bg-elevated text-ink'
+            )}
           >
-            <Paperclip size={16} />
+            <Zap size={18} />
           </button>
           <textarea
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
+            value={composer}
+            onChange={(e) => setComposer(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
-                handleSendReply()
+                handleSend()
               }
             }}
-            placeholder={isEmail ? 'Type an email reply...' : 'Type a reply...'}
-            rows={isEmail ? 3 : 1}
-            className="min-h-[36px] max-h-[120px] w-full resize-none rounded-lg border border-border bg-elevated px-3 py-2 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            rows={1}
+            placeholder="Type a message…"
+            className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-border bg-page px-3 py-2.5 text-[13.5px] text-ink outline-none placeholder:text-ink-subtle focus:border-ink-subtle/40"
           />
           <button
-            disabled={!reply.trim() || sending}
-            onClick={handleSendReply}
-            aria-label="Send"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white transition hover:bg-brand-600 disabled:opacity-40"
+            disabled={!composer.trim() || sending}
+            onClick={handleSend}
+            className="mb-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white transition hover:opacity-90 disabled:opacity-40"
           >
             {sending ? (
-              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
             ) : (
-              <Send size={14} />
+              <Send size={17} />
             )}
           </button>
         </div>
-        <p className="mt-1.5 text-[10px] text-ink-subtle">
-          Replying via {conversation.channel} · {conversation.ai_handling ? "AI will auto-reply if you don't respond" : 'Manual mode'}
-        </p>
       </div>
+    </>
+  )
+}
+
+interface Sequence { id: string; name: string; steps: unknown[] }
+interface Scheduled { id: string; step_index: number; send_at: string; status: string }
+
+/**
+ * Per-conversation follow-up scheduling. Toggle follow-ups on/off, pick a
+ * sequence, schedule the next step now, see what's queued, and cancel pending
+ * ones. Backed by followup_sequences + scheduled_followups (sent by cron).
+ */
+function FollowupsPanel({
+  conversation,
+  contactName,
+  onClose,
+}: {
+  conversation: Conversation
+  contactName: string
+  onClose: () => void
+}) {
+  const [sequences, setSequences] = useState<Sequence[]>([])
+  const [scheduled, setScheduled] = useState<Scheduled[]>([])
+  const [enabled, setEnabled] = useState(!!conversation.followups_enabled)
+  const [sequenceId, setSequenceId] = useState<string | null>(conversation.followup_sequence_id)
+  const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  const loadScheduled = useCallback(async () => {
+    const { data } = await supabase
+      .from('scheduled_followups')
+      .select('id, step_index, send_at, status')
+      .eq('conversation_id', conversation.id)
+      .order('send_at', { ascending: true })
+    setScheduled((data as Scheduled[]) ?? [])
+  }, [conversation.id])
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const [{ data: seqs }] = await Promise.all([
+        supabase.from('followup_sequences').select('id, name, steps').eq('business_id', conversation.business_id).order('created_at'),
+        loadScheduled(),
+      ])
+      if (!active) return
+      const list = (seqs as Sequence[]) ?? []
+      setSequences(list)
+      if (!sequenceId && list[0]) setSequenceId(list[0].id)
+      setLoading(false)
+    })()
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.business_id])
+
+  async function toggleEnabled(next: boolean) {
+    setEnabled(next)
+    await supabase.from('conversations').update({ followups_enabled: next }).eq('id', conversation.id)
+  }
+  async function pickSequence(id: string) {
+    setSequenceId(id)
+    await supabase.from('conversations').update({ followup_sequence_id: id }).eq('id', conversation.id)
+  }
+  async function scheduleNow() {
+    if (!sequenceId) return
+    setBusy(true)
+    const pendingCount = scheduled.filter((s) => s.status === 'pending').length
+    await supabase.from('scheduled_followups').insert({
+      conversation_id: conversation.id,
+      sequence_id: sequenceId,
+      step_index: pendingCount,
+      send_at: new Date().toISOString(),
+      status: 'pending',
+    })
+    await loadScheduled()
+    setBusy(false)
+  }
+  async function cancelPending() {
+    setBusy(true)
+    await supabase.from('scheduled_followups').update({ status: 'cancelled' }).eq('conversation_id', conversation.id).eq('status', 'pending')
+    await loadScheduled()
+    setBusy(false)
+  }
+
+  const fmt = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  const pendingCount = scheduled.filter((s) => s.status === 'pending').length
+
+  return (
+    <div className="border-b border-border bg-surface px-4 py-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Repeat size={14} className="text-ink-muted" />
+          <span className="text-[12.5px] font-semibold text-ink">Follow-ups for {contactName}</span>
+        </div>
+        <button onClick={onClose} className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-ink"><X size={14} /></button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-3"><Loader2 size={16} className="animate-spin text-ink-muted" /></div>
+      ) : (
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] text-ink-muted">Auto follow-ups for this chat</span>
+            <Switch checked={enabled} onChange={(n) => void toggleEnabled(n)} />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={sequenceId ?? ''}
+              onChange={(e) => void pickSequence(e.target.value)}
+              className="min-w-0 flex-1 rounded-lg border border-border bg-page px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink-subtle/40"
+            >
+              {sequences.length === 0 && <option value="">No sequences</option>}
+              {sequences.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button
+              onClick={() => void scheduleNow()}
+              disabled={busy || !sequenceId}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Schedule now
+            </button>
+          </div>
+
+          {scheduled.length > 0 ? (
+            <ul className="space-y-1">
+              {scheduled.map((s) => (
+                <li key={s.id} className="flex items-center justify-between rounded-lg bg-page px-2.5 py-1.5 text-[12px]">
+                  <span className="text-ink-muted">Step {s.step_index + 1} · {fmt(s.send_at)}</span>
+                  <span className={cn('rounded-full px-1.5 py-0.5 text-[10.5px] font-medium',
+                    s.status === 'sent' ? 'bg-emerald-50 text-emerald-700' : s.status === 'cancelled' ? 'bg-elevated text-ink-subtle' : 'bg-amber-50 text-amber-700')}>
+                    {s.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[11.5px] text-ink-subtle">Nothing scheduled yet.</p>
+          )}
+
+          {pendingCount > 0 && (
+            <button onClick={() => void cancelPending()} disabled={busy} className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-red-600 hover:underline disabled:opacity-50">
+              <Trash2 size={12} /> Cancel {pendingCount} pending
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-function ComposeModal({ onClose, onSent }: { onClose: () => void; onSent: () => void }) {
-  const [to, setTo] = useState('')
-  const [subject, setSubject] = useState('')
-  const [body, setBody] = useState('')
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState('')
-  const { session } = useAuth()
+/**
+ * Composer quick-reply picker. Reads/writes real quick_replies (business-scoped)
+ * via useQuickReplies — the same store as the Templates page. Selecting a reply
+ * inserts its body with {name} filled in. Inline form lets you add/edit a reply
+ * without leaving the Inbox.
+ */
+function QuickReplyPicker({
+  contactName,
+  onInsert,
+  onClose,
+}: {
+  contactName: string
+  onInsert: (text: string) => void
+  onClose: () => void
+}) {
+  const { data: replies, loading, create, update } = useQuickReplies()
+  // null = list view; otherwise the inline form draft (id null = new).
+  const [editing, setEditing] = useState<{ id: string | null; title: string; body: string } | null>(null)
+  const [saving, setSaving] = useState(false)
 
-  async function handleSend() {
-    if (!to.trim() || !body.trim()) return
-    setSending(true)
-    setError('')
-    try {
-      const res = await fetch('/api/messages/compose', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({ to: to.trim(), subject: subject.trim(), body: body.trim() }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Send failed')
-      }
-      onSent()
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setSending(false)
-    }
+  async function saveDraft() {
+    if (!editing || saving) return
+    const title = editing.title.trim()
+    const body = editing.body.trim()
+    if (!title || !body) return
+    setSaving(true)
+    if (editing.id) await update(editing.id, title, body)
+    else await create(title, body)
+    setSaving(false)
+    setEditing(null)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="text-[15px] font-semibold text-ink">New Email</h2>
-          <button onClick={onClose} className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-ink">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="space-y-3 px-5 py-4">
+    <div className="absolute bottom-full left-4 z-10 mb-2 w-80 rounded-xl border border-border bg-surface p-1.5 shadow-pop">
+      {editing ? (
+        <div className="space-y-2 p-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">
+              {editing.id ? 'Edit reply' : 'New reply'}
+            </p>
+            <button
+              onClick={() => setEditing(null)}
+              className="rounded-md p-1 text-ink-subtle hover:bg-elevated hover:text-ink"
+              title="Back"
+            >
+              <X size={14} />
+            </button>
+          </div>
           <input
-            type="email"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            placeholder="To (email address)"
-            className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-          <input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="Subject"
-            className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            value={editing.title}
+            onChange={(e) => setEditing((d) => (d ? { ...d, title: e.target.value } : d))}
+            placeholder="Title"
+            autoFocus
+            className="h-9 w-full rounded-lg border border-border bg-page px-2.5 text-[12.5px] text-ink outline-none focus:border-ink-subtle/40"
           />
           <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Write your message..."
-            rows={6}
-            className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            value={editing.body}
+            onChange={(e) => setEditing((d) => (d ? { ...d, body: e.target.value } : d))}
+            rows={3}
+            placeholder="Message. Use {name} for the customer's name."
+            className="w-full resize-none rounded-lg border border-border bg-page px-2.5 py-2 text-[12.5px] text-ink outline-none focus:border-ink-subtle/40"
           />
-          {error && <p className="text-[12px] text-red-500">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setEditing(null)}
+              className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-ink-muted hover:bg-elevated"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveDraft}
+              disabled={saving || !editing.title.trim() || !editing.body.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {saving && <Loader2 size={12} className="animate-spin" />}
+              Save
+            </button>
+          </div>
         </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+      ) : (
+        <>
+          <div className="flex items-center justify-between px-2 py-1">
+            <p className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-subtle">Quick replies</p>
+            <button
+              onClick={() => setEditing({ id: null, title: '', body: '' })}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-brand hover:bg-elevated"
+            >
+              <Plus size={12} /> New
+            </button>
+          </div>
+          <div className="max-h-64 overflow-y-auto scrollbar-thin">
+            {loading ? (
+              <div className="flex justify-center py-6">
+                <Loader2 size={16} className="animate-spin text-ink-muted" />
+              </div>
+            ) : replies.length === 0 ? (
+              <p className="px-2 py-4 text-center text-[12px] text-ink-muted">
+                No quick replies yet. Tap “New” to add one.
+              </p>
+            ) : (
+              replies.map((q: QuickReply) => (
+                <div key={q.id} className="group/qr relative flex items-start">
+                  <button
+                    onClick={() => onInsert(fillTokens(q.body, contactName))}
+                    className="block min-w-0 flex-1 rounded-lg px-2 py-1.5 pr-8 text-left hover:bg-elevated"
+                  >
+                    <p className="text-[12.5px] font-medium text-ink">{q.title}</p>
+                    <p className="truncate text-[11.5px] text-ink-muted">{q.body}</p>
+                  </button>
+                  <button
+                    onClick={() => setEditing({ id: q.id, title: q.title, body: q.body })}
+                    className="absolute right-1.5 top-1.5 rounded-md p-1 text-ink-subtle opacity-0 transition hover:bg-surface hover:text-ink group-hover/qr:opacity-100"
+                    title={`Edit ${q.title}`}
+                    aria-label={`Edit ${q.title}`}
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
           <button
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-[13px] font-medium text-ink-muted hover:bg-elevated transition"
+            className="mt-0.5 block w-full rounded-lg px-2 py-1.5 text-center text-[11px] font-medium text-ink-subtle hover:bg-elevated"
           >
-            Cancel
+            Close
           </button>
-          <button
-            disabled={!to.trim() || !body.trim() || sending}
-            onClick={handleSend}
-            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-600 transition disabled:opacity-40"
-          >
-            {sending ? (
-              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-            ) : (
-              <Send size={13} />
-            )}
-            Send
-          </button>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   )
 }

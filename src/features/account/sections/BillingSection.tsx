@@ -1,68 +1,58 @@
-import { useState, useEffect } from 'react'
-import { CreditCard, ExternalLink, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Check, ExternalLink, Loader2 } from 'lucide-react'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useBusiness } from '@/core/hooks/useBusiness'
-import { supabase } from '@/integrations/supabase/browser'
+import { cn } from '@/core/lib/cn'
 
-interface BillingPeriod {
+/**
+ * Billing — fixed monthly plans (no per-booking / per-message fees, no credits).
+ * Plan selection + card management go through the Stripe billing portal.
+ * NOTE: Stripe products/prices must be updated to match (£29 / £49 / £79).
+ */
+
+interface Plan {
   id: string
-  period_start: string
-  period_end: string
-  booking_count: number
-  total_amount: string
-  cap_amount: string
-  cap_reached: boolean
-  status: string
-  currency: string
+  name: string
+  price: number
+  tagline: string
+  features: string[]
+  highlight?: boolean
 }
 
+const PLANS: Plan[] = [
+  {
+    id: 'starter',
+    name: 'Starter',
+    price: 29,
+    tagline: '1 account · 1 user',
+    features: ['1 WhatsApp account', '1 team member', 'Unlimited AI replies', 'Lead capture & qualifying', 'Knowledge base'],
+  },
+  {
+    id: 'team',
+    name: 'Team',
+    price: 49,
+    tagline: '1 account · 3 users',
+    features: ['1 WhatsApp account', 'Up to 3 team members', 'Everything in Starter', 'Draft-reply approvals', 'Campaigns & auto follow-up'],
+    highlight: true,
+  },
+  {
+    id: 'business',
+    name: 'Business',
+    price: 79,
+    tagline: '3 accounts · 10 users',
+    features: ['Up to 3 WhatsApp accounts', 'Up to 10 team members', 'Everything in Team', 'Analytics & CSV export', 'Priority support'],
+  },
+]
+
 export default function BillingSection() {
-  const { session, businessId } = useAuth()
+  const { session } = useAuth()
   const { data: business } = useBusiness()
   const [portalLoading, setPortalLoading] = useState(false)
-  const [activateLoading, setActivateLoading] = useState(false)
-  const [period, setPeriod] = useState<BillingPeriod | null>(null)
 
-  useEffect(() => {
-    if (!businessId) return
-    supabase
-      .from('billing_periods')
-      .select('*')
-      .eq('business_id', businessId)
-      .eq('status', 'active')
-      .order('period_start', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => setPeriod(data as BillingPeriod | null))
-  }, [businessId])
-
-  const billingActive = (business as any)?.billing_active
-  const currency = (business as any)?.currency || 'GBP'
+  const currentPlan = (business?.plan || 'trial').toLowerCase()
+  const onTrial = currentPlan === 'trial' || !PLANS.some((p) => p.id === currentPlan)
+  const currency = business?.currency || 'GBP'
   const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '£'
-  const totalAmount = period ? parseFloat(period.total_amount) || 0 : 0
-  const capAmount = period ? parseFloat(period.cap_amount) || 189 : 189
-  const bookings = period?.booking_count || 0
-
-  async function handleActivate() {
-    if (!session) return
-    setActivateLoading(true)
-    try {
-      const res = await fetch('/api/billing/activate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({}),
-      })
-      const data = await res.json()
-      if (data.ok) window.location.reload()
-    } catch (err) {
-      console.error('[billing] activate error:', err)
-    } finally {
-      setActivateLoading(false)
-    }
-  }
 
   async function openPortal() {
     if (!session) return
@@ -70,10 +60,7 @@ export default function BillingSection() {
     try {
       const res = await fetch('/api/billing/portal', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({}),
       })
       const data = await res.json()
@@ -87,78 +74,83 @@ export default function BillingSection() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
-        <h2 className="text-[15px] font-semibold text-ink">Pricing</h2>
-        <div className="mt-3 space-y-2 text-[13px] text-ink-muted">
-          <p><strong className="text-ink">{symbol}0 setup fee.</strong> No upfront cost — Elsie starts working for free.</p>
-          <p><strong className="text-ink">{symbol}20 per booking.</strong> You only pay when Elsie books an appointment into your calendar.</p>
-          <p><strong className="text-ink">{symbol}189/month cap.</strong> No matter how many bookings, you never pay more than {symbol}189 per 30-day cycle.</p>
-          <p>Calls, messages, and AI replies are always free. You only pay for completed bookings.</p>
+      {onTrial && (
+        <div className="rounded-xl border border-brand/20 bg-brand-50 p-4">
+          <p className="text-[14px] font-semibold text-ink">You're on the free trial</p>
+          <p className="mt-0.5 text-[13px] text-ink-muted">
+            Pick a plan below to keep Elsie answering once your trial ends.
+          </p>
+        </div>
+      )}
+
+      <div>
+        <h2 className="text-[15px] font-semibold text-ink">Plans</h2>
+        <p className="mt-1 text-[13px] text-ink-muted">
+          Simple monthly pricing — no per-message or per-booking fees, ever.
+        </p>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          {PLANS.map((p) => {
+            const isCurrent = !onTrial && currentPlan === p.id
+            return (
+              <div
+                key={p.id}
+                className={cn(
+                  'flex flex-col rounded-2xl border bg-surface p-5 shadow-soft',
+                  isCurrent ? 'border-accent ring-1 ring-accent' : p.highlight ? 'border-ink-subtle/40' : 'border-border',
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-[15px] font-semibold text-ink">{p.name}</h3>
+                  {isCurrent ? (
+                    <span className="rounded-full bg-accent px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-white">
+                      Current
+                    </span>
+                  ) : p.highlight ? (
+                    <span className="rounded-full bg-elevated px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-ink-muted">
+                      Popular
+                    </span>
+                  ) : null}
+                </div>
+
+                <p className="mt-2 text-[28px] font-bold leading-none text-ink">
+                  {symbol}{p.price}
+                  <span className="text-[13px] font-normal text-ink-subtle"> /mo</span>
+                </p>
+                <p className="mt-1 text-[12px] text-ink-subtle">{p.tagline}</p>
+
+                <ul className="mt-4 flex-1 space-y-1.5">
+                  {p.features.map((f) => (
+                    <li key={f} className="flex items-start gap-1.5 text-[12.5px] text-ink-muted">
+                      <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+
+                <button
+                  onClick={openPortal}
+                  disabled={isCurrent || portalLoading}
+                  className={cn(
+                    'mt-5 flex h-10 items-center justify-center gap-1.5 rounded-lg px-4 text-[13px] font-semibold transition disabled:opacity-60',
+                    isCurrent
+                      ? 'cursor-default border border-border bg-elevated text-ink-muted'
+                      : 'bg-accent text-white hover:opacity-90',
+                  )}
+                >
+                  {portalLoading && !isCurrent ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {isCurrent ? 'Current plan' : `Choose ${p.name}`}
+                </button>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {billingActive && period && (
-        <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
-          <h2 className="text-[15px] font-semibold text-ink">Current Billing Period</h2>
-          <p className="mt-1 text-[12px] text-ink-muted">
-            {new Date(period.period_start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — {new Date(period.period_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-          </p>
-
-          <div className="mt-4 grid grid-cols-3 gap-4">
-            <div className="rounded-lg bg-elevated p-3 text-center">
-              <p className="text-[22px] font-bold text-ink">{bookings}</p>
-              <p className="text-[11px] text-ink-muted">Bookings</p>
-            </div>
-            <div className="rounded-lg bg-elevated p-3 text-center">
-              <p className="text-[22px] font-bold text-ink">{symbol}{totalAmount.toFixed(0)}</p>
-              <p className="text-[11px] text-ink-muted">This cycle</p>
-            </div>
-            <div className="rounded-lg bg-elevated p-3 text-center">
-              <p className="text-[22px] font-bold text-ink">{symbol}{capAmount}</p>
-              <p className="text-[11px] text-ink-muted">Cap</p>
-            </div>
-          </div>
-
-          {period.cap_reached && (
-            <div className="mt-3 rounded-lg bg-success/10 p-2 text-center text-[12px] font-medium text-success">
-              Cap reached — remaining bookings this cycle are free
-            </div>
-          )}
-
-          <div className="mt-3 h-2 rounded-full bg-elevated overflow-hidden">
-            <div
-              className="h-full rounded-full bg-brand transition-all"
-              style={{ width: `${Math.min(100, (totalAmount / capAmount) * 100)}%` }}
-            />
-          </div>
-          <p className="mt-1 text-right text-[11px] text-ink-subtle">
-            {symbol}{totalAmount.toFixed(0)} / {symbol}{capAmount}
-          </p>
-        </div>
-      )}
-
-      {!billingActive && (
-        <div className="rounded-xl border border-brand/20 bg-brand-50 p-5">
-          <p className="text-[14px] font-semibold text-ink">Free mode</p>
-          <p className="mt-1 text-[13px] text-ink-muted">
-            Elsie is working for you, but billing is not active yet. Bookings are being tracked.
-            Add a payment method to activate billing when you are ready.
-          </p>
-          <button
-            onClick={handleActivate}
-            disabled={activateLoading}
-            className="mt-4 flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-[13px] font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
-          >
-            {activateLoading ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-            Add payment method
-          </button>
-        </div>
-      )}
-
       <div className="rounded-xl border border-border bg-surface p-5 shadow-soft">
-        <h2 className="text-[15px] font-semibold text-ink">Invoices & Payment</h2>
+        <h2 className="text-[15px] font-semibold text-ink">Payment & invoices</h2>
         <p className="mt-1 text-[13px] text-ink-muted">
-          View past invoices, update payment details, or manage your billing.
+          Update your card, download invoices, or change your plan.
         </p>
         <button
           onClick={openPortal}
