@@ -9,9 +9,14 @@ interface Member {
   name: string | null
   email: string
   role: string
-  status: string
+  user_id: string | null
   joined_at: string | null
 }
+
+// There is no `status` column on team_members — a member is "active" once they've
+// joined (joined_at set), otherwise the row is a pending invite.
+const isActive = (m: Member) => !!m.joined_at
+const isPending = (m: Member) => !m.joined_at
 
 export default function TeamSection() {
   const { businessId } = useAuth()
@@ -20,14 +25,15 @@ export default function TeamSection() {
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!businessId) return
     supabase
       .from('team_members')
-      .select('id, name, email, role, status, joined_at')
+      .select('id, name, email, role, user_id, joined_at')
       .eq('business_id', businessId)
-      .order('joined_at', { ascending: true })
+      .order('joined_at', { ascending: true, nullsFirst: false })
       .then(({ data }) => {
         setMembers(data || [])
         setLoading(false)
@@ -37,19 +43,22 @@ export default function TeamSection() {
   async function sendInvite() {
     if (!businessId || !inviteEmail.trim()) return
     setInviting(true)
+    setInviteError(null)
+    // Pending invite: invited_at set, joined_at null (becomes "active" once they join).
     const { data, error } = await supabase.from('team_members').insert({
       business_id: businessId,
       email: inviteEmail.trim(),
       name: inviteEmail.trim(),
       role: 'member',
-      status: 'pending',
-      joined_at: new Date().toISOString(),
-    }).select('id, name, email, role, status, joined_at').single()
+      invited_at: new Date().toISOString(),
+    }).select('id, name, email, role, user_id, joined_at').single()
 
     if (!error && data) {
       setMembers([...members, data])
       setInviteEmail('')
       setShowInvite(false)
+    } else if (error) {
+      setInviteError(error.message)
     }
     setInviting(false)
   }
@@ -62,7 +71,7 @@ export default function TeamSection() {
     )
   }
 
-  const activeCount = members.filter(m => m.status === 'active').length
+  const activeCount = members.filter(isActive).length
 
   return (
     <div className="space-y-6">
@@ -104,6 +113,9 @@ export default function TeamSection() {
             <button onClick={() => setShowInvite(false)} className="h-10 rounded-lg border border-border bg-white px-3 text-[13px] text-ink-muted">Cancel</button>
           </div>
         )}
+        {inviteError && (
+          <p className="mt-2 text-[12px] text-danger">Couldn’t send invite: {inviteError}</p>
+        )}
 
         <div className="mt-4 space-y-2">
           {members.map((member) => (
@@ -114,7 +126,7 @@ export default function TeamSection() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-[14px] font-medium text-ink">{member.name || member.email}</p>
-                  {member.status === 'pending' && (
+                  {isPending(member) && (
                     <span className="rounded bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-warning">Pending</span>
                   )}
                 </div>
