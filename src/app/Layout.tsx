@@ -39,7 +39,7 @@ type NavItem = { to: string; icon: React.ElementType; label: string }
 // Billing) appear only when the business has voice_ai provisioned. WhatsApp is
 // the core product for everyone else.
 const workNav: NavItem[] = [
-  { to: '/', icon: LayoutDashboard, label: 'Overview' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
   { to: '/inbox', icon: Inbox, label: 'Inbox' },
   { to: '/leads', icon: Flame, label: 'Leads' },
   { to: '/appointments', icon: Calendar, label: 'Appointments' },
@@ -99,7 +99,7 @@ export default function Layout() {
   const growthItems: NavItem[] = voiceEnabled ? [...growthNav, ...voiceGrowthNav] : growthNav
 
   const mobileNav: NavItem[] = [
-    { to: '/', icon: LayoutDashboard, label: 'Home' },
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Home' },
     { to: '/inbox', icon: Inbox, label: 'Inbox' },
     { to: '/leads', icon: Flame, label: 'Leads' },
     { to: '/agents', icon: Bot, label: 'Agent' },
@@ -124,7 +124,9 @@ export default function Layout() {
   }, [location.pathname])
 
   function isActive(to: string) {
-    return to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
+    // Overview/Home own "/dashboard" exactly (and "/" before the host-aware redirect).
+    if (to === '/dashboard') return location.pathname === '/dashboard' || location.pathname === '/'
+    return location.pathname.startsWith(to)
   }
 
   const displayName = user?.user_metadata?.name ?? user?.email?.split('@')[0] ?? 'You'

@@ -32,7 +32,7 @@ export default function ResetPasswordPage() {
       setError(updateError.message)
     } else {
       setDone(true)
-      setTimeout(() => navigate('/'), 2000)
+      setTimeout(() => navigate('/dashboard'), 2000)
     }
   }
 

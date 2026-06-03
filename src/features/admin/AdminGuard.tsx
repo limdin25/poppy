@@ -26,7 +26,7 @@ export default function AdminGuard({ children }: { children: ReactNode }) {
   }
 
   if (!user || !isAdmin) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/dashboard" replace />
   }
 
   return <>{children}</>

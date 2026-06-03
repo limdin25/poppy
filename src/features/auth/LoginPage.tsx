@@ -31,7 +31,7 @@ export default function LoginPage() {
     const { error } = await signInWithPassword(em, pw)
     setLoading(false)
     if (error) setErrorMsg(error.message)
-    else navigate('/', { replace: true })
+    else navigate('/dashboard', { replace: true })
   }
 
   async function handlePassword(e: React.FormEvent) {

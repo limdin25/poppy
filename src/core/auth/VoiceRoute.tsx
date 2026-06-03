@@ -17,7 +17,7 @@ export function VoiceRoute() {
     )
   }
 
-  if (!enabled) return <Navigate to="/" replace />
+  if (!enabled) return <Navigate to="/dashboard" replace />
 
   return <Outlet />
 }

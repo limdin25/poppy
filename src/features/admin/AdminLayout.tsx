@@ -102,7 +102,7 @@ export default function AdminLayout() {
         {/* Back to app */}
         <div className="px-3">
           <NavLink
-            to="/"
+            to="/dashboard"
             className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] text-white/50 transition hover:bg-white/5 hover:text-white/80"
           >
             <ArrowLeft size={13} />

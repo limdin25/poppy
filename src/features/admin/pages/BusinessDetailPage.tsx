@@ -99,7 +99,7 @@ export default function BusinessDetailPage() {
           <button
             onClick={() => {
               startImpersonation(biz.id, biz.name)
-              navigate('/')
+              navigate('/dashboard')
             }}
             className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-brand-600"
           >

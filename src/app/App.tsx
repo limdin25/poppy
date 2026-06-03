@@ -43,10 +43,32 @@ function LoadingFallback() {
   )
 }
 
+/**
+ * Host-aware root.
+ *
+ * The same SPA serves two domains:
+ *  - heyelsie.com / www.heyelsie.com  → the marketing site (landing at "/")
+ *  - app.heyelsie.com (and previews / localhost) → the product (dashboard)
+ *
+ * So "/" on the marketing apex renders the landing page in place (URL stays "/"),
+ * while everywhere else "/" sends you into the authenticated app at /dashboard.
+ * (Supabase sessions are per-origin, so the app must stay on the host you logged
+ * in on — we never bounce across subdomains.)
+ */
+function RootEntry() {
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+  const isMarketing = host === 'heyelsie.com' || host === 'www.heyelsie.com'
+  if (isMarketing) return <LandingPage />
+  return <Navigate to="/dashboard" replace />
+}
+
 export default function App() {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
+        {/* Root — host-aware: marketing apex shows the landing, app host → dashboard */}
+        <Route path="/" element={<RootEntry />} />
+
         {/* Public — no layout */}
         <Route path="welcome" element={<LandingPage />} />
         <Route path="privacy" element={<PrivacyPolicyPage />} />
@@ -65,7 +87,7 @@ export default function App() {
         {/* Authenticated app */}
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
-            <Route index element={<DashboardPage />} />
+            <Route path="dashboard" element={<DashboardPage />} />
             {/* Voice-only — gated behind the per-business voice_ai flag */}
             <Route element={<VoiceRoute />}>
               <Route path="calls" element={<CallsPage />} />
@@ -91,7 +113,7 @@ export default function App() {
             <Route path="connections" element={<ConnectionsPage />} />
             <Route path="agent/*" element={<Navigate to="/agents" replace />} />
             <Route path="account/*" element={<AccountPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Route>
       </Routes>

@@ -27,7 +27,7 @@ export default function OnboardingPage() {
 
   async function next() {
     if (!businessId) {
-      if (isLast) navigate('/')
+      if (isLast) navigate('/dashboard')
       else setStep((s) => s + 1)
       return
     }
@@ -47,7 +47,7 @@ export default function OnboardingPage() {
       setSaving(false)
     }
 
-    if (isLast) navigate('/')
+    if (isLast) navigate('/dashboard')
     else setStep((s) => s + 1)
   }
 
@@ -62,7 +62,7 @@ export default function OnboardingPage() {
         <div className="mx-auto flex max-w-2xl items-center justify-between">
           <span className="text-[16px] font-semibold text-ink">Set up Elsie</span>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/dashboard')}
             className="text-[13px] text-ink-muted hover:text-ink"
           >
             Skip for now
