@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { fetchAndStoreAvatar, fetchEmailAvatar } from '../lib/fetch-avatar.js';
-import { notifyBusinessOwner } from '../lib/notify.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -717,7 +716,6 @@ export default async function handler(req: Request): Promise<Response> {
 
       // Find or create contact
       let contactId: string | null = null;
-      let isNewContact = false;
       let resolvedName = cleanSenderName;
       if (isEmail) {
         const { data: existing } = await supabase
@@ -741,7 +739,6 @@ export default async function handler(req: Request): Promise<Response> {
             .select('id')
             .single();
           contactId = newContact?.id || null;
-          isNewContact = !!contactId;
         }
       } else {
         const { data: existing } = await supabase
@@ -771,7 +768,6 @@ export default async function handler(req: Request): Promise<Response> {
             .select('id')
             .single();
           contactId = newContact?.id || null;
-          isNewContact = !!contactId;
           const contactAttId = isOutboundWA ? undefined : (senderAttendeeId || undefined);
           if (contactId && (contactAttId || chatId)) {
             fetchAndStoreAvatar(contactId, { attendeeId: contactAttId, chatId: chatId || undefined }).catch(() => {});
@@ -965,16 +961,6 @@ export default async function handler(req: Request): Promise<Response> {
       // Classify lead intent on inbound contact messages (independent of AI reply)
       if (!isOutboundWA && !isGroupChat && contactId && cleanText) {
         await classifyLead(businessId, conversationId, contactId);
-      }
-
-      // Alert the owner the first time a brand-new lead messages in (fire-and-forget;
-      // only sends if they've added a destination in Settings → Notifications).
-      if (isNewContact && !isOutboundWA && !isGroupChat) {
-        const leadName = resolvedName || senderPhone || senderEmail || 'Someone new';
-        notifyBusinessOwner(businessId, 'lead', {
-          title: 'New lead',
-          body: `${leadName} just messaged you for the first time — open the inbox to reply.`,
-        }).catch((err) => console.error('[unipile-webhook] new-lead notify failed:', err));
       }
 
       // Queue AI takeover instead of replying inline — gives the business owner time to reply first

@@ -8,7 +8,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-export type NotifyEvent = 'call' | 'message' | 'booking' | 'quote_accepted' | 'lead';
+export type NotifyEvent = 'call' | 'message' | 'booking' | 'quote_accepted';
 
 interface NotifyData {
   title: string;
