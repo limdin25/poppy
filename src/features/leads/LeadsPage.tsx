@@ -4,7 +4,6 @@ import { Upload, Download, Plus, Table2, Columns3, MessageCircle, Trash2, Chevro
 import { PageHeader } from '@/core/ui/PageHeader'
 import { DataTable, type Column } from '@/core/ui/DataTable'
 import { DealPipeline } from './DealPipeline'
-import { type PillTone } from '@/core/ui/StatusPill'
 import { Switch } from '@/core/ui/Switch'
 import { useDeals, usePipelineStages } from '@/core/hooks/usePipeline'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
