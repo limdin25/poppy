@@ -283,9 +283,8 @@ function SetupCard({ token, canRun }: { token?: string; canRun: boolean }) {
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="text-[13px] font-semibold text-emerald-800">Elsie is ready to go 🎉</p>
           <p className="mt-1 text-[12.5px] text-emerald-700">
-            Wrote her greeting &amp; personality, {done.services} service{done.services === 1 ? '' : 's'},{' '}
-            {done.faqs} FAQ{done.faqs === 1 ? '' : 's'} and {done.sequences} follow-up sequence{done.sequences === 1 ? '' : 's'}.
-            She'll draft replies for you to approve.
+            Wrote her greeting &amp; personality{done.services ? `, ${done.services} services` : ''}{done.faqs ? `, ${done.faqs} FAQs` : ''} and {done.sequences} follow-up sequences.
+            {(!done.services && !done.faqs) ? ' (You already had services & FAQs, so those were left as they are.)' : ''} She'll draft replies for you to approve.
           </p>
           <Link to="/agents" className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-emerald-800 hover:underline">
             Review &amp; edit in AI Agent <ArrowRight size={13} />
