@@ -64,6 +64,34 @@ export interface Contact {
   updated_at: string
 }
 
+export interface PipelineStage {
+  id: string
+  business_id: string
+  name: string
+  color: string
+  sort_order: number
+  is_won: boolean
+  is_lost: boolean
+  created_at: string
+}
+
+export interface Deal {
+  id: string
+  business_id: string
+  stage_id: string | null
+  contact_id: string | null
+  conversation_id: string | null
+  title: string
+  description: string | null
+  value: number
+  currency: string
+  sort_order: number
+  owner_id: string | null
+  created_at: string
+  updated_at: string
+  contact?: Contact
+}
+
 export type CampaignStatus = 'draft' | 'sending' | 'sent' | 'failed'
 
 export interface Campaign {

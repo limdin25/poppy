@@ -9,9 +9,7 @@ import {
   Pencil,
   Zap,
   UserPlus,
-  UserCheck,
   MoreHorizontal,
-  MessageCircle,
   Plus,
   Loader2,
   X,
@@ -26,8 +24,10 @@ import { Avatar } from '@/core/ui/Avatar'
 import { MessageBubble } from '@/core/ui/MessageBubble'
 import { FilterChips } from '@/core/ui/FilterChips'
 import { Switch } from '@/core/ui/Switch'
-import { useConversations, useMessages, type ChannelFilter } from '@/core/hooks/useConversations'
+import { useConversations, useMessages } from '@/core/hooks/useConversations'
 import { useQuickReplies, fillTokens, type QuickReply } from '@/core/hooks/useQuickReplies'
+import { useTeamMembers, memberLabel } from '@/core/hooks/useTeamMembers'
+import { DealModal } from '@/core/ui/DealModal'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import type { Conversation, Message } from '@/core/types/database'
@@ -79,14 +79,69 @@ function senderLabel(msg: Message): 'ai' | 'customer' | 'user' {
   return 'user'
 }
 
+export type InboxFolder = 'inbox' | 'unread' | 'mine' | 'team' | 'archived' | 'closed'
+
+const FOLDER_LABELS: Record<InboxFolder, string> = {
+  inbox: 'Inbox',
+  unread: 'Unread',
+  mine: 'Assigned to me',
+  team: 'Assigned to team',
+  archived: 'Archived',
+  closed: 'Closed',
+}
+
+const FOLDER_ORDER: InboxFolder[] = ['inbox', 'unread', 'mine', 'team', 'archived', 'closed']
+
+function inFolder(c: Conversation, folder: InboxFolder, uid: string | null): boolean {
+  switch (folder) {
+    case 'inbox':
+      return c.status === 'open' || c.status === 'needs_handoff'
+    case 'unread':
+      return (c.unread_count ?? 0) > 0 && c.status !== 'archived'
+    case 'mine':
+      return !!uid && c.assigned_to === uid
+    case 'team':
+      return !!c.assigned_to && c.assigned_to !== uid
+    case 'archived':
+      return c.status === 'archived'
+    case 'closed':
+      return c.status === 'closed'
+  }
+}
+
+function chLabelOf(channel: Conversation['channel']): string {
+  return channel === 'whatsapp' ? 'WhatsApp'
+    : channel === 'email' ? 'Email'
+    : channel === 'sms' ? 'SMS'
+    : channel === 'voice' ? 'Call'
+    : 'Instagram'
+}
+
+function initialsOf(name: string): string {
+  return (
+    name
+      .split(/\s+|\./)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((s) => s[0]?.toUpperCase())
+      .join('') || '?'
+  )
+}
+
 export default function InboxPage() {
-  const [filter, setFilter] = useState<'all' | 'whatsapp'>('all')
+  const [folder, setFolder] = useState<InboxFolder>('inbox')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const channelFilter: ChannelFilter = filter === 'whatsapp' ? 'whatsapp' : 'all'
-  const { data: conversations, loading } = useConversations(channelFilter)
+  const { data: conversations, loading } = useConversations('all')
   const { session, user } = useAuth()
+  const uid = user?.id ?? null
+
+  const counts: Record<InboxFolder, number> = { inbox: 0, unread: 0, mine: 0, team: 0, archived: 0, closed: 0 }
+  for (const c of conversations) {
+    for (const f of FOLDER_ORDER) if (inFolder(c, f, uid)) counts[f]++
+  }
+  const visible = conversations.filter((c) => inFolder(c, folder, uid))
 
   // Deep-link from Leads "View Chat": ?contact=<id> → open that contact's chat.
   useEffect(() => {
@@ -113,18 +168,15 @@ export default function InboxPage() {
         >
           <div className="space-y-3 border-b border-border px-4 py-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-[17px] font-bold tracking-tight text-ink">Chats</h2>
+              <h2 className="text-[17px] font-bold tracking-tight text-ink">{FOLDER_LABELS[folder]}</h2>
               <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] font-medium text-ink-muted">
-                {conversations.length}
+                {visible.length}
               </span>
             </div>
             <FilterChips
-              options={[
-                { value: 'all', label: 'All', count: conversations.length },
-                { value: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle size={13} /> },
-              ]}
-              value={filter}
-              onChange={(v) => { setFilter(v as 'all' | 'whatsapp'); setSelectedId(null) }}
+              options={FOLDER_ORDER.map((f) => ({ value: f, label: FOLDER_LABELS[f], count: counts[f] }))}
+              value={folder}
+              onChange={(v) => { setFolder(v as InboxFolder); setSelectedId(null) }}
             />
           </div>
 
@@ -133,11 +185,12 @@ export default function InboxPage() {
               <div className="flex justify-center py-10">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
               </div>
-            ) : conversations.length === 0 ? (
-              <p className="px-4 py-10 text-center text-[13px] text-ink-muted">No conversations yet</p>
+            ) : visible.length === 0 ? (
+              <p className="px-4 py-10 text-center text-[13px] text-ink-muted">No conversations here</p>
             ) : (
-              conversations.map((c) => {
+              visible.map((c) => {
                 const name = displayName(c)
+                const chLabel = chLabelOf(c.channel)
                 return (
                   <button
                     key={c.id}
@@ -147,7 +200,7 @@ export default function InboxPage() {
                       c.id === selectedId && 'bg-elevated/60'
                     )}
                   >
-                    <Avatar src={c.contact?.avatar_url ?? undefined} name={name} channel="whatsapp" size="md" />
+                    <Avatar src={c.contact?.avatar_url ?? undefined} name={name} channel={c.channel} size="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="truncate text-[13.5px] font-medium text-ink">{name}</p>
@@ -157,7 +210,7 @@ export default function InboxPage() {
                         {cleanPreview(c.last_message_preview)}
                       </p>
                       <div className="mt-1 flex items-center gap-2">
-                        <span className="text-[10.5px] font-medium text-ink-subtle">via WhatsApp</span>
+                        <span className="text-[10.5px] font-medium text-ink-subtle">via {chLabel}</span>
                         {c.unread_count > 0 && (
                           <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-whatsapp px-1 text-[10px] font-semibold text-white">
                             {c.unread_count}
@@ -215,9 +268,15 @@ function ThreadView({
   const [error, setError] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [showFollowups, setShowFollowups] = useState(false)
-  const [assigned, setAssigned] = useState(conversation.assigned_to === userId && !!userId)
+  const [dealOpen, setDealOpen] = useState(false)
+  const [assignedTo, setAssignedTo] = useState<string | null>(conversation.assigned_to)
+  const [assignOpen, setAssignOpen] = useState(false)
   const [cls, setCls] = useState<string>(conversation.contact?.lead_status ?? '')
   const menuRef = useRef<HTMLDivElement>(null)
+  const assignRef = useRef<HTMLDivElement>(null)
+  const { data: teamMembers } = useTeamMembers()
+  const assignable = teamMembers.filter((m) => m.user_id)
+  const assignedMember = teamMembers.find((m) => m.user_id === assignedTo) ?? null
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   async function changeClassification(next: string) {
@@ -234,11 +293,17 @@ function ThreadView({
     return () => document.removeEventListener('mousedown', onDoc)
   }, [menuOpen])
 
-  async function assignToMe() {
-    if (!userId) return
-    const next = assigned ? null : userId
-    setAssigned(!assigned)
-    await supabase.from('conversations').update({ assigned_to: next }).eq('id', conversation.id)
+  useEffect(() => {
+    if (!assignOpen) return
+    function onDoc(e: MouseEvent) { if (assignRef.current && !assignRef.current.contains(e.target as Node)) setAssignOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [assignOpen])
+
+  async function assignTo(memberUserId: string | null) {
+    setAssignOpen(false)
+    setAssignedTo(memberUserId)
+    await supabase.from('conversations').update({ assigned_to: memberUserId }).eq('id', conversation.id)
   }
   async function markSpam() {
     setMenuOpen(false)
@@ -332,11 +397,11 @@ function ThreadView({
         <button onClick={onBack} className="rounded-md p-1 text-ink-muted hover:bg-elevated lg:hidden">
           <ArrowLeft size={18} />
         </button>
-        <Avatar src={conversation.contact?.avatar_url ?? undefined} name={name} channel="whatsapp" size="md" />
+        <Avatar src={conversation.contact?.avatar_url ?? undefined} name={name} channel={conversation.channel} size="md" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[14px] font-semibold text-ink">{name}</p>
           <p className="text-[11.5px] text-ink-subtle">
-            via WhatsApp{conversation.status === 'needs_handoff' ? ' · needs handoff' : ''}
+            via {chLabelOf(conversation.channel)}{conversation.status === 'needs_handoff' ? ' · needs handoff' : ''}
           </p>
         </div>
         <select
@@ -357,12 +422,52 @@ function ThreadView({
           <option value="cold">Cold</option>
         </select>
         <button
-          onClick={() => void assignToMe()}
-          className={cn('rounded-lg p-2 transition hover:bg-elevated', assigned ? 'text-accent' : 'text-ink-muted')}
-          title={assigned ? 'Assigned to you — click to unassign' : 'Assign to me'}
+          onClick={() => setDealOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-[12px] font-medium text-ink-muted transition hover:bg-elevated hover:text-ink"
+          title="Add a deal from this conversation"
         >
-          {assigned ? <UserCheck size={17} /> : <UserPlus size={17} />}
+          <Plus size={15} /> <span className="hidden sm:inline">Deal</span>
         </button>
+        <div ref={assignRef} className="relative">
+          <button
+            onClick={() => setAssignOpen((o) => !o)}
+            className={cn('flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition hover:bg-elevated', assignedMember ? 'text-accent' : 'text-ink-muted')}
+            title="Assign conversation"
+          >
+            {assignedMember ? (
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-50 text-[9px] font-semibold text-brand-700">
+                {initialsOf(memberLabel(assignedMember))}
+              </span>
+            ) : (
+              <UserPlus size={17} />
+            )}
+            <span className="hidden max-w-[90px] truncate sm:inline">{assignedMember ? memberLabel(assignedMember) : 'Assign'}</span>
+          </button>
+          {assignOpen && (
+            <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-pop">
+              <button onClick={() => void assignTo(null)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-ink hover:bg-elevated">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-border text-ink-subtle"><X size={11} /></span>
+                Unassigned
+              </button>
+              {assignable.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => void assignTo(m.user_id)}
+                  className={cn('flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-elevated', assignedTo === m.user_id ? 'text-accent' : 'text-ink')}
+                >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-50 text-[9px] font-semibold text-brand-700">
+                    {initialsOf(memberLabel(m))}
+                  </span>
+                  <span className="flex-1 truncate">{memberLabel(m)}{m.user_id === userId ? ' (you)' : ''}</span>
+                  {assignedTo === m.user_id && <Check size={13} />}
+                </button>
+              ))}
+              {assignable.length === 0 && (
+                <p className="px-3 py-2 text-[12px] text-ink-subtle">Invite teammates in Account → Team</p>
+              )}
+            </div>
+          )}
+        </div>
         <button
           onClick={() => setShowFollowups((s) => !s)}
           className={cn('rounded-lg p-2 transition hover:bg-elevated', showFollowups ? 'bg-elevated text-ink' : 'text-ink-muted')}
@@ -396,6 +501,16 @@ function ThreadView({
       {showFollowups && (
         <FollowupsPanel conversation={conversation} contactName={name} onClose={() => setShowFollowups(false)} />
       )}
+
+      <DealModal
+        open={dealOpen}
+        onClose={() => setDealOpen(false)}
+        prefill={{
+          contactId: conversation.contact_id,
+          conversationId: conversation.id,
+          title: name && name !== 'Unknown' ? `Deal — ${name}` : '',
+        }}
+      />
 
       {/* Messages */}
       <div className="flex-1 space-y-3 overflow-y-auto scrollbar-thin px-4 py-5">

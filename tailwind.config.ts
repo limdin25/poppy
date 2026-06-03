@@ -41,11 +41,12 @@ const config: Config = {
         ],
       },
       borderRadius: {
-        sm: "8px",
-        DEFAULT: "12px",
-        lg: "16px",
-        xl: "20px",
-        "2xl": "24px",
+        /* RogerRoger uses tight corners: 4/6/8px on cards & inputs, pills on chips/buttons */
+        sm: "4px",
+        DEFAULT: "6px",
+        lg: "8px",
+        xl: "12px",
+        "2xl": "16px",
       },
       boxShadow: {
         soft: "0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06)",

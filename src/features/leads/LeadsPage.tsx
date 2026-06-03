@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Upload, Download, Plus, Table2, Columns3, MessageCircle, Trash2, ChevronDown, Loader2, UploadCloud } from 'lucide-react'
 import { PageHeader } from '@/core/ui/PageHeader'
 import { DataTable, type Column } from '@/core/ui/DataTable'
-import { KanbanBoard, type KanbanColumn } from '@/core/ui/KanbanBoard'
+import { DealPipeline } from './DealPipeline'
 import { StatusPill, type PillTone } from '@/core/ui/StatusPill'
 import { FilterChips } from '@/core/ui/FilterChips'
 import { Switch } from '@/core/ui/Switch'
@@ -166,8 +166,6 @@ export default function LeadsPage() {
     if (error) { console.error('delete failed:', error.message); return }
     refetch()
   }
-  function moveLead(id: string, toColumn: string) { void setStatus(id, toColumn as Lifecycle) }
-
   async function addLead() {
     if (!aName.trim() && !aPhone.trim()) { setAddErr('Add a name or phone number.'); return }
     setAddBusy(true); setAddErr(null)
@@ -288,13 +286,6 @@ export default function LeadsPage() {
     },
   ]
 
-  const STATUS_DOT: Record<Lifecycle, string> = {
-    new: 'bg-slate-400', contacted: 'bg-blue-500', qualified: 'bg-amber-500', won: 'bg-emerald-500', lost: 'bg-red-500',
-  }
-  const kanbanColumns: KanbanColumn<Contact>[] = STATUS_ORDER.map((s) => ({
-    id: s, title: STATUS_META[s].label, accent: STATUS_DOT[s], items: leads.filter((l) => statusOf(l) === s),
-  }))
-
   return (
     <div className="space-y-5">
       <PageHeader
@@ -321,27 +312,33 @@ export default function LeadsPage() {
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <FilterChips
-          options={[
-            { value: 'all', label: 'All', count: allLeads.length },
-            { value: 'hot', label: 'Hot' },
-            { value: 'warm', label: 'Warm' },
-            { value: 'cold', label: 'Cold' },
-          ]}
-          value={filter}
-          onChange={setFilter}
-        />
+        {view === 'table' ? (
+          <FilterChips
+            options={[
+              { value: 'all', label: 'All', count: allLeads.length },
+              { value: 'hot', label: 'Hot' },
+              { value: 'warm', label: 'Warm' },
+              { value: 'cold', label: 'Cold' },
+            ]}
+            value={filter}
+            onChange={setFilter}
+          />
+        ) : (
+          <p className="text-[12.5px] text-ink-muted">Drag deals between stages · click a deal to edit · rename a stage by clicking its title</p>
+        )}
         <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-0.5">
           <button onClick={() => setView('table')} className={cn('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-medium', view === 'table' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')}>
             <Table2 size={14} /> Table
           </button>
           <button onClick={() => setView('kanban')} className={cn('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-medium', view === 'kanban' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')}>
-            <Columns3 size={14} /> Kanban
+            <Columns3 size={14} /> Pipeline
           </button>
         </div>
       </div>
 
-      {loading ? (
+      {view === 'kanban' ? (
+        <DealPipeline />
+      ) : loading ? (
         <div className="flex items-center justify-center rounded-2xl border border-border bg-surface py-20 shadow-soft">
           <Loader2 size={22} className="animate-spin text-ink-muted" />
         </div>
@@ -351,23 +348,8 @@ export default function LeadsPage() {
           <p className="mt-3 text-[14px] font-medium text-ink">No leads yet</p>
           <p className="mt-1 text-[13px] text-ink-muted">As customers message your WhatsApp, Elsie classifies them here — or add one yourself.</p>
         </div>
-      ) : view === 'table' ? (
-        <DataTable columns={columns} data={leads} keyExtractor={(l) => l.id} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} emptyMessage="No leads match this filter" />
       ) : (
-        <KanbanBoard
-          columns={kanbanColumns}
-          keyExtractor={(l) => l.id}
-          onMove={moveLead}
-          renderCard={(l) => (
-            <div>
-              <div className="min-w-0">
-                <p className="truncate text-[13px] font-semibold text-ink">{phoneOf(l)}</p>
-                <p className="truncate text-[11.5px] text-ink-subtle">{l.name || '—'}</p>
-              </div>
-              <p className="mt-2 text-[11px] text-ink-subtle">{lastActiveOf(l)}</p>
-            </div>
-          )}
-        />
+        <DataTable columns={columns} data={leads} keyExtractor={(l) => l.id} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} emptyMessage="No leads match this filter" />
       )}
 
       {/* Add Lead modal */}
