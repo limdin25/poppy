@@ -59,6 +59,25 @@ Driven by hand through the live app (clicking, filling forms, reading the screen
 
 All test artifacts were cleaned up afterwards (demo account restored).
 
+### Full hand-test pass of the previously automated-only group (all ✅)
+Every secondary UI flow driven by hand in the real browser, with persistence
+checked via reload/DB and all changes reverted:
+
+| Area | Result |
+|---|---|
+| Leads Table: status change (persists to DB), AI toggle (persists across reload), delete-confirm (cancelled, lead intact), bulk select-all, badge=rows | ✅ |
+| Pipeline drag-drop: dragged a card Lead In→Contacted, **persisted to DB** | ✅ |
+| Inbox: folder tabs filter; Assign (Unassigned + "Invite teammates" empty-state); quick-reply picker; Archive/Unarchive (counts move + revert); Mark resolved/Reopen (counts move + revert) | ✅ |
+| AI Agent: Personality name **save+persist**; **Refine with AI** rewrites the welcome; Handoff keyword **save+persist**; Auto-follow-up toggle **save+persist** | ✅ |
+| Appointments: Today/Upcoming/Past tabs **filter correctly** (today's booking shows in Today only); Campaign wizard (name/audience/message) | ✅ |
+| Analytics: 7/30/90/All-time toggle (active state); real stat cards; funnel uses journey stages (no Hot/Warm/Cold); Download CSV present | ✅ |
+| Connections: WhatsApp Connected + number; Refresh + Disconnect; Connect Calendar; gated Voice/SMS/Instagram on-request, no errors | ✅ |
+| Settings: profile name **save → sidebar updates**; company website **save+persist**; currency propagation (earlier) | ✅ |
+| Mobile bottom nav: correct items/routes (Home/Inbox/Leads/Agent/Settings), `lg:hidden` at desktop; Playwright Pixel-7 confirmed it renders at 412px | ✅ |
+
+No new bugs found in this group — everything worked. Combined with the earlier
+critical-path + real-send verification, **the whole app is now human-verified.**
+
 ### Bugs found via live testing + Hugo's questions — fixed & deployed
 - **Team invites were fully broken** — `team_members` has no `status` column, but the code selected + inserted it → loading the team AND inviting both failed silently. Fixed (derive active/pending from `user_id`).
 - **"0 active members"** — owner has no `joined_at`; active-count now keys off `user_id`.
