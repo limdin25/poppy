@@ -1,0 +1,69 @@
+name: TDD gate
+
+# The launch safety net. Every push/PR must pass the hard gate (typecheck + unit
+# tests + production build) before merge. The e2e job runs the self-healing
+# Playwright smoke suite against a deployed URL when one is configured.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      e2e_base_url:
+        description: 'Base URL to run e2e against (e.g. https://elsie-preview.vercel.app)'
+        required: false
+        default: ''
+
+concurrency:
+  group: tdd-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---- HARD GATE: must pass to merge ----
+  gate:
+    name: Typecheck · Unit · Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (tsc -b — matches Vercel build)
+        run: npx tsc -b
+      - name: Unit + integration tests (vitest)
+        run: npx vitest run
+      - name: Production build
+        run: npx vite build
+
+  # ---- E2E: self-healing Playwright smoke against a live URL ----
+  e2e:
+    name: Playwright smoke (live URL)
+    runs-on: ubuntu-latest
+    # Only runs when a target URL is provided (secret or manual dispatch) — keeps
+    # PRs fast and avoids flaky external deps blocking merges.
+    if: ${{ github.event.inputs.e2e_base_url != '' || vars.E2E_BASE_URL != '' }}
+    env:
+      E2E_BASE_URL: ${{ github.event.inputs.e2e_base_url != '' && github.event.inputs.e2e_base_url || vars.E2E_BASE_URL }}
+      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run smoke suite
+        run: npx playwright test smoke.spec.ts --project=chromium
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

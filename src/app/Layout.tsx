@@ -56,7 +56,7 @@ const aiNav: NavItem[] = [
 const agentNav: NavItem = { to: '/agents', icon: Bot, label: 'AI Agent' }
 const agentSubNav = [
   { to: '/agents/personality', label: 'AI Personality' },
-  { to: '/agents/classification', label: 'Classification' },
+  { to: '/agents/classification', label: 'Goals' },
   { to: '/agents/followup', label: 'Auto Follow-up' },
   { to: '/agents/handoff', label: 'Human Handoff' },
 ]

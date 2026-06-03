@@ -4,3 +4,8 @@ dist/
 .env.local
 .DS_Store
 .vercel
+
+# Playwright e2e
+tests/e2e/.auth/
+playwright-report/
+test-results/

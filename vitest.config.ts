@@ -5,7 +5,20 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
-    exclude: ["tests/inbox-email.test.ts", "tests/inbox-media.test.ts", "tests/verify-visual.test.ts", "node_modules"],
+    // These are Playwright-style tests (they import @playwright/test) — they run
+    // under `npx playwright test`, not vitest. tests/e2e/ holds the new e2e suite.
+    exclude: [
+      "node_modules",
+      "tests/e2e/**",
+      "tests/inbox-email.test.ts",
+      "tests/inbox-media.test.ts",
+      "tests/verify-visual.test.ts",
+      "tests/admin-audit.test.ts",
+      "tests/admin-full-audit.test.ts",
+      "tests/admin-impersonation.test.ts",
+      "tests/data-separation.test.ts",
+      "tests/analytics-page.test.ts",
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
