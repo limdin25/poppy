@@ -5,6 +5,8 @@ import { Input, Textarea, Label } from '@/core/ui/Input'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { Button } from '@/core/ui/Button'
 import { useQuickReplies, type QuickReply } from '@/core/hooks/useQuickReplies'
+import { FollowupTemplates } from './FollowupTemplates'
+import { cn } from '@/core/lib/cn'
 
 /**
  * Templates / Quick Replies. Persists to public.quick_replies (business-scoped
@@ -19,6 +21,7 @@ export default function TemplatesPage() {
   const { data: templates, loading, create, update, remove } = useQuickReplies()
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saving, setSaving] = useState(false)
+  const [tab, setTab] = useState<'replies' | 'followups'>('replies')
 
   function openNew() {
     setDraft({ ...EMPTY })
@@ -50,17 +53,35 @@ export default function TemplatesPage() {
       <PageHeader
         eyebrow="AI"
         title="Templates"
-        description="Saved replies you and Elsie can drop into any chat in one tap."
+        description="Quick replies you drop into a chat, and the auto follow-up types Elsie can run."
         actions={
-          <button
-            onClick={openNew}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
-          >
-            <Plus size={15} /> New template
-          </button>
+          tab === 'replies' ? (
+            <button
+              onClick={openNew}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+            >
+              <Plus size={15} /> New template
+            </button>
+          ) : null
         }
       />
 
+      <div className="flex w-fit rounded-lg border border-border bg-surface p-0.5">
+        {([['replies', 'Quick replies'], ['followups', 'Follow-ups']] as const).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={cn('rounded-md px-3.5 py-1.5 text-[12.5px] font-medium transition', tab === k ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'followups' ? (
+        <FollowupTemplates />
+      ) : (
+      <>
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 size={20} className="animate-spin text-ink-muted" />
@@ -156,6 +177,8 @@ export default function TemplatesPage() {
           </Button>
         </DialogFooter>
       </Dialog>
+      </>
+      )}
     </div>
   )
 }
