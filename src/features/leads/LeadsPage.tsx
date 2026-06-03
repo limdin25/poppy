@@ -4,8 +4,9 @@ import { Upload, Download, Plus, Table2, Columns3, MessageCircle, Trash2, Chevro
 import { PageHeader } from '@/core/ui/PageHeader'
 import { DataTable, type Column } from '@/core/ui/DataTable'
 import { DealPipeline } from './DealPipeline'
-import { StatusPill, type PillTone } from '@/core/ui/StatusPill'
+import { type PillTone } from '@/core/ui/StatusPill'
 import { Switch } from '@/core/ui/Switch'
+import { useDeals, usePipelineStages } from '@/core/hooks/usePipeline'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { cn } from '@/core/lib/cn'
 import { parseCsvText, mapCsvRows, toCsv, downloadFile, type ParsedRow } from '@/core/lib/csv'
@@ -20,21 +21,14 @@ import type { Contact } from '@/core/types/database'
  * Pause-AI toggle, View Chat, delete, plus Import CSV / Export / Add Lead.
  */
 
-type Lifecycle = 'new' | 'contacted' | 'qualified' | 'won' | 'lost'
-const STATUS_META: Record<Lifecycle, { label: string; tone: PillTone }> = {
-  new: { label: 'New', tone: 'neutral' },
-  contacted: { label: 'Contacted', tone: 'info' },
-  qualified: { label: 'Qualified', tone: 'warning' },
-  won: { label: 'Won', tone: 'success' },
-  lost: { label: 'Lost', tone: 'danger' },
+const STAGE_TINT: Record<string, string> = {
+  slate: 'bg-slate-100 text-slate-700', blue: 'bg-blue-100 text-blue-700', violet: 'bg-violet-100 text-violet-700',
+  amber: 'bg-amber-100 text-amber-700', orange: 'bg-orange-100 text-orange-700', emerald: 'bg-emerald-100 text-emerald-700',
+  red: 'bg-red-100 text-red-700', pink: 'bg-pink-100 text-pink-700', cyan: 'bg-cyan-100 text-cyan-700',
 }
-const STATUS_ORDER: Lifecycle[] = ['new', 'contacted', 'qualified', 'won', 'lost']
 
 function phoneOf(c: Contact): string { return c.phone || c.whatsapp || '—' }
 function whatsappOf(c: Contact): string { return c.whatsapp || c.phone || '—' }
-function statusOf(c: Contact): Lifecycle {
-  return STATUS_ORDER.includes(c.status as Lifecycle) ? (c.status as Lifecycle) : 'new'
-}
 function lastActiveOf(c: Contact): string {
   const iso = c.lead_updated_at || c.updated_at
   if (!iso) return '—'
@@ -115,7 +109,6 @@ export default function LeadsPage() {
   const [aName, setAName] = useState('')
   const [aPhone, setAPhone] = useState('')
   const [aEmail, setAEmail] = useState('')
-  const [aStatus, setAStatus] = useState<Lifecycle>('new')
   const [addBusy, setAddBusy] = useState(false)
   const [addErr, setAddErr] = useState<string | null>(null)
 
@@ -128,10 +121,26 @@ export default function LeadsPage() {
 
   const leads = allLeads
 
-  async function setStatus(id: string, s: Lifecycle) {
-    const { error } = await supabase.from('contacts').update({ status: s }).eq('id', id)
-    if (error) { console.error('status failed:', error.message); return }
-    refetch()
+  // Status = the contact's deal stage (one taxonomy across inbox + pipeline + this table)
+  const { data: deals, refetch: refetchDeals } = useDeals()
+  const { data: stages } = usePipelineStages()
+  const dealByContact: Record<string, (typeof deals)[number]> = {}
+  for (const d of deals) {
+    if (d.contact_id && (!dealByContact[d.contact_id] || d.value > dealByContact[d.contact_id].value)) dealByContact[d.contact_id] = d
+  }
+  const stageNameFor = (l: Contact) => { const d = dealByContact[l.id]; return d ? (stages.find((s) => s.id === d.stage_id)?.name ?? 'Lead In') : '' }
+  async function moveStage(contactId: string, stageId: string) {
+    const d = dealByContact[contactId]
+    if (d) {
+      await supabase.from('deals').update({ stage_id: stageId, updated_at: new Date().toISOString() }).eq('id', d.id)
+    } else {
+      const c = leads.find((x) => x.id === contactId)
+      await supabase.from('deals').insert({
+        business_id: c?.business_id, title: c?.name ? `Deal — ${c.name}` : 'New deal',
+        value: 0, currency: 'GBP', stage_id: stageId, contact_id: contactId,
+      } as never)
+    }
+    refetchDeals()
   }
   async function togglePause(id: string, next: boolean) {
     const { error } = await supabase.from('contacts').update({ ai_paused: next }).eq('id', id)
@@ -153,11 +162,10 @@ export default function LeadsPage() {
       phone: aPhone.trim() || null,
       whatsapp: aPhone.trim() || null,
       email: aEmail.trim() || null,
-      status: aStatus,
     } as never)
     setAddBusy(false)
     if (error) { setAddErr(error.message); return }
-    setAddOpen(false); setAName(''); setAPhone(''); setAEmail(''); setAStatus('new')
+    setAddOpen(false); setAName(''); setAPhone(''); setAEmail('')
     refetch()
   }
 
@@ -197,7 +205,7 @@ export default function LeadsPage() {
 
   function exportCsv() {
     const data = allLeads.map((l) => [
-      l.name ?? '', phoneOf(l), l.email ?? '', STATUS_META[statusOf(l)].label, lastActiveOf(l),
+      l.name ?? '', phoneOf(l), l.email ?? '', stageNameFor(l) || '—', lastActiveOf(l),
     ])
     downloadFile('leads.csv', toCsv(['Name', 'Phone', 'Email', 'Status', 'Last Active'], data))
   }
@@ -209,7 +217,11 @@ export default function LeadsPage() {
     setSelected((prev) => (prev.size === leads.length ? new Set() : new Set(leads.map((l) => l.id))))
   }
 
-  const statusPill = (s: Lifecycle) => <StatusPill tone={STATUS_META[s].tone} uppercase={false}>{STATUS_META[s].label}</StatusPill>
+  const stagePill = (id: string) => {
+    if (!id) return <span className="text-[12.5px] text-ink-subtle">Set status</span>
+    const s = stages.find((x) => x.id === id)
+    return <span className={cn('rounded-full px-2 py-0.5 text-[11.5px] font-semibold', STAGE_TINT[s?.color ?? 'slate'] ?? STAGE_TINT.slate)}>{s?.name ?? 'Lead In'}</span>
+  }
 
   const columns: Column<Contact>[] = [
     {
@@ -223,7 +235,7 @@ export default function LeadsPage() {
     },
     {
       key: 'status', header: 'Status',
-      render: (l) => <PillDropdown value={statusOf(l)} options={STATUS_ORDER} render={statusPill} onChange={(s) => void setStatus(l.id, s)} />,
+      render: (l) => <PillDropdown value={dealByContact[l.id]?.stage_id ?? ''} options={stages.map((s) => s.id)} render={stagePill} onChange={(id) => void moveStage(l.id, id)} />,
     },
     {
       key: 'ai', header: 'AI',
@@ -329,12 +341,6 @@ export default function LeadsPage() {
           <div className="space-y-1.5">
             <label className="text-[12px] font-medium text-ink-muted">Email (optional)</label>
             <input value={aEmail} onChange={(e) => setAEmail(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-medium text-ink-muted">Status</label>
-            <select value={aStatus} onChange={(e) => setAStatus(e.target.value as Lifecycle)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20">
-              {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
-            </select>
           </div>
           {addErr && <p className="text-[12.5px] text-red-600">{addErr}</p>}
         </DialogBody>

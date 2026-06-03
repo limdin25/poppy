@@ -916,6 +916,7 @@ export default async function handler(req: Request): Promise<Response> {
             : { sender_phone: senderPhone }),
           external_id: messageId,
         },
+        created_at: (payload as any).timestamp || (payload as any).date || new Date().toISOString(),
       }).select('id').single();
 
       // Update conversation preview (include sender name for groups)
@@ -1218,6 +1219,7 @@ export default async function handler(req: Request): Promise<Response> {
           is_spam: emailIsSpam,
           body_html: htmlBody.includes('<') ? htmlBody.slice(0, 50000) : null,
         },
+        created_at: emailDate || new Date().toISOString(),
       }).select('id').single();
 
       // Update conversation preview and unread count

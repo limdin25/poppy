@@ -34,7 +34,7 @@ import { useDeals, usePipelineStages } from '@/core/hooks/usePipeline'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
-import type { Conversation, Message } from '@/core/types/database'
+import type { Conversation, Message, Deal, PipelineStage } from '@/core/types/database'
 
 /**
  * Inbox — Elsie's "drafts a reply → you approve → it sends" flow.
@@ -124,19 +124,19 @@ function chLabelOf(channel: Conversation['channel']): string {
     : 'Instagram'
 }
 
-type LeadLifecycle = 'new' | 'contacted' | 'qualified' | 'won' | 'lost'
-const STATUS_KEYS: LeadLifecycle[] = ['new', 'contacted', 'qualified', 'won', 'lost']
-const STATUS_CFG: Record<LeadLifecycle, { label: string; badge: string; dot: string }> = {
-  new:       { label: 'New',       badge: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400' },
-  contacted: { label: 'Contacted', badge: 'bg-blue-100 text-blue-700',     dot: 'bg-blue-500' },
-  qualified: { label: 'Qualified', badge: 'bg-amber-100 text-amber-700',   dot: 'bg-amber-500' },
-  won:       { label: 'Won',       badge: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-  lost:      { label: 'Lost',      badge: 'bg-red-100 text-red-700',       dot: 'bg-red-500' },
+// One status taxonomy across the app = the pipeline stage (a chat's status = its deal's stage).
+const STAGE_TINT: Record<string, { badge: string; dot: string }> = {
+  slate:   { badge: 'bg-slate-100 text-slate-700',   dot: 'bg-slate-400' },
+  blue:    { badge: 'bg-blue-100 text-blue-700',     dot: 'bg-blue-500' },
+  violet:  { badge: 'bg-violet-100 text-violet-700', dot: 'bg-violet-500' },
+  amber:   { badge: 'bg-amber-100 text-amber-700',   dot: 'bg-amber-500' },
+  orange:  { badge: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
+  emerald: { badge: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  red:     { badge: 'bg-red-100 text-red-700',       dot: 'bg-red-500' },
+  pink:    { badge: 'bg-pink-100 text-pink-700',     dot: 'bg-pink-500' },
+  cyan:    { badge: 'bg-cyan-100 text-cyan-700',     dot: 'bg-cyan-500' },
 }
-function statusOf(c: Conversation): LeadLifecycle {
-  const s = c.contact?.status ?? 'new'
-  return (STATUS_KEYS as string[]).includes(s) ? (s as LeadLifecycle) : 'new'
-}
+const tintOf = (color: string | undefined) => STAGE_TINT[color ?? 'slate'] ?? STAGE_TINT.slate
 
 function money(n: number): string {
   return '£' + Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 0 })
@@ -243,6 +243,7 @@ export default function InboxPage() {
   const { data: deals, refetch: refetchDeals } = useDeals()
   const { data: pipelineStages } = usePipelineStages()
   const stageName = (id: string | null) => pipelineStages.find((s) => s.id === id)?.name ?? 'Lead In'
+  const stageColorOf = (id: string | null) => pipelineStages.find((s) => s.id === id)?.color
   const dealByConvId: Record<string, typeof deals[number]> = {}
   const dealByContactId: Record<string, typeof deals[number]> = {}
   for (const d of deals) {
@@ -376,21 +377,16 @@ export default function InboxPage() {
                       <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">
                         {cleanPreview(c.last_message_preview)}
                       </p>
-                      <div className="mt-1 flex items-center gap-2">
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <span className="text-[10.5px] font-medium text-ink-subtle">via {chLabel}</span>
-                        {c.contact?.status && c.contact.status !== 'new' && (
-                          <span className={cn('rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold', STATUS_CFG[statusOf(c)].badge)}>
-                            {STATUS_CFG[statusOf(c)].label}
-                          </span>
-                        )}
                         {deal && (
-                          <span className="flex items-center gap-1 rounded-full bg-brand-50 px-1.5 py-0.5 text-[9.5px] font-semibold text-brand-700" title={`Deal: ${deal.title}`}>
+                          <span className={cn('flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', tintOf(stageColorOf(deal.stage_id)).badge)} title={`Deal: ${deal.title}`}>
                             {stageName(deal.stage_id)} · {money(deal.value)}
                           </span>
                         )}
                         {followupDue[c.id] && (
-                          <span className="flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9.5px] font-semibold text-orange-700" title="Next follow-up">
-                            <Repeat size={9} /> {countdownTo(followupDue[c.id])}
+                          <span className="flex items-center gap-0.5 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700" title="Next follow-up">
+                            <Repeat size={10} /> {countdownTo(followupDue[c.id])}
                           </span>
                         )}
                         {c.unread_count > 0 && (
@@ -434,6 +430,8 @@ export default function InboxPage() {
               onArchived={() => setSelectedId(null)}
               session={session}
               userId={user?.id ?? null}
+              deal={dealFor(selected) ?? null}
+              stages={pipelineStages}
               onDealSaved={refetchDeals}
             />
           ) : (
@@ -477,6 +475,8 @@ function ThreadView({
   onArchived,
   session,
   userId,
+  deal,
+  stages,
   onDealSaved,
 }: {
   conversation: Conversation
@@ -484,6 +484,8 @@ function ThreadView({
   onArchived: () => void
   session: { access_token: string } | null
   userId: string | null
+  deal: Deal | null
+  stages: PipelineStage[]
   onDealSaved?: () => void
 }) {
   const [composer, setComposer] = useState('')
@@ -498,7 +500,7 @@ function ThreadView({
   const [assignedTo, setAssignedTo] = useState<string | null>(conversation.assigned_to)
   const [assignOpen, setAssignOpen] = useState(false)
   const [aiOn, setAiOn] = useState(conversation.ai_handling !== false)
-  const [status, setStatus] = useState<LeadLifecycle>(statusOf(conversation))
+  const [stageId, setStageId] = useState<string | null>(deal?.stage_id ?? null)
   const menuRef = useRef<HTMLDivElement>(null)
   const assignRef = useRef<HTMLDivElement>(null)
   const { data: teamMembers } = useTeamMembers()
@@ -511,11 +513,27 @@ function ThreadView({
     setAiOn(next)
     await supabase.from('conversations').update({ ai_handling: next }).eq('id', conversation.id)
   }
-  async function changeStatus(next: LeadLifecycle) {
-    setStatus(next)
-    if (conversation.contact_id) {
-      await supabase.from('contacts').update({ status: next }).eq('id', conversation.contact_id)
+  // Keep the stage picker in sync if the linked deal changes elsewhere
+  useEffect(() => { setStageId(deal?.stage_id ?? null) }, [deal?.stage_id])
+
+  // The chat's "status" IS its deal's stage. Changing it moves the deal (or creates one).
+  async function changeStage(next: string) {
+    setStageId(next)
+    if (deal) {
+      await supabase.from('deals').update({ stage_id: next, updated_at: new Date().toISOString() }).eq('id', deal.id)
+    } else {
+      const dn = displayName(conversation)
+      await supabase.from('deals').insert({
+        business_id: conversation.business_id,
+        title: dn && dn !== 'Unknown' ? `Deal — ${dn}` : 'New deal',
+        value: 0,
+        currency: 'GBP',
+        stage_id: next,
+        contact_id: conversation.contact_id,
+        conversation_id: conversation.id,
+      } as never)
     }
+    onDealSaved?.()
   }
 
   useEffect(() => {
@@ -840,15 +858,16 @@ function ThreadView({
           >
             <Sparkles size={13} /> AI {aiOn ? 'on' : 'off'}
           </button>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-elevated px-2 py-1 text-[11.5px] font-medium text-ink-muted">
-            <span className={cn('h-2 w-2 rounded-full', STATUS_CFG[status].dot)} />
+          <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11.5px] font-medium', stageId ? tintOf(stages.find((s) => s.id === stageId)?.color).badge : 'bg-elevated text-ink-muted')}>
+            <span className={cn('h-2 w-2 rounded-full', tintOf(stages.find((s) => s.id === stageId)?.color).dot)} />
             <select
-              value={status}
-              onChange={(e) => void changeStatus(e.target.value as LeadLifecycle)}
-              title="Lead status"
-              className="bg-transparent text-ink outline-none"
+              value={stageId ?? ''}
+              onChange={(e) => void changeStage(e.target.value)}
+              title="Status / pipeline stage"
+              className="bg-transparent outline-none"
             >
-              {STATUS_KEYS.map((s) => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
+              {!stageId && <option value="">Set status</option>}
+              {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </span>
           <button

@@ -449,6 +449,7 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
         is_spam: spam,
         via: 'unipile_email_poll',
       },
+      created_at: emailDate || new Date().toISOString(),
     }).select('id').single();
 
     await supabase
@@ -842,6 +843,8 @@ export default async function handler(req: Request): Promise<Response> {
             sender_name: senderDisplayName,
             sender_contact_id: isGroup ? contactId : null,
             metadata,
+            // Use the real WhatsApp send time so threads always sort chronologically
+            created_at: m.timestamp ?? new Date().toISOString(),
           }).select('id').single();
 
         if (insErr) { skipped++; continue; }
