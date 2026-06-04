@@ -140,6 +140,13 @@ export interface Agent {
   reminder_max_count: number | null
   ambient_sound: string | null
   full_prompt_override: string | null
+  backchannel_enabled: boolean | null
+  backchannel_frequency: number | null
+  begin_delay_ms: number | null
+  end_silence_seconds: number | null
+  voicemail_hangup: boolean | null
+  allow_keypad: boolean | null
+  pronunciation_notes: string | null
   retell_agent_id: string | null
   retell_llm_id: string | null
   auto_reply_enabled: boolean

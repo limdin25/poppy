@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Check, Phone } from 'lucide-react'
 import { SectionCard } from '@/core/ui/SectionCard'
-import { Input, Label } from '@/core/ui/Input'
+import { Input, Label, Textarea } from '@/core/ui/Input'
 import { Select } from '@/core/ui/Select'
 import { Switch } from '@/core/ui/Switch'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -35,6 +35,15 @@ export default function CallBehaviourPage() {
   const [reminderCount, setReminderCount] = useState(1)
   const [ambient, setAmbient] = useState('')
   const [maxMinutes, setMaxMinutes] = useState(60)
+  // Advanced
+  const [backchannelOn, setBackchannelOn] = useState(false)
+  const [backchannelFreq, setBackchannelFreq] = useState('0.8')
+  const [beginDelaySec, setBeginDelaySec] = useState(0)
+  const [silenceOn, setSilenceOn] = useState(false)
+  const [silenceSec, setSilenceSec] = useState(30)
+  const [voicemailHangup, setVoicemailHangup] = useState(false)
+  const [keypad, setKeypad] = useState(true)
+  const [pronunciation, setPronunciation] = useState('')
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -50,6 +59,14 @@ export default function CallBehaviourPage() {
     setReminderCount(agent.reminder_max_count ?? 1)
     setAmbient(agent.ambient_sound || '')
     setMaxMinutes(agent.max_call_duration_seconds ? Math.round(agent.max_call_duration_seconds / 60) : 60)
+    setBackchannelOn(agent.backchannel_enabled === true)
+    setBackchannelFreq(String(agent.backchannel_frequency ?? 0.8))
+    setBeginDelaySec(agent.begin_delay_ms != null ? Math.round(agent.begin_delay_ms / 1000) : 0)
+    setSilenceOn(agent.end_silence_seconds != null)
+    setSilenceSec(agent.end_silence_seconds ?? 30)
+    setVoicemailHangup(agent.voicemail_hangup === true)
+    setKeypad(agent.allow_keypad !== false)
+    setPronunciation(agent.pronunciation_notes || '')
   }, [agent])
 
   async function handleSave() {
@@ -64,6 +81,13 @@ export default function CallBehaviourPage() {
         reminder_max_count: reminderOn ? reminderCount : null,
         ambient_sound: ambient || null,
         max_call_duration_seconds: Math.max(1, maxMinutes) * 60,
+        backchannel_enabled: backchannelOn,
+        backchannel_frequency: backchannelOn ? Number(backchannelFreq) : null,
+        begin_delay_ms: Math.min(5000, Math.max(0, beginDelaySec) * 1000),
+        end_silence_seconds: silenceOn ? Math.max(10, silenceSec) : null,
+        voicemail_hangup: voicemailHangup,
+        allow_keypad: keypad,
+        pronunciation_notes: pronunciation.trim() || null,
       })
       if (!ok) { setError('Could not save. Please try again.'); return }
 
@@ -166,6 +190,70 @@ export default function CallBehaviourPage() {
             </div>
           </div>
         )}
+      </SectionCard>
+
+      <SectionCard eyebrow="Calls" title="Advanced call settings">
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-medium text-ink">Natural affirmations</p>
+              <p className="mt-0.5 text-[12px] text-ink-subtle">Elsie says little "mhm", "right" cues while listening — sounds more human.</p>
+            </div>
+            <Switch checked={backchannelOn} onChange={setBackchannelOn} />
+          </div>
+          {backchannelOn && (
+            <div>
+              <Label htmlFor="bcf">How often</Label>
+              <Select id="bcf" value={backchannelFreq} onChange={(e) => setBackchannelFreq(e.target.value)} className="max-w-[220px]">
+                <option value="0.4">Subtle</option>
+                <option value="0.8">Normal</option>
+                <option value="1">Chatty</option>
+              </Select>
+            </div>
+          )}
+
+          <div>
+            <Label htmlFor="delay">Pause before Elsie speaks (seconds)</Label>
+            <Input id="delay" type="number" min={0} max={5} value={beginDelaySec} onChange={(e) => setBeginDelaySec(Number(e.target.value) || 0)} className="max-w-[140px]" />
+            <p className="mt-1.5 text-[11px] text-ink-subtle">A tiny pause can feel more natural. 0 = answer instantly.</p>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-medium text-ink">Hang up after long silence</p>
+              <p className="mt-0.5 text-[12px] text-ink-subtle">End the call if the caller goes completely quiet.</p>
+            </div>
+            <Switch checked={silenceOn} onChange={setSilenceOn} />
+          </div>
+          {silenceOn && (
+            <div>
+              <Label htmlFor="silsec">After (seconds)</Label>
+              <Input id="silsec" type="number" min={10} max={120} value={silenceSec} onChange={(e) => setSilenceSec(Number(e.target.value) || 30)} className="max-w-[140px]" />
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-medium text-ink">Hang up on voicemail</p>
+              <p className="mt-0.5 text-[12px] text-ink-subtle">If an outbound call reaches voicemail, end instead of talking to the machine.</p>
+            </div>
+            <Switch checked={voicemailHangup} onChange={setVoicemailHangup} />
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-medium text-ink">Listen for keypad presses</p>
+              <p className="mt-0.5 text-[12px] text-ink-subtle">Let callers type numbers (e.g. an account or reference) on their keypad.</p>
+            </div>
+            <Switch checked={keypad} onChange={setKeypad} />
+          </div>
+
+          <div>
+            <Label htmlFor="pron">Pronunciation hints</Label>
+            <Textarea id="pron" value={pronunciation} onChange={(e) => setPronunciation(e.target.value)} rows={3} placeholder={'e.g. "Hugo → HEW-go", "NFStay → enn-eff-stay"'} />
+            <p className="mt-1.5 text-[11px] text-ink-subtle">Tell Elsie how to say tricky names or brands — one per line.</p>
+          </div>
+        </div>
       </SectionCard>
 
       <div className="flex items-center gap-3">

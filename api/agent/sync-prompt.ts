@@ -144,7 +144,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days, start_speaker, responsiveness, reminder_trigger_seconds, reminder_max_count, ambient_sound, full_prompt_override')
+        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days, start_speaker, responsiveness, reminder_trigger_seconds, reminder_max_count, ambient_sound, full_prompt_override, backchannel_enabled, backchannel_frequency, begin_delay_ms, end_silence_seconds, voicemail_hangup, allow_keypad, pronunciation_notes')
         .eq('id', agentId)
         .single();
       if (agent) agentOverrides = agent;
@@ -245,6 +245,12 @@ You can do these WHILE the call is live. Use them when the caller asks (e.g. "ca
 ${webSearchEnabled ? '- **web_search** — look something up online when you genuinely do not know the answer. Say "let me check that for you" first, keep it brief, and never read out raw web addresses.\n' : ''}When you send something, confirm it to the caller in one short sentence. If a tool reports it could not send, apologise briefly and offer an alternative — never pretend something was sent.`;
     }
 
+    // Pronunciation hints (plain "word → say it like" notes) go into the prompt.
+    const pron = (agentOverrides.pronunciation_notes as string | null | undefined)?.trim();
+    if (pron) {
+      prompt += `\n\n## Pronunciation\nPronounce these the way the caller expects:\n${pron}`;
+    }
+
     // If the owner hand-wrote a full prompt, that wins verbatim; else use the
     // auto-assembled one. Editable from the "Full prompt" box in the app.
     const overrideRaw = agentOverrides.full_prompt_override as string | null | undefined;
@@ -288,6 +294,8 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
 
     if (retellAgentId) {
       const reminderSec = agentOverrides.reminder_trigger_seconds as number | null | undefined;
+      const endSilenceSec = agentOverrides.end_silence_seconds as number | null | undefined;
+      const voicemailHangup = agentOverrides.voicemail_hangup as boolean | null | undefined;
       const agentPayload: Record<string, unknown> = {
         voice_id: (agentOverrides.voice_id as string) || undefined,
         voice_speed: (agentOverrides.voice_speed as number) || undefined,
@@ -300,6 +308,13 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
         reminder_max_count: (agentOverrides.reminder_max_count as number | null | undefined) ?? undefined,
         // ambient_sound: null is a valid value ("no background"), so only drop when undefined.
         ambient_sound: (agentOverrides.ambient_sound as string | null | undefined),
+        // Advanced call settings — only sent when explicitly set (null/undefined left as-is in Retell).
+        enable_backchannel: (agentOverrides.backchannel_enabled as boolean | null | undefined) ?? undefined,
+        backchannel_frequency: (agentOverrides.backchannel_frequency as number | null | undefined) ?? undefined,
+        begin_message_delay_ms: (agentOverrides.begin_delay_ms as number | null | undefined) ?? undefined,
+        end_call_after_silence_ms: endSilenceSec != null ? Math.max(10000, endSilenceSec * 1000) : undefined,
+        allow_user_dtmf: (agentOverrides.allow_keypad as boolean | null | undefined) ?? undefined,
+        voicemail_option: voicemailHangup == null ? undefined : (voicemailHangup ? { action: { type: 'hang_up' } } : null),
       };
 
       Object.keys(agentPayload).forEach(k => {
