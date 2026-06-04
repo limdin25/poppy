@@ -68,19 +68,30 @@ export default async function handler(req: Request): Promise<Response> {
 
     let llmId: string | undefined;
     let retellAgentId: string | undefined;
+    let agentType: string | undefined;
 
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('retell_llm_id, retell_agent_id')
+        .select('retell_llm_id, retell_agent_id, agent_type')
         .eq('id', agentId)
         .eq('business_id', businessId)
         .single();
       llmId = agent?.retell_llm_id ?? undefined;
       retellAgentId = agent?.retell_agent_id ?? undefined;
+      agentType = agent?.agent_type ?? undefined;
     }
 
-    if (!llmId || !retellAgentId) {
+    // A non-voice channel agent (whatsapp/sms/email) has no Retell engine — the
+    // chat reply reads its prompt straight from the DB. For a normal sync there's
+    // nothing to push, and we must NOT fall back to the voice channel (that would
+    // overwrite the voice agent's Retell prompt with this channel's prompt).
+    const isNonVoiceAgent = !!agentType && agentType !== 'voice';
+    if (isNonVoiceAgent && body.preview !== true && body.pullRetell !== true) {
+      return new Response(JSON.stringify({ ok: true, skipped: 'non-voice agent saved to DB' }), { status: 200 });
+    }
+
+    if ((!llmId || !retellAgentId) && !isNonVoiceAgent) {
       const { data: channel } = await supabase
         .from('channels')
         .select('config')
