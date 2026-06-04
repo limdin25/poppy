@@ -99,8 +99,24 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
-    if (!llmId && body.preview !== true) {
+    if (!llmId && body.preview !== true && body.pullRetell !== true) {
       return new Response(JSON.stringify({ error: 'No Retell LLM ID found' }), { status: 404 });
+    }
+
+    // Pull the LIVE prompt currently on Retell (e.g. edited by hand in the Retell
+    // dashboard) so it can be viewed/adopted in the app.
+    if (body.pullRetell === true) {
+      if (!llmId) {
+        return new Response(JSON.stringify({ error: 'This agent is not connected to Retell yet.' }), { status: 404 });
+      }
+      const r = await fetch(`https://api.retellai.com/get-retell-llm/${llmId}`, {
+        headers: { Authorization: `Bearer ${RETELL_API_KEY}` },
+      });
+      if (!r.ok) {
+        return new Response(JSON.stringify({ error: 'Could not read the live prompt from Retell.' }), { status: 502 });
+      }
+      const llm = await r.json() as { general_prompt?: string };
+      return new Response(JSON.stringify({ ok: true, retell_prompt: llm.general_prompt || '' }), { status: 200 });
     }
 
     const { data: business } = await supabase

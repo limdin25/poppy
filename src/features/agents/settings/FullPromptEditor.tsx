@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, ChevronDown, ChevronUp, Check, Sparkles } from 'lucide-react'
+import { Loader2, ChevronDown, ChevronUp, Check, Sparkles, DownloadCloud } from 'lucide-react'
 import { SectionCard } from '@/core/ui/SectionCard'
 import { Textarea } from '@/core/ui/Input'
 import { cn } from '@/core/lib/cn'
@@ -25,6 +25,7 @@ export function FullPromptEditor({ agentId }: { agentId?: string }) {
   const [model, setModel] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [pulling, setPulling] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function load() {
@@ -85,6 +86,25 @@ export function FullPromptEditor({ agentId }: { agentId?: string }) {
     } finally { setSaving(false) }
   }
 
+  // Pull whatever prompt is LIVE on Retell right now (e.g. hand-edited there)
+  // into the box. Leaves it unsaved so you can review, then Save to keep it.
+  async function importFromRetell() {
+    if (!session) return
+    setPulling(true); setError(null); setSaved(false)
+    try {
+      const res = await fetch('/api/agent/sync-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ pullRetell: true, agentId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Could not read the prompt from Retell.'); return }
+      setText(data.retell_prompt || '')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read from Retell.')
+    } finally { setPulling(false) }
+  }
+
   const dirty = text !== null && text !== loaded
 
   return (
@@ -135,6 +155,9 @@ export function FullPromptEditor({ agentId }: { agentId?: string }) {
                 <Sparkles size={13} /> Reset to auto-generated
               </button>
             )}
+            <button onClick={() => void importFromRetell()} disabled={pulling || saving} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ink-muted transition hover:text-ink" title="Load the prompt currently live on Retell (e.g. if you hand-edited it there)">
+              {pulling ? <Loader2 size={12} className="animate-spin" /> : <DownloadCloud size={12} />} Import from Retell
+            </button>
             <button onClick={() => void load()} disabled={loading || saving} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ink-muted transition hover:text-ink">
               {loading ? <Loader2 size={12} className="animate-spin" /> : null} Reload
             </button>
