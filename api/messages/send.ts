@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '../lib/auth.js';
+import { sendEmail as sendResendEmail } from '../../src/integrations/resend/client.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -23,6 +24,9 @@ export default async function handler(req: Request): Promise<Response> {
     let conversationId: string | undefined;
     let body: string | undefined;
     let subject: string | undefined;
+    // Which email transport to use ('gmail' = via the connected Unipile inbox, 'resend' = via Resend).
+    // Only meaningful for email conversations; ignored for WhatsApp/SMS.
+    let sender: string | undefined;
     const attachmentBuffers: { name: string; buffer: ArrayBuffer; type: string }[] = [];
 
     const contentType = req.headers.get('content-type') || '';
@@ -32,6 +36,7 @@ export default async function handler(req: Request): Promise<Response> {
       conversationId = formData.get('conversationId') as string;
       body = formData.get('body') as string;
       subject = (formData.get('subject') as string) || undefined;
+      sender = (formData.get('sender') as string) || undefined;
       const files = formData.getAll('attachments') as File[];
       for (const file of files) {
         attachmentBuffers.push({
@@ -45,6 +50,7 @@ export default async function handler(req: Request): Promise<Response> {
       conversationId = json.conversationId;
       body = json.body;
       subject = json.subject;
+      sender = json.sender;
     }
 
     if (!conversationId || !body) {
@@ -67,6 +73,8 @@ export default async function handler(req: Request): Promise<Response> {
 
     const isEmail = convo.channel === 'email';
     const isGroup = convo.is_group === true;
+    // Resend is a one-way branded sender (heyelsie.com) — no connected inbox needed.
+    const wantsResend = isEmail && sender === 'resend';
 
     let contact: { id: string; phone: string | null; whatsapp: string | null; email: string | null; name: string | null } | null = null;
     let recipient = '';
@@ -103,36 +111,39 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
-    // For email, try gmail first, then outlook, then smtp
+    // Resolve the connected Unipile account (not needed when sending via Resend).
+    // For email, try gmail first, then outlook, then smtp.
     let channel: { id: string; unipile_account_id: string } | null = null;
-    if (isEmail) {
-      for (const t of ['email_gmail', 'email_outlook', 'email_smtp']) {
+    if (!wantsResend) {
+      if (isEmail) {
+        for (const t of ['email_gmail', 'email_outlook', 'email_smtp']) {
+          const { data } = await supabase
+            .from('channels')
+            .select('id, unipile_account_id')
+            .eq('business_id', convo.business_id)
+            .eq('type', t)
+            .eq('status', 'connected')
+            .maybeSingle();
+          if (data) { channel = data; break; }
+        }
+      } else {
         const { data } = await supabase
           .from('channels')
           .select('id, unipile_account_id')
           .eq('business_id', convo.business_id)
-          .eq('type', t)
+          .eq('type', 'whatsapp')
           .eq('status', 'connected')
           .maybeSingle();
-        if (data) { channel = data; break; }
+        channel = data;
       }
-    } else {
-      const { data } = await supabase
-        .from('channels')
-        .select('id, unipile_account_id')
-        .eq('business_id', convo.business_id)
-        .eq('type', 'whatsapp')
-        .eq('status', 'connected')
-        .maybeSingle();
-      channel = data;
-    }
 
-    if (!channel?.unipile_account_id) {
-      const label = isEmail ? 'email' : 'WhatsApp';
-      return new Response(
-        JSON.stringify({ error: `No connected ${label} channel. Connect one in Settings.` }),
-        { status: 400 },
-      );
+      if (!channel?.unipile_account_id) {
+        const label = isEmail ? 'email' : 'WhatsApp';
+        return new Response(
+          JSON.stringify({ error: `No connected ${label} channel. Connect one in Settings.` }),
+          { status: 400 },
+        );
+      }
     }
 
     // For email: find subject and last email_id for threading
@@ -163,6 +174,24 @@ export default async function handler(req: Request): Promise<Response> {
       if (!emailSubject) emailSubject = 'Re: Your message';
     }
 
+    let externalId: string | null = null;
+    let viaLabel: string;
+
+    if (wantsResend) {
+      // Send via Resend (branded heyelsie.com sender). Threading by message-id and
+      // attachments aren't supported on this path — text body only.
+      const html = body.replace(/\n/g, '<br>');
+      try {
+        const sent = await sendResendEmail(recipient, emailSubject, html);
+        externalId = sent.id ?? null;
+      } catch (e: any) {
+        return new Response(
+          JSON.stringify({ error: 'Resend send failed', detail: String(e?.message || e).slice(0, 500) }),
+          { status: 502 },
+        );
+      }
+      viaLabel = 'resend';
+    } else {
     // Send via Unipile
     let uRes: Response;
     if (isEmail) {
@@ -171,7 +200,7 @@ export default async function handler(req: Request): Promise<Response> {
       if (hasFiles) {
         // Multipart form data for attachments
         const form = new FormData();
-        form.append('account_id', channel.unipile_account_id);
+        form.append('account_id', channel!.unipile_account_id);
         form.append('subject', emailSubject);
         form.append('body', body.replace(/\n/g, '<br>'));
         form.append('to', JSON.stringify([{ identifier: recipient, display_name: contact.name || recipient }]));
@@ -192,7 +221,7 @@ export default async function handler(req: Request): Promise<Response> {
       } else {
         // JSON for text-only emails
         const emailPayload: Record<string, any> = {
-          account_id: channel.unipile_account_id,
+          account_id: channel!.unipile_account_id,
           to: [{ identifier: recipient, display_name: contact.name || recipient }],
           subject: emailSubject,
           body: body.replace(/\n/g, '<br>'),
@@ -226,7 +255,7 @@ export default async function handler(req: Request): Promise<Response> {
 
       if (hasFiles) {
         const form = new FormData();
-        form.append('account_id', channel.unipile_account_id);
+        form.append('account_id', channel!.unipile_account_id);
         form.append('attendees_ids', JSON.stringify([recipient]));
         form.append('text', body);
         for (const att of attachmentBuffers) {
@@ -249,7 +278,7 @@ export default async function handler(req: Request): Promise<Response> {
             accept: 'application/json',
           },
           body: JSON.stringify({
-            account_id: channel.unipile_account_id,
+            account_id: channel!.unipile_account_id,
             attendees_ids: [recipient],
             text: body,
           }),
@@ -258,7 +287,6 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const uText = await uRes.text();
-    let externalId: string | null = null;
     if (uRes.ok) {
       try {
         const uJson = JSON.parse(uText);
@@ -269,6 +297,8 @@ export default async function handler(req: Request): Promise<Response> {
         JSON.stringify({ error: `Unipile send failed: ${uRes.status}`, detail: uText.slice(0, 500) }),
         { status: 502 },
       );
+    }
+    viaLabel = isEmail ? 'unipile_email' : 'unipile';
     }
 
     // Build attachment metadata for storage
@@ -291,7 +321,7 @@ export default async function handler(req: Request): Promise<Response> {
         body,
         metadata: {
           external_id: externalId,
-          via: isEmail ? 'unipile_email' : 'unipile',
+          via: viaLabel,
           subject: isEmail ? emailSubject : undefined,
           to_attendees: isEmail ? [{ identifier: recipient, display_name: contact.name || recipient }] : undefined,
           has_attachments: attachmentMeta.length > 0 || undefined,

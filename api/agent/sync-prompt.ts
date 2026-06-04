@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildSystemPrompt } from '../../src/prompts/system-builder.js';
 import type { Business, Service, FAQ, CallInfoType } from '../../src/prompts/system-builder.js';
 import { requireAuth } from '../lib/auth.js';
-import { getBookingTools, getDefaultTools } from '../lib/booking-tools.js';
+import { getCallTools, getDefaultTools } from '../lib/booking-tools.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -10,6 +10,20 @@ const supabase = createClient(
 );
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY!;
+
+// Retell uses its own model identifiers (e.g. claude-4.6-sonnet) which differ
+// from Anthropic's API ids (claude-sonnet-4-6). Map ours → Retell's; pass through
+// anything already in Retell's namespace (claude-4.x / gpt-* / gemini-*).
+const RETELL_MODEL_MAP: Record<string, string> = {
+  'claude-sonnet-4-6': 'claude-4.6-sonnet',
+  'claude-sonnet-4-5': 'claude-4.5-sonnet',
+  'claude-sonnet-4-0': 'claude-4.0-sonnet',
+  'claude-haiku-4-5': 'claude-4.5-haiku',
+};
+function toRetellModel(model: string | undefined): string {
+  if (!model) return 'claude-4.6-sonnet';
+  return RETELL_MODEL_MAP[model] || model;
+}
 
 export const config = { runtime: 'edge' };
 
@@ -188,9 +202,19 @@ export default async function handler(req: Request): Promise<Response> {
 
     const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
     const toolSecret = process.env.TOOL_SECRET || '';
-    const tools = hasBookable && toolSecret
-      ? getBookingTools(appUrl, toolSecret, businessId, agentId)
+    const webSearchEnabled = !!process.env.TAVILY_API_KEY;
+    const tools = toolSecret
+      ? getCallTools(appUrl, toolSecret, businessId, agentId, { booking: hasBookable, webSearch: webSearchEnabled })
       : getDefaultTools();
+
+    if (toolSecret) {
+      prompt += `\n\n## Things you can do for the caller during the call
+You can do these WHILE the call is live. Use them when the caller asks (e.g. "can you email me that?", "text it to me"):
+- **send_email** — email the caller. Always confirm and read back their email address before sending.
+- **send_sms** — text the caller. Default to their own number ({{from_number}}) unless they give a different one.
+- **send_whatsapp** — WhatsApp the caller. Default to their own number ({{from_number}}) unless they give a different one.
+${webSearchEnabled ? '- **web_search** — look something up online when you genuinely do not know the answer. Say "let me check that for you" first, keep it brief, and never read out raw web addresses.\n' : ''}When you send something, confirm it to the caller in one short sentence. If a tool reports it could not send, apologise briefly and offer an alternative — never pretend something was sent.`;
+    }
 
     const aiModel = (agentOverrides.ai_model as string) || 'claude-sonnet-4-6';
     const llmPayload: Record<string, unknown> = {
@@ -198,7 +222,7 @@ export default async function handler(req: Request): Promise<Response> {
       general_tools: tools,
       begin_message: effectiveGreeting || null,
       start_speaker: effectiveGreeting ? 'agent' : 'user',
-      model: aiModel,
+      model: toRetellModel(aiModel),
     };
 
     const res = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {

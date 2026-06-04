@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Send,
@@ -22,13 +22,17 @@ import {
   ChevronDown,
   Coins,
   StickyNote,
+  MessageCircle,
+  Mail,
+  MessageSquare,
+  Phone,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { MessageBubble } from '@/core/ui/MessageBubble'
 import { FilterChips } from '@/core/ui/FilterChips'
 import { Switch } from '@/core/ui/Switch'
-import { useConversations, useMessages } from '@/core/hooks/useConversations'
+import { useConversations, useMessages, type ChannelFilter } from '@/core/hooks/useConversations'
 import { useQuickReplies, fillTokens, type QuickReply } from '@/core/hooks/useQuickReplies'
 import { useTeamMembers, memberLabel } from '@/core/hooks/useTeamMembers'
 import { useDeals, usePipelineStages } from '@/core/hooks/usePipeline'
@@ -102,6 +106,15 @@ const FOLDER_LABELS: Record<InboxFolder, string> = {
 
 const FOLDER_ORDER: InboxFolder[] = ['inbox', 'unread', 'mine', 'team', 'archived', 'closed']
 
+// Channel tabs for the chat list — lets you view one channel at a time.
+const CHANNEL_TABS: { value: ChannelFilter; label: string; icon: ReactNode }[] = [
+  { value: 'all', label: 'All', icon: null },
+  { value: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle size={13} /> },
+  { value: 'email', label: 'Email', icon: <Mail size={13} /> },
+  { value: 'sms', label: 'SMS', icon: <MessageSquare size={13} /> },
+  { value: 'voice', label: 'Calls', icon: <Phone size={13} /> },
+]
+
 function inFolder(c: Conversation, folder: InboxFolder, uid: string | null): boolean {
   switch (folder) {
     case 'inbox':
@@ -165,6 +178,7 @@ function initialsOf(name: string): string {
 
 export default function InboxPage() {
   const [folder, setFolder] = useState<InboxFolder>('inbox')
+  const [channelTab, setChannelTab] = useState<ChannelFilter>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -238,7 +252,16 @@ export default function InboxPage() {
   for (const c of conversations) {
     for (const f of FOLDER_ORDER) if (inFolder(c, f, uid)) counts[f]++
   }
-  const visible = conversations.filter((c) => inFolder(c, folder, uid))
+  // Within the current folder, count per channel (drives the channel-tab badges)
+  const inFolderConvos = conversations.filter((c) => inFolder(c, folder, uid))
+  const channelCounts: Record<ChannelFilter, number> = { all: inFolderConvos.length, whatsapp: 0, email: 0, sms: 0, voice: 0 }
+  for (const c of inFolderConvos) {
+    const ch = c.channel as ChannelFilter
+    if (ch !== 'all' && ch in channelCounts) channelCounts[ch]++
+  }
+  const visible = channelTab === 'all'
+    ? inFolderConvos
+    : inFolderConvos.filter((c) => c.channel === channelTab)
 
   // Deals linked to chats — show stage label + value on the card
   const { data: deals, refetch: refetchDeals } = useDeals()
@@ -312,6 +335,12 @@ export default function InboxPage() {
               options={FOLDER_ORDER.map((f) => ({ value: f, label: FOLDER_LABELS[f], count: counts[f] }))}
               value={folder}
               onChange={(v) => { setFolder(v as InboxFolder); setSelectedId(null) }}
+            />
+            <FilterChips
+              className="border-t border-border pt-2.5"
+              options={CHANNEL_TABS.map((t) => ({ value: t.value, label: t.label, icon: t.icon, count: channelCounts[t.value] }))}
+              value={channelTab}
+              onChange={(v) => { setChannelTab(v as ChannelFilter); setSelectedId(null) }}
             />
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-medium text-ink-subtle">Elsie replies (all chats)</span>
@@ -490,6 +519,7 @@ function ThreadView({
   onDealSaved?: () => void
 }) {
   const [composer, setComposer] = useState('')
+  const [emailSender, setEmailSender] = useState<'gmail' | 'resend'>('gmail')
   const [showQuick, setShowQuick] = useState(false)
   const [sending, setSending] = useState(false)
   const [approving, setApproving] = useState(false)
@@ -672,7 +702,7 @@ function ThreadView({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ conversationId: conversation.id, body }),
+        body: JSON.stringify({ conversationId: conversation.id, body, sender: emailSender }),
       })
       if (!res.ok) throw new Error('Send failed')
       // If a pending AI draft existed, the user just sent their own reply instead — clear it.
@@ -684,7 +714,7 @@ function ThreadView({
     } finally {
       setSending(false)
     }
-  }, [composer, sending, session?.access_token, conversation.id, refetchMessages, draftMsg])
+  }, [composer, sending, session?.access_token, conversation.id, refetchMessages, draftMsg, emailSender])
 
   const approveDraft = useCallback(async (messageId: string) => {
     setApproving(true)
@@ -1013,6 +1043,32 @@ function ThreadView({
         </div>
 
         {composerTab === 'reply' ? (
+          <>
+          {conversation.channel === 'email' && (
+            <div className="mb-2 flex items-center gap-2 text-[11.5px] text-ink-subtle">
+              <span className="font-medium">Send via</span>
+              <div className="inline-flex overflow-hidden rounded-lg border border-border">
+                {([
+                  { value: 'gmail' as const, label: 'Gmail', icon: <Mail size={11} /> },
+                  { value: 'resend' as const, label: 'Resend', icon: <Send size={11} /> },
+                ]).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setEmailSender(opt.value)}
+                    className={cn(
+                      'inline-flex items-center gap-1 px-2.5 py-1 text-[11.5px] font-medium transition',
+                      emailSender === opt.value ? 'bg-accent text-white' : 'bg-surface text-ink-muted hover:bg-elevated',
+                    )}
+                  >
+                    {opt.icon} {opt.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-ink-subtle">
+                {emailSender === 'resend' ? 'from hello@heyelsie.com' : 'from your connected inbox'}
+              </span>
+            </div>
+          )}
           <div className="flex items-end gap-2">
             <button
               onClick={() => setShowQuick((s) => !s)}
@@ -1049,6 +1105,7 @@ function ThreadView({
               )}
             </button>
           </div>
+          </>
         ) : (
           <div className="rounded-xl border border-border bg-elevated/40 p-2.5">
             <div className="mb-2 flex items-center gap-1.5 text-[11.5px] font-medium text-ink-muted">

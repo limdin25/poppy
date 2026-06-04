@@ -175,6 +175,15 @@ describe('sync-prompt API contract', () => {
     expect(sentBody.general_prompt).toContain('Caller name');
   });
 
+  it('sends Retell-format model id (claude-4.6-sonnet, not claude-sonnet-4-6)', async () => {
+    await callSyncPrompt({ businessId: 'test-biz-123' });
+    const lastCall = mockRetellFetch.mock.calls.find(
+      (c: [string, RequestInit]) => c[0].includes('update-retell-llm')
+    );
+    const sentBody = JSON.parse(lastCall![1].body as string);
+    expect(sentBody.model).toBe('claude-4.6-sonnet');
+  });
+
   it('appends ai_system_prompt as custom instructions when set', async () => {
     mockBusinessData.ai_system_prompt = 'Custom prompt override';
     await callSyncPrompt({ businessId: 'test-biz-123' });

@@ -14,6 +14,7 @@ All API keys are stored as environment variables. Never hardcoded.
 | OpenAI | GPT-4o (transcript extraction/summaries) | `OPENAI_API_KEY` | Pending |
 | Unipile | WhatsApp + Email channels | `UNIPILE_TOKEN`, `UNIPILE_DSN`, `UNIPILE_WEBHOOK_SECRET` | **Live** (WhatsApp) |
 | Resend | Transactional email (notifications, quotes) | `RESEND_API_KEY` | Pending |
+| Tavily | Web research during live calls | `TAVILY_API_KEY` | **Live** |
 | Cal.com | Booking/calendar integration | `CALCOM_API_KEY` | Pending (Phase 3) |
 | Google Cloud | Places API (business search in onboarding) | `GOOGLE_PLACES_API_KEY` | Pending |
 | Sentry | Error tracking (frontend + API) | `VITE_SENTRY_DSN` | Pending |
@@ -58,6 +59,29 @@ All API keys are stored as environment variables. Never hardcoded.
 | `api/numbers/provision.ts` | Creates LLM + Agent + channel row for new businesses |
 | `api/agent/sync-prompt.ts` | Rebuilds system prompt from business data → updates Retell LLM |
 | `api/agent/update-voice.ts` | Changes voice_id on the Retell Agent |
+
+### Mid-call agent tools (real-time delivery + research) — **Live**
+
+While a call is live, the Retell LLM can call these custom tools (registered on the LLM by `api/agent/sync-prompt.ts` whenever `TOOL_SECRET` is set). Each is a serverless endpoint authenticated by the `x-tool-secret` header (or a dashboard Bearer JWT) via `api/lib/tool-auth.ts`.
+
+| Tool name | Endpoint | Does | Backed by |
+|-----------|----------|------|-----------|
+| `send_email` | `api/tools/send-email.ts` | Emails the caller mid-call | Resend (`RESEND_API_KEY`) |
+| `send_sms` | `api/tools/send-sms.ts` | Texts the caller from the business's voice number | Twilio (`TWILIO_*`) |
+| `send_whatsapp` | `api/tools/send-whatsapp.ts` | WhatsApps the caller from the connected Unipile account | Unipile (`UNIPILE_*`) |
+| `web_search` | `api/tools/web-search.ts` | Looks something up online | Tavily (`TAVILY_API_KEY`) |
+| `check_availability` / `book_appointment` | `api/calendar/*` | Offers slots + books (only when a service is `[BOOKABLE]`) | Google Calendar |
+
+**Gating:**
+- Messaging tools (email/SMS/WhatsApp) register whenever `TOOL_SECRET` is set.
+- `web_search` registers only when `TAVILY_API_KEY` is set.
+- Calendar tools register only when the business has at least one `[BOOKABLE]` service.
+- If `TOOL_SECRET` is missing, the agent falls back to `end_call` only (no booking, no delivery) — so `TOOL_SECRET` **must** be set in Vercel.
+
+**Notes:**
+- `send_sms` / `send_whatsapp` default the recipient to the caller's own number (`{{from_number}}`); the agent confirms email addresses before using `send_email`.
+- Each endpoint returns a `spoken` field the agent reads back to the caller; on failure it returns a graceful spoken apology instead of pretending the message was sent.
+- Shared helpers: `api/lib/channel-lookup.ts` (from-number + Unipile account), `api/lib/booking-tools.ts` (`getCallTools` builds the full toolset).
 
 ### Twilio — **Live**
 
@@ -129,6 +153,7 @@ All API keys are stored as environment variables. Never hardcoded.
 - Media attachments downloaded from Unipile → uploaded to Supabase Storage (`media` bucket)
 - Reactions synced from Unipile and stored in message metadata
 - Reaction notification texts filtered out (Unipile sends them with unreliable `is_event` flag)
+- **Disconnect monitor** (`api/lib/channel-alerts.ts`): QR/WhatsApp-Web sessions are temporary and drop (status `CREDENTIALS`). The poll (`api/messages/poll.ts`) and webhook (`api/webhooks/unipile.ts`) both detect the connected→disconnected transition and call `maybeAlertChannelDisconnected`, which generates a fresh Unipile **reconnect** link (`type: "reconnect"`, `reconnect_account`) and emails it to the business owner + any configured alert recipients. Idempotent per episode via `config.disconnect_alerted_at`; cleared on reconnect so the next drop re-alerts. Set `ALERT_EMAIL` env to BCC every alert to an operator address.
 
 ### Resend
 - Transactional emails: quote PDFs, invoice notifications, missed call alerts, daily summaries

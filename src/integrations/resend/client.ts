@@ -10,7 +10,7 @@ function getHeaders(): Record<string, string> {
 }
 
 function defaultFrom(): string {
-  return process.env.EMAIL_FROM || "Elsie <noreply@heyelsie.com>";
+  return process.env.EMAIL_FROM || "Elsie <hello@heyelsie.com>";
 }
 
 // --- Types ---
