@@ -6,6 +6,7 @@ import { Select } from '@/core/ui/Select'
 import { Switch } from '@/core/ui/Switch'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useDefaultAgent } from '../hooks/useDefaultAgent'
+import { FullPromptEditor } from './FullPromptEditor'
 
 /**
  * Call behaviour — the voice-call feel settings that used to live only in
@@ -178,6 +179,8 @@ export default function CallBehaviourPage() {
         </button>
         {error && <span className="text-[12.5px] text-red-600">{error}</span>}
       </div>
+
+      <FullPromptEditor agentId={agent.id} />
     </div>
   )
 }
