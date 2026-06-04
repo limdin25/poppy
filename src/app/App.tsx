@@ -21,6 +21,7 @@ const QuotesPage = lazy(() => import('@/features/quotes/QuotesPage'))
 const InvoicesPage = lazy(() => import('@/features/invoices/InvoicesPage'))
 const AgentLayout = lazy(() => import('@/features/agents/AgentLayout'))
 const AiPersonalityPage = lazy(() => import('@/features/agents/settings/AiPersonalityPage'))
+const CallBehaviourPage = lazy(() => import('@/features/agents/settings/CallBehaviourPage'))
 const ClassificationPage = lazy(() => import('@/features/agents/settings/ClassificationPage'))
 const FollowupPage = lazy(() => import('@/features/agents/settings/FollowupPage'))
 const HandoffPage = lazy(() => import('@/features/agents/settings/HandoffPage'))
@@ -106,6 +107,7 @@ export default function App() {
             <Route path="agents" element={<AgentLayout />}>
               <Route index element={<Navigate to="personality" replace />} />
               <Route path="personality" element={<AiPersonalityPage />} />
+              <Route path="calling" element={<CallBehaviourPage />} />
               <Route path="classification" element={<ClassificationPage />} />
               <Route path="followup" element={<FollowupPage />} />
               <Route path="handoff" element={<HandoffPage />} />

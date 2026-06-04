@@ -117,7 +117,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days')
+        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days, start_speaker, responsiveness, reminder_trigger_seconds, reminder_max_count, ambient_sound')
         .eq('id', agentId)
         .single();
       if (agent) agentOverrides = agent;
@@ -223,7 +223,7 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
       general_prompt: prompt,
       general_tools: tools,
       begin_message: effectiveGreeting || null,
-      start_speaker: effectiveGreeting ? 'agent' : 'user',
+      start_speaker: (agentOverrides.start_speaker as string) || (effectiveGreeting ? 'agent' : 'user'),
       model: toRetellModel(aiModel),
     };
 
@@ -253,6 +253,7 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
     }
 
     if (retellAgentId) {
+      const reminderSec = agentOverrides.reminder_trigger_seconds as number | null | undefined;
       const agentPayload: Record<string, unknown> = {
         voice_id: (agentOverrides.voice_id as string) || undefined,
         voice_speed: (agentOverrides.voice_speed as number) || undefined,
@@ -260,6 +261,11 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
         interruption_sensitivity: (agentOverrides.interruption_sensitivity as number) ?? 0.9,
         max_call_duration_ms: ((agentOverrides.max_call_duration_seconds as number) ?? 3600) * 1000,
         post_call_analysis_model: (agentOverrides.post_call_analysis_model as string) || 'gpt-4.1-mini',
+        responsiveness: (agentOverrides.responsiveness as number | null | undefined) ?? undefined,
+        reminder_trigger_ms: reminderSec != null ? reminderSec * 1000 : undefined,
+        reminder_max_count: (agentOverrides.reminder_max_count as number | null | undefined) ?? undefined,
+        // ambient_sound: null is a valid value ("no background"), so only drop when undefined.
+        ambient_sound: (agentOverrides.ambient_sound as string | null | undefined),
       };
 
       Object.keys(agentPayload).forEach(k => {

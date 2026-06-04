@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Bot, Brain, RefreshCw, UserPlus, Search, Globe } from 'lucide-react'
+import { Bot, Brain, RefreshCw, UserPlus, Search, Globe, Phone } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/core/ui/PageHeader'
 import { Input } from '@/core/ui/Input'
@@ -29,6 +29,12 @@ const NAV: NavItem[] = [
     label: 'AI Personality',
     description: 'Tone, language, prompt, welcome message',
     icon: Bot,
+  },
+  {
+    to: '/agents/calling',
+    label: 'Call behaviour',
+    description: 'Voice timing, interruptions, ambience',
+    icon: Phone,
   },
   {
     to: '/agents/classification',

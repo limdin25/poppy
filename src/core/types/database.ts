@@ -134,6 +134,11 @@ export interface Agent {
   interruption_sensitivity: number | null
   max_call_duration_seconds: number | null
   post_call_analysis_model: string | null
+  start_speaker: string | null
+  responsiveness: number | null
+  reminder_trigger_seconds: number | null
+  reminder_max_count: number | null
+  ambient_sound: string | null
   retell_agent_id: string | null
   retell_llm_id: string | null
   auto_reply_enabled: boolean
