@@ -1,5 +1,6 @@
 import { sendNotification } from '../../src/integrations/resend/client.js';
 import { authorizeToolCall } from '../lib/tool-auth.js';
+import { logOutboundMessage } from '../lib/inbox-log.js';
 
 export const config = { runtime: 'edge' };
 
@@ -44,7 +45,16 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    await sendNotification(toEmail, subject, text);
+    const sent = await sendNotification(toEmail, subject, text);
+    await logOutboundMessage({
+      businessId: auth.businessId,
+      channel: 'email',
+      toEmail,
+      body: text,
+      subject,
+      externalId: sent?.id ?? null,
+      via: 'resend',
+    }).catch((e) => console.error('[tools/send-email] log failed:', e));
     return new Response(JSON.stringify({
       ok: true,
       spoken: `Done — I've just sent that email to ${toEmail}.`,

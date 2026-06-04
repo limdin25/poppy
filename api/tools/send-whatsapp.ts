@@ -1,6 +1,7 @@
 import { sendToChat } from '../../src/integrations/unipile/client.js';
 import { authorizeToolCall } from '../lib/tool-auth.js';
 import { getWhatsAppAccountId } from '../lib/channel-lookup.js';
+import { logOutboundMessage } from '../lib/inbox-log.js';
 
 export const config = { runtime: 'edge' };
 
@@ -50,7 +51,15 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    await sendToChat(accountId, toPhone, message);
+    const sent = await sendToChat(accountId, toPhone, message);
+    await logOutboundMessage({
+      businessId: auth.businessId,
+      channel: 'whatsapp',
+      toPhone,
+      body: message,
+      externalId: (sent as { id?: string })?.id ?? null,
+      via: 'unipile',
+    }).catch((e) => console.error('[tools/send-whatsapp] log failed:', e));
     return new Response(JSON.stringify({
       ok: true,
       spoken: `Done — I've sent that on WhatsApp to ${toPhone}.`,

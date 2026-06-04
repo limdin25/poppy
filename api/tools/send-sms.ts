@@ -1,6 +1,7 @@
 import { sendSMS } from '../../src/integrations/twilio/client.js';
 import { authorizeToolCall } from '../lib/tool-auth.js';
 import { getSmsFromNumber } from '../lib/channel-lookup.js';
+import { logOutboundMessage } from '../lib/inbox-log.js';
 
 export const config = { runtime: 'edge' };
 
@@ -49,7 +50,15 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    await sendSMS(fromNumber, toPhone, message);
+    const sent = await sendSMS(fromNumber, toPhone, message);
+    await logOutboundMessage({
+      businessId: auth.businessId,
+      channel: 'sms',
+      toPhone,
+      body: message,
+      externalId: sent?.sid ?? null,
+      via: 'twilio_sms',
+    }).catch((e) => console.error('[tools/send-sms] log failed:', e));
     return new Response(JSON.stringify({
       ok: true,
       spoken: `Done — I've sent that text to ${toPhone}.`,
