@@ -212,6 +212,36 @@ export default function InboxPage() {
     setLeadMsg('Lead added — find them under Leads.')
   }
 
+  // Compose-new-email modal
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [composeTo, setComposeTo] = useState('')
+  const [composeSubject, setComposeSubject] = useState('')
+  const [composeBody, setComposeBody] = useState('')
+  const [composeSender, setComposeSender] = useState<'gmail' | 'resend'>('resend')
+  const [composeBusy, setComposeBusy] = useState(false)
+  const [composeErr, setComposeErr] = useState<string | null>(null)
+
+  async function composeEmail() {
+    const to = composeTo.trim()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { setComposeErr('Enter a valid email address.'); return }
+    if (!composeBody.trim()) { setComposeErr('Write a message.'); return }
+    setComposeBusy(true); setComposeErr(null)
+    try {
+      const res = await fetch('/api/messages/compose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ to, subject: composeSubject.trim(), body: composeBody, sender: composeSender }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setComposeErr(data.error || 'Could not send the email.'); setComposeBusy(false); return }
+      setComposeBusy(false); setComposeOpen(false)
+      setComposeTo(''); setComposeSubject(''); setComposeBody('')
+      if (data.conversation_id) setSelectedId(data.conversation_id)
+    } catch {
+      setComposeErr('Could not send the email. Please try again.'); setComposeBusy(false)
+    }
+  }
+
   // Global AI reply mode (across the business's channels) — "turn all on/off"
   const [aiMode, setAiMode] = useState<AiMode | null>(null)
   const [aiMenuOpen, setAiMenuOpen] = useState(false)
@@ -322,6 +352,13 @@ export default function InboxPage() {
                 <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] font-medium text-ink-muted">
                   {visible.length}
                 </span>
+                <button
+                  onClick={() => { setComposeOpen(true); setComposeErr(null) }}
+                  title="Compose a new email"
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[12px] font-semibold text-ink-muted transition hover:bg-elevated hover:text-ink"
+                >
+                  <Mail size={14} /> Email
+                </button>
                 <button
                   onClick={() => { setAddLeadOpen(true); setLeadErr(null); setLeadMsg(null) }}
                   title="Add a new lead"
@@ -492,6 +529,52 @@ export default function InboxPage() {
           <button onClick={() => setAddLeadOpen(false)} disabled={leadBusy} className="rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted hover:bg-elevated disabled:opacity-40">Close</button>
           <button onClick={() => void createLead()} disabled={leadBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50">
             {leadBusy && <Loader2 size={14} className="animate-spin" />}{leadBusy ? 'Adding…' : 'Add lead'}
+          </button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={composeOpen} onClose={() => !composeBusy && setComposeOpen(false)} width="md">
+        <DialogHeader>New email</DialogHeader>
+        <DialogBody className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">To</label>
+            <input type="email" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} placeholder="name@example.com" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Subject</label>
+            <input value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} placeholder="Subject" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-ink-muted">Message</label>
+            <textarea value={composeBody} onChange={(e) => setComposeBody(e.target.value)} rows={6} placeholder="Write your email…" className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" />
+          </div>
+          <div className="flex items-center gap-2 text-[11.5px] text-ink-subtle">
+            <span className="font-medium">Send via</span>
+            <div className="inline-flex overflow-hidden rounded-lg border border-border">
+              {([
+                { value: 'gmail' as const, label: 'Gmail', icon: <Mail size={11} /> },
+                { value: 'resend' as const, label: 'Resend', icon: <Send size={11} /> },
+              ]).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setComposeSender(opt.value)}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2.5 py-1 text-[11.5px] font-medium transition',
+                    composeSender === opt.value ? 'bg-accent text-white' : 'bg-surface text-ink-muted hover:bg-elevated',
+                  )}
+                >
+                  {opt.icon} {opt.label}
+                </button>
+              ))}
+            </div>
+            <span>{composeSender === 'resend' ? 'from hello@heyelsie.com' : 'from your connected inbox'}</span>
+          </div>
+          {composeErr && <p className="text-[12.5px] text-red-600">{composeErr}</p>}
+        </DialogBody>
+        <DialogFooter>
+          <button onClick={() => setComposeOpen(false)} disabled={composeBusy} className="rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted hover:bg-elevated disabled:opacity-40">Cancel</button>
+          <button onClick={() => void composeEmail()} disabled={composeBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50">
+            {composeBusy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}{composeBusy ? 'Sending…' : 'Send email'}
           </button>
         </DialogFooter>
       </Dialog>

@@ -37,6 +37,17 @@ async function loadHandler(): Promise<(r: Request) => Promise<Response>> {
   return (await import('../api/messages/send')).default;
 }
 
+function composeReq(body: unknown): Request {
+  return new Request('https://app.heyelsie.com/api/messages/compose', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-jwt' },
+    body: JSON.stringify(body),
+  });
+}
+async function loadCompose(): Promise<(r: Request) => Promise<Response>> {
+  return (await import('../api/messages/compose')).default;
+}
+
 beforeEach(() => {
   state = {
     conversations: { row: { id: 'c1', business_id: 'biz-1', contact_id: 'ct1', channel: 'email', is_group: false, unipile_chat_id: null } },
@@ -99,6 +110,27 @@ describe('messages/send email transport', () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toContain('No connected email channel');
+    expect(resendSend).not.toHaveBeenCalled();
+  });
+});
+
+describe('messages/compose (new email)', () => {
+  it('composes a new email via Resend without a connected inbox', async () => {
+    state.channels = { row: null };
+    state.contacts = { row: { id: 'ct-new' } };
+    state.conversations = { row: { id: 'newconv-1' } };
+    const handler = await loadCompose();
+    const res = await handler(composeReq({ to: 'new@example.com', subject: 'Hi', body: 'Hello there', sender: 'resend' }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.conversation_id).toBe('newconv-1');
+    expect(resendSend).toHaveBeenCalledWith('new@example.com', 'Hi', 'Hello there');
+  });
+
+  it('rejects a compose with missing recipient', async () => {
+    const handler = await loadCompose();
+    const res = await handler(composeReq({ body: 'no recipient', sender: 'resend' }));
+    expect(res.status).toBe(400);
     expect(resendSend).not.toHaveBeenCalled();
   });
 });
