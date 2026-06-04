@@ -52,6 +52,19 @@ export default async function handler(req: Request): Promise<Response> {
     const limitKey = channelType.startsWith('email') ? 'email' : channelType;
     const maxAllowed = limits[limitKey] ?? 1;
 
+    // Platform super-admins (email present in admin_users) bypass per-business channel limits.
+    const token = req.headers.get('authorization')!.slice(7);
+    const { data: { user: authUser } } = await supabase.auth.getUser(token);
+    let isSuperAdmin = false;
+    if (authUser?.email) {
+      const { data: adminRow } = await supabase
+        .from('admin_users')
+        .select('email')
+        .eq('email', authUser.email)
+        .maybeSingle();
+      isSuperAdmin = !!adminRow;
+    }
+
     const typeFilter = channelType.startsWith('email')
       ? ['email_gmail', 'email_outlook', 'email_smtp']
       : [channelType];
@@ -62,7 +75,7 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('status', 'connected')
       .in('type', typeFilter);
 
-    if ((count ?? 0) >= maxAllowed) {
+    if (!isSuperAdmin && (count ?? 0) >= maxAllowed) {
       return new Response(JSON.stringify({ error: `Maximum ${maxAllowed} ${limitKey} channel(s) allowed. Contact admin to increase your limit.` }), { status: 403 });
     }
 

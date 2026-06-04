@@ -555,9 +555,14 @@ export default function ConnectionsPage() {
           ) : voiceConnected ? (
             <>
               <ConnectedPill />
-              <button className={dangerBtn} onClick={() => setVoiceStatus(voice.id, 'disconnected', 'voice-off')} disabled={connecting === 'voice-off'}>
-                {connecting === 'voice-off' ? <Spinner /> : 'Remove'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button className={outlineBtn} onClick={() => requestNumber('voice', 'req-voice')} disabled={connecting === 'req-voice'} title="Request an additional number">
+                  {connecting === 'req-voice' ? <Spinner /> : <><Plus size={14} /> Add number</>}
+                </button>
+                <button className={dangerBtn} onClick={() => setVoiceStatus(voice.id, 'disconnected', 'voice-off')} disabled={connecting === 'voice-off'}>
+                  {connecting === 'voice-off' ? <Spinner /> : 'Remove'}
+                </button>
+              </div>
             </>
           ) : (
             <>
