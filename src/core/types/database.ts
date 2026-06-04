@@ -139,6 +139,7 @@ export interface Agent {
   reminder_trigger_seconds: number | null
   reminder_max_count: number | null
   ambient_sound: string | null
+  full_prompt_override: string | null
   retell_agent_id: string | null
   retell_llm_id: string | null
   auto_reply_enabled: boolean

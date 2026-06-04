@@ -117,7 +117,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days, start_speaker, responsiveness, reminder_trigger_seconds, reminder_max_count, ambient_sound')
+        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days, start_speaker, responsiveness, reminder_trigger_seconds, reminder_max_count, ambient_sound, full_prompt_override')
         .eq('id', agentId)
         .single();
       if (agent) agentOverrides = agent;
@@ -218,21 +218,28 @@ You can do these WHILE the call is live. Use them when the caller asks (e.g. "ca
 ${webSearchEnabled ? '- **web_search** — look something up online when you genuinely do not know the answer. Say "let me check that for you" first, keep it brief, and never read out raw web addresses.\n' : ''}When you send something, confirm it to the caller in one short sentence. If a tool reports it could not send, apologise briefly and offer an alternative — never pretend something was sent.`;
     }
 
+    // If the owner hand-wrote a full prompt, that wins verbatim; else use the
+    // auto-assembled one. Editable from the "Full prompt" box in the app.
+    const overrideRaw = agentOverrides.full_prompt_override as string | null | undefined;
+    const isOverride = !!(overrideRaw && overrideRaw.trim());
+    const finalPrompt = isOverride ? (overrideRaw as string) : prompt;
+
     const aiModel = (agentOverrides.ai_model as string) || 'claude-sonnet-4-6';
     const llmPayload: Record<string, unknown> = {
-      general_prompt: prompt,
+      general_prompt: finalPrompt,
       general_tools: tools,
       begin_message: effectiveGreeting || null,
       start_speaker: (agentOverrides.start_speaker as string) || (effectiveGreeting ? 'agent' : 'user'),
       model: toRetellModel(aiModel),
     };
 
-    // Preview mode: return the exact assembled prompt without pushing to Retell.
-    // Powers the "View full prompt" panel in the app.
+    // Preview mode: return the exact prompt (override or generated) without
+    // pushing to Retell. Powers the editable "Full prompt" box in the app.
     if (body.preview === true) {
       return new Response(JSON.stringify({
         ok: true,
-        prompt,
+        prompt: finalPrompt,
+        is_override: isOverride,
         model: toRetellModel(aiModel),
         tools: tools.map((t) => t.name),
       }), { status: 200 });
