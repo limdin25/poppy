@@ -22,10 +22,12 @@ export default async function handler(req: Request): Promise<Response> {
   const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
 
   try {
+    // Voice agents are the ones provisioned onto Retell (they have a retell_llm_id).
+    // The agents table has no `type` column, so filtering on it returned nothing.
     const { data: agents } = await supabase
       .from('agents')
       .select('id, business_id')
-      .eq('type', 'voice');
+      .not('retell_llm_id', 'is', null);
 
     if (!agents || agents.length === 0) {
       return new Response(JSON.stringify({ ok: true, synced: 0 }), { status: 200 });
