@@ -59,6 +59,7 @@ export default async function handler(req: Request): Promise<Response> {
     let processed = 0;
     let ownerReplied = 0;
     let aiReplied = 0;
+    const cancelReasons: string[] = [];
 
     for (const entry of pending) {
       const { data: ownerReply } = await supabase
@@ -123,6 +124,7 @@ export default async function handler(req: Request): Promise<Response> {
           status: 'cancelled',
           processed_at: now.toISOString(),
         }).eq('id', entry.id);
+        cancelReasons.push('ai_handling_off');
         processed++;
         continue;
       }
@@ -144,6 +146,7 @@ export default async function handler(req: Request): Promise<Response> {
           status: 'cancelled',
           processed_at: now.toISOString(),
         }).eq('id', entry.id);
+        cancelReasons.push('no_channel');
         processed++;
         continue;
       }
@@ -172,18 +175,25 @@ export default async function handler(req: Request): Promise<Response> {
           status: 'cancelled',
           processed_at: now.toISOString(),
         }).eq('id', entry.id);
+        cancelReasons.push('no_prompt');
         processed++;
         continue;
       }
 
       const fullPrompt = systemPrompt;
 
-      const reply = await generateAIReply(fullPrompt, history, conversation.business_id, convAgentId || undefined);
+      let reply = ''
+      try {
+        reply = await generateAIReply(fullPrompt, history, conversation.business_id, convAgentId || undefined);
+      } catch (e: any) {
+        cancelReasons.push(`reply_threw:${(e?.message || e).toString().slice(0, 80)}`);
+      }
       if (!reply) {
         await supabase.from('ai_takeover_queue').update({
           status: 'cancelled',
           processed_at: now.toISOString(),
         }).eq('id', entry.id);
+        if (!cancelReasons.length || !cancelReasons[cancelReasons.length - 1].startsWith('reply_threw')) cancelReasons.push('no_reply');
         processed++;
         continue;
       }
@@ -249,7 +259,7 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('status', 'pending')
       .lt('created_at', twoHoursAgo);
 
-    return new Response(JSON.stringify({ ok: true, processed, ownerReplied, aiReplied }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true, processed, ownerReplied, aiReplied, cancelReasons }), { status: 200 });
   } catch (err: any) {
     console.error('[process-takeovers] error:', err);
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
