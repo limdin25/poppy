@@ -345,6 +345,18 @@ export default function AiPersonalityPage() {
         .eq('agent_id', agentId)
         .eq('business_id', businessId)
 
+      // Push the new prompt/settings to Retell so calls use it immediately
+      // (best-effort — the nightly sync is the backstop if this fails).
+      if (session) {
+        try {
+          await fetch('/api/agent/sync-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ businessId, agentId }),
+          })
+        } catch { /* nightly sync will catch it */ }
+      }
+
       reload()
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
