@@ -89,15 +89,17 @@ export default async function handler(req: Request): Promise<Response> {
         .limit(1)
         .maybeSingle();
 
-      if (!channel?.config) {
+      if (channel?.config) {
+        const cfg = channel.config as Record<string, string>;
+        if (!llmId) llmId = cfg.retell_llm_id;
+        if (!retellAgentId) retellAgentId = cfg.retell_agent_id;
+      } else if (body.preview !== true) {
+        // Preview only builds the prompt text, so a missing voice channel is fine.
         return new Response(JSON.stringify({ error: 'No voice channel configured' }), { status: 404 });
       }
-      const cfg = channel.config as Record<string, string>;
-      if (!llmId) llmId = cfg.retell_llm_id;
-      if (!retellAgentId) retellAgentId = cfg.retell_agent_id;
     }
 
-    if (!llmId) {
+    if (!llmId && body.preview !== true) {
       return new Response(JSON.stringify({ error: 'No Retell LLM ID found' }), { status: 404 });
     }
 
@@ -224,6 +226,17 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
       start_speaker: effectiveGreeting ? 'agent' : 'user',
       model: toRetellModel(aiModel),
     };
+
+    // Preview mode: return the exact assembled prompt without pushing to Retell.
+    // Powers the "View full prompt" panel in the app.
+    if (body.preview === true) {
+      return new Response(JSON.stringify({
+        ok: true,
+        prompt,
+        model: toRetellModel(aiModel),
+        tools: tools.map((t) => t.name),
+      }), { status: 200 });
+    }
 
     const res = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {
       method: 'PATCH',

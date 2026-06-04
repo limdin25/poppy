@@ -64,6 +64,81 @@ const HOURS = Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${i.toSt
 const savedBtn =
   'inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60'
 
+/**
+ * Read-only view of the COMPLETE prompt the platform sends to the voice engine —
+ * fetched live from /api/agent/sync-prompt in preview mode (no push to Retell).
+ * This is the full assembled prompt (greeting + services + FAQs + behaviour +
+ * tools + custom instructions), not just the System Prompt field above.
+ */
+function FullPromptPreview({ agentId }: { agentId?: string }) {
+  const { session } = useAuth()
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [prompt, setPrompt] = useState<string | null>(null)
+  const [tools, setTools] = useState<string[]>([])
+  const [model, setModel] = useState<string>('')
+  const [error, setError] = useState<string | null>(null)
+
+  async function load() {
+    if (!session) return
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch('/api/agent/sync-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ preview: true, agentId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Could not load the prompt.'); return }
+      setPrompt(data.prompt || ''); setTools(data.tools || []); setModel(data.model || '')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the prompt.')
+    } finally { setLoading(false) }
+  }
+
+  function toggle() {
+    const next = !open; setOpen(next)
+    if (next && prompt === null) void load()
+  }
+
+  return (
+    <SectionCard eyebrow="Advanced" title="The full prompt Elsie actually uses">
+      <p className="text-[13px] text-ink-muted">
+        This is the exact, complete prompt your platform sends to the voice engine — assembled live from your
+        greeting, services, FAQs, behaviour rules, the actions Elsie can take, and the System Prompt above.
+        Read-only: change it by editing the fields on this page (editing it inside Retell gets overwritten).
+      </p>
+      <button
+        onClick={toggle}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] font-medium text-ink transition hover:bg-elevated"
+      >
+        {loading ? <Loader2 size={14} className="animate-spin" /> : open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        {open ? 'Hide full prompt' : 'View full prompt'}
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-700">{error}</div>}
+          {(tools.length > 0 || model) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {model && <span className="rounded-full bg-elevated px-2 py-0.5 font-mono text-[11px] text-ink-muted">model: {model}</span>}
+              {tools.length > 0 && <span className="text-[11.5px] font-medium text-ink-subtle">· actions:</span>}
+              {tools.map((t) => (
+                <span key={t} className="rounded-full bg-elevated px-2 py-0.5 font-mono text-[11px] text-ink-muted">{t}</span>
+              ))}
+            </div>
+          )}
+          {prompt !== null && (
+            <pre className="max-h-[460px] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-page/60 p-4 font-mono text-[12px] leading-relaxed text-ink">{prompt}</pre>
+          )}
+          <button onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ink-muted transition hover:text-ink">
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Refresh
+          </button>
+        </div>
+      )}
+    </SectionCard>
+  )
+}
+
 export default function AiPersonalityPage() {
   const { agent, businessId, loading, reload } = useDefaultAgent()
   const { session } = useAuth()
@@ -510,6 +585,9 @@ export default function AiPersonalityPage() {
               This defines how Elsie answers. Be specific about your services, hours and tone.
             </p>
           </SectionCard>
+
+          {/* 2b) The full assembled prompt (read-only preview) */}
+          <FullPromptPreview agentId={agentId} />
 
           {/* 3) Welcome Message */}
           <SectionCard eyebrow="Advanced" title="Welcome Message">

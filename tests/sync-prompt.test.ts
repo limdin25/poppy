@@ -175,6 +175,18 @@ describe('sync-prompt API contract', () => {
     expect(sentBody.general_prompt).toContain('Caller name');
   });
 
+  it('preview mode returns the assembled prompt without pushing to Retell', async () => {
+    const res = await callSyncPrompt({ businessId: 'test-biz-123', preview: true });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.prompt).toContain('Emergency Plumbing');
+    expect(Array.isArray(body.tools)).toBe(true);
+    const updateCall = mockRetellFetch.mock.calls.find(
+      (c: [string, RequestInit]) => String(c[0]).includes('update-retell-llm'),
+    );
+    expect(updateCall).toBeUndefined();
+  });
+
   it('sends Retell-format model id (claude-4.6-sonnet, not claude-sonnet-4-6)', async () => {
     await callSyncPrompt({ businessId: 'test-biz-123' });
     const lastCall = mockRetellFetch.mock.calls.find(
