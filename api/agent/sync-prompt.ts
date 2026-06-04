@@ -295,16 +295,20 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
         if (agentPayload[k] === undefined) delete agentPayload[k];
       });
 
-      await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+      // update-agent edits the latest DRAFT version and returns its number;
+      // publish-agent then makes that exact version live (inbound calls use the
+      // latest published version since the number isn't pinned to one).
+      const agentRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(agentPayload),
       });
+      const updatedAgent = agentRes.ok ? await agentRes.json().catch(() => ({})) as { version?: number } : {};
 
       await fetch(`https://api.retellai.com/publish-agent/${retellAgentId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify(updatedAgent.version != null ? { version: updatedAgent.version } : {}),
       });
 
       const phoneRes = await fetch('https://api.retellai.com/list-phone-numbers', {
