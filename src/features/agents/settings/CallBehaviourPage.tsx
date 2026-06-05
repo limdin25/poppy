@@ -33,6 +33,7 @@ const VOICES = [
   { id: 'openai-Nova', label: 'Nova — American female' },
   { id: '11labs-Lily', label: 'Lily — American female' },
   { id: '11labs-Emily', label: 'Emily — American female' },
+  { id: '11labs-Hailey', label: 'Hailey — American female' },
   { id: 'retell-Nico', label: 'Nico — American male' },
 ]
 

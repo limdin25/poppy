@@ -615,11 +615,13 @@ export default function AiPersonalityPage() {
           <SectionCard eyebrow="Advanced" title="AI model">
             <Label htmlFor="model">The brain Elsie uses</Label>
             <Select id="model" value={model} onChange={(e) => setModel(e.target.value)} className="sm:w-72">
+              {['claude-sonnet-4-6','claude-sonnet-4-5','claude-haiku-4-5','gpt-5.5'].includes(model) ? null : <option value={model}>{model} (current)</option>}
               <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — smart &amp; fast (recommended)</option>
               <option value="claude-sonnet-4-5">Claude Sonnet 4.5</option>
               <option value="claude-haiku-4-5">Claude Haiku 4.5 — fastest &amp; cheapest</option>
+              <option value="gpt-5.5">GPT-5.5 (OpenAI) — best for voice calls</option>
             </Select>
-            <p className="mt-1.5 text-[11px] text-ink-subtle">Used for both calls and chat. Sonnet 4.6 is the best all-round choice.</p>
+            <p className="mt-1.5 text-[11px] text-ink-subtle">Used for calls (and chat). Sonnet 4.6 is the best all-round; GPT-5.5 is great for voice. (For chat channels, stick to Claude.)</p>
           </SectionCard>
 
           {/* FAQs editor */}
