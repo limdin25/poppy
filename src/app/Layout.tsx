@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
+import { ChannelAlertBanner } from '@/core/ui/ChannelAlertBanner'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useBusiness } from '@/core/hooks/useBusiness'
 import { useVoiceEnabled } from '@/core/hooks/useVoiceEnabled'
@@ -219,6 +220,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-full flex-col">
+      <ChannelAlertBanner />
       {impersonating && (
         <div className="flex items-center justify-between bg-amber-500 px-4 py-2 text-[13px] font-medium text-black">
           <div className="flex items-center gap-2">

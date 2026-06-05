@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { stripHtml, cleanEmailBody, isEmailSpam, normalizeSubject, extractUnsubscribeUrls } from '../lib/email-utils.js';
 import { fetchAndStoreAvatar, fetchEmailAvatar } from '../lib/fetch-avatar.js';
 import { callLLM, getModelForAgent } from '../lib/llm.js';
+import { maybeAlertChannelDisconnected } from '../lib/channel-alerts.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -564,14 +565,22 @@ export default async function handler(req: Request): Promise<Response> {
       if (waSourceStatus !== 'OK') {
         const { data: ch } = await supabase
           .from('channels')
-          .select('id, config')
+          .select('id, config, business_id, type')
           .eq('unipile_account_id', accountId)
           .single();
         if (ch) {
+          const alertPatch = await maybeAlertChannelDisconnected({
+            channelId: ch.id,
+            businessId: ch.business_id,
+            unipileAccountId: accountId,
+            config: ch.config as any,
+            reason: waSourceStatus || 'unknown',
+            channelType: ch.type,
+          });
           await supabase.from('channels').update({
             status: 'disconnected',
             disconnected_at: new Date().toISOString(),
-            config: { ...(ch.config as any), disconnect_reason: waSourceStatus || 'unknown' },
+            config: { ...(ch.config as any), disconnect_reason: waSourceStatus || 'unknown', ...alertPatch },
           }).eq('id', ch.id);
         }
         summary.push({ account_id: accountId, error: `status: ${waSourceStatus}` });

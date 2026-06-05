@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { fetchAndStoreAvatar, fetchEmailAvatar } from '../lib/fetch-avatar.js';
+import { maybeAlertChannelDisconnected } from '../lib/channel-alerts.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -610,7 +611,7 @@ export default async function handler(req: Request): Promise<Response> {
         const isOk = newStatus === 'OK' || newStatus === 'CREATION_SUCCESS';
         const { data: ch } = await supabase
           .from('channels')
-          .select('id, config')
+          .select('id, config, business_id, type')
           .eq('unipile_account_id', accountId)
           .single();
 
@@ -618,13 +619,21 @@ export default async function handler(req: Request): Promise<Response> {
           if (isOk) {
             await supabase.from('channels').update({
               status: 'connected',
-              config: { ...(ch.config as any), disconnect_reason: null },
+              config: { ...(ch.config as any), disconnect_reason: null, disconnect_alerted_at: null },
             }).eq('id', ch.id);
           } else {
+            const alertPatch = await maybeAlertChannelDisconnected({
+              channelId: ch.id,
+              businessId: ch.business_id,
+              unipileAccountId: accountId,
+              config: ch.config as any,
+              reason: newStatus || 'unknown',
+              channelType: ch.type,
+            });
             await supabase.from('channels').update({
               status: 'disconnected',
               disconnected_at: new Date().toISOString(),
-              config: { ...(ch.config as any), disconnect_reason: newStatus || 'unknown' },
+              config: { ...(ch.config as any), disconnect_reason: newStatus || 'unknown', ...alertPatch },
             }).eq('id', ch.id);
           }
         }
