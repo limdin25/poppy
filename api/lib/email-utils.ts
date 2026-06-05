@@ -65,7 +65,12 @@ export function isEmailSpam(fromEmail: string, subject: string, body: string, ht
   const lowerSubject = subject.toLowerCase();
   const lowerBody = body.toLowerCase().slice(0, 3000);
 
-  const spamPrefixes = ['noreply', 'no-reply', 'donotreply', 'mailer-daemon', 'postmaster', 'notifications', 'newsletter', 'info@', 'hello@', 'team@', 'updates@', 'news@'];
+  // Never treat mail from our own sending domains as spam (our brand / personas).
+  const OWN_DOMAINS = ['heypubli.com', 'heyelsie.com'];
+  const fromDomain = lowerFrom.split('@')[1] || '';
+  if (OWN_DOMAINS.includes(fromDomain)) return false;
+
+  const spamPrefixes = ['noreply', 'no-reply', 'donotreply', 'mailer-daemon', 'postmaster', 'notifications', 'newsletter', 'info@', 'team@', 'updates@', 'news@'];
   if (spamPrefixes.some((p) => lowerFrom.startsWith(p))) return true;
 
   const marketingDomains = ['mailchimp.com', 'sendgrid.net', 'constantcontact.com', 'hubspot.com', 'klaviyo.com', 'klclick', 'mailgun.org', 'convertkit', 'beehiiv.com'];
