@@ -22,11 +22,12 @@ export default async function handler(req: Request): Promise<Response> {
   const { businessId } = auth;
 
   try {
-    const { to, subject, body, sender } = await req.json() as {
+    const { to, subject, body, sender, from } = await req.json() as {
       to?: string;
       subject?: string;
       body?: string;
       sender?: string;
+      from?: string;
     };
 
     if (!to || !body) {
@@ -34,6 +35,22 @@ export default async function handler(req: Request): Promise<Response> {
         JSON.stringify({ error: 'to and body are required' }),
         { status: 400 },
       );
+    }
+
+    // Optional custom "From" for Resend sends. Only allow our own verified
+    // domains so the app can't be used to spoof arbitrary senders.
+    const ALLOWED_FROM_DOMAINS = ['heypubli.com', 'heyelsie.com'];
+    let resendFrom: string | undefined;
+    if (from && from.trim()) {
+      const addr = (from.match(/<([^>]+)>/)?.[1] || from).trim().toLowerCase();
+      const domain = addr.split('@')[1] || '';
+      if (!ALLOWED_FROM_DOMAINS.includes(domain)) {
+        return new Response(
+          JSON.stringify({ error: `From address must be @${ALLOWED_FROM_DOMAINS.join(' or @')}` }),
+          { status: 400 },
+        );
+      }
+      resendFrom = from.trim();
     }
 
     // 'resend' = send via Resend (branded hello@heyelsie.com, no connected inbox needed).
@@ -44,7 +61,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (wantsResend) {
       try {
-        const sent = await sendResendEmail(to, subject || '(no subject)', htmlBody);
+        const sent = await sendResendEmail(to, subject || '(no subject)', htmlBody, resendFrom);
         externalId = sent.id ?? null;
       } catch (e: any) {
         return new Response(
