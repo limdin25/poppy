@@ -38,7 +38,7 @@ export default function CallBehaviourPage() {
   // Advanced
   const [backchannelOn, setBackchannelOn] = useState(false)
   const [backchannelFreq, setBackchannelFreq] = useState('0.8')
-  const [beginDelaySec, setBeginDelaySec] = useState(0)
+  const [beginDelayMs, setBeginDelayMs] = useState(0)
   const [silenceOn, setSilenceOn] = useState(false)
   const [silenceSec, setSilenceSec] = useState(30)
   const [voicemailHangup, setVoicemailHangup] = useState(false)
@@ -61,7 +61,7 @@ export default function CallBehaviourPage() {
     setMaxMinutes(agent.max_call_duration_seconds ? Math.round(agent.max_call_duration_seconds / 60) : 60)
     setBackchannelOn(agent.backchannel_enabled === true)
     setBackchannelFreq(String(agent.backchannel_frequency ?? 0.8))
-    setBeginDelaySec(agent.begin_delay_ms != null ? Math.round(agent.begin_delay_ms / 1000) : 0)
+    setBeginDelayMs(agent.begin_delay_ms ?? 0)
     setSilenceOn(agent.end_silence_seconds != null)
     setSilenceSec(agent.end_silence_seconds ?? 30)
     setVoicemailHangup(agent.voicemail_hangup === true)
@@ -83,7 +83,7 @@ export default function CallBehaviourPage() {
         max_call_duration_seconds: Math.max(1, maxMinutes) * 60,
         backchannel_enabled: backchannelOn,
         backchannel_frequency: backchannelOn ? Number(backchannelFreq) : null,
-        begin_delay_ms: Math.min(5000, Math.max(0, beginDelaySec) * 1000),
+        begin_delay_ms: beginDelayMs,
         end_silence_seconds: silenceOn ? Math.max(10, silenceSec) : null,
         voicemail_hangup: voicemailHangup,
         allow_keypad: keypad,
@@ -213,9 +213,14 @@ export default function CallBehaviourPage() {
           )}
 
           <div>
-            <Label htmlFor="delay">Pause before Elsie speaks (seconds)</Label>
-            <Input id="delay" type="number" min={0} max={5} value={beginDelaySec} onChange={(e) => setBeginDelaySec(Number(e.target.value) || 0)} className="max-w-[140px]" />
-            <p className="mt-1.5 text-[11px] text-ink-subtle">A tiny pause can feel more natural. 0 = answer instantly.</p>
+            <Label htmlFor="delay">Pause before Elsie speaks</Label>
+            <Select id="delay" value={String(beginDelayMs)} onChange={(e) => setBeginDelayMs(Number(e.target.value))} className="max-w-[220px]">
+              <option value="0">None — answer instantly</option>
+              <option value="300">Brief (0.3s) — most natural</option>
+              <option value="500">Short (0.5s)</option>
+              <option value="1000">Noticeable (1s)</option>
+            </Select>
+            <p className="mt-1.5 text-[11px] text-ink-subtle">A tiny pause before the greeting feels more human.</p>
           </div>
 
           <div className="flex items-center justify-between gap-3">
