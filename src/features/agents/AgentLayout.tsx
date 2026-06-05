@@ -94,8 +94,10 @@ export default function AgentLayout() {
     }
   }
 
+  // Call behaviour is phone-only — hide it for writing channels (WhatsApp/SMS/Email).
+  const channelNav = channel === 'voice' ? NAV : NAV.filter((n) => n.to !== 'calling')
   const q = search.trim().toLowerCase()
-  const items = q ? NAV.filter((n) => n.label.toLowerCase().includes(q) || n.description.toLowerCase().includes(q)) : NAV
+  const items = q ? channelNav.filter((n) => n.label.toLowerCase().includes(q) || n.description.toLowerCase().includes(q)) : channelNav
   const currentLabel = CHANNELS.find((c) => c.key === channel)?.label ?? 'Calls'
 
   return (

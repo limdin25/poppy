@@ -78,6 +78,7 @@ export default function AiPersonalityPage() {
   const [tone, setTone] = useState('professional')
   const [instructions, setInstructions] = useState('') // bound to ai_system_prompt (System Prompt)
   const [language, setLanguage] = useState('en-GB')
+  const [model, setModel] = useState('claude-sonnet-4-6')
   const [autoReply, setAutoReply] = useState(true)
   const [draftMode, setDraftMode] = useState(false)
   const [confirmEnabled, setConfirmEnabled] = useState(true)
@@ -120,6 +121,7 @@ export default function AiPersonalityPage() {
     // Seed an original default System Prompt if the agent has none yet.
     setInstructions(stripClassificationBlock(agent.ai_system_prompt) || DEFAULT_SYSTEM_PROMPT)
     setLanguage(agent.language || 'en-GB')
+    setModel(agent.ai_model || 'claude-sonnet-4-6')
     setAutoReply(agent.auto_reply_enabled ?? true)
     setDraftMode(agent.draft_mode ?? false)
     setConfirmEnabled(agent.confirmation_enabled ?? true)
@@ -234,6 +236,7 @@ export default function AiPersonalityPage() {
           tone,
           ai_system_prompt: mergedPrompt,
           language,
+          ai_model: model,
           auto_reply_enabled: autoReply,
           draft_mode: draftMode,
           confirmation_enabled: confirmEnabled,
@@ -607,6 +610,16 @@ export default function AiPersonalityPage() {
             <Select id="language" value={language} onChange={(e) => setLanguage(e.target.value)} className="sm:w-56">
               {LANGUAGE_OPTIONS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
             </Select>
+          </SectionCard>
+
+          <SectionCard eyebrow="Advanced" title="AI model">
+            <Label htmlFor="model">The brain Elsie uses</Label>
+            <Select id="model" value={model} onChange={(e) => setModel(e.target.value)} className="sm:w-72">
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — smart &amp; fast (recommended)</option>
+              <option value="claude-sonnet-4-5">Claude Sonnet 4.5</option>
+              <option value="claude-haiku-4-5">Claude Haiku 4.5 — fastest &amp; cheapest</option>
+            </Select>
+            <p className="mt-1.5 text-[11px] text-ink-subtle">Used for both calls and chat. Sonnet 4.6 is the best all-round choice.</p>
           </SectionCard>
 
           {/* FAQs editor */}

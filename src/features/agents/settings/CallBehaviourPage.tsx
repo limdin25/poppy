@@ -23,10 +23,24 @@ const AMBIENCE = [
   { value: 'convention-hall', label: 'Conference hall' },
 ]
 
+// Curated Retell voices (valid voice_ids). British first, then a few American.
+const VOICES = [
+  { id: 'retell-Willa', label: 'Willa — British female, warm (default)' },
+  { id: '11labs-Dorothy', label: 'Dorothy — British female, calm' },
+  { id: '11labs-Amy', label: 'Amy — British female, bright' },
+  { id: '11labs-Anthony', label: 'Anthony — British male, confident' },
+  { id: 'cartesia-Adam', label: 'Adam — British male, polished' },
+  { id: 'openai-Nova', label: 'Nova — American female' },
+  { id: '11labs-Lily', label: 'Lily — American female' },
+  { id: 'retell-Nico', label: 'Nico — American male' },
+]
+
 export default function CallBehaviourPage() {
   const { agent, businessId, loading, saveAgent } = useDefaultAgent()
   const { session } = useAuth()
 
+  const [voiceId, setVoiceId] = useState('retell-Willa')
+  const [voiceSpeed, setVoiceSpeed] = useState('1')
   const [startSpeaker, setStartSpeaker] = useState('agent')
   const [interruption, setInterruption] = useState('0.7')
   const [responsiveness, setResponsiveness] = useState('0.7')
@@ -51,6 +65,8 @@ export default function CallBehaviourPage() {
 
   useEffect(() => {
     if (!agent) return
+    setVoiceId(agent.voice_id || 'retell-Willa')
+    setVoiceSpeed(String(agent.voice_speed ?? 1))
     setStartSpeaker(agent.start_speaker || 'agent')
     setInterruption(String(agent.interruption_sensitivity ?? 0.7))
     setResponsiveness(String(agent.responsiveness ?? 0.7))
@@ -74,6 +90,8 @@ export default function CallBehaviourPage() {
     setSaving(true); setSaved(false); setError(null)
     try {
       const ok = await saveAgent({
+        voice_id: voiceId,
+        voice_speed: Number(voiceSpeed),
         start_speaker: startSpeaker,
         interruption_sensitivity: Number(interruption),
         responsiveness: Number(responsiveness),
@@ -117,9 +135,33 @@ export default function CallBehaviourPage() {
   if (!agent) {
     return <div className="rounded-2xl border border-border bg-surface p-8 text-center text-[13px] text-ink-muted">No agent found yet. Finish agent setup first.</div>
   }
+  if (agent.agent_type !== 'voice') {
+    return <div className="rounded-2xl border border-border bg-surface p-8 text-center text-[13px] text-ink-muted">These settings are for <strong>phone calls only</strong>. Switch the channel to <strong>Calls</strong> above to edit them.</div>
+  }
 
   return (
     <div className="space-y-6">
+      <SectionCard eyebrow="Calls" title="Voice" action={<Phone size={16} className="text-ink-subtle" />}>
+        <div className="space-y-5">
+          <div>
+            <Label htmlFor="voice">Elsie's voice</Label>
+            <Select id="voice" value={voiceId} onChange={(e) => setVoiceId(e.target.value)}>
+              {VOICES.some((v) => v.id === voiceId) ? null : <option value={voiceId}>{voiceId} (current)</option>}
+              {VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            </Select>
+            <p className="mt-1.5 text-[11px] text-ink-subtle">The voice callers hear. British voices first.</p>
+          </div>
+          <div>
+            <Label htmlFor="speed">Speaking speed</Label>
+            <Select id="speed" value={voiceSpeed} onChange={(e) => setVoiceSpeed(e.target.value)} className="max-w-[200px]">
+              <option value="0.9">Slower</option>
+              <option value="1">Normal</option>
+              <option value="1.1">Faster</option>
+            </Select>
+          </div>
+        </div>
+      </SectionCard>
+
       <SectionCard eyebrow="Calls" title="How Elsie handles a live call" action={<Phone size={16} className="text-ink-subtle" />}>
         <p className="mb-4 text-[13px] text-ink-muted">
           These shape how a phone call feels. Saved here and pushed to the call engine instantly — edit them only on this page (not in Retell).
