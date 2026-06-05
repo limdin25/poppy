@@ -305,7 +305,7 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
     .eq('id', channel.id);
 
   const emailsRes = await fetch(
-    `https://${UNIPILE_DSN}/api/v1/emails?account_id=${accountId}&limit=50`,
+    `https://${UNIPILE_DSN}/api/v1/emails?account_id=${accountId}&limit=20`,
     { headers: { 'X-API-KEY': UNIPILE_TOKEN, accept: 'application/json' } },
   );
   if (!emailsRes.ok) {
@@ -551,7 +551,7 @@ export default async function handler(req: Request): Promise<Response> {
     const summary: any[] = [];
 
     for (const acct of accounts) {
-      if (acct.type !== 'WHATSAPP' && acct.type !== 'GOOGLE' && acct.type !== 'INSTAGRAM' && !acct.type?.includes('MICROSOFT') && !acct.type?.includes('OUTLOOK')) continue;
+      if (acct.type !== 'WHATSAPP' && !acct.type?.includes('GOOGLE') && acct.type !== 'INSTAGRAM' && !acct.type?.includes('MICROSOFT') && !acct.type?.includes('OUTLOOK')) continue;
 
       // Route to email handler for non-IM accounts
       if (acct.type !== 'WHATSAPP' && acct.type !== 'INSTAGRAM') {
