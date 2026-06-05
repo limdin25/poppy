@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarPlus, CalendarCheck, CalendarDays, CheckCircle2, Loader2 } from 'lucide-react'
+import { CalendarPlus, CalendarCheck, CalendarDays, CheckCircle2, Loader2, Mic, MessageSquare } from 'lucide-react'
 import { PageHeader } from '@/core/ui/PageHeader'
 import { StatCard } from '@/core/ui/StatCard'
 import { SectionCard } from '@/core/ui/SectionCard'
@@ -9,8 +9,9 @@ import { FilterChips } from '@/core/ui/FilterChips'
 import { Avatar } from '@/core/ui/Avatar'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { useAppointments } from '@/core/hooks/useAppointments'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { useAuth } from '@/core/auth/AuthProvider'
-import type { Appointment } from '@/core/types/database'
+import type { Appointment, Call } from '@/core/types/database'
 
 /**
  * Appointments (waslo-faithful visual clone), wired to real data via
@@ -76,6 +77,7 @@ export default function AppointmentsPage() {
   const { session } = useAuth()
   const { data: appointments, loading, refetch } = useAppointments()
   const [filter, setFilter] = useState<Bucket>('today')
+  const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
 
   // New-booking modal
   const [bookingOpen, setBookingOpen] = useState(false)
@@ -298,7 +300,10 @@ export default function AppointmentsPage() {
                     return (
                       <li
                         key={appt.id}
-                        className="flex flex-col gap-2.5 px-5 py-3.5 transition-colors hover:bg-elevated/50 sm:flex-row sm:items-center sm:gap-3"
+                        onClick={() => setSelectedAppt(appt)}
+                        role="button"
+                        tabIndex={0}
+                        className="flex cursor-pointer flex-col gap-2.5 px-5 py-3.5 transition-colors hover:bg-elevated/50 sm:flex-row sm:items-center sm:gap-3"
                       >
                         <div className="flex h-9 w-[52px] shrink-0 items-center justify-center rounded-lg bg-elevated text-[12.5px] font-semibold text-ink">
                           {timeLabel(appt.starts_at)}
@@ -325,6 +330,10 @@ export default function AppointmentsPage() {
             ))
           )}
         </div>
+      )}
+
+      {selectedAppt && (
+        <AppointmentDetail appt={selectedAppt} onClose={() => setSelectedAppt(null)} />
       )}
 
       <Dialog open={bookingOpen} onClose={() => !saving && setBookingOpen(false)} width="md">
@@ -414,5 +423,149 @@ export default function AppointmentsPage() {
         </DialogFooter>
       </Dialog>
     </div>
+  )
+}
+
+function fmtDateTime(s: string): string {
+  const d = new Date(s)
+  return (
+    d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) +
+    ' at ' +
+    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  )
+}
+
+/**
+ * Click an appointment → see its booking details plus, if it came from a phone
+ * call, the recording and full transcript. Pulls the linked call by the
+ * appointment's conversation_id (set by the Retell webhook on voice bookings).
+ */
+function AppointmentDetail({ appt, onClose }: { appt: Appointment; onClose: () => void }) {
+  const navigate = useNavigate()
+  const [call, setCall] = useState<Call | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!appt.conversation_id) {
+      setCall(null)
+      return
+    }
+    let active = true
+    setLoading(true)
+    supabase
+      .from('calls')
+      .select('*, contact:contacts(*)')
+      .eq('conversation_id', appt.conversation_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return
+        setCall((data as Call) ?? null)
+        setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [appt.conversation_id])
+
+  const name = appt.contact?.name ?? 'Unknown'
+  const transcript = (call?.transcript ?? []) as { speaker: string; text: string }[]
+
+  return (
+    <Dialog open onClose={onClose} width="lg">
+      <DialogHeader>{appt.service?.name ?? appt.title}</DialogHeader>
+      <DialogBody className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Avatar name={name} channel="whatsapp" size="sm" />
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-ink">{name}</p>
+            <p className="text-[12.5px] text-ink-muted">{fmtDateTime(appt.starts_at)}</p>
+          </div>
+          <StatusPill tone={STATUS_TONE[appt.status]} uppercase={false} className="ml-auto self-start">
+            {STATUS_LABEL[appt.status]}
+          </StatusPill>
+        </div>
+
+        {appt.contact?.phone && (
+          <p className="text-[12.5px] text-ink-muted">Phone: {appt.contact.phone}</p>
+        )}
+        {appt.description && (
+          <div className="whitespace-pre-line rounded-xl bg-elevated p-3 text-[12.5px] text-ink">
+            {appt.description}
+          </div>
+        )}
+
+        <div className="border-t border-border pt-4">
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">
+            <Mic size={12} /> Call recording &amp; conversation
+          </p>
+          {loading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 size={18} className="animate-spin text-accent" />
+            </div>
+          ) : !call ? (
+            <p className="text-[12.5px] text-ink-muted">
+              No call is linked to this booking yet. When Elsie books an appointment from a phone call,
+              the recording and full conversation appear here automatically.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {call.recording_url ? (
+                <audio controls src={call.recording_url} className="w-full" />
+              ) : (
+                <p className="text-[12.5px] text-ink-muted">Recording not available for this call.</p>
+              )}
+              {call.ai_summary && (
+                <div className="rounded-xl border border-brand/10 bg-brand/5 p-3">
+                  <p className="text-[12.5px] leading-relaxed text-ink">{call.ai_summary}</p>
+                </div>
+              )}
+              {transcript.length > 0 && (
+                <div className="space-y-2">
+                  {transcript.map((m, i) => {
+                    const isCaller =
+                      m.speaker === 'caller' || m.speaker === 'user' || m.speaker === 'contact'
+                    return (
+                      <div key={i} className={isCaller ? 'flex justify-start' : 'flex justify-end'}>
+                        <div
+                          className={
+                            'max-w-[80%] rounded-2xl px-3.5 py-2 text-[12.5px] leading-relaxed ' +
+                            (isCaller
+                              ? 'rounded-bl-md bg-elevated text-ink'
+                              : 'rounded-br-md bg-brand text-white')
+                          }
+                        >
+                          <p className="mb-0.5 text-[10px] font-semibold opacity-60">
+                            {isCaller ? name : 'Elsie AI'}
+                          </p>
+                          <p>{m.text}</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {call.conversation_id && (
+                <button
+                  onClick={() => navigate('/inbox?id=' + call.conversation_id)}
+                  className="flex items-center gap-1.5 text-[12.5px] font-medium text-accent"
+                >
+                  <MessageSquare size={13} /> Open full conversation
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </DialogBody>
+      <DialogFooter>
+        <button
+          onClick={onClose}
+          className="rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted transition hover:bg-elevated"
+        >
+          Close
+        </button>
+      </DialogFooter>
+    </Dialog>
   )
 }
