@@ -218,7 +218,8 @@ export default function InboxPage() {
   const [composeSubject, setComposeSubject] = useState('')
   const [composeBody, setComposeBody] = useState('')
   const [composeSender, setComposeSender] = useState<'gmail' | 'resend'>('resend')
-  const [composeFrom, setComposeFrom] = useState('Elsie <hello@heypubli.com>')
+  const [composeFrom, setComposeFrom] = useState('Elsie <hello@heyelsie.com>')
+  const [composeFromCustom, setComposeFromCustom] = useState('')
   const [composeBusy, setComposeBusy] = useState(false)
   const [composeErr, setComposeErr] = useState<string | null>(null)
 
@@ -231,7 +232,7 @@ export default function InboxPage() {
       const res = await fetch('/api/messages/compose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ to, subject: composeSubject.trim(), body: composeBody, sender: composeSender, from: composeSender === 'resend' ? composeFrom.trim() : undefined }),
+        body: JSON.stringify({ to, subject: composeSubject.trim(), body: composeBody, sender: composeSender, from: composeSender === 'resend' ? (composeFrom === '__custom__' ? composeFromCustom.trim() : composeFrom) : undefined }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setComposeErr(data.error || 'Could not send the email.'); setComposeBusy(false); return }
@@ -571,12 +572,23 @@ export default function InboxPage() {
             {composeSender === 'resend' ? (
               <span className="inline-flex items-center gap-1">
                 from
-                <input
+                <select
                   value={composeFrom}
                   onChange={(e) => setComposeFrom(e.target.value)}
-                  placeholder="Elsie Brown <elsie.brown@heypubli.com>"
-                  className="w-60 rounded-md border border-border bg-surface px-2 py-1 text-[11.5px] text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
-                />
+                  className="rounded-md border border-border bg-surface px-2 py-1 text-[11.5px] text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
+                >
+                  <option value="Elsie <hello@heyelsie.com>">Elsie — hello@heyelsie.com</option>
+                  <option value="Elsie <hello@heypubli.com>">Elsie — hello@heypubli.com</option>
+                  <option value="__custom__">Custom…</option>
+                </select>
+                {composeFrom === '__custom__' && (
+                  <input
+                    value={composeFromCustom}
+                    onChange={(e) => setComposeFromCustom(e.target.value)}
+                    placeholder="Elsie Brown <elsie.brown@heypubli.com>"
+                    className="w-56 rounded-md border border-border bg-surface px-2 py-1 text-[11.5px] text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
+                  />
+                )}
               </span>
             ) : (
               <span>from your connected inbox</span>
