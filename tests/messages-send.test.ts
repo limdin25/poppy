@@ -124,7 +124,24 @@ describe('messages/compose (new email)', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.conversation_id).toBe('newconv-1');
-    expect(resendSend).toHaveBeenCalledWith('new@example.com', 'Hi', 'Hello there');
+    expect(resendSend).toHaveBeenCalledWith('new@example.com', 'Hi', 'Hello there', undefined);
+  });
+
+  it('composes via Resend from a custom heypubli sender', async () => {
+    state.channels = { row: null };
+    state.contacts = { row: { id: 'ct-new' } };
+    state.conversations = { row: { id: 'newconv-2' } };
+    const handler = await loadCompose();
+    const res = await handler(composeReq({ to: 'new@example.com', subject: 'Hi', body: 'Hello there', sender: 'resend', from: 'Elsie Brown <elsie.brown@heypubli.com>' }));
+    expect(res.status).toBe(200);
+    expect(resendSend).toHaveBeenCalledWith('new@example.com', 'Hi', 'Hello there', 'Elsie Brown <elsie.brown@heypubli.com>');
+  });
+
+  it('rejects a compose with a disallowed From domain', async () => {
+    const handler = await loadCompose();
+    const res = await handler(composeReq({ to: 'new@example.com', subject: 'Hi', body: 'Hello there', sender: 'resend', from: 'Spoof <ceo@somebank.com>' }));
+    expect(res.status).toBe(400);
+    expect(resendSend).not.toHaveBeenCalled();
   });
 
   it('rejects a compose with missing recipient', async () => {
