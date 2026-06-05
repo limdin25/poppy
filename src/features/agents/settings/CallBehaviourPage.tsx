@@ -7,6 +7,7 @@ import { Switch } from '@/core/ui/Switch'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useDefaultAgent } from '../hooks/useDefaultAgent'
 import { FullPromptEditor } from './FullPromptEditor'
+import { ConfigBackups } from './ConfigBackups'
 
 /**
  * Call behaviour — the voice-call feel settings that used to live only in
@@ -143,6 +144,8 @@ export default function CallBehaviourPage() {
 
   return (
     <div className="space-y-6">
+      <ConfigBackups agentId={agent?.id} session={session} />
+
       <SectionCard eyebrow="Calls" title="Voice" action={<Phone size={16} className="text-ink-subtle" />}>
         <div className="space-y-5">
           <div>

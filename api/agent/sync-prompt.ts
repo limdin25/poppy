@@ -214,6 +214,11 @@ export default async function handler(req: Request): Promise<Response> {
     const effectiveTimezone = (business as Record<string, unknown>).timezone as string || 'Europe/London';
     const effectiveWorkDays = (agentOverrides.working_days as string[]) || undefined;
 
+    // Personal-assistant mode: triggered by an [ASSISTANT_MODE] marker in the
+    // agent's own instructions. Strips all business/receptionist framing.
+    const assistantMode = /\[ASSISTANT_MODE\]/i.test(effectivePrompt || '');
+    const cleanPrompt = (effectivePrompt || '').replace(/\[ASSISTANT_MODE\]\s*/gi, '').trim();
+
     let prompt = buildSystemPrompt(
       biz,
       (services || []) as Service[],
@@ -223,10 +228,11 @@ export default async function handler(req: Request): Promise<Response> {
       knowledgeContent || undefined,
       effectiveTimezone,
       effectiveWorkDays,
+      assistantMode,
     );
 
-    if (effectivePrompt?.trim()) {
-      prompt += `\n\n## Custom instructions from the business owner\n${effectivePrompt.trim()}`;
+    if (cleanPrompt) {
+      prompt += `\n\n## ${assistantMode ? 'Extra instructions' : 'Custom instructions from the business owner'}\n${cleanPrompt}`;
     }
 
     const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';

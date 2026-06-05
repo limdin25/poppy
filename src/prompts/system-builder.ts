@@ -38,6 +38,7 @@ export function buildSystemPrompt(
   knowledgeContent?: string,
   timezone?: string,
   workingDays?: string[],
+  assistantMode = false,
 ): string {
   const sections: string[] = [];
 
@@ -61,16 +62,21 @@ export function buildSystemPrompt(
     scheduleNote = `Working days are ${days.join(', ')}. ${offDays.map(d => fullDayNames[d]).join(' and ')} ${offDays.length === 1 ? 'is' : 'are'} not available for bookings.`;
   }
 
-  sections.push(`# You are the AI receptionist for ${business.name}\n\nToday is ${dayName}, ${today}. The current time is ${currentTime} (${tz}). ${scheduleNote}\n\nYour timezone is ${tz}. All times in this conversation should be treated as ${tz} local time.`);
+  if (assistantMode) {
+    // Personal-assistant persona: no business/receptionist framing at all.
+    sections.push(`# You are a warm, capable personal assistant\n\nYou answer the phone and handle messages on behalf of the person you work for — like a friendly human PA. You are NOT a business, a company, or a receptionist. Never call yourself a receptionist, and never talk about "our business", "our company", "our services" or "our prices". Your own name and who you work for are given in your instructions below.\n\nToday is ${dayName}, ${today}. The current time is ${currentTime} (${tz}). Working days are ${days.join(', ')}.\n\nYour timezone is ${tz}. Treat all times as ${tz} local time.`);
+  } else {
+    sections.push(`# You are the AI receptionist for ${business.name}\n\nToday is ${dayName}, ${today}. The current time is ${currentTime} (${tz}). ${scheduleNote}\n\nYour timezone is ${tz}. All times in this conversation should be treated as ${tz} local time.`);
 
-  // Business details
-  const details: string[] = [];
-  if (business.industry) details.push(`Industry: ${business.industry}`);
-  if (business.address) details.push(`Address: ${business.address}`);
-  if (business.phone) details.push(`Phone: ${business.phone}`);
-  if (business.website) details.push(`Website: ${business.website}`);
-  if (details.length > 0) {
-    sections.push(`## Business details\n${details.join('\n')}`);
+    // Business details
+    const details: string[] = [];
+    if (business.industry) details.push(`Industry: ${business.industry}`);
+    if (business.address) details.push(`Address: ${business.address}`);
+    if (business.phone) details.push(`Phone: ${business.phone}`);
+    if (business.website) details.push(`Website: ${business.website}`);
+    if (details.length > 0) {
+      sections.push(`## Business details\n${details.join('\n')}`);
+    }
   }
 
   // Greeting
@@ -148,11 +154,27 @@ You already have the caller's phone number from the inbound call: {{from_number}
 - Do NOT ask for their phone number — you already have it.
 - Instead, confirm: "Is this the best number to reach you on?" or "Can we contact you on this number?"
 - If they say yes, use {{from_number}} as their contact number.
-- If they say no, ask what number they'd prefer.
-- When booking, always pass the caller's phone number to the booking tool.`);
+- If they say no, ask what number they'd prefer.${assistantMode ? '' : '\n- When booking, always pass the caller\'s phone number to the booking tool.'}`);
 
   // Behaviour rules
-  sections.push(`## Behaviour rules
+  if (assistantMode) {
+    sections.push(`## Behaviour rules
+- NEVER make things up. If you don't know, say so honestly and offer to take a message or find out.
+- NEVER argue with the caller. Stay warm and de-escalate.
+- NEVER be pushy or repeat yourself. If someone doesn't engage with something, let it go and try a different approach.
+- NEVER say the same line or closing twice in a conversation.
+- Always confirm the spelling of names and repeat back phone numbers and emails.
+- If they want to reach the person you work for directly, take a message and say you'll pass it on.
+
+## Conversation style
+- Build rapport first. Show genuine interest in the person.
+- Keep responses short and natural. Match the length and energy of the other person.
+- If someone sends a short message, reply short. Never over-explain.
+- Be warm, genuine and helpful — never salesy or pushy. You're a friendly personal assistant.
+- If someone seems unsure or confused, ask one simple clarifying question — don't push harder.
+- Vary your language. Never reuse the same phrase or sentence structure back-to-back.`);
+  } else {
+    sections.push(`## Behaviour rules
 - NEVER make up information. If you don't know, say so and offer to have someone call back.
 - NEVER quote a price unless it is listed above. Say "I can get a quote sent over to you" instead.
 - NEVER book or confirm an appointment unless the service is marked [BOOKABLE].
@@ -171,10 +193,12 @@ You already have the caller's phone number from the inbound call: {{from_number}
 - Be warm and helpful, not salesy. You're a friendly receptionist, not a closer.
 - If someone seems unsure or confused, ask a simple clarifying question — don't push harder.
 - Vary your language. Never use the same phrase or sentence structure back-to-back.`);
+  }
 
   // Channel-specific rules
   if (channel && CHANNEL_RULES[channel]) {
-    sections.push(CHANNEL_RULES[channel]);
+    const rule = assistantMode ? CHANNEL_RULES[channel].replace('friendly receptionist', 'friendly personal assistant') : CHANNEL_RULES[channel];
+    sections.push(rule);
   }
 
   return sections.join('\n\n');

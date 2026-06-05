@@ -72,6 +72,9 @@ export async function buildBusinessContext(businessId: string, opts?: { contactN
     .filter(Boolean)
     .join('\n\n');
 
+  const assistantMode = /\[ASSISTANT_MODE\]/i.test(effectivePrompt || '');
+  const cleanPrompt = (effectivePrompt || '').replace(/\[ASSISTANT_MODE\]\s*/gi, '').trim();
+
   let prompt = buildSystemPrompt(
     business,
     (svcRes.data || []) as Service[],
@@ -81,10 +84,11 @@ export async function buildBusinessContext(businessId: string, opts?: { contactN
     knowledgeContent || undefined,
     effectiveTimezone,
     effectiveWorkDays,
+    assistantMode,
   );
 
-  if (effectivePrompt?.trim()) {
-    prompt += `\n\n## Custom instructions from the business owner\n${effectivePrompt.trim()}`;
+  if (cleanPrompt) {
+    prompt += `\n\n## ${assistantMode ? 'Extra instructions' : 'Custom instructions from the business owner'}\n${cleanPrompt}`;
   }
 
   prompt += '\n\n## Formatting rules\n- NEVER use markdown formatting (no **, no ##, no bullet asterisks). Write plain text only.\n- NEVER use placeholders like [Name] or [Your Name].';
