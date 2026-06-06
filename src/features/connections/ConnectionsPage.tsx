@@ -273,28 +273,26 @@ function Tile({
   )
 }
 
-/** A connected account row (number/email) with a per-channel AI toggle + remove. */
-function ConnectedAccountRow({ label, onRemove, busy, aiEnabled, onToggleAi }: {
-  label: string
-  onRemove: () => void
-  busy: boolean
-  aiEnabled?: boolean | null
-  onToggleAi?: (enabled: boolean) => void
-}) {
+/** A connected account row (number/email) with a remove button. */
+function ConnectedAccountRow({ label, onRemove, busy }: { label: string; onRemove: () => void; busy: boolean }) {
   return (
     <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-page/50 px-3 py-2">
       <span className="min-w-0 truncate font-mono text-[12px] text-ink">{label}</span>
-      <div className="flex shrink-0 items-center gap-2.5">
-        {onToggleAi && (
-          <span className="flex items-center gap-1.5" title="When off, Elsie won't draft or auto-reply on this channel">
-            <span className="text-[11px] font-medium text-ink-muted">AI</span>
-            <Switch checked={aiEnabled !== false} onChange={onToggleAi} />
-          </span>
-        )}
-        <button onClick={onRemove} disabled={busy} className="rounded-md p-1 text-ink-subtle transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50" title="Remove">
-          {busy ? <Spinner /> : <Trash2 size={14} />}
-        </button>
-      </div>
+      <button onClick={onRemove} disabled={busy} className="shrink-0 rounded-md p-1 text-ink-subtle transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50" title="Remove">
+        {busy ? <Spinner /> : <Trash2 size={14} />}
+      </button>
+    </div>
+  )
+}
+
+/** A per-channel "AI replies" on/off toggle for a tile's extra slot. */
+function AiToggleRow({ on, onChange, note }: { on: boolean; onChange: (v: boolean) => void; note?: string }) {
+  return (
+    <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-page/50 px-3 py-2">
+      <span className="min-w-0 text-[12px] text-ink-muted">
+        AI replies <span className="text-ink-subtle">— {note || 'drafts & auto-replies'}</span>
+      </span>
+      <Switch checked={on} onChange={onChange} />
     </div>
   )
 }
@@ -353,12 +351,26 @@ export default function ConnectionsPage() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  // Turn Elsie's AI replies on/off for one channel (stops drafts + auto-replies).
-  async function setChannelAi(channelId: string, enabled: boolean) {
-    setChannels((prev) => prev.map((c) => (c.id === channelId ? { ...c, auto_reply_enabled: enabled } : c)))
-    const { error: err } = await supabase.from('channels').update({ auto_reply_enabled: enabled }).eq('id', channelId)
+  // Which channel rows belong to a tile's type ('email' covers gmail/outlook/smtp).
+  function channelsOfType(type: string): ChannelRow[] {
+    return channels.filter((c) => (type === 'email' ? c.type.startsWith('email') : c.type === type))
+  }
+  // AI is "on" unless at least one channel of that type is explicitly off.
+  function typeAiOn(type: string): boolean {
+    const rows = channelsOfType(type)
+    return !rows.some((c) => c.auto_reply_enabled === false)
+  }
+  // Turn Elsie's AI replies on/off for a whole channel type (stops drafts + auto-replies).
+  async function setTypeAi(type: string, enabled: boolean) {
+    const ids = channelsOfType(type).map((c) => c.id)
+    setChannels((prev) => prev.map((c) => (ids.includes(c.id) ? { ...c, auto_reply_enabled: enabled } : c)))
+    if (!ids.length) {
+      flash(enabled ? 'AI on.' : 'No connected account on this channel yet — nothing to draft.')
+      return
+    }
+    const { error: err } = await supabase.from('channels').update({ auto_reply_enabled: enabled }).in('id', ids)
     if (err) {
-      setChannels((prev) => prev.map((c) => (c.id === channelId ? { ...c, auto_reply_enabled: !enabled } : c)))
+      await loadStatus()
       setError('Could not update AI for that channel.')
     } else {
       flash(enabled ? 'AI replies turned on.' : 'AI replies turned off — no more drafts on this channel.')
@@ -529,16 +541,19 @@ export default function ConnectionsPage() {
           tile="bg-whatsapp/10 text-whatsapp"
           name="WhatsApp"
           description="Elsie answers, qualifies and books straight from WhatsApp."
-          extra={waChannels.map((c) => (
-            <ConnectedAccountRow
-              key={c.id}
-              label={c.config?.phone || 'Connected number'}
-              busy={connecting === `rm-${c.id}`}
-              onRemove={() => removeChannel(c.id, `rm-${c.id}`)}
-              aiEnabled={c.auto_reply_enabled}
-              onToggleAi={(v) => setChannelAi(c.id, v)}
-            />
-          ))}
+          extra={
+            <>
+              {waChannels.map((c) => (
+                <ConnectedAccountRow
+                  key={c.id}
+                  label={c.config?.phone || 'Connected number'}
+                  busy={connecting === `rm-${c.id}`}
+                  onRemove={() => removeChannel(c.id, `rm-${c.id}`)}
+                />
+              ))}
+              <AiToggleRow on={typeAiOn('whatsapp')} onChange={(v) => setTypeAi('whatsapp', v)} />
+            </>
+          }
         >
           {waChannels.length > 0 ? <ConnectedPill /> : <span className="text-[12px] text-ink-subtle">Not connected</span>}
           <button className={waChannels.length > 0 ? outlineBtn : primaryBtn} onClick={() => connectChannel('WHATSAPP', 'connect-wa')} disabled={connecting === 'connect-wa'}>
@@ -552,29 +567,24 @@ export default function ConnectionsPage() {
           tile="bg-rose-50 text-rose-600"
           name="Email"
           description="Two-way email — Elsie reads and replies from your inbox."
-          extra={emailChannels.map((c) => (
-            <ConnectedAccountRow
-              key={c.id}
-              label={c.config?.email || (c.type === 'email_outlook' ? 'Outlook account' : c.type === 'email_smtp' ? 'IMAP/SMTP account' : 'Gmail account')}
-              busy={connecting === `rm-${c.id}`}
-              onRemove={() => removeChannel(c.id, `rm-${c.id}`)}
-              aiEnabled={c.auto_reply_enabled}
-              onToggleAi={(v) => setChannelAi(c.id, v)}
-            />
-          ))}
+          extra={
+            <>
+              {emailChannels.map((c) => (
+                <ConnectedAccountRow
+                  key={c.id}
+                  label={c.config?.email || (c.type === 'email_outlook' ? 'Outlook account' : 'Gmail account')}
+                  busy={connecting === `rm-${c.id}`}
+                  onRemove={() => removeChannel(c.id, `rm-${c.id}`)}
+                />
+              ))}
+              <AiToggleRow on={typeAiOn('email')} onChange={(v) => setTypeAi('email', v)} />
+            </>
+          }
         >
           {emailChannels.length > 0 ? <ConnectedPill /> : <span className="text-[12px] text-ink-subtle">Not connected</span>}
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <button className={emailChannels.length > 0 ? outlineBtn : primaryBtn} onClick={() => connectChannel('GMAIL', 'connect-email-gmail')} disabled={connecting === 'connect-email-gmail'}>
-              {connecting === 'connect-email-gmail' ? <Spinner /> : 'Gmail'}
-            </button>
-            <button className={outlineBtn} onClick={() => connectChannel('OUTLOOK', 'connect-email-outlook')} disabled={connecting === 'connect-email-outlook'}>
-              {connecting === 'connect-email-outlook' ? <Spinner /> : 'Outlook'}
-            </button>
-            <button className={outlineBtn} onClick={() => connectChannel('SMTP', 'connect-email-smtp')} disabled={connecting === 'connect-email-smtp'}>
-              {connecting === 'connect-email-smtp' ? <Spinner /> : 'IMAP/SMTP'}
-            </button>
-          </div>
+          <button className={emailChannels.length > 0 ? outlineBtn : primaryBtn} onClick={() => connectChannel('GMAIL', 'connect-email')} disabled={connecting === 'connect-email'}>
+            {connecting === 'connect-email' ? <Spinner /> : emailChannels.length > 0 ? <><Plus size={14} /> Add another</> : 'Connect Gmail'}
+          </button>
         </Tile>
 
         {/* Email sending — Resend (branded send-as identities; no inbox needed) */}
@@ -591,6 +601,7 @@ export default function ConnectionsPage() {
                   <span className="shrink-0 text-[11px] font-medium text-emerald-600">Verified</span>
                 </div>
               ))}
+              <AiToggleRow on={typeAiOn('email')} onChange={(v) => setTypeAi('email', v)} note="auto-replies sent via Resend" />
             </div>
           }
         >
@@ -641,7 +652,12 @@ export default function ConnectionsPage() {
           tile="bg-purple-50 text-purple-600"
           name="SMS"
           description="Text confirmations and reminders to keep no-shows down."
-          extra={voiceConnected && voiceNumber ? <p className="mt-3 text-[12px] text-ink-subtle">Texts send from your voice number <span className="font-mono text-ink">{voiceNumber}</span>.</p> : null}
+          extra={
+            <>
+              {voiceConnected && voiceNumber ? <p className="mt-3 text-[12px] text-ink-subtle">Texts send from your voice number <span className="font-mono text-ink">{voiceNumber}</span>.</p> : null}
+              <AiToggleRow on={typeAiOn('sms')} onChange={(v) => setTypeAi('sms', v)} note="text auto-replies" />
+            </>
+          }
         >
           {voiceConnected ? (
             <>
@@ -688,16 +704,19 @@ export default function ConnectionsPage() {
           tile="bg-pink-50 text-pink-600"
           name="Instagram DM"
           description="Reply to DMs and turn comments into booked jobs."
-          extra={igChannels.map((c) => (
-            <ConnectedAccountRow
-              key={c.id}
-              label="Instagram account"
-              busy={connecting === `rm-${c.id}`}
-              onRemove={() => removeChannel(c.id, `rm-${c.id}`)}
-              aiEnabled={c.auto_reply_enabled}
-              onToggleAi={(v) => setChannelAi(c.id, v)}
-            />
-          ))}
+          extra={
+            <>
+              {igChannels.map((c) => (
+                <ConnectedAccountRow
+                  key={c.id}
+                  label="Instagram account"
+                  busy={connecting === `rm-${c.id}`}
+                  onRemove={() => removeChannel(c.id, `rm-${c.id}`)}
+                />
+              ))}
+              <AiToggleRow on={typeAiOn('instagram')} onChange={(v) => setTypeAi('instagram', v)} />
+            </>
+          }
         >
           {igChannels.length > 0 ? <ConnectedPill /> : <span className="text-[12px] text-ink-subtle">Not connected</span>}
           <button className={igChannels.length > 0 ? outlineBtn : primaryBtn} onClick={() => connectChannel('INSTAGRAM', 'connect-ig')} disabled={connecting === 'connect-ig'}>
