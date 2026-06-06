@@ -315,6 +315,7 @@ export default async function handler(req: Request): Promise<Response> {
       business_id: businessId,
       conversation_id: conversation?.id || null,
       contact_id: contactId,
+      agent_id: elsieAgentId || null,
       retell_call_id: call.call_id,
       direction: call.direction || 'inbound',
       status: 'completed',

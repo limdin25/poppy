@@ -19,6 +19,7 @@ import { cn } from '@/core/lib/cn'
 import { toCsv, downloadFile } from '@/core/lib/csv'
 import { useAnalyticsApi } from '@/core/hooks/useAnalyticsApi'
 import type { SummaryData, AiPerformance } from './types'
+import type { AgentMetrics } from './aggregateByAgent'
 
 interface VolumeResp { days: { date: string; messagesIn: number; messagesOut: number; calls: number }[] }
 interface HeatResp { grid: { dayOfWeek: number; hour: number; count: number }[] }
@@ -102,6 +103,7 @@ export default function AnalyticsPage() {
   const volumeQ = useAnalyticsApi<VolumeResp>('volume', { from, to, channel: channelParam }, { days: [] })
   const heatQ = useAnalyticsApi<HeatResp>('busiest-hours', { from, to }, { grid: [] })
   const latencyQ = useAnalyticsApi<LatencyResp>('latency', { from, to }, { count: 0, p50: null, p95: null, p99: null, histogram: [] })
+  const byNumberQ = useAnalyticsApi<{ rows: AgentMetrics[] }>('by-number', { from, to }, { rows: [] })
 
   const summary = summaryQ.data
   const ai = aiQ.data
@@ -390,6 +392,36 @@ export default function AnalyticsPage() {
       </SectionCard>
 
       {/* Volume chart — real per-day message volume */}
+      {byNumberQ.data.rows.length > 0 && (
+        <SectionCard eyebrow="Calls" title="By phone number & A/B voice" action={<BarChart3 size={16} className="text-ink-subtle" />}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-ink-subtle">
+                  <th className="pb-2 font-semibold">Number / variant</th>
+                  <th className="pb-2 text-right font-semibold">Calls</th>
+                  <th className="pb-2 text-right font-semibold">Bookings</th>
+                  <th className="pb-2 text-right font-semibold">Conversion</th>
+                  <th className="pb-2 text-right font-semibold">Avg hold</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byNumberQ.data.rows.map((r) => (
+                  <tr key={r.agentId} className="border-t border-border">
+                    <td className="py-2 pr-2 font-medium text-ink">{r.label}</td>
+                    <td className="py-2 text-right tabular-nums text-ink-muted">{r.calls}</td>
+                    <td className="py-2 text-right tabular-nums text-ink-muted">{r.bookings}</td>
+                    <td className="py-2 text-right tabular-nums font-semibold text-ink">{r.conversionPct}%</td>
+                    <td className="py-2 text-right tabular-nums text-ink-muted">{fmtSeconds(r.avgDurationSec)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-[11px] text-ink-subtle">Each number, plus the Emma (French) vs English A/B voices — who books more and holds calls longer.</p>
+        </SectionCard>
+      )}
+
       <SectionCard title="Message volume" eyebrow="Per day" action={<BarChart3 size={16} className="text-ink-subtle" />}>
         {volumeChart.length === 0 ? (
           <p className="py-8 text-center text-[13px] text-ink-subtle">No messages in this range yet.</p>

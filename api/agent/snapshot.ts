@@ -17,10 +17,12 @@ const DB_FIELDS = [
   'start_speaker', 'ambient_sound', 'backchannel_enabled', 'backchannel_frequency', 'begin_delay_ms',
   'end_silence_seconds', 'voicemail_hangup', 'allow_keypad', 'pronunciation_notes', 'working_days',
   'reminder_trigger_seconds', 'reminder_max_count',
+  'voice_model', 'voice_emotion', 'volume', 'enable_dynamic_voice_speed',
 ];
+// Retell-only fields the app doesn't store as agent columns (still captured on backup).
 const RETELL_FIELDS = [
-  'voice_temperature', 'voice_emotion', 'backchannel_words', 'ambient_sound_volume',
-  'enable_dynamic_responsiveness', 'enable_dynamic_voice_speed', 'volume',
+  'voice_temperature', 'backchannel_words', 'ambient_sound_volume',
+  'enable_dynamic_responsiveness',
 ];
 
 export const config = { runtime: 'edge' };

@@ -73,9 +73,12 @@ export async function ensureChannelAgents(businessId: string): Promise<Record<Ch
     }
   }
 
-  // Link connected channel rows to their channel's agent so inbound chats use it.
-  const { data: channels } = await supabase.from('channels').select('id, type').eq('business_id', businessId);
-  for (const c of (channels || []) as { id: string; type: string }[]) {
+  // Link only channels that don't yet have an agent. NEVER overwrite an existing
+  // link — multi-number lines each have their own agent (a number = an agent),
+  // and clobbering them here would point every number at one agent.
+  const { data: channels } = await supabase.from('channels').select('id, type, agent_id').eq('business_id', businessId);
+  for (const c of (channels || []) as { id: string; type: string; agent_id: string | null }[]) {
+    if (c.agent_id) continue;
     const key: ChannelKey | null =
       c.type === 'voice' ? 'voice'
       : c.type === 'whatsapp' ? 'whatsapp'

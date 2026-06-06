@@ -4,6 +4,7 @@ import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { EmptyState } from '@/core/ui/EmptyState'
 import { useCalls } from '@/core/hooks/useCalls'
+import { useVoiceLines } from '@/core/hooks/useVoiceLines'
 import type { Call } from '@/core/types/database'
 
 function formatDuration(seconds: number | null) {
@@ -41,7 +42,9 @@ export default function CallsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState<string>('All')
   const [search, setSearch] = useState('')
-  const { data: calls, loading } = useCalls()
+  const [numberFilter, setNumberFilter] = useState<string>('')
+  const { lines: voiceLines } = useVoiceLines()
+  const { data: calls, loading } = useCalls(numberFilter || null)
 
   const selected = calls.find((c) => c.id === selectedId)
 
@@ -106,6 +109,20 @@ export default function CallsPage() {
               </button>
             ))}
           </div>
+
+          {voiceLines.length > 1 && (
+            <select
+              value={numberFilter}
+              onChange={(e) => setNumberFilter(e.target.value)}
+              className="mt-2.5 h-8 w-full rounded-lg border border-border bg-surface px-2 text-[12px] text-ink outline-none focus:border-brand"
+              aria-label="Filter calls by number"
+            >
+              <option value="">All numbers</option>
+              {voiceLines.map((v) => (
+                <option key={v.id} value={v.id}>{v.label}{v.isDefault ? ' (default)' : ''}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 pb-4">

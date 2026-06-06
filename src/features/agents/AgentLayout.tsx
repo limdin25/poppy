@@ -7,6 +7,7 @@ import { Input } from '@/core/ui/Input'
 import { Select } from '@/core/ui/Select'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
+import { useVoiceLines } from '@/core/hooks/useVoiceLines'
 
 /**
  * AI Agent shared shell. Left sub-nav (Personality / Call behaviour / Goals /
@@ -38,6 +39,8 @@ export default function AgentLayout() {
   const { session } = useAuth()
 
   const channel = (CHANNELS.find((c) => c.key === searchParams.get('ch'))?.key) ?? 'voice'
+  const agentParam = searchParams.get('agent')
+  const { lines: voiceLines } = useVoiceLines()
   const [agentsByChannel, setAgentsByChannel] = useState<Record<string, string>>({})
   const [copySource, setCopySource] = useState('')
   const [copyBusy, setCopyBusy] = useState(false)
@@ -67,11 +70,36 @@ export default function AgentLayout() {
       }).catch(() => {})
   }, [session])
 
+  // Keep an agent pinned in the URL when on Calls, so every sub-page scopes to
+  // the same phone number. Defaults to the default voice line.
+  const selectedVoiceAgent = (channel === 'voice'
+    ? (agentParam && voiceLines.some((v) => v.id === agentParam) ? agentParam : (voiceLines.find((v) => v.isDefault)?.id ?? voiceLines[0]?.id))
+    : undefined) ?? ''
+
+  useEffect(() => {
+    if (channel === 'voice' && selectedVoiceAgent && agentParam !== selectedVoiceAgent) {
+      const next = new URLSearchParams(searchParams)
+      next.set('agent', selectedVoiceAgent)
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channel, selectedVoiceAgent])
+
   function setChannel(key: string) {
     const next = new URLSearchParams(searchParams)
     next.set('ch', key)
+    // Drop the pinned voice agent when leaving Calls — it would point at the
+    // wrong channel type otherwise.
+    if (key !== 'voice') next.delete('agent')
     setSearchParams(next, { replace: true })
     setCopyMsg(null); setCopyErr(null); setCopySource('')
+  }
+
+  function setVoiceAgent(id: string) {
+    const next = new URLSearchParams(searchParams)
+    next.set('ch', 'voice')
+    next.set('agent', id)
+    setSearchParams(next, { replace: true })
   }
 
   async function doCopy() {
@@ -117,7 +145,7 @@ export default function AgentLayout() {
               return (
                 <li key={n.to}>
                   <NavLink
-                    to={{ pathname: n.to, search: `?ch=${channel}` }}
+                    to={{ pathname: n.to, search: `?ch=${channel}${channel === 'voice' && selectedVoiceAgent ? `&agent=${selectedVoiceAgent}` : ''}` }}
                     className={({ isActive }) => cn('flex items-start gap-2.5 rounded-xl px-3 py-2.5 transition-colors', isActive ? 'bg-accent text-white' : 'text-ink hover:bg-elevated/60')}
                   >
                     {({ isActive }) => (
@@ -156,6 +184,24 @@ export default function AgentLayout() {
                 )
               })}
             </div>
+
+            {/* Phone number switcher — pick which number's agent you're editing. */}
+            {channel === 'voice' && voiceLines.length > 1 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                <Phone size={13} className="text-ink-subtle" />
+                <span className="text-[12px] text-ink-muted">Phone number</span>
+                <Select
+                  value={selectedVoiceAgent}
+                  onChange={(e) => setVoiceAgent(e.target.value)}
+                  className="h-8 w-auto min-w-[180px] text-[12.5px]"
+                >
+                  {voiceLines.map((v) => (
+                    <option key={v.id} value={v.id}>{v.label}{v.isDefault ? ' (default)' : ''}</option>
+                  ))}
+                </Select>
+                <span className="text-[11px] text-ink-subtle">Each number has its own voice & personality.</span>
+              </div>
+            )}
 
             {/* Copy from another channel */}
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">

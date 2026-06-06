@@ -38,6 +38,7 @@ import { CallRecordView } from '@/core/ui/CallRecordView'
 import { FilterChips } from '@/core/ui/FilterChips'
 import { Switch } from '@/core/ui/Switch'
 import { useConversations, useMessages, type ChannelFilter } from '@/core/hooks/useConversations'
+import { useVoiceLines } from '@/core/hooks/useVoiceLines'
 import { useQuickReplies, fillTokens, type QuickReply } from '@/core/hooks/useQuickReplies'
 import { useTeamMembers, memberLabel } from '@/core/hooks/useTeamMembers'
 import { useDeals, usePipelineStages } from '@/core/hooks/usePipeline'
@@ -197,6 +198,7 @@ function initialsOf(name: string): string {
 export default function InboxPage() {
   const [folder, setFolder] = useState<InboxFolder>('inbox')
   const [channelTab, setChannelTab] = useState<ChannelFilter>('all')
+  const [numberFilter, setNumberFilter] = useState<string>('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [sortMode, setSortMode] = useState<InboxSortMode>('recent')
@@ -204,6 +206,7 @@ export default function InboxPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const { data: conversations, loading } = useConversations('all')
+  const { lines: voiceLines } = useVoiceLines()
   const { session, user, businessId } = useAuth()
   const uid = user?.id ?? null
   const currency = useCurrency()
@@ -315,9 +318,13 @@ export default function InboxPage() {
     const ch = c.channel as ChannelFilter
     if (ch !== 'all' && ch in channelCounts) channelCounts[ch]++
   }
-  const visible = channelTab === 'all'
+  const visibleByChannel = channelTab === 'all'
     ? inFolderConvos
     : inFolderConvos.filter((c) => c.channel === channelTab)
+  // Per-number filter: each phone number is its own agent row.
+  const visible = numberFilter
+    ? visibleByChannel.filter((c) => c.agent_id === numberFilter)
+    : visibleByChannel
 
   // Search + sort (pinned first). Each row carries its source Conversation.
   const orderedRows = searchAndSort(
@@ -439,6 +446,19 @@ export default function InboxPage() {
               value={channelTab}
               onChange={(v) => { setChannelTab(v as ChannelFilter); setSelectedId(null) }}
             />
+            {voiceLines.length > 1 && (
+              <select
+                value={numberFilter}
+                onChange={(e) => { setNumberFilter(e.target.value); setSelectedId(null) }}
+                className="h-8 w-full rounded-lg border border-border bg-surface px-2 text-[12px] text-ink outline-none focus:border-accent"
+                aria-label="Filter by phone number"
+              >
+                <option value="">All numbers</option>
+                {voiceLines.map((v) => (
+                  <option key={v.id} value={v.id}>{v.label}{v.isDefault ? ' (default)' : ''}</option>
+                ))}
+              </select>
+            )}
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle" />

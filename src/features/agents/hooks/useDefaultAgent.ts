@@ -18,6 +18,10 @@ export function useDefaultAgent() {
   const [searchParams] = useSearchParams()
   const channel = searchParams.get('ch')
   const scoped = channel && CHANNEL_TYPES.includes(channel) ? channel : null
+  // Optional: pin to a specific agent row (e.g. a specific phone number's voice
+  // agent, chosen in the number switcher). Honoured only when it matches the
+  // current channel type, so switching channels can't load the wrong agent.
+  const pinnedAgentId = searchParams.get('agent')
 
   const [agent, setAgent] = useState<Agent | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,16 +49,21 @@ export function useDefaultAgent() {
         }).catch(() => {})
         rows = await fetchRows()
       }
-      const chosen = scoped
-        ? (rows.find((a) => a.agent_type === scoped) ?? rows.find((a) => a.is_default) ?? rows[0] ?? null)
-        : (rows.find((a) => a.is_default) ?? rows.find((a) => a.agent_type === 'whatsapp') ?? rows[0] ?? null)
+      // A pinned agent wins when it exists and matches the current channel type.
+      const pinned = pinnedAgentId
+        ? rows.find((a) => a.id === pinnedAgentId && (!scoped || a.agent_type === scoped))
+        : undefined
+      const chosen = pinned
+        ?? (scoped
+          ? (rows.find((a) => a.agent_type === scoped) ?? rows.find((a) => a.is_default) ?? rows[0] ?? null)
+          : (rows.find((a) => a.is_default) ?? rows.find((a) => a.agent_type === 'whatsapp') ?? rows[0] ?? null))
       setAgent(chosen)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load agent')
     } finally {
       setLoading(false)
     }
-  }, [businessId, scoped, session])
+  }, [businessId, scoped, session, pinnedAgentId])
 
   useEffect(() => { load() }, [load])
 

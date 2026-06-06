@@ -1140,40 +1140,46 @@ export default async function handler(req: Request): Promise<Response> {
         return new Response(JSON.stringify({ ok: true, skipped: 'contact failed' }), { status: 200 });
       }
 
-      // For email: each unique subject thread = separate conversation
-      // Normalise subject for matching (strip Re:/Fwd: prefixes)
+      // Thread by the provider's thread id (a reply joins its original even from
+      // a different address); fall back to the contact's open email thread so the
+      // same person stays in one inbox thread. Subject is only a label.
       const normalSubject = emailSubject
         .replace(/^(Re|Fwd|Fw):\s*/gi, '')
         .trim()
         .toLowerCase() || null;
+      const emailThreadId = (payload.thread_id || '').toString() || null;
 
       let conversationId: string | null = null;
       let existingConvo: { id: string; unread_count: number; ai_handling: boolean } | null = null;
 
-      if (normalSubject) {
-        const { data: threadConvo } = await supabase
+      if (emailThreadId) {
+        const { data: byThread } = await supabase
           .from('conversations')
           .select('id, unread_count, ai_handling')
           .eq('business_id', businessId)
-          .eq('contact_id', contactId)
           .eq('channel', 'email')
-          .eq('status', 'open')
-          .ilike('subject', normalSubject)
+          .eq('email_thread_id', emailThreadId)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
-        existingConvo = threadConvo;
+        existingConvo = byThread;
       }
 
-      if (!existingConvo && !normalSubject) {
-        const { data: fallbackConvo } = await supabase
+      if (!existingConvo) {
+        const { data: byContact } = await supabase
           .from('conversations')
           .select('id, unread_count, ai_handling')
           .eq('business_id', businessId)
           .eq('contact_id', contactId)
           .eq('channel', 'email')
           .eq('status', 'open')
-          .is('subject', null)
+          .order('last_message_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
-        existingConvo = fallbackConvo;
+        existingConvo = byContact;
+        if (byContact && emailThreadId) {
+          await supabase.from('conversations').update({ email_thread_id: emailThreadId }).eq('id', byContact.id);
+        }
       }
 
       if (existingConvo) {
@@ -1188,6 +1194,7 @@ export default async function handler(req: Request): Promise<Response> {
             status: 'open',
             ai_handling: true,
             subject: normalSubject,
+            email_thread_id: emailThreadId,
           })
           .select('id, unread_count')
           .single();

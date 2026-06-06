@@ -144,7 +144,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days, start_speaker, responsiveness, reminder_trigger_seconds, reminder_max_count, ambient_sound, full_prompt_override, backchannel_enabled, backchannel_frequency, begin_delay_ms, end_silence_seconds, voicemail_hangup, allow_keypad, pronunciation_notes')
+        .select('greeting, tone, ai_system_prompt, ai_model, voice_id, voice_speed, language, interruption_sensitivity, max_call_duration_seconds, post_call_analysis_model, working_days, start_speaker, responsiveness, reminder_trigger_seconds, reminder_max_count, ambient_sound, full_prompt_override, backchannel_enabled, backchannel_frequency, begin_delay_ms, end_silence_seconds, voicemail_hangup, allow_keypad, pronunciation_notes, voice_model, voice_emotion, volume, enable_dynamic_voice_speed')
         .eq('id', agentId)
         .single();
       if (agent) agentOverrides = agent;
@@ -261,7 +261,15 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
     // auto-assembled one. Editable from the "Full prompt" box in the app.
     const overrideRaw = agentOverrides.full_prompt_override as string | null | undefined;
     const isOverride = !!(overrideRaw && overrideRaw.trim());
-    const finalPrompt = isOverride ? (overrideRaw as string) : prompt;
+    let finalPrompt = isOverride ? (overrideRaw as string) : prompt;
+
+    // Hand-written prompts can use {{current_date}} so relative days ("tomorrow",
+    // "Thursday") always resolve correctly. Replaced on every sync (the nightly
+    // cron keeps it fresh) with today's date in the business timezone.
+    const todayStr = new Intl.DateTimeFormat('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: effectiveTimezone,
+    }).format(new Date());
+    finalPrompt = finalPrompt.replace(/\{\{\s*current_date\s*\}\}/gi, todayStr);
 
     const aiModel = (agentOverrides.ai_model as string) || 'claude-sonnet-4-6';
     const llmPayload: Record<string, unknown> = {
@@ -302,10 +310,20 @@ ${webSearchEnabled ? '- **web_search** — look something up online when you gen
       const reminderSec = agentOverrides.reminder_trigger_seconds as number | null | undefined;
       const endSilenceSec = agentOverrides.end_silence_seconds as number | null | undefined;
       const voicemailHangup = agentOverrides.voicemail_hangup as boolean | null | undefined;
+      // voice_model + voice_emotion are only supported on Cartesia/Minimax voices;
+      // sending them to an 11labs/retell/openai voice can error, so gate by prefix.
+      const voiceId = (agentOverrides.voice_id as string) || '';
+      const supportsModelEmotion = /^(cartesia|minimax)-/i.test(voiceId);
       const agentPayload: Record<string, unknown> = {
         voice_id: (agentOverrides.voice_id as string) || undefined,
         voice_speed: (agentOverrides.voice_speed as number) || undefined,
         language: (agentOverrides.language as string) || 'en-GB',
+        // Cartesia/Minimax-only voice tuning (gated above).
+        voice_model: supportsModelEmotion ? ((agentOverrides.voice_model as string | null | undefined) ?? undefined) : undefined,
+        voice_emotion: supportsModelEmotion ? ((agentOverrides.voice_emotion as string | null | undefined) ?? undefined) : undefined,
+        // Provider-agnostic.
+        volume: (agentOverrides.volume as number | null | undefined) ?? undefined,
+        enable_dynamic_voice_speed: (agentOverrides.enable_dynamic_voice_speed as boolean | null | undefined) ?? undefined,
         interruption_sensitivity: (agentOverrides.interruption_sensitivity as number) ?? 0.9,
         max_call_duration_ms: ((agentOverrides.max_call_duration_seconds as number) ?? 3600) * 1000,
         post_call_analysis_model: (agentOverrides.post_call_analysis_model as string) || 'gpt-4.1-mini',

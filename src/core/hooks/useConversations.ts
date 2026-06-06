@@ -5,7 +5,7 @@ import type { Conversation, Message } from '@/core/types/database'
 
 export type ChannelFilter = 'all' | 'email' | 'whatsapp' | 'sms' | 'voice'
 
-export function useConversations(channelFilter: ChannelFilter = 'all') {
+export function useConversations(channelFilter: ChannelFilter = 'all', agentId: string | null = null) {
   const { businessId } = useAuth()
   const [data, setData] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
@@ -22,6 +22,10 @@ export function useConversations(channelFilter: ChannelFilter = 'all') {
     if (channelFilter !== 'all') {
       query = query.eq('channel', channelFilter)
     }
+    // Per-number filter: each phone number is its own agent row.
+    if (agentId) {
+      query = query.eq('agent_id', agentId)
+    }
     const { data: rows, error } = await query.order('last_message_at', { ascending: false })
     const safe = error
       ? []
@@ -29,7 +33,7 @@ export function useConversations(channelFilter: ChannelFilter = 'all') {
     setData(safe as Conversation[])
     setLoading(false)
     hasFetched.current = true
-  }, [businessId, channelFilter])
+  }, [businessId, channelFilter, agentId])
 
   useEffect(() => {
     hasFetched.current = false

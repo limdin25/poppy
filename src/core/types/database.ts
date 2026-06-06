@@ -130,6 +130,10 @@ export interface Agent {
   working_days: string[] | null
   voice_id: string | null
   voice_speed: number | null
+  voice_model: string | null
+  voice_emotion: string | null
+  volume: number | null
+  enable_dynamic_voice_speed: boolean | null
   language: string | null
   interruption_sensitivity: number | null
   max_call_duration_seconds: number | null
@@ -243,6 +247,7 @@ export interface Call {
   business_id: string
   conversation_id: string | null
   contact_id: string | null
+  agent_id: string | null
   retell_call_id: string | null
   twilio_call_sid: string | null
   direction: string

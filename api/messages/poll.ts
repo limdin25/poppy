@@ -386,32 +386,54 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
 
     if (!contactId) { skipped++; continue; }
 
-    // Find or create conversation by subject thread
+    // Thread the email into ONE conversation. Prefer the provider's thread id
+    // (groups a reply with its original even when it comes from a different
+    // address, e.g. Elsie replying from hello@). Fall back to the contact's
+    // existing open email thread — same person stays in the same inbox thread.
     const normalSub = normalizeSubject(subject);
+    const threadId = (email.thread_id || email.thread || '').toString() || null;
     let conversationId: string | null = null;
     let convoAiHandling = true;
 
-    if (normalSub) {
-      const { data: threadConvo } = await supabase
+    if (threadId) {
+      const { data: byThread } = await supabase
+        .from('conversations')
+        .select('id, ai_handling')
+        .eq('business_id', businessId)
+        .eq('channel', 'email')
+        .eq('email_thread_id', threadId)
+        .order('last_message_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (byThread) {
+        conversationId = byThread.id;
+        convoAiHandling = byThread.ai_handling !== false;
+      }
+    }
+
+    if (!conversationId) {
+      const { data: byContact } = await supabase
         .from('conversations')
         .select('id, ai_handling')
         .eq('business_id', businessId)
         .eq('contact_id', contactId)
         .eq('channel', 'email')
         .eq('status', 'open')
-        .ilike('subject', normalSub)
+        .order('last_message_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
-
-      if (threadConvo) {
-        conversationId = threadConvo.id;
-        convoAiHandling = threadConvo.ai_handling !== false;
+      if (byContact) {
+        conversationId = byContact.id;
+        convoAiHandling = byContact.ai_handling !== false;
+        // Backfill the thread id so future replies on this thread match fast.
+        if (threadId) await supabase.from('conversations').update({ email_thread_id: threadId }).eq('id', byContact.id);
       }
     }
 
     if (!conversationId) {
       const { data: newConvo } = await supabase
         .from('conversations')
-        .insert({ business_id: businessId, contact_id: contactId, agent_id: (channel as any).agent_id || null, channel: 'email', status: 'open', ai_handling: true, subject: normalSub || null })
+        .insert({ business_id: businessId, contact_id: contactId, agent_id: (channel as any).agent_id || null, channel: 'email', status: 'open', ai_handling: true, subject: normalSub || null, email_thread_id: threadId })
         .select('id')
         .single();
       conversationId = newConvo?.id || null;

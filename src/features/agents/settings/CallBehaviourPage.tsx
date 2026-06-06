@@ -8,6 +8,7 @@ import { useAuth } from '@/core/auth/AuthProvider'
 import { useDefaultAgent } from '../hooks/useDefaultAgent'
 import { FullPromptEditor } from './FullPromptEditor'
 import { ConfigBackups } from './ConfigBackups'
+import { TestCallPanel } from './TestCallPanel'
 
 /**
  * Call behaviour — the voice-call feel settings that used to live only in
@@ -26,6 +27,7 @@ const AMBIENCE = [
 
 // Curated Retell voices (valid voice_ids). British first, then a few American.
 const VOICES = [
+  { id: 'cartesia-Emma', label: 'Emma — French-accented female, warm & charming' },
   { id: 'retell-Willa', label: 'Willa — British female, warm (default)' },
   { id: '11labs-Dorothy', label: 'Dorothy — British female, calm' },
   { id: '11labs-Amy', label: 'Amy — British female, bright' },
@@ -38,12 +40,23 @@ const VOICES = [
   { id: 'retell-Nico', label: 'Nico — American male' },
 ]
 
+// Cartesia voice emotions (only applied to cartesia-/minimax- voices).
+const EMOTIONS = [
+  { value: 'happy', label: 'Happy — bright and upbeat' },
+  { value: 'calm', label: 'Calm — relaxed and steady' },
+  { value: 'sympathetic', label: 'Sympathetic — warm and caring' },
+  { value: 'surprised', label: 'Surprised — lively' },
+]
+
 export default function CallBehaviourPage() {
   const { agent, businessId, loading, saveAgent } = useDefaultAgent()
   const { session } = useAuth()
 
   const [voiceId, setVoiceId] = useState('retell-Willa')
   const [voiceSpeed, setVoiceSpeed] = useState('1')
+  const [dynamicSpeed, setDynamicSpeed] = useState(false)
+  const [emotion, setEmotion] = useState('happy')
+  const [volume, setVolume] = useState('1')
   const [startSpeaker, setStartSpeaker] = useState('agent')
   const [interruption, setInterruption] = useState('0.7')
   const [responsiveness, setResponsiveness] = useState('0.7')
@@ -70,6 +83,9 @@ export default function CallBehaviourPage() {
     if (!agent) return
     setVoiceId(agent.voice_id || 'retell-Willa')
     setVoiceSpeed(String(agent.voice_speed ?? 1))
+    setDynamicSpeed(agent.enable_dynamic_voice_speed === true)
+    setEmotion(agent.voice_emotion || 'happy')
+    setVolume(String(agent.volume ?? 1))
     setStartSpeaker(agent.start_speaker || 'agent')
     setInterruption(String(agent.interruption_sensitivity ?? 0.7))
     setResponsiveness(String(agent.responsiveness ?? 0.7))
@@ -92,9 +108,14 @@ export default function CallBehaviourPage() {
     if (!agent || !businessId || !session) return
     setSaving(true); setSaved(false); setError(null)
     try {
+      const isCartesia = voiceId.startsWith('cartesia-')
       const ok = await saveAgent({
         voice_id: voiceId,
         voice_speed: Number(voiceSpeed),
+        enable_dynamic_voice_speed: dynamicSpeed,
+        voice_model: isCartesia ? 'sonic-3.5' : null,
+        voice_emotion: isCartesia ? emotion : null,
+        volume: Number(volume),
         start_speaker: startSpeaker,
         interruption_sensitivity: Number(interruption),
         responsiveness: Number(responsiveness),
@@ -144,6 +165,7 @@ export default function CallBehaviourPage() {
 
   return (
     <div className="space-y-6">
+      <TestCallPanel agentId={agent?.id} session={session} />
       <ConfigBackups agentId={agent?.id} session={session} />
 
       <SectionCard eyebrow="Calls" title="Voice" action={<Phone size={16} className="text-ink-subtle" />}>
@@ -158,12 +180,51 @@ export default function CallBehaviourPage() {
           </div>
           <div>
             <Label htmlFor="speed">Speaking speed</Label>
-            <Select id="speed" value={voiceSpeed} onChange={(e) => setVoiceSpeed(e.target.value)} className="max-w-[200px]">
-              <option value="0.9">Slower</option>
-              <option value="1">Normal</option>
-              <option value="1.1">Faster</option>
-            </Select>
+            <Input
+              id="speed"
+              type="number"
+              min={0.5}
+              max={2}
+              step={0.01}
+              value={voiceSpeed}
+              onChange={(e) => setVoiceSpeed(e.target.value)}
+              className="max-w-[140px]"
+            />
+            <p className="mt-1.5 text-[11px] text-ink-subtle">1.0 is normal. A touch slower (e.g. 0.88) keeps an accented voice crystal-clear.</p>
           </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-medium text-ink">Dynamically adjust speed</p>
+              <p className="mt-0.5 text-[12px] text-ink-subtle">Elsie speeds up or slows down to match the caller — sounds more natural.</p>
+            </div>
+            <Switch checked={dynamicSpeed} onChange={setDynamicSpeed} />
+          </div>
+
+          <div>
+            <Label htmlFor="volume">Voice volume</Label>
+            <Input
+              id="volume"
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={volume}
+              onChange={(e) => setVolume(e.target.value)}
+              className="max-w-[140px]"
+            />
+            <p className="mt-1.5 text-[11px] text-ink-subtle">1.0 is normal, up to 2.0 for a louder, more present voice.</p>
+          </div>
+
+          {voiceId.startsWith('cartesia-') && (
+            <div>
+              <Label htmlFor="emotion">Voice emotion</Label>
+              <Select id="emotion" value={emotion} onChange={(e) => setEmotion(e.target.value)} className="max-w-[260px]">
+                {EMOTIONS.map((em) => <option key={em.value} value={em.value}>{em.label}</option>)}
+              </Select>
+              <p className="mt-1.5 text-[11px] text-ink-subtle">The emotional colour of the voice (Emma / Cartesia voices only).</p>
+            </div>
+          )}
         </div>
       </SectionCard>
 

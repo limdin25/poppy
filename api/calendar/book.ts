@@ -119,6 +119,8 @@ export default async function handler(req: Request): Promise<Response> {
       business_id: businessId,
       contact_id: body.contact_id || null,
       conversation_id: body.conversation_id || null,
+      // Attribute the booking to the calling agent (number / A-B variant).
+      agent_id: reqUrl.searchParams.get('aid') || null,
       cal_booking_id: event?.id || null,
       title: `${body.service_name} - ${body.caller_name}`,
       description,
