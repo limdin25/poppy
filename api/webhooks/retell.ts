@@ -188,6 +188,40 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
 
+    // A/B voice rotation — flip the inbound agent on the channel so each voice
+    // gets exactly one call at a time (Emma → English → Emma → English…).
+    // Only runs when the channel has an ab_next_agent_id configured.
+    const { data: abChannel } = await supabase
+      .from('channels')
+      .select('id, config, ab_next_agent_id, agent:ab_next_agent_id(retell_agent_id)')
+      .eq('type', 'voice')
+      .filter('config->>retell_agent_id', 'in', `("${agentId}")`)
+      .maybeSingle();
+
+    if (abChannel?.ab_next_agent_id && (abChannel.agent as any)?.retell_agent_id) {
+      const nextRetellId = (abChannel.agent as any).retell_agent_id as string;
+      const phone = (abChannel.config as any)?.phone as string | undefined;
+      if (phone) {
+        // Switch Retell to use the next A/B agent for the next inbound call.
+        await fetch(`https://api.retellai.com/update-phone-number/${encodeURIComponent(phone)}`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${process.env.RETELL_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inbound_agent_id: nextRetellId }),
+        }).catch(() => {});
+        // Now rotate: set ab_next_agent_id to the agent that JUST answered (so next call uses the other).
+        const { data: justAnswered } = await supabase
+          .from('agents')
+          .select('id')
+          .eq('retell_agent_id', agentId)
+          .maybeSingle();
+        if (justAnswered) {
+          await supabase.from('channels')
+            .update({ ab_next_agent_id: justAnswered.id })
+            .eq('id', abChannel.id);
+        }
+      }
+    }
+
     // call_ended: process the call
     const { data: business } = await supabase
       .from('businesses')
