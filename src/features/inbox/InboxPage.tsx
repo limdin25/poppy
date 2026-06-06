@@ -26,10 +26,15 @@ import {
   Mail,
   MessageSquare,
   Phone,
+  Search,
+  Pin,
+  PinOff,
+  ArrowUpDown,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { MessageBubble } from '@/core/ui/MessageBubble'
+import { CallRecordView } from '@/core/ui/CallRecordView'
 import { FilterChips } from '@/core/ui/FilterChips'
 import { Switch } from '@/core/ui/Switch'
 import { useConversations, useMessages, type ChannelFilter } from '@/core/hooks/useConversations'
@@ -41,7 +46,8 @@ import { formatMoney, currencySymbol } from '@/core/lib/currency'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '@/core/ui/Dialog'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
-import type { Conversation, Message, Deal, PipelineStage } from '@/core/types/database'
+import { searchAndSort, type InboxSortMode } from '@/core/lib/inbox-list'
+import type { Conversation, Message, Deal, PipelineStage, Call } from '@/core/types/database'
 
 /**
  * Inbox — Elsie's "drafts a reply → you approve → it sends" flow.
@@ -78,6 +84,18 @@ function timeAgo(dateStr: string | null) {
   const days = Math.floor(hrs / 24)
   if (days < 7) return `${days}d`
   return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+// Absolute date + time, e.g. "6 Jun, 23:00" — shown on every chat so the
+// date of each call/message is always visible.
+function fullDateTime(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return (
+    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) +
+    ', ' +
+    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  )
 }
 
 function cleanPreview(text: string | null | undefined): string {
@@ -180,6 +198,9 @@ export default function InboxPage() {
   const [folder, setFolder] = useState<InboxFolder>('inbox')
   const [channelTab, setChannelTab] = useState<ChannelFilter>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [sortMode, setSortMode] = useState<InboxSortMode>('recent')
+  const [callWeights, setCallWeights] = useState<Record<string, number>>({})
   const [searchParams, setSearchParams] = useSearchParams()
 
   const { data: conversations, loading } = useConversations('all')
@@ -279,6 +300,9 @@ export default function InboxPage() {
     const next = c.status === 'closed' ? 'open' : 'closed'
     await supabase.from('conversations').update({ status: next }).eq('id', c.id)
   }
+  async function togglePin(c: Conversation) {
+    await supabase.from('conversations').update({ pinned: !c.pinned }).eq('id', c.id)
+  }
 
   const counts: Record<InboxFolder, number> = { inbox: 0, unread: 0, mine: 0, team: 0, archived: 0, closed: 0 }
   for (const c of conversations) {
@@ -294,6 +318,24 @@ export default function InboxPage() {
   const visible = channelTab === 'all'
     ? inFolderConvos
     : inFolderConvos.filter((c) => c.channel === channelTab)
+
+  // Search + sort (pinned first). Each row carries its source Conversation.
+  const orderedRows = searchAndSort(
+    visible.map((c) => ({
+      id: c.id,
+      name: displayName(c),
+      phone: c.contact?.phone ?? c.contact?.whatsapp ?? null,
+      whatsapp: c.contact?.whatsapp ?? null,
+      email: c.contact?.email ?? null,
+      preview: cleanPreview(c.last_message_preview),
+      lastMessageAt: c.last_message_at,
+      pinned: c.pinned ?? false,
+      weight: callWeights[c.id] ?? 0,
+      conv: c,
+    })),
+    search,
+    sortMode,
+  )
 
   // Deals linked to chats — show stage label + value on the card
   const { data: deals, refetch: refetchDeals } = useDeals()
@@ -320,6 +362,22 @@ export default function InboxPage() {
           if (!map[r.conversation_id] || r.send_at < map[r.conversation_id]) map[r.conversation_id] = r.send_at
         }
         setFollowupDue(map)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations])
+
+  // Longest-call weight per conversation (drives the "Longest" sort).
+  useEffect(() => {
+    const voiceIds = conversations.filter((c) => c.channel === 'voice').map((c) => c.id)
+    if (!voiceIds.length) { setCallWeights({}); return }
+    supabase.from('calls').select('conversation_id, duration_seconds').in('conversation_id', voiceIds)
+      .then(({ data }) => {
+        const map: Record<string, number> = {}
+        for (const r of (data ?? []) as { conversation_id: string | null; duration_seconds: number | null }[]) {
+          if (!r.conversation_id) continue
+          map[r.conversation_id] = Math.max(map[r.conversation_id] ?? 0, r.duration_seconds ?? 0)
+        }
+        setCallWeights(map)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations])
@@ -352,7 +410,7 @@ export default function InboxPage() {
               <h2 className="text-[17px] font-bold tracking-tight text-ink">{FOLDER_LABELS[folder]}</h2>
               <div className="flex items-center gap-1.5">
                 <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] font-medium text-ink-muted">
-                  {visible.length}
+                  {orderedRows.length}
                 </span>
                 <button
                   onClick={() => { setComposeOpen(true); setComposeErr(null) }}
@@ -381,6 +439,24 @@ export default function InboxPage() {
               value={channelTab}
               onChange={(v) => { setChannelTab(v as ChannelFilter); setSelectedId(null) }}
             />
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, number, message…"
+                  className="h-8 w-full rounded-lg border border-border bg-surface pl-8 pr-2 text-[12.5px] text-ink outline-none placeholder:text-ink-subtle focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+              </div>
+              <button
+                onClick={() => setSortMode((m) => (m === 'recent' ? 'longest' : 'recent'))}
+                title={sortMode === 'recent' ? 'Sorted by most recent — tap for longest first' : 'Sorted by longest first — tap for most recent'}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-[11.5px] font-medium text-ink-muted transition hover:bg-elevated hover:text-ink"
+              >
+                <ArrowUpDown size={13} /> {sortMode === 'recent' ? 'Recent' : 'Longest'}
+              </button>
+            </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-medium text-ink-subtle">Elsie replies (all chats)</span>
               <div ref={aiMenuRef} className="relative">
@@ -418,13 +494,15 @@ export default function InboxPage() {
               <div className="flex justify-center py-10">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
               </div>
-            ) : visible.length === 0 ? (
-              <p className="px-4 py-10 text-center text-[13px] text-ink-muted">No conversations here</p>
+            ) : orderedRows.length === 0 ? (
+              <p className="px-4 py-10 text-center text-[13px] text-ink-muted">{search.trim() ? 'No matches' : 'No conversations here'}</p>
             ) : (
-              visible.map((c) => {
+              orderedRows.map((row) => {
+                const c = row.conv
                 const name = displayName(c)
                 const chLabel = chLabelOf(c.channel)
                 const deal = dealFor(c)
+                const number = c.contact?.phone || c.contact?.whatsapp || null
                 return (
                   <div
                     key={c.id}
@@ -434,20 +512,29 @@ export default function InboxPage() {
                     onKeyDown={(e) => { if (e.key === 'Enter') setSelectedId(c.id) }}
                     className={cn(
                       'group relative flex w-full cursor-pointer items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-elevated/50',
-                      c.id === selectedId && 'bg-elevated/60'
+                      c.id === selectedId && 'bg-elevated/60',
+                      c.pinned && 'bg-amber-50/40'
                     )}
                   >
                     <Avatar src={c.contact?.avatar_url ?? undefined} name={name} channel={c.channel} size="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-[13.5px] font-medium text-ink">{name}</p>
+                        <p className="flex min-w-0 items-center gap-1 text-[13.5px] font-medium text-ink">
+                          {c.pinned && <Pin size={11} className="shrink-0 text-accent" />}
+                          <span className="truncate">{name}</span>
+                        </p>
                         <span className="shrink-0 text-[11px] text-ink-subtle">{timeAgo(c.last_message_at)}</span>
                       </div>
+                      {number && number !== name && (
+                        <p className="truncate text-[11px] text-ink-subtle">{number}</p>
+                      )}
                       <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">
                         {cleanPreview(c.last_message_preview)}
                       </p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10.5px] font-medium text-ink-subtle">via {chLabel}</span>
+                        <span className="text-[10.5px] font-medium text-ink-subtle">
+                          via {chLabel}{c.last_message_at ? ` · ${fullDateTime(c.last_message_at)}` : ''}
+                        </span>
                         {deal && (
                           <span className={cn('flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', tintOf(stageColorOf(deal.stage_id)).badge)} title={`Deal: ${deal.title}`}>
                             {stageName(deal.stage_id)} · {formatMoney(deal.value, currency)}
@@ -467,6 +554,13 @@ export default function InboxPage() {
                     </div>
                     {/* hover quick-actions */}
                     <div className="absolute right-2 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-lg border border-border bg-surface p-0.5 shadow-soft group-hover:flex">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void togglePin(c) }}
+                        title={c.pinned ? 'Unpin' : 'Pin to top'}
+                        className={cn('rounded-md p-1.5 hover:bg-elevated', c.pinned ? 'text-accent' : 'text-ink-subtle hover:text-ink')}
+                      >
+                        {c.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); void quickResolve(c) }}
                         title={c.status === 'closed' ? 'Reopen' : 'Mark resolved'}
@@ -607,6 +701,30 @@ export default function InboxPage() {
   )
 }
 
+/** Fetches the calls in a (threaded) voice conversation and shows each one's
+ *  recording + transcript, identical to the Calls tab. */
+function ConversationCallCards({ conversationId, contactName }: { conversationId: string; contactName: string }) {
+  const [calls, setCalls] = useState<Call[]>([])
+  useEffect(() => {
+    let active = true
+    supabase
+      .from('calls')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { if (active) setCalls((data as Call[]) ?? []) })
+    return () => { active = false }
+  }, [conversationId])
+  if (!calls.length) return null
+  return (
+    <>
+      {calls.map((call) => (
+        <CallRecordView key={call.id} call={call} contactName={contactName} />
+      ))}
+    </>
+  )
+}
+
 function ThreadView({
   conversation,
   onBack,
@@ -628,6 +746,9 @@ function ThreadView({
 }) {
   const [composer, setComposer] = useState('')
   const [emailSender, setEmailSender] = useState<'gmail' | 'resend'>('gmail')
+  const [replyFrom, setReplyFrom] = useState('Elsie <hello@heyelsie.com>')
+  const [replyFromCustom, setReplyFromCustom] = useState('')
+  const [channelFrom, setChannelFrom] = useState<string | null>(null)
   const [showQuick, setShowQuick] = useState(false)
   const [sending, setSending] = useState(false)
   const [approving, setApproving] = useState(false)
@@ -648,6 +769,28 @@ function ThreadView({
   const [assignOpen, setAssignOpen] = useState(false)
   const [aiOn, setAiOn] = useState(conversation.ai_handling !== false)
   const [stageId, setStageId] = useState<string | null>(deal?.stage_id ?? null)
+
+  // The number/handle we send from on this channel (WhatsApp / SMS / voice),
+  // shown above the composer so you always know which of your numbers replies go from.
+  useEffect(() => {
+    const ch = conversation.channel
+    if (ch !== 'whatsapp' && ch !== 'sms' && ch !== 'voice') { setChannelFrom(null); return }
+    let active = true
+    supabase
+      .from('channels')
+      .select('config')
+      .eq('business_id', conversation.business_id)
+      .eq('type', ch === 'voice' ? 'voice' : ch)
+      .eq('status', 'connected')
+      .then(({ data }) => {
+        if (!active) return
+        const phone = (data ?? [])
+          .map((r) => (r.config as { phone?: string } | null)?.phone)
+          .find(Boolean)
+        setChannelFrom(phone ?? null)
+      })
+    return () => { active = false }
+  }, [conversation.business_id, conversation.channel])
 
   // Each conversation opens in Reply mode; load its note history for the Note tab.
   useEffect(() => {
@@ -810,7 +953,15 @@ function ThreadView({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ conversationId: conversation.id, body, sender: emailSender }),
+        body: JSON.stringify({
+          conversationId: conversation.id,
+          body,
+          sender: emailSender,
+          from:
+            conversation.channel === 'email' && emailSender === 'resend'
+              ? (replyFrom === '__custom__' ? replyFromCustom.trim() : replyFrom)
+              : undefined,
+        }),
       })
       if (!res.ok) throw new Error('Send failed')
       // If a pending AI draft existed, the user just sent their own reply instead — clear it.
@@ -822,7 +973,7 @@ function ThreadView({
     } finally {
       setSending(false)
     }
-  }, [composer, sending, session?.access_token, conversation.id, refetchMessages, draftMsg, emailSender])
+  }, [composer, sending, session?.access_token, conversation.id, conversation.channel, refetchMessages, draftMsg, emailSender, replyFrom, replyFromCustom])
 
   const approveDraft = useCallback(async (messageId: string) => {
     setApproving(true)
@@ -878,6 +1029,12 @@ function ThreadView({
         <Avatar src={conversation.contact?.avatar_url ?? undefined} name={name} channel={conversation.channel} size="md" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[14px] font-semibold text-ink">{name}</p>
+          {(() => {
+            const num = conversation.contact?.phone || conversation.contact?.whatsapp
+            return num && num !== name ? (
+              <p className="truncate text-[11.5px] text-ink-muted">{num}</p>
+            ) : null
+          })()}
           <p className="text-[11.5px] text-ink-subtle">
             via {chLabelOf(conversation.channel)}{conversation.status === 'needs_handoff' ? ' · needs handoff' : ''}
           </p>
@@ -958,33 +1115,41 @@ function ThreadView({
           <div className="flex justify-center py-10">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           </div>
-        ) : messages.length === 0 ? (
-          <p className="py-10 text-center text-[13px] text-ink-muted">No messages yet</p>
         ) : (
-          messages
-            .filter((m) => m.status !== 'draft')
-            .map((m) => (
-              <MessageBubble
-                key={m.id}
-                sender={senderLabel(m)}
-                text={m.body ?? ''}
-                timestamp={m.created_at}
-                contactLabel={conversation.is_group && m.sender_name ? m.sender_name : name}
-                mediaUrl={m.media_url}
-                contentType={m.content_type}
-                metadata={
-                  m.metadata
-                    ? {
-                        has_attachments: (m.metadata as any).has_attachments,
-                        attachments: (m.metadata as any).attachments,
-                        external_id: (m.metadata as any).external_id,
-                        body_html: (m.metadata as any).body_html,
-                        reactions: (m.metadata as any).reactions,
-                      }
-                    : undefined
-                }
-              />
-            ))
+          <>
+            {/* Voice threads: show each call's recording + transcript, exactly like the Calls tab */}
+            {conversation.channel === 'voice' && (
+              <ConversationCallCards conversationId={conversation.id} contactName={name} />
+            )}
+            {messages
+              .filter((m) => m.status !== 'draft' && !(conversation.channel === 'voice' && m.content_type === 'call_summary'))
+              .map((m) => (
+                <MessageBubble
+                  key={m.id}
+                  sender={senderLabel(m)}
+                  text={m.body ?? ''}
+                  timestamp={m.created_at}
+                  contactLabel={conversation.is_group && m.sender_name ? m.sender_name : name}
+                  mediaUrl={m.media_url}
+                  contentType={m.content_type}
+                  metadata={
+                    m.metadata
+                      ? {
+                          has_attachments: (m.metadata as any).has_attachments,
+                          attachments: (m.metadata as any).attachments,
+                          external_id: (m.metadata as any).external_id,
+                          body_html: (m.metadata as any).body_html,
+                          reactions: (m.metadata as any).reactions,
+                        }
+                      : undefined
+                  }
+                />
+              ))}
+            {conversation.channel !== 'voice' &&
+              messages.filter((m) => m.status !== 'draft').length === 0 && (
+                <p className="py-10 text-center text-[13px] text-ink-muted">No messages yet</p>
+              )}
+          </>
         )}
         {/* Draft banner — Elsie's pending reply, inline at the end of the thread */}
         {draftMsg && (
@@ -1172,9 +1337,37 @@ function ThreadView({
                   </button>
                 ))}
               </div>
-              <span className="text-ink-subtle">
-                {emailSender === 'resend' ? 'from hello@heyelsie.com' : 'from your connected inbox'}
-              </span>
+              {emailSender === 'resend' ? (
+                <span className="inline-flex items-center gap-1">
+                  from
+                  <select
+                    value={replyFrom}
+                    onChange={(e) => setReplyFrom(e.target.value)}
+                    className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[11.5px] text-ink outline-none focus:border-accent"
+                  >
+                    <option value="Elsie <hello@heyelsie.com>">hello@heyelsie.com</option>
+                    <option value="Elsie <hello@heypubli.com>">hello@heypubli.com</option>
+                    <option value="__custom__">Custom…</option>
+                  </select>
+                  {replyFrom === '__custom__' && (
+                    <input
+                      value={replyFromCustom}
+                      onChange={(e) => setReplyFromCustom(e.target.value)}
+                      placeholder="Name <you@domain.com>"
+                      className="w-48 rounded-md border border-border bg-surface px-1.5 py-0.5 text-[11.5px] text-ink outline-none focus:border-accent"
+                    />
+                  )}
+                </span>
+              ) : (
+                <span>from your connected inbox</span>
+              )}
+            </div>
+          )}
+          {channelFrom && (conversation.channel === 'whatsapp' || conversation.channel === 'sms' || conversation.channel === 'voice') && (
+            <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-ink-subtle">
+              {conversation.channel === 'whatsapp' ? <MessageCircle size={11} /> : <Phone size={11} />}
+              <span className="font-medium">Sending from</span>
+              <span className="text-ink">{channelFrom}</span>
             </div>
           )}
           <div className="flex items-end gap-2">

@@ -27,6 +27,8 @@ export default async function handler(req: Request): Promise<Response> {
     // Which email transport to use ('gmail' = via the connected Unipile inbox, 'resend' = via Resend).
     // Only meaningful for email conversations; ignored for WhatsApp/SMS.
     let sender: string | undefined;
+    // Optional override of the Resend "from" address (e.g. Elsie <hello@heypubli.com>).
+    let fromAddress: string | undefined;
     const attachmentBuffers: { name: string; buffer: ArrayBuffer; type: string }[] = [];
 
     const contentType = req.headers.get('content-type') || '';
@@ -37,6 +39,7 @@ export default async function handler(req: Request): Promise<Response> {
       body = formData.get('body') as string;
       subject = (formData.get('subject') as string) || undefined;
       sender = (formData.get('sender') as string) || undefined;
+      fromAddress = (formData.get('from') as string) || undefined;
       const files = formData.getAll('attachments') as File[];
       for (const file of files) {
         attachmentBuffers.push({
@@ -51,6 +54,7 @@ export default async function handler(req: Request): Promise<Response> {
       body = json.body;
       subject = json.subject;
       sender = json.sender;
+      fromAddress = json.from;
     }
 
     if (!conversationId || !body) {
@@ -182,7 +186,7 @@ export default async function handler(req: Request): Promise<Response> {
       // attachments aren't supported on this path — text body only.
       const html = body.replace(/\n/g, '<br>');
       try {
-        const sent = await sendResendEmail(recipient, emailSubject, html);
+        const sent = await sendResendEmail(recipient, emailSubject, html, fromAddress);
         externalId = sent.id ?? null;
       } catch (e: any) {
         return new Response(

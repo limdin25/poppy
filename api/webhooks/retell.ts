@@ -250,23 +250,59 @@ export default async function handler(req: Request): Promise<Response> {
 
     const hasBooking = !!recentBooking;
 
-    // Create conversation — open if no booking (eligible for follow-up), closed if booked
+    // Thread calls from the same caller: reuse their existing voice conversation
+    // instead of spawning a new chat for every call. Only create one when the
+    // caller has no contact yet, or has no prior voice thread.
     const durationSec = Math.round(durationMs / 1000);
-    const { data: conversation } = await supabase
-      .from('conversations')
-      .insert({
-        business_id: businessId,
-        contact_id: contactId,
-        agent_id: elsieAgentId || null,
-        channel: 'voice',
-        status: hasBooking ? 'closed' : 'open',
-        last_message_at: new Date().toISOString(),
-        last_message_preview: info.summary || `Call lasted ${durationSec}s`,
-        unread_count: 1,
-        ai_handling: false,
-      })
-      .select('id')
-      .single();
+    const nowIso = new Date().toISOString();
+    const preview = info.summary || `Call lasted ${durationSec}s`;
+    const nextStatus = hasBooking ? 'closed' : 'open';
+
+    let conversation: { id: string } | null = null;
+    if (contactId) {
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id, unread_count')
+        .eq('business_id', businessId)
+        .eq('contact_id', contactId)
+        .eq('channel', 'voice')
+        .neq('status', 'archived')
+        .order('last_message_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        const { data: updated } = await supabase
+          .from('conversations')
+          .update({
+            last_message_at: nowIso,
+            last_message_preview: preview,
+            unread_count: (existing.unread_count || 0) + 1,
+            status: nextStatus,
+          })
+          .eq('id', existing.id)
+          .select('id')
+          .single();
+        conversation = updated ?? { id: existing.id };
+      }
+    }
+    if (!conversation) {
+      const { data: created } = await supabase
+        .from('conversations')
+        .insert({
+          business_id: businessId,
+          contact_id: contactId,
+          agent_id: elsieAgentId || null,
+          channel: 'voice',
+          status: nextStatus,
+          last_message_at: nowIso,
+          last_message_preview: preview,
+          unread_count: 1,
+          ai_handling: false,
+        })
+        .select('id')
+        .single();
+      conversation = created ?? null;
+    }
 
     // Transform transcript from Retell format {role,content} to UI format {speaker,text}
     const transcriptForUI = (call.transcript_object || []).map((t: any) => ({

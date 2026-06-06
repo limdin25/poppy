@@ -218,6 +218,7 @@ export interface Conversation {
   unipile_chat_id: string | null
   followups_enabled: boolean | null
   followup_sequence_id: string | null
+  pinned: boolean
   created_at: string
   contact?: Contact
 }
