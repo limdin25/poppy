@@ -33,10 +33,11 @@ export default async function handler(req: Request): Promise<Response> {
 
     const isGmail = provider === 'GMAIL';
     const isOutlook = provider === 'OUTLOOK';
+    const isSmtp = provider === 'SMTP' || provider === 'IMAP';
     const isInstagram = provider === 'INSTAGRAM';
-    const selectedProvider = isGmail ? 'GOOGLE' : isOutlook ? 'MICROSOFT' : isInstagram ? 'INSTAGRAM' : 'WHATSAPP';
-    const channelType = isGmail ? 'email_gmail' : isOutlook ? 'email_outlook' : isInstagram ? 'instagram' : 'whatsapp';
-    const providerLabel = isGmail ? 'Gmail' : isOutlook ? 'Outlook' : isInstagram ? 'Instagram' : 'WhatsApp';
+    const selectedProvider = isGmail ? 'GOOGLE' : isOutlook ? 'MICROSOFT' : isSmtp ? 'IMAP' : isInstagram ? 'INSTAGRAM' : 'WHATSAPP';
+    const channelType = isGmail ? 'email_gmail' : isOutlook ? 'email_outlook' : isSmtp ? 'email_smtp' : isInstagram ? 'instagram' : 'whatsapp';
+    const providerLabel = isGmail ? 'Gmail' : isOutlook ? 'Outlook' : isSmtp ? 'Email (IMAP/SMTP)' : isInstagram ? 'Instagram' : 'WhatsApp';
 
     const { data: business } = await supabase
       .from('businesses')
