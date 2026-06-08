@@ -188,22 +188,28 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
 
-    // A/B voice rotation — flip the inbound agent on the channel so each voice
-    // gets exactly one call at a time (Emma → English → Emma → English…).
+    // A/B voice rotation — flip the inbound agent on the line so each voice gets
+    // exactly one call at a time (Emma → English → Emma → English…). The line is
+    // found by the DIALLED number (call.to_number), NOT by which voice answered:
+    // matching on the answering agent only ever matches one fixed voice, so the
+    // rotation could flip away from it but never flip back, getting stuck.
     // Only runs when the channel has an ab_next_agent_id configured.
-    const { data: abChannel } = await supabase
-      .from('channels')
-      .select('id, config, ab_next_agent_id, agent:ab_next_agent_id(retell_agent_id)')
-      .eq('type', 'voice')
-      .filter('config->>retell_agent_id', 'in', `("${agentId}")`)
-      .maybeSingle();
+    const toNumber: string | undefined = call.to_number;
+    if (toNumber) {
+      const { data: abChannels } = await supabase
+        .from('channels')
+        .select('id, config, ab_next_agent_id, agent:ab_next_agent_id(retell_agent_id)')
+        .eq('type', 'voice')
+        .eq('config->>phone', toNumber);
 
-    if (abChannel?.ab_next_agent_id && (abChannel.agent as any)?.retell_agent_id) {
-      const nextRetellId = (abChannel.agent as any).retell_agent_id as string;
-      const phone = (abChannel.config as any)?.phone as string | undefined;
-      if (phone) {
+      const abChannel = (abChannels || []).find(
+        (c: any) => c.ab_next_agent_id && c.agent?.retell_agent_id,
+      );
+
+      if (abChannel) {
+        const nextRetellId = (abChannel.agent as any).retell_agent_id as string;
         // Switch Retell to use the next A/B agent for the next inbound call.
-        await fetch(`https://api.retellai.com/update-phone-number/${encodeURIComponent(phone)}`, {
+        await fetch(`https://api.retellai.com/update-phone-number/${encodeURIComponent(toNumber)}`, {
           method: 'PATCH',
           headers: { Authorization: `Bearer ${process.env.RETELL_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ inbound_agent_id: nextRetellId }),
