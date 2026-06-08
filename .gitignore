@@ -9,3 +9,7 @@ dist/
 tests/e2e/.auth/
 playwright-report/
 test-results/
+
+# Claude Code local state (personal, not shared)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
