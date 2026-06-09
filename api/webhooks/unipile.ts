@@ -1195,6 +1195,7 @@ export default async function handler(req: Request): Promise<Response> {
             ai_handling: true,
             subject: normalSubject,
             email_thread_id: emailThreadId,
+            received_address: ownEmail || null,
           })
           .select('id, unread_count')
           .single();
@@ -1245,6 +1246,7 @@ export default async function handler(req: Request): Promise<Response> {
           attachments: attachments,
           date: emailDate,
           origin,
+          via: 'unipile_email_webhook',
           is_spam: emailIsSpam,
           body_html: htmlBody.includes('<') ? htmlBody.slice(0, 50000) : null,
         },
@@ -1259,6 +1261,7 @@ export default async function handler(req: Request): Promise<Response> {
           last_message_at: emailDate,
           last_message_preview: preview,
           unread_count: isOutbound ? currentUnread : currentUnread + 1,
+          ...(ownEmail ? { received_address: ownEmail } : {}),
         })
         .eq('id', conversationId);
 

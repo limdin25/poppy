@@ -278,6 +278,7 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
+    let createdConversation = false;
     if (!conversationId) {
       const { data: newConvo } = await supabase
         .from('conversations')
@@ -291,10 +292,12 @@ export default async function handler(req: Request): Promise<Response> {
           subject: normalSub || null,
           email_thread_id: messageId || receivedId || null,
           received_address: receivedAddress,
+          unread_count: 1,
         })
         .select('id')
         .single();
       conversationId = newConvo?.id || null;
+      createdConversation = true;
     }
     if (!conversationId) {
       return new Response(JSON.stringify({ ok: true, note: 'no conversation' }), { status: 200 });
@@ -335,12 +338,24 @@ export default async function handler(req: Request): Promise<Response> {
       created_at: createdAt,
     }).select('id').single();
 
+    // Bump unread for existing threads (a freshly created one starts at 1).
+    let nextUnread: number | undefined;
+    if (!createdConversation) {
+      const { data: convRow } = await supabase
+        .from('conversations')
+        .select('unread_count')
+        .eq('id', conversationId)
+        .single();
+      nextUnread = (convRow?.unread_count ?? 0) + 1;
+    }
+
     await supabase
       .from('conversations')
       .update({
         last_message_at: createdAt,
         last_message_preview: preview,
         ...(receivedAddress ? { received_address: receivedAddress } : {}),
+        ...(nextUnread !== undefined ? { unread_count: nextUnread } : {}),
       })
       .eq('id', conversationId);
 

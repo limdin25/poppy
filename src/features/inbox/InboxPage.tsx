@@ -30,12 +30,17 @@ import {
   Pin,
   PinOff,
   ArrowUpDown,
+  Inbox as InboxIcon,
+  CircleDot,
+  User,
+  Users,
+  MailOpen,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { Avatar } from '@/core/ui/Avatar'
 import { MessageBubble } from '@/core/ui/MessageBubble'
 import { CallRecordView } from '@/core/ui/CallRecordView'
-import { FilterChips } from '@/core/ui/FilterChips'
+import { IconTabs } from '@/core/ui/IconTabs'
 import { Switch } from '@/core/ui/Switch'
 import { useConversations, useMessages, type ChannelFilter } from '@/core/hooks/useConversations'
 import { useVoiceLines } from '@/core/hooks/useVoiceLines'
@@ -117,27 +122,31 @@ export type InboxFolder = 'inbox' | 'unread' | 'mine' | 'team' | 'archived' | 'c
 const FOLDER_LABELS: Record<InboxFolder, string> = {
   inbox: 'Inbox',
   unread: 'Unread',
-  mine: 'Mine',
-  team: 'Team',
+  mine: 'Assigned to me',
+  team: 'Assigned to team',
   archived: 'Archived',
   closed: 'Closed',
 }
 
-// Full names for tooltips where the compact label needs explaining.
-const FOLDER_TITLES: Partial<Record<InboxFolder, string>> = {
-  mine: 'Assigned to me',
-  team: 'Assigned to team',
+// Icon-only folder rail — the selected folder's full name shows in the title.
+const FOLDER_ICONS: Record<InboxFolder, ReactNode> = {
+  inbox: <InboxIcon size={15} />,
+  unread: <CircleDot size={15} />,
+  mine: <User size={15} />,
+  team: <Users size={15} />,
+  archived: <Archive size={15} />,
+  closed: <CheckCircle2 size={15} />,
 }
 
 const FOLDER_ORDER: InboxFolder[] = ['inbox', 'unread', 'mine', 'team', 'archived', 'closed']
 
-// Channel tabs for the chat list — lets you view one channel at a time.
+// Channel rail — icon-only, brand-tinted so each channel reads at a glance.
 const CHANNEL_TABS: { value: ChannelFilter; label: string; icon: ReactNode }[] = [
-  { value: 'all', label: 'All', icon: null },
-  { value: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle size={13} /> },
-  { value: 'email', label: 'Email', icon: <Mail size={13} /> },
-  { value: 'sms', label: 'SMS', icon: <MessageSquare size={13} /> },
-  { value: 'voice', label: 'Calls', icon: <Phone size={13} /> },
+  { value: 'all', label: 'All channels', icon: <span className="text-[11px] font-semibold leading-none">All</span> },
+  { value: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle size={15} className="text-emerald-600" /> },
+  { value: 'email', label: 'Email', icon: <Mail size={15} className="text-sky-600" /> },
+  { value: 'sms', label: 'SMS', icon: <MessageSquare size={15} className="text-amber-600" /> },
+  { value: 'voice', label: 'Calls', icon: <Phone size={15} className="text-indigo-600" /> },
 ]
 
 function inFolder(c: Conversation, folder: InboxFolder, uid: string | null): boolean {
@@ -313,6 +322,21 @@ export default function InboxPage() {
   async function togglePin(c: Conversation) {
     await supabase.from('conversations').update({ pinned: !c.pinned }).eq('id', c.id)
   }
+  // Opening a conversation marks it read — also clears the badge when a new
+  // message lands while the thread is already open.
+  useEffect(() => {
+    if (!selectedId) return
+    const sel = conversations.find((c) => c.id === selectedId)
+    if (sel && (sel.unread_count ?? 0) > 0) {
+      void supabase.from('conversations').update({ unread_count: 0 }).eq('id', selectedId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, conversations])
+  async function markUnread(c: Conversation) {
+    // Deselect first, otherwise the mark-read effect would clear it right back.
+    if (selectedId === c.id) setSelectedId(null)
+    await supabase.from('conversations').update({ unread_count: Math.max(1, c.unread_count || 0) }).eq('id', c.id)
+  }
 
   const counts: Record<InboxFolder, number> = { inbox: 0, unread: 0, mine: 0, team: 0, archived: 0, closed: 0 }
   for (const c of conversations) {
@@ -451,9 +475,14 @@ export default function InboxPage() {
         >
           <div className="space-y-2 border-b border-border px-3 py-2.5">
             <div className="flex items-center justify-between">
-              <h2 className="flex items-center gap-1.5 text-[15px] font-bold tracking-tight text-ink">
-                {FOLDER_LABELS[folder]}
-                <span className="rounded-full bg-elevated px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted">
+              <h2 className="flex min-w-0 items-center gap-1.5 text-[15px] font-bold tracking-tight text-ink">
+                <span className="truncate">
+                  {FOLDER_LABELS[folder]}
+                  {channelTab !== 'all' && (
+                    <span className="font-medium text-ink-muted"> · {CHANNEL_TABS.find((t) => t.value === channelTab)?.label}</span>
+                  )}
+                </span>
+                <span className="shrink-0 rounded-full bg-elevated px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted">
                   {orderedRows.length}
                 </span>
               </h2>
@@ -474,25 +503,13 @@ export default function InboxPage() {
                 </button>
               </div>
             </div>
-            <FilterChips
-              size="sm"
-              hideZeroCounts
-              options={FOLDER_ORDER.map((f) => ({ value: f, label: FOLDER_LABELS[f], count: counts[f], title: FOLDER_TITLES[f] }))}
+            <IconTabs
+              options={FOLDER_ORDER.map((f) => ({ value: f, icon: FOLDER_ICONS[f], title: FOLDER_LABELS[f], count: counts[f] }))}
               value={folder}
               onChange={(v) => { setFolder(v as InboxFolder); setSelectedId(null) }}
             />
-            <FilterChips
-              size="sm"
-              hideZeroCounts
-              options={CHANNEL_TABS.map((t) => ({
-                value: t.value,
-                // Icon-only channel chips keep the row to a single line; the
-                // tooltip carries the name.
-                label: t.icon ? '' : t.label,
-                icon: t.icon,
-                count: channelCounts[t.value],
-                title: t.label,
-              }))}
+            <IconTabs
+              options={CHANNEL_TABS.map((t) => ({ value: t.value, icon: t.icon, title: t.label, count: channelCounts[t.value] }))}
               value={channelTab}
               onChange={(v) => { setChannelTab(v as ChannelFilter); setInboxFilter(''); setSelectedId(null) }}
             />
@@ -650,6 +667,13 @@ export default function InboxPage() {
                     </div>
                     {/* hover quick-actions */}
                     <div className="absolute right-2 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-lg border border-border bg-surface p-0.5 shadow-soft group-hover:flex">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); void markUnread(c) }}
+                        title="Mark as unread"
+                        className="rounded-md p-1.5 text-ink-subtle hover:bg-elevated hover:text-ink"
+                      >
+                        <MailOpen size={15} />
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); void togglePin(c) }}
                         title={c.pinned ? 'Unpin' : 'Pin to top'}
