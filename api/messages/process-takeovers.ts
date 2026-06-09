@@ -62,6 +62,13 @@ export default async function handler(req: Request): Promise<Response> {
     let aiReplied = 0;
     const cancelReasons: string[] = [];
 
+    // Each AI reply is a slow LLM call; doing a big backlog in one invocation
+    // times the function out and nothing gets saved. Cap generations per run —
+    // the every-minute cron drains the rest. Cheap DB-only checks still run
+    // for the whole batch.
+    const MAX_GENERATIONS_PER_RUN = 2;
+    let generated = 0;
+
     for (const entry of pending) {
       const { data: ownerReply } = await supabase
         .from('messages')
@@ -176,6 +183,27 @@ export default async function handler(req: Request): Promise<Response> {
           contactName = contact.name;
         }
       }
+
+      if (generated >= MAX_GENERATIONS_PER_RUN) {
+        // Leave pending — picked up by the next cron tick.
+        continue;
+      }
+
+      // Atomically claim the entry: overlapping invocations (cron tick + manual
+      // trigger) would otherwise both draft a reply for the same email. The
+      // takeover_at bump doubles as a retry timer if this run dies mid-way.
+      const { data: claimed } = await supabase
+        .from('ai_takeover_queue')
+        .update({ takeover_at: new Date(now.getTime() + 5 * 60 * 1000).toISOString() })
+        .eq('id', entry.id)
+        .eq('status', 'pending')
+        .lte('takeover_at', now.toISOString())
+        .select('id');
+      if (!claimed || claimed.length === 0) {
+        processed++;
+        continue;
+      }
+      generated++;
 
       const isEmail = entry.channel === 'email';
       const convAgentId = (conversation as any).agent_id as string | null;
