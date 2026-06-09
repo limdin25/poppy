@@ -245,7 +245,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (toolSecret) {
       prompt += `\n\n## Things you can do for the caller during the call
 You can do these WHILE the call is live. Use them when the caller asks (e.g. "can you email me that?", "text it to me"):
-- **send_email** — email the caller. Always confirm and read back their email address before sending.
+- **send_email** — email the caller. Before sending, ALWAYS spell the address back character by character — letter by letter, saying "dot" for . and "dash" for - (e.g. kyle@camper-repair.com is "k, y, l, e — at — camper, dash, repair — dot com") — then wait for a clear yes. If they correct you, spell the whole thing back again. Never merge words: if the caller said "dash", the dash stays in the address.
 - **send_sms** — text the caller. Default to their own number ({{from_number}}) unless they give a different one.
 - **send_whatsapp** — WhatsApp the caller. Default to their own number ({{from_number}}) unless they give a different one.
 ${webSearchEnabled ? '- **web_search** — look something up online when you genuinely do not know the answer. Say "let me check that for you" first, keep it brief, and never read out raw web addresses.\n' : ''}When you send something, confirm it to the caller in one short sentence. If a tool reports it could not send, apologise briefly and offer an alternative — never pretend something was sent.`;

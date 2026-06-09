@@ -86,6 +86,17 @@ async function extractCallerInfo(transcript: string, businessName: string, busin
 
 export const config = { runtime: 'edge' };
 
+const DEAD_CALL_SUMMARY = 'No conversation — caller hung up.';
+
+// A call is "dead" when the caller never actually said anything — the AI
+// analysis on those produces junk like "Please provide a valid transcript",
+// so we skip it and store a clean fixed summary instead.
+function hasCallerSpeech(turns: Array<{ speaker?: string; role?: string; text?: string; content?: string }>): boolean {
+  return (turns || []).some(
+    (t) => (t.speaker === 'caller' || t.role === 'user') && ((t.text ?? t.content) || '').trim().length > 0,
+  );
+}
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
@@ -149,7 +160,17 @@ export default async function handler(req: Request): Promise<Response> {
     // For call_analyzed, update the existing call with analysis data
     if (event === 'call_analyzed') {
       const analysis = call.call_analysis || {};
-      const summary = analysis.call_summary || null;
+
+      const { data: callRow } = await supabase
+        .from('calls')
+        .select('conversation_id, transcript')
+        .eq('retell_call_id', call.call_id)
+        .single();
+
+      const isDead = !hasCallerSpeech(
+        (callRow?.transcript as Array<{ speaker?: string; text?: string }>) || call.transcript_object || [],
+      );
+      const summary = isDead ? DEAD_CALL_SUMMARY : (analysis.call_summary || null);
 
       await supabase
         .from('calls')
@@ -165,12 +186,6 @@ export default async function handler(req: Request): Promise<Response> {
 
       // Update conversation preview with the summary
       if (summary) {
-        const { data: callRow } = await supabase
-          .from('calls')
-          .select('conversation_id')
-          .eq('retell_call_id', call.call_id)
-          .single();
-
         if (callRow?.conversation_id) {
           await supabase
             .from('conversations')
@@ -235,8 +250,13 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('id', businessId)
       .single();
 
-    // Extract caller info via Claude
-    const info = await extractCallerInfo(transcript, business?.name || 'the business', businessId);
+    // Extract caller info via Claude — but not for dead calls (caller never
+    // spoke): the extraction only returns "please provide a transcript" junk.
+    const isDeadCall =
+      !hasCallerSpeech(call.transcript_object || []) && !/(^|\n)\s*User:/i.test(transcript);
+    const info = isDeadCall
+      ? {}
+      : await extractCallerInfo(transcript, business?.name || 'the business', businessId);
 
     // Use collected variables from Retell as fallback
     const callerName = info.caller_name || collectedVars.name || collectedVars.customer_name || null;
@@ -295,7 +315,10 @@ export default async function handler(req: Request): Promise<Response> {
     // caller has no contact yet, or has no prior voice thread.
     const durationSec = Math.round(durationMs / 1000);
     const nowIso = new Date().toISOString();
-    const preview = info.summary || `Call lasted ${durationSec}s`;
+    const summaryText = isDeadCall
+      ? DEAD_CALL_SUMMARY
+      : (info.summary || `Call lasted ${durationSec}s`);
+    const preview = summaryText;
     const nextStatus = hasBooking ? 'closed' : 'open';
 
     let conversation: { id: string } | null = null;
@@ -362,7 +385,7 @@ export default async function handler(req: Request): Promise<Response> {
       duration_seconds: durationSec,
       transcript: transcriptForUI,
       recording_url: call.recording_url || null,
-      ai_summary: info.summary || null,
+      ai_summary: isDeadCall ? DEAD_CALL_SUMMARY : (info.summary || null),
       extracted_info: {
         reason: info.reason || null,
         action_required: info.action_required || null,
@@ -386,7 +409,9 @@ export default async function handler(req: Request): Promise<Response> {
       direction: 'inbound',
       sender: 'ai',
       content_type: 'call_summary',
-      body: info.summary || `Call with ${callerName || callerPhone || 'unknown caller'} lasted ${durationSec}s`,
+      body: isDeadCall
+        ? DEAD_CALL_SUMMARY
+        : (info.summary || `Call with ${callerName || callerPhone || 'unknown caller'} lasted ${durationSec}s`),
       metadata: {
         retell_call_id: call.call_id,
         duration_seconds: durationSec,
@@ -397,7 +422,7 @@ export default async function handler(req: Request): Promise<Response> {
     notifyBusinessOwner(businessId, 'call', {
       title: `Missed Call: ${callerName || callerPhone || 'Unknown'}`,
       body: [
-        info.summary || `Call lasted ${durationSec}s`,
+        summaryText,
         callerPhone ? `Phone: ${callerPhone}` : null,
         info.action_required ? `Action: ${info.action_required}` : null,
       ].filter(Boolean).join('\n'),
