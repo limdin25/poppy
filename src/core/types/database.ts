@@ -216,6 +216,7 @@ export interface Conversation {
   last_message_preview: string | null
   unread_count: number
   subject: string | null
+  received_address: string | null
   is_spam: boolean
   is_group: boolean
   group_name: string | null

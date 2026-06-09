@@ -199,6 +199,7 @@ export default function InboxPage() {
   const [folder, setFolder] = useState<InboxFolder>('inbox')
   const [channelTab, setChannelTab] = useState<ChannelFilter>('all')
   const [numberFilter, setNumberFilter] = useState<string>('')
+  const [inboxFilter, setInboxFilter] = useState<string>('') // email received-at inbox (domain key)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [sortMode, setSortMode] = useState<InboxSortMode>('recent')
@@ -322,9 +323,39 @@ export default function InboxPage() {
     ? inFolderConvos
     : inFolderConvos.filter((c) => c.channel === channelTab)
   // Per-number filter: each phone number is its own agent row.
-  const visible = numberFilter
+  const visibleByNumber = numberFilter
     ? visibleByChannel.filter((c) => c.agent_id === numberFilter)
     : visibleByChannel
+
+  // Per-inbox filter: which of OUR addresses received the email. Catch-all
+  // domains (many aliases, e.g. heypubli.com) group under their domain; a
+  // normal account inbox is just its address. Key = domain.
+  const inboxDomainOf = (c: Conversation) =>
+    (c.received_address || '').split('@')[1]?.toLowerCase() || ''
+  const emailInboxes: Array<{ key: string; label: string; count: number }> = []
+  {
+    const byDomain = new Map<string, { addresses: Set<string>; count: number }>()
+    for (const c of conversations) {
+      if (c.channel !== 'email') continue
+      const dom = inboxDomainOf(c)
+      if (!dom) continue
+      const entry = byDomain.get(dom) ?? { addresses: new Set<string>(), count: 0 }
+      entry.addresses.add((c.received_address || '').toLowerCase())
+      entry.count++
+      byDomain.set(dom, entry)
+    }
+    for (const [dom, info] of byDomain) {
+      emailInboxes.push({
+        key: dom,
+        label: info.addresses.size === 1 ? [...info.addresses][0] : `@${dom} (${info.addresses.size} aliases)`,
+        count: info.count,
+      })
+    }
+    emailInboxes.sort((a, b) => b.count - a.count)
+  }
+  const visible = inboxFilter
+    ? visibleByNumber.filter((c) => c.channel === 'email' && inboxDomainOf(c) === inboxFilter)
+    : visibleByNumber
 
   // Search + sort (pinned first). Each row carries its source Conversation.
   const orderedRows = searchAndSort(
@@ -444,7 +475,7 @@ export default function InboxPage() {
               className="border-t border-border pt-2.5"
               options={CHANNEL_TABS.map((t) => ({ value: t.value, label: t.label, icon: t.icon, count: channelCounts[t.value] }))}
               value={channelTab}
-              onChange={(v) => { setChannelTab(v as ChannelFilter); setSelectedId(null) }}
+              onChange={(v) => { setChannelTab(v as ChannelFilter); setInboxFilter(''); setSelectedId(null) }}
             />
             {voiceLines.length > 1 && (
               <select
@@ -456,6 +487,19 @@ export default function InboxPage() {
                 <option value="">All numbers</option>
                 {voiceLines.map((v) => (
                   <option key={v.id} value={v.id}>{v.label}{v.isDefault ? ' (default)' : ''}</option>
+                ))}
+              </select>
+            )}
+            {emailInboxes.length > 1 && (channelTab === 'all' || channelTab === 'email') && (
+              <select
+                value={inboxFilter}
+                onChange={(e) => { setInboxFilter(e.target.value); setSelectedId(null) }}
+                className="h-8 w-full rounded-lg border border-border bg-surface px-2 text-[12px] text-ink outline-none focus:border-accent"
+                aria-label="Filter by receiving inbox"
+              >
+                <option value="">All inboxes</option>
+                {emailInboxes.map((i) => (
+                  <option key={i.key} value={i.key}>{i.label} ({i.count})</option>
                 ))}
               </select>
             )}
@@ -555,6 +599,14 @@ export default function InboxPage() {
                         <span className="text-[10.5px] font-medium text-ink-subtle">
                           via {chLabel}{c.last_message_at ? ` · ${fullDateTime(c.last_message_at)}` : ''}
                         </span>
+                        {c.channel === 'email' && c.received_address && (
+                          <span
+                            className="max-w-[180px] truncate rounded-full bg-sky-100 px-2 py-0.5 text-[10.5px] font-semibold text-sky-700"
+                            title={`Received at ${c.received_address}`}
+                          >
+                            to {c.received_address}
+                          </span>
+                        )}
                         {deal && (
                           <span className={cn('flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', tintOf(stageColorOf(deal.stage_id)).badge)} title={`Deal: ${deal.title}`}>
                             {stageName(deal.stage_id)} · {formatMoney(deal.value, currency)}

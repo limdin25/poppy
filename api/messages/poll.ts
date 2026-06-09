@@ -433,7 +433,7 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
     if (!conversationId) {
       const { data: newConvo } = await supabase
         .from('conversations')
-        .insert({ business_id: businessId, contact_id: contactId, agent_id: (channel as any).agent_id || null, channel: 'email', status: 'open', ai_handling: true, subject: normalSub || null, email_thread_id: threadId })
+        .insert({ business_id: businessId, contact_id: contactId, agent_id: (channel as any).agent_id || null, channel: 'email', status: 'open', ai_handling: true, subject: normalSub || null, email_thread_id: threadId, received_address: ownEmail || null })
         .select('id')
         .single();
       conversationId = newConvo?.id || null;
@@ -477,7 +477,11 @@ async function pollEmailAccount(acct: any, cutoffMs: number): Promise<any> {
 
     await supabase
       .from('conversations')
-      .update({ last_message_at: emailDate || new Date().toISOString(), last_message_preview: preview })
+      .update({
+        last_message_at: emailDate || new Date().toISOString(),
+        last_message_preview: preview,
+        ...(ownEmail ? { received_address: ownEmail } : {}),
+      })
       .eq('id', conversationId);
 
     if (spam) {

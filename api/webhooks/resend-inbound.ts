@@ -201,6 +201,12 @@ export default async function handler(req: Request): Promise<Response> {
     const businessId = channel.business_id as string;
     const autoReply = channel.auto_reply_enabled === true;
 
+    // The address at OUR end this email was sent to (the alias on the send-as
+    // domain) — shown in the Inbox and used by the per-inbox filter.
+    const channelDomain = ((channel.config as Record<string, unknown>)?.domain as string || '').toLowerCase();
+    const receivedAddress =
+      toList.find((a: string) => a.toLowerCase().endsWith(`@${channelDomain}`)) || toList[0] || null;
+
     // ── Find or create contact by sender email ─────────────────────────────
     let contactId: string | null = null;
     const { data: existingContact } = await supabase
@@ -284,6 +290,7 @@ export default async function handler(req: Request): Promise<Response> {
           ai_handling: true,
           subject: normalSub || null,
           email_thread_id: messageId || receivedId || null,
+          received_address: receivedAddress,
         })
         .select('id')
         .single();
@@ -330,7 +337,11 @@ export default async function handler(req: Request): Promise<Response> {
 
     await supabase
       .from('conversations')
-      .update({ last_message_at: createdAt, last_message_preview: preview })
+      .update({
+        last_message_at: createdAt,
+        last_message_preview: preview,
+        ...(receivedAddress ? { received_address: receivedAddress } : {}),
+      })
       .eq('id', conversationId);
 
     if (spam) {
