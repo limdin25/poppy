@@ -117,10 +117,16 @@ export type InboxFolder = 'inbox' | 'unread' | 'mine' | 'team' | 'archived' | 'c
 const FOLDER_LABELS: Record<InboxFolder, string> = {
   inbox: 'Inbox',
   unread: 'Unread',
-  mine: 'Assigned to me',
-  team: 'Assigned to team',
+  mine: 'Mine',
+  team: 'Team',
   archived: 'Archived',
   closed: 'Closed',
+}
+
+// Full names for tooltips where the compact label needs explaining.
+const FOLDER_TITLES: Partial<Record<InboxFolder, string>> = {
+  mine: 'Assigned to me',
+  team: 'Assigned to team',
 }
 
 const FOLDER_ORDER: InboxFolder[] = ['inbox', 'unread', 'mine', 'team', 'archived', 'closed']
@@ -443,13 +449,15 @@ export default function InboxPage() {
             selected && 'hidden lg:flex'
           )}
         >
-          <div className="space-y-3 border-b border-border px-4 py-4">
+          <div className="space-y-2 border-b border-border px-3 py-2.5">
             <div className="flex items-center justify-between">
-              <h2 className="text-[17px] font-bold tracking-tight text-ink">{FOLDER_LABELS[folder]}</h2>
-              <div className="flex items-center gap-1.5">
-                <span className="rounded-full bg-elevated px-2 py-0.5 text-[11px] font-medium text-ink-muted">
+              <h2 className="flex items-center gap-1.5 text-[15px] font-bold tracking-tight text-ink">
+                {FOLDER_LABELS[folder]}
+                <span className="rounded-full bg-elevated px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted">
                   {orderedRows.length}
                 </span>
+              </h2>
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => { setComposeOpen(true); setComposeErr(null) }}
                   title="Compose a new email"
@@ -467,71 +475,87 @@ export default function InboxPage() {
               </div>
             </div>
             <FilterChips
-              options={FOLDER_ORDER.map((f) => ({ value: f, label: FOLDER_LABELS[f], count: counts[f] }))}
+              size="sm"
+              hideZeroCounts
+              options={FOLDER_ORDER.map((f) => ({ value: f, label: FOLDER_LABELS[f], count: counts[f], title: FOLDER_TITLES[f] }))}
               value={folder}
               onChange={(v) => { setFolder(v as InboxFolder); setSelectedId(null) }}
             />
             <FilterChips
-              className="border-t border-border pt-2.5"
-              options={CHANNEL_TABS.map((t) => ({ value: t.value, label: t.label, icon: t.icon, count: channelCounts[t.value] }))}
+              size="sm"
+              hideZeroCounts
+              options={CHANNEL_TABS.map((t) => ({
+                value: t.value,
+                // Icon-only channel chips keep the row to a single line; the
+                // tooltip carries the name.
+                label: t.icon ? '' : t.label,
+                icon: t.icon,
+                count: channelCounts[t.value],
+                title: t.label,
+              }))}
               value={channelTab}
               onChange={(v) => { setChannelTab(v as ChannelFilter); setInboxFilter(''); setSelectedId(null) }}
             />
-            {voiceLines.length > 1 && (
-              <select
-                value={numberFilter}
-                onChange={(e) => { setNumberFilter(e.target.value); setSelectedId(null) }}
-                className="h-8 w-full rounded-lg border border-border bg-surface px-2 text-[12px] text-ink outline-none focus:border-accent"
-                aria-label="Filter by phone number"
-              >
-                <option value="">All numbers</option>
-                {voiceLines.map((v) => (
-                  <option key={v.id} value={v.id}>{v.label}{v.isDefault ? ' (default)' : ''}</option>
-                ))}
-              </select>
+            {(voiceLines.length > 1 || (emailInboxes.length > 1 && (channelTab === 'all' || channelTab === 'email'))) && (
+              <div className="grid grid-cols-2 gap-1.5">
+                {voiceLines.length > 1 ? (
+                  <select
+                    value={numberFilter}
+                    onChange={(e) => { setNumberFilter(e.target.value); setSelectedId(null) }}
+                    className="h-7 w-full min-w-0 rounded-lg border border-border bg-surface px-1.5 text-[11.5px] text-ink outline-none focus:border-accent"
+                    aria-label="Filter by phone number"
+                  >
+                    <option value="">All numbers</option>
+                    {voiceLines.map((v) => (
+                      <option key={v.id} value={v.id}>{v.label}{v.isDefault ? ' (default)' : ''}</option>
+                    ))}
+                  </select>
+                ) : <span />}
+                {emailInboxes.length > 1 && (channelTab === 'all' || channelTab === 'email') ? (
+                  <select
+                    value={inboxFilter}
+                    onChange={(e) => { setInboxFilter(e.target.value); setSelectedId(null) }}
+                    className="h-7 w-full min-w-0 rounded-lg border border-border bg-surface px-1.5 text-[11.5px] text-ink outline-none focus:border-accent"
+                    aria-label="Filter by receiving inbox"
+                  >
+                    <option value="">All inboxes</option>
+                    {emailInboxes.map((i) => (
+                      <option key={i.key} value={i.key}>{i.label} ({i.count})</option>
+                    ))}
+                  </select>
+                ) : <span />}
+              </div>
             )}
-            {emailInboxes.length > 1 && (channelTab === 'all' || channelTab === 'email') && (
-              <select
-                value={inboxFilter}
-                onChange={(e) => { setInboxFilter(e.target.value); setSelectedId(null) }}
-                className="h-8 w-full rounded-lg border border-border bg-surface px-2 text-[12px] text-ink outline-none focus:border-accent"
-                aria-label="Filter by receiving inbox"
-              >
-                <option value="">All inboxes</option>
-                {emailInboxes.map((i) => (
-                  <option key={i.key} value={i.key}>{i.label} ({i.count})</option>
-                ))}
-              </select>
-            )}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <div className="relative flex-1">
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search name, number, message…"
-                  className="h-8 w-full rounded-lg border border-border bg-surface pl-8 pr-2 text-[12.5px] text-ink outline-none placeholder:text-ink-subtle focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="h-7 w-full rounded-lg border border-border bg-surface pl-8 pr-2 text-[12px] text-ink outline-none placeholder:text-ink-subtle focus:border-accent focus:ring-2 focus:ring-accent/20"
                 />
               </div>
               <button
                 onClick={() => setSortMode((m) => (m === 'recent' ? 'longest' : 'recent'))}
                 title={sortMode === 'recent' ? 'Sorted by most recent — tap for longest first' : 'Sorted by longest first — tap for most recent'}
-                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-[11.5px] font-medium text-ink-muted transition hover:bg-elevated hover:text-ink"
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-medium text-ink-muted transition hover:bg-elevated hover:text-ink"
               >
-                <ArrowUpDown size={13} /> {sortMode === 'recent' ? 'Recent' : 'Longest'}
+                <ArrowUpDown size={13} />
               </button>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-medium text-ink-subtle">Elsie replies (all chats)</span>
               <div ref={aiMenuRef} className="relative">
                 <button
                   onClick={() => setAiMenuOpen((o) => !o)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11.5px] font-medium text-ink transition hover:bg-elevated"
+                  title={`Elsie replies (all chats): ${AI_MODE_LABEL[aiMode ?? 'draft']}`}
+                  className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-lg border border-border bg-surface px-2 text-[11px] font-medium text-ink transition hover:bg-elevated"
                 >
-                  <Sparkles size={12} className="text-violet-600" /> {AI_MODE_LABEL[aiMode ?? 'draft']} <ChevronDown size={12} />
+                  <Sparkles size={13} className="text-violet-600" /> <ChevronDown size={11} />
                 </button>
                 {aiMenuOpen && (
-                  <div className="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-border bg-surface py-1 shadow-pop">
+                  <div className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border bg-surface py-1 shadow-pop">
+                    <p className="px-3 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-ink-subtle">
+                      Elsie replies (all chats)
+                    </p>
                     {(['draft', 'auto', 'off'] as AiMode[]).map((m) => (
                       <button
                         key={m}
@@ -575,7 +599,7 @@ export default function InboxPage() {
                     onClick={() => setSelectedId(c.id)}
                     onKeyDown={(e) => { if (e.key === 'Enter') setSelectedId(c.id) }}
                     className={cn(
-                      'group relative flex w-full cursor-pointer items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-elevated/50',
+                      'group relative flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-3 py-2.5 text-left transition-colors hover:bg-elevated/50',
                       c.id === selectedId && 'bg-elevated/60',
                       c.pinned && 'bg-amber-50/40'
                     )}
