@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { buildBusinessContext, getConversationHistory, generateAIReply } from '../lib/ai-reply.js';
+import { sendResendEmailReply } from '../lib/resend-reply.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -135,13 +136,26 @@ export default async function handler(req: Request): Promise<Response> {
         .eq('business_id', conversation.business_id)
         .eq('status', 'connected');
 
+      // Email threads that arrived via the Resend inbound webhook reply through
+      // Resend (send-as domain), not through a Unipile mailbox.
+      const { data: triggerMsg } = await supabase
+        .from('messages')
+        .select('metadata')
+        .eq('id', entry.trigger_message_id)
+        .single();
+      const triggerMeta = (triggerMsg?.metadata as Record<string, any>) || {};
+      const viaResend = entry.channel === 'email' && triggerMeta.via === 'resend_inbound';
+
       const matchedChannel = (channel || []).find((ch: any) => {
         if (entry.channel === 'whatsapp') return ch.type === 'whatsapp' && ch.unipile_account_id;
-        if (entry.channel === 'email') return (ch.type || '').includes('email') && ch.unipile_account_id;
+        if (entry.channel === 'email') {
+          if (viaResend) return (ch.config as any)?.provider === 'resend';
+          return (ch.type || '').includes('email') && ch.unipile_account_id;
+        }
         return false;
       });
 
-      if (!matchedChannel?.unipile_account_id || !matchedChannel.auto_reply_enabled) {
+      if (!matchedChannel || !matchedChannel.auto_reply_enabled || (!viaResend && !matchedChannel.unipile_account_id)) {
         await supabase.from('ai_takeover_queue').update({
           status: 'cancelled',
           processed_at: now.toISOString(),
@@ -201,16 +215,21 @@ export default async function handler(req: Request): Promise<Response> {
       const draftMode = (matchedChannel as any).draft_mode !== false;
 
       if (!draftMode) {
-        if (isEmail) {
-          const triggerMeta = await supabase
-            .from('messages')
-            .select('metadata')
-            .eq('id', entry.trigger_message_id)
-            .single();
-          const meta = (triggerMeta.data?.metadata as Record<string, any>) || {};
-          const subject = meta.subject || '';
-          const externalId = meta.external_id || '';
-          const senderEmail = meta.sender_email || '';
+        if (isEmail && viaResend) {
+          const sent = await sendResendEmailReply(conversation.id, reply);
+          if (!sent.ok) {
+            await supabase.from('ai_takeover_queue').update({
+              status: 'cancelled',
+              processed_at: now.toISOString(),
+            }).eq('id', entry.id);
+            cancelReasons.push(`resend_send_failed:${(sent.error || '').slice(0, 60)}`);
+            processed++;
+            continue;
+          }
+        } else if (isEmail) {
+          const subject = triggerMeta.subject || '';
+          const externalId = triggerMeta.external_id || '';
+          const senderEmail = triggerMeta.sender_email || '';
           const replySubject = subject ? `Re: ${subject.replace(/^Re:\s*/i, '')}` : 'Re: Your message';
           await sendUnipileEmail(matchedChannel.unipile_account_id, senderEmail, replySubject, reply, externalId);
         } else {

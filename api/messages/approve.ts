@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '../lib/auth.js';
+import { isResendThread, sendResendEmailReply } from '../lib/resend-reply.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -45,6 +46,23 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'Conversation not found' }), { status: 404 });
     }
 
+    const isEmail = conv.channel === 'email';
+
+    // Email threads that came in via the Resend webhook send back through
+    // Resend (send-as domain like heypubli.com) — no Unipile mailbox involved.
+    if (isEmail && await isResendThread(conv.id)) {
+      const sent = await sendResendEmailReply(conv.id, msg.body || '');
+      if (!sent.ok) {
+        return new Response(JSON.stringify({ error: `Could not send: ${sent.error}` }), { status: 502 });
+      }
+      await supabase.from('messages').update({ status: 'sent' }).eq('id', messageId);
+      await supabase.from('conversations').update({
+        last_message_at: new Date().toISOString(),
+        last_message_preview: (msg.body || '').slice(0, 100),
+      }).eq('id', conv.id);
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+
     const { data: channel } = await supabase
       .from('channels')
       .select('id, unipile_account_id, type')
@@ -52,8 +70,6 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('status', 'connected')
       .or(`type.eq.whatsapp,type.eq.email_gmail,type.eq.email_outlook,type.eq.email_smtp`)
       .limit(10);
-
-    const isEmail = conv.channel === 'email';
     const matchingChannel = (channel || []).find(c =>
       isEmail ? c.type.startsWith('email') : c.type === conv.channel
     );

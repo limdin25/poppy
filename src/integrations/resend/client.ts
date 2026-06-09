@@ -75,6 +75,34 @@ export async function sendInviteEmail(
   return sendEmail(email, `${inviterName} invited you to ${businessName} on Elsie`, html);
 }
 
+/** Reply inside an existing email thread (plain text, with In-Reply-To headers). */
+export async function sendThreadReply(opts: {
+  to: string;
+  from: string;
+  subject: string;
+  text: string;
+  inReplyTo?: string | null;
+}): Promise<SendEmailResponse> {
+  const threadHeaders: Record<string, string> = {};
+  if (opts.inReplyTo) {
+    threadHeaders["In-Reply-To"] = opts.inReplyTo;
+    threadHeaders["References"] = opts.inReplyTo;
+  }
+  const res = await fetch(`${BASE_URL}/emails`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({
+      from: opts.from,
+      to: [opts.to],
+      subject: opts.subject,
+      text: opts.text,
+      ...(Object.keys(threadHeaders).length ? { headers: threadHeaders } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error(`Resend sendThreadReply failed: ${res.status} ${await res.text()}`);
+  return res.json() as Promise<SendEmailResponse>;
+}
+
 /** Send a notification email (plain text wrapped in minimal HTML). */
 export async function sendNotification(
   to: string,
