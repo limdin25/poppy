@@ -338,30 +338,40 @@ export default function InboxPage() {
     await supabase.from('conversations').update({ unread_count: Math.max(1, c.unread_count || 0) }).eq('id', c.id)
   }
 
+  // ── Cross-faceted filters ────────────────────────────────────────────────
+  // Every count answers: "what would I see if I clicked this, keeping my
+  // other selections?" The folder rail respects the selected channel and
+  // vice versa, so the two rows always agree (GitHub-issues style faceting).
+  const inboxDomainOf = (c: Conversation) =>
+    (c.received_address || '').split('@')[1]?.toLowerCase() || ''
+  const matchesNumber = (c: Conversation) => !numberFilter || c.agent_id === numberFilter
+  const matchesInbox = (c: Conversation) =>
+    !inboxFilter || (c.channel === 'email' && inboxDomainOf(c) === inboxFilter)
+  const matchesChannel = (c: Conversation) => channelTab === 'all' || c.channel === channelTab
+
+  // Dropdown filters apply to everything, including both count rails.
+  const base = conversations.filter((c) => matchesNumber(c) && matchesInbox(c))
+
+  // Folder rail: counted within the selected channel.
   const counts: Record<InboxFolder, number> = { inbox: 0, unread: 0, mine: 0, team: 0, archived: 0, closed: 0 }
-  for (const c of conversations) {
+  for (const c of base) {
+    if (!matchesChannel(c)) continue
     for (const f of FOLDER_ORDER) if (inFolder(c, f, uid)) counts[f]++
   }
-  // Within the current folder, count per channel (drives the channel-tab badges)
-  const inFolderConvos = conversations.filter((c) => inFolder(c, folder, uid))
+
+  // Channel rail: counted within the selected folder.
+  const inFolderConvos = base.filter((c) => inFolder(c, folder, uid))
   const channelCounts: Record<ChannelFilter, number> = { all: inFolderConvos.length, whatsapp: 0, email: 0, sms: 0, voice: 0 }
   for (const c of inFolderConvos) {
     const ch = c.channel as ChannelFilter
     if (ch !== 'all' && ch in channelCounts) channelCounts[ch]++
   }
-  const visibleByChannel = channelTab === 'all'
-    ? inFolderConvos
-    : inFolderConvos.filter((c) => c.channel === channelTab)
-  // Per-number filter: each phone number is its own agent row.
-  const visibleByNumber = numberFilter
-    ? visibleByChannel.filter((c) => c.agent_id === numberFilter)
-    : visibleByChannel
 
-  // Per-inbox filter: which of OUR addresses received the email. Catch-all
-  // domains (many aliases, e.g. heypubli.com) group under their domain; a
-  // normal account inbox is just its address. Key = domain.
-  const inboxDomainOf = (c: Conversation) =>
-    (c.received_address || '').split('@')[1]?.toLowerCase() || ''
+  const visible = inFolderConvos.filter(matchesChannel)
+
+  // Inbox dropdown options: which of OUR addresses received the email.
+  // Catch-all domains (many aliases, e.g. heypubli.com) group under their
+  // domain; a normal account inbox is just its address. Key = domain.
   const emailInboxes: Array<{ key: string; label: string; count: number }> = []
   {
     const byDomain = new Map<string, { addresses: Set<string>; count: number }>()
@@ -383,9 +393,6 @@ export default function InboxPage() {
     }
     emailInboxes.sort((a, b) => b.count - a.count)
   }
-  const visible = inboxFilter
-    ? visibleByNumber.filter((c) => c.channel === 'email' && inboxDomainOf(c) === inboxFilter)
-    : visibleByNumber
 
   // Search + sort (pinned first). Each row carries its source Conversation.
   const orderedRows = searchAndSort(
