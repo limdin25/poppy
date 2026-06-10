@@ -10,6 +10,16 @@ const RETELL_API_KEY = process.env.RETELL_API_KEY!;
 
 export const config = { runtime: 'edge' };
 
+// "Hertford Street" out of "Flat 7, Hertford House, Hertford Street, Coventry CV1"
+// — the human way to name a property on the phone.
+function streetFromAddress(address: string | null): string {
+  if (!address) return 'your listing';
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
+  const street = parts.find((p) =>
+    /\b(street|road|lane|avenue|close|drive|way|court|place|terrace|gardens|grove|hill|park|row|crescent|square|walk|mews)\b/i.test(p));
+  return street || parts[0] || 'your listing';
+}
+
 // Estate agencies only — never ring outside the configured calling hours.
 function withinCallingHours(now: Date, s: BrrrSettings): boolean {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -107,9 +117,11 @@ export default async function handler(req: Request): Promise<Response> {
           from_number: fromNumber,
           to_number: toNumber,
           override_agent_id: agentId,
+          ring_duration_ms: 60000,
           metadata: { type: 'brrr_property', property_call_id: entry.id, property_id: property.id },
           retell_llm_dynamic_variables: {
             property_address: property.address || 'the property',
+            property_street: streetFromAddress(property.address),
             asking_price: property.price_text || fmtGBP(property.asking_price),
             offer_price: fmtGBP(offerMax),
             offer_min: fmtGBP(offerMin),

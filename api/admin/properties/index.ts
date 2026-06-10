@@ -40,7 +40,7 @@ export default async function handler(req: Request) {
     if (ids.length) {
       const { data: calls } = await supabaseAdmin
         .from('brrr_property_calls')
-        .select('id, property_id, status, attempts, next_attempt_at, summary, qualification, transcript, recording_url, created_at, updated_at')
+        .select('id, property_id, status, attempts, next_attempt_at, summary, qualification, transcript, recording_url, cost_usd, created_at, updated_at')
         .in('property_id', ids)
         .order('created_at', { ascending: false })
       callsByProperty = (calls || []).reduce((acc: Record<string, unknown[]>, c) => {

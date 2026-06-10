@@ -14,6 +14,7 @@ interface PropertyCall {
   qualification: Record<string, unknown> | null
   transcript: Array<{ speaker: string; text: string }> | null
   recording_url?: string | null
+  cost_usd?: number | null
   created_at: string
   updated_at: string
 }
@@ -74,15 +75,18 @@ const QUESTIONS: Array<{ key: string; label: string }> = [
   { key: 'still_available', label: 'Is the property still available?' },
   { key: 'occupancy', label: 'Vacant or tenanted?' },
   { key: 'condition_notes', label: 'Condition / works needed?' },
+  { key: 'interest_level', label: 'Viewings / offers so far?' },
+  { key: 'fallen_through', label: 'Has a sale fallen through before?' },
   { key: 'why_selling', label: 'Why is the vendor selling?' },
   { key: 'motivation', label: 'How motivated is the vendor?' },
   { key: 'chain', label: 'Onward chain?' },
   { key: 'tenure', label: 'Freehold or leasehold?' },
-  { key: 'lease_years', label: 'Years left on the lease?' },
-  { key: 'service_charge', label: 'Service charge?' },
-  { key: 'ground_rent', label: 'Ground rent?' },
-  { key: 'interest_level', label: 'Viewings / offers so far?' },
-  { key: 'offer_reaction', label: 'Would the vendor consider our offer range?' },
+  { key: 'lease_years', label: 'Years left on the lease? (flats)' },
+  { key: 'service_charge', label: 'Service charge? (flats)' },
+  { key: 'ground_rent', label: 'Ground rent? (flats)' },
+  { key: 'major_works', label: 'Major works / cladding issues? (flats)' },
+  { key: 'offer_reaction', label: 'How did the offer feeler land?' },
+  { key: 'best_price_indicated', label: 'Figure the agent hinted would work?' },
   { key: 'viewing_availability', label: 'When can viewings happen?' },
 ]
 
@@ -127,7 +131,7 @@ function offerBand(p: PropertyRow, s: BrrrSettings | null): { min: number; max: 
 }
 
 export default function PropertiesPage() {
-  const { data, loading, error, refetch } = useAdminApi<PropertiesResponse>('properties', { properties: [], settings: null })
+  const { data, loading, error, refetch } = useAdminApi<PropertiesResponse | PropertyRow[]>('properties', { properties: [], settings: null })
   const act = useAdminMutation('properties', 'POST')
   const [selected, setSelected] = useState<PropertyRow | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -135,11 +139,16 @@ export default function PropertiesPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [draft, setDraft] = useState<BrrrSettings | null>(null)
 
-  const properties = [...(data.properties || [])].sort(
+  // Tolerate both response shapes so a stale cached bundle never blanks the page.
+  const resp: PropertiesResponse = Array.isArray(data)
+    ? { properties: data, settings: null }
+    : (data || { properties: [], settings: null })
+
+  const properties = [...(resp.properties || [])].sort(
     (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
       || (b.created_at || '').localeCompare(a.created_at || ''),
   )
-  const settings = data.settings
+  const settings = resp.settings
 
   useEffect(() => {
     if (settings && !draft) setDraft(settings)
@@ -147,6 +156,7 @@ export default function PropertiesPage() {
 
   const qualified = properties.filter((p) => p.status === 'qualified').length
   const awaiting = properties.filter((p) => ['new', 'call_queued', 'calling'].includes(p.status)).length
+  const totalCostUsd = properties.flatMap((p) => p.calls || []).reduce((sum, c) => sum + (Number(c.cost_usd) || 0), 0)
 
   async function run(action: string, property: PropertyRow) {
     setBusy(`${action}:${property.id}`)
@@ -295,10 +305,11 @@ export default function PropertiesPage() {
         </div>
       )}
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+      <div className="mt-5 grid gap-4 sm:grid-cols-4">
         <MetricCard label="Properties" value={loading ? '...' : properties.length} icon={<Home size={16} />} />
         <MetricCard label="Awaiting / In call" value={loading ? '...' : awaiting} icon={<PhoneOutgoing size={16} />} />
         <MetricCard label="Qualified" value={loading ? '...' : qualified} icon={<BadgeCheck size={16} />} />
+        <MetricCard label="AI call spend" value={loading ? '...' : `$${totalCostUsd.toFixed(2)}`} change="+ phone charges" trend="neutral" />
       </div>
 
       <div className="mt-6">
@@ -528,6 +539,7 @@ export default function PropertiesPage() {
                     <p className="text-[12px] font-medium text-ink">
                       {fmtWhen(call.created_at)} · {call.status.replace(/_/g, ' ')} · attempt {call.attempts}
                       {call.status === 'pending' && call.next_attempt_at ? ` · next try ${fmtWhen(call.next_attempt_at)}` : ''}
+                      {Number(call.cost_usd) > 0 ? ` · $${Number(call.cost_usd).toFixed(2)}` : ''}
                     </p>
                     {call.recording_url && <audio controls src={call.recording_url} className="mt-2 w-full" />}
                     {call.summary && <p className="mt-1.5 text-[12px] text-ink-muted">{call.summary}</p>}

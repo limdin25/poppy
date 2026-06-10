@@ -116,12 +116,15 @@ export interface Qualification {
   why_selling?: string | null;
   motivation?: string | null;           // how motivated/urgent the vendor is
   chain?: string | null;
+  fallen_through?: string | null;       // has a sale fallen through before
   tenure?: string | null;
   lease_years?: string | null;
   service_charge?: string | null;
   ground_rent?: string | null;
+  major_works?: string | null;          // planned works / big bills / cladding-EWS1 (flats)
   interest_level?: string | null;       // viewings/offers so far
   offer_reaction?: string | null;
+  best_price_indicated?: string | null; // any figure the AGENT hinted would get it done
   viewing_availability?: string | null;
   summary?: string | null;
   action_required?: string | null;
@@ -133,15 +136,18 @@ export const QUALIFICATION_QUESTIONS: Array<{ key: keyof Qualification; question
   { key: 'still_available', question: 'Is the property still available?' },
   { key: 'occupancy', question: 'Vacant or tenanted? (tenancy details if tenanted)' },
   { key: 'condition_notes', question: 'What condition is it in / what works are needed?' },
+  { key: 'interest_level', question: 'How much interest — viewings / offers so far?' },
+  { key: 'fallen_through', question: 'Has a sale ever fallen through on it?' },
   { key: 'why_selling', question: 'Why is the vendor selling?' },
   { key: 'motivation', question: 'How motivated / urgent is the vendor?' },
   { key: 'chain', question: 'Is there an onward chain?' },
   { key: 'tenure', question: 'Freehold or leasehold?' },
-  { key: 'lease_years', question: 'Years remaining on the lease?' },
-  { key: 'service_charge', question: 'Service charge?' },
-  { key: 'ground_rent', question: 'Ground rent?' },
-  { key: 'interest_level', question: 'How much interest — viewings / offers so far?' },
-  { key: 'offer_reaction', question: 'Would the vendor consider an offer in our range?' },
+  { key: 'lease_years', question: 'Years remaining on the lease? (flats)' },
+  { key: 'service_charge', question: 'Service charge? (flats)' },
+  { key: 'ground_rent', question: 'Ground rent? (flats)' },
+  { key: 'major_works', question: 'Major works planned / cladding issues? (flats)' },
+  { key: 'offer_reaction', question: 'How did the offer feeler land?' },
+  { key: 'best_price_indicated', question: 'What figure did the agent hint would get it done?' },
   { key: 'viewing_availability', question: 'When can viewings happen?' },
 ];
 
@@ -166,7 +172,7 @@ export async function extractQualification(
       max_tokens: 1000,
       messages: [{
         role: 'user',
-        content: `An AI assistant called the estate agent about ${property.address} (asking ${property.price_text}, our offer range ${band}) to qualify it for a buy-refurbish-refinance purchase. Analyse the transcript and return JSON only. Every field is null when the question was not asked or not answered — do NOT guess:
+        content: `An AI assistant called the estate agent about ${property.address} (asking ${property.price_text}, our offer band ${band} — the AI opens low and climbs, never revealing the top) to qualify it for a buy-refurbish-refinance purchase. Analyse the transcript and return JSON only. Every field is null when the question was not asked or not answered — do NOT guess:
 {
   "outcome": "qualified" | "not_qualified" | "callback",
   "still_available": boolean or null,
@@ -175,19 +181,22 @@ export async function extractQualification(
   "why_selling": string or null,
   "motivation": string or null (how motivated/urgent the vendor sounds),
   "chain": string or null,
+  "fallen_through": string or null (has a previous sale fallen through),
   "tenure": string or null (freehold/leasehold),
   "lease_years": string or null,
   "service_charge": string or null,
   "ground_rent": string or null,
+  "major_works": string or null (planned works, big one-off bills, cladding/EWS1 issues),
   "interest_level": string or null (viewings/offers so far),
-  "offer_reaction": string or null (exact reaction to an offer in the ${band} range),
+  "offer_reaction": string or null (exact reaction to the offer feeler),
+  "best_price_indicated": string or null (any figure the AGENT suggested would get it done),
   "viewing_availability": string or null (days/times/notice for viewings),
   "summary": string (3-4 sentences),
   "action_required": string or null
 }
 
-"qualified" = still available AND the agent did not rule out an offer in the ${band} range (open, "put it forward", "worth trying", vendor flexible).
-"not_qualified" = sold/under offer/withdrawn, or the agent clearly said an offer at that level has no chance, or a deal-breaker came up (e.g. very short lease, cash-only structural issues beyond a £10k refurb).
+"qualified" = still available AND the agent did not rule out an offer in the ${band} band (open, "put it forward", "worth trying", vendor flexible).
+"not_qualified" = sold/under offer/withdrawn, or the agent clearly said an offer at that level has no chance, or a deal-breaker came up (e.g. very short lease, cladding remediation with no protections, structural issues beyond a £10k refurb).
 "callback" = couldn't get answers (wrong person, asked to call back, agent needs to check with vendor).
 
 Transcript:
@@ -293,7 +302,14 @@ export async function pushPropertyToPipeline(
     deal.rent ? `Target rent: ${fmtGBP(deal.rent)}/mo · Cash needed: ${fmtGBP(deal.total_cash)}` : null,
     property.agent_name ? `Agent: ${property.agent_name} ${property.agent_phone || ''}` : null,
     q.summary ? `\nCall summary: ${q.summary}` : null,
+    q.occupancy ? `Occupancy: ${q.occupancy}` : null,
+    q.condition_notes ? `Condition: ${q.condition_notes}` : null,
+    q.why_selling || q.motivation ? `Motivation: ${[q.why_selling, q.motivation].filter(Boolean).join(' — ')}` : null,
+    q.chain ? `Chain: ${q.chain}` : null,
+    [q.tenure, q.lease_years && `${q.lease_years} on lease`, q.service_charge && `SC ${q.service_charge}`, q.ground_rent && `GR ${q.ground_rent}`].filter(Boolean).length
+      ? `Tenure: ${[q.tenure, q.lease_years && `${q.lease_years} on lease`, q.service_charge && `SC ${q.service_charge}`, q.ground_rent && `GR ${q.ground_rent}`].filter(Boolean).join(' · ')}` : null,
     q.offer_reaction ? `Offer reaction: ${q.offer_reaction}` : null,
+    q.best_price_indicated ? `Agent hinted: ${q.best_price_indicated}` : null,
     q.viewing_availability ? `Viewings: ${q.viewing_availability}` : null,
   ].filter(Boolean);
 
@@ -364,12 +380,12 @@ export async function handleBrrrCallEvent(
 
   if (event === 'call_analyzed') {
     const analysis = call.call_analysis || {};
-    if (analysis.call_summary && !callRow.summary) {
-      await supabase
-        .from('brrr_property_calls')
-        .update({ summary: analysis.call_summary, updated_at: new Date().toISOString() })
-        .eq('id', callRow.id);
-    }
+    const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (analysis.call_summary && !callRow.summary) update.summary = analysis.call_summary;
+    // Final cost arrives with the analysis event (Retell combined cost, cents)
+    const cents = call.call_cost?.combined_cost;
+    if (typeof cents === 'number') update.cost_usd = Math.round(cents) / 100;
+    await supabase.from('brrr_property_calls').update(update).eq('id', callRow.id);
     return { ok: true };
   }
 
@@ -419,12 +435,14 @@ export async function handleBrrrCallEvent(
   }
   const outcome = qualification.outcome || 'callback';
 
+  const costCents = call.call_cost?.combined_cost;
   await supabase.from('brrr_property_calls').update({
     status: 'completed',
     transcript: transcriptForUI,
     recording_url: call.recording_url || null,
     summary: qualification.summary || null,
     qualification,
+    ...(typeof costCents === 'number' ? { cost_usd: Math.round(costCents) / 100 } : {}),
     updated_at: nowIso,
   }).eq('id', callRow.id);
 
