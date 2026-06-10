@@ -3,7 +3,8 @@ const $ = (id) => document.getElementById(id);
 let properties = [];
 let selectedIdx = -1;
 let logOpen = false;
-let elsieSent = {};   // property_id -> sent_at (successfully sent to Elsie)
+let elsieSent = {};          // property_id -> sent_at (successfully sent to Elsie)
+let currentValuation = null; // server-side valuation for the selected property
 
 const MAX_COMP_DISTANCE = 200;
 function isNearby(c) {
@@ -108,6 +109,7 @@ function selectProperty(idx) {
   populateCalcFromProperty(p);
   calcGdv();
   updateBadges(p);
+  loadValuation(p);
 
   if (comps.length === 0) {
     $("cp-no-comps").classList.remove("hidden");
@@ -223,20 +225,38 @@ $("btn-send-elsie").onclick = async () => {
   if (selectedIdx < 0) return;
   const p = properties[selectedIdx];
   const btn = $("btn-send-elsie");
+
+  const v = currentValuation;
+  if (!v || !v.offer || !v.offer.max) {
+    if (!confirm("No reliable valuation for this property (insufficient sold evidence). " +
+                 "Elsie will have NO offer numbers for the call. Send anyway?")) return;
+  } else if (v.pursue === false) {
+    if (!confirm(`The engine says SKIP this one (${(v.offer.verdict || "").replace(/_/g, " ")}). Send anyway?`)) return;
+  }
+
   btn.disabled = true;
   btn.textContent = "Sending…";
 
   const num = (id) => parseFloat($(id).value) || 0;
   const parseMoney = (t) => parseInt((t || "").replace(/[^0-9-]/g, "")) || 0;
-  const mv = num("calc-mv");
   const deal = {
-    asking_price: mv,
-    offer_price: Math.round(mv * 0.75),            // mirrors calcDeal's purchase price
+    // Research-backed valuation engine output (valuation.py) — offers are a
+    // % of worth-now value, never of GDV, never above asking.
+    asking_price: parseMoney(p.price),
+    cmv: v && v.cmv ? v.cmv.estimate : null,
+    cmv_confidence: v && v.cmv ? v.cmv.confidence : null,
+    offer_min: v && v.offer ? (v.offer.open ?? v.offer.max) : null,
+    offer_max: v && v.offer ? v.offer.max : null,
+    offer_price: v && v.offer ? v.offer.max : null,   // back-compat for displays
+    offer_mode: v && v.offer ? v.offer.mode : null,
+    valuation_verdict: v && v.offer ? v.offer.verdict : null,
+    pursue: v ? v.pursue : null,
+    gdv: v && v.gdv ? v.gdv.estimate : null,
+    stack_verdict: v && v.stack ? v.stack.verdict : null,
     refurb: num("calc-refurb"),
-    rent: num("calc-rent"),
+    rent: v && v.rent && v.rent.estimate ? v.rent.estimate : num("calc-rent"),
     term_months: num("calc-term"),
     total_cash: parseMoney($("r-total-cash").textContent),
-    gdv: parseMoney($("gdv-result").textContent),
     verdict: $("calc-verdict").textContent || "",
   };
 
@@ -577,6 +597,78 @@ function updateBadges(p) {
   }
 }
 
+// ─── Server-side valuation (research-backed engine in valuation.py) ─────────
+// Owns the offer banner. Offers derive from CURRENT market value only;
+// GDV never touches the offer; nothing is ever offered above asking.
+async function loadValuation(p) {
+  currentValuation = null;
+  const banner = $("offer-banner");
+  banner.classList.remove("hidden");
+  banner.className = "rounded-lg p-4 text-center border-2 border-slate-300 bg-slate-50";
+  $("offer-range").textContent = "Valuing from sold comps…";
+  $("offer-range").className = "text-xl font-bold text-slate-500";
+  $("offer-detail").textContent = "";
+  try {
+    const r = await fetch(`/api/valuation/${p.property_id}`);
+    const v = await r.json();
+    if (!v.ok) throw new Error(v.error || `HTTP ${r.status}`);
+    if (selectedIdx < 0 || properties[selectedIdx].property_id !== p.property_id) return; // stale response
+    currentValuation = v;
+    renderValuationBanner(v);
+    // The deal calculator's "market value" is the worth-now value — never GDV.
+    if (v.cmv && v.cmv.estimate) {
+      $("calc-mv").value = v.cmv.estimate;
+      $("calc-mv-slider").value = Math.min(200000, Math.max(50000, v.cmv.estimate));
+      calcDeal();
+    }
+  } catch (e) {
+    banner.className = "rounded-lg p-4 text-center border-2 border-rose-300 bg-rose-50";
+    $("offer-range").textContent = "Valuation unavailable";
+    $("offer-range").className = "text-xl font-bold text-rose-700";
+    $("offer-detail").textContent = String(e.message || e);
+  }
+}
+
+const VERDICT_STYLES = {
+  great_deal:            ["emerald", "GREAT DEAL — asking is at or below our money"],
+  great_deal_suspicious: ["amber", "LOOKS VERY CHEAP — verify why before trusting (lease? condition? cash-only?)"],
+  fair:                  ["blue", "FAIR — winnable if the seller is motivated"],
+  overpriced:            ["rose", "OVERPRICED — our money is far below asking; watch for price cuts"],
+  insufficient_data:     ["slate", "NOT ENOUGH SOLD EVIDENCE — cannot value this safely"],
+};
+
+function renderValuationBanner(v) {
+  const banner = $("offer-banner");
+  const [color, headline] = VERDICT_STYLES[v.offer.verdict] || VERDICT_STYLES.insufficient_data;
+  banner.className = `rounded-lg p-4 text-center border-2 border-${color}-500 bg-${color}-50`;
+  $("offer-range").className = `text-xl font-bold text-${color}-800`;
+  $("offer-detail").className = `text-sm text-${color}-700 mt-1`;
+
+  const parts = [];
+  if (v.cmv.estimate) {
+    parts.push(`Worth now ${fmt(v.cmv.estimate)} (${v.cmv.confidence} confidence, ${v.cmv.n_used} sales)`);
+    if (v.offer.mode === "auction") {
+      parts.push(`Max auction bid ${fmt(v.offer.max)}`);
+      if (v.offer.expected_hammer) parts.push(`guide likely reaches ~${fmt(v.offer.expected_hammer)}`);
+    } else if (v.offer.max) {
+      parts.push(`Open at ${fmt(v.offer.open)}, walk away above ${fmt(v.offer.max)}`);
+    }
+  }
+  parts.push(v.gdv.estimate
+    ? `After works ~${fmt(v.gdv.estimate)} (${v.gdv.confidence})`
+    : "After-works value: not enough evidence");
+  if (v.stack.verdict !== "insufficient_data") parts.push(`BRRR stack: ${v.stack.verdict.replace(/_/g, " ")}`);
+  parts.push(v.pursue ? "✓ Worth calling the agent" : "✗ Skip — not worth a call");
+
+  $("offer-range").textContent = headline;
+  $("offer-detail").textContent = parts.join(" · ");
+
+  const flags = [...(v.offer.flags || []), ...(v.gdv.flags || [])];
+  if (flags.length) {
+    $("offer-detail").textContent += " — " + flags.map(f => f.replace(/_/g, " ")).join(", ");
+  }
+}
+
 // ─── GDV Calculator (Price per sq ft) ────────────────────────────
 function syncGdvInputs() {
   const sqftInp = $("gdv-sqft"), sqftSlider = $("gdv-sqft-slider"), sqmInp = $("gdv-sqm");
@@ -661,49 +753,12 @@ function calcGdv() {
   $("gdv-avg-ppsf").textContent = ppsf > 0 ? "£" + ppsf : "-";
   $("gdv-result").textContent = gdv > 0 ? "£" + Math.round(gdv).toLocaleString() : "-";
 
-  // Offer range banner
-  const banner = $("offer-banner");
-  if (gdv > 0) {
-    const opening = Math.round(gdv * 0.70);
-    const max = Math.round(gdv * 0.75);
-    $("offer-range").textContent = `Offer between ${fmt(opening)} and ${fmt(max)} maximum`;
-    if (noCompData) {
-      $("offer-detail").textContent = `WARNING: Based on manual £${ppsf}/sqft — no target-bed comp data. Do NOT rely on this.`;
-      banner.className = "rounded-lg p-4 text-center border-2 border-amber-500 bg-amber-50";
-      $("offer-range").className = "text-xl font-bold text-amber-800";
-      $("offer-detail").className = "text-sm text-amber-600 mt-1";
-    } else {
-      $("offer-detail").textContent = `Based on GDV of ${fmt(gdv)}. Start at 70%, max at 75% (25% BMV).`;
-      banner.className = "rounded-lg p-4 text-center border-2 border-emerald-500 bg-emerald-50";
-      $("offer-range").className = "text-xl font-bold text-emerald-800";
-      $("offer-detail").className = "text-sm text-emerald-600 mt-1";
-    }
-    banner.classList.remove("hidden");
-  } else {
-    banner.classList.add("hidden");
-  }
-
-  if (gdv > 0 && p) {
-    const askingPrice = parseInt((p.price || "").replace(/[^0-9]/g, "")) || 0;
-    const uplift = askingPrice > 0 ? Math.round(((gdv - askingPrice) / askingPrice) * 100) : 0;
-    const verdict = $("gdv-verdict");
-    if (uplift >= 35) {
-      verdict.className = "rounded-lg p-3 text-center text-sm font-semibold bg-emerald-100 text-emerald-700";
-      verdict.textContent = `${uplift}% uplift — strong deal (need 35%+ to get all money back)`;
-    } else if (uplift >= 25) {
-      verdict.className = "rounded-lg p-3 text-center text-sm font-semibold bg-amber-100 text-amber-700";
-      verdict.textContent = `${uplift}% uplift — marginal (below 35% target, some cash stuck)`;
-    } else {
-      verdict.className = "rounded-lg p-3 text-center text-sm font-semibold bg-rose-100 text-rose-700";
-      verdict.textContent = `${uplift}% uplift — walk away (not enough uplift for BRRRR)`;
-    }
-
-    if (gdv > 0 && !noCompData) {
-      $("calc-mv").value = Math.round(gdv);
-      $("calc-mv-slider").value = Math.min(200000, Math.max(50000, Math.round(gdv)));
-      calcDeal();
-    }
-  }
+  // This sandbox calculator no longer touches the offer banner or the deal
+  // calculator's market value — those come from the server valuation engine
+  // (loadValuation). It remains as a manual what-if tool only.
+  const verdict = $("gdv-verdict");
+  verdict.className = "rounded-lg p-3 text-center text-xs font-medium bg-slate-100 text-slate-500";
+  verdict.textContent = "Manual what-if only — the green/red banner above is the real valuation.";
 }
 
 // ─── Init ────────────────────────────────────────────────────────

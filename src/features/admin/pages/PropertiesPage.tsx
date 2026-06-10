@@ -118,13 +118,19 @@ function fmtWhen(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
+// Mirrors offerRange in api/lib/brrr.ts: scraper valuation engine first,
+// % of asking only as a fallback when no valuation was sent.
 function offerBand(p: PropertyRow, s: BrrrSettings | null): { min: number; max: number } {
+  const num = (v: unknown) => parseFloat(String(v ?? '')) || 0
+  const engineMax = num(p.deal?.offer_max) || num(p.deal?.offer_price)
+  if (engineMax > 0) {
+    const engineMin = num(p.deal?.offer_min)
+    return { min: Math.round(engineMin > 0 ? Math.min(engineMin, engineMax) : engineMax), max: Math.round(engineMax) }
+  }
   const asking = Number(p.asking_price) || 0
-  const dealOffer = parseFloat(String(p.deal?.offer_price ?? '')) || 0
   const lowPct = s?.offer_low_pct ?? 70
   const highPct = s?.offer_high_pct ?? 75
   let max = Math.round(asking * highPct / 100)
-  if (dealOffer > 0) max = Math.min(max || dealOffer, dealOffer)
   let min = Math.round(asking * lowPct / 100)
   if (!min || min > max) min = max
   return { min, max }
@@ -285,7 +291,8 @@ export default function PropertiesPage() {
             </div>
           </div>
           <p className="mt-2 text-[11px] text-ink-subtle">
-            Offer range: Elsie opens near the bottom figure and never goes above the top one (capped by the deal calculator's offer). Times are UK time.
+            Offer figures normally come from the scraper's valuation engine (a % of the property's worth-now value from sold comps).
+            The two percentages here are only the fallback when a property arrives without a valuation. Times are UK time.
           </p>
           <div className="mt-3 flex gap-2">
             <button

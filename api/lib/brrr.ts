@@ -60,13 +60,26 @@ export async function saveBrrrSettings(patch: Partial<BrrrSettings>): Promise<Br
   return merged;
 }
 
-/** The offer band the AI is allowed to talk in. Ceiling never exceeds the
- *  deal calculator's offer price — the numbers have to stack. */
+/** The offer band the AI is allowed to talk in.
+ *
+ *  Primary source: the scraper's valuation engine (deal.offer_min/offer_max —
+ *  a % of the property's worth-now value from sold comps, never above asking).
+ *  Fallback (no valuation sent): % of asking from settings, capped below asking. */
 export function offerRange(property: BrrrProperty, s: BrrrSettings): { min: number; max: number } {
+  const deal = (property.deal || {}) as Record<string, unknown>;
+  const num = (v: unknown) => parseFloat(String(v ?? '')) || 0;
+
+  const engineMax = num(deal.offer_max) || num(deal.offer_price);
+  if (engineMax > 0) {
+    const engineMin = num(deal.offer_min);
+    return {
+      min: Math.round(engineMin > 0 ? Math.min(engineMin, engineMax) : engineMax),
+      max: Math.round(engineMax),
+    };
+  }
+
   const asking = Number(property.asking_price) || 0;
-  const dealOffer = parseFloat(String((property.deal as Record<string, unknown>)?.offer_price ?? '')) || 0;
   let max = Math.round(asking * s.offer_high_pct / 100);
-  if (dealOffer > 0) max = Math.min(max || dealOffer, dealOffer);
   let min = Math.round(asking * s.offer_low_pct / 100);
   if (!min || min > max) min = max;
   return { min, max };

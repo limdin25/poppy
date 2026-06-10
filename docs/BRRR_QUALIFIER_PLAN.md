@@ -1,4 +1,19 @@
-# BRRR Property Qualifier — Plan (2026-06-10, v2 same day)
+# BRRR Property Qualifier — Plan (2026-06-10, v3 same day)
+
+> **v3 — valuation engine.** The Comps tab's offer maths was fundamentally
+> broken (offers were 70–75% of GDV with a default £250/sqft — producing
+> offers ABOVE asking). Replaced by a research-backed, test-driven engine:
+> `scraper/valuation.py` (+ 26 tests in `scraper/test_valuation.py`, spec in
+> [docs/VALUATION_ENGINE.md](VALUATION_ENGINE.md)). Core rules: offers are
+> 70–75% of the property's **worth-now value** (median of recency-adjusted,
+> distress-filtered same-bed sold comps), **never above asking**, GDV (from
+> target-bed comps, no defaults ever) only checks the deal stacks; verdicts
+> great_deal / fair / overpriced / insufficient_data; `pursue` flag gates
+> auto-queuing so Elsie never calls hopeless listings. Served by
+> `GET /api/valuation/<property_id>`; the Comps banner, deal calculator MV
+> and the Send-to-Elsie payload (offer_min/offer_max/cmv/gdv/verdict) all
+> consume it; Elsie's `offerRange` prefers these numbers over the %-of-asking
+> fallback.
 
 > **v2 changes:** the scraper now LIVES inside this repo at `scraper/`
 > (launchd service `com.margarita.propertytool`, port 5050 on Hugo's Mac;

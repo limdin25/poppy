@@ -67,10 +67,14 @@ export default async function handler(req: Request): Promise<Response> {
 
     // "Send to Elsie" means cleared to call: queue the qualification call right
     // away (the dial cron only rings inside the configured calling hours).
-    // Re-sends of already-processed properties don't re-queue.
+    // Re-sends of already-processed properties don't re-queue, and properties
+    // the valuation engine says to skip (pursue=false) are stored but not
+    // auto-dialled — Hugo can still queue them manually from the admin tab.
     let callQueued = false;
     const settings = await getBrrrSettings();
-    if (settings.auto_queue_on_ingest && row.agent_phone && ['new', 'call_queued'].includes(data.status)) {
+    const pursue = (row.deal as Record<string, unknown>)?.pursue;
+    if (settings.auto_queue_on_ingest && row.agent_phone && pursue !== false
+        && ['new', 'call_queued'].includes(data.status)) {
       const q = await queuePropertyCall(data.id);
       callQueued = q.queued;
     }

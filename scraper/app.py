@@ -6,6 +6,7 @@ import requests
 import storage
 import facebook_storage
 import rightmove_storage
+import valuation
 from proxies import ProxyManager
 from scraper import Scraper
 from facebook_scraper import FacebookScraper
@@ -798,6 +799,21 @@ def comps_stop():
     COMP_JOB["pause"].clear()
     emit({"type": "log", "level": "warn", "msg": "Comps Stop requested."})
     return jsonify({"ok": True})
+
+
+# ───────────────── Valuation engine (research-backed, TDD) ─────────────────
+# Replaces the broken client-side offer maths (offers were 70-75% of GDV with
+# a default £250/sqft — producing offers ABOVE asking). See valuation.py.
+
+@app.route("/api/valuation/<property_id>")
+def property_valuation(property_id):
+    listing = rightmove_storage.get_listing(property_id)
+    if not listing:
+        return jsonify({"ok": False, "error": "property not found"}), 404
+    comps = rightmove_storage.get_comps(property_id)
+    result = valuation.value_property(listing, comps)
+    result["ok"] = True
+    return jsonify(result)
 
 
 # ───────────────── Elsie integration (BRRR qualifier) ─────────────────
