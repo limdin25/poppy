@@ -114,9 +114,11 @@ export default async function handler(req: Request): Promise<Response> {
       // Negotiation pack from the valuation engine (deal jsonb set by the scraper)
       const deal = (property.deal || {}) as Record<string, unknown>;
       const ladderArr = Array.isArray(deal.ladder) ? (deal.ladder as number[]).filter((n) => n > 0) : [];
-      const ladderStr = ladderArr.length >= 2
-        ? ladderArr.map((n) => fmtGBP(n)).join(', then ')
-        : `${fmtGBP(offerMin)}, climbing at most to ${fmtGBP(offerMax)}`;
+      const ladderStr = deal.offer_mode === 'auction'
+        ? `this is an AUCTION — your absolute maximum is ${fmtGBP(offerMax)}; sound out a pre-auction offer around it, never beyond`
+        : ladderArr.length >= 2
+          ? ladderArr.map((n) => fmtGBP(n)).join(', then ')
+          : `${fmtGBP(offerMin)}, climbing at most to ${fmtGBP(offerMax)}`;
       const evidence = Array.isArray(deal.evidence) && (deal.evidence as string[]).length
         ? (deal.evidence as string[]).join('; ')
         : 'no sold-price evidence on file — rely on the asking price conversation';
