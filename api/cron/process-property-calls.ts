@@ -1,0 +1,158 @@
+import { createClient } from '@supabase/supabase-js';
+import { toE164, fmtGBP } from '../lib/brrr.js';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
+const RETELL_API_KEY = process.env.RETELL_API_KEY!;
+
+export const config = { runtime: 'edge' };
+
+// Estate agencies only — never ring outside UK office hours.
+function withinCallingHours(now: Date): boolean {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  const day = get('weekday');
+  const minutes = parseInt(get('hour')) * 60 + parseInt(get('minute'));
+  if (day === 'Sun') return false;
+  return minutes >= 9 * 60 + 30 && minutes <= 17 * 60; // 09:30–17:00
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  const authHeader = req.headers.get('authorization') || '';
+  const cronSecret = process.env.CRON_SECRET || '';
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+  }
+
+  const agentId = process.env.RETELL_PROPERTY_AGENT_ID;
+  const fromNumber = process.env.PROPERTY_FROM_NUMBER;
+  if (!agentId || !fromNumber) {
+    return new Response(JSON.stringify({ ok: true, skipped: 'agent not configured' }), { status: 200 });
+  }
+
+  const now = new Date();
+  if (!withinCallingHours(now)) {
+    return new Response(JSON.stringify({ ok: true, skipped: 'outside calling hours' }), { status: 200 });
+  }
+
+  try {
+    const { data: pending } = await supabase
+      .from('brrr_property_calls')
+      .select('*')
+      .eq('status', 'pending')
+      .lte('next_attempt_at', now.toISOString())
+      .order('next_attempt_at', { ascending: true })
+      .limit(5);
+
+    if (!pending || pending.length === 0) {
+      return new Response(JSON.stringify({ ok: true, dialed: 0 }), { status: 200 });
+    }
+
+    // Each dial occupies the line for minutes — keep it to a couple per tick.
+    const MAX_DIALS_PER_RUN = 2;
+    let dialed = 0;
+    const errors: string[] = [];
+
+    for (const entry of pending) {
+      if (dialed >= MAX_DIALS_PER_RUN) break;
+
+      // Atomic claim — same pattern as the takeover queue: overlapping runs
+      // both see the row, only one flips it to dialing.
+      const { data: claimed } = await supabase
+        .from('brrr_property_calls')
+        .update({
+          status: 'dialing',
+          attempts: entry.attempts + 1,
+          updated_at: now.toISOString(),
+        })
+        .eq('id', entry.id)
+        .eq('status', 'pending')
+        .lte('next_attempt_at', now.toISOString())
+        .select('id');
+      if (!claimed || claimed.length === 0) continue;
+
+      const { data: property } = await supabase
+        .from('brrr_properties')
+        .select('*')
+        .eq('id', entry.property_id)
+        .single();
+
+      const toNumber = toE164(property?.agent_phone);
+      if (!property || !toNumber) {
+        await supabase.from('brrr_property_calls')
+          .update({ status: 'failed', error: 'no agent phone', updated_at: now.toISOString() })
+          .eq('id', entry.id);
+        continue;
+      }
+
+      const deal = (property.deal || {}) as Record<string, unknown>;
+      const res = await fetch('https://api.retellai.com/v2/create-phone-call', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_number: fromNumber,
+          to_number: toNumber,
+          override_agent_id: agentId,
+          metadata: { type: 'brrr_property', property_call_id: entry.id, property_id: property.id },
+          retell_llm_dynamic_variables: {
+            property_address: property.address || 'the property',
+            asking_price: property.price_text || fmtGBP(property.asking_price),
+            offer_price: fmtGBP(deal.offer_price),
+            agent_name: property.agent_name || 'the agency',
+            bedrooms: String(property.bedrooms ?? ''),
+            property_type: property.property_type || 'property',
+            days_on_market: String(property.days_on_market ?? 'unknown'),
+            callback_number: fromNumber,
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const call = await res.json() as { call_id?: string };
+        await supabase.from('brrr_property_calls')
+          .update({ retell_call_id: call.call_id || null, updated_at: new Date().toISOString() })
+          .eq('id', entry.id);
+        await supabase.from('brrr_properties')
+          .update({ status: 'calling', updated_at: new Date().toISOString() })
+          .eq('id', property.id);
+        dialed++;
+      } else {
+        const errText = (await res.text()).slice(0, 200);
+        errors.push(errText);
+        const attempts = entry.attempts + 1;
+        if (attempts >= 3) {
+          await supabase.from('brrr_property_calls')
+            .update({ status: 'failed', error: errText, updated_at: new Date().toISOString() })
+            .eq('id', entry.id);
+          await supabase.from('brrr_properties')
+            .update({ status: 'no_answer', updated_at: new Date().toISOString() })
+            .eq('id', property.id);
+        } else {
+          // Back to pending, retry in 2 hours
+          await supabase.from('brrr_property_calls')
+            .update({
+              status: 'pending',
+              error: errText,
+              next_attempt_at: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', entry.id);
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({ ok: true, dialed, errors }), { status: 200 });
+  } catch (err: any) {
+    console.error('[process-property-calls] error:', err);
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+  }
+}

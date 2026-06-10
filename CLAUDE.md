@@ -142,6 +142,14 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
   - Shared Stripe account with Lemlin (`acct_1M9GXPLdAEhwWg6w`)
 - **Admin pages**: fully wired to real Supabase via `/api/admin/*` routes
 - **Build errors fixed**: all API route imports use `.js` extensions for Vercel node16 compat
+- **BRRR property qualifier live (2026-06-10)** — see [docs/BRRR_QUALIFIER_PLAN.md](docs/BRRR_QUALIFIER_PLAN.md):
+  - Rightmove scraper (`/Users/hugo/Whats/Margarita/scraper`) has a "Send to Elsie" button on the Comps tab → `POST /api/properties/ingest` (secret: `PROPERTY_INGEST_SECRET`, scraper keeps it in `data/elsie.json`)
+  - Tables `brrr_properties` + `brrr_property_calls` (admin-only, no RLS)
+  - Admin tab **BRRR → Properties** (`/admin/properties`): numbers, floor plans, "Call agent" button, transcript/recording viewer
+  - Outbound qualifier agent: `agent_539daa8b3bedf3d3de876276a2` / LLM `llm_3da4d9ae0e456b8498b09b000b3e` (cartesia-Willa, en-GB, press_digit IVR tool, honest-AI "Maya from Airbrick Properties"). NO agents-table row on purpose (sync-prompts would clobber it)
+  - Dial cron `/api/cron/process-property-calls` every 2 min: UK-hours guard (Mon–Sat 09:30–17:00), atomic claim, max 2 dials/run, 3 attempts, calls from `+447426495169`
+  - Retell webhook branches on `metadata.type === 'brrr_property'` → Claude extracts qualification → qualified properties become deals in Hugo's live pipeline (stage "Qualified") + email notification
+  - Env: `PROPERTY_INGEST_SECRET`, `RETELL_PROPERTY_AGENT_ID`, `PROPERTY_FROM_NUMBER`, `PROPERTY_PIPELINE_BUSINESS_ID`
 
 ### What's next
 1. Custom domain

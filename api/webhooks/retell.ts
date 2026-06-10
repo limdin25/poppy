@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { notifyBusinessOwner } from '../lib/notify.js';
+import { handleBrrrCallEvent } from '../lib/brrr.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -119,6 +120,18 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (event !== 'call_ended' && event !== 'call_analyzed') {
       return new Response(JSON.stringify({ ok: true, skipped: event }), { status: 200 });
+    }
+
+    // BRRR property-qualifier calls (outbound, admin-only) — branch out before
+    // the inbound flow: they have no business mapping and must not create
+    // contacts/conversations like a normal customer call.
+    const callMeta = (call.metadata || {}) as Record<string, any>;
+    if (callMeta.type === 'brrr_property' || call.direction === 'outbound') {
+      const result = await handleBrrrCallEvent(event, call);
+      if (result.ok || callMeta.type === 'brrr_property') {
+        return new Response(JSON.stringify(result), { status: 200 });
+      }
+      // outbound call that isn't a property call — fall through to normal flow
     }
 
     const agentId = call.agent_id;

@@ -13,6 +13,7 @@ import {
   Flag,
   Activity,
   ScrollText,
+  Home,
   Menu,
   X,
   ArrowLeft,
@@ -42,6 +43,12 @@ const navGroups = [
     items: [
       { to: '/admin/calls', icon: Phone, label: 'Calls' },
       { to: '/admin/conversations', icon: MessageSquare, label: 'Conversations' },
+    ],
+  },
+  {
+    label: 'BRRR',
+    items: [
+      { to: '/admin/properties', icon: Home, label: 'Properties' },
     ],
   },
   {
