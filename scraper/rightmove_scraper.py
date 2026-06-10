@@ -1100,11 +1100,13 @@ class CompsFetcher:
             return out;
         }''')
 
-    def _get_nearby_postcodes(self, postcode, radius=200):
+    def _get_nearby_postcodes(self, postcode, radius=200, limit=None):
         """Get postcodes within radius metres using postcodes.io/nearest."""
         pc_clean = postcode.replace(" ", "")
+        if limit is None:
+            limit = max(20, min(100, radius // 8))  # wider radius needs more postcodes
         try:
-            url = f"https://api.postcodes.io/postcodes/{pc_clean}/nearest?limit=20&radius={radius}"
+            url = f"https://api.postcodes.io/postcodes/{pc_clean}/nearest?limit={limit}&radius={radius}"
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read())
@@ -1122,8 +1124,26 @@ class CompsFetcher:
     def _lr_db_path(self):
         return Path(__file__).parent / "data" / "land_registry.db"
 
-    def _lr_fetch_local(self, postcodes, min_date="2020-01-01", property_type="flat"):
-        """Query the local Land Registry SQLite database by postcodes."""
+    @staticmethod
+    def _lr_types_for(subject_property_type):
+        """Map a listing's property type to Land Registry type(s). Never mix
+        flats with houses — RICS comparable rule."""
+        t = (subject_property_type or "").lower()
+        if any(k in t for k in ("flat", "apartment", "maisonette", "studio")):
+            return ("flat",)
+        if "terrace" in t:
+            return ("terraced",)
+        if "semi" in t:
+            return ("semi-detached",)
+        if "detached" in t:
+            return ("detached",)
+        if any(k in t for k in ("house", "bungalow", "cottage")):
+            return ("terraced", "semi-detached", "detached")
+        return ("flat",)  # unknown — Hugo's pipeline is flats
+
+    def _lr_fetch_local(self, postcodes, min_date="2020-01-01", property_types=("flat",)):
+        """Query the local Land Registry SQLite database by postcodes.
+        Excludes new-build first sales (14-52% premium pollutes comps)."""
         import sqlite3
         db_path = self._lr_db_path()
         if not db_path.exists():
@@ -1131,21 +1151,23 @@ class CompsFetcher:
             return []
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        placeholders = ",".join("?" for _ in postcodes)
+        pc_ph = ",".join("?" for _ in postcodes)
+        ty_ph = ",".join("?" for _ in property_types)
         rows = conn.execute(
             f"""SELECT price, date, postcode, property_type, paon, saon, street, town
                 FROM sold_prices
-                WHERE postcode IN ({placeholders})
-                  AND property_type = ?
+                WHERE postcode IN ({pc_ph})
+                  AND property_type IN ({ty_ph})
+                  AND new_build = 0
                   AND date >= ?
                 ORDER BY date DESC
-                LIMIT 100""",
-            [*postcodes, property_type, min_date]
+                LIMIT 150""",
+            [*postcodes, *property_types, min_date]
         ).fetchall()
         conn.close()
         return [dict(r) for r in rows]
 
-    def _lr_fetch_by_street(self, street_name, outcode, min_date="2020-01-01", property_type="flat"):
+    def _lr_fetch_by_street(self, street_name, outcode, min_date="2020-01-01", property_types=("flat",)):
         """Query local Land Registry DB by street name + outcode area. Street-first search."""
         import sqlite3
         db_path = self._lr_db_path()
@@ -1153,16 +1175,18 @@ class CompsFetcher:
             return []
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
+        ty_ph = ",".join("?" for _ in property_types)
         rows = conn.execute(
-            """SELECT price, date, postcode, property_type, paon, saon, street, town
+            f"""SELECT price, date, postcode, property_type, paon, saon, street, town
                FROM sold_prices
                WHERE street = ?
                  AND postcode LIKE ?
-                 AND property_type = ?
+                 AND property_type IN ({ty_ph})
+                 AND new_build = 0
                  AND date >= ?
                ORDER BY date DESC
                LIMIT 50""",
-            [street_name.upper(), outcode + "%", property_type, min_date]
+            [street_name.upper(), outcode + "%", *property_types, min_date]
         ).fetchall()
         conn.close()
         return [dict(r) for r in rows]
@@ -1191,9 +1215,10 @@ class CompsFetcher:
                     self._log(f"  Land Registry API ({pc_encoded}) failed after {max_retries} tries: {e}", "warn")
         return []
 
-    def _search_land_registry(self, postcode, subject_addr):
-        """Search Land Registry: street name first, then nearby postcodes (200m).
-        Uses local SQLite DB (instant) with API fallback."""
+    def _search_land_registry(self, postcode, subject_addr, radius=200,
+                              property_types=("flat",), include_street=True):
+        """Search Land Registry: street name first, then nearby postcodes
+        within `radius` metres. Uses local SQLite DB (instant)."""
         subject_street = self._extract_street(subject_addr)
         subject_pc = self._extract_full_postcode(subject_addr)
         outcode = self._extract_outcode(subject_addr) or postcode.split()[0]
@@ -1213,20 +1238,41 @@ class CompsFetcher:
             return []
 
         if subject_street:
-            street_rows = self._lr_fetch_by_street(subject_street, outcode, min_date="2020-01-01", property_type="flat")
-            self._log(f"  LR street search '{subject_street}' in {outcode}: {len(street_rows)} flats")
+            street_rows = self._lr_fetch_by_street(subject_street, outcode, min_date="2020-01-01", property_types=property_types)
+            if include_street:
+                self._log(f"  LR street search '{subject_street}' in {outcode}: {len(street_rows)} sales")
         else:
             street_rows = []
+        if not include_street:
+            street_kept = street_rows
+            street_rows = []
+        else:
+            street_kept = street_rows
+
+        # Listings often expose only the outcode (e.g. "M15"). The street's own
+        # Land Registry sales carry full postcodes — borrow the most common one
+        # as the anchor so the radius search can still run.
+        if not is_full_pc and street_kept:
+            from collections import Counter
+            pcs = [r.get("postcode", "") for r in street_kept if r.get("postcode")]
+            if pcs:
+                postcode = Counter(pcs).most_common(1)[0][0]
+                is_full_pc = True
+                subject_key = postcode.replace(" ", "")
+                if not self._geo_cache.get(subject_key):
+                    self._geocode_postcodes([subject_key])
+                subject_geo = self._geo_cache.get(subject_key)
+                self._log(f"  No full postcode on listing — anchoring radius search at {postcode} (from street sales)")
 
         pc_rows = []
         nearby = []
         if is_full_pc:
-            nearby = self._get_nearby_postcodes(postcode, radius=200)
+            nearby = self._get_nearby_postcodes(postcode, radius=radius)
             nearby_pcs = [pc for pc, _ in nearby]
-            pc_rows = self._lr_fetch_local(nearby_pcs, min_date="2020-01-01", property_type="flat")
-            self._log(f"  LR postcode search (200m, {len(nearby_pcs)} postcodes): {len(pc_rows)} flats")
+            pc_rows = self._lr_fetch_local(nearby_pcs, min_date="2020-01-01", property_types=property_types)
+            self._log(f"  LR postcode search ({radius}m, {len(nearby_pcs)} postcodes): {len(pc_rows)} sales")
         else:
-            self._log(f"  No full postcode — relying on street search only")
+            self._log(f"  No full postcode and no street sales — cannot widen search", "warn")
 
         all_rows = street_rows + pc_rows
         seen_keys = set()
@@ -1266,7 +1312,7 @@ class CompsFetcher:
                 "postcode": pc,
                 "price": f"£{row['price']:,}",
                 "beds": "",
-                "property_type": "Flat",
+                "property_type": (row.get("property_type") or "Flat").title(),
                 "date": row["date"],
                 "url": "",
                 "distance_m": str(int(dist)),
@@ -1275,7 +1321,7 @@ class CompsFetcher:
             })
 
         results.sort(key=lambda r: (int(r.get("distance_m") or 999999), -self._parse_year(r.get("date", ""))))
-        self._log(f"  Land Registry total: {len(results)} unique flats (street: {len(street_rows)}, nearby: {len(pc_rows)})")
+        self._log(f"  Land Registry total: {len(results)} unique sales (street: {len(street_rows)}, nearby: {len(pc_rows)})")
         return results
 
     EPC_API_BASE = "https://api.get-energy-performance-data.communities.gov.uk"
@@ -1670,43 +1716,55 @@ class CompsFetcher:
                     full_pc = self._extract_full_postcode(address)
                     search_pc = full_pc or outcode
 
-                    # === STEP 1: Land Registry DB (primary — street name + nearby postcodes) ===
-                    lr_results = self._search_land_registry(search_pc, address)
+                    # === STEP 1: Land Registry DB — widening ladder until 5+5 comps ===
+                    # 200m → 500m → 800m (the valuation engine weights distance,
+                    # so far comps inform without dominating). EPC estimates beds.
+                    ptypes = self._lr_types_for(prop.get("property_type"))
+                    same_bed_comps, target_bed_comps = [], []
+                    classified_keys = set()
+                    epc_budget = 45  # ~0.5s per lookup — keeps a property under ~25s
 
-                    all_lr = lr_results[:30]
-                    if all_lr:
-                        self._log(f"  Looking up EPC for {len(all_lr)} Land Registry flats to estimate beds...")
-                    for lr in all_lr:
+                    for radius in (200, 500, 800):
                         if self.stop.is_set():
                             break
-                        lr_pc = lr.get("postcode", "")
-                        if not lr_pc:
-                            lr_pc = self._extract_full_postcode(lr.get("address", ""))
-                        if lr_pc:
-                            lr_pc_fmt = lr_pc if " " in lr_pc else (lr_pc[:-3] + " " + lr_pc[-3:])
-                            epc = self._epc_find_match(lr_pc_fmt, lr.get("address", ""))
-                            if epc:
-                                lr["floor_area_sqm"] = epc.get("floor_area") or ""
-                                rooms = epc.get("habitable_rooms")
-                                if rooms:
-                                    rooms_int = int(rooms)
-                                    est_beds = max(1, rooms_int - 1)
-                                    lr["beds"] = str(est_beds)
-                                elif lr["floor_area_sqm"]:
-                                    sqm = float(lr["floor_area_sqm"])
-                                    if sqm <= 50:
-                                        lr["beds"] = "1"
-                                    elif sqm <= 75:
-                                        lr["beds"] = "2"
-                                    else:
-                                        lr["beds"] = "3"
-                            await asyncio.sleep(random.uniform(0.3, 0.6))
-
-                    same_bed_comps = [r for r in all_lr if r.get("beds") == str(beds)]
-                    target_bed_comps = [r for r in all_lr if r.get("beds") == str(target_beds)]
-                    lr_unknown = [r for r in all_lr if not r.get("beds")]
-
-                    self._log(f"  LR results: {len(same_bed_comps)} same-bed ({beds}), {len(target_bed_comps)} target-bed ({target_beds}), {len(lr_unknown)} unknown")
+                        lr_results = self._search_land_registry(
+                            search_pc, address, radius=radius, property_types=ptypes,
+                            include_street=(radius == 200))
+                        fresh = []
+                        for lr in lr_results:
+                            key = (lr.get("address", "").lower(), lr.get("price", ""), lr.get("date", ""))
+                            if key not in classified_keys:
+                                classified_keys.add(key)
+                                fresh.append(lr)
+                        fresh = fresh[:30]
+                        if fresh:
+                            self._log(f"  Looking up EPC for {len(fresh)} Land Registry sales ({radius}m ring) to estimate beds...")
+                        for lr in fresh:
+                            if self.stop.is_set() or epc_budget <= 0:
+                                break
+                            lr_pc = lr.get("postcode", "") or self._extract_full_postcode(lr.get("address", ""))
+                            if lr_pc:
+                                lr_pc_fmt = lr_pc if " " in lr_pc else (lr_pc[:-3] + " " + lr_pc[-3:])
+                                epc = self._epc_find_match(lr_pc_fmt, lr.get("address", ""))
+                                epc_budget -= 1
+                                if epc:
+                                    lr["floor_area_sqm"] = epc.get("floor_area") or ""
+                                    rooms = epc.get("habitable_rooms")
+                                    if rooms:
+                                        est_beds = max(1, int(rooms) - 1)
+                                        lr["beds"] = str(est_beds)
+                                    elif lr["floor_area_sqm"]:
+                                        sqm = float(lr["floor_area_sqm"])
+                                        lr["beds"] = "1" if sqm <= 50 else ("2" if sqm <= 75 else "3")
+                                await asyncio.sleep(random.uniform(0.3, 0.6))
+                            if lr.get("beds") == str(beds):
+                                same_bed_comps.append(lr)
+                            elif lr.get("beds") == str(target_beds):
+                                target_bed_comps.append(lr)
+                        self._log(f"  After {radius}m ring: {len(same_bed_comps)} same-bed ({beds}), "
+                                  f"{len(target_bed_comps)} target-bed ({target_beds})")
+                        if len(same_bed_comps) >= 5 and len(target_bed_comps) >= 5:
+                            break
 
                     # === STEP 2: Zoopla sold pages (fallback — only if LR didn't find enough) ===
                     if len(same_bed_comps) < 5 or len(target_bed_comps) < 5:
@@ -1722,8 +1780,28 @@ class CompsFetcher:
                             if z["address"].lower() not in existing_addrs_t and len(target_bed_comps) < 5:
                                 target_bed_comps.append(z)
 
-                    same_bed_comps.sort(key=lambda r: int(r.get("distance_m") or 999999))
-                    target_bed_comps.sort(key=lambda r: int(r.get("distance_m") or 999999))
+                    # Selection: nearest first; when we know the subject's size,
+                    # size-similar comps (0.7–1.4×) outrank size-mismatched ones.
+                    subj_sqm = 0.0
+                    try:
+                        subj_sqm = float(prop.get("floor_area_sqm") or 0)
+                    except (TypeError, ValueError):
+                        pass
+
+                    def comp_rank(r):
+                        dist = int(r.get("distance_m") or 999999)
+                        size_penalty = 0
+                        if subj_sqm > 0:
+                            try:
+                                c_sqm = float(r.get("floor_area_sqm") or 0)
+                            except (TypeError, ValueError):
+                                c_sqm = 0
+                            if c_sqm > 0 and not (0.7 * subj_sqm <= c_sqm <= 1.4 * subj_sqm):
+                                size_penalty = 1
+                        return (size_penalty, dist)
+
+                    same_bed_comps.sort(key=comp_rank)
+                    target_bed_comps.sort(key=comp_rank)
                     same_bed_comps = same_bed_comps[:5]
                     target_bed_comps = target_bed_comps[:5]
 

@@ -265,3 +265,23 @@ UK practitioners estimate GDV for light-refurb/bedroom-conversion deals from SOL
 
 UK sold-price data is full of silent traps for automated valuation. Land Registry PPD splits sales into Category A (clean, full-value) and Category B (repossessions, power-of-sale, portfolio/non-private transfers) — B must be filtered out, but ordinary auction and cash-only distress sales still hide inside Category A with no marker, so the working detection rule is to discard comps below ~70-75% of the street/postcode-sector median £/sqft and aggregate with medians or interquartile means. New builds carry a 14-52% premium (highest in the North East) that deflates within 2-5 years; PPD's old/new flag lets you exclude them. Flat values fall off a cliff below 80 years' lease (10-20%+ discount, marriage value, lender refusal below ~70 years), and PPD records only freehold/leasehold — not remaining term — so cheap flat comps must be lease-checked before use. Sold prices lag reality: registration takes 2 weeks-2 months and HMLR officially flags the latest 2 months as incomplete, making effective data freshness 3-6 months. Asking-price qualifiers carry signal: OIEO is a floor, auction Guide Prices are pitched ~10% below value (reserve within 10% by ASA rule) and lots hammer 15-25% above guide, plain asking prices run ~2-4% above achieved, and ~34% of listings get cut ~7%. 'Cash buyers only' means non-mortgageable (structural, non-standard construction, short lease, legal defects) trading 5-15%+ below clean value. Regionally, £/sqft medians differ enormously — Gateshead ~£178/sqft, Coventry ~£256/sqft, Manchester ~£288/sqft (new-build flats ~£418/sqft) — with the middle half of sales in one borough spanning a 1.4-1.7x range, so comps must be computed at street/postcode-sector level using EPC-derived floor areas (~79% match rate, reject areas outside 9-974 m²), and a low absolute price in a cheap market is not evidence of below-market value.
 
+
+---
+
+# Comp fetching (feeds this engine) — upgraded 2026-06-10
+
+Primary source: local Land Registry DB (`scraper/data/land_registry.db`, 5.9M
+England sales, new-builds excluded at query time) + the government EPC register
+(bedroom estimate = habitable rooms − 1, floor areas). Fetch strategy per
+property: street-name search first, then a **widening radius ladder 200m →
+500m → 800m** around the postcode until 5 same-bed + 5 target-bed comps are
+found (the engine distance-weights, so far comps inform without dominating).
+Listings with only an outcode get their radius anchor from the street's own
+sales (modal full postcode). Comp type follows the subject (flats never
+compared to houses). Final selection prefers size-similar comps (0.7–1.4× the
+subject's floor area) at equal distance. Zoopla sold pages remain the fallback
+when Land Registry + EPC can't fill the buckets.
+
+Proof case (Betsham St, M15 — listing has no full postcode): before = 2 usable
+comps → insufficient; after = 5 same-bed incl. 2024/2025 sales 35m away →
+CMV £164k, offer £106.5k→£115k, verdict fair.
