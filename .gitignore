@@ -13,3 +13,13 @@ test-results/
 # Claude Code local state (personal, not shared)
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Rightmove/leads scraper (runs locally on Hugo's Mac, served by launchd on :5050)
+scraper/.venv*/
+scraper/__pycache__/
+scraper/data/
+scraper/exports/
+scraper/*.log
+scraper/*.bak*
+scraper/app.py.bak*
+scraper/**/*.bak*

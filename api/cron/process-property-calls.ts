@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { toE164, fmtGBP } from '../lib/brrr.js';
+import { toE164, fmtGBP, getBrrrSettings, offerRange, type BrrrSettings } from '../lib/brrr.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -10,8 +10,8 @@ const RETELL_API_KEY = process.env.RETELL_API_KEY!;
 
 export const config = { runtime: 'edge' };
 
-// Estate agencies only — never ring outside UK office hours.
-function withinCallingHours(now: Date): boolean {
+// Estate agencies only — never ring outside the configured calling hours.
+function withinCallingHours(now: Date, s: BrrrSettings): boolean {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',
     weekday: 'short',
@@ -22,8 +22,12 @@ function withinCallingHours(now: Date): boolean {
   const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
   const day = get('weekday');
   const minutes = parseInt(get('hour')) * 60 + parseInt(get('minute'));
-  if (day === 'Sun') return false;
-  return minutes >= 9 * 60 + 30 && minutes <= 17 * 60; // 09:30–17:00
+  if (!s.call_days.includes(day)) return false;
+  const toMin = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map((v) => parseInt(v) || 0);
+    return h * 60 + m;
+  };
+  return minutes >= toMin(s.call_start) && minutes <= toMin(s.call_end);
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -39,8 +43,9 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ ok: true, skipped: 'agent not configured' }), { status: 200 });
   }
 
+  const settings = await getBrrrSettings();
   const now = new Date();
-  if (!withinCallingHours(now)) {
+  if (!withinCallingHours(now, settings)) {
     return new Response(JSON.stringify({ ok: true, skipped: 'outside calling hours' }), { status: 200 });
   }
 
@@ -57,8 +62,8 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ ok: true, dialed: 0 }), { status: 200 });
     }
 
-    // Each dial occupies the line for minutes — keep it to a couple per tick.
-    const MAX_DIALS_PER_RUN = 2;
+    // Each dial occupies the line for minutes — keep it to a few per tick.
+    const MAX_DIALS_PER_RUN = settings.max_dials_per_run;
     let dialed = 0;
     const errors: string[] = [];
 
@@ -94,7 +99,7 @@ export default async function handler(req: Request): Promise<Response> {
         continue;
       }
 
-      const deal = (property.deal || {}) as Record<string, unknown>;
+      const { min: offerMin, max: offerMax } = offerRange(property, settings);
       const res = await fetch('https://api.retellai.com/v2/create-phone-call', {
         method: 'POST',
         headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
@@ -106,7 +111,9 @@ export default async function handler(req: Request): Promise<Response> {
           retell_llm_dynamic_variables: {
             property_address: property.address || 'the property',
             asking_price: property.price_text || fmtGBP(property.asking_price),
-            offer_price: fmtGBP(deal.offer_price),
+            offer_price: fmtGBP(offerMax),
+            offer_min: fmtGBP(offerMin),
+            offer_max: fmtGBP(offerMax),
             agent_name: property.agent_name || 'the agency',
             bedrooms: String(property.bedrooms ?? ''),
             property_type: property.property_type || 'property',
@@ -129,7 +136,7 @@ export default async function handler(req: Request): Promise<Response> {
         const errText = (await res.text()).slice(0, 200);
         errors.push(errText);
         const attempts = entry.attempts + 1;
-        if (attempts >= 3) {
+        if (attempts >= settings.max_attempts) {
           await supabase.from('brrr_property_calls')
             .update({ status: 'failed', error: errText, updated_at: new Date().toISOString() })
             .eq('id', entry.id);
@@ -137,12 +144,12 @@ export default async function handler(req: Request): Promise<Response> {
             .update({ status: 'no_answer', updated_at: new Date().toISOString() })
             .eq('id', property.id);
         } else {
-          // Back to pending, retry in 2 hours
+          // Back to pending, retry after the configured gap
           await supabase.from('brrr_property_calls')
             .update({
               status: 'pending',
               error: errText,
-              next_attempt_at: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+              next_attempt_at: new Date(now.getTime() + settings.retry_hours * 60 * 60 * 1000).toISOString(),
               updated_at: new Date().toISOString(),
             })
             .eq('id', entry.id);

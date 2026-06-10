@@ -1,4 +1,18 @@
-# BRRR Property Qualifier — Plan (2026-06-10)
+# BRRR Property Qualifier — Plan (2026-06-10, v2 same day)
+
+> **v2 changes:** the scraper now LIVES inside this repo at `scraper/`
+> (launchd service `com.margarita.propertytool`, port 5050 on Hugo's Mac;
+> old path `/Users/hugo/Whats/Margarita/scraper` is a symlink). The admin
+> panel gained **BRRR → Scraper** (embeds the local scraper) and
+> **BRRR → Pipeline** (embeds /leads). "Send to Elsie" now **auto-queues the
+> qualification call** — the dial cron holds it until the configured calling
+> hours. All call rules are adjustable in **Admin → Properties → Call rules**
+> (stored as `brrr_settings` in `platform_settings`): max attempts, retry gap,
+> dials per run, calling days/hours, AI offer min/max % of asking. The agent
+> asks a 13-point checklist (availability, occupancy/tenants, condition,
+> motivation, chain, tenure/lease/charges, interest, offer range, viewings)
+> and the admin UI shows every question as answered / not answered.
+> `scraper/data/` is gitignored — `elsie.json` + `brrrr.json` hold its secrets.
 
 ## What this is
 

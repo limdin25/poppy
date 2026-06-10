@@ -1,5 +1,8 @@
 import { supabaseAdmin } from '../../../src/integrations/supabase/client.js'
-import { pushPropertyToPipeline, toE164, type BrrrProperty } from '../../lib/brrr.js'
+import {
+  pushPropertyToPipeline, queuePropertyCall, toE164,
+  getBrrrSettings, saveBrrrSettings, type BrrrProperty, type BrrrSettings,
+} from '../../lib/brrr.js'
 
 export const config = { runtime: 'edge' };
 
@@ -37,7 +40,7 @@ export default async function handler(req: Request) {
     if (ids.length) {
       const { data: calls } = await supabaseAdmin
         .from('brrr_property_calls')
-        .select('id, property_id, status, attempts, summary, qualification, transcript, created_at, updated_at')
+        .select('id, property_id, status, attempts, next_attempt_at, summary, qualification, transcript, recording_url, created_at, updated_at')
         .in('property_id', ids)
         .order('created_at', { ascending: false })
       callsByProperty = (calls || []).reduce((acc: Record<string, unknown[]>, c) => {
@@ -45,7 +48,11 @@ export default async function handler(req: Request) {
         return acc
       }, {})
     }
-    return Response.json((properties || []).map((p) => ({ ...p, calls: callsByProperty[p.id] || [] })))
+    const settings = await getBrrrSettings()
+    return Response.json({
+      properties: (properties || []).map((p) => ({ ...p, calls: callsByProperty[p.id] || [] })),
+      settings,
+    })
   }
 
   if (req.method === 'PATCH') {
@@ -65,7 +72,13 @@ export default async function handler(req: Request) {
   }
 
   if (req.method === 'POST') {
-    const body = await req.json() as { action?: string; property_id?: string }
+    const body = await req.json() as { action?: string; property_id?: string; settings?: Partial<BrrrSettings> }
+
+    if (body.action === 'save_settings') {
+      const saved = await saveBrrrSettings(body.settings || {})
+      return Response.json({ ok: true, settings: saved })
+    }
+
     if (!body.property_id) return Response.json({ error: 'property_id required' }, { status: 400 })
 
     const { data: property, error } = await supabaseAdmin
@@ -79,28 +92,10 @@ export default async function handler(req: Request) {
       if (!toE164(property.agent_phone)) {
         return Response.json({ error: 'No agent phone number on this property' }, { status: 400 })
       }
-      // One live (pending/dialing) call per property at a time
-      const { data: open } = await supabaseAdmin
-        .from('brrr_property_calls')
-        .select('id')
-        .eq('property_id', property.id)
-        .in('status', ['pending', 'dialing'])
-        .limit(1)
-        .maybeSingle()
-      if (open) return Response.json({ error: 'A call is already queued for this property' }, { status: 409 })
-
-      const { data: call, error: qErr } = await supabaseAdmin
-        .from('brrr_property_calls')
-        .insert({ property_id: property.id, status: 'pending', next_attempt_at: new Date().toISOString() })
-        .select('id')
-        .single()
-      if (qErr) return Response.json({ error: qErr.message }, { status: 500 })
-
-      await supabaseAdmin
-        .from('brrr_properties')
-        .update({ status: 'call_queued', updated_at: new Date().toISOString() })
-        .eq('id', property.id)
-      return Response.json({ ok: true, call_id: call.id })
+      const q = await queuePropertyCall(property.id)
+      if (!q.ok) return Response.json({ error: q.error }, { status: 500 })
+      if (!q.queued) return Response.json({ error: 'A call is already queued for this property' }, { status: 409 })
+      return Response.json({ ok: true })
     }
 
     if (body.action === 'push_to_pipeline') {

@@ -1,0 +1,14 @@
+# Mirrors .gitignore (when .vercelignore exists Vercel ignores .gitignore) +
+# the local-only scraper folder, which must never upload to Vercel.
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+.vercel
+.git-hidden
+tests/e2e/.auth
+playwright-report
+test-results
+.claude
+scraper

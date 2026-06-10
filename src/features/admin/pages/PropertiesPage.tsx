@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Home, PhoneOutgoing, BadgeCheck, ExternalLink, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Home, PhoneOutgoing, BadgeCheck, ExternalLink, X, Settings2, Phone } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { MetricCard } from '../components/MetricCard'
 import { AdminError } from '../components/AdminError'
@@ -9,11 +9,23 @@ interface PropertyCall {
   id: string
   status: string
   attempts: number
+  next_attempt_at: string | null
   summary: string | null
   qualification: Record<string, unknown> | null
   transcript: Array<{ speaker: string; text: string }> | null
   recording_url?: string | null
   created_at: string
+  updated_at: string
+}
+
+interface CompRow {
+  comp_type: string
+  address: string
+  price: string
+  bedrooms: string
+  date_info: string
+  distance_label: string
+  url?: string
 }
 
 interface PropertyRow {
@@ -30,6 +42,7 @@ interface PropertyRow {
   agent_name: string | null
   agent_phone: string | null
   floorplan_urls: string[]
+  comps: CompRow[]
   deal: Record<string, unknown>
   status: string
   qualification: Record<string, unknown>
@@ -38,6 +51,40 @@ interface PropertyRow {
   created_at: string
   calls: PropertyCall[]
 }
+
+interface BrrrSettings {
+  auto_queue_on_ingest: boolean
+  max_attempts: number
+  retry_hours: number
+  max_dials_per_run: number
+  call_days: string[]
+  call_start: string
+  call_end: string
+  offer_low_pct: number
+  offer_high_pct: number
+}
+
+interface PropertiesResponse {
+  properties: PropertyRow[]
+  settings: BrrrSettings | null
+}
+
+// Mirrors QUALIFICATION_QUESTIONS in api/lib/brrr.ts — what Elsie asks on the call.
+const QUESTIONS: Array<{ key: string; label: string }> = [
+  { key: 'still_available', label: 'Is the property still available?' },
+  { key: 'occupancy', label: 'Vacant or tenanted?' },
+  { key: 'condition_notes', label: 'Condition / works needed?' },
+  { key: 'why_selling', label: 'Why is the vendor selling?' },
+  { key: 'motivation', label: 'How motivated is the vendor?' },
+  { key: 'chain', label: 'Onward chain?' },
+  { key: 'tenure', label: 'Freehold or leasehold?' },
+  { key: 'lease_years', label: 'Years left on the lease?' },
+  { key: 'service_charge', label: 'Service charge?' },
+  { key: 'ground_rent', label: 'Ground rent?' },
+  { key: 'interest_level', label: 'Viewings / offers so far?' },
+  { key: 'offer_reaction', label: 'Would the vendor consider our offer range?' },
+  { key: 'viewing_availability', label: 'When can viewings happen?' },
+]
 
 const STATUS_STYLES: Record<string, string> = {
   new: 'bg-elevated text-ink-muted',
@@ -49,18 +96,54 @@ const STATUS_STYLES: Record<string, string> = {
   callback: 'bg-cyan-500/10 text-cyan-600',
 }
 
+// Qualified first (Hugo's action), live calls next, dead ends at the bottom.
+const STATUS_ORDER: Record<string, number> = {
+  qualified: 0, calling: 1, call_queued: 2, callback: 3, new: 4, no_answer: 5, not_qualified: 6,
+}
+
+const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 function gbp(v: unknown): string {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''))
   if (!isFinite(n) || n <= 0) return '—'
   return `£${Math.round(n).toLocaleString('en-GB')}`
 }
 
+function fmtWhen(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function offerBand(p: PropertyRow, s: BrrrSettings | null): { min: number; max: number } {
+  const asking = Number(p.asking_price) || 0
+  const dealOffer = parseFloat(String(p.deal?.offer_price ?? '')) || 0
+  const lowPct = s?.offer_low_pct ?? 70
+  const highPct = s?.offer_high_pct ?? 75
+  let max = Math.round(asking * highPct / 100)
+  if (dealOffer > 0) max = Math.min(max || dealOffer, dealOffer)
+  let min = Math.round(asking * lowPct / 100)
+  if (!min || min > max) min = max
+  return { min, max }
+}
+
 export default function PropertiesPage() {
-  const { data: properties, loading, error, refetch } = useAdminApi<PropertyRow[]>('properties', [])
+  const { data, loading, error, refetch } = useAdminApi<PropertiesResponse>('properties', { properties: [], settings: null })
   const act = useAdminMutation('properties', 'POST')
   const [selected, setSelected] = useState<PropertyRow | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [draft, setDraft] = useState<BrrrSettings | null>(null)
+
+  const properties = [...(data.properties || [])].sort(
+    (a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+      || (b.created_at || '').localeCompare(a.created_at || ''),
+  )
+  const settings = data.settings
+
+  useEffect(() => {
+    if (settings && !draft) setDraft(settings)
+  }, [settings, draft])
 
   const qualified = properties.filter((p) => p.status === 'qualified').length
   const awaiting = properties.filter((p) => ['new', 'call_queued', 'calling'].includes(p.status)).length
@@ -78,16 +161,139 @@ export default function PropertiesPage() {
     }
   }
 
+  async function saveSettings() {
+    if (!draft) return
+    setBusy('settings')
+    setActionError(null)
+    try {
+      await act({ action: 'save_settings', settings: draft })
+      setShowSettings(false)
+      refetch()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const lastCall = (p: PropertyRow) => p.calls?.[0]
+
+  function numField(label: string, key: keyof BrrrSettings, suffix?: string) {
+    if (!draft) return null
+    return (
+      <label className="block">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">{label}</span>
+        <div className="mt-1 flex items-center gap-1.5">
+          <input
+            type="number"
+            value={Number(draft[key])}
+            onChange={(e) => setDraft({ ...draft, [key]: parseFloat(e.target.value) || 0 })}
+            className="w-20 rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-ink"
+          />
+          {suffix && <span className="text-[12px] text-ink-muted">{suffix}</span>}
+        </div>
+      </label>
+    )
+  }
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-ink">Properties</h1>
-      <p className="mt-1 text-[13px] text-ink-muted">
-        BRRR candidates from the Rightmove scraper — Elsie calls the estate agent to qualify them
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-ink">Properties</h1>
+          <p className="mt-1 text-[13px] text-ink-muted">
+            BRRR candidates from the scraper — sent here means Elsie is cleared to call the agent
+          </p>
+        </div>
+        <button
+          onClick={() => setShowSettings((v) => !v)}
+          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-ink-muted transition hover:bg-elevated"
+        >
+          <Settings2 size={14} /> Call rules
+        </button>
+      </div>
       {error && <AdminError error={error} />}
       {actionError && <AdminError error={actionError} />}
+
+      {showSettings && draft && (
+        <div className="mt-4 rounded-xl border border-border bg-surface p-4">
+          <h2 className="text-[13px] font-semibold text-ink">Call rules — adjust how Elsie chases agents</h2>
+          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {numField('Max attempts', 'max_attempts', 'tries')}
+            {numField('Retry gap', 'retry_hours', 'hours')}
+            {numField('Dials per run', 'max_dials_per_run', '/ 2 min')}
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Auto-call on send</span>
+              <div className="mt-1.5">
+                <button
+                  onClick={() => setDraft({ ...draft, auto_queue_on_ingest: !draft.auto_queue_on_ingest })}
+                  className={`rounded-md px-3 py-1.5 text-[12px] font-semibold transition ${draft.auto_queue_on_ingest ? 'bg-success/10 text-success' : 'bg-elevated text-ink-muted'}`}
+                >
+                  {draft.auto_queue_on_ingest ? 'On — send = call' : 'Off — manual only'}
+                </button>
+              </div>
+            </label>
+            {numField('Offer from', 'offer_low_pct', '% of asking')}
+            {numField('Offer up to', 'offer_high_pct', '% of asking')}
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Calling from</span>
+              <input
+                type="time"
+                value={draft.call_start}
+                onChange={(e) => setDraft({ ...draft, call_start: e.target.value })}
+                className="mt-1 block rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-ink"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Until</span>
+              <input
+                type="time"
+                value={draft.call_end}
+                onChange={(e) => setDraft({ ...draft, call_end: e.target.value })}
+                className="mt-1 block rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-ink"
+              />
+            </label>
+          </div>
+          <div className="mt-3">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Calling days</span>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {ALL_DAYS.map((day) => {
+                const on = draft.call_days.includes(day)
+                return (
+                  <button
+                    key={day}
+                    onClick={() => setDraft({
+                      ...draft,
+                      call_days: on ? draft.call_days.filter((d) => d !== day) : [...draft.call_days, day],
+                    })}
+                    className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${on ? 'bg-brand text-white' : 'bg-elevated text-ink-muted'}`}
+                  >
+                    {day}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-ink-subtle">
+            Offer range: Elsie opens near the bottom figure and never goes above the top one (capped by the deal calculator's offer). Times are UK time.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={saveSettings}
+              disabled={busy === 'settings'}
+              className="rounded-md bg-brand px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+            >
+              {busy === 'settings' ? 'Saving…' : 'Save rules'}
+            </button>
+            <button
+              onClick={() => { setDraft(settings); setShowSettings(false) }}
+              className="rounded-md border border-border px-3.5 py-1.5 text-[12px] font-medium text-ink-muted transition hover:bg-elevated"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 grid gap-4 sm:grid-cols-3">
         <MetricCard label="Properties" value={loading ? '...' : properties.length} icon={<Home size={16} />} />
@@ -125,14 +331,17 @@ export default function PropertiesPage() {
             {
               key: 'numbers',
               header: 'Numbers',
-              render: (p) => (
-                <div className="text-[12px]">
-                  <div className="font-medium text-ink">{p.price_text || gbp(p.asking_price)}</div>
-                  <div className="text-ink-muted">
-                    Offer {gbp(p.deal?.offer_price)} · GDV {gbp(p.deal?.gdv)}
+              render: (p) => {
+                const band = offerBand(p, settings)
+                return (
+                  <div className="text-[12px]">
+                    <div className="font-medium text-ink">{p.price_text || gbp(p.asking_price)}</div>
+                    <div className="text-ink-muted">
+                      Offer {gbp(band.min)}–{gbp(band.max)} · GDV {gbp(p.deal?.gdv)}
+                    </div>
                   </div>
-                </div>
-              ),
+                )
+              },
             },
             {
               key: 'agent',
@@ -140,9 +349,34 @@ export default function PropertiesPage() {
               render: (p) => (
                 <div className="text-[12px]">
                   <div className="text-ink">{p.agent_name || '—'}</div>
-                  <div className="text-ink-muted">{p.agent_phone || 'no phone'}</div>
+                  {p.agent_phone ? (
+                    <a
+                      href={`tel:${p.agent_phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-brand hover:underline"
+                    >
+                      <Phone size={11} /> {p.agent_phone}
+                    </a>
+                  ) : (
+                    <span className="text-ink-muted">no phone</span>
+                  )}
                 </div>
               ),
+            },
+            {
+              key: 'callstats',
+              header: 'Call stats',
+              render: (p) => {
+                const call = lastCall(p)
+                if (!call) return <span className="text-[12px] text-ink-muted">Not called yet</span>
+                const next = call.status === 'pending' ? fmtWhen(call.next_attempt_at) : null
+                return (
+                  <div className="text-[12px]">
+                    <div className="text-ink">Tried {call.attempts || 0}× · last {fmtWhen(call.updated_at)}</div>
+                    <div className="text-ink-muted">{next ? `Next call ${next}` : (call.summary ? call.summary.slice(0, 48) : '—')}</div>
+                  </div>
+                )
+              },
             },
             {
               key: 'status',
@@ -196,22 +430,30 @@ export default function PropertiesPage() {
                 <h2 className="text-[15px] font-semibold text-ink">{selected.address || selected.source_property_id}</h2>
                 <p className="text-[12px] text-ink-muted">
                   {selected.price_text} · {selected.bedrooms ?? '?'} bed {selected.property_type || ''}
+                  {selected.agent_phone && (
+                    <a href={`tel:${selected.agent_phone}`} className="ml-2 inline-flex items-center gap-1 text-brand hover:underline">
+                      <Phone size={11} /> {selected.agent_name || selected.agent_phone}
+                    </a>
+                  )}
                 </p>
               </div>
               <button onClick={() => setSelected(null)} className="text-ink-muted hover:text-ink"><X size={18} /></button>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ['Asking', selected.price_text || gbp(selected.asking_price)],
-                ['Offer', gbp(selected.deal?.offer_price)],
-                ['GDV', gbp(selected.deal?.gdv)],
-                ['Rent /mo', gbp(selected.deal?.rent)],
-                ['Refurb', gbp(selected.deal?.refurb)],
-                ['Cash needed', gbp(selected.deal?.total_cash)],
-                ['Comps', String((selected as PropertyRow & { comps?: unknown[] }).comps?.length ?? '—')],
-                ['Floor plans', String(selected.floorplan_urls?.length || 0)],
-              ].map(([label, value]) => (
+              {(() => {
+                const band = offerBand(selected, settings)
+                return [
+                  ['Asking', selected.price_text || gbp(selected.asking_price)],
+                  ['AI offer range', `${gbp(band.min)}–${gbp(band.max)}`],
+                  ['GDV', gbp(selected.deal?.gdv)],
+                  ['Rent /mo', gbp(selected.deal?.rent)],
+                  ['Refurb', gbp(selected.deal?.refurb)],
+                  ['Cash needed', gbp(selected.deal?.total_cash)],
+                  ['Comps', String(selected.comps?.length ?? 0)],
+                  ['Floor plans', String(selected.floorplan_urls?.length || 0)],
+                ] as Array<[string, string]>
+              })().map(([label, value]) => (
                 <div key={label} className="rounded-lg border border-border p-2.5">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-subtle">{label}</p>
                   <p className="mt-0.5 text-[13px] font-semibold text-ink">{value}</p>
@@ -233,45 +475,76 @@ export default function PropertiesPage() {
               </div>
             )}
 
-            {Object.keys(selected.qualification || {}).length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-[13px] font-semibold text-ink">Qualification — questions &amp; answers</h3>
+              <div className="mt-2 space-y-1.5 rounded-lg border border-border p-3">
+                {QUESTIONS.map(({ key, label }) => {
+                  const raw = (selected.qualification || {})[key]
+                  const answered = raw !== null && raw !== undefined && raw !== ''
+                  const value = typeof raw === 'boolean' ? (raw ? 'Yes' : 'No') : String(raw ?? '')
+                  return (
+                    <div key={key} className="flex items-start justify-between gap-3 text-[12px]">
+                      <span className="text-ink">{label}</span>
+                      {answered ? (
+                        <span className="max-w-[55%] text-right text-ink-muted">{value}</span>
+                      ) : (
+                        <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-600">Not answered</span>
+                      )}
+                    </div>
+                  )
+                })}
+                {(selected.qualification?.summary as string) && (
+                  <p className="mt-2 border-t border-border pt-2 text-[12px] text-ink-muted">{String(selected.qualification.summary)}</p>
+                )}
+              </div>
+            </div>
+
+            {(selected.comps || []).length > 0 && (
               <div className="mt-4">
-                <h3 className="text-[13px] font-semibold text-ink">Qualification</h3>
-                <div className="mt-2 space-y-1.5 rounded-lg border border-border p-3 text-[12px]">
-                  {Object.entries(selected.qualification)
-                    .filter(([, v]) => v !== null && v !== '')
-                    .map(([k, v]) => (
-                      <p key={k}>
-                        <span className="font-medium capitalize text-ink">{k.replace(/_/g, ' ')}:</span>{' '}
-                        <span className="text-ink-muted">{String(v)}</span>
-                      </p>
-                    ))}
+                <h3 className="text-[13px] font-semibold text-ink">Comparables</h3>
+                <div className="mt-2 max-h-52 space-y-1 overflow-y-auto rounded-lg border border-border p-3">
+                  {(['sale_same', 'sale_target', 'sale', 'rent'] as const).flatMap((type) =>
+                    (selected.comps || []).filter((c) => c.comp_type === type).map((c, i) => (
+                      <div key={`${type}-${i}`} className="flex items-center justify-between gap-2 text-[12px]">
+                        <span className="min-w-0 truncate text-ink-muted">
+                          <span className={`mr-1.5 rounded px-1 py-0.5 text-[10px] font-semibold uppercase ${type === 'rent' ? 'bg-cyan-500/10 text-cyan-600' : 'bg-violet-500/10 text-violet-600'}`}>
+                            {type === 'rent' ? 'Rent' : type === 'sale_same' ? 'Sold (same bed)' : 'Sold (target bed)'}
+                          </span>
+                          {c.address} {c.distance_label ? `· ${c.distance_label}` : ''} {c.date_info ? `· ${c.date_info}` : ''}
+                        </span>
+                        <span className="shrink-0 font-semibold text-ink">{c.price}</span>
+                      </div>
+                    )),
+                  )}
                 </div>
               </div>
             )}
 
-            {lastCall(selected) && (
+            {(selected.calls || []).length > 0 && (
               <div className="mt-4">
-                <h3 className="text-[13px] font-semibold text-ink">
-                  Last call · {lastCall(selected)!.status} · attempt {lastCall(selected)!.attempts}
-                </h3>
-                {lastCall(selected)!.recording_url && (
-                  <audio controls src={lastCall(selected)!.recording_url!} className="mt-2 w-full" />
-                )}
-                {lastCall(selected)!.summary && (
-                  <p className="mt-2 text-[12px] text-ink-muted">{lastCall(selected)!.summary}</p>
-                )}
-                {(lastCall(selected)!.transcript || []).length > 0 && (
-                  <div className="mt-2 max-h-60 space-y-1.5 overflow-y-auto rounded-lg border border-border p-3">
-                    {lastCall(selected)!.transcript!.map((t, i) => (
-                      <p key={i} className="text-[12px]">
-                        <span className={`font-semibold ${t.speaker === 'agent' ? 'text-brand' : 'text-ink'}`}>
-                          {t.speaker === 'agent' ? 'Elsie' : 'Agent'}:
-                        </span>{' '}
-                        <span className="text-ink-muted">{t.text}</span>
-                      </p>
-                    ))}
+                <h3 className="text-[13px] font-semibold text-ink">Calls ({selected.calls.length})</h3>
+                {selected.calls.map((call) => (
+                  <div key={call.id} className="mt-2 rounded-lg border border-border p-3">
+                    <p className="text-[12px] font-medium text-ink">
+                      {fmtWhen(call.created_at)} · {call.status.replace(/_/g, ' ')} · attempt {call.attempts}
+                      {call.status === 'pending' && call.next_attempt_at ? ` · next try ${fmtWhen(call.next_attempt_at)}` : ''}
+                    </p>
+                    {call.recording_url && <audio controls src={call.recording_url} className="mt-2 w-full" />}
+                    {call.summary && <p className="mt-1.5 text-[12px] text-ink-muted">{call.summary}</p>}
+                    {(call.transcript || []).length > 0 && (
+                      <div className="mt-2 max-h-48 space-y-1.5 overflow-y-auto rounded-md bg-elevated/50 p-2.5">
+                        {call.transcript!.map((t, i) => (
+                          <p key={i} className="text-[12px]">
+                            <span className={`font-semibold ${t.speaker === 'agent' ? 'text-brand' : 'text-ink'}`}>
+                              {t.speaker === 'agent' ? 'Elsie' : 'Agent'}:
+                            </span>{' '}
+                            <span className="text-ink-muted">{t.text}</span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
             )}
           </div>

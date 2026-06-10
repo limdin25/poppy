@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, MoreHorizontal, Trash2, Loader2, GripVertical, Repeat, MessageCircle, StickyNote } from 'lucide-react'
+import { Plus, MoreHorizontal, Trash2, Loader2, GripVertical, Repeat, MessageCircle, StickyNote, Phone } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
@@ -290,6 +290,16 @@ function StageColumn({
                 <div className="flex items-start gap-1.5">
                   <GripVertical size={13} className="mt-0.5 shrink-0 text-ink-subtle opacity-0 transition group-hover:opacity-100" />
                   <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-ink">{d.title}</p>
+                  {d.contact?.phone && (
+                    <a
+                      href={`tel:${d.contact.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Call ${d.contact.phone}`}
+                      className="shrink-0 rounded-md p-1 text-ink-subtle opacity-0 transition hover:bg-elevated hover:text-accent group-hover:opacity-100"
+                    >
+                      <Phone size={13} />
+                    </a>
+                  )}
                   {d.contact_id && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onOpenChat(d) }}

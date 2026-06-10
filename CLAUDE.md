@@ -143,7 +143,9 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 - **Admin pages**: fully wired to real Supabase via `/api/admin/*` routes
 - **Build errors fixed**: all API route imports use `.js` extensions for Vercel node16 compat
 - **BRRR property qualifier live (2026-06-10)** — see [docs/BRRR_QUALIFIER_PLAN.md](docs/BRRR_QUALIFIER_PLAN.md):
-  - Rightmove scraper (`/Users/hugo/Whats/Margarita/scraper`) has a "Send to Elsie" button on the Comps tab → `POST /api/properties/ingest` (secret: `PROPERTY_INGEST_SECRET`, scraper keeps it in `data/elsie.json`)
+  - Rightmove scraper lives IN THIS REPO at `scraper/` (Python/Flask, launchd `com.margarita.propertytool`, port 5050, Mac-only; old Margarita path is a symlink; `scraper/data/` gitignored, excluded from Vercel via `.vercelignore`). "Send to Elsie" on its Comps tab → `POST /api/properties/ingest` (secret: `PROPERTY_INGEST_SECRET`, scraper keeps it in `scraper/data/elsie.json`) → **auto-queues the call**
+  - Admin tabs: **BRRR → Scraper** (embeds 127.0.0.1:5050), **BRRR → Properties**, **BRRR → Pipeline** (embeds /leads)
+  - Call rules adjustable in admin (key `brrr_settings` in `platform_settings`): attempts, retry gap, dials/run, days/hours, offer min/max %
   - Tables `brrr_properties` + `brrr_property_calls` (admin-only, no RLS)
   - Admin tab **BRRR → Properties** (`/admin/properties`): numbers, floor plans, "Call agent" button, transcript/recording viewer
   - Outbound qualifier agent: `agent_539daa8b3bedf3d3de876276a2` / LLM `llm_3da4d9ae0e456b8498b09b000b3e` (cartesia-Willa, en-GB, press_digit IVR tool, honest-AI "Maya from Airbrick Properties"). NO agents-table row on purpose (sync-prompts would clobber it)

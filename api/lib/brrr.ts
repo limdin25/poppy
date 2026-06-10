@@ -13,6 +13,65 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
 
 export const PIPELINE_BUSINESS_ID = process.env.PROPERTY_PIPELINE_BUSINESS_ID || '';
 
+// ── Adjustable rules (admin → Properties → Settings) ─────────────────────────
+export interface BrrrSettings {
+  auto_queue_on_ingest: boolean; // "Send to Elsie" = cleared to call
+  max_attempts: number;          // tries before giving up (no answer)
+  retry_hours: number;           // gap between attempts
+  max_dials_per_run: number;     // per cron tick (every 2 min)
+  call_days: string[];           // e.g. ['Mon','Tue','Wed','Thu','Fri','Sat']
+  call_start: string;            // 'HH:MM' Europe/London
+  call_end: string;              // 'HH:MM' Europe/London
+  offer_low_pct: number;         // AI's opening figure, % of asking price
+  offer_high_pct: number;        // AI's ceiling, % of asking (capped by the deal calculator's offer)
+}
+
+export const DEFAULT_BRRR_SETTINGS: BrrrSettings = {
+  auto_queue_on_ingest: true,
+  max_attempts: 3,
+  retry_hours: 2,
+  max_dials_per_run: 2,
+  call_days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  call_start: '09:30',
+  call_end: '17:00',
+  offer_low_pct: 70,
+  offer_high_pct: 75,
+};
+
+export async function getBrrrSettings(): Promise<BrrrSettings> {
+  const { data } = await supabase
+    .from('platform_settings')
+    .select('value')
+    .eq('key', 'brrr_settings')
+    .maybeSingle();
+  if (!data?.value) return { ...DEFAULT_BRRR_SETTINGS };
+  try {
+    return { ...DEFAULT_BRRR_SETTINGS, ...JSON.parse(data.value) };
+  } catch {
+    return { ...DEFAULT_BRRR_SETTINGS };
+  }
+}
+
+export async function saveBrrrSettings(patch: Partial<BrrrSettings>): Promise<BrrrSettings> {
+  const merged = { ...(await getBrrrSettings()), ...patch };
+  await supabase
+    .from('platform_settings')
+    .upsert({ key: 'brrr_settings', value: JSON.stringify(merged), updated_at: new Date().toISOString() });
+  return merged;
+}
+
+/** The offer band the AI is allowed to talk in. Ceiling never exceeds the
+ *  deal calculator's offer price — the numbers have to stack. */
+export function offerRange(property: BrrrProperty, s: BrrrSettings): { min: number; max: number } {
+  const asking = Number(property.asking_price) || 0;
+  const dealOffer = parseFloat(String((property.deal as Record<string, unknown>)?.offer_price ?? '')) || 0;
+  let max = Math.round(asking * s.offer_high_pct / 100);
+  if (dealOffer > 0) max = Math.min(max || dealOffer, dealOffer);
+  let min = Math.round(asking * s.offer_low_pct / 100);
+  if (!min || min > max) min = max;
+  return { min, max };
+}
+
 export interface BrrrProperty {
   id: string;
   source: string;
@@ -52,24 +111,49 @@ export function fmtGBP(n: unknown): string {
 export interface Qualification {
   outcome?: 'qualified' | 'not_qualified' | 'callback' | 'no_answer';
   still_available?: boolean | null;
+  occupancy?: string | null;            // vacant / tenanted (+ tenancy details)
   condition_notes?: string | null;
   why_selling?: string | null;
+  motivation?: string | null;           // how motivated/urgent the vendor is
   chain?: string | null;
   tenure?: string | null;
   lease_years?: string | null;
   service_charge?: string | null;
+  ground_rent?: string | null;
+  interest_level?: string | null;       // viewings/offers so far
   offer_reaction?: string | null;
   viewing_availability?: string | null;
   summary?: string | null;
   action_required?: string | null;
 }
 
+/** Question checklist — single source for the extraction prompt and the
+ *  admin UI's asked/answered view. */
+export const QUALIFICATION_QUESTIONS: Array<{ key: keyof Qualification; question: string }> = [
+  { key: 'still_available', question: 'Is the property still available?' },
+  { key: 'occupancy', question: 'Vacant or tenanted? (tenancy details if tenanted)' },
+  { key: 'condition_notes', question: 'What condition is it in / what works are needed?' },
+  { key: 'why_selling', question: 'Why is the vendor selling?' },
+  { key: 'motivation', question: 'How motivated / urgent is the vendor?' },
+  { key: 'chain', question: 'Is there an onward chain?' },
+  { key: 'tenure', question: 'Freehold or leasehold?' },
+  { key: 'lease_years', question: 'Years remaining on the lease?' },
+  { key: 'service_charge', question: 'Service charge?' },
+  { key: 'ground_rent', question: 'Ground rent?' },
+  { key: 'interest_level', question: 'How much interest — viewings / offers so far?' },
+  { key: 'offer_reaction', question: 'Would the vendor consider an offer in our range?' },
+  { key: 'viewing_availability', question: 'When can viewings happen?' },
+];
+
 /** Extract a structured qualification from the call transcript via Claude. */
 export async function extractQualification(
   transcript: string,
   property: BrrrProperty,
+  settings?: BrrrSettings,
 ): Promise<Qualification> {
-  const offer = fmtGBP((property.deal as Record<string, unknown>)?.offer_price);
+  const s = settings || await getBrrrSettings();
+  const { min, max } = offerRange(property, s);
+  const band = `${fmtGBP(min)}–${fmtGBP(max)}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -79,26 +163,30 @@ export async function extractQualification(
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 800,
+      max_tokens: 1000,
       messages: [{
         role: 'user',
-        content: `An AI assistant called the estate agent about ${property.address} (asking ${property.price_text}, our target offer ${offer}) to qualify it for a buy-refurbish-refinance purchase. Analyse the transcript and return JSON only:
+        content: `An AI assistant called the estate agent about ${property.address} (asking ${property.price_text}, our offer range ${band}) to qualify it for a buy-refurbish-refinance purchase. Analyse the transcript and return JSON only. Every field is null when the question was not asked or not answered — do NOT guess:
 {
   "outcome": "qualified" | "not_qualified" | "callback",
   "still_available": boolean or null,
+  "occupancy": string or null (vacant or tenanted; tenancy details if mentioned),
   "condition_notes": string or null,
   "why_selling": string or null,
+  "motivation": string or null (how motivated/urgent the vendor sounds),
   "chain": string or null,
-  "tenure": string or null,
+  "tenure": string or null (freehold/leasehold),
   "lease_years": string or null,
   "service_charge": string or null,
-  "offer_reaction": string or null (how the agent reacted to an offer around ${offer}),
-  "viewing_availability": string or null,
+  "ground_rent": string or null,
+  "interest_level": string or null (viewings/offers so far),
+  "offer_reaction": string or null (exact reaction to an offer in the ${band} range),
+  "viewing_availability": string or null (days/times/notice for viewings),
   "summary": string (3-4 sentences),
   "action_required": string or null
 }
 
-"qualified" = still available AND the agent did not rule out an offer around ${offer} (open, "put it forward", "worth trying", vendor flexible).
+"qualified" = still available AND the agent did not rule out an offer in the ${band} range (open, "put it forward", "worth trying", vendor flexible).
 "not_qualified" = sold/under offer/withdrawn, or the agent clearly said an offer at that level has no chance, or a deal-breaker came up (e.g. very short lease, cash-only structural issues beyond a £10k refurb).
 "callback" = couldn't get answers (wrong person, asked to call back, agent needs to check with vendor).
 
@@ -111,6 +199,31 @@ ${transcript}`,
   const text = data.content?.[0]?.text || '';
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+}
+
+/** Queue an outbound qualification call (skips if one is already pending/dialing). */
+export async function queuePropertyCall(
+  propertyId: string,
+): Promise<{ ok: boolean; queued: boolean; error?: string }> {
+  const { data: open } = await supabase
+    .from('brrr_property_calls')
+    .select('id')
+    .eq('property_id', propertyId)
+    .in('status', ['pending', 'dialing'])
+    .limit(1)
+    .maybeSingle();
+  if (open) return { ok: true, queued: false };
+
+  const { error } = await supabase
+    .from('brrr_property_calls')
+    .insert({ property_id: propertyId, status: 'pending', next_attempt_at: new Date().toISOString() });
+  if (error) return { ok: false, queued: false, error: error.message };
+
+  await supabase
+    .from('brrr_properties')
+    .update({ status: 'call_queued', updated_at: new Date().toISOString() })
+    .eq('id', propertyId);
+  return { ok: true, queued: true };
 }
 
 /**
@@ -270,9 +383,11 @@ export async function handleBrrrCallEvent(
   );
   const nowIso = new Date().toISOString();
 
+  const settings = await getBrrrSettings();
+
   if (!answered) {
     const attempts = callRow.attempts || 1;
-    if (attempts >= 3) {
+    if (attempts >= settings.max_attempts) {
       await supabase.from('brrr_property_calls').update({
         status: 'no_answer',
         summary: `No answer after ${attempts} attempts.`,
@@ -283,11 +398,10 @@ export async function handleBrrrCallEvent(
         .update({ status: 'no_answer', updated_at: nowIso })
         .eq('id', property.id);
     } else {
-      // Retry in 2 hours
       await supabase.from('brrr_property_calls').update({
         status: 'pending',
-        summary: `No answer (attempt ${attempts}) — retrying.`,
-        next_attempt_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        summary: `No answer (attempt ${attempts} of ${settings.max_attempts}) — retrying.`,
+        next_attempt_at: new Date(Date.now() + settings.retry_hours * 60 * 60 * 1000).toISOString(),
         updated_at: nowIso,
       }).eq('id', callRow.id);
       await supabase.from('brrr_properties')
@@ -299,7 +413,7 @@ export async function handleBrrrCallEvent(
 
   let qualification: Qualification = {};
   try {
-    qualification = await extractQualification(call.transcript || '', property as BrrrProperty);
+    qualification = await extractQualification(call.transcript || '', property as BrrrProperty, settings);
   } catch (e) {
     console.error('[brrr] extraction failed:', e);
   }

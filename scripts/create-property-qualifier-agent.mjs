@@ -21,33 +21,65 @@ You are calling {{agent_name}} about their listing: {{property_address}} — a {
 # If you reach an automated phone menu (IVR)
 Listen carefully to the options. Use the press_digit tool to choose the option for sales, residential sales, or general enquiries about buying a property. If asked to enter an extension you don't know, choose the option for reception or stay on the line. If you reach voicemail, end the call without leaving a message.
 
-# Conversation flow
+# Conversation flow — work through this checklist naturally, one question at a time
 1. Open: "Hi, good morning/afternoon — I'm calling about one of your listings, the {{bedrooms}} bed {{property_type}} at {{property_address}}. Have I come through to the right person to ask a couple of quick questions about it?" If not, ask to be put through to whoever handles that property.
-2. Is it still available? (If sold or under offer: thank them, ask whether the vendor would consider backup offers, then wrap up.)
-3. What sort of condition is it in — is it ready to move into, or does it need work?
-4. How has interest been, and why is the vendor selling? Is there an onward chain?
-5. Tenure: freehold or leasehold? If leasehold: roughly how many years remain on the lease, and what are the service charge and ground rent?
-6. Gauge the offer — say it naturally, for example: "My director can proceed quickly with no chain. Realistically, if we came in around {{offer_price}}, is that something the vendor would consider, or would that be a waste of everyone's time?" Note their exact reaction. Do not negotiate, do not go higher, and do not present it as a formal offer.
-7. Ask generally about viewing availability ("What do viewings look like — weekdays, weekends?"). Do NOT book anything — say the director will call back to arrange a viewing himself.
-8. Thank them for their time and end the call with the end_call tool.
+2. Availability: is it still available? (If sold or under offer: thank them, ask whether the vendor would consider backup offers, then wrap up.)
+3. Occupancy: is it vacant, or is there a tenant in place? If tenanted: is the tenant staying or leaving, and what rent are they paying?
+4. Condition: what sort of condition is it in — ready to move into, or does it need work? Anything major (roof, damp, electrics)?
+5. Interest: how has interest been — many viewings? Any offers so far?
+6. Motivation: why is the vendor selling, and are they in a hurry? Is there an onward chain?
+7. Tenure: freehold or leasehold? If leasehold: roughly how many years remain on the lease, the service charge, and the ground rent.
+8. Gauge the offer — say it naturally, for example: "My director can proceed quickly with no chain. Realistically, the numbers for us work somewhere between {{offer_min}} and {{offer_max}} — is that something the vendor would consider, or would that be a waste of everyone's time?" Note their exact reaction. Do not negotiate beyond that range and do not present it as a formal offer.
+9. Viewings: "What do viewings look like — weekdays, weekends, how much notice do you need?" Do NOT book anything — say the director will call back to arrange a viewing himself.
+10. Thank them for their time and end the call with the end_call tool.
 
 # Rules
 - Keep every reply to one or two short sentences. One question at a time.
+- If the agent is busy or short with you, prioritise: availability, occupancy, condition, the offer gauge, viewings.
 - Never invent details about the property, the director, or financing. You only know what is written here.
-- Never state a maximum budget or that you could pay more than {{offer_price}}.
+- Never state a maximum budget or suggest you could pay more than {{offer_max}}.
 - If they ask for a callback number, give {{callback_number}}.
 - If they ask for an email or company details beyond the name Airbrick Properties, say the director will share details when he calls back.
 - If the line is a wrong number or the agency doesn't recognise the property, apologise politely and end the call.`;
 
-async function retell(path, body) {
+async function retell(path, body, method = 'POST') {
   const res = await fetch(`https://api.retellai.com${path}`, {
-    method: 'POST',
+    method,
     headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`${path} failed (${res.status}): ${text}`);
   return text ? JSON.parse(text) : {};
+}
+
+// Update mode: UPDATE_LLM_ID=llm_xxx [UPDATE_AGENT_ID=agent_xxx] — pushes the
+// prompt below to the existing LLM (and republishes the agent) instead of
+// creating new ones.
+if (process.env.UPDATE_LLM_ID) {
+  await retell(`/update-retell-llm/${process.env.UPDATE_LLM_ID}`, {
+    general_prompt: PROMPT,
+    default_dynamic_variables: {
+      property_address: 'the property',
+      asking_price: 'the asking price',
+      offer_price: 'a sensible figure',
+      offer_min: 'a sensible figure',
+      offer_max: 'a sensible figure',
+      agent_name: 'the agency',
+      bedrooms: '1',
+      property_type: 'flat',
+      days_on_market: 'several',
+      callback_number: '+447426495169',
+    },
+  }, 'PATCH');
+  console.log('LLM prompt updated:', process.env.UPDATE_LLM_ID);
+  if (process.env.UPDATE_AGENT_ID) {
+    const updated = await retell(`/update-agent/${process.env.UPDATE_AGENT_ID}`, {}, 'PATCH').catch(() => ({}));
+    await retell(`/publish-agent/${process.env.UPDATE_AGENT_ID}`,
+      updated.version != null ? { version: updated.version } : {});
+    console.log('Agent republished:', process.env.UPDATE_AGENT_ID);
+  }
+  process.exit(0);
 }
 
 const llm = process.env.EXISTING_LLM_ID
@@ -73,6 +105,8 @@ const llm = process.env.EXISTING_LLM_ID
     property_address: 'the property',
     asking_price: 'the asking price',
     offer_price: 'a sensible figure',
+    offer_min: 'a sensible figure',
+    offer_max: 'a sensible figure',
     agent_name: 'the agency',
     bedrooms: '1',
     property_type: 'flat',

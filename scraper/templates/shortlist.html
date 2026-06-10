@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shortlist</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, sans-serif; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<!-- NAV -->
+<header class="h-14 bg-slate-900 text-white flex items-center px-4 justify-between">
+  <div class="flex items-center gap-6">
+    <a href="/" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Google Maps</a>
+    <a href="/facebook" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Facebook Ads</a>
+    <a href="/rightmove" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Rightmove</a>
+    <a href="/floorplans" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Floor Plans</a>
+    <a href="/shortlist" class="px-3 py-1 rounded text-sm bg-emerald-600 font-semibold">Shortlist</a>
+    <a href="/comps" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Price Comparison</a>
+  </div>
+  <div class="flex items-center gap-4">
+    <span class="text-xs bg-emerald-700 px-2 py-1 rounded"><span id="s-count">0</span> properties shortlisted</span>
+    <button id="btn-export" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-sm font-semibold transition">Export CSV</button>
+  </div>
+</header>
+
+<!-- GRID -->
+<div class="p-4">
+  <div id="empty-msg" class="text-center text-slate-400 py-16 hidden">
+    No properties shortlisted yet. Review floor plans to add properties here.
+  </div>
+  <div id="grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden">
+  <button id="lb-close" class="absolute top-4 right-4 text-white text-2xl bg-black/50 rounded-full w-10 h-10 flex items-center justify-center hover:bg-black/70">&times;</button>
+  <button id="lb-prev" class="absolute left-4 top-1/2 -translate-y-1/2 text-white text-3xl bg-black/50 rounded-full w-12 h-12 flex items-center justify-center hover:bg-black/70">&larr;</button>
+  <button id="lb-next" class="absolute right-4 top-1/2 -translate-y-1/2 text-white text-3xl bg-black/50 rounded-full w-12 h-12 flex items-center justify-center hover:bg-black/70">&rarr;</button>
+  <img id="lb-img" class="max-h-[90vh] max-w-[90vw] object-contain" alt="Floor plan">
+  <div id="lb-dots" class="absolute bottom-6 flex gap-2"></div>
+</div>
+
+<script src="/static/shortlist_app.js"></script>
+</body>
+</html>

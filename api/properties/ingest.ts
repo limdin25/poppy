@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { toE164 } from '../lib/brrr.js';
+import { toE164, getBrrrSettings, queuePropertyCall } from '../lib/brrr.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -64,7 +64,18 @@ export default async function handler(req: Request): Promise<Response> {
     if (error) {
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
-    return new Response(JSON.stringify({ ok: true, id: data.id, status: data.status }), { status: 200 });
+
+    // "Send to Elsie" means cleared to call: queue the qualification call right
+    // away (the dial cron only rings inside the configured calling hours).
+    // Re-sends of already-processed properties don't re-queue.
+    let callQueued = false;
+    const settings = await getBrrrSettings();
+    if (settings.auto_queue_on_ingest && row.agent_phone && ['new', 'call_queued'].includes(data.status)) {
+      const q = await queuePropertyCall(data.id);
+      callQueued = q.queued;
+    }
+
+    return new Response(JSON.stringify({ ok: true, id: data.id, status: data.status, call_queued: callQueued }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

@@ -14,6 +14,8 @@ import {
   Activity,
   ScrollText,
   Home,
+  SearchCode,
+  KanbanSquare,
   Menu,
   X,
   ArrowLeft,
@@ -48,7 +50,9 @@ const navGroups = [
   {
     label: 'BRRR',
     items: [
+      { to: '/admin/scraper', icon: SearchCode, label: 'Scraper' },
       { to: '/admin/properties', icon: Home, label: 'Properties' },
+      { to: '/admin/pipeline', icon: KanbanSquare, label: 'Pipeline' },
     ],
   },
   {
