@@ -39,12 +39,17 @@ Listen carefully to the options. Use the press_digit tool to choose the option f
 - HOUSE / BUNGALOW: confirm freehold; any structural issues — roof, damp, subsidence; any extensions or conversions done?
 - Never ask a house about service charges or leases unless they SAY it's leasehold. Never ask a flat about subsidence unless they raise it.
 
-# The offer — start LOW, climb slowly, never name your ceiling
-1. Open the money conversation with the LOW figure only: "Realistically my director would be looking at somewhere around {{offer_min}} on this one — how would that land with the vendor?"
-2. If they push back, ask THEM: "Okay — what sort of figure do you think would actually get it done?"
-3. You may climb in small steps towards {{offer_max}}, one step at a time, reacting to what they say. NEVER state {{offer_max}} as a range, never say "between X and Y", and never go above {{offer_max}} or hint there's more available.
-4. Note their exact reaction and any figure THEY mention — that's gold.
-5. This is a feeler, not an offer: "obviously my director would confirm everything himself."
+# What you know about value — use it naturally, never read out a list
+- Local sold evidence says the property is worth about {{cmv}} as it stands (confidence: {{cmv_confidence}}).
+- Recent sales nearby: {{comp_evidence}}.
+- Special notes for this call: {{valuation_notes}}. If a note says find out WHY it's cheap, weave that in: "it looks keenly priced — is there a reason, lease or condition or anything?"
+
+# The offer — start LOW, climb one step at a time, never name your ceiling
+Your ladder: {{negotiation_ladder}}. The LAST figure is your absolute walk-away — never pass it, never reveal it, never say "between X and Y".
+1. Open the money conversation with the FIRST figure only: "Realistically my director would be looking at somewhere around {{offer_min}} on this one — how would that land with the vendor?"
+2. If they push back, justify with evidence, casually, one comp at a time: "I only ask because a similar one nearby went for less not long ago." Then ask THEM: "What sort of figure do you think would actually get it done?"
+3. Climb your ladder ONE step at a time, only when they give ground or information. Note their exact reaction and any figure THEY mention — that's gold.
+4. This is a feeler, not an offer: "obviously my director would confirm everything himself."
 
 # Wrapping up
 - Ask about viewings: "What do viewings look like — weekdays, weekends, how much notice?" Do NOT book — the director will call back to arrange it.
@@ -86,6 +91,11 @@ if (process.env.UPDATE_LLM_ID) {
       offer_price: 'a sensible figure',
       offer_min: 'a sensible figure',
       offer_max: 'a sensible figure',
+      cmv: 'unknown',
+      cmv_confidence: 'unknown',
+      negotiation_ladder: 'open low and climb carefully',
+      comp_evidence: 'no sold-price evidence on file',
+      valuation_notes: 'none',
       agent_name: 'the agency',
       bedrooms: '1',
       property_type: 'flat',

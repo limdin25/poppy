@@ -110,6 +110,25 @@ export default async function handler(req: Request): Promise<Response> {
       }
 
       const { min: offerMin, max: offerMax } = offerRange(property, settings);
+
+      // Negotiation pack from the valuation engine (deal jsonb set by the scraper)
+      const deal = (property.deal || {}) as Record<string, unknown>;
+      const ladderArr = Array.isArray(deal.ladder) ? (deal.ladder as number[]).filter((n) => n > 0) : [];
+      const ladderStr = ladderArr.length >= 2
+        ? ladderArr.map((n) => fmtGBP(n)).join(', then ')
+        : `${fmtGBP(offerMin)}, climbing at most to ${fmtGBP(offerMax)}`;
+      const evidence = Array.isArray(deal.evidence) && (deal.evidence as string[]).length
+        ? (deal.evidence as string[]).join('; ')
+        : 'no sold-price evidence on file — rely on the asking price conversation';
+      const FLAG_NOTES: Record<string, string> = {
+        suspiciously_cheap_asking: 'the asking price is well below local sold prices — find out WHY (short lease? condition? cash buyers only?)',
+        conversion_adds_no_value: 'bigger versions nearby do not sell for more — do not pay extra for conversion potential',
+        indicative_valuation_verify_comps: 'valuation confidence is low — treat the figures as indicative',
+        auction_guide_price: 'this is an auction listing — ask the auction date and whether the vendor takes pre-auction offers',
+      };
+      const notes = (Array.isArray(deal.flags) ? (deal.flags as string[]) : [])
+        .map((f) => FLAG_NOTES[f]).filter(Boolean).join('; ') || 'none';
+
       const res = await fetch('https://api.retellai.com/v2/create-phone-call', {
         method: 'POST',
         headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
@@ -126,6 +145,11 @@ export default async function handler(req: Request): Promise<Response> {
             offer_price: fmtGBP(offerMax),
             offer_min: fmtGBP(offerMin),
             offer_max: fmtGBP(offerMax),
+            cmv: deal.cmv ? fmtGBP(deal.cmv) : 'unknown',
+            cmv_confidence: String(deal.cmv_confidence || 'unknown'),
+            negotiation_ladder: ladderStr,
+            comp_evidence: evidence,
+            valuation_notes: notes,
             agent_name: property.agent_name || 'the agency',
             bedrooms: String(property.bedrooms ?? ''),
             property_type: property.property_type || 'property',

@@ -253,6 +253,16 @@ $("btn-send-elsie").onclick = async () => {
     pursue: v ? v.pursue : null,
     gdv: v && v.gdv ? v.gdv.estimate : null,
     stack_verdict: v && v.stack ? v.stack.verdict : null,
+    // Negotiation pack for Elsie's call: the ladder she climbs, the sold
+    // evidence she can quote, and the engine's warnings in raw form.
+    ladder: v && v.offer && v.offer.ladder ? v.offer.ladder : [],
+    evidence: v && v.cmv && v.cmv.audit
+      ? v.cmv.audit.filter(a => a.included)
+          .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+          .slice(0, 3)
+          .map(a => `${a.address} sold £${Number(a.price).toLocaleString()} (${String(a.date).slice(0, 7)})`)
+      : [],
+    flags: v ? [...((v.offer && v.offer.flags) || []), ...((v.gdv && v.gdv.flags) || [])] : [],
     refurb: num("calc-refurb"),
     rent: v && v.rent && v.rent.estimate ? v.rent.estimate : num("calc-rent"),
     term_months: num("calc-term"),
