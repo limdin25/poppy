@@ -2,8 +2,6 @@
 # the local-only scraper folder, which must never upload to Vercel.
 node_modules
 dist
-.env
-.env.local
 .DS_Store
 .vercel
 .git-hidden
