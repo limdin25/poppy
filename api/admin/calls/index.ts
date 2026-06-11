@@ -26,7 +26,7 @@ export default async function handler(req: Request) {
 
   let query = supabaseAdmin
     .from('calls')
-    .select('*, businesses(name)')
+    .select('*, businesses(name), contacts(phone)')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
@@ -77,9 +77,12 @@ export default async function handler(req: Request) {
     })
   }
 
+  // BRRR rows are reused across retries — sort them by latest activity so a
+  // just-finished attempt 2 surfaces above older one-shot calls.
+  const sortKey = (r: Record<string, unknown>) =>
+    String((r.source === 'brrr_property' ? r.updated_at : null) || r.created_at || '')
   const businessRows = (data || []).map((c: Record<string, unknown>) => ({ ...c, source: 'business' }))
-  const merged = [...businessRows, ...brrrRows].sort((a, b) =>
-    String(b.created_at || '').localeCompare(String(a.created_at || '')))
+  const merged = [...businessRows, ...brrrRows].sort((a, b) => sortKey(b).localeCompare(sortKey(a)))
 
   return Response.json(merged.slice(0, limit))
 }

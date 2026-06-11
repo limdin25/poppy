@@ -87,6 +87,10 @@ export default async function handler(req: Request): Promise<Response> {
         .update({
           status: 'dialing',
           attempts: entry.attempts + 1,
+          // Cleared until create-phone-call returns the new id — the webhook
+          // ignores events whose call_id doesn't match the row's current dial,
+          // so a redelivered event from the previous attempt can't hijack this one.
+          retell_call_id: null,
           updated_at: now.toISOString(),
         })
         .eq('id', entry.id)

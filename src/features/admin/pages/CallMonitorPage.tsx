@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search, PhoneIncoming, PhoneMissed, Phone, PhoneOutgoing, Play, Clock, ExternalLink, X } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
-import { DataTable } from '../components/DataTable'
 import { AdminError } from '../components/AdminError'
 import { useAdminApi } from '../hooks/useAdminApi'
 
@@ -22,6 +21,8 @@ interface AdminCall {
   recording_url: string | null
   transcript?: TranscriptTurn[] | null
   businesses?: { name: string } | null
+  contacts?: { phone: string | null } | null
+  extracted_info?: Record<string, unknown> | null
   // BRRR property-call fields
   property_address?: string | null
   listing_url?: string | null
@@ -45,14 +46,51 @@ const STATUS_ICON: Record<string, { icon: typeof Phone; color: string }> = {
   pending: { icon: Clock, color: 'text-warning' },
 }
 
-const FILTERS = ['All', 'Live', 'Completed', 'Missed', 'Failed'] as const
+const FILTERS = ['All', 'Live', 'Qualified', 'Completed', 'Missed', 'Failed'] as const
 
 const LIVE_STATUSES = ['dialing', 'in_progress', 'ringing']
 
+// One label per call telling Hugo what happened and what it means for the
+// pipeline — mirrors the stages deals land in (Viewing / Qualified / Monitoring).
+function outcomeChip(c: AdminCall): { label: string; cls: string } | null {
+  const s = c.status || ''
+  if (LIVE_STATUSES.includes(s)) {
+    return { label: 'LIVE', cls: 'bg-danger/10 text-danger' }
+  }
+  if (s === 'pending') {
+    return (c.attempts || 0) > 0
+      ? { label: 'Retrying', cls: 'bg-amber-100 text-amber-700' }
+      : { label: 'Queued', cls: 'bg-elevated text-ink-muted' }
+  }
+  if (s === 'no_answer') return { label: 'No answer', cls: 'bg-danger/10 text-danger' }
+  if (s === 'failed') return { label: 'Failed', cls: 'bg-danger/10 text-danger' }
+  if (s === 'missed') return { label: 'Missed', cls: 'bg-danger/10 text-danger' }
+
+  if (c.source === 'brrr_property') {
+    const q = (c.qualification || {}) as Record<string, unknown>
+    const outcome = q.outcome as string | undefined
+    const next = q.next_step as string | undefined
+    if (outcome === 'qualified') {
+      if (next === 'book_viewing') return { label: 'Qualified · viewing', cls: 'bg-success/10 text-success' }
+      if (next === 'make_offer') return { label: 'Qualified · offer', cls: 'bg-success/10 text-success' }
+      return { label: 'Qualified', cls: 'bg-success/10 text-success' }
+    }
+    if (outcome === 'not_qualified') {
+      if (next === 'monitor_backup') return { label: 'Backup · monitoring', cls: 'bg-violet-100 text-violet-700' }
+      return { label: 'Not suitable', cls: 'bg-elevated text-ink-muted' }
+    }
+    if (outcome === 'callback') return { label: 'Call back', cls: 'bg-amber-100 text-amber-700' }
+  }
+  if (s === 'completed') return { label: 'Completed', cls: 'bg-success/10 text-success' }
+  return null
+}
+
 function matchesFilter(c: AdminCall, filter: string): boolean {
   const s = c.status || ''
+  const outcome = ((c.qualification || {}) as Record<string, unknown>).outcome
   switch (filter) {
     case 'Live': return LIVE_STATUSES.includes(s)
+    case 'Qualified': return outcome === 'qualified'
     case 'Completed': return s === 'completed'
     case 'Missed': return s === 'missed' || s === 'no_answer'
     case 'Failed': return s === 'failed'
@@ -60,8 +98,14 @@ function matchesFilter(c: AdminCall, filter: string): boolean {
   }
 }
 
+function callPhone(c: AdminCall): string | null {
+  if (c.source === 'brrr_property') return c.agent_phone || null
+  const info = (c.extracted_info || {}) as Record<string, unknown>
+  return c.contacts?.phone || (info.caller_phone as string) || null
+}
+
 function formatDuration(seconds: number | null | undefined): string {
-  if (!seconds) return '—'
+  if (!seconds) return ''
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
   return `${m}:${s.toString().padStart(2, '0')}`
@@ -71,17 +115,30 @@ function timeAgo(iso: string | null | undefined): string {
   if (!iso) return '—'
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins} min ago`
+  if (mins < 1) return 'now'
+  if (mins < 60) return `${mins}m`
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
 }
 
 function liveSummary(c: AdminCall): string {
   const last = c.transcript?.[c.transcript.length - 1]
   if (!last) return 'Call in progress…'
   return `${last.speaker === 'agent' ? 'Elsie' : 'Agent'}: ${last.text}`
+}
+
+function rowSummary(c: AdminCall): string {
+  if (LIVE_STATUSES.includes(c.status || '')) return liveSummary(c)
+  if (c.status === 'pending') return c.ai_summary || 'Queued — dials at the next slot'
+  return c.ai_summary || '—'
+}
+
+// BRRR rows are reused across retries — created_at goes stale, updated_at is
+// when the latest attempt actually happened.
+function rowTime(c: AdminCall): string | null | undefined {
+  if (c.source === 'brrr_property') return c.updated_at || c.created_at
+  return c.started_at || c.created_at
 }
 
 function statusLabel(c: AdminCall): string {
@@ -91,9 +148,9 @@ function statusLabel(c: AdminCall): string {
   return (c.status || '—').replace('_', ' ')
 }
 
-// Qualification keys worth surfacing, in display order.
 const QUAL_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'outcome', label: 'Outcome' },
+  { key: 'next_step', label: 'Next step' },
   { key: 'still_available', label: 'Still available' },
   { key: 'occupancy', label: 'Occupancy' },
   { key: 'tenure', label: 'Tenure' },
@@ -101,6 +158,7 @@ const QUAL_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'condition_notes', label: 'Condition' },
   { key: 'interest_level', label: 'Interest level' },
   { key: 'offer_reaction', label: 'Offer reaction' },
+  { key: 'best_price_indicated', label: 'Agent hinted' },
   { key: 'viewing_availability', label: 'Viewings' },
   { key: 'action_required', label: 'Action required' },
 ]
@@ -123,8 +181,10 @@ export default function CallMonitorPage() {
     if (!matchesFilter(c, filter)) return false
     if (search) {
       const q = search.toLowerCase()
-      const hay = [c.businesses?.name, c.ai_summary, c.property_address, c.agent_name]
-        .filter(Boolean).join(' ').toLowerCase()
+      const hay = [
+        c.businesses?.name, c.ai_summary, c.property_address, c.agent_name,
+        callPhone(c), outcomeChip(c)?.label,
+      ].filter(Boolean).join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
     return true
@@ -154,11 +214,11 @@ export default function CallMonitorPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search business, property or summary..."
+            placeholder="Search property, business, number, outcome..."
             className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-3 text-[13px] text-ink outline-none placeholder:text-ink-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </div>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {FILTERS.map((f) => (
             <button
               key={f}
@@ -174,81 +234,48 @@ export default function CallMonitorPage() {
         </div>
       </div>
 
-      <div className="mt-4">
-        <DataTable
-          columns={[
-            {
-              key: 'status',
-              header: '',
-              render: (c) => {
-                const s = STATUS_ICON[c.status || 'missed'] || STATUS_ICON.missed
-                const Icon = s.icon
-                return (
-                  <span className="relative inline-flex">
-                    <Icon size={14} className={cn(s.color, LIVE_STATUSES.includes(c.status || '') && 'animate-pulse')} />
-                  </span>
-                )
-              },
-              className: 'w-10',
-            },
-            {
-              key: 'who',
-              header: 'Business / Property',
-              render: (c) =>
-                c.source === 'brrr_property' ? (
-                  <span className="flex items-center gap-2">
-                    <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-violet-700">BRRR</span>
-                    <span className="truncate font-medium text-ink">{c.property_address || 'Property call'}</span>
-                  </span>
-                ) : (
-                  <span className="font-medium text-ink">{c.businesses?.name || '—'}</span>
-                ),
-            },
-            {
-              key: 'summary',
-              header: 'Summary',
-              render: (c) => (
-                <span className="truncate text-ink-muted">
-                  {LIVE_STATUSES.includes(c.status || '')
-                    ? liveSummary(c)
-                    : c.status === 'pending'
-                      ? 'Queued — dials at the next slot'
-                      : c.ai_summary || '—'}
+      <div className="mt-4 divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+        {filtered.length === 0 && (
+          <p className="p-6 text-center text-[13px] text-ink-muted">No calls match your filters</p>
+        )}
+        {filtered.map((c) => {
+          const s = STATUS_ICON[c.status || 'missed'] || STATUS_ICON.missed
+          const Icon = s.icon
+          const chip = outcomeChip(c)
+          const phone = callPhone(c)
+          const duration = formatDuration(c.duration_seconds)
+          return (
+            <button
+              key={c.id}
+              onClick={() => setSelectedId(c.id)}
+              className="block w-full px-3 py-2 text-left transition hover:bg-elevated/60"
+            >
+              <div className="flex items-center gap-2">
+                <Icon size={13} className={cn('shrink-0', s.color, LIVE_STATUSES.includes(c.status || '') && 'animate-pulse')} />
+                {c.source === 'brrr_property' && (
+                  <span className="shrink-0 rounded bg-violet-100 px-1 py-0.5 text-[9px] font-semibold uppercase leading-none text-violet-700">BRRR</span>
+                )}
+                <span className="min-w-0 truncate text-[12.5px] font-medium text-ink">
+                  {c.source === 'brrr_property' ? c.property_address || 'Property call' : c.businesses?.name || '—'}
                 </span>
-              ),
-            },
-            {
-              key: 'duration',
-              header: 'Duration',
-              render: (c) => formatDuration(c.duration_seconds),
-              className: 'w-20',
-            },
-            {
-              key: 'time',
-              header: 'Time',
-              render: (c) => <span className="text-ink-muted">{timeAgo(c.started_at || c.created_at)}</span>,
-            },
-            {
-              key: 'play',
-              header: '',
-              render: (c) =>
-                c.recording_url ? (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setSelectedId(c.id) }}
-                    className="rounded-full bg-brand/10 p-1.5 text-brand hover:bg-brand/20"
-                    title="Open call — recording & transcript"
-                  >
-                    <Play size={10} className="ml-px" />
-                  </button>
-                ) : null,
-              className: 'w-10',
-            },
-          ]}
-          data={filtered}
-          keyExtractor={(c) => c.id}
-          onRowClick={(c) => setSelectedId(c.id)}
-          emptyMessage="No calls match your filters"
-        />
+                {chip && (
+                  <span className={cn('ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none', chip.cls)}>
+                    {chip.label}
+                  </span>
+                )}
+                <span className={cn('shrink-0 text-right text-[11px] tabular-nums text-ink-subtle', !chip && 'ml-auto')}>
+                  {timeAgo(rowTime(c))}
+                </span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-2 pl-[21px]">
+                {phone && <span className="shrink-0 text-[11px] tabular-nums text-ink-subtle">{phone}</span>}
+                {duration && <span className="shrink-0 text-[11px] tabular-nums text-ink-subtle">· {duration}</span>}
+                <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink-muted">{rowSummary(c)}</span>
+                {c.recording_url && <Play size={11} className="shrink-0 text-brand" />}
+              </div>
+            </button>
+          )
+        })}
       </div>
 
       {selected && <CallDetailModal call={selected} onClose={() => setSelectedId(null)} />}
@@ -271,6 +298,8 @@ function CallDetailModal({ call, onClose }: { call: AdminCall; onClose: () => vo
   const qualRows = QUAL_FIELDS
     .map(({ key, label }) => ({ label, value: qual[key] }))
     .filter((r) => r.value !== null && r.value !== undefined && r.value !== '')
+  const chip = outcomeChip(call)
+  const phone = callPhone(call)
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6" onClick={onClose}>
@@ -290,6 +319,9 @@ function CallDetailModal({ call, onClose }: { call: AdminCall; onClose: () => vo
                   LIVE
                 </span>
               )}
+              {chip && !isLive && (
+                <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', chip.cls)}>{chip.label}</span>
+              )}
               <span className="text-[12px] capitalize text-ink-muted">{statusLabel(call)}</span>
             </div>
             <h2 className="mt-1 truncate text-base font-semibold text-ink">
@@ -297,13 +329,15 @@ function CallDetailModal({ call, onClose }: { call: AdminCall; onClose: () => vo
                 ? call.property_address || 'Property call'
                 : call.businesses?.name || 'Call'}
             </h2>
-            {call.source === 'brrr_property' && (
-              <p className="mt-0.5 text-[12px] text-ink-muted">
-                {[call.agent_name, call.agent_phone].filter(Boolean).join(' · ')}
-                {typeof call.attempts === 'number' && call.attempts > 0 ? ` · attempt ${call.attempts}` : ''}
-                {typeof call.cost_usd === 'number' ? ` · $${call.cost_usd.toFixed(2)}` : ''}
-              </p>
-            )}
+            {(() => {
+              const subtitle = [
+                call.source === 'brrr_property' ? call.agent_name : null,
+                phone,
+                typeof call.attempts === 'number' && call.attempts > 0 ? `attempt ${call.attempts}` : null,
+                typeof call.cost_usd === 'number' ? `$${call.cost_usd.toFixed(2)}` : null,
+              ].filter(Boolean).join(' · ')
+              return subtitle ? <p className="mt-0.5 text-[12px] text-ink-muted">{subtitle}</p> : null
+            })()}
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-ink-subtle hover:bg-elevated hover:text-ink">
             <X size={16} />
@@ -349,7 +383,7 @@ function CallDetailModal({ call, onClose }: { call: AdminCall; onClose: () => vo
               {qualRows.map((r) => (
                 <div key={r.label} className="flex gap-2 text-[13px]">
                   <span className="w-32 shrink-0 text-ink-subtle">{r.label}</span>
-                  <span className="text-ink">{String(r.value)}</span>
+                  <span className="min-w-0 break-words text-ink">{String(r.value).replace(/_/g, ' ')}</span>
                 </div>
               ))}
             </div>

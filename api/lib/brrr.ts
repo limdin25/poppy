@@ -123,6 +123,7 @@ export function fmtGBP(n: unknown): string {
 
 export interface Qualification {
   outcome?: 'qualified' | 'not_qualified' | 'callback' | 'no_answer';
+  next_step?: 'book_viewing' | 'make_offer' | 'monitor_backup' | 'call_back' | 'none' | null;
   still_available?: boolean | null;
   occupancy?: string | null;            // vacant / tenanted (+ tenancy details)
   condition_notes?: string | null;
@@ -188,6 +189,7 @@ export async function extractQualification(
         content: `An AI assistant called the estate agent about ${property.address} (asking ${property.price_text}, our offer band ${band} — the AI opens low and climbs, never revealing the top) to qualify it for a buy-refurbish-refinance purchase. Analyse the transcript and return JSON only. Every field is null when the question was not asked or not answered — do NOT guess:
 {
   "outcome": "qualified" | "not_qualified" | "callback",
+  "next_step": "book_viewing" | "make_offer" | "monitor_backup" | "call_back" | "none",
   "still_available": boolean or null,
   "occupancy": string or null (vacant or tenanted; tenancy details if mentioned),
   "condition_notes": string or null,
@@ -211,6 +213,13 @@ export async function extractQualification(
 "qualified" = still available AND the agent did not rule out an offer in the ${band} band (open, "put it forward", "worth trying", vendor flexible).
 "not_qualified" = sold/under offer/withdrawn, or the agent clearly said an offer at that level has no chance, or a deal-breaker came up (e.g. very short lease, cladding remediation with no protections, structural issues beyond a £10k refurb).
 "callback" = couldn't get answers (wrong person, asked to call back, agent needs to check with vendor).
+
+"next_step" = the single most useful follow-up action:
+- "book_viewing": qualified and the agent recommended/expects a viewing before offers go in.
+- "make_offer": qualified and the agent invited an offer directly (no viewing needed first).
+- "monitor_backup": sold/under offer BUT worth registering as a cash backup buyer (agent open to it or sale not yet exchanged).
+- "call_back": the agency needs calling again — call dropped, wrong person answered, or the agent must check with the vendor first.
+- "none": dead end, nothing useful to do.
 
 Transcript:
 ${transcript}`,
@@ -258,12 +267,12 @@ export async function pushPropertyToPipeline(
   qualification?: Qualification,
 ): Promise<{ ok: boolean; dealId?: string; error?: string }> {
   if (!PIPELINE_BUSINESS_ID) return { ok: false, error: 'PROPERTY_PIPELINE_BUSINESS_ID not set' };
-  if (property.deal_id) return { ok: true, dealId: property.deal_id };
 
-  // Estate agent as contact (find by phone, else create)
+  // Estate agent as contact (find by phone, else create) — skipped when the
+  // property already has a deal (we'll move that deal rather than create one).
   let contactId: string | null = null;
   const phone = toE164(property.agent_phone);
-  if (phone) {
+  if (!property.deal_id && phone) {
     const { data: existing } = await supabase
       .from('contacts')
       .select('id')
@@ -287,20 +296,34 @@ export async function pushPropertyToPipeline(
     }
   }
 
-  // "Qualified" stage — find or create
+  // Stage by the call's next step: viewing-first deals go straight to a
+  // "Viewing" column, sale-agreed backups to "Monitoring", the rest to
+  // "Qualified". Stages are created on first use.
+  const STAGE_BY_NEXT_STEP: Record<string, { name: string; color: string; sort_order: number }> = {
+    book_viewing: { name: 'Viewing', color: 'sky', sort_order: 3 },
+    monitor_backup: { name: 'Monitoring', color: 'slate', sort_order: 7 },
+  };
+  // monitor_backup only makes sense for sale-agreed (not_qualified) properties —
+  // a contradictory LLM output must not file a qualified deal under Monitoring.
+  const nextStep = qualification?.next_step === 'monitor_backup' && qualification?.outcome !== 'not_qualified'
+    ? null
+    : qualification?.next_step;
+  const target = STAGE_BY_NEXT_STEP[nextStep || '']
+    || { name: 'Qualified', color: 'emerald', sort_order: 2 };
+
   let stageId: string | null = null;
   const { data: stage } = await supabase
     .from('pipeline_stages')
     .select('id')
     .eq('business_id', PIPELINE_BUSINESS_ID)
-    .ilike('name', 'qualified')
+    .ilike('name', target.name)
     .maybeSingle();
   if (stage) {
     stageId = stage.id;
   } else {
     const { data: created } = await supabase
       .from('pipeline_stages')
-      .insert({ business_id: PIPELINE_BUSINESS_ID, name: 'Qualified', color: 'emerald', sort_order: 2 })
+      .insert({ business_id: PIPELINE_BUSINESS_ID, name: target.name, color: target.color, sort_order: target.sort_order })
       .select('id')
       .single();
     stageId = created?.id || null;
@@ -309,7 +332,9 @@ export async function pushPropertyToPipeline(
   const deal = (property.deal || {}) as Record<string, unknown>;
   const q = qualification || {};
   const lines = [
-    `BRRR property qualified by Elsie.`,
+    nextStep === 'monitor_backup'
+      ? `Sale agreed elsewhere — tracked as cash backup by Elsie.`
+      : `BRRR property qualified by Elsie.`,
     property.listing_url ? `Listing: ${property.listing_url}` : null,
     `Asking: ${property.price_text || fmtGBP(property.asking_price)} · Offer target: ${fmtGBP(deal.offer_price)} · GDV: ${fmtGBP(deal.gdv)}`,
     deal.rent ? `Target rent: ${fmtGBP(deal.rent)}/mo · Cash needed: ${fmtGBP(deal.total_cash)}` : null,
@@ -329,6 +354,17 @@ export async function pushPropertyToPipeline(
   const offerValue = typeof deal.offer_price === 'number'
     ? deal.offer_price
     : parseFloat(String(deal.offer_price || '')) || property.asking_price || 0;
+
+  // Property already in the pipeline (e.g. a Monitoring backup whose sale fell
+  // through and has now re-qualified): move the existing deal to the right
+  // stage and refresh its details rather than stranding it.
+  if (property.deal_id) {
+    await supabase
+      .from('deals')
+      .update({ stage_id: stageId, description: lines.join('\n'), value: offerValue })
+      .eq('id', property.deal_id);
+    return { ok: true, dealId: property.deal_id };
+  }
 
   const { data: createdDeal, error } = await supabase
     .from('deals')
@@ -384,10 +420,11 @@ export async function handleBrrrCallEvent(
   }
   if (!callRow) return { ok: false, reason: 'no matching property call' };
 
-  // A retried row gets a fresh retell_call_id on each dial — events for an
-  // older dial of the same row must not touch the new attempt's data.
-  if (callRow.retell_call_id && call.call_id && callRow.retell_call_id !== call.call_id) {
-    return { ok: true, skipped: 'stale event for a previous dial' };
+  // A retried row gets a fresh retell_call_id on each dial (the cron nulls it
+  // during the claim window) — only the event whose call_id matches the row's
+  // CURRENT dial may touch it. Null/mismatch means stale or mid-redial.
+  if (!callRow.retell_call_id || !call.call_id || callRow.retell_call_id !== call.call_id) {
+    return { ok: true, skipped: 'event is not for the row\'s current dial' };
   }
 
   const { data: property } = await supabase
@@ -459,12 +496,48 @@ export async function handleBrrrCallEvent(
   }
 
   let qualification: Qualification = {};
+  let extractionFailed = false;
   try {
     qualification = await extractQualification(call.transcript || '', property as BrrrProperty, settings);
+    if (!qualification.outcome) extractionFailed = true;
   } catch (e) {
     console.error('[brrr] extraction failed:', e);
+    extractionFailed = true;
   }
   const outcome = qualification.outcome || 'callback';
+
+  // A call that dropped before anything was learned (line died, IVR swallowed
+  // it, agent hung up straight away) is retried like a no-answer rather than
+  // parked as a dead "callback". Short gap — line glitches clear in minutes,
+  // and Princess Street's qualified deal came from exactly this kind of retry.
+  const INFO_KEYS: Array<keyof Qualification> = [
+    'still_available', 'occupancy', 'condition_notes', 'why_selling', 'motivation',
+    'chain', 'fallen_through', 'tenure', 'lease_years', 'service_charge',
+    'ground_rent', 'major_works', 'interest_level', 'offer_reaction',
+    'best_price_indicated', 'viewing_availability',
+  ];
+  const learnedNothing = !INFO_KEYS.some((k) => {
+    const v = qualification[k];
+    return v !== null && v !== undefined && v !== '';
+  });
+  // Never redial on extraction failure — the call may have been fully answered
+  // and only our Claude call failed; the transcript is saved for manual review.
+  const attemptsSoFar = callRow.attempts || 1;
+  if (!extractionFailed && outcome === 'callback' && learnedNothing && attemptsSoFar < settings.max_attempts) {
+    await supabase.from('brrr_property_calls').update({
+      status: 'pending',
+      transcript: transcriptForUI,
+      recording_url: call.recording_url || null,
+      summary: `Call dropped before any information was gathered (attempt ${attemptsSoFar} of ${settings.max_attempts}) — retrying shortly.`,
+      qualification,
+      next_attempt_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      updated_at: nowIso,
+    }).eq('id', callRow.id);
+    await supabase.from('brrr_properties')
+      .update({ status: 'call_queued', updated_at: nowIso })
+      .eq('id', property.id);
+    return { ok: true, outcome: 'dropped_retry' };
+  }
 
   const costCents = call.call_cost?.combined_cost;
   await supabase.from('brrr_property_calls').update({
@@ -487,6 +560,13 @@ export async function handleBrrrCallEvent(
     qualification,
     updated_at: nowIso,
   }).eq('id', property.id);
+
+  // Qualified deals go to the pipeline; sale-agreed properties worth tracking
+  // as a cash backup land in the Monitoring column (no email — they're not
+  // actionable today, just worth watching for a fall-through).
+  if (outcome === 'not_qualified' && qualification.next_step === 'monitor_backup') {
+    await pushPropertyToPipeline(property as BrrrProperty, qualification).catch(() => null);
+  }
 
   if (outcome === 'qualified') {
     await pushPropertyToPipeline(property as BrrrProperty, qualification).catch(() => null);
