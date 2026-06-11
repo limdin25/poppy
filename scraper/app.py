@@ -816,6 +816,27 @@ def property_valuation(property_id):
     return jsonify(result)
 
 
+@app.route("/api/valuation/batch")
+def valuation_batch():
+    """Light verdict map for the whole shortlist — powers the Comps tab's
+    'hide no-evidence' filter and per-card verdict badges in one round trip."""
+    out = {}
+    for p in rightmove_storage.shortlist_with_comps():
+        pid = p.get("property_id")
+        try:
+            listing = rightmove_storage.get_listing(pid) or p
+            v = valuation.value_property(listing, p.get("comps") or [])
+            offer = v.get("offer") or {}
+            out[pid] = {
+                "pursue": v.get("pursue"),
+                "verdict": offer.get("verdict"),
+                "has_offer": offer.get("max") is not None,
+            }
+        except Exception as e:
+            out[pid] = {"pursue": None, "verdict": None, "has_offer": False, "error": str(e)}
+    return jsonify(out)
+
+
 # ───────────────── Elsie integration (BRRR qualifier) ─────────────────
 # "Send to Elsie" pushes one approved property (listing + agent phone +
 # comps + the deal-calculator numbers) into Elsie's admin Properties tab,

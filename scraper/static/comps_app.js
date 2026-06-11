@@ -5,6 +5,49 @@ let selectedIdx = -1;
 let logOpen = false;
 let elsieSent = {};          // property_id -> sent_at (successfully sent to Elsie)
 let currentValuation = null; // server-side valuation for the selected property
+let currentValuationPromise = null; // pending fetch — Enter-to-send awaits it
+let valuations = {};         // property_id -> {pursue, verdict, has_offer} from /api/valuation/batch
+let activeTab = "tosend";    // "tosend" | "sent"
+let hideNoEvidence = localStorage.getItem("compsHideNoEvidence") !== "0";
+
+// Small per-card verdict labels (mirrors VERDICT_STYLES on the banner)
+const CARD_VERDICTS = {
+  great_deal:            ["bg-emerald-100 text-emerald-700", "Great deal"],
+  great_deal_suspicious: ["bg-amber-100 text-amber-700", "Cheap — verify"],
+  fair:                  ["bg-blue-100 text-blue-700", "Fair"],
+  overpriced:            ["bg-rose-100 text-rose-700", "Overpriced"],
+  insufficient_data:     ["bg-slate-100 text-slate-400", "No evidence"],
+};
+
+function isNoEvidence(p) {
+  const v = valuations[p.property_id];
+  return !!v && (v.verdict === "insufficient_data" || v.has_offer === false);
+}
+
+// Indices into `properties` currently visible under the active tab + filter.
+function visibleIndices() {
+  const out = [];
+  properties.forEach((p, i) => {
+    const sent = !!elsieSent[p.property_id];
+    if (activeTab === "sent") { if (sent) out.push(i); return; }
+    if (sent) return;
+    if (hideNoEvidence && isNoEvidence(p)) return;
+    out.push(i);
+  });
+  return out;
+}
+
+function updateCounts() {
+  let sent = 0, skipped = 0, tosend = 0;
+  properties.forEach((p) => {
+    if (elsieSent[p.property_id]) { sent++; return; }
+    if (isNoEvidence(p)) { skipped++; if (!hideNoEvidence) tosend++; return; }
+    tosend++;
+  });
+  $("count-tosend").textContent = tosend;
+  $("count-sent").textContent = sent;
+  $("count-skipped").textContent = skipped;
+}
 
 const MAX_COMP_DISTANCE = 200;
 function isNearby(c) {
@@ -20,11 +63,13 @@ async function loadProperties() {
   const r = await fetch("/api/comps/properties");
   properties = await r.json();
   try { elsieSent = await (await fetch("/api/elsie/sent")).json(); } catch (e) { elsieSent = {}; }
+  try { valuations = await (await fetch("/api/valuation/batch")).json(); } catch (e) { valuations = {}; }
   $("s-count").textContent = properties.length;
 
   if (properties.length === 0) {
     $("empty-msg").classList.remove("hidden");
     $("prop-list").innerHTML = "";
+    updateCounts();
     return;
   }
 
@@ -35,8 +80,17 @@ async function loadProperties() {
 function renderList() {
   const container = $("prop-list");
   container.innerHTML = "";
+  updateCounts();
 
-  properties.forEach((p, i) => {
+  const vis = visibleIndices();
+  if (vis.length === 0) {
+    container.innerHTML = '<div class="text-center text-slate-400 py-8 text-sm">'
+      + (activeTab === "sent" ? "Nothing sent to Elsie yet" : "Nothing left to send") + "</div>";
+    return;
+  }
+
+  vis.forEach((i) => {
+    const p = properties[i];
     const div = document.createElement("div");
     const hasComps = p.comps && p.comps.length > 0;
     div.className = "prop-card p-3 rounded-lg border "
@@ -44,9 +98,22 @@ function renderList() {
     div.dataset.idx = i;
 
     const price = p.price_qualifier ? `${p.price_qualifier} ${p.price}` : (p.price || "No price");
-    const compBadge = hasComps
-      ? '<span class="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">Comps ready</span>'
-      : '<span class="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">No comps</span>';
+
+    let badge;
+    if (activeTab === "sent") {
+      const when = (elsieSent[p.property_id] || "").slice(0, 10);
+      badge = `<span class="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">Sent ✓${when ? " " + when : ""}</span>`;
+    } else {
+      const v = valuations[p.property_id];
+      const style = v && v.verdict && CARD_VERDICTS[v.verdict];
+      if (style) {
+        badge = `<span class="text-xs px-1.5 py-0.5 rounded font-medium ${style[0]}">${style[1]}</span>`;
+      } else {
+        badge = hasComps
+          ? '<span class="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">Comps ready</span>'
+          : '<span class="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">No comps</span>';
+      }
+    }
 
     div.innerHTML = `
       <div class="flex items-start justify-between">
@@ -55,12 +122,32 @@ function renderList() {
           <div class="text-xs text-slate-500 mt-0.5">${p.address || "No address"}</div>
           <div class="text-xs text-slate-400 mt-0.5">${p.bedrooms || "?"} bed &middot; ${p.property_type || "Unknown"}</div>
         </div>
-        ${compBadge}
+        ${badge}
       </div>`;
     div.onclick = () => selectProperty(i);
     container.appendChild(div);
+    if (i === selectedIdx) div.scrollIntoView({ block: "nearest" });
   });
 }
+
+// ─── Tabs + filter ───────────────────────────────────────────────
+function setTab(tab) {
+  activeTab = tab;
+  const on = "flex-1 px-2 py-1 rounded text-xs font-semibold bg-emerald-600 text-white";
+  const off = "flex-1 px-2 py-1 rounded text-xs font-semibold bg-white text-slate-500 border border-slate-200 hover:bg-slate-50";
+  $("tab-tosend").className = tab === "tosend" ? on : off;
+  $("tab-sent").className = tab === "sent" ? on : off;
+  renderList();
+}
+$("tab-tosend").onclick = () => setTab("tosend");
+$("tab-sent").onclick = () => setTab("sent");
+
+$("filter-skips").checked = hideNoEvidence;
+$("filter-skips").onchange = (e) => {
+  hideNoEvidence = e.target.checked;
+  localStorage.setItem("compsHideNoEvidence", hideNoEvidence ? "1" : "0");
+  renderList();
+};
 
 // ─── Select property ─────────────────────────────────────────────
 function selectProperty(idx) {
@@ -109,7 +196,7 @@ function selectProperty(idx) {
   populateCalcFromProperty(p);
   calcGdv();
   updateBadges(p);
-  loadValuation(p);
+  currentValuationPromise = loadValuation(p);
 
   if (comps.length === 0) {
     $("cp-no-comps").classList.remove("hidden");
@@ -221,10 +308,17 @@ function compCard(comp, type, groupMedian) {
 // ─── Send to Elsie (BRRR qualifier) ──────────────────────────────
 // Sends the selected property + the calculator's current numbers to Elsie,
 // where the AI voice agent can call the listing agent and qualify it.
-$("btn-send-elsie").onclick = async () => {
+// Triggered by the button or the Enter key; advances to the next property
+// after a successful send so the down-enter-down-enter flow is seamless.
+async function sendSelectedToElsie() {
   if (selectedIdx < 0) return;
   const p = properties[selectedIdx];
+  if (elsieSent[p.property_id]) return; // already sent
   const btn = $("btn-send-elsie");
+
+  // Enter can land before the valuation fetch finishes — wait for it so the
+  // deal payload carries real numbers instead of a false "no valuation".
+  if (currentValuationPromise) { try { await currentValuationPromise; } catch (e) { /* banner shows the error */ } }
 
   const v = currentValuation;
   if (!v || !v.offer || !v.offer.max) {
@@ -278,8 +372,17 @@ $("btn-send-elsie").onclick = async () => {
     });
     const body = await r.json();
     if (body.ok) {
+      // Remember where we were in the visible list, mark sent (which moves the
+      // card to the Sent tab), then select whatever now sits in that slot.
+      const posBefore = visibleIndices().indexOf(selectedIdx);
       elsieSent[p.property_id] = new Date().toISOString();
       btn.textContent = "Sent to Elsie ✓";
+      const vis = visibleIndices();
+      if (activeTab === "tosend" && vis.length > 0) {
+        selectProperty(vis[Math.min(Math.max(posBefore, 0), vis.length - 1)]);
+      } else {
+        renderList();
+      }
     } else {
       btn.textContent = "Failed — retry";
       btn.disabled = false;
@@ -290,7 +393,37 @@ $("btn-send-elsie").onclick = async () => {
     btn.disabled = false;
     alert("Send to Elsie failed: " + e);
   }
-};
+}
+
+$("btn-send-elsie").onclick = sendSelectedToElsie;
+
+// ─── Keyboard flow: ↑↓ move through the visible list, Enter sends ──────────
+document.addEventListener("keydown", (e) => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+  if (!$("fetch-modal").classList.contains("hidden")) return;
+
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const vis = visibleIndices();
+    if (vis.length === 0) return;
+    const pos = vis.indexOf(selectedIdx);
+    let next;
+    if (pos === -1) {
+      next = vis[0];
+    } else if (e.key === "ArrowDown") {
+      next = vis[Math.min(pos + 1, vis.length - 1)];
+    } else {
+      next = vis[Math.max(pos - 1, 0)];
+    }
+    selectProperty(next);
+  }
+
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendSelectedToElsie();
+  }
+});
 
 $("btn-fetch").onclick = () => $("fetch-modal").classList.remove("hidden");
 $("f-cancel").onclick = () => $("fetch-modal").classList.add("hidden");
