@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { notifyBusinessOwner } from '../lib/notify.js';
-import { handleBrrrCallEvent } from '../lib/brrr.js';
+import { handleBrrrCallEvent, handleBrrrTranscriptUpdate } from '../lib/brrr.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -117,6 +117,17 @@ export default async function handler(req: Request): Promise<Response> {
 
     const payload = JSON.parse(rawBody);
     const { event, call } = payload;
+
+    // Live transcript turns for BRRR property calls only (the property agent
+    // opts into transcript_updated; receptionist agents don't send it).
+    if (event === 'transcript_updated') {
+      const liveMeta = (call?.metadata || {}) as Record<string, any>;
+      if (liveMeta.type === 'brrr_property') {
+        const result = await handleBrrrTranscriptUpdate(call);
+        return new Response(JSON.stringify(result), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true, skipped: event }), { status: 200 });
+    }
 
     if (event !== 'call_ended' && event !== 'call_analyzed') {
       return new Response(JSON.stringify({ ok: true, skipped: event }), { status: 200 });

@@ -384,6 +384,12 @@ export async function handleBrrrCallEvent(
   }
   if (!callRow) return { ok: false, reason: 'no matching property call' };
 
+  // A retried row gets a fresh retell_call_id on each dial — events for an
+  // older dial of the same row must not touch the new attempt's data.
+  if (callRow.retell_call_id && call.call_id && callRow.retell_call_id !== call.call_id) {
+    return { ok: true, skipped: 'stale event for a previous dial' };
+  }
+
   const { data: property } = await supabase
     .from('brrr_properties')
     .select('*')
@@ -402,7 +408,19 @@ export async function handleBrrrCallEvent(
     return { ok: true };
   }
 
-  // call_ended
+  // call_ended — atomic claim: Retell redelivers webhooks on timeout, and two
+  // invocations racing through extraction + pipeline-push created a duplicate
+  // deal once. Only the invocation that flips dialing→completed processes.
+  const { data: claimed } = await supabase
+    .from('brrr_property_calls')
+    .update({ status: 'completed', updated_at: new Date().toISOString() })
+    .eq('id', callRow.id)
+    .eq('status', 'dialing')
+    .select('id');
+  if (!claimed || claimed.length === 0) {
+    return { ok: true, skipped: 'call_ended already processed' };
+  }
+
   const transcriptForUI = (call.transcript_object || []).map((t: any) => ({
     speaker: t.role === 'user' ? 'caller' : 'agent',
     text: t.content,
@@ -486,4 +504,35 @@ export async function handleBrrrCallEvent(
   }
 
   return { ok: true, outcome };
+}
+
+/**
+ * Live transcript stream: Retell fires transcript_updated on every turn while
+ * the call is in progress. We write the partial transcript onto the dialing
+ * row so the admin Call Monitor can show the conversation as it happens.
+ * Cheap by design — one conditional update, no extraction, no status change.
+ */
+export async function handleBrrrTranscriptUpdate(
+  call: Record<string, any>,
+): Promise<Record<string, unknown>> {
+  if (!call.call_id) return { ok: false, reason: 'no call id' };
+
+  const turns = (call.transcript_object || call.transcript_with_tool_calls || [])
+    .filter((t: any) => t.role === 'user' || t.role === 'agent')
+    .map((t: any) => ({
+      speaker: t.role === 'user' ? 'caller' : 'agent',
+      text: t.content,
+    }))
+    .filter((t: any) => (t.text || '').trim().length > 0);
+  if (turns.length === 0) return { ok: true, skipped: 'empty transcript' };
+
+  // Only while the row is still dialing — the call_ended handler owns the
+  // final transcript, and a late update must never overwrite it.
+  const { data } = await supabase
+    .from('brrr_property_calls')
+    .update({ transcript: turns, updated_at: new Date().toISOString() })
+    .eq('retell_call_id', call.call_id)
+    .eq('status', 'dialing')
+    .select('id');
+  return { ok: true, updated: !!data?.length };
 }
