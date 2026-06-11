@@ -152,7 +152,8 @@ class ZooplaScraper:
     """Headed real-Chrome scraper: search URLs -> Zoopla listings -> storage."""
 
     def __init__(self, emit, stop_event, pause_event, *, max_pages=40,
-                 delay_min=2.0, delay_max=5.0, user_data_dir="data/zoopla_profile"):
+                 delay_min=2.0, delay_max=5.0, user_data_dir="data/zoopla_profile",
+                 proxy=None):
         self.emit = emit
         self.stop = stop_event
         self.pause = pause_event
@@ -160,6 +161,10 @@ class ZooplaScraper:
         self.delay_min = float(delay_min)
         self.delay_max = float(delay_max)
         self.user_data_dir = user_data_dir
+        # Cloudflare blocks headless regardless of IP, so the scraper runs HEADED
+        # real Chrome; the residential proxy supplies a clean IP. proxy is a
+        # Playwright dict {server, username, password} or None.
+        self.proxy = proxy
         self.metrics = {"urls_done": 0, "urls_total": 0, "new": 0, "duplicates": 0,
                         "pages": 0, "current_url": ""}
 
@@ -195,10 +200,12 @@ class ZooplaScraper:
         self.metrics["urls_total"] = len(search_urls)
         self._push()
         async with async_playwright() as pw:
-            ctx = await pw.chromium.launch_persistent_context(
-                self.user_data_dir, channel="chrome", headless=False,
-                no_viewport=True,
+            launch_kw = dict(
+                channel="chrome", headless=False, no_viewport=True,
                 args=["--disable-blink-features=AutomationControlled"])
+            if self.proxy:
+                launch_kw["proxy"] = self.proxy
+            ctx = await pw.chromium.launch_persistent_context(self.user_data_dir, **launch_kw)
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
             if stealth_async:
                 try:
@@ -267,3 +274,112 @@ class ZooplaScraper:
                 await asyncio.sleep(0.5)
         except Exception:
             pass
+
+
+# JS to pull detail-page fields (type, tenure, sqft, agent, floor plans).
+DETAIL_JS = r"""
+() => {
+  const body = document.body.innerText || '';
+  const typeM = body.match(/\b(maisonette|apartment|flat|studio|end of terrace|terraced|terrace|semi-detached|detached|bungalow|town\s?house|cottage)\b/i);
+  const sqftM = body.match(/([\d,]+)\s*sq\.?\s*ft/i);
+  const tel = document.querySelector('a[href^="tel:"]');
+  const pick = (...sels) => { for (const s of sels) { const e = document.querySelector(s); if (e && e.innerText) return e.innerText.trim(); } return null; };
+  // floor-plan images can be lazy <img>, <source srcset>, or in a Floor plan gallery
+  const fps = new Set();
+  for (const i of document.querySelectorAll('img, source')) {
+    const s = i.src || i.getAttribute('data-src') || i.srcset || '';
+    if (/floorplan|floor.plan/i.test(s) || /floor plan/i.test(i.alt || '')) {
+      const u = (s.split(' ')[0] || '').trim();
+      if (u) fps.add(u);
+    }
+  }
+  return {
+    property_type: typeM ? typeM[1] : null,
+    floor_area_sqft: sqftM ? parseInt(sqftM[1].replace(/,/g, '')) : null,
+    tenure: /leasehold/i.test(body) ? 'leasehold' : (/freehold/i.test(body) ? 'freehold' : null),
+    is_auction: /auction/i.test(body) ? 1 : 0,
+    is_tenanted: /(tenant|tenanted|currently let|investment)/i.test(body) ? 1 : 0,
+    agent_name: pick('[data-testid="agent-name"]', '[class*="agent-name" i]', '[data-testid="listing-agent-details"] h2', '[class*="branch" i] h2'),
+    agent_phone: tel ? tel.getAttribute('href').replace('tel:', '') : null,
+    floorplans: [...fps].slice(0, 4),
+  };
+}
+"""
+
+
+def normalise_type(raw):
+    return parse_property_type(raw or "")
+
+
+class ZooplaFloorplanFetcher:
+    """Visit each 'pending' listing's detail page: enrich type/tenure/agent and
+    grab floor-plan images. Mirrors Rightmove's FloorplanFetcher. Headed+proxy."""
+
+    def __init__(self, emit, stop_event, pause_event, *, delay_min=2.0,
+                 delay_max=4.0, user_data_dir="data/zoopla_profile", proxy=None):
+        self.emit = emit
+        self.stop = stop_event
+        self.pause = pause_event
+        self.delay_min = float(delay_min)
+        self.delay_max = float(delay_max)
+        self.user_data_dir = user_data_dir
+        self.proxy = proxy
+        self.metrics = {"total": 0, "done": 0, "with_floorplans": 0, "current": ""}
+
+    def _log(self, msg, level="info"):
+        self.emit({"type": "log", "level": level, "msg": msg,
+                   "ts": datetime.datetime.now().strftime("%H:%M:%S")})
+
+    def _push(self):
+        self.emit({"type": "zoopla_fp_metrics", **self.metrics})
+
+    async def _sleep(self):
+        await asyncio.sleep(random.uniform(self.delay_min, self.delay_max))
+
+    async def run(self, properties):
+        self.metrics["total"] = len(properties)
+        self._push()
+        async with async_playwright() as pw:
+            launch_kw = dict(channel="chrome", headless=False, no_viewport=True,
+                             args=["--disable-blink-features=AutomationControlled"])
+            if self.proxy:
+                launch_kw["proxy"] = self.proxy
+            ctx = await pw.chromium.launch_persistent_context(self.user_data_dir, **launch_kw)
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            try:
+                for i, prop in enumerate(properties):
+                    if self.stop.is_set():
+                        break
+                    while self.pause.is_set() and not self.stop.is_set():
+                        await asyncio.sleep(0.3)
+                    pid = prop["property_id"]
+                    url = prop.get("listing_url") or f"https://www.zoopla.co.uk/for-sale/details/{pid}/"
+                    self.metrics["current"] = f"{pid} ({i+1}/{len(properties)})"
+                    self._push()
+                    try:
+                        await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                        await asyncio.sleep(2)
+                        for _ in range(8):
+                            if not is_cloudflare(await page.title()):
+                                break
+                            await asyncio.sleep(2)
+                        details = await page.evaluate(DETAIL_JS)
+                        # normalise the type to our canonical labels
+                        details["property_type"] = normalise_type(details.get("property_type"))
+                        zoopla_storage.update_listing_details(pid, details)
+                        fps = details.get("floorplans") or []
+                        for idx, fp in enumerate(fps):
+                            zoopla_storage.insert_floorplan(pid, fp, idx + 1)
+                        if fps:
+                            self.metrics["with_floorplans"] += 1
+                        self._log(f"{pid}: {details.get('property_type') or '?'}, "
+                                  f"{len(fps)} floor plan(s)")
+                    except Exception as e:
+                        self._log(f"{pid}: {str(e)[:80]}", "warn")
+                    self.metrics["done"] = i + 1
+                    self._push()
+                    if i < len(properties) - 1:
+                        await self._sleep()
+            finally:
+                await ctx.close()
+        self.emit({"type": "zoopla_fp_done"})
