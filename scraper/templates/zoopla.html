@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zoopla — Property Pipeline</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, sans-serif; }
+  .log-line { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 11px; }
+  .card { transition: all .15s; }
+  .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<!-- NAV with the Rightmove/Zoopla source toggle -->
+<header class="h-14 bg-slate-900 text-white flex items-center px-4 justify-between">
+  <div class="flex items-center gap-2">
+    <a href="/" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Google Maps</a>
+    <a href="/rightmove" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Rightmove</a>
+    <a href="/floorplans" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Floor Plans</a>
+    <a href="/comps" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Price Comparison</a>
+    <!-- Source toggle -->
+    <span class="ml-3 inline-flex rounded-lg overflow-hidden border border-slate-600 text-sm">
+      <a href="/rightmove" class="px-3 py-1 bg-slate-700 hover:bg-slate-600">Rightmove</a>
+      <a href="/zoopla" class="px-3 py-1 bg-purple-600 font-semibold">Zoopla</a>
+    </span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <span class="bg-slate-700 px-2 py-1 rounded"><span id="c-total">0</span> listings</span>
+    <span class="bg-amber-600 px-2 py-1 rounded"><span id="c-pending">0</span> to review</span>
+    <span class="bg-emerald-600 px-2 py-1 rounded"><span id="c-potential">0</span> potential</span>
+  </div>
+</header>
+
+<div class="max-w-6xl mx-auto p-4 space-y-4">
+
+  <!-- SCRAPE control -->
+  <div class="bg-white rounded-lg shadow p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-purple-700">Scrape Zoopla by location</h2>
+      <div class="flex gap-2">
+        <button id="btn-start" class="bg-purple-600 hover:bg-purple-700 text-white rounded px-3 py-1 text-sm font-semibold">Start</button>
+        <button id="btn-stop" class="bg-rose-600 hover:bg-rose-700 text-white rounded px-3 py-1 text-sm font-semibold hidden">Stop</button>
+        <button id="btn-log" class="bg-slate-200 rounded px-3 py-1 text-sm">Log</button>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">Paste one or more Zoopla search URLs (one per line). E.g. <code>https://www.zoopla.co.uk/for-sale/property/coventry/?price_max=200000&amp;beds_max=2</code></p>
+    <textarea id="urls" rows="3" class="w-full border border-slate-300 rounded p-2 text-sm font-mono" placeholder="https://www.zoopla.co.uk/for-sale/property/coventry/?price_max=200000"></textarea>
+    <div class="flex gap-3 mt-2 text-xs text-slate-600">
+      <label>Max pages <input id="max-pages" type="number" value="5" class="w-16 border rounded p-1"></label>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div id="log-box" class="bg-slate-900 text-slate-200 rounded-lg p-3 hidden" style="height:160px; overflow-y:auto;">
+    <div id="log"></div>
+  </div>
+
+  <!-- REVIEW listings -->
+  <div class="bg-white rounded-lg shadow">
+    <div class="flex items-center justify-between p-3 border-b">
+      <h2 class="font-bold text-slate-700">To review (<span id="review-count">0</span>)</h2>
+      <button id="btn-fp" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-3 py-1 text-xs font-semibold" title="Fetch floor plans + details for all pending listings">Fetch floor plans</button>
+    </div>
+    <div id="listings" class="divide-y divide-slate-100"></div>
+    <div id="empty" class="p-8 text-center text-slate-400 text-sm hidden">No listings yet — run a scrape above.</div>
+  </div>
+</div>
+
+<script src="/static/zoopla_app.js"></script>
+</body>
+</html>

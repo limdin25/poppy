@@ -13,6 +13,8 @@ from facebook_scraper import FacebookScraper
 from rightmove_scraper import RightmoveScraper, FloorplanFetcher, CompsFetcher
 from rightmove_enquiry import EnquiryFiller
 from enquiry_config import load_enquiry_config
+import zoopla_storage
+from zoopla_scraper import ZooplaScraper, ZooplaFloorplanFetcher
 
 # BRRRR pipeline promotion (Hugo's new workflow, 2026-05-27):
 # When a property is marked 'potential' on /floorplans, the scraper calls
@@ -985,6 +987,134 @@ def elsie_enquire():
 @app.route("/api/elsie/enquired")
 def elsie_enquired():
     return jsonify(rightmove_storage.get_elsie_enquired_map())
+
+
+# ═════════════════════ Zoopla pipeline (clone of Rightmove) ═════════════════════
+# Same flow — scrape by location → floor plans → potential → comps → enquire —
+# for the Zoopla portal. Separate zp_* storage; Rightmove code untouched. Zoopla
+# needs HEADED real Chrome (Cloudflare) + the iProyal residential proxy.
+ZOOPLA_JOB = {"stop": threading.Event(), "pause": threading.Event(), "running": False}
+ZOOPLA_FP_JOB = {"stop": threading.Event(), "pause": threading.Event(), "running": False}
+
+
+def _zoopla_proxy():
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "data", "zoopla.json")) as f:
+            return (json.load(f) or {}).get("proxy")
+    except Exception:
+        return None
+
+
+@app.route("/api/zoopla/start", methods=["POST"])
+def zoopla_start():
+    if ZOOPLA_JOB["running"]:
+        return jsonify({"ok": False, "error": "already running"}), 400
+    d = request.get_json(force=True) or {}
+    urls = [u.strip() for u in (d.get("urls") or "").splitlines() if u.strip()]
+    if not urls:
+        return jsonify({"ok": False, "error": "no search URLs"}), 400
+    scraper = ZooplaScraper(emit, ZOOPLA_JOB["stop"], ZOOPLA_JOB["pause"],
+                            max_pages=int(d.get("max_pages") or 40),
+                            delay_min=float(d.get("delay_min") or 2),
+                            delay_max=float(d.get("delay_max") or 5),
+                            proxy=_zoopla_proxy())
+    ZOOPLA_JOB["stop"].clear(); ZOOPLA_JOB["pause"].clear()
+
+    def _run():
+        ZOOPLA_JOB["running"] = True
+        try:
+            asyncio.run(scraper.run(urls, force_rescrape=bool(d.get("force_rescrape"))))
+        except Exception as e:
+            emit({"type": "log", "level": "error", "msg": f"ZOOPLA FATAL: {e}"})
+            emit({"type": "zoopla_done"})
+        finally:
+            ZOOPLA_JOB["running"] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "count": len(urls)})
+
+
+@app.route("/api/zoopla/stop", methods=["POST"])
+def zoopla_stop():
+    ZOOPLA_JOB["stop"].set(); ZOOPLA_JOB["pause"].clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zoopla/floorplans/fetch", methods=["POST"])
+def zoopla_fp_fetch():
+    if ZOOPLA_FP_JOB["running"]:
+        return jsonify({"ok": False, "error": "already running"}), 400
+    props = zoopla_storage.listings_for_review("pending")
+    if not props:
+        return jsonify({"ok": False, "error": "no pending listings"}), 400
+    fetcher = ZooplaFloorplanFetcher(emit, ZOOPLA_FP_JOB["stop"], ZOOPLA_FP_JOB["pause"],
+                                     proxy=_zoopla_proxy())
+    ZOOPLA_FP_JOB["stop"].clear(); ZOOPLA_FP_JOB["pause"].clear()
+
+    def _run():
+        ZOOPLA_FP_JOB["running"] = True
+        try:
+            asyncio.run(fetcher.run(props))
+        except Exception as e:
+            emit({"type": "log", "level": "error", "msg": f"ZOOPLA FP FATAL: {e}"})
+            emit({"type": "zoopla_fp_done"})
+        finally:
+            ZOOPLA_FP_JOB["running"] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "count": len(props)})
+
+
+@app.route("/api/zoopla/floorplans/stop", methods=["POST"])
+def zoopla_fp_stop():
+    ZOOPLA_FP_JOB["stop"].set(); ZOOPLA_FP_JOB["pause"].clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zoopla/listings")
+def zoopla_listings():
+    status = request.args.get("status", "pending")
+    return jsonify(zoopla_storage.listings_for_review(status))
+
+
+@app.route("/api/zoopla/review", methods=["POST"])
+def zoopla_review():
+    d = request.get_json(force=True) or {}
+    pid, status = d.get("property_id"), d.get("status")
+    if not pid or status not in ("pending", "potential", "skip"):
+        return jsonify({"ok": False, "error": "property_id + valid status required"}), 400
+    zoopla_storage.set_review(pid, status)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zoopla/comps/properties")
+def zoopla_comps_properties():
+    return jsonify(zoopla_storage.shortlist_with_comps())
+
+
+@app.route("/api/zoopla/counts")
+def zoopla_counts():
+    return jsonify(zoopla_storage.counts())
+
+
+@app.route("/zoopla")
+def zoopla_index():
+    return render_template("zoopla.html")
+
+
+@app.route("/api/zoopla/floorplan-score", methods=["POST"])
+def zoopla_floorplan_score():
+    """Run the AI kitchen->bedroom analysis on a property's first floor plan."""
+    import floorplan_ai
+    d = request.get_json(force=True) or {}
+    pid = d.get("property_id")
+    if not pid:
+        return jsonify({"ok": False, "error": "property_id required"}), 400
+    fps = zoopla_storage.get_floorplans(pid)
+    if not fps:
+        return jsonify({"ok": False, "error": "no floor plan stored"}), 404
+    result = floorplan_ai.analyse_floorplan(fps[0]["image_url"])
+    return jsonify({"ok": "error" not in result, **result})
 
 
 if __name__ == "__main__":
