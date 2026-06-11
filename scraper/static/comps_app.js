@@ -3,7 +3,8 @@ const $ = (id) => document.getElementById(id);
 let properties = [];
 let selectedIdx = -1;
 let logOpen = false;
-let elsieSent = {};          // property_id -> sent_at (successfully sent to Elsie)
+let elsieSent = {};          // property_id -> sent_at (sent to Elsie to CALL)
+let elsieEnquired = {};      // property_id -> enquired_at (email/form enquiry sent)
 let currentValuation = null; // server-side valuation for the selected property
 let currentValuationPromise = null; // pending fetch — Enter-to-send awaits it
 let valuations = {};         // property_id -> {pursue, verdict, has_offer} from /api/valuation/batch
@@ -63,6 +64,7 @@ async function loadProperties() {
   const r = await fetch("/api/comps/properties");
   properties = await r.json();
   try { elsieSent = await (await fetch("/api/elsie/sent")).json(); } catch (e) { elsieSent = {}; }
+  try { elsieEnquired = await (await fetch("/api/elsie/enquired")).json(); } catch (e) { elsieEnquired = {}; }
   try { valuations = await (await fetch("/api/valuation/batch")).json(); } catch (e) { valuations = {}; }
   $("s-count").textContent = properties.length;
 
@@ -180,11 +182,23 @@ function selectProperty(idx) {
   const sendBtn = $("btn-send-elsie");
   sendBtn.classList.remove("hidden");
   if (elsieSent[p.property_id]) {
-    sendBtn.textContent = "Sent to Elsie ✓";
+    sendBtn.textContent = "📞 Sent to call ✓";
     sendBtn.disabled = true;
   } else {
-    sendBtn.textContent = "Send to Elsie";
+    sendBtn.textContent = "📞 Call";
     sendBtn.disabled = false;
+  }
+
+  const enqBtn = $("btn-enquire");
+  if (enqBtn) {
+    enqBtn.classList.remove("hidden");
+    if (elsieEnquired[p.property_id]) {
+      enqBtn.textContent = "✉️ Enquired ✓";
+      enqBtn.disabled = true;
+    } else {
+      enqBtn.textContent = "✉️ Enquire";
+      enqBtn.disabled = false;
+    }
   }
 
   const comps = p.comps || [];
@@ -396,6 +410,48 @@ async function sendSelectedToElsie() {
 }
 
 $("btn-send-elsie").onclick = sendSelectedToElsie;
+
+// ─── Enquire by email/form (alternative to calling) ──────────────────────────
+// Fills the property's Rightmove enquiry form as a cash-buyer enquiry asking
+// the agent to call us back. One at a time; agent replies route to Elsie.
+async function enquireSelected() {
+  if (selectedIdx < 0) return;
+  const p = properties[selectedIdx];
+  if (elsieEnquired[p.property_id]) return;
+  const btn = $("btn-enquire");
+
+  if (!confirm(`Send a real enquiry on "${p.address || "this property"}"?\n\n` +
+               `This fills the Rightmove contact form and submits it to the agent ` +
+               `as a cash-buyer enquiry asking them to call us back. One genuine enquiry.`)) {
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Enquiring…";
+  try {
+    const r = await fetch("/api/elsie/enquire", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ property_id: p.property_id, dry_run: false }),
+    });
+    const body = await r.json();
+    if (body.ok) {
+      elsieEnquired[p.property_id] = new Date().toISOString();
+      btn.textContent = "✉️ Enquired ✓";
+      renderList();
+    } else {
+      btn.textContent = "Failed — retry";
+      btn.disabled = false;
+      alert("Enquiry failed: " + (body.error || r.status));
+    }
+  } catch (e) {
+    btn.textContent = "Failed — retry";
+    btn.disabled = false;
+    alert("Enquiry failed: " + e);
+  }
+}
+
+$("btn-enquire").onclick = enquireSelected;
 
 // ─── Keyboard flow: ↑↓ move through the visible list, Enter sends ──────────
 document.addEventListener("keydown", (e) => {

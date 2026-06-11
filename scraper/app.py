@@ -11,6 +11,8 @@ from proxies import ProxyManager
 from scraper import Scraper
 from facebook_scraper import FacebookScraper
 from rightmove_scraper import RightmoveScraper, FloorplanFetcher, CompsFetcher
+from rightmove_enquiry import EnquiryFiller
+from enquiry_config import load_enquiry_config
 
 # BRRRR pipeline promotion (Hugo's new workflow, 2026-05-27):
 # When a property is marked 'potential' on /floorplans, the scraper calls
@@ -912,6 +914,72 @@ def elsie_send():
 @app.route("/api/elsie/sent")
 def elsie_sent():
     return jsonify(rightmove_storage.get_elsie_sent_map())
+
+
+# ───────────────── Email/form enquiry (alternative to calling) ─────────────────
+# Instead of Elsie ringing the agent, fill the property's Rightmove enquiry
+# form as a genuine cash-buyer enquiry asking the agent to call us back. The
+# callback then lands on the inbound line (ask for Elsie = property). One at a
+# time, human-paced. dry_run fills + screenshots but never submits.
+def _enquiry_proxy():
+    """Same residential setup as the scrapers; empty host = direct (home IP)."""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "data", "config.json")) as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+    return ProxyManager(cfg.get("host", ""), cfg.get("port", ""),
+                        cfg.get("username", ""), cfg.get("password", ""),
+                        int(cfg.get("rotate_every") or 25),
+                        sticky=bool(cfg.get("sticky", False)))
+
+
+ENQUIRY_JOB = {"running": False}
+
+
+@app.route("/api/elsie/enquire", methods=["POST"])
+def elsie_enquire():
+    if ENQUIRY_JOB["running"]:
+        return jsonify({"ok": False, "error": "an enquiry is already in progress"}), 409
+    d = request.get_json(force=True) or {}
+    pid = d.get("property_id")
+    if not pid:
+        return jsonify({"ok": False, "error": "property_id required"}), 400
+    listing = rightmove_storage.get_listing(pid)
+    if not listing:
+        return jsonify({"ok": False, "error": "property not found"}), 404
+
+    captcha_key, contact = load_enquiry_config()
+    dry_run = bool(d.get("dry_run", True))
+    if not dry_run and not captcha_key:
+        return jsonify({"ok": False,
+                        "error": "captcha key missing — add data/enquiry.json"}), 500
+
+    property_row = {
+        "property_id": pid,
+        "listing_url": listing.get("listing_url"),
+        "address": listing.get("address"),
+    }
+    filler = EnquiryFiller(_enquiry_proxy(), contact, captcha_key,
+                           emit=emit, dry_run=dry_run,
+                           headless=bool(d.get("headless", True)))
+
+    ENQUIRY_JOB["running"] = True
+    try:
+        result = asyncio.run(filler.enquire(property_row))
+    except Exception as e:
+        ENQUIRY_JOB["running"] = False
+        return jsonify({"ok": False, "error": str(e)}), 500
+    ENQUIRY_JOB["running"] = False
+
+    # Only a real (non-dry-run) success marks the property as enquired.
+    rightmove_storage.set_elsie_enquired(pid, result.ok, result.dry_run, result.error or "")
+    return jsonify({"ok": result.ok, **result.to_dict()}), (200 if result.ok else 502)
+
+
+@app.route("/api/elsie/enquired")
+def elsie_enquired():
+    return jsonify(rightmove_storage.get_elsie_enquired_map())
 
 
 if __name__ == "__main__":

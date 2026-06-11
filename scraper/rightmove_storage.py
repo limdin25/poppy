@@ -497,3 +497,34 @@ def get_elsie_sent_map():
         _ensure_elsie_table(c)
         return {r["property_id"]: r["sent_at"] for r in c.execute(
             "SELECT property_id, sent_at FROM rm_elsie_sent WHERE ok=1")}
+
+
+# ── Email/form enquiries (separate from the call path above) ────────────────
+def _ensure_enquiry_table(c):
+    c.execute("""CREATE TABLE IF NOT EXISTS rm_elsie_enquired (
+        property_id TEXT PRIMARY KEY,
+        enquired_at TEXT,
+        ok INTEGER,
+        dry_run INTEGER DEFAULT 0,
+        error TEXT)""")
+
+
+def set_elsie_enquired(property_id: str, ok: bool, dry_run: bool = False, error: str = ""):
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    with _LOCK, _conn() as c:
+        _ensure_enquiry_table(c)
+        c.execute(
+            """INSERT INTO rm_elsie_enquired (property_id, enquired_at, ok, dry_run, error)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(property_id) DO UPDATE SET
+                 enquired_at=excluded.enquired_at, ok=excluded.ok,
+                 dry_run=excluded.dry_run, error=excluded.error""",
+            (property_id, now, 1 if ok else 0, 1 if dry_run else 0, error))
+
+
+def get_elsie_enquired_map():
+    """{property_id: enquired_at} for properties a real enquiry was sent for."""
+    with _LOCK, _conn() as c:
+        _ensure_enquiry_table(c)
+        return {r["property_id"]: r["enquired_at"] for r in c.execute(
+            "SELECT property_id, enquired_at FROM rm_elsie_enquired WHERE ok=1 AND dry_run=0")}
