@@ -76,15 +76,23 @@ FIELD_SELECTORS = {
     "first_name": ["#firstName", "input[name='firstName']", "input[name='name.first']"],
     "last_name": ["#lastName", "input[name='lastName']", "input[name='name.last']"],
     "email": ["#email", "input[name='email']", "input[type='email']"],
-    "phone": ["#phone", "input[name='phone.number']", "input[name='telephone']",
-              "input[type='tel']"],
+    "phone": ["input[name='phone.number']", "input[type='tel']", "input[name='telephone']"],
     "postcode": ["#postcode", "input[name='postcode']", "input[name='address.postcode']"],
     "message": ["#comments", "textarea[name='comments']", "textarea[name='message']",
                 "textarea"],
 }
+# Required <select> dropdowns on the enquiry form. We're a cash buyer with
+# nothing of our own to sell or let, so "no" to both — honest and valid.
+SELECT_FIELDS = [
+    ("sellingSituationType", "no"),
+    ("rentingSituationType", "no"),
+]
+# "Send email without an account" is the no-signup submit; there's also a
+# "Create an account and send email" button — target the former explicitly.
 SUBMIT_SELECTORS = [
+    "button:has-text('Send email without an account')",
     "button:has-text('Send email')", "button:has-text('Send enquiry')",
-    "button[type='submit']", "button:has-text('Email agent')",
+    "button:has-text('Email agent')",
 ]
 SCREENSHOT_DIR = Path(__file__).parent / "data" / "enquiry_screenshots"
 
@@ -247,10 +255,25 @@ class EnquiryFiller:
                     loc = page.locator(sel).first
                     if await loc.count():
                         await loc.fill(val, timeout=4000)
+                        # Blur so the field's own validation clears (the form
+                        # re-validates on blur, not just on submit).
+                        try:
+                            await loc.evaluate("el => el.blur()")
+                        except Exception:
+                            pass
                         any_filled = True
                         break
                 except Exception:
                     continue
+
+        # Required dropdowns — set to "no" (we have nothing to sell/let).
+        for select_id, value in SELECT_FIELDS:
+            try:
+                loc = page.locator(f"#{select_id}, select[name='{select_id}']").first
+                if await loc.count():
+                    await loc.select_option(value, timeout=4000)
+            except Exception:
+                continue
         return any_filled
 
     async def _try_solve_arkose(self, page, url):
@@ -329,7 +352,7 @@ class EnquiryFiller:
         # late-loading overlay intercepts the normal click.
         candidates = []
         try:
-            candidates.append(page.get_by_role("button", name="Send email"))
+            candidates.append(page.get_by_role("button", name="Send email without an account"))
         except Exception:
             pass
         candidates += [page.locator(sel) for sel in SUBMIT_SELECTORS]
