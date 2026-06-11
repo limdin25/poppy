@@ -48,10 +48,24 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const agentId = process.env.RETELL_PROPERTY_AGENT_ID;
+  const agentIdFr = process.env.RETELL_PROPERTY_AGENT_ID_FR;
   const fromNumber = process.env.PROPERTY_FROM_NUMBER;
   if (!agentId || !fromNumber) {
     return new Response(JSON.stringify({ ok: true, skipped: 'agent not configured' }), { status: 200 });
   }
+
+  // Voice A/B test: British "Elsie" vs French-accented "Amélie". A property's
+  // first dial is assigned by a stable hash (≈50/50 split), and every retry
+  // flips the voice — a fresh identity for agents who hung up on the last one.
+  const VOICES = [
+    { label: 'british', agentId, callerName: 'Elsie' },
+    ...(agentIdFr ? [{ label: 'french', agentId: agentIdFr, callerName: 'Amélie' }] : []),
+  ];
+  const pickVoice = (propertyId: string, attempts: number) => {
+    let h = 0;
+    for (let i = 0; i < propertyId.length; i++) h = (h * 31 + propertyId.charCodeAt(i)) | 0;
+    return VOICES[(Math.abs(h) + Math.max(0, attempts - 1)) % VOICES.length];
+  };
 
   const settings = await getBrrrSettings();
   const now = new Date();
@@ -135,16 +149,19 @@ export default async function handler(req: Request): Promise<Response> {
       const notes = (Array.isArray(deal.flags) ? (deal.flags as string[]) : [])
         .map((f) => FLAG_NOTES[f]).filter(Boolean).join('; ') || 'none';
 
+      const voice = pickVoice(property.id, entry.attempts + 1);
+
       const res = await fetch('https://api.retellai.com/v2/create-phone-call', {
         method: 'POST',
         headers: { Authorization: `Bearer ${RETELL_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from_number: fromNumber,
           to_number: toNumber,
-          override_agent_id: agentId,
+          override_agent_id: voice.agentId,
           ring_duration_ms: 60000,
           metadata: { type: 'brrr_property', property_call_id: entry.id, property_id: property.id },
           retell_llm_dynamic_variables: {
+            caller_name: voice.callerName,
             property_address: property.address || 'the property',
             property_street: streetFromAddress(property.address),
             asking_price: property.price_text || fmtGBP(property.asking_price),
@@ -168,7 +185,7 @@ export default async function handler(req: Request): Promise<Response> {
       if (res.ok) {
         const call = await res.json() as { call_id?: string };
         await supabase.from('brrr_property_calls')
-          .update({ retell_call_id: call.call_id || null, updated_at: new Date().toISOString() })
+          .update({ retell_call_id: call.call_id || null, voice: voice.label, updated_at: new Date().toISOString() })
           .eq('id', entry.id);
         await supabase.from('brrr_properties')
           .update({ status: 'calling', updated_at: new Date().toISOString() })

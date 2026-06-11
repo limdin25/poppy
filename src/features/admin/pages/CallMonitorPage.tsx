@@ -33,6 +33,22 @@ interface AdminCall {
   next_attempt_at?: string | null
   retell_call_id?: string | null
   cost_usd?: number | null
+  voice?: string | null
+}
+
+interface VoiceStat {
+  voice: string
+  dials: number
+  completed: number
+  qualified: number
+  callback: number
+  no_answer: number
+  total_cost: number
+}
+
+const VOICE_META: Record<string, { chip: string; name: string }> = {
+  british: { chip: '🇬🇧 Elsie', name: 'British — Elsie' },
+  french: { chip: '🇫🇷 Amélie', name: 'French — Amélie' },
 }
 
 const STATUS_ICON: Record<string, { icon: typeof Phone; color: string }> = {
@@ -122,10 +138,14 @@ function timeAgo(iso: string | null | undefined): string {
   return `${Math.floor(hours / 24)}d`
 }
 
+function aiName(c: AdminCall): string {
+  return c.voice === 'french' ? 'Amélie' : 'Elsie'
+}
+
 function liveSummary(c: AdminCall): string {
   const last = c.transcript?.[c.transcript.length - 1]
   if (!last) return 'Call in progress…'
-  return `${last.speaker === 'agent' ? 'Elsie' : 'Agent'}: ${last.text}`
+  return `${last.speaker === 'agent' ? aiName(c) : 'Agent'}: ${last.text}`
 }
 
 function rowSummary(c: AdminCall): string {
@@ -168,6 +188,7 @@ export default function CallMonitorPage() {
   const [filter, setFilter] = useState<string>('All')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const { data: calls, error, refetch } = useAdminApi<AdminCall[]>('calls', [])
+  const { data: voiceStats } = useAdminApi<VoiceStat[]>('voice-stats', [])
 
   const hasLive = calls.some((c) => LIVE_STATUSES.includes(c.status || ''))
 
@@ -206,6 +227,37 @@ export default function CallMonitorPage() {
       </div>
       <p className="mt-1 text-[13px] text-ink-muted">All calls — businesses and property qualifier</p>
       {error && <AdminError error={error} />}
+
+      {voiceStats.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:max-w-md">
+          {voiceStats.map((s) => {
+            const meta = VOICE_META[s.voice] || { chip: s.voice, name: s.voice }
+            const qualRate = s.completed > 0 ? Math.round((s.qualified / s.completed) * 100) : 0
+            const best = voiceStats.every((o) => o.voice === s.voice
+              || (s.completed > 0 && (o.completed === 0 || s.qualified / s.completed >= o.qualified / o.completed)))
+            return (
+              <div
+                key={s.voice}
+                className={cn(
+                  'rounded-xl border p-2.5',
+                  best && s.qualified > 0 ? 'border-success/40 bg-success/5' : 'border-border bg-surface',
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-semibold text-ink">{meta.chip}</span>
+                  {best && s.qualified > 0 && (
+                    <span className="rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-success">leading</span>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-ink-muted">
+                  {s.dials} calls · {s.completed} answered · <span className="font-semibold text-ink">{s.qualified} qualified</span>
+                  {s.completed > 0 && ` (${qualRate}%)`}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">
@@ -254,6 +306,11 @@ export default function CallMonitorPage() {
                 <Icon size={13} className={cn('shrink-0', s.color, LIVE_STATUSES.includes(c.status || '') && 'animate-pulse')} />
                 {c.source === 'brrr_property' && (
                   <span className="shrink-0 rounded bg-violet-100 px-1 py-0.5 text-[9px] font-semibold uppercase leading-none text-violet-700">BRRR</span>
+                )}
+                {c.voice && VOICE_META[c.voice] && (
+                  <span className="shrink-0 text-[10px] leading-none" title={VOICE_META[c.voice].name}>
+                    {VOICE_META[c.voice].chip.split(' ')[0]}
+                  </span>
                 )}
                 <span className="min-w-0 truncate text-[12.5px] font-medium text-ink">
                   {c.source === 'brrr_property' ? c.property_address || 'Property call' : c.businesses?.name || '—'}
@@ -333,6 +390,7 @@ function CallDetailModal({ call, onClose }: { call: AdminCall; onClose: () => vo
               const subtitle = [
                 call.source === 'brrr_property' ? call.agent_name : null,
                 phone,
+                call.voice && VOICE_META[call.voice] ? VOICE_META[call.voice].name : null,
                 typeof call.attempts === 'number' && call.attempts > 0 ? `attempt ${call.attempts}` : null,
                 typeof call.cost_usd === 'number' ? `$${call.cost_usd.toFixed(2)}` : null,
               ].filter(Boolean).join(' · ')
@@ -402,7 +460,7 @@ function CallDetailModal({ call, onClose }: { call: AdminCall; onClose: () => vo
               {transcript.map((t, i) => (
                 <p key={i} className="text-[13px] leading-relaxed">
                   <span className={cn('font-semibold', t.speaker === 'agent' ? 'text-brand' : 'text-ink')}>
-                    {t.speaker === 'agent' ? 'Elsie' : 'Agent'}:
+                    {t.speaker === 'agent' ? aiName(call) : 'Agent'}:
                   </span>{' '}
                   <span className="text-ink-muted">{t.text}</span>
                 </p>

@@ -39,7 +39,7 @@ export default async function handler(req: Request) {
   // merge them in so the monitor shows every call the platform makes.
   const { data: brrrCalls } = await supabaseAdmin
     .from('brrr_property_calls')
-    .select('id, property_id, status, attempts, next_attempt_at, retell_call_id, transcript, recording_url, summary, qualification, cost_usd, created_at, updated_at')
+    .select('id, property_id, status, attempts, next_attempt_at, retell_call_id, transcript, recording_url, summary, qualification, cost_usd, voice, created_at, updated_at')
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -66,6 +66,7 @@ export default async function handler(req: Request) {
         ai_summary: c.summary,
         qualification: c.qualification,
         cost_usd: c.cost_usd,
+        voice: c.voice,
         created_at: c.created_at,
         updated_at: c.updated_at,
         property_address: p?.address || null,
