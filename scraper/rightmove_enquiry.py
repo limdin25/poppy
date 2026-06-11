@@ -157,8 +157,13 @@ class EnquiryFiller:
                 return EnquiryResult(pid, True, True, message=message, screenshot=shot)
 
             await self._solve_captcha(page, url)
+            await self._screenshot(page, pid + "_post_captcha")
+            # The captcha callback may have already submitted the form.
+            if await self._confirm_sent(page):
+                shot2 = await self._screenshot(page, pid + "_after")
+                return EnquiryResult(pid, True, False, message=message, screenshot=shot2)
             await self._submit(page)
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
             confirmed = await self._confirm_sent(page)
             shot2 = await self._screenshot(page, pid + "_after")
             return EnquiryResult(pid, confirmed, False, message=message,
@@ -257,14 +262,33 @@ class EnquiryFiller:
         self._log("captcha token injected")
 
     async def _submit(self, page):
-        for sel in SUBMIT_SELECTORS:
+        # Prefer the real "Send email" submit button by accessible name, then
+        # fall back to selectors. Scroll it into view and force-click if a
+        # late-loading overlay intercepts the normal click.
+        candidates = []
+        try:
+            candidates.append(page.get_by_role("button", name="Send email"))
+        except Exception:
+            pass
+        candidates += [page.locator(sel) for sel in SUBMIT_SELECTORS]
+
+        for loc in candidates:
             try:
-                loc = page.locator(sel).first
-                if await loc.count():
-                    await loc.click(timeout=6000)
-                    return
+                btn = loc.first
+                if not await btn.count():
+                    continue
+                try:
+                    await btn.scroll_into_view_if_needed(timeout=4000)
+                except Exception:
+                    pass
+                try:
+                    await btn.click(timeout=6000)
+                except Exception:
+                    await btn.click(timeout=6000, force=True)
+                return
             except Exception:
                 continue
+        await self._screenshot(page, "SUBMIT_FAIL")
         raise RuntimeError("submit button not found")
 
     async def _confirm_sent(self, page):

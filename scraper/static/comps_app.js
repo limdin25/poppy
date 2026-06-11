@@ -453,11 +453,54 @@ async function enquireSelected() {
 
 $("btn-enquire").onclick = enquireSelected;
 
-// ─── Keyboard flow: ↑↓ move through the visible list, Enter sends ──────────
+// ─── Action chooser: Enter (or click) asks Call vs Enquire ──────────────────
+let chooserOpen = false;
+function openActionChooser() {
+  if (selectedIdx < 0) return;
+  const p = properties[selectedIdx];
+  if (!p) return;
+  closeActionChooser();
+  chooserOpen = true;
+  const el = document.createElement("div");
+  el.id = "action-chooser";
+  el.className = "fixed inset-0 z-50 flex items-center justify-center bg-black/40";
+  el.innerHTML = `
+    <div class="bg-white rounded-xl shadow-xl p-5 w-80" onclick="event.stopPropagation()">
+      <div class="text-sm font-semibold text-slate-800 mb-1">How should Elsie make contact?</div>
+      <div class="text-xs text-slate-500 mb-4 truncate">${p.address || "this property"}</div>
+      <div class="grid grid-cols-2 gap-3">
+        <button id="choose-call" class="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg py-3 text-sm font-semibold">
+          📞 Call <span class="block text-[11px] font-normal opacity-80">press C</span>
+        </button>
+        <button id="choose-enquire" class="bg-sky-600 hover:bg-sky-700 text-white rounded-lg py-3 text-sm font-semibold">
+          ✉️ Enquire <span class="block text-[11px] font-normal opacity-80">press E</span>
+        </button>
+      </div>
+      <div class="text-[11px] text-slate-400 text-center mt-3">Esc to cancel</div>
+    </div>`;
+  el.onclick = closeActionChooser;
+  document.body.appendChild(el);
+  $("choose-call").onclick = () => { closeActionChooser(); sendSelectedToElsie(); };
+  $("choose-enquire").onclick = () => { closeActionChooser(); enquireSelected(); };
+}
+function closeActionChooser() {
+  const el = $("action-chooser");
+  if (el) el.remove();
+  chooserOpen = false;
+}
+
+// ─── Keyboard flow: ↑↓ move, Enter opens the Call/Enquire chooser ──────────
 document.addEventListener("keydown", (e) => {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
   if (!$("fetch-modal").classList.contains("hidden")) return;
+
+  if (chooserOpen) {
+    if (e.key === "Escape") { e.preventDefault(); closeActionChooser(); }
+    else if (e.key === "c" || e.key === "C") { e.preventDefault(); closeActionChooser(); sendSelectedToElsie(); }
+    else if (e.key === "e" || e.key === "E") { e.preventDefault(); closeActionChooser(); enquireSelected(); }
+    return;
+  }
 
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();
@@ -477,7 +520,7 @@ document.addEventListener("keydown", (e) => {
 
   if (e.key === "Enter") {
     e.preventDefault();
-    sendSelectedToElsie();
+    openActionChooser();
   }
 });
 
