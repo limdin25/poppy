@@ -27,8 +27,48 @@ except Exception:  # pragma: no cover - optional dep
 from captcha_solver import TwoCaptchaSolver, CaptchaError
 from enquiry_config import build_enquiry_message
 
-# Discovered via recon (contactBranch.html). Invisible reCAPTCHA v2.
-RECAPTCHA_SITEKEY = "6LfB1DAUAAAAACA3VeBnG7TpTqdNQ0_ds3aguGhk"
+# Rightmove's enquiry form is gated by Arkose Labs FunCaptcha (confirmed by
+# live probe). reCAPTCHA on the page is a decoy.
+ARKOSE_PUBLICKEY = "91523F73-E56D-4DD9-86C4-5D4E5464E3D8"
+ARKOSE_SURL = "https://rightmove-api.arkoselabs.com"
+
+# Installed via add_init_script BEFORE the page's api.js runs (timing is
+# critical — page.evaluate after load is too late). Hooks the data-callback
+# global so we capture the enforcement instance, then wraps setConfig to steal
+# config.data.blob and the site's real onCompleted callback. Firing that
+# callback ourselves with a solved token completes the submit as a human would.
+ARKOSE_HOOK_JS = r"""
+window.__arkose = { instance: null, blob: null, onCompleted: null };
+(function () {
+  function wrap(enforcement) {
+    try {
+      if (!enforcement || enforcement.__hooked) return enforcement;
+      enforcement.__hooked = true;
+      window.__arkose.instance = enforcement;
+      var orig = enforcement.setConfig.bind(enforcement);
+      enforcement.setConfig = function (cfg) {
+        try {
+          if (cfg && cfg.data && cfg.data.blob) window.__arkose.blob = cfg.data.blob;
+          if (cfg && cfg.onCompleted) window.__arkose.onCompleted = cfg.onCompleted;
+        } catch (e) {}
+        return orig(cfg);
+      };
+    } catch (e) {}
+    return enforcement;
+  }
+  ['setupEnforcement', 'setupArkose', 'arkoseSetup'].forEach(function (name) {
+    var real = null;
+    try {
+      Object.defineProperty(window, name, {
+        configurable: true,
+        get: function () { return real ? function (e) { return real(wrap(e)); }
+                                       : function (e) { return wrap(e); }; },
+        set: function (fn) { real = fn; }
+      });
+    } catch (e) {}
+  });
+})();
+"""
 
 # Field selectors, most-specific first; we try each until one is present so a
 # Rightmove markup tweak degrades gracefully rather than hard-failing.
@@ -87,13 +127,17 @@ class EnquiryResult:
 
 class EnquiryFiller:
     def __init__(self, proxy_mgr, contact, captcha_key, *, emit=None,
-                 dry_run=True, headless=True):
+                 dry_run=True, headless=True, auto_solve=False):
         self.proxy = proxy_mgr
         self.contact = contact
         self.captcha_key = captcha_key
         self.emit = emit or (lambda e: None)
         self.dry_run = dry_run
         self.headless = headless
+        # 2captcha returns UNSOLVABLE for Rightmove's Arkose today, so the
+        # auto-solve is OFF by default and we rely on Hugo finishing the quick
+        # puzzle in the headed window. Flip on to retry 2captcha later.
+        self.auto_solve = auto_solve
 
     def _log(self, msg, level="info"):
         self.emit({"type": "log", "level": level, "msg": msg,
@@ -127,6 +171,8 @@ class EnquiryFiller:
                 await ctx.add_init_script(
                     "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
                 )
+                # Arkose hook — MUST be installed before the page's api.js runs.
+                await ctx.add_init_script(ARKOSE_HOOK_JS)
                 ctx.set_default_navigation_timeout(60_000)
                 ctx.set_default_timeout(30_000)
                 page = await ctx.new_page()
@@ -156,15 +202,12 @@ class EnquiryFiller:
                 self._log(f"DRY RUN {pid}: form filled, NOT submitted ({shot})")
                 return EnquiryResult(pid, True, True, message=message, screenshot=shot)
 
-            await self._solve_captcha(page, url)
-            await self._screenshot(page, pid + "_post_captcha")
-            # The captcha callback may have already submitted the form.
-            if await self._confirm_sent(page):
-                shot2 = await self._screenshot(page, pid + "_after")
-                return EnquiryResult(pid, True, False, message=message, screenshot=shot2)
+            # Click submit (a real, trusted browser click). This triggers the
+            # Arkose challenge.
             await self._submit(page)
-            await asyncio.sleep(3)
-            confirmed = await self._confirm_sent(page)
+            if self.auto_solve and self.captcha_key:
+                await self._try_solve_arkose(page, url)
+            confirmed = await self._wait_for_outcome(page)
             shot2 = await self._screenshot(page, pid + "_after")
             return EnquiryResult(pid, confirmed, False, message=message,
                                  screenshot=shot2,
@@ -210,56 +253,75 @@ class EnquiryFiller:
                     continue
         return any_filled
 
-    async def _solve_captcha(self, page, url):
-        # Only solve if a reCAPTCHA is actually on the page.
-        has_captcha = await page.evaluate(
-            "() => !!document.querySelector('.g-recaptcha, [data-sitekey], "
-            "iframe[src*=\"recaptcha\"]')"
-        )
-        if not has_captcha:
-            self._log("no reCAPTCHA present — submitting without solve")
-            return
-        sitekey = await page.evaluate(
-            "() => { const el = document.querySelector('[data-sitekey]');"
-            " return el ? el.getAttribute('data-sitekey') : null; }"
-        ) or RECAPTCHA_SITEKEY
-        self._log("solving reCAPTCHA via 2captcha…")
+    async def _try_solve_arkose(self, page, url):
+        """If Arkose challenges, capture its blob, solve via 2captcha, inject.
+
+        Returns True if a token was solved and injected. On any failure it
+        returns False — in headed mode _wait_for_outcome then lets Hugo finish
+        the puzzle by hand (belt-and-braces).
+        """
+        if not self.captcha_key:
+            return False
+        # Wait for the hook to capture Arkose's onCompleted (set when the page's
+        # api.js calls setConfig). Rightmove's Arkose uses NO data blob, so we
+        # solve with just the public key + surl. blob stays None.
+        blob = None
+        ready = False
+        for _ in range(15):  # ~15s
+            state = await page.evaluate(
+                """() => ({
+                    onc: !!(window.__arkose && typeof window.__arkose.onCompleted === 'function'),
+                    blob: (window.__arkose && window.__arkose.blob) || null
+                })""")
+            if state.get("onc"):
+                blob = state.get("blob")
+                ready = True
+                break
+            await asyncio.sleep(1)
+        if not ready:
+            return False
+
+        # Public key from the live api.js script, falling back to the known one.
+        publickey = await page.evaluate(
+            """() => {
+                const s = document.querySelector('script[src*="arkoselabs.com/v2/"]');
+                if (!s) return null;
+                const m = s.src.match(/\\/v2\\/([0-9A-Fa-f-]{36})\\//);
+                return m ? m[1] : null;
+            }""") or ARKOSE_PUBLICKEY
+
+        self._log("solving Arkose FunCaptcha via 2captcha…")
         solver = TwoCaptchaSolver(self.captcha_key)
-        token = await asyncio.to_thread(
-            solver.solve_recaptcha_v2, sitekey, url, invisible=True)
-        await page.evaluate(
+        try:
+            token = await asyncio.to_thread(
+                solver.solve_funcaptcha, publickey, url, ARKOSE_SURL, blob)
+        except CaptchaError as e:
+            self._log(f"Arkose solve failed: {e}", "warn")
+            return False
+
+        injected = await page.evaluate(
             """(tok) => {
-                let el = document.getElementById('g-recaptcha-response');
-                if (!el) {
-                    el = document.createElement('textarea');
-                    el.id = 'g-recaptcha-response';
-                    el.name = 'g-recaptcha-response';
-                    el.style.display = 'none';
-                    document.body.appendChild(el);
-                }
-                el.innerHTML = tok; el.value = tok;
-                // Fire any invisible-recaptcha callback we can find.
+                let fired = false;
                 try {
-                    const cfg = window.___grecaptcha_cfg;
-                    if (cfg && cfg.clients) {
-                        for (const c of Object.values(cfg.clients)) {
-                            const stack = [c];
-                            while (stack.length) {
-                                const o = stack.pop();
-                                if (o && typeof o === 'object') {
-                                    for (const k of Object.keys(o)) {
-                                        if (k === 'callback' && typeof o[k] === 'function') {
-                                            o[k](tok); return;
-                                        }
-                                        if (o[k] && typeof o[k] === 'object') stack.push(o[k]);
-                                    }
-                                }
-                            }
-                        }
+                    if (window.__arkose && typeof window.__arkose.onCompleted === 'function') {
+                        window.__arkose.onCompleted({ token: tok });
+                        fired = true;
                     }
                 } catch (e) {}
+                // Fallback: write the token into a hidden field the form posts.
+                const el = document.querySelector(
+                    '#fc-token, #FunCaptcha-Token, input[name="fc-token"], '
+                    + 'input[name="verification-token"], input[name="arkose-token"]');
+                if (el) {
+                    el.value = tok;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    fired = true;
+                }
+                return fired;
             }""", token)
-        self._log("captcha token injected")
+        self._log("Arkose token injected" if injected else "Arkose token solved but no sink found")
+        return bool(injected)
 
     async def _submit(self, page):
         # Prefer the real "Send email" submit button by accessible name, then
@@ -290,6 +352,41 @@ class EnquiryFiller:
                 continue
         await self._screenshot(page, "SUBMIT_FAIL")
         raise RuntimeError("submit button not found")
+
+    async def _wait_for_outcome(self, page, timeout=180):
+        """After clicking submit, poll until the enquiry is confirmed.
+
+        If Arkose throws its "Security Verification" puzzle, prompt Hugo (once)
+        to solve it in the visible browser window, then keep waiting — once he
+        solves it Rightmove completes the original submit on its own.
+        """
+        prompted = False
+        elapsed = 0.0
+        while elapsed < timeout:
+            if await self._confirm_sent(page):
+                return True
+            if await self._arkose_present(page) and not prompted:
+                self._log("👉 Solve the quick 'Security Verification' puzzle in "
+                          "the browser window — I'll detect when it's sent.", "warn")
+                prompted = True
+            await asyncio.sleep(2)
+            elapsed += 2
+        return False
+
+    async def _arkose_present(self, page):
+        try:
+            return await page.evaluate(
+                """() => {
+                    const t = (document.body.innerText || '').toLowerCase();
+                    if (t.includes('security verification') ||
+                        t.includes('solve this puzzle') ||
+                        t.includes('solve the puzzle')) return true;
+                    return !!document.querySelector(
+                        'iframe[src*="arkoselabs"], #arkose, [id*="arkose"], '
+                        '[class*="arkose"], iframe[src*="funcaptcha"]');
+                }""")
+        except Exception:
+            return False
 
     async def _confirm_sent(self, page):
         try:

@@ -116,6 +116,36 @@ def test_balance_parses_float():
     assert make_solver(http).balance() == 12.50
 
 
+# ── funcaptcha (Arkose) ──────────────────────────────────────────────────────
+def test_funcaptcha_submits_method_publickey_surl_blob():
+    http = FakeHttp()
+    http.poll_script(json.dumps({"status": 1, "request": "ARKOSE-TOKEN"}))
+    token = make_solver(http).solve_funcaptcha(
+        "PUBKEY", "https://page", surl="https://x.arkoselabs.com", blob="BLOB123")
+    assert token == "ARKOSE-TOKEN"
+    submit = next(p for (u, p) in http.calls if u.endswith("in.php"))
+    assert submit["method"] == "funcaptcha"
+    assert submit["publickey"] == "PUBKEY"
+    assert submit["surl"] == "https://x.arkoselabs.com"
+    assert submit["data[blob]"] == "BLOB123"
+
+
+def test_funcaptcha_omits_blob_when_absent():
+    http = FakeHttp()
+    http.poll_script(json.dumps({"status": 1, "request": "T"}))
+    make_solver(http).solve_funcaptcha("PUBKEY", "https://page")
+    submit = next(p for (u, p) in http.calls if u.endswith("in.php"))
+    assert "data[blob]" not in submit
+    assert "surl" not in submit
+
+
+def test_funcaptcha_submit_rejected_raises():
+    http = FakeHttp()
+    http.submit_returns(json.dumps({"status": 0, "request": "ERROR_GOOGLEKEY"}))
+    with pytest.raises(CaptchaError, match="funcaptcha submit rejected"):
+        make_solver(http).solve_funcaptcha("PUBKEY", "https://page")
+
+
 def test_parse_json_tolerates_plaintext_error():
     assert _parse_json("ERROR_NO_SLOT_AVAILABLE")["request"] == "ERROR_NO_SLOT_AVAILABLE"
     assert _parse_json('{"status":1,"request":"x"}')["request"] == "x"

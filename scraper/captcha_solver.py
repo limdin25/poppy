@@ -52,6 +52,31 @@ class TwoCaptchaSolver:
         captcha_id = self._submit(sitekey, page_url, invisible)
         return self._poll(captcha_id)
 
+    def solve_funcaptcha(self, publickey, page_url, surl=None, blob=None):
+        """Solve Arkose Labs FunCaptcha; returns the Arkose token.
+
+        publickey  – the Arkose public key (data-pkey on the page)
+        surl       – the Arkose service host, e.g. https://<x>.arkoselabs.com
+        blob       – the data-exchange blob captured from the page (required by
+                     Arkose implementations that use data exchange — passed as
+                     the form field data[blob]).
+        """
+        params = {
+            "key": self.api_key,
+            "method": "funcaptcha",
+            "publickey": publickey,
+            "pageurl": page_url,
+            "json": "1",
+        }
+        if surl:
+            params["surl"] = surl
+        if blob:
+            params["data[blob]"] = blob
+        data = _parse_json(self._http("https://2captcha.com/in.php", params))
+        if str(data.get("status")) != "1":
+            raise CaptchaError(f"funcaptcha submit rejected: {data.get('request')}")
+        return self._poll(data["request"])
+
     # ── internals ──────────────────────────────────────────────────────────
     def _submit(self, sitekey, page_url, invisible):
         params = {

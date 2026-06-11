@@ -960,9 +960,14 @@ def elsie_enquire():
         "listing_url": listing.get("listing_url"),
         "address": listing.get("address"),
     }
+    # Headed by default for live sends: a visible browser window opens on the
+    # Mac so Hugo can finish the Arkose "Security Verification" puzzle (the form
+    # is auto-filled; he just taps the puzzle). dry-runs stay headless.
+    headless = bool(d.get("headless", dry_run))
+    auto_solve = bool(d.get("auto_solve", False))  # 2captcha can't crack Rightmove Arkose yet
     filler = EnquiryFiller(_enquiry_proxy(), contact, captcha_key,
-                           emit=emit, dry_run=dry_run,
-                           headless=bool(d.get("headless", True)))
+                           emit=emit, dry_run=dry_run, headless=headless,
+                           auto_solve=auto_solve)
 
     ENQUIRY_JOB["running"] = True
     try:
