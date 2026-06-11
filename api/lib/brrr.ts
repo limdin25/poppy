@@ -495,6 +495,32 @@ export async function handleBrrrCallEvent(
     return { ok: true, outcome: 'no_answer' };
   }
 
+  return processAnsweredBrrrCall(callRow, property, {
+    transcript: call.transcript || '',
+    transcriptForUI,
+    recordingUrl: call.recording_url || null,
+    costCents: call.call_cost?.combined_cost,
+  }, settings);
+}
+
+/**
+ * Everything that happens after an answered qualifier call ends: Claude
+ * extraction, dropped-call retry, final row/property updates, pipeline push,
+ * owner notification. Shared by the webhook (call_ended) and the extraction
+ * sweeper (edge timeouts can kill the webhook mid-extraction).
+ */
+export async function processAnsweredBrrrCall(
+  callRow: Record<string, any>,
+  property: Record<string, any>,
+  call: {
+    transcript: string;
+    transcriptForUI: Array<{ speaker: string; text: string }>;
+    recordingUrl: string | null;
+    costCents?: number;
+  },
+  settings: BrrrSettings,
+): Promise<Record<string, unknown>> {
+  const nowIso = new Date().toISOString();
   let qualification: Qualification = {};
   let extractionFailed = false;
   try {
@@ -526,8 +552,8 @@ export async function handleBrrrCallEvent(
   if (!extractionFailed && outcome === 'callback' && learnedNothing && attemptsSoFar < settings.max_attempts) {
     await supabase.from('brrr_property_calls').update({
       status: 'pending',
-      transcript: transcriptForUI,
-      recording_url: call.recording_url || null,
+      transcript: call.transcriptForUI,
+      recording_url: call.recordingUrl,
       summary: `Call dropped before any information was gathered (attempt ${attemptsSoFar} of ${settings.max_attempts}) — retrying shortly.`,
       qualification,
       next_attempt_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
@@ -539,14 +565,13 @@ export async function handleBrrrCallEvent(
     return { ok: true, outcome: 'dropped_retry' };
   }
 
-  const costCents = call.call_cost?.combined_cost;
   await supabase.from('brrr_property_calls').update({
     status: 'completed',
-    transcript: transcriptForUI,
-    recording_url: call.recording_url || null,
+    transcript: call.transcriptForUI,
+    recording_url: call.recordingUrl,
     summary: qualification.summary || null,
     qualification,
-    ...(typeof costCents === 'number' ? { cost_usd: Math.round(costCents) / 100 } : {}),
+    ...(typeof call.costCents === 'number' ? { cost_usd: Math.round(call.costCents) / 100 } : {}),
     updated_at: nowIso,
   }).eq('id', callRow.id);
 
@@ -615,4 +640,65 @@ export async function handleBrrrTranscriptUpdate(
     .eq('status', 'dialing')
     .select('id');
   return { ok: true, updated: !!data?.length };
+}
+
+/**
+ * Edge timeouts can kill the webhook mid-extraction, leaving a completed call
+ * with an empty qualification (3 of 19 calls in one live batch). Sweep them:
+ * refetch the call from Retell and run the exact same processing the webhook
+ * would have. Bounded per run; re-attempts naturally on the next cron tick.
+ */
+export async function sweepStuckExtractions(limit = 2): Promise<number> {
+  const RETELL_API_KEY = process.env.RETELL_API_KEY;
+  if (!RETELL_API_KEY) return 0;
+
+  const { data: stuck } = await supabase
+    .from('brrr_property_calls')
+    .select('*')
+    .eq('status', 'completed')
+    .is('qualification->>outcome' as never, null)
+    .not('retell_call_id', 'is', null)
+    .lt('updated_at', new Date(Date.now() - 3 * 60 * 1000).toISOString())
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+  if (!stuck || stuck.length === 0) return 0;
+
+  const settings = await getBrrrSettings();
+  let processed = 0;
+  for (const callRow of stuck) {
+    const { data: property } = await supabase
+      .from('brrr_properties')
+      .select('*')
+      .eq('id', callRow.property_id)
+      .single();
+    if (!property) continue;
+
+    const res = await fetch(`https://api.retellai.com/v2/get-call/${callRow.retell_call_id}`, {
+      headers: { Authorization: `Bearer ${RETELL_API_KEY}` },
+    });
+    if (!res.ok) continue;
+    const call = await res.json() as Record<string, any>;
+    if (call.call_status !== 'ended') continue; // still live or errored — not ours to touch
+
+    const transcriptForUI = (call.transcript_object || []).map((t: any) => ({
+      speaker: t.role === 'user' ? 'caller' : 'agent',
+      text: t.content,
+    }));
+    if (!call.transcript || transcriptForUI.length === 0) {
+      // Nothing was said — close it out so it stops matching the sweep.
+      await supabase.from('brrr_property_calls')
+        .update({ summary: 'No conversation recorded.', qualification: { outcome: 'callback' }, updated_at: new Date().toISOString() })
+        .eq('id', callRow.id);
+      continue;
+    }
+
+    await processAnsweredBrrrCall(callRow, property, {
+      transcript: call.transcript || '',
+      transcriptForUI,
+      recordingUrl: call.recording_url || null,
+      costCents: call.call_cost?.combined_cost,
+    }, settings);
+    processed++;
+  }
+  return processed;
 }

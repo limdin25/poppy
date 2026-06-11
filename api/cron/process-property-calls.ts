@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { toE164, fmtGBP, getBrrrSettings, offerRange, type BrrrSettings } from '../lib/brrr.js';
+import { toE164, fmtGBP, getBrrrSettings, offerRange, sweepStuckExtractions, type BrrrSettings } from '../lib/brrr.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -47,11 +47,17 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
   }
 
+  // Rescue calls whose extraction died mid-webhook (edge timeout). Runs every
+  // tick, including outside calling hours — results shouldn't wait for the
+  // next dialling window.
+  let swept = 0;
+  try { swept = await sweepStuckExtractions(2); } catch { /* next tick */ }
+
   const agentId = process.env.RETELL_PROPERTY_AGENT_ID;
   const agentIdFr = process.env.RETELL_PROPERTY_AGENT_ID_FR;
   const fromNumber = process.env.PROPERTY_FROM_NUMBER;
   if (!agentId || !fromNumber) {
-    return new Response(JSON.stringify({ ok: true, skipped: 'agent not configured' }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true, skipped: 'agent not configured', swept }), { status: 200 });
   }
 
   // Voice A/B test: British "Elsie" vs French-accented "Amélie". A property's
@@ -70,7 +76,7 @@ export default async function handler(req: Request): Promise<Response> {
   const settings = await getBrrrSettings();
   const now = new Date();
   if (!withinCallingHours(now, settings)) {
-    return new Response(JSON.stringify({ ok: true, skipped: 'outside calling hours' }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true, skipped: 'outside calling hours', swept }), { status: 200 });
   }
 
   try {
@@ -252,7 +258,7 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, dialed, errors }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true, dialed, errors, swept }), { status: 200 });
   } catch (err: any) {
     console.error('[process-property-calls] error:', err);
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
