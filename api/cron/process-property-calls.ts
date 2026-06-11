@@ -91,6 +91,29 @@ export default async function handler(req: Request): Promise<Response> {
     let dialed = 0;
     const errors: string[] = [];
 
+    // Same-agency spacing: never ring the same office twice within 30 minutes.
+    // Back-to-back calls about different listings spook agents — observed live:
+    // "I've just had a phone call from the same number..." followed by a hangup.
+    const SPACING_MS = 30 * 60 * 1000;
+    const since = new Date(now.getTime() - SPACING_MS).toISOString();
+    const recentPhones = new Set<string>();
+    const { data: recentCalls } = await supabase
+      .from('brrr_property_calls')
+      .select('property_id')
+      .gte('updated_at', since)
+      .in('status', ['dialing', 'completed']);
+    const recentIds = [...new Set((recentCalls || []).map((r) => r.property_id))];
+    if (recentIds.length) {
+      const { data: recentProps } = await supabase
+        .from('brrr_properties')
+        .select('agent_phone')
+        .in('id', recentIds);
+      for (const p of recentProps || []) {
+        const ph = toE164(p?.agent_phone);
+        if (ph) recentPhones.add(ph);
+      }
+    }
+
     for (const entry of pending) {
       if (dialed >= MAX_DIALS_PER_RUN) break;
 
@@ -126,6 +149,19 @@ export default async function handler(req: Request): Promise<Response> {
           .eq('id', entry.id);
         continue;
       }
+
+      // Same office rung in the last 30 min → un-claim and push back without
+      // burning an attempt; the next eligible run will pick it up.
+      if (recentPhones.has(toNumber)) {
+        await supabase.from('brrr_property_calls').update({
+          status: 'pending',
+          attempts: entry.attempts,
+          next_attempt_at: new Date(now.getTime() + SPACING_MS).toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('id', entry.id);
+        continue;
+      }
+      recentPhones.add(toNumber);
 
       const { min: offerMin, max: offerMax } = offerRange(property, settings);
 
