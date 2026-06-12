@@ -1097,9 +1097,121 @@ def zoopla_counts():
     return jsonify(zoopla_storage.counts())
 
 
+def _zoopla_proxy_mgr():
+    """ProxyManager built from the iProyal residential creds in data/zoopla.json."""
+    px = _zoopla_proxy() or {}
+    server = (px.get("server") or "").replace("http://", "").replace("https://", "")
+    host, _, port = server.partition(":")
+    return ProxyManager(host, port, px.get("username", ""), px.get("password", ""))
+
+
+ZOOPLA_COMP_JOB = {"stop": threading.Event(), "pause": threading.Event(), "running": False}
+
+
+@app.route("/api/zoopla/comps/fetch", methods=["POST"])
+def zoopla_comps_fetch():
+    if ZOOPLA_COMP_JOB["running"]:
+        return jsonify({"ok": False, "error": "already running"}), 400
+    props = zoopla_storage.properties_needing_comps()
+    if not props:
+        return jsonify({"ok": False, "error": "no Zoopla properties needing comps"}), 400
+    d = request.get_json(force=True) or {}
+    # Reuse the portal-agnostic CompsFetcher, pointed at zoopla_storage.
+    fetcher = CompsFetcher(
+        _zoopla_proxy_mgr(), emit, ZOOPLA_COMP_JOB["stop"], ZOOPLA_COMP_JOB["pause"],
+        delay_min=float(d.get("delay_min") or 3), delay_max=float(d.get("delay_max") or 6),
+        headless=True, storage=zoopla_storage)
+    ZOOPLA_COMP_JOB["stop"].clear(); ZOOPLA_COMP_JOB["pause"].clear()
+
+    def _run():
+        ZOOPLA_COMP_JOB["running"] = True
+        try:
+            asyncio.run(fetcher.run(props))
+        except Exception as e:
+            emit({"type": "log", "level": "error", "msg": f"ZOOPLA COMP FATAL: {e}"})
+            emit({"type": "comp_done"})
+        finally:
+            ZOOPLA_COMP_JOB["running"] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "count": len(props)})
+
+
+@app.route("/api/zoopla/comps/stop", methods=["POST"])
+def zoopla_comps_stop():
+    ZOOPLA_COMP_JOB["stop"].set(); ZOOPLA_COMP_JOB["pause"].clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zoopla/valuation/<property_id>")
+def zoopla_valuation(property_id):
+    listing = zoopla_storage.get_listing(property_id)
+    if not listing:
+        return jsonify({"ok": False, "error": "property not found"}), 404
+    result = valuation.value_property(listing, zoopla_storage.get_comps(property_id))
+    result["ok"] = True
+    return jsonify(result)
+
+
+@app.route("/api/zoopla/valuation/batch")
+def zoopla_valuation_batch():
+    out = {}
+    for p in zoopla_storage.shortlist_with_comps():
+        pid = p.get("property_id")
+        try:
+            v = valuation.value_property(zoopla_storage.get_listing(pid) or p, p.get("comps") or [])
+            offer = v.get("offer") or {}
+            out[pid] = {"pursue": v.get("pursue"), "verdict": offer.get("verdict"),
+                        "has_offer": offer.get("max") is not None}
+        except Exception as e:
+            out[pid] = {"pursue": None, "verdict": None, "has_offer": False, "error": str(e)}
+    return jsonify(out)
+
+
 @app.route("/zoopla")
 def zoopla_index():
     return render_template("zoopla.html")
+
+
+ZOOPLA_ENQ_JOB = {"running": False}
+
+
+@app.route("/api/zoopla/enquire", methods=["POST"])
+def zoopla_enquire():
+    """Send a Zoopla 'Email agent' enquiry (reCAPTCHA-solved). This WORKS, unlike
+    Rightmove's Arkose. Headed real Chrome + iProyal proxy."""
+    if ZOOPLA_ENQ_JOB["running"]:
+        return jsonify({"ok": False, "error": "an enquiry is already in progress"}), 409
+    from zoopla_enquiry import ZooplaEnquiryFiller
+    d = request.get_json(force=True) or {}
+    pid = d.get("property_id")
+    if not pid:
+        return jsonify({"ok": False, "error": "property_id required"}), 400
+    listing = zoopla_storage.get_listing(pid)
+    if not listing:
+        return jsonify({"ok": False, "error": "property not found"}), 404
+    captcha_key, contact = load_enquiry_config()
+    dry_run = bool(d.get("dry_run", False))
+    if not dry_run and not captcha_key:
+        return jsonify({"ok": False, "error": "captcha key missing — add data/enquiry.json"}), 500
+    filler = ZooplaEnquiryFiller(contact, captcha_key, emit=emit, dry_run=dry_run,
+                                 proxy=_zoopla_proxy())
+    row = {"property_id": pid, "listing_url": listing.get("listing_url"),
+           "address": listing.get("address")}
+    ZOOPLA_ENQ_JOB["running"] = True
+    try:
+        result = asyncio.run(filler.enquire(row))
+    except Exception as e:
+        ZOOPLA_ENQ_JOB["running"] = False
+        return jsonify({"ok": False, "error": str(e)}), 500
+    ZOOPLA_ENQ_JOB["running"] = False
+    zoopla_storage.set_enquired(pid, result.ok, result.dry_run, result.error or "")
+    return jsonify({"ok": result.ok, **result.to_dict()}), (200 if result.ok else 502)
+
+
+@app.route("/api/zoopla/enquired")
+def zoopla_enquired():
+    return jsonify(zoopla_storage.get_enquired_map())
 
 
 @app.route("/api/zoopla/floorplan-score", methods=["POST"])

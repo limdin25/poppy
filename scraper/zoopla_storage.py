@@ -176,6 +176,38 @@ def get_comps(property_id):
             "SELECT * FROM zp_comps WHERE property_id=? ORDER BY comp_type, id", (property_id,))]
 
 
+# insert_comp / clear_comps mirror rightmove_storage so the portal-agnostic
+# CompsFetcher can write Zoopla comps via its injectable `storage` param.
+def insert_comp(property_id, comp_type, address, price, bedrooms, property_type,
+                url, date_info, distance_m="", distance_label="", source="Zoopla",
+                floor_area_sqm=""):
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    with _LOCK, _conn() as c:
+        c.execute("""INSERT INTO zp_comps
+            (property_id, comp_type, address, price, bedrooms, property_type, url,
+             date_info, distance_m, distance_label, source, floor_area_sqm, fetched_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (property_id, comp_type, address, price, bedrooms, property_type, url,
+             date_info, distance_m, distance_label, source, floor_area_sqm, now))
+
+
+def clear_comps(property_id):
+    with _LOCK, _conn() as c:
+        c.execute("DELETE FROM zp_comps WHERE property_id=?", (property_id,))
+
+
+def properties_needing_comps():
+    """Zoopla 'potential' listings that have no comps yet."""
+    with _LOCK, _conn() as c:
+        return [dict(r) for r in c.execute("""
+            SELECT l.property_id, l.listing_url, l.price, l.price_qualifier,
+                   l.address, l.bedrooms, l.property_type
+            FROM zp_listings l JOIN zp_reviews r ON l.property_id = r.property_id
+            LEFT JOIN zp_comps c ON l.property_id = c.property_id
+            WHERE r.status = 'potential' AND c.id IS NULL
+            GROUP BY l.property_id ORDER BY r.reviewed_at DESC""")]
+
+
 # ── Sessions ────────────────────────────────────────────────────────────────
 def create_session(search_urls):
     now = datetime.datetime.now().isoformat(timespec="seconds")
@@ -199,3 +231,28 @@ def counts():
         pending = c.execute("SELECT COUNT(*) n FROM zp_reviews WHERE status='pending'").fetchone()["n"]
         potential = c.execute("SELECT COUNT(*) n FROM zp_reviews WHERE status='potential'").fetchone()["n"]
         return {"total": total, "pending": pending, "potential": potential}
+
+
+# ── Enquiries sent (reCAPTCHA-solved Zoopla "Email agent") ──────────────────
+def _ensure_enquiry_table(c):
+    c.execute("""CREATE TABLE IF NOT EXISTS zp_enquired (
+        property_id TEXT PRIMARY KEY, enquired_at TEXT, ok INTEGER,
+        dry_run INTEGER DEFAULT 0, error TEXT)""")
+
+
+def set_enquired(property_id, ok, dry_run=False, error=""):
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    with _LOCK, _conn() as c:
+        _ensure_enquiry_table(c)
+        c.execute("""INSERT INTO zp_enquired (property_id, enquired_at, ok, dry_run, error)
+            VALUES (?,?,?,?,?) ON CONFLICT(property_id) DO UPDATE SET
+              enquired_at=excluded.enquired_at, ok=excluded.ok,
+              dry_run=excluded.dry_run, error=excluded.error""",
+            (property_id, now, 1 if ok else 0, 1 if dry_run else 0, error))
+
+
+def get_enquired_map():
+    with _LOCK, _conn() as c:
+        _ensure_enquiry_table(c)
+        return {r["property_id"]: r["enquired_at"] for r in c.execute(
+            "SELECT property_id, enquired_at FROM zp_enquired WHERE ok=1 AND dry_run=0")}

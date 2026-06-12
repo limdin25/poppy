@@ -598,7 +598,7 @@ class CompsFetcher:
     PAGES_TO_SCRAPE = 5
 
     def __init__(self, proxy_mgr, emit, stop_event, pause_event,
-                 delay_min=3.0, delay_max=6.0, headless=True):
+                 delay_min=3.0, delay_max=6.0, headless=True, storage=None):
         self.proxy = proxy_mgr
         self.emit = emit
         self.stop = stop_event
@@ -606,6 +606,9 @@ class CompsFetcher:
         self.delay_min = float(delay_min)
         self.delay_max = float(delay_max)
         self.headless = headless
+        # Portal-agnostic: defaults to rightmove_storage, but Zoopla passes
+        # zoopla_storage so comps land in zp_comps. Same insert_comp/clear_comps API.
+        self.storage = storage or rightmove_storage
         self.metrics = {"done": 0, "total": 0, "current": ""}
         self._outcode_cache = {}
         self._geo_cache = {}
@@ -1711,7 +1714,7 @@ class CompsFetcher:
                         continue
 
                     self._log(f"Property: {address} ({beds}-bed) -> searching {beds}-bed + {target_beds}-bed comps in {outcode}")
-                    rightmove_storage.clear_comps(pid)
+                    self.storage.clear_comps(pid)
 
                     full_pc = self._extract_full_postcode(address)
                     search_pc = full_pc or outcode
@@ -1826,7 +1829,7 @@ class CompsFetcher:
 
                     sold_count = 0
                     for comp, comp_type in all_sold:
-                        rightmove_storage.insert_comp(
+                        self.storage.insert_comp(
                             pid, comp_type, comp.get("address", ""), comp.get("price", ""),
                             comp.get("beds", ""), comp.get("property_type", ""),
                             comp.get("url", ""), comp.get("date", ""),
@@ -1846,7 +1849,7 @@ class CompsFetcher:
                     if outcode_id:
                         rent = await self._search_rent(page, outcode_id, target_beds, address)
                         for comp in rent:
-                            rightmove_storage.insert_comp(
+                            self.storage.insert_comp(
                                 pid, "rent", comp.get("address", ""), comp.get("price", ""),
                                 comp.get("beds", ""), comp.get("property_type", ""),
                                 comp.get("url", ""), comp.get("date", ""),
