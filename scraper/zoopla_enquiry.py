@@ -38,13 +38,14 @@ class ZooplaEnquiryResult:
 
 class ZooplaEnquiryFiller:
     def __init__(self, contact, captcha_key, *, emit=None, dry_run=True,
-                 proxy=None, user_data_dir="data/zoopla_profile"):
+                 proxy=None, user_data_dir="data/zoopla_profile", kind="sale"):
         self.contact = contact
         self.captcha_key = captcha_key
         self.emit = emit or (lambda e: None)
         self.dry_run = dry_run
         self.proxy = proxy
         self.user_data_dir = user_data_dir
+        self.kind = kind  # 'sale' or 'rent' — selects the pitch template
 
     def _log(self, msg, level="info"):
         self.emit({"type": "log", "level": level, "msg": msg,
@@ -53,7 +54,7 @@ class ZooplaEnquiryFiller:
     async def enquire(self, property_row):
         pid = str(property_row.get("property_id") or "")
         url = property_row.get("listing_url") or f"https://www.zoopla.co.uk/for-sale/details/{pid}/"
-        message = build_enquiry_message(property_row, self.contact)
+        message = build_enquiry_message(property_row, self.contact, kind=self.kind)
         # Every enquiry = a brand-new session: clean throwaway profile + a fresh
         # rotating residential IP. Reusing a session is what gets flagged.
         async with FreshSession(base_proxy=self.proxy, headless=False) as ctx:

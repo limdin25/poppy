@@ -173,6 +173,127 @@ es.onmessage = (e) => {
   if (d.type === "comp_done") { addLog("--- comps complete ---", "info"); loadPotential(); }
 };
 
+// ═══════════ RENT mode ═══════════
+function setMode(mode) {
+  const sale = mode === "sale";
+  $("sale-view").classList.toggle("hidden", !sale);
+  $("rent-view").classList.toggle("hidden", sale);
+  $("mode-sale").className = "px-4 py-1.5 " + (sale ? "bg-purple-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50");
+  $("mode-rent").className = "px-4 py-1.5 " + (!sale ? "bg-emerald-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50");
+  if (!sale) { loadRentCounts(); loadRentAgents(); loadBlacklist(); }
+}
+$("mode-sale").onclick = () => setMode("sale");
+$("mode-rent").onclick = () => setMode("rent");
+
+async function loadRentCounts() {
+  try {
+    const c = await (await fetch("/api/zoopla/rent/counts")).json();
+    $("r-c-agents").textContent = c.agents;
+    $("r-c-tomsg").textContent = c.to_message;
+    $("r-c-bl").textContent = c.blacklisted;
+  } catch (e) {}
+}
+
+async function loadRentAgents() {
+  const agents = await (await fetch("/api/zoopla/rent/agents")).json();
+  $("r-agent-count").textContent = agents.length;
+  const box = $("r-agents"); box.innerHTML = "";
+  $("r-empty").classList.toggle("hidden", agents.length > 0);
+  for (const a of agents) {
+    const div = document.createElement("div");
+    div.className = "p-3 flex items-center justify-between gap-3";
+    div.innerHTML = `
+      <div class="min-w-0">
+        <div class="font-bold text-slate-800 text-sm">${a.agent_name || "Unknown agent"}</div>
+        <div class="text-xs text-slate-500 truncate">cheapest: <strong>${a.price || ""}</strong> · ${a.address || ""}
+          · <a href="${a.listing_url}" target="_blank" class="text-emerald-600 underline">view</a></div>
+      </div>
+      <button data-id="${a.property_id}" data-key="${a.agent_key}" data-name="${(a.agent_name||'').replace(/"/g,'&quot;')}" data-addr="${(a.address||'').replace(/"/g,'&quot;')}"
+        class="r-enq bg-sky-600 hover:bg-sky-700 text-white rounded px-3 py-1 text-xs font-semibold shrink-0">✉️ Message</button>`;
+    box.appendChild(div);
+  }
+  box.querySelectorAll(".r-enq").forEach(b => b.onclick = () => messageOneAgent(b));
+}
+
+async function messageOneAgent(btn) {
+  if (!confirm(`Message ${btn.dataset.name} (rent-to-rent pitch)? They'll be blacklisted after.`)) return;
+  btn.disabled = true; btn.textContent = "Messaging…";
+  try {
+    const r = await (await fetch("/api/zoopla/enquire", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ property_id: btn.dataset.id, dry_run: false, kind: "rent" }),
+    })).json();
+    if (r.ok) {
+      await fetch("/api/zoopla/blacklist/add", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_key: btn.dataset.key, agent_name: btn.dataset.name, property_id: btn.dataset.id, address: btn.dataset.addr }) }).catch(()=>{});
+      loadRentAgents(); loadBlacklist(); loadRentCounts();
+    } else { btn.disabled = false; btn.textContent = "✉️ Message"; alert("Failed: " + (r.error || "")); }
+  } catch (e) { btn.disabled = false; btn.textContent = "✉️ Message"; alert("Failed: " + e); }
+}
+
+$("r-msgall").onclick = async () => {
+  if (!confirm("Message every new agent with the rent-to-rent pitch? Each is messaged once, then blacklisted.")) return;
+  const r = await (await fetch("/api/zoopla/rent/message-all", { method: "POST" })).json();
+  if (!r.ok) { alert(r.error || "nothing to message"); return; }
+  if (!logOpen) toggleLog();
+  addLog(`Messaging ${r.count} new agents (rent-to-rent)…`, "info");
+};
+
+async function loadBlacklist() {
+  const bl = await (await fetch("/api/zoopla/blacklist")).json();
+  $("r-bl-count").textContent = bl.length;
+  const box = $("r-blacklist"); box.innerHTML = "";
+  $("r-bl-empty").classList.toggle("hidden", bl.length > 0);
+  for (const b of bl) {
+    const div = document.createElement("div");
+    div.className = "p-3 flex items-center justify-between gap-3 text-sm";
+    const days = b.days_on_blacklist == null ? "" : `${b.days_on_blacklist} day${b.days_on_blacklist === 1 ? "" : "s"} ago`;
+    div.innerHTML = `
+      <div class="min-w-0"><span class="font-semibold text-slate-800">${b.agent_name || b.agent_key}</span>
+        <span class="text-xs text-slate-400 ml-2">messaged ${days}</span></div>
+      <button data-key="${b.agent_key}" class="r-unbl bg-slate-200 hover:bg-rose-200 rounded px-2 py-1 text-xs">Remove</button>`;
+    box.appendChild(div);
+  }
+  box.querySelectorAll(".r-unbl").forEach(b => b.onclick = async () => {
+    await fetch("/api/zoopla/blacklist/remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agent_key: b.dataset.key }) });
+    loadBlacklist(); loadRentAgents(); loadRentCounts();
+  });
+}
+
+$("r-start").onclick = async () => {
+  const urls = $("r-urls").value.trim();
+  if (!urls) { alert("Paste at least one Zoopla to-rent URL"); return; }
+  const r = await (await fetch("/api/zoopla/rent/start", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ urls, max_pages: parseInt($("r-max").value) || 5 }) })).json();
+  if (!r.ok) { alert("Start failed: " + (r.error || "")); return; }
+  $("r-stop").classList.remove("hidden");
+  if (!logOpen) toggleLog();
+  addLog(`Scraping ${r.count} rental search URL(s)…`, "info");
+};
+$("r-stop").onclick = async () => { await fetch("/api/zoopla/rent/stop", { method: "POST" }); $("r-stop").classList.add("hidden"); };
+
+// ── Pitch editor ──
+$("btn-pitch").onclick = async () => {
+  const p = await (await fetch("/api/zoopla/pitch")).json();
+  $("pitch-sale").value = p.sale || ""; $("pitch-rent").value = p.rent || "";
+  $("pitch-modal").classList.remove("hidden");
+};
+$("pitch-cancel").onclick = () => $("pitch-modal").classList.add("hidden");
+$("pitch-save").onclick = async () => {
+  await fetch("/api/zoopla/pitch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "sale", text: $("pitch-sale").value }) });
+  await fetch("/api/zoopla/pitch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "rent", text: $("pitch-rent").value }) });
+  $("pitch-modal").classList.add("hidden");
+};
+
+// rent SSE hooks
+const _origOnMsg = es.onmessage;
+es.onmessage = (e) => {
+  _origOnMsg(e);
+  const d = JSON.parse(e.data);
+  if (d.type === "zoopla_rent_msg_done") { addLog(`--- messaged ${d.sent} agents ---`, "info"); loadRentAgents(); loadBlacklist(); loadRentCounts(); }
+  if ((d.type === "zoopla_done" || d.type === "zoopla_metrics") && !$("rent-view").classList.contains("hidden")) { loadRentCounts(); loadRentAgents(); }
+};
+
 refreshCounts();
 loadListings();
 loadPotential();

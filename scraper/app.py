@@ -1192,10 +1192,11 @@ def zoopla_enquire():
         return jsonify({"ok": False, "error": "property not found"}), 404
     captcha_key, contact = load_enquiry_config()
     dry_run = bool(d.get("dry_run", False))
+    kind = d.get("kind", "sale")  # 'rent' -> rent-to-rent pitch
     if not dry_run and not captcha_key:
         return jsonify({"ok": False, "error": "captcha key missing — add data/enquiry.json"}), 500
     filler = ZooplaEnquiryFiller(contact, captcha_key, emit=emit, dry_run=dry_run,
-                                 proxy=_zoopla_proxy())
+                                 proxy=_zoopla_proxy(), kind=kind)
     row = {"property_id": pid, "listing_url": listing.get("listing_url"),
            "address": listing.get("address")}
     ZOOPLA_ENQ_JOB["running"] = True
@@ -1212,6 +1213,145 @@ def zoopla_enquire():
 @app.route("/api/zoopla/enquired")
 def zoopla_enquired():
     return jsonify(zoopla_storage.get_enquired_map())
+
+
+# ───────────────── Zoopla RENTALS (rent-to-rent / SA) ─────────────────
+# Scrape to-rent -> one cheapest per agent -> bulk-message new agents ->
+# blacklist them. No floor plans, no comps. Agent comes from the search card.
+ZOOPLA_RENT_JOB = {"stop": threading.Event(), "pause": threading.Event(), "running": False}
+ZOOPLA_MSG_JOB = {"running": False}
+
+
+@app.route("/api/zoopla/rent/start", methods=["POST"])
+def zoopla_rent_start():
+    if ZOOPLA_RENT_JOB["running"]:
+        return jsonify({"ok": False, "error": "already running"}), 400
+    d = request.get_json(force=True) or {}
+    urls = [u.strip() for u in (d.get("urls") or "").splitlines() if u.strip()]
+    if not urls:
+        return jsonify({"ok": False, "error": "no search URLs"}), 400
+    scraper = ZooplaScraper(emit, ZOOPLA_RENT_JOB["stop"], ZOOPLA_RENT_JOB["pause"],
+                            max_pages=int(d.get("max_pages") or 40),
+                            proxy=_zoopla_proxy(), listing_type="rent")
+    ZOOPLA_RENT_JOB["stop"].clear(); ZOOPLA_RENT_JOB["pause"].clear()
+
+    def _run():
+        ZOOPLA_RENT_JOB["running"] = True
+        try:
+            asyncio.run(scraper.run(urls, force_rescrape=bool(d.get("force_rescrape"))))
+        except Exception as e:
+            emit({"type": "log", "level": "error", "msg": f"ZOOPLA RENT FATAL: {e}"})
+            emit({"type": "zoopla_done"})
+        finally:
+            ZOOPLA_RENT_JOB["running"] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "count": len(urls)})
+
+
+@app.route("/api/zoopla/rent/stop", methods=["POST"])
+def zoopla_rent_stop():
+    ZOOPLA_RENT_JOB["stop"].set(); ZOOPLA_RENT_JOB["pause"].clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zoopla/rent/agents")
+def zoopla_rent_agents():
+    return jsonify(zoopla_storage.rental_agents_to_message())
+
+
+@app.route("/api/zoopla/rent/counts")
+def zoopla_rent_counts():
+    return jsonify(zoopla_storage.rental_counts())
+
+
+@app.route("/api/zoopla/rent/message-all", methods=["POST"])
+def zoopla_rent_message_all():
+    """Bulk: message the cheapest rental for every NEW (non-blacklisted) agent,
+    then blacklist each. Each enquiry is its own fresh session."""
+    if ZOOPLA_MSG_JOB["running"]:
+        return jsonify({"ok": False, "error": "already messaging"}), 409
+    from zoopla_enquiry import ZooplaEnquiryFiller
+    agents = zoopla_storage.rental_agents_to_message()
+    if not agents:
+        return jsonify({"ok": False, "error": "no new agents to message"}), 400
+    captcha_key, contact = load_enquiry_config()
+    if not captcha_key:
+        return jsonify({"ok": False, "error": "captcha key missing"}), 500
+
+    def _run():
+        ZOOPLA_MSG_JOB["running"] = True
+        sent = 0
+        try:
+            for a in agents:
+                if ZOOPLA_MSG_JOB.get("stop"):
+                    break
+                filler = ZooplaEnquiryFiller(contact, captcha_key, emit=emit,
+                                             dry_run=False, proxy=_zoopla_proxy(), kind="rent")
+                row = {"property_id": a["property_id"], "listing_url": a.get("listing_url"),
+                       "address": a.get("address")}
+                try:
+                    res = asyncio.run(filler.enquire(row))
+                except Exception as e:
+                    emit({"type": "log", "level": "warn",
+                          "msg": f"{a.get('agent_name')}: {str(e)[:80]}"})
+                    continue
+                if res.ok:
+                    # blacklist the agent so we never message them again
+                    zoopla_storage.blacklist_agent(a["agent_key"], a.get("agent_name", ""),
+                                                   a["property_id"], a.get("address", ""))
+                    sent += 1
+                    emit({"type": "log", "level": "info",
+                          "msg": f"✉️ Messaged {a.get('agent_name')} — blacklisted ({sent})"})
+                else:
+                    emit({"type": "log", "level": "warn",
+                          "msg": f"{a.get('agent_name')}: {res.error or 'failed'}"})
+        finally:
+            ZOOPLA_MSG_JOB["running"] = False
+            emit({"type": "zoopla_rent_msg_done", "sent": sent})
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "count": len(agents)})
+
+
+@app.route("/api/zoopla/blacklist")
+def zoopla_blacklist():
+    return jsonify(zoopla_storage.get_blacklist())
+
+
+@app.route("/api/zoopla/blacklist/add", methods=["POST"])
+def zoopla_blacklist_add():
+    d = request.get_json(force=True) or {}
+    ak = d.get("agent_key")
+    if not ak:
+        return jsonify({"ok": False, "error": "agent_key required"}), 400
+    zoopla_storage.blacklist_agent(ak, d.get("agent_name", ""), d.get("property_id", ""),
+                                   d.get("address", ""))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zoopla/blacklist/remove", methods=["POST"])
+def zoopla_blacklist_remove():
+    d = request.get_json(force=True) or {}
+    ak = d.get("agent_key")
+    if not ak:
+        return jsonify({"ok": False, "error": "agent_key required"}), 400
+    zoopla_storage.unblacklist_agent(ak)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zoopla/pitch", methods=["GET", "POST"])
+def zoopla_pitch():
+    from enquiry_config import load_pitch, save_pitch
+    if request.method == "POST":
+        d = request.get_json(force=True) or {}
+        kind = d.get("kind", "sale")
+        text = (d.get("text") or "").strip()
+        if not text:
+            return jsonify({"ok": False, "error": "empty pitch"}), 400
+        save_pitch(kind, text)
+        return jsonify({"ok": True})
+    return jsonify({"sale": load_pitch("sale"), "rent": load_pitch("rent")})
 
 
 @app.route("/api/zoopla/floorplan-score", methods=["POST"])

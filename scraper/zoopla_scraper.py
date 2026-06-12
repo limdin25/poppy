@@ -120,6 +120,90 @@ def parse_zoopla_card(card):
     }
 
 
+# ── Rentals (to-rent): cards carry the agent/branch, so no detail visit ─────
+def _clean_agent(alts):
+    """Pick the branch name from a card's image alts (skip 'Property N of M')."""
+    for a in alts or []:
+        a = (a or "").strip()
+        if not a:
+            continue
+        if re.match(r"property\s+\d+\s+of\s+\d+", a, re.I):
+            continue
+        if re.search(r"\b(photo|image|bedroom|floor\s?plan|map)\b", a, re.I):
+            continue
+        return a
+    return None
+
+
+def agent_key(name):
+    """Normalised key for dedup/blacklist (case/space/punctuation-insensitive)."""
+    return re.sub(r"[^a-z0-9]", "", (name or "").lower()) or None
+
+
+def parse_rent_pcm(text):
+    """'£1,000 pcm' -> 1000 (monthly). Converts pw to pcm if only weekly shown."""
+    if not text:
+        return None
+    m = re.search(r"£\s*([\d,]+)\s*pcm", text, re.I)
+    if m:
+        return int(m.group(1).replace(",", ""))
+    m = re.search(r"£\s*([\d,]+)\s*pw", text, re.I)
+    if m:
+        return round(int(m.group(1).replace(",", "")) * 52 / 12)
+    m = re.search(r"£\s*([\d,]+)", text)
+    return int(m.group(1).replace(",", "")) if m else None
+
+
+def parse_zoopla_rent_card(card):
+    """Normalise a to-rent search card. Carries the agent (for one-per-agent)."""
+    url = (card.get("url") or "").split("?")[0]
+    pid = card.get("id") or listing_id_from_url(url)
+    if not pid:
+        return None
+    text = card.get("full_text") or ""
+    rent = parse_rent_pcm(card.get("rent") or text)
+    agent = _clean_agent(card.get("agent_alts")) or card.get("agent")
+    return {
+        "property_id": str(pid),
+        "source": "zoopla",
+        "listing_type": "rent",
+        "listing_url": url or f"https://www.zoopla.co.uk/to-rent/details/{pid}/",
+        "price": f"£{rent:,} pcm" if rent else (card.get("rent") or None),
+        "rent_pcm": rent,
+        "address": (card.get("title") or card.get("address") or "").strip() or None,
+        "bedrooms": parse_int_label(text, "beds?", "bedrooms?"),
+        "property_type": parse_property_type(text),
+        "agent_name": agent,
+        "agent_key": agent_key(agent),
+    }
+
+
+SEARCH_RENT_CARDS_JS = r"""
+() => {
+  const out = [];
+  const seen = new Set();
+  for (const a of document.querySelectorAll('a[href*="/to-rent/details/"]')) {
+    const m = a.href.match(/details\/(\d+)/);
+    if (!m || seen.has(m[1])) continue;
+    seen.add(m[1]);
+    let card = a;
+    for (let i = 0; i < 6; i++) { if (card.parentElement) card = card.parentElement; }
+    const txt = card.innerText || '';
+    const alts = [...card.querySelectorAll('img')].map(i => i.alt || '').filter(Boolean);
+    out.push({
+      id: m[1],
+      url: a.href.split('?')[0],
+      rent: (txt.match(/£[\d,]+\s*p(?:cm|w)/i) || [''])[0],
+      title: (txt.match(/[A-Z][^,\n]*(?:Road|Street|Avenue|Lane|Close|Drive|Court|Place|Way|Terrace|Gardens?|Grove|Hill|Walk|Row|Crescent|Square)[^,\n]*,?[^,\n]*/) || [''])[0].trim(),
+      full_text: txt.replace(/\s+/g, ' ').slice(0, 300),
+      agent_alts: alts.slice(0, 5),
+    });
+  }
+  return out;
+}
+"""
+
+
 # JS that extracts the cards from a loaded Zoopla search page. Kept here so the
 # selector strategy lives next to the parser it feeds.
 SEARCH_CARDS_JS = r"""
@@ -259,11 +343,13 @@ class ZooplaScraper:
 
     def __init__(self, emit, stop_event, pause_event, *, max_pages=40,
                  delay_min=2.0, delay_max=5.0, user_data_dir="data/zoopla_profile",
-                 proxy=None):
+                 proxy=None, listing_type="sale"):
         self.emit = emit
         self.stop = stop_event
         self.pause = pause_event
         self.max_pages = max_pages
+        # "sale" -> for-sale cards + parser; "rent" -> to-rent cards (agent on card)
+        self.listing_type = listing_type
         self.delay_min = float(delay_min)
         self.delay_max = float(delay_max)
         self.user_data_dir = user_data_dir
@@ -335,22 +421,40 @@ class ZooplaScraper:
                 break
             await self._wait_unpaused()
             url = self._paged_url(search_url, n)
-            try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            except PWTimeout:
-                self._log(f"timeout loading page {n}", "warn")
+            # Residential proxies occasionally hand out a dead exit node — retry
+            # the load a couple times before giving up on this page.
+            loaded = False
+            for attempt in range(3):
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                    loaded = True
+                    break
+                except PWTimeout:
+                    self._log(f"timeout loading page {n} (try {attempt+1})", "warn")
+                except Exception as e:
+                    self._log(f"load error page {n} (try {attempt+1}): {str(e)[:60]}", "warn")
+                await asyncio.sleep(2)
+            if not loaded:
                 break
             await asyncio.sleep(2)
             if not await self._wait_cloudflare(page):
                 self._log("Cloudflare challenge did not clear — stopping", "warn")
                 break
-            await self._dismiss_cookies(page)
-            raw_cards = await page.evaluate(SEARCH_CARDS_JS)
+            await dismiss_consent(page)
+            is_rent = self.listing_type == "rent"
+            # Wait for listing cards to actually render (React hydration).
+            link_sel = "a[href*='/to-rent/details/']" if is_rent else "a[href*='/for-sale/details/']"
+            try:
+                await page.wait_for_selector(link_sel, timeout=12000)
+            except PWTimeout:
+                pass
+            raw_cards = await page.evaluate(SEARCH_RENT_CARDS_JS if is_rent else SEARCH_CARDS_JS)
             if not raw_cards:
                 break  # no more results
+            parse = parse_zoopla_rent_card if is_rent else parse_zoopla_card
             new_here = 0
             for raw in raw_cards:
-                row = parse_zoopla_card(raw)
+                row = parse(raw)
                 if not row:
                     continue
                 if zoopla_storage.upsert_listing(row, search_url):

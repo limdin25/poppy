@@ -11,6 +11,7 @@ import pytest
 from zoopla_scraper import (
     listing_id_from_url, parse_price, parse_int_label, parse_property_type,
     parse_zoopla_card, is_cloudflare,
+    parse_rent_pcm, parse_zoopla_rent_card, agent_key, _clean_agent,
 )
 
 
@@ -137,3 +138,79 @@ def test_counts(store):
     store.set_review("2", "potential")
     c = store.counts()
     assert c["total"] == 2 and c["pending"] == 1 and c["potential"] == 1
+
+
+# ── Rentals: rent parsing, agent, one-per-agent, blacklist ───────────────────
+def test_parse_rent_pcm():
+    assert parse_rent_pcm("£1,000 pcm") == 1000
+    assert parse_rent_pcm("£500 pcm (£115 pw)") == 500          # pcm wins
+    assert parse_rent_pcm("£230 pw") == round(230 * 52 / 12)    # weekly -> monthly
+    assert parse_rent_pcm("£1,250") == 1250
+    assert parse_rent_pcm("POA") is None
+
+
+def test_clean_agent_skips_carousel_alt():
+    assert _clean_agent(["Property 1 of 10. ", "Keystone Homes"]) == "Keystone Homes"
+    assert _clean_agent(["Photo of bedroom", "M&M Lettings"]) == "M&M Lettings"
+    assert _clean_agent(["Property 2 of 4"]) is None
+
+
+def test_agent_key_normalises():
+    assert agent_key("Keystone Homes") == "keystonehomes"
+    assert agent_key("M&M Sales, Lettings & Management Ltd") == "mmsaleslettingsmanagementltd"
+    assert agent_key("keystone homes") == agent_key("Keystone Homes")
+    assert agent_key("") is None
+
+
+def test_parse_rent_card():
+    card = {
+        "id": "72161377",
+        "url": "https://www.zoopla.co.uk/to-rent/details/72161377/",
+        "rent": "£1,000 pcm",
+        "title": "Lilac Avenue, Coventry CV6",
+        "full_text": "£1,000 pcm (£230 pw) 2 beds 1 bath 1 reception Lilac Avenue, Coventry CV6 flat",
+        "agent_alts": ["Property 1 of 10. ", "Keystone Homes"],
+    }
+    row = parse_zoopla_rent_card(card)
+    assert row["listing_type"] == "rent"
+    assert row["rent_pcm"] == 1000
+    assert row["price"] == "£1,000 pcm"
+    assert row["bedrooms"] == 2
+    assert row["agent_name"] == "Keystone Homes"
+    assert row["agent_key"] == "keystonehomes"
+
+
+def test_rentals_one_cheapest_per_agent(store):
+    # Keystone has two rentals; we keep only the cheaper. M&M has one.
+    for pid, rent, ak, an in [("a1", 1000, "keystonehomes", "Keystone Homes"),
+                              ("a2", 800, "keystonehomes", "Keystone Homes"),
+                              ("b1", 500, "mmlettings", "M&M Lettings")]:
+        store.upsert_listing({"property_id": pid, "listing_type": "rent",
+                              "listing_url": f".../{pid}/", "price": f"£{rent} pcm",
+                              "rent_pcm": rent, "address": "x", "agent_name": an,
+                              "agent_key": ak})
+    rows = store.rental_agents_to_message()
+    by_agent = {r["agent_key"]: r for r in rows}
+    assert set(by_agent) == {"keystonehomes", "mmlettings"}
+    assert by_agent["keystonehomes"]["property_id"] == "a2"   # the £800 one
+    assert by_agent["mmlettings"]["rent_pcm"] == 500
+
+
+def test_blacklist_excludes_agent(store):
+    for pid, ak, an in [("a1", "keystonehomes", "Keystone Homes"),
+                        ("b1", "mmlettings", "M&M Lettings")]:
+        store.upsert_listing({"property_id": pid, "listing_type": "rent",
+                              "listing_url": f".../{pid}/", "rent_pcm": 700,
+                              "address": "x", "agent_name": an, "agent_key": ak})
+    assert len(store.rental_agents_to_message()) == 2
+    store.blacklist_agent("keystonehomes", "Keystone Homes", "a1", "x")
+    rows = store.rental_agents_to_message()
+    assert [r["agent_key"] for r in rows] == ["mmlettings"]      # keystone excluded
+    assert store.is_blacklisted("keystonehomes") is True
+    # blacklist view shows days-since
+    bl = store.get_blacklist()
+    assert bl[0]["agent_key"] == "keystonehomes"
+    assert bl[0]["days_on_blacklist"] == 0
+    # manual removal restores them
+    store.unblacklist_agent("keystonehomes")
+    assert len(store.rental_agents_to_message()) == 2

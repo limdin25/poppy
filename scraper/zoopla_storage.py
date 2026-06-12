@@ -69,12 +69,30 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             urls_total INTEGER, started_at TEXT, finished_at TEXT
         );
+        -- Rent-to-rent: agents we've already messaged. Manual-remove only.
+        CREATE TABLE IF NOT EXISTS zp_blacklist (
+            agent_key TEXT PRIMARY KEY,
+            agent_name TEXT,
+            property_id TEXT,
+            address TEXT,
+            added_at TEXT
+        );
         """)
+        # Columns added after the initial release (idempotent).
+        for col, ddl in [
+            ("listing_type", "ALTER TABLE zp_listings ADD COLUMN listing_type TEXT DEFAULT 'sale'"),
+            ("rent_pcm", "ALTER TABLE zp_listings ADD COLUMN rent_pcm INTEGER"),
+            ("agent_key", "ALTER TABLE zp_listings ADD COLUMN agent_key TEXT"),
+        ]:
+            try:
+                c.execute(ddl)
+            except sqlite3.OperationalError:
+                pass  # already exists
 
 
 # ── Listings ────────────────────────────────────────────────────────────────
 def upsert_listing(row, search_url=None):
-    """Insert/update a parsed listing. Returns True if it was NEW."""
+    """Insert/update a parsed listing (sale or rent). Returns True if NEW."""
     now = datetime.datetime.now().isoformat(timespec="seconds")
     with _LOCK, _conn() as c:
         init_table = c.execute(
@@ -87,23 +105,102 @@ def upsert_listing(row, search_url=None):
         c.execute("""
             INSERT INTO zp_listings
               (property_id, listing_url, price, price_qualifier, address,
-               bedrooms, bathrooms, receptions, property_type, search_url,
-               first_seen, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               bedrooms, bathrooms, receptions, property_type, listing_type,
+               rent_pcm, agent_name, agent_key, search_url, first_seen, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(property_id) DO UPDATE SET
               listing_url=excluded.listing_url, price=excluded.price,
               address=excluded.address, bedrooms=excluded.bedrooms,
               bathrooms=excluded.bathrooms, receptions=excluded.receptions,
-              property_type=excluded.property_type, updated_at=excluded.updated_at
+              property_type=excluded.property_type, listing_type=excluded.listing_type,
+              rent_pcm=excluded.rent_pcm,
+              agent_name=COALESCE(excluded.agent_name, zp_listings.agent_name),
+              agent_key=COALESCE(excluded.agent_key, zp_listings.agent_key),
+              updated_at=excluded.updated_at
         """, (row["property_id"], row.get("listing_url"), row.get("price"),
               row.get("price_qualifier"), row.get("address"), row.get("bedrooms"),
               row.get("bathrooms"), row.get("receptions"), row.get("property_type"),
-              search_url, now, now))
-        # New listings start life as 'pending' review (-> Floor plans tab)
-        if not existing:
+              row.get("listing_type", "sale"), row.get("rent_pcm"),
+              row.get("agent_name"), row.get("agent_key"), search_url, now, now))
+        # New SALE listings start 'pending' (-> Floor plans). Rentals skip that.
+        if not existing and row.get("listing_type", "sale") == "sale":
             c.execute("""INSERT OR IGNORE INTO zp_reviews (property_id, status, reviewed_at)
                          VALUES (?, 'pending', ?)""", (row["property_id"], now))
         return existing is None
+
+
+# ── Rentals: one cheapest property per non-blacklisted agent ────────────────
+def rental_agents_to_message():
+    """The 'new agents' list: the cheapest rental per agent we haven't messaged.
+
+    One row per agent_key (lowest rent_pcm), excluding blacklisted agents and
+    rows with no agent. This is exactly what 'message all new agents' fires at.
+    """
+    with _LOCK, _conn() as c:
+        init_db()
+        return [dict(r) for r in c.execute("""
+            SELECT l.* FROM zp_listings l
+            JOIN (
+                SELECT agent_key, MIN(COALESCE(rent_pcm, 999999)) AS min_rent
+                FROM zp_listings
+                WHERE listing_type='rent' AND agent_key IS NOT NULL
+                  AND agent_key NOT IN (SELECT agent_key FROM zp_blacklist)
+                GROUP BY agent_key
+            ) m ON l.agent_key = m.agent_key
+               AND COALESCE(l.rent_pcm, 999999) = m.min_rent
+            WHERE l.listing_type='rent'
+            GROUP BY l.agent_key
+            ORDER BY l.rent_pcm ASC""")]
+
+
+def rental_counts():
+    with _LOCK, _conn() as c:
+        init_db()
+        total = c.execute("SELECT COUNT(*) n FROM zp_listings WHERE listing_type='rent'").fetchone()["n"]
+        agents = c.execute("""SELECT COUNT(DISTINCT agent_key) n FROM zp_listings
+                              WHERE listing_type='rent' AND agent_key IS NOT NULL""").fetchone()["n"]
+        blacklisted = c.execute("SELECT COUNT(*) n FROM zp_blacklist").fetchone()["n"]
+        to_message = len(rental_agents_to_message())
+        return {"total": total, "agents": agents, "blacklisted": blacklisted,
+                "to_message": to_message}
+
+
+# ── Agent blacklist (manual-remove only) ────────────────────────────────────
+def blacklist_agent(agent_key, agent_name="", property_id="", address=""):
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    with _LOCK, _conn() as c:
+        init_db()
+        c.execute("""INSERT INTO zp_blacklist (agent_key, agent_name, property_id, address, added_at)
+                     VALUES (?,?,?,?,?) ON CONFLICT(agent_key) DO NOTHING""",
+                  (agent_key, agent_name, property_id, address, now))
+
+
+def unblacklist_agent(agent_key):
+    with _LOCK, _conn() as c:
+        c.execute("DELETE FROM zp_blacklist WHERE agent_key=?", (agent_key,))
+
+
+def get_blacklist():
+    """Blacklisted agents with days-since (for the blacklist page)."""
+    now = datetime.datetime.now()
+    with _LOCK, _conn() as c:
+        init_db()
+        out = []
+        for r in c.execute("SELECT * FROM zp_blacklist ORDER BY added_at DESC"):
+            d = dict(r)
+            try:
+                added = datetime.datetime.fromisoformat(d["added_at"])
+                d["days_on_blacklist"] = (now - added).days
+            except Exception:
+                d["days_on_blacklist"] = None
+            out.append(d)
+        return out
+
+
+def is_blacklisted(agent_key):
+    with _LOCK, _conn() as c:
+        return c.execute("SELECT 1 FROM zp_blacklist WHERE agent_key=?",
+                         (agent_key,)).fetchone() is not None
 
 
 def get_listing(property_id):

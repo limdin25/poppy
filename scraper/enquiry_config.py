@@ -48,20 +48,57 @@ def load_enquiry_config():
     return captcha_key, contact
 
 
-def build_enquiry_message(property_row, contact):
-    """The note left on the agent's enquiry form: cash-buyer, please-call.
+# Default pitch templates — {address} and {phone} are filled per enquiry.
+# Editable in the UI (stored in data/enquiry.json under "pitches").
+DEFAULT_PITCHES = {
+    "sale": ("Hi, I'm interested in {address}. We're cash buyers with no chain "
+             "and can move quickly. I have a couple of quick questions before we "
+             "put an offer forward — would you be able to give me a call on "
+             "{phone}? Ask for Elsie. Happy to discuss whenever suits. Thanks!"),
+    "rent": ("Hi, I'm interested in {address} as a long-term let. We're a "
+             "property management company looking for good homes to rent on a "
+             "3–5 year basis — guaranteed rent every month, fully managed, no "
+             "voids or hassle for the landlord. Could you give me a quick call "
+             "to discuss? Ask for Elsie on {phone}."),
+}
 
-    Deliberately asks them to phone us back rather than email — a live
-    conversation qualifies far better, and the callback flows into the same
-    inbound pipeline. Mentions the property so the reply is unambiguous.
-    """
+
+def load_pitch(kind="sale"):
+    """Return the (editable) pitch template for 'sale' or 'rent'."""
+    raw = {}
+    if _CONFIG_PATH.exists():
+        try:
+            raw = json.loads(_CONFIG_PATH.read_text())
+        except (ValueError, OSError):
+            raw = {}
+    pitches = raw.get("pitches") or {}
+    return pitches.get(kind) or DEFAULT_PITCHES.get(kind, DEFAULT_PITCHES["sale"])
+
+
+def save_pitch(kind, text):
+    """Persist an edited pitch template (UI-editable)."""
+    raw = {}
+    if _CONFIG_PATH.exists():
+        try:
+            raw = json.loads(_CONFIG_PATH.read_text())
+        except (ValueError, OSError):
+            raw = {}
+    raw.setdefault("pitches", {})[kind] = text
+    _DATA.mkdir(parents=True, exist_ok=True)
+    _CONFIG_PATH.write_text(json.dumps(raw, indent=2))
+
+
+def render_pitch(template, property_row, contact):
+    """Fill {address}/{phone} in a pitch template."""
     address = (property_row or {}).get("address") or "your listing"
     phone = contact.get("phone") or ""
-    lines = [
-        f"Hi, I'm interested in {address}.",
-        "We're cash buyers with no chain and can move quickly.",
-        "I have a couple of quick questions before we put an offer forward — "
-        f"would you be able to give me a call on {phone}? Ask for Elsie.",
-        "Happy to discuss whenever suits. Thanks!",
-    ]
-    return " ".join(p for p in lines if p.strip())
+    try:
+        return template.format(address=address, phone=phone)
+    except (KeyError, IndexError, ValueError):
+        # tolerate stray braces in a user-edited template
+        return template.replace("{address}", address).replace("{phone}", phone)
+
+
+def build_enquiry_message(property_row, contact, kind="sale"):
+    """The note left on the agent's enquiry form (editable pitch, placeholders filled)."""
+    return render_pitch(load_pitch(kind), property_row, contact)
