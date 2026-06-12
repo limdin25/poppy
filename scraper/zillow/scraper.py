@@ -54,13 +54,26 @@ def parse_baths(text):
 
 
 def agent_key(name):
-    """Normalised key for dedup/blacklist (name OR phone keeps agents distinct)."""
+    """Normalised key from the agent's name."""
     return re.sub(r"[^a-z0-9]", "", (name or "").lower()) or None
 
 
 def phone_key(phone):
+    """Digits-only fingerprint. Drops a US country-code 1 so '(512) 913-6987'
+    and '+1 512 913 6987' collapse to the same agent."""
     digits = re.sub(r"\D", "", phone or "")
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
     return digits or None
+
+
+def resolve_agent_key(name, phone):
+    """The agent's identity for dedup + blacklist. Prefer the DIRECT PHONE — it's
+    exact and survives name-spelling changes, so the SAME agent is never enquired
+    twice even if Zillow writes their name differently across listings. Fall back
+    to the normalised name when no phone. Two agents at the same brokerage have
+    different direct numbers, so the COMPANY can repeat but the AGENT can't."""
+    return phone_key(phone) or agent_key(name)
 
 
 def parse_listed_by(text):
@@ -286,7 +299,7 @@ class ZillowScraper:
                     continue
                 info = await page.evaluate(DETAIL_AGENT_JS)
                 name, phone, brokerage = parse_listed_by(info.get("listed_by"))
-                key = agent_key(name) or phone_key(phone)
+                key = resolve_agent_key(name, phone)
                 if key:
                     storage.update_agent(l["zpid"], name, phone, key)
                     self.metrics["agents"] += 1

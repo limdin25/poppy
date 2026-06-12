@@ -5,7 +5,7 @@ Run: cd scraper && .venv/bin/python -m pytest test_zillow.py -q
 import pytest
 from zillow.scraper import (
     zpid_from_url, parse_price, parse_int, parse_baths, agent_key, phone_key,
-    parse_listed_by, parse_search_card, is_perimeterx,
+    parse_listed_by, parse_search_card, is_perimeterx, resolve_agent_key,
 )
 
 
@@ -33,8 +33,41 @@ def test_agent_and_phone_keys():
     assert agent_key("Lindsay Neuren") == "lindsayneuren"
     assert agent_key("COMPASS RE Texas, LLC") == "compassretexasllc"
     assert phone_key("(512) 913-6987") == "5129136987"
+    assert phone_key("+1 (512) 913-6987") == "5129136987"   # US country code dropped
     assert agent_key("") is None
     assert phone_key("") is None
+
+
+def test_resolve_agent_key_prefers_phone():
+    # Same agent, name written differently on two listings, same direct line ->
+    # ONE key, so she is never enquired twice.
+    a = resolve_agent_key("Lindsay Neuren", "(512) 913-6987")
+    b = resolve_agent_key("Lindsay Neuren | Speed & Neuren Group", "512-913-6987")
+    assert a == b == "5129136987"
+    # No phone -> fall back to the name.
+    assert resolve_agent_key("John Smith", None) == "johnsmith"
+    assert resolve_agent_key("John Smith", "") == "johnsmith"
+    # Two different agents at the same brokerage have different direct numbers,
+    # so the company repeats but the agents stay distinct.
+    assert resolve_agent_key("Agent A", "(512) 111-1111") != resolve_agent_key("Agent B", "(512) 222-2222")
+
+
+def test_same_agent_two_listings_one_enquiry(store):
+    # Lindsay has two listings under slightly different name strings but the same
+    # phone; a colleague at the same brokerage has a different phone.
+    rows = [("1", 300000, "Lindsay Neuren", "(512) 913-6987"),
+            ("2", 250000, "Lindsay Neuren | Speed & Neuren Group", "512-913-6987"),
+            ("3", 400000, "Colleague Carl", "(512) 555-5555")]
+    for zpid, p, name, phone in rows:
+        store.upsert_listing({"zpid": zpid, "listing_url": f".../{zpid}_zpid/",
+                              "price_num": p, "address": "x", "agent_name": name,
+                              "agent_phone": phone,
+                              "agent_key": resolve_agent_key(name, phone)})
+    out = store.agents_to_enquire()
+    keys = sorted(r["agent_key"] for r in out)
+    assert keys == ["5125555555", "5129136987"]          # two agents, not three
+    lindsay = [r for r in out if r["agent_key"] == "5129136987"][0]
+    assert lindsay["zpid"] == "2"                          # her cheaper listing
 
 
 def test_parse_listed_by():
