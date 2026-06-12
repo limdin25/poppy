@@ -302,6 +302,7 @@ class ZillowScraper:
             while self.pause.is_set() and not self.stop.is_set():
                 await asyncio.sleep(0.3)
             try:
+                self._log(f"→ {i+1}/{len(todo)} opening {l.get('address') or l['zpid']}…")
                 await page.goto(l["listing_url"], wait_until="domcontentloaded", timeout=45000)
                 await asyncio.sleep(3)
                 if is_perimeterx(await page.title()):
