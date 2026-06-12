@@ -41,10 +41,12 @@
     </div>
     <p class="text-xs text-slate-500 mb-2">Paste one or more Zillow search URLs (one per line). E.g. <code>https://www.zillow.com/austin-tx/houses/</code></p>
     <textarea id="urls" rows="3" class="w-full border border-slate-300 rounded p-2 text-sm font-mono" placeholder="https://www.zillow.com/austin-tx/houses/"></textarea>
-    <div class="flex gap-3 mt-2 text-xs text-slate-600">
+    <div class="flex flex-wrap gap-3 mt-2 text-xs text-slate-600 items-center">
       <label>Max pages <input id="max-pages" type="number" value="5" class="w-16 border rounded p-1"></label>
       <label class="flex items-center gap-1"><input id="fetch-agents" type="checkbox" checked> Fetch agent + phone from detail pages</label>
+      <label class="flex items-center gap-1 font-semibold text-emerald-700"><input id="auto-enquire" type="checkbox" checked> 📨 Send enquiry to each new realtor as I scrape (one pass)</label>
     </div>
+    <p class="text-xs text-slate-400 mt-1">One pass = it enquires the moment it finds a new realtor, on the page it already opened, and skips anyone already contacted. Untick to just scrape and review the list first.</p>
   </div>
 
   <!-- LOG -->

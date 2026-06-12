@@ -91,14 +91,18 @@ async function loadBlacklist() {
 $("btn-start").onclick = async () => {
   const urls = $("urls").value.trim();
   if (!urls) { alert("Paste at least one Zillow search URL"); return; }
+  const auto = $("auto-enquire").checked;
   const r = await (await fetch("/api/zillow/start", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ urls, max_pages: parseInt($("max-pages").value) || 5, fetch_agents: $("fetch-agents").checked }),
+    body: JSON.stringify({ urls, max_pages: parseInt($("max-pages").value) || 5,
+                           fetch_agents: $("fetch-agents").checked, enquire: auto }),
   })).json();
   if (!r.ok) { alert("Start failed: " + (r.error || "")); return; }
   $("btn-stop").classList.remove("hidden");
   if (!logOpen) toggleLog();
-  addLog(`Scraping ${r.count} search URL(s)… (a Chrome window opens — Zillow needs a real US browser)`, "info");
+  addLog(auto
+    ? `Scraping + enquiring ${r.count} search URL(s) in one pass… (each new realtor gets a buyer enquiry, duplicates skipped)`
+    : `Scraping ${r.count} search URL(s)… (a Chrome window opens — Zillow needs a real US browser)`, "info");
 };
 $("btn-stop").onclick = async () => { await fetch("/api/zillow/stop", { method: "POST" }); $("btn-stop").classList.add("hidden"); };
 $("btn-log").onclick = () => toggleLog();

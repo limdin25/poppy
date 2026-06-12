@@ -1402,12 +1402,15 @@ def zillow_start():
     urls = [u.strip() for u in (d.get("urls") or "").splitlines() if u.strip()]
     if not urls:
         return jsonify({"ok": False, "error": "no search URLs"}), 400
+    cfg = _zillow_cfg()
+    enquire = bool(d.get("enquire", False))   # one-pass: send inline as we scrape
     scraper = ZillowScraper(emit, ZILLOW_JOB["stop"], ZILLOW_JOB["pause"],
                             max_pages=int(d.get("max_pages") or 20),
                             delay_min=float(d.get("delay_min") or 3),
                             delay_max=float(d.get("delay_max") or 6),
-                            proxy=_zillow_cfg().get("proxy"),
-                            fetch_agents=bool(d.get("fetch_agents", True)))
+                            proxy=cfg.get("proxy"),
+                            fetch_agents=bool(d.get("fetch_agents", True)),
+                            enquire=enquire, contact=cfg.get("contact", {}))
     ZILLOW_JOB["stop"].clear(); ZILLOW_JOB["pause"].clear()
 
     def _run():
@@ -1443,8 +1446,8 @@ def zillow_counts():
 @app.route("/api/zillow/enquire", methods=["POST"])
 def zillow_enquire():
     """Single buyer enquiry on one listing (the simple Contact modal)."""
-    if ZILLOW_MSG_JOB["running"]:
-        return jsonify({"ok": False, "error": "an enquiry is already in progress"}), 409
+    if ZILLOW_MSG_JOB["running"] or ZILLOW_JOB["running"]:
+        return jsonify({"ok": False, "error": "an enquiry/scrape is already in progress"}), 409
     from zillow.enquiry import ZillowEnquiryFiller
     d = request.get_json(force=True) or {}
     zpid = d.get("zpid")
@@ -1476,8 +1479,8 @@ def zillow_message_all():
     """Bulk: enquire on the cheapest listing for every NEW (non-blacklisted)
     agent, blacklist each confirmed send. Each enquiry is its own fresh US
     session."""
-    if ZILLOW_MSG_JOB["running"]:
-        return jsonify({"ok": False, "error": "already messaging"}), 409
+    if ZILLOW_MSG_JOB["running"] or ZILLOW_JOB["running"]:
+        return jsonify({"ok": False, "error": "an enquiry/scrape is already in progress"}), 409
     from zillow.enquiry import ZillowEnquiryFiller
     agents = zillow_storage.agents_to_enquire()
     if not agents:

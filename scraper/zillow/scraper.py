@@ -14,10 +14,13 @@ import random
 import datetime
 import tempfile
 import shutil
+from pathlib import Path
 
 from patchright.async_api import async_playwright
 
 from . import storage
+
+SHOTS = Path(__file__).resolve().parent.parent / "data" / "enquiry_screenshots"
 
 
 # ── Pure parsing (unit-tested, no browser) ──────────────────────────────────
@@ -191,7 +194,8 @@ class UsSession:
 
 class ZillowScraper:
     def __init__(self, emit, stop_event, pause_event, *, max_pages=20,
-                 delay_min=3.0, delay_max=6.0, proxy=None, fetch_agents=True):
+                 delay_min=3.0, delay_max=6.0, proxy=None, fetch_agents=True,
+                 enquire=False, contact=None):
         self.emit = emit
         self.stop = stop_event
         self.pause = pause_event
@@ -199,8 +203,15 @@ class ZillowScraper:
         self.delay_min = float(delay_min)
         self.delay_max = float(delay_max)
         self.proxy = proxy
-        self.fetch_agents = fetch_agents
-        self.metrics = {"urls_done": 0, "urls_total": 0, "new": 0, "agents": 0, "current": ""}
+        # enquire=True -> one-pass mode: send the buyer enquiry INLINE on the
+        # detail page the moment a new agent is found (no second trip). contact
+        # is the US enquiry identity (name/phone=our pitch line/email).
+        self.fetch_agents = fetch_agents or enquire
+        self.enquire = enquire
+        self.contact = contact or {}
+        self._sent = set()
+        self.metrics = {"urls_done": 0, "urls_total": 0, "new": 0, "agents": 0,
+                        "sent": 0, "current": ""}
 
     def _log(self, msg, level="info"):
         self.emit({"type": "log", "level": level, "msg": msg,
@@ -304,8 +315,39 @@ class ZillowScraper:
                     storage.update_agent(l["zpid"], name, phone, key)
                     self.metrics["agents"] += 1
                     self._log(f"{l['zpid']}: {name or '?'} {phone or ''}")
+                    if self.enquire:
+                        # one-pass: enquire INLINE while we're already on the page
+                        await self._maybe_enquire(page, l, name, phone, key)
             except Exception as e:
                 self._log(f"{l['zpid']}: {str(e)[:60]}", "warn")
             self._push()
             if i < len(todo) - 1:
                 await self._sleep()
+
+    async def _maybe_enquire(self, page, listing, name, phone, key):
+        """Send the buyer enquiry on the open detail page — but only for a NEW
+        agent (not blacklisted, not already sent this run). Repeats are skipped
+        with no message, so an agent with many listings is contacted exactly
+        once. Falls back to a fresh session if the inline send fails."""
+        label = name or key
+        if key in self._sent or storage.is_blacklisted(key):
+            self._log(f"  ↳ skip {label} — already contacted")
+            return
+        from .enquiry import fill_contact_on_page  # lazy: avoids a circular import
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        shot = SHOTS / f"ZIL_{listing['zpid']}_inline-{ts}.png"
+        ok, err = await fill_contact_on_page(page, self.contact, screenshot_path=shot)
+        if not ok:
+            self._log(f"  ↳ inline send to {label} failed ({err}) — retrying fresh session…", "warn")
+            from .enquiry import ZillowEnquiryFiller
+            filler = ZillowEnquiryFiller(self.contact, emit=self.emit, dry_run=False, proxy=self.proxy)
+            res = await filler.enquire(listing)
+            ok, err = res.ok, res.error
+        if ok:
+            storage.blacklist_agent(key, name or "", phone or "", listing["zpid"],
+                                    listing.get("address", ""), confirmed=True)
+            self._sent.add(key)
+            self.metrics["sent"] += 1
+            self._log(f"  ✅ Enquired {label} — sent + blacklisted ({self.metrics['sent']})")
+        else:
+            self._log(f"  ↳ {label}: enquiry failed ({err})", "warn")

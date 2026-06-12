@@ -18,6 +18,76 @@ from .scraper import UsSession, is_perimeterx
 
 SHOTS = Path(__file__).resolve().parent.parent / "data" / "enquiry_screenshots"
 
+SENT_MARKERS = ("message sent", "your request has been sent", "we will connect with you",
+                "request has been sent", "thanks for reaching out", "we'll connect you")
+
+
+async def _set_field(page, sel, val):
+    if not val:
+        return
+    try:
+        loc = page.locator(sel).first
+        if await loc.count():
+            await loc.fill(val, timeout=4000)
+    except Exception:
+        pass
+
+
+async def _confirm_sent(page):
+    try:
+        t = (await page.evaluate("() => document.body.innerText") or "").lower()
+    except Exception:
+        return False
+    return any(s in t for s in SENT_MARKERS)
+
+
+async def fill_contact_on_page(page, contact, screenshot_path=None):
+    """Open the Contact-Listing-Agent modal on an ALREADY-loaded Zillow detail
+    page, fill it (our US callback number as the phone), submit, and detect the
+    'Message sent' confirmation. Returns (confirmed: bool, error: str|None).
+
+    Used by the one-pass scraper to enquire INLINE — on the very page it just
+    opened to read the agent — so no second trip is needed. The standalone
+    ZillowEnquiryFiller keeps its own proven goto+fill path for fresh-session
+    sends and the message-all fallback."""
+    try:
+        # The "Contact <Agent>" CTA is often below the fold — scroll it into view,
+        # click, and retry once if the modal doesn't render.
+        form_ready = False
+        for _ in range(2):
+            try:
+                btn = page.locator("button:has-text('Contact')").first
+                await btn.scroll_into_view_if_needed(timeout=5000)
+                await btn.click(timeout=6000)
+            except Exception:
+                pass
+            try:
+                await page.wait_for_selector("input[name='name'], input[name='email']", timeout=8000)
+                form_ready = True
+                break
+            except PWTimeout:
+                await asyncio.sleep(2)
+        if not form_ready:
+            return False, "contact form not found"
+        await _set_field(page, "input[name='name']", contact.get("name", ""))
+        await _set_field(page, "input[name='phone']", contact.get("phone", ""))
+        await _set_field(page, "input[name='email']", contact.get("email", ""))
+        # message keeps Zillow's default "I am interested in <address>."
+        await page.locator("button:has-text('Contact Agent')").first.click(timeout=8000)
+        await asyncio.sleep(3)
+        ok = await _confirm_sent(page)
+        if screenshot_path:
+            try:
+                SHOTS.mkdir(parents=True, exist_ok=True)
+                await page.screenshot(path=str(screenshot_path))
+            except Exception:
+                pass
+        return ok, (None if ok else "no confirmation detected")
+    except PWTimeout as e:
+        return False, f"timeout: {e}"
+    except Exception as e:
+        return False, str(e)
+
 
 class ZillowEnquiryResult:
     def __init__(self, zpid, ok, dry_run, screenshot=None, error=None):
