@@ -70,11 +70,13 @@ def init_db():
             urls_total INTEGER, started_at TEXT, finished_at TEXT
         );
         -- Rent-to-rent: agents we've already messaged. Manual-remove only.
+        -- confirmed=1 ONLY when Zoopla showed the "email has been sent" page.
         CREATE TABLE IF NOT EXISTS zp_blacklist (
             agent_key TEXT PRIMARY KEY,
             agent_name TEXT,
             property_id TEXT,
             address TEXT,
+            confirmed INTEGER DEFAULT 0,
             added_at TEXT
         );
         """)
@@ -83,6 +85,7 @@ def init_db():
             ("listing_type", "ALTER TABLE zp_listings ADD COLUMN listing_type TEXT DEFAULT 'sale'"),
             ("rent_pcm", "ALTER TABLE zp_listings ADD COLUMN rent_pcm INTEGER"),
             ("agent_key", "ALTER TABLE zp_listings ADD COLUMN agent_key TEXT"),
+            ("bl_confirmed", "ALTER TABLE zp_blacklist ADD COLUMN confirmed INTEGER DEFAULT 0"),
         ]:
             try:
                 c.execute(ddl)
@@ -166,13 +169,17 @@ def rental_counts():
 
 
 # ── Agent blacklist (manual-remove only) ────────────────────────────────────
-def blacklist_agent(agent_key, agent_name="", property_id="", address=""):
+def blacklist_agent(agent_key, agent_name="", property_id="", address="", confirmed=False):
+    """Add an agent to the blacklist. confirmed=True means Zoopla actually showed
+    the 'your email has been sent' page — proof the message landed."""
     now = datetime.datetime.now().isoformat(timespec="seconds")
     with _LOCK, _conn() as c:
         init_db()
-        c.execute("""INSERT INTO zp_blacklist (agent_key, agent_name, property_id, address, added_at)
-                     VALUES (?,?,?,?,?) ON CONFLICT(agent_key) DO NOTHING""",
-                  (agent_key, agent_name, property_id, address, now))
+        c.execute("""INSERT INTO zp_blacklist (agent_key, agent_name, property_id, address, confirmed, added_at)
+                     VALUES (?,?,?,?,?,?)
+                     ON CONFLICT(agent_key) DO UPDATE SET
+                       confirmed = MAX(zp_blacklist.confirmed, excluded.confirmed)""",
+                  (agent_key, agent_name, property_id, address, 1 if confirmed else 0, now))
 
 
 def unblacklist_agent(agent_key):

@@ -214,3 +214,17 @@ def test_blacklist_excludes_agent(store):
     # manual removal restores them
     store.unblacklist_agent("keystonehomes")
     assert len(store.rental_agents_to_message()) == 2
+
+
+def test_blacklist_confirmed_flag(store):
+    # confirmed=True only when the 'email sent' page showed
+    store.blacklist_agent("a1", "Agent One", "p1", "addr", confirmed=True)
+    store.blacklist_agent("a2", "Agent Two", "p2", "addr", confirmed=False)
+    bl = {b["agent_key"]: b for b in store.get_blacklist()}
+    assert bl["a1"]["confirmed"] == 1
+    assert bl["a2"]["confirmed"] == 0
+    # a later confirmed send upgrades an unconfirmed entry, never downgrades
+    store.blacklist_agent("a2", "Agent Two", "p2", "addr", confirmed=True)
+    assert {b["agent_key"]: b["confirmed"] for b in store.get_blacklist()}["a2"] == 1
+    store.blacklist_agent("a1", "Agent One", "p1", "addr", confirmed=False)
+    assert {b["agent_key"]: b["confirmed"] for b in store.get_blacklist()}["a1"] == 1  # stays confirmed

@@ -1297,12 +1297,12 @@ def zoopla_rent_message_all():
                           "msg": f"{a.get('agent_name')}: {str(e)[:80]}"})
                     continue
                 if res.ok:
-                    # blacklist the agent so we never message them again
+                    # res.ok == the "email has been sent" page showed -> confirmed
                     zoopla_storage.blacklist_agent(a["agent_key"], a.get("agent_name", ""),
-                                                   a["property_id"], a.get("address", ""))
+                                                   a["property_id"], a.get("address", ""), confirmed=True)
                     sent += 1
                     emit({"type": "log", "level": "info",
-                          "msg": f"✉️ Messaged {a.get('agent_name')} — blacklisted ({sent})"})
+                          "msg": f"✅ Sent to {a.get('agent_name')} — confirmed, blacklisted ({sent})"})
                 else:
                     emit({"type": "log", "level": "warn",
                           "msg": f"{a.get('agent_name')}: {res.error or 'failed'}"})
@@ -1326,7 +1326,7 @@ def zoopla_blacklist_add():
     if not ak:
         return jsonify({"ok": False, "error": "agent_key required"}), 400
     zoopla_storage.blacklist_agent(ak, d.get("agent_name", ""), d.get("property_id", ""),
-                                   d.get("address", ""))
+                                   d.get("address", ""), confirmed=bool(d.get("confirmed")))
     return jsonify({"ok": True})
 
 

@@ -224,8 +224,9 @@ async function messageOneAgent(btn) {
       body: JSON.stringify({ property_id: btn.dataset.id, dry_run: false, kind: "rent" }),
     })).json();
     if (r.ok) {
+      // r.ok == Zoopla showed the "email has been sent" page -> confirmed
       await fetch("/api/zoopla/blacklist/add", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_key: btn.dataset.key, agent_name: btn.dataset.name, property_id: btn.dataset.id, address: btn.dataset.addr }) }).catch(()=>{});
+        body: JSON.stringify({ agent_key: btn.dataset.key, agent_name: btn.dataset.name, property_id: btn.dataset.id, address: btn.dataset.addr, confirmed: true }) }).catch(()=>{});
       loadRentAgents(); loadBlacklist(); loadRentCounts();
     } else { btn.disabled = false; btn.textContent = "✉️ Message"; alert("Failed: " + (r.error || "")); }
   } catch (e) { btn.disabled = false; btn.textContent = "✉️ Message"; alert("Failed: " + e); }
@@ -247,11 +248,17 @@ async function loadBlacklist() {
   for (const b of bl) {
     const div = document.createElement("div");
     div.className = "p-3 flex items-center justify-between gap-3 text-sm";
-    const days = b.days_on_blacklist == null ? "" : `${b.days_on_blacklist} day${b.days_on_blacklist === 1 ? "" : "s"} ago`;
+    const days = b.days_on_blacklist == null ? "" : (b.days_on_blacklist === 0 ? "today" : `${b.days_on_blacklist} day${b.days_on_blacklist === 1 ? "" : "s"} ago`);
+    const status = b.confirmed
+      ? `<span class="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">✅ Sent confirmed</span>`
+      : `<span class="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium" title="Added to blacklist but Zoopla's 'email sent' page wasn't seen">⚠ not confirmed</span>`;
     div.innerHTML = `
-      <div class="min-w-0"><span class="font-semibold text-slate-800">${b.agent_name || b.agent_key}</span>
-        <span class="text-xs text-slate-400 ml-2">messaged ${days}</span></div>
-      <button data-key="${b.agent_key}" class="r-unbl bg-slate-200 hover:bg-rose-200 rounded px-2 py-1 text-xs">Remove</button>`;
+      <div class="min-w-0 flex items-center gap-2">
+        <span class="font-semibold text-slate-800 truncate">${b.agent_name || b.agent_key}</span>
+        ${status}
+        <span class="text-xs text-slate-400">${days}</span>
+      </div>
+      <button data-key="${b.agent_key}" class="r-unbl bg-slate-200 hover:bg-rose-200 rounded px-2 py-1 text-xs shrink-0">Remove</button>`;
     box.appendChild(div);
   }
   box.querySelectorAll(".r-unbl").forEach(b => b.onclick = async () => {
