@@ -12,22 +12,11 @@
 </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
-<header class="h-14 bg-slate-900 text-white flex items-center px-4 justify-between">
-  <div class="flex items-center gap-6">
-    <a href="/" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Google Maps</a>
-    <a href="/facebook" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Facebook Ads</a>
-    <a href="/rightmove" class="px-3 py-1 rounded text-sm bg-emerald-600 font-semibold">Rightmove</a>
-    <a href="/floorplans" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Floor Plans</a>
-    <a href="/shortlist" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Shortlist</a>
-    <a href="/comps" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Price Comparison</a>
-    <span class="inline-flex rounded-lg overflow-hidden border border-slate-600 text-sm">
-      <a href="/rightmove" class="px-3 py-1 bg-emerald-600 font-semibold">🇬🇧 Rightmove</a>
-      <a href="/zoopla" class="px-3 py-1 bg-slate-700 hover:bg-slate-600">🇬🇧 Zoopla</a>
-      <a href="/zillow" class="px-3 py-1 bg-slate-700 hover:bg-slate-600">🇺🇸 Zillow</a>
-    </span>
-  </div>
-  <div id="status-banner" class="text-sm px-3 py-1 rounded bg-slate-700">Ready</div>
-</header>
+{% set portal = 'rightmove' %}
+{% set nav_right %}
+    <div id="status-banner" class="text-sm px-3 py-1 rounded bg-slate-700">Ready</div>
+{% endset %}
+{% include '_nav.html' %}
 
 <div class="grid grid-cols-12 gap-3 p-3">
   <!-- LEFT: CONFIG -->

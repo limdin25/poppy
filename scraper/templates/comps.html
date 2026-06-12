@@ -14,26 +14,14 @@
 </head>
 <body class="bg-slate-50 text-slate-800">
 
-<!-- NAV -->
-<header class="h-14 bg-slate-900 text-white flex items-center px-4 justify-between">
-  <div class="flex items-center gap-6">
-    <a href="/" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Google Maps</a>
-    <a href="/facebook" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Facebook Ads</a>
-    <a href="/rightmove" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Rightmove</a>
-    <a href="/floorplans" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Floor Plans</a>
-    <a href="/shortlist" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600 transition">Shortlist</a>
-    <a href="/comps" class="px-3 py-1 rounded text-sm bg-amber-600 font-semibold">Price Comparison</a>
-    <span class="ml-3 inline-flex rounded-lg overflow-hidden border border-slate-600 text-sm">
-      <a href="/rightmove" class="px-3 py-1 bg-slate-600 font-semibold">Rightmove</a>
-      <a href="/zoopla" class="px-3 py-1 bg-slate-700 hover:bg-slate-600">Zoopla</a>
-    </span>
-  </div>
-  <div class="flex items-center gap-4">
+<!-- NAV (shared partial — see templates/_nav.html) -->
+{% set active = 'comps' %}{% set portal = 'rightmove' %}
+{% set nav_right %}
     <span class="text-xs bg-slate-600 px-2 py-1 rounded"><span id="s-count">0</span> properties</span>
     <button id="btn-fetch" class="bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1 text-sm font-semibold transition">Fetch Comps</button>
     <button id="btn-stop" class="bg-rose-600 hover:bg-rose-700 text-white rounded px-3 py-1 text-sm font-semibold transition hidden">Stop</button>
-  </div>
-</header>
+{% endset %}
+{% include '_nav.html' %}
 
 <div class="flex" style="height: calc(100vh - 56px);">
 

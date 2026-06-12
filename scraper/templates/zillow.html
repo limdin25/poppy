@@ -11,27 +11,15 @@
 </head>
 <body class="bg-slate-50 text-slate-800">
 
-<!-- NAV with the Rightmove/Zoopla/Zillow source toggle -->
-<header class="h-14 bg-slate-900 text-white flex items-center px-4 justify-between">
-  <div class="flex items-center gap-2">
-    <a href="/" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Google Maps</a>
-    <a href="/rightmove" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Rightmove</a>
-    <a href="/floorplans" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Floor Plans</a>
-    <a href="/comps" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Price Comparison</a>
-    <!-- Source toggle -->
-    <span class="ml-3 inline-flex rounded-lg overflow-hidden border border-slate-600 text-sm">
-      <a href="/rightmove" class="px-3 py-1 bg-slate-700 hover:bg-slate-600">🇬🇧 Rightmove</a>
-      <a href="/zoopla" class="px-3 py-1 bg-slate-700 hover:bg-slate-600">🇬🇧 Zoopla</a>
-      <a href="/zillow" class="px-3 py-1 bg-blue-600 font-semibold">🇺🇸 Zillow</a>
-    </span>
-  </div>
-  <div class="flex items-center gap-3 text-xs">
-    <span class="bg-slate-700 px-2 py-1 rounded"><span id="c-total">0</span> listings</span>
-    <span class="bg-slate-700 px-2 py-1 rounded"><span id="c-agents">0</span> agents</span>
-    <span class="bg-emerald-600 px-2 py-1 rounded"><span id="c-tomsg">0</span> to enquire</span>
-    <span class="bg-rose-600 px-2 py-1 rounded"><span id="c-bl">0</span> done</span>
-  </div>
-</header>
+<!-- NAV (shared partial — see templates/_nav.html) -->
+{% set portal = 'zillow' %}
+{% set nav_right %}
+    <span class="text-xs bg-slate-700 px-2 py-1 rounded"><span id="c-total">0</span> listings</span>
+    <span class="text-xs bg-slate-700 px-2 py-1 rounded"><span id="c-agents">0</span> agents</span>
+    <span class="text-xs bg-emerald-600 px-2 py-1 rounded"><span id="c-tomsg">0</span> to enquire</span>
+    <span class="text-xs bg-rose-600 px-2 py-1 rounded"><span id="c-bl">0</span> done</span>
+{% endset %}
+{% include '_nav.html' %}
 
 <div class="max-w-6xl mx-auto p-4 space-y-4">
 
