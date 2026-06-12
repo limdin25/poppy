@@ -168,13 +168,18 @@ class ZooplaEnquiryFiller:
         return any_filled
 
     async def _solve_recaptcha(self, page, url):
-        # reCAPTCHA loads lazily after the form is interacted with — wait for it.
-        for _ in range(8):
+        # Only solve if a reCAPTCHA is actually present. Sale forms have one;
+        # to-rent forms do NOT — so skip (don't waste a 2captcha solve).
+        present = False
+        for _ in range(5):
             present = await page.evaluate(
                 "() => !!document.querySelector('[data-sitekey], iframe[src*=\"recaptcha\"]')")
             if present:
                 break
             await asyncio.sleep(1)
+        if not present:
+            self._log("no reCAPTCHA on this form — submitting without solve")
+            return
         sitekey = await page.evaluate(
             "() => { const e=document.querySelector('[data-sitekey]'); return e?e.getAttribute('data-sitekey'):null; }"
         ) or ZOOPLA_RECAPTCHA_SITEKEY
@@ -223,6 +228,7 @@ class ZooplaEnquiryFiller:
             return False
         return any(s in t for s in (
             "your enquiry has been sent", "enquiry sent", "message has been sent",
+            "your email has been sent", "email has been sent",   # Zoopla rent confirm
             "thanks for your enquiry", "we've sent your", "successfully sent",
             # Zoopla's actual post-submit confirmations:
             "should contact you in the next", "will contact you in the next",
