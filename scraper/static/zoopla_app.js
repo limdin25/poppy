@@ -46,7 +46,7 @@ async function review(pid, status) {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ property_id: pid, status }),
   });
-  await Promise.all([loadListings(), refreshCounts()]);
+  await Promise.all([loadListings(), loadPotential(), refreshCounts()]);
 }
 
 async function aiScore(pid) {
@@ -63,6 +63,72 @@ async function aiScore(pid) {
       + `<span class="text-slate-500" title="${(r.conversion_idea || '').replace(/"/g, "'")}">${r.can_add_bedroom ? "can add bedroom" : "no easy add"}</span>`;
   } catch (e) { el.textContent = " · score failed"; }
 }
+
+// ── Potential listings: valuation verdict + Enquire ──────────────
+const VERDICT_LABEL = {
+  great_deal: ["bg-emerald-100 text-emerald-700", "Great deal"],
+  great_deal_suspicious: ["bg-amber-100 text-amber-700", "Cheap — verify"],
+  fair: ["bg-blue-100 text-blue-700", "Fair"],
+  overpriced: ["bg-rose-100 text-rose-700", "Overpriced"],
+  insufficient_data: ["bg-slate-100 text-slate-400", "No evidence"],
+};
+
+async function loadPotential() {
+  const [props, vals, enquired] = await Promise.all([
+    fetch("/api/zoopla/comps/properties").then(r => r.json()),
+    fetch("/api/zoopla/valuation/batch").then(r => r.json()).catch(() => ({})),
+    fetch("/api/zoopla/enquired").then(r => r.json()).catch(() => ({})),
+  ]);
+  $("pot-count").textContent = props.length;
+  const box = $("potential");
+  box.innerHTML = "";
+  $("pot-empty").classList.toggle("hidden", props.length > 0);
+  for (const p of props) {
+    const v = vals[p.property_id] || {};
+    const vl = v.verdict && VERDICT_LABEL[v.verdict];
+    const badge = vl ? `<span class="text-xs px-1.5 py-0.5 rounded font-medium ${vl[0]}">${vl[1]}</span>`
+      : `<span class="text-xs text-slate-400">${(p.comps || []).length ? "comps ready" : "no comps yet"}</span>`;
+    const sent = enquired[p.property_id];
+    const div = document.createElement("div");
+    div.className = "p-3 flex items-center justify-between gap-3";
+    div.innerHTML = `
+      <div class="min-w-0">
+        <div class="font-bold text-slate-800 text-sm">${p.price || ""}
+          <span class="text-xs font-normal text-slate-400">· ${p.bedrooms ?? "?"} bed · ${p.property_type || "—"}</span> ${badge}</div>
+        <div class="text-xs text-slate-500 truncate">${p.address || ""}</div>
+        <a href="${p.listing_url}" target="_blank" class="text-xs text-purple-600 underline">View on Zoopla</a>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        ${sent
+          ? `<span class="text-xs text-emerald-700 font-semibold">✉️ Enquired ✓</span>`
+          : `<button data-id="${p.property_id}" class="enq-btn bg-sky-600 hover:bg-sky-700 text-white rounded px-3 py-1 text-xs font-semibold">✉️ Enquire</button>`}
+        <button data-id="${p.property_id}" class="unpot-btn bg-slate-200 hover:bg-slate-300 rounded px-2 py-1 text-xs">↩︎</button>
+      </div>`;
+    box.appendChild(div);
+  }
+  box.querySelectorAll(".enq-btn").forEach(b => b.onclick = () => enquire(b.dataset.id, b));
+  box.querySelectorAll(".unpot-btn").forEach(b => b.onclick = () => review(b.dataset.id, "pending"));
+}
+
+async function enquire(pid, btn) {
+  if (!confirm("Send a real Zoopla enquiry to this agent? (cash-buyer, asks them to call us back)")) return;
+  btn.disabled = true; btn.textContent = "Enquiring…";
+  try {
+    const r = await (await fetch("/api/zoopla/enquire", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ property_id: pid, dry_run: false }),
+    })).json();
+    if (r.ok) { btn.textContent = "✉️ Enquired ✓"; loadPotential(); }
+    else { btn.disabled = false; btn.textContent = "✉️ Enquire"; alert("Enquiry failed: " + (r.error || "")); }
+  } catch (e) { btn.disabled = false; btn.textContent = "✉️ Enquire"; alert("Enquiry failed: " + e); }
+}
+
+$("btn-comps").onclick = async () => {
+  const r = await (await fetch("/api/zoopla/comps/fetch", { method: "POST" })).json();
+  if (!r.ok) { alert(r.error || "no potential listings"); return; }
+  if (!logOpen) toggleLog();
+  addLog(`Fetching comps for ${r.count} potential listings…`, "info");
+};
 
 // ── Scrape control ───────────────────────────────────────────────
 $("btn-start").onclick = async () => {
@@ -104,7 +170,9 @@ es.onmessage = (e) => {
   if (d.type === "zoopla_metrics" || d.type === "zoopla_fp_metrics") { refreshCounts(); }
   if (d.type === "zoopla_done") { addLog("--- scrape complete ---", "info"); $("btn-stop").classList.add("hidden"); loadListings(); refreshCounts(); }
   if (d.type === "zoopla_fp_done") { addLog("--- floor plans complete ---", "info"); loadListings(); }
+  if (d.type === "comp_done") { addLog("--- comps complete ---", "info"); loadPotential(); }
 };
 
 refreshCounts();
 loadListings();
+loadPotential();

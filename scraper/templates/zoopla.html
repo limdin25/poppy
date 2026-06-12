@@ -66,6 +66,16 @@
     <div id="listings" class="divide-y divide-slate-100"></div>
     <div id="empty" class="p-8 text-center text-slate-400 text-sm hidden">No listings yet — run a scrape above.</div>
   </div>
+
+  <!-- POTENTIAL → value + enquire -->
+  <div class="bg-white rounded-lg shadow">
+    <div class="flex items-center justify-between p-3 border-b">
+      <h2 class="font-bold text-emerald-700">Potential — value &amp; enquire (<span id="pot-count">0</span>)</h2>
+      <button id="btn-comps" class="bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1 text-xs font-semibold" title="Fetch sold/rental comps for all potential listings">Fetch comps</button>
+    </div>
+    <div id="potential" class="divide-y divide-slate-100"></div>
+    <div id="pot-empty" class="p-6 text-center text-slate-400 text-sm hidden">Mark listings as Potential above to value &amp; enquire.</div>
+  </div>
 </div>
 
 <script src="/static/zoopla_app.js"></script>
