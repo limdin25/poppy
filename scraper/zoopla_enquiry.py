@@ -51,15 +51,33 @@ class ZooplaEnquiryFiller:
         self.emit({"type": "log", "level": level, "msg": msg,
                    "ts": datetime.datetime.now().strftime("%H:%M:%S")})
 
+    # Errors worth retrying with a brand-new session (new IP/profile).
+    _RETRYABLE = ("Cloudflare did not clear", "timeout", "ERR_TUNNEL", "ERR_PROXY",
+                  "net::", "enquiry form not found")
+
     async def enquire(self, property_row):
         pid = str(property_row.get("property_id") or "")
         url = property_row.get("listing_url") or f"https://www.zoopla.co.uk/for-sale/details/{pid}/"
         message = build_enquiry_message(property_row, self.contact, kind=self.kind)
         # Every enquiry = a brand-new session: clean throwaway profile + a fresh
-        # rotating residential IP. Reusing a session is what gets flagged.
-        async with FreshSession(base_proxy=self.proxy, headless=False) as ctx:
-            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-            return await self._fill(page, pid, url, message)
+        # rotating residential IP. If Cloudflare won't clear (bad exit node) or
+        # the proxy tunnel fails, retry the WHOLE thing on a fresh session/IP.
+        last = None
+        for attempt in range(3):
+            try:
+                async with FreshSession(base_proxy=self.proxy, headless=False) as ctx:
+                    page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+                    res = await self._fill(page, pid, url, message)
+            except Exception as e:
+                res = ZooplaEnquiryResult(pid, False, self.dry_run, error=str(e))
+            last = res
+            if res.ok or res.dry_run:
+                return res
+            if not any(s in (res.error or "") for s in self._RETRYABLE):
+                return res  # a real, non-transient failure — don't retry
+            self._log(f"{pid}: {res.error} — fresh session retry {attempt+1}/3", "warn")
+            await asyncio.sleep(2)
+        return last
 
     async def _fill(self, page, pid, url, message):
         try:
@@ -101,9 +119,20 @@ class ZooplaEnquiryFiller:
                 return ZooplaEnquiryResult(pid, True, True, message=message, screenshot=shot)
 
             await self._solve_recaptcha(page, url)
+            # The consent banner can pop late and sit over the Send button — clear
+            # it right before clicking, and once more if the first submit didn't land.
+            await dismiss_consent(page)
             await self._submit(page)
             await asyncio.sleep(3)
             confirmed = await self._confirm(page)
+            if not confirmed:
+                await dismiss_consent(page)
+                try:
+                    await self._submit(page)
+                    await asyncio.sleep(3)
+                    confirmed = await self._confirm(page)
+                except Exception:
+                    pass
             shot2 = await self._screenshot(page, "ZP_" + pid + "_after")
             return ZooplaEnquiryResult(pid, confirmed, False, message=message, screenshot=shot2,
                                        error=None if confirmed else "no confirmation detected")
