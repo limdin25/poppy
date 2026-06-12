@@ -168,24 +168,24 @@ def fresh_proxy(base_proxy):
     return p
 
 
-async def dismiss_consent(page):
-    """Best-effort cookie/consent dismissal — handles Zoopla's intermittent CMP.
+CONSENT_SELECTORS = [
+    "#onetrust-accept-btn-handler",
+    "button:has-text('Accept all cookies')", "button:has-text('Accept all')",
+    "button:has-text('Accept All')", "button:has-text('Accept')",
+    "button:has-text('I Accept')", "button:has-text('Yes, I agree')",
+    "button:has-text('Agree')", "button:has-text('Got it')",
+    "button:has-text(\"I'm OK with\")", "button:has-text('Continue')",
+    "[data-testid='accept-cookies']", "[data-testid*='accept' i]",
+    "[aria-label*='Accept' i]",
+]
 
-    Fresh profiles have no stored consent so the banner pops every time and can
-    block clicks. Tries the main frame, CMP iframes, then a JS-set consent cookie.
-    """
-    selectors = [
-        "#onetrust-accept-btn-handler",
-        "button:has-text('Accept all cookies')", "button:has-text('Accept all')",
-        "button:has-text('Accept All')", "button:has-text('I Accept')",
-        "button:has-text('Yes, I agree')", "button:has-text('Agree')",
-        "button:has-text('Got it')", "[data-testid='accept-cookies']",
-    ]
-    for sel in selectors:
+
+async def _try_consent_once(page):
+    for sel in CONSENT_SELECTORS:
         try:
             loc = page.locator(sel).first
-            if await loc.count():
-                await loc.click(timeout=3000)
+            if await loc.count() and await loc.is_visible():
+                await loc.click(timeout=2500)
                 await asyncio.sleep(0.4)
                 return True
         except Exception:
@@ -197,11 +197,24 @@ async def dismiss_consent(page):
             try:
                 loc = frame.locator(sel).first
                 if await loc.count():
-                    await loc.click(timeout=2500)
+                    await loc.click(timeout=2000)
                     await asyncio.sleep(0.4)
                     return True
             except Exception:
                 continue
+    return False
+
+
+async def dismiss_consent(page, tries=4):
+    """Poll for the (intermittent, late-loading) consent banner and dismiss it.
+
+    Fresh profiles have no stored consent so the banner pops every time and can
+    block clicks. We retry over a few seconds since it loads asynchronously.
+    """
+    for _ in range(tries):
+        if await _try_consent_once(page):
+            return True
+        await asyncio.sleep(1)
     return False
 
 

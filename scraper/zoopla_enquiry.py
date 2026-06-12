@@ -73,27 +73,21 @@ class ZooplaEnquiryFiller:
                                            error="Cloudflare did not clear", screenshot=shot)
             await dismiss_consent(page)
             await asyncio.sleep(0.5)
-            # open the "Email agent" form (only present on email-enabled listings)
-            opened = False
-            for sel in ["button:has-text('Email agent')", "a:has-text('Email agent')",
-                        "button:has-text('Email')", "a:has-text('Request details')"]:
-                try:
-                    b = page.locator(sel).first
-                    if await b.count():
-                        await b.first.scroll_into_view_if_needed(timeout=3000)
-                        await b.first.click(timeout=6000)
-                        opened = True
-                        break
-                except Exception:
-                    continue
+            # open the "Email agent" form (only present on email-enabled listings).
+            # Retry, re-dismissing consent in case the banner re-blocks the click.
+            opened = await self._open_email_form(page)
+            if not opened:
+                await dismiss_consent(page)
+                opened = await self._open_email_form(page)
             if not opened:
                 shot = await self._screenshot(page, "ZP_" + pid + "_noemailbtn")
                 return ZooplaEnquiryResult(pid, False, self.dry_run,
                                            error="no Email-agent option on this listing", screenshot=shot)
+            # form fields may take a moment; consent can pop late and block them
             try:
-                await page.wait_for_selector("#name, input[name='name']", timeout=10000)
+                await page.wait_for_selector("#name, input[name='name']", timeout=12000)
             except PWTimeout:
-                pass
+                await dismiss_consent(page)
 
             filled = await self._fill_fields(page, message)
             if not filled:
@@ -118,6 +112,19 @@ class ZooplaEnquiryFiller:
             return ZooplaEnquiryResult(pid, False, self.dry_run, error=f"captcha: {e}")
         except Exception as e:  # pragma: no cover
             return ZooplaEnquiryResult(pid, False, self.dry_run, error=str(e))
+
+    async def _open_email_form(self, page):
+        for sel in ["button:has-text('Email agent')", "a:has-text('Email agent')",
+                    "button:has-text('Email')", "a:has-text('Request details')"]:
+            try:
+                b = page.locator(sel).first
+                if await b.count():
+                    await b.first.scroll_into_view_if_needed(timeout=3000)
+                    await b.first.click(timeout=6000)
+                    return True
+            except Exception:
+                continue
+        return False
 
     async def _dismiss_cookies(self, page):
         try:
@@ -213,9 +220,13 @@ class ZooplaEnquiryFiller:
             t = (await page.evaluate("() => document.body.innerText") or "").lower()
         except Exception:
             return False
-        return any(s in t for s in ("your enquiry has been sent", "enquiry sent",
-                                    "message has been sent", "thanks for your enquiry",
-                                    "we've sent your", "successfully sent"))
+        return any(s in t for s in (
+            "your enquiry has been sent", "enquiry sent", "message has been sent",
+            "thanks for your enquiry", "we've sent your", "successfully sent",
+            # Zoopla's actual post-submit confirmations:
+            "should contact you in the next", "will contact you in the next",
+            "show you're a serious buyer", "show you are a serious buyer",
+            "what happens next", "your details have been sent"))
 
     async def _screenshot(self, page, name):
         try:
