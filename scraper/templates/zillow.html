@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zillow — US Realtor Lead-Gen</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, sans-serif; }
+  .log-line { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 11px; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<!-- NAV with the Rightmove/Zoopla/Zillow source toggle -->
+<header class="h-14 bg-slate-900 text-white flex items-center px-4 justify-between">
+  <div class="flex items-center gap-2">
+    <a href="/" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Google Maps</a>
+    <a href="/rightmove" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Rightmove</a>
+    <a href="/floorplans" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Floor Plans</a>
+    <a href="/comps" class="px-3 py-1 rounded text-sm bg-slate-700 hover:bg-slate-600">Price Comparison</a>
+    <!-- Source toggle -->
+    <span class="ml-3 inline-flex rounded-lg overflow-hidden border border-slate-600 text-sm">
+      <a href="/rightmove" class="px-3 py-1 bg-slate-700 hover:bg-slate-600">🇬🇧 Rightmove</a>
+      <a href="/zoopla" class="px-3 py-1 bg-slate-700 hover:bg-slate-600">🇬🇧 Zoopla</a>
+      <a href="/zillow" class="px-3 py-1 bg-blue-600 font-semibold">🇺🇸 Zillow</a>
+    </span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <span class="bg-slate-700 px-2 py-1 rounded"><span id="c-total">0</span> listings</span>
+    <span class="bg-slate-700 px-2 py-1 rounded"><span id="c-agents">0</span> agents</span>
+    <span class="bg-emerald-600 px-2 py-1 rounded"><span id="c-tomsg">0</span> to enquire</span>
+    <span class="bg-rose-600 px-2 py-1 rounded"><span id="c-bl">0</span> done</span>
+  </div>
+</header>
+
+<div class="max-w-6xl mx-auto p-4 space-y-4">
+
+  <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900">
+    <strong>How this channel works:</strong> scrape Zillow listings → keep one cheapest listing per realtor →
+    send a buyer enquiry (their phone gets our US line <strong>+1&nbsp;272&nbsp;347&nbsp;1167</strong>) → the realtor calls back →
+    Elsie reveals she's AI in the first 20 seconds and pitches the AI receptionist. Each enquiry is its own fresh US session (beats PerimeterX).
+  </div>
+
+  <!-- SCRAPE control -->
+  <div class="bg-white rounded-lg shadow p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-blue-700">Scrape Zillow by location</h2>
+      <div class="flex gap-2">
+        <button id="btn-start" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-sm font-semibold">Start</button>
+        <button id="btn-stop" class="bg-rose-600 hover:bg-rose-700 text-white rounded px-3 py-1 text-sm font-semibold hidden">Stop</button>
+        <button id="btn-log" class="bg-slate-200 rounded px-3 py-1 text-sm">Log</button>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">Paste one or more Zillow search URLs (one per line). E.g. <code>https://www.zillow.com/austin-tx/houses/</code></p>
+    <textarea id="urls" rows="3" class="w-full border border-slate-300 rounded p-2 text-sm font-mono" placeholder="https://www.zillow.com/austin-tx/houses/"></textarea>
+    <div class="flex gap-3 mt-2 text-xs text-slate-600">
+      <label>Max pages <input id="max-pages" type="number" value="5" class="w-16 border rounded p-1"></label>
+      <label class="flex items-center gap-1"><input id="fetch-agents" type="checkbox" checked> Fetch agent + phone from detail pages</label>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div id="log-box" class="bg-slate-900 text-slate-200 rounded-lg p-3 hidden" style="height:160px; overflow-y:auto;">
+    <div id="log"></div>
+  </div>
+
+  <!-- AGENTS to enquire -->
+  <div class="bg-white rounded-lg shadow">
+    <div class="flex items-center justify-between p-3 border-b">
+      <h2 class="font-bold text-slate-700">New realtors — one cheapest listing each (<span id="agent-count">0</span>)</h2>
+      <div class="flex gap-2">
+        <button id="btn-msgall" class="bg-emerald-600 hover:bg-emerald-700 text-white rounded px-3 py-1 text-xs font-semibold">📨 Enquire all new realtors</button>
+        <button id="btn-msgall-stop" class="bg-rose-600 hover:bg-rose-700 text-white rounded px-3 py-1 text-xs font-semibold hidden">Stop</button>
+      </div>
+    </div>
+    <div id="agents" class="divide-y divide-slate-100"></div>
+    <div id="empty" class="p-8 text-center text-slate-400 text-sm hidden">No realtors yet — run a scrape above.</div>
+  </div>
+
+  <!-- BLACKLIST (already enquired) -->
+  <div class="bg-white rounded-lg shadow">
+    <div class="p-3 border-b"><h2 class="font-bold text-rose-700">Already enquired (<span id="bl-count">0</span>)</h2></div>
+    <div id="blacklist" class="divide-y divide-slate-100"></div>
+    <div id="bl-empty" class="p-6 text-center text-slate-400 text-sm hidden">No realtors enquired yet.</div>
+  </div>
+</div>
+
+<script src="/static/zillow_app.js"></script>
+</body>
+</html>

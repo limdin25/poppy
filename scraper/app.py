@@ -15,6 +15,8 @@ from rightmove_enquiry import EnquiryFiller
 from enquiry_config import load_enquiry_config
 import zoopla_storage
 from zoopla_scraper import ZooplaScraper, ZooplaFloorplanFetcher
+from zillow import storage as zillow_storage
+from zillow.scraper import ZillowScraper
 
 # BRRRR pipeline promotion (Hugo's new workflow, 2026-05-27):
 # When a property is marked 'potential' on /floorplans, the scraper calls
@@ -1369,10 +1371,179 @@ def zoopla_floorplan_score():
     return jsonify({"ok": "error" not in result, **result})
 
 
+# ───────────────── Zillow (US realtor lead-gen) ─────────────────
+# Mirrors the Zoopla rent flow: scrape -> one cheapest listing per agent ->
+# buyer enquiry (Contact modal, no captcha) -> agent calls back -> Elsie
+# reveals (in 20s) + pitches the AI receptionist -> blacklist the agent.
+# patchright + US residential IP beats PerimeterX. Phone in the enquiry is the
+# US pitch line so callbacks land on Elsie.
+ZILLOW_JOB = {"stop": threading.Event(), "pause": threading.Event(), "running": False}
+ZILLOW_MSG_JOB = {"running": False, "stop": False}
+
+
+def _zillow_cfg():
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "data", "zillow.json")) as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+@app.route("/zillow")
+def zillow_index():
+    return render_template("zillow.html")
+
+
+@app.route("/api/zillow/start", methods=["POST"])
+def zillow_start():
+    if ZILLOW_JOB["running"]:
+        return jsonify({"ok": False, "error": "already running"}), 400
+    d = request.get_json(force=True) or {}
+    urls = [u.strip() for u in (d.get("urls") or "").splitlines() if u.strip()]
+    if not urls:
+        return jsonify({"ok": False, "error": "no search URLs"}), 400
+    scraper = ZillowScraper(emit, ZILLOW_JOB["stop"], ZILLOW_JOB["pause"],
+                            max_pages=int(d.get("max_pages") or 20),
+                            delay_min=float(d.get("delay_min") or 3),
+                            delay_max=float(d.get("delay_max") or 6),
+                            proxy=_zillow_cfg().get("proxy"),
+                            fetch_agents=bool(d.get("fetch_agents", True)))
+    ZILLOW_JOB["stop"].clear(); ZILLOW_JOB["pause"].clear()
+
+    def _run():
+        ZILLOW_JOB["running"] = True
+        try:
+            asyncio.run(scraper.run(urls))
+        except Exception as e:
+            emit({"type": "log", "level": "error", "msg": f"ZILLOW FATAL: {e}"})
+            emit({"type": "zillow_done"})
+        finally:
+            ZILLOW_JOB["running"] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "count": len(urls)})
+
+
+@app.route("/api/zillow/stop", methods=["POST"])
+def zillow_stop():
+    ZILLOW_JOB["stop"].set(); ZILLOW_JOB["pause"].clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zillow/agents")
+def zillow_agents():
+    return jsonify(zillow_storage.agents_to_enquire())
+
+
+@app.route("/api/zillow/counts")
+def zillow_counts():
+    return jsonify(zillow_storage.counts())
+
+
+@app.route("/api/zillow/enquire", methods=["POST"])
+def zillow_enquire():
+    """Single buyer enquiry on one listing (the simple Contact modal)."""
+    if ZILLOW_MSG_JOB["running"]:
+        return jsonify({"ok": False, "error": "an enquiry is already in progress"}), 409
+    from zillow.enquiry import ZillowEnquiryFiller
+    d = request.get_json(force=True) or {}
+    zpid = d.get("zpid")
+    if not zpid:
+        return jsonify({"ok": False, "error": "zpid required"}), 400
+    listing = zillow_storage.get_listing(zpid)
+    if not listing:
+        return jsonify({"ok": False, "error": "listing not found"}), 404
+    cfg = _zillow_cfg()
+    dry_run = bool(d.get("dry_run", False))
+    filler = ZillowEnquiryFiller(cfg.get("contact", {}), emit=emit, dry_run=dry_run,
+                                 proxy=cfg.get("proxy"))
+    ZILLOW_MSG_JOB["running"] = True
+    try:
+        result = asyncio.run(filler.enquire(listing))
+    except Exception as e:
+        ZILLOW_MSG_JOB["running"] = False
+        return jsonify({"ok": False, "error": str(e)}), 500
+    ZILLOW_MSG_JOB["running"] = False
+    if result.ok and not dry_run and listing.get("agent_key"):
+        zillow_storage.blacklist_agent(listing["agent_key"], listing.get("agent_name", ""),
+                                       listing.get("agent_phone", ""), zpid,
+                                       listing.get("address", ""), confirmed=True)
+    return jsonify({"ok": result.ok, **result.to_dict()}), (200 if result.ok else 502)
+
+
+@app.route("/api/zillow/message-all", methods=["POST"])
+def zillow_message_all():
+    """Bulk: enquire on the cheapest listing for every NEW (non-blacklisted)
+    agent, blacklist each confirmed send. Each enquiry is its own fresh US
+    session."""
+    if ZILLOW_MSG_JOB["running"]:
+        return jsonify({"ok": False, "error": "already messaging"}), 409
+    from zillow.enquiry import ZillowEnquiryFiller
+    agents = zillow_storage.agents_to_enquire()
+    if not agents:
+        return jsonify({"ok": False, "error": "no new agents to enquire"}), 400
+    cfg = _zillow_cfg()
+    contact, proxy = cfg.get("contact", {}), cfg.get("proxy")
+    ZILLOW_MSG_JOB["stop"] = False
+
+    def _run():
+        ZILLOW_MSG_JOB["running"] = True
+        sent = 0
+        try:
+            for a in agents:
+                if ZILLOW_MSG_JOB.get("stop"):
+                    break
+                filler = ZillowEnquiryFiller(contact, emit=emit, dry_run=False, proxy=proxy)
+                try:
+                    res = asyncio.run(filler.enquire(a))
+                except Exception as e:
+                    emit({"type": "log", "level": "warn",
+                          "msg": f"{a.get('agent_name')}: {str(e)[:80]}"})
+                    continue
+                if res.ok:
+                    zillow_storage.blacklist_agent(a["agent_key"], a.get("agent_name", ""),
+                                                   a.get("agent_phone", ""), a["zpid"],
+                                                   a.get("address", ""), confirmed=True)
+                    sent += 1
+                    emit({"type": "log", "level": "info",
+                          "msg": f"✅ Enquired {a.get('agent_name')} — confirmed, blacklisted ({sent})"})
+                else:
+                    emit({"type": "log", "level": "warn",
+                          "msg": f"{a.get('agent_name')}: {res.error or 'failed'}"})
+        finally:
+            ZILLOW_MSG_JOB["running"] = False
+            emit({"type": "zillow_msg_done", "sent": sent})
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "count": len(agents)})
+
+
+@app.route("/api/zillow/message-all/stop", methods=["POST"])
+def zillow_message_all_stop():
+    ZILLOW_MSG_JOB["stop"] = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/zillow/blacklist")
+def zillow_blacklist():
+    return jsonify(zillow_storage.get_blacklist())
+
+
+@app.route("/api/zillow/blacklist/remove", methods=["POST"])
+def zillow_blacklist_remove():
+    d = request.get_json(force=True) or {}
+    ak = d.get("agent_key")
+    if not ak:
+        return jsonify({"ok": False, "error": "agent_key required"}), 400
+    zillow_storage.unblacklist_agent(ak)
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     storage.init_db()
     facebook_storage.init_db()
     rightmove_storage.init_db()
+    zillow_storage.init_db()
     app.run(host="127.0.0.1", port=5001, debug=False, threaded=True)
 
 
