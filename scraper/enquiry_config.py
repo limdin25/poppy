@@ -55,11 +55,10 @@ DEFAULT_PITCHES = {
              "and can move quickly. I have a couple of quick questions before we "
              "put an offer forward — would you be able to give me a call on "
              "{phone}? Ask for Elsie. Happy to discuss whenever suits. Thanks!"),
-    "rent": ("Hi, I'm interested in {address} as a long-term let. We're a "
-             "property management company looking for good homes to rent on a "
-             "3–5 year basis — guaranteed rent every month, fully managed, no "
-             "voids or hassle for the landlord. Could you give me a quick call "
-             "to discuss? Ask for Elsie on {phone}."),
+    # Short — just register interest and ask them to call. The actual pitch
+    # (company let, guaranteed rent) happens on the phone, not in writing.
+    "rent": ("Hi, I'm interested in {address}. Could you give me a quick call "
+             "on {phone} when you get a chance? Ask for Elsie. Thanks!"),
 }
 
 
