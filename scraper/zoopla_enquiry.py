@@ -15,7 +15,7 @@ from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
 from captcha_solver import TwoCaptchaSolver, CaptchaError
 from enquiry_config import build_enquiry_message
-from zoopla_scraper import is_cloudflare
+from zoopla_scraper import is_cloudflare, FreshSession, dismiss_consent
 
 # reCAPTCHA v2 on Zoopla's enquiry form (confirmed live).
 ZOOPLA_RECAPTCHA_SITEKEY = "6Lc96NEaAAAAAFMMHlwojpLUzh-wqU8fE1wuIvhq"
@@ -54,17 +54,11 @@ class ZooplaEnquiryFiller:
         pid = str(property_row.get("property_id") or "")
         url = property_row.get("listing_url") or f"https://www.zoopla.co.uk/for-sale/details/{pid}/"
         message = build_enquiry_message(property_row, self.contact)
-        async with async_playwright() as pw:
-            launch_kw = dict(channel="chrome", headless=False, no_viewport=True,
-                             args=["--disable-blink-features=AutomationControlled"])
-            if self.proxy:
-                launch_kw["proxy"] = self.proxy
-            ctx = await pw.chromium.launch_persistent_context(self.user_data_dir, **launch_kw)
+        # Every enquiry = a brand-new session: clean throwaway profile + a fresh
+        # rotating residential IP. Reusing a session is what gets flagged.
+        async with FreshSession(base_proxy=self.proxy, headless=False) as ctx:
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-            try:
-                return await self._fill(page, pid, url, message)
-            finally:
-                await ctx.close()
+            return await self._fill(page, pid, url, message)
 
     async def _fill(self, page, pid, url, message):
         try:
@@ -77,14 +71,25 @@ class ZooplaEnquiryFiller:
                 shot = await self._screenshot(page, "ZP_" + pid + "_cloudflare")
                 return ZooplaEnquiryResult(pid, False, self.dry_run,
                                            error="Cloudflare did not clear", screenshot=shot)
-            await self._dismiss_cookies(page)
-            # open the "Email agent" form, then wait for the fields to render
-            try:
-                b = page.locator("button:has-text('Email agent'), a:has-text('Email agent')").first
-                if await b.count():
-                    await b.first.click(timeout=6000)
-            except Exception:
-                pass
+            await dismiss_consent(page)
+            await asyncio.sleep(0.5)
+            # open the "Email agent" form (only present on email-enabled listings)
+            opened = False
+            for sel in ["button:has-text('Email agent')", "a:has-text('Email agent')",
+                        "button:has-text('Email')", "a:has-text('Request details')"]:
+                try:
+                    b = page.locator(sel).first
+                    if await b.count():
+                        await b.first.scroll_into_view_if_needed(timeout=3000)
+                        await b.first.click(timeout=6000)
+                        opened = True
+                        break
+                except Exception:
+                    continue
+            if not opened:
+                shot = await self._screenshot(page, "ZP_" + pid + "_noemailbtn")
+                return ZooplaEnquiryResult(pid, False, self.dry_run,
+                                           error="no Email-agent option on this listing", screenshot=shot)
             try:
                 await page.wait_for_selector("#name, input[name='name']", timeout=10000)
             except PWTimeout:

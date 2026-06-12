@@ -11,9 +11,12 @@ Key differences from Rightmove (established by live recon 2026-06-11):
 The comps/valuation/enquire layers are portal-agnostic and reused as-is.
 """
 import re
+import uuid
+import shutil
 import asyncio
 import random
 import datetime
+import tempfile
 
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
@@ -148,6 +151,96 @@ def is_cloudflare(title):
     return "just a moment" in (title or "").lower() or "moment..." in (title or "").lower()
 
 
+def fresh_proxy(base_proxy):
+    """Return a copy of the iProyal proxy dict with a fresh sticky-session token.
+
+    iProyal rotates the exit IP per session token, so a new random token per
+    call = a fresh clean residential IP. Crucial: reusing one session across
+    many requests is what gets Cloudflare-flagged.
+    """
+    if not base_proxy:
+        return None
+    p = dict(base_proxy)
+    pw = p.get("password", "")
+    # strip any prior _session- token, append a new one
+    pw = re.sub(r"_session-[^_]+", "", pw)
+    p["password"] = f"{pw}_session-{uuid.uuid4().hex[:12]}"
+    return p
+
+
+async def dismiss_consent(page):
+    """Best-effort cookie/consent dismissal — handles Zoopla's intermittent CMP.
+
+    Fresh profiles have no stored consent so the banner pops every time and can
+    block clicks. Tries the main frame, CMP iframes, then a JS-set consent cookie.
+    """
+    selectors = [
+        "#onetrust-accept-btn-handler",
+        "button:has-text('Accept all cookies')", "button:has-text('Accept all')",
+        "button:has-text('Accept All')", "button:has-text('I Accept')",
+        "button:has-text('Yes, I agree')", "button:has-text('Agree')",
+        "button:has-text('Got it')", "[data-testid='accept-cookies']",
+    ]
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            if await loc.count():
+                await loc.click(timeout=3000)
+                await asyncio.sleep(0.4)
+                return True
+        except Exception:
+            continue
+    # CMP iframes (Sourcepoint/Quantcast etc.)
+    for frame in page.frames:
+        for sel in ["button[title*='Accept' i]", "button:has-text('Accept')",
+                    "button:has-text('Agree')"]:
+            try:
+                loc = frame.locator(sel).first
+                if await loc.count():
+                    await loc.click(timeout=2500)
+                    await asyncio.sleep(0.4)
+                    return True
+            except Exception:
+                continue
+    return False
+
+
+class FreshSession:
+    """A throwaway browser profile + fresh proxy IP for ONE form/scrape run.
+
+    Every Cloudflare-gated action should use its own clean session: a temp
+    user-data-dir (no accumulated cookies/fingerprint) and a fresh rotating
+    residential IP. The temp dir is deleted on close.
+    """
+    def __init__(self, base_proxy=None, headless=False):
+        self.base_proxy = base_proxy
+        self.headless = headless
+        self._dir = None
+        self._pw = None
+        self.ctx = None
+
+    async def __aenter__(self):
+        self._dir = tempfile.mkdtemp(prefix="zoopla_sess_")
+        self._pw = await async_playwright().start()
+        kw = dict(channel="chrome", headless=self.headless, no_viewport=True,
+                  args=["--disable-blink-features=AutomationControlled"])
+        proxy = fresh_proxy(self.base_proxy)
+        if proxy:
+            kw["proxy"] = proxy
+        self.ctx = await self._pw.chromium.launch_persistent_context(self._dir, **kw)
+        return self.ctx
+
+    async def __aexit__(self, *exc):
+        try:
+            if self.ctx:
+                await self.ctx.close()
+        finally:
+            if self._pw:
+                await self._pw.stop()
+            if self._dir:
+                shutil.rmtree(self._dir, ignore_errors=True)
+
+
 class ZooplaScraper:
     """Headed real-Chrome scraper: search URLs -> Zoopla listings -> storage."""
 
@@ -199,35 +292,26 @@ class ZooplaScraper:
         session_id = zoopla_storage.create_session(search_urls)
         self.metrics["urls_total"] = len(search_urls)
         self._push()
-        async with async_playwright() as pw:
-            launch_kw = dict(
-                channel="chrome", headless=False, no_viewport=True,
-                args=["--disable-blink-features=AutomationControlled"])
-            if self.proxy:
-                launch_kw["proxy"] = self.proxy
-            ctx = await pw.chromium.launch_persistent_context(self.user_data_dir, **launch_kw)
+        async with FreshSession(base_proxy=self.proxy, headless=False) as ctx:
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
             if stealth_async:
                 try:
                     await stealth_async(page)
                 except Exception:
                     pass
-            try:
-                for i, search_url in enumerate(search_urls):
-                    if self.stop.is_set():
-                        break
-                    search_url = (search_url or "").strip()
-                    if not search_url:
-                        continue
-                    self.metrics["current_url"] = search_url
-                    count = await self._scrape_search(page, search_url, session_id)
-                    self.metrics["urls_done"] = i + 1
-                    self._push()
-                    self._log(f"Done {i+1}/{len(search_urls)}: {count} new listings")
-                    if i < len(search_urls) - 1:
-                        await self._sleep()
-            finally:
-                await ctx.close()
+            for i, search_url in enumerate(search_urls):
+                if self.stop.is_set():
+                    break
+                search_url = (search_url or "").strip()
+                if not search_url:
+                    continue
+                self.metrics["current_url"] = search_url
+                count = await self._scrape_search(page, search_url, session_id)
+                self.metrics["urls_done"] = i + 1
+                self._push()
+                self._log(f"Done {i+1}/{len(search_urls)}: {count} new listings")
+                if i < len(search_urls) - 1:
+                    await self._sleep()
         zoopla_storage.finish_session(session_id)
         self.emit({"type": "zoopla_done"})
 
@@ -339,47 +423,39 @@ class ZooplaFloorplanFetcher:
     async def run(self, properties):
         self.metrics["total"] = len(properties)
         self._push()
-        async with async_playwright() as pw:
-            launch_kw = dict(channel="chrome", headless=False, no_viewport=True,
-                             args=["--disable-blink-features=AutomationControlled"])
-            if self.proxy:
-                launch_kw["proxy"] = self.proxy
-            ctx = await pw.chromium.launch_persistent_context(self.user_data_dir, **launch_kw)
+        async with FreshSession(base_proxy=self.proxy, headless=False) as ctx:
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-            try:
-                for i, prop in enumerate(properties):
-                    if self.stop.is_set():
-                        break
-                    while self.pause.is_set() and not self.stop.is_set():
-                        await asyncio.sleep(0.3)
-                    pid = prop["property_id"]
-                    url = prop.get("listing_url") or f"https://www.zoopla.co.uk/for-sale/details/{pid}/"
-                    self.metrics["current"] = f"{pid} ({i+1}/{len(properties)})"
-                    self._push()
-                    try:
-                        await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            for i, prop in enumerate(properties):
+                if self.stop.is_set():
+                    break
+                while self.pause.is_set() and not self.stop.is_set():
+                    await asyncio.sleep(0.3)
+                pid = prop["property_id"]
+                url = prop.get("listing_url") or f"https://www.zoopla.co.uk/for-sale/details/{pid}/"
+                self.metrics["current"] = f"{pid} ({i+1}/{len(properties)})"
+                self._push()
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                    await asyncio.sleep(2)
+                    for _ in range(8):
+                        if not is_cloudflare(await page.title()):
+                            break
                         await asyncio.sleep(2)
-                        for _ in range(8):
-                            if not is_cloudflare(await page.title()):
-                                break
-                            await asyncio.sleep(2)
-                        details = await page.evaluate(DETAIL_JS)
-                        # normalise the type to our canonical labels
-                        details["property_type"] = normalise_type(details.get("property_type"))
-                        zoopla_storage.update_listing_details(pid, details)
-                        fps = details.get("floorplans") or []
-                        for idx, fp in enumerate(fps):
-                            zoopla_storage.insert_floorplan(pid, fp, idx + 1)
-                        if fps:
-                            self.metrics["with_floorplans"] += 1
-                        self._log(f"{pid}: {details.get('property_type') or '?'}, "
-                                  f"{len(fps)} floor plan(s)")
-                    except Exception as e:
-                        self._log(f"{pid}: {str(e)[:80]}", "warn")
-                    self.metrics["done"] = i + 1
-                    self._push()
-                    if i < len(properties) - 1:
-                        await self._sleep()
-            finally:
-                await ctx.close()
+                    details = await page.evaluate(DETAIL_JS)
+                    # normalise the type to our canonical labels
+                    details["property_type"] = normalise_type(details.get("property_type"))
+                    zoopla_storage.update_listing_details(pid, details)
+                    fps = details.get("floorplans") or []
+                    for idx, fp in enumerate(fps):
+                        zoopla_storage.insert_floorplan(pid, fp, idx + 1)
+                    if fps:
+                        self.metrics["with_floorplans"] += 1
+                    self._log(f"{pid}: {details.get('property_type') or '?'}, "
+                              f"{len(fps)} floor plan(s)")
+                except Exception as e:
+                    self._log(f"{pid}: {str(e)[:80]}", "warn")
+                self.metrics["done"] = i + 1
+                self._push()
+                if i < len(properties) - 1:
+                    await self._sleep()
         self.emit({"type": "zoopla_fp_done"})
