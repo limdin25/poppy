@@ -513,7 +513,8 @@ def maybe_scrape(db: DB, sessions: Sessions, cfg, settings, accounts, state):
 
 def scrape_business(db: DB, sessions: Sessions, cfg, settings, business_id, accounts, offset=0):
     urls = db.source_urls(business_id)
-    biz_accounts = [a for a in accounts if a["business_id"] == business_id and a.get("status") not in ("disabled",)]
+    biz_accounts = [a for a in accounts if a["business_id"] == business_id
+                    and a.get("status") not in ("disabled", "needs_login", "pending_confirm")]
     if not urls or not biz_accounts:
         return
     db.log(business_id, "scrape", f"Scan: {len(urls)} search URLs across {len(biz_accounts)} accounts")
@@ -741,21 +742,31 @@ def process_account_requests(db: DB, sessions: Sessions, cfg, settings):
                    f"Create-now request done: {req.get('requested')} account(s) created", account_id=None)
 
 
-# Match a confirmation/verification link in the OpenRent email (text or html).
+# OpenRent's real confirmation link carries an ?auth=<token> param, e.g.
+#   https://www.openrent.co.uk/authentication/email?email=...&auth=<uuid>
+# Match THAT first — the marketing links in the same welcome email merely contain
+# the word "email" (utm_source=inlinedemail, utm_medium=email), so a loose keyword
+# match would grab a homepage tracking URL and never actually confirm the account.
 _CONFIRM_RE = re.compile(
+    r"https?://(?:www\.)?openrent\.co\.uk/[^\s\"'<>]*\bauth=[^\s\"'<>&]+",
+    re.IGNORECASE,
+)
+# Fallback for older-style links (path actually contains confirm/verify/activate).
+_CONFIRM_RE_FALLBACK = re.compile(
     r"https?://(?:www\.)?openrent\.co\.uk/[^\s\"'<>]*"
-    r"(?:confirm|verify|activate|email)[^\s\"'<>]*",
+    r"(?:confirm|verify|activate)[^\s\"'<>]*",
     re.IGNORECASE,
 )
 
 
 def _extract_confirm_url(*texts) -> str | None:
-    for t in texts:
-        if not t:
-            continue
-        m = _CONFIRM_RE.search(t)
-        if m:
-            return m.group(0).replace("&amp;", "&")
+    for rx in (_CONFIRM_RE, _CONFIRM_RE_FALLBACK):
+        for t in texts:
+            if not t:
+                continue
+            m = rx.search(t)
+            if m:
+                return m.group(0).replace("&amp;", "&")
     return None
 
 
@@ -767,7 +778,12 @@ def confirm_pending_accounts(db: DB, sessions: Sessions, cfg):
     for acc in db.pending_confirm_accounts():
         business_id = acc["business_id"]
         email = acc.get("email")
-        emails = db.received_emails_for(business_id, email, since_iso=acc.get("created_at"))
+        # Match by the account's unique persona address only — no date filter. The
+        # welcome email's timestamp can land a second or two BEFORE the account
+        # row's created_at (it's inserted before signup submits), and a >= filter
+        # then silently drops the confirmation email, leaving the account stuck
+        # unconfirmed. The address is unique per account, so this is safe.
+        emails = db.received_emails_for(business_id, email)
         # Prefer an OpenRent confirmation email with a link.
         confirm_url = None
         src_email = None
@@ -862,7 +878,7 @@ def run_rotation(db: DB, sessions: Sessions, cfg, settings, accounts):
         if not targets:
             continue
         elig = [a for a in accounts if a["business_id"] == business_id
-                and a.get("status") not in ("disabled", "error", "needs_login")
+                and a.get("status") not in ("disabled", "error", "needs_login", "pending_confirm")
                 and within_active(a, cfg)
                 and a.get("messages_sent_today", 0) < a.get("daily_message_limit", 0)
                 and due(a.get("next_run_at"))]
@@ -936,7 +952,9 @@ def run_rotation(db: DB, sessions: Sessions, cfg, settings, accounts):
 
 def poll_replies(db: DB, sessions: Sessions, cfg, accounts):
     for acc in accounts:
-        if acc.get("status") in ("disabled", "error", "needs_login"):
+        # Skip not-yet-confirmed accounts: logging them in here would fail and bump
+        # them out of the confirm queue before their email is confirmed.
+        if acc.get("status") in ("disabled", "error", "needs_login", "pending_confirm"):
             continue
         try:
             page = sessions.page_for(acc)
