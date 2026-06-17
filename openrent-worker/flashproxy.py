@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+import requests  # already a worker dependency (requirements.txt)
+
 STICKY_MAX_MINUTES = 1440  # FlashProxy caps a sticky IP at 24h.
 
 
@@ -59,3 +61,51 @@ def parse_proxy(proxy_str: Optional[str], sticky_id: Optional[str] = None,
     if password:
         proxy["password"] = password
     return proxy
+
+
+# ── proxy pool + health check ────────────────────────────────────────────────
+def pool(cfg: dict) -> list[str]:
+    """The ordered list of FlashProxy base credentials to rotate through. Falls
+    back to the single legacy `default_proxy` if no pool is configured."""
+    p = [s for s in (cfg.get("proxy_pool") or []) if s]
+    if not p and cfg.get("default_proxy"):
+        p = [cfg["default_proxy"]]
+    return p
+
+
+def requests_proxies(proxy_str: Optional[str], sticky_id: Optional[str] = None) -> Optional[dict]:
+    """A `requests`-style proxies dict for a stored proxy string, using the SAME
+    sticky session id the Playwright browser uses — so an IP check leaves through
+    the exact residential IP the account browses with."""
+    p = parse_proxy(proxy_str, sticky_id=sticky_id)
+    if not p:
+        return None
+    server = p["server"]  # http://host:port
+    if p.get("username"):
+        creds = p["username"] + (f":{p['password']}" if p.get("password") else "")
+        server = server.replace("://", f"://{creds}@", 1)
+    return {"http": server, "https": server}
+
+
+def check_ip(proxy_str: Optional[str], sticky_id: Optional[str] = None,
+             timeout: int = 20) -> tuple[bool, dict]:
+    """Hit ipinfo.io through the proxy and return (ok, {ip, city, country}).
+    ok=False means the proxy couldn't reach the internet (dead / out of credit /
+    blocked) — the caller's cue to fall back to the next pool credential."""
+    proxies = requests_proxies(proxy_str, sticky_id=sticky_id)
+    if not proxies:
+        return False, {}
+    try:
+        r = requests.get("https://ipinfo.io/json", proxies=proxies, timeout=timeout)
+        r.raise_for_status()
+        d = r.json() or {}
+        ip = (d.get("ip") or "").strip()
+        if not ip:
+            return False, {}
+        return True, {
+            "ip": ip,
+            "city": (d.get("city") or "").strip() or None,
+            "country": (d.get("country") or "").strip().upper() or None,
+        }
+    except Exception:  # noqa: BLE001 — any failure = proxy can't reach the internet
+        return False, {}

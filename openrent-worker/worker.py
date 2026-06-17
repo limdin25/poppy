@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 from playwright.sync_api import sync_playwright
 
+import alerts
 import browser_util
 import flashproxy
 import llm
@@ -55,6 +56,14 @@ MAX_LOGIN_ATTEMPTS = 3                        # failed attempts before we hand o
 LOGIN_BACKOFF_MIN = [10, 30]                  # minutes before retry #2, #3 (gentle, not rapid)
 LONG_RETRY_MIN = 360                          # slow-lane re-check (6h) — ONLY for connection blips
 MAX_RECOVER_PER_TICK = 2                      # cap proactive re-logins per tick (anti-burst)
+
+# ── proxy health + fallback ───────────────────────────────────────────────────
+# Confirm each account's egress IP through its proxy on this cadence so Hugo sees
+# live "proxy working" status, and we catch a dead proxy and fall back to the next
+# credential in the pool. The IP check is a tiny ipinfo.io JSON (a few hundred
+# bytes), so re-checking is cheap.
+PROXY_CHECK_EVERY_MIN = 10
+MAX_PROXY_CHECKS_PER_TICK = 4                 # spread checks across ticks (anti-burst)
 
 # Stop on the FIRST hit — retrying these can't help and often makes it worse:
 #   banned          = permanent; bad_credentials = wrong pw will just keep failing;
@@ -201,9 +210,22 @@ class Sessions:
         self.fail_counts: dict[str, int] = {}
         self.state_dir = os.path.join(HERE, "data", "sessions")
         os.makedirs(self.state_dir, exist_ok=True)
+        # Which credential in cfg's proxy_pool every account currently browses
+        # through. check_proxies advances this when the live credential dies; it's
+        # persisted in the DB so logins and the health check agree across restarts.
+        self.proxy_index = db.get_proxy_index()
 
     def _state(self, acc):
         return os.path.join(self.state_dir, f"{acc['id']}.json")
+
+    def _active_base(self) -> str | None:
+        """The pool credential every account currently uses (sticky session is
+        still keyed per account, so each keeps its own IP). All accounts share one
+        live credential so a single fallback moves the whole fleet at once."""
+        p = flashproxy.pool(self.cfg)
+        if not p:
+            return self.cfg.get("default_proxy")
+        return p[self.proxy_index % len(p)]
 
     def page_for(self, acc):
         if acc["id"] in self.ctx:
@@ -214,11 +236,11 @@ class Sessions:
         if not has_session and self._in_login_cooldown(acc):
             raise SessionUnavailable(f"{acc.get('label')}: login retry scheduled later")
 
-        # Use the account's own proxy if it has one, otherwise fall back to the
-        # shared default_proxy from config — so an account never browses without a
-        # proxy (a bare IP gets the account banned). Sticky session is keyed by
-        # account id either way, so each account keeps its own stable IP.
-        proxy = flashproxy.parse_proxy(acc.get("proxy") or self.cfg.get("default_proxy"), sticky_id=acc["id"])
+        # Every account browses through the live pool credential (never a bare IP —
+        # that gets the account banned). Sticky session is keyed by account id, so
+        # each account keeps its own stable IP; a fallback swap moves the whole
+        # fleet to the next working credential at once.
+        proxy = flashproxy.parse_proxy(self._active_base(), sticky_id=acc["id"])
         browser = self.pw.chromium.launch(headless=self.cfg.get("headless", True), proxy=proxy)
         context = browser.new_context(storage_state=state) if has_session else browser.new_context()
         page = context.new_page()
@@ -496,6 +518,105 @@ class Sessions:
         return action
 
 
+# ── proxy health + fallback ───────────────────────────────────────────────────
+def _record_proxy_ok(db: DB, acc, info: dict):
+    """Store the confirmed egress IP + location so the UI shows a green 'working'
+    line. If the account was previously down, clear the alert flag and log that it
+    came back."""
+    was_down = acc.get("proxy_status") == "down"
+    patch = {
+        "proxy_ip": info.get("ip"),
+        "proxy_city": info.get("city"),
+        "proxy_country": info.get("country"),
+        "proxy_status": "ok",
+        "proxy_checked_at": now_iso(),
+    }
+    if was_down:
+        patch["proxy_alerted_at"] = None
+        patch["last_error"] = None
+    db.update_account(acc["id"], patch)
+    acc.update(patch)
+    if was_down:
+        where = info.get("city") or info.get("country") or "GB"
+        db.log(acc["business_id"], "proxy-back",
+               f"{acc.get('label')}: proxy back online — {info.get('ip')} · {where}",
+               level="info", account_id=acc["id"])
+
+
+def _record_proxy_down(db: DB, cfg, acc):
+    """No credential in the pool can reach the internet for this account. Flag it
+    red in the UI + the live log, and email Hugo once per outage."""
+    already_alerted = bool(acc.get("proxy_alerted_at"))
+    patch = {"proxy_status": "down", "proxy_checked_at": now_iso(), "last_error": "proxy offline"}
+    db.update_account(acc["id"], patch)
+    acc.update(patch)
+    db.log(acc["business_id"], "proxy-down",
+           f"{acc.get('label')}: proxy offline — no working proxy in the pool",
+           level="error", account_id=acc["id"])
+    if not already_alerted and alerts.proxy_offline(cfg, acc["id"]):
+        # The route records proxy_alerted_at in the DB; mirror it in memory so we
+        # don't re-POST within this process before the next account reload.
+        acc["proxy_alerted_at"] = now_iso()
+
+
+def _find_working_base(pool: list[str], start_idx: int, sticky_id: str):
+    """Find a pool credential that can reach the internet for this account. Try the
+    OTHER credentials first (the active one just failed), then the active one once
+    more last — so a transient blip on the active proxy doesn't needlessly flip the
+    whole fleet. Returns (index, info) or (None, {})."""
+    n = len(pool)
+    order = [(start_idx + k) % n for k in range(1, n)] + [start_idx]
+    for j in order:
+        ok, info = flashproxy.check_ip(pool[j], sticky_id=sticky_id)
+        if ok:
+            return j, info
+    return None, {}
+
+
+def check_proxies(db: DB, sessions: Sessions, cfg, accounts):
+    """Confirm each account's proxy is alive (records its IP + location) and fall
+    back to the next pool credential when the active one dies. Throttled per
+    account (PROXY_CHECK_EVERY_MIN) and capped per tick (anti-burst)."""
+    pool = flashproxy.pool(cfg)
+    if not pool:
+        return
+    now = dt.datetime.now(dt.timezone.utc)
+    due = []
+    for a in accounts:
+        if a.get("status") == "disabled":
+            continue  # paused by a human — don't spend proxy data on it
+        last = parse_iso(a.get("proxy_checked_at"))
+        if last and (now - last).total_seconds() < PROXY_CHECK_EVERY_MIN * 60:
+            continue
+        due.append(a)
+    if not due:
+        return
+    idx = sessions.proxy_index % len(pool)
+    checked = 0
+    for a in due:
+        if checked >= MAX_PROXY_CHECKS_PER_TICK:
+            break
+        checked += 1
+        ok, info = flashproxy.check_ip(pool[idx], sticky_id=a["id"])
+        if ok:
+            _record_proxy_ok(db, a, info)
+            continue
+        # Active credential failed for this account — hunt for a working one.
+        new_idx, new_info = _find_working_base(pool, idx, a["id"])
+        if new_idx is None:
+            _record_proxy_down(db, cfg, a)
+            continue
+        if new_idx != idx:
+            old = idx
+            idx = new_idx
+            sessions.proxy_index = new_idx
+            db.set_proxy_index(new_idx)
+            db.log(a["business_id"], "proxy-switch",
+                   f"Switched all accounts to backup proxy #{new_idx + 1} — proxy #{old + 1} stopped working",
+                   level="warn", account_id=a["id"])
+        _record_proxy_ok(db, a, new_info)
+
+
 # ── engine ───────────────────────────────────────────────────────────────────
 def daily_reset(db: DB, acc, today: str):
     if acc.get("day_anchor") != today:
@@ -665,9 +786,9 @@ def _create_one_account(db: DB, sessions: Sessions, cfg, settings, business_id, 
         return
     persona = f"{first_name} {surname.capitalize()}"
     password = DEFAULT_ACCOUNT_PASSWORD
-    proxy_base = cfg.get("default_proxy")  # shared FlashProxy base; sticky id added per account
+    proxy_base = sessions._active_base()  # live pool credential; sticky id added per account
     if not proxy_base:
-        db.log(business_id, "error", "Account creation: no default_proxy in config.json", level="warn")
+        db.log(business_id, "error", "Account creation: no proxy_pool/default_proxy in config.json", level="warn")
         return
     label = persona
     acc_id = db.create_account(business_id, domain["id"], label, email, password,
@@ -816,7 +937,7 @@ def confirm_pending_accounts(db: DB, sessions: Sessions, cfg):
                 break
         if not confirm_url:
             continue  # not arrived yet — try again next tick
-        proxy_base = acc.get("proxy") or cfg.get("default_proxy")
+        proxy_base = sessions._active_base()
         browser = None
         try:
             browser, page = sessions.fresh_proxied_browser(proxy_base, acc["id"])
@@ -1095,6 +1216,9 @@ def tick(db: DB, sessions: Sessions, cfg, state):
     today = london_now(cfg).strftime("%Y-%m-%d")
     for a in accounts:
         daily_reset(db, a, today)
+    # Confirm proxies are alive (records each IP/location, falls back on a dead
+    # one) BEFORE logins, so logins this tick use the live credential.
+    check_proxies(db, sessions, cfg, accounts)
     # Self-heal logins BEFORE the work steps so fresh/expired sessions are
     # recovered up front (and the work steps then reuse the cached context).
     recover_sessions(db, sessions, cfg, accounts)

@@ -60,6 +60,31 @@ class DB:
                 pass
         return s
 
+    # ── proxy pool rotation pointer ──
+    # Which credential in config.json's proxy_pool every account currently uses.
+    # Persisted in platform_settings (key 'openrent_proxy_state') so the engine
+    # loop and the Sessions class agree on the live proxy across worker restarts.
+    def get_proxy_index(self) -> int:
+        try:
+            r = (self.sb.table("platform_settings").select("value")
+                 .eq("key", "openrent_proxy_state").maybe_single().execute())
+            val = (r.data or {}).get("value") if r and r.data else None
+            if val:
+                return int((json.loads(val) if isinstance(val, str) else val).get("index", 0) or 0)
+        except Exception:
+            pass
+        return 0
+
+    def set_proxy_index(self, index: int):
+        try:
+            self.sb.table("platform_settings").upsert(
+                {"key": "openrent_proxy_state",
+                 "value": json.dumps({"index": int(index), "updated_at": now_iso()})},
+                on_conflict="key",
+            ).execute()
+        except Exception as e:  # noqa: BLE001
+            print(f"[db] set_proxy_index failed: {e}")
+
     # ── log ──
     def log(self, business_id, event, message="", level="info", account_id=None, meta=None):
         try:
