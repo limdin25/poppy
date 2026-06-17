@@ -1,0 +1,13 @@
+{
+  "supabase_url": "https://ceoizvfxjpzelmzwmnlt.supabase.co",
+  "supabase_service_role_key": "PUT-SERVICE-ROLE-KEY-HERE",
+  "app_url": "https://app.heyelsie.com",
+  "worker_secret": "PUT-OPENRENT_WORKER_SECRET-HERE",
+  "headless": true,
+  "tick_seconds": 20,
+  "timezone": "Europe/London",
+  "business_id": "PUT-OPENRENT-BUSINESS-ID-HERE",
+  "default_proxy": "lite.flashproxy.io:6969:USER-country-GB:PASS",
+  "_note": "Copy to config.json and fill in. Per-account OpenRent login + FlashProxy proxy are stored in Supabase (openrent_account_secrets) via the app UI, not here.",
+  "_note_phase2": "business_id + default_proxy are ONLY needed for Phase 2 auto account-creation (persona 'Maria'). default_proxy is the shared FlashProxy base; the worker appends -session-<account id> so each created account gets its own sticky UK IP. Account creation is OFF unless account_creation_enabled is set in the openrent_settings blob."
+}
