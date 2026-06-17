@@ -201,6 +201,10 @@ class TestClassifyFailure(unittest.TestCase):
         kind, _ = openrent_login.classify_failure(FakeLoginPage(body="Your account has been suspended."))
         self.assertEqual(kind, openrent_login.KIND_BANNED)
 
+    def test_locked(self):
+        kind, _ = openrent_login.classify_failure(FakeLoginPage(body="Your account has been locked for security."))
+        self.assertEqual(kind, openrent_login.KIND_LOCKED)
+
     def test_unconfirmed(self):
         kind, _ = openrent_login.classify_failure(FakeLoginPage(body="Please confirm your email to continue."))
         self.assertEqual(kind, openrent_login.KIND_UNCONFIRMED)
@@ -250,6 +254,32 @@ class TestLoginSelfHeal(unittest.TestCase):
         self.s._handle_login_failure(acc, openrent_login.KIND_BANNED, "suspended")
         self.assertTrue(acc["needs_human"])
         self.assertEqual(acc["failure_kind"], openrent_login.KIND_BANNED)
+
+    def test_locked_stops_immediately_no_hammering(self):
+        # A security lock must NOT be retried — more failed logins deepen it.
+        acc = {"id": "x", "business_id": "b", "label": "A", "login_attempts": 0}
+        self.s._handle_login_failure(acc, openrent_login.KIND_LOCKED, "locked for security")
+        self.assertTrue(acc["needs_human"])
+        self.assertEqual(acc["failure_kind"], openrent_login.KIND_LOCKED)
+        self.assertIsNone(acc["next_login_attempt_at"])      # auto-retry stopped
+
+    def test_unknown_stops_after_max(self):
+        # "Can't log in, unclear why" submitted real failed logins → stop after the
+        # cap (don't keep hammering and risk a lock).
+        acc = {"id": "x", "business_id": "b", "label": "A",
+               "login_attempts": worker.MAX_LOGIN_ATTEMPTS - 1}
+        with mock.patch.object(worker.llm, "diagnose", return_value="diag"):
+            self.s._handle_login_failure(acc, openrent_login.KIND_UNKNOWN, "no indicator")
+        self.assertTrue(acc["needs_human"])
+        self.assertIsNone(acc["next_login_attempt_at"])      # stopped
+
+    def test_network_keeps_rechecking_after_max(self):
+        # A connection blip never submitted a bad login → safe to keep re-checking.
+        acc = {"id": "x", "business_id": "b", "label": "A",
+               "login_attempts": worker.MAX_LOGIN_ATTEMPTS - 1}
+        self.s._handle_login_failure(acc, openrent_login.KIND_NETWORK, "timeout")
+        self.assertTrue(acc["needs_human"])
+        self.assertIsNotNone(acc["next_login_attempt_at"])   # slow-lane re-check kept
 
     def test_successful_login_counts_recovery(self):
         acc = {"id": "x", "business_id": "b", "label": "A",
@@ -305,6 +335,19 @@ class TestRecoverSessions(unittest.TestCase):
         worker.recover_sessions(self.s.db, self.s, cfg, accs)
         # fresh (due now) + needslogin (slow-lane due) are tried; valid/disabled/pending/cooldown skipped.
         self.assertEqual(set(called), {"fresh", "needslogin"})
+
+    def test_skips_stopped_accounts(self):
+        # An account whose auto-retry was deliberately stopped (next_login_attempt_at
+        # NULL while login_attempts>0) must NOT be retried — it waits for a human.
+        cfg = {"timezone": "Europe/London"}
+        allday = {"active_days": worker.DOW, "active_hours_start": "00:00", "active_hours_end": "23:59"}
+        accs = [{"id": "stopped", "business_id": "b", "status": "needs_login", "needs_human": True,
+                 "session_valid": False, "login_attempts": 3, "next_login_attempt_at": None,
+                 "rotation_order": 0, **allday}]
+        called = []
+        self.s.page_for = lambda a: called.append(a["id"])
+        worker.recover_sessions(self.s.db, self.s, cfg, accs)
+        self.assertEqual(called, [])
 
 
 if __name__ == "__main__":

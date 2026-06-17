@@ -204,6 +204,21 @@ class DB:
         self.sb.table("openrent_received_emails").update(
             {"status": "used", "used_for": used_for}).eq("id", email_id).execute()
 
+    def security_emails(self) -> list[dict]:
+        """Unprocessed emails from OpenRent's security address (e.g. account-locked
+        notices). Used to flag the matching account for human review."""
+        return (self.sb.table("openrent_received_emails").select("*")
+                .ilike("from_email", "%security@openrent.co.uk%")
+                .eq("status", "new").order("created_at").limit(50).execute().data or [])
+
+    def account_by_email(self, business_id, email) -> dict | None:
+        if not email:
+            return None
+        r = (self.sb.table("openrent_accounts").select("id,label,business_id")
+             .eq("business_id", business_id).eq("email", email)
+             .maybe_single().execute())
+        return r.data if r else None
+
     # ── source URLs / targets ──
     def source_urls(self, business_id) -> list[dict]:
         return self.sb.table("openrent_source_urls").select("*").eq("business_id", business_id).eq("active", True).execute().data or []

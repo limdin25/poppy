@@ -19,11 +19,12 @@ DASHBOARD_URL = "https://www.openrent.co.uk/my-dashboard"
 CAPTCHA_SEL = "iframe[src*='recaptcha'], [class*='recaptcha'], [class*='hcaptcha'], iframe[src*='hcaptcha']"
 
 # Classified failure kinds. Terminal kinds can't be fixed by retrying.
-KIND_NETWORK = "network"           # couldn't reach the site (proxy/timeout) — retry
-KIND_CAPTCHA = "captcha"           # captcha/2FA challenge — retry a few times, then human
-KIND_BAD_CREDENTIALS = "bad_credentials"  # wrong email/password — human
-KIND_UNCONFIRMED = "unconfirmed"   # email not confirmed yet — retry (may propagate)
-KIND_BANNED = "banned"             # account suspended/blocked — human
+KIND_NETWORK = "network"           # couldn't reach the site (proxy/timeout) — safe to keep retrying
+KIND_CAPTCHA = "captcha"           # captcha/2FA challenge — needs a human
+KIND_BAD_CREDENTIALS = "bad_credentials"  # wrong email/password — human, don't hammer
+KIND_UNCONFIRMED = "unconfirmed"   # email not confirmed yet — needs confirmation, not login retries
+KIND_BANNED = "banned"             # account suspended/blocked — permanent, human
+KIND_LOCKED = "locked"             # temporarily locked for security (usually from repeated logins) — STOP
 KIND_UNKNOWN = "unknown"           # logged-in indicator never appeared, no clear reason
 
 
@@ -75,9 +76,14 @@ def classify_failure(page) -> tuple[str, str]:
     except Exception:  # noqa: BLE001
         url = ""
 
-    # Account suspended / blocked / locked.
-    if any(s in txt for s in ("suspended", "your account has been disabled", "account has been blocked",
-                              "account is locked", "banned", "we've locked")):
+    # Temporarily locked for security (usually triggered by repeated failed logins).
+    # Distinct from a permanent ban: retrying makes it WORSE, so we stop and wait.
+    if any(s in txt for s in ("locked for security", "has been locked", "temporarily locked",
+                              "account is locked", "we've locked", "too many login", "too many attempts")):
+        return (KIND_LOCKED, "OpenRent has temporarily locked this account for security.")
+
+    # Account permanently suspended / blocked / disabled.
+    if any(s in txt for s in ("suspended", "your account has been disabled", "account has been blocked", "banned")):
         return (KIND_BANNED, "OpenRent says this account is suspended / blocked.")
 
     # Email not yet confirmed (signup confirmation hasn't landed / propagated).

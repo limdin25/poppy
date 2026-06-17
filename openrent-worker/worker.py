@@ -36,28 +36,38 @@ PERSONA_SURNAMES = [
     "thomas", "roberts", "walker", "wright", "hughes", "green", "hall",
     "wood", "clarke", "harris", "lewis", "young", "king",
 ]
-# A reasonable default password for created accounts (mixed-case + digits +
-# symbol to satisfy typical strength rules). Stored per-account in secrets.
-DEFAULT_ACCOUNT_PASSWORD = "Maria!Lets2026"
+# Standard password for ALL new accounts (one fixed value, prefilled in the app
+# so Hugo never types it). Stored per-account in secrets. Existing accounts keep
+# whatever they were created with — changing a stored password without also
+# changing it on OpenRent would break that account's login.
+DEFAULT_ACCOUNT_PASSWORD = "Unico!Rent2026"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(HERE, "data", "state.json")
 DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-# ── Self-healing login (auto re-login with backoff → human handoff) ───────────
-MAX_LOGIN_ATTEMPTS = 5                       # fast retries before we raise the "needs human" tag
-LOGIN_BACKOFF_MIN = [2, 5, 15, 30, 60]       # minutes to wait before fast-lane retry #1..#5
-# After the fast retries we DON'T stop — autopilot keeps re-logging in on a slow
-# cadence so an account can recover on its own (a temporary block/captcha/outage
-# clearing) without anyone pressing a button. The "needs login" tag just tells a
-# human they CAN step in if they want to; it never halts the auto-retry.
-LONG_RETRY_MIN = 180                         # slow-lane: keep retrying every 3h
-# Login failures a retry can never fix → escalate to a human on the first hit.
+# ── Self-healing login (gentle auto re-login → human handoff) ─────────────────
+# A genuinely-logged-out account re-logs-in on the FIRST attempt, so we don't need
+# many tries. Repeated FAILED logins are exactly what trips OpenRent's security
+# lock — so we retry few times, slowly, then STOP (for anything that actually
+# submitted a bad login) and wait for a human, rather than hammering it locked.
+MAX_LOGIN_ATTEMPTS = 3                        # failed attempts before we hand off
+LOGIN_BACKOFF_MIN = [10, 30]                  # minutes before retry #2, #3 (gentle, not rapid)
+LONG_RETRY_MIN = 360                          # slow-lane re-check (6h) — ONLY for connection blips
+MAX_RECOVER_PER_TICK = 2                      # cap proactive re-logins per tick (anti-burst)
+
+# Stop on the FIRST hit — retrying these can't help and often makes it worse:
+#   banned          = permanent; bad_credentials = wrong pw will just keep failing;
+#   locked          = security lock that MORE failed logins would deepen.
 TERMINAL_LOGIN_KINDS = {
     openrent_login.KIND_BANNED,
     openrent_login.KIND_BAD_CREDENTIALS,
+    openrent_login.KIND_LOCKED,
 }
-MAX_RECOVER_PER_TICK = 2                      # cap proactive re-logins per tick (anti-burst)
+# The ONLY kind safe to keep auto-retrying forever: a connection failure never
+# reached a login submission, so it can't lock the account. Everything else, once
+# its few attempts are spent, STOPS and waits for a human (no perpetual hammering).
+SAFE_TO_RETRY_KINDS = {openrent_login.KIND_NETWORK}
 # Plain-English reason shown to Hugo for each classified failure kind.
 FAILURE_REASON = {
     openrent_login.KIND_NETWORK: "couldn't reach OpenRent (proxy or site issue)",
@@ -65,6 +75,7 @@ FAILURE_REASON = {
     openrent_login.KIND_BAD_CREDENTIALS: "OpenRent rejected the email/password",
     openrent_login.KIND_UNCONFIRMED: "the account's email isn't confirmed yet",
     openrent_login.KIND_BANNED: "OpenRent has suspended/blocked this account",
+    openrent_login.KIND_LOCKED: "OpenRent locked the account for security (usually after repeated logins)",
     openrent_login.KIND_UNKNOWN: "login didn't complete and we couldn't tell why",
 }
 # Rule-based diagnosis (plain English + the fix) for the kinds we already
@@ -88,8 +99,13 @@ RULE_DIAGNOSIS = {
         "link — once it's confirmed the next auto-retry will log it in.",
     openrent_login.KIND_NETWORK:
         "We couldn't reach OpenRent after several tries — usually a temporary proxy or "
-        "site outage. It keeps retrying automatically; if it persists for a long time, "
+        "site outage. It keeps re-checking automatically every few hours; if it persists, "
         "check the FlashProxy account.",
+    openrent_login.KIND_LOCKED:
+        "OpenRent has temporarily locked this account for security — usually triggered by "
+        "repeated failed logins. Auto-retry has STOPPED so it doesn't make the lock worse. "
+        "Wait for the lock to clear (or use the unlock/reset email OpenRent sent), make sure "
+        "the saved password is correct, then press Try now.",
 }
 
 
@@ -334,9 +350,16 @@ class Sessions:
         terminal = kind in TERMINAL_LOGIN_KINDS or attempts >= MAX_LOGIN_ATTEMPTS
         reason = FAILURE_REASON.get(kind, "login failed")
         if terminal:
-            # Raise the human-visible "needs login" tag, but keep auto-retrying on
-            # the slow lane — autopilot never stops on its own.
-            nxt = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=LONG_RETRY_MIN)).isoformat()
+            # Raise the human-visible "needs login" tag. Keep gently re-checking ONLY
+            # for connection blips (which never submitted a bad login); for anything
+            # that actually failed a login, STOP — repeated failed logins are what get
+            # an account locked. A human resumes it with "Try now" once it's fixed.
+            if kind in SAFE_TO_RETRY_KINDS:
+                nxt = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=LONG_RETRY_MIN)).isoformat()
+                tail = f"still re-checking every {round(LONG_RETRY_MIN / 60)}h"
+            else:
+                nxt = None  # stop auto-retrying — don't risk locking the account
+                tail = "auto-retry stopped (press Try now once it's sorted)"
             patch = {
                 "status": "needs_login", "session_valid": False, "needs_human": True,
                 "failure_kind": kind, "last_error": detail, "login_attempts": attempts,
@@ -344,9 +367,8 @@ class Sessions:
             }
             self.db.update_account(acc["id"], patch)
             acc.update(patch)
-            hrs = round(LONG_RETRY_MIN / 60)
             self.db.log(biz, "login-failed",
-                        f"{label}: needs a human — {reason} (after {attempts} tries; still auto-retrying every {hrs}h)",
+                        f"{label}: needs a human — {reason} (after {attempts} tries; {tail})",
                         level="error", account_id=acc["id"])
             self._diagnose(acc, kind, detail, page)
         else:
@@ -851,7 +873,9 @@ def recover_sessions(db: DB, sessions: Sessions, cfg, accounts):
             continue  # respect the account's own active days/hours
         if (a.get("login_attempts") or 0) > 0:
             nxt = parse_iso(a.get("next_login_attempt_at"))
-            if nxt and nxt > now:
+            if nxt is None:
+                continue  # auto-retry deliberately stopped — wait for a human "Try now"
+            if nxt > now:
                 continue  # still inside the backoff window (fast or slow lane)
         candidates.append(a)
     # Fairest first: those waiting longest (oldest / no scheduled retry), then order.
@@ -869,6 +893,26 @@ def recover_sessions(db: DB, sessions: Sessions, cfg, accounts):
             db.log(a["business_id"], "error",
                    f"{a.get('label')}: session recovery error — {_short(e)}",
                    level="warn", account_id=a["id"])
+
+
+def flag_security_alerts(db: DB):
+    """Label any account that received a security email from OpenRent (e.g. an
+    'account locked for security' notice) so a human can review and remove it.
+    Read-only safety net — the system never auto-acts on these."""
+    for em in db.security_emails():
+        acc = db.account_by_email(em["business_id"], em.get("to_email"))
+        if acc:
+            subj = (em.get("subject") or "OpenRent security notice").strip()
+            db.update_account(acc["id"], {
+                "security_alert": True,
+                "diagnosis": f"OpenRent sent a SECURITY email: \"{subj}\". Review this account and "
+                             f"remove it manually if needed — the system won't touch it automatically.",
+            })
+            db.log(acc["business_id"], "security-alert",
+                   f"{acc.get('label')}: OpenRent security email — {subj}",
+                   level="warn", account_id=acc["id"])
+        # Mark processed either way so we don't re-flag every tick.
+        db.mark_email_used(em["id"], em.get("to_email"))
 
 
 def run_rotation(db: DB, sessions: Sessions, cfg, settings, accounts):
@@ -1045,6 +1089,7 @@ def tick(db: DB, sessions: Sessions, cfg, state):
     # On-demand "Create N now" requests run regardless of the daily toggle.
     process_account_requests(db, sessions, cfg, settings)
     confirm_pending_accounts(db, sessions, cfg)
+    flag_security_alerts(db)
     if not accounts:
         return
     today = london_now(cfg).strftime("%Y-%m-%d")
