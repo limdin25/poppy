@@ -4,10 +4,13 @@ Pure-Python, no browser/network — uses fakes. Run:
     source .venv/bin/activate && python -m unittest test_self_heal -v
 """
 import os
+import datetime as dt
 import tempfile
 import unittest
+from unittest import mock
 
 import browser_util
+import openrent_login
 import worker
 
 
@@ -155,6 +158,153 @@ class TestSessionsHealing(unittest.TestCase):
         self.assertEqual(self.s.heal(ACC), "reset")
         self.assertFalse(os.path.exists(path))
         self.assertTrue(self.s.db.account_patches)  # session_valid flipped
+
+
+# ── login failure classification ──────────────────────────────────────────────
+class _Elem:
+    def __init__(self, text=""):
+        self._t = text
+
+    def inner_text(self):
+        return self._t
+
+
+class FakeLoginPage:
+    """Minimal page for classify_failure: substring-matched selectors + body/url."""
+    def __init__(self, selectors=None, body="", url=""):
+        self._sel = selectors or {}
+        self._body = body
+        self.url = url
+
+    def query_selector(self, sel):
+        for key, elem in self._sel.items():
+            if key in sel:
+                return elem
+        return None
+
+    def inner_text(self, _sel):
+        return self._body
+
+
+class TestClassifyFailure(unittest.TestCase):
+    def test_captcha(self):
+        kind, _ = openrent_login.classify_failure(FakeLoginPage(selectors={"recaptcha": _Elem()}))
+        self.assertEqual(kind, openrent_login.KIND_CAPTCHA)
+
+    def test_bad_credentials(self):
+        page = FakeLoginPage(selectors={"field-validation-error": _Elem("Incorrect password")})
+        kind, detail = openrent_login.classify_failure(page)
+        self.assertEqual(kind, openrent_login.KIND_BAD_CREDENTIALS)
+        self.assertIn("Incorrect", detail)
+
+    def test_banned(self):
+        kind, _ = openrent_login.classify_failure(FakeLoginPage(body="Your account has been suspended."))
+        self.assertEqual(kind, openrent_login.KIND_BANNED)
+
+    def test_unconfirmed(self):
+        kind, _ = openrent_login.classify_failure(FakeLoginPage(body="Please confirm your email to continue."))
+        self.assertEqual(kind, openrent_login.KIND_UNCONFIRMED)
+
+    def test_unknown(self):
+        kind, _ = openrent_login.classify_failure(FakeLoginPage(body="welcome to openrent"))
+        self.assertEqual(kind, openrent_login.KIND_UNKNOWN)
+
+
+# ── self-healing login: backoff, escalation, recovery counting ─────────────────
+def _patch(patches, key):
+    """The latest update_account patch containing `key`, or {}."""
+    for _id, p in reversed(patches):
+        if key in p:
+            return p
+    return {}
+
+
+class TestLoginSelfHeal(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.s = make_sessions(self.tmp)
+
+    def test_backoff_on_transient_failure(self):
+        acc = {"id": "x", "business_id": "b", "label": "A", "login_attempts": 0}
+        self.s._handle_login_failure(acc, openrent_login.KIND_NETWORK, "timeout")
+        self.assertEqual(acc["login_attempts"], 1)
+        self.assertFalse(acc.get("needs_human"))
+        self.assertNotEqual(acc.get("status"), "needs_login")
+        self.assertIsNotNone(acc.get("next_login_attempt_at"))
+        self.assertTrue(any(l["event"] == "login-retry" for l in self.s.db.logs))
+
+    def test_escalates_after_max_attempts_but_keeps_retrying(self):
+        acc = {"id": "x", "business_id": "b", "label": "A",
+               "login_attempts": worker.MAX_LOGIN_ATTEMPTS - 1}
+        self.s._handle_login_failure(acc, openrent_login.KIND_NETWORK, "timeout")
+        self.assertTrue(acc["needs_human"])
+        self.assertEqual(acc["status"], "needs_login")
+        # autopilot never stops: a slow-lane retry is still scheduled.
+        self.assertIsNotNone(acc.get("next_login_attempt_at"))
+        self.assertTrue(any(l["event"] == "login-failed" for l in self.s.db.logs))
+        # known kind → rule-based diagnosis stored (no AI call).
+        self.assertIsNotNone(_patch(self.s.db.account_patches, "diagnosis").get("diagnosis"))
+
+    def test_banned_escalates_immediately(self):
+        acc = {"id": "x", "business_id": "b", "label": "A", "login_attempts": 0}
+        self.s._handle_login_failure(acc, openrent_login.KIND_BANNED, "suspended")
+        self.assertTrue(acc["needs_human"])
+        self.assertEqual(acc["failure_kind"], openrent_login.KIND_BANNED)
+
+    def test_successful_login_counts_recovery(self):
+        acc = {"id": "x", "business_id": "b", "label": "A",
+               "login_attempts": 2, "recovery_count": 1, "last_login_at": "2026-06-17T10:00:00+00:00"}
+        ctx = mock.Mock()
+        with mock.patch.object(openrent_login, "login", return_value=True):
+            self.s._login_and_track(acc, object(), ctx, os.path.join(self.tmp, "x.json"))
+        self.assertEqual(acc["status"], "live")
+        self.assertTrue(acc["session_valid"])
+        self.assertEqual(acc["login_attempts"], 0)
+        self.assertEqual(acc["recovery_count"], 2)        # bumped from 1
+        self.assertIsNotNone(acc["last_recovered_at"])
+        self.assertTrue(any(l["event"] == "recovered" for l in self.s.db.logs))
+
+    def test_first_login_is_not_a_recovery(self):
+        acc = {"id": "y", "business_id": "b", "label": "B",
+               "login_attempts": 0, "recovery_count": 0, "last_login_at": None}
+        ctx = mock.Mock()
+        with mock.patch.object(openrent_login, "login", return_value=True):
+            self.s._login_and_track(acc, object(), ctx, os.path.join(self.tmp, "y.json"))
+        self.assertTrue(acc["session_valid"])
+        self.assertEqual(acc.get("recovery_count", 0), 0)  # initial login, not a recovery
+        self.assertFalse(any(l["event"] == "recovered" for l in self.s.db.logs))
+
+
+# ── recover_sessions candidate selection ──────────────────────────────────────
+class TestRecoverSessions(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.s = make_sessions(self.tmp)
+
+    def test_selects_due_and_skips_others(self):
+        cfg = {"timezone": "Europe/London"}
+        allday = {"active_days": worker.DOW, "active_hours_start": "00:00", "active_hours_end": "23:59"}
+        past = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)).isoformat()
+        future = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)).isoformat()
+        accs = [
+            {"id": "valid", "business_id": "b", "status": "live", "session_valid": True, "rotation_order": 0, **allday},
+            {"id": "disabled", "business_id": "b", "status": "disabled", "session_valid": False, "rotation_order": 1, **allday},
+            {"id": "pending", "business_id": "b", "status": "pending_confirm", "session_valid": False, "rotation_order": 2, **allday},
+            {"id": "fresh", "business_id": "b", "status": "live", "session_valid": False, "login_attempts": 0, "rotation_order": 3, **allday},
+            {"id": "needslogin", "business_id": "b", "status": "needs_login", "needs_human": True,
+             "session_valid": False, "login_attempts": 5, "next_login_attempt_at": past, "rotation_order": 4, **allday},
+            {"id": "cooldown", "business_id": "b", "status": "live", "session_valid": False,
+             "login_attempts": 2, "next_login_attempt_at": future, "rotation_order": 5, **allday},
+        ]
+        called = []
+
+        def fake_page_for(a):
+            called.append(a["id"])
+            raise worker.SessionUnavailable("test")
+        self.s.page_for = fake_page_for
+        worker.recover_sessions(self.s.db, self.s, cfg, accs)
+        # fresh (due now) + needslogin (slow-lane due) are tried; valid/disabled/pending/cooldown skipped.
+        self.assertEqual(set(called), {"fresh", "needslogin"})
 
 
 if __name__ == "__main__":

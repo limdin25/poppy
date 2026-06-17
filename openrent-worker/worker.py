@@ -44,6 +44,61 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(HERE, "data", "state.json")
 DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+# ── Self-healing login (auto re-login with backoff → human handoff) ───────────
+MAX_LOGIN_ATTEMPTS = 5                       # fast retries before we raise the "needs human" tag
+LOGIN_BACKOFF_MIN = [2, 5, 15, 30, 60]       # minutes to wait before fast-lane retry #1..#5
+# After the fast retries we DON'T stop — autopilot keeps re-logging in on a slow
+# cadence so an account can recover on its own (a temporary block/captcha/outage
+# clearing) without anyone pressing a button. The "needs login" tag just tells a
+# human they CAN step in if they want to; it never halts the auto-retry.
+LONG_RETRY_MIN = 180                         # slow-lane: keep retrying every 3h
+# Login failures a retry can never fix → escalate to a human on the first hit.
+TERMINAL_LOGIN_KINDS = {
+    openrent_login.KIND_BANNED,
+    openrent_login.KIND_BAD_CREDENTIALS,
+}
+MAX_RECOVER_PER_TICK = 2                      # cap proactive re-logins per tick (anti-burst)
+# Plain-English reason shown to Hugo for each classified failure kind.
+FAILURE_REASON = {
+    openrent_login.KIND_NETWORK: "couldn't reach OpenRent (proxy or site issue)",
+    openrent_login.KIND_CAPTCHA: "OpenRent showed a captcha / 2-factor challenge",
+    openrent_login.KIND_BAD_CREDENTIALS: "OpenRent rejected the email/password",
+    openrent_login.KIND_UNCONFIRMED: "the account's email isn't confirmed yet",
+    openrent_login.KIND_BANNED: "OpenRent has suspended/blocked this account",
+    openrent_login.KIND_UNKNOWN: "login didn't complete and we couldn't tell why",
+}
+# Rule-based diagnosis (plain English + the fix) for the kinds we already
+# understand. The AI is only asked to diagnose 'unknown' failures.
+RULE_DIAGNOSIS = {
+    openrent_login.KIND_BANNED:
+        "OpenRent appears to have suspended or blocked this account. The system will "
+        "keep checking automatically in case it's temporary, but it likely won't come "
+        "back — best to replace it with a fresh account on a different email/proxy.",
+    openrent_login.KIND_BAD_CREDENTIALS:
+        "OpenRent rejected the saved email or password. It keeps retrying on its own, "
+        "but it can't succeed until the password is right — open the account and "
+        "re-enter the correct OpenRent password (then 'Try now' to retry immediately).",
+    openrent_login.KIND_CAPTCHA:
+        "OpenRent showed a captcha / 2-factor check that a robot can't pass. The system "
+        "keeps retrying automatically and this often clears on its own; if it keeps "
+        "happening this account's IP may be flagged — try a different proxy or replace it.",
+    openrent_login.KIND_UNCONFIRMED:
+        "The account's email confirmation hasn't gone through yet. The system keeps "
+        "retrying automatically; check the Emails tab for the OpenRent confirmation "
+        "link — once it's confirmed the next auto-retry will log it in.",
+    openrent_login.KIND_NETWORK:
+        "We couldn't reach OpenRent after several tries — usually a temporary proxy or "
+        "site outage. It keeps retrying automatically; if it persists for a long time, "
+        "check the FlashProxy account.",
+}
+
+
+class SessionUnavailable(Exception):
+    """page_for could not hand back a logged-in page right now — either a login
+    retry is still in its backoff window, or a login was just attempted and the
+    outcome has already been recorded/logged. Callers skip the account quietly
+    (no extra error log, no failure-count bump)."""
+
 
 def load_config() -> dict:
     with open(os.path.join(HERE, "config.json")) as f:
@@ -137,33 +192,202 @@ class Sessions:
     def page_for(self, acc):
         if acc["id"] in self.ctx:
             return self.ctx[acc["id"]]["page"]
+        state = self._state(acc)
+        has_session = os.path.exists(state)
+        # No usable session AND we're inside a login-retry backoff window → wait.
+        if not has_session and self._in_login_cooldown(acc):
+            raise SessionUnavailable(f"{acc.get('label')}: login retry scheduled later")
+
         # Use the account's own proxy if it has one, otherwise fall back to the
         # shared default_proxy from config — so an account never browses without a
         # proxy (a bare IP gets the account banned). Sticky session is keyed by
         # account id either way, so each account keeps its own stable IP.
         proxy = flashproxy.parse_proxy(acc.get("proxy") or self.cfg.get("default_proxy"), sticky_id=acc["id"])
         browser = self.pw.chromium.launch(headless=self.cfg.get("headless", True), proxy=proxy)
-        state = self._state(acc)
-        context = browser.new_context(storage_state=state) if os.path.exists(state) else browser.new_context()
+        context = browser.new_context(storage_state=state) if has_session else browser.new_context()
         page = context.new_page()
-        if not os.path.exists(state):
+
+        if has_session and not self._is_unhealthy(acc):
+            # DB says this session is good — trust the saved cookies (no extra
+            # navigation, so a worker restart with N healthy accounts doesn't pay N
+            # slow proxy round-trips up front). A session that silently died is
+            # still caught by the action-failure heal path (recycle → reset → re-login).
+            self.ctx[acc["id"]] = {"browser": browser, "context": context, "page": page}
+            return page
+
+        if has_session:
+            # DB record says this account is BROKEN but a saved session exists —
+            # validate the cookies; OpenRent silently expires sessions and reusing a
+            # dead one is exactly what wedges an account. If they're actually good,
+            # heal the record (otherwise it shows "needs login" forever despite being
+            # logged in); if dead, drop the file and fall through to a tracked re-login.
+            if self._session_alive(page):
+                self._record_login_success(acc)
+                self.ctx[acc["id"]] = {"browser": browser, "context": context, "page": page}
+                return page
             try:
-                ok = openrent_login.login(page, acc.get("email"), acc.get("password"))
-            except openrent_login.NeedsManualLogin as e:
-                self.db.update_account(acc["id"], {"status": "needs_login", "last_error": str(e), "session_valid": False})
-                self.db.log(acc["business_id"], "error", f"{acc['label']}: manual login needed — {e}", level="warn", account_id=acc["id"])
+                os.remove(state)
+            except Exception:  # noqa: BLE001
+                pass
+            self.db.log(acc["business_id"], "self-heal",
+                        f"{acc.get('label')}: saved session expired — re-logging in",
+                        level="warn", account_id=acc["id"])
+            if self._in_login_cooldown(acc):
                 browser.close()
-                raise
-            except Exception as e:  # noqa: BLE001
-                self.db.update_account(acc["id"], {"status": "error", "last_error": str(e), "session_valid": False})
-                self.db.log(acc["business_id"], "error", f"{acc['label']}: login failed — {e}", level="error", account_id=acc["id"])
+                raise SessionUnavailable(f"{acc.get('label')}: login retry scheduled later")
+
+        # Attempt a tracked login (handles backoff, classification, recovery
+        # counting and the human-handoff escalation). Raises SessionUnavailable.
+        try:
+            self._login_and_track(acc, page, context, state)
+        except SessionUnavailable:
+            try:
                 browser.close()
-                raise
-            if ok:
-                context.storage_state(path=state)
-                self.db.update_account(acc["id"], {"status": "live", "session_valid": True, "last_error": None})
+            except Exception:  # noqa: BLE001
+                pass
+            raise
         self.ctx[acc["id"]] = {"browser": browser, "context": context, "page": page}
         return page
+
+    # ── self-healing login helpers ────────────────────────────────────────────
+    def _in_login_cooldown(self, acc) -> bool:
+        """True while an account is waiting out its login-retry backoff."""
+        if (acc.get("login_attempts") or 0) <= 0:
+            return False  # never attempted (or just reset) — try now
+        nxt = parse_iso(acc.get("next_login_attempt_at"))
+        return nxt is not None and nxt > dt.datetime.now(dt.timezone.utc)
+
+    def _session_alive(self, page) -> bool:
+        """Is this restored session still logged in? Navigates to the dashboard."""
+        try:
+            openrent_login.nav(page, openrent_login.DASHBOARD_URL, wait_until="domcontentloaded")
+            return openrent_login.is_logged_in(page)
+        except Exception:  # noqa: BLE001
+            return False  # treat an unreachable dashboard as a dead session
+
+    def save_external_session(self, acc, page) -> bool:
+        """Persist a logged-in session captured OUTSIDE page_for (e.g. the email
+        confirmation browser) so future runs skip the password login entirely."""
+        try:
+            if openrent_login.is_logged_in(page):
+                page.context.storage_state(path=self._state(acc))
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
+    def _is_unhealthy(self, acc) -> bool:
+        """Does the DB record say this account isn't working? (Used to decide
+        whether a freshly-validated/logged-in session should heal the record.)"""
+        return (not acc.get("session_valid")) or (acc.get("login_attempts") or 0) > 0 \
+            or bool(acc.get("needs_human")) or acc.get("status") in ("needs_login", "error")
+
+    def _record_login_success(self, acc):
+        """Mark an account healthy after a good login OR a validated restored
+        session. Clears all failure state; if the account had logged in before and
+        was unhealthy, this is a recovery — count it and log a green line."""
+        is_initial = not acc.get("last_login_at")   # never logged in before
+        was_unhealthy = self._is_unhealthy(acc)
+        prior_attempts = acc.get("login_attempts") or 0
+        patch = {
+            "status": "live", "session_valid": True, "last_error": None,
+            "failure_kind": None, "needs_human": False, "diagnosis": None,
+            "login_attempts": 0, "next_login_attempt_at": None, "last_login_at": now_iso(),
+        }
+        is_recovery = was_unhealthy and not is_initial
+        if is_recovery:
+            patch["recovery_count"] = (acc.get("recovery_count") or 0) + 1
+            patch["last_recovered_at"] = now_iso()
+        self.db.update_account(acc["id"], patch)
+        acc.update(patch)
+        if is_recovery:
+            note = (f"after {prior_attempts} failed attempt(s)" if prior_attempts
+                    else "its session had expired")
+            self.db.log(acc["business_id"], "recovered",
+                        f"{acc.get('label')}: re-logged in automatically ({note})",
+                        level="info", account_id=acc["id"])
+
+    def _login_and_track(self, acc, page, context, state):
+        """Run a login attempt and record the outcome. On success: save the
+        session + heal the record (counting a recovery if it had a prior session).
+        On failure: schedule a backoff retry, or hand off to a human once attempts
+        are exhausted / the kind is terminal."""
+        try:
+            openrent_login.login(page, acc.get("email"), acc.get("password"))
+        except openrent_login.LoginError as e:
+            self._handle_login_failure(acc, getattr(e, "kind", openrent_login.KIND_UNKNOWN), str(e), page)
+            raise SessionUnavailable(str(e))
+        except Exception as e:  # noqa: BLE001 — nav timeout / proxy drop = transient network
+            self._handle_login_failure(acc, openrent_login.KIND_NETWORK, _short(e), page)
+            raise SessionUnavailable(str(e))
+
+        # Success — persist the session and clear all failure state.
+        context.storage_state(path=state)
+        self._record_login_success(acc)
+
+    def _handle_login_failure(self, acc, kind, detail, page=None):
+        """Record a failed login: schedule a backoff retry, or escalate to a human
+        once retries are exhausted or the failure is unrecoverable."""
+        biz = acc["business_id"]
+        label = acc.get("label")
+        attempts = (acc.get("login_attempts") or 0) + 1
+        terminal = kind in TERMINAL_LOGIN_KINDS or attempts >= MAX_LOGIN_ATTEMPTS
+        reason = FAILURE_REASON.get(kind, "login failed")
+        if terminal:
+            # Raise the human-visible "needs login" tag, but keep auto-retrying on
+            # the slow lane — autopilot never stops on its own.
+            nxt = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=LONG_RETRY_MIN)).isoformat()
+            patch = {
+                "status": "needs_login", "session_valid": False, "needs_human": True,
+                "failure_kind": kind, "last_error": detail, "login_attempts": attempts,
+                "next_login_attempt_at": nxt,
+            }
+            self.db.update_account(acc["id"], patch)
+            acc.update(patch)
+            hrs = round(LONG_RETRY_MIN / 60)
+            self.db.log(biz, "login-failed",
+                        f"{label}: needs a human — {reason} (after {attempts} tries; still auto-retrying every {hrs}h)",
+                        level="error", account_id=acc["id"])
+            self._diagnose(acc, kind, detail, page)
+        else:
+            backoff = LOGIN_BACKOFF_MIN[min(attempts, len(LOGIN_BACKOFF_MIN)) - 1]
+            nxt = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=backoff)).isoformat()
+            patch = {
+                # status 'live' (not 'needs_login') while in the fast-retry lane so the
+                # UI shows "re-connecting N/5", not the human-handoff "needs login" tag.
+                "status": "live",
+                "session_valid": False, "failure_kind": kind, "last_error": detail,
+                "login_attempts": attempts, "next_login_attempt_at": nxt, "needs_human": False,
+            }
+            self.db.update_account(acc["id"], patch)
+            acc.update(patch)
+            self.db.log(biz, "login-retry",
+                        f"{label}: login attempt {attempts} failed — {reason}; retrying in {backoff} min",
+                        level="warn", account_id=acc["id"])
+
+    def _diagnose(self, acc, kind, detail, page=None):
+        """Write a plain-English diagnosis for a terminal failure. Known kinds get
+        a rule-based explanation; genuinely unknown failures are sent to Claude
+        (advisory only — never edits anything)."""
+        text = RULE_DIAGNOSIS.get(kind)
+        if not text and kind == openrent_login.KIND_UNKNOWN:
+            snapshot = ""
+            if page is not None:
+                try:
+                    snapshot = (page.inner_text("body") or "")[:2000]
+                except Exception:  # noqa: BLE001
+                    pass
+            text = llm.diagnose(self.cfg, {
+                "label": acc.get("label"), "email": acc.get("email"),
+                "kind": kind, "error": detail, "page_text": snapshot,
+            }) or None
+        if text:
+            try:
+                self.db.update_account(acc["id"], {"diagnosis": text})
+                self.db.log(acc["business_id"], "diagnosis", f"{acc.get('label')}: {text[:180]}",
+                            level="info", account_id=acc["id"])
+            except Exception:  # noqa: BLE001
+                pass
 
     def fresh_proxied_browser(self, proxy_base, sticky_id):
         """A brand-new (logged-out) browser behind a sticky proxy keyed by
@@ -276,11 +500,18 @@ def maybe_scrape(db: DB, sessions: Sessions, cfg, settings, accounts, state):
             continue
         last[biz] = now_iso()
         state["last_scrape"] = last
+        # Rotate which account scrapes which URL each cycle, so the scraping
+        # footprint spreads evenly across the fleet over time instead of the same
+        # accounts always carrying the same URLs (anti-overload, anti-pattern).
+        offsets = state.get("scrape_offset", {})
+        offset = int(offsets.get(biz, 0))
+        offsets[biz] = offset + 1
+        state["scrape_offset"] = offsets
         save_state(state)
-        scrape_business(db, sessions, cfg, settings, biz, accounts)
+        scrape_business(db, sessions, cfg, settings, biz, accounts, offset)
 
 
-def scrape_business(db: DB, sessions: Sessions, cfg, settings, business_id, accounts):
+def scrape_business(db: DB, sessions: Sessions, cfg, settings, business_id, accounts, offset=0):
     urls = db.source_urls(business_id)
     biz_accounts = [a for a in accounts if a["business_id"] == business_id and a.get("status") not in ("disabled",)]
     if not urls or not biz_accounts:
@@ -289,10 +520,15 @@ def scrape_business(db: DB, sessions: Sessions, cfg, settings, business_id, acco
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=int(settings.get("only_listings_newer_than_days", 3)))
     found = new = 0
     for i, u in enumerate(urls):
-        acc = biz_accounts[i % len(biz_accounts)]
+        # Pace the scrape so an account isn't hit with back-to-back page loads.
+        if i > 0:
+            time.sleep(random.randint(2, 6))
+        acc = biz_accounts[(i + offset) % len(biz_accounts)]
         try:
             page = sessions.page_for(acc)
             listings = openrent_listing.scrape_search(page, u["url"])
+        except SessionUnavailable:
+            continue  # login self-healing in progress — skip quietly (already logged)
         except Exception as e:  # noqa: BLE001
             n = sessions.note_failure(acc["id"])
             sessions.heal(acc)
@@ -551,14 +787,22 @@ def confirm_pending_accounts(db: DB, sessions: Sessions, cfg):
                 page.wait_for_load_state("networkidle", timeout=15000)
             except Exception:
                 pass
+            # Opening the confirm link logs the account in on THIS page. Capture
+            # that session so the account never needs a fresh password login —
+            # that doomed first login was the main cause of "needs login" on
+            # brand-new accounts. If it isn't logged in here, recover_sessions
+            # will do the first real login on the next tick.
+            saved = sessions.save_external_session(acc, page)
             db.update_account(acc["id"], {
-                "status": "live", "session_valid": False,
+                "status": "live", "session_valid": saved,
                 "confirmed_at": now_iso(), "last_error": None,
+                "last_login_at": now_iso() if saved else None,
             })
             if src_email:
                 db.mark_email_used(src_email["id"], email)
             db.log(business_id, "account-confirmed",
-                   f"Confirmed {email} — account is live", account_id=acc["id"])
+                   f"Confirmed {email} — account is live{'' if saved else ' (login pending)'}",
+                   account_id=acc["id"])
         except Exception as e:  # noqa: BLE001
             db.log(business_id, "error", f"Confirm failed for {email}: {e}", level="warn", account_id=acc["id"])
         finally:
@@ -567,6 +811,48 @@ def confirm_pending_accounts(db: DB, sessions: Sessions, cfg):
                     browser.close()
                 except Exception:
                     pass
+
+
+def recover_sessions(db: DB, sessions: Sessions, cfg, accounts):
+    """Proactively (re)establish a logged-in session for accounts that need one —
+    fresh accounts that have never logged in, and live accounts whose session
+    expired — on a backoff schedule. This is what makes the system self-healing:
+    logins are retried automatically (not just when there's outreach work to do)
+    until they recover or get handed off to a human. Bounded per tick (anti-burst)
+    and gated by each account's active window."""
+    now = dt.datetime.now(dt.timezone.utc)
+    candidates = []
+    for a in accounts:
+        # 'disabled' is a deliberate human off-switch; 'pending_confirm' is still
+        # waiting for its email. Everything else that lacks a session is fair game
+        # — including 'needs_login'/needs_human accounts (autopilot keeps trying
+        # them on the slow lane; no button press required).
+        if a.get("status") in ("disabled", "pending_confirm"):
+            continue
+        if a.get("session_valid"):
+            continue  # already has a (believed-good) session
+        if not within_active(a, cfg):
+            continue  # respect the account's own active days/hours
+        if (a.get("login_attempts") or 0) > 0:
+            nxt = parse_iso(a.get("next_login_attempt_at"))
+            if nxt and nxt > now:
+                continue  # still inside the backoff window (fast or slow lane)
+        candidates.append(a)
+    # Fairest first: those waiting longest (oldest / no scheduled retry), then order.
+    candidates.sort(key=lambda a: (a.get("next_login_attempt_at") or "", a.get("rotation_order", 0)))
+    done = 0
+    for a in candidates:
+        if done >= MAX_RECOVER_PER_TICK:
+            break
+        done += 1
+        try:
+            sessions.page_for(a)  # side effect: validate / log in / track the outcome
+        except SessionUnavailable:
+            pass  # cooldown or already-recorded failure — nothing to add
+        except Exception as e:  # noqa: BLE001
+            db.log(a["business_id"], "error",
+                   f"{a.get('label')}: session recovery error — {_short(e)}",
+                   level="warn", account_id=a["id"])
 
 
 def run_rotation(db: DB, sessions: Sessions, cfg, settings, accounts):
@@ -613,6 +899,9 @@ def run_rotation(db: DB, sessions: Sessions, cfg, settings, accounts):
                     page, t.get("listing_url"), msg,
                     landlord_blacklisted=lambda name: db.blacklist_active(business_id, landlord_key(name)),
                 )
+            except SessionUnavailable:
+                db.set_target(t["id"], {"status": "ready"})  # release the claim; account is mid-relogin
+                continue
             except Exception as e:  # noqa: BLE001
                 sessions.note_failure(acc["id"])
                 sessions.heal(acc)
@@ -652,6 +941,8 @@ def poll_replies(db: DB, sessions: Sessions, cfg, accounts):
         try:
             page = sessions.page_for(acc)
             threads = openrent_inbox.read_inbox(page)
+        except SessionUnavailable:
+            continue  # login self-healing in progress — skip quietly (already logged)
         except Exception as e:  # noqa: BLE001
             n = sessions.note_failure(acc["id"])
             sessions.heal(acc)  # rebuild a wedged session instead of reusing it
@@ -709,6 +1000,9 @@ def send_queued(db: DB, sessions: Sessions, cfg, accounts):
         try:
             page = sessions.page_for(acc)
             res = openrent_inbox.send_reply(page, conv.get("external_thread_id"), m.get("body"))
+        except SessionUnavailable:
+            db.mark_message(m["id"], "queued")  # release the claim; retry once the account is back
+            continue
         except Exception as e:  # noqa: BLE001
             n = sessions.note_failure(acc["id"])
             sessions.heal(acc)
@@ -738,6 +1032,9 @@ def tick(db: DB, sessions: Sessions, cfg, state):
     today = london_now(cfg).strftime("%Y-%m-%d")
     for a in accounts:
         daily_reset(db, a, today)
+    # Self-heal logins BEFORE the work steps so fresh/expired sessions are
+    # recovered up front (and the work steps then reuse the cached context).
+    recover_sessions(db, sessions, cfg, accounts)
     maybe_scrape(db, sessions, cfg, settings, accounts, state)
     run_rotation(db, sessions, cfg, settings, accounts)
     poll_replies(db, sessions, cfg, accounts)
