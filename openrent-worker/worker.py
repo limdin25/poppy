@@ -31,11 +31,20 @@ import openrent_inbox
 from db import DB, now_iso, landlord_key
 
 # Surname pool for the "Maria" persona — emails become m.<surname>@<domain>.
-# Common, unremarkable UK surnames; one account per surname per domain.
+# Common, unremarkable UK surnames; one account per surname per domain. Keep this
+# list long: a new account skips any surname already taken, so a short pool runs
+# dry (and "surname pool exhausted" stops creation). Add more common surnames
+# here whenever headroom gets low — never reuse one already used elsewhere.
 PERSONA_SURNAMES = [
     "smith", "white", "jones", "taylor", "brown", "wilson", "evans",
     "thomas", "roberts", "walker", "wright", "hughes", "green", "hall",
     "wood", "clarke", "harris", "lewis", "young", "king",
+    # second batch (added 2026-06-17) — all common UK surnames, none reused above
+    "martin", "cooper", "ward", "morris", "cook", "bailey", "bell", "murphy",
+    "gray", "james", "watson", "price", "kelly", "mason", "palmer", "mitchell",
+    "marshall", "owen", "harrison", "robinson", "turner", "scott", "edwards",
+    "hill", "moore", "allen", "parker", "carter", "phillips", "collins",
+    "stewart", "morgan", "cox", "richards", "fox", "shaw", "holmes", "knight",
 ]
 # Standard password for ALL new accounts (one fixed value, prefilled in the app
 # so Hugo never types it). Stored per-account in secrets. Existing accounts keep
@@ -62,8 +71,9 @@ MAX_RECOVER_PER_TICK = 2                      # cap proactive re-logins per tick
 # live "proxy working" status, and we catch a dead proxy and fall back to the next
 # credential in the pool. The IP check is a tiny ipinfo.io JSON (a few hundred
 # bytes), so re-checking is cheap.
-PROXY_CHECK_EVERY_MIN = 10
-MAX_PROXY_CHECKS_PER_TICK = 4                 # spread checks across ticks (anti-burst)
+PROXY_CHECK_EVERY_MIN = 10                    # confirmed-'ok' accounts: re-confirm the IP every 10 min
+PROXY_RECHECK_DOWN_MIN = 1                    # never-checked OR 'down': re-check almost every tick (fast self-heal)
+MAX_PROXY_CHECKS_PER_TICK = 20                # raised from 4 so a new-account backlog clears in ONE tick (checks are cheap HTTP)
 
 # Stop on the FIRST hit — retrying these can't help and often makes it worse:
 #   banned          = permanent; bad_credentials = wrong pw will just keep failing;
@@ -586,11 +596,27 @@ def check_proxies(db: DB, sessions: Sessions, cfg, accounts):
         if a.get("status") == "disabled":
             continue  # paused by a human — don't spend proxy data on it
         last = parse_iso(a.get("proxy_checked_at"))
-        if last and (now - last).total_seconds() < PROXY_CHECK_EVERY_MIN * 60:
+        # Never-checked OR currently down → fast lane (re-check almost every tick) so
+        # a new account never sits on "checking proxy…" and a dead proxy self-heals
+        # inside a couple of minutes. Confirmed-'ok' accounts stay on the slow cadence.
+        unhealthy = last is None or a.get("proxy_status") in ("down", "unknown")
+        interval = PROXY_RECHECK_DOWN_MIN if unhealthy else PROXY_CHECK_EVERY_MIN
+        if last and (now - last).total_seconds() < interval * 60:
             continue
         due.append(a)
     if not due:
         return
+    # Fairness: never-checked first (proxy_checked_at IS NULL), then 'down', then the
+    # oldest-checked 'ok' accounts. Without this, accounts low in rotation_order
+    # re-qualify every 10 min and sit at the front, eating the per-tick budget — so a
+    # freshly-added fleet at the tail is NEVER reached (the "checking proxy… forever" bug).
+    def _due_key(a):
+        last = parse_iso(a.get("proxy_checked_at"))
+        never = 0 if last is None else 1                       # NULL first
+        down = 0 if a.get("proxy_status") in ("down", "unknown") else 1
+        ts = last.timestamp() if last else 0.0                 # then oldest-checked first
+        return (never, down, ts)
+    due.sort(key=_due_key)
     idx = sessions.proxy_index % len(pool)
     checked = 0
     for a in due:
@@ -1068,11 +1094,14 @@ def run_rotation(db: DB, sessions: Sessions, cfg, settings, accounts):
                 continue
             try:
                 page = sessions.page_for(acc)
-                msg = llm.draft_outreach(cfg, {
+                draft = llm.draft_outreach_full(cfg, {
                     "title": t.get("title"), "price_text": t.get("price_text"),
                     "postcode": t.get("postcode"), "landlord_name": t.get("landlord_name"),
                     "listing_url": t.get("listing_url"),
+                    "external_listing_id": t.get("external_listing_id"),  # stable key for A/B assignment
                 })
+                msg = (draft.get("text") or "").strip()
+                opener_variant = draft.get("variant_id")  # which A/B opener was used (None = single prompt)
                 if not msg:
                     db.set_target(t["id"], {"status": "ready"})
                     continue
@@ -1106,7 +1135,7 @@ def run_rotation(db: DB, sessions: Sessions, cfg, settings, accounts):
             db.add_message(conv_id, "outbound", "ai", msg, status="sent", meta={"via": "openrent_pitch"})
             if key:
                 db.add_blacklist(business_id, key, name, int(settings.get("blacklist_days", 30)), acc["id"], t["id"])
-            db.set_target(t["id"], {"status": "contacted", "contacted_at": now_iso(), "contacted_by_account": acc["id"], "conversation_id": conv_id, "landlord_name": name, "landlord_key": key})
+            db.set_target(t["id"], {"status": "contacted", "contacted_at": now_iso(), "contacted_by_account": acc["id"], "conversation_id": conv_id, "landlord_name": name, "landlord_key": key, "opener_variant": opener_variant})
             gap = int(settings.get("gap_between_sends_min", 4)) + random.randint(0, int(settings.get("gap_jitter_min", 3)))
             nxt = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=gap)).isoformat()
             db.update_account(acc["id"], {"messages_sent_today": acc.get("messages_sent_today", 0) + 1, "next_run_at": nxt, "last_run_at": now_iso(), "status": "live"})
@@ -1160,15 +1189,31 @@ def process_ai_replies(db: DB, cfg, settings, accounts):
             last = msgs[-1]
             if last.get("direction") != "inbound":
                 continue  # already handled / we spoke last
+            # Don't stack a second draft if one is already waiting for approval (or
+            # mid-send): a landlord double-texting before Hugo approves would
+            # otherwise generate a duplicate pitch. Mirror handoff.ts's guard.
+            if any(m.get("direction") == "outbound" and m.get("status") in ("draft", "queued", "sending") for m in msgs):
+                continue
             ts = parse_iso(last.get("created_at"))
             if ts and (dt.datetime.now(dt.timezone.utc) - ts).total_seconds() < delay:
                 continue
             history = [{"from": "us" if m["direction"] == "outbound" else "them", "text": m.get("body") or ""} for m in msgs]
-            reply = llm.draft_reply(cfg, history)
+            res = llm.draft_reply(cfg, history, conversation_id=c["id"])
+            # BRAIN handoff: the landlord shared a number, so the app moved them to
+            # a private WhatsApp chat (contact + pinned draft) and told us to post
+            # NOTHING back on OpenRent. Store nothing → send_queued never sees it.
+            if res.get("skip"):
+                db.log(business_id, "reply-suppressed",
+                       "Landlord shared a number — handed to WhatsApp; no OpenRent reply sent")
+                continue
+            reply = (res.get("text") or "").strip()
             if not reply:
                 continue
-            status = "queued" if settings.get("reply_auto_send") else "draft"
-            db.add_message(c["id"], "outbound", "ai", reply, status=status, meta={"via": "openrent_ai_reply"})
+            # The app decides draft-vs-send per stage (pitch is gated by its own
+            # switch); fall back to the global toggle if an older app didn't say.
+            status = res.get("status") or ("queued" if settings.get("reply_auto_send") else "draft")
+            db.add_message(c["id"], "outbound", "ai", reply, status=status,
+                           meta={"via": "openrent_ai_reply", "stage": res.get("stage")})
 
 
 def send_queued(db: DB, sessions: Sessions, cfg, accounts):
@@ -1199,34 +1244,51 @@ def send_queued(db: DB, sessions: Sessions, cfg, accounts):
 
 
 def tick(db: DB, sessions: Sessions, cfg, state):
+    # Heartbeat FIRST, before any early-return — proves the worker loop is alive so
+    # the app can flag "automation offline" if this timestamp goes stale (covers a
+    # dead process AND a tick hung in a Playwright call, since the next write won't land).
+    db.heartbeat()
     settings = db.get_settings()
     if not settings.get("enabled"):
         return
     accounts = db.accounts()
-    # Phase 2 runs even with zero accounts (it bootstraps the first ones) and
-    # before the early-return below, so account creation/confirmation isn't
-    # blocked by having no accounts yet.
-    maybe_create_accounts(db, sessions, cfg, settings, accounts, state)
-    # On-demand "Create N now" requests run regardless of the daily toggle.
-    process_account_requests(db, sessions, cfg, settings)
-    confirm_pending_accounts(db, sessions, cfg)
-    flag_security_alerts(db)
+
+    # One bad step must NEVER abort the whole tick. Pre-fix, a crash in account
+    # creation/confirmation aborted the tick before check_proxies ran, leaving the
+    # newest accounts stuck on "checking proxy…" indefinitely.
+    def _step(name, fn):
+        try:
+            fn()
+        except Exception as e:  # noqa: BLE001
+            print(f"[worker] {name} error: {_short(e)}")
+        # Heartbeat after EVERY step (not just per-tick): a single tick can run for
+        # minutes (cold-session warm-up, scraping 40 URLs, polling 32 inboxes), so a
+        # per-tick heartbeat would look "offline" mid-tick. Per-step keeps it fresh
+        # while still going stale if the worker truly dies or hangs inside a step.
+        db.heartbeat()
+
+    # Phase 2 runs even with zero accounts (it bootstraps the first ones) and before
+    # the early-return below, so account creation/confirmation isn't blocked by an empty fleet.
+    _step("maybe_create_accounts",    lambda: maybe_create_accounts(db, sessions, cfg, settings, accounts, state))
+    _step("process_account_requests", lambda: process_account_requests(db, sessions, cfg, settings))  # on-demand "Create N now"
+    _step("confirm_pending_accounts", lambda: confirm_pending_accounts(db, sessions, cfg))
+    _step("flag_security_alerts",     lambda: flag_security_alerts(db))
     if not accounts:
         return
     today = london_now(cfg).strftime("%Y-%m-%d")
     for a in accounts:
         daily_reset(db, a, today)
-    # Confirm proxies are alive (records each IP/location, falls back on a dead
-    # one) BEFORE logins, so logins this tick use the live credential.
-    check_proxies(db, sessions, cfg, accounts)
-    # Self-heal logins BEFORE the work steps so fresh/expired sessions are
-    # recovered up front (and the work steps then reuse the cached context).
-    recover_sessions(db, sessions, cfg, accounts)
-    maybe_scrape(db, sessions, cfg, settings, accounts, state)
-    run_rotation(db, sessions, cfg, settings, accounts)
-    poll_replies(db, sessions, cfg, accounts)
-    process_ai_replies(db, cfg, settings, accounts)
-    send_queued(db, sessions, cfg, accounts)
+    # Draft AI replies FIRST (DB + app route only, no browser) so they're never
+    # starved by the slow/crash-prone Playwright steps below; then proxy health
+    # (cheap ipinfo.io checks) BEFORE logins so logins reuse the live credential.
+    # Every step is isolated so one failure can't skip the rest of the tick.
+    _step("process_ai_replies", lambda: process_ai_replies(db, cfg, settings, accounts))
+    _step("check_proxies",      lambda: check_proxies(db, sessions, cfg, accounts))
+    _step("recover_sessions",   lambda: recover_sessions(db, sessions, cfg, accounts))
+    _step("maybe_scrape",       lambda: maybe_scrape(db, sessions, cfg, settings, accounts, state))
+    _step("run_rotation",       lambda: run_rotation(db, sessions, cfg, settings, accounts))
+    _step("poll_replies",       lambda: poll_replies(db, sessions, cfg, accounts))
+    _step("send_queued",        lambda: send_queued(db, sessions, cfg, accounts))
 
 
 def main():

@@ -106,7 +106,7 @@ def send_enquiry(page, listing_url, message, landlord_blacklisted=None):
     try:
         subj = page.query_selector(SUBJECT_SEL)
         if subj:
-            subj.fill("Is this still available?")
+            subj.fill("A quick idea for your property")
     except Exception:
         pass
 

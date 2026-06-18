@@ -85,14 +85,39 @@ class DB:
         except Exception as e:  # noqa: BLE001
             print(f"[db] set_proxy_index failed: {e}")
 
+    # ── worker heartbeat ──
+    # Written every loop so the app can show "automation offline" when this goes
+    # stale. Dedicated key (NOT the settings blob) so a heartbeat write can never
+    # clobber Hugo's settings. Same upsert pattern as the proxy-state pointer.
+    def heartbeat(self, status: str = "ok"):
+        try:
+            self.sb.table("platform_settings").upsert(
+                {"key": "openrent_worker_heartbeat",
+                 "value": json.dumps({"last_tick_at": now_iso(), "status": status})},
+                on_conflict="key",
+            ).execute()
+        except Exception as e:  # noqa: BLE001 — never let the heartbeat crash a tick
+            print(f"[db] heartbeat failed: {e}")
+
     # ── log ──
     def log(self, business_id, event, message="", level="info", account_id=None, meta=None):
+        row = {
+            "business_id": business_id, "event": event, "message": message,
+            "level": level, "account_id": account_id, "meta": meta or {},
+        }
         try:
-            self.sb.table("openrent_activity_log").insert({
-                "business_id": business_id, "event": event, "message": message,
-                "level": level, "account_id": account_id, "meta": meta or {},
-            }).execute()
+            self.sb.table("openrent_activity_log").insert(row).execute()
         except Exception as e:  # noqa: BLE001
+            # The account row may have been deleted mid-tick → FK violation. Retry
+            # once with account_id stripped so the event is still recorded (and we
+            # stop spamming the log with the same failure every tick).
+            if account_id and ("foreign key" in str(e).lower() or "fkey" in str(e).lower()):
+                try:
+                    row["account_id"] = None
+                    self.sb.table("openrent_activity_log").insert(row).execute()
+                    return
+                except Exception as e2:  # noqa: BLE001
+                    e = e2
             print(f"[log] {event}: {message} ({e})")
 
     # ── accounts ──
@@ -325,7 +350,7 @@ class DB:
         self.sb.table("conversations").update(patch).eq("id", conversation_id).execute()
 
     def thread_messages(self, conversation_id) -> list[dict]:
-        return self.sb.table("messages").select("direction,sender,body,created_at").eq("conversation_id", conversation_id).order("created_at").execute().data or []
+        return self.sb.table("messages").select("direction,sender,body,status,created_at").eq("conversation_id", conversation_id).order("created_at").execute().data or []
 
     def queued_outbound(self, limit=10) -> list[dict]:
         msgs = self.sb.table("messages").select("id,conversation_id,body").eq("status", "queued").limit(limit).execute().data or []
