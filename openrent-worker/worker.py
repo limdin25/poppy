@@ -1383,13 +1383,16 @@ def tick(db: DB, sessions: Sessions, cfg, state):
     # (cheap ipinfo.io checks) BEFORE logins so logins reuse the live credential.
     # Every step is isolated so one failure can't skip the rest of the tick.
     _step("process_ai_replies", lambda: process_ai_replies(db, cfg, settings, accounts))
+    # Send queued replies EARLY — right after they're drafted — so they go out
+    # promptly and a backlog is never starved behind the slow scrape/poll steps
+    # below (poll_replies alone reads ~60 inboxes and can run many minutes).
+    _step("send_queued",        lambda: send_queued(db, sessions, cfg, accounts))
     _step("check_proxies",      lambda: check_proxies(db, sessions, cfg, accounts))
     _step("recover_sessions",   lambda: recover_sessions(db, sessions, cfg, accounts))
     _step("ensure_profile_names", lambda: ensure_profile_names(db, sessions, cfg, settings, accounts))
     _step("maybe_scrape",       lambda: maybe_scrape(db, sessions, cfg, settings, accounts, state))
     _step("run_rotation",       lambda: run_rotation(db, sessions, cfg, settings, accounts))
     _step("poll_replies",       lambda: poll_replies(db, sessions, cfg, accounts))
-    _step("send_queued",        lambda: send_queued(db, sessions, cfg, accounts))
 
 
 def main():
