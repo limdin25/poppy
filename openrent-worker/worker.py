@@ -1315,7 +1315,10 @@ def process_ai_replies(db: DB, cfg, settings, accounts):
 
 def send_queued(db: DB, sessions: Sessions, cfg, accounts):
     acc_by_id = {a["id"]: a for a in accounts}
-    for m in db.queued_outbound():
+    # Up to 30/tick (was 10) so a backlog of queued replies drains in a few ticks
+    # instead of ~an hour; still gentle (~1 per account) and claim_message guards
+    # against double-sends.
+    for m in db.queued_outbound(limit=30):
         conv = m["conversation"]
         acc = acc_by_id.get(conv.get("openrent_account_id"))
         if not acc:
