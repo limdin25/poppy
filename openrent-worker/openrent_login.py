@@ -92,6 +92,16 @@ def classify_failure(page) -> tuple[str, str]:
        or any(s in url for s in ("confirm", "verify", "activate")):
         return (KIND_UNCONFIRMED, "OpenRent is still waiting for the account's email to be confirmed.")
 
+    # Wrong email/password. OpenRent's simplelogon shows this in the page body
+    # (e.g. "The user name or password provided is incorrect." / "Login was
+    # unsuccessful."), NOT in span.field-validation-error — so the span check above
+    # misses it and it would otherwise fall through to KIND_UNKNOWN. Checked AFTER
+    # locked/banned/unconfirmed so those terminal states keep priority.
+    if any(s in txt for s in ("password provided is incorrect", "user name or password",
+                              "username or password", "email or password",
+                              "login was unsuccessful", "incorrect password")):
+        return (KIND_BAD_CREDENTIALS, "OpenRent rejected the email/password (wrong password).")
+
     return (KIND_UNKNOWN, "OpenRent login did not complete (no logged-in indicator).")
 
 

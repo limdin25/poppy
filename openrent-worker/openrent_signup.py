@@ -5,10 +5,10 @@ signup(page, email, password) -> bool:
   account is created (OpenRent then emails a confirmation link to `email`, which
   the worker picks up from the catch-all inbox — see worker.py confirm loop).
 
-set_profile_name(page, full_name) -> bool:
-  Best-effort sets the account display name to "Maria <Surname>" on the
-  edit-profile page. The profile-edit field selectors are NOT in the DOM map
-  yet, so this is a non-crashing stub (see TODO below).
+ensure_profile_name(page, first, last) -> NAME_* status:
+  Idempotently sets the account's First name (+ Surname) on /account/edit
+  (#FirstName / #Surname, Save = #submitButton — LIVE-mapped 2026-06-18).
+  Verifies by re-reading. set_profile_name(page, full_name) is a thin shim.
 
 Style mirrors openrent_login.py / openrent_enquiry.py: all selectors live here,
 the engine creates the proxied Playwright context + page and calls in.
@@ -19,10 +19,25 @@ Register form (per the DOM map / handover spec — NO captcha confirmed):
 """
 from __future__ import annotations
 
+from browser_util import nav
+
 BASE = "https://www.openrent.co.uk"
 REGISTER_URL = f"{BASE}/account/register"
 EDIT_PROFILE_URL = f"{BASE}/account/edit"
 DASHBOARD_URL = f"{BASE}/my-dashboard"
+
+# /account/edit profile fields — LIVE-mapped through the proxied worker session
+# 2026-06-18 (ASP.NET form; ids == names). First name is PUBLIC, Surname PRIVATE.
+FIRST_NAME_SELS = ["#FirstName", "input[name='FirstName']"]
+SURNAME_SELS = ["#Surname", "input[name='Surname']"]
+PROFILE_SAVE_SELS = ["#submitButton", "form button[type='submit']"]
+
+# ensure_profile_name() outcome (mirrors openrent_login's KIND_* style).
+NAME_ALREADY_SET = "already-set"   # first name already correct — no write
+NAME_SET = "set"                   # filled + saved + re-read confirms
+NAME_NO_FIELD = "no-field"         # first-name field absent (logged out / DOM changed)
+NAME_SAVE_FAILED = "save-failed"   # filled but save/verify didn't take
+NAME_NAV_FAILED = "nav-failed"     # couldn't reach /account/edit
 
 # Register form fields (handover spec; no captcha in normal use).
 EMAIL_SELS = ["#Email", "input[name='Email']"]
@@ -154,42 +169,72 @@ def signup(page, email: str, password: str) -> bool:
     raise RuntimeError("OpenRent signup did not complete (no success signal)")
 
 
-def set_profile_name(page, full_name: str) -> bool:
-    """Best-effort set the account display name to e.g. "Maria Smith".
+def _read_value(page, sels) -> str | None:
+    """Current value of the first matching input, or None if no field is found
+    (e.g. we got redirected to the login page because the session is dead)."""
+    for sel in sels:
+        try:
+            el = page.query_selector(sel)
+            if el:
+                return (el.input_value() or "").strip()
+        except Exception:
+            continue
+    return None
 
-    # TODO: DOM-map needed — the edit-profile name field selector is NOT in
-    # reference_openrent-dom.md (only the URL /account/edit is known). Until
-    # Comet maps the field, this is a non-crashing best-effort: it tries a few
-    # likely selectors and returns False if none are found, so the caller can
-    # carry on (the display name is cosmetic; signup + confirm don't depend on it).
-    """
-    if not full_name:
-        return False
+
+def ensure_profile_name(page, first: str, last: str = "") -> str:
+    """Idempotently set the OpenRent profile First name (+ Surname) on
+    /account/edit. `page` must ALREADY be logged in. Reads the current First name;
+    if it already equals `first` (case-insensitive) returns NAME_ALREADY_SET
+    without writing. Otherwise fills First (+ Surname if given), clicks Save, then
+    re-reads First to verify. Never raises for a missing field — returns a NAME_*
+    status so the caller can log/skip. (First name is PUBLIC on OpenRent — setting
+    it fixes the "Hey ," / "No name provided" blank-sender problem.)"""
+    first = (first or "").strip()
+    last = (last or "").strip()
+    if not first:
+        return NAME_NO_FIELD
     try:
-        page.goto(EDIT_PROFILE_URL, wait_until="domcontentloaded")
-        page.wait_for_timeout(500)
-    except Exception:
-        return False
+        nav(page, EDIT_PROFILE_URL)
+        page.wait_for_timeout(600)
+    except Exception:  # noqa: BLE001
+        return NAME_NAV_FAILED
 
-    # TODO: DOM-map needed — replace these guessed selectors with the real ones.
-    name_guess_sels = [
-        "#Name", "input[name='Name']",
-        "#FullName", "input[name='FullName']",
-        "#DisplayName", "input[name='DisplayName']",
-    ]
-    if not _fill_first(page, name_guess_sels, full_name):
-        return False  # field not found — skip silently (cosmetic only)
+    current = _read_value(page, FIRST_NAME_SELS)
+    if current is None:
+        return NAME_NO_FIELD  # not logged in / DOM changed — no first-name field
+    if current.casefold() == first.casefold():
+        return NAME_ALREADY_SET
 
-    # TODO: DOM-map needed — confirm the save button selector on /account/edit.
-    save_guess_sels = [
-        "form[action*='edit'] button[type='submit']",
-        "button[type='submit']",
-        "input[type='submit']",
-    ]
-    if not _click_first(page, save_guess_sels):
-        return False
+    if not _fill_first(page, FIRST_NAME_SELS, first):
+        return NAME_NO_FIELD
+    if last:
+        _fill_first(page, SURNAME_SELS, last)  # best-effort (Surname is private)
+
+    if not _click_first(page, PROFILE_SAVE_SELS):
+        return NAME_SAVE_FAILED
     try:
         page.wait_for_load_state("networkidle", timeout=10000)
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
-    return True
+
+    # Verify by RE-READING the First name (more reliable than a success banner).
+    try:
+        nav(page, EDIT_PROFILE_URL)
+        page.wait_for_timeout(500)
+    except Exception:  # noqa: BLE001
+        pass
+    after = _read_value(page, FIRST_NAME_SELS)
+    if after is not None and after.casefold() == first.casefold():
+        return NAME_SET
+    return NAME_SAVE_FAILED
+
+
+def set_profile_name(page, full_name: str) -> bool:
+    """Back-compat shim: split "Maria Smith" → first/last and call
+    ensure_profile_name. Returns True if the name is now set."""
+    parts = (full_name or "").split()
+    if not parts:
+        return False
+    first, last = parts[0], " ".join(parts[1:])
+    return ensure_profile_name(page, first, last) in (NAME_SET, NAME_ALREADY_SET)

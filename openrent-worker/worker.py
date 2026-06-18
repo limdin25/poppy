@@ -65,6 +65,7 @@ MAX_LOGIN_ATTEMPTS = 3                        # failed attempts before we hand o
 LOGIN_BACKOFF_MIN = [10, 30]                  # minutes before retry #2, #3 (gentle, not rapid)
 LONG_RETRY_MIN = 360                          # slow-lane re-check (6h) — ONLY for connection blips
 MAX_RECOVER_PER_TICK = 2                      # cap proactive re-logins per tick (anti-burst)
+MAX_PROFILE_NAMES_PER_TICK = 2                # cap profile-name backfills per tick (anti-burst)
 
 # ── proxy health + fallback ───────────────────────────────────────────────────
 # Confirm each account's egress IP through its proxy on this cadence so Hugo sees
@@ -740,6 +741,40 @@ def _persona_email(first_name, surname, domain):
     return f"{initial}.{surname}@{domain}"
 
 
+def resolve_profile_name(acc: dict, settings: dict | None = None):
+    """Resolve (first, last) for an account's OpenRent profile, or (None, None)
+    when there's no usable source — the caller must REPORT those, never guess
+    (e.g. the legacy gmail accounts that aren't 'Maria <surname>').
+
+    Order:
+      1. persona "Maria Smith"            -> ("Maria", "Smith")
+      2. persona single token + m.<sn>@…  -> (persona, "<Sn>")
+      3. no persona but m.<surname>@…     -> (persona_first_name|"Maria", "<Surname>")
+      4. otherwise                         -> (None, None)
+    """
+    settings = settings or {}
+    default_first = (settings.get("persona_first_name") or "Maria").strip() or "Maria"
+    persona = (acc.get("persona") or "").strip()
+    email = (acc.get("email") or "").strip().lower()
+
+    # Surname embedded in a persona address m.<surname>@<domain> (the standard shape).
+    email_surname = None
+    local = email.split("@", 1)[0] if "@" in email else ""
+    if "." in local:
+        cand = local.split(".", 1)[1]   # the bit after the "m." initial
+        if cand.isalpha():
+            email_surname = cand.capitalize()
+
+    if persona:
+        parts = persona.split()
+        if len(parts) >= 2:
+            return parts[0], " ".join(parts[1:])
+        return parts[0], (email_surname or "")   # single-token persona + email surname
+    if email_surname:
+        return default_first, email_surname
+    return None, None
+
+
 def _next_surname(db: DB, business_id, domain_id, domain, first_name):
     """Pick the next surname whose persona email isn't already taken on this
     domain. Returns (surname, email) or (None, None) if the pool is exhausted."""
@@ -825,11 +860,9 @@ def _create_one_account(db: DB, sessions: Sessions, cfg, settings, business_id, 
     try:
         browser, page = sessions.fresh_proxied_browser(proxy_base, acc_id)
         openrent_signup.signup(page, email, password)
-        # Best-effort display name (cosmetic; DOM not fully mapped — see signup module).
-        try:
-            openrent_signup.set_profile_name(page, persona)
-        except Exception:
-            pass
+        # NOTE: the profile name is set later by the ensure_profile_names tick step
+        # — once the account is email-confirmed and logged in (session_valid). Doing
+        # it here is unreliable (pre-confirm the edit page may not be accessible).
         db.log(business_id, "account-created",
                f"Signed up {email} ({persona}) — awaiting email confirmation", account_id=acc_id)
     except openrent_signup.SignupBlocked as e:  # noqa: BLE001
@@ -1039,6 +1072,70 @@ def recover_sessions(db: DB, sessions: Sessions, cfg, accounts):
         except Exception as e:  # noqa: BLE001
             db.log(a["business_id"], "error",
                    f"{a.get('label')}: session recovery error — {_short(e)}",
+                   level="warn", account_id=a["id"])
+
+
+def ensure_profile_names(db: DB, sessions: Sessions, cfg, settings, accounts):
+    """Backfill the OpenRent profile First name (+ Surname) on accounts that don't
+    have one yet (profile_name_set_at IS NULL). Reuses each account's session via
+    page_for — gated on session_valid so a healthy account is named with ZERO
+    logins (the key 'don't hammer logins' guard). Bounded per tick + active-hours
+    gated. Idempotent: stamps profile_name_set_at on success / already-set, and on
+    an account with no name source (so we stop re-checking it). New accounts get
+    named here automatically once they're confirmed + logged in."""
+    done = 0
+    for a in accounts:
+        if done >= MAX_PROFILE_NAMES_PER_TICK:
+            break
+        if a.get("status") in ("disabled", "pending_confirm"):
+            continue
+        if a.get("profile_name_set_at"):
+            continue  # already handled
+        if not a.get("session_valid"):
+            continue  # only name accounts with a (believed-good) session → no login here
+        if not within_active(a, cfg):
+            continue
+        first, last = resolve_profile_name(a, settings)
+        if not first:
+            # No usable name source (e.g. the legacy gmail accounts) — stamp so we
+            # stop re-checking, and flag it for a human to set the name by hand.
+            db.update_account(a["id"], {"profile_name_set_at": now_iso()})
+            a["profile_name_set_at"] = now_iso()
+            db.log(a["business_id"], "profile-name-skip",
+                   f"{a.get('label') or a.get('email')}: no name source — set the profile name manually",
+                   level="warn", account_id=a["id"])
+            done += 1
+            continue
+        done += 1
+        try:
+            page = sessions.page_for(a)
+        except SessionUnavailable:
+            continue  # cooldown — try a later tick
+        except Exception as e:  # noqa: BLE001
+            db.log(a["business_id"], "error",
+                   f"{a.get('label')}: profile-name session error — {_short(e)}",
+                   level="warn", account_id=a["id"])
+            continue
+        try:
+            status = openrent_signup.ensure_profile_name(page, first, last)
+        except Exception as e:  # noqa: BLE001
+            sessions.note_failure(a["id"]); sessions.heal(a)
+            db.log(a["business_id"], "error", f"{a.get('label')}: profile-name error — {_short(e)}",
+                   level="warn", account_id=a["id"])
+            continue
+        if status in (openrent_signup.NAME_SET, openrent_signup.NAME_ALREADY_SET):
+            db.update_account(a["id"], {"profile_name_set_at": now_iso()})
+            a["profile_name_set_at"] = now_iso()
+            sessions.note_success(a["id"])
+            db.log(a["business_id"], "profile-name-set",
+                   f"{a.get('label') or a.get('email')}: profile name → {(first + ' ' + last).strip()} ({status})",
+                   account_id=a["id"])
+        else:
+            # no-field/save-failed/nav-failed → most likely a 'session_valid' record
+            # whose cookie silently died; heal it and retry next tick (don't stamp).
+            sessions.note_failure(a["id"]); sessions.heal(a)
+            db.log(a["business_id"], "error",
+                   f"{a.get('label')}: profile name not set ({status}); will retry",
                    level="warn", account_id=a["id"])
 
 
@@ -1285,6 +1382,7 @@ def tick(db: DB, sessions: Sessions, cfg, state):
     _step("process_ai_replies", lambda: process_ai_replies(db, cfg, settings, accounts))
     _step("check_proxies",      lambda: check_proxies(db, sessions, cfg, accounts))
     _step("recover_sessions",   lambda: recover_sessions(db, sessions, cfg, accounts))
+    _step("ensure_profile_names", lambda: ensure_profile_names(db, sessions, cfg, settings, accounts))
     _step("maybe_scrape",       lambda: maybe_scrape(db, sessions, cfg, settings, accounts, state))
     _step("run_rotation",       lambda: run_rotation(db, sessions, cfg, settings, accounts))
     _step("poll_replies",       lambda: poll_replies(db, sessions, cfg, accounts))
