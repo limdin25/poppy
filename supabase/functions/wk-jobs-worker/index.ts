@@ -270,6 +270,7 @@ async function handleSendSms(
   // Persist the outbound row (mirrors wk-sms-send). The message has left
   // Twilio at this point, so an insert failure must NOT throw — a retry
   // would double-send. Log and mark the job done instead.
+  const broadcastId = String(payload.broadcast_id ?? '').trim() || null;
   const { error: insErr } = await supabase
     .from('wk_sms_messages')
     .insert({
@@ -283,11 +284,21 @@ async function handleSendSms(
       to_e164: phone,
       status: twJson.status ?? 'queued',
       created_by: agentId || null,
+      broadcast_id: broadcastId,
     } as never);
   if (insErr) {
     console.error('[wk-jobs-worker] send_sms db insert failed (twilio sent though)', insErr);
-    return;
   }
+
+  // Count this send against its broadcast (if any) for live progress.
+  if (broadcastId) {
+    await supabase.rpc('wk_broadcast_tally', {
+      p_broadcast_id: broadcastId,
+      p_sent: 1,
+      p_failed: 0,
+    });
+  }
+  if (insErr) return;
 
   // Bump wk_contacts.last_contact_at so the inbox sorts correctly.
   await supabase
@@ -368,6 +379,14 @@ serve(async (req: Request) => {
           last_attempt_at: new Date().toISOString(),
         })
         .eq('id', job.id);
+      // A permanently-failed broadcast send counts against its broadcast so
+      // progress reaches 100% (sent + failed = total) instead of stalling.
+      if (dead && job.kind === 'send_sms') {
+        const bId = String((job.payload as Record<string, unknown>)?.broadcast_id ?? '').trim();
+        if (bId) {
+          await supabase.rpc('wk_broadcast_tally', { p_broadcast_id: bId, p_sent: 0, p_failed: 1 });
+        }
+      }
       results.push({ id: job.id, ok: false, err: msg });
     }
   }

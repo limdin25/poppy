@@ -356,6 +356,8 @@ verify_jwt = false
 verify_jwt = true
 [functions.wk-sms-incoming]
 verify_jwt = false
+[functions.wk-sms-broadcast]
+verify_jwt = false
 [functions.wk-jobs-worker]
 verify_jwt = false
 [functions.wk-create-agent]
