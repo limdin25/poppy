@@ -388,3 +388,6 @@ verify_jwt = true
 verify_jwt = false
 [functions.unipile-poll-messages]
 verify_jwt = false
+
+[functions.wk-schedule-send]
+verify_jwt = false

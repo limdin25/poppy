@@ -157,6 +157,25 @@ async function handleSendSms(
   if (!contactId) throw new Error('send_sms: missing contact_id');
   if (!rawBody) throw new Error('send_sms: missing body');
 
+  // Nurture auto-cancel: a scheduled follow-up carries the time it was queued.
+  // If the lead sent an inbound message since then, they're already engaged —
+  // skip the drip so we don't nag someone who replied.
+  const skipIfInboundAfter = String(payload.skip_if_inbound_after ?? '').trim();
+  if (skipIfInboundAfter) {
+    const { data: reply } = await supabase
+      .from('wk_sms_messages')
+      .select('id')
+      .eq('contact_id', contactId)
+      .eq('direction', 'inbound')
+      .gt('created_at', skipIfInboundAfter)
+      .limit(1)
+      .maybeSingle();
+    if (reply) {
+      console.log(`[wk-jobs-worker] send_sms skipped — lead ${contactId} replied since ${skipIfInboundAfter}`);
+      return;
+    }
+  }
+
   // Resolve contact + agent in parallel.
   const [contactRes, agentRes] = await Promise.all([
     // wk_contacts is the source of truth for the smsv2 / live-call surface.
