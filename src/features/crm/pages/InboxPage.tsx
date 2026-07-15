@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   MessageSquare,
@@ -13,6 +13,7 @@ import {
   Send,
   Mail,
   Paperclip,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { MOCK_SMS, MOCK_ACTIVITIES } from '../data/mockCalls';
@@ -298,16 +299,30 @@ export default function InboxPage() {
   // thread renderer doesn't have to change. PR 78: pass channel +
   // subject through so the thread bubbles can show the channel icon
   // and email subject prefix.
-  const crmSms = useMemo(() => crmMessages.map((m) => ({
-    id: m.id,
-    contactId: m.contactId,
-    direction: m.direction,
-    body: m.body,
-    sentAt: m.createdAt,
-    channel: m.channel,
-    subject: m.subject,
-    attachmentUrl: m.attachmentUrl,
-  })), [crmMessages]);
+  const crmSms = useMemo(() => crmMessages
+    .filter((m) => m.status !== 'discarded')
+    .map((m) => ({
+      id: m.id,
+      contactId: m.contactId,
+      direction: m.direction,
+      body: m.body,
+      sentAt: m.createdAt,
+      channel: m.channel,
+      subject: m.subject,
+      attachmentUrl: m.attachmentUrl,
+      status: m.status,
+      aiGenerated: m.aiGenerated,
+    })), [crmMessages]);
+
+  const [draftBusy, setDraftBusy] = useState<string | null>(null);
+  const draftAction = useCallback(async (draftId: string, action: 'send' | 'discard', body?: string) => {
+    setDraftBusy(draftId);
+    try {
+      await supabase.functions.invoke('wk-draft-action', { body: { draft_id: draftId, action, body } });
+    } finally {
+      setDraftBusy(null);
+    }
+  }, []);
 
   // PR 105 (Hugo 2026-04-28): channel must be re-picked every time —
   // no auto-default to last-used channel, no carry-over between contacts.
@@ -658,19 +673,29 @@ export default function InboxPage() {
                 channel?: ChannelKindUI;
                 subject?: string | null;
                 attachmentUrl?: string | null;
+                status?: string;
+                aiGenerated?: boolean;
               };
               const ch = (m.channel || 'sms') as ChannelKindUI;
               const subj = m.subject ?? null;
+              const isDraft = m.status === 'draft';
               return (
                 <div
                   key={`sms-${m.id}`}
                   className={cn(
                     'rounded-2xl px-3 py-2 max-w-[60%] text-[13px] leading-snug',
-                    m.direction === 'outbound'
-                      ? 'bg-[#3C5A87]/15 text-[#1A1A1A] ml-auto'
-                      : 'bg-white border border-[#E5E7EB] text-[#1A1A1A]'
+                    isDraft
+                      ? 'bg-[#EEF2F8] border border-dashed border-[#3C5A87] text-[#1A1A1A] ml-auto'
+                      : m.direction === 'outbound'
+                        ? 'bg-[#3C5A87]/15 text-[#1A1A1A] ml-auto'
+                        : 'bg-white border border-[#E5E7EB] text-[#1A1A1A]'
                   )}
                 >
+                  {isDraft && (
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-[#3C5A87] uppercase tracking-wide mb-1">
+                      <Bot className="w-3 h-3" /> AI draft
+                    </div>
+                  )}
                   {/* PR 78: channel + subject prefix on each bubble */}
                   <div className="flex items-center gap-1 text-[10px] text-[#6B7280] uppercase tracking-wide mb-1 font-bold">
                     <ChannelGlyph channel={ch} size={10} />
@@ -696,6 +721,20 @@ export default function InboxPage() {
                   <div className="text-[10px] text-[#9CA3AF] mt-0.5 tabular-nums">
                     {formatTimeOnly(m.sentAt)}
                   </div>
+                  {isDraft && (
+                    <div className="flex gap-1.5 mt-1.5">
+                      <button
+                        disabled={draftBusy === m.id}
+                        onClick={() => void draftAction(m.id, 'send')}
+                        className="text-[11px] font-semibold text-white bg-[#3C5A87] disabled:opacity-40 px-2.5 py-1 rounded-lg hover:bg-[#3C5A87]/90"
+                      >Send</button>
+                      <button
+                        disabled={draftBusy === m.id}
+                        onClick={() => void draftAction(m.id, 'discard')}
+                        className="text-[11px] font-semibold text-[#6B7280] bg-white border border-[#E5E7EB] disabled:opacity-40 px-2.5 py-1 rounded-lg hover:bg-[#F3F3EE]"
+                      >Discard</button>
+                    </div>
+                  )}
                 </div>
               );
             }

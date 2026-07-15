@@ -307,6 +307,31 @@ async function handleSendSms(
     .eq('id', contactId);
 }
 
+// ---- ai_reply --------------------------------------------------------------
+// The CRM AI warm-up reply is generated in Node (reuses api/lib/llm.ts), so
+// this handler just delegates to the app route. The route re-checks all guards
+// and drafts/sends. Auth = the service key (both sides hold it).
+const APP_URL = Deno.env.get('APP_URL') ?? 'https://app.heyelsie.com';
+
+async function handleAiReply(payload: Record<string, unknown>): Promise<void> {
+  const res = await fetch(`${APP_URL}/api/crm/ai-reply`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contact_id: payload.contact_id,
+      to_e164: payload.to_e164,
+      from_e164: payload.from_e164,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`ai_reply: app route ${res.status}: ${text.slice(0, 200)}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 async function processJob(
@@ -318,6 +343,7 @@ async function processJob(
     case 'postcall_ai':      return handlePostcallAi(supabase, job.payload);
     case 'compute_cost':     return handleComputeCost(supabase, job.payload);
     case 'send_sms':         return handleSendSms(supabase, job.payload);
+    case 'ai_reply':         return handleAiReply(job.payload);
     default:
       throw new Error(`unknown job kind: ${job.kind}`);
   }

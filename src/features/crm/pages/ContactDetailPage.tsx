@@ -18,6 +18,7 @@ import {
   formatTimeOnly,
 } from '../data/helpers';
 import StageSelector from '../components/shared/StageSelector';
+import ContactAiToggle from '../components/contacts/ContactAiToggle';
 import ContactSmsModal from '../components/contacts/ContactSmsModal';
 import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
@@ -190,6 +191,7 @@ export default function ContactDetailPage() {
                 size="md"
               />
             </div>
+            <ContactAiToggle contactId={contact.id} />
             <div>
               <div className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
                 Tags

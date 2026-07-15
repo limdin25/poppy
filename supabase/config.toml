@@ -358,6 +358,8 @@ verify_jwt = true
 verify_jwt = false
 [functions.wk-sms-broadcast]
 verify_jwt = false
+[functions.wk-draft-action]
+verify_jwt = false
 [functions.wk-jobs-worker]
 verify_jwt = false
 [functions.wk-create-agent]

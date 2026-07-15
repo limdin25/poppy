@@ -218,6 +218,41 @@ serve(async (req: Request) => {
         .from('wk_contacts')
         .update({ last_contact_at: new Date().toISOString() })
         .eq('id', contactId);
+
+      // 4. Maybe enqueue an AI warm-up reply. Light guard here (global enabled,
+      //    contact enabled, under the per-contact cap); the generator re-checks
+      //    the full guards (hours, human-replied-since, booking) at run time.
+      //    Skipped for duplicate inbound (idempotent path above set msgErr).
+      if (!msgErr) {
+        try {
+          const { data: s } = await supa
+            .from('wk_ai_reply_settings')
+            .select('enabled, reply_delay_seconds, max_replies_per_contact')
+            .eq('id', 'default')
+            .maybeSingle();
+          const settings = s as { enabled?: boolean; reply_delay_seconds?: number; max_replies_per_contact?: number } | null;
+          if (settings?.enabled) {
+            const { data: c } = await supa
+              .from('wk_contacts')
+              .select('ai_enabled, ai_reply_count')
+              .eq('id', contactId)
+              .maybeSingle();
+            const contact = c as { ai_enabled?: boolean; ai_reply_count?: number } | null;
+            const maxReplies = settings.max_replies_per_contact ?? 5;
+            if (contact?.ai_enabled !== false && (contact?.ai_reply_count ?? 0) < maxReplies) {
+              const delay = Math.max(0, settings.reply_delay_seconds ?? 45);
+              await supa.from('wk_jobs').insert({
+                kind: 'ai_reply',
+                status: 'pending',
+                scheduled_for: new Date(Date.now() + delay * 1000).toISOString(),
+                payload: { contact_id: contactId, to_e164: toE164 || null, from_e164: fromE164 },
+              });
+            }
+          }
+        } catch (e) {
+          console.error('[wk-sms-incoming] ai_reply enqueue failed (non-fatal)', e);
+        }
+      }
     }
 
     // Empty TwiML — no auto-reply.
