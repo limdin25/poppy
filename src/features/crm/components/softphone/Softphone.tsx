@@ -16,6 +16,7 @@ import { useSpendLimit } from '../../hooks/useSpendLimit';
 import { formatDuration, formatPence } from '../../data/helpers';
 import LiveCallScreen from '../live-call/LiveCallScreen';
 import { useCurrentAgent } from '../../hooks/useCurrentAgent';
+import { useCallerId } from '../../hooks/useCallerId';
 
 export default function Softphone() {
   const [open, setOpen] = useState(false);
@@ -35,6 +36,7 @@ export default function Softphone() {
   } = useActiveCallCtx();
   const spend = useSpendLimit();
   const { agent: me } = useCurrentAgent();
+  const { numbers, defaultId, setCallerId } = useCallerId();
 
   // Drop recovery now lives inside ActiveCallContext (call.on('disconnect')).
   // The launcher status reflects the unified phase + the Twilio device
@@ -233,7 +235,27 @@ export default function Softphone() {
         </>
       )}
 
-      <div className="px-3 pb-3">
+      {/* Calling from — picks the caller ID (persists as the agent's default
+          number; "Auto" clears it so the server falls back). */}
+      <div className="px-3 pt-2">
+        <label className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">
+          Calling from
+        </label>
+        <select
+          value={defaultId ?? ''}
+          onChange={(e) => void setCallerId(e.target.value || null)}
+          className="mt-1 w-full text-[12px] text-[#1A1A1A] border border-[#E5E7EB] rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#3C5A87]/30"
+        >
+          <option value="">Auto (default number)</option>
+          {numbers.map((n) => (
+            <option key={n.id} value={n.id}>
+              {n.label ? `${n.label} · ${n.e164}` : n.e164}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="px-3 pb-3 pt-2">
         <DialPad onCall={handleCall} />
       </div>
 
