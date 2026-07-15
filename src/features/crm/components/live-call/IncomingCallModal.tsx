@@ -99,12 +99,12 @@ export default function IncomingCallModal() {
       <audio ref={audioRef} src={RINGTONE_SRC} preload="auto" />
       <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="bg-white rounded-3xl shadow-2xl w-[340px] overflow-hidden border border-[#E5E7EB]">
-          <div className="bg-[#1E9A80] text-white px-5 py-3 flex items-center gap-2">
+          <div className="bg-[#3C5A87] text-white px-5 py-3 flex items-center gap-2">
             <Phone className="w-4 h-4 animate-pulse" />
             <span className="text-[13px] font-semibold">Incoming call</span>
           </div>
           <div className="flex flex-col items-center py-6 px-5">
-            <div className="w-20 h-20 rounded-full bg-[#1E9A80] flex items-center justify-center text-white text-[28px] font-bold mb-3">
+            <div className="w-20 h-20 rounded-full bg-[#3C5A87] flex items-center justify-center text-white text-[28px] font-bold mb-3">
               {displayName.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div className="text-[17px] font-semibold text-[#1A1A1A]">{displayName}</div>
@@ -120,7 +120,7 @@ export default function IncomingCallModal() {
             </button>
             <button
               onClick={accept}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#1E9A80] hover:bg-[#178e74] text-white text-[14px] font-semibold py-3 rounded-xl transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 bg-[#3C5A87] hover:bg-[#178e74] text-white text-[14px] font-semibold py-3 rounded-xl transition-colors"
             >
               <Phone className="w-4 h-4" /> Accept
             </button>

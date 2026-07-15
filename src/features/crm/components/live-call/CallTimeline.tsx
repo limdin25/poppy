@@ -69,7 +69,7 @@ function SmsEntry({ row }: { row: TimelineRow }) {
       className={cn(
         'rounded-lg px-2 py-1.5 text-[11px] border',
         outbound
-          ? 'bg-[#1E9A80]/10 border-[#1E9A80]/30 ml-3'
+          ? 'bg-[#3C5A87]/10 border-[#3C5A87]/30 ml-3'
           : 'bg-[#F3F3EE] border-[#E5E7EB] mr-3'
       )}
     >

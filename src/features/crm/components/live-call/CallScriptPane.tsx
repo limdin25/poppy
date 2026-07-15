@@ -65,7 +65,7 @@ export default function CallScriptPane({
     <div className="flex flex-col h-full bg-white">
       <div className="px-4 py-2.5 border-b border-[#E5E7EB] flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <FileText className="w-3.5 h-3.5 text-[#1E9A80]" />
+          <FileText className="w-3.5 h-3.5 text-[#3C5A87]" />
           <span className="text-[12px] font-semibold text-[#1A1A1A]">
             Call script
           </span>
@@ -186,7 +186,7 @@ function TeleprompterBlock({
         'rounded -mx-1 px-2 py-0.5 transition-colors',
         isRead && !isCurrent && 'bg-[#FEF9C3]/60 text-[#525252]',
         isCurrent &&
-          'border-l-[3px] border-[#1E9A80] -ml-[3px] pl-2 bg-[#ECFDF5] shadow-[0_2px_8px_rgba(30,154,128,0.12)]'
+          'border-l-[3px] border-[#3C5A87] -ml-[3px] pl-2 bg-[#EEF2F8] shadow-[0_2px_8px_rgba(30,154,128,0.12)]'
       )}
     >
       {children}
@@ -245,7 +245,7 @@ function renderBlock(b: Block, i: number) {
     return (
       <blockquote
         key={i}
-        className="border-l-2 border-[#1E9A80] pl-3 py-0.5 text-[12px] italic text-[#6B7280]"
+        className="border-l-2 border-[#3C5A87] pl-3 py-0.5 text-[12px] italic text-[#6B7280]"
       >
         {renderInline(b.text)}
       </blockquote>

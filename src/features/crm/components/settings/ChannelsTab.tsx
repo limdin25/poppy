@@ -156,7 +156,7 @@ export default function ChannelsTab() {
           <div key={section.provider} className="rounded-2xl border border-[#E5E7EB] bg-white">
             <header className="flex items-start justify-between gap-3 px-5 py-3 border-b border-[#E5E7EB]">
               <div className="flex items-start gap-3">
-                <section.Icon className="w-5 h-5 text-[#1E9A80] mt-0.5" strokeWidth={1.8} />
+                <section.Icon className="w-5 h-5 text-[#3C5A87] mt-0.5" strokeWidth={1.8} />
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-[14px] font-semibold text-[#1A1A1A]">
@@ -172,7 +172,7 @@ export default function ChannelsTab() {
                   <button
                     onClick={() => void handleUnipileConnect(section.unipileConnect!.provider)}
                     disabled={connectingUnipile === section.unipileConnect.provider}
-                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold bg-[#1E9A80] text-white hover:bg-[#1E9A80]/90 px-3 py-1.5 rounded-[10px] disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold bg-[#3C5A87] text-white hover:bg-[#3C5A87]/90 px-3 py-1.5 rounded-[10px] disabled:opacity-60"
                     data-testid={`connect-${section.unipileConnect.provider.toLowerCase()}`}
                   >
                     <section.unipileConnect.icon className="w-3 h-3" />
@@ -197,15 +197,15 @@ export default function ChannelsTab() {
             </header>
 
             {section.provider === 'unipile' && unipileFallbackUrl && (
-              <div className="px-5 py-3 border-b border-[#E5E7EB] bg-[#ECFDF5]/40">
-                <div className="text-[11px] text-[#1E9A80] font-semibold mb-1">
+              <div className="px-5 py-3 border-b border-[#E5E7EB] bg-[#EEF2F8]/40">
+                <div className="text-[11px] text-[#3C5A87] font-semibold mb-1">
                   If the Unipile tab didn't open
                 </div>
                 <a
                   href={unipileFallbackUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[12px] underline text-[#1E9A80] break-all"
+                  className="text-[12px] underline text-[#3C5A87] break-all"
                 >
                   {unipileFallbackUrl}
                 </a>
@@ -248,7 +248,7 @@ export default function ChannelsTab() {
                             );
                           }}
                           placeholder="Add a label (e.g. Free, Trial, Elijah)"
-                          className="flex-1 min-w-0 px-2 py-1 text-[12px] bg-transparent border border-transparent hover:border-[#E5E7EB] focus:border-[#1E9A80] focus:bg-white rounded-[6px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30"
+                          className="flex-1 min-w-0 px-2 py-1 text-[12px] bg-transparent border border-transparent hover:border-[#E5E7EB] focus:border-[#3C5A87] focus:bg-white rounded-[6px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30"
                         />
                       </div>
                       <button
@@ -257,7 +257,7 @@ export default function ChannelsTab() {
                         className={cn(
                           'inline-flex items-center text-[11px] font-semibold px-3 py-1 rounded-full transition-colors flex-shrink-0',
                           row.is_active
-                            ? 'bg-[#1E9A80] text-white hover:bg-[#1E9A80]/90'
+                            ? 'bg-[#3C5A87] text-white hover:bg-[#3C5A87]/90'
                             : 'bg-[#F3F3EE] text-[#6B7280] hover:bg-[#E5E7EB]',
                           busyRowId === row.id && 'opacity-60'
                         )}
@@ -279,7 +279,7 @@ export default function ChannelsTab() {
 function ProviderBadge({ connected }: { connected: boolean }) {
   if (connected) {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#1E9A80] bg-[#ECFDF5] px-1.5 py-0.5 rounded">
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#3C5A87] bg-[#EEF2F8] px-1.5 py-0.5 rounded">
         <CheckCircle2 className="w-3 h-3" />
         Connected
       </span>
@@ -298,7 +298,7 @@ function CircleDot({ active }: { active: boolean }) {
     <span
       className={cn(
         'inline-block w-2 h-2 rounded-full flex-none',
-        active ? 'bg-[#1E9A80]' : 'bg-[#9CA3AF]'
+        active ? 'bg-[#3C5A87]' : 'bg-[#9CA3AF]'
       )}
       aria-label={active ? 'active' : 'inactive'}
     />

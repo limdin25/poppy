@@ -140,7 +140,7 @@ export default function FollowupPromptModal({
 
         <div className="mb-4">
           <h2 className="flex items-center gap-2 text-[16px] font-semibold text-[#1A1A1A]">
-            <Bell className="w-4 h-4 text-[#1E9A80]" />
+            <Bell className="w-4 h-4 text-[#3C5A87]" />
             Follow-up for {contactName}
           </h2>
           <p className="text-[13px] text-[#6B7280] mt-1">
@@ -159,7 +159,7 @@ export default function FollowupPromptModal({
               type="datetime-local"
               value={dueLocal}
               onChange={(e) => setDueLocal(e.target.value)}
-              className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+              className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
             />
             <div className="flex flex-wrap gap-1.5 mt-2">
               {PRESETS.map((p) => (
@@ -167,7 +167,7 @@ export default function FollowupPromptModal({
                   key={p.label}
                   type="button"
                   onClick={() => applyPreset(p)}
-                  className="text-[10px] font-medium border border-[#E5E7EB] rounded-full px-2 py-0.5 hover:border-[#1E9A80]/60 hover:text-[#1E9A80]"
+                  className="text-[10px] font-medium border border-[#E5E7EB] rounded-full px-2 py-0.5 hover:border-[#3C5A87]/60 hover:text-[#3C5A87]"
                 >
                   {p.label}
                 </button>
@@ -183,7 +183,7 @@ export default function FollowupPromptModal({
               onChange={(e) => setNote(e.target.value)}
               rows={3}
               placeholder="e.g. Send the deal pack and confirm budget."
-              className="w-full px-3 py-2 text-[12px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80] resize-none"
+              className="w-full px-3 py-2 text-[12px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87] resize-none"
             />
           </div>
           {hookError && (
@@ -206,7 +206,7 @@ export default function FollowupPromptModal({
             type="button"
             onClick={() => void submit()}
             disabled={!dueLocal || submitting}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold bg-[#1E9A80] text-white rounded-[8px] hover:bg-[#1E9A80]/90 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold bg-[#3C5A87] text-white rounded-[8px] hover:bg-[#3C5A87]/90 disabled:opacity-50"
           >
             {submitting ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />

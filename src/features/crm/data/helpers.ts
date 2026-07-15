@@ -30,7 +30,7 @@ export function statusColour(status: string): string {
     case 'available':
     case 'connected':
     case 'busy':
-      return '#1E9A80';
+      return '#3C5A87';
     case 'idle':
     case 'ringing':
     case 'connecting':

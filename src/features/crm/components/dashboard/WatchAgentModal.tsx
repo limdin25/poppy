@@ -39,8 +39,8 @@ interface CoachRow {
 }
 
 const COACH_META: Record<CoachKind, { Icon: typeof Lightbulb; colour: string; label: string }> = {
-  script: { Icon: BookOpen, colour: '#1E9A80', label: 'SCRIPT' },
-  suggestion: { Icon: Lightbulb, colour: '#0F766E', label: 'SUGGESTION' },
+  script: { Icon: BookOpen, colour: '#3C5A87', label: 'SCRIPT' },
+  suggestion: { Icon: Lightbulb, colour: '#283C5C', label: 'SUGGESTION' },
   explain: { Icon: Megaphone, colour: '#7C3AED', label: 'EXPLAIN' },
   objection: { Icon: AlertTriangle, colour: '#EF4444', label: 'OBJECTION' },
   question: { Icon: HelpCircle, colour: '#3B82F6', label: 'ASK' },
@@ -156,7 +156,7 @@ export default function WatchAgentModal({ callId, agentName, contactName, onClos
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white border border-[#E5E7EB] rounded-2xl shadow-2xl w-[920px] max-w-[95vw] h-[640px] max-h-[90vh] flex flex-col overflow-hidden">
         <header className="px-5 py-3 border-b border-[#E5E7EB] flex items-center gap-3 bg-[#F3F3EE]/50">
-          <div className="w-2 h-2 rounded-full bg-[#1E9A80] animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-[#3C5A87] animate-pulse" />
           <div className="flex-1 min-w-0">
             <div className="text-[14px] font-semibold text-[#1A1A1A] truncate">
               Watching {agentName} — {contactName}
@@ -174,8 +174,8 @@ export default function WatchAgentModal({ callId, agentName, contactName, onClos
             className={cn(
               'flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-[10px] border transition-colors',
               supervising === 'listen'
-                ? 'bg-[#1E9A80] text-white border-[#1E9A80]'
-                : 'bg-white text-[#1A1A1A] border-[#E5E7EB] hover:bg-[#ECFDF5] disabled:opacity-50',
+                ? 'bg-[#3C5A87] text-white border-[#3C5A87]'
+                : 'bg-white text-[#1A1A1A] border-[#E5E7EB] hover:bg-[#EEF2F8] disabled:opacity-50',
             )}
             title="Silently listen to this call (agent + caller don't hear you)"
           >
@@ -227,7 +227,7 @@ export default function WatchAgentModal({ callId, agentName, contactName, onClos
                   <span
                     className={cn(
                       'inline-block w-[60px] text-[10px] uppercase font-semibold mr-2 align-top',
-                      l.speaker === 'agent' ? 'text-[#1E9A80]' : 'text-[#6B7280]'
+                      l.speaker === 'agent' ? 'text-[#3C5A87]' : 'text-[#6B7280]'
                     )}
                   >
                     {l.speaker === 'agent' ? 'Agent' : 'Caller'}
@@ -241,7 +241,7 @@ export default function WatchAgentModal({ callId, agentName, contactName, onClos
           {/* Coach column */}
           <div className="flex flex-col overflow-hidden">
             <div className="px-4 py-2 text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold border-b border-[#E5E7EB] flex items-center gap-1.5">
-              <Bot className="w-3 h-3 text-[#1E9A80]" /> AI coach
+              <Bot className="w-3 h-3 text-[#3C5A87]" /> AI coach
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {visibleEvents.length === 0 && (
@@ -258,7 +258,7 @@ export default function WatchAgentModal({ callId, agentName, contactName, onClos
                     key={e.id}
                     className={cn(
                       'rounded-xl border p-3',
-                      isLatest ? 'border-[#1E9A80]/40 bg-[#ECFDF5]' : 'border-[#E5E7EB] bg-white opacity-60'
+                      isLatest ? 'border-[#3C5A87]/40 bg-[#EEF2F8]' : 'border-[#E5E7EB] bg-white opacity-60'
                     )}
                   >
                     <div className="flex items-center gap-1.5 mb-1">

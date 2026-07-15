@@ -165,7 +165,7 @@ export default function EditContactModal({ contact, onClose, onSave, agents }: P
               }
               placeholder="Add notes…"
               rows={3}
-              className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px] resize-none focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+              className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px] resize-none focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
             />
           </div>
 
@@ -279,7 +279,7 @@ export default function EditContactModal({ contact, onClose, onSave, agents }: P
                     setNewTag('');
                   }
                 }}
-                className="px-3 text-[#1E9A80] hover:bg-[#ECFDF5] rounded-[10px]"
+                className="px-3 text-[#3C5A87] hover:bg-[#EEF2F8] rounded-[10px]"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
@@ -383,7 +383,7 @@ export default function EditContactModal({ contact, onClose, onSave, agents }: P
                     setNewField({ key: '', value: '' });
                   }
                 }}
-                className="px-2 text-[#1E9A80] hover:bg-[#ECFDF5] rounded-[8px]"
+                className="px-2 text-[#3C5A87] hover:bg-[#EEF2F8] rounded-[8px]"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
@@ -403,7 +403,7 @@ export default function EditContactModal({ contact, onClose, onSave, agents }: P
               onSave(draft);
               onClose();
             }}
-            className="bg-[#1E9A80] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
+            className="bg-[#3C5A87] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
           >
             Save changes
           </button>

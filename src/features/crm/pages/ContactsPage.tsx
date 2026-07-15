@@ -271,7 +271,7 @@ export default function ContactsPage() {
           </button>
           <button
             onClick={startNewContact}
-            className="bg-[#1E9A80] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
+            className="bg-[#3C5A87] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
           >
             + New contact
           </button>
@@ -334,7 +334,7 @@ export default function ContactsPage() {
                   <td className="px-4 py-2.5">
                     <Link
                       to={`/admin/crm/contacts/${c.id}`}
-                      className="font-semibold text-[#1A1A1A] hover:text-[#1E9A80] flex items-center gap-1.5"
+                      className="font-semibold text-[#1A1A1A] hover:text-[#3C5A87] flex items-center gap-1.5"
                     >
                       <EditableName value={c.name} onSave={(n) => renameContact(c.id, n)} className="font-semibold" />
                       {c.isHot && (
@@ -372,7 +372,7 @@ export default function ContactsPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="text-[#1E9A80] underline decoration-[#1E9A80]/40 hover:decoration-[#1E9A80] cursor-pointer truncate inline-flex items-center gap-1 max-w-full align-bottom"
+                          className="text-[#3C5A87] underline decoration-[#3C5A87]/40 hover:decoration-[#3C5A87] cursor-pointer truncate inline-flex items-center gap-1 max-w-full align-bottom"
                           title={href}
                         >
                           <span className="truncate">{display}</span>
@@ -402,7 +402,7 @@ export default function ContactsPage() {
                           e.stopPropagation();
                           openDialerPro(c.id);
                         }}
-                        className="p-1.5 hover:bg-[#ECFDF5] rounded text-[#1E9A80]"
+                        className="p-1.5 hover:bg-[#EEF2F8] rounded text-[#3C5A87]"
                         title={`Call ${c.name}`}
                       >
                         <Phone className="w-3.5 h-3.5" />
@@ -414,7 +414,7 @@ export default function ContactsPage() {
                           setSmsChannel('sms');
                           setSmsTo(c);
                         }}
-                        className="p-1.5 hover:bg-[#ECFDF5] rounded text-[#1E9A80]"
+                        className="p-1.5 hover:bg-[#EEF2F8] rounded text-[#3C5A87]"
                         title={`SMS ${c.name}`}
                         data-testid={`contacts-row-sms-${c.id}`}
                       >
@@ -429,7 +429,7 @@ export default function ContactsPage() {
                           setSmsChannel('whatsapp');
                           setSmsTo(c);
                         }}
-                        className="p-1.5 hover:bg-[#DCFCE7] rounded text-[#25D366]"
+                        className="p-1.5 hover:bg-[#EEF2F8] rounded text-[#25D366]"
                         title={`WhatsApp ${c.name}`}
                         data-testid={`contacts-row-whatsapp-${c.id}`}
                       >

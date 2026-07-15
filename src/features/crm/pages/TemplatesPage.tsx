@@ -61,7 +61,7 @@ export default function TemplatesPage() {
               className={cn(
                 'flex items-center gap-1.5 px-4 py-3 text-[13px] font-medium border-b-2 transition-colors',
                 active
-                  ? 'border-[#1E9A80] text-[#1E9A80]'
+                  ? 'border-[#3C5A87] text-[#3C5A87]'
                   : 'border-transparent text-[#6B7280] hover:text-[#1A1A1A]'
               )}
             >

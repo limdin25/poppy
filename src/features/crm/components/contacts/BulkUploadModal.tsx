@@ -461,7 +461,7 @@ export default function BulkUploadModal({
 
         {step === 'pick' && (
           <div className="p-5 space-y-4">
-            <label className="block border-2 border-dashed border-[#E5E7EB] rounded-2xl p-8 text-center cursor-pointer hover:border-[#1E9A80] hover:bg-[#ECFDF5]/30 transition-colors">
+            <label className="block border-2 border-dashed border-[#E5E7EB] rounded-2xl p-8 text-center cursor-pointer hover:border-[#3C5A87] hover:bg-[#EEF2F8]/30 transition-colors">
               <input type="file" accept=".csv" className="hidden" onChange={onFile} />
               <Upload className="w-7 h-7 text-[#9CA3AF] mx-auto mb-2" />
               <div className="text-[14px] font-medium text-[#1A1A1A]">
@@ -477,8 +477,8 @@ export default function BulkUploadModal({
         {step === 'review' && (
           <>
             <div className="p-5 space-y-4">
-              <div className="flex items-center gap-2 px-3 py-2 bg-[#ECFDF5] border border-[#1E9A80]/30 rounded-[10px]">
-                <FileText className="w-4 h-4 text-[#1E9A80]" />
+              <div className="flex items-center gap-2 px-3 py-2 bg-[#EEF2F8] border border-[#3C5A87]/30 rounded-[10px]">
+                <FileText className="w-4 h-4 text-[#3C5A87]" />
                 <div className="flex-1 text-[12px]">
                   <span className="font-semibold text-[#1A1A1A]">{fileName || 'CSV'}</span>
                   <span className="text-[#6B7280] ml-2">
@@ -523,7 +523,7 @@ export default function BulkUploadModal({
                   )}
                 </select>
                 {assignTo !== 'round_robin' && assignTo !== 'pull' && assignTo !== 'me' && (
-                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#1E9A80]">
+                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#3C5A87]">
                     <Lock className="w-3 h-3" />
                     Visibility: only {agents.find((a) => a.id === assignTo)?.name} + admins
                   </div>
@@ -545,7 +545,7 @@ export default function BulkUploadModal({
                     ))}
                   </select>
                   {lockedPipelineId && (
-                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[#1E9A80]">
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[#3C5A87]">
                       <Lock className="w-3 h-3" />
                       Pinned by the campaign — uploads land in this pipeline
                     </div>
@@ -603,7 +603,7 @@ export default function BulkUploadModal({
                   ))}
                 </select>
                 {campaignId && (
-                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#1E9A80]">
+                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#3C5A87]">
                     <Phone className="w-3 h-3" />
                     These leads will be ready to dial via the campaign on /crm/dialer
                   </div>
@@ -621,7 +621,7 @@ export default function BulkUploadModal({
               <button
                 onClick={() => void runImport()}
                 disabled={rows.length === 0}
-                className="bg-[#1E9A80] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="bg-[#3C5A87] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Import {rows.length} contact{rows.length === 1 ? '' : 's'}
               </button>
@@ -631,14 +631,14 @@ export default function BulkUploadModal({
 
         {step === 'importing' && (
           <div className="p-12 text-center">
-            <div className="inline-block w-8 h-8 border-2 border-[#1E9A80] border-t-transparent rounded-full animate-spin mb-3" />
+            <div className="inline-block w-8 h-8 border-2 border-[#3C5A87] border-t-transparent rounded-full animate-spin mb-3" />
             <div className="text-[13px] text-[#6B7280]">Importing {rows.length} contacts…</div>
           </div>
         )}
 
         {step === 'done' && result && (
           <div className="p-8 text-center">
-            <div className="w-12 h-12 rounded-full bg-[#ECFDF5] text-[#1E9A80] flex items-center justify-center mx-auto mb-3 text-[24px]">
+            <div className="w-12 h-12 rounded-full bg-[#EEF2F8] text-[#3C5A87] flex items-center justify-center mx-auto mb-3 text-[24px]">
               ✓
             </div>
             <h3 className="text-[16px] font-semibold text-[#1A1A1A]">
@@ -661,7 +661,7 @@ export default function BulkUploadModal({
             )}
             <button
               onClick={close}
-              className="mt-4 bg-[#1E9A80] text-white text-[13px] font-semibold px-5 py-2 rounded-[10px]"
+              className="mt-4 bg-[#3C5A87] text-white text-[13px] font-semibold px-5 py-2 rounded-[10px]"
             >
               Done
             </button>

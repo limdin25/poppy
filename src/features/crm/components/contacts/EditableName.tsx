@@ -52,10 +52,10 @@ export default function EditableName({ value, onSave, className = '' }: Props) {
           onBlur={() => void commit()}
           onKeyDown={onKeyDown}
           disabled={saving}
-          className={`bg-transparent border-b border-[#1E9A80] outline-none ${className}`}
+          className={`bg-transparent border-b border-[#3C5A87] outline-none ${className}`}
           style={{ width: `${Math.max(draft.length, 4)}ch` }}
         />
-        {saving && <Loader2 className="w-3 h-3 animate-spin text-[#1E9A80]" />}
+        {saving && <Loader2 className="w-3 h-3 animate-spin text-[#3C5A87]" />}
       </span>
     );
   }
@@ -63,7 +63,7 @@ export default function EditableName({ value, onSave, className = '' }: Props) {
   return (
     <span
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditing(true); }}
-      className={`cursor-text hover:border-b hover:border-[#1E9A80]/40 ${className}`}
+      className={`cursor-text hover:border-b hover:border-[#3C5A87]/40 ${className}`}
       title="Click to rename"
     >
       {value}

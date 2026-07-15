@@ -55,7 +55,7 @@ export default function ContactDetailPage() {
   if (!contact) {
     return (
       <div className="p-6">
-        <Link to="/admin/crm/contacts" className="text-[13px] text-[#1E9A80] hover:underline">
+        <Link to="/admin/crm/contacts" className="text-[13px] text-[#3C5A87] hover:underline">
           ← Back to contacts
         </Link>
         <p className="mt-4 text-[#6B7280]">Contact not found.</p>
@@ -119,13 +119,13 @@ export default function ContactDetailPage() {
     <div className="p-6 max-w-[1400px] mx-auto space-y-5">
       <Link
         to="/admin/crm/contacts"
-        className="inline-flex items-center gap-1 text-[12px] text-[#6B7280] hover:text-[#1E9A80]"
+        className="inline-flex items-center gap-1 text-[12px] text-[#6B7280] hover:text-[#3C5A87]"
       >
         <ArrowLeft className="w-3.5 h-3.5" /> Contacts
       </Link>
 
       <header className="flex items-center gap-4">
-        <div className="w-14 h-14 rounded-full bg-[#1E9A80]/15 text-[#1E9A80] text-[20px] font-bold flex items-center justify-center">
+        <div className="w-14 h-14 rounded-full bg-[#3C5A87]/15 text-[#3C5A87] text-[20px] font-bold flex items-center justify-center">
           {contact.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
         </div>
         <div className="flex-1">
@@ -148,7 +148,7 @@ export default function ContactDetailPage() {
           </button>
           <button
             onClick={() => openDialerPro(contact.id)}
-            className="flex items-center gap-1.5 bg-[#1E9A80] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
+            className="flex items-center gap-1.5 bg-[#3C5A87] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
           >
             <Phone className="w-4 h-4" /> Call
           </button>
@@ -216,11 +216,11 @@ export default function ContactDetailPage() {
                   onChange={(e) => setNewTag(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addTag()}
                   placeholder="Add tag…"
-                  className="flex-1 px-2 py-1 text-[11px] border border-[#E5E7EB] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30"
+                  className="flex-1 px-2 py-1 text-[11px] border border-[#E5E7EB] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30"
                 />
                 <button
                   onClick={addTag}
-                  className="px-1.5 text-[#1E9A80] hover:bg-[#ECFDF5] rounded-[8px]"
+                  className="px-1.5 text-[#3C5A87] hover:bg-[#EEF2F8] rounded-[8px]"
                 >
                   <Plus className="w-3 h-3" />
                 </button>
@@ -262,7 +262,7 @@ export default function ContactDetailPage() {
                 />
                 <button
                   onClick={addField}
-                  className="px-1.5 text-[#1E9A80] hover:bg-[#ECFDF5] rounded-[8px]"
+                  className="px-1.5 text-[#3C5A87] hover:bg-[#EEF2F8] rounded-[8px]"
                 >
                   <Plus className="w-3 h-3" />
                 </button>
@@ -287,12 +287,12 @@ export default function ContactDetailPage() {
                   · {formatDuration(c.durationSec)} · {formatPence(c.costPence)}
                 </div>
                 {c.recordingUrl && (
-                  <button className="mt-1 text-[11px] flex items-center gap-1 text-[#1E9A80] hover:underline">
+                  <button className="mt-1 text-[11px] flex items-center gap-1 text-[#3C5A87] hover:underline">
                     <Play className="w-3 h-3" /> Play recording
                   </button>
                 )}
                 {c.aiSummary && (
-                  <div className="mt-1.5 text-[12px] text-[#1A1A1A] italic bg-[#ECFDF5]/50 p-2 rounded-lg leading-snug">
+                  <div className="mt-1.5 text-[12px] text-[#1A1A1A] italic bg-[#EEF2F8]/50 p-2 rounded-lg leading-snug">
                     AI: "{c.aiSummary}"
                   </div>
                 )}
@@ -324,7 +324,7 @@ export default function ContactDetailPage() {
             </div>
             <div className="text-[12px] text-[#6B7280] mt-0.5">
               Value:{' '}
-              <span className="font-semibold text-[#1E9A80] tabular-nums">
+              <span className="font-semibold text-[#3C5A87] tabular-nums">
                 {contact.dealValuePence ? formatPence(contact.dealValuePence) : '—'}
               </span>
             </div>

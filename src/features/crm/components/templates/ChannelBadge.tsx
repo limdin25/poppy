@@ -10,7 +10,7 @@ export default function ChannelBadge({ channel }: { channel: TemplateChannel | n
   }
   const styles: Record<TemplateChannel, { bg: string; fg: string; label: string }> = {
     sms:      { bg: '#DBEAFE', fg: '#1D4ED8', label: 'SMS' },
-    whatsapp: { bg: '#D1FAE5', fg: '#065F46', label: 'WhatsApp' },
+    whatsapp: { bg: '#D1FAE5', fg: '#283C5C', label: 'WhatsApp' },
     email:    { bg: '#FEF3C7', fg: '#B45309', label: 'Email' },
   };
   const s = styles[channel];

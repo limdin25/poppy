@@ -121,7 +121,7 @@ export default function EditScriptModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={120}
-              className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+              className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
             />
           </div>
           <div>
@@ -133,7 +133,7 @@ export default function EditScriptModal({
               onChange={(e) => setBody(e.target.value)}
               rows={18}
               spellCheck
-              className="w-full px-3 py-2 text-[12px] font-mono border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80] resize-y"
+              className="w-full px-3 py-2 text-[12px] font-mono border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87] resize-y"
             />
             <div className="text-[10px] text-[#9CA3AF] mt-1">
               {body.length} chars
@@ -145,7 +145,7 @@ export default function EditScriptModal({
             </div>
           )}
           {savedHint && !error && (
-            <div className="text-[12px] text-[#1E9A80]">
+            <div className="text-[12px] text-[#3C5A87]">
               Saved · just now
             </div>
           )}
@@ -187,7 +187,7 @@ export default function EditScriptModal({
               type="button"
               onClick={() => void handleSave()}
               disabled={saving || resetting || !body.trim()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold bg-[#1E9A80] text-white rounded-[8px] hover:bg-[#1E9A80]/90 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold bg-[#3C5A87] text-white rounded-[8px] hover:bg-[#3C5A87]/90 disabled:opacity-50"
             >
               {saving ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />

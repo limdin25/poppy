@@ -111,7 +111,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
 };
 
 const COLOUR_PALETTE = [
-  '#1E9A80', '#F59E0B', '#3B82F6', '#EF4444',
+  '#3C5A87', '#F59E0B', '#3B82F6', '#EF4444',
   '#9CA3AF', '#525252', '#8B5CF6', '#EC4899',
 ];
 
@@ -132,13 +132,13 @@ function ScopeBadge({
   if (!campaignId) return null;
   if (source === 'campaign') {
     return (
-      <span className="inline-flex items-center gap-1 ml-2 text-[9px] uppercase font-bold tracking-wide text-[#1E9A80] bg-[#ECFDF5] px-1.5 py-0.5 rounded">
+      <span className="inline-flex items-center gap-1 ml-2 text-[9px] uppercase font-bold tracking-wide text-[#3C5A87] bg-[#EEF2F8] px-1.5 py-0.5 rounded">
         override
         {onReset && (
           <button
             type="button"
             onClick={onReset}
-            className="hover:text-[#0F766E]"
+            className="hover:text-[#283C5C]"
             title="Clear override + fall back to workspace default"
           >
             ↺
@@ -330,7 +330,7 @@ function SettingsSidebar({
           className={cn(
             'w-full flex items-center gap-2 px-3 py-2 rounded-[10px] text-[13px] text-left transition-colors',
             isWorkspace
-              ? 'bg-white border border-[#E5E7EB] text-[#1E9A80] font-semibold shadow-sm'
+              ? 'bg-white border border-[#E5E7EB] text-[#3C5A87] font-semibold shadow-sm'
               : 'text-[#6B7280] hover:bg-white/50'
           )}
         >
@@ -353,7 +353,7 @@ function SettingsSidebar({
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-2 rounded-[10px] text-[13px] text-left transition-colors',
                 isSelected
-                  ? 'bg-white border border-[#E5E7EB] text-[#1E9A80] font-semibold shadow-sm'
+                  ? 'bg-white border border-[#E5E7EB] text-[#3C5A87] font-semibold shadow-sm'
                   : 'text-[#6B7280] hover:bg-white/50'
               )}
             >
@@ -372,12 +372,12 @@ function SettingsSidebar({
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void create()}
             placeholder="New campaign…"
-            className="flex-1 px-2 py-1.5 text-[12px] bg-white border border-[#E5E7EB] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/40"
+            className="flex-1 px-2 py-1.5 text-[12px] bg-white border border-[#E5E7EB] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/40"
           />
           <button
             onClick={() => void create()}
             disabled={creating || !newName.trim()}
-            className="bg-[#1E9A80] text-white text-[11px] font-semibold px-2 py-1.5 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+            className="bg-[#3C5A87] text-white text-[11px] font-semibold px-2 py-1.5 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
           >
             {creating ? '…' : '+'}
           </button>
@@ -401,7 +401,7 @@ function SettingsSidebar({
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-2 rounded-[10px] text-[13px] text-left transition-colors',
                 isSelected
-                  ? 'bg-white border border-[#E5E7EB] text-[#1E9A80] font-semibold shadow-sm'
+                  ? 'bg-white border border-[#E5E7EB] text-[#3C5A87] font-semibold shadow-sm'
                   : 'text-[#6B7280] hover:bg-white/50'
               )}
             >
@@ -438,7 +438,7 @@ function WorkspaceBundle({ tab, onTabChange }: { tab: string; onTabChange: (t: s
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-medium whitespace-nowrap transition-colors',
               validTab === t.id
-                ? 'bg-white border border-[#E5E7EB] text-[#1E9A80] shadow-sm'
+                ? 'bg-white border border-[#E5E7EB] text-[#3C5A87] shadow-sm'
                 : 'text-[#6B7280] hover:bg-white/50'
             )}
           >
@@ -494,7 +494,7 @@ function CampaignBundle({
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-medium whitespace-nowrap transition-colors',
               validTab === t.id
-                ? 'bg-white border border-[#E5E7EB] text-[#1E9A80] shadow-sm'
+                ? 'bg-white border border-[#E5E7EB] text-[#3C5A87] shadow-sm'
                 : 'text-[#6B7280] hover:bg-white/50'
             )}
           >
@@ -586,7 +586,7 @@ function CampaignBundleHeader({
             className={cn(
               'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold border',
               campaign.isActive
-                ? 'bg-[#ECFDF5] text-[#1E9A80] border-[#1E9A80]/30'
+                ? 'bg-[#EEF2F8] text-[#3C5A87] border-[#3C5A87]/30'
                 : 'bg-[#FEF3C7] text-[#B45309] border-[#F59E0B]/30'
             )}
           >
@@ -597,7 +597,7 @@ function CampaignBundleHeader({
             className={cn(
               'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold border',
               campaign.aiCoachEnabled
-                ? 'bg-[#ECFDF5] text-[#1E9A80] border-[#1E9A80]/30'
+                ? 'bg-[#EEF2F8] text-[#3C5A87] border-[#3C5A87]/30'
                 : 'bg-[#F3F3EE] text-[#9CA3AF] border-[#E5E7EB]'
             )}
           >
@@ -740,7 +740,7 @@ function CampaignLeadsCsvPanel({
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setOpen(true)}
-            className="bg-[#1E9A80] text-white text-[12px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 inline-flex items-center gap-1.5"
+            className="bg-[#3C5A87] text-white text-[12px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 inline-flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" /> Upload CSV
           </button>
@@ -1039,7 +1039,7 @@ function PipelinesTab({ campaignId }: { campaignId: string | null }) {
                   'border border-[#E5E7EB] rounded-xl overflow-hidden transition-colors',
                   draggedColId === col.id && 'opacity-40',
                   draggedColId && draggedColId !== col.id &&
-                    'hover:border-[#1E9A80] hover:bg-[#ECFDF5]/50'
+                    'hover:border-[#3C5A87] hover:bg-[#EEF2F8]/50'
                 )}
               >
                 <div className="flex items-center gap-3 p-3">
@@ -1086,7 +1086,7 @@ function PipelinesTab({ campaignId }: { campaignId: string | null }) {
                       <input
                         value={col.name}
                         onChange={(e) => update(col.id, { name: e.target.value })}
-                        className="text-[13px] font-semibold bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 rounded px-1 max-w-[200px]"
+                        className="text-[13px] font-semibold bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 rounded px-1 max-w-[200px]"
                       />
                       {col.isDefaultOnTimeout && (
                         <span className="text-[9px] font-medium bg-[#FEF7E6] text-[#B45309] px-1 py-0.5 rounded">
@@ -1096,7 +1096,7 @@ function PipelinesTab({ campaignId }: { campaignId: string | null }) {
                     </div>
                     <div className="text-[11px] text-[#6B7280] mt-1 flex flex-wrap gap-1">
                       {a.sendSms && (
-                        <Chip label={`+SMS (${a.smsTemplateId ?? 'inline'})`} colour="#1E9A80" />
+                        <Chip label={`+SMS (${a.smsTemplateId ?? 'inline'})`} colour="#3C5A87" />
                       )}
                       {a.createTask && (
                         <Chip
@@ -1112,7 +1112,7 @@ function PipelinesTab({ campaignId }: { campaignId: string | null }) {
                   </div>
                   <button
                     onClick={() => setExpandedId(isOpen ? null : col.id)}
-                    className="text-[11px] font-medium text-[#1E9A80] hover:bg-[#ECFDF5] px-2 py-1 rounded"
+                    className="text-[11px] font-medium text-[#3C5A87] hover:bg-[#EEF2F8] px-2 py-1 rounded"
                   >
                     {isOpen ? 'Close' : 'Edit'}
                   </button>
@@ -1283,7 +1283,7 @@ function PipelinesTab({ campaignId }: { campaignId: string | null }) {
         </div>
         <button
           onClick={addColumn}
-          className="mt-3 flex items-center gap-1 text-[12px] font-medium text-[#1E9A80] hover:bg-[#ECFDF5] px-2 py-1.5 rounded-[10px]"
+          className="mt-3 flex items-center gap-1 text-[12px] font-medium text-[#3C5A87] hover:bg-[#EEF2F8] px-2 py-1.5 rounded-[10px]"
         >
           <Plus className="w-3.5 h-3.5" /> Add column
         </button>
@@ -1314,7 +1314,7 @@ function PipelinesTab({ campaignId }: { campaignId: string | null }) {
                       {col.name}
                     </div>
                     <div className="flex flex-wrap gap-0.5 mt-0.5">
-                      {a.sendSms && <span className="text-[8px] text-[#1E9A80]">+SMS</span>}
+                      {a.sendSms && <span className="text-[8px] text-[#3C5A87]">+SMS</span>}
                       {a.createTask && (
                         <span className="text-[8px] text-[#3B82F6]">+task</span>
                       )}
@@ -1367,7 +1367,7 @@ function ToggleRow({
         onClick={() => onToggle(!on)}
         className={cn(
           'w-10 h-5 rounded-full relative transition-colors flex-shrink-0',
-          on ? 'bg-[#1E9A80]' : 'bg-[#E5E7EB]'
+          on ? 'bg-[#3C5A87]' : 'bg-[#E5E7EB]'
         )}
         aria-pressed={on}
       >
@@ -1514,7 +1514,7 @@ function CampaignAgentsPanel({ campaignId }: { campaignId: string }) {
         <button
           onClick={() => void onAdd()}
           disabled={!pickingAgentId}
-          className="bg-[#1E9A80] text-white text-[11px] font-semibold px-3 py-1.5 rounded-[8px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+          className="bg-[#3C5A87] text-white text-[11px] font-semibold px-3 py-1.5 rounded-[8px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
         >
           + Add
         </button>
@@ -1665,7 +1665,7 @@ function CampaignNumbersPanel({ campaignId }: { campaignId: string }) {
                       ? '#0E8B3E'
                       : slot.channel === 'email'
                         ? '#1D4ED8'
-                        : '#1E9A80',
+                        : '#3C5A87',
                 }}
               >
                 {slot.icon} {slot.label}
@@ -1986,7 +1986,7 @@ function AgentsTab() {
                     onChange={(e) => void updateAgentLeaderboard(a.id, e.target.checked)}
                     data-testid={`agent-leaderboard-${a.id}`}
                     title="Show this agent on the leaderboard"
-                    className="w-4 h-4 accent-[#1E9A80] cursor-pointer"
+                    className="w-4 h-4 accent-[#3C5A87] cursor-pointer"
                   />
                 </td>
                 <td className="py-2 text-right">
@@ -2029,7 +2029,7 @@ function AgentsTab() {
         {!inviting && (
           <button
             onClick={() => setInviting(true)}
-            className="mt-3 inline-flex items-center gap-1 text-[12px] font-semibold text-[#1E9A80] hover:bg-[#ECFDF5] px-3 py-1.5 rounded-[10px]"
+            className="mt-3 inline-flex items-center gap-1 text-[12px] font-semibold text-[#3C5A87] hover:bg-[#EEF2F8] px-3 py-1.5 rounded-[10px]"
           >
             <Plus className="w-3.5 h-3.5" /> Invite agent
           </button>
@@ -2079,7 +2079,7 @@ function AgentsTab() {
                     setInvite((s) => ({ ...s, password: pw }));
                     setShowPw(true);
                   }}
-                  className="text-[11px] font-medium text-[#1E9A80] hover:bg-[#ECFDF5] px-2 py-1.5 rounded-[8px] whitespace-nowrap"
+                  className="text-[11px] font-medium text-[#3C5A87] hover:bg-[#EEF2F8] px-2 py-1.5 rounded-[8px] whitespace-nowrap"
                   title="Generate a strong password"
                 >
                   Generate
@@ -2132,7 +2132,7 @@ function AgentsTab() {
               <button
                 onClick={() => void send()}
                 disabled={submitting}
-                className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[8px] hover:bg-[#1E9A80]/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[8px] hover:bg-[#3C5A87]/90 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {submitting ? 'Creating…' : 'Create agent'}
               </button>
@@ -2356,7 +2356,7 @@ function NumbersTab() {
           <button
             onClick={() => void onConnect()}
             disabled={busy === 'connect'}
-            className="bg-[#1E9A80] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="bg-[#3C5A87] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {busy === 'connect' ? 'Connecting…' : 'Connect Twilio account'}
           </button>
@@ -2376,7 +2376,7 @@ function NumbersTab() {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#1E9A80]" />
+              <span className="w-2 h-2 rounded-full bg-[#3C5A87]" />
               <span className="text-[13px] font-semibold text-[#1A1A1A]">Twilio connected</span>
             </div>
             {state.friendly_name && (
@@ -2466,7 +2466,7 @@ function NumbersTab() {
                   <span
                     className={cn(
                       'relative w-10 h-6 rounded-full transition-colors flex-shrink-0',
-                      n.voice_enabled ? 'bg-[#1E9A80]' : 'bg-[#E5E7EB]'
+                      n.voice_enabled ? 'bg-[#3C5A87]' : 'bg-[#E5E7EB]'
                     )}
                   >
                     <span
@@ -2479,7 +2479,7 @@ function NumbersTab() {
                   <span
                     className={cn(
                       'text-[12px] font-medium min-w-[60px] text-left',
-                      n.voice_enabled ? 'text-[#1E9A80]' : 'text-[#9CA3AF]'
+                      n.voice_enabled ? 'text-[#3C5A87]' : 'text-[#9CA3AF]'
                     )}
                   >
                     {n.voice_enabled ? 'Enabled' : 'Disabled'}
@@ -2599,7 +2599,7 @@ function UnifiedCoachTab({ campaignId = null }: { campaignId?: string | null } =
             className={cn(
               'px-3 py-1.5 rounded-[10px] text-[12px] font-medium transition-colors',
               selectedId === p.id
-                ? 'bg-[#1E9A80] text-white shadow-sm'
+                ? 'bg-[#3C5A87] text-white shadow-sm'
                 : 'bg-[#F3F3EE] text-[#6B7280] hover:bg-[#E5E7EB]'
             )}
           >
@@ -2609,7 +2609,7 @@ function UnifiedCoachTab({ campaignId = null }: { campaignId?: string | null } =
         ))}
         <button
           onClick={() => void addProfile()}
-          className="px-3 py-1.5 rounded-[10px] text-[12px] font-medium text-[#1E9A80] border border-dashed border-[#1E9A80] hover:bg-[#ECFDF5]"
+          className="px-3 py-1.5 rounded-[10px] text-[12px] font-medium text-[#3C5A87] border border-dashed border-[#3C5A87] hover:bg-[#EEF2F8]"
         >
           + New profile
         </button>
@@ -2733,10 +2733,10 @@ function ProfileEditor({
           <input
             value={name}
             onChange={(e) => { setName(e.target.value); setDirty(true); }}
-            className="text-[14px] font-semibold bg-transparent border-b border-dashed border-[#E5E7EB] focus:border-[#1E9A80] outline-none px-0 py-0.5 w-48"
+            className="text-[14px] font-semibold bg-transparent border-b border-dashed border-[#E5E7EB] focus:border-[#3C5A87] outline-none px-0 py-0.5 w-48"
           />
           {profile.is_default && (
-            <span className="text-[10px] text-[#1E9A80] bg-[#ECFDF5] px-2 py-0.5 rounded-full">
+            <span className="text-[10px] text-[#3C5A87] bg-[#EEF2F8] px-2 py-0.5 rounded-full">
               Default
             </span>
           )}
@@ -2761,7 +2761,7 @@ function ProfileEditor({
             </select>
             <button
               onClick={() => void createScript()}
-              className="text-[11px] text-[#1E9A80] hover:underline whitespace-nowrap"
+              className="text-[11px] text-[#3C5A87] hover:underline whitespace-nowrap"
             >
               + New script
             </button>
@@ -2772,7 +2772,7 @@ function ProfileEditor({
                 <span className="text-[11px] font-medium text-[#1A1A1A]">{selectedScript.name}</span>
                 <button
                   onClick={() => setEditingScript(true)}
-                  className="text-[10px] text-[#1E9A80] hover:underline"
+                  className="text-[10px] text-[#3C5A87] hover:underline"
                 >
                   Edit script
                 </button>
@@ -2783,7 +2783,7 @@ function ProfileEditor({
             </div>
           )}
           {editingScript && (
-            <div className="mt-2 border border-[#1E9A80] rounded-lg p-2 bg-white">
+            <div className="mt-2 border border-[#3C5A87] rounded-lg p-2 bg-white">
               <input
                 value={scriptName}
                 onChange={(e) => setScriptName(e.target.value)}
@@ -2798,7 +2798,7 @@ function ProfileEditor({
               <div className="flex gap-2 mt-2">
                 <button
                   onClick={() => void saveScript()}
-                  className="bg-[#1E9A80] text-white text-[11px] font-semibold px-3 py-1.5 rounded-[8px]"
+                  className="bg-[#3C5A87] text-white text-[11px] font-semibold px-3 py-1.5 rounded-[8px]"
                 >
                   Save script
                 </button>
@@ -2851,7 +2851,7 @@ function ProfileEditor({
             className={cn(
               'text-[12px] font-semibold px-4 py-2 rounded-[10px] transition-colors',
               dirty
-                ? 'bg-[#1E9A80] text-white hover:bg-[#1E9A80]/90'
+                ? 'bg-[#3C5A87] text-white hover:bg-[#3C5A87]/90'
                 : 'bg-[#F3F3EE] text-[#9CA3AF] cursor-not-allowed'
             )}
           >
@@ -2913,7 +2913,7 @@ function AITab({ campaignId = null }: { campaignId?: string | null } = {}) {
               <button
                 onClick={() => void save()}
                 disabled={saving || loading}
-                className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+                className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
               >
                 {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}
               </button>
@@ -3001,7 +3001,7 @@ function AITab({ campaignId = null }: { campaignId?: string | null } = {}) {
             <button
               onClick={() => void save()}
               disabled={saving || loading}
-              className="bg-[#1E9A80] text-white text-[12px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+              className="bg-[#3C5A87] text-white text-[12px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
             >
               {saving ? 'Saving\u2026' : saved ? 'Saved \u2713' : 'Save AI model settings'}
             </button>
@@ -3020,7 +3020,7 @@ function AITab({ campaignId = null }: { campaignId?: string | null } = {}) {
               className={cn(
                 'px-4 py-2 rounded-[10px] text-[13px] font-semibold transition-colors',
                 !ks.aiCoach
-                  ? 'bg-[#1E9A80] text-white'
+                  ? 'bg-[#3C5A87] text-white'
                   : 'bg-[#F3F3EE] text-[#6B7280]'
               )}
             >
@@ -3183,7 +3183,7 @@ function AgentScriptCard() {
             className={cn(
               'px-2 py-0.5 rounded-full font-semibold',
               script.source === 'own'
-                ? 'bg-[#1E9A80]/10 text-[#1E9A80]'
+                ? 'bg-[#3C5A87]/10 text-[#3C5A87]'
                 : 'bg-[#F3F3EE] text-[#6B7280]'
             )}
           >
@@ -3232,7 +3232,7 @@ function AgentScriptCard() {
           <button
             onClick={() => void save()}
             disabled={saving || loading}
-            className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+            className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
           >
             {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save my script'}
           </button>
@@ -3286,7 +3286,7 @@ function CallScriptCard() {
           <button
             onClick={() => void save()}
             disabled={saving || loading}
-            className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-2 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+            className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
           >
             {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save script'}
           </button>
@@ -3422,7 +3422,7 @@ function GlossaryTab({
           <button
             onClick={startNew}
             disabled={editingId !== null}
-            className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#1E9A80]/90 disabled:opacity-60"
+            className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#3C5A87]/90 disabled:opacity-60"
           >
             <Plus className="w-3.5 h-3.5" /> Add term
           </button>
@@ -3498,7 +3498,7 @@ function GlossaryTab({
                       </div>
                     )}
                     <details className="mt-1.5">
-                      <summary className="text-[11px] text-[#1E9A80] cursor-pointer hover:underline">
+                      <summary className="text-[11px] text-[#3C5A87] cursor-pointer hover:underline">
                         Show definition
                       </summary>
                       <pre className="mt-2 text-[11px] text-[#1A1A1A] whitespace-pre-wrap font-mono bg-[#F3F3EE] rounded p-2 leading-relaxed">
@@ -3555,7 +3555,7 @@ function GlossaryEditor({
   const set = (k: keyof typeof draft, v: string) => setDraft({ ...draft, [k]: v });
   const canSave = draft.term.trim().length > 0 && draft.definition_md.trim().length > 0;
   return (
-    <div className="border border-[#1E9A80]/40 bg-[#ECFDF5] rounded-xl p-3 mb-3 space-y-2">
+    <div className="border border-[#3C5A87]/40 bg-[#EEF2F8] rounded-xl p-3 mb-3 space-y-2">
       <div>
         <Label>Term</Label>
         <input
@@ -3590,7 +3590,7 @@ function GlossaryEditor({
         <button
           onClick={onSave}
           disabled={!canSave}
-          className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+          className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
         >
           Save
         </button>
@@ -3752,7 +3752,7 @@ function KnowledgeBaseTab({
           <button
             onClick={startNew}
             disabled={editingId !== null}
-            className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#1E9A80]/90 disabled:opacity-60"
+            className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#3C5A87]/90 disabled:opacity-60"
           >
             <Plus className="w-3.5 h-3.5" /> Add fact
           </button>
@@ -3889,7 +3889,7 @@ function KnowledgeBaseEditor({
     draft.label.trim().length > 0 &&
     draft.value.trim().length > 0;
   return (
-    <div className="border border-[#1E9A80]/40 bg-[#ECFDF5] rounded-xl p-3 mb-3 space-y-2">
+    <div className="border border-[#3C5A87]/40 bg-[#EEF2F8] rounded-xl p-3 mb-3 space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label>Key (snake_case identifier)</Label>
@@ -3939,7 +3939,7 @@ function KnowledgeBaseEditor({
         <button
           onClick={onSave}
           disabled={!canSave}
-          className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+          className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
         >
           Save
         </button>

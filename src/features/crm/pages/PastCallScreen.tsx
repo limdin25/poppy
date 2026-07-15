@@ -46,7 +46,7 @@ interface CoachRow {
 
 const COACH_META: Record<string, { Icon: typeof AlertTriangle; colour: string; label: string }> = {
   objection: { Icon: AlertTriangle, colour: '#EF4444', label: '⚠ OBJECTION' },
-  suggestion: { Icon: Lightbulb, colour: '#1E9A80', label: '💡 YOU COULD SAY' },
+  suggestion: { Icon: Lightbulb, colour: '#3C5A87', label: '💡 YOU COULD SAY' },
   question: { Icon: HelpCircle, colour: '#3B82F6', label: '❓ ASK' },
   warning: { Icon: Activity, colour: '#F59E0B', label: '📊 INSIGHT' },
 };
@@ -193,7 +193,7 @@ export default function PastCallScreen() {
               ? `/admin/crm/contacts/${contact.id}`
               : '/admin/crm/calls'
           }
-          className="text-[12px] text-[#1E9A80] hover:underline"
+          className="text-[12px] text-[#3C5A87] hover:underline"
         >
           Contact →
         </Link>
@@ -222,14 +222,14 @@ export default function PastCallScreen() {
                 <a
                   href={signedRecordingUrl}
                   download
-                  className="text-[11px] text-[#1E9A80] hover:underline inline-flex items-center gap-1"
+                  className="text-[11px] text-[#3C5A87] hover:underline inline-flex items-center gap-1"
                 >
                   <Download className="w-3 h-3" /> Download
                 </a>
               </div>
             ) : (
               <div className="text-[12px] text-[#6B7280]">
-                <span className="inline-block w-2 h-2 rounded-full bg-[#1E9A80] animate-pulse mr-2" />
+                <span className="inline-block w-2 h-2 rounded-full bg-[#3C5A87] animate-pulse mr-2" />
                 Signing recording URL…
               </div>
             )}
@@ -267,7 +267,7 @@ export default function PastCallScreen() {
                   <span
                     className={
                       r.speaker === 'agent'
-                        ? 'font-semibold text-[#1E9A80]'
+                        ? 'font-semibold text-[#3C5A87]'
                         : 'font-semibold text-[#1A1A1A]'
                     }
                   >
@@ -328,7 +328,7 @@ export default function PastCallScreen() {
                     className={cn(
                       'rounded-2xl px-3 py-2 max-w-[80%] text-[13px] leading-snug',
                       outbound
-                        ? 'bg-[#1E9A80]/10 border border-[#1E9A80]/30 ml-auto'
+                        ? 'bg-[#3C5A87]/10 border border-[#3C5A87]/30 ml-auto'
                         : 'bg-[#F3F3EE] border border-[#E5E7EB]'
                     )}
                   >

@@ -94,7 +94,7 @@ function ToastBubble({ toast, onDismiss }: { toast: Toast; onDismiss: () => void
         : Info;
   const tint =
     toast.kind === 'success'
-      ? 'bg-[#ECFDF5] border-[#A7F3D0] text-[#065F46]'
+      ? 'bg-[#EEF2F8] border-[#D8E1EE] text-[#283C5C]'
       : toast.kind === 'error'
         ? 'bg-[#FEF2F2] border-[#FECACA] text-[#B91C1C]'
         : 'bg-white border-[#E5E7EB] text-[#1A1A1A]';

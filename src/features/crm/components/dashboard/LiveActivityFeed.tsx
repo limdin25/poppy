@@ -7,7 +7,7 @@ import WatchAgentModal from './WatchAgentModal';
 const STATUS_DOT = {
   queued: 'bg-[#9CA3AF]',
   ringing: 'bg-[#F59E0B] animate-pulse',
-  in_progress: 'bg-[#1E9A80] animate-pulse',
+  in_progress: 'bg-[#3C5A87] animate-pulse',
 } as const;
 
 function formatLiveDuration(startedAtIso: string, nowMs: number): string {
@@ -39,7 +39,7 @@ export default function LiveActivityFeed({ selectedAgentId }: Props = {}) {
     <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden">
       <div className="px-4 py-3 border-b border-[#E5E7EB] flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-[#1E9A80] animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-[#3C5A87] animate-pulse" />
           <h3 className="text-[13px] font-semibold text-[#1A1A1A]">Live activity</h3>
           <span className="text-[10px] text-[#9CA3AF]">realtime</span>
         </div>
@@ -69,7 +69,7 @@ export default function LiveActivityFeed({ selectedAgentId }: Props = {}) {
               {formatLiveDuration(row.startedAt, nowMs)}
             </span>
             {row.aiCoachEnabled && (
-              <span className="flex items-center gap-1 text-[10px] font-medium bg-[#ECFDF5] text-[#1E9A80] px-1.5 py-0.5 rounded">
+              <span className="flex items-center gap-1 text-[10px] font-medium bg-[#EEF2F8] text-[#3C5A87] px-1.5 py-0.5 rounded">
                 <Bot className="w-3 h-3" /> coach
               </span>
             )}
@@ -81,13 +81,13 @@ export default function LiveActivityFeed({ selectedAgentId }: Props = {}) {
                   contactName: row.contactName,
                 })
               }
-              className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[#1E9A80] px-2 py-1 rounded hover:bg-[#ECFDF5]"
+              className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[#3C5A87] px-2 py-1 rounded hover:bg-[#EEF2F8]"
               title="Watch this call (read-only)"
             >
               <Eye className="w-3.5 h-3.5" /> watch
             </button>
             <button
-              className="text-[11px] text-[#6B7280] hover:text-[#1E9A80] px-2 py-1 rounded hover:bg-[#ECFDF5]"
+              className="text-[11px] text-[#6B7280] hover:text-[#3C5A87] px-2 py-1 rounded hover:bg-[#EEF2F8]"
               title={row.contactPhone}
             >
               <Phone className="w-3.5 h-3.5" />

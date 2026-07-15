@@ -99,7 +99,7 @@ export default function LiveCallScreen() {
       <header
         className={cn(
           'h-14 flex items-center px-5 gap-3 flex-shrink-0 transition-colors',
-          phase === 'in_call' && 'bg-[#1E9A80] text-white',
+          phase === 'in_call' && 'bg-[#3C5A87] text-white',
           phase === 'placing' && 'bg-[#1A1A1A] text-white',
           phase === 'post_call' && 'bg-white border-b border-[#E5E7EB] text-[#1A1A1A]',
           phase === 'idle' && 'bg-white border-b border-[#E5E7EB] text-[#1A1A1A]'
@@ -115,7 +115,7 @@ export default function LiveCallScreen() {
             className={cn(
               'w-2.5 h-2.5 rounded-full',
               phase === 'in_call' && 'bg-white animate-pulse',
-              (phase === 'post_call' || phase === 'idle') && 'bg-[#1E9A80]'
+              (phase === 'post_call' || phase === 'idle') && 'bg-[#3C5A87]'
             )}
           />
         )}
@@ -141,7 +141,7 @@ export default function LiveCallScreen() {
           {isPreview && (
             <>
               <span>Call room · {contact?.name}</span>
-              <span className="ml-1 text-[10px] uppercase tracking-wide font-semibold bg-[#1E9A80]/10 text-[#1E9A80] px-1.5 py-0.5 rounded">
+              <span className="ml-1 text-[10px] uppercase tracking-wide font-semibold bg-[#3C5A87]/10 text-[#3C5A87] px-1.5 py-0.5 rounded">
                 Preview
               </span>
             </>
@@ -234,7 +234,7 @@ export default function LiveCallScreen() {
           {isPreview && (
             <button
               onClick={() => void startCall(contact.id)}
-              className="flex items-center gap-1.5 bg-[#1E9A80] hover:bg-[#1E9A80]/90 text-white px-3 py-1.5 rounded-[10px] text-[12px] font-semibold shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
+              className="flex items-center gap-1.5 bg-[#3C5A87] hover:bg-[#3C5A87]/90 text-white px-3 py-1.5 rounded-[10px] text-[12px] font-semibold shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
             >
               <PhoneOff className="w-3.5 h-3.5 rotate-[135deg]" /> Call now
             </button>
@@ -446,7 +446,7 @@ function TopBtn({
       title={label}
       className={cn(
         'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors',
-        active ? 'bg-white text-[#1E9A80]' : 'hover:bg-white/15'
+        active ? 'bg-white text-[#3C5A87]' : 'hover:bg-white/15'
       )}
     >
       {icon}

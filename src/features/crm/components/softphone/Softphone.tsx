@@ -101,7 +101,7 @@ export default function Softphone() {
   if (phase === 'in_call' && !fullScreen) {
     return (
       <div className="fixed bottom-5 right-5 z-[120] bg-white border border-[#E5E7EB] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] w-[320px] overflow-hidden">
-        <div className="px-4 py-2.5 bg-[#1E9A80] text-white flex items-center gap-2">
+        <div className="px-4 py-2.5 bg-[#3C5A87] text-white flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
           <span className="text-[13px] font-semibold">In call · {formatDuration(durationSec)}</span>
           <button
@@ -161,7 +161,7 @@ export default function Softphone() {
     return (
       <button
         onClick={() => setCollapsed(false)}
-        className="fixed bottom-5 right-5 z-[120] bg-[#1E9A80] hover:bg-[#1E9A80]/90 text-white w-12 h-12 rounded-full shadow-[0_8px_24px_rgba(30,154,128,0.35)] flex items-center justify-center"
+        className="fixed bottom-5 right-5 z-[120] bg-[#3C5A87] hover:bg-[#3C5A87]/90 text-white w-12 h-12 rounded-full shadow-[0_8px_24px_rgba(30,154,128,0.35)] flex items-center justify-center"
         title="Open softphone"
       >
         <Phone className="w-5 h-5" strokeWidth={2.2} />
@@ -175,7 +175,7 @@ export default function Softphone() {
         onClick={() => setOpen(true)}
         className="fixed bottom-5 right-5 z-[120] bg-white border border-[#E5E7EB] rounded-full shadow-[0_4px_16px_rgba(0,0,0,0.1)] pl-2 pr-4 py-2 flex items-center gap-2 hover:shadow-[0_6px_24px_rgba(0,0,0,0.12)] transition-all"
       >
-        <span className="w-8 h-8 rounded-full bg-[#1E9A80] text-white flex items-center justify-center">
+        <span className="w-8 h-8 rounded-full bg-[#3C5A87] text-white flex items-center justify-center">
           <Phone className="w-4 h-4" strokeWidth={2.2} />
         </span>
         <div className="text-left">
@@ -189,7 +189,7 @@ export default function Softphone() {
   return (
     <div className="fixed bottom-5 right-5 z-[120] bg-white border border-[#E5E7EB] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] w-[280px] overflow-hidden">
       <div className="px-3 py-2 bg-[#F3F3EE] border-b border-[#E5E7EB] flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-[#1E9A80]" />
+        <span className="w-2 h-2 rounded-full bg-[#3C5A87]" />
         <span className="text-[12px] font-semibold text-[#1A1A1A]">{me?.name ?? 'Agent'}</span>
         <span className="text-[11px] text-[#6B7280]">· Available</span>
         <div className="ml-auto flex items-center gap-0.5">
@@ -269,7 +269,7 @@ function CallBtn({
       onClick={onClick}
       className={cn(
         'flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-[10px] font-medium transition-colors',
-        active && 'bg-[#1E9A80] text-white',
+        active && 'bg-[#3C5A87] text-white',
         !active && danger && 'bg-[#FEF2F2] text-[#EF4444] hover:bg-[#FCA5A5]/40',
         !active && !danger && 'text-[#6B7280] hover:bg-[#F3F3EE]'
       )}

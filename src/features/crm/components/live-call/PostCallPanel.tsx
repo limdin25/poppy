@@ -124,7 +124,7 @@ export default function PostCallPanel() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-5 py-3 border-b border-[#E5E7EB] flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-[#1E9A80]" />
+        <span className="w-2 h-2 rounded-full bg-[#3C5A87]" />
         <span className="text-[13px] font-semibold text-[#1A1A1A]">
           ✅ Call ended · {call?.contactName} · Recording saved
         </span>
@@ -160,10 +160,10 @@ export default function PostCallPanel() {
                 className={cn(
                   'relative group p-3 rounded-2xl border-2 text-left bg-white transition-all',
                   isPicked
-                    ? 'border-[#1E9A80] border-[3px] bg-[#ECFDF5] shadow-[0_8px_28px_rgba(30,154,128,0.45)] cursor-default ring-2 ring-[#1E9A80]/20'
+                    ? 'border-[#3C5A87] border-[3px] bg-[#EEF2F8] shadow-[0_8px_28px_rgba(30,154,128,0.45)] cursor-default ring-2 ring-[#3C5A87]/20'
                     : isDimmed
                       ? 'border-[#E5E7EB] opacity-25 grayscale cursor-not-allowed'
-                      : 'border-[#E5E7EB] hover:border-[#1E9A80]/50 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)]'
+                      : 'border-[#E5E7EB] hover:border-[#3C5A87]/50 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)]'
                 )}
               >
                 {/* PR 114 (Hugo 2026-04-28): louder DONE badge + bigger
@@ -177,7 +177,7 @@ export default function PostCallPanel() {
                     >
                       ✓ DONE
                     </span>
-                    <span className="absolute bottom-2 right-2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#1E9A80] text-white text-[16px] font-bold shadow-md">
+                    <span className="absolute bottom-2 right-2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#3C5A87] text-white text-[16px] font-bold shadow-md">
                       ✓
                     </span>
                   </>
@@ -196,7 +196,7 @@ export default function PostCallPanel() {
                     <span
                       className={cn(
                         'text-[14px] font-semibold truncate',
-                        isPicked ? 'text-[#1E9A80]' : 'text-[#1A1A1A]'
+                        isPicked ? 'text-[#3C5A87]' : 'text-[#1A1A1A]'
                       )}
                     >
                       {col.name}
@@ -221,7 +221,7 @@ export default function PostCallPanel() {
             onChange={(e) => setQuickNote(e.target.value)}
             placeholder="Add a note (optional)…"
             data-testid="postcall-quicknote"
-            className="w-full px-3 py-2 text-[13px] bg-white border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+            className="w-full px-3 py-2 text-[13px] bg-white border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
           />
         </div>
 
@@ -292,7 +292,7 @@ export default function PostCallPanel() {
             setSubmitted(true);
             setTimeout(() => applyOutcome('next-now', quickNote.trim() || undefined), 200);
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#1E9A80] text-white text-[12px] font-semibold hover:bg-[#1E9A80]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#3C5A87] text-white text-[12px] font-semibold hover:bg-[#3C5A87]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
         >
           <Phone className="w-3.5 h-3.5" /> Next call
         </button>

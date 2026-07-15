@@ -28,7 +28,7 @@ export default function LeaderboardPage() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-[26px] font-bold text-[#1A1A1A] tracking-tight flex items-center gap-2">
-            <Trophy className="w-6 h-6 text-[#1E9A80]" /> Leaderboard
+            <Trophy className="w-6 h-6 text-[#3C5A87]" /> Leaderboard
           </h1>
           <p className="text-[13px] text-[#6B7280]">
             Today · ranked by calls picked up
@@ -63,7 +63,7 @@ export default function LeaderboardPage() {
                   key={r.agentId}
                   className={cn(
                     'hover:bg-[#F3F3EE]/30 transition-colors',
-                    isMe && 'bg-[#ECFDF5] hover:bg-[#ECFDF5]'
+                    isMe && 'bg-[#EEF2F8] hover:bg-[#EEF2F8]'
                   )}
                   data-testid={`leaderboard-row-${r.agentId}`}
                 >
@@ -76,8 +76,8 @@ export default function LeaderboardPage() {
                         className={cn(
                           'w-7 h-7 rounded-full text-[11px] font-bold flex items-center justify-center flex-shrink-0',
                           isMe
-                            ? 'bg-[#1E9A80] text-white'
-                            : 'bg-[#1E9A80]/15 text-[#1E9A80]'
+                            ? 'bg-[#3C5A87] text-white'
+                            : 'bg-[#3C5A87]/15 text-[#3C5A87]'
                         )}
                       >
                         {initials}
@@ -86,7 +86,7 @@ export default function LeaderboardPage() {
                         <div className="font-semibold text-[#1A1A1A]">
                           {r.agentName}
                           {isMe && (
-                            <span className="ml-1.5 text-[10px] uppercase tracking-wide font-semibold text-[#1E9A80]">
+                            <span className="ml-1.5 text-[10px] uppercase tracking-wide font-semibold text-[#3C5A87]">
                               you
                             </span>
                           )}
@@ -95,7 +95,7 @@ export default function LeaderboardPage() {
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{r.calls}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#1E9A80]">
+                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#3C5A87]">
                     {r.answered}
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">

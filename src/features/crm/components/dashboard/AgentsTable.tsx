@@ -32,7 +32,7 @@ export default function AgentsTable({ selectedAgentId, onSelectAgent }: Props = 
         <h3 className="text-[13px] font-semibold text-[#1A1A1A]">
           Agents today
           {selectedAgentId && (
-            <span className="ml-2 text-[10px] font-medium text-[#1E9A80] bg-[#ECFDF5] px-1.5 py-0.5 rounded">
+            <span className="ml-2 text-[10px] font-medium text-[#3C5A87] bg-[#EEF2F8] px-1.5 py-0.5 rounded">
               filtered
             </span>
           )}
@@ -74,7 +74,7 @@ export default function AgentsTable({ selectedAgentId, onSelectAgent }: Props = 
                 onClick={onRowClick}
                 className={cn(
                   'hover:bg-[#F3F3EE]/30 cursor-pointer transition-colors',
-                  isSelected && 'bg-[#ECFDF5] hover:bg-[#ECFDF5]'
+                  isSelected && 'bg-[#EEF2F8] hover:bg-[#EEF2F8]'
                 )}
                 title={onSelectAgent ? (isSelected ? 'Click to clear filter' : 'Click to filter dashboard to this agent') : undefined}
               >
@@ -108,7 +108,7 @@ export default function AgentsTable({ selectedAgentId, onSelectAgent }: Props = 
                       onClick={(e) => e.stopPropagation()}
                       onBlur={() => setEditingId(null)}
                       onKeyDown={(e) => e.key === 'Enter' && setEditingId(null)}
-                      className="w-16 px-1.5 py-0.5 border border-[#1E9A80] rounded text-right tabular-nums"
+                      className="w-16 px-1.5 py-0.5 border border-[#3C5A87] rounded text-right tabular-nums"
                     />
                   ) : (
                     <span>{formatPence(a.limitPence)}</span>
@@ -117,7 +117,7 @@ export default function AgentsTable({ selectedAgentId, onSelectAgent }: Props = 
                 <td className="px-2 py-2.5 text-right">
                   <button
                     onClick={(e) => { e.stopPropagation(); setEditingId(editingId === a.id ? null : a.id); }}
-                    className="p-1 rounded hover:bg-[#ECFDF5] text-[#6B7280] hover:text-[#1E9A80]"
+                    className="p-1 rounded hover:bg-[#EEF2F8] text-[#6B7280] hover:text-[#3C5A87]"
                     title="Edit limit (instant)"
                   >
                     <SettingsIcon className="w-3.5 h-3.5" />

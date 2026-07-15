@@ -98,7 +98,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
             to={path}
             className={cn(
               'flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] transition-colors',
-              isActive(path) ? 'text-[#1E9A80] font-medium' : 'text-[#6B7280]'
+              isActive(path) ? 'text-[#3C5A87] font-medium' : 'text-[#6B7280]'
             )}
           >
             <Icon className="w-5 h-5" strokeWidth={1.8} />
@@ -141,7 +141,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors relative',
               isActive(path)
-                ? 'bg-[#ECFDF5] text-[#1E9A80] font-medium'
+                ? 'bg-[#EEF2F8] text-[#3C5A87] font-medium'
                 : 'text-[#6B7280] hover:bg-black/[0.04] hover:text-[#1A1A1A]'
             )}
           >

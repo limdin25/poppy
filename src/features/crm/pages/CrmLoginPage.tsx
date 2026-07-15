@@ -56,7 +56,7 @@ export default function CrmLoginPage() {
         <div className="text-center mb-6">
           <Link to="/admin/crm" className="inline-flex items-center gap-2 mb-5">
             <span className="text-[22px] font-semibold tracking-tight">Elsie</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-[#1E9A80] bg-[#ECFDF5] rounded-[6px] px-1.5 py-0.5">CRM</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[#3C5A87] bg-[#EEF2F8] rounded-[6px] px-1.5 py-0.5">CRM</span>
           </Link>
           <h1 className="text-[22px] font-bold text-[#0A0A0A] tracking-tight">CRM agent sign-in</h1>
           <p className="text-[13px] text-[#737373] mt-1">
@@ -78,7 +78,7 @@ export default function CrmLoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@yourcompany.com"
-                className="w-full pl-10 pr-3 py-2 text-[14px] bg-white border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/40 focus:border-[#1E9A80]"
+                className="w-full pl-10 pr-3 py-2 text-[14px] bg-white border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/40 focus:border-[#3C5A87]"
               />
             </div>
           </div>
@@ -93,7 +93,7 @@ export default function CrmLoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password from your admin"
-                className="w-full pl-10 pr-10 py-2 text-[14px] bg-white border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/40 focus:border-[#1E9A80]"
+                className="w-full pl-10 pr-10 py-2 text-[14px] bg-white border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/40 focus:border-[#3C5A87]"
               />
               <button
                 type="button"
@@ -115,7 +115,7 @@ export default function CrmLoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-[#1E9A80] text-white text-[14px] font-semibold py-2.5 rounded-[10px] shadow-[0_4px_16px_rgba(30,154,128,0.35)] hover:bg-[#1E9A80]/90 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            className="w-full bg-[#3C5A87] text-white text-[14px] font-semibold py-2.5 rounded-[10px] shadow-[0_4px_16px_rgba(30,154,128,0.35)] hover:bg-[#3C5A87]/90 disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
             {submitting ? 'Signing in…' : 'Sign in'}
@@ -128,7 +128,7 @@ export default function CrmLoginPage() {
 
         <div className="text-center mt-5 text-[12px] text-[#737373]">
           Not an agent?{' '}
-          <Link to="/signin" className="text-[#1E9A80] font-semibold hover:underline">
+          <Link to="/signin" className="text-[#3C5A87] font-semibold hover:underline">
             Use the regular sign-in
           </Link>
         </div>

@@ -74,7 +74,7 @@ function ChannelGlyph({
   // Lucide icons take size via prop, but cn-cls already injects color.
   if (channel === 'whatsapp') return <MessageSquare style={{ width: size, height: size }} className={cn(cls, 'text-[#25D366]')} aria-label="WhatsApp" />;
   if (channel === 'email') return <Mail style={{ width: size, height: size }} className={cn(cls, 'text-[#3B82F6]')} aria-label="Email" />;
-  return <Phone style={{ width: size, height: size }} className={cn(cls, 'text-[#1E9A80]')} aria-label="SMS" />;
+  return <Phone style={{ width: size, height: size }} className={cn(cls, 'text-[#3C5A87]')} aria-label="SMS" />;
 }
 
 export default function InboxPage() {
@@ -512,7 +512,7 @@ export default function InboxPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search inbox…"
               data-testid="inbox-search"
-              className="w-full pl-7 pr-2 py-1.5 text-[12px] bg-[#F3F3EE] border-0 rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30"
+              className="w-full pl-7 pr-2 py-1.5 text-[12px] bg-[#F3F3EE] border-0 rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30"
             />
           </div>
           {/* PR 78: channel filter pills — agent can scope the inbox to
@@ -527,7 +527,7 @@ export default function InboxPage() {
                 className={cn(
                   'inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors uppercase tracking-wide',
                   filter === f
-                    ? 'bg-[#1E9A80] text-white'
+                    ? 'bg-[#3C5A87] text-white'
                     : 'bg-[#F3F3EE] text-[#6B7280] hover:bg-black/[0.05]'
                 )}
               >
@@ -561,11 +561,11 @@ export default function InboxPage() {
                 onClick={() => setActiveContactId(r.id)}
                 className={cn(
                   'w-full text-left px-3 py-2.5 hover:bg-[#F3F3EE]/50',
-                  activeContactId === r.id && 'bg-[#ECFDF5]'
+                  activeContactId === r.id && 'bg-[#EEF2F8]'
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-[#1E9A80]/15 text-[#1E9A80] text-[11px] font-bold flex items-center justify-center flex-shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-[#3C5A87]/15 text-[#3C5A87] text-[11px] font-bold flex items-center justify-center flex-shrink-0">
                     {initials}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -596,7 +596,7 @@ export default function InboxPage() {
       {/* Pane 2 — thread */}
       <section className="flex-1 bg-[#F3F3EE]/30 flex flex-col min-w-0">
         <div className="px-5 py-3 bg-white border-b border-[#E5E7EB] flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-[#1E9A80]/15 text-[#1E9A80] text-[13px] font-bold flex items-center justify-center">
+          <div className="w-9 h-9 rounded-full bg-[#3C5A87]/15 text-[#3C5A87] text-[13px] font-bold flex items-center justify-center">
             {activeContact.name
               .split(' ')
               .map((n) => n[0])
@@ -633,14 +633,14 @@ export default function InboxPage() {
           <div className="flex flex-col items-end gap-0.5">
             <button
               onClick={() => navigateTo('/admin/crm/dialer-pro')}
-              className="text-[10px] text-[#1E9A80] hover:text-[#1E9A80]/80 font-medium underline-offset-2 hover:underline"
+              className="text-[10px] text-[#3C5A87] hover:text-[#3C5A87]/80 font-medium underline-offset-2 hover:underline"
               title="Open the call room without dialling"
             >
               Open call room
             </button>
             <button
               onClick={() => openDialerPro(activeContact.id)}
-              className="flex items-center gap-1.5 bg-[#1E9A80] hover:bg-[#1E9A80]/90 text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
+              className="flex items-center gap-1.5 bg-[#3C5A87] hover:bg-[#3C5A87]/90 text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
             >
               <Phone className="w-3.5 h-3.5" /> Call
             </button>
@@ -667,7 +667,7 @@ export default function InboxPage() {
                   className={cn(
                     'rounded-2xl px-3 py-2 max-w-[60%] text-[13px] leading-snug',
                     m.direction === 'outbound'
-                      ? 'bg-[#1E9A80]/15 text-[#1A1A1A] ml-auto'
+                      ? 'bg-[#3C5A87]/15 text-[#1A1A1A] ml-auto'
                       : 'bg-white border border-[#E5E7EB] text-[#1A1A1A]'
                   )}
                 >
@@ -687,7 +687,7 @@ export default function InboxPage() {
                       href={m.attachmentUrl as string}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-1.5 flex items-center gap-1 text-[11px] text-[#1E9A80] hover:underline"
+                      className="mt-1.5 flex items-center gap-1 text-[11px] text-[#3C5A87] hover:underline"
                     >
                       <Paperclip className="w-3 h-3" />
                       {(m.attachmentUrl as string).split('/').pop() ?? 'Attachment'}
@@ -710,7 +710,7 @@ export default function InboxPage() {
                     {c.direction === 'outbound' ? (
                       <PhoneOutgoing className="w-3 h-3 text-[#3B82F6]" />
                     ) : (
-                      <PhoneIncoming className="w-3 h-3 text-[#1E9A80]" />
+                      <PhoneIncoming className="w-3 h-3 text-[#3C5A87]" />
                     )}
                     {c.direction} call · {c.status}
                     {c.durationSec > 0 && ` · ${formatDuration(c.durationSec)}`}
@@ -724,7 +724,7 @@ export default function InboxPage() {
                     {c.recordingUrl && (
                       <button
                         onClick={() => void signAndPlay(c.id, c.recordingUrl)}
-                        className="text-[10px] flex items-center gap-1 text-[#1E9A80] hover:underline"
+                        className="text-[10px] flex items-center gap-1 text-[#3C5A87] hover:underline"
                       >
                         <Play className="w-3 h-3" />
                         {playingCallId === c.id ? 'Hide recording' : 'Play recording'}
@@ -732,7 +732,7 @@ export default function InboxPage() {
                     )}
                     <button
                       onClick={() => setTranscriptCallId(c.id)}
-                      className="text-[10px] flex items-center gap-1 text-[#1E9A80] hover:underline"
+                      className="text-[10px] flex items-center gap-1 text-[#3C5A87] hover:underline"
                     >
                       <MessageSquare className="w-3 h-3" /> Transcript
                     </button>
@@ -795,7 +795,7 @@ export default function InboxPage() {
                     className={cn(
                       'inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-[6px] transition-colors',
                       replyChannel === c
-                        ? 'bg-white text-[#1E9A80] shadow-sm'
+                        ? 'bg-white text-[#3C5A87] shadow-sm'
                         : 'text-[#6B7280] hover:text-[#1A1A1A]'
                     )}
                   >
@@ -841,12 +841,12 @@ export default function InboxPage() {
                 placeholder="Email subject"
                 disabled={sending}
                 data-testid="inbox-reply-subject"
-                className="flex-1 max-w-[360px] px-3 py-1.5 text-[12px] bg-[#F3F3EE] border-0 rounded-[8px] focus:outline-none focus:ring-2 focus:ring-[#1E9A80]/30 disabled:opacity-60"
+                className="flex-1 max-w-[360px] px-3 py-1.5 text-[12px] bg-[#F3F3EE] border-0 rounded-[8px] focus:outline-none focus:ring-2 focus:ring-[#3C5A87]/30 disabled:opacity-60"
               />
             )}
           </div>
           {replyAttachmentUrl && (
-            <div className="flex items-center gap-1 text-[11px] text-[#1E9A80] bg-[#ECFDF5] px-2 py-1 rounded-lg">
+            <div className="flex items-center gap-1 text-[11px] text-[#3C5A87] bg-[#EEF2F8] px-2 py-1 rounded-lg">
               <Paperclip className="w-3 h-3" />
               <span className="truncate max-w-[300px]">{replyAttachmentUrl.split('/').pop()}</span>
               <button onClick={() => setReplyAttachmentUrl(null)} className="ml-1 text-[#9CA3AF] hover:text-[#EF4444]">&times;</button>
@@ -867,7 +867,7 @@ export default function InboxPage() {
               }
               disabled={sending}
               data-testid="inbox-reply-body"
-              className="flex-1 px-3 py-2 text-[13px] bg-[#F3F3EE] border-0 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#1E9A80]/30 disabled:opacity-60"
+              className="flex-1 px-3 py-2 text-[13px] bg-[#F3F3EE] border-0 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#3C5A87]/30 disabled:opacity-60"
             />
             <button
               type="submit"
@@ -879,7 +879,7 @@ export default function InboxPage() {
               }
               data-testid="inbox-reply-send"
               title={!replyChannel ? 'Pick SMS, WhatsApp or Email first' : undefined}
-              className="flex items-center gap-1.5 bg-[#1E9A80] text-white text-[13px] font-semibold px-4 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 bg-[#3C5A87] text-white text-[13px] font-semibold px-4 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Send className="w-3.5 h-3.5" />
               {sending ? 'Sending…' : 'Send'}
@@ -911,7 +911,7 @@ export default function InboxPage() {
                   {formatRelativeTime(a.ts)}
                 </div>
                 {a.kind === 'call_inbound' && (
-                  <button className="mt-1 text-[10px] flex items-center gap-1 text-[#1E9A80] hover:underline">
+                  <button className="mt-1 text-[10px] flex items-center gap-1 text-[#3C5A87] hover:underline">
                     <Play className="w-3 h-3" /> Play recording (4:21)
                   </button>
                 )}
@@ -984,8 +984,8 @@ function ActivityIcon({ kind }: { kind: string }) {
   const map: Record<string, { icon: React.ReactNode; bg: string; fg: string }> = {
     call_inbound: {
       icon: <PhoneIncoming className="w-3.5 h-3.5" />,
-      bg: '#ECFDF5',
-      fg: '#1E9A80',
+      bg: '#EEF2F8',
+      fg: '#3C5A87',
     },
     call_outbound: {
       icon: <PhoneOutgoing className="w-3.5 h-3.5" />,
@@ -1004,15 +1004,15 @@ function ActivityIcon({ kind }: { kind: string }) {
     },
     sms_outbound: {
       icon: <MessageSquare className="w-3.5 h-3.5" />,
-      bg: '#ECFDF5',
-      fg: '#1E9A80',
+      bg: '#EEF2F8',
+      fg: '#3C5A87',
     },
     voicemail: {
       icon: <Voicemail className="w-3.5 h-3.5" />,
       bg: '#F3F3EE',
       fg: '#9CA3AF',
     },
-    stage_moved: { icon: <span>↗</span>, bg: '#ECFDF5', fg: '#1E9A80' },
+    stage_moved: { icon: <span>↗</span>, bg: '#EEF2F8', fg: '#3C5A87' },
     tag_added: { icon: <span>#</span>, bg: '#F3F3EE', fg: '#6B7280' },
   };
   const m = map[kind] ?? map.sms_inbound;

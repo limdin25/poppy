@@ -123,7 +123,7 @@ export default function TemplateList({
         <button
           onClick={startNew}
           disabled={editingId !== null}
-          className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#1E9A80]/90 disabled:opacity-60"
+          className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#3C5A87]/90 disabled:opacity-60"
         >
           <Plus className="w-3.5 h-3.5" /> New template
         </button>
@@ -174,7 +174,7 @@ export default function TemplateList({
                         </span>
                       )}
                       {targetStage && (
-                        <span className="text-[10px] bg-[#ECFDF5] text-[#1E9A80] px-1.5 py-0.5 rounded font-semibold inline-flex items-center gap-0.5">
+                        <span className="text-[10px] bg-[#EEF2F8] text-[#3C5A87] px-1.5 py-0.5 rounded font-semibold inline-flex items-center gap-0.5">
                           → {targetStage.name}
                         </span>
                       )}

@@ -77,13 +77,13 @@ export default function CallTranscriptModal({ callId, callerLabel, onClose }: Pr
       >
         <header className="px-5 py-3 border-b border-[#E5E7EB] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-[#1E9A80]" />
+            <MessageSquare className="w-4 h-4 text-[#3C5A87]" />
             <h2 className="text-[14px] font-semibold text-[#1A1A1A]">Call transcript</h2>
           </div>
           <div className="flex items-center gap-2">
             <Link
               to={`/admin/crm/calls/${callId}`}
-              className="text-[11px] text-[#1E9A80] hover:underline"
+              className="text-[11px] text-[#3C5A87] hover:underline"
               onClick={onClose}
             >
               Open full screen →
@@ -118,7 +118,7 @@ export default function CallTranscriptModal({ callId, callerLabel, onClose }: Pr
               <span
                 className={
                   r.speaker === 'agent'
-                    ? 'font-semibold text-[#1E9A80]'
+                    ? 'font-semibold text-[#3C5A87]'
                     : 'font-semibold text-[#1A1A1A]'
                 }
               >

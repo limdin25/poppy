@@ -162,7 +162,7 @@ export default function FollowupBanner() {
                   onClick={() => contact && openDialerPro(contact.id)}
                   disabled={!contact}
                   title="Call now"
-                  className="p-1 rounded hover:bg-[#1E9A80]/10 text-[#1E9A80] disabled:opacity-50"
+                  className="p-1 rounded hover:bg-[#3C5A87]/10 text-[#3C5A87] disabled:opacity-50"
                 >
                   <Phone className="w-3.5 h-3.5" />
                 </button>
@@ -174,7 +174,7 @@ export default function FollowupBanner() {
                   }}
                   disabled={!contact}
                   title="SMS"
-                  className="p-1 rounded hover:bg-[#ECFDF5] text-[#1E9A80] disabled:opacity-50"
+                  className="p-1 rounded hover:bg-[#EEF2F8] text-[#3C5A87] disabled:opacity-50"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                 </button>
@@ -186,7 +186,7 @@ export default function FollowupBanner() {
                   }}
                   disabled={!contact}
                   title="WhatsApp"
-                  className="p-1 rounded hover:bg-[#DCFCE7] text-[#25D366] disabled:opacity-50"
+                  className="p-1 rounded hover:bg-[#EEF2F8] text-[#25D366] disabled:opacity-50"
                 >
                   <MessageSquare className="w-3.5 h-3.5" strokeWidth={2.4} />
                 </button>
@@ -212,7 +212,7 @@ export default function FollowupBanner() {
                 <button
                   onClick={() => void setStatus(f.id, 'done')}
                   title="Mark done"
-                  className="p-1 rounded hover:bg-[#1E9A80]/10 text-[#1E9A80]"
+                  className="p-1 rounded hover:bg-[#3C5A87]/10 text-[#3C5A87]"
                 >
                   <Check className="w-3.5 h-3.5" />
                 </button>

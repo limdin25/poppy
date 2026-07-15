@@ -83,8 +83,8 @@ export default function DtmfKeypad({ enabled, onDigit, callId, size = 'compact' 
   };
 
   const btnClass = size === 'inline'
-    ? 'aspect-square flex flex-col items-center justify-center rounded-lg bg-white border border-[#E5E7EB] hover:bg-[#F3F3EE] active:bg-[#1E9A80]/10 text-[#1A1A1A] transition-colors'
-    : 'aspect-square flex flex-col items-center justify-center rounded-lg bg-[#F3F3EE] hover:bg-[#E5E7EB] active:bg-[#1E9A80]/10 text-[#1A1A1A] transition-colors';
+    ? 'aspect-square flex flex-col items-center justify-center rounded-lg bg-white border border-[#E5E7EB] hover:bg-[#F3F3EE] active:bg-[#3C5A87]/10 text-[#1A1A1A] transition-colors'
+    : 'aspect-square flex flex-col items-center justify-center rounded-lg bg-[#F3F3EE] hover:bg-[#E5E7EB] active:bg-[#3C5A87]/10 text-[#1A1A1A] transition-colors';
 
   const digitClass = size === 'inline' ? 'text-[16px] font-semibold' : 'text-[14px] font-semibold';
   const sublabelClass = size === 'inline' ? 'text-[8px] tracking-wider text-[#9CA3AF] mt-0.5' : 'text-[7px] tracking-wider text-[#9CA3AF]';

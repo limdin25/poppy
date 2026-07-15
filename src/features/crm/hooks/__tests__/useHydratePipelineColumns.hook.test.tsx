@@ -30,12 +30,12 @@ import { useHydratePipelineColumns } from '../useHydratePipelineColumns';
 import { SmsV2Provider, useSmsV2 } from '../../store/SmsV2Store';
 
 const SIX_ROWS = [
-  { id: 'col-1', pipeline_id: 'p1', name: 'Interested', colour: '#1E9A80', icon: 'Sparkles', position: 1, sort_order: 1, is_default_on_timeout: false },
-  { id: 'col-2', pipeline_id: 'p1', name: 'Callback', colour: '#1E9A80', icon: 'Clock', position: 2, sort_order: 2, is_default_on_timeout: false },
-  { id: 'col-3', pipeline_id: 'p1', name: 'No pickup', colour: '#1E9A80', icon: 'PhoneMissed', position: 3, sort_order: 3, is_default_on_timeout: false },
-  { id: 'col-4', pipeline_id: 'p1', name: 'Not interested', colour: '#1E9A80', icon: 'X', position: 4, sort_order: 4, is_default_on_timeout: false },
-  { id: 'col-5', pipeline_id: 'p1', name: 'Voicemail', colour: '#1E9A80', icon: 'Voicemail', position: 5, sort_order: 5, is_default_on_timeout: false },
-  { id: 'col-6', pipeline_id: 'p1', name: 'Wrong number', colour: '#1E9A80', icon: 'Ban', position: 6, sort_order: 6, is_default_on_timeout: false },
+  { id: 'col-1', pipeline_id: 'p1', name: 'Interested', colour: '#3C5A87', icon: 'Sparkles', position: 1, sort_order: 1, is_default_on_timeout: false },
+  { id: 'col-2', pipeline_id: 'p1', name: 'Callback', colour: '#3C5A87', icon: 'Clock', position: 2, sort_order: 2, is_default_on_timeout: false },
+  { id: 'col-3', pipeline_id: 'p1', name: 'No pickup', colour: '#3C5A87', icon: 'PhoneMissed', position: 3, sort_order: 3, is_default_on_timeout: false },
+  { id: 'col-4', pipeline_id: 'p1', name: 'Not interested', colour: '#3C5A87', icon: 'X', position: 4, sort_order: 4, is_default_on_timeout: false },
+  { id: 'col-5', pipeline_id: 'p1', name: 'Voicemail', colour: '#3C5A87', icon: 'Voicemail', position: 5, sort_order: 5, is_default_on_timeout: false },
+  { id: 'col-6', pipeline_id: 'p1', name: 'Wrong number', colour: '#3C5A87', icon: 'Ban', position: 6, sort_order: 6, is_default_on_timeout: false },
 ];
 
 beforeEach(() => {

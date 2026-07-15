@@ -15,7 +15,7 @@ export default function DialerProModal() {
     return ReactDOM.createPortal(
       <button
         onClick={expandDialerPro}
-        className="fixed bottom-6 right-6 z-[300] flex items-center gap-2.5 px-5 py-3 bg-[#1E9A80] text-white rounded-full shadow-[0_4px_16px_rgba(30,154,128,0.35)] hover:shadow-[0_8px_24px_rgba(30,154,128,0.45)] hover:scale-105 transition-all"
+        className="fixed bottom-6 right-6 z-[300] flex items-center gap-2.5 px-5 py-3 bg-[#3C5A87] text-white rounded-full shadow-[0_4px_16px_rgba(30,154,128,0.35)] hover:shadow-[0_8px_24px_rgba(30,154,128,0.45)] hover:scale-105 transition-all"
       >
         <Phone className="w-5 h-5" />
         <span className="text-sm font-semibold">Open Dialer</span>

@@ -48,7 +48,7 @@ export function rowToPipelineColumn(
     id: row.id,
     pipelineId: row.pipeline_id,
     name: row.name,
-    colour: row.colour ?? '#1E9A80',
+    colour: row.colour ?? '#3C5A87',
     icon: row.icon ?? 'Sparkles',
     position: row.position,
     isDefaultOnTimeout: row.is_default_on_timeout ?? false,

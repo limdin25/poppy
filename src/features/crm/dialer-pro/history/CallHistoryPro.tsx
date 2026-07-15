@@ -189,7 +189,7 @@ export default function CallHistoryPro({ onCountChange, onEditContact }: CallHis
             {call.contactId && onEditContact && (
               <button
                 onClick={() => onEditContact(call.contactId!)}
-                className="p-0.5 rounded hover:bg-black/[0.04] text-[#6B7280] hover:text-[#1E9A80]"
+                className="p-0.5 rounded hover:bg-black/[0.04] text-[#6B7280] hover:text-[#3C5A87]"
                 title="Edit contact"
               >
                 <Pencil className="w-3 h-3" />

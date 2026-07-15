@@ -101,7 +101,7 @@ export default function AgreementTemplateList({ isAdmin = false }: AgreementTemp
   const canSave = draft.name.trim().length > 0 && draft.title.trim().length > 0;
 
   const editorUI = (
-    <div className="border border-[#1E9A80]/40 bg-[#ECFDF5] rounded-xl p-3 mb-3 space-y-2">
+    <div className="border border-[#3C5A87]/40 bg-[#EEF2F8] rounded-xl p-3 mb-3 space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label>Template name</Label>
@@ -162,7 +162,7 @@ export default function AgreementTemplateList({ isAdmin = false }: AgreementTemp
         <button
           onClick={() => void save()}
           disabled={!canSave}
-          className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+          className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
         >
           Save
         </button>
@@ -190,7 +190,7 @@ export default function AgreementTemplateList({ isAdmin = false }: AgreementTemp
         <button
           onClick={startNew}
           disabled={editingId !== null}
-          className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#1E9A80]/90 disabled:opacity-60"
+          className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#3C5A87]/90 disabled:opacity-60"
         >
           <Plus className="w-3.5 h-3.5" /> New template
         </button>

@@ -5,7 +5,7 @@ const cols: PipelineColumn[] = [
     id: 'col-interested',
     pipelineId: 'pl-landlord',
     name: 'Interested',
-    colour: '#1E9A80',
+    colour: '#3C5A87',
     icon: 'Sparkles',
     position: 1,
     automation: {

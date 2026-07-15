@@ -31,7 +31,7 @@ export default function DashboardPage() {
           </button>
           <button
             onClick={() => ks.toggle('aiCoach')}
-            className="flex items-center gap-1.5 text-[12px] font-medium border border-[#E5E7EB] bg-white text-[#1A1A1A] px-3 py-2 rounded-[10px] hover:bg-[#ECFDF5]"
+            className="flex items-center gap-1.5 text-[12px] font-medium border border-[#E5E7EB] bg-white text-[#1A1A1A] px-3 py-2 rounded-[10px] hover:bg-[#EEF2F8]"
           >
             <Bot className="w-4 h-4" />
             AI coach {ks.aiCoach ? 'OFF' : 'ON'}

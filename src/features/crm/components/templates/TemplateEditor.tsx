@@ -86,7 +86,7 @@ export default function TemplateEditor({
 
   const canRefine = draft.body_md.trim().length > 0;
   return (
-    <div className="border border-[#1E9A80]/40 bg-[#ECFDF5] rounded-xl p-3 mb-3 space-y-2">
+    <div className="border border-[#3C5A87]/40 bg-[#EEF2F8] rounded-xl p-3 mb-3 space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label>Name</Label>
@@ -183,7 +183,7 @@ export default function TemplateEditor({
           type="button"
           onClick={() => void runAi('generate')}
           disabled={aiBusy !== null}
-          className="inline-flex items-center gap-1 bg-white border border-[#1E9A80]/40 text-[#1E9A80] text-[11px] font-semibold px-2.5 py-1 rounded-[8px] hover:bg-[#ECFDF5] disabled:opacity-60"
+          className="inline-flex items-center gap-1 bg-white border border-[#3C5A87]/40 text-[#3C5A87] text-[11px] font-semibold px-2.5 py-1 rounded-[8px] hover:bg-[#EEF2F8] disabled:opacity-60"
           title="Generate a fresh template from the name + channel"
         >
           {aiBusy === 'generate' ? (
@@ -215,7 +215,7 @@ export default function TemplateEditor({
         <button
           onClick={onSave}
           disabled={!canSave}
-          className="bg-[#1E9A80] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] hover:bg-[#1E9A80]/90 disabled:opacity-60"
+          className="bg-[#3C5A87] text-white text-[12px] font-semibold px-3 py-1.5 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
         >
           Save
         </button>

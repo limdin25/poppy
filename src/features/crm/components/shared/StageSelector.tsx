@@ -155,7 +155,7 @@ export default function StageSelector({ value, onChange, size = 'sm', className,
               />
               <span className="flex-1 text-[#1A1A1A]">{c.name}</span>
               {c.id === value && (
-                <Check className="w-3 h-3 text-[#1E9A80]" />
+                <Check className="w-3 h-3 text-[#3C5A87]" />
               )}
             </button>
           ))}

@@ -155,7 +155,7 @@ export default function QueueManagerPro({ queue, campaignId, onRefresh, onToast 
             id: `new-${Date.now()}`, name: '', phone: '', email: undefined,
             tags: [], isHot: false, customFields: {}, createdAt: new Date().toISOString(),
           })}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#1E9A80] text-white hover:bg-[#1E9A80]/90 transition-colors"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-[#3C5A87] text-white hover:bg-[#3C5A87]/90 transition-colors"
         >
           <Plus className="w-3 h-3" />
           Add lead
@@ -196,7 +196,7 @@ export default function QueueManagerPro({ queue, campaignId, onRefresh, onToast 
               )}
               <button
                 onClick={() => setEditingContactId(lead.contactId)}
-                className="p-0.5 rounded text-[#6B7280] hover:text-[#1E9A80]"
+                className="p-0.5 rounded text-[#6B7280] hover:text-[#3C5A87]"
                 title="Edit contact"
               >
                 <Pencil className="w-3 h-3" />

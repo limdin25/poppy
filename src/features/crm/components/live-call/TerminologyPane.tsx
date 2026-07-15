@@ -101,13 +101,13 @@ export default function TerminologyPane({ contactId }: { contactId?: string }) {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={tab === 'messages' ? 'Search messages…' : 'Filter…'}
-          className="flex-1 px-2.5 py-1.5 text-[12px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+          className="flex-1 px-2.5 py-1.5 text-[12px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
         />
         {tab === 'glossary' && (
           <button
             onClick={() => setAdding(true)}
             title="Add a term"
-            className="p-1.5 rounded-[10px] bg-[#1E9A80]/10 text-[#1E9A80] hover:bg-[#1E9A80]/20"
+            className="p-1.5 rounded-[10px] bg-[#3C5A87]/10 text-[#3C5A87] hover:bg-[#3C5A87]/20"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -180,7 +180,7 @@ function MessageBubble({ message }: { message: CrmMessage }) {
       className={cn(
         'rounded-lg border p-2 text-[12px] leading-snug',
         isInbound
-          ? 'border-[#1E9A80]/30 bg-[#ECFDF5] text-[#1A1A1A]'
+          ? 'border-[#3C5A87]/30 bg-[#EEF2F8] text-[#1A1A1A]'
           : 'border-[#E5E7EB] bg-white text-[#374151]'
       )}
     >
@@ -188,7 +188,7 @@ function MessageBubble({ message }: { message: CrmMessage }) {
         <span
           className={cn(
             'text-[10px] font-semibold uppercase tracking-wide',
-            isInbound ? 'text-[#1E9A80]' : 'text-[#6B7280]'
+            isInbound ? 'text-[#3C5A87]' : 'text-[#6B7280]'
           )}
         >
           {isInbound ? '↓ From contact' : '↑ Sent'}
@@ -222,11 +222,11 @@ function TabButton({
       className={cn(
         'flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] font-semibold transition-colors border-b-2',
         active
-          ? 'text-[#1E9A80] border-[#1E9A80]'
+          ? 'text-[#3C5A87] border-[#3C5A87]'
           : 'text-[#6B7280] border-transparent hover:text-[#1A1A1A] hover:bg-[#F3F3EE]/50'
       )}
     >
-      <span className={active ? 'text-[#1E9A80]' : 'text-[#9CA3AF]'}>{icon}</span>
+      <span className={active ? 'text-[#3C5A87]' : 'text-[#9CA3AF]'}>{icon}</span>
       <span>{label}</span>
       <span className="text-[10px] text-[#9CA3AF] font-normal">{count}</span>
     </button>
@@ -254,9 +254,9 @@ function AddCardForm({
   };
 
   return (
-    <div className="border-t-2 border-[#1E9A80] bg-[#ECFDF5]/30 p-3 space-y-2">
+    <div className="border-t-2 border-[#3C5A87] bg-[#EEF2F8]/30 p-3 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-bold uppercase tracking-wide text-[#1E9A80]">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-[#3C5A87]">
           New term
         </span>
         <button
@@ -273,21 +273,21 @@ function AddCardForm({
         onChange={(e) => setTerm(e.target.value)}
         placeholder='Term (e.g. "Voting")'
         autoFocus
-        className="w-full px-2 py-1.5 text-[12px] bg-white border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+        className="w-full px-2 py-1.5 text-[12px] bg-white border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
       />
       <input
         type="text"
         value={gist}
         onChange={(e) => setGist(e.target.value)}
         placeholder="One-line gist (optional)"
-        className="w-full px-2 py-1.5 text-[11px] bg-white border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+        className="w-full px-2 py-1.5 text-[11px] bg-white border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
       />
       <textarea
         value={definition}
         onChange={(e) => setDefinition(e.target.value)}
         placeholder="Full definition (Markdown supported)"
         rows={3}
-        className="w-full px-2 py-1.5 text-[12px] bg-white border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80] resize-none"
+        className="w-full px-2 py-1.5 text-[12px] bg-white border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87] resize-none"
       />
       <div className="flex justify-end gap-1.5">
         <button
@@ -300,7 +300,7 @@ function AddCardForm({
         <button
           onClick={submit}
           disabled={submitting || !term.trim() || !definition.trim()}
-          className="px-2.5 py-1 text-[11px] font-semibold bg-[#1E9A80] text-white rounded-[8px] hover:bg-[#1E9A80]/90 disabled:opacity-50"
+          className="px-2.5 py-1 text-[11px] font-semibold bg-[#3C5A87] text-white rounded-[8px] hover:bg-[#3C5A87]/90 disabled:opacity-50"
         >
           {submitting ? 'Saving…' : 'Save'}
         </button>
@@ -315,7 +315,7 @@ function TermCard({ term }: { term: Terminology }) {
     <div
       className={cn(
         'border rounded-lg transition-colors',
-        open ? 'border-[#1E9A80]/40 bg-[#ECFDF5]/30' : 'border-[#E5E7EB] hover:border-[#1E9A80]/30'
+        open ? 'border-[#3C5A87]/40 bg-[#EEF2F8]/30' : 'border-[#E5E7EB] hover:border-[#3C5A87]/30'
       )}
     >
       <button
@@ -323,7 +323,7 @@ function TermCard({ term }: { term: Terminology }) {
         className="w-full text-left px-3 py-2 flex items-start gap-2"
       >
         {open ? (
-          <ChevronDown className="w-3.5 h-3.5 text-[#1E9A80] flex-shrink-0 mt-0.5" />
+          <ChevronDown className="w-3.5 h-3.5 text-[#3C5A87] flex-shrink-0 mt-0.5" />
         ) : (
           <ChevronRight className="w-3.5 h-3.5 text-[#9CA3AF] flex-shrink-0 mt-0.5" />
         )}

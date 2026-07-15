@@ -31,7 +31,7 @@ export default function ReportsPage() {
               onClick={() => setRange(opt.key)}
               className={cn(
                 'px-3 py-1 text-[12px] font-medium rounded-[8px]',
-                range === opt.key ? 'bg-white text-[#1E9A80] shadow-sm' : 'text-[#6B7280]'
+                range === opt.key ? 'bg-white text-[#3C5A87] shadow-sm' : 'text-[#6B7280]'
               )}
             >
               {opt.label}
@@ -71,7 +71,7 @@ export default function ReportsPage() {
             {r.hourly.map((h, i) => (
               <div key={i} className="flex-1 flex flex-col items-center gap-1">
                 <div
-                  className="w-full bg-[#1E9A80] rounded-t transition-all hover:opacity-80"
+                  className="w-full bg-[#3C5A87] rounded-t transition-all hover:opacity-80"
                   style={{ height: `${(h / maxBucket) * 100}%` }}
                   title={`${h} calls`}
                 />

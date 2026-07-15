@@ -9,7 +9,7 @@ const ICON = {
 } as const;
 
 const STYLE = {
-  success: 'bg-[#ECFDF5] border-[#1E9A80]/30 text-[#1E9A80]',
+  success: 'bg-[#EEF2F8] border-[#3C5A87]/30 text-[#3C5A87]',
   info: 'bg-[#EFF6FF] border-[#3B82F6]/30 text-[#1D4ED8]',
   error: 'bg-[#FEF2F2] border-[#EF4444]/30 text-[#B91C1C]',
 } as const;

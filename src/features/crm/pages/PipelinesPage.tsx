@@ -215,7 +215,7 @@ export default function PipelinesPage() {
               className={cn(
                 'w-[280px] flex-shrink-0 rounded-2xl border flex flex-col max-h-[75vh] transition-colors',
                 dragOverColId === col.id
-                  ? 'bg-[#ECFDF5] border-[#1E9A80]/40'
+                  ? 'bg-[#EEF2F8] border-[#3C5A87]/40'
                   : 'bg-[#F3F3EE]/50 border-[#E5E7EB]'
               )}
             >
@@ -246,7 +246,7 @@ export default function PipelinesPage() {
                     onDragEnd={onDragEnd}
                     onClick={() => setEditing(c)}
                     className={cn(
-                      'group w-full text-left bg-white border border-[#E5E7EB] rounded-xl p-2.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-[#1E9A80]/40 transition-all cursor-grab active:cursor-grabbing',
+                      'group w-full text-left bg-white border border-[#E5E7EB] rounded-xl p-2.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-[#3C5A87]/40 transition-all cursor-grab active:cursor-grabbing',
                       draggingId === c.id && 'opacity-40'
                     )}
                   >
@@ -267,7 +267,7 @@ export default function PipelinesPage() {
                           {c.phone}
                         </div>
                         {c.dealValuePence && (
-                          <div className="text-[11px] font-semibold text-[#1E9A80] tabular-nums mt-1">
+                          <div className="text-[11px] font-semibold text-[#3C5A87] tabular-nums mt-1">
                             {formatPence(c.dealValuePence)}
                           </div>
                         )}
@@ -291,7 +291,7 @@ export default function PipelinesPage() {
                             <div className="mt-1.5 flex flex-wrap gap-1">
                               {cs.sms && (
                                 <span
-                                  className="inline-flex items-center gap-1 text-[9px] font-medium bg-[#1E9A80]/10 text-[#1E9A80] px-1.5 py-0.5 rounded"
+                                  className="inline-flex items-center gap-1 text-[9px] font-medium bg-[#3C5A87]/10 text-[#3C5A87] px-1.5 py-0.5 rounded"
                                   title={cs.sms.bodyPreview}
                                 >
                                   <Phone className="w-2.5 h-2.5" />
@@ -362,21 +362,21 @@ export default function PipelinesPage() {
                         >
                           <button
                             onClick={(e) => { e.stopPropagation(); openDialerPro(c.id, { pipelineColumnId: col.id }); }}
-                            className="p-1 rounded hover:bg-[#ECFDF5] text-[#1E9A80]"
+                            className="p-1 rounded hover:bg-[#EEF2F8] text-[#3C5A87]"
                             title="Call"
                           >
                             <Phone className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); setSmsChannel('sms'); setSmsTo(c); }}
-                            className="p-1 rounded hover:bg-[#ECFDF5] text-[#1E9A80]"
+                            className="p-1 rounded hover:bg-[#EEF2F8] text-[#3C5A87]"
                             title="SMS"
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); setSmsChannel('whatsapp'); setSmsTo(c); }}
-                            className="p-1 rounded hover:bg-[#DCFCE7] text-[#25D366]"
+                            className="p-1 rounded hover:bg-[#EEF2F8] text-[#25D366]"
                             title="WhatsApp"
                           >
                             <MessageSquare className="w-3.5 h-3.5" strokeWidth={2.4} />

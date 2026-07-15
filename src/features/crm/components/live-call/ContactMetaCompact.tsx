@@ -51,7 +51,7 @@ export default function ContactMetaCompact({ contact }: Props) {
         <div className="space-y-1 pb-1.5 border-b border-[#E5E7EB]/70">
           {propertyAddress && (
             <div className="flex items-start gap-1.5 text-[11px] text-[#1A1A1A]">
-              <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-[#1E9A80]" />
+              <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-[#3C5A87]" />
               <span className="truncate" title={propertyAddress}>{propertyAddress}</span>
             </div>
           )}
@@ -60,7 +60,7 @@ export default function ContactMetaCompact({ contact }: Props) {
               href={propertyUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-start gap-1.5 text-[11px] text-[#1E9A80] underline decoration-[#1E9A80]/40 hover:decoration-[#1E9A80] cursor-pointer"
+              className="flex items-start gap-1.5 text-[11px] text-[#3C5A87] underline decoration-[#3C5A87]/40 hover:decoration-[#3C5A87] cursor-pointer"
               title={propertyUrl}
             >
               <ExternalLink className="w-3 h-3 mt-0.5 flex-shrink-0" />
@@ -115,7 +115,7 @@ export default function ContactMetaCompact({ contact }: Props) {
       {contact.dealValuePence !== undefined && contact.dealValuePence > 0 && (
         <div className="text-[11px] text-[#6B7280]">
           Deal value:{' '}
-          <span className="font-semibold text-[#1E9A80] tabular-nums">
+          <span className="font-semibold text-[#3C5A87] tabular-nums">
             {formatPence(contact.dealValuePence)}
           </span>
         </div>

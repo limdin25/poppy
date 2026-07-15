@@ -334,7 +334,7 @@ export default function MidCallSmsSender({
     <div className="border border-[#E5E7EB] rounded-xl p-2.5 bg-white">
       <div className="flex items-center justify-between gap-1.5 mb-2">
         <div className="flex items-center gap-1.5 min-w-0">
-          <ChannelIcon className="w-3.5 h-3.5 text-[#1E9A80] flex-none" />
+          <ChannelIcon className="w-3.5 h-3.5 text-[#3C5A87] flex-none" />
           <span className="text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A] truncate">
             Send {channelLabel} to {firstName || contactName}
           </span>
@@ -353,7 +353,7 @@ export default function MidCallSmsSender({
               className={cn(
                 'px-1.5 py-0.5 text-[10px] font-semibold rounded-[4px] transition-colors',
                 channel === c
-                  ? 'bg-white text-[#1E9A80] shadow-sm'
+                  ? 'bg-white text-[#3C5A87] shadow-sm'
                   : 'text-[#6B7280] hover:text-[#1A1A1A]'
               )}
               type="button"
@@ -399,13 +399,13 @@ export default function MidCallSmsSender({
           'mb-2 px-2 py-1.5 rounded-[8px] border flex items-center gap-2',
           stageMissing
             ? 'border-[#F59E0B]/60 bg-[#FFFBEB]'
-            : 'border-[#1E9A80]/30 bg-[#ECFDF5]/50'
+            : 'border-[#3C5A87]/30 bg-[#EEF2F8]/50'
         )}
       >
         <span
           className={cn(
             'text-[10px] uppercase tracking-wide font-bold',
-            stageMissing ? 'text-[#B45309]' : 'text-[#1E9A80]'
+            stageMissing ? 'text-[#B45309]' : 'text-[#3C5A87]'
           )}
         >
           {stageMissing ? 'Pick stage' : 'Stage'}
@@ -417,7 +417,7 @@ export default function MidCallSmsSender({
           pipelineId={pipelineId}
         />
         {!stageMissing && targetStage && targetStage.id === pickedStageId && (
-          <span className="text-[10px] text-[#1E9A80] inline-flex items-center gap-0.5 ml-auto">
+          <span className="text-[10px] text-[#3C5A87] inline-flex items-center gap-0.5 ml-auto">
             <ArrowRight className="w-3 h-3" /> from template
           </span>
         )}
@@ -438,7 +438,7 @@ export default function MidCallSmsSender({
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Email subject (required) — type freely or pick a template above"
           className={cn(
-            'w-full mb-2 px-2 py-1.5 text-[12px] border rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]',
+            'w-full mb-2 px-2 py-1.5 text-[12px] border rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]',
             // PR 114: highlight subject input when blocking the send so
             // the agent sees what's missing without clicking the button.
             !subject.trim() && body.trim().length > 0
@@ -457,7 +457,7 @@ export default function MidCallSmsSender({
             : 'Type a message, or pick a template above. Templates are optional.'
         }
         rows={channel === 'email' ? 7 : 5}
-        className="w-full px-2 py-1.5 text-[12px] border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80] resize-y min-h-[80px]"
+        className="w-full px-2 py-1.5 text-[12px] border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87] resize-y min-h-[80px]"
       />
       {/* PR 106 (Hugo 2026-04-28): when a body has been typed but no
           stage is picked, pulse a soft warning right above the Send
@@ -489,7 +489,7 @@ export default function MidCallSmsSender({
                 ? 'Email subject required'
                 : undefined)
           }
-          className="bg-[#1E9A80] text-white text-[11px] font-semibold px-3 py-1.5 rounded-[8px] inline-flex items-center gap-1 hover:bg-[#1E9A80]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-[#3C5A87] text-white text-[11px] font-semibold px-3 py-1.5 rounded-[8px] inline-flex items-center gap-1 hover:bg-[#3C5A87]/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Send className="w-3 h-3" />
           {sending ? 'Sending…' : 'Send'}

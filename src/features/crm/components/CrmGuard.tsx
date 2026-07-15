@@ -53,7 +53,7 @@ export default function CrmGuard({ children }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F3F3EE]">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-[#1E9A80] border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="w-8 h-8 border-2 border-[#3C5A87] border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm text-[#6B7280] mt-3">Loading…</p>
         </div>
       </div>
@@ -79,7 +79,7 @@ export default function CrmGuard({ children }: Props) {
           </p>
           <a
             href="/admin/crm/login"
-            className="mt-5 inline-block text-[13px] font-semibold text-white bg-[#1E9A80] px-4 py-2 rounded-[10px]"
+            className="mt-5 inline-block text-[13px] font-semibold text-white bg-[#3C5A87] px-4 py-2 rounded-[10px]"
           >
             Sign in as agent
           </a>

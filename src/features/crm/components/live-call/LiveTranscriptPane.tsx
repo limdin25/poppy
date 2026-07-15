@@ -88,8 +88,8 @@ const COACH_ICONS: Record<
   { Icon: typeof Lightbulb; colour: string; label: string }
 > = {
   // v10 kinds (PR 6)
-  script: { Icon: BookOpen, colour: '#1E9A80', label: 'SCRIPT' },
-  suggestion: { Icon: Lightbulb, colour: '#0F766E', label: 'SUGGESTION' },
+  script: { Icon: BookOpen, colour: '#3C5A87', label: 'SCRIPT' },
+  suggestion: { Icon: Lightbulb, colour: '#283C5C', label: 'SUGGESTION' },
   explain: { Icon: Megaphone, colour: '#7C3AED', label: 'EXPLAIN' },
   // Legacy kinds — historic rows still render with sensible icons.
   objection: { Icon: AlertTriangle, colour: '#EF4444', label: '⚠ OBJECTION' },
@@ -367,7 +367,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     <div className="flex flex-col h-full">
       <div className="px-4 py-2.5 border-b border-[#E5E7EB] flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-[#1E9A80] animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-[#3C5A87] animate-pulse" />
           <span className="text-[12px] font-semibold text-[#1A1A1A]">Live transcript + AI coach</span>
         </div>
         <div className="text-[11px] text-[#6B7280] tabular-nums">
@@ -415,7 +415,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
                 <span
                   className={
                     line.speaker === 'agent'
-                      ? 'font-semibold text-[#1E9A80]'
+                      ? 'font-semibold text-[#3C5A87]'
                       : 'font-semibold text-[#1A1A1A]'
                   }
                 >
@@ -431,7 +431,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
 
         <ResizablePanel defaultSize={60} minSize={25} className="overflow-hidden">
           <div className="h-full overflow-y-auto px-4 py-3 space-y-2.5">
-            <div className="sticky top-0 -mt-3 -mx-4 px-4 py-1.5 mb-2 bg-white/95 backdrop-blur text-[10px] font-bold uppercase tracking-wide text-[#1E9A80]">
+            <div className="sticky top-0 -mt-3 -mx-4 px-4 py-1.5 mb-2 bg-white/95 backdrop-blur text-[10px] font-bold uppercase tracking-wide text-[#3C5A87]">
               AI coach — read this aloud
             </div>
             {/* PR 113: buy-time filler chip. Pops the instant a caller
@@ -458,13 +458,13 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
               // teleprompter. Pre-fill the opener immediately on call
               // start; first real coach event replaces it.
               <div
-                className="rounded-lg border bg-white p-4 transition-all border-[#1E9A80] bg-[#ECFDF5]/50 shadow-[0_6px_24px_rgba(30,154,128,0.22)]"
-                style={{ borderLeftColor: '#1E9A80', borderLeftWidth: 4 }}
+                className="rounded-lg border bg-white p-4 transition-all border-[#3C5A87] bg-[#EEF2F8]/50 shadow-[0_6px_24px_rgba(30,154,128,0.22)]"
+                style={{ borderLeftColor: '#3C5A87', borderLeftWidth: 4 }}
                 data-testid="opener-card"
               >
                 <div
                   className="font-bold tracking-wide flex items-center gap-2 text-[10px] mb-2"
-                  style={{ color: '#1E9A80' }}
+                  style={{ color: '#3C5A87' }}
                 >
                   <span>💡 OPENER · READ WHEN THEY PICK UP</span>
                 </div>
@@ -491,7 +491,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
                     className={cn(
                       'rounded-lg border bg-white transition-all',
                       isLatest
-                        ? 'p-4 border-[#1E9A80] bg-[#ECFDF5]/50 shadow-[0_6px_24px_rgba(30,154,128,0.22)]'
+                        ? 'p-4 border-[#3C5A87] bg-[#EEF2F8]/50 shadow-[0_6px_24px_rgba(30,154,128,0.22)]'
                         : 'px-2 py-1.5 border-[#E5E7EB] opacity-40 hover:opacity-90'
                     )}
                     style={{ borderLeftColor: meta.colour, borderLeftWidth: isLatest ? 4 : 2 }}
@@ -510,7 +510,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
                         {event.title ? ` · ${event.title}` : ''}
                       </span>
                       {isLatest && (
-                        <span className="text-[9px] font-semibold uppercase bg-[#1E9A80] text-white px-1.5 py-0.5 rounded">
+                        <span className="text-[9px] font-semibold uppercase bg-[#3C5A87] text-white px-1.5 py-0.5 rounded">
                           latest
                         </span>
                       )}
@@ -524,9 +524,9 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
                     {event.isSkeleton ? (
                       <div className={cn('text-[#9CA3AF] italic flex items-center gap-2', isLatest ? LATEST_BODY_CLASS : OLDER_BODY_CLASS)}>
                         <span className="inline-flex gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#1E9A80] animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#1E9A80] animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#1E9A80] animate-bounce" style={{ animationDelay: '300ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#3C5A87] animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#3C5A87] animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#3C5A87] animate-bounce" style={{ animationDelay: '300ms' }} />
                         </span>
                         Coach is thinking…
                       </div>
@@ -548,7 +548,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Quick note (auto-saves)…"
-          className="w-full px-2 py-1.5 text-[12px] bg-white border border-[#E5E5E5] rounded-[10px] resize-none focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+          className="w-full px-2 py-1.5 text-[12px] bg-white border border-[#E5E5E5] rounded-[10px] resize-none focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
           rows={2}
         />
       </div>

@@ -45,7 +45,7 @@ export default function AdminOnlyRoute({ children }: Props) {
   if (authLoading || (user && workspaceRole === undefined)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F3F3EE]">
-        <div className="w-8 h-8 border-2 border-[#1E9A80] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-[#3C5A87] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }

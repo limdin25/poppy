@@ -583,7 +583,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
             <div key={t.id} className={cn(
               'px-3 py-1.5 rounded-lg text-xs font-medium shadow-md',
               t.type === 'error' && 'bg-red-50 text-red-700 border border-red-200',
-              t.type === 'success' && 'bg-[#ECFDF5] text-[#1E9A80] border border-[#1E9A80]/20',
+              t.type === 'success' && 'bg-[#EEF2F8] text-[#3C5A87] border border-[#3C5A87]/20',
               t.type === 'info' && 'bg-white text-[#6B7280] border border-[#E5E7EB]',
             )}>{t.msg}</div>
           ))}
@@ -625,8 +625,8 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                       not yet connected) so agents see it the moment
                       they need it. Sends DTMF via Twilio Call.sendDigits;
                       keyboard 0-9, *, # also work. */}
-                  <div className="bg-white border border-[#1E9A80]/30 rounded-xl p-2 shadow-sm">
-                    <div className="text-[10px] uppercase tracking-wide text-[#1E9A80] font-semibold mb-1.5 flex items-center gap-1.5">
+                  <div className="bg-white border border-[#3C5A87]/30 rounded-xl p-2 shadow-sm">
+                    <div className="text-[10px] uppercase tracking-wide text-[#3C5A87] font-semibold mb-1.5 flex items-center gap-1.5">
                       <Hash className="w-3 h-3" /> Keypad
                       <span className="ml-auto text-[9px] text-[#9CA3AF] normal-case font-normal">
                         {state.phase === 'connected' ? 'press 1, 2…' : 'enabled once connected'}
@@ -715,7 +715,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
               onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
               className="flex items-center gap-2 px-4 py-2.5 bg-[#F3F3EE] border-b border-[#E5E7EB] cursor-grab active:cursor-grabbing"
             >
-              <Phone className="w-4 h-4 text-[#1E9A80]" />
+              <Phone className="w-4 h-4 text-[#3C5A87]" />
               <span className="text-[12px] font-semibold text-[#6B7280]">
                 {state.phase === 'paused' ? 'Paused' : 'Power Dialer'}
               </span>
@@ -757,7 +757,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                   </span>
                   {!reconnecting && (
                     <button onClick={() => void reconnectDevice()}
-                      className="text-[11px] font-semibold text-[#1E9A80] hover:bg-[#ECFDF5] px-2 py-1 rounded-md">
+                      className="text-[11px] font-semibold text-[#3C5A87] hover:bg-[#EEF2F8] px-2 py-1 rounded-md">
                       Retry now
                     </button>
                   )}
@@ -775,7 +775,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
               {state.phase === 'paused' ? (
                 <div className="flex gap-2">
                   <button onClick={() => { machine.resume(); void startDialer(); }} disabled={spend.isLimitReached || ks.allDialers || reconnecting}
-                    className="flex-1 flex items-center justify-center gap-2 bg-[#1E9A80] hover:bg-[#1E9A80]/90 text-white text-[14px] font-semibold py-3 rounded-xl transition-colors shadow-[0_4px_12px_rgba(30,154,128,0.35)] disabled:opacity-50">
+                    className="flex-1 flex items-center justify-center gap-2 bg-[#3C5A87] hover:bg-[#3C5A87]/90 text-white text-[14px] font-semibold py-3 rounded-xl transition-colors shadow-[0_4px_12px_rgba(30,154,128,0.35)] disabled:opacity-50">
                     <Play className="w-4 h-4" /> Resume
                   </button>
                   <button onClick={() => void machine.stop()}
@@ -785,7 +785,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                 </div>
               ) : (
                 <button onClick={() => void startDialer()} disabled={spend.isLimitReached || ks.allDialers || !camp || queue.length === 0 || reconnecting}
-                  className="w-full flex items-center justify-center gap-2 bg-[#1E9A80] hover:bg-[#1E9A80]/90 text-white text-[14px] font-semibold py-3 rounded-xl transition-colors shadow-[0_4px_12px_rgba(30,154,128,0.35)] disabled:opacity-50 disabled:cursor-not-allowed">
+                  className="w-full flex items-center justify-center gap-2 bg-[#3C5A87] hover:bg-[#3C5A87]/90 text-white text-[14px] font-semibold py-3 rounded-xl transition-colors shadow-[0_4px_12px_rgba(30,154,128,0.35)] disabled:opacity-50 disabled:cursor-not-allowed">
                   <Phone className="w-4 h-4" /> {state.sessionStarted ? 'Dial next' : 'Start dialer'}
                 </button>
               )}
@@ -829,7 +829,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                 onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
                 className="flex items-center gap-2 px-4 py-2.5 bg-[#F3F3EE] border-b border-[#E5E7EB] cursor-grab active:cursor-grabbing"
               >
-                <Phone className="w-4 h-4 text-[#1E9A80]" />
+                <Phone className="w-4 h-4 text-[#3C5A87]" />
                 <span className="text-[12px] font-semibold text-[#6B7280]">
                   {state.phase === 'connected' ? 'Connected' : 'Outgoing Call'}
                 </span>
@@ -842,7 +842,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
 
               {/* Avatar + lead info + timer */}
               <div className="flex flex-col items-center py-5 px-4">
-                <div className="w-20 h-20 rounded-full bg-[#1E9A80] flex items-center justify-center text-white text-[28px] font-bold mb-3">
+                <div className="w-20 h-20 rounded-full bg-[#3C5A87] flex items-center justify-center text-white text-[28px] font-bold mb-3">
                   {(state.currentLead.name ?? '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                 </div>
                 <div className="text-[15px] font-semibold text-[#1A1A1A] truncate max-w-full">{state.currentLead.name}</div>
@@ -862,7 +862,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="text-[11px] text-[#1E9A80] underline decoration-[#1E9A80]/40 hover:decoration-[#1E9A80] cursor-pointer mt-0.5 truncate max-w-full px-2 text-center inline-block"
+                      className="text-[11px] text-[#3C5A87] underline decoration-[#3C5A87]/40 hover:decoration-[#3C5A87] cursor-pointer mt-0.5 truncate max-w-full px-2 text-center inline-block"
                       title={href}
                     >
                       {label}
@@ -934,7 +934,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                       state.phase !== 'connected'
                         ? 'text-[#9CA3AF] cursor-not-allowed'
                         : keypadOpen
-                          ? 'bg-[#1E9A80] text-white'
+                          ? 'bg-[#3C5A87] text-white'
                           : 'text-[#6B7280] hover:bg-[#F3F3EE] hover:text-[#1A1A1A]',
                     )}
                     title="Open IVR keypad"
@@ -1003,7 +1003,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                 ({pipelineColumnId ? columnLeads.length : queue.length})
               </span>
               {pipelineColumnId && (
-                <span className="text-[9px] bg-[#ECFDF5] text-[#1E9A80] px-1.5 py-0.5 rounded-full font-medium">
+                <span className="text-[9px] bg-[#EEF2F8] text-[#3C5A87] px-1.5 py-0.5 rounded-full font-medium">
                   {outcomeColumns.find((c) => c.id === pipelineColumnId)?.name ?? 'Column'}
                 </span>
               )}
@@ -1019,7 +1019,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
           </div>
           {/* Resize handle */}
           <div
-            className="w-1 bg-[#E5E7EB] hover:bg-[#1E9A80]/40 cursor-col-resize flex-shrink-0 transition-colors"
+            className="w-1 bg-[#E5E7EB] hover:bg-[#3C5A87]/40 cursor-col-resize flex-shrink-0 transition-colors"
             onPointerDown={(e) => {
               (e.currentTarget as Element).setPointerCapture(e.pointerId);
               splitDragRef.current = { startX: e.clientX, startPct: queuePct };
@@ -1159,7 +1159,7 @@ function DialerDebugOverlay(props: DialerDebugOverlayProps) {
       data-testid="dialer-debug-overlay"
     >
       <div className="flex items-center gap-2 mb-1">
-        <span className="font-bold text-[#1E9A80]">DIALER DEBUG</span>
+        <span className="font-bold text-[#3C5A87]">DIALER DEBUG</span>
         <button
           onClick={copyAll}
           className="ml-auto px-1.5 py-0.5 bg-white/10 rounded hover:bg-white/20"
@@ -1173,8 +1173,8 @@ function DialerDebugOverlay(props: DialerDebugOverlayProps) {
       {!collapsed && (
         <>
           <div className="space-y-0.5">
-            <div>phase: <span className="text-[#7BD389]">{props.phase}</span></div>
-            <div>deviceReady: <span className={props.deviceReady ? 'text-[#7BD389]' : 'text-[#F87171]'}>{String(props.deviceReady)}</span></div>
+            <div>phase: <span className="text-[#D8E1EE]">{props.phase}</span></div>
+            <div>deviceReady: <span className={props.deviceReady ? 'text-[#D8E1EE]' : 'text-[#F87171]'}>{String(props.deviceReady)}</span></div>
             <div>sessionStarted: {String(props.sessionStarted)}</div>
             <div>currentLead: {props.currentLeadName ?? '-'}</div>
             <div className="truncate">currentCallId: {props.currentCallId ?? '-'}</div>
@@ -1198,7 +1198,7 @@ function DialerDebugOverlay(props: DialerDebugOverlayProps) {
                 <div key={l.t} className={cn(
                   'leading-tight',
                   l.type === 'error' && 'text-[#F87171]',
-                  l.type === 'success' && 'text-[#7BD389]',
+                  l.type === 'success' && 'text-[#D8E1EE]',
                   l.type === 'info' && 'text-white/80',
                 )}>
                   {ts(l.t)} {l.msg}
@@ -1302,7 +1302,7 @@ function WrapUpCard({ lead, endReason, durationSec, columns, columnsLoading = fa
           onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
           className="flex items-center gap-2 px-4 py-3 border-b border-[#E5E7EB]/60 cursor-grab active:cursor-grabbing"
         >
-          <Phone className="text-[#1E9A80] w-5 h-5" />
+          <Phone className="text-[#3C5A87] w-5 h-5" />
           <span className="font-semibold text-[#1A1A1A]">Call Summary</span>
           <button onPointerDown={(e) => e.stopPropagation()} onClick={onMinimize}
             className="ml-auto p-0.5 rounded hover:bg-[#F3F3EE] text-[#6B7280]">
@@ -1347,7 +1347,7 @@ function WrapUpCard({ lead, endReason, durationSec, columns, columnsLoading = fa
           {columns.length === 0 ? (
             columnsLoading ? (
               <div className="text-[12px] text-[#6B7280] bg-[#F3F3EE] rounded-lg px-3 py-2 flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full border-2 border-[#1E9A80] border-t-transparent animate-spin" />
+                <span className="w-3 h-3 rounded-full border-2 border-[#3C5A87] border-t-transparent animate-spin" />
                 Loading pipeline stages…
               </div>
             ) : !campaignPipelineId ? (
@@ -1392,7 +1392,7 @@ function WrapUpCard({ lead, endReason, durationSec, columns, columnsLoading = fa
         <div className="px-4 pb-3">
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
             placeholder="Notes (optional)\u2026"
-            className="w-full text-[13px] border border-[#E5E7EB] rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+            className="w-full text-[13px] border border-[#E5E7EB] rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
             rows={2} />
         </div>
 
@@ -1403,7 +1403,7 @@ function WrapUpCard({ lead, endReason, durationSec, columns, columnsLoading = fa
             <Phone className="w-4 h-4" /> Redial
           </button>
           <button onClick={() => onNext(pickedId, notes)} disabled={applying}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-[#1E9A80] text-white rounded-lg px-4 py-2 text-[13px] font-semibold hover:bg-[#1E9A80]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)] disabled:opacity-50">
+            className="flex-1 flex items-center justify-center gap-1.5 bg-[#3C5A87] text-white rounded-lg px-4 py-2 text-[13px] font-semibold hover:bg-[#3C5A87]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)] disabled:opacity-50">
             Next call &rarr;
           </button>
           <button onClick={() => onPause(pickedId, notes)} disabled={applying}

@@ -15,7 +15,7 @@ describe('rowToPipelineColumn', () => {
     id: '0ba3c92d-5175-420f-86d3-040f80394aa9',
     pipeline_id: 'd3bcab51-27ae-4539-9483-784eac706972',
     name: 'Interested',
-    colour: '#1E9A80',
+    colour: '#3C5A87',
     icon: null,
     position: 1,
     is_default_on_timeout: false,
@@ -69,6 +69,6 @@ describe('rowToPipelineColumn', () => {
 
   it('null colour defaults to Elsie brand green', () => {
     const c = rowToPipelineColumn({ ...baseRow, colour: null }, undefined);
-    expect(c.colour).toBe('#1E9A80');
+    expect(c.colour).toBe('#3C5A87');
   });
 });

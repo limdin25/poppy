@@ -59,14 +59,14 @@ export default function StatCards() {
               {s.label}
             </div>
             <s.icon
-              className="w-4 h-4 text-[#1E9A80]"
+              className="w-4 h-4 text-[#3C5A87]"
               strokeWidth={1.8}
             />
           </div>
           <div
             className={
               'text-[26px] font-bold mt-2 tabular-nums ' +
-              (s.tone === 'green' ? 'text-[#1E9A80]' : 'text-[#1A1A1A]')
+              (s.tone === 'green' ? 'text-[#3C5A87]' : 'text-[#1A1A1A]')
             }
           >
             {s.value}

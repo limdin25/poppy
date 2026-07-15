@@ -11,8 +11,8 @@ import { useReports } from '../hooks/useReports';
 import { formatPence, formatRelativeTime, formatDuration } from '../data/helpers';
 
 const STATUS_LABELS: Record<string, { label: string; colour: string }> = {
-  available: { label: 'Available', colour: '#1E9A80' },
-  busy: { label: 'In call', colour: '#1E9A80' },
+  available: { label: 'Available', colour: '#3C5A87' },
+  busy: { label: 'In call', colour: '#3C5A87' },
   idle: { label: 'Idle', colour: '#F59E0B' },
   offline: { label: 'Offline', colour: '#9CA3AF' },
 };
@@ -75,7 +75,7 @@ export default function Smsv2StatusBar() {
                 <div
                   className={cn(
                     'h-full rounded-full transition-all',
-                    spend.percentUsed > 80 ? 'bg-[#EF4444]' : 'bg-[#1E9A80]'
+                    spend.percentUsed > 80 ? 'bg-[#EF4444]' : 'bg-[#3C5A87]'
                   )}
                   style={{ width: `${spend.percentUsed}%` }}
                 />
@@ -142,7 +142,7 @@ export default function Smsv2StatusBar() {
                       ? 'text-[#25D366]'
                       : n.channel === 'email'
                         ? 'text-[#3B82F6]'
-                        : 'text-[#1E9A80]';
+                        : 'text-[#3C5A87]';
                   const preview =
                     n.body.length > 60 ? `${n.body.slice(0, 57)}…` : n.body;
                   return (
@@ -188,7 +188,7 @@ export default function Smsv2StatusBar() {
           'flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full transition-colors',
           ks.aiCoach
             ? 'bg-[#9CA3AF]/20 text-[#6B7280]'
-            : 'bg-[#ECFDF5] text-[#1E9A80] hover:bg-[#1E9A80]/15'
+            : 'bg-[#EEF2F8] text-[#3C5A87] hover:bg-[#3C5A87]/15'
         )}
         title={ks.aiCoach ? 'AI Coach disabled (kill switch active)' : 'AI Coach enabled'}
       >
@@ -217,12 +217,12 @@ export default function Smsv2StatusBar() {
           >
             <div className="px-3 py-2 border-b border-[#E5E7EB] flex items-center justify-between">
               <span className="text-[11px] uppercase tracking-wide text-[#9CA3AF] font-semibold flex items-center gap-1">
-                <Trophy className="w-3 h-3 text-[#1E9A80]" /> Today's leaderboard
+                <Trophy className="w-3 h-3 text-[#3C5A87]" /> Today's leaderboard
               </span>
               <Link
                 to="/admin/crm/leaderboard"
                 onClick={() => setTrophyOpen(false)}
-                className="text-[10px] font-medium text-[#1E9A80] hover:underline"
+                className="text-[10px] font-medium text-[#3C5A87] hover:underline"
               >
                 Full board →
               </Link>
@@ -244,7 +244,7 @@ export default function Smsv2StatusBar() {
                     <tr
                       key={r.agentId}
                       className={cn(
-                        isMe && 'bg-[#ECFDF5] border-l-2 border-[#1E9A80]'
+                        isMe && 'bg-[#EEF2F8] border-l-2 border-[#3C5A87]'
                       )}
                     >
                       <td className="px-2 py-1.5 truncate max-w-[160px]">
@@ -256,7 +256,7 @@ export default function Smsv2StatusBar() {
                             {r.agentName}
                           </span>
                           {isMe && (
-                            <span className="text-[9px] font-semibold uppercase tracking-wide text-[#1E9A80]">
+                            <span className="text-[9px] font-semibold uppercase tracking-wide text-[#3C5A87]">
                               you
                             </span>
                           )}
@@ -265,7 +265,7 @@ export default function Smsv2StatusBar() {
                       <td className="px-2 py-1.5 text-right tabular-nums">
                         {r.calls}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-[#1E9A80]">
+                      <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-[#3C5A87]">
                         {r.answered}
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">
@@ -354,7 +354,7 @@ function SpeedDialerToggle() {
         'flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full transition-colors',
         paused
           ? 'bg-[#FEF2F2] text-[#DC2626] hover:bg-[#FEE2E2]'
-          : 'bg-[#ECFDF5] text-[#1E9A80] hover:bg-[#1E9A80]/15'
+          : 'bg-[#EEF2F8] text-[#3C5A87] hover:bg-[#3C5A87]/15'
       )}
       title={paused ? 'Speed dialer paused — press Next to advance' : 'Speed dialer active — auto-advances after each call'}
     >

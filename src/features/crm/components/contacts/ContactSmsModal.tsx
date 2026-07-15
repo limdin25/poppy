@@ -395,7 +395,7 @@ export default function ContactSmsModal({
       >
         <header className="px-5 py-3 border-b border-[#E5E7EB] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ChannelIcon className="w-4 h-4 text-[#1E9A80]" />
+            <ChannelIcon className="w-4 h-4 text-[#3C5A87]" />
             <h2 className="text-[14px] font-semibold text-[#1A1A1A]">
               {headerLabel} to {firstName || contact.name}
             </h2>
@@ -437,7 +437,7 @@ export default function ContactSmsModal({
                   className={cn(
                     'px-3 py-1 text-[12px] font-medium rounded-[8px] transition-colors',
                     channel === c
-                      ? 'bg-white text-[#1E9A80] shadow-sm'
+                      ? 'bg-white text-[#3C5A87] shadow-sm'
                       : 'text-[#6B7280] hover:text-[#1A1A1A]'
                   )}
                   data-testid={`channel-radio-${c}`}
@@ -465,7 +465,7 @@ export default function ContactSmsModal({
 
           {showSentBanner && (
             <div
-              className="flex items-center gap-2 bg-[#ECFDF5] border border-[#1E9A80]/40 rounded-[10px] px-3 py-2 text-[12px] text-[#1E9A80]"
+              className="flex items-center gap-2 bg-[#EEF2F8] border border-[#3C5A87]/40 rounded-[10px] px-3 py-2 text-[12px] text-[#3C5A87]"
               role="status"
             >
               <Check className="w-4 h-4" />
@@ -498,7 +498,7 @@ export default function ContactSmsModal({
             ))}
           </select>
           {targetStage && (
-            <div className="flex items-center gap-1 text-[11px] text-[#1E9A80] bg-[#ECFDF5] px-2 py-1 rounded-[6px]">
+            <div className="flex items-center gap-1 text-[11px] text-[#3C5A87] bg-[#EEF2F8] px-2 py-1 rounded-[6px]">
               <ArrowRight className="w-3 h-3" />
               <span>
                 Send will move contact to:{' '}
@@ -528,7 +528,7 @@ export default function ContactSmsModal({
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Email subject"
-              className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80]"
+              className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
               data-testid="contact-sms-modal-subject"
             />
           )}
@@ -545,16 +545,16 @@ export default function ContactSmsModal({
                 : 'Type a message, or pick a template above.'
             }
             rows={channel === 'email' ? 8 : 5}
-            className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#1E9A80]/30 focus:border-[#1E9A80] resize-none"
+            className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87] resize-none"
             data-testid="contact-sms-modal-body"
           />
 
           {/* Attachment upload / preview */}
           <div className="flex items-center gap-2">
             {attachmentUrl ? (
-              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-[#ECFDF5] border border-[#1E9A80]/20 rounded-lg text-[11px]">
-                <Paperclip className="w-3 h-3 text-[#1E9A80]" />
-                <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-[#1E9A80] font-medium truncate max-w-[200px]">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-[#EEF2F8] border border-[#3C5A87]/20 rounded-lg text-[11px]">
+                <Paperclip className="w-3 h-3 text-[#3C5A87]" />
+                <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-[#3C5A87] font-medium truncate max-w-[200px]">
                   {attachmentUrl.split('/').pop()}
                 </a>
                 <button onClick={() => setAttachmentUrl(null)} className="text-[#6B7280] hover:text-red-500">
@@ -562,7 +562,7 @@ export default function ContactSmsModal({
                 </button>
               </div>
             ) : (
-              <label className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-[#6B7280] hover:text-[#1E9A80] hover:bg-[#ECFDF5] border border-[#E5E5E5] rounded-lg cursor-pointer transition-colors">
+              <label className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-[#6B7280] hover:text-[#3C5A87] hover:bg-[#EEF2F8] border border-[#E5E5E5] rounded-lg cursor-pointer transition-colors">
                 {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
                 {uploading ? 'Uploading…' : 'Attach file'}
                 <input
@@ -618,7 +618,7 @@ export default function ContactSmsModal({
               <button
                 onClick={() => void send()}
                 disabled={isSendDisabled}
-                className="bg-[#1E9A80] text-white text-[12px] font-semibold px-4 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#1E9A80]/90 disabled:opacity-50"
+                className="bg-[#3C5A87] text-white text-[12px] font-semibold px-4 py-1.5 rounded-[10px] inline-flex items-center gap-1 hover:bg-[#3C5A87]/90 disabled:opacity-50"
                 data-testid="contact-sms-modal-send"
               >
                 <Send className="w-3 h-3" />
