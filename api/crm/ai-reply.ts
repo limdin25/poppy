@@ -1,8 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
-import { sendSMS } from '../../src/integrations/twilio/client.js';
 
 export const config = { runtime: 'edge' };
+
+// Inline Twilio send (edge-safe: btoa, no Buffer) so this route doesn't pull
+// in the whole Twilio client module.
+async function sendSMS(from: string, to: string, body: string): Promise<{ sid?: string; status?: string }> {
+  const sid = process.env.TWILIO_ACCOUNT_SID!;
+  const token = process.env.TWILIO_AUTH_TOKEN!;
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${btoa(`${sid}:${token}`)}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ From: from, To: to, Body: body }).toString(),
+  });
+  if (!res.ok) throw new Error(`Twilio ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json() as Promise<{ sid?: string; status?: string }>;
+}
 
 /**
  * CRM AI warm-up reply. Called by the wk-jobs-worker `ai_reply` handler (which
