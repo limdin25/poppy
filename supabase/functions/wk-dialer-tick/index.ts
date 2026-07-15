@@ -31,9 +31,12 @@ const corsHeaders = {
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
-  // Service-role auth check
+  // Service-role auth check. Also accepts CRM_JOBS_KEY (shared with the
+  // Vercel cron pump — the pump can't know the runtime-injected service key;
+  // key-format mismatch between Vercel legacy JWT and injected sb_secret).
   const auth = req.headers.get('authorization') ?? '';
-  if (!auth.endsWith(SUPABASE_SERVICE_KEY)) {
+  const crmJobsKey = Deno.env.get('CRM_JOBS_KEY') ?? '';
+  if (!auth.endsWith(SUPABASE_SERVICE_KEY) && (!crmJobsKey || !auth.endsWith(crmJobsKey))) {
     return new Response('forbidden', { status: 403 });
   }
 

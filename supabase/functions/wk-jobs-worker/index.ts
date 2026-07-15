@@ -333,10 +333,13 @@ async function handleSendSms(
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://app.heyelsie.com';
 
 async function handleAiReply(payload: Record<string, unknown>): Promise<void> {
+  // Authenticate with CRM_JOBS_KEY — the app route can't compare against this
+  // runtime's injected service key (format mismatch with Vercel's env).
+  const outboundKey = Deno.env.get('CRM_JOBS_KEY') || SUPABASE_SERVICE_KEY;
   const res = await fetch(`${APP_URL}/api/crm/ai-reply`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      Authorization: `Bearer ${outboundKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -374,10 +377,14 @@ serve(async (req: Request) => {
     return new Response('Method not allowed', { status: 405, headers: corsHeaders });
   }
 
-  // Service-role bearer check
+  // Service-role bearer check. Also accepts CRM_JOBS_KEY — the Vercel cron
+  // pump can't know the runtime-injected service key (key-format mismatch:
+  // legacy JWT on Vercel vs sb_secret injected here), so both sides share a
+  // dedicated key instead.
   const auth = req.headers.get('authorization') ?? '';
   const token = auth.replace(/^Bearer\s+/i, '');
-  if (token !== SUPABASE_SERVICE_KEY) {
+  const crmJobsKey = Deno.env.get('CRM_JOBS_KEY') ?? '';
+  if (token !== SUPABASE_SERVICE_KEY && (!crmJobsKey || token !== crmJobsKey)) {
     return new Response(JSON.stringify({ error: 'unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

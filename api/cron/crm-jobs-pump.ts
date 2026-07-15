@@ -15,7 +15,10 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const supabaseUrl = process.env.SUPABASE_URL!;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  // Dedicated shared key: Vercel's SUPABASE_SERVICE_ROLE_KEY (legacy JWT) no
+  // longer matches the key the edge runtime injects (new sb_secret format),
+  // so the worker/tick authenticate on CRM_JOBS_KEY instead.
+  const serviceKey = process.env.CRM_JOBS_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const fnBase = `${supabaseUrl}/functions/v1`;
 
   async function call(fn: string, body: unknown) {

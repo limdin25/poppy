@@ -50,7 +50,9 @@ function withinHours(hoursStart: number, hoursEnd: number, days: string[], tz: s
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed' });
   const auth = req.headers.get('authorization') || '';
-  if (auth.replace(/^Bearer\s+/i, '') !== process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const bearer = auth.replace(/^Bearer\s+/i, '');
+  const jobsKey = process.env.CRM_JOBS_KEY || '';
+  if (bearer !== process.env.SUPABASE_SERVICE_ROLE_KEY && (!jobsKey || bearer !== jobsKey)) {
     return json(401, { error: 'Unauthorized' });
   }
 
