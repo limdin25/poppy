@@ -85,10 +85,13 @@ export default async function handler(req: Request): Promise<Response> {
   if (!history.length) return json(200, { skipped: 'no_history' });
 
   // Auto-off: a human (agent) replied after the last inbound → stand down.
-  const lastInboundIdx = history.map((m) => m.direction).lastIndexOf('inbound');
-  if (s.auto_off_on_human_reply && lastInboundIdx >= 0) {
-    const humanAfter = history.slice(lastInboundIdx + 1).some(
-      (m) => m.direction === 'outbound' && !m.ai_generated,
+  // Compare timestamps (order-independent) rather than array position.
+  const ms = (t: string) => new Date(t).getTime();
+  const inboundTimes = history.filter((m) => m.direction === 'inbound').map((m) => ms(m.created_at));
+  const lastInboundTime = inboundTimes.length ? Math.max(...inboundTimes) : null;
+  if (s.auto_off_on_human_reply && lastInboundTime !== null) {
+    const humanAfter = history.some(
+      (m) => m.direction === 'outbound' && !m.ai_generated && ms(m.created_at) > lastInboundTime,
     );
     if (humanAfter) {
       await supabase.from('wk_contacts').update({ ai_enabled: false }).eq('id', contactId);
@@ -97,7 +100,8 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Handoff keyword in the last inbound → stand down + flag.
-  const lastInbound = lastInboundIdx >= 0 ? (history[lastInboundIdx].body || '').toLowerCase() : '';
+  const lastInboundMsg = history.filter((m) => m.direction === 'inbound').slice(-1)[0];
+  const lastInbound = (lastInboundMsg?.body || '').toLowerCase();
   if ((s.handoff_keywords || []).some((k: string) => k && lastInbound.includes(k.toLowerCase()))) {
     await supabase.from('wk_contacts').update({ ai_enabled: false }).eq('id', contactId);
     return json(200, { skipped: 'handoff_keyword' });
