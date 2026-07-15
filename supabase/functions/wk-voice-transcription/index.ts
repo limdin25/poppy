@@ -1,0 +1,1471 @@
+// wk-voice-transcription — Twilio Real-Time Transcription webhook receiver.
+//
+// Why this exists:
+//   The earlier <Start><Stream> + Supabase WebSocket bridge approach
+//   failed reliably (Twilio error 31920) because Supabase Edge Functions'
+//   WebSocket layer is unreliable for inbound Twilio Media Streams
+//   connections. We've switched to Twilio's native Real-Time Transcription
+//   verb which delivers transcripts over HTTP POST — no WebSocket needed.
+//
+// Flow:
+//   1. wk-voice-twiml-outgoing emits <Start><Transcription
+//      statusCallbackUrl="…/wk-voice-transcription" track="both_tracks"/>
+//   2. Twilio transcribes both legs of the call in real time and POSTs
+//      transcript chunks here as they're produced.
+//   3. We INSERT each chunk into wk_live_transcripts (LiveTranscriptPane
+//      subscribes via Supabase realtime → live UI).
+//   4. For caller utterances, we async-POST the rolling transcript to
+//      OpenAI Chat to generate coaching suggestions and INSERT them into
+//      wk_live_coach_events (AI coach pane subscribes via realtime).
+//
+// AUTH: Twilio HMAC-SHA1 signature. URL is public (verify_jwt = false).
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import {
+  parseSseChunk,
+  createThrottledWriter,
+  retrieveFacts,
+  buildOpenerBanList,
+  type CoachFact,
+} from './coach-stream.ts';
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-twilio-signature',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+// ----------------------------------------------------------------------------
+// Twilio signature validation — same pattern as wk-voice-twiml-outgoing.
+// ----------------------------------------------------------------------------
+
+async function validateTwilioSignature(
+  authToken: string,
+  signature: string,
+  url: string,
+  params: Record<string, string>
+): Promise<boolean> {
+  const sortedKeys = Object.keys(params).sort();
+  let data = url;
+  for (const key of sortedKeys) data += key + params[key];
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(authToken),
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
+  const expected = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  return signature === expected;
+}
+
+// ----------------------------------------------------------------------------
+// PR 58 (Hugo 2026-04-27): stage cursor from agent voice.
+//
+// The stage cursor (wk_calls.current_stage) used to advance ONLY when
+// the coach itself fired a SCRIPT card. If the agent read aloud a
+// section's opening line themselves, the cursor stayed put — so the
+// coach could later regress to an earlier stage. This block detects
+// the agent's progression by matching their transcript against the
+// script's anchor lines and bumping current_stage forward when a
+// match lands at a later stage than the cursor's current position.
+// ----------------------------------------------------------------------------
+
+const STAGE_ORDER = [
+  'Open',
+  'Qualify',
+  'Permission to pitch',
+  'Pitch',
+  'Pricing',
+  'SMS close',
+  'Follow-up lock',
+];
+
+function stageIndex(stage: string | null): number {
+  if (!stage) return -1;
+  const target = stage.trim().toLowerCase();
+  return STAGE_ORDER.findIndex((s) => s.toLowerCase() === target);
+}
+
+interface ScriptSection {
+  stage: string;
+  anchors: string[];
+}
+
+/** Parse the script body into a `## N. <Stage>` section list, capturing
+ *  the FIRST read-aloud bullet under each heading as that section's
+ *  anchor. Anchors can be quoted (`- "Hi…"`) or unquoted (`- Hi…`). */
+export function parseScriptAnchors(scriptBody: string): ScriptSection[] {
+  const lines = scriptBody.split('\n');
+  const out: ScriptSection[] = [];
+  let current: ScriptSection | null = null;
+
+  for (const raw of lines) {
+    const headingMatch = raw.match(/^\s*##\s*\d+\.\s*(.+?)\s*$/);
+    if (headingMatch) {
+      if (current) out.push(current);
+      current = { stage: headingMatch[1].trim(), anchors: [] };
+      continue;
+    }
+    if (!current) continue;
+    // Only capture the FIRST quoted bullet — that's the section's
+    // primary read-aloud line. Variant lines inside `If yes:` /
+    // `If no:` branches are noisy for matching.
+    if (current.anchors.length > 0) continue;
+    const quoted = raw.match(/^\s*-\s*"(.+?)"\s*$/);
+    if (quoted) {
+      current.anchors.push(quoted[1]);
+    }
+  }
+  if (current) out.push(current);
+  return out;
+}
+
+/** Returns true when a long-enough run of consecutive content words
+ *  from `anchor` appears in `transcript`. Strict enough that filler
+ *  ("yeah, ok, sure") never matches; loose enough to allow agent
+ *  paraphrasing ("we come out, assess it and quote before any work"). */
+export function anchorMatches(transcript: string, anchor: string): boolean {
+  const STOP = new Set([
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'do', 'for', 'from',
+    'i', 'if', 'in', 'is', 'it', 'just', 'me', 'of', 'on', 'or', 'so', 'that',
+    'the', 'this', 'to', 'we', 'with', 'you', 'your', "i'll", "i'm", 'now',
+    'um', 'uh', 'er', 'erm', 'really', 'right', 'yeah', 'ok', 'okay',
+  ]);
+  const tokenize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9'\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOP.has(w));
+
+  const aw = tokenize(anchor);
+  const tw = tokenize(transcript);
+  if (aw.length < 3) return false;
+
+  // Slide through the transcript; for each starting position count
+  // how many anchor content-words appear in order within a 12-token
+  // window. 3+ matches OR ≥ 40% of anchor content tokens hit = match.
+  for (let i = 0; i < tw.length; i++) {
+    let aIdx = 0;
+    let hits = 0;
+    for (let tIdx = i; tIdx < tw.length && tIdx - i < 12 && aIdx < aw.length; tIdx++) {
+      if (tw[tIdx] === aw[aIdx]) {
+        hits++;
+        aIdx++;
+      }
+    }
+    if (hits >= 3 || hits / aw.length >= 0.4) return true;
+  }
+  return false;
+}
+
+/** Returns the stage NAME the agent has just advanced to (forward-only
+ *  vs `currentStage`), or null when the transcript doesn't match any
+ *  later section anchor. */
+export function detectStageFromAgent(
+  transcript: string,
+  sections: ScriptSection[],
+  currentStage: string | null,
+): string | null {
+  // Skip very short utterances — backchannel filler rarely conveys
+  // a section transition.
+  if (!transcript || transcript.trim().split(/\s+/).length < 5) return null;
+  const currIdx = stageIndex(currentStage);
+
+  // Walk sections RIGHT-to-LEFT and pick the highest-stage anchor
+  // that matches — agents who skip a section out loud should land
+  // at the right place rather than the next-numbered one.
+  for (let i = sections.length - 1; i >= 0; i--) {
+    const sec = sections[i];
+    const secIdx = stageIndex(sec.stage);
+    if (secIdx <= currIdx) continue;
+    for (const anchor of sec.anchors) {
+      if (anchorMatches(transcript, anchor)) return sec.stage;
+    }
+  }
+  return null;
+}
+
+// ----------------------------------------------------------------------------
+// Coaching — fire OpenAI Chat per caller utterance, in the background. We
+// don't want to block returning 200 to Twilio (which may retry or get noisy).
+// ----------------------------------------------------------------------------
+
+// Hugo 2026-04-29: replaced the single mega-prompt with three independently
+// editable layers (style / script / knowledge base). The model receives them
+// as separate system messages so each can evolve in isolation. See
+// docs/runbooks/COACH_PROMPT_LAYERS.md for the full architecture.
+
+interface CoachLayers {
+  stylePrompt: string;   // wk_ai_settings.coach_style_prompt
+  scriptPrompt: string;  // wk_ai_settings.coach_script_prompt
+  facts: CoachFact[];    // wk_coach_facts (active rows)
+  // PR 8 (Hugo 2026-04-26): the agent's actual call script body
+  // (wk_call_scripts WHERE owner_agent_id = call.agent_id, falling
+  // back to is_default = true). Already substituted: `{{first_name}}`
+  // → contact's first name, `{{agent_first_name}}` → agent's first
+  // name. Empty string when no script is found at all.
+  agentScriptBody: string;
+  agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'none';
+}
+
+interface CoachOptions {
+  apiKey: string;
+  model: string;
+  layers: CoachLayers;
+  recentTranscript: string;
+  latestUtterance: string;
+  speaker: 'caller' | 'agent';
+  priorCards: string[];
+  // PR 42 (Hugo 2026-04-27): wk_calls.current_stage — human label of
+  // the last SCRIPT card's script_section. Injected into the user
+  // message so the model refuses to regress (no firing OPEN mid-call
+  // once we've already moved past it). Null on a fresh call.
+  currentStage: string | null;
+  onChunk: (accumulated: string, isFirst: boolean) => void;
+  isAborted: () => boolean;
+}
+
+async function generateCoachSuggestion(
+  opts: CoachOptions
+): Promise<CoachOutput | null> {
+  const {
+    apiKey,
+    model: modelOverride,
+    layers,
+    recentTranscript,
+    latestUtterance,
+    speaker,
+    priorCards,
+    currentStage,
+    onChunk,
+    isAborted,
+  } = opts;
+  if (!apiKey || !latestUtterance || speaker !== 'caller') return null;
+
+  // Model is admin-editable via /smsv2/settings → AI coach. Fallback used
+  // only when the DB column is empty.
+  const DEFAULT_LIVE_COACH_MODEL = 'gpt-5.4-mini';
+  const trimmedModel = (modelOverride ?? '').trim();
+  const liveCoachModel = trimmedModel.length > 0 ? trimmedModel : DEFAULT_LIVE_COACH_MODEL;
+
+  // ----- LAYER FALLBACKS (used only if DB columns / facts are empty) -----
+  //
+  // These constants ARE the canonical defaults in this project — the
+  // consolidated CRM-port migration deliberately seeds no coach prompts,
+  // so a workspace with blank wk_ai_settings gets this generic
+  // service-business content until the admin configures their own.
+
+  const DEFAULT_STYLE_PROMPT = [
+    'You are voicing the lines a sales rep will read aloud, mid-call. Output ONE primary line, ready to read.',
+    '',
+    'VOICE',
+    '- UK English. Plain, commercial, natural — like a real human salesperson, not a coach, therapist, or copywriter.',
+    '- Short lines: 1–3 short sentences. Up to ~50 words for explanations, fewer for everything else.',
+    '- If the caller is short or blunt, match their energy. Don\'t over-warm.',
+    '- Every line should move the conversation forward.',
+    '',
+    'FILLER CADENCE',
+    '- Light fillers — right / yeah / fair enough / no worries / look / listen / alright / makes sense / ok — should appear in roughly 1 in 4 lines, no more.',
+    '- Never two filler-led lines in a row.',
+    '- Vary the vocabulary across the call. Don\'t lean on the same one twice in a row.',
+    '- A filler must be doing work (acknowledgement, soft pivot). If it\'s just there for warmth, drop it.',
+    '',
+    'ABSOLUTE BANS',
+    '- No style labels or acting notes ([warm], [firm], [low], [reasonable man], [you could say], etc.).',
+    '- No coaching-language metaphors ("you\'re open, not desperate"). No therapist tone.',
+    '- No multiple variants. ONE primary line.',
+    '- No bullets. No quotation marks around your line. No labels.',
+    '- No instructional verbs (Reintroduce, Ask, Describe, Tell them, Explain, Suggest, Confirm, Probe, Pivot, Mention, Address, Acknowledge). You are WRITING the line, not directing it.',
+    '- No American/corporate slop ("reach out", "circle back", "for sure", "absolutely", "appreciate that", "that\'s a great question", "going forward").',
+    '',
+    'COMPLIANCE BANS — never put these words in the agent\'s mouth:',
+    '- "Guaranteed" / "Guarantee" — we never promise outcomes.',
+    '- "Risk-free" — no job or purchase is risk-free.',
+    '- "Can\'t lose" — same reason.',
+    '- "Definitely" when talking about results, savings or timescales ("definitely be done by", "definitely save you X") — soften to "typically" or "usually".',
+    'If a banned phrase shows up in your draft, REWRITE the line before emitting it. We describe what the business DOES and how it has PERFORMED for other customers — we never promise outcomes.',
+    '',
+    'REQUIRED SAFETY PHRASES — bake these into price / timescale / outcome talk:',
+    '- "Typically" / "Usually" instead of unqualified claims.',
+    '- "Subject to a proper look at the job" when discussing a price before a survey or site visit.',
+    '- "Like any job of this kind…" before discussing caveats or things that could change the quote.',
+    '- "Most customers find…" when quoting figures or timeframes from KB facts.',
+    'Use at least one of these whenever the line contains a number, a price, a timescale, or any forward-looking statement.',
+    '',
+    'OUTPUT',
+    'Return exactly one read-aloud line. Nothing else.',
+  ].join('\n');
+
+  const DEFAULT_SCRIPT_PROMPT = [
+    'You follow the business\'s call script. Default to script INTENT, paraphrase fresh each time. Only deviate when the caller asks a direct factual question or raises an objection.',
+    '',
+    'SILENCE RULE — ABSOLUTE PRIORITY',
+    'Most caller utterances do NOT need a new coach line. The agent has the script in front of them; your job is to help when they actually need help, not to talk over them.',
+    'Output the literal marker `STAY_ON_SCRIPT` on a single line — and nothing else — when ANY of these are true:',
+    '- Caller utterance is filler / acknowledgement / backchannel ("yeah", "right", "ok", "mhm", "sure", "go on", "I see", "uh huh", "got it").',
+    '- Caller is asking a question already covered by the SCRIPT or KNOWLEDGE BASE — the agent can read the script line themselves.',
+    '- Caller is mid-thought (incomplete sentence, trailing off) and there is nothing concrete to respond to yet.',
+    '- The agent\'s last move was already the right move and the caller hasn\'t introduced anything new.',
+    'If you output STAY_ON_SCRIPT, output ONLY that string. No explanation, no quotes, no leading words.',
+    'Only produce a real coach line when the caller asks something NOT covered by the script AND NOT covered by the knowledge base — something the agent genuinely needs help responding to (a curveball question, an unexpected objection, an emotional reaction).',
+    '',
+    'USE FRESH WORDING',
+    'You\'re on a live call with a real human. Repeating the exact same phrasing twice in a call sounds canned. Use the example phrasings below as anchors, then pick a fresh wording each time you hit the same stage / branch. Never copy a phrasing word-for-word from your last 5 cards (see ANTI-REPETITION).',
+    '',
+    'OPEN-ENDED DEFAULT',
+    'Most lines end with a question or invitation that keeps the conversation moving:',
+    '- "What\'s prompted you to look into this now?"',
+    '- "Is this something you need sorted urgently, or more planning ahead?"',
+    '- "Want me to give you the quick version?"',
+    '- "Does that make sense?"',
+    '- "Have you used a company for this before, or is it your first time sorting it?"',
+    'If the caller is short or blunt, match their energy.',
+    '',
+    'CALL STAGES (always know which one you\'re in)',
+    'Numbered order — strict forward-only progression:',
+    '1. Open',
+    '2. Qualify',
+    '3. Permission to pitch',
+    '4. Pitch',
+    '5. Pricing',
+    '6. SMS close',
+    '7. Follow-up lock',
+    '',
+    'STAGE LOCK — STRICT FORWARD-ONLY (Hugo 2026-04-27, v12)',
+    'The user message includes a "STAGE LOCK" block telling you the LAST SCRIPT card you fired on this call (read from wk_calls.current_stage).',
+    'Rules:',
+    '- DO NOT fire any SCRIPT card whose stage number is LESS THAN OR EQUAL TO the locked stage. You have already done that stage; don\'t repeat it.',
+    '- The next [SCRIPT: <stage>] card MUST be at a HIGHER stage number than the locked stage. (e.g. lock=4 means next SCRIPT must be 5, 6, or 7.)',
+    '- If the caller wants you to re-explain something already in an earlier stage (e.g. "run me through that again"), DO NOT re-fire SCRIPT — Pitch. Instead fire [SUGGESTION] or [EXPLAIN] with a brief recap of what they asked about.',
+    '- If the caller diverges off-script entirely, fire [SUGGESTION] or [EXPLAIN], never roll back the script.',
+    '- The only exception: if the caller has clearly hung up and restarted (a fresh "Hello?" after a long silence), you may reset to OPEN.',
+    '',
+    'EARNED-PITCH RULE',
+    'Only ask permission-to-pitch ("would it be okay if I explain quickly how we work?") when EITHER:',
+    '1. The caller has confirmed they need the service ("yeah I\'m looking to get this sorted", "tell me about it", etc.), OR',
+    '2. The caller has given more than a one-word answer to QUALIFY (e.g. "we\'ve had this problem for a few months", not just "yeah").',
+    'Otherwise: ask another open question that gets them talking. Don\'t burn the permission-to-pitch on a cold caller.',
+    '',
+    'EARNED-CLOSE RULE',
+    'Fire the SMS-close + tomorrow lock ONLY when ALL of these are true:',
+    '1. PITCH and PRICING already delivered.',
+    '2. The caller has shown interest (asked a relevant question, agreed, or stayed engaged for more than two exchanges).',
+    '3. The caller has NOT refused the SMS in this call.',
+    'Otherwise default to a question that moves the conversation forward.',
+    '',
+    'KNOWLEDGE POLICY — three tiers',
+    'Distinguish between three kinds of caller question and pick the right source for each:',
+    '',
+    '1. COMPANY-SPECIFIC FACTS — KB ONLY.',
+    '   Anything that depends on the business\'s specific operations: prices, call-out fees, service packages, coverage areas, opening hours, availability, lead times, warranty/guarantee terms, accreditations, the company\'s Companies House number.',
+    '   Source: KNOWLEDGE BASE only. If the answer isn\'t there, say "I\'ll check that and come back to you" — NEVER invent figures, coverage areas, or terms.',
+    '',
+    '2. GENERAL DOMAIN KNOWLEDGE — OK from your general training.',
+    '   Industry-standard concepts that aren\'t company-specific: what a trade certification covers in general, common UK regulations for the trade, how a standard quote/survey process works, what a deposit or call-out fee usually is, consumer-rights basics — anything regulatory, industry, or domain-conceptual that isn\'t about THIS company.',
+    '   You may answer these from your general knowledge in a brief, plain-English UK style. Prefer the [EXPLAIN] card kind for these (not [SCRIPT]) so the agent\'s UI marks them as a factual answer rather than a script line.',
+    '   If you genuinely don\'t know (or it\'s a niche regulatory edge case), say so — DO NOT bluff.',
+    '',
+    '3. UNCERTAIN / NICHE — DEFER.',
+    '   If the question doesn\'t fit (1) or (2) and you\'re not confident, say "I\'ll check that and come back to you" or pivot to "let me check with the team and come back in writing".',
+    '',
+    'NEVER blend tiers — don\'t answer a company-specific question with general knowledge ("I think most firms charge around X…") and don\'t answer a general question with a deflection if you actually know the concept.',
+    '',
+    'OBJECTIONS',
+    'If the caller pushes back, use the matching approved answer from the KNOWLEDGE BASE. Then return to the next open-ended question — NOT immediately to a close (see EARNED-CLOSE RULE).',
+    '',
+    'ANTI-REPETITION',
+    'The user message includes "YOUR LAST FEW COACH CARDS" and a "DO NOT START WITH" list of opener n-grams from your last 5 cards. Don\'t ship a card whose opening 3 words match any banned n-gram. Move forward through the script — don\'t loop the same line.',
+    '',
+    'DEFAULT SCRIPT — INTENT + 2-3 EXAMPLE PHRASINGS (paraphrase fresh each time)',
+    '',
+    'OPEN',
+    'INTENT: Confirm the caller is the right person + introduce yourself + reference their enquiry + ask what they need sorted.',
+    'EXAMPLES (anchors — paraphrase, do not read verbatim):',
+    '- "Hey, is that [Name]? It\'s [Your Name] from [Company] — you got in touch about [service]. Is now a decent time for a quick chat about what you need?"',
+    '- "[Name]? [Your Name] from [Company] here, following up on your enquiry. Quick one — is this something you\'re looking to get sorted soon, or more getting a feel for options?"',
+    '',
+    'QUALIFY',
+    'INTENT: Find out what the job actually is, how urgent it is, and whether they\'ve tried anyone else. Don\'t make them feel quizzed.',
+    'EXAMPLES:',
+    '- "What\'s the situation at the moment — is it something that\'s just come up, or been on the list a while?"',
+    '- "Roughly when were you hoping to get it done?"',
+    '- "Have you had anyone look at it yet, or are we the first?"',
+    '',
+    'JUST EXPLORING (when caller says "just exploring" / "just looking" / "just getting quotes")',
+    'Don\'t permission-pitch yet. Pick ONE of these angles, NEVER the same shape twice in a row across the call:',
+    '- WARM CURIOSITY — ask what prompted them to enquire in the first place (e.g. "fair — what made you get in touch about it now?").',
+    '- LIGHT CONTEXT — most of our customers started exactly there, share that briefly, no pitch (e.g. "makes sense, plenty of our customers started by just comparing options — anything in particular you\'re weighing up?").',
+    '- SOCIAL PROOF (light, no numbers) — mention the typical customer profile (e.g. "fair enough — most people who come to us are just trying to get it done properly without the runaround, sound familiar?").',
+    '- LOW-PRESSURE PERMISSION — happy to walk through how it works as a reference point (e.g. "no worries — happy to keep it quick, want me to run through how we\'d handle it so you\'ve got a reference, or save it for next time?").',
+    '- EMPATHY BRIDGE — ask what would have to be true for them to go ahead (e.g. "fair enough. What would have to line up for you to actually book it in?").',
+    '',
+    'PERMISSION TO PITCH',
+    'INTENT: Quick, low-pressure check before explaining how the service works. Only fire when the EARNED-PITCH RULE is met.',
+    'EXAMPLES:',
+    '- "Mind if I run through how we\'d handle it — two minutes max?"',
+    '- "Quick one — alright if I explain how we usually approach this?"',
+    '- "Fair if I walk you through it quickly so you\'ve got something concrete?"',
+    '',
+    'PITCH',
+    'INTENT: Explain how the service works + what\'s included + what makes the company worth choosing. Quote specifics ONLY from the KNOWLEDGE BASE — do not invent or substitute. Use the KB facts for services, coverage and guarantees; never hardcode figures in your line.',
+    'PARAPHRASE: a sentence about how the job gets done ("we come out, assess it properly, and give you a fixed quote before any work starts"), then a sentence pulling the relevant service details from KB facts, then a soft check-in.',
+    '',
+    'PRICING',
+    'INTENT: Explain how pricing works (quote, call-out, fixed price, hourly — whatever the KB says) and what happens next. Reference KB facts — don\'t invent prices. If a price depends on seeing the job, say so plainly.',
+    'EXAMPLES (anchors):',
+    '- "Pricing\'s straightforward — we give you the full quote up front before anything starts, so there are no surprises. Does that work for you?"',
+    '- "It depends a bit on the job itself, so we\'d confirm the exact figure after taking a proper look — but you\'ll have it in writing before anything goes ahead. Sound fair?"',
+    '',
+    'SMS CLOSE — IMPORTANT',
+    'INTENT: Frame the follow-up text as a courtesy, not pressure. Only fire when the EARNED-CLOSE RULE is met.',
+    'TWO BEATS — both need to happen before Follow-up lock:',
+    '  Beat A — ask permission to send the details:',
+    '    "To keep it simple rather than run through everything on this call, would it be okay if I text you the details so you can see everything properly?"',
+    '  Beat B — IF YES, ask for their name (we don\'t have it in our records):',
+    '    "Perfect — can you confirm your name so I can add you to my contacts here?"',
+    '    After they give their name: "Great, you\'ll receive the text right after this call."',
+    'The agent will not have the caller\'s name reliably — always include Beat B before sending the SMS. Do not skip this beat.',
+    '',
+    'FOLLOW-UP LOCK',
+    'INTENT: Lock tomorrow without being pushy.',
+    'EXAMPLES:',
+    '- "After you\'ve had a look, I\'ll give you a quick call tomorrow to talk through it. Will tomorrow work?"',
+    '- "Once it lands, mind if I ring you tomorrow to talk through it — morning or afternoon?"',
+    '- "I\'ll call you tomorrow to walk through anything that\'s come up, what time suits?"',
+    '',
+    'OUTPUT FORMAT — v11 (Hugo 2026-04-26)',
+    'A separate system message titled `=== AGENT\'S CALL SCRIPT ===` carries the EXACT lines the agent has on screen. Mirror those lines whenever you emit a SCRIPT card.',
+    'Every line MUST start with one of these classifier prefixes so the UI can label the card correctly:',
+    '- `[SCRIPT: <stage>] <line>` — caller is on-script, your line is the next thing the rep should read. The <stage> MUST match a "## N. <Stage>" heading from the AGENT\'S CALL SCRIPT body. The <line> SHOULD be a verbatim or near-verbatim quote of the next line under that heading; only paraphrase when adapting an example phrasing to the caller. Example: `[SCRIPT: Qualify] What\'s the situation at the moment — just come up, or been on the list a while?`',
+    '- `[SUGGESTION] <line>` — caller went off-script and the rep needs a fresh line that isn\'t in the script. Example: `[SUGGESTION] Fair enough — what would have to line up for you to actually book it in?`',
+    '- `[EXPLAIN] <line>` — caller raised an objection or asked a factual question; your line answers it from the KNOWLEDGE BASE. Example: `[EXPLAIN] Fair — the exact figure depends on the job itself, but you get the full quote in writing before anything goes ahead.`',
+    'Default to SCRIPT whenever the caller\'s utterance plausibly falls inside one of the seven stages above. SUGGESTION is for genuine off-script moments; EXPLAIN is reserved for objections or KB-grounded factual answers.',
+    'If you output the silence marker (see SILENCE RULE), do NOT add a prefix — just the bare `STAY_ON_SCRIPT`.',
+    'Return exactly ONE classified line. No quotes around the line. No labels other than the prefix.',
+  ].join('\n');
+
+  // Resolve each layer: prefer DB content, fall back to canonical default.
+  const stylePrompt =
+    (layers.stylePrompt ?? '').trim().length > 0
+      ? layers.stylePrompt.trim()
+      : DEFAULT_STYLE_PROMPT;
+  const scriptPrompt =
+    (layers.scriptPrompt ?? '').trim().length > 0
+      ? layers.scriptPrompt.trim()
+      : DEFAULT_SCRIPT_PROMPT;
+
+  // Render the knowledge base as a flat block. Empty list → tells the
+  // model the KB is empty and it must defer rather than guess.
+  const factsBlock =
+    layers.facts.length === 0
+      ? '(no facts loaded — if asked a factual question, say "I\'ll check that and come back to you" rather than guessing.)'
+      : layers.facts
+          .map((f) => `- ${f.label}: ${f.value}`)
+          .join('\n');
+
+  const knowledgeBaseSystemPrompt =
+    `=== KNOWLEDGE BASE ===\nThese are the only facts you may quote. Do NOT invent figures or new facts. If the answer isn't here, say "I'll check that and come back to you".\n\n${factsBlock}`;
+
+  // PR 8 (Hugo 2026-04-26): the agent's actual call script. The model
+  // can see the EXACT lines the agent reads and should mirror them
+  // verbatim when emitting `[SCRIPT: <stage>]` cards. Placeholders are
+  // already substituted, so anything inside this block can be quoted
+  // back to the agent without modification.
+  const agentScriptBody = (layers.agentScriptBody ?? '').trim();
+  const agentScriptSource = layers.agentScriptSource ?? 'none';
+  const agentScriptSystemPrompt =
+    agentScriptBody.length === 0
+      ? `=== AGENT'S CALL SCRIPT ===\n(no per-agent or default script loaded — fall back to your built-in stage map.)`
+      : `=== AGENT'S CALL SCRIPT (source: ${agentScriptSource}) ===\nThis is the EXACT script the agent has open in front of them right now. When you emit a [SCRIPT: <stage>] card, the body MUST be the literal next line from this script (or a very close paraphrase if a placeholder needed substituting). Do NOT invent script lines that aren't in this body. The <stage> in your prefix MUST match a "## N. <Stage>" heading from this script.\n\n${agentScriptBody}`;
+
+  // Retrieval: highlight facts whose keywords match the caller's last
+  // utterance so the model focuses on the most likely-relevant ones.
+  const matched = retrieveFacts(latestUtterance, layers.facts);
+  const relevantFactsHint =
+    matched.length === 0
+      ? '(no specific fact keyword matched — answer from the script unless the caller is asking for a fact in the KB above.)'
+      : matched
+          .map((f) => `- ${f.label}: ${f.value}`)
+          .join('\n');
+
+  // Last few coach cards passed back to the model so it doesn't echo
+  // openers / structures it just produced. v8 (PR #575): expanded from
+  // 3 to 5 cards for better coverage of repeated openers.
+  const priorCardsBlock =
+    priorCards.length === 0
+      ? '(none yet — this is your first card on this call)'
+      : priorCards.map((c, i) => `${i + 1}. "${c}"`).join('\n');
+
+  // v8: explicit 3-word opener n-gram ban list, derived from the last 5
+  // cards. Beats the prompt's verbal "first 5 words" rule because the
+  // banned strings are concrete, not abstract.
+  const banList = buildOpenerBanList(priorCards);
+  const banListBlock =
+    banList.length === 0
+      ? '(no openers to avoid yet)'
+      : banList.map((b) => `- "${b}"`).join('\n');
+
+  // PR 42 (Hugo 2026-04-27): forward-only stage progression. The model
+  // is independent per utterance, so without this it'll happily fire
+  // SCRIPT — Open mid-call (Hugo's screenshot 2026-04-27). We inject
+  // the last fired SCRIPT stage so the model knows what's already
+  // happened and refuses to regress.
+  const stageLockBlock =
+    currentStage && currentStage.trim().length > 0
+      ? [
+          '=== STAGE LOCK ===',
+          `Your last SCRIPT card on this call was at: "${currentStage}".`,
+          'You are PAST this stage. Do NOT fire any earlier SCRIPT stage on this call (no SCRIPT — Open if you already fired Qualify; no SCRIPT — Qualify if you already fired Permission to pitch; etc.). Stage order: Open → Qualify → Permission to pitch → Pitch → Pricing → SMS close → Follow-up lock.',
+          'Only fire SCRIPT cards that are at the same stage or LATER. If the caller diverges or asks something off-script, fire [SUGGESTION] or [EXPLAIN] — never roll back to an earlier SCRIPT stage.',
+        ].join('\n')
+      : '=== STAGE LOCK ===\n(no prior SCRIPT card yet — you may fire any stage that fits the caller\'s utterance)';
+
+  const userMsg = [
+    'Recent conversation (most recent line at bottom):',
+    recentTranscript || '(no prior context yet)',
+    '',
+    stageLockBlock,
+    '',
+    '=== YOUR LAST FEW COACH CARDS (most recent first) ===',
+    'Don\'t ship a card whose opening matches a recent one. Move forward through the script — don\'t loop the same line.',
+    priorCardsBlock,
+    '',
+    '=== DO NOT START WITH — banned opener n-grams (first 3 words from your last 5 cards) ===',
+    'Your next card MUST NOT begin with any of these phrases. Pick a different opener.',
+    banListBlock,
+    '',
+    '=== POSSIBLY RELEVANT FACTS (matched to the caller\'s last utterance) ===',
+    relevantFactsHint,
+    '',
+    `Caller just said: "${latestUtterance}"`,
+    '',
+    'Return ONE classified line per the OUTPUT FORMAT block — `[SCRIPT: <stage>]`, `[SUGGESTION]`, `[EXPLAIN]`, or the bare `STAY_ON_SCRIPT` marker. Plain UK English. No quotation marks around the line. No acting notes. No variants. Do NOT start with any banned opener n-gram listed above.',
+  ].join('\n');
+
+  try {
+    return await streamCoachInternal({
+      apiKey,
+      model: liveCoachModel,
+      systemMessages: [
+        stylePrompt,
+        scriptPrompt,
+        knowledgeBaseSystemPrompt,
+        agentScriptSystemPrompt,
+      ],
+      userMsg,
+      onChunk,
+      isAborted,
+    });
+  } catch (e) {
+    console.warn('[wk-voice-transcription] openai chat threw', e);
+    return null;
+  }
+}
+
+// Internal streaming worker — separated so tests / future callers can
+// invoke without rebuilding the prompt. Returns the post-processed
+// final text or null on rejection.
+async function streamCoachInternal(args: {
+  apiKey: string;
+  model: string;
+  /** Three-layer system messages — style, script, knowledge base.
+   *  OpenAI accepts multiple system messages; treating each as a
+   *  separate message gives cleaner separation than one big concatenated
+   *  prompt. */
+  systemMessages: string[];
+  userMsg: string;
+  onChunk: (accumulated: string, isFirst: boolean) => void;
+  isAborted: () => boolean;
+}): Promise<CoachOutput | null> {
+  const { apiKey, model, systemMessages, userMsg, onChunk, isAborted } = args;
+
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    },
+    body: JSON.stringify({
+      model,
+      // v9 (PR D 2026-04-30): dropped temperature 0.55 → 0.4. Hugo's
+      // call: coach is too noisy / too creative; with the SILENCE RULE
+      // doing the variety-reduction work, lower temp keeps coach lines
+      // tighter and closer to the script when they DO fire.
+      temperature: 0.4,
+      presence_penalty: 0.3,
+      frequency_penalty: 0.2,
+      // GPT-5 family rejects `max_tokens` — use max_completion_tokens.
+      max_completion_tokens: 120,
+      stream: true,
+      // v8: tag this prompt prefix so OpenAI prompt-caching buckets
+      // calls with the same three system messages together. Cache TTL
+      // is ~5 min; back-to-back calls in a session reuse the prefix.
+      // v18 (2026-07-15): default style/script prompts rewritten from
+      // the source project's investment-sales script to generic UK
+      // service-business content. Material prompt change → invalidate cache.
+      prompt_cache_key: 'elsie-coach-v18',
+      messages: [
+        ...systemMessages
+          .filter((m): m is string => typeof m === 'string' && m.trim().length > 0)
+          .map((content) => ({ role: 'system' as const, content })),
+        { role: 'user', content: userMsg },
+      ],
+    }),
+  });
+
+  if (!resp.ok) {
+    let errBody = '';
+    try { errBody = await resp.text(); } catch { /* ignore */ }
+    console.warn('[wk-voice-transcription] openai chat failed', resp.status, errBody.slice(0, 500));
+    return null;
+  }
+  if (!resp.body) {
+    console.warn('[wk-voice-transcription] openai response had no body');
+    return null;
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let accumulated = '';
+  let isFirst = true;
+
+  try {
+    while (true) {
+      if (isAborted()) {
+        try { await reader.cancel(); } catch { /* ignore */ }
+        return null;
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const { events, remaining } = parseSseChunk(buffer);
+      buffer = remaining;
+      for (const ev of events) {
+        if (ev.done) {
+          // [DONE] marker — finish naturally.
+          break;
+        }
+        if (ev.delta) {
+          accumulated += ev.delta;
+          onChunk(accumulated, isFirst);
+          isFirst = false;
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch { /* ignore */ }
+  }
+
+  // Post-processor on the final accumulated text.
+  return postProcessCoachText(accumulated);
+}
+
+// Coach card kinds shipped in PR 6 (Hugo 2026-04-26):
+//   script     — model echoed (or paraphrased) the next script line
+//   suggestion — caller went off-script, model wrote a fresh line
+//   explain    — caller raised an objection / KB question, model
+//                composed a KB-grounded answer
+//
+// `scriptSection` carries the human label of the section the SCRIPT
+// card belongs to (e.g. "Qualify", "Permission to pitch") — surfaced
+// in the UI as `SCRIPT — Qualify`. Null for non-script kinds.
+type CoachKind = 'script' | 'suggestion' | 'explain';
+
+interface CoachOutput {
+  kind: CoachKind;
+  scriptSection: string | null;
+  body: string;
+}
+
+// Recognises the v10 prefix the model emits to classify its own line.
+// Tolerates the colon being absent for SUGGESTION / EXPLAIN, and any
+// whitespace inside the brackets. Match is anchored to the start —
+// must run BEFORE the generic [bracket-tag] strip below or that
+// regex will eat the prefix.
+const COACH_KIND_PREFIX_RE =
+  /^\[\s*(script|suggestion|explain)\s*(?::\s*([^\]]+))?\s*\]\s*/i;
+
+// Pulled out so streaming and any future non-streaming caller share the
+// same rejection rules. Returns null when the line should be dropped.
+function postProcessCoachText(raw: string): CoachOutput | null {
+  let text = (raw ?? '').trim();
+  if (!text) return null;
+
+  // v9 (PR D 2026-04-30): SILENCE RULE marker. The script prompt
+  // instructs the model to output exactly `STAY_ON_SCRIPT` when the
+  // caller's last utterance is filler, an acknowledgement, mid-thought,
+  // or a question already covered by the script / knowledge base.
+  // Strip surrounding quotes / backticks / punctuation before matching
+  // so a stray wrapper doesn't leak the marker into the agent's UI.
+  const stripped = text.replace(/^[\s"“”'`.\-–—]+|[\s"“”'`.\-–—]+$/g, '');
+  if (/^stay[_\s-]?on[_\s-]?script$/i.test(stripped)) {
+    return null;
+  }
+
+  // v10 (PR 6 2026-04-26): parse the kind prefix BEFORE generic bracket
+  // stripping. If absent, fall back to suggestion (the legacy default).
+  let kind: CoachKind = 'suggestion';
+  let scriptSection: string | null = null;
+  const prefixMatch = COACH_KIND_PREFIX_RE.exec(text);
+  if (prefixMatch) {
+    const tag = prefixMatch[1].toLowerCase();
+    if (tag === 'script' || tag === 'suggestion' || tag === 'explain') {
+      kind = tag as CoachKind;
+    }
+    if (prefixMatch[2]) {
+      scriptSection = prefixMatch[2].trim();
+    }
+    text = text.slice(prefixMatch[0].length).trim();
+  }
+
+  // Strip leading "Tip:" / "Coach:" / leading dash, etc.
+  text = text.replace(/^["“”'`]*(tip|coach|suggestion|say|script)\s*[:\-—]\s*/i, '').replace(/^[-•—]\s*/, '').trim();
+  text = text.replace(/^["“”'`]+|["“”'`]+$/g, '').trim();
+  // Hugo 2026-04-28: prompt v6 forbids acting notes, but defend
+  // anyway. Strip leading [warm] / [firm] / [low] / [reasonable man] /
+  // any other [bracket-tag] from the start of the line so the agent
+  // never reads "[reasonable man] Fair enough..." aloud. Also strip
+  // any bracketed tag that survives mid-line at sentence start.
+  text = text.replace(/^\s*(?:\[[^\]]+\]\s*)+/, '').trim();
+  text = text.replace(/(^|[.!?]\s+)(?:\[[^\]]+\]\s*)+/g, '$1').trim();
+  if (!text) return null;
+  if (/^skip\.?$/i.test(text)) return null;
+  if (/mirror\s+(their|the)\s+energy/i.test(text)) return null; // belt-and-braces
+  // Reject instructional output that slipped through.
+  if (/^(reintroduce|ask\b|describe\b|pivot\b|mention\b|tell them\b|explain\b|suggest\b|confirm\b|probe\b|emphasi[sz]e\b|highlight\b|address\b|acknowledge\b|reassure\b|offer\b|propose\b|invite\b|encourage\b|remind\b|clarify\b|share\b|present\b|discuss\b|outline\b|summari[sz]e\b)/i.test(text)) {
+    console.warn('[wk-voice-transcription] coach produced instructional output, dropping:', text);
+    return null;
+  }
+  return { kind, scriptSection, body: text };
+}
+
+// ----------------------------------------------------------------------------
+// Main handler
+// ----------------------------------------------------------------------------
+
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+  if (req.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
+  }
+
+  try {
+    // Twilio signs the public URL it POSTed to, not the proxied internal URL.
+    const url = `${SUPABASE_URL}/functions/v1/wk-voice-transcription`;
+    const formData = await req.formData();
+    const params: Record<string, string> = {};
+    formData.forEach((v, k) => { params[k] = v.toString(); });
+
+    const sig = req.headers.get('x-twilio-signature') ?? '';
+    if (!TWILIO_AUTH_TOKEN || !sig
+        || !(await validateTwilioSignature(TWILIO_AUTH_TOKEN, sig, url, params))) {
+      console.warn('[wk-voice-transcription] invalid Twilio signature');
+      return new Response('forbidden', { status: 403, headers: corsHeaders });
+    }
+
+    const event = params.TranscriptionEvent ?? '';
+    const callSid = params.CallSid ?? '';
+    if (!callSid) {
+      return new Response('missing CallSid', { status: 200, headers: corsHeaders });
+    }
+
+    const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    // Resolve our wk_calls.id once (Twilio sends multiple events per call).
+    // Also pull agent_id + contact_id so we can fetch the agent's actual
+    // call script and substitute the contact's first name into it (PR 8).
+    const { data: call } = await supa
+      .from('wk_calls')
+      .select('id, ai_coach_enabled, agent_id, contact_id, current_stage, campaign_id')
+      .eq('twilio_call_sid', callSid)
+      .maybeSingle();
+
+    if (!call) {
+      console.warn('[wk-voice-transcription] call not found', callSid);
+      return new Response('ok', { status: 200, headers: corsHeaders });
+    }
+
+    if (event === 'transcription-started') {
+      await supa.from('wk_calls').update({ ai_status: 'running' }).eq('id', call.id);
+      return new Response('ok', { status: 200, headers: corsHeaders });
+    }
+
+    if (event === 'transcription-stopped' || event === 'transcription-error') {
+      if (event === 'transcription-error') {
+        await supa.from('wk_calls').update({ ai_status: 'failed' }).eq('id', call.id);
+      }
+      return new Response('ok', { status: 200, headers: corsHeaders });
+    }
+
+    if (event !== 'transcription-content') {
+      return new Response('ok', { status: 200, headers: corsHeaders });
+    }
+
+    // Twilio packs the actual transcript inside a JSON-encoded
+    // `TranscriptionData` field on the form body.
+    const dataJson = params.TranscriptionData ?? '';
+    let transcriptText = '';
+    try {
+      const parsed = JSON.parse(dataJson) as { transcript?: string; confidence?: number };
+      transcriptText = String(parsed.transcript ?? '').trim();
+    } catch {
+      transcriptText = '';
+    }
+    const isFinal = (params.Final ?? '').toLowerCase() === 'true';
+    if (!transcriptText) {
+      return new Response('ok', { status: 200, headers: corsHeaders });
+    }
+
+    // Map Twilio's track label back to our speaker enum.
+    //
+    // Per Twilio Real-Time Transcription docs, the meaning of inbound vs.
+    // outbound depends on the DIRECTION of the call:
+    //   - For OUTBOUND calls (the parent leg dials someone), inbound_track
+    //     = the agent (the originator who triggered the dial), and
+    //     outbound_track = the customer (the dialed recipient).
+    //   - For INBOUND calls (the parent leg received the call), it's the
+    //     other way around.
+    //
+    // smsv2's softphone dials out via device.connect() → outbound call →
+    // inbound_track = agent, outbound_track = caller. Earlier code had this
+    // inverted, which caused Hugo's recent test to label the caller's voice
+    // as "You" (agent) in the transcript pane (2026-04-26 evidence).
+    const track = (params.Track ?? '').toLowerCase();
+    const speaker: 'caller' | 'agent' = track.startsWith('outbound') ? 'caller' : 'agent';
+
+    // Persist transcript line ONLY for finalized chunks. Hugo
+    // 2026-04-28: "Interim chunks for coach only — keep transcript
+    // pane clean." Interim chunks would spam the pane with partial
+    // re-writes ("Hello", "Hello there", "Hello there um"…).
+    if (isFinal) {
+      await supa.from('wk_live_transcripts').insert({
+        call_id: call.id,
+        speaker,
+        body: transcriptText,
+      });
+
+      // PR 58 (Hugo 2026-04-27): when the agent reads aloud one of
+      // the script's section anchor lines, advance current_stage to
+      // that section so the coach's STAGE LOCK accounts for what
+      // the agent just covered. Forward-only — never moves the
+      // cursor backward.
+      if (speaker === 'agent' && call.ai_coach_enabled) {
+        try {
+          // Resolve the agent's effective script body (own > campaign-
+          // pinned > workspace default) — same chain useAgentScript
+          // applies on the client so the matcher sees what the agent
+          // actually has on screen.
+          let scriptBody = '';
+          if (call.agent_id) {
+            const { data: own } = await supa
+              .from('wk_call_scripts')
+              .select('body_md')
+              .eq('owner_agent_id', call.agent_id)
+              .limit(1);
+            if (own && own.length > 0) {
+              scriptBody = own[0].body_md as string;
+            }
+          }
+          if (!scriptBody && call.campaign_id) {
+            const { data: campRow } = await supa
+              .from('wk_dialer_campaigns')
+              .select('call_script_id')
+              .eq('id', call.campaign_id)
+              .maybeSingle();
+            const pinnedId = campRow?.call_script_id as string | null | undefined;
+            if (pinnedId) {
+              const { data: pinned } = await supa
+                .from('wk_call_scripts')
+                .select('body_md')
+                .eq('id', pinnedId)
+                .maybeSingle();
+              if (pinned) scriptBody = pinned.body_md as string;
+            }
+          }
+          if (!scriptBody) {
+            const { data: def } = await supa
+              .from('wk_call_scripts')
+              .select('body_md')
+              .eq('is_default', true)
+              .limit(1);
+            if (def && def.length > 0) scriptBody = def[0].body_md as string;
+          }
+
+          if (scriptBody) {
+            const sections = parseScriptAnchors(scriptBody);
+            const currentStage = (call.current_stage as string | null) ?? null;
+            const advancedTo = detectStageFromAgent(transcriptText, sections, currentStage);
+            if (advancedTo) {
+              console.log(
+                `[wk-voice-transcription] [stage-from-voice] call=${call.id.slice(0, 8)} from='${currentStage ?? 'null'}' → '${advancedTo}' triggered by agent: "${transcriptText.slice(0, 80)}"`,
+              );
+              await supa
+                .from('wk_calls')
+                .update({ current_stage: advancedTo })
+                .eq('id', call.id);
+            }
+          }
+        } catch (e) {
+          console.warn('[wk-voice-transcription] stage-from-voice threw', e);
+        }
+      }
+    }
+
+    // Coaching path — fires on BOTH interim and final chunks for the
+    // caller, so the coach card starts streaming within ~400ms of the
+    // caller speaking instead of waiting for Twilio to finalize the
+    // utterance (which can be 1-3s after the caller stops).
+    //
+    // Per-call lock + generation_id keep the streams sane:
+    //   - interim with a recent active lock → debounced (skipped)
+    //   - interim past 400ms debounce → supersedes prior generation
+    //   - final → ALWAYS supersedes (force=true); the final transcript
+    //     is the most accurate, so the last word goes to it
+    //
+    // EdgeRuntime.waitUntil keeps the streaming worker alive past the
+    // 200 we return to Twilio.
+    if (call.ai_coach_enabled && speaker === 'caller') {
+      const generationId = crypto.randomUUID();
+      const genShort = generationId.slice(0, 8);
+      const t0 = Date.now();
+      const log = (event: string, extra: string = '') =>
+        console.log(`[wk-voice-transcription] [coach gen=${genShort}] ${event} +${Date.now() - t0}ms ${extra}`.trim());
+      log('interim received', `final=${isFinal} chars=${transcriptText.length}`);
+
+      const coachPromise = (async () => {
+        try {
+          // 1. Try to acquire the lock. Interim chunks debounce on
+          //    400ms; final chunks force-supersede.
+          const { data: lockResult, error: lockErr } = await supa.rpc(
+            'wk_acquire_coach_lock',
+            {
+              p_call_id: call.id,
+              p_gen_id: generationId,
+              p_force: isFinal,
+              // v9 (PR D 2026-04-30): debounce raised 250 → 700ms. Coach
+              // was generating too many cards per turn; ~3× fewer
+              // OpenAI calls per utterance, and combined with the new
+              // SILENCE RULE the model returns STAY_ON_SCRIPT for most
+              // of those generations anyway.
+              p_min_age_ms: 700,
+            }
+          );
+          if (lockErr) {
+            console.warn(`[wk-voice-transcription] [coach gen=${genShort}] lock RPC error`, lockErr.message);
+            return;
+          }
+          if (lockResult !== generationId) {
+            // Lost the race — another generation is already in flight
+            // and the debounce window hasn't elapsed.
+            log('lock lost — debounced');
+            return;
+          }
+          log('lock acquired');
+
+          // 2. Read AI settings (now includes the three-layer prompts).
+          const { data: ai } = await supa
+            .from('wk_ai_settings')
+            .select('ai_enabled, live_coach_enabled, openai_api_key, live_coach_system_prompt, coach_style_prompt, coach_script_prompt, live_coach_model')
+            .limit(1)
+            .maybeSingle();
+          const envOpenAiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
+          if (!envOpenAiKey) {
+            console.warn('[wk-voice-transcription] OPENAI_API_KEY secret not set — falling back to wk_ai_settings.openai_api_key');
+          }
+          const openaiKey = envOpenAiKey || ((ai?.openai_api_key as string | null) ?? '');
+          if (!ai?.ai_enabled || !ai?.live_coach_enabled || !openaiKey) {
+            log('ai disabled — bailing');
+            return;
+          }
+
+          // 3. Read recent transcripts + prior cards + coach facts +
+          //    agent profile + contact + agent's call script in parallel.
+          //    Agent's call script (PR 8): prefer the agent's OWN row
+          //    (wk_call_scripts WHERE owner_agent_id = call.agent_id),
+          //    fall back to the default row (is_default = true).
+          //
+          //    PR 56 (Hugo 2026-04-27): also read per-campaign overrides
+          //    (wk_campaign_ai_settings + wk_campaign_facts + the campaign
+          //    row's call_script_id). Cascade lookup happens after the
+          //    parallel fetch — null fields fall through to workspace.
+          const campaignId = (call.campaign_id as string | null) ?? null;
+          const [
+            recentRes,
+            priorCardsRes,
+            factsRes,
+            agentProfileRes,
+            contactRes,
+            ownScriptRes,
+            defaultScriptRes,
+            campaignRes,
+            campaignAiRes,
+            campaignFactsRes,
+          ] = await Promise.all([
+            supa
+              .from('wk_live_transcripts')
+              .select('speaker, body, ts')
+              .eq('call_id', call.id)
+              .order('ts', { ascending: false })
+              .limit(6),
+            supa
+              .from('wk_live_coach_events')
+              .select('body, ts')
+              .eq('call_id', call.id)
+              .eq('status', 'final')
+              .order('ts', { ascending: false })
+              // v8 (PR #575): expanded 3 → 5 to give buildOpenerBanList
+              // and the prompt's anti-repetition rule more material.
+              .limit(5),
+            supa
+              .from('wk_coach_facts')
+              .select('key, label, value, keywords, sort_order')
+              .eq('is_active', true)
+              .order('sort_order', { ascending: true }),
+            call.agent_id
+              ? supa
+                  .from('profiles')
+                  .select('name')
+                  .eq('id', call.agent_id)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+            call.contact_id
+              ? supa
+                  .from('wk_contacts')
+                  .select('name, pipeline_column_id')
+                  .eq('id', call.contact_id)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+            call.agent_id
+              ? supa
+                  .from('wk_call_scripts')
+                  .select('name, body_md')
+                  .eq('owner_agent_id', call.agent_id)
+                  .limit(1)
+              : Promise.resolve({ data: null, error: null }),
+            supa
+              .from('wk_call_scripts')
+              .select('name, body_md')
+              .eq('is_default', true)
+              .limit(1),
+            // PR 56: campaign row → call_script_id pin
+            campaignId
+              ? supa
+                  .from('wk_dialer_campaigns')
+                  .select('call_script_id, coach_profile_id')
+                  .eq('id', campaignId)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+            // PR 56: per-campaign AI settings (style/script overrides)
+            campaignId
+              ? supa
+                  .from('wk_campaign_ai_settings')
+                  .select('coach_style_prompt, coach_script_prompt, live_coach_model')
+                  .eq('campaign_id', campaignId)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+            // PR 56: per-campaign KB facts (override workspace by `key`)
+            campaignId
+              ? supa
+                  .from('wk_campaign_facts')
+                  .select('key, label, value, keywords, sort_order')
+                  .eq('campaign_id', campaignId)
+                  .eq('is_active', true)
+                  .order('sort_order', { ascending: true })
+              : Promise.resolve({ data: null, error: null }),
+          ]);
+          const ctx = (recentRes.data ?? [])
+            .reverse()
+            .map((r: { speaker: string; body: string }) =>
+              `${r.speaker === 'agent' ? 'Agent' : 'Caller'}: ${r.body}`
+            )
+            .join('\n');
+          const priorCards: string[] = ((priorCardsRes.data ?? []) as { body: string }[])
+            .map((c) => c.body)
+            .filter((s): s is string => typeof s === 'string' && s.length > 0);
+
+          // 4. Sweep prior streaming placeholders for THIS call (from
+          //    superseded generations). They get DELETEd so the client
+          //    realtime DELETE event clears the stale card.
+          const { data: superseded } = await supa.rpc(
+            'wk_supersede_streaming_coach',
+            { p_call_id: call.id, p_keep_gen_id: generationId }
+          );
+          if (typeof superseded === 'number' && superseded > 0) {
+            log('superseded prior streaming rows', `count=${superseded}`);
+          }
+
+          // 5. Pre-INSERT placeholder so the client gets a card to
+          //    morph in place as tokens arrive.
+          const { data: placeholder, error: insErr } = await supa
+            .from('wk_live_coach_events')
+            .insert({
+              call_id: call.id,
+              kind: 'suggestion',
+              body: '…',
+              generation_id: generationId,
+              status: 'streaming',
+            })
+            .select('id')
+            .single();
+          if (insErr || !placeholder) {
+            console.warn(`[wk-voice-transcription] [coach gen=${genShort}] placeholder insert failed`, insErr?.message);
+            return;
+          }
+          const placeholderId = placeholder.id as string;
+          log('placeholder inserted');
+
+          // 6. Set up the throttled writer. UPDATE the placeholder body
+          //    at most every 200ms so we don't hammer the DB. The
+          //    eq('id', ...) WITHOUT eq('generation_id', ...) catches
+          //    DELETEs (row gone) — UPDATE returns 0 rows when our
+          //    placeholder was superseded by a newer generation.
+          let aborted = false;
+          let firstUpdate = true;
+          const writer = createThrottledWriter<string>(async (text) => {
+            const { data, error: updErr } = await supa
+              .from('wk_live_coach_events')
+              .update({ body: text })
+              .eq('id', placeholderId)
+              .select('id');
+            if (updErr) {
+              console.warn(`[wk-voice-transcription] [coach gen=${genShort}] update error`, updErr.message);
+              aborted = true;
+              return;
+            }
+            if (!data || data.length === 0) {
+              // Our placeholder is gone — newer generation deleted it.
+              if (!aborted) log('placeholder deleted — superseded, aborting');
+              aborted = true;
+              return;
+            }
+            if (firstUpdate) {
+              log('first update');
+              firstUpdate = false;
+            }
+          }, 100); // PR 117: tightened from 200ms — smoother token stream to UI.
+
+          // 7. Resolve the three layers (style + script + KB facts).
+          //    Hugo 2026-04-29: each layer is independently editable
+          //    via Settings UI. The legacy live_coach_system_prompt is
+          //    only used as a back-compat fallback if BOTH new layer
+          //    columns are empty.
+          //
+          //    PR 56 (Hugo 2026-04-27): cascade fallback for the active
+          //    campaign. wk_campaign_ai_settings overrides the workspace
+          //    style/script when non-null. wk_campaign_facts override
+          //    workspace facts on `key` collision (campaign wins).
+          const wsStyle = (ai.coach_style_prompt as string | null) ?? '';
+          const wsScript = (ai.coach_script_prompt as string | null) ?? '';
+          const campAi = (campaignAiRes.data ?? null) as
+            | { coach_style_prompt: string | null; coach_script_prompt: string | null; live_coach_model: string | null }
+            | null;
+          // (campaign-profile fallback below may fill these when empty, so `let`)
+          let campStyle = (campAi?.coach_style_prompt ?? '').trim();
+          let campScript = (campAi?.coach_script_prompt ?? '').trim();
+          const campModel = (campAi?.live_coach_model ?? '').trim();
+          const legacyPrompt = (ai.live_coach_system_prompt as string | null) ?? '';
+          // PR 8 (2026-04-26): the AGENT'S CALL SCRIPT is now a separate
+          // layer the coach can see. Resolution priority mirrors the
+          // useAgentScript hook on the client:
+          //   1. Agent's own row in wk_call_scripts (per-agent edits)
+          //   2. is_default = true row (admin-controlled fallback)
+          //   3. Empty (coach falls through to its built-in stage map)
+          //
+          // We substitute {{first_name}} with the contact's first name
+          // and {{agent_first_name}} with the agent's first name BEFORE
+          // passing to the model, so the model never echoes raw
+          // placeholders into the agent's UI.
+          const ownScriptRow = Array.isArray(ownScriptRes.data)
+            ? (ownScriptRes.data[0] as { name: string; body_md: string } | undefined)
+            : undefined;
+          const defaultScriptRow = Array.isArray(defaultScriptRes.data)
+            ? (defaultScriptRes.data[0] as { name: string; body_md: string } | undefined)
+            : undefined;
+
+          // v17 (Hugo 2026-05-08): coach profiles — pipeline column or
+          // campaign can reference a wk_coach_profiles row that bundles
+          // script + style + script prompt. Resolution chain:
+          //   own > column profile > campaign profile > workspace default profile
+          const contactData = (contactRes.data ?? null) as
+            | { name?: string | null; pipeline_column_id?: string | null }
+            | null;
+          const pipelineColumnId = contactData?.pipeline_column_id ?? null;
+          let columnScriptRow:
+            | { name: string; body_md: string }
+            | undefined;
+          let columnStyle = '';
+          let columnScript = '';
+          if (!ownScriptRow && pipelineColumnId) {
+            const { data: colRow } = await supa
+              .from('wk_pipeline_columns')
+              .select('call_script_id, coach_style_prompt, coach_script_prompt, coach_profile_id')
+              .eq('id', pipelineColumnId)
+              .maybeSingle();
+            const colData = colRow as {
+              call_script_id: string | null;
+              coach_style_prompt: string | null;
+              coach_script_prompt: string | null;
+              coach_profile_id: string | null;
+            } | null;
+            // v17: if column has a coach_profile_id, load the profile and
+            // use its bundled script + prompts (overrides individual fields).
+            const colProfileId = colData?.coach_profile_id ?? null;
+            if (colProfileId) {
+              const { data: profile } = await supa
+                .from('wk_coach_profiles')
+                .select('call_script_id, coach_style_prompt, coach_script_prompt')
+                .eq('id', colProfileId)
+                .maybeSingle();
+              const profData = profile as {
+                call_script_id: string | null;
+                coach_style_prompt: string | null;
+                coach_script_prompt: string | null;
+              } | null;
+              if (profData) {
+                columnStyle = (profData.coach_style_prompt ?? '').trim();
+                columnScript = (profData.coach_script_prompt ?? '').trim();
+                if (profData.call_script_id) {
+                  const { data: pinned } = await supa
+                    .from('wk_call_scripts')
+                    .select('name, body_md')
+                    .eq('id', profData.call_script_id)
+                    .maybeSingle();
+                  if (pinned) {
+                    columnScriptRow = pinned as { name: string; body_md: string };
+                  }
+                }
+              }
+            } else {
+              // Fallback: direct column fields (v16 compat)
+              columnStyle = (colData?.coach_style_prompt ?? '').trim();
+              columnScript = (colData?.coach_script_prompt ?? '').trim();
+              const colScriptId = colData?.call_script_id ?? null;
+              if (colScriptId) {
+                const { data: pinned } = await supa
+                  .from('wk_call_scripts')
+                  .select('name, body_md')
+                  .eq('id', colScriptId)
+                  .maybeSingle();
+                if (pinned) {
+                  columnScriptRow = pinned as { name: string; body_md: string };
+                }
+              }
+            }
+          }
+
+          // Campaign-level: check coach_profile_id first, then legacy call_script_id.
+          let campaignScriptRow:
+            | { name: string; body_md: string }
+            | undefined;
+          const campRow = (campaignRes.data ?? null) as {
+            call_script_id: string | null;
+            coach_profile_id?: string | null;
+          } | null;
+          if (!ownScriptRow && !columnScriptRow) {
+            const campProfileId = campRow?.coach_profile_id ?? null;
+            if (campProfileId && !campStyle.length && !campScript.length) {
+              const { data: profile } = await supa
+                .from('wk_coach_profiles')
+                .select('call_script_id, coach_style_prompt, coach_script_prompt')
+                .eq('id', campProfileId)
+                .maybeSingle();
+              const profData = profile as {
+                call_script_id: string | null;
+                coach_style_prompt: string | null;
+                coach_script_prompt: string | null;
+              } | null;
+              if (profData) {
+                if (!campStyle.length) campStyle = (profData.coach_style_prompt ?? '').trim();
+                if (!campScript.length) campScript = (profData.coach_script_prompt ?? '').trim();
+                if (profData.call_script_id) {
+                  const { data: pinned } = await supa
+                    .from('wk_call_scripts')
+                    .select('name, body_md')
+                    .eq('id', profData.call_script_id)
+                    .maybeSingle();
+                  if (pinned) {
+                    campaignScriptRow = pinned as { name: string; body_md: string };
+                  }
+                }
+              }
+            } else {
+              const pinnedScriptId = campRow?.call_script_id ?? null;
+              if (pinnedScriptId) {
+                const { data: pinned } = await supa
+                  .from('wk_call_scripts')
+                  .select('name, body_md')
+                  .eq('id', pinnedScriptId)
+                  .maybeSingle();
+                if (pinned) {
+                  campaignScriptRow = pinned as { name: string; body_md: string };
+                }
+              }
+            }
+          }
+
+          // v16: cascade column > campaign > workspace for style/script
+          // prompts. Computed HERE — after the column + campaign profile
+          // blocks above have declared and filled columnStyle/columnScript
+          // and (possibly) campStyle/campScript.
+          const dbStyle = columnStyle.length > 0 ? columnStyle : campStyle.length > 0 ? campStyle : wsStyle;
+          const dbScript = columnScript.length > 0 ? columnScript : campScript.length > 0 ? campScript : wsScript;
+
+          // Resolution chain: own > column > campaign > default
+          const resolvedAgentScript =
+            ownScriptRow ?? columnScriptRow ?? campaignScriptRow ?? defaultScriptRow ?? null;
+          const agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'none' = ownScriptRow
+            ? 'own'
+            : columnScriptRow
+              ? 'column'
+              : campaignScriptRow
+                ? 'campaign'
+                : defaultScriptRow
+                ? 'default'
+                : 'none';
+
+          const agentName = (
+            (agentProfileRes.data as { name?: string | null } | null)?.name ?? ''
+          ).trim();
+          const agentFirstName = agentName.split(/\s+/)[0] || 'the agent';
+          const contactName = (contactData?.name ?? '').trim();
+          const contactFirstName = contactName.split(/\s+/)[0] || 'the caller';
+
+          // PR 87: accept both {x} and {{x}} so single-brace templates
+          // don't leak the literal placeholder into the LLM prompt.
+          const agentScriptBody = resolvedAgentScript
+            ? resolvedAgentScript.body_md
+                .replace(/\{\{?\s*first_name\s*\}?\}/gi, contactFirstName)
+                .replace(/\{\{?\s*agent_first_name\s*\}?\}/gi, agentFirstName)
+            : '';
+
+          // PR 56: merge workspace + campaign facts. Campaign wins on
+          // key collision; workspace facts that aren't overridden are
+          // preserved so the model still has the full company context.
+          const wsFacts = (factsRes.data ?? []) as CoachFact[];
+          const campFacts = (campaignFactsRes.data ?? []) as CoachFact[];
+          const overrideKeys = new Set(campFacts.map((f) => f.key));
+          const mergedFacts: CoachFact[] = [
+            ...wsFacts.filter((f) => !overrideKeys.has(f.key)),
+            ...campFacts,
+          ];
+
+          const layers = {
+            stylePrompt:
+              dbStyle.trim().length > 0
+                ? dbStyle
+                : dbScript.trim().length > 0
+                  ? '' // script set, style empty — let the in-fn DEFAULT_STYLE_PROMPT apply
+                  : legacyPrompt, // both new layers empty — fall back to the old single prompt
+            scriptPrompt:
+              dbScript.trim().length > 0
+                ? dbScript
+                : dbStyle.trim().length > 0
+                  ? '' // style set, script empty — DEFAULT_SCRIPT_PROMPT
+                  : '', // legacy prompt is fine in stylePrompt slot; let script default apply
+            facts: mergedFacts,
+            agentScriptBody,
+            agentScriptSource,
+          };
+          log(
+            'layers loaded',
+            `style=${layers.stylePrompt.length}c script=${layers.scriptPrompt.length}c facts=${layers.facts.length}(ws=${wsFacts.length}+cam=${campFacts.length}) agentScript=${agentScriptBody.length}c(${agentScriptSource}) campaign=${campaignId ?? 'none'} caller=${contactFirstName}`
+          );
+
+          // 8. Build the user message + run streaming.
+          // PR 56: live_coach_model can be overridden per-campaign.
+          let firstToken = true;
+          const effectiveModel =
+            campModel.length > 0 ? campModel : (ai.live_coach_model as string) ?? '';
+          const cleaned = await generateCoachSuggestion({
+            apiKey: openaiKey,
+            model: effectiveModel,
+            layers,
+            recentTranscript: ctx,
+            latestUtterance: transcriptText,
+            speaker,
+            priorCards,
+            currentStage: (call.current_stage as string | null) ?? null,
+            onChunk: (accumulated) => {
+              if (firstToken) {
+                log('first token');
+                firstToken = false;
+              }
+              writer.schedule(accumulated);
+            },
+            isAborted: () => aborted,
+          });
+
+          // 9. Flush any pending UPDATE so the final body lands.
+          await writer.flush();
+
+          if (aborted) {
+            log('aborted (superseded mid-stream)');
+            return;
+          }
+
+          // 10. Finalize: post-processor either keeps the row (status
+          //     = 'final', body / kind / script_section from cleaned)
+          //     or deletes it.
+          if (!cleaned) {
+            await supa.from('wk_live_coach_events').delete().eq('id', placeholderId);
+            log('rejected by post-processor', 'deleted');
+            return;
+          }
+          await supa
+            .from('wk_live_coach_events')
+            .update({
+              body: cleaned.body,
+              status: 'final',
+              kind: cleaned.kind,
+              script_section: cleaned.scriptSection,
+            })
+            .eq('id', placeholderId);
+          log('final update', `chars=${cleaned.body.length} kind=${cleaned.kind}${cleaned.scriptSection ? ` section="${cleaned.scriptSection}"` : ''}`);
+
+          // PR 42 (Hugo 2026-04-27): write the stage cursor on every
+          // SCRIPT card so the next generation can read it and refuse
+          // to regress (no firing OPEN once we're past it).
+          if (cleaned.kind === 'script' && cleaned.scriptSection) {
+            await supa
+              .from('wk_calls')
+              .update({ current_stage: cleaned.scriptSection })
+              .eq('id', call.id);
+          }
+        } catch (e) {
+          console.warn(`[wk-voice-transcription] [coach gen=${genShort}] pipeline threw`, e);
+        }
+      })();
+
+      // Supabase Edge Functions expose EdgeRuntime.waitUntil to extend the
+      // worker's lifetime past the response. Without this, the OpenAI fetch
+      // is killed when the function returns 200 to Twilio.
+      // deno-lint-ignore no-explicit-any
+      const er = (globalThis as any).EdgeRuntime;
+      if (er && typeof er.waitUntil === 'function') {
+        er.waitUntil(coachPromise);
+      } else {
+        // Fallback: still run but no lifetime guarantee.
+        void coachPromise;
+      }
+    }
+
+    return new Response('ok', { status: 200, headers: corsHeaders });
+  } catch (e) {
+    console.error('[wk-voice-transcription] handler error', e);
+    return new Response('ok', { status: 200, headers: corsHeaders });
+  }
+});

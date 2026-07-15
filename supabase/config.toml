@@ -315,3 +315,72 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+# ── Elsie CRM edge functions (cloned call-centre backend) ──────────────
+# verify_jwt=false fns self-authenticate: Twilio HMAC signature (webhooks),
+# service-role bearer equality (workers), or manual Supabase JWT checks.
+# verify_jwt=true adds platform-edge rejection on top (defense-in-depth).
+[functions.wk-voice-token]
+verify_jwt = false
+[functions.wk-voice-twiml-outgoing]
+verify_jwt = false
+[functions.wk-voice-twiml-incoming]
+verify_jwt = false
+[functions.wk-voice-status]
+verify_jwt = false
+[functions.wk-voice-recording]
+verify_jwt = false
+[functions.wk-voice-transcription]
+verify_jwt = false
+[functions.wk-voicemail-transcribe]
+verify_jwt = false
+[functions.wk-calls-create]
+verify_jwt = false
+[functions.wk-supervisor-join]
+verify_jwt = true
+[functions.wk-dialer-start]
+verify_jwt = true
+[functions.wk-dialer-answer]
+verify_jwt = false
+[functions.wk-dialer-tick]
+verify_jwt = false
+[functions.wk-dialer-hangup-leg]
+verify_jwt = true
+[functions.wk-leads-next]
+verify_jwt = false
+[functions.wk-leads-distribute]
+verify_jwt = false
+[functions.wk-outcome-apply]
+verify_jwt = false
+[functions.wk-sms-send]
+verify_jwt = true
+[functions.wk-sms-incoming]
+verify_jwt = false
+[functions.wk-jobs-worker]
+verify_jwt = false
+[functions.wk-create-agent]
+verify_jwt = false
+[functions.wk-delete-agent]
+verify_jwt = false
+[functions.wk-spend-check]
+verify_jwt = false
+[functions.wk-spend-record]
+verify_jwt = false
+[functions.wk-killswitch-check]
+verify_jwt = false
+[functions.wk-twilio-connect]
+verify_jwt = false
+[functions.wk-ai-postcall]
+verify_jwt = false
+[functions.wk-ai-template]
+verify_jwt = false
+[functions.wk-email-send]
+verify_jwt = true
+[functions.wk-email-webhook]
+verify_jwt = false
+[functions.unipile-send]
+verify_jwt = true
+[functions.unipile-webhook]
+verify_jwt = false
+[functions.unipile-poll-messages]
+verify_jwt = false

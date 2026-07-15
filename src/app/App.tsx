@@ -31,6 +31,7 @@ const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'))
 const AccountPage = lazy(() => import('@/features/account/AccountPage'))
 const BillingPage = lazy(() => import('@/features/billing/BillingPage'))
 const AdminApp = lazy(() => import('@/features/admin/AdminApp'))
+const CrmApp = lazy(() => import('@/features/crm/CrmApp'))
 const LandingPage = lazy(() => import('@/features/landing/LandingPage'))
 const PrivacyPolicyPage = lazy(() => import('@/features/legal/PrivacyPolicyPage'))
 const TermsPage = lazy(() => import('@/features/legal/TermsPage'))
@@ -80,6 +81,11 @@ export default function App() {
         <Route path="login" element={<LoginPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />
+
+        {/* CRM — sibling of AdminApp, deliberately OUTSIDE AdminGuard so sales
+            agents can reach /admin/crm/* without the full admin panel. Matched
+            before admin/* so any other /admin/... URL still hits AdminGuard. */}
+        <Route path="admin/crm/*" element={<CrmApp />} />
 
         {/* Admin / super panel — own layout (same guarded app, two entry paths) */}
         <Route path="admin/*" element={<AdminApp />} />

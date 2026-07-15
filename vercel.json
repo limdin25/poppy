@@ -78,6 +78,14 @@
     {
       "path": "/api/cron/process-property-calls",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/agent/tick",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/crm-jobs-pump",
+      "schedule": "* * * * *"
     }
   ]
 }

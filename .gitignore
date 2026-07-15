@@ -23,3 +23,4 @@ scraper/*.log
 scraper/*.bak*
 scraper/app.py.bak*
 scraper/**/*.bak*
+scripts/.crm-twilio-output.json

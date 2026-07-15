@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
+  Sparkles,
   LayoutDashboard,
   BarChart3,
   Building2,
@@ -16,6 +17,7 @@ import {
   Home,
   SearchCode,
   KanbanSquare,
+  Headset,
   Menu,
   X,
   ArrowLeft,
@@ -26,6 +28,12 @@ import { useAuth } from '@/core/auth/AuthProvider'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
 
 const navGroups = [
+  {
+    label: 'Assistant',
+    items: [
+      { to: '/admin/ceo', icon: Sparkles, label: 'CEO' },
+    ],
+  },
   {
     label: 'Overview',
     items: [
@@ -45,6 +53,12 @@ const navGroups = [
     items: [
       { to: '/admin/calls', icon: Phone, label: 'Calls' },
       { to: '/admin/conversations', icon: MessageSquare, label: 'Conversations' },
+    ],
+  },
+  {
+    label: 'CRM',
+    items: [
+      { to: '/admin/crm', icon: Headset, label: 'CRM' },
     ],
   },
   {

@@ -27,5 +27,10 @@
     }
   },
   "include": ["src"],
-  "exclude": ["src/integrations/*/client.ts"]
+  "exclude": [
+    "src/integrations/*/client.ts",
+    "src/features/crm/**/__tests__/**",
+    "src/features/crm/**/*.test.ts",
+    "src/features/crm/**/*.test.tsx"
+  ]
 }
