@@ -1,6 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { notifyBusinessOwner } from '../lib/notify.js';
 import { handleBrrrCallEvent, handleBrrrTranscriptUpdate } from '../lib/brrr.js';
+import { sendSMS } from '../../src/integrations/twilio/client.js';
+import { getSmsFromNumber } from '../lib/channel-lookup.js';
+import { callLLM } from '../lib/llm.js';
+
+// Demo receptionist line: text the caller a recap after EVERY call (even hang-ups
+// / dead calls), done system-side so it never depends on the agent remembering.
+const CALLER_RECAP_BUSINESS_IDS = new Set(['f8b98eb2-192e-4c22-87fd-90c865123fe7']);
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -85,6 +92,33 @@ async function extractCallerInfo(transcript: string, businessName: string, busin
   return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 }
 
+// Demo after-call step: in ONE AI call, write the "lead card" recap SMS AND
+// detect whether the owner agreed an onboarding time for themselves (so we can
+// book it as a real appointment). Returns the SMS text + booking details.
+interface DemoRecap { sms: string; booked: boolean; iso?: string; label?: string }
+async function buildDemoRecap(transcript: string, phone: string, businessId: string): Promise<DemoRecap> {
+  const model = await getModelForBusiness(businessId);
+  const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }).format(new Date());
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model,
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: `Today is ${today} (Europe/London). This was a DEMO call: a business owner tried our AI phone receptionist by role-playing one of their own customers booking an appointment, and MAY have agreed to a 15-minute ONBOARDING for themselves at the end. Do TWO things and return JSON ONLY:\n1. "sms": the follow-up SMS to the business owner, plain text, in EXACTLY this shape (keep blank lines + every label):\nThanks for calling, <owner's first name>!\n\nQuick recap — this is how I'll send you every lead:\n\nName: <the mock customer's name>\nPhone: ${phone}\nDate: <booking date, or "to confirm">\nTime: <booking time, or "to confirm">\n\nSummary: <1-2 short sentences on the job>\n\nGood luck with the job!\n2. Detect if the OWNER (not the mock customer) agreed a specific ONBOARDING day/time for themselves. "booked": true/false; "iso": full ISO-8601 with the correct +01:00 BST offset for that onboarding (empty if none); "label": short e.g. "Tuesday morning".\nReturn: {"sms":"...","booked":false,"iso":"","label":""}\nRules: use the phone exactly as ${phone}; if owner's first name unclear write just "Thanks for calling!"; keep the Name/Phone/Date/Time/Summary labels; no markdown.\n\nTranscript:\n${transcript}`,
+      }],
+    }),
+  });
+  const data = await res.json() as { content?: Array<{ text?: string }> };
+  const m = (data.content?.[0]?.text || '').match(/\{[\s\S]*\}/);
+  try {
+    const j = JSON.parse(m![0]);
+    return { sms: (j.sms || '').trim(), booked: !!j.booked, iso: j.iso || undefined, label: j.label || undefined };
+  } catch { return { sms: '', booked: false }; }
+}
+
 export const config = { runtime: 'edge' };
 
 const DEAD_CALL_SUMMARY = 'No conversation — caller hung up.';
@@ -96,6 +130,79 @@ function hasCallerSpeech(turns: Array<{ speaker?: string; role?: string; text?: 
   return (turns || []).some(
     (t) => (t.speaker === 'caller' || t.role === 'user') && ((t.text ?? t.content) || '').trim().length > 0,
   );
+}
+
+// CRM warm-up voice agent (inbound to 833) — capture the call into wk_* tables:
+// upsert the contact, log a wk_calls row, and store a short AI summary as an
+// activity. No heyelsie business/contacts/conversations rows. Idempotent on the
+// Retell call id; the full capture runs on call_ended (transcript present).
+async function handleCrmWarmupCall(
+  call: any,
+  transcript: string,
+  event: string,
+): Promise<{ ok: boolean; crm_warmup: boolean; skipped?: string }> {
+  if (event !== 'call_ended') return { ok: true, crm_warmup: true, skipped: event };
+  const callSid = call.call_id || call.telephony_identifier?.twilio_call_sid || '';
+  const fromNumber = (call.from_number || '').trim();
+  const toNumber = (call.to_number || '').trim();
+  if (!callSid || !fromNumber) return { ok: true, crm_warmup: true, skipped: 'missing_ids' };
+
+  try {
+    // Idempotency — skip if we already logged this call.
+    const { data: existingCall } = await supabase
+      .from('wk_calls').select('id').eq('twilio_call_sid', callSid).maybeSingle();
+    if (existingCall) return { ok: true, crm_warmup: true, skipped: 'duplicate' };
+
+    // Upsert contact by phone.
+    const { data: existing } = await supabase.from('wk_contacts').select('id, name').eq('phone', fromNumber).maybeSingle();
+    let contactId: string;
+    if (existing) {
+      contactId = existing.id;
+    } else {
+      const { data: created } = await supabase.from('wk_contacts').insert({
+        name: 'New lead', phone: fromNumber, custom_fields: { source: 'ai_voice_inbound' },
+      }).select('id').single();
+      contactId = created?.id;
+      if (!contactId) return { ok: false, crm_warmup: true, skipped: 'contact_failed' };
+    }
+
+    // Short AI summary of the call (best-effort).
+    let summary = 'Inbound AI call.';
+    if (transcript && transcript.trim().length > 20) {
+      try {
+        const out = await callLLM('claude-sonnet-4-6',
+          'Summarise this inbound sales call in 1–2 short sentences: what the caller wants and any next step. Plain text, no markdown.',
+          [{ role: 'user', content: transcript.slice(0, 6000) }], 200);
+        if (out.trim()) summary = out.trim();
+      } catch { /* keep default */ }
+    }
+
+    const durationSec = Math.round((call.duration_ms || 0) / 1000);
+    await supabase.from('wk_calls').insert({
+      twilio_call_sid: callSid,
+      contact_id: contactId,
+      direction: 'inbound',
+      status: 'completed',
+      duration_sec: durationSec,
+      from_e164: fromNumber,
+      to_e164: toNumber || null,
+      started_at: call.start_timestamp ? new Date(call.start_timestamp).toISOString() : new Date().toISOString(),
+      ended_at: call.end_timestamp ? new Date(call.end_timestamp).toISOString() : new Date().toISOString(),
+      agent_note: summary,
+      ai_status: 'done',
+    });
+    await supabase.from('wk_activities').insert({
+      contact_id: contactId, kind: 'call_inbound', title: 'AI answered a call', body: summary,
+    });
+    await supabase.from('wk_contacts').update({ last_contact_at: new Date().toISOString() }).eq('id', contactId);
+
+    return { ok: true, crm_warmup: true };
+  } catch (e) {
+    // Never 500 the webhook — a rejected Supabase promise (network/DNS/timeout)
+    // would propagate to the outer catch and trigger Retell retries.
+    console.error('[crm-warmup]', e);
+    return { ok: false, crm_warmup: true, skipped: 'error' };
+  }
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -150,6 +257,14 @@ export default async function handler(req: Request): Promise<Response> {
     const durationMs = call.duration_ms || 0;
     const fromNumber = call.from_number;
     const collectedVars = call.collected_dynamic_variables || {};
+
+    // CRM warm-up voice agent (inbound to 833) — a self-contained lead-capture
+    // flow on the wk_* tables. Branch out before the heyelsie business mapping
+    // (this agent has no agents/channels row on purpose, so it would 404).
+    if (agentId && agentId === process.env.CRM_WARMUP_AGENT_ID) {
+      const result = await handleCrmWarmupCall(call, transcript, event);
+      return new Response(JSON.stringify(result), { status: 200 });
+    }
 
     // Find business by retell_agent_id — check agents table first, then channels.config fallback
     let businessId: string | undefined;
@@ -266,6 +381,26 @@ export default async function handler(req: Request): Promise<Response> {
         }
       }
     }
+
+    // Idempotency guard — Retell retries call_ended if we respond slowly (AI
+    // extraction + outbound texts can exceed the webhook timeout). Claim the call
+    // up-front so a retry can't reprocess it and re-text the caller.
+    const { data: existingCall } = await supabase
+      .from('calls').select('id').eq('retell_call_id', call.call_id).maybeSingle();
+    if (existingCall) return new Response(JSON.stringify({ ok: true, duplicate: true }), { status: 200 });
+
+    const { data: claimedCall } = await supabase.from('calls').insert({
+      business_id: businessId,
+      retell_call_id: call.call_id,
+      agent_id: elsieAgentId || null,
+      direction: call.direction || 'inbound',
+      status: 'completed',
+      duration_seconds: Math.round((call.duration_ms || 0) / 1000),
+      recording_url: call.recording_url || null,
+      started_at: call.start_timestamp ? new Date(call.start_timestamp).toISOString() : null,
+      ended_at: call.end_timestamp ? new Date(call.end_timestamp).toISOString() : null,
+    }).select('id').single();
+    const claimedCallId = claimedCall?.id || null;
 
     // call_ended: process the call
     const { data: business } = await supabase
@@ -397,27 +532,18 @@ export default async function handler(req: Request): Promise<Response> {
       text: t.content,
     }));
 
-    // Create call record
-    await supabase.from('calls').insert({
-      business_id: businessId,
+    // Fill the AI-derived fields onto the call row we claimed up-front.
+    await supabase.from('calls').update({
       conversation_id: conversation?.id || null,
       contact_id: contactId,
-      agent_id: elsieAgentId || null,
-      retell_call_id: call.call_id,
-      direction: call.direction || 'inbound',
-      status: 'completed',
-      duration_seconds: durationSec,
       transcript: transcriptForUI,
-      recording_url: call.recording_url || null,
       ai_summary: isDeadCall ? DEAD_CALL_SUMMARY : (info.summary || null),
       extracted_info: {
         reason: info.reason || null,
         action_required: info.action_required || null,
         collected_variables: collectedVars,
       },
-      started_at: call.start_timestamp ? new Date(call.start_timestamp).toISOString() : null,
-      ended_at: call.end_timestamp ? new Date(call.end_timestamp).toISOString() : null,
-    });
+    }).eq('id', claimedCallId);
 
     // Link appointment to conversation if booking happened
     if (hasBooking && recentBooking && conversation) {
@@ -451,6 +577,51 @@ export default async function handler(req: Request): Promise<Response> {
         info.action_required ? `Action: ${info.action_required}` : null,
       ].filter(Boolean).join('\n'),
     }).catch(() => {});
+
+    // Auto after-call recap text to the caller — always fires (incl. dead/hang-up
+    // calls). System-side so it doesn't depend on the agent sending it in-call.
+    if (CALLER_RECAP_BUSINESS_IDS.has(businessId) && callerPhone) {
+      try {
+        const smsFrom = await getSmsFromNumber(businessId);
+        if (smsFrom) {
+          const bizName = business?.name || 'us';
+          let recap: string;
+          let booking: DemoRecap | null = null;
+          if (isDeadCall) {
+            recap = `Thanks for calling ${bizName}! Looks like we got cut off — call back any time and Elsie will pick straight up.`;
+          } else {
+            booking = await buildDemoRecap(transcript, callerPhone, businessId).catch(() => null);
+            recap = (booking?.sms) || `Thanks for calling${callerName ? ', ' + callerName : ''}! Quick recap from Elsie: ${info.summary || summaryText}.`;
+          }
+          await sendSMS(smsFrom, callerPhone, recap);
+          // Follow-up pitch — arrives right after the recap (only when they engaged).
+          if (!isDeadCall) {
+            const pitch = `P.S. If you liked how that felt, I can set Elsie up to answer YOUR calls too. Are you free tomorrow for a quick 15-min onboarding? Just reply with a time that suits and I'll sort it. — Elsie`;
+            await sendSMS(smsFrom, callerPhone, pitch).catch(() => {});
+            // Capture an on-call onboarding agreement as a real appointment.
+            if (booking?.booked && booking.iso && contactId) {
+              try {
+                const start = new Date(booking.iso);
+                if (!isNaN(start.getTime())) {
+                  const appt = {
+                    business_id: businessId, contact_id: contactId, conversation_id: conversation?.id || null,
+                    title: `Onboarding call — ${callerName || callerPhone}`,
+                    description: `Onboarding agreed on the demo call. ${booking.label || ''}`.trim(),
+                    starts_at: start.toISOString(), ends_at: new Date(start.getTime() + 30 * 60000).toISOString(),
+                    status: 'confirmed', booked_via: 'voice',
+                  };
+                  const { data: ex } = await supabase.from('appointments').select('id').eq('business_id', businessId).eq('contact_id', contactId).limit(1).maybeSingle();
+                  if (ex) await supabase.from('appointments').update(appt).eq('id', ex.id);
+                  else await supabase.from('appointments').insert(appt);
+                }
+              } catch (e) { console.error('[retell-webhook] on-call booking failed:', e); }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[retell-webhook] caller recap SMS failed:', e);
+      }
+    }
 
     return new Response(JSON.stringify({ ok: true, callId: call.call_id }), { status: 200 });
   } catch (err: any) {
