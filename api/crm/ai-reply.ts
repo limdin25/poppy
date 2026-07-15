@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
 import { sendSMS } from '../../src/integrations/twilio/client.js';
 
-export const config = { runtime: 'nodejs' };
+export const config = { runtime: 'edge' };
 
 /**
  * CRM AI warm-up reply. Called by the wk-jobs-worker `ai_reply` handler (which
