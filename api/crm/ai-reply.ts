@@ -116,6 +116,15 @@ export default async function handler(req: Request): Promise<Response> {
     content: m.body || '',
   })).filter((m) => m.content);
 
+  // Honour the global kill switch + daily SMS cap (same gate the SMS send
+  // functions use). Kill switch = hard stop (skip generation entirely). Daily
+  // cap blocks auto-sends only; drafts don't consume the cap.
+  const { data: gate } = await supabase.rpc('wk_outbound_sms_allowed');
+  const blocked = !!gate && (gate as { allowed?: boolean }).allowed === false;
+  if (blocked && (gate as { reason?: string }).reason === 'killswitch') {
+    return json(200, { skipped: 'killswitch' });
+  }
+
   let systemPrompt = s.system_prompt || '';
   if (firstName) systemPrompt += `\n\nThe lead's first name is ${firstName}.`;
 
@@ -128,17 +137,29 @@ export default async function handler(req: Request): Promise<Response> {
   const fromNumber = replyFrom || null;
 
   if (!draft) {
+    if (blocked) return json(200, { skipped: 'blocked', reason: (gate as { reason?: string }).reason });
     if (!fromNumber) return json(200, { skipped: 'no_from_number' });
+    // Insert the row BEFORE calling Twilio so a worker retry after a lost
+    // response can't regenerate a different reply and double-send the lead.
+    const { data: pending } = await supabase.from('wk_sms_messages').insert({
+      contact_id: contactId, direction: 'outbound', channel: 'sms', body: reply,
+      from_e164: fromNumber, to_e164: toPhone, status: 'sending', ai_generated: true,
+    }).select('id').single();
+    let sent: { sid?: string; status?: string };
     try {
-      const sent = await sendSMS(fromNumber, toPhone, reply);
-      status = sent?.sid ? 'sent' : 'queued';
-      await supabase.from('wk_sms_messages').insert({
-        contact_id: contactId, direction: 'outbound', channel: 'sms', body: reply,
-        twilio_sid: sent?.sid ?? null, external_id: sent?.sid ?? null,
-        from_e164: fromNumber, to_e164: toPhone, status, ai_generated: true,
-      });
+      sent = await sendSMS(fromNumber, toPhone, reply);
     } catch (e) {
-      return json(500, { error: `send failed: ${e instanceof Error ? e.message : String(e)}` });
+      // Send failed — mark the row and return 200 (NOT 500) so the worker
+      // doesn't retry, regenerate and double-send. A dropped AI reply beats a
+      // duplicate text to the lead.
+      if (pending?.id) await supabase.from('wk_sms_messages').update({ status: 'failed' }).eq('id', pending.id);
+      return json(200, { skipped: 'send_failed', error: e instanceof Error ? e.message : String(e) });
+    }
+    status = sent?.sid ? 'sent' : 'queued';
+    if (pending?.id) {
+      await supabase.from('wk_sms_messages').update({
+        twilio_sid: sent?.sid ?? null, external_id: sent?.sid ?? null, status,
+      }).eq('id', pending.id);
     }
   } else {
     await supabase.from('wk_sms_messages').insert({

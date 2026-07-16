@@ -2,8 +2,7 @@ import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL = 'https://loggyxryrhqsbtqpteog.supabase.co'
-const SUPABASE_SERVICE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvZ2d5eHJ5cmhxc2J0cXB0ZW9nIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzcxMTE3OCwiZXhwIjoyMDkzMjg3MTc4fQ.EKZnqNkix-LjF-9bxWG1WNfCxtptrC4vfXflSMpobVg'
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const BUSINESS_ID = '8867c609-1686-4c09-82b1-3c55fb09c431'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)

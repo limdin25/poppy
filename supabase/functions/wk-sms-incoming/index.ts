@@ -177,11 +177,26 @@ serve(async (req: Request) => {
         .select('id')
         .single();
 
-      if (insErr || !inserted?.id) {
-        console.error('[wk-sms-incoming] wk_contacts insert failed', insErr);
-      } else {
+      if (inserted?.id) {
         contactId = inserted.id as string;
         console.log(`[wk-sms-incoming] created wk_contact ${contactId} for ${fromE164}`);
+      } else {
+        // Insert failed. The common cause is a concurrent inbound from the
+        // same new number winning the UNIQUE(phone) race (code 23505) between
+        // the SELECT above and this INSERT. Recover the winner's id by
+        // re-selecting so this message still lands instead of being dropped.
+        const { data: raced } = await supa
+          .from('wk_contacts')
+          .select('id')
+          .in('phone', fromVariants)
+          .limit(1)
+          .maybeSingle();
+        if (raced?.id) {
+          contactId = raced.id as string;
+          console.log(`[wk-sms-incoming] recovered raced wk_contact ${contactId} for ${fromE164}`);
+        } else {
+          console.error('[wk-sms-incoming] wk_contacts insert failed', insErr);
+        }
       }
     }
 

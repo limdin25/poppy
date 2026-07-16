@@ -224,6 +224,22 @@ async function handleSendSms(
   //   3. workspace default — first sms_enabled wk_numbers row (no
   //      is_active filter — identical to wk-sms-send's fallback)
   let fromE164 = String(payload.from_e164 ?? '').trim();
+  // Security: an explicit from_e164 must be a CRM-owned, SMS-enabled number
+  // (mirrors wk-sms-send). Stops a queued job from sending SMS that spoofs a
+  // client's receptionist caller-ID. The auto-select paths below are safe by
+  // construction (they only pick sms_enabled wk_numbers rows).
+  if (fromE164) {
+    const { data: ownedNumber } = await supabase
+      .from('wk_numbers')
+      .select('e164')
+      .eq('e164', fromE164)
+      .eq('channel', 'sms')
+      .eq('sms_enabled', true)
+      .maybeSingle();
+    if (!ownedNumber) {
+      throw new Error(`send_sms: from_e164 ${fromE164} is not a CRM-owned SMS-enabled number`);
+    }
+  }
   const campaignId = String(payload.campaign_id ?? '');
 
   if (!fromE164 && campaignId) {
@@ -262,6 +278,13 @@ async function handleSendSms(
 
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
     throw new Error('send_sms: Twilio creds not set on edge function secrets');
+  }
+
+  // C2: honour the global kill switch + daily SMS cap before spending. Throwing
+  // stops a draining broadcast the moment the switch flips or the cap is hit.
+  const { data: gate } = await supabase.rpc('wk_outbound_sms_allowed');
+  if (gate && (gate as { allowed?: boolean }).allowed === false) {
+    throw new Error(`send_sms: outbound blocked (${(gate as { reason?: string }).reason ?? 'blocked'})`);
   }
 
   // POST to Twilio Messages.create.

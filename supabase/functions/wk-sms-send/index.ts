@@ -95,6 +95,24 @@ serve(async (req: Request) => {
     //   3. workspace default — first sms_enabled wk_numbers row
     let fromE164 = (payload.from_e164 ?? '').trim();
 
+    // Security: an explicit from_e164 must be a CRM-owned, SMS-enabled
+    // number. Without this, a logged-in agent could pin a client's
+    // receptionist caller-ID (e.g. a UK Retell line, sms_enabled=false)
+    // and send SMS spoofing it. The campaign/default paths below only ever
+    // pick sms_enabled wk_numbers rows, so they are already safe.
+    if (fromE164) {
+      const { data: ownedNumber } = await supa
+        .from('wk_numbers')
+        .select('e164')
+        .eq('e164', fromE164)
+        .eq('channel', 'sms')
+        .eq('sms_enabled', true)
+        .maybeSingle();
+      if (!ownedNumber) {
+        return json(403, { error: 'from_e164 is not a CRM-owned SMS-enabled number' });
+      }
+    }
+
     if (!fromE164 && payload.campaign_id) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: pinned } = await (supa.from('wk_campaign_numbers' as any) as any)
@@ -127,6 +145,12 @@ serve(async (req: Request) => {
     }
     if (!fromE164) {
       return json(503, { error: 'No SMS-enabled number configured (wk_numbers)' });
+    }
+
+    // C2: honour the global kill switch + daily SMS cap before spending.
+    const { data: gate } = await supa.rpc('wk_outbound_sms_allowed');
+    if (gate && (gate as { allowed?: boolean }).allowed === false) {
+      return json(429, { error: 'Outbound sending is blocked', detail: gate });
     }
 
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {

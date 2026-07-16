@@ -107,6 +107,13 @@ serve(async (req: Request) => {
       return json(400, { error: `too many recipients (${contactIds.length} > ${MAX_RECIPIENTS})` });
     }
 
+    // C2: honour the global kill switch + daily SMS cap before enqueuing a
+    // blast (the worker re-checks per send as the queue drains).
+    const { data: gate } = await supa.rpc('wk_outbound_sms_allowed');
+    if (gate && (gate as { allowed?: boolean }).allowed === false) {
+      return json(429, { error: 'Outbound sending is blocked', detail: gate });
+    }
+
     // ── Create the broadcast row ────────────────────────────────────────────
     const { data: bc, error: bcErr } = await supa
       .from('wk_broadcasts')
