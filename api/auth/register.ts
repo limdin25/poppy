@@ -112,6 +112,10 @@ export default async function handler(req: Request): Promise<Response> {
         return new Response(JSON.stringify({ error: createBizError?.message || 'Failed to create business' }), { status: 500 });
       }
       bizId = newBiz.id;
+
+      // New sign-ups land in the simple client portal (slim menu). Admins
+      // unlock the full app per account in Admin → Feature Flags.
+      await supabase.from('feature_flags').insert({ business_id: bizId, flag_key: 'simple_portal', enabled: true });
     }
 
     // Create team_members entry so AuthProvider can find businessId

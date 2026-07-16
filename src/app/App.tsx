@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './Layout'
 import { ProtectedRoute } from '@/core/auth/ProtectedRoute'
 import { VoiceRoute } from '@/core/auth/VoiceRoute'
+import { FullAppRoute } from '@/core/auth/FullAppRoute'
 
 const RegistrationPage = lazy(() => import('@/features/registration/RegistrationPage'))
 const OnboardingPage = lazy(() => import('@/features/onboarding/OnboardingPage'))
@@ -108,26 +109,29 @@ export default function App() {
               <Route path="calls" element={<CallsPage />} />
             </Route>
             <Route path="inbox" element={<InboxPage />} />
-            <Route path="leads" element={<LeadsPage />} />
-            <Route path="campaigns" element={<CampaignsPage />} />
-            <Route path="knowledge" element={<KnowledgeBasePage />} />
-            <Route path="templates" element={<TemplatesPage />} />
-            <Route path="contacts" element={<ContactsPage />} />
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="quotes" element={<QuotesPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
             <Route path="invoices/new" element={<VoiceInvoicePage />} />
-            <Route path="billing" element={<BillingPage />} />
-            <Route path="analytics" element={<AnalyticsPage />} />
-            <Route path="agents" element={<AgentLayout />}>
-              <Route index element={<Navigate to="personality" replace />} />
-              <Route path="personality" element={<AiPersonalityPage />} />
-              <Route path="calling" element={<CallBehaviourPage />} />
-              <Route path="classification" element={<ClassificationPage />} />
-              <Route path="followup" element={<FollowupPage />} />
-              <Route path="handoff" element={<HandoffPage />} />
+            {/* Full-app only — simple-portal (client) accounts bounce to /dashboard */}
+            <Route element={<FullAppRoute />}>
+              <Route path="leads" element={<LeadsPage />} />
+              <Route path="campaigns" element={<CampaignsPage />} />
+              <Route path="knowledge" element={<KnowledgeBasePage />} />
+              <Route path="templates" element={<TemplatesPage />} />
+              <Route path="contacts" element={<ContactsPage />} />
+              <Route path="billing" element={<BillingPage />} />
+              <Route path="analytics" element={<AnalyticsPage />} />
+              <Route path="agents" element={<AgentLayout />}>
+                <Route index element={<Navigate to="personality" replace />} />
+                <Route path="personality" element={<AiPersonalityPage />} />
+                <Route path="calling" element={<CallBehaviourPage />} />
+                <Route path="classification" element={<ClassificationPage />} />
+                <Route path="followup" element={<FollowupPage />} />
+                <Route path="handoff" element={<HandoffPage />} />
+              </Route>
+              <Route path="connections" element={<ConnectionsPage />} />
             </Route>
-            <Route path="connections" element={<ConnectionsPage />} />
             <Route path="agent/*" element={<Navigate to="/agents" replace />} />
             <Route path="account/*" element={<AccountPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -32,6 +32,7 @@ import { ChannelAlertBanner } from '@/core/ui/ChannelAlertBanner'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { useBusiness } from '@/core/hooks/useBusiness'
 import { useVoiceEnabled } from '@/core/hooks/useVoiceEnabled'
+import { usePortalMode } from '@/core/hooks/usePortalMode'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 
 type NavItem = { to: string; icon: React.ElementType; label: string }
@@ -73,6 +74,15 @@ const voiceGrowthNav: NavItem[] = [
   { to: '/billing', icon: CreditCard, label: 'Billing' },
 ]
 
+// Simple-portal (client) accounts: the slim tradesperson menu. Calls is
+// appended like callsNav; Growth shrinks to Quotes + Invoices (no Billing).
+const portalWorkNav: NavItem[] = [
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+  { to: '/inbox', icon: Inbox, label: 'Inbox' },
+  { to: '/appointments', icon: Calendar, label: 'Appointments' },
+]
+const portalGrowthNav: NavItem[] = voiceGrowthNav.filter((i) => i.to !== '/billing')
+
 const accountNav: NavItem = { to: '/account', icon: SettingsIcon, label: 'Settings' }
 const accountSubNav = [
   { to: '/account/general', label: 'General' },
@@ -93,19 +103,37 @@ export default function Layout() {
   const { user, impersonating, stopImpersonation, signOut } = useAuth()
   const { data: business } = useBusiness()
   const { enabled: voiceEnabled } = useVoiceEnabled()
+  const { enabled: portalMode } = usePortalMode()
   const navigate = useNavigate()
 
   // Voice accounts get Calls in WORK; WhatsApp-only accounts never see it.
-  const workItems: NavItem[] = voiceEnabled ? [...workNav, callsNav] : workNav
-  const growthItems: NavItem[] = voiceEnabled ? [...growthNav, ...voiceGrowthNav] : growthNav
+  // Simple-portal (client) accounts get the slim menu with Calls always on.
+  const workItems: NavItem[] = portalMode
+    ? [...portalWorkNav, callsNav]
+    : voiceEnabled
+      ? [...workNav, callsNav]
+      : workNav
+  const growthItems: NavItem[] = portalMode
+    ? portalGrowthNav
+    : voiceEnabled
+      ? [...growthNav, ...voiceGrowthNav]
+      : growthNav
 
-  const mobileNav: NavItem[] = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Home' },
-    { to: '/inbox', icon: Inbox, label: 'Inbox' },
-    { to: '/leads', icon: Flame, label: 'Leads' },
-    { to: '/agents', icon: Bot, label: 'Agent' },
-    { to: '/account', icon: SettingsIcon, label: 'Settings' },
-  ]
+  const mobileNav: NavItem[] = portalMode
+    ? [
+        { to: '/dashboard', icon: LayoutDashboard, label: 'Home' },
+        { to: '/inbox', icon: Inbox, label: 'Inbox' },
+        { to: '/invoices', icon: Receipt, label: 'Invoices' },
+        { to: '/calls', icon: Phone, label: 'Calls' },
+        { to: '/appointments', icon: Calendar, label: 'Diary' },
+      ]
+    : [
+        { to: '/dashboard', icon: LayoutDashboard, label: 'Home' },
+        { to: '/inbox', icon: Inbox, label: 'Inbox' },
+        { to: '/leads', icon: Flame, label: 'Leads' },
+        { to: '/agents', icon: Bot, label: 'Agent' },
+        { to: '/account', icon: SettingsIcon, label: 'Settings' },
+      ]
 
   useEffect(() => {
     if (!user?.email) return
@@ -315,28 +343,32 @@ export default function Layout() {
           <nav className={cn('min-h-0 flex-1 overflow-y-auto py-1.5 scrollbar-thin', collapsed ? 'px-1.5' : 'px-2')}>
             {renderSection('Work', workItems)}
 
-            {collapsed && <div className="my-2 h-px bg-border" />}
-            {!collapsed && (
-              <p className="px-2.5 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-wider text-ink-subtle">
-                AI
-              </p>
-            )}
-            <div className="space-y-0.5">
-              {aiNav.map((item) => (
-                <div key={item.to}>{renderNavItem(item)}</div>
-              ))}
-              <div>
-                {renderNavItem(
-                  agentNav,
-                  { expanded: agentExpanded, onToggle: () => setAgentExpanded(!agentExpanded) },
-                  true
+            {!portalMode && (
+              <>
+                {collapsed && <div className="my-2 h-px bg-border" />}
+                {!collapsed && (
+                  <p className="px-2.5 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-wider text-ink-subtle">
+                    AI
+                  </p>
                 )}
-                {agentExpanded && renderSubNav(agentSubNav)}
-              </div>
-            </div>
+                <div className="space-y-0.5">
+                  {aiNav.map((item) => (
+                    <div key={item.to}>{renderNavItem(item)}</div>
+                  ))}
+                  <div>
+                    {renderNavItem(
+                      agentNav,
+                      { expanded: agentExpanded, onToggle: () => setAgentExpanded(!agentExpanded) },
+                      true
+                    )}
+                    {agentExpanded && renderSubNav(agentSubNav)}
+                  </div>
+                </div>
+              </>
+            )}
 
             {collapsed && <div className="my-2 h-px bg-border" />}
-            {renderSection('Growth', growthItems)}
+            {renderSection(portalMode ? 'Money' : 'Growth', growthItems)}
 
             {collapsed && <div className="my-2 h-px bg-border" />}
             {!collapsed && (

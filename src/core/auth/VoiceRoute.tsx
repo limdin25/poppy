@@ -1,13 +1,17 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useVoiceEnabled } from '@/core/hooks/useVoiceEnabled'
+import { usePortalMode } from '@/core/hooks/usePortalMode'
 
 /**
  * Gate for voice/calls-only routes. Redirects WhatsApp-only (public) accounts
  * to the dashboard. Voice is unlocked per-business via the `voice_ai` flag,
- * provisioned by a super-admin.
+ * provisioned by a super-admin. Simple-portal (client) accounts always get
+ * Calls — it's part of their slim menu, empty until their line is provisioned.
  */
 export function VoiceRoute() {
-  const { enabled, loading } = useVoiceEnabled()
+  const { enabled: voice, loading: voiceLoading } = useVoiceEnabled()
+  const { enabled: portal, loading: portalLoading } = usePortalMode()
+  const loading = voiceLoading || portalLoading
 
   if (loading) {
     return (
@@ -17,7 +21,7 @@ export function VoiceRoute() {
     )
   }
 
-  if (!enabled) return <Navigate to="/dashboard" replace />
+  if (!voice && !portal) return <Navigate to="/dashboard" replace />
 
   return <Outlet />
 }
