@@ -102,10 +102,36 @@ export default async function handler(req: Request): Promise<Response> {
     body: [when && `When: ${when}`, notes].filter(Boolean).join(' · ') || 'Lead booked via AI voice.',
   });
 
-  // Best-effort confirmation SMS from the number they called (to_number).
+  // Best-effort two-text sequence from the number they called (to_number):
+  // 1) a nicely formatted EXAMPLE booking — the exact kind of confirmation
+  //    their own customers would get (the product, demonstrated), then
+  // 2) the real confirmation of their onboarding.
   const from = (call?.to_number || '').trim();
   if (from) {
-    await sendSMS(from, phone, `Thanks${name ? ` ${name.split(' ')[0]}` : ''}! You're booked${when ? ` for ${when}` : ''}. We'll be in touch. Reply here anytime.`);
+    const firstName = name ? name.split(' ')[0] : '';
+    const exampleText = [
+      'Here’s the kind of text your customers get the second I book a job for you:',
+      '',
+      '✅ Appointment confirmed',
+      '👤 Sarah M.',
+      '🔧 Leaking tap — kitchen',
+      '📅 Tomorrow, 2:00 PM',
+      '📍 42 Oak Street',
+      '',
+      'Instant, professional, zero missed calls.',
+    ].join('\n');
+    const confirmText = `${firstName ? `Thanks ${firstName}! ` : ''}Just to confirm — your onboarding with Rod is ${when || 'booked'}. If anything changes, reply here anytime. — Elsie`;
+
+    await sendSMS(from, phone, exampleText);
+    // Small gap so the two texts arrive in order.
+    await new Promise((r) => setTimeout(r, 2000));
+    await sendSMS(from, phone, confirmText);
+
+    // Log both on the contact's timeline so the VA sees the full thread.
+    await supabase.from('wk_sms_messages').insert([
+      { contact_id: contactId, direction: 'outbound', channel: 'sms', body: exampleText, from_e164: from, to_e164: phone, status: 'sent', ai_generated: true },
+      { contact_id: contactId, direction: 'outbound', channel: 'sms', body: confirmText, from_e164: from, to_e164: phone, status: 'sent', ai_generated: true },
+    ]);
   }
 
   return json(200, { success: true, message: `Booked${when ? ` for ${when}` : ''}. Confirmation sent.` });

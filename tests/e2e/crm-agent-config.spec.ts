@@ -16,9 +16,10 @@ test.describe('CRM AI agent config', () => {
       await expect(page.getByRole('button', { name: pill, exact: true })).toBeVisible()
     }
 
-    // The system prompt textarea fills with Maya's REAL live prompt from Retell.
+    // The system prompt textarea fills with the REAL saved voice brain
+    // (the plumber sales script as of 2026-07-16).
     const promptBox = page.locator('textarea').nth(1)
-    await expect(promptBox).toHaveValue(/Maya|Airbrick/i, { timeout: 20_000 })
+    await expect(promptBox).toHaveValue(/Elsie|plumb/i, { timeout: 20_000 })
   })
 
   test('SMS tab shows the warm-up engine settings and saves', async ({ authedPage: page }) => {
