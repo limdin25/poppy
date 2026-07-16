@@ -28,7 +28,7 @@ import { useContactTimeline } from '../hooks/useContactTimeline';
 import { useContactMessages } from '../hooks/useContactMessages';
 import { useInboxThreads } from '../hooks/useInboxThreads';
 import { useContactPersistence } from '../hooks/useContactPersistence';
-import { signCallRecording } from '../hooks/useCalls';
+import { signCallRecording, useCalls } from '../hooks/useCalls';
 import CallTranscriptModal from '../components/calls/CallTranscriptModal';
 import { useSmsTemplates } from '../hooks/useSmsTemplates';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
@@ -181,7 +181,11 @@ export default function InboxPage() {
   // yet. Old behaviour iterated `contacts` which excluded inbound
   // contacts whose wk_contacts row hadn't propagated yet AND ordered
   // by hydration order, not message recency.
-  const { threads: inboxThreads } = useInboxThreads();
+  const { threads: inboxThreads, loading: threadsLoading } = useInboxThreads();
+  // Calls/Voicemail/Missed pills are sourced from wk_calls, not message
+  // threads. Loaded here so those pills show real call rows instead of
+  // falling through to the full SMS list.
+  const { calls, loading: callsLoading } = useCalls();
 
   // PR 119 (Hugo 2026-04-28): inbox now ONLY shows contacts with at
   // least one message. Bulk-imported contacts no longer pollute the
@@ -194,6 +198,7 @@ export default function InboxPage() {
     const contactById = new Map(contacts.map((c) => [c.id, c] as const));
     type Row = {
       id: string;
+      kind: 'message' | 'call';
       name: string;
       phone: string;
       email?: string;
@@ -203,38 +208,84 @@ export default function InboxPage() {
       lastDirection: 'inbound' | 'outbound' | null;
       lastChannel: ChannelKindUI | null;
       channelCounts: Record<ChannelKindUI, number>;
+      callStatus?: CallRecord['status'];
       isHot: boolean;
       tags: string[];
     };
-    const out: Row[] = [];
 
-    // Threads only (already ordered newest first by useInboxThreads).
-    for (const t of inboxThreads) {
-      const c = contactById.get(t.contactId);
-      out.push({
-        id: t.contactId,
-        name: c?.name || t.contactName || t.contactPhone || 'Unknown',
-        phone: c?.phone ?? t.contactPhone,
-        email: c?.email,
-        pipelineColumnId: c?.pipelineColumnId,
-        lastMessageBody: t.lastMessageBody,
-        lastMessageAt: t.lastMessageAt,
-        lastDirection: t.lastDirection,
-        lastChannel: t.lastChannel,
-        channelCounts: t.channelCounts,
-        isHot: !!c?.isHot,
-        tags: c?.tags ?? [],
+    const isCallFilter = filter === 'calls' || filter === 'voicemail' || filter === 'missed';
+    let rows: Row[];
+
+    if (isCallFilter) {
+      // Calls-family pills: build the sidebar from wk_calls (one row per
+      // contact, latest call first), NOT from message threads — otherwise
+      // the SMS inbox shows through. 'voicemail'/'missed' scope by status.
+      const scoped = calls.filter((call) => {
+        if (!call.contactId) return false; // no contact = no thread to open
+        if (filter === 'voicemail') return call.status === 'voicemail';
+        if (filter === 'missed') return call.status === 'missed';
+        return true; // 'calls' = every call
       });
+      const seen = new Set<string>();
+      const callRows: Row[] = [];
+      for (const call of scoped) {
+        // calls arrive newest-first from useCalls; keep only the latest per contact
+        if (seen.has(call.contactId)) continue;
+        seen.add(call.contactId);
+        const c = contactById.get(call.contactId);
+        const label =
+          call.status === 'missed' ? 'Missed call'
+          : call.status === 'voicemail' ? 'Voicemail'
+          : call.status === 'failed' ? 'Call failed'
+          : call.status === 'ringing' ? 'Ringing…'
+          : call.durationSec > 0 ? `Call · ${formatDuration(call.durationSec)}`
+          : 'Call';
+        callRows.push({
+          id: call.contactId,
+          kind: 'call',
+          name: c?.name || call.fromE164 || call.toE164 || 'Unknown',
+          phone: c?.phone ?? call.fromE164 ?? call.toE164 ?? '',
+          email: c?.email,
+          pipelineColumnId: c?.pipelineColumnId,
+          lastMessageBody: call.aiSummary ? `${label} — ${call.aiSummary}` : label,
+          lastMessageAt: call.startedAt,
+          lastDirection: call.direction,
+          lastChannel: null,
+          channelCounts: { sms: 0, whatsapp: 0, email: 0 },
+          callStatus: call.status,
+          isHot: !!c?.isHot,
+          tags: c?.tags ?? [],
+        });
+      }
+      rows = callRows;
+    } else {
+      // Message threads (already ordered newest first by useInboxThreads).
+      const out: Row[] = [];
+      for (const t of inboxThreads) {
+        const c = contactById.get(t.contactId);
+        out.push({
+          id: t.contactId,
+          kind: 'message',
+          name: c?.name || t.contactName || t.contactPhone || 'Unknown',
+          phone: c?.phone ?? t.contactPhone,
+          email: c?.email,
+          pipelineColumnId: c?.pipelineColumnId,
+          lastMessageBody: t.lastMessageBody,
+          lastMessageAt: t.lastMessageAt,
+          lastDirection: t.lastDirection,
+          lastChannel: t.lastChannel,
+          channelCounts: t.channelCounts,
+          isHot: !!c?.isHot,
+          tags: c?.tags ?? [],
+        });
+      }
+      // 'sms' / 'whatsapp' / 'email' restrict to threads on that channel.
+      rows = out;
+      if (filter === 'sms' || filter === 'whatsapp' || filter === 'email') {
+        rows = rows.filter((r) => r.lastChannel === filter || r.channelCounts[filter] > 0);
+      }
     }
 
-    // PR 78: filter by selected channel pill. 'all' / 'calls' / 'voicemail'
-    // / 'missed' don't filter messages (calls etc. aren't message rows
-    // here — those are timeline events). 'sms' / 'whatsapp' / 'email'
-    // restrict to threads whose latest message was on that channel.
-    let rows = out;
-    if (filter === 'sms' || filter === 'whatsapp' || filter === 'email') {
-      rows = rows.filter((r) => r.lastChannel === filter || r.channelCounts[filter] > 0);
-    }
     // PR 89: free-text search across name, phone, last message body.
     const q = searchQuery.trim().toLowerCase();
     if (q.length > 0) {
@@ -244,7 +295,7 @@ export default function InboxPage() {
       });
     }
     return rows;
-  }, [inboxThreads, contacts, filter, searchQuery]);
+  }, [inboxThreads, calls, contacts, filter, searchQuery]);
 
   // Auto-select the newest thread on first load (Hugo's spec: newest
   // conversation must be visible without scrolling).
@@ -588,12 +639,29 @@ export default function InboxPage() {
                       <EditableName value={r.name} onSave={(n) => renameContact(r.id, n)} className="text-[13px] font-semibold" />
                     </div>
                     <div className="text-[11px] text-[#6B7280] truncate flex items-center gap-1">
-                      {r.lastChannel && <ChannelGlyph channel={r.lastChannel} size={10} />}
-                      <span className="truncate">
-                        {r.lastMessageBody
-                          ? `${r.lastDirection === 'outbound' ? '↗' : '💬'} ${r.lastMessageBody.slice(0, 36)}`
-                          : '—'}
-                      </span>
+                      {r.kind === 'call' ? (
+                        <>
+                          {r.callStatus === 'missed' ? (
+                            <PhoneMissed style={{ width: 10, height: 10 }} className="flex-shrink-0 text-[#EF4444]" />
+                          ) : r.callStatus === 'voicemail' ? (
+                            <Voicemail style={{ width: 10, height: 10 }} className="flex-shrink-0 text-[#F59E0B]" />
+                          ) : r.lastDirection === 'outbound' ? (
+                            <PhoneOutgoing style={{ width: 10, height: 10 }} className="flex-shrink-0 text-[#3C5A87]" />
+                          ) : (
+                            <PhoneIncoming style={{ width: 10, height: 10 }} className="flex-shrink-0 text-[#3C5A87]" />
+                          )}
+                          <span className="truncate">{r.lastMessageBody?.slice(0, 40) ?? '—'}</span>
+                        </>
+                      ) : (
+                        <>
+                          {r.lastChannel && <ChannelGlyph channel={r.lastChannel} size={10} />}
+                          <span className="truncate">
+                            {r.lastMessageBody
+                              ? `${r.lastDirection === 'outbound' ? '↗' : '💬'} ${r.lastMessageBody.slice(0, 36)}`
+                              : '—'}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                   {r.lastMessageAt && (
@@ -605,6 +673,17 @@ export default function InboxPage() {
               </button>
             );
           })}
+          {sidebarRows.length === 0
+            && !((filter === 'calls' || filter === 'voicemail' || filter === 'missed') ? callsLoading : threadsLoading)
+            && (
+            <div className="px-4 py-10 text-center text-[12px] text-[#9CA3AF]">
+              {filter === 'calls' ? 'No calls yet.'
+                : filter === 'voicemail' ? 'No voicemails yet.'
+                : filter === 'missed' ? 'No missed calls yet.'
+                : searchQuery.trim() ? 'No matches.'
+                : 'No conversations yet.'}
+            </div>
+          )}
         </div>
       </aside>
 
