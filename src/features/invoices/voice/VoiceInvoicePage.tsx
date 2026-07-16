@@ -149,15 +149,37 @@ export function VoiceInvoicePage() {
   async function callExtract(body: Record<string, unknown>): Promise<{ transcript: string; draft: InvoiceDraft }> {
     const res = await fetch('/api/invoices/extract', { method: 'POST', headers, body: JSON.stringify(body) })
     if (!res.ok) {
-      let msg = 'extract_failed'
+      let msg = `http_${res.status}`
       try {
         msg = (await res.json()).error || msg
       } catch {
-        /* non-JSON error body */
+        /* non-JSON error body (e.g. 413 from the platform) */
       }
       throw new Error(msg)
     }
     return res.json()
+  }
+
+  /** Map a failure to copy that tells the user what to actually do. */
+  function extractErrorMessage(e: unknown): string {
+    const msg = e instanceof Error ? e.message : ''
+    console.error('[voice-invoice] extract failed:', e)
+    if (msg === 'transcription_failed') {
+      return "We couldn't make out that recording. Try again a little closer to the phone, or type instead."
+    }
+    if (msg === 'extraction_failed') {
+      return "The AI couldn't draft an invoice from that. Try describing the job again, or type instead."
+    }
+    if (msg === 'http_413') {
+      return 'That recording is too long to send — try a shorter note, or type instead.'
+    }
+    if (msg === 'http_401' || msg === 'http_403') {
+      return 'Your session has expired — please log in again.'
+    }
+    if (e instanceof TypeError) {
+      return 'Connection problem — check your signal and try again.'
+    }
+    return `Something went wrong drafting your invoice (${msg || 'unknown'}). Please try again.`
   }
 
   function seedReview(draft: InvoiceDraft) {
@@ -187,7 +209,7 @@ export function VoiceInvoicePage() {
         setTyping(true)
         setExtractError("Voice notes aren't available right now — please type your invoice instead.")
       } else {
-        setExtractError('Something went wrong drafting your invoice. Please try again.')
+        setExtractError(extractErrorMessage(e))
       }
     }
   }
@@ -290,10 +312,13 @@ export function VoiceInvoicePage() {
         applyEditedDraft(draft)
       } catch (e) {
         const msg = e instanceof Error ? e.message : ''
+        console.error('[voice-invoice] edit failed:', e)
         setEditError(
           msg === 'transcription_unavailable'
             ? "Voice edits aren't available right now — change the fields by hand instead."
-            : "That change didn't go through. Try again, or edit the fields by hand."
+            : msg === 'transcription_failed'
+              ? "We couldn't make out that recording — try again a little closer to the phone."
+              : "That change didn't go through. Try again, or edit the fields by hand."
         )
       } finally {
         setEditBusy(false)
