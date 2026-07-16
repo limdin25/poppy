@@ -107,6 +107,21 @@ serve(async (req: Request) => {
       return json(400, { error: `too many recipients (${contactIds.length} > ${MAX_RECIPIENTS})` });
     }
 
+    // Opt-out guard: contacts tagged 'do-not-text' (STOP repliers) are
+    // excluded from EVERY broadcast, regardless of how they were selected.
+    {
+      const { data: dnt } = await supa
+        .from('wk_contact_tags')
+        .select('contact_id')
+        .eq('tag', 'do-not-text')
+        .in('contact_id', contactIds);
+      const blocked = new Set((dnt ?? []).map((r: { contact_id: string }) => r.contact_id));
+      if (blocked.size > 0) {
+        contactIds = contactIds.filter((id) => !blocked.has(id));
+        if (!contactIds.length) return json(400, { error: 'all matched recipients are tagged do-not-text' });
+      }
+    }
+
     // C2: honour the global kill switch + daily SMS cap before enqueuing a
     // blast (the worker re-checks per send as the queue drains).
     const { data: gate } = await supa.rpc('wk_outbound_sms_allowed');

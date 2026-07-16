@@ -234,11 +234,28 @@ serve(async (req: Request) => {
         .update({ last_contact_at: new Date().toISOString() })
         .eq('id', contactId);
 
+      // 3b. Opt-out: a STOP-keyword reply tags the contact 'do-not-text' so
+      //     wk-sms-broadcast excludes them from every future blast. Twilio
+      //     also blocks at carrier level for toll-free; this keeps our own
+      //     lists clean and visible in the CRM.
+      const optOut = /^(stop|stopall|unsubscribe|quit|cancel|end)[.!]*$/i.test(body.trim());
+      if (optOut) {
+        const { error: dntErr } = await supa
+          .from('wk_contact_tags')
+          .upsert(
+            { contact_id: contactId, tag: 'do-not-text' },
+            { onConflict: 'contact_id,tag', ignoreDuplicates: true },
+          );
+        if (dntErr) console.error('[wk-sms-incoming] do-not-text tag failed', dntErr);
+        else console.log(`[wk-sms-incoming] contact ${contactId} opted out (STOP) — tagged do-not-text`);
+      }
+
       // 4. Maybe enqueue an AI warm-up reply. Light guard here (global enabled,
       //    contact enabled, under the per-contact cap); the generator re-checks
       //    the full guards (hours, human-replied-since, booking) at run time.
-      //    Skipped for duplicate inbound (idempotent path above set msgErr).
-      if (!msgErr) {
+      //    Skipped for duplicate inbound (idempotent path above set msgErr)
+      //    and for opt-out keywords (never AI-reply to a STOP).
+      if (!msgErr && !optOut) {
         try {
           const { data: s } = await supa
             .from('wk_ai_reply_settings')
