@@ -34,10 +34,63 @@ export default async function handler(req: Request): Promise<Response> {
       notes?: string;
       due_date?: string;
       payment_method?: 'bank_transfer' | 'cash' | 'none';
+      created_from?: 'voice_note' | 'text' | 'manual';
+      original_transcript?: string;
+      customer_name?: string;
+      customer_phone?: string;
     };
 
     if (!body.line_items?.length) {
       return new Response(JSON.stringify({ error: 'At least one line item is required' }), { status: 400 });
+    }
+
+    // ── find or create the contact (by phone within this business) ──────────
+    // Mirrors api/appointments/create.ts.
+    let contactId = body.contact_id || null;
+    const customerName = (body.customer_name || '').trim();
+    const customerPhone = (body.customer_phone || '').trim();
+    if (!contactId && customerPhone) {
+      const { data: existing } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('phone', customerPhone)
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        contactId = existing.id as string;
+      } else {
+        const { data: created } = await supabase
+          .from('contacts')
+          .insert({ business_id: businessId, name: customerName || customerPhone, phone: customerPhone, whatsapp: customerPhone })
+          .select('id')
+          .single();
+        contactId = created?.id ?? null;
+      }
+    } else if (!contactId && customerName) {
+      const { data: created } = await supabase
+        .from('contacts')
+        .insert({ business_id: businessId, name: customerName })
+        .select('id')
+        .single();
+      contactId = created?.id ?? null;
+    }
+
+    const createdFrom = body.created_from && ['voice_note', 'text', 'manual'].includes(body.created_from)
+      ? body.created_from
+      : 'manual';
+
+    // Voice/text invoices skip the payment-method picker, so default them to
+    // bank transfer when the business has bank details saved — otherwise the
+    // customer-facing page shows a total with no way to pay.
+    let paymentMethod = body.payment_method || 'none';
+    if (!body.payment_method && createdFrom !== 'manual') {
+      const { data: biz } = await supabase
+        .from('businesses')
+        .select('bank_details')
+        .eq('id', businessId)
+        .maybeSingle();
+      if (biz?.bank_details) paymentMethod = 'bank_transfer';
     }
 
     const totals = calcInvoiceTotals(body.line_items, body.vat_enabled);
@@ -53,7 +106,7 @@ export default async function handler(req: Request): Promise<Response> {
       .from('invoices')
       .insert({
         business_id: businessId,
-        contact_id: body.contact_id || null,
+        contact_id: contactId,
         invoice_number: invoiceNumber,
         status: 'draft',
         line_items: body.line_items,
@@ -63,7 +116,9 @@ export default async function handler(req: Request): Promise<Response> {
         total: totals.total,
         notes: body.notes || null,
         due_date: dueDate,
-        payment_method: body.payment_method || 'none',
+        payment_method: paymentMethod,
+        created_from: createdFrom,
+        original_transcript: body.original_transcript || null,
       })
       .select('*')
       .single();

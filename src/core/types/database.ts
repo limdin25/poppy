@@ -365,6 +365,9 @@ export interface Invoice {
   payment_link: string | null
   paid_at: string | null
   sent_at: string | null
+  created_from: 'voice_note' | 'text' | 'manual'
+  original_transcript: string | null
+  share_token: string | null
   created_at: string
   contact?: Contact
 }

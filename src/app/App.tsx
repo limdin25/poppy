@@ -19,6 +19,10 @@ const ContactsPage = lazy(() => import('@/features/contacts/ContactsPage'))
 const AppointmentsPage = lazy(() => import('@/features/appointments/AppointmentsPage'))
 const QuotesPage = lazy(() => import('@/features/quotes/QuotesPage'))
 const InvoicesPage = lazy(() => import('@/features/invoices/InvoicesPage'))
+const VoiceInvoicePage = lazy(() => import('@/features/invoices/voice/VoiceInvoicePage'))
+const InvoicePublicPage = lazy(() =>
+  import('@/features/invoices/public/InvoicePublicPage').then((m) => ({ default: m.InvoicePublicPage }))
+)
 const AgentLayout = lazy(() => import('@/features/agents/AgentLayout'))
 const AiPersonalityPage = lazy(() => import('@/features/agents/settings/AiPersonalityPage'))
 const CallBehaviourPage = lazy(() => import('@/features/agents/settings/CallBehaviourPage'))
@@ -82,6 +86,10 @@ export default function App() {
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />
 
+        {/* Public customer invoice — the share-link page, e.g. /smiths-plumbing/invoice/45-x7k2q.
+            Dynamic segments rank below the static routes above, so /privacy etc. still win. */}
+        <Route path=":slug/invoice/:code" element={<InvoicePublicPage />} />
+
         {/* CRM — sibling of AdminApp, deliberately OUTSIDE AdminGuard so sales
             agents can reach /admin/crm/* without the full admin panel. Matched
             before admin/* so any other /admin/... URL still hits AdminGuard. */}
@@ -108,6 +116,7 @@ export default function App() {
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="quotes" element={<QuotesPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
+            <Route path="invoices/new" element={<VoiceInvoicePage />} />
             <Route path="billing" element={<BillingPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="agents" element={<AgentLayout />}>

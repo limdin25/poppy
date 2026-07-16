@@ -1,0 +1,166 @@
+/* ======================================================================
+   ELSIE ORB — CSS material + voice states.
+   Ported from concierge/app/guest.html (.orb3 family, voice states),
+   tinted to Elsie's brand slate-blue #3C5A87 (--brand in src/index.css).
+   The plain CSS orb IS the fallback: when WebGL is live, orb.ts adds
+   the `gl` class and the blit canvas becomes the material.
+   ====================================================================== */
+
+.elsie-orb {
+  position: relative;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: none;
+  isolation: isolate;
+  -webkit-mask-image: -webkit-radial-gradient(white, black); /* Safari: contain layers inside the circle */
+  background: radial-gradient(circle at 38% 30%, #ffffff 0%, #e8eef7 16%, #8fa8c9 40%, #3c5a87 72%, #22375a 100%);
+  box-shadow: 0 0 26px rgba(60, 90, 135, 0.45), inset 0 2px 6px rgba(255, 255, 255, 0.55);
+  animation: elsieOrbBreath 5s ease-in-out infinite;
+}
+/* no blend modes in the orb — they leak a square slab outside the clip on some GPUs/Safari */
+.elsie-orb::before {
+  content: '';
+  position: absolute;
+  inset: -28%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(143, 168, 201, 0.95),
+    rgba(216, 225, 238, 0.7),
+    rgba(60, 90, 135, 0.9),
+    rgba(255, 255, 255, 0.65),
+    rgba(80, 110, 155, 0.85),
+    rgba(143, 168, 201, 0.95)
+  );
+  filter: blur(10px);
+  opacity: 0.5;
+  animation: elsieOrbSpin 7s linear infinite;
+}
+.elsie-orb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(52% 42% at 34% 24%, rgba(255, 255, 255, 0.9), transparent 62%);
+}
+
+/* WebGL live: the blit canvas is the material; CSS layers step back */
+.elsie-orb.gl {
+  background: transparent;
+  box-shadow: 0 0 26px rgba(60, 90, 135, 0.35);
+}
+.elsie-orb.gl::before,
+.elsie-orb.gl::after {
+  content: none;
+}
+.elsie-orb .orb-blit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+@keyframes elsieOrbSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes elsieOrbBreath {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+/* ---- stage: wraps the orb + halo rings and carries the voice state ---- */
+.elsie-orb-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.elsie-orb-halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid rgba(60, 90, 135, 0.45);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+.elsie-orb-stage.listening .elsie-orb-halo {
+  animation: elsieOrbHalo 2.4s ease-out infinite;
+}
+.elsie-orb-stage.listening .elsie-orb-halo.h2 {
+  animation-delay: 1.2s;
+}
+@keyframes elsieOrbHalo {
+  0% {
+    transform: translate(-50%, -50%) scale(0.85);
+    opacity: 0.55;
+  }
+  70% {
+    opacity: 0.12;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.45);
+    opacity: 0;
+  }
+}
+
+/* listening: the orb leans in — bigger, quicker breath, brighter glow */
+.elsie-orb-stage.listening .elsie-orb {
+  animation: elsieOrbListen 1.8s ease-in-out infinite;
+  box-shadow: 0 0 34px rgba(60, 90, 135, 0.55), inset 0 2px 6px rgba(255, 255, 255, 0.55);
+}
+@keyframes elsieOrbListen {
+  0%,
+  100% {
+    transform: scale(1.04);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* thinking: tight, fast pulse while the draft is being written */
+.elsie-orb-stage.thinking .elsie-orb {
+  animation: elsieOrbThink 1.1s ease-in-out infinite;
+}
+@keyframes elsieOrbThink {
+  0%,
+  100% {
+    transform: scale(0.97);
+    opacity: 0.92;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .elsie-orb,
+  .elsie-orb.gl,
+  .elsie-orb-stage.listening .elsie-orb,
+  .elsie-orb-stage.thinking .elsie-orb {
+    animation: none;
+  }
+  .elsie-orb::before {
+    animation: none;
+  }
+  .elsie-orb-stage.listening .elsie-orb-halo,
+  .elsie-orb-stage.listening .elsie-orb-halo.h2 {
+    animation: none;
+  }
+}

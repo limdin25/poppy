@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Plus, FileText, Download, Pencil, CheckCircle2, Clock, AlertCircle, Trash2, Send } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, FileText, Download, Pencil, CheckCircle2, Clock, AlertCircle, Trash2, Send, Mic, Share2 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
+import { useAuth } from '@/core/auth/AuthProvider'
 import { useInvoices } from '@/core/hooks/useInvoices'
 import { useInvoiceMutations } from '@/core/hooks/useInvoiceMutations'
 import InvoiceFormDialog from './components/InvoiceFormDialog'
@@ -20,9 +22,13 @@ const STATUS_CONFIG = {
 }
 
 export default function InvoicesPage() {
+  const navigate = useNavigate()
+  const { session } = useAuth()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null)
+  const [sharingId, setSharingId] = useState<string | null>(null)
+  const [shareToast, setShareToast] = useState<string | null>(null)
   const { data: invoices, loading, refetch } = useInvoices()
   const { markAsSent, markAsPaid, deleteInvoice, loading: mutating } = useInvoiceMutations(refetch)
 
@@ -37,6 +43,43 @@ export default function InvoicesPage() {
   function openEdit(invoice: Invoice) {
     setEditInvoice(invoice)
     setShowForm(true)
+  }
+
+  function toast(msg: string) {
+    setShareToast(msg)
+    setTimeout(() => setShareToast(null), 5000)
+  }
+
+  async function handleShare(invoice: Invoice) {
+    setSharingId(invoice.id)
+    let url: string | null = null
+    try {
+      const res = await fetch('/api/invoices/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ id: invoice.id }),
+      })
+      if (!res.ok) throw new Error('share_failed')
+      url = ((await res.json()) as { url: string }).url
+      refetch() // share may flip a draft to "sent"
+      if (navigator.share) {
+        try {
+          await navigator.share({ url })
+          return
+        } catch (e) {
+          if (e instanceof Error && e.name === 'AbortError') return // user closed the share sheet
+          /* share sheet unavailable — fall through to copy */
+        }
+      }
+      await navigator.clipboard.writeText(url)
+      toast(`Link copied: ${url}`)
+    } catch {
+      // The link may exist even when the share sheet/clipboard fails — always surface it.
+      if (url) toast(`Your invoice link: ${url}`)
+      else toast("Couldn't create the share link. Please try again.")
+    } finally {
+      setSharingId(null)
+    }
   }
 
   function handlePrint(invoice: Invoice) {
@@ -83,13 +126,22 @@ ${invoice.notes ? `<div style="margin-top:20px;padding:16px;background:#f9f9f9;b
           <h1 className="text-xl font-semibold text-ink">Invoices</h1>
           <p className="mt-1 text-[13px] text-ink-muted">Track payments and send invoices to customers.</p>
         </div>
-        <button
-          onClick={openNew}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-600"
-        >
-          <Plus size={14} />
-          New invoice
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openNew}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-ink-muted transition hover:bg-elevated"
+          >
+            <Plus size={14} />
+            Manual
+          </button>
+          <button
+            onClick={() => navigate('/invoices/new')}
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-600"
+          >
+            <Mic size={14} />
+            New invoice
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
@@ -195,6 +247,13 @@ ${invoice.notes ? `<div style="margin-top:20px;padding:16px;background:#f9f9f9;b
                         </button>
                       )}
                       <button
+                        onClick={() => handleShare(invoice)}
+                        disabled={sharingId === invoice.id}
+                        className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] text-ink-muted hover:bg-elevated disabled:opacity-60"
+                      >
+                        <Share2 size={14} /> Share
+                      </button>
+                      <button
                         onClick={() => handlePrint(invoice)}
                         className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] text-ink-muted hover:bg-elevated"
                       >
@@ -224,6 +283,12 @@ ${invoice.notes ? `<div style="margin-top:20px;padding:16px;background:#f9f9f9;b
         onSaved={refetch}
         editInvoice={editInvoice}
       />
+
+      {shareToast && (
+        <div className="fixed bottom-20 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl bg-ink px-4 py-3 text-[13px] text-white shadow-pop lg:bottom-6">
+          <p className="break-all">{shareToast}</p>
+        </div>
+      )}
     </div>
   )
 }
