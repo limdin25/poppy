@@ -3,6 +3,7 @@ import { Bot, Pause } from 'lucide-react';
 import StatCards from '../components/dashboard/StatCards';
 import LiveActivityFeed from '../components/dashboard/LiveActivityFeed';
 import AgentsTable from '../components/dashboard/AgentsTable';
+import AiReceptionistPanel from '../components/dashboard/AiReceptionistPanel';
 import KillSwitches from '../components/dashboard/KillSwitches';
 import { useKillSwitch } from '../hooks/useKillSwitch';
 
@@ -48,6 +49,8 @@ export default function DashboardPage() {
           onSelectAgent={setSelectedAgentId}
         />
       </div>
+
+      <AiReceptionistPanel />
 
       <KillSwitches />
     </div>
