@@ -59,6 +59,12 @@ export default async function handler(req: Request): Promise<Response> {
     bookedColId = col?.id ?? null;
   }
 
+  // "Stop AI once the lead books" — honour the warm-up setting so a booked
+  // lead never keeps getting AI texts.
+  const { data: aiSettings } = await supabase
+    .from('wk_ai_reply_settings').select('auto_off_on_booking').eq('id', 'default').maybeSingle();
+  const aiOff = aiSettings?.auto_off_on_booking ? { ai_enabled: false } : {};
+
   // Upsert contact by phone (wk_contacts has UNIQUE(phone)).
   const { data: existing } = await supabase.from('wk_contacts').select('id, name').eq('phone', phone).maybeSingle();
   let contactId: string;
@@ -68,12 +74,14 @@ export default async function handler(req: Request): Promise<Response> {
       name: name || existing.name,
       is_hot: true,
       ...(bookedColId ? { pipeline_column_id: bookedColId } : {}),
+      ...aiOff,
       last_contact_at: new Date().toISOString(),
     }).eq('id', contactId);
   } else {
     const { data: created, error: cErr } = await supabase.from('wk_contacts').insert({
       name: name || 'New lead', phone, is_hot: true,
       ...(bookedColId ? { pipeline_column_id: bookedColId } : {}),
+      ...aiOff,
       custom_fields: { source: 'ai_voice_booking' },
     }).select('id').single();
     if (cErr || !created) return json(500, { error: cErr?.message ?? 'contact create failed' });

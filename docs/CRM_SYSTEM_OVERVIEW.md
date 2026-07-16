@@ -91,8 +91,10 @@ does AI answering and CRM texting at the same time.
    (WhatsApp needs a QR scan; email needs a routing rule).
 5. **Recordings storage** — call recordings accumulate in a private bucket with
    a 90-day auto-purge; keep an eye on the Supabase storage quota.
-6. **Maya's pitch is a first draft** — call 833, then refine the prompt
-   (`scripts/crm-warmup-agent-prompt.txt` / AI warm-up page).
+6. **Maya's pitch is a first draft** — call 833, then refine it at
+   **/admin/crm/agent** (Calls tab = her voice brain, SMS tab = the text
+   pitch). Note: `scripts/crm-warmup-agent-prompt.txt` was only her *birth*
+   prompt — editing that file changes nothing live.
 7. **CRM unit tests** — the cloned suite needs a test library install; deferred.
    The wiring suite + 161 app tests + Playwright guard tests cover the seams.
 

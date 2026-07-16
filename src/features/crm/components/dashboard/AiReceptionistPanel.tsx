@@ -35,10 +35,22 @@ export default function AiReceptionistPanel() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold px-2 py-1 rounded-md bg-[#DCFCE7] text-[#166534]">Voice ON</span>
-          <span className={`text-[10px] font-semibold px-2 py-1 rounded-md ${textsChip.cls}`}>{textsChip.label}</span>
           <Link
-            to="/admin/crm/ai-warmup"
+            to="/admin/crm/agent/calling?ch=voice"
+            className="text-[10px] font-semibold px-2 py-1 rounded-md bg-[#DCFCE7] text-[#166534] hover:ring-2 hover:ring-[#166534]/20"
+            title="Configure Maya's voice & call behaviour"
+          >
+            Voice ON
+          </Link>
+          <Link
+            to="/admin/crm/agent/personality?ch=sms"
+            className={`text-[10px] font-semibold px-2 py-1 rounded-md hover:ring-2 hover:ring-[#3C5A87]/20 ${textsChip.cls}`}
+            title="Configure the SMS warm-up"
+          >
+            {textsChip.label}
+          </Link>
+          <Link
+            to="/admin/crm/agent"
             className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[#3C5A87] px-2 py-1 rounded hover:bg-[#EEF2F8]"
           >
             <Settings2 className="w-3.5 h-3.5" /> Settings

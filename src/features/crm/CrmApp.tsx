@@ -19,7 +19,9 @@ const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const DialerProPage = lazy(() => import('./dialer-pro/DialerProPage'))
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage'))
-const AiReplyPage = lazy(() => import('./pages/AiReplyPage'))
+const CrmAgentLayout = lazy(() => import('./agent/CrmAgentLayout'))
+const CrmAgentPersonalityPage = lazy(() => import('./agent/CrmAgentPersonalityPage'))
+const CrmCallBehaviourPage = lazy(() => import('./agent/CrmCallBehaviourPage'))
 
 // CRM-scoped query client — react-query stays contained to this feature.
 const crmQueryClient = new QueryClient({
@@ -50,7 +52,13 @@ export default function CrmApp() {
             <Route path="dialer-pro" element={<DialerProPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="broadcasts" element={<BroadcastsPage />} />
-            <Route path="ai-warmup" element={<AdminOnlyRoute><AiReplyPage /></AdminOnlyRoute>} />
+            <Route path="agent" element={<AdminOnlyRoute><CrmAgentLayout /></AdminOnlyRoute>}>
+              <Route index element={<Navigate to="personality" replace />} />
+              <Route path="personality" element={<CrmAgentPersonalityPage />} />
+              <Route path="calling" element={<CrmCallBehaviourPage />} />
+            </Route>
+            {/* Old bare warm-up form — now the SMS tab of the full agent UI. */}
+            <Route path="ai-warmup" element={<Navigate to="/admin/crm/agent/personality?ch=sms" replace />} />
             <Route path="contacts/:id" element={<ContactDetailPage />} />
             <Route path="pipelines" element={<PipelinesPage />} />
             <Route path="reports" element={<ReportsPage />} />

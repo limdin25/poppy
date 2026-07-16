@@ -45,7 +45,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Pipelines', path: '/admin/crm/pipelines', icon: Kanban },
   { label: 'Contacts', path: '/admin/crm/contacts', icon: Users },
   { label: 'Broadcasts', path: '/admin/crm/broadcasts', icon: Megaphone },
-  { label: 'AI warm-up', path: '/admin/crm/ai-warmup', icon: Bot, adminOnly: true },
+  { label: 'AI agent', path: '/admin/crm/agent', icon: Bot, adminOnly: true },
   { label: 'Reports', path: '/admin/crm/reports', icon: BarChart3 },
   { label: 'Leaderboard', path: '/admin/crm/leaderboard', icon: Trophy },
   { label: 'Call history', path: '/admin/crm/calls', icon: PhoneCall },

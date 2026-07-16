@@ -27,7 +27,8 @@ test.describe('CRM AI receptionist panel', () => {
     // Activity feed: either real items or the explicit empty state — never blank.
     await expect(panel).toBeVisible()
     const hasEmptyState = await page.locator('text=No AI activity yet').isVisible().catch(() => false)
-    const hasSettingsLink = await page.locator('a[href*="ai-warmup"]').first().isVisible()
+    // Chips + Settings deep-link into the AI agent config section.
+    const hasSettingsLink = await page.locator('a[href*="/admin/crm/agent"]').first().isVisible()
     expect(hasSettingsLink).toBe(true)
     expect(typeof hasEmptyState).toBe('boolean')
   })
