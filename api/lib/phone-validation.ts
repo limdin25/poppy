@@ -17,9 +17,17 @@ export type LineType =
 export interface ValidationResult {
   input_number: string
   normalized_e164: string | null
+  international_format: string | null
+  national_format: string | null
+  national_number: string | null
   country: string | null
+  country_name: string | null
+  country_calling_code: string | null
   line_type: LineType | null
+  carrier: string | null
+  location: string | null
   active_status: 'unknown'
+  possible: boolean
   confidence: number
   confidence_label: 'empty' | 'malformed' | 'impossible' | 'format_valid' | 'prefix_valid'
   reason: string | null
@@ -40,27 +48,47 @@ export function nanpaPrefixTypeToLineType(prefixType: string): LineType {
   return 'FIXED_LINE'
 }
 
+export function countryName(iso2: string | null): string | null {
+  if (!iso2) return null
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(iso2) ?? iso2
+  } catch {
+    return iso2
+  }
+}
 
 export function validatePhone(raw: string, defaultCountry?: string): ValidationResult {
   const checked_at = new Date().toISOString()
-  const base: Pick<ValidationResult, 'source_provider' | 'active_status' | 'checked_at'> = {
-    source_provider: 'libphonenumber',
-    active_status: 'unknown',
+  const base = {
+    source_provider: 'libphonenumber' as const,
+    active_status: 'unknown' as const,
     checked_at,
+    carrier: null,
+    location: null,
+  }
+
+  const empty = {
+    ...base,
+    normalized_e164: null,
+    international_format: null,
+    national_format: null,
+    national_number: null,
+    country: null,
+    country_name: null,
+    country_calling_code: null,
+    line_type: null,
+    valid: false,
+    possible: false,
+    confidence: 0,
+    cache_ttl: 86400,
   }
 
   if (!raw || raw.trim() === '') {
     return {
-      ...base,
+      ...empty,
       input_number: raw,
-      normalized_e164: null,
-      country: null,
-      line_type: null,
-      valid: false,
-      confidence: 0,
       confidence_label: 'empty',
       reason: 'empty',
-      cache_ttl: 86400,
     }
   }
 
@@ -74,49 +102,33 @@ export function validatePhone(raw: string, defaultCountry?: string): ValidationR
   }
 
   if (!parsed) {
-    // Try with a leading + if no country given and doesn't start with +
-    const looksNumeric = /^[\d\s\(\)\-\.]+$/.test(raw.trim())
-    if (looksNumeric && isPossiblePhoneNumber(raw, country)) {
-      return {
-        ...base,
-        input_number: raw,
-        normalized_e164: null,
-        country: null,
-        line_type: null,
-        valid: false,
-        confidence: 0,
-        confidence_label: 'malformed',
-        reason: 'malformed',
-        cache_ttl: 86400,
-      }
-    }
     return {
-      ...base,
+      ...empty,
       input_number: raw,
-      normalized_e164: null,
-      country: null,
-      line_type: null,
-      valid: false,
-      confidence: 0,
       confidence_label: 'malformed',
       reason: 'malformed',
-      cache_ttl: 86400,
     }
+  }
+
+  const iso = parsed.country ?? null
+  const parsedFields = {
+    normalized_e164: parsed.format('E.164'),
+    international_format: parsed.formatInternational(),
+    national_format: parsed.formatNational(),
+    national_number: String(parsed.nationalNumber),
+    country: iso,
+    country_name: countryName(iso),
+    country_calling_code: `+${parsed.countryCallingCode}`,
   }
 
   // Check if possible (loose check — number length plausible for its country)
   if (!isPossiblePhoneNumber(raw, country)) {
     return {
-      ...base,
+      ...empty,
+      ...parsedFields,
       input_number: raw,
-      normalized_e164: parsed.format('E.164'),
-      country: parsed.country ?? null,
-      line_type: null,
-      valid: false,
-      confidence: 0,
       confidence_label: 'impossible',
       reason: 'impossible',
-      cache_ttl: 86400,
     }
   }
 
@@ -124,16 +136,12 @@ export function validatePhone(raw: string, defaultCountry?: string): ValidationR
   const valid = isValidPhoneNumber(raw, country)
   if (!valid) {
     return {
-      ...base,
+      ...empty,
+      ...parsedFields,
       input_number: raw,
-      normalized_e164: parsed.format('E.164'),
-      country: parsed.country ?? null,
-      line_type: null,
-      valid: false,
-      confidence: 0,
+      possible: true,
       confidence_label: 'impossible',
       reason: 'impossible_prefix',
-      cache_ttl: 86400,
     }
   }
 
@@ -142,11 +150,11 @@ export function validatePhone(raw: string, defaultCountry?: string): ValidationR
 
   return {
     ...base,
+    ...parsedFields,
     input_number: raw,
-    normalized_e164: parsed.format('E.164'),
-    country: parsed.country ?? null,
     line_type,
     valid: true,
+    possible: true,
     confidence: 1.0,
     confidence_label: 'prefix_valid',
     reason: null,

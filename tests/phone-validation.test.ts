@@ -87,6 +87,40 @@ describe('validatePhone — UK numbers', () => {
   })
 })
 
+describe('validatePhone — numbering metadata fields', () => {
+  it('returns full numbering metadata for a UK mobile', () => {
+    const r = validatePhone('+447394137754')
+    expect(r.valid).toBe(true)
+    expect(r.international_format).toBe('+44 7394 137754')
+    expect(r.normalized_e164).toBe('+447394137754')
+    expect(r.national_number).toBe('7394137754')
+    expect(r.country_calling_code).toBe('+44')
+    expect(r.country_name).toBe('United Kingdom')
+    expect(r.line_type).toBe('MOBILE')
+    expect(r.possible).toBe(true)
+  })
+
+  it('returns full numbering metadata for a US number', () => {
+    const r = validatePhone('(646) 919-1074', 'US')
+    expect(r.international_format).toBe('+1 646 919 1074')
+    expect(r.national_format).toBe('(646) 919-1074')
+    expect(r.national_number).toBe('6469191074')
+    expect(r.country_calling_code).toBe('+1')
+    expect(r.country_name).toBe('United States')
+  })
+
+  it('sets possible=false for empty and malformed inputs', () => {
+    expect(validatePhone('').possible).toBe(false)
+    expect(validatePhone('not-a-number').possible).toBe(false)
+  })
+
+  it('carrier and location default to null before enrichment', () => {
+    const r = validatePhone('+447394137754')
+    expect(r.carrier).toBeNull()
+    expect(r.location).toBeNull()
+  })
+})
+
 describe('validatePhone — result shape', () => {
   it('returns confidence 1.0 for a confirmed valid number', () => {
     const r = validatePhone('+16469191074')

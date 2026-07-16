@@ -28,6 +28,7 @@
     "@twilio/voice-sdk": "^2.18.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "libphonenumber-geo-carrier": "^2.0.0",
     "libphonenumber-js": "^1.13.8",
     "lucide-react": "^1.14.0",
     "mammoth": "^1.12.0",
