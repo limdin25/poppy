@@ -178,7 +178,8 @@ async function handleCrmWarmupCall(
     }
 
     const durationSec = Math.round((call.duration_ms || 0) / 1000);
-    await supabase.from('wk_calls').insert({
+    const startMs = call.start_timestamp || Date.now();
+    const { data: insertedCall } = await supabase.from('wk_calls').insert({
       twilio_call_sid: callSid,
       contact_id: contactId,
       direction: 'inbound',
@@ -186,11 +187,54 @@ async function handleCrmWarmupCall(
       duration_sec: durationSec,
       from_e164: fromNumber,
       to_e164: toNumber || null,
-      started_at: call.start_timestamp ? new Date(call.start_timestamp).toISOString() : new Date().toISOString(),
+      started_at: new Date(startMs).toISOString(),
       ended_at: call.end_timestamp ? new Date(call.end_timestamp).toISOString() : new Date().toISOString(),
       agent_note: summary,
       ai_status: 'done',
-    });
+    }).select('id').single();
+    const callId: string | undefined = insertedCall?.id;
+
+    // Retell keeps the recording + transcript + its own summary on the webhook
+    // payload — mirror them into the CRM tables the inbox/past-call UI reads,
+    // otherwise the Play button, Transcript modal, and AI summary stay empty.
+    if (callId) {
+      // Recording: Retell serves a public, permanent CloudFront URL. The UI's
+      // player uses http(s) URLs directly (no signing), so store it as-is.
+      const recordingUrl = (call.recording_url || '').trim();
+      if (recordingUrl) {
+        await supabase.from('wk_recordings').insert({
+          call_id: callId, storage_path: recordingUrl, status: 'ready', duration_sec: durationSec,
+        });
+      }
+
+      // Transcript: speaker-labelled turns power the Transcript modal / pane.
+      const turns = Array.isArray(call.transcript_object) ? call.transcript_object : [];
+      const transcriptRows = turns
+        .filter((t: any) => t && typeof t.content === 'string' && t.content.trim())
+        .map((t: any, i: number) => ({
+          call_id: callId,
+          speaker: t.role === 'user' ? 'caller' : t.role === 'agent' ? 'agent' : 'unknown',
+          body: (t.content as string).trim(),
+          ts: new Date(startMs + i * 1000).toISOString(),
+        }));
+      if (transcriptRows.length > 0) {
+        await supabase.from('wk_live_transcripts').insert(transcriptRows);
+      }
+      // Full-text archival copy too (separate table).
+      if (transcript && transcript.trim()) {
+        await supabase.from('wk_transcripts').insert({
+          call_id: callId, source: 'manual', body: transcript.trim(),
+        });
+      }
+
+      // AI summary → wk_call_intelligence (the field the UI's summary reads).
+      const sentimentRaw = String(call.call_analysis?.user_sentiment || '').toLowerCase();
+      const sentiment = ['positive', 'neutral', 'negative', 'mixed'].includes(sentimentRaw) ? sentimentRaw : null;
+      await supabase.from('wk_call_intelligence').upsert({
+        call_id: callId, summary, sentiment, llm_model: 'claude-sonnet-4-6',
+      }, { onConflict: 'call_id' });
+    }
+
     await supabase.from('wk_activities').insert({
       contact_id: contactId, kind: 'call_inbound', title: 'AI answered a call', body: summary,
     });

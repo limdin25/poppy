@@ -1029,9 +1029,7 @@ export default function InboxPage() {
                   {formatRelativeTime(a.ts)}
                 </div>
                 {a.kind === 'call_inbound' && (
-                  <button className="mt-1 text-[10px] flex items-center gap-1 text-[#3C5A87] hover:underline">
-                    <Play className="w-3 h-3" /> Play recording (4:21)
-                  </button>
+                  <div className="mt-0.5 text-[10px] text-[#9CA3AF]">Open the call in the thread to play the recording &amp; read the transcript.</div>
                 )}
               </div>
             </div>
