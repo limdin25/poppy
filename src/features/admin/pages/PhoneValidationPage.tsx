@@ -3,6 +3,7 @@ import Papa from 'papaparse'
 import {
   Phone, Upload, CheckCircle2, XCircle, Smartphone, PhoneCall, Wifi, HelpCircle,
   AlertTriangle, Download, ExternalLink, ChevronDown, ChevronRight, Send, X, Users,
+  MessageSquareOff,
 } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/browser'
 
@@ -28,6 +29,10 @@ interface ValidationResult {
   nanpa_prefix_type?: string
   checked_at: string
   cache_ttl: number
+  sms_deliverable?: boolean | null
+  sms_check_reason?: string
+  lti_type?: string | null
+  lti_carrier?: string | null
 }
 
 /** Extra columns carried through from the uploaded CSV, aligned by row. */
@@ -57,6 +62,8 @@ interface Summary {
   malformed: number
   impossible: number
   enrichment_errors: number
+  sms_blocked: number
+  sms_lookup_errors: number
 }
 
 const EMPTY_META: RowMeta = { business_name: '', website: '', address: '', location: '', category: '' }
@@ -78,6 +85,22 @@ function LineTypeBadge({ type }: { type: string | null }) {
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.color}`}>
       <Icon size={10} />
       {meta.label}
+    </span>
+  )
+}
+
+const SMS_BLOCK_LABELS: Record<string, string> = {
+  voip_no_sms_route: 'VoIP — no text route',
+  landline: 'Ported to landline',
+  non_mobile: 'Not a mobile',
+}
+
+/** Red flag shown when the live Twilio check says the number can't receive SMS. */
+function NoTextBadge({ reason }: { reason?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700" title="Live Twilio Lookup: this number cannot receive SMS">
+      <MessageSquareOff size={10} />
+      {SMS_BLOCK_LABELS[reason ?? ''] ?? "Can't text"}
     </span>
   )
 }
@@ -137,6 +160,20 @@ function NumberDetail({ row }: { row: Row }) {
         <DetailRow label="Metadata carrier" value={row.carrier} />
         {row.nanpa_prefix_type && <DetailRow label="NANPA prefix type" value={row.nanpa_prefix_type} />}
         <DetailRow label="Source" value={row.source_provider === 'nanpa' ? 'NANPA prefix database (self-hosted)' : 'libphonenumber'} />
+        {row.sms_deliverable !== undefined && (
+          <>
+            <DetailRow
+              label="Live SMS check (Twilio)"
+              value={row.sms_deliverable === true
+                ? <span className="text-green-700">Can receive texts</span>
+                : row.sms_deliverable === false
+                  ? <NoTextBadge reason={row.sms_check_reason} />
+                  : <span className="text-amber-700">Check failed — unverified</span>}
+            />
+            {row.lti_type && <DetailRow label="Current line type" value={row.lti_type} />}
+            {row.lti_carrier && <DetailRow label="Current carrier" value={row.lti_carrier} />}
+          </>
+        )}
       </dl>
       {(row.meta.business_name || row.meta.website || row.meta.address) && (
         <dl>
@@ -320,7 +357,7 @@ export default function PhoneValidationPage() {
     setProgress({ done: 0, total: numbers.length })
     try {
       const collected: Row[] = []
-      const sum: Summary = { total: 0, valid: 0, invalid: 0, mobile: 0, fixed_line: 0, fixed_line_or_mobile: 0, voip: 0, toll_free: 0, unknown_type: 0, empty: 0, malformed: 0, impossible: 0, enrichment_errors: 0 }
+      const sum: Summary = { total: 0, valid: 0, invalid: 0, mobile: 0, fixed_line: 0, fixed_line_or_mobile: 0, voip: 0, toll_free: 0, unknown_type: 0, empty: 0, malformed: 0, impossible: 0, enrichment_errors: 0, sms_blocked: 0, sms_lookup_errors: 0 }
 
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not signed in — refresh and log in again.')
@@ -369,8 +406,9 @@ export default function PhoneValidationPage() {
     () => (rows ?? []).filter((r) => matchesFilter(r, filter)),
     [rows, filter],
   )
+  // Numbers the live Twilio check proved can't receive SMS never go to the CRM.
   const sendable = useMemo(
-    () => filtered.filter((r) => r.valid && r.normalized_e164),
+    () => filtered.filter((r) => r.valid && r.normalized_e164 && r.sms_deliverable !== false),
     [filtered],
   )
 
@@ -380,6 +418,7 @@ export default function PhoneValidationPage() {
       'business_name', 'website', 'input_number', 'e164', 'international_format', 'national_number',
       'country', 'country_name', 'calling_code', 'line_type', 'carrier', 'location',
       'nanpa_prefix_type', 'source', 'valid', 'possible', 'reason',
+      'sms_deliverable', 'sms_check_reason', 'current_line_type', 'current_carrier',
     ]
     const esc = (c: string) => `"${c.replace(/"/g, '""')}"`
     const csvRows = [header, ...filtered.map((r) => [
@@ -388,6 +427,8 @@ export default function PhoneValidationPage() {
       r.country_calling_code ?? '', r.line_type ?? '', r.carrier ?? '', r.location ?? '',
       r.nanpa_prefix_type ?? '', r.source_provider, r.valid ? 'true' : 'false',
       r.possible ? 'true' : 'false', r.reason ?? '',
+      r.sms_deliverable === undefined ? '' : String(r.sms_deliverable), r.sms_check_reason ?? '',
+      r.lti_type ?? '', r.lti_carrier ?? '',
     ])]
     const csv = csvRows.map((r) => r.map(esc).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -424,7 +465,8 @@ export default function PhoneValidationPage() {
         <div>
           <h1 className="text-xl font-semibold text-ink">Phone Validator</h1>
           <p className="mt-0.5 text-sm text-ink-muted">
-            libphonenumber + self-hosted NANPA prefix database — full numbering metadata, carrier, mobile vs landline. Zero cost per lookup.
+            libphonenumber + self-hosted NANPA prefix database (free) + live Twilio check on US mobiles
+            (~$8/1,000, cached) — catches numbers ported to landline/VoIP that block data can't see.
           </p>
         </div>
         {rows && (
@@ -499,15 +541,23 @@ export default function PhoneValidationPage() {
               numbers may be wrong (they show source "libphonenumber" in the detail view). Re-run the file to retry.
             </div>
           )}
+          {summary.sms_lookup_errors > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              {summary.sms_lookup_errors.toLocaleString()} live Twilio checks failed — those mobiles are kept as sendable
+              but weren't verified. Re-run the file to retry (verified numbers are cached, so retries are free).
+            </div>
+          )}
 
           {/* Summary cards */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             <MetricCard label="Total" value={summary.total} />
             <MetricCard label="Valid" value={summary.valid} sub={`${Math.round(summary.valid / Math.max(1, summary.total) * 100)}%`} />
             <MetricCard label="Mobile" value={summary.mobile} />
             <MetricCard label="Landline" value={summary.fixed_line + summary.fixed_line_or_mobile} />
             <MetricCard label="VoIP" value={summary.voip} />
             <MetricCard label="Bad numbers" value={summary.malformed + summary.impossible + summary.empty} sub="malformed / impossible" />
+            <MetricCard label="Can't text" value={summary.sms_blocked} sub="live Twilio check" />
           </div>
 
           {/* Filter tabs */}
@@ -560,7 +610,10 @@ export default function PhoneValidationPage() {
                       <td className="whitespace-nowrap px-3 py-2 font-mono text-ink">
                         {r.international_format ?? r.input_number ?? <em className="text-ink-muted">empty</em>}
                       </td>
-                      <td className="px-3 py-2"><LineTypeBadge type={r.line_type} /></td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        <LineTypeBadge type={r.line_type} />
+                        {r.sms_deliverable === false && <span className="ml-1"><NoTextBadge reason={r.sms_check_reason} /></span>}
+                      </td>
                       <td className="max-w-[160px] truncate px-3 py-2 text-ink-muted" title={r.carrier ?? ''}>{r.carrier ?? '—'}</td>
                       <td className="max-w-[140px] truncate px-3 py-2 text-ink-muted" title={r.location ?? ''}>{r.location ?? '—'}</td>
                       <td className="px-3 py-2"><StatusBadge valid={r.valid} reason={r.reason} /></td>

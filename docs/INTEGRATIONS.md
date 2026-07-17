@@ -99,6 +99,13 @@ While a call is live, the Retell LLM can call these custom tools (registered on 
 - Retell IP whitelist: `18.98.16.120/30`
 - Number assigned to the SIP trunk
 
+**⚠️ SMS geo-permissions (per-country allowlist — check BEFORE texting a new country):**
+- Twilio silently blocks outbound SMS to any country not enabled at **Console → Messaging → Settings → Geo Permissions**. Failure mode: error **21408** ("permissions disabled for the destination region"), filed under "Fraud" in Twilio's health score.
+- Incident 2026-07-16: 129 CRM sends to US plumbers all blocked because "United States" was unticked (new accounts start with nearly all countries off). Fixed same day by ticking **United States (+1)** (auto-includes Canada) and re-sending — 185 delivered.
+- **Currently enabled: US + Canada (+1) and UK.** Any new destination country (e.g. Australia) must be ticked first or every send fails with 21408.
+- **No REST API exists for SMS geo-permissions** (`messaging.twilio.com/v1/CountryPermissions` 404s; only voice has DialingPermissions) — changes must go through the console UI (Kimi WebBridge or Comet).
+- Unrelated but adjacent: US toll-free (+1833...) → UK mobile fails with error **21612** — toll-free can never text UK, no setting fixes it.
+
 ### Stripe
 - Subscription billing (trial -> paid conversion)
 - Webhook handles `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`

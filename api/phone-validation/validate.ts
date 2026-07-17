@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { validatePhone } from '../lib/phone-validation.js'
 import { enrichResults } from '../lib/phone-enrich.js'
+import { checkSmsDeliverability } from '../lib/twilio-lookup.js'
 import { requireAdminNode } from '../lib/require-admin.js'
 
 // Node runtime: libphonenumber-geo-carrier ships ~13MB of metadata (too big for edge)
@@ -22,5 +23,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { results: [result], enrichment_errors } = await enrichResults([validatePhone(raw, country)])
 
-  return res.status(200).json({ ...result, enrichment_errors })
+  // Live Twilio Lookup for US mobiles (same rule as bulk — see twilio-lookup.ts)
+  let final = result
+  if (result.valid && result.country === 'US' && result.line_type === 'MOBILE' && result.normalized_e164) {
+    const check = (await checkSmsDeliverability([result.normalized_e164])).get(result.normalized_e164)
+    if (check) final = { ...result, ...check }
+  }
+
+  return res.status(200).json({ ...final, enrichment_errors })
 }

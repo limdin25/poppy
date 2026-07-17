@@ -36,6 +36,12 @@ export interface ValidationResult {
   nanpa_prefix_type?: string
   checked_at: string
   cache_ttl: number
+  /** Twilio Lookup live check (US mobiles only): false = number can't receive
+   *  SMS (ported to landline/VoIP without a texting route), null = check failed. */
+  sms_deliverable?: boolean | null
+  sms_check_reason?: string
+  lti_type?: string | null
+  lti_carrier?: string | null
 }
 
 // Maps NANPA Prefix_Type to our LineType
