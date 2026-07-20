@@ -146,6 +146,55 @@ test('referrals page exposes the £100/£100 link', async ({ page }) => {
   await expect(linkInput).toHaveValue(/onboarding\?ref=/)
 })
 
+test('scheduling: exact first-request delay options, follow-up labels, no pace slider', async ({ page }) => {
+  await page.goto(`${GO}/dashboard`)
+  await page.getByPlaceholder('Email').fill(QA_EMAIL)
+  await page.getByPlaceholder('Password').fill(QA_PASSWORD)
+  await page.getByRole('button', { name: /Sign in/i }).click()
+  await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
+
+  await page.getByRole('link', { name: 'Scheduling' }).click()
+  await expect(page.getByText('Initial request scheduling')).toBeVisible({ timeout: 15000 })
+  const delaySelect = page.locator('select')
+  await expect(delaySelect).toBeVisible()
+  const options = await delaySelect.locator('option').allTextContents()
+  expect(options).toEqual(['Right away', 'Few hours', '24 hours', '2 days', '3 days', '4 days', '5 days', '6 days', '1 week'])
+  // Requests-per-day pace control is gone
+  await expect(page.getByText(/requests\/day/i)).toHaveCount(0)
+
+  // Follow-up options use the exact labels
+  await expect(page.getByRole('button', { name: 'No follow-ups' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '3 follow-ups' })).toBeVisible()
+
+  // Changing the delay persists via the settings API
+  await delaySelect.selectOption('48')
+  await expect(page.getByText('First request: 2 days')).toBeVisible({ timeout: 15000 })
+  await page.reload()
+  await expect(page.locator('select')).toHaveValue('48', { timeout: 15000 })
+})
+
+test('social posting: toggle, post preview, posted + eligible sections', async ({ page }) => {
+  await page.goto(`${GO}/dashboard`)
+  await page.getByPlaceholder('Email').fill(QA_EMAIL)
+  await page.getByPlaceholder('Password').fill(QA_PASSWORD)
+  await page.getByRole('button', { name: /Sign in/i }).click()
+  await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
+
+  await page.getByRole('link', { name: 'Social Posting' }).click()
+  await expect(page.getByRole('heading', { name: 'Social Posting' })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText('Automatically share new 5-star reviews as posts')).toBeVisible()
+  await expect(page.getByText('What a post looks like')).toBeVisible()
+  await expect(page.getByText('Sample post — your real 5-star reviews will appear here.')).toBeVisible()
+  await expect(page.getByText('Posted (0)')).toBeVisible()
+  await expect(page.getByText('Recent 5-star reviews (0)')).toBeVisible()
+
+  // Toggling persists auto_post_five_star through the settings API
+  await page.getByRole('switch').click()
+  await expect(page.getByText(/Auto-posting on/i)).toBeVisible({ timeout: 15000 })
+  await page.reload()
+  await expect(page.getByRole('switch')).toHaveAttribute('aria-checked', 'true', { timeout: 15000 })
+})
+
 test('widget embed endpoint serves JS for this business (all ratings, branded)', async ({ request }) => {
   const res = await request.get(`${APP}/api/widget/grid?business-id=${businessId}`)
   expect(res.status()).toBe(200)
