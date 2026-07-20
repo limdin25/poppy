@@ -27,6 +27,20 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop B8: callback attribution
+- **Added:** `api/lib/callback-attribution.ts` — `phoneVariants` (mirror of
+  wk-sms-incoming's), `hasRecentDrop` (outbound + voicemail_dropped +
+  30-day window), `attributeCallback` → permanent `called-back` tag.
+  Guard: `tests/callback-attribution.test.ts`.
+- **Wired (mirrors):** `wk-voice-twiml-incoming` — attribution at the very
+  start, before agent/voicemail routing (missed callbacks flag too); also
+  now sets `contact_id` on the inbound wk_calls insert. `wk-sms-incoming` —
+  same block inside the existing-contact branch (pre-existing contacts
+  only). Both: idempotent tag upsert + move to the Voicemail/Callback
+  column (same-pipeline preferred, `ilike 'voicemail'`). Activation for a
+  number = pointing its Twilio inbound URLs at these functions (go-live
+  step, noted in code).
+
 ### 2026-07-20 — VM drop B7: drop counts everywhere
 - **Added:** `countVoicemailDrops`/`voicemailDropsByAgent` in
   `src/features/crm/lib/callStats.ts` (drops keyed off `voicemail_dropped`

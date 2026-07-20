@@ -71,6 +71,42 @@ function phoneVariants(raw: string): { e164: string; digits: string; variants: s
   return { e164, digits, variants };
 }
 
+// Voicemail-drop callback attribution (VM drop B8). Canonical decision
+// logic + tests: api/lib/callback-attribution.ts (mirrored here — Deno
+// can't import api/). Same constants + column resolution as the voice
+// mirror in wk-voice-twiml-incoming.
+const CALLBACK_TAG = 'called-back';
+const CALLBACK_WINDOW_DAYS = 30;
+
+// deno-lint-ignore no-explicit-any
+async function resolveCallbackColumnId(supa: any, currentColumnId: string | null): Promise<string | null> {
+  if (currentColumnId) {
+    const { data: cur } = await supa
+      .from('wk_pipeline_columns')
+      .select('pipeline_id')
+      .eq('id', currentColumnId)
+      .maybeSingle();
+    if (cur?.pipeline_id) {
+      const { data: vm } = await supa
+        .from('wk_pipeline_columns')
+        .select('id')
+        .eq('pipeline_id', cur.pipeline_id)
+        .ilike('name', 'voicemail')
+        .limit(1)
+        .maybeSingle();
+      if (vm?.id) return vm.id as string;
+    }
+  }
+  const { data: anyVm } = await supa
+    .from('wk_pipeline_columns')
+    .select('id')
+    .ilike('name', 'voicemail')
+    .order('position', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (anyVm?.id as string | undefined) ?? null;
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') {
@@ -153,12 +189,18 @@ serve(async (req: Request) => {
     // 1. Find or create wk_contacts row for this caller.
     const { data: wkContactRow } = await supa
       .from('wk_contacts')
-      .select('id')
+      .select('id, pipeline_column_id')
       .in('phone', fromVariants)
       .limit(1)
       .maybeSingle();
 
     let contactId: string | null = wkContactRow?.id ?? null;
+    // VM drop B8: attribution only applies to contacts that existed BEFORE
+    // this message — a brand-new inbound number can't be a dropped lead.
+    const preExistingColumnId: string | null = wkContactRow?.id
+      ? ((wkContactRow.pipeline_column_id as string | null) ?? null)
+      : null;
+    const preExisting = Boolean(wkContactRow?.id);
 
     if (!contactId) {
       const { data: inserted, error: insErr } = await supa
@@ -248,6 +290,47 @@ serve(async (req: Request) => {
           );
         if (dntErr) console.error('[wk-sms-incoming] do-not-text tag failed', dntErr);
         else console.log(`[wk-sms-incoming] contact ${contactId} opted out (STOP) — tagged do-not-text`);
+      }
+
+      // 3c. Voicemail-drop callback attribution (VM drop B8): a contact we
+      //     voicemail-dropped in the last 30 days texting back gets the
+      //     permanent 'called-back' tag + a move to the Callback/Voicemail
+      //     column — fires on ANY inbound text (even a STOP), because the
+      //     point is "they came back", not what they said. Canonical logic
+      //     + tests: api/lib/callback-attribution.ts.
+      if (preExisting) {
+        try {
+          const since = new Date(Date.now() - CALLBACK_WINDOW_DAYS * 86_400_000).toISOString();
+          const { data: droppedCall } = await supa
+            .from('wk_calls')
+            .select('id')
+            .eq('contact_id', contactId)
+            .eq('direction', 'outbound')
+            .eq('voicemail_dropped', true)
+            .gte('started_at', since)
+            .limit(1)
+            .maybeSingle();
+          if (droppedCall) {
+            const { error: cbErr } = await supa
+              .from('wk_contact_tags')
+              .upsert(
+                { contact_id: contactId, tag: CALLBACK_TAG },
+                { onConflict: 'contact_id,tag', ignoreDuplicates: true },
+              );
+            if (cbErr) console.warn('[wk-sms-incoming] called-back tag failed', cbErr);
+            const columnId = await resolveCallbackColumnId(supa, preExistingColumnId);
+            if (columnId && columnId !== preExistingColumnId) {
+              const { error: moveErr } = await supa
+                .from('wk_contacts')
+                .update({ pipeline_column_id: columnId })
+                .eq('id', contactId);
+              if (moveErr) console.warn('[wk-sms-incoming] callback column move failed', moveErr);
+            }
+            console.log(`[wk-sms-incoming] dropped contact ${contactId} texted back — tagged + moved`);
+          }
+        } catch (e) {
+          console.warn('[wk-sms-incoming] callback attribution failed (continuing):', e);
+        }
       }
 
       // 4. Maybe enqueue an AI warm-up reply. Light guard here (global enabled,

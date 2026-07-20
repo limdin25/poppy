@@ -51,6 +51,52 @@ function escapeXml(s: string): string {
           .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
+// Mirror of wk-sms-incoming's phoneVariants (canonical + tests:
+// api/lib/callback-attribution.ts). Formats Twilio might send vs what
+// wk_contacts.phone might hold.
+function phoneVariants(raw: string): { e164: string; digits: string; variants: string[] } {
+  const trimmed = raw.replace(/^whatsapp:/, '').trim();
+  const digits = trimmed.replace(/[^0-9]/g, '');
+  const e164 = trimmed.startsWith('+') ? trimmed : `+${digits}`;
+  const variants = Array.from(new Set([trimmed, e164, digits].filter(Boolean)));
+  return { e164, digits, variants };
+}
+
+const CALLBACK_TAG = 'called-back';
+const CALLBACK_WINDOW_DAYS = 30;
+
+// Find the "Call back" column (the seeded Voicemail column,
+// requires_followup=true) — preferring the pipeline the contact is
+// already in, falling back to any pipeline's.
+// deno-lint-ignore no-explicit-any
+async function resolveCallbackColumnId(supabase: any, currentColumnId: string | null): Promise<string | null> {
+  if (currentColumnId) {
+    const { data: cur } = await supabase
+      .from('wk_pipeline_columns')
+      .select('pipeline_id')
+      .eq('id', currentColumnId)
+      .maybeSingle();
+    if (cur?.pipeline_id) {
+      const { data: vm } = await supabase
+        .from('wk_pipeline_columns')
+        .select('id')
+        .eq('pipeline_id', cur.pipeline_id)
+        .ilike('name', 'voicemail')
+        .limit(1)
+        .maybeSingle();
+      if (vm?.id) return vm.id as string;
+    }
+  }
+  const { data: anyVm } = await supabase
+    .from('wk_pipeline_columns')
+    .select('id')
+    .ilike('name', 'voicemail')
+    .order('position', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (anyVm?.id as string | undefined) ?? null;
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') {
@@ -89,6 +135,62 @@ serve(async (req: Request) => {
       .eq('e164', to)
       .maybeSingle();
 
+    // Voicemail-drop callback attribution (VM drop B8) — runs at the very
+    // start, BEFORE routing to an agent or voicemail, so a MISSED callback
+    // is flagged exactly like an answered one. If this caller was
+    // voicemail-dropped in the last 30 days: permanent 'called-back' tag +
+    // move to the Callback/Voicemail column. Canonical decision logic +
+    // tests: api/lib/callback-attribution.ts (mirrored here — Deno can't
+    // import api/). NOTE: this only fires for numbers whose Twilio Voice
+    // URL points at this function — repointing a CRM number's inbound URL
+    // here is a go-live step, not a code dependency.
+    let contactId: string | null = null;
+    try {
+      const { variants: fromVariants } = phoneVariants(from);
+      const { data: contactRow } = await supabase
+        .from('wk_contacts')
+        .select('id, pipeline_column_id')
+        .in('phone', fromVariants)
+        .limit(1)
+        .maybeSingle();
+      if (contactRow?.id) {
+        contactId = contactRow.id as string;
+        const since = new Date(Date.now() - CALLBACK_WINDOW_DAYS * 86_400_000).toISOString();
+        const { data: droppedCall } = await supabase
+          .from('wk_calls')
+          .select('id')
+          .eq('contact_id', contactId)
+          .eq('direction', 'outbound')
+          .eq('voicemail_dropped', true)
+          .gte('started_at', since)
+          .limit(1)
+          .maybeSingle();
+        if (droppedCall) {
+          const { error: tagErr } = await supabase
+            .from('wk_contact_tags')
+            .upsert(
+              { contact_id: contactId, tag: CALLBACK_TAG },
+              { onConflict: 'contact_id,tag', ignoreDuplicates: true },
+            );
+          if (tagErr) console.warn('[wk-voice-twiml-incoming] called-back tag failed:', tagErr.message);
+          const columnId = await resolveCallbackColumnId(
+            supabase,
+            (contactRow.pipeline_column_id as string | null) ?? null,
+          );
+          if (columnId && columnId !== contactRow.pipeline_column_id) {
+            const { error: moveErr } = await supabase
+              .from('wk_contacts')
+              .update({ pipeline_column_id: columnId })
+              .eq('id', contactId);
+            if (moveErr) console.warn('[wk-voice-twiml-incoming] callback column move failed:', moveErr.message);
+          }
+          console.log(`[wk-voice-twiml-incoming] dropped contact ${contactId} called back — tagged + moved`);
+        }
+      }
+    } catch (e) {
+      console.warn('[wk-voice-twiml-incoming] callback attribution failed (continuing):', e);
+    }
+
     let agentId: string | null = num?.assigned_agent_id ?? null;
     let agentClientIdentity: string | null = null;
 
@@ -117,6 +219,7 @@ serve(async (req: Request) => {
       await supabase.from('wk_calls').insert({
         twilio_call_sid: callSid,
         agent_id: agentId,
+        contact_id: contactId,
         number_id: num?.id ?? null,
         direction: 'inbound',
         status: 'in_progress',
