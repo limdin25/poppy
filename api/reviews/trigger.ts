@@ -99,7 +99,11 @@ export default async function handler(req: Request): Promise<Response> {
       campaign = created!;
     }
 
-    const [slot] = scheduleSlots(settings as SendSettings, 1);
+    // "When to send the first request" (Right away → 1 week): shift the base
+    // time by the configured delay, then scheduleSlots rolls it into the
+    // 09:00–20:00 send window as usual.
+    const delayMs = ((settings.initial_delay_hours as number) || 0) * 3600_000;
+    const [slot] = scheduleSlots(settings as SendSettings, 1, new Date(Date.now() + delayMs));
     const { data: request, error: reqErr } = await supabase
       .from('review_requests')
       .insert({

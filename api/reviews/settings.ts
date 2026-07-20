@@ -16,7 +16,7 @@ export const config = { runtime: 'edge' };
 const EDITABLE = [
   'smart_messaging', 'sms_template', 'email_subject', 'email_template', 'followup_template',
   'owner_first_name', 'business_display_name', 'followups_enabled', 'followup_count',
-  'followup_gap_days', 'drip_per_day', 'quiet_start', 'quiet_end', 'timezone',
+  'followup_gap_days', 'drip_per_day', 'initial_delay_hours', 'quiet_start', 'quiet_end', 'timezone',
   'sending_paused', 'image_enabled', 'auto_reply_positive', 'auto_post_five_star',
 ] as const;
 
@@ -74,6 +74,10 @@ export default async function handler(req: Request): Promise<Response> {
     }
     if (typeof patch.followup_count === 'number' && (patch.followup_count < 0 || patch.followup_count > 3)) {
       return new Response(JSON.stringify({ error: 'followup_count must be 0-3' }), { status: 400 });
+    }
+    // Right away / few hours / 24h / 2-6 days / 1 week — the only options the UI offers
+    if ('initial_delay_hours' in patch && ![0, 4, 24, 48, 72, 96, 120, 144, 168].includes(patch.initial_delay_hours as number)) {
+      return new Response(JSON.stringify({ error: 'initial_delay_hours must be one of 0, 4, 24, 48, 72, 96, 120, 144, 168' }), { status: 400 });
     }
     if (typeof patch.quiet_start === 'number' && typeof patch.quiet_end === 'number'
       && (patch.quiet_end as number) - (patch.quiet_start as number) < 4) {

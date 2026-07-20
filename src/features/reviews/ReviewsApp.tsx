@@ -7,7 +7,7 @@ import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import { Routes, Route, NavLink, Navigate, useSearchParams } from 'react-router-dom'
 import {
   LayoutDashboard, Users, UserPlus, MessageSquareText, CalendarClock,
-  Star, Blocks, Gift, CreditCard, LogOut, Menu, X,
+  Star, Blocks, Share2, Gift, CreditCard, LogOut, Menu, X,
 } from 'lucide-react'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { Button } from '@/core/ui/Button'
@@ -22,6 +22,7 @@ const MessagingPage = lazy(() => import('./pages/ReviewsMessagingPage'))
 const SchedulingPage = lazy(() => import('./pages/ReviewsSchedulingPage'))
 const ReviewsInboxPage = lazy(() => import('./pages/ReviewsInboxPage'))
 const WidgetsPage = lazy(() => import('./pages/ReviewsWidgetsPage'))
+const SocialPostingPage = lazy(() => import('./pages/ReviewsSocialPostingPage'))
 const ReferralsPage = lazy(() => import('./pages/ReviewsReferralsPage'))
 const BillingPage = lazy(() => import('./pages/ReviewsBillingPage'))
 const OnboardingPage = lazy(() => import('@/features/reviews-onboarding/ReviewsOnboardingPage'))
@@ -34,6 +35,7 @@ const NAV = [
   { to: '/scheduling', label: 'Scheduling', icon: CalendarClock },
   { to: '/reviews', label: 'Reviews', icon: Star },
   { to: '/widgets', label: 'Widgets', icon: Blocks },
+  { to: '/social', label: 'Social Posting', icon: Share2 },
   { to: '/referrals', label: 'Refer a Friend', icon: Gift },
   { to: '/billing', label: 'Billing', icon: CreditCard },
 ]
@@ -149,6 +151,7 @@ function Shell({ session }: { session: ReviewsSession }) {
               <Route path="/scheduling" element={<SchedulingPage />} />
               <Route path="/reviews" element={<ReviewsInboxPage />} />
               <Route path="/widgets" element={<WidgetsPage />} />
+              <Route path="/social" element={<SocialPostingPage />} />
               <Route path="/referrals" element={<ReferralsPage />} />
               <Route path="/billing" element={<BillingPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

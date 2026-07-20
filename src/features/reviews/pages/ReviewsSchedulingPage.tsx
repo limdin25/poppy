@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Pause, Play, ShieldCheck } from 'lucide-react'
 import { Button } from '@/core/ui/Button'
+import { Select } from '@/core/ui/Select'
 import { SectionCard } from '@/core/ui/SectionCard'
 import { useReviewsSession, reviewsApi } from '../lib'
 
@@ -8,11 +9,24 @@ interface Settings {
   sending_paused: boolean
   followup_count: number
   followup_gap_days: number
-  drip_per_day: number
+  initial_delay_hours: number
   quiet_start: number
   quiet_end: number
   attested_at: string | null
 }
+
+// Mirrors Review Harvest's request-scheduling options exactly.
+const INITIAL_DELAY_OPTIONS = [
+  { hours: 0, label: 'Right away' },
+  { hours: 4, label: 'Few hours' },
+  { hours: 24, label: '24 hours' },
+  { hours: 48, label: '2 days' },
+  { hours: 72, label: '3 days' },
+  { hours: 96, label: '4 days' },
+  { hours: 120, label: '5 days' },
+  { hours: 144, label: '6 days' },
+  { hours: 168, label: '1 week' },
+]
 
 export default function ReviewsSchedulingPage() {
   const session = useReviewsSession()
@@ -70,19 +84,26 @@ export default function ReviewsSchedulingPage() {
       </div>
 
       <SectionCard title="Initial request scheduling">
-        <p className="text-sm text-ink-subtle">New contacts are asked right away, drip-paced so reviews arrive naturally.</p>
-        <div className="mt-3">
-          <label className="text-xs font-medium text-ink-subtle">Daily sending pace: {settings.drip_per_day} requests/day</label>
-          <input type="range" min={5} max={100} step={5} value={settings.drip_per_day}
-            onChange={(e) => setSettings({ ...settings, drip_per_day: Number(e.target.value) })}
-            onMouseUp={() => save({ drip_per_day: settings.drip_per_day }, 'Pace updated')}
-            onTouchEnd={() => save({ drip_per_day: settings.drip_per_day }, 'Pace updated')}
-            className="mt-1 w-full accent-brand" />
+        <p className="text-sm text-ink-subtle">How long after a new customer comes in should the first review request go out?</p>
+        <div className="mt-3 max-w-xs">
+          <Select
+            value={settings.initial_delay_hours}
+            disabled={busy}
+            onChange={(e) => {
+              const hours = Number(e.target.value)
+              const label = INITIAL_DELAY_OPTIONS.find((o) => o.hours === hours)?.label ?? `${hours}h`
+              save({ initial_delay_hours: hours }, `First request: ${label.toLowerCase()}`)
+            }}
+          >
+            {INITIAL_DELAY_OPTIONS.map((o) => (
+              <option key={o.hours} value={o.hours}>{o.label}</option>
+            ))}
+          </Select>
         </div>
         <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-ink-subtle">
           <li>Requests only send between {settings.quiet_start}:00 and {settings.quiet_end}:00 (your local time)</li>
           <li>Anything scheduled outside that window rolls to the next morning</li>
-          <li>A steady drip looks organic to Google and keeps opt-outs low</li>
+          <li>A short wait after the job keeps the experience fresh in your customer's mind</li>
         </ul>
       </SectionCard>
 
@@ -91,9 +112,9 @@ export default function ReviewsSchedulingPage() {
         <div className="mt-3 flex gap-2">
           {[0, 1, 2, 3].map((n) => (
             <button key={n} disabled={busy}
-              onClick={() => save({ followup_count: n }, `${n} follow-up${n === 1 ? '' : 's'} set`)}
+              onClick={() => save({ followup_count: n }, n === 0 ? 'No follow-ups set' : `${n} follow-up${n === 1 ? '' : 's'} set`)}
               className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium ${settings.followup_count === n ? 'border-brand bg-brand-50 text-brand-700' : 'border-border text-ink-subtle hover:border-ink-subtle/50'}`}>
-              {n === 0 ? 'None' : `${n} follow-up${n === 1 ? '' : 's'}`}
+              {n === 0 ? 'No follow-ups' : `${n} follow-up${n === 1 ? '' : 's'}`}
             </button>
           ))}
         </div>

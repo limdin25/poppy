@@ -201,6 +201,10 @@ export default async function handler(req: Request): Promise<Response> {
         content,
         requestId: reviewRowId,
       });
+      await supabase
+        .from('gbp_reviews')
+        .update({ social_posted_at: new Date().toISOString() })
+        .eq('id', reviewRowId);
       await logReviewEvent({ businessId, type: 'gbp_post_created', meta: { reviewId: review.id } });
     } catch (err) {
       console.error('[zernio webhook] GBP post failed:', (err as Error).message);
