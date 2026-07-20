@@ -54,3 +54,21 @@ describe('dialer reducer — VOICEMAIL_DROPPED', () => {
     expect(s.voicemailDropped).toBe(false)
   })
 })
+
+describe('dialer reducer — sessionDrops tally (live session counter)', () => {
+  it('increments per drop and survives DIAL_START (session-scoped, not per-call)', () => {
+    let s = reducer(connectedState(), { type: 'VOICEMAIL_DROPPED' })
+    expect(s.sessionDrops).toBe(1)
+    s = reducer(s, { type: 'CALL_ENDED', reason: 'vm_drop' })
+    s = reducer(s, { type: 'OUTCOME_DONE' })
+    s = reducer(s, { type: 'DIAL_START', lead: LEAD, callId: 'call-2' })
+    expect(s.sessionDrops).toBe(1)
+    s = reducer(reducer(s, { type: 'CONNECTED' }), { type: 'VOICEMAIL_DROPPED' })
+    expect(s.sessionDrops).toBe(2)
+  })
+
+  it('resets on STOP (session over)', () => {
+    const s = reducer(reducer(connectedState(), { type: 'VOICEMAIL_DROPPED' }), { type: 'STOP' })
+    expect(s.sessionDrops).toBe(0)
+  })
+})

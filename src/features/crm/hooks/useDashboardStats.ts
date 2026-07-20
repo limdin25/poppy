@@ -11,6 +11,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { countVoicemailDrops } from '../lib/callStats';
 
 export interface DashboardStats {
   callsToday: number;
@@ -19,6 +20,8 @@ export interface DashboardStats {
   spendTodayPence: number;
   answerRatePercent: number;
   connectedNow: number;
+  /** Voicemail drops fired today (wk_calls.voicemail_dropped). */
+  vmDropsToday: number;
   loading: boolean;
 }
 
@@ -29,6 +32,7 @@ const ZERO: DashboardStats = {
   spendTodayPence: 0,
   answerRatePercent: 0,
   connectedNow: 0,
+  vmDropsToday: 0,
   loading: true,
 };
 
@@ -55,7 +59,7 @@ export function useDashboardStats(): DashboardStats {
     // 1. Calls today (count + answered/missed for answer rate)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const callsTodayRes = await (supabase.from('wk_calls' as any) as any)
-      .select('id, status, started_at, agent_id')
+      .select('id, status, started_at, agent_id, voicemail_dropped')
       .gte('started_at', todayIso);
 
     // 2. Calls in last 24h (for rolling answer rate)
@@ -110,6 +114,9 @@ export function useDashboardStats(): DashboardStats {
       spendTodayPence,
       answerRatePercent,
       connectedNow: connectedRes.count ?? 0,
+      vmDropsToday: countVoicemailDrops(
+        (callsTodayRes.data ?? []) as Array<{ voicemail_dropped?: boolean | null }>
+      ),
       loading: false,
     });
   }, []);

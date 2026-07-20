@@ -31,6 +31,8 @@ export interface DialerState {
   isOnHold: boolean;
   /** True once a voicemail drop was fired on the current call. */
   voicemailDropped: boolean;
+  /** Running tally of drops this dialer session (reset on STOP, not per call). */
+  sessionDrops: number;
   pauseAfterCall: boolean;
   campaignId: string | null;
   autoPace: boolean;

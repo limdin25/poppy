@@ -40,7 +40,7 @@ export default function ReportsPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KPI label="Calls" value={r.loading ? '—' : String(r.totalCalls)} />
         <KPI
           label="Answer rate"
@@ -50,6 +50,7 @@ export default function ReportsPage() {
           label="Avg duration"
           value={r.loading || r.avgDurationSec === 0 ? '—' : formatDuration(r.avgDurationSec)}
         />
+        <KPI label="VM drops" value={r.loading ? '—' : String(r.voicemailsDropped)} />
         <KPI label="Total spend" value={r.loading ? '—' : formatPence(r.totalSpendPence)} />
       </div>
 
@@ -97,6 +98,7 @@ export default function ReportsPage() {
               <th className="text-right px-2 py-2 font-semibold">Calls</th>
               <th className="text-right px-2 py-2 font-semibold">Answer %</th>
               <th className="text-right px-2 py-2 font-semibold">Avg dur</th>
+              <th className="text-right px-2 py-2 font-semibold">VM drops</th>
               <th className="text-right px-2 py-2 font-semibold">Spend</th>
               <th className="px-2 py-2"></th>
             </tr>
@@ -114,6 +116,9 @@ export default function ReportsPage() {
                   {a.avgDurationSec ? formatDuration(a.avgDurationSec) : '—'}
                 </td>
                 <td className="px-2 py-2.5 text-right tabular-nums">
+                  {a.voicemailDrops || '—'}
+                </td>
+                <td className="px-2 py-2.5 text-right tabular-nums">
                   {formatPence(a.spendPence)}
                 </td>
                 <td className="px-2 py-2.5">
@@ -123,7 +128,7 @@ export default function ReportsPage() {
             ))}
             {!r.loading && r.leaderboard.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-[12px] text-[#9CA3AF] italic">
+                <td colSpan={8} className="px-4 py-8 text-center text-[12px] text-[#9CA3AF] italic">
                   No agent calls in this range yet.
                 </td>
               </tr>

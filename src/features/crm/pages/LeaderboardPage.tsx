@@ -45,6 +45,7 @@ export default function LeaderboardPage() {
               <th className="text-right px-3 py-2.5 font-semibold">Calls made</th>
               <th className="text-right px-3 py-2.5 font-semibold">Picked up</th>
               <th className="text-right px-3 py-2.5 font-semibold">Messages</th>
+              <th className="text-right px-3 py-2.5 font-semibold">VM drops</th>
               <th className="text-right px-3 py-2.5 font-semibold">Avg duration</th>
               <th className="text-right px-3 py-2.5 font-semibold">Spend</th>
             </tr>
@@ -101,6 +102,9 @@ export default function LeaderboardPage() {
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     {r.messagesSent}
                   </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">
+                    {r.voicemailDrops || '—'}
+                  </td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-[#6B7280]">
                     {r.avgDurationSec > 0 ? formatDuration(r.avgDurationSec) : '—'}
                   </td>
@@ -113,7 +117,7 @@ export default function LeaderboardPage() {
             {!reports.loading && rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-4 py-12 text-center text-[#9CA3AF] italic"
                 >
                   No activity today yet.
@@ -123,7 +127,7 @@ export default function LeaderboardPage() {
             {reports.loading && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-4 py-12 text-center text-[#9CA3AF] italic"
                 >
                   Loading…

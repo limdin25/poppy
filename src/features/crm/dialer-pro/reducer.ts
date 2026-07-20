@@ -17,6 +17,7 @@ export const INITIAL: DialerState = {
   isMuted: false,
   isOnHold: false,
   voicemailDropped: false,
+  sessionDrops: 0,
   pauseAfterCall: typeof window !== 'undefined' && localStorage.getItem(LS_KEY) === 'true',
   campaignId: null,
   autoPace: true,
@@ -93,6 +94,7 @@ export function reducer(s: DialerState, a: DialerAction): DialerState {
     case 'PAUSE_AFTER_CALL':
       return { ...s, pauseAfterCall: a.value };
     case 'VOICEMAIL_DROPPED':
-      return { ...s, voicemailDropped: true };
+      // sessionDrops is a session tally — DIAL_START must not reset it.
+      return { ...s, voicemailDropped: true, sessionDrops: s.sessionDrops + 1 };
   }
 }

@@ -807,6 +807,14 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                   <Phone className="w-4 h-4" /> {state.sessionStarted ? 'Dial next' : 'Start dialer'}
                 </button>
               )}
+              {/* Live session voicemail-drop tally (resets when the session stops) */}
+              {state.sessionDrops > 0 && (
+                <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-[#6B7280]">
+                  <Voicemail className="w-3.5 h-3.5 text-[#3C5A87]" strokeWidth={1.8} />
+                  <span className="tabular-nums font-semibold text-[#1A1A1A]">{state.sessionDrops}</span>
+                  voicemail{state.sessionDrops === 1 ? '' : 's'} dropped this session
+                </div>
+              )}
             </div>
           </div>
         )}

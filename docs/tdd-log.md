@@ -27,6 +27,17 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop B7: drop counts everywhere
+- **Added:** `countVoicemailDrops`/`voicemailDropsByAgent` in
+  `src/features/crm/lib/callStats.ts` (drops keyed off `voicemail_dropped`
+  only — never status='voicemail', which is AMD + counts as answered).
+  Guard: `tests/call-stats.test.ts`.
+- **Wired:** Reports KPI "VM drops" + leaderboard column; dashboard
+  StatCards "VM drops today"; Leaderboard page column; live session tally
+  `sessionDrops` in the dialer reducer (increments on VOICEMAIL_DROPPED,
+  survives DIAL_START, resets on STOP) shown under the Start/Dial-next
+  button. Guard: `tests/dialer-reducer.test.ts › sessionDrops`.
+
 ### 2026-07-20 — VM drop B6: attach-a-recording prompt
 - **Added:** `validateDropRecording` (mp3/wav/m4a, ≤10 MB, extension fallback
   for missing mimes) in `src/features/crm/lib/dropRecordingValidation.ts` —

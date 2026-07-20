@@ -9,6 +9,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { countVoicemailDrops } from '../lib/callStats';
 
 export type ReportRange = 'today' | 'week' | 'month';
 
@@ -21,6 +22,8 @@ export interface AgentLeaderRow {
   spendPence: number;
   /** PR 109: outbound wk_sms_messages count for this agent in range. */
   messagesSent: number;
+  /** Voicemail drops fired by this agent in range. */
+  voicemailDrops: number;
 }
 
 export interface ReportData {
@@ -28,6 +31,8 @@ export interface ReportData {
   answerRatePercent: number;
   avgDurationSec: number;
   totalSpendPence: number;
+  /** Voicemail drops in range — separate from status='voicemail' (AMD). */
+  voicemailsDropped: number;
   hourly: number[]; // 24 entries (or fewer for "today" up to current hour)
   hourLabels: string[];
   leaderboard: AgentLeaderRow[];
@@ -39,6 +44,7 @@ const ZERO: ReportData = {
   answerRatePercent: 0,
   avgDurationSec: 0,
   totalSpendPence: 0,
+  voicemailsDropped: 0,
   hourly: [],
   hourLabels: [],
   leaderboard: [],
@@ -59,6 +65,7 @@ interface CallRow {
   status: string;
   duration_sec: number | null;
   started_at: string | null;
+  voicemail_dropped: boolean | null;
 }
 
 export function useReports(range: ReportRange): ReportData {
@@ -71,7 +78,7 @@ export function useReports(range: ReportRange): ReportData {
     // 1. Calls in range
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const callsRes = await (supabase.from('wk_calls' as any) as any)
-      .select('id, agent_id, status, duration_sec, started_at')
+      .select('id, agent_id, status, duration_sec, started_at, voicemail_dropped')
       .gte('started_at', startIso)
       .order('started_at', { ascending: true });
 
@@ -103,6 +110,7 @@ export function useReports(range: ReportRange): ReportData {
     const answerRatePercent = tried.length > 0 ? Math.round((answered.length / tried.length) * 100) : 0;
     const totalAnsweredDur = answered.reduce((s, c) => s + (c.duration_sec ?? 0), 0);
     const avgDurationSec = answered.length > 0 ? Math.round(totalAnsweredDur / answered.length) : 0;
+    const voicemailsDropped = countVoicemailDrops(calls);
 
     // 4. Hourly bucketing
     let hourly: number[];
@@ -216,6 +224,7 @@ export function useReports(range: ReportRange): ReportData {
           avgDurationSec: ans.length > 0 ? Math.round(totalDur / ans.length) : 0,
           spendPence: b.spend,
           messagesSent: messagesByAgent.get(id) ?? 0,
+          voicemailDrops: countVoicemailDrops(b.calls),
         };
       });
     leaderboard.sort((a, b) => b.calls - a.calls);
@@ -225,6 +234,7 @@ export function useReports(range: ReportRange): ReportData {
       answerRatePercent,
       avgDurationSec,
       totalSpendPence,
+      voicemailsDropped,
       hourly,
       hourLabels,
       leaderboard,

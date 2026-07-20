@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Phone, Users, PoundSterling, Activity, Radio } from 'lucide-react';
+import { Phone, Users, PoundSterling, Activity, Radio, Voicemail } from 'lucide-react';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { formatPence } from '../../data/helpers';
 
@@ -45,10 +45,16 @@ export default function StatCards() {
       icon: Radio,
       hint: 'live calls',
     },
+    {
+      label: 'VM drops today',
+      value: s.loading ? '—' : String(s.vmDropsToday),
+      icon: Voicemail,
+      hint: 'voicemails dropped',
+    },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
       {STATS.map((s) => (
         <div
           key={s.label}
