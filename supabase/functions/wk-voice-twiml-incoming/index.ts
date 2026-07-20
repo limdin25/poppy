@@ -166,25 +166,34 @@ serve(async (req: Request) => {
           .limit(1)
           .maybeSingle();
         if (droppedCall) {
-          const { error: tagErr } = await supabase
+          // .select() makes the upsert report whether it actually inserted:
+          // [] = tag already existed. The column move runs only on the FIRST
+          // callback — later inbound touches (or webhook retries) must not
+          // clobber manual pipeline moves like an agent dragging the card
+          // to Qualified.
+          const { data: tagIns, error: tagErr } = await supabase
             .from('wk_contact_tags')
             .upsert(
               { contact_id: contactId, tag: CALLBACK_TAG },
               { onConflict: 'contact_id,tag', ignoreDuplicates: true },
-            );
+            )
+            .select('contact_id');
           if (tagErr) console.warn('[wk-voice-twiml-incoming] called-back tag failed:', tagErr.message);
-          const columnId = await resolveCallbackColumnId(
-            supabase,
-            (contactRow.pipeline_column_id as string | null) ?? null,
-          );
-          if (columnId && columnId !== contactRow.pipeline_column_id) {
-            const { error: moveErr } = await supabase
-              .from('wk_contacts')
-              .update({ pipeline_column_id: columnId })
-              .eq('id', contactId);
-            if (moveErr) console.warn('[wk-voice-twiml-incoming] callback column move failed:', moveErr.message);
+          const isFirstCallback = Boolean(tagIns && tagIns.length > 0);
+          if (isFirstCallback) {
+            const columnId = await resolveCallbackColumnId(
+              supabase,
+              (contactRow.pipeline_column_id as string | null) ?? null,
+            );
+            if (columnId && columnId !== contactRow.pipeline_column_id) {
+              const { error: moveErr } = await supabase
+                .from('wk_contacts')
+                .update({ pipeline_column_id: columnId })
+                .eq('id', contactId);
+              if (moveErr) console.warn('[wk-voice-twiml-incoming] callback column move failed:', moveErr.message);
+            }
+            console.log(`[wk-voice-twiml-incoming] dropped contact ${contactId} called back — tagged + moved`);
           }
-          console.log(`[wk-voice-twiml-incoming] dropped contact ${contactId} called back — tagged + moved`);
         }
       }
     } catch (e) {

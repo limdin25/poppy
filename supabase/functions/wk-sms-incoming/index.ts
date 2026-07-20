@@ -311,22 +311,30 @@ serve(async (req: Request) => {
             .limit(1)
             .maybeSingle();
           if (droppedCall) {
-            const { error: cbErr } = await supa
+            // .select() makes the upsert report whether it actually inserted:
+            // [] = tag already existed. The column move runs only on the
+            // FIRST callback — later inbound texts (or webhook retries) must
+            // not clobber manual pipeline moves.
+            const { data: tagIns, error: cbErr } = await supa
               .from('wk_contact_tags')
               .upsert(
                 { contact_id: contactId, tag: CALLBACK_TAG },
                 { onConflict: 'contact_id,tag', ignoreDuplicates: true },
-              );
+              )
+              .select('contact_id');
             if (cbErr) console.warn('[wk-sms-incoming] called-back tag failed', cbErr);
-            const columnId = await resolveCallbackColumnId(supa, preExistingColumnId);
-            if (columnId && columnId !== preExistingColumnId) {
-              const { error: moveErr } = await supa
-                .from('wk_contacts')
-                .update({ pipeline_column_id: columnId })
-                .eq('id', contactId);
-              if (moveErr) console.warn('[wk-sms-incoming] callback column move failed', moveErr);
+            const isFirstCallback = Boolean(tagIns && tagIns.length > 0);
+            if (isFirstCallback) {
+              const columnId = await resolveCallbackColumnId(supa, preExistingColumnId);
+              if (columnId && columnId !== preExistingColumnId) {
+                const { error: moveErr } = await supa
+                  .from('wk_contacts')
+                  .update({ pipeline_column_id: columnId })
+                  .eq('id', contactId);
+                if (moveErr) console.warn('[wk-sms-incoming] callback column move failed', moveErr);
+              }
+              console.log(`[wk-sms-incoming] dropped contact ${contactId} texted back — tagged + moved`);
             }
-            console.log(`[wk-sms-incoming] dropped contact ${contactId} texted back — tagged + moved`);
           }
         } catch (e) {
           console.warn('[wk-sms-incoming] callback attribution failed (continuing):', e);

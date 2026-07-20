@@ -8,6 +8,11 @@
 // webhooks (`wk-voice-twiml-incoming`, `wk-sms-incoming`) mirror it inline
 // (Deno deploy can't import from api/). Change both together —
 // tests/callback-attribution.test.ts pins the contract.
+//
+// Once-only rule (implemented in the mirrors): the TAG is idempotent, but
+// the pipeline-column MOVE runs only when the tag upsert actually inserts
+// (first callback). Later inbound touches within the window must not
+// clobber manual pipeline moves.
 
 export const CALLBACK_TAG = 'called-back'
 export const CALLBACK_WINDOW_DAYS = 30

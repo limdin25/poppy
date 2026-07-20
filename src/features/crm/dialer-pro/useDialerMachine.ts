@@ -382,6 +382,12 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
   const dropVoicemail = useCallback(async () => {
     if (phaseRef.current !== 'connected') return;
     if (!state.currentCallId || state.voicemailDropped || dropping) return;
+    // Capture the call BEFORE the await — same isThisCall discipline as the
+    // Twilio event handlers. The invoke has no timeout; if the call ends
+    // (the server-side drop itself frees the agent leg) and the dialer
+    // advances while the request is in flight, a stale response must never
+    // disconnect or re-label the NEXT call.
+    const c = twilioCallRef.current;
     setDropping(true);
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -389,17 +395,34 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
         body: { call_id: state.currentCallId },
       });
       if (error || data?.error) {
-        const msg = (error?.message as string | undefined) ?? (data?.error as string) ?? 'unknown error';
+        // FunctionsHttpError.message is always the generic non-2xx line; the
+        // server's real reason (no recording / call ended / leg not found)
+        // is in the response body on error.context.
+        let msg = (data?.error as string | undefined) ?? (error?.message as string | undefined) ?? 'unknown error';
+        const ctx = (error as { context?: Response } | null)?.context;
+        if (ctx && typeof ctx.json === 'function') {
+          const body = await ctx.json().catch(() => null);
+          if (body?.error) msg = body.error as string;
+        }
         onToast(`Drop failed: ${msg}`, 'error');
         return;
       }
-      dispatch({ type: 'VOICEMAIL_DROPPED' });
-      const c = twilioCallRef.current;
-      twilioCallRef.current = null;
-      if (c) try { c.disconnect(); } catch { /* ignore */ }
-      try { disconnectAllCalls(); } catch { /* ignore */ }
-      dispatch({ type: 'CALL_ENDED', reason: 'vm_drop' });
-      onToast('Voicemail dropped', 'success');
+      if (twilioCallRef.current === c) {
+        // Normal path: still on the same call — mark it, free the agent leg.
+        dispatch({ type: 'VOICEMAIL_DROPPED' });
+        twilioCallRef.current = null;
+        if (c) try { c.disconnect(); } catch { /* ignore */ }
+        try { disconnectAllCalls(); } catch { /* ignore */ }
+        dispatch({ type: 'CALL_ENDED', reason: 'vm_drop' });
+        onToast('Voicemail dropped', 'success');
+      } else if (twilioCallRef.current === null && (phaseRef.current as string) === 'wrap_up') {
+        // The call already ended mid-request (disconnect handler beat us to
+        // wrap-up) and no new call has started — still count the drop.
+        dispatch({ type: 'VOICEMAIL_DROPPED' });
+        onToast('Voicemail dropped', 'success');
+      }
+      // else: a newer call took over — the drop landed server-side
+      // (voicemail_dropped is set); leave the new call untouched.
     } finally {
       setDropping(false);
     }

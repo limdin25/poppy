@@ -1357,7 +1357,7 @@ function WrapUpCard({ lead, endReason, durationSec, columns, columnsLoading = fa
             </span>
             {endReason && (
               <span className="text-[#6B7280] text-[11px] bg-[#F3F3EE] rounded-full px-2 py-0.5">
-                {endReason === 'hangup' ? 'Hangup' : endReason === 'cancel' || endReason === 'reject' ? 'No-answer' : endReason}
+                {endReason === 'hangup' ? 'Hangup' : endReason === 'vm_drop' ? 'Voicemail dropped' : endReason === 'cancel' || endReason === 'reject' ? 'No-answer' : endReason}
               </span>
             )}
           </div>

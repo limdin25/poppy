@@ -27,6 +27,26 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop: adversarial-review fixes
+- **Fixed (major):** `dropVoicemail` stale-response race — the call ref is
+  now captured BEFORE the await; a response landing after the call ended /
+  the dialer advanced can no longer disconnect the next call, force it into
+  wrap-up, or mis-mark it dropped. Same-call teardown, ended-no-new-call
+  still counts the drop, newer-call path is a no-op.
+- **Fixed (major):** callback attribution moved the contact back to the
+  Voicemail column on EVERY inbound touch for 30 days (clobbering manual
+  pipeline moves). The tag upsert now `.select()`s to detect a fresh
+  insert; the column move runs only on the FIRST callback. Both mirrors.
+- **Fixed (minor):** wrap-up chip showed the raw token `vm_drop` — now
+  "Voicemail dropped".
+- **Fixed (minor):** non-2xx drop errors always toasted the generic
+  FunctionsHttpError line; the server's real reason is now read from
+  `error.context` JSON.
+- Findings from a 20-agent adversarial review (6 dimensions × 2-skeptic
+  verify); 4 confirmed / 3 refuted. Refuted: deploy-order select hazards
+  (handled by go-live ordering: migration before deploy) and the
+  lib-path deviation (documented in B6's entry).
+
 ### 2026-07-20 — VM drop B8: callback attribution
 - **Added:** `api/lib/callback-attribution.ts` — `phoneVariants` (mirror of
   wk-sms-incoming's), `hasRecentDrop` (outbound + voicemail_dropped +
