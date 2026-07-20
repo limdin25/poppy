@@ -19,9 +19,14 @@
       "has": [{ "type": "host", "value": "heyelsie.com" }],
       "destination": "/welcome"
     },
+    { "source": "/r/:token", "destination": "/api/reviews/click?token=:token" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
+  "functions": {
+    "api/cron/review-requests.ts": { "maxDuration": 60 },
+    "api/reviews/send-test.ts": { "maxDuration": 30 }
+  },
   "crons": [
     {
       "path": "/api/messages/poll",
@@ -86,6 +91,18 @@
     {
       "path": "/api/cron/crm-jobs-pump",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/review-requests",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/review-reconcile",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/review-weekly-email",
+      "schedule": "0 8 * * 1"
     }
   ]
 }

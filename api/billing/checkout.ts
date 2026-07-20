@@ -25,7 +25,7 @@ export default async function handler(req: Request): Promise<Response> {
   const { businessId } = auth;
 
   try {
-    const { priceId } = await req.json() as { priceId?: string };
+    const { priceId, returnPath } = await req.json() as { priceId?: string; returnPath?: string };
 
     if (!priceId) {
       return new Response(
@@ -65,12 +65,32 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
+    // HeyElsie Reviews tiers: 14-day free trial, card on file, and the
+    // checkout returns to the go.heyelsie.com app instead of the receptionist.
+    const REVIEWS_PRICES = new Set([
+      'price_1TvIMsLdAEhwWg6w9VFZFSJ0',
+      'price_1TvIMtLdAEhwWg6wjAfYPZeq',
+      'price_1TvIMtLdAEhwWg6wiQM7pKvR',
+    ]);
+    const isReviews = REVIEWS_PRICES.has(priceId);
+    const GO_URL = process.env.GO_APP_URL || 'https://go.heyelsie.com';
+
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${APP_URL}/account/billing?success=true`,
-      cancel_url: `${APP_URL}/account/billing?cancelled=true`,
+      success_url: isReviews
+        ? `${GO_URL}${typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : '/onboarding'}?paid=1`
+        : `${APP_URL}/account/billing?success=true`,
+      cancel_url: isReviews
+        ? `${GO_URL}/onboarding?cancelled=1`
+        : `${APP_URL}/account/billing?cancelled=true`,
       metadata: { business_id: businessId },
+      ...(isReviews
+        ? {
+            subscription_data: { trial_period_days: 14 },
+            payment_method_collection: 'always' as const,
+          }
+        : {}),
     };
 
     if (customerId) {

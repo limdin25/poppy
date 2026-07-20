@@ -44,6 +44,8 @@ api/cron/review-weekly-email.ts  — weekly stats email (weekly cron)
 | `review_usage` | Monthly metering: `business_id`, `period_start`, `requests_sent` — enforces the tier cap (50/100/300), pauses at cap, prompts Stripe upgrade |
 | `review_events` | Append-only funnel log (queued/sent/clicked/reviewed/replied) for dashboard + Zapier outbound webhooks |
 | `zapier_webhooks` | Per business outbound hooks: `url`, `event(review.received/request.sent)` + an inbound trigger token for "job done → send request" |
+| `review_widget_settings` | Per business × widget type (popup/carousel/grid): colors, position, show-names toggle — powers the editors; embeds read settings from the script-tag query string (RH pattern) |
+| `review_referrals` | Referral program: referrer user, invitee email, `status(invited→signed_up→paid→rewarded)` — £100/£100 on invitee's first paid invoice, manual payout via /super for v1 |
 
 Reused as-is: `contacts` (customer lists live here; CSV import exists), `businesses` (+ Stripe columns), `feature_flags` (new keys `reviews` + existing gates hide receptionist), `admin_*`.
 

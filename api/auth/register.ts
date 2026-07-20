@@ -16,12 +16,14 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { name, email, password, businessId, businessName } = await req.json() as {
+    const { name, email, password, businessId, businessName, product, ref } = await req.json() as {
       name?: string;
       email?: string;
       password?: string;
       businessId?: string;
       businessName?: string;
+      product?: string;   // 'reviews' → HeyElsie Reviews signup (go.heyelsie.com)
+      ref?: string;       // referrer business id (referral attribution)
     };
 
     if (!name || !email || !password) {
@@ -113,9 +115,46 @@ export default async function handler(req: Request): Promise<Response> {
       }
       bizId = newBiz.id;
 
-      // New sign-ups land in the simple client portal (slim menu). Admins
-      // unlock the full app per account in Admin → Feature Flags.
-      await supabase.from('feature_flags').insert({ business_id: bizId, flag_key: 'simple_portal', enabled: true });
+      if (product === 'reviews') {
+        // Reviews clients get the reviews product only (dashboard on go.heyelsie.com);
+        // the receptionist stays hidden for them.
+        await supabase.from('feature_flags').insert({ business_id: bizId, flag_key: 'reviews', enabled: true });
+        await supabase.from('review_settings').insert({
+          business_id: bizId,
+          owner_first_name: name.split(/\s+/)[0],
+          inbound_token: crypto.randomUUID().replace(/-/g, ''),
+        });
+
+        // Referral attribution: match a pending invite by email, else record
+        // the ?ref= link click as a signed-up referral.
+        const invitedMatch = await supabase
+          .from('review_referrals')
+          .select('id')
+          .eq('invitee_email', email.trim().toLowerCase())
+          .eq('status', 'invited')
+          .limit(1)
+          .maybeSingle();
+        if (invitedMatch.data) {
+          await supabase
+            .from('review_referrals')
+            .update({ invitee_business_id: bizId, status: 'signed_up' })
+            .eq('id', invitedMatch.data.id);
+        } else if (ref && /^[0-9a-f-]{36}$/i.test(ref) && ref !== bizId) {
+          const { data: refBiz } = await supabase.from('businesses').select('id').eq('id', ref).maybeSingle();
+          if (refBiz) {
+            await supabase.from('review_referrals').insert({
+              referrer_business_id: ref,
+              invitee_email: email.trim().toLowerCase(),
+              invitee_business_id: bizId,
+              status: 'signed_up',
+            });
+          }
+        }
+      } else {
+        // New sign-ups land in the simple client portal (slim menu). Admins
+        // unlock the full app per account in Admin → Feature Flags.
+        await supabase.from('feature_flags').insert({ business_id: bizId, flag_key: 'simple_portal', enabled: true });
+      }
     }
 
     // Create team_members entry so AuthProvider can find businessId

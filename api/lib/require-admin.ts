@@ -30,6 +30,29 @@ export async function requireAdmin(req: Request): Promise<{ email: string } | Re
 }
 
 /**
+ * Plain admin_users gate for edge handlers — any allow-listed admin passes,
+ * no OWNER_EMAIL restriction (that lock is specific to the CEO cockpit).
+ * Used by the /super reviews admin routes.
+ */
+export async function requireAdminAny(req: Request): Promise<{ email: string } | Response> {
+  const authHeader = req.headers.get('Authorization')
+  if (!authHeader) return new Response('Unauthorized', { status: 401 })
+
+  const jwt = authHeader.replace('Bearer ', '')
+  const { data: { user } } = await supabaseAdmin.auth.getUser(jwt)
+  if (!user?.email) return new Response('Unauthorized', { status: 401 })
+
+  const { data: admin } = await supabaseAdmin
+    .from('admin_users')
+    .select('email')
+    .eq('email', user.email)
+    .single()
+
+  if (!admin) return new Response('Forbidden', { status: 403 })
+  return { email: admin.email }
+}
+
+/**
  * Same admin_users gate for Node-runtime (req,res) handlers. No OWNER_EMAIL
  * restriction — any allow-listed admin passes (matches api/admin/dashboard.ts).
  */

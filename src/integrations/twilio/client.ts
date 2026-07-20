@@ -115,18 +115,35 @@ export async function releaseNumber(numberSid: string): Promise<void> {
 export async function sendSMS(
   from: string,
   to: string,
-  body: string
+  body: string,
+  opts?: { statusCallback?: string; mediaUrl?: string }
 ): Promise<{ sid: string }> {
   const { accountSid, authToken } = getCredentials();
   const auth = "Basic " + btoa(`${accountSid}:${authToken}`);
+  const params = new URLSearchParams({ From: from, To: to, Body: body });
+  if (opts?.statusCallback) params.set("StatusCallback", opts.statusCallback);
+  if (opts?.mediaUrl) params.set("MediaUrl", opts.mediaUrl);
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
     method: "POST",
     headers: {
       Authorization: auth,
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({ From: from, To: to, Body: body }),
+    body: params,
   });
   if (!res.ok) throw new Error(`Twilio sendSMS failed: ${res.status} ${await res.text()}`);
   return res.json() as Promise<{ sid: string }>;
+}
+
+/** Point a purchased number's inbound-SMS webhook at a URL. */
+export async function setNumberSmsUrl(numberSid: string, smsUrl: string): Promise<void> {
+  const res = await fetch(`${baseUrl()}/IncomingPhoneNumbers/${numberSid}.json`, {
+    method: "POST",
+    headers: {
+      Authorization: getAuthHeader(),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ SmsUrl: smsUrl, SmsMethod: "POST" }),
+  });
+  if (!res.ok) throw new Error(`Twilio setNumberSmsUrl failed: ${res.status} ${await res.text()}`);
 }

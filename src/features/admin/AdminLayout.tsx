@@ -23,12 +23,19 @@ import {
   X,
   ArrowLeft,
   LogOut,
+  Star,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
 
 const navGroups = [
+  {
+    label: 'Reviews',
+    items: [
+      { to: '/admin/reviews', icon: Star, label: 'Review Clients' },
+    ],
+  },
   {
     label: 'Assistant',
     items: [

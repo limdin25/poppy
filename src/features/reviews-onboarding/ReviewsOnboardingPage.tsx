@@ -1,0 +1,390 @@
+// The 10-minute reviews onboarding (go.heyelsie.com/onboarding), modelled on
+// the mapped Review Harvest flow: account → connect Google → upload customers
+// → compliance confirmation (ours) → pick a plan (card, 14-day trial) → done.
+// Handles the two round-trips: Zernio OAuth return and Stripe checkout return.
+
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import Papa from 'papaparse'
+import { Check, Star, Upload, ShieldCheck, PartyPopper } from 'lucide-react'
+import { Button } from '@/core/ui/Button'
+import { Input } from '@/core/ui/Input'
+import { cn } from '@/core/lib/cn'
+import { supabase } from '@/core/hooks/useSupabaseQuery'
+import { REVIEW_PLAN_CARDS, PLAN_FEATURES, reviewsApi } from '@/features/reviews/lib'
+
+type Step = 'account' | 'google' | 'contacts' | 'compliance' | 'plan' | 'done'
+const STEPS: Step[] = ['account', 'google', 'contacts', 'compliance', 'plan', 'done']
+const STEP_LABELS: Record<Step, string> = {
+  account: 'Account', google: 'Google', contacts: 'Customers', compliance: 'Consent', plan: 'Plan', done: 'Done',
+}
+
+const RAIL_BULLETS = [
+  ['📈', 'More reviews mean more calls — buyers pick the business with 400 reviews, not 25'],
+  ['⏱', 'Ten minutes to set up, then it runs itself'],
+  ['💬', 'Personalised texts and emails your customers actually respond to'],
+  ['🤖', 'AI replies to every review for you'],
+  ['🛡', 'Built for UK rules — opt-outs handled automatically'],
+  ['⭐', 'Most businesses see their first new reviews within days'],
+]
+
+function pick(row: Record<string, string>, keys: string[]): string {
+  for (const k of Object.keys(row)) {
+    if (keys.includes(k.trim().toLowerCase())) return row[k]?.trim() ?? ''
+  }
+  return ''
+}
+
+export default function ReviewsOnboardingPage() {
+  const [params, setParams] = useSearchParams()
+  const [step, setStep] = useState<Step>('account')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [hasSession, setHasSession] = useState(false)
+
+  // Account form
+  const [name, setName] = useState('')
+  const [businessName, setBusinessName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+
+  // Google
+  const [location, setLocation] = useState<{ name: string | null; rating: number | null; total: number | null } | null>(null)
+
+  // Contacts
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [imported, setImported] = useState<number | null>(null)
+
+  // Plan
+  const [launched, setLaunched] = useState<string | null>(null)
+
+  const stepIndex = STEPS.indexOf(step)
+
+  // Resolve where the user is in the flow (fresh visit, OAuth return, Stripe return)
+  useEffect(() => {
+    async function resolve() {
+      const { data: { session } } = await supabase.auth.getSession()
+      setHasSession(!!session)
+      if (!session) { setStep('account'); return }
+
+      // Zernio OAuth return
+      if (params.get('connected') === 'googlebusiness' && params.get('accountId')) {
+        setBusy(true)
+        try {
+          const out = await reviewsApi<{ locationName: string | null; avgRating: number | null; totalReviews: number | null }>(
+            '/api/reviews/connect-complete',
+            { body: { profileId: params.get('profileId'), accountId: params.get('accountId') } },
+          )
+          setLocation({ name: out.locationName, rating: out.avgRating, total: out.totalReviews })
+          setParams({}, { replace: true })
+          setStep('contacts')
+        } catch (err) {
+          setError((err as Error).message)
+          setStep('google')
+        }
+        setBusy(false)
+        return
+      }
+
+      // Stripe return
+      if (params.get('paid') === '1') { setStep('done'); return }
+      if (params.get('cancelled') === '1') { setStep('plan'); return }
+
+      // Otherwise: derive the furthest incomplete step from data
+      const [{ data: conn }, { data: settings }, { data: member }] = await Promise.all([
+        supabase.from('gbp_connections').select('status, location_name, avg_rating, total_reviews').limit(1).maybeSingle(),
+        supabase.from('review_settings').select('attested_at').limit(1).maybeSingle(),
+        supabase.from('team_members').select('business_id').eq('user_id', session.user.id).limit(1).maybeSingle(),
+      ])
+      if (!member) { setStep('account'); return }
+      if (conn?.status !== 'connected') { setStep('google'); return }
+      setLocation({ name: conn.location_name, rating: conn.avg_rating ? Number(conn.avg_rating) : null, total: conn.total_reviews })
+      if (!settings?.attested_at) { setStep('contacts'); return }
+      const { data: biz } = await supabase.from('businesses').select('plan').eq('id', member.business_id).single()
+      if (!biz?.plan?.startsWith('reviews_')) { setStep('plan'); return }
+      setStep('done')
+    }
+    resolve()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function createAccount(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name, email, password, businessName,
+          product: 'reviews',
+          ref: params.get('ref') ?? undefined,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Registration failed')
+      await supabase.auth.setSession({ access_token: json.access_token, refresh_token: json.refresh_token })
+      setHasSession(true)
+      setStep('google')
+    } catch (err) {
+      setError((err as Error).message)
+    }
+    setBusy(false)
+  }
+
+  async function connectGoogle() {
+    setBusy(true)
+    setError(null)
+    try {
+      const out = await reviewsApi<{ authUrl: string }>('/api/reviews/connect', { body: { return_to: '/onboarding' } })
+      window.location.href = out.authUrl
+    } catch (err) {
+      setError((err as Error).message)
+      setBusy(false)
+    }
+  }
+
+  function handleFile(file: File) {
+    setError(null)
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const rows = results.data.map((row) => ({
+          name: pick(row, ['full name', 'name', 'customer name']) || `${pick(row, ['first name', 'firstname', 'first'])} ${pick(row, ['last name', 'lastname', 'surname'])}`.trim(),
+          phone: pick(row, ['phone', 'phone number', 'mobile', 'mobile number', 'tel']),
+          email: pick(row, ['email', 'email address', 'e-mail']),
+        })).filter((r) => r.phone || r.email)
+        if (!rows.length) { setError('No usable rows — the CSV needs a Phone or Email column.'); return }
+        try {
+          const out = await reviewsApi<{ imported: number }>('/api/contacts/import', { body: { rows } })
+          setImported(out.imported ?? rows.length)
+        } catch (err) {
+          setError((err as Error).message)
+        }
+      },
+      error: () => setError('Could not read that file — is it a CSV?'),
+    })
+  }
+
+  async function attest() {
+    setBusy(true)
+    setError(null)
+    try {
+      await reviewsApi('/api/reviews/settings', { method: 'PUT', body: { attest: true } })
+      setStep('plan')
+    } catch (err) {
+      setError((err as Error).message)
+    }
+    setBusy(false)
+  }
+
+  async function choosePlan(priceId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      const out = await reviewsApi<{ url: string }>('/api/billing/checkout', { body: { priceId, returnPath: '/onboarding' } })
+      window.location.href = out.url
+    } catch (err) {
+      setError((err as Error).message)
+      setBusy(false)
+    }
+  }
+
+  async function launchFirstCampaign() {
+    setBusy(true)
+    try {
+      const out = await reviewsApi<{ queued: number }>('/api/reviews/campaigns', { body: { type: 'reactivation' } })
+      setLaunched(`${out.queued} review requests queued — they'll start dripping out as soon as your sender number is assigned.`)
+    } catch (err) {
+      setLaunched((err as Error).message)
+    }
+    setBusy(false)
+  }
+
+  const rail = useMemo(() => (
+    <div className="hidden w-80 shrink-0 flex-col justify-center bg-brand p-10 text-white lg:flex">
+      <h2 className="text-2xl font-bold leading-tight">Let's 4x your Google reviews</h2>
+      <ul className="mt-6 space-y-4">
+        {RAIL_BULLETS.map(([icon, text]) => (
+          <li key={text} className="flex gap-3 text-sm leading-snug text-white/90">
+            <span>{icon}</span><span>{text}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-8 text-xs text-white/70">
+        88% of consumers trust online reviews as much as personal recommendations — BrightLocal
+      </p>
+    </div>
+  ), [])
+
+  return (
+    <div className="flex min-h-screen bg-bg">
+      {rail}
+      <div className="flex flex-1 flex-col items-center px-4 py-10">
+        {/* Progress */}
+        <div className="mb-8 flex w-full max-w-md items-center gap-1">
+          {STEPS.slice(0, 5).map((s, i) => (
+            <div key={s} className="flex flex-1 flex-col items-center gap-1">
+              <div className={cn('h-1.5 w-full rounded-full', i <= Math.min(stepIndex, 4) ? 'bg-brand' : 'bg-border')} />
+              <span className={cn('text-[10px]', i <= stepIndex ? 'text-brand font-medium' : 'text-ink-subtle')}>{STEP_LABELS[s]}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="w-full max-w-md">
+          {step === 'account' && (
+            <div>
+              <h1 className="text-2xl font-semibold text-ink">Create your account</h1>
+              <p className="mt-1 text-sm text-ink-subtle">14-day free trial · set up in about 10 minutes</p>
+              {hasSession ? (
+                <div className="mt-6 space-y-3">
+                  <p className="text-sm text-ink">You're already signed in.</p>
+                  <Button onClick={() => setStep('google')}>Continue setup</Button>
+                </div>
+              ) : (
+                <form onSubmit={createAccount} className="mt-6 space-y-3">
+                  <Input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required />
+                  <Input placeholder="Business name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} required />
+                  <Input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                  <Input type="password" placeholder="Choose a password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+                  <p className="text-xs text-ink-subtle">
+                    By continuing you agree to our <a href="https://heyelsie.com/terms" className="underline">terms</a> and{' '}
+                    <a href="https://heyelsie.com/privacy" className="underline">privacy policy</a>.
+                  </p>
+                  <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Creating…' : 'Continue'}</Button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {step === 'google' && (
+            <div>
+              <h1 className="text-2xl font-semibold text-ink">Connect your Google Business Profile</h1>
+              <p className="mt-1 text-sm text-ink-subtle">
+                You connect your own Google account — this lets us see new reviews the moment they land and reply
+                on your behalf.
+              </p>
+              <ul className="mt-4 space-y-2 text-sm text-ink">
+                <li className="flex items-center gap-2"><Check className="text-emerald-500" style={{ width: 16, height: 16 }} /> Stops asking customers who've already reviewed you</li>
+                <li className="flex items-center gap-2"><Check className="text-emerald-500" style={{ width: 16, height: 16 }} /> Powers your live dashboard and rating tracking</li>
+                <li className="flex items-center gap-2"><Check className="text-emerald-500" style={{ width: 16, height: 16 }} /> Lets the AI reply to reviews for you</li>
+              </ul>
+              <Button className="mt-6 w-full" onClick={connectGoogle} disabled={busy}>
+                {busy ? 'Connecting…' : 'Connect with Google'}
+              </Button>
+              <p className="mt-3 text-center text-xs text-ink-subtle">
+                Don't have a Google Business Profile? <a href="https://business.google.com/create" target="_blank" rel="noopener noreferrer" className="underline">Create one free</a>
+              </p>
+            </div>
+          )}
+
+          {step === 'contacts' && (
+            <div>
+              {location && (
+                <div className="mb-4 flex items-center gap-3 rounded-xl bg-emerald-50 p-3">
+                  <Star className="fill-amber-400 text-amber-400" style={{ width: 20, height: 20 }} />
+                  <p className="text-sm text-emerald-800">
+                    <strong>{location.name ?? 'Your business'}</strong> connected
+                    {location.rating ? ` — ${location.rating.toFixed(1)}★ from ${location.total} reviews` : ''}
+                  </p>
+                </div>
+              )}
+              <h1 className="text-2xl font-semibold text-ink">Upload your customer list</h1>
+              <p className="mt-1 text-sm text-ink-subtle">
+                Your past customers are your fastest reviews — most businesses get 10–15% of them to leave one.
+                A CSV export from your job software or spreadsheet works.
+              </p>
+              <button onClick={() => fileRef.current?.click()}
+                className="mt-5 flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-border p-8 hover:border-brand/50">
+                <Upload className="text-ink-subtle" style={{ width: 22, height: 22 }} />
+                <span className="text-sm font-medium text-ink">{imported ? `${imported} contacts imported ✓` : 'Upload CSV (name + phone or email)'}</span>
+              </button>
+              <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
+                onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
+              <div className="mt-4 flex gap-2">
+                <Button variant="ghost" onClick={() => setStep('compliance')}>Skip for now</Button>
+                <Button className="flex-1" onClick={() => setStep('compliance')} disabled={!imported && false}>Continue</Button>
+              </div>
+            </div>
+          )}
+
+          {step === 'compliance' && (
+            <div>
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="text-brand" style={{ width: 22, height: 22 }} />
+                <h1 className="text-2xl font-semibold text-ink">One legal thing (30 seconds)</h1>
+              </div>
+              <p className="mt-2 text-sm text-ink-subtle">
+                UK rules let us text and email <strong>your own customers</strong> about leaving a review. Please confirm:
+              </p>
+              <ul className="mt-4 space-y-2 rounded-xl bg-border/30 p-4 text-sm text-ink">
+                <li>• These contacts are real customers of your business</li>
+                <li>• Their details came from genuine transactions with you</li>
+                <li>• They weren't told they'd never be contacted</li>
+                <li>• Requests go to ALL customers — we never cherry-pick happy ones (Google policy + UK law)</li>
+              </ul>
+              <Button className="mt-5 w-full" onClick={attest} disabled={busy}>
+                {busy ? 'Recording…' : 'I confirm — continue'}
+              </Button>
+            </div>
+          )}
+
+          {step === 'plan' && (
+            <div>
+              <h1 className="text-2xl font-semibold text-ink">Choose your plan</h1>
+              <p className="mt-1 text-sm text-ink-subtle">Every plan has every feature — only the monthly request volume differs. 14-day free trial, cancel anytime.</p>
+              <div className="mt-5 space-y-3">
+                {REVIEW_PLAN_CARDS.map((p) => (
+                  <button key={p.key} onClick={() => choosePlan(p.priceId)} disabled={busy}
+                    className={cn('relative w-full rounded-2xl border p-4 text-left transition-colors hover:border-brand',
+                      p.popular ? 'border-brand bg-brand-50/50' : 'border-border bg-surface')}>
+                    {p.popular && <span className="absolute -top-2 right-4 rounded-full bg-brand px-2.5 py-0.5 text-[10px] font-semibold text-white">POPULAR</span>}
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-sm font-semibold text-ink">{p.name}</span>
+                      <span className="text-lg font-bold text-ink">£{p.price}<span className="text-xs font-normal text-ink-subtle">/mo</span></span>
+                    </div>
+                    <p className="text-xs text-ink-subtle">{p.requests}</p>
+                  </button>
+                ))}
+              </div>
+              <details className="mt-3 text-xs text-ink-subtle">
+                <summary className="cursor-pointer font-medium">What's included (every plan)</summary>
+                <ul className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                  {PLAN_FEATURES.map((f) => <li key={f}>✓ {f}</li>)}
+                </ul>
+              </details>
+            </div>
+          )}
+
+          {step === 'done' && (
+            <div className="text-center">
+              <PartyPopper className="mx-auto text-brand" style={{ width: 40, height: 40 }} />
+              <h1 className="mt-3 text-2xl font-semibold text-ink">You're all set!</h1>
+              <p className="mt-2 text-sm text-ink-subtle">
+                Your trial has started. Our team is assigning your dedicated UK sending number now (usually same
+                day) — requests start dripping out the moment it's live.
+              </p>
+              {imported ? (
+                <div className="mt-5">
+                  <Button onClick={launchFirstCampaign} disabled={busy || !!launched}>
+                    {launched ? 'Campaign armed ✓' : busy ? 'Arming…' : `Arm my first campaign (${imported} customers)`}
+                  </Button>
+                  {launched && <p className="mt-2 text-xs text-emerald-700">{launched}</p>}
+                </div>
+              ) : (
+                <p className="mt-4 text-xs text-ink-subtle">Next: upload your customer list from the dashboard to launch your first reactivation.</p>
+              )}
+              <a href="/dashboard" className="mt-6 block">
+                <Button variant="secondary" className="w-full">Open my dashboard</Button>
+              </a>
+            </div>
+          )}
+
+          {error && <p className="mt-4 text-sm font-medium text-danger">{error}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}

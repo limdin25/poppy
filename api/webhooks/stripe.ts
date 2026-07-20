@@ -16,6 +16,10 @@ const PRICE_TO_PLAN: Record<string, string> = {
   'price_1TTj1DLdAEhwWg6w9uuBcjJl': 'starter',
   'price_1TTj1DLdAEhwWg6wERoybYsY': 'professional',
   'price_1TTj1DLdAEhwWg6w2l8IOzJ9': 'business',
+  // HeyElsie Reviews tiers (product prod_Uv8eim0pBOmEGZ)
+  'price_1TvIMsLdAEhwWg6w9VFZFSJ0': 'reviews_starter',
+  'price_1TvIMtLdAEhwWg6wjAfYPZeq': 'reviews_growth',
+  'price_1TvIMtLdAEhwWg6wiQM7pKvR': 'reviews_pro',
 };
 
 function planFromSubscription(subscription: Stripe.Subscription): string | null {
@@ -68,6 +72,23 @@ export default async function handler(req: Request): Promise<Response> {
           .from('businesses')
           .update({ billing_status: 'active' })
           .eq('stripe_customer_id', customerId);
+
+        // Referral program: the invitee's first PAID invoice (trials invoice £0,
+        // which Stripe doesn't emit invoice.paid for) unlocks the £100/£100 reward.
+        if ((invoice.amount_paid ?? 0) > 0) {
+          const { data: paidBiz } = await supabase
+            .from('businesses')
+            .select('id')
+            .eq('stripe_customer_id', customerId)
+            .maybeSingle();
+          if (paidBiz) {
+            await supabase
+              .from('review_referrals')
+              .update({ status: 'paid' })
+              .eq('invitee_business_id', paidBiz.id)
+              .in('status', ['invited', 'signed_up']);
+          }
+        }
         break;
       }
 

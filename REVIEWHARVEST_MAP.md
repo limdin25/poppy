@@ -7,7 +7,7 @@ Sources: browser walkthrough of Hugo's paying account on dash.reviewharvest.com 
 ## 1. Business + tech intel
 
 - Founder Clay Lawrence, launched 2023, ~$57K MRR / ~850 clients (Mar 2026), team of 5–6, sold via outreach + YouTube case-study flywheel, **US/CA/MX only — they never solved UK SMS**.
-- Stack: **GoHighLevel white-label core** (go.reviewharvest.com → brand.ludicrous.cloud; SMS via GHL LC Phone/Twilio) wrapped in a custom Next.js dashboard (dash.), a TanStack Start onboarding app (onboarding.), an Astro marketing site, Intercom support, Zapier as CRM middleware, Stripe billing (SetupIntent card-on-file), FB Pixel/Cometly/Tolt tracking.
+- Stack: **their own custom software today** — the dashboard customers use (dash.) is a custom React SPA (shadcn/ui + Tailwind v4), onboarding is a custom TanStack Start app, and the widget + social-posting subdomains are custom apps; Astro marketing site, Intercom support, Zapier as CRM middleware, Stripe billing (SetupIntent card-on-file), FB Pixel/Cometly/Tolt tracking. **GoHighLevel is where it started (2023) and still lingers at the edges**: go.reviewharvest.com CNAMEs to brand.ludicrous.cloud (GHL white-label infra) serving their demo-booking calendars, and SMS likely still rides GHL's LC Phone (Twilio resale) — which explains the rebilled ~$5/mo SMS costs and the US/CA/MX-only limit.
 - Login = email OTP code (Auth@access.reviewharvest.com, 10-min expiry). No password.
 - **Pricing reality on the inside**: every tier card in the dashboard says "Includes **$40 account fee**" — Starter $99 = $59 product + $40 fee. Trial on Hugo's account: signed up Jul 18, first charge Jul 30 (~12 days; site says 10-day trial; onboarding rail claims a **45-day money-back guarantee** that their own T&Cs contradict).
 - Legacy parallel offer: done-for-you **$10/review capped at $499/mo**, SMS costs rebilled (~$5/mo), billed for ANY new review regardless of attribution. Page removed Jul 2026; subscriptions now lead.
@@ -64,8 +64,14 @@ Customer-facing review link = raw Google writereview?placeid=… (no tracked red
 - **AI Response Settings**: toggle "Auto-generate responses for 4–5 star reviews" + "Business nickname" field (name the AI uses in replies).
 - Rating filter pills All/5/4/3/2/1, paging count, list of reviews. (Their 1–3★ handling is manual; ours adds the held-for-approval drafts queue.)
 
-### Widgets (`/business/widgets`, separate widget subdomain) → **v2, not in first build**
-- 3 embeddable widgets (Review Popup, Carousel, Grid), colour pickers, live previews, script-tag installer + "email instructions to your web person". ⚠ If we ever build this: FTC/DMCC require widgets to show negative reviews too — no filtering.
+### Widgets (`/business/widgets`, separate widget subdomain) → **v1 — PLAN Stage 10**
+- Top card **Send Installation Instructions**: "Tech Support Email Address" field → emails the install snippets to whoever manages the client's website.
+- 3 editors, each with live preview + Reset + Save Changes + **Installation Guide** modal:
+  - **Review Popup** — bottom-corner toast ("John Smith left a review · Read our N reviews"); Position Left/Right; colors Star `#FFC107` / Background `#FFFFFF` / Text `#000000`.
+  - **Review Carousel** — header "What our customers are saying on Google! · Just a few of our N reviews" + **View on Google Maps** button; colors Star `#FFC107` / Background `#FFFFFF` / Text `#333333`; Button Color `#1567f1` / Button Text `#ffffff`; **Show Reviewer Names** toggle.
+  - **Reviews Grid** — Card colors (Star/Background/Text) + page Background `#F9FAFB` + Button `#333333`; auto-responsive 1 col mobile / 2 tablet / 3 desktop.
+- Install = 2 snippets: `<script src="https://widget.reviewharvest.com/widget/{tag}?business-id={uuid}&tag={tag}&star-color=…&…" defer>` (**all settings ride the query string**) + `<div id="{tag}"></div>` container; guide ends with a Wix/Squarespace/WordPress "not a tech person?" note. "Powered by Review Harvest" branding on every widget.
+- ⚠ FTC/DMCC: widgets must show negative reviews too — no filtering.
 
 ### Social Posting β (`/business/social-posting`) → our GBP-posts feature (Zernio); social networks v2
 - Social Connections, caption source tabs (**Review Comment | Review Reply | Custom**), **Auto Posting** master toggle + per-day Story/Feed toggles Mon–Sun, Upcoming Posts queue, Post Templates.
@@ -73,8 +79,10 @@ Customer-facing review link = raw Google writereview?placeid=… (no tracked red
 ### Integrations (`/integrations`, `/integrations/add`) → CRM connector + Zapier + webhook
 - Catalog: Jobber · Sweep & Go · Workiz · **Webhook** ("receive customer data via webhook from any service") · ResponsiBid · Zapier (5,000+ apps) · Housecall Pro · Launch27. Our v1: CSV + generic inbound webhook + Zapier; UK trade CRMs later.
 
-### Referrals (`/business/referrals`) → v2
-- "Give $100, Get $100" gift-card program, personal link `onboarding.../i/{userId}`, invite form, referral list.
+### Referrals (`/business/referrals`) → **v1 — PLAN Stage 11**
+- "Give $100, Get $100": both sides earn a **$100 gift card once the referee completes their first payment**; choose from 2,000+ brands (Amazon, Starbucks, Target, Walmart, Nike, Airbnb… — Tremendous-style fulfilment service).
+- Personal link `onboarding.reviewharvest.com/i/{userId}` + Copy Link; **Invite a Friend** form (name + email → Send Invitation); **Your Referrals** list with empty state.
+- Ours: £100/£100, reward on first paid Stripe invoice, manual payout via /super queue for v1.
 
 ### Account section → reviews billing page + /super
 - **Overview**: Active Businesses, Billing Model, Account Since, payment method card, connected businesses.
@@ -85,6 +93,18 @@ Customer-facing review link = raw Google writereview?placeid=… (no tracked red
 
 ### Notifications drawer
 - Simple list + refresh, no settings. **No email-preference page exists anywhere** — their product emails are hardcoded.
+
+### Add Business wizard (business switcher → "+ Add Business") → our v2 multi-location
+- 4-step modal: **1 Connect → 2 Select → 3 Plan → 4 Confirm**. Step 1: "Connect a new Google Business Profile location… we'll only request permission to manage your business information" + "Connect with Google". Each added business picks its own plan — this is their multi-location model: **one subscription per location** (hence the per-business "$40 account fee" line on every tier card). Account → Subscription then shows "N of N businesses active" with per-business Manage.
+
+### Widget install mechanics (detail)
+- Popup widget: single `<script src="https://widget.reviewharvest.com/widget/review-popup?business-id={uuid}&tag=…&star-color=…" defer>` in `<head>`.
+- Grid widget: TWO snippets — the script tag in `<head>` **plus** a placement container `<div id="reviews-grid"></div>` where the grid renders. Colours travel as URL-encoded query params on the script src.
+
+### Account analytics (extra metrics detail)
+- "Reviews Collected Over Time — new Google reviews the product generated, across all businesses" (attribution framing: they count reviews *generated*, not all reviews).
+- Rating & Quality panel includes a **reply rate** metric broken down as "N AI-assisted · N of N replied".
+- Engagement Funnel: "how outreach turns into reviews across your account."
 
 ## 4. Onboarding flow (onboarding.reviewharvest.com — TanStack Start)
 

@@ -2,7 +2,7 @@
 
 Phase 0 complete (2026-07-20). This is the execution plan for Phase 1. Grounding: [AUDIT.md](AUDIT.md) (what exists), [ARCHITECTURE.md](ARCHITECTURE.md) (how it fits), [REVIEWHARVEST_MAP.md](REVIEWHARVEST_MAP.md) (what we're cloning).
 
-**Positioning (from research):** Review Harvest is $57K MRR / ~850 clients, runs on white-labelled GoHighLevel, and **does not serve the UK** (US/CA/MX only — they never solved UK SMS). Our pricing mirrors their proven tiers, in pounds, with a custom stack they can't match. No UK-native competitor offers personalized-image reactivation (Cloutly can't send UK SMS; Podium/Birdeye cost 3–8x more).
+**Positioning (from research):** Review Harvest is $57K MRR / ~850 clients, now runs its own custom dashboard/onboarding software (it began as white-labelled GoHighLevel in 2023 and GHL still powers its booking calendars and likely its SMS rails), and **does not serve the UK** (US/CA/MX only — they never solved UK SMS). Our pricing mirrors their proven tiers, in pounds, with a custom stack they can't match. No UK-native competitor offers personalized-image reactivation (Cloutly can't send UK SMS; Podium/Birdeye cost 3–8x more).
 
 ---
 
@@ -14,7 +14,7 @@ Phase 0 complete (2026-07-20). This is the execution plan for Phase 1. Grounding
 | Growth ⭐ Popular | 50–100 | £179/mo | 14-day free, card on file |
 | Pro | 100–300 | £279/mo | 14-day free, card on file |
 
-All features on every tier (4x-reviews claim, automated text & email, reactivation, dynamic follow-ups, AI smart messaging, personalized image requests, auto AI review replies, social review posting, CRM integration, Zapier, unlimited users, 1-1 setup call). "Request" = one send to one contact; follow-ups don't count. Cap → pause + self-serve Stripe upgrade with proration. No free tier, no enterprise tier.
+All features on every tier (4x-reviews claim, automated text & email, reactivation, dynamic follow-ups, AI smart messaging, personalized image requests, auto AI review replies, social review posting, review widgets, referral program, CRM integration, Zapier, unlimited users, 1-1 setup call). "Request" = one send to one contact; follow-ups don't count. Cap → pause + self-serve Stripe upgrade with proration. No free tier, no enterprise tier.
 
 ---
 
@@ -52,6 +52,7 @@ All features on every tier (4x-reviews claim, automated text & email, reactivati
 ### Stage 5 — Client dashboard + go.heyelsie.com (2 days)
 - Cloudflare DNS + Vercel domain + `RootEntry` host branch → `ReviewsApp`.
 - `src/features/reviews/`: stats (reviews this week/month, rating trend, requests sent vs cap, reply activity), reviews list, requests/campaigns, contacts upload, message-thread view, settings, billing.
+- Dashboard right column (per map): Google Reviews card (big rating + count), **Rating Projection** (spinbutton "+N 5-star reviews" + slider → projected rating), **Milestones** (reviews needed per rating level, progress bars), **View on Google Maps** + **Copy Review Link** buttons.
 - Weekly stats email cron (Resend): "You got 6 new reviews this week, rating up to 4.7".
 - Feature flag `reviews`; new signups get reviews-only UI; receptionist hidden for them.
 
@@ -69,11 +70,27 @@ Clone the RH flow shape (see REVIEWHARVEST_MAP.md): account → verify → **con
 ### Stage 9 — Landing page (1 day)
 - Rebuild `LandingPage.tsx` on the RH structure (13 sections — see map): hero **"When someone Googles a plumber, they call the one with 400 reviews — not the one with 25."**, first-25-reviews-free offer, UK verticals, how-it-works, personalized-image showcase, pricing table above, FAQ (UK-adapted), compliance-clean footer (STOP notice). UK English, £.
 
-### Stage 10 — E2E + deploy + verification (1.5 days)
-- Playwright: signup/login, onboarding e2e, CSV upload, **send to Hugo's phone (+447863992555 — confirm this is the number you want)**, personalized image correct name, STOP works, dashboard data, Stripe test checkout, weekly email render. Paste results.
+### Stage 10 — Widgets (1.5 days)
+- Migration `review_widget_settings` (per business × widget type: colors, position, show-names toggle).
+- Public embed endpoint `api/widget/[type].ts`: self-contained JS bundle + reviews JSON from `gbp_reviews` (cached, no auth). Settings ride the script-tag query string (RH pattern) but are also stored server-side for the editor. **No rating filtering — FTC/DMCC require negative reviews shown too.** "Powered by HeyElsie" backlink on every widget (free marketing, RH does the same).
+- 3 widgets, vanilla JS in Shadow DOM (client CSS can't break them):
+  - **Popup** — bottom-corner toast "{Name} left a review · Read our N reviews"; position Left/Right; colors star/background/text (defaults `#FFC107`/`#FFFFFF`/`#000000`).
+  - **Carousel** — header "What our customers are saying on Google!" + View on Google Maps button; colors star/bg/text + button color `#1567f1` + button text `#ffffff`; Show Reviewer Names toggle.
+  - **Grid** — card colors (star/bg/text) + page background `#F9FAFB` + button `#333333`; responsive 1/2/3 columns.
+- Dashboard editor per widget: live preview, color pickers, Reset + Save, **Installation Guide** modal (2 copy-paste snippets: `<script … defer>` + `<div id="{tag}">` container, plus Wix/Squarespace/WordPress plain-English note).
+- **Send Installation Instructions**: tech-support email field → Resend email with the snippets to the client's web person.
+- Tests: embed endpoint serves JS + correct reviews, includes low ratings (no-filter rule), settings persist.
+
+### Stage 11 — Referrals (1 day)
+- Migration `review_referrals`: referrer user, invitee email, status (`invited→signed_up→paid→rewarded`), reward state.
+- Personal link `go.heyelsie.com/onboarding?ref={userId}` (attribution stored at signup) + invite-by-email form (name + email → Resend) + "Your Referrals" list in dashboard.
+- Reward **£100/£100** triggered by invitee's first paid Stripe invoice (webhook flips status) → payout queue in `/super`. v1 fulfilment is manual (Hugo sends the gift card / credit); RH uses a 2,000-brand gift-card service (Tremendous-style) — automate later if volume justifies a Tremendous account.
+
+### Stage 12 — E2E + deploy + verification (1.5 days)
+- Playwright: signup/login, onboarding e2e, CSV upload, **send to Hugo's phone (+447863992555 — confirm this is the number you want)**, personalized image correct name, STOP works, dashboard data (incl. Rating Projection + Milestones render), widget embed renders on a plain HTML page with all ratings shown, referral link attributes a signup, Stripe test checkout, weekly email render. Paste results.
 - Deploy (CLI + .git-hide), Kimi browser-verify landing + dashboard with screenshots, write FINAL_REPORT.md + team onboarding runbook.
 
-**Total: ~13 working days of build.** Definition of DONE per the mission: tsc clean, e2e green, browser-verified, FINAL_REPORT.md. Hard gate: nothing texts a real customer list until Hugo has seen the loop on his own phone.
+**Total: ~15.5 working days of build.** Definition of DONE per the mission: tsc clean, e2e green, browser-verified, FINAL_REPORT.md. Hard gate: nothing texts a real customer list until Hugo has seen the loop on his own phone.
 
 ---
 

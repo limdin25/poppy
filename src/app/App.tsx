@@ -38,6 +38,7 @@ const BillingPage = lazy(() => import('@/features/billing/BillingPage'))
 const AdminApp = lazy(() => import('@/features/admin/AdminApp'))
 const CrmApp = lazy(() => import('@/features/crm/CrmApp'))
 const LandingPage = lazy(() => import('@/features/landing/LandingPage'))
+const ReviewsApp = lazy(() => import('@/features/reviews/ReviewsApp'))
 const PrivacyPolicyPage = lazy(() => import('@/features/legal/PrivacyPolicyPage'))
 const TermsPage = lazy(() => import('@/features/legal/TermsPage'))
 const DpaPage = lazy(() => import('@/features/legal/DpaPage'))
@@ -70,6 +71,19 @@ function RootEntry() {
 }
 
 export default function App() {
+  // go.heyelsie.com serves the HeyElsie Reviews client app in full — its own
+  // login, onboarding and dashboard. (Supabase sessions are per-origin, so the
+  // reviews app owns the whole origin; the receptionist app is untouched.)
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+  // go.localhost → loopback in Chromium; lets Playwright/dev hit the reviews app
+  if (host === 'go.heyelsie.com' || host === 'go.localhost') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <ReviewsApp />
+      </Suspense>
+    )
+  }
+
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
