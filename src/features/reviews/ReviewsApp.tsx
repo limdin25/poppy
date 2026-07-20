@@ -162,6 +162,10 @@ function Shell({ session }: { session: ReviewsSession }) {
 
 export default function ReviewsApp() {
   const [params] = useSearchParams()
+
+  useEffect(() => {
+    document.title = 'HeyElsie Reviews'
+  }, [])
   const [state, setState] = useState<{ loading: boolean; session: ReviewsSession | null; authed: boolean }>({
     loading: true, session: null, authed: false,
   })

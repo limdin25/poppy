@@ -200,10 +200,10 @@ export default function ReviewsDashboardPage() {
             </div>
 
             {/* Milestones */}
-            {milestones.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-ink">Milestones</p>
-                <p className="mb-2 text-[11px] text-ink-subtle">Reviews needed to reach each rating level</p>
+            <div>
+              <p className="text-xs font-semibold text-ink">Milestones</p>
+              <p className="mb-2 text-[11px] text-ink-subtle">Reviews needed to reach each rating level</p>
+              {milestones.length > 0 ? (
                 <div className="space-y-1.5">
                   {milestones.map((m) => (
                     <div key={m.target} className="flex items-center gap-2 text-xs">
@@ -215,8 +215,14 @@ export default function ReviewsDashboardPage() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="rounded-lg bg-border/30 p-2 text-[11px] text-ink-subtle">
+                  {total === 0
+                    ? 'Milestones appear once your Google profile is connected and has its first reviews.'
+                    : 'Your rating is already at the top — keep the reviews coming to hold it there.'}
+                </p>
+              )}
+            </div>
 
             <div className="flex gap-2">
               {conn?.maps_url && (

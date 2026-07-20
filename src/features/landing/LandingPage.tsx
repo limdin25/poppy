@@ -21,16 +21,21 @@ const NAV_LINKS: [string, string][] = [
   ['FAQ', '#faq'],
 ]
 
+/** Progressive-enhancement reveal: content is VISIBLE on first paint (so
+ *  crawlers/no-scroll renders always see it); only below-the-fold elements get
+ *  hidden after mount and animate in on intersection. */
 function Reveal({
   children, delay = 0, className = '',
 }: { children: ReactNode; delay?: number; className?: string }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [shown, setShown] = useState(false)
+  const [hidden, setHidden] = useState(false)
   useEffect(() => {
     const el = ref.current
-    if (!el || typeof IntersectionObserver === 'undefined') { setShown(true); return }
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    if (el.getBoundingClientRect().top < window.innerHeight) return // in view — never hide
+    setHidden(true)
     const io = new IntersectionObserver(
-      ([e]) => { if (e.isIntersecting) { setShown(true); io.disconnect() } },
+      ([e]) => { if (e.isIntersecting) { setHidden(false); io.disconnect() } },
       { threshold: 0.1, rootMargin: '0px 0px -6% 0px' },
     )
     io.observe(el)
@@ -38,7 +43,7 @@ function Reveal({
   }, [])
   return (
     <div ref={ref} style={{ transitionDelay: `${delay}ms` }}
-      className={`transition-all duration-700 ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'} ${className}`}>
+      className={`transition-all duration-700 ${hidden ? 'opacity-0 translate-y-6' : 'opacity-100 translate-y-0'} ${className}`}>
       {children}
     </div>
   )
@@ -108,6 +113,10 @@ const FAQS: [string, string][] = [
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState<number | null>(0)
+
+  useEffect(() => {
+    document.title = 'HeyElsie Reviews — Get 4x more Google reviews'
+  }, [])
 
   return (
     <div className="min-h-screen bg-bg text-ink">
