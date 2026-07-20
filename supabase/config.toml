@@ -346,6 +346,8 @@ verify_jwt = false
 verify_jwt = false
 [functions.wk-dialer-hangup-leg]
 verify_jwt = true
+[functions.wk-voicemail-drop]
+verify_jwt = true
 [functions.wk-leads-next]
 verify_jwt = false
 [functions.wk-leads-distribute]

@@ -51,7 +51,7 @@ function escapeXml(s: string): string {
           .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
-// CANONICAL: src/features/smsv2/lib/buildOutgoingTwiml.ts (vitest pins this).
+// CANONICAL: src/features/crm/lib/buildOutgoingTwiml.ts (vitest pins this).
 // Edge functions can't import from src/, so the body is mirrored here.
 // Keep them in sync — tests live in the canonical location.
 function buildOutgoingTwiml(args: {
@@ -67,14 +67,17 @@ function buildOutgoingTwiml(args: {
 
   // PR 29: timeout bumped from default 30 → 60s so the callee has a
   // full minute to pick up before the leg drops. Mirrors the canonical
-  // src/features/smsv2/lib/buildOutgoingTwiml.ts.
+  // src/features/crm/lib/buildOutgoingTwiml.ts.
+  // Voicemail drop, Option A: the <Number> child leg posts an "answered"
+  // status webhook so wk-voice-status can capture contact_twilio_call_sid
+  // (keyed via ParentCallSid — the child's own SID matches no wk_calls row).
   const dialBlock = [
     `<Dial ${callerIdAttr} answerOnBridge="true" timeout="60" record="record-from-answer-dual"`,
     `      recordingStatusCallback="${escapeXml(args.recordingUrl)}"`,
     `      recordingStatusCallbackEvent="completed"`,
     `      action="${escapeXml(args.statusUrl)}"`,
     `      method="POST">`,
-    `  <Number>${escapeXml(args.to)}</Number>`,
+    `  <Number statusCallback="${escapeXml(args.statusUrl)}" statusCallbackEvent="answered">${escapeXml(args.to)}</Number>`,
     `</Dial>`,
   ].join('\n');
 

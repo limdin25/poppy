@@ -296,6 +296,23 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+    // Voicemail drop, Option A: the speed dialer's <Number statusCallback>
+    // fires on the CONTACT child leg. Its CallSid matches no wk_calls row
+    // (rows key on the parent/browser leg's SID), so capture it onto the
+    // parent's row via ParentCallSid and return — the generic machinery
+    // below is for row-owning legs. Parallel-dial child legs are To=client:
+    // and skip this branch.
+    const parentCallSid = params.ParentCallSid ?? '';
+    const childTo = (params.To ?? '').toLowerCase();
+    if (parentCallSid && childTo && !childTo.startsWith('client:')) {
+      const { error: capErr } = await supabase
+        .from('wk_calls')
+        .update({ contact_twilio_call_sid: callSid })
+        .eq('twilio_call_sid', parentCallSid);
+      if (capErr) console.warn('[wk-voice-status] child-leg SID capture failed:', capErr.message);
+      return new Response('ok', { status: 200 });
+    }
+
     const mapped = mapStatus(twilioStatus);
     const isTerminal = ['completed', 'busy', 'no_answer', 'canceled', 'failed'].includes(mapped);
     const isAnswered = mapped === 'in_progress';

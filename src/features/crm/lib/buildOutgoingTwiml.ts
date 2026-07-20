@@ -49,13 +49,18 @@ export function buildOutgoingTwiml(args: BuildOutgoingTwimlArgs): string {
   // dial leg drops, which Hugo hit while testing with the callee's
   // phone on silent. 60s is the common "give them a minute" pattern;
   // anything beyond that and most carriers route to voicemail anyway.
+  // Voicemail drop, Option A: the <Number> child leg posts an "answered"
+  // status webhook so wk-voice-status can capture contact_twilio_call_sid
+  // (keyed via ParentCallSid — the child's own SID matches no wk_calls row).
+  // Without this the child leg never phones home and the drop would need a
+  // REST lookup on every press.
   const dialBlock = [
     `<Dial ${callerIdAttr} answerOnBridge="true" timeout="60" record="record-from-answer-dual"`,
     `      recordingStatusCallback="${escapeXml(args.recordingUrl)}"`,
     `      recordingStatusCallbackEvent="completed"`,
     `      action="${escapeXml(args.statusUrl)}"`,
     `      method="POST">`,
-    `  <Number>${escapeXml(args.to)}</Number>`,
+    `  <Number statusCallback="${escapeXml(args.statusUrl)}" statusCallbackEvent="answered">${escapeXml(args.to)}</Number>`,
     `</Dial>`,
   ].join('\n');
 

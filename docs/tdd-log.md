@@ -27,6 +27,22 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop B3: drop edge function + contact-leg SID capture
+- **Added:** `executeVoicemailDrop` in `api/lib/voicemail-drop.ts` (canonical;
+  Deno mirror `supabase/functions/wk-voicemail-drop/index.ts`, `verify_jwt=true`
+  in config.toml). Ownership check w/ admin bypass, idempotent already-dropped
+  no-op, terminal-status guard, campaign recording+toggle guards, drop POST to
+  the contact leg, `voicemail_dropped` write. Guard:
+  `tests/voicemail-drop.test.ts › executeVoicemailDrop` (10 cases).
+- **Added (Option A):** `<Number statusCallback statusCallbackEvent="answered">`
+  in both `buildOutgoingTwiml` copies. The child callback's CallSid matches no
+  wk_calls row, so wk-voice-status got an early ParentCallSid-keyed capture
+  branch (parallel-dial client legs skip it via the `client:` guard). Fallback
+  when the capture hasn't landed: REST lookup by ParentCallSid. Guard:
+  `tests/build-outgoing-twiml.test.ts` + fallback case in the executor tests.
+- **Fixed:** stale CANONICAL comment in wk-voice-twiml-outgoing pointed at
+  `src/features/smsv2/…`; corrected to `src/features/crm/lib/…`.
+
 ### 2026-07-20 — VM drop B2: eligibility
 - **Added:** `canDropVoicemail({phase, recordingUrl, dropEnabled, alreadyDropped})`
   — true only when connected + recording present + campaign toggle on + not

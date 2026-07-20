@@ -29,7 +29,10 @@ describe('buildOutgoingTwiml — without transcription URL', () => {
     expect(out).toContain('<Response>');
     expect(out).toContain('<Dial');
     expect(out).toContain('callerId="+447380308316"');
-    expect(out).toContain('<Number>+447863992555</Number>');
+    // VM drop Option A: the contact leg announces itself to wk-voice-status.
+    expect(out).toContain(
+      '<Number statusCallback="https://loggyxryrhqsbtqpteog.supabase.co/functions/v1/wk-voice-status" statusCallbackEvent="answered">+447863992555</Number>',
+    );
     expect(out).not.toContain('<Start>');
     expect(out).not.toContain('<Transcription');
     expect(out).not.toContain('<Stream'); // legacy stream verb is gone
@@ -108,6 +111,6 @@ describe('buildOutgoingTwiml — with transcription URL', () => {
     expect(out).toContain('<Dial');
     expect(out).toContain('callerId="+447380308316"');
     expect(out).toContain('record="record-from-answer-dual"');
-    expect(out).toContain('<Number>+447863992555</Number>');
+    expect(out).toContain('statusCallbackEvent="answered">+447863992555</Number>');
   });
 });
