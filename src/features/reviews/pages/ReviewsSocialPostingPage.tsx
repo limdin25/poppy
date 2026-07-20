@@ -97,7 +97,7 @@ export default function ReviewsSocialPostingPage() {
   return (
     <div className="max-w-2xl space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Social Posting</h1>
+        <h1 className="text-xl font-black tracking-tight text-ink">Social Posting</h1>
         <p className="text-sm text-ink-subtle">Turn your best reviews into posts on your Google profile</p>
       </div>
 

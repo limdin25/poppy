@@ -109,7 +109,7 @@ export default function ReviewsDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-ink">{session.businessName}</h1>
+        <h1 className="text-xl font-black tracking-tight text-ink">{session.businessName}</h1>
         <p className="text-sm text-ink-subtle">Your reviews at a glance</p>
       </div>
 

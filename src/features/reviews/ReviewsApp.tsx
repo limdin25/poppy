@@ -66,7 +66,7 @@ function LoginScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg px-4">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 shadow-card">
-        <h1 className="text-xl font-semibold text-ink">HeyElsie Reviews</h1>
+        <h1 className="text-xl font-black tracking-tight text-ink">HeyElsie Reviews</h1>
         <p className="mt-1 text-sm text-ink-subtle">Sign in to your reviews dashboard</p>
         <form onSubmit={submit} className="mt-6 space-y-4">
           <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -121,7 +121,7 @@ function Shell({ session }: { session: ReviewsSession }) {
         {/* Desktop sidebar */}
         <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-border bg-surface p-4 md:flex">
           <div className="mb-6 px-2">
-            <span className="text-lg font-bold text-brand">HeyElsie</span>
+            <span className="text-lg font-black tracking-tight text-brand">HeyElsie</span>
             <span className="ml-1 text-lg font-light text-ink">Reviews</span>
             <p className="mt-1 truncate text-xs text-ink-subtle">{session.businessName}</p>
           </div>
@@ -130,7 +130,7 @@ function Shell({ session }: { session: ReviewsSession }) {
 
         {/* Mobile top bar */}
         <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border bg-surface px-4 py-3 md:hidden">
-          <span className="text-base font-bold text-brand">HeyElsie <span className="font-light text-ink">Reviews</span></span>
+          <span className="text-base font-black tracking-tight text-brand">HeyElsie <span className="font-light text-ink">Reviews</span></span>
           <button onClick={() => setMenuOpen((v) => !v)} aria-label="Menu">
             {menuOpen ? <X className="h-5 w-5 text-ink" /> : <Menu className="h-5 w-5 text-ink" />}
           </button>
@@ -247,7 +247,7 @@ export default function ReviewsApp() {
           : !state.session.reviewsEnabled && !state.session.impersonating ? (
             state.isAdmin ? (
               <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
-                <h1 className="text-xl font-semibold text-ink">You're signed in with your admin account</h1>
+                <h1 className="text-xl font-black tracking-tight text-ink">You're signed in with your admin account</h1>
                 <p className="max-w-sm text-sm text-ink-subtle">
                   go.heyelsie.com is the client-facing Reviews dashboard. To see a client's view, open them from
                   the admin panel ("View as client") — or pick one now:
@@ -256,7 +256,7 @@ export default function ReviewsApp() {
               </div>
             ) : (
               <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
-                <h1 className="text-xl font-semibold text-ink">This account doesn't have Reviews enabled</h1>
+                <h1 className="text-xl font-black tracking-tight text-ink">This account doesn't have Reviews enabled</h1>
                 <p className="max-w-sm text-sm text-ink-subtle">
                   Your account uses a different HeyElsie product. To add Reviews, start the setup below or contact us.
                 </p>

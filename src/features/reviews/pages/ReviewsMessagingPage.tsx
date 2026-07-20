@@ -107,7 +107,7 @@ export default function ReviewsMessagingPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Messaging</h1>
+        <h1 className="text-xl font-black tracking-tight text-ink">Messaging</h1>
         <p className="text-sm text-ink-subtle">Configure how review requests are sent to your customers</p>
       </div>
 

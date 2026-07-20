@@ -58,7 +58,7 @@ export default function ReviewsReferralsPage() {
   return (
     <div className="max-w-2xl space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Refer a friend</h1>
+        <h1 className="text-xl font-black tracking-tight text-ink">Refer a friend</h1>
         <p className="text-sm text-ink-subtle">Give £100, get £100</p>
       </div>
 

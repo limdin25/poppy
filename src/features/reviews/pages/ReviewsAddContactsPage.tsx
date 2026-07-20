@@ -126,7 +126,7 @@ export default function ReviewsAddContactsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Add contacts</h1>
+        <h1 className="text-xl font-black tracking-tight text-ink">Add contacts</h1>
         <p className="text-sm text-ink-subtle">Add contacts individually or import from a CSV file</p>
       </div>
 

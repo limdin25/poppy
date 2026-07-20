@@ -63,7 +63,7 @@ export default function ReviewsBillingPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Billing</h1>
+        <h1 className="text-xl font-black tracking-tight text-ink">Billing</h1>
         <p className="text-sm text-ink-subtle">Your plan, usage and payment details</p>
       </div>
 
