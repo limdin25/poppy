@@ -29,3 +29,19 @@ export function buildDropTwiml(recordingUrl: string): string {
   if (!/^https?:\/\/\S+$/i.test(url)) throw new Error(`recordingUrl must be an http(s) URL: ${url}`)
   return `<Response><Play>${escapeXml(url)}</Play><Hangup/></Response>`
 }
+
+export interface DropEligibility {
+  /** Dialer machine phase — a drop only makes sense mid-bridge. */
+  phase: string
+  /** Campaign's uploaded drop recording (public url), if any. */
+  recordingUrl: string | null | undefined
+  /** Campaign's voicemail_drop_enabled toggle. */
+  dropEnabled: boolean
+  /** True once this call already had a drop (voicemail_dropped). */
+  alreadyDropped: boolean
+}
+
+/** Single source of truth for the Drop VM button state AND the server guard. */
+export function canDropVoicemail(e: DropEligibility): boolean {
+  return e.phase === 'connected' && Boolean(e.recordingUrl) && e.dropEnabled && !e.alreadyDropped
+}

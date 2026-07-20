@@ -27,6 +27,12 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop B2: eligibility
+- **Added:** `canDropVoicemail({phase, recordingUrl, dropEnabled, alreadyDropped})`
+  — true only when connected + recording present + campaign toggle on + not
+  already dropped. One function drives the button `disabled` state and the
+  server guard. Guard: `tests/voicemail-drop.test.ts › canDropVoicemail`.
+
 ### 2026-07-20 — VM drop B1: drop TwiML builder
 - **Added:** `buildDropTwiml(recordingUrl)` in `api/lib/voicemail-drop.ts` —
   `<Response><Play>{url}</Play><Hangup/></Response>` with XML-escaped url

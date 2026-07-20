@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildDropTwiml } from '../api/lib/voicemail-drop.js'
+import { buildDropTwiml, canDropVoicemail } from '../api/lib/voicemail-drop.js'
 
 // Behaviour 1 — drop TwiML builder. The <Play> URL is interpolated into XML;
 // ghost-dialer's unescaped interpolation bug is the anti-pattern these pin.
@@ -31,5 +31,40 @@ describe('buildDropTwiml', () => {
     expect(() => buildDropTwiml('ftp://cdn.example.com/drop.mp3')).toThrow()
     expect(() => buildDropTwiml('javascript:alert(1)')).toThrow()
     expect(() => buildDropTwiml('not a url')).toThrow()
+  })
+})
+
+// Behaviour 2 — eligibility. Drives both the Drop VM button's disabled state
+// and the server-side guard in wk-voicemail-drop.
+describe('canDropVoicemail', () => {
+  const eligible = {
+    phase: 'connected',
+    recordingUrl: 'https://x.co/drop.mp3',
+    dropEnabled: true,
+    alreadyDropped: false,
+  } as const
+
+  it('true only when connected + recording + enabled + not already dropped', () => {
+    expect(canDropVoicemail({ ...eligible })).toBe(true)
+  })
+
+  it('false when the call is not connected', () => {
+    for (const phase of ['idle', 'dialing', 'ringing', 'wrap_up', 'paused']) {
+      expect(canDropVoicemail({ ...eligible, phase })).toBe(false)
+    }
+  })
+
+  it('false when the campaign has no recording', () => {
+    expect(canDropVoicemail({ ...eligible, recordingUrl: null })).toBe(false)
+    expect(canDropVoicemail({ ...eligible, recordingUrl: undefined })).toBe(false)
+    expect(canDropVoicemail({ ...eligible, recordingUrl: '' })).toBe(false)
+  })
+
+  it('false when the campaign toggle is off', () => {
+    expect(canDropVoicemail({ ...eligible, dropEnabled: false })).toBe(false)
+  })
+
+  it('false when this call already had a drop', () => {
+    expect(canDropVoicemail({ ...eligible, alreadyDropped: true })).toBe(false)
   })
 })
