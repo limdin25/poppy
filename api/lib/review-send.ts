@@ -23,7 +23,7 @@ export interface SendSettings {
 export const DEFAULT_SMS_TEMPLATE =
   'Hey {first_name}, thanks for choosing {business_name}! Would you mind leaving us a quick Google review? It only takes a minute and really helps: {review_link}';
 export const DEFAULT_FOLLOWUP_TEMPLATE =
-  'Hey {first_name}, just a quick follow-up from {business_name} — we’d really appreciate your feedback! {review_link}';
+  'Hey {first_name}, just a quick follow-up from {business_name}. We’d really appreciate your feedback! {review_link}';
 export const DEFAULT_EMAIL_SUBJECT = 'Quick favour, {first_name}?';
 
 export function substitute(template: string, vars: Record<string, string>): string {
@@ -99,7 +99,7 @@ export function composeEmail(opts: {
     <p style="margin:24px 0;">
       <a href="${opts.reviewLink}" style="background:#3C5A87;color:#ffffff;padding:14px 28px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600;">Leave a review</a>
     </p>
-    <p style="color:#6b7280;font-size:14px;">Thanks so much — it really helps.${opts.settings.owner_first_name ? `<br/>— ${opts.settings.owner_first_name}, ${opts.businessName}` : `<br/>— ${opts.businessName}`}</p>
+    <p style="color:#6b7280;font-size:14px;">Thanks so much. It really helps.${opts.settings.owner_first_name ? `<br/>${opts.settings.owner_first_name}, ${opts.businessName}` : `<br/>${opts.businessName}`}</p>
     ${emailFooter(opts.businessName, opts.unsubscribeUrl)}
   </div>`;
   return { subject, html };

@@ -126,7 +126,7 @@ export default function ReviewsContactsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           title="No contacts found"
-          description={contacts.length === 0 ? 'Add contacts to start requesting reviews.' : 'No contacts match your filters — try adjusting them.'}
+          description={contacts.length === 0 ? 'Add contacts to start requesting reviews.' : 'No contacts match your filters. Try adjusting them.'}
         />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-soft">
@@ -146,15 +146,15 @@ export default function ReviewsContactsPage() {
                 const s = STATUS_LABELS[c.status] ?? STATUS_LABELS.none
                 return (
                   <tr key={c.id} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-3 font-medium text-ink">{c.name || '—'}</td>
-                    <td className="px-4 py-3 text-ink-subtle">{c.phone || c.email || '—'}</td>
+                    <td className="px-4 py-3 font-medium text-ink">{c.name || '–'}</td>
+                    <td className="px-4 py-3 text-ink-subtle">{c.phone || c.email || '–'}</td>
                     <td className="px-4 py-3">
                       <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', s.tone)}>{s.label}</span>
                       {c.clicked && c.status !== 'reviewed' && (
                         <span className="ml-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">Clicked</span>
                       )}
                     </td>
-                    <td className="hidden px-4 py-3 text-ink-subtle sm:table-cell">{c.followups_sent || '—'}</td>
+                    <td className="hidden px-4 py-3 text-ink-subtle sm:table-cell">{c.followups_sent || '–'}</td>
                     <td className="hidden px-4 py-3 text-ink-subtle sm:table-cell">{fmtDate(c.created_at)}</td>
                     <td className="px-4 py-3 text-right">
                       {(c.status === 'queued' || c.status === 'in_progress') && (

@@ -84,8 +84,8 @@ export default function ReviewsBillingPage() {
         </div>
         <p className="mt-1.5 text-xs text-ink-subtle">
           Follow-ups are free and don't count. {pct >= 100
-            ? 'You\'ve hit your monthly cap — sending is paused until you upgrade or the month resets.'
-            : pct >= 80 ? 'You\'re close to your cap — consider upgrading so requests never pause.' : ''}
+            ? 'You\'ve hit your monthly cap, so sending is paused until you upgrade or the month resets.'
+            : pct >= 80 ? 'You\'re close to your cap. Consider upgrading so requests never pause.' : ''}
         </p>
       </SectionCard>
 
@@ -125,7 +125,7 @@ export default function ReviewsBillingPage() {
         })}
       </div>
       <p className="text-xs text-ink-subtle">
-        Every plan has every feature — the only difference is monthly request volume. Upgrades pro-rate automatically.
+        Every plan has every feature. The only difference is monthly request volume. Upgrades pro-rate automatically.
       </p>
 
       {onReviewsPlan && (

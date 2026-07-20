@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Star, TrendingUp, MousePointerClick, Send, Users, Copy, ExternalLink, Check } from 'lucide-react'
 import { StatCard } from '@/core/ui/StatCard'
 import { SectionCard } from '@/core/ui/SectionCard'
+import { Button } from '@/core/ui/Button'
 import { cn } from '@/core/lib/cn'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
-import { useReviewsSession } from '../lib'
+import { useReviewsSession, reviewsApi } from '../lib'
 
 type Range = '7d' | '30d' | 'all'
 
@@ -26,6 +28,7 @@ function StarRow({ rating, size = 18 }: { rating: number; size?: number }) {
 
 export default function ReviewsDashboardPage() {
   const session = useReviewsSession()
+  const [params, setParams] = useSearchParams()
   const [range, setRange] = useState<Range>('30d')
   const [copied, setCopied] = useState(false)
   const [projection, setProjection] = useState(0)
@@ -34,6 +37,46 @@ export default function ReviewsDashboardPage() {
   })
   const [conn, setConn] = useState<{ avg_rating: number | null; total_reviews: number | null; review_url: string | null; maps_url: string | null; status: string } | null>(null)
   const [history, setHistory] = useState<DayPoint[]>([])
+  const [connBusy, setConnBusy] = useState(false)
+  const [connMsg, setConnMsg] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const imp = session.impersonating ? session.businessId : null
+
+  // Google connection happens here, after signup. Zernio's OAuth flow returns
+  // the browser to /dashboard?connected=googlebusiness&profileId=…&accountId=…
+  useEffect(() => {
+    if (params.get('connected') !== 'googlebusiness' || !params.get('accountId')) return
+    setConnBusy(true)
+    reviewsApi<{ locationName: string | null }>('/api/reviews/connect-complete', {
+      body: { profileId: params.get('profileId'), accountId: params.get('accountId') },
+      impersonateBusinessId: imp,
+    })
+      .then((out) => {
+        setConnMsg(`${out.locationName ?? 'Your Google profile'} connected ✓`)
+        setRefreshKey((k) => k + 1)
+      })
+      .catch((e) => setConnMsg((e as Error).message))
+      .finally(() => {
+        setConnBusy(false)
+        setParams({}, { replace: true })
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function connectGoogle() {
+    setConnBusy(true)
+    setConnMsg(null)
+    try {
+      const out = await reviewsApi<{ authUrl: string }>('/api/reviews/connect', {
+        body: { return_to: '/dashboard' },
+        impersonateBusinessId: imp,
+      })
+      window.location.href = out.authUrl
+    } catch (err) {
+      setConnMsg((err as Error).message)
+      setConnBusy(false)
+    }
+  }
 
   useEffect(() => {
     const since30 = new Date(Date.now() - 30 * 86400_000).toISOString()
@@ -57,7 +100,8 @@ export default function ReviewsDashboardPage() {
       })
     }
     load()
-  }, [session.businessId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.businessId, refreshKey])
 
   useEffect(() => {
     async function loadHistory() {
@@ -112,6 +156,29 @@ export default function ReviewsDashboardPage() {
         <h1 className="text-3xl font-black tracking-tight text-ink">{session.businessName}</h1>
         <p className="text-sm text-ink-subtle">Your reviews at a glance</p>
       </div>
+
+      {conn?.status !== 'connected' && (
+        <SectionCard title="Connect your Google Business Profile">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-ink">
+                Link your own Google account so we can spot new reviews the moment they land, stop asking customers
+                who've already reviewed you, and let the AI reply for you.
+              </p>
+              <p className="mt-1 text-xs text-ink-subtle">
+                No Google Business Profile yet? <a href="https://business.google.com/create" target="_blank" rel="noopener noreferrer" className="underline">Create one free</a>
+              </p>
+            </div>
+            <Button onClick={connectGoogle} disabled={connBusy} className="shrink-0">
+              {connBusy ? 'Connecting…' : 'Connect with Google'}
+            </Button>
+          </div>
+          {connMsg && <p className="mt-3 text-sm font-medium text-brand-700">{connMsg}</p>}
+        </SectionCard>
+      )}
+      {conn?.status === 'connected' && connMsg && (
+        <p className="text-sm font-medium text-emerald-700">{connMsg}</p>
+      )}
 
       <div>
         <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-subtle">Last 30 days performance</p>
@@ -219,7 +286,7 @@ export default function ReviewsDashboardPage() {
                 <p className="rounded-lg bg-border/30 p-2 text-[11px] text-ink-subtle">
                   {total === 0
                     ? 'Milestones appear once your Google profile is connected and has its first reviews.'
-                    : 'Your rating is already at the top — keep the reviews coming to hold it there.'}
+                    : 'Your rating is already at the top. Keep the reviews coming to hold it there.'}
                 </p>
               )}
             </div>
@@ -237,11 +304,6 @@ export default function ReviewsDashboardPage() {
                 {copied ? 'Copied!' : 'Copy review link'}
               </button>
             </div>
-            {conn?.status !== 'connected' && (
-              <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-700">
-                Google Business Profile not connected yet — <a href="/onboarding" className="font-semibold underline">finish setup</a>.
-              </p>
-            )}
           </div>
         </SectionCard>
       </div>

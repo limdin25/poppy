@@ -85,7 +85,7 @@ export default async function handler(req: Request): Promise<Response> {
     await sendEmail(email, `Welcome to HeyElsie Reviews, ${owner_name.split(/\s+/)[0]}!`, `
     <div style="font-family:sans-serif;line-height:1.6;color:#1c1c28;max-width:520px;margin:0 auto;">
       <h2>Your review engine is being set up</h2>
-      <p>Great speaking with you — your HeyElsie Reviews account for <strong>${business_name}</strong> is ready. Set your password and finish the 10-minute setup:</p>
+      <p>Great speaking with you. Your HeyElsie Reviews account for <strong>${business_name}</strong> is ready. Set your password and finish the 10-minute setup:</p>
       ${actionLink ? `<p><a href="${actionLink}" style="background:#3C5A87;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600;">Set password &amp; continue setup</a></p>` : `<p>Log in at <a href="${goUrl}">${goUrl}</a> using "Forgot password" with this email address.</p>`}
       <p style="color:#6b7280;font-size:14px;">You'll connect your Google profile, upload your customer list, and reviews start arriving within days.</p>
     </div>`).catch(() => {});

@@ -52,7 +52,7 @@ test('marketing landing sells the reviews product with UK pricing', async ({ pag
   await expect(page.getByText(/cherry-picking happy customers/i)).toBeVisible()
 })
 
-test('onboarding: account creation lands on the Google connect step', async ({ page }) => {
+test('onboarding: account creation lands on the customer upload step', async ({ page }) => {
   await page.goto(`${GO}/onboarding`)
   await expect(page.getByRole('heading', { name: /Create your account/i })).toBeVisible()
   await page.getByPlaceholder('Your name').fill('QA Owner')
@@ -60,7 +60,8 @@ test('onboarding: account creation lands on the Google connect step', async ({ p
   await page.getByPlaceholder('Email address').fill(QA_EMAIL)
   await page.getByPlaceholder('Choose a password').fill(QA_PASSWORD)
   await page.getByRole('button', { name: /Continue/i }).click()
-  await expect(page.getByRole('heading', { name: /Connect your Google Business Profile/i })).toBeVisible({ timeout: 20000 })
+  // Google connection is NOT part of onboarding any more; it happens on the dashboard after signup.
+  await expect(page.getByRole('heading', { name: /Upload your customer list/i })).toBeVisible({ timeout: 20000 })
   await grabSession(page)
 })
 
@@ -75,8 +76,9 @@ test('reviews dashboard renders for the new account (login flow)', async ({ page
   await expect(page.getByText('Requests sent', { exact: false }).first()).toBeVisible()
   // Rating projection + milestones card
   await expect(page.getByText('Rating projection')).toBeVisible()
-  // Not connected yet → setup nudge shows
-  await expect(page.getByText(/not connected yet/i)).toBeVisible()
+  // Google connection lives here post-signup: the connect card shows until linked
+  await expect(page.getByText('Connect your Google Business Profile').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /Connect with Google/i })).toBeVisible()
   await grabSession(page)
 
   const { data } = await page.evaluate(async (token) => {
@@ -184,7 +186,7 @@ test('social posting: toggle, post preview, posted + eligible sections', async (
   await expect(page.getByRole('heading', { name: 'Social Posting' })).toBeVisible({ timeout: 15000 })
   await expect(page.getByText('Automatically share new 5-star reviews as posts')).toBeVisible()
   await expect(page.getByText('What a post looks like')).toBeVisible()
-  await expect(page.getByText('Sample post — your real 5-star reviews will appear here.')).toBeVisible()
+  await expect(page.getByText(/Sample post/)).toBeVisible()
   await expect(page.getByText('Posted (0)')).toBeVisible()
   await expect(page.getByText('Recent 5-star reviews (0)')).toBeVisible()
 

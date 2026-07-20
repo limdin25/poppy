@@ -36,7 +36,7 @@ const COLOR_FIELDS: Record<WidgetType, Array<{ key: string; label: string }>> = 
 const TITLES: Record<WidgetType, { title: string; blurb: string }> = {
   popup: { title: 'Review popup', blurb: 'Pops up in a bottom corner of your website with your latest reviews.' },
   carousel: { title: 'Review carousel', blurb: 'A rotating showcase of your Google reviews for any page section.' },
-  grid: { title: 'Reviews grid', blurb: 'A responsive wall of reviews — 1 column on mobile, 3 on desktop.' },
+  grid: { title: 'Reviews grid', blurb: 'A responsive wall of reviews: 1 column on mobile, 3 on desktop.' },
 }
 
 function MiniStars({ color }: { color: string }) {
@@ -101,7 +101,7 @@ export default function ReviewsWidgetsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-3xl font-black tracking-tight text-ink">Widgets</h1>
-        <p className="text-sm text-ink-subtle">Show your Google reviews on your own website. All reviews are shown — positive and negative alike (that's the law, and it builds trust).</p>
+        <p className="text-sm text-ink-subtle">Show your Google reviews on your own website. All reviews are shown, positive and negative alike (that's the law, and it builds trust).</p>
       </div>
 
       <SectionCard title="Send installation instructions" action={<Mail className="text-brand" style={{ width: 16, height: 16 }} />}>
@@ -131,7 +131,7 @@ export default function ReviewsWidgetsPage() {
                 <div className="max-w-xs rounded-xl p-4 shadow-card" style={{ background: bg, color: text }}>
                   <p className="text-sm font-semibold">{type === 'popup' ? 'Sally S. left a review' : 'What our customers are saying on Google!'}</p>
                   <div className="mt-1"><MiniStars color={star} /></div>
-                  {type !== 'popup' && <p className="mt-2 text-xs opacity-80">"Brilliant service, quick and tidy — highly recommend."</p>}
+                  {type !== 'popup' && <p className="mt-2 text-xs opacity-80">"Brilliant service, quick and tidy. Highly recommend."</p>}
                   {type !== 'popup' && (
                     <span className="mt-3 inline-block rounded-lg px-3 py-1.5 text-xs font-semibold"
                       style={{ background: String(s['button-color'] ?? '#1567f1'), color: String(s['button-text-color'] ?? '#ffffff') }}>
@@ -209,11 +209,11 @@ export default function ReviewsWidgetsPage() {
                 </div>
               </div>
             ) : (
-              <p className="font-medium text-ink">2. That's it — the popup places itself.</p>
+              <p className="font-medium text-ink">2. That's it. The popup places itself.</p>
             )}
             <p className="text-xs text-ink-subtle">
               Not a tech person? On Wix, Squarespace or WordPress look for "Add HTML", "Custom Code" or "Embed"
-              in your site editor and paste the snippets there — or use the email button above and we'll send
+              in your site editor and paste the snippets there, or use the email button above and we'll send
               instructions to your web person.
             </p>
           </div>

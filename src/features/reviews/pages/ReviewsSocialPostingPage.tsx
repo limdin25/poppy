@@ -25,7 +25,7 @@ function firstName(name: string | null) {
 function PostPreview({ review, businessName }: { review: Review | null; businessName: string }) {
   const text = review?.comment
     ? review.comment.slice(0, 1200)
-    : 'Brilliant service from start to finish — turned up on time, tidy work, fair price. Wouldn’t use anyone else.'
+    : 'Brilliant service from start to finish: turned up on time, tidy work, fair price. Wouldn’t use anyone else.'
   const author = review ? firstName(review.reviewer_name) : 'Sarah'
   return (
     <div className="rounded-2xl border border-border bg-surface p-4 shadow-soft">
@@ -43,8 +43,8 @@ function PostPreview({ review, businessName }: { review: Review | null; business
           <Star key={i} style={{ width: 16, height: 16 }} className="fill-amber-400 text-amber-400" />
         ))}
       </div>
-      <p className="mt-2 text-sm text-ink">&ldquo;{text}&rdquo; — {author}</p>
-      {!review && <p className="mt-2 text-[11px] text-ink-subtle">Sample post — your real 5-star reviews will appear here.</p>}
+      <p className="mt-2 text-sm text-ink">&ldquo;{text}&rdquo; ({author})</p>
+      {!review && <p className="mt-2 text-[11px] text-ink-subtle">Sample post. Your real 5-star reviews will appear here.</p>}
     </div>
   )
 }
@@ -87,7 +87,7 @@ export default function ReviewsSocialPostingPage() {
     setMsg(null)
     try {
       await reviewsApi('/api/reviews/settings', { method: 'PUT', body: { auto_post_five_star: v }, impersonateBusinessId: imp })
-      setMsg(v ? 'Auto-posting on — new 5-star reviews will be shared automatically.' : 'Auto-posting off.')
+      setMsg(v ? 'Auto-posting on. New 5-star reviews will be shared automatically.' : 'Auto-posting off.')
     } catch (err) {
       setMsg((err as Error).message)
       setAutoPost(!v)
@@ -104,7 +104,7 @@ export default function ReviewsSocialPostingPage() {
       <SectionCard title="Auto-posting" action={<Share2 className="text-brand" style={{ width: 16, height: 16 }} />}>
         <div className="flex items-center justify-between gap-3 rounded-xl bg-border/30 px-3 py-2">
           <span className="text-sm text-ink">Automatically share new 5-star reviews as posts<br />
-            <span className="text-xs text-ink-subtle">Only reviews with a sentence or two of text are shared — star-only and very short reviews are skipped</span></span>
+            <span className="text-xs text-ink-subtle">Only reviews with a sentence or two of text are shared. Star-only and very short reviews are skipped</span></span>
           <Switch checked={autoPost} onChange={toggle} />
         </div>
       </SectionCard>
@@ -133,7 +133,7 @@ export default function ReviewsSocialPostingPage() {
                   </span>
                   <span className="text-xs text-ink-subtle">Review from {fmtDate(r.review_created_at)}</span>
                 </div>
-                <p className="mt-1.5 text-sm text-ink">&ldquo;{(r.comment ?? '').slice(0, 200)}&rdquo; — {firstName(r.reviewer_name)}</p>
+                <p className="mt-1.5 text-sm text-ink">&ldquo;{(r.comment ?? '').slice(0, 200)}&rdquo; ({firstName(r.reviewer_name)})</p>
               </div>
             ))}
           </div>
@@ -149,7 +149,7 @@ export default function ReviewsSocialPostingPage() {
           <div className="space-y-3">
             <p className="text-xs text-ink-subtle">
               {autoPost
-                ? 'These arrived before auto-posting was set up — new 5-star reviews post automatically from now on.'
+                ? 'These arrived before auto-posting was set up. New 5-star reviews post automatically from now on.'
                 : 'Turn on auto-posting above to share new 5-star reviews like these automatically.'}
             </p>
             {eligible.map((r) => (
@@ -162,7 +162,7 @@ export default function ReviewsSocialPostingPage() {
                   </div>
                   <span className="text-xs text-ink-subtle">{fmtDate(r.review_created_at)}</span>
                 </div>
-                <p className="mt-1.5 text-sm text-ink">&ldquo;{(r.comment ?? '').slice(0, 200)}&rdquo; — {firstName(r.reviewer_name)}</p>
+                <p className="mt-1.5 text-sm text-ink">&ldquo;{(r.comment ?? '').slice(0, 200)}&rdquo; ({firstName(r.reviewer_name)})</p>
               </div>
             ))}
           </div>

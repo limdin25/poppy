@@ -138,8 +138,8 @@ export default function ReviewsSchedulingPage() {
               Before anything sends, confirm your customer list meets UK rules: these are your own customers, their
               details were collected during real transactions, and they were offered an opt-out.
             </p>
-            <Button size="sm" disabled={busy} onClick={() => save({ attest: true }, 'Confirmation recorded — you can now launch campaigns')}>
-              I confirm — record it
+            <Button size="sm" disabled={busy} onClick={() => save({ attest: true }, 'Confirmation recorded. You can now launch campaigns')}>
+              I confirm, record it
             </Button>
           </div>
         )}

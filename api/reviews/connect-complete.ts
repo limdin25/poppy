@@ -58,7 +58,7 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('business_id', auth.businessId)
       .maybeSingle();
     if (!conn || conn.zernio_profile_id !== profileId) {
-      return new Response(JSON.stringify({ error: 'Connection mismatch — restart the Google connect step' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Connection mismatch. Restart the Google connect step' }), { status: 400 });
     }
 
     const details = await getLocationDetails(accountId);
@@ -136,7 +136,7 @@ export default async function handler(req: Request): Promise<Response> {
       if (!pending) {
         await supabase.from('review_number_requests').insert({
           business_id: auth.businessId,
-          note: 'Auto-created at GBP connect — assign a UK long code so SMS requests can send',
+          note: 'Auto-created at GBP connect. Assign a UK long code so SMS requests can send',
         });
       }
     }

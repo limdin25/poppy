@@ -72,12 +72,12 @@ const FEATURES = [
   {
     icon: ImageIcon,
     title: 'Personalised image requests',
-    body: 'Every request includes a photo of your team with the customer\'s own first name on it — "Hi Sally!". People stop scrolling for their own name, and that\'s why these convert several times better than a plain text.',
+    body: 'Every request includes a photo of your team with the customer\'s own first name on it: "Hi Sally!". People stop scrolling for their own name, and that\'s why these convert several times better than a plain text.',
   },
   {
     icon: RefreshCw,
     title: 'Review reactivation',
-    body: 'Your past customers are sitting on hundreds of reviews you never asked for. Upload the list once — we drip requests out gradually so the reviews land naturally, week after week.',
+    body: 'Your past customers are sitting on hundreds of reviews you never asked for. Upload the list once, and we drip requests out gradually so the reviews land naturally, week after week.',
   },
   {
     icon: MessageSquareText,
@@ -87,12 +87,12 @@ const FEATURES = [
   {
     icon: Bot,
     title: 'AI replies to every review',
-    body: 'Great replies help ranking and show customers you care. Our AI drafts a personal reply to each review — 5-star thank-yous post automatically, tricky ones wait for your approval.',
+    body: 'Great replies help ranking and show customers you care. Our AI drafts a personal reply to each review: 5-star thank-yous post automatically, tricky ones wait for your approval.',
   },
   {
     icon: Share2,
     title: 'Reviews become marketing',
-    body: '5-star reviews can auto-post to your Google profile as fresh content, and website widgets show your reviews on your own site — honestly, all of them.',
+    body: '5-star reviews can auto-post to your Google profile as fresh content, and website widgets show your reviews on your own site (honestly, all of them).',
   },
   {
     icon: Plug,
@@ -115,14 +115,14 @@ const PLAN_BULLETS = [
 ]
 
 const FAQS: [string, string][] = [
-  ['Who is HeyElsie Reviews for?', 'UK home-service businesses — plumbers, electricians, roofers, cleaners, landscapers and every trade in between. If your happy customers "keep meaning to" leave a review, this is built for you.'],
+  ['Who is HeyElsie Reviews for?', 'UK home-service businesses: plumbers, electricians, roofers, cleaners, landscapers and every trade in between. If your happy customers "keep meaning to" leave a review, this is built for you.'],
   ['How long does setup take?', 'About 10 minutes: connect your Google profile, upload your customer list (or connect your job software), and you\'re live. We also do it with you on a free 1-1 setup call.'],
-  ['How quickly will I see reviews?', 'Reactivating a past-customer list typically produces the first new reviews within days. Roughly 10–15% of past customers and 20–30% of fresh customers leave one — your mileage varies with your service quality.'],
-  ['Can you hide or filter out bad reviews?', 'No — and be wary of anyone who says they can. Only asking "happy" customers (review gating) breaks Google\'s rules and, since April 2025, UK law (the DMCC Act). We ask ALL your customers, which keeps your profile safe and your rating honest.'],
-  ['Do my customers get spammed?', 'Never. One polite ask plus up to three gentle reminders, only during daytime hours, with a working opt-out on every message. Anyone who replies STOP is never contacted again — on any channel.'],
-  ['What\'s a "request"? What happens if I hit my limit?', 'A request is one review ask to one customer — follow-ups are free and don\'t count. Hit your monthly cap and sending simply pauses until you upgrade (takes one click) or the month rolls over.'],
-  ['Which review sites do you support?', 'Google — because that\'s what wins you jobs. When someone searches "plumber near me", Google reviews decide who they call.'],
-  ['Does it work with my job software?', 'Yes — via Zapier (5,000+ apps) or our simple webhook. And a spreadsheet upload always works.'],
+  ['How quickly will I see reviews?', 'Reactivating a past-customer list typically produces the first new reviews within days. Roughly 10–15% of past customers and 20–30% of fresh customers leave one. Your mileage varies with your service quality.'],
+  ['Can you hide or filter out bad reviews?', 'No, and be wary of anyone who says they can. Only asking "happy" customers (review gating) breaks Google\'s rules and, since April 2025, UK law (the DMCC Act). We ask ALL your customers, which keeps your profile safe and your rating honest.'],
+  ['Do my customers get spammed?', 'Never. One polite ask plus up to three gentle reminders, only during daytime hours, with a working opt-out on every message. Anyone who replies STOP is never contacted again, on any channel.'],
+  ['What\'s a "request"? What happens if I hit my limit?', 'A request is one review ask to one customer. Follow-ups are free and don\'t count. Hit your monthly cap and sending simply pauses until you upgrade (takes one click) or the month rolls over.'],
+  ['Which review sites do you support?', 'Google, because that\'s what wins you jobs. When someone searches "plumber near me", Google reviews decide who they call.'],
+  ['Does it work with my job software?', 'Yes, via Zapier (5,000+ apps) or our simple webhook. And a spreadsheet upload always works.'],
   ['Is there a contract?', 'No contract. 14-day free trial, cancel any time from your dashboard.'],
   ['Do you write fake reviews?', 'Absolutely not. Every review comes from your real customers, in their own words. We just make asking effortless.'],
 ]
@@ -142,7 +142,7 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0)
 
   useEffect(() => {
-    document.title = 'HeyElsie Reviews — Get 4x more Google reviews'
+    document.title = 'HeyElsie Reviews: Get 4x more Google reviews'
   }, [])
 
   return (
@@ -197,12 +197,12 @@ export default function LandingPage() {
             <Reveal delay={80}>
               <h1 className={`mt-6 text-balance text-4xl leading-[1.05] sm:text-5xl md:text-6xl ${DISPLAY}`}>
                 When someone Googles a plumber, they call the one with{' '}
-                <span className="text-[#FDCCA9]">400 reviews</span> — not the one with 25.
+                <span className="text-[#FDCCA9]">400 reviews</span>, not the one with 25.
               </h1>
             </Reveal>
             <Reveal delay={160}>
               <p className="mt-6 max-w-xl text-lg text-white/75">
-                HeyElsie Reviews turns your happy customers into Google reviews automatically — personalised texts and
+                HeyElsie Reviews turns your happy customers into Google reviews automatically: personalised texts and
                 emails, clever follow-ups, AI replies. Set it up in 10 minutes, then forget it exists.
               </p>
             </Reveal>
@@ -238,10 +238,10 @@ export default function LandingPage() {
                 <div className="mt-5 rounded-2xl border border-white/20 bg-white/85 p-4 text-sm text-[#1a1816] backdrop-blur">
                   <StarRow />
                   <p className="mt-2 leading-relaxed">
-                    "Came out same day, fixed the boiler, tidied up after. Got a text the next morning — took 10
+                    "Came out same day, fixed the boiler, tidied up after. Got a text the next morning, took 10
                     seconds to leave the review."
                   </p>
-                  <p className="mt-3 text-xs text-[#7D7467]">— what your next review looks like</p>
+                  <p className="mt-3 text-xs text-[#7D7467]">(what your next review looks like)</p>
                 </div>
                 <div className="mt-4 flex items-center justify-between rounded-2xl bg-white/10 p-3 text-xs backdrop-blur">
                   <span className="text-white/70">This week</span>
@@ -268,7 +268,7 @@ export default function LandingPage() {
             ].map(([num, text, src]) => (
               <div key={text} className={`rounded-3xl p-5 ${CARD}`}>
                 <p className={`text-3xl ${DISPLAY}`}>{num}</p>
-                <p className="mt-1 text-xs text-[#7D7467]">{text}<br /><span className="opacity-70">— {src}</span></p>
+                <p className="mt-1 text-xs text-[#7D7467]">{text}<br /><span className="opacity-70">({src})</span></p>
               </div>
             ))}
           </div>
@@ -285,7 +285,7 @@ export default function LandingPage() {
             {[
               ['😊 → 🤐', 'Happy customers, silent profiles', 'They say "you\'re a lifesaver!" at the door… and never quite get round to the review.'],
               ['⏰', 'You\'ve got no time to chase', 'Between jobs, quotes and invoices, "can you leave us a review?" is the first thing that slips.'],
-              ['🥈', 'Rivals with worse work rank higher', 'Google can\'t see your workmanship — it sees review count, rating and freshness. That\'s the whole game.'],
+              ['🥈', 'Rivals with worse work rank higher', 'Google can\'t see your workmanship. It sees review count, rating and freshness. That\'s the whole game.'],
             ].map(([icon, title, body], i) => (
               <Reveal key={title} delay={i * 100}>
                 <div className={`h-full rounded-3xl p-6 ${CARD}`}>
@@ -316,7 +316,7 @@ export default function LandingPage() {
             {[
               ['Today', 'Ten-minute setup', 'Connect Google, upload your customer list (or link your job software), and your reactivation campaign arms itself.'],
               ['Day 2–3', 'First reviews land', 'Past customers start responding to their personalised asks. AI thank-you replies post automatically.'],
-              ['Day 7', 'The flywheel is spinning', 'Every finished job now triggers its own request. Your count climbs weekly — while you do precisely nothing.'],
+              ['Day 7', 'The flywheel is spinning', 'Every finished job now triggers its own request. Your count climbs weekly, while you do precisely nothing.'],
             ].map(([when, title, body], i) => (
               <Reveal key={when} delay={i * 100}>
                 <div className={`relative h-full rounded-3xl p-6 pt-7 ${CARD}`}>
@@ -338,8 +338,8 @@ export default function LandingPage() {
           </Reveal>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             {[
-              ['01', 'Connect', 'Link your Google Business Profile (you stay in control — it\'s your own Google account) and bring in your customers.'],
-              ['02', 'Launch', 'Requests drip out gradually — steady and natural, never a suspicious burst of 50 reviews in a day.'],
+              ['01', 'Connect', 'Link your Google Business Profile (you stay in control, it\'s your own Google account) and bring in your customers.'],
+              ['02', 'Launch', 'Requests drip out gradually: steady and natural, never a suspicious burst of 50 reviews in a day.'],
               ['03', 'Automate', 'New customers get asked automatically, non-responders get nudged, every review gets a reply, and your dashboard shows it all.'],
             ].map(([n, title, body], i) => (
               <Reveal key={title} delay={i * 100}>
@@ -364,11 +364,11 @@ export default function LandingPage() {
               </span>
               <h2 className={`mt-4 text-3xl sm:text-4xl ${DISPLAY}`}>A message with their name on your photo</h2>
               <p className="mt-3 text-[#5c5c5c]">
-                "Hi Sally!" rendered onto a photo of your actual team. It feels personal because it is — and personal
+                "Hi Sally!" rendered onto a photo of your actual team. It feels personal because it is, and personal
                 gets opened, clicked and acted on. Plain "please review us" texts get ignored; this doesn't.
               </p>
               <ul className="mt-4 space-y-2 text-sm">
-                {['Your photo, their name — generated automatically for every customer', 'Included with texts and emails', 'One upload, works forever'].map((b) => (
+                {['Your photo, their name, generated automatically for every customer', 'Included with texts and emails', 'One upload, works forever'].map((b) => (
                   <li key={b} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#5ab570]" /> {b}</li>
                 ))}
               </ul>
@@ -380,7 +380,7 @@ export default function LandingPage() {
               <div className="mx-auto mb-2 h-1 w-16 rounded-full bg-[#e8e5e1]" />
               <div className="rounded-2xl bg-gradient-to-br from-[#b27e5a] to-[#824C25] p-6 text-center text-[#FEFDFD]">
                 <p className={`text-xl ${DISPLAY}`}>Hi Sally! 👋</p>
-                <p className="mt-1 text-xs text-white/75">— The HeyElsie demo team</p>
+                <p className="mt-1 text-xs text-white/75">(The HeyElsie demo team)</p>
               </div>
               <div className="mt-2 rounded-2xl rounded-tl-sm bg-[#f5f3f1] p-3 text-[13px] leading-snug">
                 Hey Sally, thanks for choosing us! Would you mind leaving a quick Google review? It only takes a
@@ -468,11 +468,11 @@ export default function LandingPage() {
         <div className={`mx-auto flex max-w-3xl items-start gap-4 rounded-3xl p-6 ${CARD}`}>
           <ShieldCheck className="h-8 w-8 shrink-0 text-[#5ab570]" />
           <div>
-            <h3 className="font-semibold">Done properly — because your Google profile is worth protecting</h3>
+            <h3 className="font-semibold">Done properly, because your Google profile is worth protecting</h3>
             <p className="mt-1 text-sm text-[#5c5c5c]">
               No fake reviews, no cherry-picking happy customers, no spam. Every ask goes to real customers with a
               working opt-out, inside UK rules (PECR & the DMCC Act) and Google's policies. Tools that "filter out
-              bad reviews" put your profile at risk of suspension — we never will.
+              bad reviews" put your profile at risk of suspension. We never will.
             </p>
           </div>
         </div>
@@ -546,7 +546,7 @@ export default function LandingPage() {
         <div className="mx-auto mt-8 max-w-5xl text-[11px] leading-relaxed text-[#7D7467]">
           <p>
             Review requests are sent on behalf of our clients to their own customers only. Every message identifies
-            the business and includes an opt-out — reply STOP to any text to unsubscribe instantly. Message and data
+            the business and includes an opt-out: reply STOP to any text to unsubscribe instantly. Message and data
             rates may apply. We never solicit, write or filter reviews in breach of Google's policies or the UK
             Digital Markets, Competition and Consumers Act.
           </p>

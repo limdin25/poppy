@@ -47,7 +47,7 @@ async function draftReply(businessId: string, review: { rating: number; text?: s
   const reviewer = review.reviewer?.name?.split(/\s+/)[0] || 'there';
 
   const system = `You write short owner replies to Google reviews for ${bizName}, a UK service business. UK English. Warm, specific, professional. 1-3 sentences. Address the reviewer by first name. Reference something specific from their review when possible. Never offer incentives, discounts or refunds. For 1-3 star reviews: apologise sincerely, take responsibility without excuses, and invite them to contact the business directly to put it right. Output ONLY the reply text.`;
-  const user = `Review from ${reviewer} — ${review.rating} stars:\n"${review.text || '(no comment left)'}"`;
+  const user = `Review from ${reviewer} (${review.rating} stars):\n"${review.text || '(no comment left)'}"`;
 
   const reply = await callLLM('claude-sonnet-4-6', system, [{ role: 'user', content: user }], 300);
   return reply.trim();
@@ -195,7 +195,7 @@ export default async function handler(req: Request): Promise<Response> {
   // ── Repurpose 5★ reviews as GBP posts (opt-in) ──
   if (review.rating === 5 && settings?.auto_post_five_star && review.text && review.text.length >= 30) {
     try {
-      const content = `⭐⭐⭐⭐⭐ "${review.text.slice(0, 1200)}" — ${review.reviewer?.name?.split(/\s+/)[0] || 'a happy customer'}`;
+      const content = `⭐⭐⭐⭐⭐ "${review.text.slice(0, 1200)}" (${review.reviewer?.name?.split(/\s+/)[0] || 'a happy customer'})`;
       await createGbpPost({
         accountId: conn.zernio_account_id as string,
         content,

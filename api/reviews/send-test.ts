@@ -64,7 +64,7 @@ export default async function handler(
         .eq('business_id', auth.businessId).eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (!settings) {
-      res.status(400).json({ error: 'Review settings missing — finish onboarding first' });
+      res.status(400).json({ error: 'Review settings missing. Finish onboarding first' });
       return;
     }
     const s = settings as SendSettings & { image_enabled: boolean; sms_from_number: string | null };
@@ -88,7 +88,7 @@ export default async function handler(
 
     if (phone) {
       if (!s.sms_from_number) {
-        res.status(400).json({ error: 'No sender number assigned yet — your number request is with our team' });
+        res.status(400).json({ error: 'No sender number assigned yet. Your number request is with our team' });
         return;
       }
       // Test messages link straight to Google (no funnel row to track).

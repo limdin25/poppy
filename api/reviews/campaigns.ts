@@ -45,7 +45,7 @@ export default async function handler(req: Request): Promise<Response> {
       .eq('business_id', auth.businessId)
       .maybeSingle();
     if (!settings) {
-      return new Response(JSON.stringify({ error: 'Finish onboarding first — review settings missing' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Finish onboarding first (review settings missing)' }), { status: 400 });
     }
     if (!settings.attested_at) {
       return new Response(JSON.stringify({ error: 'Confirm your lawful basis for contacting customers before sending (Settings → Compliance)' }), { status: 400 });

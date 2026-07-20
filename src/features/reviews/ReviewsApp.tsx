@@ -261,7 +261,7 @@ export default function ReviewsApp() {
                 <h1 className="text-xl font-black tracking-tight text-ink">You're signed in with your admin account</h1>
                 <p className="max-w-sm text-sm text-ink-subtle">
                   go.heyelsie.com is the client-facing Reviews dashboard. To see a client's view, open them from
-                  the admin panel ("View as client") — or pick one now:
+                  the admin panel ("View as client"), or pick one now:
                 </p>
                 <a href="https://app.heyelsie.com/super/reviews"><Button>Open /super → Review Clients</Button></a>
               </div>

@@ -74,7 +74,7 @@ export default function ReviewsMessagingPage() {
     try {
       const out = await reviewsApi<{ template: Template }>('/api/reviews/image-template', { formData: fd, impersonateBusinessId: imp })
       setTemplate(out.template)
-      setMsg('Image uploaded — new requests will use it')
+      setMsg('Image uploaded. New requests will use it')
     } catch (err) {
       setMsg((err as Error).message)
     }
@@ -89,7 +89,7 @@ export default function ReviewsMessagingPage() {
         body: testPhone.includes('@') ? { email: testPhone } : { phone: testPhone, first_name: session.businessName.split(/\s+/)[0] },
         impersonateBusinessId: imp,
       })
-      setTestMsg(`Test ${out.channel === 'sms' ? 'text' : 'email'} sent — check your ${out.channel === 'sms' ? 'phone' : 'inbox'}.`)
+      setTestMsg(`Test ${out.channel === 'sms' ? 'text' : 'email'} sent. Check your ${out.channel === 'sms' ? 'phone' : 'inbox'}.`)
     } catch (err) {
       setTestMsg((err as Error).message)
     }
@@ -152,7 +152,7 @@ export default function ReviewsMessagingPage() {
           {tab === 'smart' ? (
             <SectionCard title="Smart messaging" action={<Sparkles className="text-brand" style={{ width: 16, height: 16 }} />}>
               <p className="text-sm text-ink-subtle">
-                Claude writes each request individually — warm, personal, and different every time, always with your
+                Claude writes each request individually: warm, personal, and different every time, always with your
                 business name, the review link and an opt-out line.
               </p>
               <ul className="mt-3 space-y-1.5 text-sm text-ink">
@@ -197,7 +197,7 @@ export default function ReviewsMessagingPage() {
             <Switch checked={settings.image_enabled} onChange={(v) => save({ image_enabled: v }, v ? 'Personalised images on' : 'Personalised images off')} />
           }>
             <p className="text-sm text-ink-subtle">
-              Your customer's first name is rendered onto your team photo — "Hi Sally!" — and included with every
+              Your customer's first name is rendered onto your team photo ("Hi Sally!") and included with every
               request (embedded in emails; UK texts carry it via the link).
             </p>
             <div className="mt-3 flex items-center gap-3">

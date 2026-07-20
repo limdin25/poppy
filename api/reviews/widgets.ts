@@ -83,11 +83,11 @@ export default async function handler(req: Request): Promise<Response> {
     const html = `
     <div style="font-family:sans-serif;line-height:1.6;color:#1c1c28;max-width:560px;margin:0 auto;">
       <h2>Install the ${biz?.name || ''} review widget</h2>
-      <p>Two quick steps — no coding knowledge needed beyond copy &amp; paste.</p>
+      <p>Two quick steps. No coding knowledge needed beyond copy &amp; paste.</p>
       <p><strong>1. Add this to the website's <code>&lt;head&gt;</code>:</strong></p>
       <pre style="background:#f3f4f6;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;">${script.replace(/</g, '&lt;')}</pre>
       ${container ? `<p><strong>2. Add this where the reviews should appear:</strong></p>
-      <pre style="background:#f3f4f6;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;">${container.replace(/</g, '&lt;')}</pre>` : '<p><strong>2. That\'s it — the popup places itself.</strong></p>'}
+      <pre style="background:#f3f4f6;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;">${container.replace(/</g, '&lt;')}</pre>` : '<p><strong>2. That\'s it. The popup places itself.</strong></p>'}
       <p style="color:#6b7280;font-size:14px;">Using Wix, Squarespace or WordPress? Look for "Add HTML", "Custom Code" or "Embed" in the site editor and paste the snippets there.</p>
       <p style="color:#9ca3af;font-size:12px;">Sent on behalf of ${biz?.name || 'a HeyElsie Reviews client'} · HeyElsie Reviews</p>
     </div>`;

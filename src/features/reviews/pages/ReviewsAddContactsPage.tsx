@@ -59,7 +59,7 @@ export default function ReviewsAddContactsPage() {
           impersonateBusinessId: session.impersonating ? session.businessId : null,
         })
       }
-      setSingleMsg(doNotContact ? 'Contact added to the do-not-contact list.' : 'Contact added — they\'ll be included in your next campaign.')
+      setSingleMsg(doNotContact ? 'Contact added to the do-not-contact list.' : 'Contact added. They\'ll be included in your next campaign.')
       setFirst(''); setLast(''); setEmail(''); setPhone(''); setConsent(false); setDoNotContact(false)
     } catch (err) {
       setSingleMsg((err as Error).message)
@@ -93,7 +93,7 @@ export default function ReviewsAddContactsPage() {
             email: pick(row, ['email', 'email address', 'e-mail']),
           }
         }).filter((r) => r.phone || r.email)
-        if (!rows.length) { setCsvError('No usable rows found — the file needs a Phone or Email column.'); return }
+        if (!rows.length) { setCsvError('No usable rows found. The file needs a Phone or Email column.'); return }
         try {
           const out = await reviewsApi<{ imported: number; skipped: number }>('/api/contacts/import', {
             body: { rows },
@@ -104,7 +104,7 @@ export default function ReviewsAddContactsPage() {
           setCsvError((err as Error).message)
         }
       },
-      error: () => setCsvError('Could not read that file — is it a CSV?'),
+      error: () => setCsvError('Could not read that file. Is it a CSV?'),
     })
   }
 
@@ -116,7 +116,7 @@ export default function ReviewsAddContactsPage() {
         body: { type: 'reactivation' },
         impersonateBusinessId: session.impersonating ? session.businessId : null,
       })
-      setLaunchResult(`Campaign launched — ${out.queued} requests queued, first sends ${new Date(out.firstSendAt).toLocaleString('en-GB')}. They drip out gradually so reviews look organic.`)
+      setLaunchResult(`Campaign launched: ${out.queued} requests queued, first sends ${new Date(out.firstSendAt).toLocaleString('en-GB')}. They drip out gradually so reviews look organic.`)
     } catch (err) {
       setLaunchResult((err as Error).message)
     }
@@ -194,8 +194,8 @@ export default function ReviewsAddContactsPage() {
                   Imported {csvResult.imported} contacts{csvResult.skipped ? ` (${csvResult.skipped} skipped)` : ''}.
                 </p>
                 <p className="mt-1 text-xs text-emerald-700">
-                  Ready to ask them all for a review? Requests go to every eligible contact — never a hand-picked
-                  happy few (that's against Google's rules and UK law) — and drip out gradually.
+                  Ready to ask them all for a review? Requests go to every eligible contact, never a hand-picked
+                  happy few (that's against Google's rules and UK law), and drip out gradually.
                 </p>
                 <Button onClick={launchReactivation} disabled={launching} className="mt-3" size="sm">
                   <Rocket style={{ width: 14, height: 14 }} /> {launching ? 'Launching…' : 'Launch reactivation campaign'}
