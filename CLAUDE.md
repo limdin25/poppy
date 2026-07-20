@@ -159,11 +159,13 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
   - There is **NO REST API** for SMS geo-permissions (voice-only DialingPermissions exists) — the console (via Kimi WebBridge/Comet) is the only way to change it.
   - Separate rule, don't confuse: US toll-free (833) → UK mobile = error **21612**, impossible regardless of geo-permissions.
 
+- **HeyElsie Reviews — THE MAIN PRODUCT (shipped 2026-07-20)**: full Review Harvest clone. Landing = heyelsie.com; client app + onboarding = go.heyelsie.com; admin = /super/reviews. Pricing £99/£179/£279 (volume-only tiers, 14-day trial, Stripe product `prod_Uv8eim0pBOmEGZ`). Engine: `api/cron/review-requests.ts` (every minute) with suppression-first guards (STOP webhook `api/webhooks/twilio-reviews-sms.ts`, fail-closed sigs), quiet hours 09:00–20:00, tier caps in `review_usage`, drip pacing, personalized images (sharp+opentype, `review-assets` bucket). Google side = Zernio (`src/integrations/zernio/`, env `ZERNIO_API_KEY`, webhook `api/webhooks/zernio.ts`). Sender numbers = **admin-bought only** (/super → Numbers; GB Mobile REQUIRES the approved regulatory bundle — error 21649 otherwise, see api/admin/reviews/numbers.ts). UK long codes can't MMS — the personalized image travels via email embed / link. Compliance enforced in code: send-to-all only, incentive-word lint, PECR attestation gate. Docs: PLAN.md, ARCHITECTURE.md, REVIEWHARVEST_MAP.md, FINAL_REPORT.md. Receptionist intact behind existing flags; reviews clients get flag `reviews`.
+
 ### What's next
-1. Custom domain
-2. Wire agent setup "Save" to sync prompt to Retell (services, FAQs, greeting, behaviour changes)
-3. Test live call end-to-end
-4. Google Places API for business address autocomplete
+1. First real Zernio GBP connect (needs a Google Business Profile login) + Zernio card-on-file for review webhooks
+2. New Unipile key (receptionist inbox down; also unlocks the WhatsApp review channel later)
+3. First paying reviews client via the closer runbook (FINAL_REPORT.md §5)
+4. v2: multi-location "Add Business", FB/IG social posting, automated gift-card payouts
 
 ---
 
