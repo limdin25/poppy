@@ -27,6 +27,18 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop B6: attach-a-recording prompt
+- **Added:** `validateDropRecording` (mp3/wav/m4a, ≤10 MB, extension fallback
+  for missing mimes) in `src/features/crm/lib/dropRecordingValidation.ts` —
+  canonical src lib instead of the spec's api/lib home because the app
+  project can't import api/ (no node types); same testable-lib pattern as
+  buildOutgoingTwiml. Guard: `tests/drop-recording-validation.test.ts`.
+- **Added:** "Voicemail drop recording" card in Settings → campaign → Leads,
+  next to the CSV upload: attach-or-skip prompt, upload to public
+  `crm-attachments` (`vmdrop/{campaignId}/…`), writes
+  `voicemail_recording_url`, audio preview + replace, warns when the toggle
+  is still OFF.
+
 ### 2026-07-20 — VM drop B5: Drop VM button + campaign toggle
 - **Added:** Drop VM button in the dialer active-call grid (replaces the dead
   "Blind" placeholder; `Voicemail` icon; greyed via the canDropVoicemail

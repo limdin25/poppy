@@ -38,6 +38,7 @@ import { formatPence } from '../data/helpers';
 import { useKillSwitch } from '../hooks/useKillSwitch';
 import { useAiSettings } from '../hooks/useAiSettings';
 import { useDialerCampaigns } from '../hooks/useDialerCampaigns';
+import { validateDropRecording } from '../lib/dropRecordingValidation';
 import { usePipelines } from '../hooks/usePipelines';
 import { useDefaultCallScript } from '../hooks/useDefaultCallScript';
 import { useAgentScript } from '../hooks/useAgentScript';
@@ -509,7 +510,17 @@ function CampaignBundle({
       {validTab === 'ai' && <UnifiedCoachTab campaignId={campaignId} />}
       {validTab === 'agents' && <CampaignAgentsPanelStandalone campaignId={campaignId} />}
       {validTab === 'numbers' && <CampaignNumbersPanelStandalone campaignId={campaignId} />}
-      {validTab === 'leads' && <CampaignLeadsCsvPanel campaignId={campaignId} campaignName={camp.name} />}
+      {validTab === 'leads' && (
+        <>
+          <CampaignLeadsCsvPanel campaignId={campaignId} campaignName={camp.name} />
+          <CampaignVoicemailRecordingPanel
+            campaignId={campaignId}
+            recordingUrl={camp.voicemailRecordingUrl ?? null}
+            dropEnabled={camp.voicemailDropEnabled ?? false}
+            onChanged={refetch}
+          />
+        </>
+      )}
     </>
   );
 }
@@ -819,6 +830,116 @@ function CampaignLeadsCsvPanel({
         prefillCampaignId={campaignId}
         lockCampaign
       />
+    </Card>
+  );
+}
+
+// Voicemail-drop recording for a campaign — the "attach a recording?"
+// prompt next to the lead-list upload. Skippable: without a recording the
+// Drop VM toggle + button simply stay greyed. Uploads to the public
+// crm-attachments bucket (Twilio must be able to fetch the <Play> URL).
+function CampaignVoicemailRecordingPanel({
+  campaignId,
+  recordingUrl,
+  dropEnabled,
+  onChanged,
+}: {
+  campaignId: string;
+  recordingUrl: string | null;
+  dropEnabled: boolean;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const onFile = async (file: File | null) => {
+    if (!file) return;
+    setErr(null);
+    const verdict = validateDropRecording({
+      mimeType: file.type,
+      sizeBytes: file.size,
+      fileName: file.name,
+    });
+    if (!verdict.ok) {
+      setErr(verdict.reason);
+      return;
+    }
+    setBusy(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'mp3';
+      const path = `vmdrop/${campaignId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('crm-attachments')
+        .upload(path, file, { upsert: true, contentType: file.type || undefined });
+      if (upErr) {
+        setErr(upErr.message);
+        return;
+      }
+      const { data: pub } = supabase.storage.from('crm-attachments').getPublicUrl(path);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: dbErr } = await (supabase.from('wk_dialer_campaigns' as any) as any)
+        .update({ voicemail_recording_url: pub.publicUrl })
+        .eq('id', campaignId);
+      if (dbErr) {
+        setErr(dbErr.message);
+        return;
+      }
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      title="Voicemail drop recording"
+      hint="Played into the voicemail when an agent taps Drop VM on a live call"
+    >
+      <div className="space-y-3">
+        {!recordingUrl && (
+          <div className="text-[12px] text-[#6B7280] leading-relaxed">
+            Attach a voicemail recording for this campaign? Upload one now or
+            skip — without a recording the <strong className="text-[#1A1A1A]">Drop VM</strong>{' '}
+            toggle and button stay greyed out.
+          </div>
+        )}
+        {recordingUrl && (
+          <div className="space-y-2">
+            <audio controls src={recordingUrl} className="w-full h-9" preload="none" />
+            {!dropEnabled && (
+              <div className="text-[11px] text-[#B45309]">
+                Recording uploaded, but the campaign&apos;s Drop VM toggle (header
+                above) is still OFF.
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <label
+            className={cn(
+              'text-[12px] font-semibold px-4 py-2 rounded-[10px] inline-flex items-center gap-1.5 cursor-pointer',
+              busy
+                ? 'bg-[#F3F3EE] text-[#9CA3AF] cursor-wait'
+                : 'bg-[#3C5A87] text-white hover:bg-[#3C5A87]/90',
+            )}
+          >
+            <Voicemail className="w-3.5 h-3.5" />
+            {busy ? 'Uploading…' : recordingUrl ? 'Replace recording' : 'Upload recording'}
+            <input
+              type="file"
+              accept="audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a"
+              className="hidden"
+              disabled={busy}
+              onChange={(e) => {
+                void onFile(e.target.files?.[0] ?? null);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          <span className="text-[10px] text-[#9CA3AF]">mp3, wav or m4a · max 10 MB</span>
+        </div>
+        {err && <div className="text-[11px] text-[#EF4444]">{err}</div>}
+      </div>
     </Card>
   );
 }
