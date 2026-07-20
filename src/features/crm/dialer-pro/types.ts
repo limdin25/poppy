@@ -29,6 +29,8 @@ export interface DialerState {
   durationSec: number | null;
   isMuted: boolean;
   isOnHold: boolean;
+  /** True once a voicemail drop was fired on the current call. */
+  voicemailDropped: boolean;
   pauseAfterCall: boolean;
   campaignId: string | null;
   autoPace: boolean;
@@ -55,4 +57,5 @@ export type DialerAction =
   | { type: 'SET_CAMPAIGN'; campaignId: string }
   | { type: 'SET_AUTO_PACE'; value: boolean }
   | { type: 'SET_PACING_DELAY'; seconds: number }
-  | { type: 'PAUSE_AFTER_CALL'; value: boolean };
+  | { type: 'PAUSE_AFTER_CALL'; value: boolean }
+  | { type: 'VOICEMAIL_DROPPED' };

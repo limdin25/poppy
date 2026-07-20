@@ -7,95 +7,8 @@ import {
   addTokenRefreshFailListener,
 } from '@/integrations/twilio/voice-browser';
 import { mapTwilioError } from '@/features/crm/caller-pad/lib/twilioErrorMap';
-import type { DialerState, DialerAction, QueueLead } from './types';
-
-const LS_KEY = 'elsie_crm_pause_dialer';
-
-const INITIAL: DialerState = {
-  phase: 'idle',
-  currentLead: null,
-  currentCallSid: null,
-  currentCallId: null,
-  startedAt: null,
-  durationSec: null,
-  isMuted: false,
-  isOnHold: false,
-  pauseAfterCall: typeof window !== 'undefined' && localStorage.getItem(LS_KEY) === 'true',
-  campaignId: null,
-  autoPace: true,
-  pacingDelaySec: 5,
-  sessionStarted: false,
-  endReason: null,
-  error: null,
-  pacingDeadlineMs: null,
-};
-
-function reducer(s: DialerState, a: DialerAction): DialerState {
-  switch (a.type) {
-    case 'DIAL_START':
-      if (s.phase !== 'idle' && s.phase !== 'paused') return s;
-      return {
-        ...s,
-        phase: 'dialing',
-        currentLead: a.lead,
-        currentCallId: a.callId,
-        currentCallSid: null,
-        startedAt: null,
-        durationSec: null,
-        isMuted: false,
-        isOnHold: false,
-        error: null,
-        endReason: null,
-        pacingDeadlineMs: null,
-        sessionStarted: true,
-      };
-    case 'RINGING':
-      return s.phase === 'dialing' ? { ...s, phase: 'ringing' } : s;
-    case 'CONNECTED':
-      return s.phase === 'dialing' || s.phase === 'ringing'
-        ? { ...s, phase: 'connected', startedAt: Date.now() }
-        : s;
-    case 'CALL_ENDED':
-      if (s.phase !== 'dialing' && s.phase !== 'ringing' && s.phase !== 'connected') return s;
-      return {
-        ...s,
-        phase: 'wrap_up',
-        endReason: a.reason,
-        error: a.error ?? null,
-        durationSec: s.startedAt ? Math.floor((Date.now() - s.startedAt) / 1000) : null,
-      };
-    case 'OUTCOME_DONE':
-      if (s.phase !== 'wrap_up') return s;
-      return {
-        ...s,
-        phase: s.pauseAfterCall ? 'paused' : 'idle',
-        error: null,
-        endReason: null,
-      };
-    case 'PACING_ARMED':
-      return { ...s, pacingDeadlineMs: a.deadlineMs };
-    case 'PACING_CLEARED':
-      return { ...s, pacingDeadlineMs: null };
-    case 'PAUSE':
-      return { ...s, phase: 'paused', pacingDeadlineMs: null };
-    case 'RESUME':
-      return s.phase === 'paused' ? { ...s, phase: 'idle', pacingDeadlineMs: null } : s;
-    case 'STOP':
-      return { ...INITIAL };
-    case 'MUTE_TOGGLE':
-      return { ...s, isMuted: !s.isMuted };
-    case 'HOLD_TOGGLE':
-      return { ...s, isOnHold: !s.isOnHold };
-    case 'SET_CAMPAIGN':
-      return { ...s, campaignId: a.campaignId };
-    case 'SET_AUTO_PACE':
-      return { ...s, autoPace: a.value };
-    case 'SET_PACING_DELAY':
-      return { ...s, pacingDelaySec: a.seconds };
-    case 'PAUSE_AFTER_CALL':
-      return { ...s, pauseAfterCall: a.value };
-  }
-}
+import { INITIAL, LS_KEY, reducer } from './reducer';
+import type { QueueLead } from './types';
 
 interface UseDialerMachineOpts {
   userId: string | null;
@@ -461,6 +374,37 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
     }
   }, [state.isOnHold, state.isMuted]);
 
+  // Voicemail drop — the agent heard the voicemail greeting and pressed
+  // "Drop VM". wk-voicemail-drop replaces the CONTACT leg's TwiML with
+  // <Play>{campaign recording}</Play><Hangup/>; once that resolves we free
+  // the agent leg exactly like hangUp so the dialer advances immediately.
+  const [dropping, setDropping] = useState(false);
+  const dropVoicemail = useCallback(async () => {
+    if (phaseRef.current !== 'connected') return;
+    if (!state.currentCallId || state.voicemailDropped || dropping) return;
+    setDropping(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.functions as any).invoke('wk-voicemail-drop', {
+        body: { call_id: state.currentCallId },
+      });
+      if (error || data?.error) {
+        const msg = (error?.message as string | undefined) ?? (data?.error as string) ?? 'unknown error';
+        onToast(`Drop failed: ${msg}`, 'error');
+        return;
+      }
+      dispatch({ type: 'VOICEMAIL_DROPPED' });
+      const c = twilioCallRef.current;
+      twilioCallRef.current = null;
+      if (c) try { c.disconnect(); } catch { /* ignore */ }
+      try { disconnectAllCalls(); } catch { /* ignore */ }
+      dispatch({ type: 'CALL_ENDED', reason: 'vm_drop' });
+      onToast('Voicemail dropped', 'success');
+    } finally {
+      setDropping(false);
+    }
+  }, [state.currentCallId, state.voicemailDropped, dropping, onToast]);
+
   // Apply outcome
   const [applying, setApplying] = useState(false);
   const applyOutcome = useCallback(
@@ -552,6 +496,8 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
     muteToggle,
     holdToggle,
     sendDigit,
+    dropVoicemail,
+    dropping,
     applyOutcome,
     skip,
     pause,

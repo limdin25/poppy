@@ -27,6 +27,15 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop B4: dialer machine wiring
+- **Refactored:** dialer reducer + INITIAL extracted from `useDialerMachine.ts`
+  into pure `src/features/crm/dialer-pro/reducer.ts` (no behaviour change) so
+  vitest can pin it from `tests/`.
+- **Added:** `voicemailDropped` state + `VOICEMAIL_DROPPED` action (reset on
+  DIAL_START/STOP, survives CALL_ENDED for wrap-up display); `dropVoicemail()`
+  in the hook — invokes `wk-voicemail-drop`, dispatches, frees the agent leg
+  like hangUp (reason `vm_drop`), toasts. Guard: `tests/dialer-reducer.test.ts`.
+
 ### 2026-07-20 — VM drop B3: drop edge function + contact-leg SID capture
 - **Added:** `executeVoicemailDrop` in `api/lib/voicemail-drop.ts` (canonical;
   Deno mirror `supabase/functions/wk-voicemail-drop/index.ts`, `verify_jwt=true`
