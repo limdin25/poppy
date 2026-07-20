@@ -58,12 +58,12 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ ok: true, status: 'dismissed' }), { status: 200 });
     }
 
-    // Buy a UK mobile long code (long codes get native STOP handling; UK
-    // alphanumeric senders can't receive replies, so they're not an option).
-    const available = await searchNumbers('GB');
-    const smsCapable = available.find((n) => (n as { capabilities?: { SMS?: boolean; sms?: boolean } }).capabilities?.SMS !== false);
+    // Buy a UK MOBILE long code — only mobiles can SMS in the UK, and long
+    // codes get native STOP handling (alphanumeric senders can't receive).
+    const available = await searchNumbers('GB', undefined, 'Mobile', true);
+    const smsCapable = available.find((n) => (n as { capabilities?: { SMS?: boolean } }).capabilities?.SMS !== false);
     if (!smsCapable) {
-      return new Response(JSON.stringify({ error: 'No GB numbers available from Twilio right now' }), { status: 502 });
+      return new Response(JSON.stringify({ error: 'No GB mobile numbers available from Twilio right now' }), { status: 502 });
     }
 
     const purchased = await provisionNumber(smsCapable.phone_number);

@@ -40,7 +40,7 @@ Customer-facing review link = raw Google writereview?placeid=… (no tracked red
 - **"Last 30 Days Performance"** — 5 stat cards: New Reviews · Updated Reviews · Link Clicks · Requests Sent · Contacts Added.
 - **Review History** chart with `7d / 30d / All` toggle; empty state "no data for this period".
 - Right column **Google Reviews card**: big `0.0/5` rating + star row + total count; **Rating Projection** widget (spinbutton "+N 5-star reviews" + slider showing projected rating — brilliant anti-churn/upsell toy, cheap to build); **Milestones** ("reviews needed to reach each rating level" with progress bars); buttons **View on Google Maps** + **Copy Review Link**.
-- Intercom launcher + "Onboarding Checklist — 3 steps · ~5 minutes" floating card.
+- Intercom launcher + "Onboarding Checklist — 3 steps · ~5 minutes" floating card → **ours is an in-house Intercom-lite messenger (PLAN Stage 12, mockup approved 2026-07-20)**: launcher + Home/Messages/Help/Tasks views, checklist persistence in DB, admin inbox + article/checklist CRUD at /super/support.
 
 ### Contacts (`/business/contacts`) → reviews contacts page (reuses `contacts` + `review_requests`)
 - Search (name/email/phone). **Status filter** (multi-checkbox): `No Review, Failed, Follow Up, Initial, Pending, Waiting`. Inline flag filters: `Clicked, Stopped, Do Not Contact, Left Review`. Count badge. (Table columns unknown — account empty; our lifecycle enum in ARCHITECTURE.md §3 covers all these states.)
@@ -134,7 +134,7 @@ Our hero (agreed): *"When someone Googles a plumber, they call the one with 400 
 - **Login/verify**: OTP code email from Auth@access.reviewharvest.com ("expires in 10 minutes").
 - **Abandoned-setup nudge** (day 0, from clay@r.reviewharvest.com): "I saw you started setting up… only takes a couple minutes… can start getting you reviews on the first day" + 3 CTAs: finish setup / 3-minute walkthrough video / book an onboarding call. P.S. "built for non-tech-savvy owners".
 - **Educational drip** (day 1): "Why Your Worst Customers Are 10x More Likely to Leave A Review" — the 1%-unhappy-review-more angle, ✅ checklist (10-min setup, set & forget, reviews <24h, zero-risk only-pay-for-reviews, works while you sleep), social-proof link, finish-setup CTA, book-a-call PS.
-- Ours (Resend, already-verified domain): OTP/welcome exists; add abandoned-onboarding nudge, educational drip, **weekly stats email** (they don't send one — our anti-churn edge), plus approval-queue alerts.
+- Ours (Resend, already-verified domain): OTP/welcome exists; add abandoned-onboarding nudge (PLAN Stage 6), **weekly stats email** (they don't send one — our anti-churn edge, PLAN Stage 5), approval-queue alerts (PLAN Stage 4). Educational drip → v2.
 
 ## 7. Feature surface confirmed by their help center (support.reviewharvest.com — Intercom, 33 articles)
 

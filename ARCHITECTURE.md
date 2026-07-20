@@ -46,6 +46,11 @@ api/cron/review-weekly-email.ts  — weekly stats email (weekly cron)
 | `zapier_webhooks` | Per business outbound hooks: `url`, `event(review.received/request.sent)` + an inbound trigger token for "job done → send request" |
 | `review_widget_settings` | Per business × widget type (popup/carousel/grid): colors, position, show-names toggle — powers the editors; embeds read settings from the script-tag query string (RH pattern) |
 | `review_referrals` | Referral program: referrer user, invitee email, `status(invited→signed_up→paid→rewarded)` — £100/£100 on invitee's first paid invoice, manual payout via /super for v1 |
+| `support_conversations` | In-app support messenger (Intercom-lite): one per business, `status(open/closed)`, `last_message_at` |
+| `support_messages` | `conversation_id`, `sender(client/team)`, `sender_user_id`, `body`, `read_at` — Realtime-enabled both directions; new inbound → Resend notification to Hugo |
+| `help_articles` | In-widget help center: `title`, `subtitle`, `body` (markdown), `author_name`, `status(draft/published)`, `sort` — CRUD in /super |
+| `checklist_steps` | Onboarding checklist definition (global, /super-editable): `title`, `cta_label`, `cta_route`, `help_article_id`, `sort`, `active`, `auto_complete_event` — seeded with defaults |
+| `checklist_progress` | Per business × step: `completed_at`, `completed_by(user/auto)` — powers the widget Tasks view + dashboard nudge card |
 
 Reused as-is: `contacts` (customer lists live here; CSV import exists), `businesses` (+ Stripe columns), `feature_flags` (new keys `reviews` + existing gates hide receptionist), `admin_*`.
 

@@ -38,16 +38,17 @@ All features on every tier (4x-reviews claim, automated text & email, reactivati
 - Connect flow test against a real GBP location (Zernio has no sandbox — use Hugo's/a test business profile).
 
 ### Stage 3 — Request engine (2 days)
-- Migrations: `review_campaigns`, `review_requests`, `review_usage`, `review_events`.
+- Migrations: `review_campaigns`, `review_requests`, `review_usage`, `review_events`, `zapier_webhooks`.
 - `api/cron/review-requests.ts`: atomic claim → guards (suppression, cap, quiet hours, kill switches) → send SMS (Twilio + StatusCallback) / email (Resend) → follow-up scheduling → stop-on-review honoured.
 - Personalized images: add `sharp` (Node runtime function), `review_image_templates`, name composite, upload to `review-assets`; SMS carries link, email embeds.
 - AI smart messaging via `callLLM`.
-- Reactivation campaign type (drip-paced blast over old contacts) + ongoing type (Zapier/CRM-trigger + manual add).
+- Reactivation campaign type (drip-paced blast over old contacts) + ongoing type (Zapier/CRM-trigger + manual add) — inbound trigger endpoint (token auth, "job done → send request") + outbound event hooks per `zapier_webhooks`.
 - Unit tests: cap metering, quiet hours, follow-up scheduling, image render.
 
 ### Stage 4 — Reviews inbox + auto-replies + repurposing (1 day)
 - `review_replies` migration; on new review: Claude drafts → 4–5★ auto-post via Zernio, 1–3★ held for approval.
 - Client-facing approval inbox (reuse draft-approve UX pattern); 5★ → GBP post repurposing (opt-in toggle).
+- Approval-queue alert: Resend email to the client when a 1–3★ draft is held, so drafts don't sit unseen (map §6).
 
 ### Stage 5 — Client dashboard + go.heyelsie.com (2 days)
 - Cloudflare DNS + Vercel domain + `RootEntry` host branch → `ReviewsApp`.
@@ -58,6 +59,7 @@ All features on every tier (4x-reviews claim, automated text & email, reactivati
 
 ### Stage 6 — Onboarding at go.heyelsie.com/onboarding (1.5 days)
 Clone the RH flow shape (see REVIEWHARVEST_MAP.md): account → verify → **connect Google via Zernio** → pick location → pick CRM or spreadsheet → upload contacts → PECR attestation (ours, they don't have it) → message preview + image template → card via Stripe (14-day trial) → first reactivation batch armed (but NOT sent until number assigned + Hugo-gate passed). Target: 10 minutes.
+- Abandoned-onboarding nudge email (Resend, day-0 "finish setup" — RH's proven email, map §6) when a signup stalls mid-flow. Their educational drip stays v2.
 
 ### Stage 7 — Billing (1 day)
 - Create 3 Stripe products/prices (GBP, 14-day trial) + payment links via API; extend `PRICE_TO_PLAN`; cap-pause + upgrade prompt; proration self-serve.
@@ -86,11 +88,25 @@ Clone the RH flow shape (see REVIEWHARVEST_MAP.md): account → verify → **con
 - Personal link `go.heyelsie.com/onboarding?ref={userId}` (attribution stored at signup) + invite-by-email form (name + email → Resend) + "Your Referrals" list in dashboard.
 - Reward **£100/£100** triggered by invitee's first paid Stripe invoice (webhook flips status) → payout queue in `/super`. v1 fulfilment is manual (Hugo sends the gift card / credit); RH uses a 2,000-brand gift-card service (Tremendous-style) — automate later if volume justifies a Tremendous account.
 
-### Stage 12 — E2E + deploy + verification (1.5 days)
-- Playwright: signup/login, onboarding e2e, CSV upload, **send to Hugo's phone (+447863992555 — confirm this is the number you want)**, personalized image correct name, STOP works, dashboard data (incl. Rating Projection + Milestones render), widget embed renders on a plain HTML page with all ratings shown, referral link attributes a signup, Stripe test checkout, weekly email render. Paste results.
+### Stage 12 — In-app support messenger + admin dashboard (2 days)
+Intercom-lite, built from Hugo's approved mockup — **[docs/support-widget-mockup.html](docs/support-widget-mockup.html)** is the visual spec: match its layout, spacing and interactions, swap `--chat-primary` to Elsie brand colours (RH pays Intercom for this; ours is in-house, £0/mo). Client widget lives INSIDE the go. dashboard (React component, not an embed).
+- Migrations: `support_conversations`, `support_messages`, `help_articles`, `checklist_steps` (+ seeded defaults), `checklist_progress`.
+- **Client widget** (launcher bubble bottom-right + unread badge, panel 380px / mobile full-screen), 5 views per the mockup:
+  - Shell: header (view title, close; back button appears on Article and returns to the previous view), bottom nav with 4 tabs (Home · Messages · Help · Tasks), fade+slide open/close animation, panel widens to 460px on the Tasks and Article views.
+  - **Home** — avatar + "Hi {first name}, send us a message" greeting, latest-update card, "Send us a message" CTA.
+  - **Messages** — live thread with the team via existing Supabase Realtime (bubbles, composer); auto-ack bubble on first message.
+  - **Help** — published articles list → **Article** view (title, subtitle, author, steps with screenshot + callout).
+  - **Tasks** — onboarding checklist: progress bar, expandable step cards (link + CTA deep-linking into the product + Mark as completed). Progress stored per business in DB (mockup's localStorage → real persistence).
+- Floating "Onboarding Checklist — N steps · ~5 minutes" nudge card on the dashboard until complete (RH pattern); steps auto-complete from real events where possible (Google connected, contacts uploaded, image added) as well as manual mark-done.
+- **Admin at `/super/support`**: all-clients inbox (open/closed, unread counts), thread view + reply (Realtime back to the client), help-article CRUD (markdown editor), checklist-step editor (title, CTA label + route, linked article, order, active).
+- New inbound client message → email notification to Hugo (Resend) so nothing sits unanswered.
+- Tests: unread badge count, checklist persistence + auto-complete, admin reply roundtrip.
+
+### Stage 13 — E2E + deploy + verification (1.5 days)
+- Playwright: signup/login, onboarding e2e, CSV upload, **send to Hugo's phone (+447863992555 — confirm this is the number you want)**, personalized image correct name, STOP works, dashboard data (incl. Rating Projection + Milestones render), widget embed renders on a plain HTML page with all ratings shown, referral link attributes a signup, support-widget message → /super reply roundtrip, checklist step marks complete, Stripe test checkout, weekly email render. Paste results.
 - Deploy (CLI + .git-hide), Kimi browser-verify landing + dashboard with screenshots, write FINAL_REPORT.md + team onboarding runbook.
 
-**Total: ~15.5 working days of build.** Definition of DONE per the mission: tsc clean, e2e green, browser-verified, FINAL_REPORT.md. Hard gate: nothing texts a real customer list until Hugo has seen the loop on his own phone.
+**Total: ~17.5 working days of build.** Definition of DONE per the mission: tsc clean, e2e green, browser-verified, FINAL_REPORT.md. Hard gate: nothing texts a real customer list until Hugo has seen the loop on his own phone.
 
 ---
 

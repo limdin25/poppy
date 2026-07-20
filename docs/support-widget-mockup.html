@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Widget</title>
+<style>
+  :root {
+    --chat-primary: #2e8b47;
+    --chat-primary-dark: #24703a;
+    --chat-primary-tint: #e7f3ea;
+    --chat-radius: 18px;
+    --chat-shadow: 0 12px 32px rgba(0,0,0,0.18);
+    --chat-text: #1a1a1a;
+    --chat-muted: #6b7280;
+    --chat-bg: #ffffff;
+    --chat-border: #edeef0;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f5f6f7; min-height: 100vh; }
+
+  /* ---------- Launcher ---------- */
+  #chat-launcher {
+    position: fixed; bottom: 24px; right: 24px;
+    width: 60px; height: 60px; border-radius: 50%;
+    background: var(--chat-primary); border: none; cursor: pointer;
+    box-shadow: var(--chat-shadow);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999; transition: transform .15s ease;
+  }
+  #chat-launcher:hover { transform: scale(1.05); }
+  #chat-launcher svg { width: 28px; height: 28px; fill: #fff; }
+  #chat-badge {
+    position: absolute; top: -2px; right: -2px;
+    background: #e5484d; color: #fff; font-size: 11px; font-weight: 700;
+    min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; border: 2px solid #fff;
+  }
+  #chat-badge.hidden { display: none; }
+
+  /* ---------- Panel shell ---------- */
+  #chat-panel {
+    position: fixed; bottom: 96px; right: 24px;
+    width: 380px; max-height: 640px; height: 640px;
+    background: var(--chat-bg); border-radius: var(--chat-radius);
+    box-shadow: var(--chat-shadow);
+    display: flex; flex-direction: column; overflow: hidden; z-index: 9999;
+    opacity: 0; transform: translateY(12px) scale(.98); pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  #chat-panel.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+  #chat-panel.full { width: 460px; }
+
+  .chat-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--chat-border); flex-shrink: 0;
+  }
+  .chat-header h2 { margin: 0; font-size: 18px; font-weight: 700; }
+  .icon-btn {
+    background: none; border: none; cursor: pointer; color: var(--chat-text);
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px;
+  }
+  .icon-btn:hover { background: #f2f3f5; }
+  .icon-btn svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+  .chat-body { flex: 1; overflow-y: auto; padding: 20px; }
+  .view { display: none; height: 100%; }
+  .view.active { display: block; }
+  .view.flex.active { display: flex; flex-direction: column; }
+
+  /* ---------- Home / message view ---------- */
+  .avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--chat-primary-tint); }
+  .msg-intro { display: flex; gap: 12px; margin-bottom: 16px; }
+  .msg-intro p { margin: 0; font-size: 16px; line-height: 1.45; color: var(--chat-text); }
+  .msg-sub { font-size: 15px; line-height: 1.45; color: var(--chat-text); margin: 0 0 16px 0; }
+  .msg-card { border: 1px solid var(--chat-border); border-radius: 14px; overflow: hidden; margin-bottom: 16px; }
+  .msg-card .media { width: 100%; height: 160px; background: linear-gradient(135deg,#cfe3d5,#9fc7ab); display: block; }
+  .msg-meta { padding: 10px 14px; font-size: 13px; color: var(--chat-muted); }
+  .home-cta { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 14px 16px; border: 1px solid var(--chat-border); border-radius: 12px; background: none; cursor: pointer; font-size: 15px; font-weight: 600; color: var(--chat-text); }
+  .home-cta:hover { border-color: var(--chat-primary); }
+  .home-cta svg { width: 18px; height: 18px; stroke: var(--chat-primary); stroke-width: 2; fill: none; }
+
+  /* ---------- Bottom nav ---------- */
+  .chat-nav { display: flex; border-top: 1px solid var(--chat-border); flex-shrink: 0; }
+  .chat-nav button {
+    flex: 1; border: none; background: none; padding: 10px 0 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-size: 12px; color: var(--chat-muted); cursor: pointer;
+  }
+  .chat-nav button svg { width: 22px; height: 22px; fill: none; stroke: var(--chat-muted); stroke-width: 1.8; }
+  .chat-nav button.active { color: var(--chat-primary); font-weight: 600; }
+  .chat-nav button.active svg { stroke: var(--chat-primary); }
+
+  /* ---------- Messages thread + composer ---------- */
+  .thread { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 8px; }
+  .bubble { max-width: 80%; padding: 10px 14px; border-radius: 16px; font-size: 15px; line-height: 1.4; }
+  .bubble.them { align-self: flex-start; background: #f2f3f5; color: var(--chat-text); border-bottom-left-radius: 4px; }
+  .bubble.me { align-self: flex-end; background: var(--chat-primary); color: #fff; border-bottom-right-radius: 4px; }
+  .composer { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--chat-border); flex-shrink: 0; }
+  .composer input { flex: 1; border: 1px solid var(--chat-border); border-radius: 20px; padding: 10px 14px; font-size: 15px; outline: none; }
+  .composer input:focus { border-color: var(--chat-primary); }
+  .composer button { border: none; background: var(--chat-primary); color: #fff; border-radius: 50%; width: 40px; height: 40px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .composer button svg { width: 18px; height: 18px; fill: #fff; }
+
+  /* ---------- Help list ---------- */
+  .help-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 14px 16px; border: 1px solid var(--chat-border); border-radius: 12px; background: none; cursor: pointer; margin-bottom: 10px; text-align: left; }
+  .help-item:hover { border-color: var(--chat-primary); }
+  .help-item .step-title { font-size: 15px; font-weight: 600; color: var(--chat-text); }
+  .help-item svg { width: 16px; height: 16px; stroke: var(--chat-muted); stroke-width: 2; fill: none; flex-shrink: 0; }
+
+  /* ---------- Checklist view ---------- */
+  .task-title { text-align: center; font-size: 22px; font-weight: 800; margin: 8px 0 16px; }
+  .task-byline { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px; }
+  .task-byline img { width: 32px; height: 32px; border-radius: 50%; background: var(--chat-primary-tint); }
+  .task-byline span { font-size: 14px; color: var(--chat-muted); }
+  .task-metrics { display: flex; justify-content: space-between; font-size: 14px; color: var(--chat-muted); margin-bottom: 8px; }
+  .progress-track { height: 6px; background: var(--chat-border); border-radius: 3px; margin-bottom: 20px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--chat-primary); width: 0%; transition: width .3s ease; }
+  .step-card { border: 1px solid var(--chat-border); border-radius: 14px; margin-bottom: 12px; overflow: hidden; }
+  .step-head { display: flex; align-items: center; gap: 12px; padding: 16px; cursor: pointer; background: none; border: none; width: 100%; text-align: left; }
+  .step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--chat-primary-tint); color: var(--chat-primary); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-title { flex: 1; font-size: 16px; font-weight: 600; color: var(--chat-text); }
+  .step-chev { transition: transform .2s ease; stroke: var(--chat-muted); }
+  .step-card.expanded .step-chev { transform: rotate(180deg); }
+  .step-body { padding: 0 16px 16px; display: none; }
+  .step-card.expanded .step-body { display: block; }
+  .step-body a { color: var(--chat-primary); font-size: 14px; display: inline-block; margin-bottom: 12px; }
+  .step-cta { display: block; width: 100%; padding: 14px; border: none; border-radius: 10px; background: var(--chat-primary); color: #fff; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .step-cta:hover { background: var(--chat-primary-dark); }
+  .step-divider { border: none; border-top: 1px solid var(--chat-border); margin: 14px 0; }
+  .mark-done { display: flex; align-items: center; gap: 6px; color: var(--chat-primary); font-size: 14px; cursor: pointer; background: none; border: none; padding: 0; }
+  .step-card.done .step-num { background: var(--chat-primary); color: #fff; }
+
+  /* ---------- Article view ---------- */
+  .article-h1 { font-size: 26px; font-weight: 800; line-height: 1.25; margin: 4px 0 10px; }
+  .article-sub { font-size: 16px; color: var(--chat-muted); line-height: 1.45; margin: 0 0 20px; }
+  .article-author { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .article-author img { width: 44px; height: 44px; border-radius: 50%; background: var(--chat-primary-tint); }
+  .article-author .name { font-size: 15px; color: var(--chat-text); }
+  .article-author .date { font-size: 14px; color: var(--chat-muted); }
+  .article-meta { font-size: 15px; line-height: 1.8; margin-bottom: 20px; }
+  .article-meta a { color: var(--chat-primary); }
+  .article-divider { border: none; border-top: 1px solid var(--chat-border); margin: 20px 0; }
+  .article-step { margin-bottom: 24px; }
+  .article-step p { font-size: 17px; line-height: 1.5; margin: 0 0 12px; }
+  .article-shot { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--chat-border); }
+  .article-shot .frame { height: 200px; background: #f2f3f5; }
+  .article-callout { position: absolute; left: 16px; bottom: 16px; max-width: 60%; background: var(--chat-primary); color: #fff; font-size: 14px; line-height: 1.4; padding: 12px 14px; border-radius: 8px; }
+
+  /* ---------- Mobile full-screen ---------- */
+  @media (max-width: 480px) {
+    #chat-panel, #chat-panel.full {
+      bottom: 0; right: 0; left: 0; top: 0;
+      width: 100%; height: 100%; max-height: 100%; border-radius: 0;
+    }
+    #chat-launcher { bottom: 16px; right: 16px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Launcher -->
+  <button id="chat-launcher" aria-label="Open chat">
+    <span id="chat-badge">1</span>
+    <svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 011 1v11a1 1 0 01-1 1H8l-4 4V5a1 1 0 011-1z"/></svg>
+  </button>
+
+  <!-- Panel -->
+  <div id="chat-panel" role="dialog" aria-label="Chat">
+    <div class="chat-header">
+      <button class="icon-btn" id="btn-back" style="visibility:hidden" aria-label="Back">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <h2 id="panel-title">Home</h2>
+      <button class="icon-btn" id="btn-close" aria-label="Close">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="chat-body">
+      <!-- HOME -->
+      <section class="view active" data-view="home">
+        <div class="msg-intro">
+          <img class="avatar" alt="Team member">
+          <p>Hi {name}, send us a message here if you have a question!</p>
+        </div>
+        <p class="msg-sub">This is the fastest way to reach our team — we usually reply within a few minutes.</p>
+        <div class="msg-card">
+          <span class="media"></span>
+          <div class="msg-meta">Alex · just now</div>
+        </div>
+        <button class="home-cta" data-nav="messages">
+          Send us a message
+          <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </section>
+
+      <!-- MESSAGES -->
+      <section class="view flex" data-view="messages">
+        <div class="thread" id="thread">
+          <div class="bubble them">Hi there! How can we help you today?</div>
+        </div>
+        <form class="composer" id="composer">
+          <input type="text" id="composer-input" placeholder="Type your message…" autocomplete="off">
+          <button type="submit" aria-label="Send">
+            <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+          </button>
+        </form>
+      </section>
+
+      <!-- HELP -->
+      <section class="view" data-view="help">
+        <p class="msg-sub">Browse quick answers, or open a guide below.</p>
+        <button class="help-item" data-open-article><span class="step-title">Getting started in 3 easy steps</span><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+        <button class="help-item" data-open-article><span class="step-title">Connecting your first integration</span><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+        <button class="help-item" data-open-article><span class="step-title">Inviting your team</span><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+      </section>
+
+      <!-- TASKS -->
+      <section class="view" data-view="tasks">
+        <h1 class="task-title">Getting Started Checklist</h1>
+        <div class="task-byline"><img alt=""><span>Alex from {Your Company}</span></div>
+        <div class="task-metrics"><span>3 steps</span><span>About 5 minutes</span></div>
+        <div class="progress-track"><div class="progress-fill" id="progress"></div></div>
+
+        <div class="step-card" data-step="1">
+          <button class="step-head"><span class="step-num">1</span><span class="step-title">Connect your first integration</span>
+            <svg class="step-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="step-body">
+            <a href="#">See all available integrations →</a>
+            <button class="step-cta">Go to Integrations</button>
+            <hr class="step-divider">
+            <button class="mark-done"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Mark as completed</button>
+          </div>
+        </div>
+
+        <div class="step-card" data-step="2">
+          <button class="step-head"><span class="step-num">2</span><span class="step-title">Add your personalized image</span>
+            <svg class="step-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="step-body">
+            <a href="#">Learn why this helps →</a>
+            <button class="step-cta">Upload an image</button>
+            <hr class="step-divider">
+            <button class="mark-done"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Mark as completed</button>
+          </div>
+        </div>
+
+        <div class="step-card" data-step="3">
+          <button class="step-head"><span class="step-num">3</span><span class="step-title">Invite a teammate</span>
+            <svg class="step-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="step-body">
+            <a href="#">Read about team roles →</a>
+            <button class="step-cta">Send an invite</button>
+            <hr class="step-divider">
+            <button class="mark-done"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Mark as completed</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ARTICLE -->
+      <section class="view" data-view="article">
+        <h1 class="article-h1">How to complete your first task</h1>
+        <p class="article-sub">A short walkthrough to help you get up and running in just a few minutes.</p>
+        <div class="article-author"><img alt=""><div><div class="name">Written by Alex Morgan</div><div class="date">Updated recently</div></div></div>
+        <div class="article-meta"><strong>Author:</strong> Alex Morgan<br><strong>Steps:</strong> 3<br><strong>Source:</strong> <a href="#">Your Help Center</a></div>
+        <hr class="article-divider">
+        <div class="article-step">
+          <p><strong>1.</strong> Open the main menu and choose the section you want to set up.</p>
+          <div class="article-shot"><div class="frame"></div><div class="article-callout">Open the menu on the left to start setting things up.</div></div>
+        </div>
+        <div class="article-step">
+          <p><strong>2.</strong> Fill in the required details and save your changes.</p>
+          <div class="article-shot"><div class="frame"></div><div class="article-callout">Enter your details here, then hit save.</div></div>
+        </div>
+      </section>
+    </div>
+
+    <nav class="chat-nav" id="chat-nav">
+      <button data-nav="home" class="active"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Home</button>
+      <button data-nav="messages"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4V5z"/></svg>Messages</button>
+      <button data-nav="help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 0c0 2-2.5 2-2.5 4"/><circle cx="12" cy="17" r=".5"/></svg>Help</button>
+      <button data-nav="tasks"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l3 3 5-6"/></svg>Tasks</button>
+    </nav>
+  </div>
+
+<script>
+(function () {
+  const $  = s => document.querySelector(s);
+  const $$ = s => document.querySelectorAll(s);
+  const launcher = $('#chat-launcher'), panel = $('#chat-panel'), badge = $('#chat-badge');
+  const title = $('#panel-title'), btnClose = $('#btn-close'), btnBack = $('#btn-back');
+  const navBtns = $$('#chat-nav button'), views = $$('.view'), progress = $('#progress');
+  const titles = { home:'Home', messages:'Messages', help:'Help', tasks:'Tasks', article:'Article' };
+  let prevView = 'help';
+
+  function showView(name, opts = {}) {
+    views.forEach(v => v.classList.toggle('active', v.dataset.view === name));
+    navBtns.forEach(b => b.classList.toggle('active', b.dataset.nav === name));
+    title.textContent = titles[name] || 'Home';
+    const isArticle = name === 'article';
+    btnBack.style.visibility = isArticle ? 'visible' : 'hidden';
+    panel.classList.toggle('full', isArticle || name === 'tasks');
+    if (!isArticle && !opts.fromArticle) prevView = name;
+  }
+
+  // Launcher / close / back
+  launcher.addEventListener('click', () => {
+    const open = panel.classList.toggle('open');
+    badge.classList.add('hidden');
+    launcher.setAttribute('aria-label', open ? 'Close chat' : 'Open chat');
+  });
+  btnClose.addEventListener('click', () => panel.classList.remove('open'));
+  btnBack.addEventListener('click', () => showView(prevView));
+
+  // Nav + any element carrying data-nav
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-nav]');
+    if (el) showView(el.dataset.nav);
+  });
+
+  // Open article
+  $$('[data-open-article]').forEach(el => el.addEventListener('click', () => showView('article', { fromArticle:true })));
+
+  // Messages composer
+  const thread = $('#thread'), composer = $('#composer'), input = $('#composer-input');
+  composer.addEventListener('submit', e => {
+    e.preventDefault();
+    const text = input.value.trim(); if (!text) return;
+    const me = document.createElement('div'); me.className = 'bubble me'; me.textContent = text;
+    thread.appendChild(me); input.value = ''; thread.scrollTop = thread.scrollHeight;
+    setTimeout(() => {
+      const reply = document.createElement('div'); reply.className = 'bubble them';
+      reply.textContent = 'Thanks for your message! Someone from the team will reply shortly.';
+      thread.appendChild(reply); thread.scrollTop = thread.scrollHeight;
+    }, 700);
+  });
+
+  // Checklist accordion
+  $$('.view[data-view="tasks"] .step-head').forEach(h =>
+    h.addEventListener('click', () => h.parentElement.classList.toggle('expanded')));
+
+  // Progress + localStorage persistence
+  const cards = $$('.view[data-view="tasks"] .step-card');
+  const KEY = 'chatwidget_done_steps';
+  const doneSet = new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+
+  function refresh() {
+    cards.forEach(c => c.classList.toggle('done', doneSet.has(c.dataset.step)));
+    progress.style.width = Math.round((doneSet.size / cards.length) * 100) + '%';
+  }
+  $$('.mark-done').forEach(btn => btn.addEventListener('click', () => {
+    const card = btn.closest('.step-card');
+    doneSet.add(card.dataset.step);
+    localStorage.setItem(KEY, JSON.stringify([...doneSet]));
+    refresh();
+  }));
+  refresh();
+})();
+</script>
+</body>
+</html>

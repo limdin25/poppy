@@ -141,7 +141,7 @@ test('referrals page exposes the £100/£100 link', async ({ page }) => {
   await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
 
   await page.getByRole('link', { name: 'Refer a Friend' }).click()
-  await expect(page.getByText('Give £100, Get £100')).toBeVisible()
+  await expect(page.getByText('Give £100, Get £100').first()).toBeVisible()
   const linkInput = page.locator('input[readonly]').first()
   await expect(linkInput).toHaveValue(/onboarding\?ref=/)
 })

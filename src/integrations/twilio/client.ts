@@ -40,15 +40,20 @@ export interface TwilioSipTrunk {
 
 // --- Functions ---
 
-/** Search for available phone numbers in a given country/area code. */
+/** Search for available phone numbers in a given country/area code.
+ *  UK note: SMS-capable numbers are type "Mobile" (07…) — GB "Local" numbers
+ *  can't text. */
 export async function searchNumbers(
   countryCode: string,
-  areaCode?: string
+  areaCode?: string,
+  type: "Local" | "Mobile" = "Local",
+  smsEnabled = false
 ): Promise<TwilioNumber[]> {
   const params = new URLSearchParams();
   if (areaCode) params.set("AreaCode", areaCode);
+  if (smsEnabled) params.set("SmsEnabled", "true");
 
-  const url = `${baseUrl()}/AvailablePhoneNumbers/${countryCode}/Local.json?${params}`;
+  const url = `${baseUrl()}/AvailablePhoneNumbers/${countryCode}/${type}.json?${params}`;
   const res = await fetch(url, { headers: { Authorization: getAuthHeader() } });
   if (!res.ok) throw new Error(`Twilio searchNumbers failed: ${res.status} ${await res.text()}`);
   const data = await res.json() as { available_phone_numbers: TwilioNumber[] };
