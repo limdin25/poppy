@@ -70,6 +70,18 @@ function RootEntry() {
   return <Navigate to="/dashboard" replace />
 }
 
+/**
+ * /welcome — marketing on the apex only. On app.heyelsie.com (the receptionist
+ * product) logged-out users go straight to the login form instead of seeing
+ * the reviews marketing page there.
+ */
+function WelcomeEntry() {
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+  const isMarketing = host === 'heyelsie.com' || host === 'www.heyelsie.com'
+  if (isMarketing) return <LandingPage />
+  return <Navigate to="/login" replace />
+}
+
 export default function App() {
   // go.heyelsie.com serves the HeyElsie Reviews client app in full — its own
   // login, onboarding and dashboard. (Supabase sessions are per-origin, so the
@@ -91,7 +103,7 @@ export default function App() {
         <Route path="/" element={<RootEntry />} />
 
         {/* Public — no layout */}
-        <Route path="welcome" element={<LandingPage />} />
+        <Route path="welcome" element={<WelcomeEntry />} />
         <Route path="privacy" element={<PrivacyPolicyPage />} />
         <Route path="terms" element={<TermsPage />} />
         <Route path="dpa" element={<DpaPage />} />

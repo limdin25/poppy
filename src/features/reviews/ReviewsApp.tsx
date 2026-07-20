@@ -166,8 +166,8 @@ export default function ReviewsApp() {
   useEffect(() => {
     document.title = 'HeyElsie Reviews'
   }, [])
-  const [state, setState] = useState<{ loading: boolean; session: ReviewsSession | null; authed: boolean }>({
-    loading: true, session: null, authed: false,
+  const [state, setState] = useState<{ loading: boolean; session: ReviewsSession | null; authed: boolean; isAdmin: boolean }>({
+    loading: true, session: null, authed: false, isAdmin: false,
   })
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export default function ReviewsApp() {
     async function resolve() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) {
-        if (!cancelled) setState({ loading: false, session: null, authed: false })
+        if (!cancelled) setState({ loading: false, session: null, authed: false, isAdmin: false })
         return
       }
       const user = session.user
@@ -192,7 +192,7 @@ export default function ReviewsApp() {
           if (biz) {
             sessionStorage.setItem('go_impersonation', biz.id)
             if (!cancelled) setState({
-              loading: false, authed: true,
+              loading: false, authed: true, isAdmin: true,
               session: { userId: user.id, email: user.email ?? '', businessId: biz.id, businessName: biz.name, impersonating: true, reviewsEnabled: true },
             })
             return
@@ -204,14 +204,21 @@ export default function ReviewsApp() {
       const { data: member } = await supabase
         .from('team_members').select('business_id').eq('user_id', user.id).limit(1).maybeSingle()
       if (!member) {
-        if (!cancelled) setState({ loading: false, session: null, authed: false })
+        if (!cancelled) setState({ loading: false, session: null, authed: false, isAdmin: false })
         return
       }
       const { data: biz } = await supabase.from('businesses').select('id, name').eq('id', member.business_id).single()
       const { data: flag } = await supabase
         .from('feature_flags').select('enabled').eq('business_id', member.business_id).eq('flag_key', 'reviews').maybeSingle()
+      // Admins signed in with a non-reviews account get pointed at /super
+      // instead of the generic "not enabled" screen.
+      let isAdmin = false
+      if (!flag?.enabled) {
+        const { data: admin } = await supabase.from('admin_users').select('email').eq('email', user.email ?? '').maybeSingle()
+        isAdmin = !!admin
+      }
       if (!cancelled) setState({
-        loading: false, authed: true,
+        loading: false, authed: true, isAdmin,
         session: {
           userId: user.id, email: user.email ?? '',
           businessId: member.business_id, businessName: biz?.name ?? 'Your business',
@@ -235,13 +242,24 @@ export default function ReviewsApp() {
           state.loading ? <Loading />
           : !state.authed || !state.session ? <LoginScreen />
           : !state.session.reviewsEnabled && !state.session.impersonating ? (
-            <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
-              <h1 className="text-xl font-semibold text-ink">This account doesn't have Reviews enabled</h1>
-              <p className="max-w-sm text-sm text-ink-subtle">
-                Your account uses a different HeyElsie product. To add Reviews, start the setup below or contact us.
-              </p>
-              <a href="/onboarding"><Button>Set up HeyElsie Reviews</Button></a>
-            </div>
+            state.isAdmin ? (
+              <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
+                <h1 className="text-xl font-semibold text-ink">You're signed in with your admin account</h1>
+                <p className="max-w-sm text-sm text-ink-subtle">
+                  go.heyelsie.com is the client-facing Reviews dashboard. To see a client's view, open them from
+                  the admin panel ("View as client") — or pick one now:
+                </p>
+                <a href="https://app.heyelsie.com/super/reviews"><Button>Open /super → Review Clients</Button></a>
+              </div>
+            ) : (
+              <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
+                <h1 className="text-xl font-semibold text-ink">This account doesn't have Reviews enabled</h1>
+                <p className="max-w-sm text-sm text-ink-subtle">
+                  Your account uses a different HeyElsie product. To add Reviews, start the setup below or contact us.
+                </p>
+                <a href="/onboarding"><Button>Set up HeyElsie Reviews</Button></a>
+              </div>
+            )
           ) : (
             <ReviewsSessionContext.Provider value={state.session}>
               <Shell session={state.session} />
