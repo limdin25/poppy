@@ -66,7 +66,12 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: 'No GB mobile numbers available from Twilio right now' }), { status: 502 });
     }
 
-    const purchased = await provisionNumber(smsCapable.phone_number);
+    // GB mobiles are a regulated number type: purchases must carry the
+    // account's approved UK-Mobile regulatory bundle + validated address.
+    const purchased = await provisionNumber(smsCapable.phone_number, {
+      bundleSid: process.env.TWILIO_GB_BUNDLE_SID || 'BUcc4fb4088d1e9f08af9f2ac2d5178d71',
+      addressSid: process.env.TWILIO_GB_ADDRESS_SID || 'AD352d187c2f631df35964849428574116',
+    });
     const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
     await setNumberSmsUrl(purchased.sid, `${appUrl}/api/webhooks/twilio-reviews-sms`);
 

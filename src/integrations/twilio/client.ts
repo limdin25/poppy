@@ -60,11 +60,15 @@ export async function searchNumbers(
   return data.available_phone_numbers;
 }
 
-/** Provision (purchase) a phone number. */
+/** Provision (purchase) a phone number. Regulated countries (e.g. GB mobile)
+ *  require an approved regulatory BundleSid + validated AddressSid. */
 export async function provisionNumber(
-  phoneNumber: string
+  phoneNumber: string,
+  opts?: { bundleSid?: string; addressSid?: string }
 ): Promise<TwilioProvisionedNumber> {
   const body = new URLSearchParams({ PhoneNumber: phoneNumber });
+  if (opts?.bundleSid) body.set("BundleSid", opts.bundleSid);
+  if (opts?.addressSid) body.set("AddressSid", opts.addressSid);
   const res = await fetch(`${baseUrl()}/IncomingPhoneNumbers.json`, {
     method: "POST",
     headers: {
