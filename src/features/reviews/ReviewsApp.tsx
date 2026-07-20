@@ -86,7 +86,7 @@ function Shell({ session }: { session: ReviewsSession }) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const nav = (
-    <nav className="flex flex-col gap-1">
+    <nav className="flex flex-col gap-0.5">
       {NAV.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
@@ -94,7 +94,7 @@ function Shell({ session }: { session: ReviewsSession }) {
           onClick={() => setMenuOpen(false)}
           className={({ isActive }) => cn(
             'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-            isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-subtle hover:bg-border/40 hover:text-ink',
+            isActive ? 'bg-ink text-white' : 'text-ink-muted hover:bg-elevated hover:text-ink',
           )}
         >
           <Icon className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
@@ -103,7 +103,7 @@ function Shell({ session }: { session: ReviewsSession }) {
       ))}
       <button
         onClick={() => supabase.auth.signOut()}
-        className="mt-2 flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-ink-subtle hover:bg-border/40 hover:text-ink"
+        className="mt-2 flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-ink-muted hover:bg-elevated hover:text-ink"
       >
         <LogOut style={{ width: 18, height: 18 }} /> Log out
       </button>
@@ -117,31 +117,41 @@ function Shell({ session }: { session: ReviewsSession }) {
           Viewing as: {session.businessName} (admin)
         </div>
       )}
-      <div className="mx-auto flex max-w-6xl">
+      <div className="flex">
         {/* Desktop sidebar */}
-        <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-border bg-surface p-4 md:flex">
-          <div className="mb-6 px-2">
-            <span className="text-lg font-black tracking-tight text-brand">HeyElsie</span>
-            <span className="ml-1 text-lg font-light text-ink">Reviews</span>
-            <p className="mt-1 truncate text-xs text-ink-subtle">{session.businessName}</p>
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface/60 p-4 md:flex">
+          <div className="px-2 py-1">
+            <span className="text-xl font-black tracking-tight text-ink">HeyElsie</span>
+            <span className="ml-1 text-xl font-light text-ink-subtle">Reviews</span>
+          </div>
+          <div className="mb-4 mt-3 rounded-2xl border border-border bg-bg p-3">
+            <p className="text-[10px] uppercase tracking-wider text-ink-subtle">Business</p>
+            <p className="mt-0.5 truncate text-sm font-medium text-ink">{session.businessName}</p>
           </div>
           {nav}
         </aside>
 
         {/* Mobile top bar */}
-        <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border bg-surface px-4 py-3 md:hidden">
-          <span className="text-base font-black tracking-tight text-brand">HeyElsie <span className="font-light text-ink">Reviews</span></span>
-          <button onClick={() => setMenuOpen((v) => !v)} aria-label="Menu">
+        <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border bg-bg/80 px-4 py-3 backdrop-blur md:hidden">
+          <span className="text-base font-black tracking-tight text-ink">HeyElsie <span className="font-light text-ink-subtle">Reviews</span></span>
+          <button onClick={() => setMenuOpen((v) => !v)} aria-label="Menu"
+            className="grid h-9 w-9 place-items-center rounded-full bg-elevated">
             {menuOpen ? <X className="h-5 w-5 text-ink" /> : <Menu className="h-5 w-5 text-ink" />}
           </button>
         </div>
         {menuOpen && (
           <div className="fixed inset-0 z-30 bg-bg pt-16 md:hidden">
-            <div className="p-4">{nav}</div>
+            <div className="p-4">
+              <div className="mb-3 rounded-2xl border border-border bg-elevated p-3">
+                <p className="text-[10px] uppercase tracking-wider text-ink-subtle">Business</p>
+                <p className="mt-0.5 truncate text-sm font-medium text-ink">{session.businessName}</p>
+              </div>
+              {nav}
+            </div>
           </div>
         )}
 
-        <main className="min-w-0 flex-1 px-4 pb-24 pt-16 md:px-8 md:pt-8">
+        <main className="mx-auto min-w-0 max-w-6xl flex-1 px-4 pb-24 pt-16 md:px-10 md:pt-10">
           <Suspense fallback={<Loading />}>
             <Routes>
               <Route path="/dashboard" element={<DashboardPage />} />
@@ -237,6 +247,7 @@ export default function ReviewsApp() {
   }, [params.get('as')])
 
   return (
+    <div className="reviews-theme min-h-screen bg-bg">
     <Suspense fallback={<Loading />}>
       <Routes>
         {/* Public: the 10-minute onboarding (includes account creation) */}
@@ -271,5 +282,6 @@ export default function ReviewsApp() {
         } />
       </Routes>
     </Suspense>
+    </div>
   )
 }

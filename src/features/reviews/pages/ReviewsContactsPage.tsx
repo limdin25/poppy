@@ -99,7 +99,7 @@ export default function ReviewsContactsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-black tracking-tight text-ink">Contacts</h1>
+        <h1 className="text-3xl font-black tracking-tight text-ink">Contacts</h1>
         <p className="text-sm text-ink-subtle">Manage your contacts and review requests</p>
       </div>
 

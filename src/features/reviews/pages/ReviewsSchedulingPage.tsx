@@ -60,7 +60,7 @@ export default function ReviewsSchedulingPage() {
   return (
     <div className="max-w-2xl space-y-4">
       <div>
-        <h1 className="text-xl font-black tracking-tight text-ink">Request scheduling</h1>
+        <h1 className="text-3xl font-black tracking-tight text-ink">Request scheduling</h1>
         <p className="text-sm text-ink-subtle">Choose when and how review requests go out</p>
       </div>
 

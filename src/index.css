@@ -82,3 +82,27 @@
   animation: shimmer 1.4s linear infinite;
   border-radius: 8px;
 }
+
+/* ── HeyElsie Reviews theme (go.heyelsie.com only — scoped so the receptionist
+   app keeps its RogerRoger palette). Zip/alven language: warm cream canvas,
+   white hairline cards, near-black primary (black pills), copper accent. */
+.reviews-theme {
+  --bg: 250 248 245;          /* warm off-white canvas */
+  --page: 250 248 245;
+  --surface: 255 255 255;     /* white cards */
+  --elevated: 245 243 241;    /* warm hover fill */
+  --border: 232 229 225;      /* warm hairline */
+  --ring: 178 126 90;         /* copper */
+
+  --accent: 178 126 90;       /* copper — switches/toggles */
+
+  --ink: 26 24 22;            /* #1a1816 charcoal */
+  --ink-muted: 92 92 92;
+  --ink-subtle: 125 116 103;  /* warm grey */
+
+  --brand: 26 24 22;          /* black pill primary (alven) */
+  --brand-50: 245 243 241;
+  --brand-100: 237 233 228;
+  --brand-600: 50 45 45;      /* hover */
+  --brand-700: 26 24 22;
+}

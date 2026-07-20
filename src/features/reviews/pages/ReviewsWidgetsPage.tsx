@@ -100,7 +100,7 @@ export default function ReviewsWidgetsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-black tracking-tight text-ink">Widgets</h1>
+        <h1 className="text-3xl font-black tracking-tight text-ink">Widgets</h1>
         <p className="text-sm text-ink-subtle">Show your Google reviews on your own website. All reviews are shown — positive and negative alike (that's the law, and it builds trust).</p>
       </div>
 
