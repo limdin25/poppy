@@ -168,6 +168,13 @@ export interface Campaign {
    *  rowToCampaign; the Settings UI reads this to show Active/Paused and
    *  the dialer filters on it. Hugo PR 60 (2026-04-27). */
   isActive: boolean;
+  /** Voicemail drop: public URL of the campaign's pre-recorded message
+   *  (crm-attachments bucket). Null until one is uploaded — the drop
+   *  toggle stays greyed without it. */
+  voicemailRecordingUrl?: string | null;
+  /** Voicemail drop: per-campaign on/off switch (wk_dialer_campaigns.
+   *  voicemail_drop_enabled). Only meaningful with a recording. */
+  voicemailDropEnabled?: boolean;
 }
 
 export interface SmsTemplate {

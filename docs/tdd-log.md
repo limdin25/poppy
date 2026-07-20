@@ -27,6 +27,16 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop B5: Drop VM button + campaign toggle
+- **Added:** Drop VM button in the dialer active-call grid (replaces the dead
+  "Blind" placeholder; `Voicemail` icon; greyed via the canDropVoicemail
+  mirror with a hover hint saying why). Campaign settings header gets a
+  "Drop VM: ON/OFF" chip, disabled until a recording exists.
+- **Plumbed:** `voicemailRecordingUrl`/`voicemailDropEnabled` through BOTH
+  Campaign types + BOTH useDialerCampaigns hooks (caller-pad + crm/hooks —
+  row type, `.select()`, mapper). UI-only cycle; covered by the B2 eligibility
+  tests + existing gate (no new unit surface).
+
 ### 2026-07-20 — VM drop B4: dialer machine wiring
 - **Refactored:** dialer reducer + INITIAL extracted from `useDialerMachine.ts`
   into pure `src/features/crm/dialer-pro/reducer.ts` (no behaviour change) so

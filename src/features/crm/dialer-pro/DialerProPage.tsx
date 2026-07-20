@@ -5,7 +5,7 @@ import {
   Phone, PhoneOff, Mic, MicOff, Pause as PauseIcon, Play, Square,
   SkipForward, Pencil, Flame, Maximize2, Minus,
   MessageSquare, FileText, PhoneForwarded, Hash, Circle,
-  ChevronDown,
+  ChevronDown, Voicemail,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
@@ -135,6 +135,24 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
     onToast,
   });
   const { state, deviceReady, reconnecting, reconnectDevice } = machine;
+
+  // Drop VM eligibility — mirrors canDropVoicemail (api/lib/voicemail-drop.ts,
+  // the vitest-pinned canonical; api/lib isn't importable from the app
+  // project). Greyed until: connected + campaign has a recording + campaign
+  // toggle on + not already dropped on this call.
+  const canDropVm =
+    state.phase === 'connected' &&
+    Boolean(camp?.voicemailRecordingUrl) &&
+    Boolean(camp?.voicemailDropEnabled) &&
+    !state.voicemailDropped &&
+    !machine.dropping;
+  const dropVmHint = !camp?.voicemailRecordingUrl
+    ? 'No voicemail recording uploaded for this campaign (Settings → campaign → Leads)'
+    : !camp?.voicemailDropEnabled
+      ? 'Voicemail drop is switched off for this campaign'
+      : state.voicemailDropped
+        ? 'Voicemail already dropped on this call'
+        : 'Play the campaign voicemail into this call and move on';
 
   // Refresh call history when a call wraps up or outcome is saved
   const queryClient = useQueryClient();
@@ -882,7 +900,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
 
               {/* 2x4 action buttons — GHL layout */}
               <div className="px-3 pb-2 space-y-1.5">
-                {/* Row 1: Message | Notes | Blind Transfer | Warm Transfer */}
+                {/* Row 1: Message | Notes | Drop VM | Warm Transfer */}
                 <div className="grid grid-cols-4 gap-1.5">
                   <button onClick={() => setMinimized(true)}
                     className="flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium text-[#6B7280] hover:bg-[#F3F3EE] hover:text-[#1A1A1A] transition-colors">
@@ -894,10 +912,19 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                     <FileText className="w-4 h-4" strokeWidth={1.8} />
                     Notes
                   </button>
-                  <button disabled
-                    className="flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium text-[#9CA3AF] cursor-not-allowed transition-colors">
-                    <PhoneForwarded className="w-4 h-4" strokeWidth={1.8} />
-                    Blind
+                  <button
+                    onClick={() => void machine.dropVoicemail()}
+                    disabled={!canDropVm}
+                    title={dropVmHint}
+                    className={cn(
+                      'flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium transition-colors',
+                      !canDropVm
+                        ? 'text-[#9CA3AF] cursor-not-allowed'
+                        : 'text-[#3C5A87] hover:bg-[#EEF2F8] hover:text-[#3C5A87]',
+                    )}
+                  >
+                    <Voicemail className="w-4 h-4" strokeWidth={1.8} />
+                    Drop VM
                   </button>
                   <button disabled
                     className="flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium text-[#9CA3AF] cursor-not-allowed transition-colors">

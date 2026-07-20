@@ -521,7 +521,16 @@ function CampaignBundleHeader({
   onSelected,
   onScopeReset,
 }: {
-  campaign: { id: string; name: string; isActive: boolean; aiCoachEnabled: boolean; parallelLines: number; totalLeads: number };
+  campaign: {
+    id: string;
+    name: string;
+    isActive: boolean;
+    aiCoachEnabled: boolean;
+    parallelLines: number;
+    totalLeads: number;
+    voicemailRecordingUrl?: string | null;
+    voicemailDropEnabled?: boolean;
+  };
   onChanged: () => void;
   onSelected: (id: string) => void;
   onScopeReset: () => void;
@@ -602,6 +611,25 @@ function CampaignBundleHeader({
             )}
           >
             <Bot className="w-3 h-3" /> Coach: {campaign.aiCoachEnabled ? 'ON' : 'OFF'}
+          </button>
+          <button
+            onClick={() => void patch({ voicemail_drop_enabled: !campaign.voicemailDropEnabled })}
+            disabled={!campaign.voicemailRecordingUrl}
+            title={
+              campaign.voicemailRecordingUrl
+                ? 'Voicemail drop on the speed dialer — agents get a Drop VM button on live calls'
+                : 'Upload a voicemail recording first (Leads tab) to enable the drop'
+            }
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold border',
+              !campaign.voicemailRecordingUrl
+                ? 'bg-[#F3F3EE] text-[#9CA3AF] border-[#E5E7EB] cursor-not-allowed'
+                : campaign.voicemailDropEnabled
+                  ? 'bg-[#EEF2F8] text-[#3C5A87] border-[#3C5A87]/30'
+                  : 'bg-[#F3F3EE] text-[#9CA3AF] border-[#E5E7EB]'
+            )}
+          >
+            <Voicemail className="w-3 h-3" /> Drop VM: {campaign.voicemailDropEnabled ? 'ON' : 'OFF'}
           </button>
           <button
             onClick={() => void duplicate()}

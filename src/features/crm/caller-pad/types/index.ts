@@ -141,6 +141,11 @@ export interface Campaign {
   aiCoachPromptId?: string;
   scriptMd?: string;
   autoAdvanceSeconds: number;
+  /** Voicemail drop: public URL of the campaign's pre-recorded message.
+   *  Null until uploaded — the Drop VM button stays greyed without it. */
+  voicemailRecordingUrl?: string | null;
+  /** Voicemail drop: per-campaign on/off switch. */
+  voicemailDropEnabled?: boolean;
 }
 
 export interface SmsTemplate {

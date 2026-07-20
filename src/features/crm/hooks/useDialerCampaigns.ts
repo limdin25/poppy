@@ -21,6 +21,8 @@ interface WkCampaignRow {
   script_md: string | null;
   created_by: string | null;
   is_active: boolean;
+  voicemail_recording_url: string | null;
+  voicemail_drop_enabled: boolean;
 }
 
 interface QueueRollup {
@@ -75,6 +77,8 @@ export function rowToCampaign(row: WkCampaignRow, queue: QueueRollup | undefined
     // so admin can pause/resume without deleting. The Campaign type
     // already has isActive: boolean (was missing from the mapper).
     isActive: row.is_active,
+    voicemailRecordingUrl: row.voicemail_recording_url,
+    voicemailDropEnabled: row.voicemail_drop_enabled,
   };
 }
 
@@ -140,7 +144,7 @@ export function useDialerCampaigns(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let campaignsQuery = (supabase.from('wk_dialer_campaigns' as any) as any)
         .select(
-          'id, name, pipeline_id, parallel_lines, auto_advance_seconds, ai_coach_enabled, ai_coach_prompt_id, script_md, created_by, is_active'
+          'id, name, pipeline_id, parallel_lines, auto_advance_seconds, ai_coach_enabled, ai_coach_prompt_id, script_md, created_by, is_active, voicemail_recording_url, voicemail_drop_enabled'
         )
         .order('name', { ascending: true });
       if (!includeInactive) {
