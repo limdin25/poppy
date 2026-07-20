@@ -27,6 +27,12 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-07-20 — VM drop B1: drop TwiML builder
+- **Added:** `buildDropTwiml(recordingUrl)` in `api/lib/voicemail-drop.ts` —
+  `<Response><Play>{url}</Play><Hangup/></Response>` with XML-escaped url
+  (ghost-dialer's unescaped-interpolation bug pinned as a Red test), throws on
+  empty/non-http urls. Guard: `tests/voicemail-drop.test.ts › buildDropTwiml`.
+
 ### 2026-06-03 — Launch hardening
 - **Fixed:** inbox flicker + scrambled order — root cause was a broken poll dedup
   (`.maybeSingle()` erroring once duplicates existed → re-inserting every cron
