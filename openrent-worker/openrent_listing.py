@@ -67,13 +67,21 @@ def _text(node, selector):
     return None
 
 
-def scrape_search(page, search_url):
-    nav(page, search_url, wait_until="domcontentloaded")
-    try:
-        page.wait_for_selector(CARD_SEL, timeout=15000)
-    except Exception:
-        return []  # no results, or page blocked
-    out, seen = [], set()
+PAGE_SIZE = 20  # OpenRent shows 20 listings per search page
+
+
+def _page_url(search_url, skip):
+    """Append OpenRent's `skip` pagination param (page N = skip=20*(N-1))."""
+    if skip <= 0:
+        return search_url
+    sep = "&" if "?" in search_url else "?"
+    return f"{search_url}{sep}skip={skip}"
+
+
+def _parse_cards(page, seen):
+    """Parse every listing card currently on the page into target dicts.
+    `seen` is a cross-page set of listing ids so duplicates are dropped."""
+    out = []
     for card in page.query_selector_all(CARD_SEL):
         href = card.get_attribute("href")
         ext = _listing_id_from(card, href)
@@ -99,6 +107,25 @@ def scrape_search(page, search_url):
             "posted_at": None,        # see module docstring — dedup is by listing id
             "landlord_name": None,    # not on the results card
         })
+    return out
+
+
+def scrape_search(page, search_url, max_pages=1):
+    """Scrape up to `max_pages` pages of a search URL (OpenRent paginates via
+    `&skip=20*(N-1)`). Stops early when a page yields no NEW cards (end of
+    results, or every listing already seen). Dedup spans all pages."""
+    out, seen = [], set()
+    for n in range(max(1, int(max_pages))):
+        url = _page_url(search_url, n * PAGE_SIZE)
+        nav(page, url, wait_until="domcontentloaded")
+        try:
+            page.wait_for_selector(CARD_SEL, timeout=15000)
+        except Exception:
+            break  # no results, page blocked, or ran off the end of the list
+        before = len(seen)
+        out.extend(_parse_cards(page, seen))
+        if len(seen) == before:
+            break  # this page added nothing new — stop paging
     return out
 
 

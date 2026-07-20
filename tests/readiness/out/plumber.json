@@ -1,0 +1,71 @@
+{
+  "label": "Plumber — burst-pipe emergency",
+  "kind": "emergency plumber",
+  "transcript": [
+    {
+      "who": "Elsie",
+      "text": "Thanks for calling Rapid Response Plumbing, you're through to Elsie. How can I help?",
+      "tools": []
+    },
+    {
+      "who": "Caller",
+      "text": "Oh thank God, yes, hello! My kitchen pipe's just burst and there's water absolutely everywhere - can you get someone out here urgently, it's an absolute nightmare!"
+    },
+    {
+      "who": "Elsie",
+      "text": "Oh no, don't panic — you've called the right place! Let me get someone out to you as soon as possible.\n\nCan I grab your name first?",
+      "tools": []
+    },
+    {
+      "who": "Caller",
+      "text": "Yeah, it's Dave Wilkinson - please hurry, the water's still pouring out and I've got towels everywhere trying to catch it!"
+    },
+    {
+      "who": "Elsie",
+      "text": "Right, Dave, first thing — if you haven't already, try turning off your stopcock to stop the flow! It's usually under the sink or near the water meter.\n\nCan you give me your address so I can get a plumber heading your way?",
+      "tools": []
+    },
+    {
+      "who": "Caller",
+      "text": "Oh right, yeah, good thinking — I'll do that now! The address is 14 Oak Lane, Manchester, M14 5TP — how long do you think someone can get here?"
+    },
+    {
+      "who": "Elsie",
+      "text": "Got it, 14 Oak Lane, Manchester, M14 5TP. I can't give you an exact time but a plumber will call you straight back to confirm — they'll get to you as fast as they can!\n\nCan we reach you on the number you're calling from?",
+      "tools": []
+    },
+    {
+      "who": "Caller",
+      "text": "Yeah, that's fine - it's 07853 992555. Cheers Elsie, I really appreciate it, speak to you soon!"
+    },
+    {
+      "who": "Elsie",
+      "text": "Perfect, so that's Dave Wilkinson, burst pipe, 14 Oak Lane Manchester M14 5TP — someone will call you back on 07853 992555 right away. Hang tight, Dave, help's on the way! I've just texted you a confirmation too. Take care, Dave — bye for now!",
+      "tools": [
+        {
+          "name": "send_sms",
+          "input": {
+            "to_phone": "+447853992555",
+            "message": "Hi Dave, it's Elsie from Rapid Response Plumbing. We've got your details and a plumber will be calling you back shortly for your emergency at 14 Oak Lane, Manchester, M14 5TP. In the meantime, make sure your stopcock is turned off if you can. 🚨"
+          }
+        },
+        {
+          "name": "end_call",
+          "input": {}
+        }
+      ]
+    }
+  ],
+  "verdict": {
+    "captured_name": true,
+    "captured_number": true,
+    "captured_job_or_reason": true,
+    "captured_address_or_relevant_detail": true,
+    "confirmed_next_step": true,
+    "sounded_human": true,
+    "no_hallucinated_prices": true,
+    "appropriate_urgency": true,
+    "overall_pass": true,
+    "notes": "Excellent handling — Elsie reassured the caller immediately, captured all key details, offered practical stopcock advice, gave a clear callback commitment, confirmed everything in a clean summary, and sent an SMS confirmation. No issues identified."
+  }
+}

@@ -6,24 +6,43 @@ POST {app_url}/api/openrent/draft  with header x-worker-secret.
              "conversation_id":"..."}  -> {"text","stage","status","handoff"}
 """
 from __future__ import annotations
+import random
+import time
 import requests
+
+# Transient failures (a brief Anthropic blip, a 5xx, a network wobble) self-heal
+# within seconds, so retry a few times with exponential backoff + jitter rather than
+# waiting a whole cron cycle. A 4xx (bad worker secret, malformed request) won't fix
+# itself, so don't retry it. Still returns {} once exhausted, so callers degrade safely.
+_RETRY_BACKOFF_S = [1.0, 3.0, 7.0]
 
 
 def draft_full(cfg: dict, payload: dict) -> dict:
     """POST to the app and return the full JSON response ({} on any error)."""
     url = cfg["app_url"].rstrip("/") + "/api/openrent/draft"
-    try:
-        r = requests.post(
-            url,
-            json=payload,
-            headers={"x-worker-secret": cfg["worker_secret"], "Content-Type": "application/json"},
-            timeout=30,
-        )
-        r.raise_for_status()
-        return r.json() or {}
-    except Exception as e:  # noqa: BLE001
-        print(f"[llm] draft failed: {e}")
-        return {}
+    last_err: Exception | None = None
+    for attempt in range(len(_RETRY_BACKOFF_S) + 1):
+        try:
+            r = requests.post(
+                url,
+                json=payload,
+                headers={"x-worker-secret": cfg["worker_secret"], "Content-Type": "application/json"},
+                timeout=30,
+            )
+            # Don't retry client errors (4xx) — they won't fix themselves.
+            if 400 <= r.status_code < 500:
+                print(f"[llm] draft client error {r.status_code}; not retrying")
+                return {}
+            r.raise_for_status()
+            return r.json() or {}
+        except Exception as e:  # noqa: BLE001 — transient (5xx / timeout / conn drop)
+            last_err = e
+            if attempt < len(_RETRY_BACKOFF_S):
+                delay = _RETRY_BACKOFF_S[attempt] + random.uniform(0, 0.5)  # jitter avoids a thundering herd
+                print(f"[llm] draft attempt {attempt + 1} failed ({e}); retrying in {delay:.1f}s")
+                time.sleep(delay)
+    print(f"[llm] draft failed after {len(_RETRY_BACKOFF_S) + 1} attempts: {last_err}")
+    return {}
 
 
 def draft(cfg: dict, payload: dict) -> str:

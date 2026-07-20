@@ -1,0 +1,168 @@
+{
+  "checks": [
+    {
+      "name": "Sim: Plumber — burst-pipe emergency",
+      "status": "pass",
+      "detail": "Excellent handling — Elsie reassured the caller immediately, captured all key details, offered practical stopcock advice, gave a clear callback commitment, confirmed everything in a clean summary, and sent an SMS confirmation. No issues identified."
+    },
+    {
+      "name": "Sim: Salon — appointment booking",
+      "status": "pass",
+      "detail": "Elsie handled the booking cleanly — captured name, number, service, and preferred time, confirmed the slot, used all appropriate tools, and sent an SMS confirmation. No address or additional detail (e.g. nail length preference, allergies) was gathered, but this is a minor gap unlikely to be required for a standard gel manicure booking."
+    }
+  ],
+  "sms": null,
+  "sims": [
+    {
+      "label": "Plumber — burst-pipe emergency",
+      "kind": "emergency plumber",
+      "transcript": [
+        {
+          "who": "Elsie",
+          "text": "Thanks for calling Rapid Response Plumbing, you're through to Elsie. How can I help?",
+          "tools": []
+        },
+        {
+          "who": "Caller",
+          "text": "Oh thank God, yes, hello! My kitchen pipe's just burst and there's water absolutely everywhere - can you get someone out here urgently, it's an absolute nightmare!"
+        },
+        {
+          "who": "Elsie",
+          "text": "Oh no, don't panic — you've called the right place! Let me get someone out to you as soon as possible.\n\nCan I grab your name first?",
+          "tools": []
+        },
+        {
+          "who": "Caller",
+          "text": "Yeah, it's Dave Wilkinson - please hurry, the water's still pouring out and I've got towels everywhere trying to catch it!"
+        },
+        {
+          "who": "Elsie",
+          "text": "Right, Dave, first thing — if you haven't already, try turning off your stopcock to stop the flow! It's usually under the sink or near the water meter.\n\nCan you give me your address so I can get a plumber heading your way?",
+          "tools": []
+        },
+        {
+          "who": "Caller",
+          "text": "Oh right, yeah, good thinking — I'll do that now! The address is 14 Oak Lane, Manchester, M14 5TP — how long do you think someone can get here?"
+        },
+        {
+          "who": "Elsie",
+          "text": "Got it, 14 Oak Lane, Manchester, M14 5TP. I can't give you an exact time but a plumber will call you straight back to confirm — they'll get to you as fast as they can!\n\nCan we reach you on the number you're calling from?",
+          "tools": []
+        },
+        {
+          "who": "Caller",
+          "text": "Yeah, that's fine - it's 07853 992555. Cheers Elsie, I really appreciate it, speak to you soon!"
+        },
+        {
+          "who": "Elsie",
+          "text": "Perfect, so that's Dave Wilkinson, burst pipe, 14 Oak Lane Manchester M14 5TP — someone will call you back on 07853 992555 right away. Hang tight, Dave, help's on the way! I've just texted you a confirmation too. Take care, Dave — bye for now!",
+          "tools": [
+            {
+              "name": "send_sms",
+              "input": {
+                "to_phone": "+447853992555",
+                "message": "Hi Dave, it's Elsie from Rapid Response Plumbing. We've got your details and a plumber will be calling you back shortly for your emergency at 14 Oak Lane, Manchester, M14 5TP. In the meantime, make sure your stopcock is turned off if you can. 🚨"
+              }
+            },
+            {
+              "name": "end_call",
+              "input": {}
+            }
+          ]
+        }
+      ],
+      "verdict": {
+        "captured_name": true,
+        "captured_number": true,
+        "captured_job_or_reason": true,
+        "captured_address_or_relevant_detail": true,
+        "confirmed_next_step": true,
+        "sounded_human": true,
+        "no_hallucinated_prices": true,
+        "appropriate_urgency": true,
+        "overall_pass": true,
+        "notes": "Excellent handling — Elsie reassured the caller immediately, captured all key details, offered practical stopcock advice, gave a clear callback commitment, confirmed everything in a clean summary, and sent an SMS confirmation. No issues identified."
+      }
+    },
+    {
+      "label": "Salon — appointment booking",
+      "kind": "beauty salon",
+      "transcript": [
+        {
+          "who": "Elsie",
+          "text": "Hello, welcome to Glow Beauty Salon, this is Elsie. How can I help?",
+          "tools": []
+        },
+        {
+          "who": "Caller",
+          "text": "Hi Elsie, yeah I'd like to book in for a gel manicure please, ideally Thursday afternoon if you've got anything available?"
+        },
+        {
+          "who": "Elsie",
+          "text": "Lovely, let me check that for you! So for Thursday afternoon, I've got a slot at 2:30pm — does that work for you?",
+          "tools": [
+            {
+              "name": "check_availability",
+              "input": {
+                "date_from": "2026-07-02",
+                "date_to": "2026-07-02"
+              }
+            }
+          ]
+        },
+        {
+          "who": "Caller",
+          "text": "Yeah, 2:30 Thursday is perfect, thanks! So that's Sarah Okafor, and you can reach me on 07853 992555."
+        },
+        {
+          "who": "Elsie",
+          "text": "Great, let me just confirm — that's Sarah Okafor, S-A-R-A-H O-K-A-F-O-R? And the number is the one you're calling from, 07853 992555 — is that right?",
+          "tools": []
+        },
+        {
+          "who": "Caller",
+          "text": "Yes, that's all correct! Thanks so much, I'll see you Thursday at 2:30 then. Cheers, Elsie!"
+        },
+        {
+          "who": "Elsie",
+          "text": "Perfect, let me get that booked in for you now! You're all booked in, Sarah! Gel manicure, Thursday at 2:30pm — we'll see you then. Take care! I've also sent a confirmation text over to you. Bye for now! 😊",
+          "tools": [
+            {
+              "name": "book_appointment",
+              "input": {
+                "service_name": "Gel manicure",
+                "start_time": "2026-07-02T13:30:00.000Z",
+                "caller_name": "Sarah Okafor",
+                "caller_phone": "+447853992555"
+              }
+            },
+            {
+              "name": "send_sms",
+              "input": {
+                "to_phone": "+447853992555",
+                "message": "Hi Sarah, this is Glow Beauty Salon confirming your gel manicure on Thursday 2nd July at 2:30pm. We're on King Street, Manchester. See you then! 💅"
+              }
+            },
+            {
+              "name": "end_call",
+              "input": {}
+            }
+          ]
+        }
+      ],
+      "verdict": {
+        "captured_name": true,
+        "captured_number": true,
+        "captured_job_or_reason": true,
+        "captured_address_or_relevant_detail": false,
+        "confirmed_next_step": true,
+        "sounded_human": true,
+        "no_hallucinated_prices": true,
+        "appropriate_urgency": true,
+        "overall_pass": true,
+        "notes": "Elsie handled the booking cleanly — captured name, number, service, and preferred time, confirmed the slot, used all appropriate tools, and sent an SMS confirmation. No address or additional detail (e.g. nail length preference, allergies) was gathered, but this is a minor gap unlikely to be required for a standard gel manicure booking."
+      }
+    }
+  ],
+  "startedAt": "2026-07-01T10:55:38.417Z"
+}

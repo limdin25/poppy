@@ -1,5 +1,68 @@
 # CRM Port Audit — hub.nfstay.com/crm → app.heyelsie.com/admin/crm
 
+---
+## AS-BUILT (2026-07-15) — wave 1 complete
+
+**Status: built, deployed to preview, verified (non-spend).** The CRM lives at
+`/admin/crm` on Elsie. NFStay untouched.
+
+Done & verified:
+- **DB**: migration `supabase/migrations/20260715000001_crm_port.sql` applied to
+  loggyxryrhqsbtqpteog — 43 wk_* tables, 21 RPCs, `profiles` table, private
+  `call-recordings` bucket, 4 pg_cron jobs, realtime on 22 tables. Elsie's own
+  tables untouched (317 calls intact). Two source security holes fixed
+  (wk_call_timeline `security_invoker`, dialer RPC authz guards) — critical
+  because Elsie's auth pool is shared with all app customers.
+- **Backend**: 27 wave-1 edge functions deployed. Fail-closed webhook sigs
+  proven (valid→TwiML 200, bad/missing→403). New `wk-voicemail-transcribe`.
+  Legacy sms_* bridge cut; jobs-worker inlines Twilio send; OpenAI from env.
+- **Twilio**: API key `SK42e5…`, TwiML app `AP168a…` created; US toll-free
+  +18774194389/+18333706994 webhooked for CRM; `wk_numbers` seeded (UK Retell
+  lines = outbound caller ID only, sms/voice disabled).
+- **Frontend**: `src/features/crm/` mounted at `/admin/crm/*` OUTSIDE AdminGuard;
+  agents get CRM only. `tsc -b` green, `vite build` ok, 161 Elsie tests pass,
+  branding gate 0 hits. Playwright `crm-guard.spec.ts`: non-agent blocked from
+  CRM, non-admin bounced from admin.
+- **Cron**: `api/cron/crm-jobs-pump.ts` every minute (fixes source's unscheduled
+  jobs-worker/dialer-tick).
+- Edge secrets set: TWILIO_ACCOUNT_SID/AUTH_TOKEN/API_KEY_SID/API_KEY_SECRET/
+  TWIML_APP_SID, OPENAI_API_KEY, USD_TO_GBP.
+
+### BLOCKED / DEFERRED (need Hugo or external)
+1. **Live spend tests** — softphone outbound/inbound, recording ingest, Whisper
+   transcript, dialer campaign, spend cap. Needs Hugo's phone + a created agent.
+   Runbook: log in at /admin/crm as hugodesouzax@gmail.com → Settings → create an
+   agent → Dialer → call own mobile from +18774194389.
+2. **US toll-free SMS verification** — status (Hugo, 2026-07-15):
+   - **+1 833 370 6994 → APPROVED, can send/receive SMS now.** Use this number
+     for SMS testing (it's `sms_enabled` in wk_numbers).
+   - +1 877 419 4389 → still in review (verification ID
+     HHd110dacb89eb735227e8a6a46cfe4732) — voice works, SMS blocked until approved.
+3. **GB voice geo-permissions** — confirm enabled in Twilio (US TF → UK mobile).
+   - **SMS geo-permissions RESOLVED 2026-07-16**: US SMS geo-perms were OFF →
+     129 sends blocked with error 21408 (Twilio health score flags these as
+     "Fraud"). Ticked United States (+1) at Console → Messaging → Settings →
+     Geo Permissions (auto-includes Canada); re-send delivered 185. RULE: the
+     allowlist is per-country — tick any NEW destination country BEFORE the
+     first send, or every message 21408s. No REST API for SMS geo-perms;
+     console only (Kimi/Comet).
+4. **Supabase spend cap** — confirm cap is set before heavy recording ingest
+   (the 2026-06-02 media-bucket outage precedent).
+5. **Wave 2 — WhatsApp**: functions copied (`unipile-*`) but not edited/deployed;
+   needs a dedicated Unipile workspace + a phone to scan the WhatsApp QR.
+6. **Wave 2 — Email**: `wk-email-send/webhook` copied, not deployed; needs a
+   second Resend webhook endpoint + the recipient-routing guard in
+   `api/webhooks/resend-inbound.ts`.
+7. **Pending UK numbers** (+447863753339, +447307200470) — will appear in the
+   `wk_numbers` dropdown once Twilio activates them; run
+   `scripts/crm-activate-number.mjs <E164>` (to be written) to webhook them.
+8. **CRM's own unit tests** — the ported `src/features/crm/**/__tests__` need
+   `@testing-library/react` + jsdom (not installed); excluded from build/vitest
+   for now.
+
+---
+
+
 Audit date: 2026-07-15. Six-agent deep audit of both codebases (nfstay repo at
 `/Users/hugo/Downloads/AI Folder/nfstay`, Elsie repo here). This doc is the
 distilled result + implementation plan. Status: **awaiting Hugo's go-ahead on

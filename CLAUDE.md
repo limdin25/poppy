@@ -153,6 +153,12 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
   - Retell webhook branches on `metadata.type === 'brrr_property'` → Claude extracts qualification → qualified properties become deals in Hugo's live pipeline (stage "Qualified") + email notification
   - Env: `PROPERTY_INGEST_SECRET`, `RETELL_PROPERTY_AGENT_ID`, `PROPERTY_FROM_NUMBER`, `PROPERTY_PIPELINE_BUSINESS_ID`
 
+- **Twilio SMS geo-permissions — per-country allowlist (learned 2026-07-16 the hard way)**:
+  - Twilio blocks outbound SMS to any country not ticked at Console → Messaging → Settings → Geo Permissions. Error = **21408**, shows under "Fraud" in the health score. 129 sends died this way on 2026-07-16 (US wasn't ticked).
+  - **US + Canada enabled 2026-07-16.** Before texting any NEW country (Australia, etc.), tick its box FIRST.
+  - There is **NO REST API** for SMS geo-permissions (voice-only DialingPermissions exists) — the console (via Kimi WebBridge/Comet) is the only way to change it.
+  - Separate rule, don't confuse: US toll-free (833) → UK mobile = error **21612**, impossible regardless of geo-permissions.
+
 ### What's next
 1. Custom domain
 2. Wire agent setup "Save" to sync prompt to Retell (services, FAQs, greeting, behaviour changes)
@@ -164,3 +170,31 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 ## Identity — do not confuse with other projects
 
 This is **Elsie** (formerly Poppy), not Lemlin. Never reference Lemlin, instagrapi, iProyal, GHL, Fly.io workers, or any Lemlin-specific concepts. Hugo runs multiple projects — keep them separate.
+
+---
+
+## Agent behavior principles
+
+Rules for any AI agent working on this project — apply every task, every session.
+
+**Act when ready.** When enough information exists to act, act. Do not re-derive established facts, re-litigate decided questions, or narrate options you won't pursue. If weighing a choice, give a recommendation — not a survey.
+
+**Lead with the outcome.** The first sentence after finishing work should answer "what changed" or "what did you find." Supporting detail follows. Never open with process narration.
+
+**Don't scope-creep.** Don't add features, refactor, or introduce abstractions beyond what the task requires. A bug fix doesn't need surrounding cleanup. Don't design for hypothetical future requirements. Don't add error handling for scenarios that can't happen. Trust framework guarantees — only validate at real system boundaries.
+
+**Only pause when genuinely needed.** Pause only for: a destructive or irreversible action, a real scope change, or input only the user can provide. For reversible actions that follow from the original request, proceed. End a turn only when the task is complete or you are genuinely blocked.
+
+**Ground progress claims.** Before reporting something is done, verify it against an actual tool result from this session. If a step is not yet verified, say so. If something failed, say so plainly.
+
+**Assessment before action.** When the user is describing a problem, asking a question, or thinking out loud rather than requesting a change, the deliverable is your assessment — report findings and stop. Don't apply a fix until asked.
+
+**Escalation beats guessing.** Every agent will hit a case it can't handle. When uncertain on something consequential: say so and ask, rather than guess and proceed. Silent failures cost more trust than honest "I don't know."
+
+**Narrow scope outperforms broad scope.** A focused agent that does one thing reliably beats a broad agent that does five things unpredictably. When in doubt, do less — more reliably.
+
+**Memory: record corrections AND confirmed approaches.** When saving to memory, capture why something matters — not just what. A confirmed approach that worked is as worth recording as a correction. Don't save what the repo or chat history already records.
+
+**Don't reproduce internal reasoning in responses.** Don't write prompts or instructions that tell the model to echo or explain its internal reasoning as output text. Output should be the answer, not the working.
+
+**Self-verify on complex builds.** After finishing anything more than a small edit, check the work against what was asked before reporting done.

@@ -26,13 +26,28 @@ export default async function handler(req: Request): Promise<Response> {
     const payload = await req.json().catch(() => ({} as any));
     if (payload?.event !== 'call_inbound') return ok({});
 
+    const fromNumber: string | undefined = payload?.call_inbound?.from_number;
     const toNumber: string | undefined = payload?.call_inbound?.to_number;
-    if (!toNumber) return ok({});
 
-    const { data: overrideAgentId, error } = await supabase.rpc('ab_pick_agent', { p_to: toNumber });
-    if (error || !overrideAgentId) return ok({});
+    // Expose the caller's number to the agent as {{from_number}}/{{to_number}}.
+    // Retell does NOT auto-populate these on SIP-trunk (custom telephony) numbers,
+    // so we inject them here — this is what lets the agent "see" the caller's
+    // number without asking. Harmless on numbers that don't use it.
+    const dynamic_variables: Record<string, string> = {};
+    if (fromNumber) { dynamic_variables.from_number = fromNumber; dynamic_variables.caller_number = fromNumber; }
+    if (toNumber) dynamic_variables.to_number = toNumber;
 
-    return ok({ call_inbound: { override_agent_id: overrideAgentId } });
+    // Optional A/B agent rotation (only affects numbers with ab config configured).
+    let overrideAgentId: string | null = null;
+    if (toNumber) {
+      const { data } = await supabase.rpc('ab_pick_agent', { p_to: toNumber });
+      overrideAgentId = data || null;
+    }
+
+    const call_inbound: Record<string, unknown> = {};
+    if (Object.keys(dynamic_variables).length) call_inbound.dynamic_variables = dynamic_variables;
+    if (overrideAgentId) call_inbound.override_agent_id = overrideAgentId;
+    return ok({ call_inbound });
   } catch {
     return ok({});
   }

@@ -26,6 +26,13 @@ from browser_util import nav
 
 BASE = "https://www.openrent.co.uk"
 INBOX_URL = f"{BASE}/myenquiries"
+# /myenquiries shows only the ~10 most-recent threads with NO pagination (the
+# `skip` param is ignored and the list does not lazy-load). During a high-volume
+# sweep, fresh outbound enquiries bubble to the top and push a landlord's reply
+# below the visible 10 before the poller reads it. The "Unread" filter (?Filter=10)
+# lists exactly the threads we have NOT opened — i.e. every reply still needing
+# action — regardless of how far it's been buried, so we poll it too.
+UNREAD_URL = f"{BASE}/myenquiries?Filter=10"
 THREAD_CARD = "div[id^='thread-']"
 REPLY_TEXTAREA = "#message-compose-textarea"
 REPLY_SEND_BTN = "#send-message-button"
@@ -46,8 +53,8 @@ def _text(node, selector):
     return None
 
 
-def read_inbox(page):
-    nav(page, INBOX_URL, wait_until="domcontentloaded")
+def read_inbox(page, url=INBOX_URL):
+    nav(page, url, wait_until="domcontentloaded")
     try:
         page.wait_for_selector(THREAD_CARD, timeout=10000)
     except Exception:

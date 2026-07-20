@@ -5,11 +5,11 @@ with sync_playwright() as p:
     b = p.chromium.launch(headless=True)
     page = b.new_context(viewport={"width": 1340, "height": 920}).new_page()
     page.set_default_timeout(45000)
-    page.goto("https://hostunico.com/login", wait_until="domcontentloaded"); page.wait_for_timeout(2500)
+    page.goto("https://legacy.hostunico.com/login", wait_until="domcontentloaded"); page.wait_for_timeout(2500)
     page.click("text=WhatsApp user"); page.wait_for_timeout(6000)
 
     # 1) main inbox — Victoria graduated in (has a number) with an OpenRent badge
-    page.goto("https://hostunico.com/app/inbox", wait_until="domcontentloaded"); page.wait_for_timeout(5000)
+    page.goto("https://legacy.hostunico.com/app/inbox", wait_until="domcontentloaded"); page.wait_for_timeout(5000)
     page.screenshot(path="data/v_main_inbox.png", full_page=False)
     body = page.inner_text("body")
     print("Victoria in main inbox:", "Victoria" in body)
@@ -25,7 +25,7 @@ with sync_playwright() as p:
         print("badge click:", e)
 
     # 3) OpenRent inbox — open Victoria, see active actions + Send agreement
-    page.goto("https://hostunico.com/app/openrent", wait_until="domcontentloaded"); page.wait_for_timeout(5000)
+    page.goto("https://legacy.hostunico.com/app/openrent", wait_until="domcontentloaded"); page.wait_for_timeout(5000)
     try:
         page.click("text=Victoria"); page.wait_for_timeout(3000)
     except Exception as e:

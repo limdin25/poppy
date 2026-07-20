@@ -18,6 +18,7 @@ import {
   SearchCode,
   KanbanSquare,
   Headset,
+  ShieldCheck,
   Menu,
   X,
   ArrowLeft,
@@ -59,6 +60,7 @@ const navGroups = [
     label: 'CRM',
     items: [
       { to: '/admin/crm', icon: Headset, label: 'CRM' },
+      { to: '/admin/phone-validation', icon: ShieldCheck, label: 'Phone Validator' },
     ],
   },
   {

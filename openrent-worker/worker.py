@@ -656,48 +656,75 @@ def maybe_scrape(db: DB, sessions: Sessions, cfg, settings, accounts, state):
     """Autopilot: re-scrape each business's source URLs every
     `rescrape_every_min` minutes, but only while at least one of its accounts is
     within active days/hours. Keeps pulling fresh 'available now' listings; the
-    per-listing dedup (target_exists) makes re-scraping safe."""
+    per-listing dedup (target_exists) makes re-scraping safe.
+
+    CHUNKED: each call scrapes only `scrape_urls_per_tick` URLs and advances a
+    per-business cursor, so a full sweep spreads across many ticks instead of
+    blocking the worker loop for the whole sweep. With 7 pages/URL a single-shot
+    sweep of 40 URLs took ~35 min, freezing sends + reply-polling that entire
+    time; chunking keeps every tick short. The cooldown timer only gates the
+    START of a sweep (cursor==0) — once mid-sweep we keep going every tick."""
     every = int(settings.get("rescrape_every_min", 30))
+    per_tick = max(1, int(settings.get("scrape_urls_per_tick", 6)))
     last = state.get("last_scrape", {})
+    cursors = state.get("scrape_cursor", {})
+    offsets = state.get("scrape_offset", {})
     now = dt.datetime.now(dt.timezone.utc)
     biz_ids = sorted({a["business_id"] for a in accounts})
     for biz in biz_ids:
         biz_accounts = [a for a in accounts if a["business_id"] == biz]
         if not any(within_active(a, cfg) for a in biz_accounts):
             continue
-        prev = parse_iso(last.get(biz))
-        if prev and (now - prev).total_seconds() < every * 60:
-            continue
-        last[biz] = now_iso()
-        state["last_scrape"] = last
-        # Rotate which account scrapes which URL each cycle, so the scraping
+        cursor = int(cursors.get(biz, 0))
+        if cursor == 0:  # only gate the start of a fresh sweep on the cooldown
+            prev = parse_iso(last.get(biz))
+            if prev and (now - prev).total_seconds() < every * 60:
+                continue
+        # Rotate which account scrapes which URL each sweep, so the scraping
         # footprint spreads evenly across the fleet over time instead of the same
         # accounts always carrying the same URLs (anti-overload, anti-pattern).
-        offsets = state.get("scrape_offset", {})
         offset = int(offsets.get(biz, 0))
-        offsets[biz] = offset + 1
+        processed, total = scrape_business(
+            db, sessions, cfg, settings, biz, accounts, offset=offset,
+            start=cursor, limit=per_tick)
+        new_cursor = cursor + processed
+        if total == 0 or new_cursor >= total:
+            cursors[biz] = 0            # sweep done → cool down, rotate accounts
+            last[biz] = now_iso()
+            offsets[biz] = offset + 1
+        else:
+            cursors[biz] = new_cursor   # more URLs left → continue next tick
+        state["scrape_cursor"] = cursors
+        state["last_scrape"] = last
         state["scrape_offset"] = offsets
         save_state(state)
-        scrape_business(db, sessions, cfg, settings, biz, accounts, offset)
 
 
-def scrape_business(db: DB, sessions: Sessions, cfg, settings, business_id, accounts, offset=0):
+def scrape_business(db: DB, sessions: Sessions, cfg, settings, business_id, accounts,
+                    offset=0, start=0, limit=None):
+    """Scrape a window of this business's source URLs (urls[start:start+limit]).
+    Returns (processed_count, total_url_count) so the caller can advance its
+    chunk cursor. Account rotation uses the ABSOLUTE url index so the fleet
+    footprint stays even across chunks."""
     urls = db.source_urls(business_id)
     biz_accounts = [a for a in accounts if a["business_id"] == business_id
                     and a.get("status") not in ("disabled", "needs_login", "pending_confirm")]
     if not urls or not biz_accounts:
-        return
-    db.log(business_id, "scrape", f"Scan: {len(urls)} search URLs across {len(biz_accounts)} accounts")
+        return (0, len(urls))
+    total = len(urls)
+    window = urls[start:start + limit] if limit else urls[start:]
+    max_pages = max(1, int(settings.get("scrape_pages_per_url", 1)))
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=int(settings.get("only_listings_newer_than_days", 3)))
     found = new = 0
-    for i, u in enumerate(urls):
+    for j, u in enumerate(window):
+        i = start + j  # absolute index across the full URL list
         # Pace the scrape so an account isn't hit with back-to-back page loads.
-        if i > 0:
+        if j > 0:
             time.sleep(random.randint(2, 6))
         acc = biz_accounts[(i + offset) % len(biz_accounts)]
         try:
             page = sessions.page_for(acc)
-            listings = openrent_listing.scrape_search(page, u["url"])
+            listings = openrent_listing.scrape_search(page, u["url"], max_pages=max_pages)
         except SessionUnavailable:
             continue  # login self-healing in progress — skip quietly (already logged)
         except Exception as e:  # noqa: BLE001
@@ -731,7 +758,11 @@ def scrape_business(db: DB, sessions: Sessions, cfg, settings, business_id, acco
             })
             if not blacklisted:
                 new += 1
-    db.log(business_id, "scrape", f"Scan done: {found} seen, {new} new ready to contact")
+    lo, hi = start + 1, start + len(window)
+    tail = " ✓ sweep complete" if (total == 0 or hi >= total) else ""
+    db.log(business_id, "scrape",
+           f"Scan URLs {lo}-{hi}/{total} (×{max_pages}p): {found} seen, {new} new ready{tail}")
+    return (len(window), total)
 
 
 # ── Phase 2: persona account creation ("Maria" → m.<surname>@<domain>) ───────
@@ -1249,7 +1280,14 @@ def poll_replies(db: DB, sessions: Sessions, cfg, accounts):
             continue
         try:
             page = sessions.page_for(acc)
-            threads = openrent_inbox.read_inbox(page)
+            # Read the UNREAD view, not the recent-list. /myenquiries shows only the
+            # ~10 newest threads with no pagination, so a burst of fresh enquiries can
+            # bury a landlord's reply before we read it. The Unread filter lists every
+            # thread we haven't opened — i.e. exactly the replies still needing action,
+            # however far buried — and it's the same one page-load, so coverage goes up
+            # with no extra proxy load. A reply marks its thread unread again, so even
+            # a follow-up on an already-handled thread reappears here.
+            threads = openrent_inbox.read_inbox(page, url=openrent_inbox.UNREAD_URL)
         except SessionUnavailable:
             continue  # login self-healing in progress — skip quietly (already logged)
         except Exception as e:  # noqa: BLE001
@@ -1300,6 +1338,13 @@ def process_ai_replies(db: DB, cfg, settings, accounts):
             # a private WhatsApp chat (contact + pinned draft) and told us to post
             # NOTHING back on OpenRent. Store nothing → send_queued never sees it.
             if res.get("skip"):
+                # The landlord was handed off to WhatsApp, so this OpenRent thread is
+                # DONE. The skip stores nothing back on OpenRent, so its last message
+                # stays inbound — without turning AI off here the conv re-qualifies
+                # every tick and re-hits the draft route forever (was ~2,000 wasted
+                # reply-suppressed calls/day for ~14 handed-off leads). Drop it out of
+                # the ai_handling=True query so the skip is terminal.
+                db.sb.table("conversations").update({"ai_handling": False}).eq("id", c["id"]).execute()
                 db.log(business_id, "reply-suppressed",
                        "Landlord shared a number — handed to WhatsApp; no OpenRent reply sent")
                 continue
@@ -1390,6 +1435,9 @@ def tick(db: DB, sessions: Sessions, cfg, state):
     _step("check_proxies",      lambda: check_proxies(db, sessions, cfg, accounts))
     _step("recover_sessions",   lambda: recover_sessions(db, sessions, cfg, accounts))
     _step("ensure_profile_names", lambda: ensure_profile_names(db, sessions, cfg, settings, accounts))
+    # Scrape is CHUNKED (a few URLs/tick) so it stays short — it no longer needs
+    # to run last; keeping it ahead of the slow poll_replies guarantees the chunk
+    # cursor advances every tick instead of being starved behind inbox polling.
     _step("maybe_scrape",       lambda: maybe_scrape(db, sessions, cfg, settings, accounts, state))
     _step("run_rotation",       lambda: run_rotation(db, sessions, cfg, settings, accounts))
     _step("poll_replies",       lambda: poll_replies(db, sessions, cfg, accounts))

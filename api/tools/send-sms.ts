@@ -27,6 +27,16 @@ export default async function handler(req: Request): Promise<Response> {
   const message = (body.message || '').trim();
   let toPhone = (body.to_phone || '').trim();
   if (toPhone.includes('{{')) toPhone = '';
+  // UK national format ("07863992555") -> E.164 ("+447863992555") for Twilio.
+  if (/^0\d{9,10}$/.test(toPhone)) toPhone = '+44' + toPhone.slice(1);
+  // On SIP-trunk lines Retell does NOT resolve {{from_number}}, so the agent
+  // can't fill to_phone for the current caller. Fall back to the caller's number
+  // that Retell includes in the tool-call `call` object — so texting the caller
+  // works automatically without the agent ever asking for the number.
+  if (!toPhone) {
+    const caller = (rawBody as { call?: { from_number?: string } }).call?.from_number;
+    if (caller) toPhone = String(caller).trim();
+  }
 
   if (!toPhone) {
     return new Response(JSON.stringify({
