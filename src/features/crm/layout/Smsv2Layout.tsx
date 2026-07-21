@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, LogOut } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
@@ -27,9 +27,17 @@ function StoreHydrator() {
 }
 
 export default function Smsv2Layout() {
-  // Start collapsed — Hugo wants the CRM menu out of the way on the dialer
-  // by default; the chevron still expands it for the session.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  // Start collapsed the first time, then remember the user's choice across
+  // loads (localStorage). Default collapsed keeps the dialer clean out of the box.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const v = localStorage.getItem('crm_sidebar_collapsed');
+      return v === null ? true : v === '1';
+    } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('crm_sidebar_collapsed', sidebarCollapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, [sidebarCollapsed]);
   const onDialerPage = useLocation().pathname === '/admin/crm/dialer-pro';
   const { isAdmin } = useAuth();
 
