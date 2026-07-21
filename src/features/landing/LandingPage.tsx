@@ -123,7 +123,7 @@ const FAQS: [string, string][] = [
   ['What\'s a "request"? What happens if I hit my limit?', 'A request is one review ask to one customer. Follow-ups are free and don\'t count. Hit your monthly cap and sending simply pauses until you upgrade (takes one click) or the month rolls over.'],
   ['Which review sites do you support?', 'Google, because that\'s what wins you jobs. When someone searches "plumber near me", Google reviews decide who they call.'],
   ['Does it work with my job software?', 'Yes, via Zapier (5,000+ apps) or our simple webhook. And a spreadsheet upload always works.'],
-  ['Is there a contract?', 'No contract. 14-day free trial, cancel any time from your dashboard.'],
+  ['Is there a contract?', 'No contract. 10-day free trial, cancel any time from your dashboard.'],
   ['Do you write fake reviews?', 'Absolutely not. Every review comes from your real customers, in their own words. We just make asking effortless.'],
 ]
 
@@ -215,7 +215,7 @@ export default function LandingPage() {
                   See how it works
                 </a>
               </div>
-              <p className="mt-4 text-xs text-white/55">14-day free trial · no contract · built for UK trades</p>
+              <p className="mt-4 text-xs text-white/55">10-day free trial · no contract · built for UK trades</p>
             </Reveal>
           </div>
 
@@ -428,7 +428,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-5xl">
           <Reveal>
             <h2 className={`text-center text-3xl sm:text-4xl ${DISPLAY}`}>Simple pricing. Every feature, every plan.</h2>
-            <p className="mt-2 text-center text-[#7D7467]">The only difference is how many customers you can ask each month. 14-day free trial on all plans.</p>
+            <p className="mt-2 text-center text-[#7D7467]">The only difference is how many customers you can ask each month. 10-day free trial on all plans.</p>
           </Reveal>
           <div className="mt-12 grid gap-4 md:grid-cols-3">
             {PRICING.map((p, i) => (
@@ -443,7 +443,7 @@ export default function LandingPage() {
                   <p className={`mt-3 text-5xl ${DISPLAY}`}>£{p.price}<span className="text-sm font-normal text-[#7D7467]">/mo</span></p>
                   <p className="mt-1 text-sm text-[#5c5c5c]">{p.requests}</p>
                   <a href={SIGNUP} className={`mt-6 px-4 py-3 text-center text-sm font-semibold ${PILL_DARK}`}>
-                    Start 14-day free trial
+                    Start 10-day free trial
                   </a>
                   <ul className="mt-6 flex-1 space-y-2">
                     {PLAN_BULLETS.map((b) => (
@@ -509,7 +509,7 @@ export default function LandingPage() {
             </div>
             <h2 className={`text-3xl sm:text-5xl ${DISPLAY}`}>Your next 25 reviews are on us</h2>
             <p className="mx-auto mt-4 max-w-lg text-white/75">
-              Start the 14-day free trial, upload your customer list, and watch the first reviews arrive before you've
+              Start the 10-day free trial, upload your customer list, and watch the first reviews arrive before you've
               paid a penny. If it doesn't work for your business, cancel in two clicks.
             </p>
             <a href={SIGNUP} className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#FEFDFD] px-8 py-4 text-base font-semibold text-[#1a1816] shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition hover:bg-[#f5f3f1]">

@@ -555,7 +555,7 @@ const N = {
     ]},
 
   crm_connect: {stage:'CLOSE',
-    say:`"Oh, and I forgot to mention: once those first reviews from your past customers are flowing, we don't stop there. We hook it up to whatever you use to book your jobs, so every future customer gets that same review text automatically the moment you finish their job, you never lift a finger. What are you on, Jobber, Housecall Pro, ServiceTitan, QuickBooks? Whatever it is, I'll get your integration ready and text you a connection link today or tomorrow. Good?"`,
+    say:`"So your reviews come in two waves. First is the review reactivation: I take that list of past customers and text them all asking for a review, that's your fast wave in the first few days. Then to keep it rolling, we connect it to whatever you use to book your jobs, so every new customer gets that same request automatically the moment you finish the job, you never lift a finger. What do you use, Jobber, Housecall Pro, ServiceTitan, QuickBooks? Whatever it is, I'll get your integration ready and text you a connection link today or tomorrow. Sound good?"`,
     dir:`Capture the software name, it decides which integration we build next (we build them one at a time). Promise the connection link today or tomorrow. This is still not a barrier to closing today, if they have no system, take them to no_crm.`,
     r:[
       {l:`"Yeah, makes sense"`,n:`google_access`},

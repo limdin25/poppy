@@ -62,7 +62,7 @@ export default async function handler(req: Request): Promise<Response> {
       <h2>${biz?.name || 'A business you know'} thinks you should get more Google reviews</h2>
       <p>${name ? `Hi ${name.split(/\s+/)[0]}, ` : ''}${biz?.name || 'A fellow business owner'} uses HeyElsie Reviews to turn happy customers into Google reviews automatically, and they referred you.</p>
       <p>Set up takes about 10 minutes: connect your Google profile, upload your customer list, and reviews start landing within days. You'll both receive a £100 gift card after your first month.</p>
-      <p><a href="${referralLink}" style="background:#3C5A87;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600;">Start your 14-day free trial</a></p>
+      <p><a href="${referralLink}" style="background:#3C5A87;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600;">Start your 10-day free trial</a></p>
       <p style="color:#9ca3af;font-size:12px;">If this isn't for you, just ignore this email. We won't contact you again.</p>
     </div>`;
     await sendEmail(inviteeEmail, `${biz?.name || 'A business you know'} recommends HeyElsie Reviews (+£100 gift card)`, html).catch(() => {});

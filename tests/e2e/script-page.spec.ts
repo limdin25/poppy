@@ -34,5 +34,8 @@ test.describe('PIN-gated call script', () => {
     // CRM step now promises the integration link today/tomorrow.
     expect(text).toContain('connection link today or tomorrow')
     expect(text).not.toContain('set up in a week or two')
+    // CRM step reframed around review reactivation; the clunky opener is gone.
+    expect(text).toContain('review reactivation')
+    expect(text).not.toContain('forgot to mention')
   })
 })

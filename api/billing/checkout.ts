@@ -65,7 +65,7 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
-    // HeyElsie Reviews tiers: 14-day free trial, card on file, and the
+    // HeyElsie Reviews tiers: 10-day free trial, card on file, and the
     // checkout returns to the go.heyelsie.com app instead of the receptionist.
     const REVIEWS_PRICES = new Set([
       'price_1TvIMsLdAEhwWg6w9VFZFSJ0',
@@ -87,7 +87,7 @@ export default async function handler(req: Request): Promise<Response> {
       metadata: { business_id: businessId },
       ...(isReviews
         ? {
-            subscription_data: { trial_period_days: 14 },
+            subscription_data: { trial_period_days: 10 },
             payment_method_collection: 'always' as const,
           }
         : {}),

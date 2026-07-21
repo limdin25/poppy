@@ -118,7 +118,7 @@ export default function ReviewsBillingPage() {
                 disabled={isCurrent || busy !== null}
                 onClick={() => choosePlan(p.priceId)}
               >
-                {isCurrent ? 'Current plan' : busy === p.priceId ? 'Redirecting…' : onReviewsPlan ? `Switch to ${p.name}` : `Start 14-day free trial`}
+                {isCurrent ? 'Current plan' : busy === p.priceId ? 'Redirecting…' : onReviewsPlan ? `Switch to ${p.name}` : `Start 10-day free trial`}
               </Button>
             </div>
           )

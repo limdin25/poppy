@@ -1,6 +1,6 @@
 // The 10-minute reviews onboarding (go.heyelsie.com/onboarding):
 // account → upload customers → compliance confirmation → pick a plan (card,
-// 14-day trial) → done. Google Business Profile connection happens AFTER
+// 10-day trial) → done. Google Business Profile connection happens AFTER
 // signup, from the dashboard. Handles the Stripe checkout round-trip.
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
@@ -249,7 +249,7 @@ export default function ReviewsOnboardingPage() {
           {step === 'account' && (
             <div>
               <h1 className="text-2xl font-semibold text-ink">Create your account</h1>
-              <p className="mt-1 text-sm text-ink-subtle">14-day free trial · set up in about 10 minutes</p>
+              <p className="mt-1 text-sm text-ink-subtle">10-day free trial · set up in about 10 minutes</p>
               {hasSession ? (
                 <div className="mt-6 space-y-3">
                   <p className="text-sm text-ink">You're already signed in.</p>
@@ -316,7 +316,7 @@ export default function ReviewsOnboardingPage() {
           {step === 'plan' && (
             <div>
               <h1 className="text-2xl font-semibold text-ink">Choose your plan</h1>
-              <p className="mt-1 text-sm text-ink-subtle">Every plan has every feature. Only the monthly request volume differs. 14-day free trial, cancel anytime.</p>
+              <p className="mt-1 text-sm text-ink-subtle">Every plan has every feature. Only the monthly request volume differs. 10-day free trial, cancel anytime.</p>
               <div className="mt-5 space-y-3">
                 {REVIEW_PLAN_CARDS.map((p) => (
                   <button key={p.key} onClick={() => choosePlan(p.priceId)} disabled={busy}
