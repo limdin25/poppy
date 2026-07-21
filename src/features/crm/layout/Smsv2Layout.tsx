@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, LogOut } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import CrmGuard from '../components/CrmGuard';
 import Smsv2Sidebar from './Smsv2Sidebar';
@@ -64,6 +65,17 @@ export default function Smsv2Layout() {
                       <span className="hidden sm:inline">Admin</span>
                     </Link>
                   )}
+                  <button
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      window.location.assign('/login');
+                    }}
+                    title="Sign out"
+                    className="flex items-center gap-1.5 text-sm text-[#6B7280] hover:text-[#B91C1C] transition-colors px-3 py-1.5 rounded-lg hover:bg-black/[0.04]"
+                  >
+                    <LogOut className="w-4 h-4" strokeWidth={1.8} />
+                    <span className="hidden sm:inline">Sign out</span>
+                  </button>
                 </div>
               </header>
 

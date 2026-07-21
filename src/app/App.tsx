@@ -38,6 +38,7 @@ const BillingPage = lazy(() => import('@/features/billing/BillingPage'))
 const AdminApp = lazy(() => import('@/features/admin/AdminApp'))
 const CrmApp = lazy(() => import('@/features/crm/CrmApp'))
 const AgentJoinPage = lazy(() => import('@/features/agent-onboarding/AgentJoinPage'))
+const ScriptPage = lazy(() => import('@/features/script/ScriptPage'))
 const LandingPage = lazy(() => import('@/features/landing/LandingPage'))
 const ReviewsApp = lazy(() => import('@/features/reviews/ReviewsApp'))
 const PrivacyPolicyPage = lazy(() => import('@/features/legal/PrivacyPolicyPage'))
@@ -124,6 +125,8 @@ export default function App() {
         {/* Public agent hiring link — the new hire signs the agreement,
             verifies their email, and gets a CRM agent account. */}
         <Route path="join" element={<AgentJoinPage />} />
+        {/* PIN-gated one-call sales script (heyelsie.com/script). */}
+        <Route path="script" element={<ScriptPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />

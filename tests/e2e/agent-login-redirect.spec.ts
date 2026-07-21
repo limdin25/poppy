@@ -27,5 +27,11 @@ test.describe('CRM agent login routing', () => {
     await expect(page.locator('a[href="/admin/crm/dashboard"]')).toHaveCount(0)
     // Agent-accessible nav (Inbox) is present.
     await expect(page.locator('a[href*="/admin/crm/inbox"]:visible').first()).toBeVisible({ timeout: 15000 })
+
+    // The CRM header has a working Sign out button.
+    const signOut = page.getByRole('button', { name: /sign out/i })
+    await expect(signOut).toBeVisible()
+    await signOut.click()
+    await page.waitForURL(/\/login/, { timeout: 20000 })
   })
 })
