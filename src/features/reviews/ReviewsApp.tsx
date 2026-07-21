@@ -217,6 +217,15 @@ export default function ReviewsApp() {
       const { data: member } = await supabase
         .from('team_members').select('business_id').eq('user_id', user.id).limit(1).maybeSingle()
       if (!member) {
+        // A CRM contractor agent has no reviews business. Don't dead-end them on
+        // the reviews login — send them to the CRM on the app host, where their
+        // account lives (login is per-origin, so they sign in there).
+        const { data: prof } = await supabase.from('profiles').select('workspace_role').eq('id', user.id).maybeSingle()
+        const role = (prof as { workspace_role?: string | null } | null)?.workspace_role
+        if (!cancelled && (role === 'agent' || role === 'admin' || role === 'viewer')) {
+          window.location.replace('https://app.heyelsie.com/admin/crm/inbox')
+          return
+        }
         if (!cancelled) setState({ loading: false, session: null, authed: false, isAdmin: false })
         return
       }
