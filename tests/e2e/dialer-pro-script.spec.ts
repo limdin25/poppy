@@ -21,7 +21,7 @@ test.describe('Dialer Pro — tabs, script, keypad', () => {
     // "Open all objections" toolbar is hidden in the lean dialer view.
     await expect(page.getByRole('button', { name: /^Edit$/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /^Print$/ })).toBeVisible()
-    await expect(frame.getByText('Open all objections')).toHaveCount(0)
+    await expect(frame.getByText('Open all objections')).toBeHidden()
 
     // Right panel opens on Calculator; the gap output reacts to the inputs.
     await expect(page.getByText('Gap calculator')).toBeVisible()

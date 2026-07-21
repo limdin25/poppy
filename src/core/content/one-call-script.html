@@ -536,58 +536,59 @@ const N = {
     say:`"Great, open it up and pop me on speaker while you sign up, takes 30 seconds. Just fill your details in and add a card to start the free trial. Nothing's charged for 10 days."`,
     dir:`Stay on the line and talk them through the sign-up. Confirm it's actually done before you move on, "all signed up? Perfect, I can see it come through my end."`,
     r:[
-      {l:`Signed up ✓`,n:`customer_list`},
+      {l:`Signed up ✓`,n:`google_access`},
       {l:`"I'll finish it later"`,n:`card_link_push`,obj:true},
     ]},
 
   card_read: {stage:'CLOSE',
     say:`"Course, I can pop it into the sign-up for you if that's easier. Go on, starting with four."`,
     dir:`Only if THEY ask to read it out, never lead with this in the UK. Just start writing as they read. Then reassure: "Nothing's charged today, this just starts your free trial. Nothing comes off the card for 10 days."`,
-    r:[{l:`Card taken ✓`,n:`customer_list`}]},
+    r:[{l:`Card taken ✓`,n:`google_access`}]},
 
   customer_list: {stage:'CLOSE',
-    say:`"Right, now the important bit, this is what actually gets your reviews rolling. To get your first 25 in fast, the way it works is we text everyone you've done work for over the last three months and ask them for a review, so I just need a quick list of those past customers: name and mobile number, email too if you've got it. Easiest way: if you use anything like Jobber, House Call Pro, QuickBooks, whatever, export it as a spreadsheet in a couple of clicks and I'll take it from there. No software? No bother, a rough list, a screenshot of your contacts, even forwarding me a few invoices works, I'll tidy it my end. I'll text you where to send it right after this call. Sound alright?"`,
-    dir:`Don't collect the file live, that kills momentum. Just get the YES and set the expectation. Frame it as "the thing that gets YOU reviews," not admin. Your VA chases the actual file within a day (people who've just paid send it fastest). Name a couple of systems so they picture their own. Minimum you need: name + mobile; email is a bonus (lets you text AND email).`,
+    say:`"Right, the bit that actually gets your reviews rolling: your past customers. Quick one, where do you keep them, something like Jobber or QuickBooks, or just a phone full of numbers? However you've got them is fine. Second we hang up I'll text you a one-minute form, you send your list back this afternoon before you get busy, I'll have it built tonight, and we're texting your customers tomorrow. Name and mobile is all I need, email too if you've got it. That work for you?"`,
+    dir:`Open by LOCATING the list, not collecting it, that keeps momentum. Set a same-day deadline: back this afternoon, built tonight, texting their customers tomorrow. Never say "next day" for their list, that's where it gets forgotten and they cancel in two weeks. Your VA texts the one-minute form within the hour and nudges same-day. Minimum you need: name plus mobile, email is a bonus.`,
     r:[
-      {l:`"Yeah, no problem"`,n:`crm_connect`},
+      {l:`"Yeah, no problem"`,n:`reactivation_promise`},
       {l:`"I don't want to hand over my customer list"`,n:`list_privacy`,obj:true},
       {l:`"I don't really have a list / don't track them"`,n:`no_list`,obj:true},
     ]},
 
   crm_connect: {stage:'CLOSE',
-    say:`"So your reviews come in two waves. First is the review reactivation: I take that list of past customers and text them all asking for a review, that's your fast wave in the first few days. Then to keep it rolling, we connect it to whatever you use to book your jobs, so every new customer gets that same request automatically the moment you finish the job, you never lift a finger. What do you use, Jobber, Housecall Pro, ServiceTitan, QuickBooks? Whatever it is, I'll get your integration ready and text you a connection link today or tomorrow. Sound good?"`,
-    dir:`Capture the software name, it decides which integration we build next (we build them one at a time). Promise the connection link today or tomorrow. This is still not a barrier to closing today, if they have no system, take them to no_crm.`,
+    say:`"Last thing, and this one's a nice-to-have, not needed to start: once you're up and running we can link whatever you use to book your jobs, Jobber, Housecall Pro, ServiceTitan, QuickBooks, so every new customer gets that same review request automatically the moment you finish a job. Nothing for you to do today. Whatever you're on, I'll get your integration ready and text you a connection link today or tomorrow, no rush at all. What do you book your jobs on?"`,
+    dir:`You've already closed, this is a nice-to-have and must never sound like a barrier. Capture the software name, it decides which integration we build next (we build them one at a time). Promise the connection link today or tomorrow. No system? Take them to no_crm.`,
     r:[
-      {l:`"Yeah, makes sense"`,n:`google_access`},
-      {l:`"My system won't connect / I don't use anything"`,n:`no_crm`,obj:true},
+      {l:`Tells me their system`,n:`after_close`},
+      {l:`"I don't use anything / won't connect"`,n:`no_crm`,obj:true},
     ]},
 
   reactivation_promise: {stage:'CLOSE',
-    say:`"So here's exactly what happens first: the moment I've got your list, I message everyone you've served over the last few months, a proper personalised text with your name on it, asking them for a quick Google review. Those are people who already like you, so that's where the first wave of reviews comes from. Then it just keeps going automatically from there. That's the bit that gets you moving straight away."`,
-    dir:`This is the "here's what you're actually paying for" beat, say it as you wrap up. It makes the list request make total sense and calms any buyer's remorse. Keep it warm, not techy.`,
+    say:`"So here's exactly what happens first, this is the review reactivation: the moment your list lands, I text everyone you've served over the last few months, a proper personalised message with your name on it, asking for a quick Google review. They already like you, so that's your first wave landing within days. Then it keeps going automatically from there. That's the bit that gets you moving straight away."`,
+    dir:`This is the "here's what you're actually paying for" beat, say it warm as you wrap up. It makes the list request make total sense and calms any buyer's remorse. Keep it human, not techy.`,
     r:[
-      {l:`They're happy / "brilliant"`,n:`after_close`},
+      {l:`They're happy / "brilliant"`,n:`crm_connect`},
     ]},
 
   card_link_push: {stage:'CLOSE',
     say:`"I've only got that slot open right now, it takes 30 seconds. Sign up while I'm here and I'll get your system started today."`,
     dir:`If they still won't, you've probably lost this one.`,
     r:[
-      {l:`They do it`,n:`customer_list`},
+      {l:`They do it`,n:`google_access`},
       {l:`Still won't`,n:`lost`,obj:true},
     ]},
 
   google_access: {stage:'CLOSE',
-    say:`"One more quick thing, we just need to connect your Google profile so your reviews land in the right place. If you've got your Google login handy, I'll send a link and we'll do it in a few seconds. And if you're out and about or can't remember the login, no bother at all, do it later when you're home and I'll text you the link so it's there when you're ready."`,
-    dir:`Always pre-frame the management-rights popup BEFORE it appears. Surprises kill deals at the finish line.`,
+    say:`"Perfect, you're signed up. Quick win while we're here: let's connect your Google so your reviews land straight on your profile. Got your Google login handy? It's about ten seconds. You'll just tick to give me management access, you keep full ownership and can pull it back in thirty seconds any time. And if you haven't got the login on you, no bother at all, it sits right there on your dashboard, so you can pop back and connect it any time later today. Shall we do it now?"`,
+    dir:`Try to connect it live, it's a permanent quick win and easiest done together. Pre-frame the management-access tick BEFORE it appears so nothing surprises them. No login to hand? Point them to the dashboard, they can finish it themselves any time, and text them the link as a backup. Never make this a barrier, they can always come back to it.`,
     r:[
-      {l:`They accept / share access ✓`,n:`reactivation_promise`},
+      {l:`They connect it now ✓`,n:`customer_list`},
+      {l:`"Not got my login on me"`,n:`customer_list`},
       {l:`"That sounds dodgy"`,n:`access_fear`,obj:true},
     ]},
 
   after_close: {stage:'DONE',
-    say:`"You're all set. Soon as I've got that customer list from you, I'll build everything out, takes me three or four days, and we're starting right now. Any time I send you an email, you'll also get a text saying 'check your email,' so keep an eye out. Now, the reviews start landing within a few days of me switching it on. The Google ranking is the longer game; that builds as the reviews stack up. Anyone who promises you the number one spot overnight is lying, but the reviews themselves, you'll see almost straight away. Welcome aboard. Let's get those reviews rolling in."`,
-    dir:`Set expectations now. Never promise position one. This protects the deal from second-week buyer's remorse.`,
+    say:`"You're all set. Send that list back this afternoon, I'll have it built tonight, and we start texting your customers tomorrow. Any time I email you, you'll also get a text saying 'check your email,' so keep an eye out. The reviews start landing within days; the Google ranking is the longer game, that builds as the reviews stack up. Anyone who promises you the number one spot overnight is lying, but the reviews themselves, you'll see almost straight away. Welcome aboard. Let's get those reviews rolling in."`,
+    dir:`Set expectations now, never promise position one. The same-day list, built tonight, texting tomorrow cause-and-effect is what keeps the deal alive over the weekend.`,
     r:[],won:true},
 
   /* ── OBJECTIONS ─────────────────────────────────────────── */
@@ -811,7 +812,7 @@ const N = {
     say:`"Management rights just means we can post, reply to reviews, update the listing, we can't own it or delete it, and you can remove us in 30 seconds from your Google account any time. The fact I told you this before you even saw the link, that's the opposite of dodgy. Scammers go quiet when you push them. I'm doing the opposite."`,
     dir:`Stay calm. If they truly won't give access, you can't deliver, don't force it.`,
     r:[
-      {l:`"Okay, fair enough"`,n:`reactivation_promise`},
+      {l:`"Okay, fair enough"`,n:`customer_list`},
       {l:`"I still don't want to"`,n:`lost`,obj:true},
     ]},
 
@@ -819,7 +820,7 @@ const N = {
     say:`"Totally fair to ask, but honestly there's nothing sensitive in it. No card details, no private info, it's literally just names and mobile numbers, and they're your customers, people who already know you and rang you in the first place. All I'm doing is texting them on your behalf to ask for a review, the exact thing you'd do yourself if you had a spare hour. And think about it: if I was after customer data to sell, I'd hardly be ringing a local plumber, would I? It stays on your account, and that's it."`,
     dir:`Stay relaxed, this is nearly always a reflex, not a real block. Lead with "no card details, nothing sensitive." Once they hear it's just names + numbers of their OWN people, it evaporates.`,
     r:[
-      {l:`"Yeah, alright, that's fine"`,n:`crm_connect`},
+      {l:`"Yeah, alright, that's fine"`,n:`reactivation_promise`},
       {l:`"I'd still rather not"`,n:`no_list`,obj:true},
     ]},
 
@@ -827,15 +828,15 @@ const N = {
     say:`"No stress at all, most plumbers don't keep a neat list, that's normal. Two easy options: if you use any booking or invoicing software we can pull it from there in a couple of clicks. If not, just jot me down 40 or 50 recent customers with their mobile numbers, that's plenty to get your first batch of reviews. You can always add more later. I'll text you a simple form to drop them into so it takes you two minutes. Deal?"`,
     dir:`Never let "no list" kill the deal, shrink the ask. 40-50 names is enough to start. Offer to send a simple form/sheet so it feels effortless. Only their OWN recent customers.`,
     r:[
-      {l:`"Yeah, I can do that"`,n:`crm_connect`},
-      {l:`"I genuinely can't get any names"`,n:`google_access`,obj:true},
+      {l:`"Yeah, I can do that"`,n:`reactivation_promise`},
+      {l:`"I genuinely can't get any names"`,n:`reactivation_promise`,obj:true},
     ]},
 
   no_crm: {stage:'CLOSE',
     say:`"Not a problem in the slightest, you don't need any special software for this to work. The list you're sending me does the job on its own. And the moment you tell me what you use to book your jobs, I'll prep the connection link for it and send it over. Nothing for you to worry about today."`,
     dir:`Reassure and move on. The CRM connection is a nice-to-have, never a requirement. Don't let the absence of software feel like a problem.`,
     r:[
-      {l:`"Okay, good"`,n:`google_access`},
+      {l:`"Okay, good"`,n:`after_close`},
     ]},
 
   do_it_myself: {stage:'PIVOT',
@@ -885,7 +886,7 @@ const MAINLINE = [
   'start','opener_hook','permission','discovery_years','discovery_jobs',
   'discovery_math','discovery_pain','ranking_demo','ranking_stats','pivot',
   'why_reviews','buying_signal','price_present','takeaway','card_ask',
-  'card_link','customer_list','crm_connect','google_access','reactivation_promise','after_close'
+  'card_link','google_access','customer_list','reactivation_promise','crm_connect','after_close'
 ];
 const MAIN_SET = new Set(MAINLINE);
 
