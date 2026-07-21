@@ -37,5 +37,14 @@ test.describe('PIN-gated call script', () => {
     // CRM step reframed around review reactivation; the clunky opener is gone.
     expect(text).toContain('review reactivation')
     expect(text).not.toContain('forgot to mention')
+    // Same-day list flow: the list is due this afternoon, not "next day".
+    expect(text).toContain('before you get busy')
+    expect(text).toContain('built tonight')
+    expect(text).not.toContain('three or four days')
+    // Google step reassures they can finish later on the dashboard (no scare).
+    expect(text).toContain('management access')
+    expect(text).toContain('dashboard')
+    // CRM/integration demoted to an explicit nice-to-have.
+    expect(text).toContain('nice-to-have')
   })
 })
