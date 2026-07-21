@@ -90,6 +90,17 @@ export default function App() {
   const host = typeof window !== 'undefined' ? window.location.hostname : ''
   // go.localhost → loopback in Chromium; lets Playwright/dev hit the reviews app
   if (host === 'go.heyelsie.com' || host === 'go.localhost') {
+    // Agent hiring link lives here too (Hugo shares go.heyelsie.com/join). It is
+    // a standalone public page, so serve it before the reviews app takes over the
+    // whole origin. Rendered outside the Router, so AgentJoinPage uses no router.
+    const path = typeof window !== 'undefined' ? window.location.pathname : ''
+    if (path === '/join' || path === '/join/') {
+      return (
+        <Suspense fallback={<LoadingFallback />}>
+          <AgentJoinPage />
+        </Suspense>
+      )
+    }
     return (
       <Suspense fallback={<LoadingFallback />}>
         <ReviewsApp />

@@ -43,14 +43,21 @@ export default async function handler(req: Request): Promise<Response> {
     }
     const company = agr?.company || 'HeyElsie';
 
-    // Already has a finished account?
+    // Never onboard an email that already has an account — an existing agent, or
+    // a business owner logging in with their real email. They should sign in, not
+    // create a second identity (and we must never touch their existing account).
+    const { data: existingProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .ilike('email', cleanEmail)
+      .limit(1);
     const { data: created } = await supabaseAdmin
       .from('wk_agent_signups')
       .select('id')
       .eq('email', cleanEmail)
       .eq('status', 'created')
       .limit(1);
-    if (created && created.length) {
+    if ((existingProfile && existingProfile.length) || (created && created.length)) {
       return Response.json(
         { error: 'An account already exists for this email. Please log in instead.' },
         { status: 409 },

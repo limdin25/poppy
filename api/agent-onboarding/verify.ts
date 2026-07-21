@@ -69,8 +69,10 @@ export default async function handler(req: Request): Promise<Response> {
     const email = String(s.email);
     const name = String(s.name);
 
-    // 1) Create the auth user, or recover an existing one and rotate the password.
-    let userId: string | null = null;
+    // 1) Create the auth user. This is a PUBLIC route, so we NEVER take over an
+    //    existing account (doing so would reset its password + role — exactly
+    //    what happened when a real owner email was used to test /join). If the
+    //    email is already registered, bounce them to the login instead.
     const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -80,24 +82,15 @@ export default async function handler(req: Request): Promise<Response> {
     if (createErr) {
       const msg = (createErr.message || '').toLowerCase();
       const exists = msg.includes('already') || msg.includes('registered') || msg.includes('exists');
-      if (!exists) return Response.json({ error: createErr.message }, { status: 500 });
-      let found: { id: string } | null = null;
-      const PER = 200;
-      for (let page = 1; page <= 50; page++) {
-        const { data: list, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: PER });
-        if (listErr) return Response.json({ error: listErr.message }, { status: 500 });
-        const users = (list?.users ?? []) as Array<{ id: string; email?: string | null }>;
-        const u = users.find((x) => (x.email || '').toLowerCase() === email);
-        if (u) { found = { id: u.id }; break; }
-        if (users.length < PER) break;
+      if (exists) {
+        return Response.json(
+          { error: 'This email already has an account. Please log in instead.' },
+          { status: 409 },
+        );
       }
-      if (!found) return Response.json({ error: 'Email exists but lookup failed' }, { status: 500 });
-      userId = found.id;
-      const { error: pwErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
-      if (pwErr) return Response.json({ error: `Password set failed: ${pwErr.message}` }, { status: 500 });
-    } else {
-      userId = createData.user?.id ?? null;
+      return Response.json({ error: createErr.message }, { status: 500 });
     }
+    const userId = createData.user?.id ?? null;
     if (!userId) return Response.json({ error: 'No user id returned' }, { status: 500 });
 
     // 2) Profile as a workspace agent.

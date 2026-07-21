@@ -53,8 +53,11 @@ export default function AgentOnboardingCard() {
   const [dTerms, setDTerms] = useState<AgreementTerm[]>([]);
 
   const joinUrl = useMemo(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.heyelsie.com';
-    return `${origin}/join`;
+    // Hugo shares the hiring link on go.heyelsie.com. On live hosts always use
+    // that; on localhost/preview fall back to the current origin so it works.
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://go.heyelsie.com';
+    return host.endsWith('heyelsie.com') ? 'https://go.heyelsie.com/join' : `${origin}/join`;
   }, []);
 
   const copyLink = async () => {

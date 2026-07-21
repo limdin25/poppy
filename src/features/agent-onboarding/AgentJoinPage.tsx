@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+
+// The CRM login always lives on the app origin, even when this page is served
+// from go.heyelsie.com. Absolute so it works from either host.
+const CRM_LOGIN_URL = 'https://app.heyelsie.com/login';
 
 /**
  * Public agent onboarding, the link an admin sends to a new hire.
@@ -375,12 +378,12 @@ ${sig}
               Your agent account is ready. Log in with <strong className="text-[#1A1A1A]">{email}</strong> and the password you just set.
             </p>
             <div className="flex flex-col gap-2.5">
-              <Link
-                to="/login"
+              <a
+                href={CRM_LOGIN_URL}
                 className="inline-block bg-[#3C5A87] text-white font-semibold text-[15px] px-6 py-3 rounded-xl hover:bg-[#33507a]"
               >
                 Log into the CRM
-              </Link>
+              </a>
               <button
                 onClick={downloadAgreement}
                 className="inline-block border border-[#E5E7EB] text-[#1A1A1A] font-semibold text-[15px] px-6 py-3 rounded-xl hover:bg-[#F3F3EE]"
