@@ -13,11 +13,22 @@ import { cn } from '@/core/lib/cn'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { REVIEW_PLAN_CARDS, PLAN_FEATURES, reviewsApi } from '@/features/reviews/lib'
 
-type Step = 'account' | 'contacts' | 'compliance' | 'plan' | 'done'
-const STEPS: Step[] = ['account', 'contacts', 'compliance', 'plan', 'done']
+type Step = 'account' | 'contacts' | 'compliance' | 'plan' | 'software' | 'done'
+const STEPS: Step[] = ['account', 'contacts', 'compliance', 'plan', 'software', 'done']
 const STEP_LABELS: Record<Step, string> = {
-  account: 'Account', contacts: 'Customers', compliance: 'Consent', plan: 'Plan', done: 'Done',
+  account: 'Account', contacts: 'Customers', compliance: 'Consent', plan: 'Plan', software: 'Software', done: 'Done',
 }
+
+// Job/booking software we ask about after checkout. A known pick promises an
+// integration link; 'other' is the none/unknown catch-all.
+const SOFTWARE: Array<{ key: string; name: string }> = [
+  { key: 'jobber', name: 'Jobber' },
+  { key: 'housecall_pro', name: 'Housecall Pro' },
+  { key: 'servicetitan', name: 'ServiceTitan' },
+  { key: 'quickbooks', name: 'QuickBooks' },
+  { key: 'google_contacts', name: 'Google Contacts' },
+  { key: 'other', name: 'Something else / none' },
+]
 
 const RAIL_BULLETS = [
   ['📈', 'More reviews mean more calls. Buyers pick the business with 400 reviews, not 25'],
@@ -52,6 +63,11 @@ export default function ReviewsOnboardingPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [imported, setImported] = useState<number | null>(null)
 
+  // Software (post-checkout) step
+  const softwareFileRef = useRef<HTMLInputElement>(null)
+  const [crmProvider, setCrmProvider] = useState<string | null>(null)
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null)
+
   // Plan
   const [launched, setLaunched] = useState<string | null>(null)
 
@@ -64,19 +80,20 @@ export default function ReviewsOnboardingPage() {
       setHasSession(!!session)
       if (!session) { setStep('account'); return }
 
-      // Stripe return
-      if (params.get('paid') === '1') { setStep('done'); return }
+      // Stripe return — after paying we ask which software they use.
+      if (params.get('paid') === '1') { setStep('software'); return }
       if (params.get('cancelled') === '1') { setStep('plan'); return }
 
       // Otherwise: derive the furthest incomplete step from data
       const [{ data: settings }, { data: member }] = await Promise.all([
-        supabase.from('review_settings').select('attested_at').limit(1).maybeSingle(),
+        supabase.from('review_settings').select('attested_at, crm_provider').limit(1).maybeSingle(),
         supabase.from('team_members').select('business_id').eq('user_id', session.user.id).limit(1).maybeSingle(),
       ])
       if (!member) { setStep('account'); return }
       if (!settings?.attested_at) { setStep('contacts'); return }
       const { data: biz } = await supabase.from('businesses').select('plan').eq('id', member.business_id).single()
       if (!biz?.plan?.startsWith('reviews_')) { setStep('plan'); return }
+      if (!settings?.crm_provider) { setStep('software'); return }
       setStep('done')
     }
     resolve()
@@ -143,6 +160,38 @@ export default function ReviewsOnboardingPage() {
     setBusy(false)
   }
 
+  // Software step: CSV routes to the contacts importer; screenshots/invoices go
+  // to the onboarding-upload endpoint for the team to turn into contacts.
+  async function handleOnboardingFile(file: File) {
+    setError(null)
+    if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+      handleFile(file)
+      return
+    }
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', 'onboarding')
+      if (crmProvider) fd.append('crm_provider', crmProvider)
+      await reviewsApi('/api/reviews/onboarding-upload', { formData: fd })
+      setUploadMsg("Uploaded ✓ we'll take it from here")
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  async function saveSoftware() {
+    setBusy(true)
+    setError(null)
+    try {
+      if (crmProvider) await reviewsApi('/api/reviews/settings', { method: 'PUT', body: { crm_provider: crmProvider } })
+      setStep('done')
+    } catch (err) {
+      setError((err as Error).message)
+    }
+    setBusy(false)
+  }
+
   async function choosePlan(priceId: string) {
     setBusy(true)
     setError(null)
@@ -188,9 +237,9 @@ export default function ReviewsOnboardingPage() {
       <div className="flex flex-1 flex-col items-center px-4 py-10">
         {/* Progress */}
         <div className="mb-8 flex w-full max-w-md items-center gap-1">
-          {STEPS.slice(0, 4).map((s, i) => (
+          {STEPS.slice(0, 5).map((s, i) => (
             <div key={s} className="flex flex-1 flex-col items-center gap-1">
-              <div className={cn('h-1.5 w-full rounded-full', i <= Math.min(stepIndex, 3) ? 'bg-brand' : 'bg-border')} />
+              <div className={cn('h-1.5 w-full rounded-full', i <= Math.min(stepIndex, 4) ? 'bg-brand' : 'bg-border')} />
               <span className={cn('text-[10px]', i <= stepIndex ? 'text-brand font-medium' : 'text-ink-subtle')}>{STEP_LABELS[s]}</span>
             </div>
           ))}
@@ -288,6 +337,62 @@ export default function ReviewsOnboardingPage() {
                   {PLAN_FEATURES.map((f) => <li key={f}>✓ {f}</li>)}
                 </ul>
               </details>
+            </div>
+          )}
+
+          {step === 'software' && (
+            <div>
+              <h1 className="text-2xl font-semibold text-ink">What do you use to run your jobs?</h1>
+              <p className="mt-1 text-sm text-ink-subtle">
+                So we can auto-request a review after every future job. Pick one, or "something else".
+              </p>
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                {SOFTWARE.map((s) => (
+                  <button
+                    key={s.key}
+                    onClick={() => setCrmProvider(s.key)}
+                    className={cn(
+                      'rounded-xl border p-3 text-left text-sm font-medium transition-colors',
+                      crmProvider === s.key
+                        ? 'border-brand bg-brand-50/50 text-ink'
+                        : 'border-border bg-surface text-ink hover:border-brand/50',
+                    )}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+              {crmProvider && crmProvider !== 'other' && (
+                <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+                  Perfect. We'll prepare your {SOFTWARE.find((s) => s.key === crmProvider)?.name} integration and text you a connection link today or tomorrow.
+                </p>
+              )}
+
+              <div className="mt-5 rounded-2xl border border-border p-4">
+                <p className="text-sm font-medium text-ink">Send your past customers (optional)</p>
+                <p className="mt-0.5 text-xs text-ink-subtle">
+                  A spreadsheet is best. No export? Upload screenshots of your contacts or a few recent invoices and we'll sort it.
+                </p>
+                <button
+                  onClick={() => softwareFileRef.current?.click()}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm font-medium text-ink hover:border-brand/50"
+                >
+                  <Upload style={{ width: 18, height: 18 }} />
+                  {uploadMsg ?? (imported ? `${imported} contacts imported ✓` : 'Upload spreadsheet, screenshots or invoices')}
+                </button>
+                <input
+                  ref={softwareFileRef}
+                  type="file"
+                  accept=".csv,text/csv,image/png,image/jpeg,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleOnboardingFile(e.target.files[0])}
+                />
+              </div>
+
+              <div className="mt-4 flex gap-2">
+                <Button variant="ghost" onClick={() => setStep('done')}>Skip</Button>
+                <Button className="flex-1" onClick={saveSoftware} disabled={busy}>{busy ? 'Saving…' : 'Continue'}</Button>
+              </div>
             </div>
           )}
 

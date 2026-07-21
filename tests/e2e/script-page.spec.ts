@@ -31,5 +31,8 @@ test.describe('PIN-gated call script', () => {
     expect(text).not.toContain('check from your bank')
     // Google-connect step no longer uses the scary "management rights" framing.
     expect(text).not.toContain('management rights')
+    // CRM step now promises the integration link today/tomorrow.
+    expect(text).toContain('connection link today or tomorrow')
+    expect(text).not.toContain('set up in a week or two')
   })
 })

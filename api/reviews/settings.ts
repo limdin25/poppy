@@ -18,6 +18,7 @@ const EDITABLE = [
   'owner_first_name', 'business_display_name', 'followups_enabled', 'followup_count',
   'followup_gap_days', 'drip_per_day', 'initial_delay_hours', 'quiet_start', 'quiet_end', 'timezone',
   'sending_paused', 'image_enabled', 'auto_reply_positive', 'auto_post_five_star',
+  'crm_provider',
 ] as const;
 
 async function ensureRow(businessId: string) {

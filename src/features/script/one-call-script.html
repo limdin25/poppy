@@ -555,8 +555,8 @@ const N = {
     ]},
 
   crm_connect: {stage:'CLOSE',
-    say:`"Oh, and I forgot to mention: once those first reviews from your past customers are flowing, we don't stop there. We hook it up to whatever you use to book your jobs, so from then on every new customer gets that same review text automatically the moment you finish their job, you never lift a finger, and your reviews just keep stacking up month after month. That side we set up in a week or two once you're rolling, so nothing for you to do today. Good?"`,
-    dir:`This is PHASE 2: past customers get you the fast 25 (that's the list ask above); this integration then auto-texts every FUTURE customer after each completed job. DEFER it, it's not a barrier to closing today (some clients never connect one and still do great). Frame it as a bonus, not a task. If they push to do it now, take their booking-system name; otherwise move on.`,
+    say:`"Oh, and I forgot to mention: once those first reviews from your past customers are flowing, we don't stop there. We hook it up to whatever you use to book your jobs, so every future customer gets that same review text automatically the moment you finish their job, you never lift a finger. What are you on, Jobber, Housecall Pro, ServiceTitan, QuickBooks? Whatever it is, I'll get your integration ready and text you a connection link today or tomorrow. Good?"`,
+    dir:`Capture the software name, it decides which integration we build next (we build them one at a time). Promise the connection link today or tomorrow. This is still not a barrier to closing today, if they have no system, take them to no_crm.`,
     r:[
       {l:`"Yeah, makes sense"`,n:`google_access`},
       {l:`"My system won't connect / I don't use anything"`,n:`no_crm`,obj:true},
@@ -832,7 +832,7 @@ const N = {
     ]},
 
   no_crm: {stage:'CLOSE',
-    say:`"Not a problem in the slightest, you don't need any special software for this to work. Loads of my plumbers never connect a system at all. The list you're sending me does the job on its own, and if you ever fancy the automatic side later, we bolt it on then. Nothing for you to worry about today."`,
+    say:`"Not a problem in the slightest, you don't need any special software for this to work. The list you're sending me does the job on its own. And the moment you tell me what you use to book your jobs, I'll prep the connection link for it and send it over. Nothing for you to worry about today."`,
     dir:`Reassure and move on. The CRM connection is a nice-to-have, never a requirement. Don't let the absence of software feel like a problem.`,
     r:[
       {l:`"Okay, good"`,n:`google_access`},
