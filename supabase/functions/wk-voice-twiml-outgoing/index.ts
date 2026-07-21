@@ -51,6 +51,19 @@ function escapeXml(s: string): string {
           .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
+// Normalise a loosely-typed phone into E.164 (UK 07… → +44…). Mirrors
+// wk-sms-send so a contact stored in national format can still be dialled.
+function normalizeE164(raw: string): string {
+  let s = (raw ?? '').replace(/[^\d+]/g, '');
+  if (!s) return '';
+  if (s.startsWith('+')) return s;
+  if (s.startsWith('00')) return '+' + s.slice(2);
+  if (s.startsWith('0')) return '+44' + s.slice(1);
+  return '+' + s;
+}
+const countryClass = (e164: string): string =>
+  e164.startsWith('+44') ? 'gb' : e164.startsWith('+1') ? 'na' : 'other';
+
 // CANONICAL: src/features/crm/lib/buildOutgoingTwiml.ts (vitest pins this).
 // Edge functions can't import from src/, so the body is mirrored here.
 // Keep them in sync — tests live in the canonical location.
@@ -131,7 +144,7 @@ serve(async (req: Request) => {
       });
     }
 
-    const to = (params.To ?? '').trim();
+    const to = normalizeE164((params.To ?? '').trim());
     const fromClient = (params.From ?? '').trim();    // expected: "client:<uuid>"
     const callSid = params.CallSid ?? '';
     // PR 145 (Hugo 2026-04-28): REVERT PR 143's colon-suffix parsing.
@@ -231,35 +244,57 @@ serve(async (req: Request) => {
 
     if (identity) {
       agentId = identity;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('default_caller_id_number_id')
-        .eq('id', identity)
-        .maybeSingle();
-      if (profile?.default_caller_id_number_id) {
-        const { data: num } = await supabase
-          .from('wk_numbers')
-          .select('id, e164')
-          .eq('id', profile.default_caller_id_number_id)
+      const dest = countryClass(to);
+
+      // 1. The agent's assigned voice number(s) (wk_number_agents) — the same
+      //    lines an admin hands them in Settings → Numbers. Prefer one whose
+      //    country matches the destination (UK contact → the agent's UK line),
+      //    then their primary, then any. Keeps voice + SMS on the same number.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: assigned } = await (supabase.from('wk_number_agents' as any) as any)
+        .select('is_primary, wk_numbers(id, e164, voice_enabled, is_active)')
+        .eq('agent_id', identity);
+      const rows = ((assigned ?? []) as Array<{
+        is_primary: boolean;
+        wk_numbers: { id: string; e164: string; voice_enabled: boolean; is_active: boolean } | null;
+      }>).filter((r) => r.wk_numbers && r.wk_numbers.voice_enabled && r.wk_numbers.is_active);
+      if (rows.length) {
+        const match = rows.find((r) => countryClass(r.wk_numbers!.e164) === dest);
+        const primary = rows.find((r) => r.is_primary);
+        const pick = (match ?? primary ?? rows[0]).wk_numbers!;
+        callerIdE164 = pick.e164;
+        numberId = pick.id;
+      }
+
+      // 2. Legacy per-agent default caller-ID.
+      if (!callerIdE164) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_caller_id_number_id')
+          .eq('id', identity)
           .maybeSingle();
-        if (num) {
-          callerIdE164 = num.e164;
-          numberId = num.id;
+        if (profile?.default_caller_id_number_id) {
+          const { data: num } = await supabase
+            .from('wk_numbers')
+            .select('id, e164')
+            .eq('id', profile.default_caller_id_number_id)
+            .maybeSingle();
+          if (num) { callerIdE164 = num.e164; numberId = num.id; }
         }
       }
-      // Fallback: first voice-enabled number
+
+      // 3. Fallback: a voice-enabled workspace number, country-matched to the
+      //    destination where possible (so UK calls don't go out on a US line).
       if (!callerIdE164) {
-        const { data: anyNum } = await supabase
+        const { data: nums } = await supabase
           .from('wk_numbers')
           .select('id, e164')
           .eq('voice_enabled', true)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (anyNum) {
-          callerIdE164 = anyNum.e164;
-          numberId = anyNum.id;
-        }
+          .eq('is_active', true)
+          .order('created_at', { ascending: true });
+        const list = (nums ?? []) as Array<{ id: string; e164: string }>;
+        const pick = list.find((n) => countryClass(n.e164) === dest) ?? list[0];
+        if (pick) { callerIdE164 = pick.e164; numberId = pick.id; }
       }
     }
 
