@@ -45,21 +45,21 @@ export default function ScriptPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0d0d0f] px-4">
-      <form onSubmit={submit} className="w-full max-w-xs bg-[#17171b] border border-white/10 rounded-2xl p-7 text-center">
-        <div className="w-11 h-11 rounded-xl bg-white/10 grid place-items-center mx-auto mb-4 text-white text-lg">🔒</div>
-        <h1 className="text-white font-bold text-[17px] mb-1">Enter PIN</h1>
-        <p className="text-white/50 text-[13px] mb-5">This page is protected.</p>
+    <div className="min-h-screen flex items-center justify-center bg-[#F7F7F4] px-4">
+      <form onSubmit={submit} className="w-full max-w-xs bg-white border border-[#E5E7EB] rounded-2xl p-7 text-center shadow-sm">
+        <div className="w-11 h-11 rounded-xl bg-[#EEF2F8] grid place-items-center mx-auto mb-4 text-[#3C5A87] text-lg">🔒</div>
+        <h1 className="text-[#1A1A1A] font-bold text-[17px] mb-1">Enter PIN</h1>
+        <p className="text-[#6B7280] text-[13px] mb-5">This page is protected.</p>
         <input
           value={pin}
           onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(false); }}
           inputMode="numeric"
           autoFocus
           placeholder="••••"
-          className="w-full h-12 text-center text-[20px] tracking-[8px] font-mono bg-[#0d0d0f] border border-white/15 rounded-xl text-white focus:outline-none focus:border-white/40 mb-3"
+          className="w-full h-12 text-center text-[20px] tracking-[8px] font-mono bg-white border border-[#E5E7EB] rounded-xl text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87] mb-3"
         />
-        {error && <p className="text-[#f87171] text-[13px] mb-3">Wrong PIN, try again.</p>}
-        <button type="submit" className="w-full h-11 rounded-xl bg-white text-black font-semibold text-[15px] hover:bg-white/90">
+        {error && <p className="text-[#B42318] text-[13px] mb-3">Wrong PIN, try again.</p>}
+        <button type="submit" className="w-full h-11 rounded-xl bg-[#3C5A87] text-white font-semibold text-[15px] hover:bg-[#33507a]">
           Unlock
         </button>
       </form>
