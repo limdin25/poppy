@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../src/integrations/supabase/client.js';
+import { sendEmail } from '../../src/integrations/resend/client.js';
 import { hashOnboardingCode } from '../lib/onboarding.js';
 
 export const config = { runtime: 'edge' };
@@ -128,6 +129,36 @@ export default async function handler(req: Request): Promise<Response> {
       .from('wk_agent_signups')
       .update({ status: 'created', agent_id: userId, code_hash: null })
       .eq('id', signupId);
+
+    // 5) Welcome email with payment-setup instructions (best-effort — a failed
+    //    send must never fail the account creation the hire just completed).
+    try {
+      const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+      const first = name.split(' ')[0] || name;
+      const html = `
+      <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1A1A1A;line-height:1.6">
+        <h2 style="font-weight:800;margin-bottom:6px">Welcome to the team, ${first}! 🎉</h2>
+        <p style="color:#46514B;font-size:15px">Your account is all set up. You can log in any time at
+          <a href="${appUrl}/login" style="color:#3C5A87">${appUrl}/login</a> with this email address.</p>
+
+        <h3 style="font-weight:800;font-size:16px;margin:22px 0 6px">Set up your payment so we can pay you</h3>
+        <p style="color:#46514B;font-size:15px">Before your first payment, please set up how you'd like to be paid. We pay in USD, AUD, CAD, EUR and GBP, and <strong>we recommend Payoneer</strong>:</p>
+        <ul style="color:#46514B;font-size:15px;padding-left:20px">
+          <li>Best foreign-currency exchange rates (the real forex rate plus 2%)</li>
+          <li>Fast processing — you can withdraw funds much quicker than with PayPal</li>
+        </ul>
+        <div style="background:#F3F4F6;border-radius:12px;padding:14px 16px;margin:14px 0;font-size:14px;color:#1A1A1A">
+          <strong>Bonus:</strong> when you register a new Payoneer account through OnlineJobs, you get a free <strong>$75 USD signup bonus</strong> once you receive a total of $1,000 in transfers.
+        </div>
+        <p style="color:#46514B;font-size:15px">Once your Payoneer account is ready, just <strong>reply to this email with the email address on your Payoneer account</strong> and we'll link it up. As soon as you're set up, we can pay you.</p>
+
+        <p style="color:#46514B;font-size:15px">A quick reminder on payments: each work week closes on Friday and your salary lands within 72 hours — so expect it Monday morning, before your shift.</p>
+        <p style="color:#6B7280;font-size:13px;margin-top:18px">Glad to have you on board. Any questions, just reply here.</p>
+      </div>`;
+      await sendEmail(email, 'Welcome to HeyElsie — set up your payment to get paid', html);
+    } catch (mailErr) {
+      console.error('[agent-onboarding/verify] welcome email failed:', mailErr);
+    }
 
     return Response.json({ ok: true, email });
   } catch (e) {

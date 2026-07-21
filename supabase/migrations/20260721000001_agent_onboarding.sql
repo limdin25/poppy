@@ -27,19 +27,25 @@ CREATE TABLE IF NOT EXISTS wk_agent_agreement (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
--- Seed the single row with a sensible default agreement Hugo can edit.
+-- Seed the single row with the B2B Sales Closer working agreement (Hugo can
+-- edit it in Settings → Agents & spend). Plain-English, welcoming, and clear
+-- on trial / notice / conduct / tax / pay so both sides know where they stand.
 INSERT INTO wk_agent_agreement (id, title, intro, company, terms)
 VALUES (
   1,
-  'Agent working agreement',
-  'Welcome aboard. Please read and sign below to join the team as a HeyElsie agent. This sets out how we work together. There is no cost to you, and you can stop at any time.',
+  'Your working agreement',
+  'Welcome to the team! We''re really glad to have you as a B2B Sales Closer at HeyElsie. This is a short, plain-English agreement so you know exactly how we work together and how you get paid. There is nothing for you to pay, and you can ask us anything before you sign.',
   'HeyElsie',
   '[
-    {"heading":"Your role","body":"You work as a remote agent on the HeyElsie CRM: making and taking calls, following up leads, and moving them through the pipeline. You will be given a login, a queue of leads, and the tools to work them."},
-    {"heading":"How you are paid","body":"You are paid on the terms agreed with you separately (commission and/or hourly). Payment is made to the details you provide. You are responsible for your own tax."},
-    {"heading":"Working honestly","body":"You represent HeyElsie professionally and honestly on every call and message. You follow the scripts and pipeline stages provided, and you never make promises on our behalf that have not been approved."},
-    {"heading":"Confidentiality","body":"Lead lists, recordings, scripts, pricing and any customer data you see belong to HeyElsie. You keep them confidential and use them only for your work here. You do not copy, share or take them elsewhere."},
-    {"heading":"No lock in","body":"There is no minimum term. Either side can end this at any time. On leaving, your access is removed and you return or delete any HeyElsie data you hold."}
+    {"heading":"Your role","body":"You will make outbound calls to UK businesses and sell our Google review platform, following our script and training. Day to day that means calling your lead list, qualifying prospects, closing sales, updating the CRM and hitting your weekly targets. We give you the leads, the dialler, the script, and ongoing coaching."},
+    {"heading":"Your hours","body":"Monday to Friday, 10:00am to 6:00pm UK time (6:00pm to 2:00am in the Philippines), with a 1-hour unpaid lunch break. After a successful two-week trial, we may move you to an 8:00am to 4:00pm UK shift."},
+    {"heading":"Your pay","body":"You start on 100 USD per week (400 USD per month). Every client you close permanently adds 25 USD to your weekly base, up to a maximum of 200 USD per week (800 USD per month). On top of that you earn 50% commission on each client''s first month payment, paid within 7 days of that payment clearing."},
+    {"heading":"When you get paid","body":"Each work week closes on Friday, and your salary is paid within 72 hours. In practice that means you can expect it on Monday morning, before your shift starts. You just need to set up your payment method first (we recommend Payoneer) — we will email you simple instructions."},
+    {"heading":"Your paid one-week trial","body":"Your first week is a paid trial. If it turns out not to be the right fit, we may end it straight away during that week, and you will still be paid in full for all the work you have done up to that point."},
+    {"heading":"Notice after the trial","body":"Once you are past the trial, either of us can end the arrangement by giving one week''s notice."},
+    {"heading":"Staying on the calls","body":"Short breaks are completely fine and sometimes needed — just let us know before you step away. Going quiet for more than 10 minutes without telling anyone counts as a strike. Three strikes and we may end your role immediately, without notice. This keeps things fair for the whole team."},
+    {"heading":"Your taxes and equipment","body":"You work as an independent contractor. You are responsible for your own taxes, and for your own setup — a reliable internet connection, a quiet place to work, and a good headset and microphone."},
+    {"heading":"Keeping things confidential","body":"Lead lists, call recordings, scripts, pricing and any customer information belong to HeyElsie. Please keep them private, use them only for your work here, and never copy or share them anywhere else."}
   ]'::jsonb
 )
 ON CONFLICT (id) DO NOTHING;
