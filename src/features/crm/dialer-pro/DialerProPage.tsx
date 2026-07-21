@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import {
   Phone, PhoneOff, Mic, MicOff, Pause as PauseIcon, Play, Square,
-  SkipForward, Pencil, Flame, Maximize2, Minus,
+  SkipForward, Flame, Maximize2, Minus,
   MessageSquare, FileText, PhoneForwarded, Hash, Circle,
   ChevronDown, Voicemail,
 } from 'lucide-react';
@@ -624,9 +624,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                         <Flame className="w-3 h-3" /> HOT
                       </span>
                     )}
-                    <button onClick={() => setEditing(contact)} className="ml-auto p-1 rounded hover:bg-[#F3F3EE] text-[#6B7280] hover:text-[#1A1A1A]" title="Edit lead">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
+                    {/* Full edit-contact lives on the call card / history, not here. */}
                   </div>
                   <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
                   {!isLive && !state.currentLead && (
