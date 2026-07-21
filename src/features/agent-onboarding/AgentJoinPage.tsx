@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 /**
- * Public agent onboarding — the link an admin sends to a new hire.
+ * Public agent onboarding, the link an admin sends to a new hire.
  *
  * Flow (one page, staged):
- *   1. sign   — read the agreement, type name, draw a signature
- *   2. email  — enter email → we email a 6-digit code (POST /sign)
- *   3. verify — enter the code + choose a password → account created (POST /verify)
- *   4. done   — log into the CRM
+ *   1. sign    read the agreement, type name, draw a signature
+ *   2. confirm a pop-up of tick-box acknowledgements (understand hours, pay,
+ *              breaks, trial, taxes) so there is no way they did not read it
+ *   3. email   enter email, we email a 6-digit code (POST /sign)
+ *   4. verify  enter the code + choose a password, account created (POST /verify)
+ *   5. done    download the signed agreement + log into the CRM
  *
  * Renders outside the app Layout (no auth). The agreement text + the open/closed
- * gate come from /api/agent-onboarding/config, which reads the admin-editable
- * wk_agent_agreement row.
+ * gate come from /api/agent-onboarding/config.
  */
 
 interface Term {
@@ -27,6 +28,16 @@ interface Agreement {
 }
 
 type Stage = 'loading' | 'closed' | 'sign' | 'email' | 'verify' | 'done';
+
+// The tick-box acknowledgements shown in the pop-up before the signature is
+// finalised. Every one must be checked to continue.
+const ACKS = [
+  'I understand the working hours: Monday to Friday, 10:00am to 6:00pm UK time, with a 1 hour break.',
+  "I understand my pay: a weekly salary paid on Monday, plus 50% commission on each client's first month.",
+  'I understand I must tell my manager every time I go on a break and again when I come back, and that three strikes can end my role.',
+  "I understand my first week is a paid trial, and after the trial either side gives one week's notice.",
+  'I understand I am responsible for my own taxes and equipment, and I will keep everything confidential.',
+];
 
 export default function AgentJoinPage() {
   const [stage, setStage] = useState<Stage>('loading');
@@ -46,6 +57,15 @@ export default function AgentJoinPage() {
   const drawing = useRef(false);
   const [hasInk, setHasInk] = useState(false);
 
+  // Captured when the acknowledgements are confirmed, so they survive to the
+  // email/verify/done stages (the canvas is unmounted after the sign stage).
+  const [signaturePng, setSignaturePng] = useState<string | null>(null);
+  const [signedDate, setSignedDate] = useState('');
+
+  // Acknowledgement pop-up.
+  const [showAck, setShowAck] = useState(false);
+  const [acks, setAcks] = useState<boolean[]>(Array(ACKS.length).fill(false));
+
   useEffect(() => {
     document.title = 'Join the team | HeyElsie';
     fetch('/api/agent-onboarding/config')
@@ -58,7 +78,7 @@ export default function AgentJoinPage() {
       .catch(() => setStage('closed'));
   }, []);
 
-  // Signature pad — only mounted during the sign stage.
+  // Signature pad, only mounted during the sign stage.
   useEffect(() => {
     if (stage !== 'sign') return;
     const c = canvasRef.current;
@@ -98,10 +118,22 @@ export default function AgentJoinPage() {
     setHasInk(false);
   };
 
-  const goEmail = () => {
+  // "Sign & continue" opens the acknowledgement pop-up (does not advance yet).
+  const openAck = () => {
     setError(null);
     if (!name.trim()) { setError('Please type your full name.'); return; }
     if (!hasInk) { setError('Please sign in the box.'); return; }
+    setAcks(Array(ACKS.length).fill(false));
+    setShowAck(true);
+  };
+
+  // Confirming the pop-up finalises the signature and moves to the email step.
+  const confirmAck = () => {
+    const png = canvasRef.current?.toDataURL('image/png') ?? null;
+    setSignaturePng(png);
+    setSignedDate(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }));
+    setShowAck(false);
+    setError(null);
     setStage('email');
   };
 
@@ -113,18 +145,17 @@ export default function AgentJoinPage() {
     }
     setBusy(true);
     try {
-      const png = canvasRef.current?.toDataURL('image/png') ?? null;
       const res = await fetch('/api/agent-onboarding/sign', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), signaturePng: png }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), signaturePng }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setError(j.error || 'Could not send the code.'); return; }
       setSignupId(j.signupId);
       setStage('verify');
     } catch {
-      setError('Network error — please try again.');
+      setError('Network error, please try again.');
     } finally {
       setBusy(false);
     }
@@ -146,13 +177,47 @@ export default function AgentJoinPage() {
       setStage('done');
       window.scrollTo(0, 0);
     } catch {
-      setError('Network error — please try again.');
+      setError('Network error, please try again.');
     } finally {
       setBusy(false);
     }
   };
 
+  // Build a self-contained signed copy the worker can keep (opens + prints to PDF).
+  const downloadAgreement = () => {
+    if (!agreement) return;
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const sections = agreement.terms
+      .map((t) => `<h2 style="font-size:16px;margin:18px 0 4px">${esc(t.heading)}</h2><p style="margin:0 0 10px;color:#333">${esc(t.body)}</p>`)
+      .join('');
+    const sig = signaturePng
+      ? `<img src="${signaturePng}" alt="Signature" style="max-width:320px;display:block;margin-top:10px;border:1px solid #eee;border-radius:8px;padding:6px"/>`
+      : '';
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(agreement.title)}</title></head>
+<body style="font-family:Inter,Arial,sans-serif;max-width:760px;margin:40px auto;color:#1A1A1A;line-height:1.6;padding:0 24px">
+<div style="font-weight:800;font-size:20px;margin-bottom:6px">${esc(agreement.company)}</div>
+<h1 style="font-size:26px;margin:0 0 8px">${esc(agreement.title)}</h1>
+<p style="color:#555">${esc(agreement.intro)}</p>
+${sections}
+<hr style="margin:28px 0;border:none;border-top:1px solid #ddd">
+<div><strong>Signed by:</strong> ${esc(name)}</div>
+<div><strong>Date:</strong> ${esc(signedDate)}</div>
+${sig}
+<p style="color:#999;font-size:12px;margin-top:24px">Generated by ${esc(agreement.company)} when you signed your working agreement.</p>
+</body></html>`;
+    const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${agreement.company}-Working-Agreement-${name.replace(/[^a-z0-9]+/gi, '-') || 'signed'}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const company = agreement?.company || 'HeyElsie';
+  const allAcked = acks.every(Boolean);
 
   return (
     <div className="min-h-screen bg-[#F7F7F4] text-[#1A1A1A]">
@@ -177,7 +242,7 @@ export default function AgentJoinPage() {
           <div className="bg-white border border-[#E5E7EB] rounded-2xl p-8 text-center">
             <h1 className="text-[22px] font-extrabold mb-2">Onboarding is closed</h1>
             <p className="text-[#6B7280] text-[15px]">
-              We&apos;re not taking new agents through this link right now. Please contact your manager.
+              We are not taking new agents through this link right now. Please contact your manager.
             </p>
           </div>
         )}
@@ -215,7 +280,7 @@ export default function AgentJoinPage() {
               </div>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={goEmail}
+                  onClick={openAck}
                   className="bg-[#3C5A87] text-white font-semibold text-[15px] px-6 py-3 rounded-xl hover:bg-[#33507a]"
                 >
                   Sign &amp; continue
@@ -232,8 +297,8 @@ export default function AgentJoinPage() {
 
         {stage === 'email' && (
           <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-8 max-w-md mx-auto">
-            <h1 className="text-[22px] font-extrabold mb-1.5">What&apos;s your email?</h1>
-            <p className="text-[#6B7280] text-[14px] mb-5">We&apos;ll send you a 6-digit code to confirm it. This becomes your CRM login.</p>
+            <h1 className="text-[22px] font-extrabold mb-1.5">What is your email?</h1>
+            <p className="text-[#6B7280] text-[14px] mb-5">We will send you a 6-digit code to confirm it. This becomes your CRM login.</p>
             <input
               type="email"
               value={email}
@@ -251,7 +316,7 @@ export default function AgentJoinPage() {
               {busy ? 'Sending…' : 'Send code'}
             </button>
             <button onClick={() => { setError(null); setStage('sign'); }} className="w-full text-[13px] text-[#6B7280] mt-3 hover:text-[#1A1A1A]">
-              ← Back to the agreement
+              Back to the agreement
             </button>
           </div>
         )}
@@ -297,7 +362,7 @@ export default function AgentJoinPage() {
               {busy ? 'Creating your account…' : 'Create my account'}
             </button>
             <button onClick={() => { setError(null); void sendCode(); }} disabled={busy} className="w-full text-[13px] text-[#6B7280] mt-3 hover:text-[#1A1A1A] disabled:opacity-60">
-              Didn&apos;t get it? Resend code
+              Did not get it? Resend code
             </button>
           </div>
         )}
@@ -305,19 +370,62 @@ export default function AgentJoinPage() {
         {stage === 'done' && (
           <div className="bg-white border border-[#E5E7EB] rounded-2xl p-8 text-center max-w-md mx-auto">
             <div className="w-16 h-16 rounded-full bg-[#DEF3E8] text-[#2E7D5B] grid place-items-center text-3xl mx-auto mb-5">✓</div>
-            <h1 className="text-[24px] font-extrabold mb-2">You&apos;re in, {name.split(' ')[0]}!</h1>
+            <h1 className="text-[24px] font-extrabold mb-2">You are in, {name.split(' ')[0]}!</h1>
             <p className="text-[#6B7280] text-[15px] mb-6">
               Your agent account is ready. Log in with <strong className="text-[#1A1A1A]">{email}</strong> and the password you just set.
             </p>
-            <Link
-              to="/login"
-              className="inline-block bg-[#3C5A87] text-white font-semibold text-[15px] px-6 py-3 rounded-xl hover:bg-[#33507a]"
-            >
-              Log into the CRM
-            </Link>
+            <div className="flex flex-col gap-2.5">
+              <Link
+                to="/login"
+                className="inline-block bg-[#3C5A87] text-white font-semibold text-[15px] px-6 py-3 rounded-xl hover:bg-[#33507a]"
+              >
+                Log into the CRM
+              </Link>
+              <button
+                onClick={downloadAgreement}
+                className="inline-block border border-[#E5E7EB] text-[#1A1A1A] font-semibold text-[15px] px-6 py-3 rounded-xl hover:bg-[#F3F3EE]"
+              >
+                Download your signed agreement
+              </button>
+            </div>
           </div>
         )}
       </main>
+
+      {/* Acknowledgement pop-up, shown before the signature is finalised. */}
+      {showAck && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-[20px] font-extrabold mb-1">Before you sign</h2>
+            <p className="text-[#6B7280] text-[14px] mb-4">Please tick each box to confirm you have read and understood.</p>
+            <div className="space-y-2.5">
+              {ACKS.map((label, i) => (
+                <label key={i} className="flex items-start gap-3 p-3 border border-[#E5E7EB] rounded-xl cursor-pointer hover:bg-[#F9FAFB]">
+                  <input
+                    type="checkbox"
+                    checked={acks[i]}
+                    onChange={(e) => setAcks(acks.map((v, j) => (j === i ? e.target.checked : v)))}
+                    className="mt-0.5 w-5 h-5 accent-[#3C5A87] flex-shrink-0"
+                  />
+                  <span className="text-[14px] text-[#1A1A1A] leading-snug">{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mt-5 pt-4 border-t border-[#E5E7EB]">
+              <button
+                onClick={confirmAck}
+                disabled={!allAcked}
+                className="flex-1 bg-[#3C5A87] text-white font-semibold text-[15px] py-3 rounded-xl hover:bg-[#33507a] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                I understand, complete my signature
+              </button>
+              <button onClick={() => setShowAck(false)} className="text-[14px] text-[#6B7280] px-4 py-3 rounded-xl hover:bg-[#F3F3EE]">
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

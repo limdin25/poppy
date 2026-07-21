@@ -35,7 +35,7 @@ export default async function handler(req: Request): Promise<Response> {
       .single();
     if (!s) return Response.json({ error: 'Onboarding not found. Please start again.' }, { status: 404 });
     if (s.status === 'created') {
-      return Response.json({ error: 'This account has already been created — please log in.' }, { status: 409 });
+      return Response.json({ error: 'This account has already been created. Please log in.' }, { status: 409 });
     }
     if (s.status !== 'code_sent') {
       return Response.json({ error: 'Please request a new code.' }, { status: 400 });
@@ -137,25 +137,26 @@ export default async function handler(req: Request): Promise<Response> {
       const first = name.split(' ')[0] || name;
       const html = `
       <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1A1A1A;line-height:1.6">
-        <h2 style="font-weight:800;margin-bottom:6px">Welcome to the team, ${first}! 🎉</h2>
+        <h2 style="font-weight:800;margin-bottom:6px">Welcome to the team, ${first}!</h2>
         <p style="color:#46514B;font-size:15px">Your account is all set up. You can log in any time at
           <a href="${appUrl}/login" style="color:#3C5A87">${appUrl}/login</a> with this email address.</p>
 
         <h3 style="font-weight:800;font-size:16px;margin:22px 0 6px">Set up your payment so we can pay you</h3>
-        <p style="color:#46514B;font-size:15px">Before your first payment, please set up how you'd like to be paid. We pay in USD, AUD, CAD, EUR and GBP, and <strong>we recommend Payoneer</strong>:</p>
+        <p style="color:#46514B;font-size:15px">Before your first payment, please set up how you would like to be paid. We pay in USD, AUD, CAD, EUR and GBP.</p>
+        <p style="color:#46514B;font-size:15px">For employers that pay in these currencies, <strong>OnlineJobs recommends paying with Payoneer</strong>. This is what OnlineJobs explains:</p>
         <ul style="color:#46514B;font-size:15px;padding-left:20px">
-          <li>Best foreign-currency exchange rates (the real forex rate plus 2%)</li>
-          <li>Fast processing — you can withdraw funds much quicker than with PayPal</li>
+          <li>Payoneer has the best foreign currency exchange rates (the actual forex rate plus 2%).</li>
+          <li>Transactions are processed quickly, and workers can withdraw funds much faster than PayPal.</li>
         </ul>
         <div style="background:#F3F4F6;border-radius:12px;padding:14px 16px;margin:14px 0;font-size:14px;color:#1A1A1A">
-          <strong>Bonus:</strong> when you register a new Payoneer account through OnlineJobs, you get a free <strong>$75 USD signup bonus</strong> once you receive a total of $1,000 in transfers.
+          <strong>OnlineJobs special bonus:</strong> workers receive a free $75 USD signup bonus from Payoneer when they register for a new Payoneer account through OnlineJobs, and receive a total of $1,000 in transfers.
         </div>
-        <p style="color:#46514B;font-size:15px">Once your Payoneer account is ready, just <strong>reply to this email with the email address on your Payoneer account</strong> and we'll link it up. As soon as you're set up, we can pay you.</p>
+        <p style="color:#46514B;font-size:15px">Once your Payoneer account is ready, just <strong>reply to this email with the email address on your Payoneer account</strong> and we will link it up. As soon as you are set up, we can pay you.</p>
 
-        <p style="color:#46514B;font-size:15px">A quick reminder on payments: each work week closes on Friday and your salary lands within 72 hours — so expect it Monday morning, before your shift.</p>
+        <p style="color:#46514B;font-size:15px">A quick reminder on payments: each work week closes on Friday and your salary lands within 72 hours, so expect it Monday morning before your shift. Your commission is separate and is paid within 7 days of each client's first payment clearing.</p>
         <p style="color:#6B7280;font-size:13px;margin-top:18px">Glad to have you on board. Any questions, just reply here.</p>
       </div>`;
-      await sendEmail(email, 'Welcome to HeyElsie — set up your payment to get paid', html);
+      await sendEmail(email, 'Welcome to HeyElsie, set up your payment to get paid', html);
     } catch (mailErr) {
       console.error('[agent-onboarding/verify] welcome email failed:', mailErr);
     }

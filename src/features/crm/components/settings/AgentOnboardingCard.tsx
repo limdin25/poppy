@@ -85,7 +85,7 @@ export default function AgentOnboardingCard() {
     <>
       <Card title="Hire &amp; onboard agents" hint="Send the link → they sign → they appear below">
         {/* Shareable link */}
-        <Field label="Onboarding link — send this to a new hire">
+        <Field label="Onboarding link (send this to a new hire)">
           <div className="flex items-center gap-2">
             <input
               readOnly
@@ -154,7 +154,7 @@ export default function AgentOnboardingCard() {
                 </div>
               ))}
               {agreement.terms.length === 0 && (
-                <div className="text-[12px] text-[#9CA3AF] italic">No terms yet — click Edit to add some.</div>
+                <div className="text-[12px] text-[#9CA3AF] italic">No terms yet. Click Edit to add some.</div>
               )}
             </div>
             <button

@@ -44,6 +44,16 @@ test.describe('Agent onboarding /join', () => {
 
     await signBtn.click()
 
+    // Acknowledgement pop-up: every box must be ticked before it lets you on.
+    await expect(page.getByRole('heading', { name: /before you sign/i })).toBeVisible()
+    const confirmBtn = page.getByRole('button', { name: /complete my signature/i })
+    await expect(confirmBtn).toBeDisabled()
+    for (const box of await page.locator('input[type="checkbox"]').all()) {
+      await box.check()
+    }
+    await expect(confirmBtn).toBeEnabled()
+    await confirmBtn.click()
+
     // Email step.
     await expect(page.getByRole('heading', { name: /your email/i })).toBeVisible()
     await page.getByPlaceholder('you@example.com').fill(email)

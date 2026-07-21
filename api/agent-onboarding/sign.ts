@@ -52,7 +52,7 @@ export default async function handler(req: Request): Promise<Response> {
       .limit(1);
     if (created && created.length) {
       return Response.json(
-        { error: 'An account already exists for this email — please log in instead.' },
+        { error: 'An account already exists for this email. Please log in instead.' },
         { status: 409 },
       );
     }
