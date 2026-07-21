@@ -533,7 +533,7 @@ const N = {
     ]},
 
   card_link: {stage:'CLOSE',
-    say:`"Great, open it up and pop me on speaker while you sign up, takes 30 seconds. Just fill your details in and add a card to start the free trial, you'll see a little £1 check from your bank so we know it's live, and that drops straight back off. Nothing's charged for 10 days."`,
+    say:`"Great, open it up and pop me on speaker while you sign up, takes 30 seconds. Just fill your details in and add a card to start the free trial. Nothing's charged for 10 days."`,
     dir:`Stay on the line and talk them through the sign-up. Confirm it's actually done before you move on, "all signed up? Perfect, I can see it come through my end."`,
     r:[
       {l:`Signed up ✓`,n:`customer_list`},
@@ -542,7 +542,7 @@ const N = {
 
   card_read: {stage:'CLOSE',
     say:`"Course, I can pop it into the sign-up for you if that's easier. Go on, starting with four."`,
-    dir:`Only if THEY ask to read it out, never lead with this in the UK. Just start writing as they read. Then reassure: "Nothing's charged today, this just starts your free trial. A £1 check tells us the card's live; nothing else comes off it for 10 days."`,
+    dir:`Only if THEY ask to read it out, never lead with this in the UK. Just start writing as they read. Then reassure: "Nothing's charged today, this just starts your free trial. Nothing comes off the card for 10 days."`,
     r:[{l:`Card taken ✓`,n:`customer_list`}]},
 
   customer_list: {stage:'CLOSE',
@@ -578,7 +578,7 @@ const N = {
     ]},
 
   google_access: {stage:'CLOSE',
-    say:`"One more thing while I've got you, I need access to your Google Business profile to plug the system in. Sending a link now. Before it comes through: it'll ask for 'management rights', that just means we can manage the profile, not own it. We can't delete anything or take it over, and you can remove us any time from your Google account in 30 seconds. Telling you now so it doesn't catch you off guard."`,
+    say:`"One more quick thing, we just need to connect your Google profile so your reviews land in the right place. If you've got your Google login handy, I'll send a link and we'll do it in a few seconds. And if you're out and about or can't remember the login, no bother at all, do it later when you're home and I'll text you the link so it's there when you're ready."`,
     dir:`Always pre-frame the management-rights popup BEFORE it appears. Surprises kill deals at the finish line.`,
     r:[
       {l:`They accept / share access ✓`,n:`reactivation_promise`},
@@ -791,7 +791,7 @@ const N = {
     r:[{l:`"Okay, alright"`,n:`card_ask`}]},
 
   never_phone: {stage:'CLOSE',
-    say:`"That's the thing, you're not giving me anything over the phone. I text you a link, you sign up yourself on your own phone and pop the card in on a secure Stripe page, I never see it, and you approve it in your own banking app. It's a £1 check, nothing comes off it for 10 days. Fair enough?"`,
+    say:`"That's the thing, you're not giving me anything over the phone. I text you a link, you sign up yourself on your own phone and pop the card in on a secure Stripe page, I never see it. Nothing comes off it for 10 days. Fair enough?"`,
     dir:`In the UK this objection is nearly always card fear, signing up themselves on a secure page removes it completely. Say it calmly.`,
     r:[
       {l:`"Oh, alright then"`,n:`card_ask`},

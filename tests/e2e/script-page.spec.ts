@@ -23,8 +23,13 @@ test.describe('PIN-gated call script', () => {
     await page.getByRole('button', { name: /unlock/i }).click()
     const frame = page.frameLocator('iframe')
     await expect(frame.locator('body')).toContainText(/One-Call Close/i, { timeout: 10000 })
-    // The cleaned script has no long dashes.
     const text = await frame.locator('body').innerText()
+    // The cleaned script has no long dashes.
     expect(text).not.toMatch(/[—–―‒]/)
+    // £1 bank-check language removed (the £179 price legitimately contains "£1").
+    expect(text).not.toContain('£1 check')
+    expect(text).not.toContain('check from your bank')
+    // Google-connect step no longer uses the scary "management rights" framing.
+    expect(text).not.toContain('management rights')
   })
 })

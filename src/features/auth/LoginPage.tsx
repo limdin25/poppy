@@ -9,14 +9,6 @@ const ELSIE_MARK = (
   </svg>
 )
 
-// One-tap demo accounts (password is the same for all three)
-const DEMOS: Array<{ label: string; email: string; hint: string }> = [
-  { label: 'Normal', email: 'demo.user@heyelsie.com', hint: 'WhatsApp user' },
-  { label: 'Admin', email: 'demo.admin@heyelsie.com', hint: 'Voice + calls' },
-  { label: 'Super', email: 'demo.super@heyelsie.com', hint: '/super panel' },
-]
-const DEMO_PASSWORD = 'demo1234'
-
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -103,28 +95,6 @@ export default function LoginPage() {
           Don't have an account?{' '}
           <Link to="/register" className="font-medium text-gray-900 hover:underline">Sign up free</Link>
         </p>
-
-        {/* Demo logins */}
-        <div className="mt-8">
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-100" />
-            <span className="text-[11px] uppercase tracking-wider text-gray-400">Demo logins</span>
-            <div className="h-px flex-1 bg-gray-100" />
-          </div>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {DEMOS.map((d) => (
-              <button
-                key={d.email}
-                onClick={() => signIn(d.email, DEMO_PASSWORD)}
-                disabled={loading}
-                className="rounded-xl border border-gray-200 px-2 py-2.5 text-center transition hover:border-gray-900 disabled:opacity-50"
-              >
-                <span className="block text-[13px] font-medium text-gray-900">{d.label}</span>
-                <span className="mt-0.5 block text-[10px] text-gray-400">{d.hint}</span>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )
