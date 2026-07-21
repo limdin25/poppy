@@ -48,6 +48,22 @@ const json = (status: number, payload: Record<string, unknown>) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+// Normalise a loosely-typed phone into E.164. UK contacts are often stored in
+// national format (07…) which Twilio rejects (error 21211); default unknown
+// leading-zero numbers to +44.
+function normalizeE164(raw: string): string {
+  let s = (raw ?? '').replace(/[^\d+]/g, '');
+  if (!s) return '';
+  if (s.startsWith('+')) return s;
+  if (s.startsWith('00')) return '+' + s.slice(2);
+  if (s.startsWith('0')) return '+44' + s.slice(1); // UK national
+  return '+' + s;
+}
+
+// Rough country class for from/to matching: GB (+44) vs North America (+1).
+const countryClass = (e164: string): string =>
+  e164.startsWith('+44') ? 'gb' : e164.startsWith('+1') ? 'na' : 'other';
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -84,7 +100,7 @@ serve(async (req: Request) => {
     if (contactErr) return json(500, { error: contactErr.message });
     if (!contact) return json(404, { error: 'Contact not found' });
 
-    const toE164 = (contact.phone as string | null)?.trim();
+    const toE164 = normalizeE164((contact.phone as string | null) ?? '');
     if (!toE164) return json(400, { error: 'Contact has no phone number' });
 
     // Resolve sender number. Precedence (same order as the send_sms job
@@ -133,15 +149,39 @@ serve(async (req: Request) => {
       }
     }
 
+    // 2.5. The sending agent's assigned number(s) (wk_number_agents). Prefer a
+    //      number whose country matches the destination (UK contact -> the
+    //      agent's UK number), then their primary, then any. This is what lets
+    //      an admin hand each agent their own line(s).
     if (!fromE164) {
-      const { data: defaultNum } = await supa
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: assigned } = await (supa.from('wk_number_agents' as any) as any)
+        .select('is_primary, wk_numbers(e164, channel, sms_enabled, is_active)')
+        .eq('agent_id', agentId);
+      const rows = ((assigned ?? []) as Array<{
+        is_primary: boolean;
+        wk_numbers: { e164: string; channel: string; sms_enabled: boolean; is_active: boolean } | null;
+      }>).filter((r) => r.wk_numbers && r.wk_numbers.channel === 'sms' && r.wk_numbers.sms_enabled && r.wk_numbers.is_active);
+      if (rows.length) {
+        const dest = countryClass(toE164);
+        const match = rows.find((r) => countryClass(r.wk_numbers!.e164) === dest);
+        const primary = rows.find((r) => r.is_primary);
+        fromE164 = (match ?? primary ?? rows[0]).wk_numbers!.e164;
+      }
+    }
+
+    // 3. Workspace default: prefer one whose country matches the destination,
+    //    else the first SMS-enabled number.
+    if (!fromE164) {
+      const { data: nums } = await supa
         .from('wk_numbers')
         .select('e164')
         .eq('sms_enabled', true)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      fromE164 = (defaultNum?.e164 as string | undefined) ?? '';
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+      const list = ((nums ?? []) as Array<{ e164: string }>).map((n) => n.e164);
+      const dest = countryClass(toE164);
+      fromE164 = list.find((e) => countryClass(e) === dest) ?? list[0] ?? '';
     }
     if (!fromE164) {
       return json(503, { error: 'No SMS-enabled number configured (wk_numbers)' });

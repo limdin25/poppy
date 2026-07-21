@@ -53,6 +53,7 @@ import { useTwilioAccount } from '../hooks/useTwilioAccount';
 import { useColumnPersistence } from '../hooks/useColumnPersistence';
 import ChannelsTab from '../components/settings/ChannelsTab';
 import AgentOnboardingCard from '../components/settings/AgentOnboardingCard';
+import NumberAssignmentCard from '../components/settings/NumberAssignmentCard';
 import { useSmsV2 } from '../store/SmsV2Store';
 import type { Agent, PipelineColumn } from '../types';
 
@@ -2642,6 +2643,8 @@ function NumbersTab() {
           </div>
         )}
       </Card>
+
+      <NumberAssignmentCard />
     </>
   );
 }
