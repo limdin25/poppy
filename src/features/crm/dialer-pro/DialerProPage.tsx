@@ -22,9 +22,8 @@ import { useSpendLimit } from '@/features/crm/caller-pad/hooks/useSpendLimit';
 import { useKillSwitch } from '@/features/crm/caller-pad/hooks/useKillSwitch';
 import type { Campaign } from '@/features/crm/caller-pad/types';
 
-import SalesScriptPane from '@/features/crm/components/live-call/SalesScriptPane';
-import TerminologyPane from '@/features/crm/components/live-call/TerminologyPane';
-import MidCallSmsSender from '@/features/crm/components/live-call/MidCallSmsSender';
+import DialerScriptPane from '@/features/crm/components/live-call/DialerScriptPane';
+import DialerRightTabs from '@/features/crm/components/live-call/DialerRightTabs';
 import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaCompact';
 import CallTimeline from '@/features/crm/components/live-call/CallTimeline';
 import EditContactModal from '@/features/crm/components/contacts/EditContactModal';
@@ -610,7 +609,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
       <div className="flex-1 overflow-hidden">
         <ResizablePanelGroup
           direction="horizontal"
-          autoSaveId="dialer-pro-call-layout-v3"
+          autoSaveId="dialer-pro-call-layout-v4"
           className="h-full"
         >
           {/* COL 1 — Contact + SMS / WhatsApp (always visible) */}
@@ -636,43 +635,16 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                   <div className="mt-2"><ContactMetaCompact contact={contact} /></div>
                 </div>
                 <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[12px]">
-                  {/* IVR keypad — touch tones for "Press 1 for sales"
-                      menus. Always visible during a call (greyed when
-                      not yet connected) so agents see it the moment
-                      they need it. Sends DTMF via Twilio Call.sendDigits;
-                      keyboard 0-9, *, # also work. */}
-                  <div className="bg-white border border-[#3C5A87]/30 rounded-xl p-2 shadow-sm">
-                    <div className="text-[10px] uppercase tracking-wide text-[#3C5A87] font-semibold mb-1.5 flex items-center gap-1.5">
-                      <Hash className="w-3 h-3" /> Keypad
-                      <span className="ml-auto text-[9px] text-[#9CA3AF] normal-case font-normal">
-                        {state.phase === 'connected' ? 'press 1, 2…' : 'enabled once connected'}
-                      </span>
-                    </div>
-                    <DtmfKeypad
-                      enabled={state.phase === 'connected'}
-                      onDigit={machine.sendDigit}
-                      callId={state.currentCallId}
-                      size="inline"
-                    />
-                  </div>
-
-                  <MidCallSmsSender
-                    contactId={contact.id}
-                    contactName={contact.name}
-                    contactPhone={contact.phone}
-                    contactEmail={contact.email}
-                    agentFirstName={agentFirstName}
-                    campaignId={camp?.id ?? null}
-                    pipelineId={camp?.pipelineId ?? null}
-                  />
-
+                  {/* Keypad moved to a button on the dialer card; the SMS /
+                      WhatsApp / Email send box moved to the Messages tab on
+                      the right. COL 1 is now the contact context + timeline. */}
                   <CallTimeline callId={state.currentCallId} />
                 </div>
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
                 <MessageSquare className="w-8 h-8 text-[#E5E7EB]" />
-                <div className="text-sm font-medium text-[#9CA3AF]">SMS / WhatsApp / Email</div>
+                <div className="text-sm font-medium text-[#9CA3AF]">Contact details</div>
                 <div className="text-xs text-[#9CA3AF]">No leads in queue</div>
               </div>
             )}
@@ -680,20 +652,27 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
 
           <ResizableHandle withHandle />
 
-          {/* COL 2 — Sales script (the one-call pitch, read live). Replaces
-              the old live-transcript column. */}
+          {/* COL 2 — Sales script: editable (admin), lean, read live. */}
           <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
-            <SalesScriptPane />
+            <DialerScriptPane />
           </ResizablePanel>
 
           <ResizableHandle withHandle />
 
-          {/* COL 3 — Messages timeline. Follows the same contact as COL 1:
-              live call → currentLead, otherwise the next lead in the queue,
-              so the agent can read the SMS history BEFORE dialing.
-              Glossary tab hidden here — sales agents don't use it. */}
+          {/* COL 3 — Right tabs: Calculator (default) / Objections / Messages.
+              The Messages tab is the send box on top + history below, following
+              the same contact as COL 1 (live call → currentLead, else next in
+              queue). */}
           <ResizablePanel defaultSize={30} minSize={16} className="overflow-hidden">
-            <TerminologyPane contactId={activeContactId ?? undefined} showGlossary={false} />
+            <DialerRightTabs
+              contactId={activeContactId ?? undefined}
+              contactName={contact?.name}
+              contactPhone={contact?.phone}
+              contactEmail={contact?.email}
+              agentFirstName={agentFirstName}
+              campaignId={camp?.id ?? null}
+              pipelineId={camp?.pipelineId ?? null}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
@@ -712,8 +691,27 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
               <span className="text-[12px] font-semibold text-[#6B7280]">
                 {state.phase === 'paused' ? 'Paused' : 'Power Dialer'}
               </span>
+              <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setKeypadOpen((v) => !v)}
+                title="Open keypad"
+                className={cn('p-1 rounded-md transition-colors',
+                  keypadOpen ? 'bg-[#3C5A87] text-white' : 'text-[#6B7280] hover:bg-white/70')}>
+                <Hash className="w-3.5 h-3.5" />
+              </button>
               <span className="text-[11px] text-[#9CA3AF] truncate ml-auto">{agentFirstName}</span>
             </div>
+
+            {/* Keypad popover — opened from the header button. DTMF only fires
+                once a call is connected; here it shows greyed as a preview. */}
+            {keypadOpen && (
+              <div className="px-3 py-2 border-b border-[#E5E7EB] bg-[#F3F3EE]/40">
+                <DtmfKeypad
+                  enabled={state.phase === 'connected'}
+                  onDigit={machine.sendDigit}
+                  callId={state.currentCallId}
+                  size="compact"
+                />
+              </div>
+            )}
 
             {/* Avatar area */}
             <div className="flex flex-col items-center py-5 px-4">
@@ -834,6 +832,12 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                 <span className="text-[12px] font-semibold text-[#6B7280]">
                   {state.phase === 'connected' ? 'Connected' : 'Outgoing Call'}
                 </span>
+                <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setKeypadOpen((v) => !v)}
+                  title="Open keypad"
+                  className={cn('p-1 rounded-md transition-colors',
+                    keypadOpen ? 'bg-[#3C5A87] text-white' : 'text-[#6B7280] hover:bg-white/70')}>
+                  <Hash className="w-3.5 h-3.5" />
+                </button>
                 <span className="text-[11px] text-[#9CA3AF] truncate ml-auto">{agentFirstName}</span>
                 <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setMinimized(true)}
                   className="p-0.5 rounded hover:bg-white/60 text-[#6B7280]">

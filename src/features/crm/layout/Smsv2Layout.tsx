@@ -27,7 +27,9 @@ function StoreHydrator() {
 }
 
 export default function Smsv2Layout() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Start collapsed — Hugo wants the CRM menu out of the way on the dialer
+  // by default; the chevron still expands it for the session.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const onDialerPage = useLocation().pathname === '/admin/crm/dialer-pro';
   const { isAdmin } = useAuth();
 
