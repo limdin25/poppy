@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 // The call script lives in the repo and is bundled (not a public URL), so the
 // PIN below is the only way in. Raw import keeps the HTML byte-for-byte.
-import scriptHtml from './one-call-script.html?raw';
+import scriptHtml from '@/core/content/one-call-script.html?raw';
 
 const PIN = '1176';
 const UNLOCK_KEY = 'one_call_script_unlocked';

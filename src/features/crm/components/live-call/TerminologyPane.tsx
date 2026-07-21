@@ -23,7 +23,15 @@ import { useSmsV2 } from '../../store/SmsV2Store';
 
 type PaneTab = 'glossary' | 'messages';
 
-export default function TerminologyPane({ contactId }: { contactId?: string }) {
+export default function TerminologyPane({
+  contactId,
+  showGlossary = true,
+}: {
+  contactId?: string;
+  /** When false, hide the Glossary tab entirely and show Messages only.
+   *  The dialer passes false — sales agents don't use the glossary. */
+  showGlossary?: boolean;
+}) {
   const { items, loading, error, add } = useTerminologies({ activeOnly: true });
   const { pushToast } = useSmsV2();
   const [tab, setTab] = useState<PaneTab>('messages');
@@ -86,13 +94,15 @@ export default function TerminologyPane({ contactId }: { contactId?: string }) {
           count={contactMessages.length}
           onClick={() => setTab('messages')}
         />
-        <TabButton
-          active={tab === 'glossary'}
-          icon={<BookOpen className="w-3.5 h-3.5" />}
-          label="Glossary"
-          count={glossaryCount}
-          onClick={() => setTab('glossary')}
-        />
+        {showGlossary && (
+          <TabButton
+            active={tab === 'glossary'}
+            icon={<BookOpen className="w-3.5 h-3.5" />}
+            label="Glossary"
+            count={glossaryCount}
+            onClick={() => setTab('glossary')}
+          />
+        )}
       </div>
 
       <div className="px-3 py-2 border-b border-[#E5E7EB] flex items-center gap-1.5">

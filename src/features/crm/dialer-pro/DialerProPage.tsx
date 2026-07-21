@@ -22,8 +22,7 @@ import { useSpendLimit } from '@/features/crm/caller-pad/hooks/useSpendLimit';
 import { useKillSwitch } from '@/features/crm/caller-pad/hooks/useKillSwitch';
 import type { Campaign } from '@/features/crm/caller-pad/types';
 
-import LiveTranscriptPane from '@/features/crm/components/live-call/LiveTranscriptPane';
-import CallScriptPane from '@/features/crm/components/live-call/CallScriptPane';
+import SalesScriptPane from '@/features/crm/components/live-call/SalesScriptPane';
 import TerminologyPane from '@/features/crm/components/live-call/TerminologyPane';
 import MidCallSmsSender from '@/features/crm/components/live-call/MidCallSmsSender';
 import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaCompact';
@@ -366,7 +365,6 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
   const splitDragRef = useRef<{ startX: number; startPct: number } | null>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isLive = state.phase === 'dialing' || state.phase === 'ringing' || state.phase === 'connected';
-  const contactFirstName = contact?.name?.trim().split(/\s+/)[0] ?? '';
 
   // ─── Floating card: drag + minimize ────────────────────────────────
   const CARD_W = 380;
@@ -612,11 +610,11 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
       <div className="flex-1 overflow-hidden">
         <ResizablePanelGroup
           direction="horizontal"
-          autoSaveId="dialer-pro-call-layout-v2"
+          autoSaveId="dialer-pro-call-layout-v3"
           className="h-full"
         >
           {/* COL 1 — Contact + SMS / WhatsApp (always visible) */}
-          <ResizablePanel defaultSize={20} minSize={14} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
+          <ResizablePanel defaultSize={22} minSize={16} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
             {contact ? (
               <>
                 <div className="px-4 py-3 border-b border-[#E5E7EB]">
@@ -682,43 +680,20 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
 
           <ResizableHandle withHandle />
 
-          {/* COL 2 — Live transcript + AI coach */}
-          <ResizablePanel defaultSize={38} minSize={26} className="bg-white border-r border-[#E5E7EB] overflow-hidden">
-            {(isLive || state.phase === 'wrap_up') && contact ? (
-              <LiveTranscriptPane
-                durationSec={liveDuration}
-                contactId={contact.id}
-                callId={state.currentCallId}
-                agentFirstName={agentFirstName}
-              />
-            ) : (
-              <div className="flex-1 flex items-center justify-center h-full text-sm text-[#9CA3AF]">
-                Transcript appears during calls
-              </div>
-            )}
+          {/* COL 2 — Sales script (the one-call pitch, read live). Replaces
+              the old live-transcript column. */}
+          <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
+            <SalesScriptPane />
           </ResizablePanel>
 
           <ResizableHandle withHandle />
 
-          {/* COL 3 — Call script (teleprompter) */}
-          <ResizablePanel defaultSize={22} minSize={14} className="border-r border-[#E5E7EB] overflow-hidden">
-            <CallScriptPane
-              callId={state.currentCallId}
-              contactFirstName={contactFirstName}
-              agentFirstName={agentFirstName}
-              campaignId={camp?.id}
-              pipelineColumnId={contact?.pipelineColumnId ?? pipelineColumnId}
-            />
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          {/* COL 4 — Messages timeline (default) + Glossary. Follows the
-              same contact as COL 1: live call → currentLead, otherwise
-              the next lead in the queue, so the agent can read the SMS
-              history BEFORE dialing. */}
-          <ResizablePanel defaultSize={20} minSize={14} className="overflow-hidden">
-            <TerminologyPane contactId={activeContactId ?? undefined} />
+          {/* COL 3 — Messages timeline. Follows the same contact as COL 1:
+              live call → currentLead, otherwise the next lead in the queue,
+              so the agent can read the SMS history BEFORE dialing.
+              Glossary tab hidden here — sales agents don't use it. */}
+          <ResizablePanel defaultSize={30} minSize={16} className="overflow-hidden">
+            <TerminologyPane contactId={activeContactId ?? undefined} showGlossary={false} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
