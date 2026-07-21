@@ -52,6 +52,7 @@ import BulkUploadModal from '../components/contacts/BulkUploadModal';
 import { useTwilioAccount } from '../hooks/useTwilioAccount';
 import { useColumnPersistence } from '../hooks/useColumnPersistence';
 import ChannelsTab from '../components/settings/ChannelsTab';
+import AgentOnboardingCard from '../components/settings/AgentOnboardingCard';
 import { useSmsV2 } from '../store/SmsV2Store';
 import type { Agent, PipelineColumn } from '../types';
 
@@ -2094,6 +2095,8 @@ function AgentsTab() {
 
   return (
     <>
+      <AgentOnboardingCard />
+
       <Card title="Agents & spend limits" hint="Edit limit = instant effect">
         <table className="w-full text-[13px]">
           <thead className="text-[10px] uppercase tracking-wide text-[#9CA3AF]">

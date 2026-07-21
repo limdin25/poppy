@@ -37,6 +37,7 @@ const AccountPage = lazy(() => import('@/features/account/AccountPage'))
 const BillingPage = lazy(() => import('@/features/billing/BillingPage'))
 const AdminApp = lazy(() => import('@/features/admin/AdminApp'))
 const CrmApp = lazy(() => import('@/features/crm/CrmApp'))
+const AgentJoinPage = lazy(() => import('@/features/agent-onboarding/AgentJoinPage'))
 const LandingPage = lazy(() => import('@/features/landing/LandingPage'))
 const ReviewsApp = lazy(() => import('@/features/reviews/ReviewsApp'))
 const PrivacyPolicyPage = lazy(() => import('@/features/legal/PrivacyPolicyPage'))
@@ -109,6 +110,9 @@ export default function App() {
         <Route path="dpa" element={<DpaPage />} />
         <Route path="register" element={<RegistrationPage />} />
         <Route path="onboarding" element={<OnboardingPage />} />
+        {/* Public agent hiring link — the new hire signs the agreement,
+            verifies their email, and gets a CRM agent account. */}
+        <Route path="join" element={<AgentJoinPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />
