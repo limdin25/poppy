@@ -21,6 +21,7 @@ import { interpolateTemplate } from '../../lib/interpolateTemplate';
 import StageSelector from '../shared/StageSelector';
 import FollowupPromptModal from '../followups/FollowupPromptModal';
 import { useActiveCallCtx } from './ActiveCallContext';
+import { useResolvedFromLine } from '../../hooks/useResolvedFromLine';
 
 type Channel = 'sms' | 'whatsapp' | 'email';
 
@@ -61,6 +62,10 @@ interface Props {
   contactName: string;
   contactPhone: string;
   contactEmail?: string;
+  /** The lead's OWNER name (custom_fields.owner_name). For plumber leads
+   *  contactName is the BUSINESS name, so {first_name} must resolve from the
+   *  owner, not the company (Hugo 2026-07-22). Falls back to contactName. */
+  ownerName?: string | null;
   agentFirstName: string;
   /** PR 86: when set, send fns resolve from wk_campaign_numbers for
    *  this campaign (matching channel) before falling back to workspace
@@ -84,6 +89,7 @@ export default function MidCallSmsSender({
   contactName,
   contactPhone,
   contactEmail,
+  ownerName,
   agentFirstName,
   campaignId = null,
   pipelineId = null,
@@ -103,36 +109,17 @@ export default function MidCallSmsSender({
   const [loadingTpls, setLoadingTpls] = useState(true);
   const [pickedStageId, setPickedStageId] = useState<string | null>(null);
   // PR 116 (Hugo 2026-04-28): show "From: …" above the send box so the
-  // agent sees which line the message will go from. Reads the first
-  // active wk_numbers row matching the picked channel. Doesn't try to
-  // resolve campaign-pinned numbers client-side — the send fns do that
-  // on the server; we just surface a sensible default for visibility.
-  const [fromLine, setFromLine] = useState<string | null>(null);
-  useEffect(() => {
-    if (!channel) {
-      setFromLine(null);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (supabase.from('wk_numbers' as any) as any)
-        .select('e164, label')
-        .eq('channel', channel)
-        .eq('is_active', true)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (cancelled) return;
-      const row = data as { e164?: string; label?: string | null } | null;
-      if (row?.e164) {
-        setFromLine(row.label ? `${row.e164} · ${row.label}` : row.e164);
-      } else {
-        setFromLine(null);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [channel]);
+  // agent sees which line the message will go from.
+  // Fix (Hugo 2026-07-23): the caption used to show the FIRST active
+  // wk_numbers row — the workspace US toll-free line — while the send fn
+  // actually sent from the agent's own assigned number. useResolvedFromLine
+  // mirrors the server-side resolution (campaign → agent's assigned number,
+  // country-matched → workspace default) so the caption is the truth.
+  const fromLine = useResolvedFromLine(channel, {
+    contactPhone,
+    campaignId,
+    agentFirstName,
+  });
   // PR 107 (Hugo 2026-04-28): every successful send opens the follow-up
   // prompt so the agent always commits to a next-touch time.
   const [followupTarget, setFollowupTarget] = useState<{
@@ -160,10 +147,16 @@ export default function MidCallSmsSender({
     };
   }, []);
 
-  const firstName = useMemo(
-    () => contactName.trim().split(/\s+/)[0] ?? '',
-    [contactName]
-  );
+  // {first_name} = the LEAD's PERSON first name, not the company. For plumber
+  // leads contactName is the business name ("A & E Plumbing Ltd"), and the
+  // person is in custom_fields.owner_name ("Stephen Ellis"). Prefer the owner
+  // name (prop or the store's custom field), fall back to the contact name so
+  // manual/free dials still greet by whatever name we have (Hugo 2026-07-22).
+  const firstName = useMemo(() => {
+    const owner = (ownerName ?? currentContact?.customFields?.owner_name ?? '').trim();
+    const source = owner || contactName;
+    return source.trim().split(/\s+/)[0] ?? '';
+  }, [ownerName, currentContact?.customFields?.owner_name, contactName]);
 
   const filteredTemplates = useMemo(
     () => templates.filter((t) => t.channel == null || t.channel === channel),
