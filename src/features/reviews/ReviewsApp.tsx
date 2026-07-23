@@ -6,36 +6,39 @@
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import { Routes, Route, NavLink, Navigate, useSearchParams } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, UserPlus, MessageSquareText, CalendarClock,
-  Star, Blocks, Share2, Gift, CreditCard, LogOut, Menu, X,
+  LayoutDashboard, Users, UserPlus, MessageSquareText,
+  Star, Blocks, Share2, Plug, Gift, CreditCard, LogOut, Menu, X,
 } from 'lucide-react'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { Button } from '@/core/ui/Button'
 import { Input } from '@/core/ui/Input'
 import { cn } from '@/core/lib/cn'
 import { ReviewsSessionContext, type ReviewsSession } from './lib'
+import { BusinessSwitcher } from './components/BusinessSwitcher'
 
 const DashboardPage = lazy(() => import('./pages/ReviewsDashboardPage'))
 const ContactsPage = lazy(() => import('./pages/ReviewsContactsPage'))
 const AddContactsPage = lazy(() => import('./pages/ReviewsAddContactsPage'))
 const MessagingPage = lazy(() => import('./pages/ReviewsMessagingPage'))
-const SchedulingPage = lazy(() => import('./pages/ReviewsSchedulingPage'))
 const ReviewsInboxPage = lazy(() => import('./pages/ReviewsInboxPage'))
 const WidgetsPage = lazy(() => import('./pages/ReviewsWidgetsPage'))
 const SocialPostingPage = lazy(() => import('./pages/ReviewsSocialPostingPage'))
+const IntegrationsPage = lazy(() => import('./pages/ReviewsIntegrationsPage'))
 const ReferralsPage = lazy(() => import('./pages/ReviewsReferralsPage'))
 const BillingPage = lazy(() => import('./pages/ReviewsBillingPage'))
 const OnboardingPage = lazy(() => import('@/features/reviews-onboarding/ReviewsOnboardingPage'))
+const ContinuePage = lazy(() => import('@/features/reviews-onboarding/ReviewsContinuePage'))
+const AddBusinessPage = lazy(() => import('./pages/AddBusinessPage'))
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/contacts', label: 'Contacts', icon: Users },
   { to: '/add-contacts', label: 'Add Contacts', icon: UserPlus },
   { to: '/messaging', label: 'Messaging', icon: MessageSquareText },
-  { to: '/scheduling', label: 'Scheduling', icon: CalendarClock },
   { to: '/reviews', label: 'Reviews', icon: Star },
   { to: '/widgets', label: 'Widgets', icon: Blocks },
   { to: '/social', label: 'Social Posting', icon: Share2 },
+  { to: '/integrations', label: 'Integrations', icon: Plug },
   { to: '/referrals', label: 'Refer a Friend', icon: Gift },
   { to: '/billing', label: 'Billing', icon: CreditCard },
 ]
@@ -77,6 +80,15 @@ function LoginScreen() {
         <p className="mt-4 text-center text-sm text-ink-subtle">
           New here? <a href="/onboarding" className="font-medium text-brand">Start your free trial</a>
         </p>
+        <div className="mt-5 border-t border-border pt-4">
+          <p className="mb-2 text-center text-xs text-ink-subtle">Part of the team, not a reviews client?</p>
+          <a
+            href="https://app.heyelsie.com/login"
+            className="flex w-full items-center justify-center rounded-xl border border-border bg-elevated px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-bg"
+          >
+            Staff &amp; agent sign-in →
+          </a>
+        </div>
       </div>
     </div>
   )
@@ -124,9 +136,8 @@ function Shell({ session }: { session: ReviewsSession }) {
             <span className="text-xl font-black tracking-tight text-ink">HeyElsie</span>
             <span className="ml-1 text-xl font-light text-ink-subtle">Reviews</span>
           </div>
-          <div className="mb-4 mt-3 rounded-2xl border border-border bg-bg p-3">
-            <p className="text-[10px] uppercase tracking-wider text-ink-subtle">Business</p>
-            <p className="mt-0.5 truncate text-sm font-medium text-ink">{session.businessName}</p>
+          <div className="mb-4 mt-3">
+            <BusinessSwitcher session={session} />
           </div>
           {nav}
         </aside>
@@ -142,9 +153,8 @@ function Shell({ session }: { session: ReviewsSession }) {
         {menuOpen && (
           <div className="fixed inset-0 z-30 bg-bg pt-16 md:hidden">
             <div className="p-4">
-              <div className="mb-3 rounded-2xl border border-border bg-elevated p-3">
-                <p className="text-[10px] uppercase tracking-wider text-ink-subtle">Business</p>
-                <p className="mt-0.5 truncate text-sm font-medium text-ink">{session.businessName}</p>
+              <div className="mb-3">
+                <BusinessSwitcher session={session} />
               </div>
               {nav}
             </div>
@@ -155,13 +165,17 @@ function Shell({ session }: { session: ReviewsSession }) {
           <Suspense fallback={<Loading />}>
             <Routes>
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/business/dashboard" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/business/add" element={<AddBusinessPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/add-contacts" element={<AddContactsPage />} />
               <Route path="/messaging" element={<MessagingPage />} />
-              <Route path="/scheduling" element={<SchedulingPage />} />
+              {/* Scheduling merged into Messaging — keep the old path working */}
+              <Route path="/scheduling" element={<Navigate to="/messaging" replace />} />
               <Route path="/reviews" element={<ReviewsInboxPage />} />
               <Route path="/widgets" element={<WidgetsPage />} />
               <Route path="/social" element={<SocialPostingPage />} />
+              <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/referrals" element={<ReferralsPage />} />
               <Route path="/billing" element={<BillingPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -214,24 +228,39 @@ export default function ReviewsApp() {
         sessionStorage.removeItem('go_impersonation')
       }
 
-      const { data: member } = await supabase
-        .from('team_members').select('business_id').eq('user_id', user.id).limit(1).maybeSingle()
-      if (!member) {
+      const { data: members } = await supabase
+        .from('team_members').select('business_id').eq('user_id', user.id)
+      const memberIds = [...new Set((members ?? []).map((m) => m.business_id))]
+      if (!memberIds.length) {
         // A CRM contractor agent has no reviews business. Don't dead-end them on
         // the reviews login — send them to the CRM on the app host, where their
         // account lives (login is per-origin, so they sign in there).
         const { data: prof } = await supabase.from('profiles').select('workspace_role').eq('id', user.id).maybeSingle()
         const role = (prof as { workspace_role?: string | null } | null)?.workspace_role
         if (!cancelled && (role === 'agent' || role === 'admin' || role === 'viewer')) {
-          window.location.replace('https://app.heyelsie.com/admin/crm/inbox')
+          // Staff belong on the app host, not the reviews client app. Clear the
+          // stray reviews-origin session and send them to the SINGLE app login,
+          // which routes them into the CRM by role — one sign-in, no dead-end
+          // at /admin/crm/inbox (where they had no session and got bounced again).
+          // scope:'local' — only drop THIS origin's session; never revoke their
+          // real CRM session on the app host.
+          await supabase.auth.signOut({ scope: 'local' })
+          window.location.replace('https://app.heyelsie.com/login')
           return
         }
         if (!cancelled) setState({ loading: false, session: null, authed: false, isAdmin: false })
         return
       }
-      const { data: biz } = await supabase.from('businesses').select('id, name').eq('id', member.business_id).single()
+      // Multi-business: pick the profile's active business (if the user still
+      // belongs to it and it isn't an unfinished draft), else the first non-draft.
+      const { data: prof2 } = await supabase.from('profiles').select('active_business_id').eq('id', user.id).maybeSingle()
+      const { data: bizRows } = await supabase.from('businesses').select('id, name, status').in('id', memberIds)
+      const nonDraftIds = (bizRows ?? []).filter((b) => b.status !== 'draft').map((b) => b.id)
+      const activeId = (prof2?.active_business_id && nonDraftIds.includes(prof2.active_business_id))
+        ? prof2.active_business_id : (nonDraftIds[0] ?? memberIds[0])
+      const biz = (bizRows ?? []).find((b) => b.id === activeId) ?? null
       const { data: flag } = await supabase
-        .from('feature_flags').select('enabled').eq('business_id', member.business_id).eq('flag_key', 'reviews').maybeSingle()
+        .from('feature_flags').select('enabled').eq('business_id', activeId).eq('flag_key', 'reviews').maybeSingle()
       // Admins signed in with a non-reviews account get pointed at /super
       // instead of the generic "not enabled" screen.
       let isAdmin = false
@@ -243,7 +272,7 @@ export default function ReviewsApp() {
         loading: false, authed: true, isAdmin,
         session: {
           userId: user.id, email: user.email ?? '',
-          businessId: member.business_id, businessName: biz?.name ?? 'Your business',
+          businessId: activeId, businessName: biz?.name ?? 'Your business',
           impersonating: false, reviewsEnabled: !!flag?.enabled,
         },
       })
@@ -261,6 +290,10 @@ export default function ReviewsApp() {
       <Routes>
         {/* Public: the 10-minute onboarding (includes account creation) */}
         <Route path="/onboarding" element={<OnboardingPage />} />
+        {/* Public: subscribe-on-the-call door (email-only account, pay first). */}
+        <Route path="/subscribe" element={<OnboardingPage mode="subscribe" />} />
+        {/* Public: already-paid door — email + code, then resume onboarding. */}
+        <Route path="/continue" element={<ContinuePage />} />
         <Route path="/*" element={
           state.loading ? <Loading />
           : !state.authed || !state.session ? <LoginScreen />
