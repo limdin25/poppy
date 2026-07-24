@@ -218,14 +218,26 @@ ${transcripts || '(no live conversations today)'}`;
     .trim();
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+// Node runtime handler shape (req, res) — NOT the edge Request/Response API.
+// The edge signature compiles fine but throws `req.headers.get is not a
+// function` at runtime on Node.
+export default async function handler(
+  req: {
+    headers: Record<string, string | string[] | undefined>;
+    query?: Record<string, string | string[] | undefined>;
+  },
+  res: { status: (n: number) => { json: (b: unknown) => void } },
+): Promise<void> {
+  const rawAuth = req.headers['authorization'];
+  const auth = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth;
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
   }
 
-  const url = new URL(req.url);
   // ?date=YYYY-MM-DD re-runs a past day (backfill / manual retry).
-  const dateKey = url.searchParams.get('date') || ukToday(new Date());
+  const rawDate = req.query?.date;
+  const dateKey = (Array.isArray(rawDate) ? rawDate[0] : rawDate) || ukToday(new Date());
   const { since, until } = ukDayBounds(dateKey);
 
   // Roster: same rule as the leaderboard — a CRM agent or an account with a
@@ -328,8 +340,5 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
-  return new Response(
-    JSON.stringify({ ok: true, date: dateKey, reports: written.map((w) => w.name) }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
-  );
+  res.status(200).json({ ok: true, date: dateKey, reports: written.map((w) => w.name) });
 }

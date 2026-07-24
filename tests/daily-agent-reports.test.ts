@@ -26,7 +26,15 @@ describe('daily agent reports — schedule', () => {
 
   it('is protected by CRON_SECRET', () => {
     expect(cron).toMatch(/Bearer \$\{process\.env\.CRON_SECRET\}/)
-    expect(cron).toMatch(/status: 401/)
+    expect(cron).toMatch(/status\(401\)/)
+  })
+
+  it('uses the Node (req, res) handler shape, not the edge Request API', () => {
+    // The edge signature type-checks but throws `req.headers.get is not a
+    // function` at runtime on the Node runtime. Caught in production 2026-07-24.
+    expect(cron).not.toMatch(/req\.headers\.get\(/)
+    expect(cron).not.toMatch(/new Response\(/)
+    expect(cron).toMatch(/res\.status\(200\)\.json/)
   })
 
   it('runs on Node with room for two Claude calls, not the edge budget', () => {
