@@ -11,15 +11,25 @@
 // Sort: calls MADE desc — "who's calling more". Picked up stays a column.
 // The signed-in agent's own row is highlighted so they see where they stand.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Trophy } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
-import { useLeaderboard } from '../hooks/useLeaderboard';
+import {
+  useLeaderboard,
+  RANGE_LABELS,
+  DEFAULT_LEADERBOARD_RANGE,
+  type LeaderboardRange,
+} from '../hooks/useLeaderboard';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { formatDuration, formatPence } from '../data/helpers';
 
+const RANGES: LeaderboardRange[] = ['today', 'yesterday', 'week', 'month'];
+
 export default function LeaderboardPage() {
-  const reports = useLeaderboard('today');
+  // Opens on the rolling week — a today-only board reads empty every morning
+  // before anyone has dialled (Hugo 2026-07-24).
+  const [range, setRange] = useState<LeaderboardRange>(DEFAULT_LEADERBOARD_RANGE);
+  const reports = useLeaderboard(range);
   const { agent: me } = useCurrentAgent();
 
   const rows = useMemo(
@@ -35,8 +45,25 @@ export default function LeaderboardPage() {
             <Trophy className="w-6 h-6 text-[#3C5A87]" /> Leaderboard
           </h1>
           <p className="text-[13px] text-[#6B7280]">
-            Today · ranked by calls made · updates every minute
+            {RANGE_LABELS[range]} · ranked by calls made · updates every minute
           </p>
+        </div>
+        <div className="flex items-center gap-1 bg-white border border-[#E5E7EB] rounded-full p-1">
+          {RANGES.map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              data-testid={`leaderboard-range-${r}`}
+              className={cn(
+                'px-3 py-1.5 text-[12px] font-medium rounded-full transition-colors',
+                range === r
+                  ? 'bg-[#1A1A1A] text-white'
+                  : 'text-[#6B7280] hover:bg-[#F3F3EE]',
+              )}
+            >
+              {RANGE_LABELS[r]}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -126,7 +153,7 @@ export default function LeaderboardPage() {
                 >
                   {reports.error
                     ? `Could not load the board: ${reports.error}`
-                    : 'Nobody is set to compete yet — tick agents in Settings → Agents & spend.'}
+                    : `No agents to show for ${RANGE_LABELS[range].toLowerCase()} — tick who competes in Settings → Agents & spend.`}
                 </td>
               </tr>
             )}

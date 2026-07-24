@@ -15,7 +15,22 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
-import type { AgentLeaderRow, ReportRange } from './useReports';
+import type { AgentLeaderRow } from './useReports';
+
+/** Hugo 2026-07-24: "they called yesterday and the day before, make sure it
+ *  shows already." Today-only read empty every morning, so the board takes a
+ *  range and defaults to the rolling week. */
+export type LeaderboardRange = 'today' | 'yesterday' | 'week' | 'month';
+
+export const RANGE_LABELS: Record<LeaderboardRange, string> = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  week: 'Last 7 days',
+  month: 'Last 30 days',
+};
+
+/** The board opens on this — always has calls in it. */
+export const DEFAULT_LEADERBOARD_RANGE: LeaderboardRange = 'week';
 
 interface LeaderboardRow {
   agent_id: string;
@@ -34,23 +49,37 @@ export interface LeaderboardData {
   error: string | null;
 }
 
-function rangeStart(range: ReportRange): Date {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  if (range === 'week') d.setUTCDate(d.getUTCDate() - 6);
-  else if (range === 'month') d.setUTCDate(d.getUTCDate() - 29);
-  return d;
+/** UTC day boundaries, matching the rest of the reporting code.
+ *  `until` is exclusive; null means "up to now". */
+function rangeBounds(range: LeaderboardRange): { since: Date; until: Date | null } {
+  const startOfToday = new Date();
+  startOfToday.setUTCHours(0, 0, 0, 0);
+
+  if (range === 'yesterday') {
+    const since = new Date(startOfToday);
+    since.setUTCDate(since.getUTCDate() - 1);
+    return { since, until: startOfToday };
+  }
+
+  const since = new Date(startOfToday);
+  if (range === 'week') since.setUTCDate(since.getUTCDate() - 6);
+  else if (range === 'month') since.setUTCDate(since.getUTCDate() - 29);
+  return { since, until: null };
 }
 
-export function useLeaderboard(range: ReportRange = 'today'): LeaderboardData {
+export function useLeaderboard(
+  range: LeaderboardRange = DEFAULT_LEADERBOARD_RANGE,
+): LeaderboardData {
   const [rows, setRows] = useState<AgentLeaderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    const { since, until } = rangeBounds(range);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error: rpcError } = await (supabase as any).rpc('wk_leaderboard', {
-      p_since: rangeStart(range).toISOString(),
+      p_since: since.toISOString(),
+      p_until: until ? until.toISOString() : null,
     });
     if (rpcError) {
       console.warn('[leaderboard] wk_leaderboard failed:', rpcError.message);

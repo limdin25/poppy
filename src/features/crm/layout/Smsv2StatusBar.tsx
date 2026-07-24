@@ -7,7 +7,7 @@ import { useKillSwitch } from '../hooks/useKillSwitch';
 import { useAgentPresence } from '../hooks/useAgentPresence';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useInboxNotifications } from '../hooks/useInboxNotifications';
-import { useLeaderboard } from '../hooks/useLeaderboard';
+import { useLeaderboard, RANGE_LABELS, DEFAULT_LEADERBOARD_RANGE } from '../hooks/useLeaderboard';
 import { formatPence, formatRelativeTime, formatDuration } from '../data/helpers';
 
 const STATUS_LABELS: Record<string, { label: string; colour: string }> = {
@@ -27,7 +27,7 @@ export default function Smsv2StatusBar() {
 
   // PR 109 (Hugo 2026-04-28): top-nav bell + mini leaderboard popovers.
   const notifications = useInboxNotifications();
-  const board = useLeaderboard('today');
+  const board = useLeaderboard(DEFAULT_LEADERBOARD_RANGE);
   const [bellOpen, setBellOpen] = useState(false);
   const [trophyOpen, setTrophyOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
@@ -208,7 +208,7 @@ export default function Smsv2StatusBar() {
             setBellOpen(false);
           }}
           className="flex items-center justify-center w-7 h-7 rounded-full hover:bg-black/[0.05] text-[#6B7280] hover:text-[#1A1A1A]"
-          title="Today's leaderboard"
+          title={`Leaderboard — ${RANGE_LABELS[DEFAULT_LEADERBOARD_RANGE].toLowerCase()}`}
           data-testid="statusbar-trophy"
         >
           <Trophy className="w-3.5 h-3.5" strokeWidth={2} />
@@ -220,7 +220,7 @@ export default function Smsv2StatusBar() {
           >
             <div className="px-3 py-2 border-b border-[#E5E7EB] flex items-center justify-between">
               <span className="text-[11px] uppercase tracking-wide text-[#9CA3AF] font-semibold flex items-center gap-1">
-                <Trophy className="w-3 h-3 text-[#3C5A87]" /> Today's leaderboard
+                <Trophy className="w-3 h-3 text-[#3C5A87]" /> Leaderboard · {RANGE_LABELS[DEFAULT_LEADERBOARD_RANGE].toLowerCase()}
               </span>
               <Link
                 to="/admin/crm/leaderboard"

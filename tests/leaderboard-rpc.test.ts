@@ -13,8 +13,10 @@ import { resolve } from 'node:path'
 // These pin the fix so a later refactor can't quietly put the board back on a
 // RLS-clipped table, or drop the staff gate on a SECURITY DEFINER function.
 
+// The range migration REPLACES the original 1-arg function — assert against
+// the live definition, not the superseded one.
 const sql = readFileSync(
-  resolve(__dirname, '../supabase/migrations/20260724000001_leaderboard_rpc.sql'),
+  resolve(__dirname, '../supabase/migrations/20260724000002_leaderboard_range.sql'),
   'utf8',
 )
 const read = (p: string) => readFileSync(resolve(__dirname, '..', p), 'utf8')
@@ -51,21 +53,21 @@ describe('wk_leaderboard RPC — migration contract', () => {
   })
 
   it('grants execute to authenticated and revokes it from public', () => {
-    expect(sql).toMatch(/revoke\s+all\s+on\s+function\s+public\.wk_leaderboard\(timestamptz\)\s+from\s+public/i)
-    expect(sql).toMatch(/grant\s+execute\s+on\s+function\s+public\.wk_leaderboard\(timestamptz\)\s+to\s+authenticated/i)
+    expect(sql).toMatch(/revoke\s+all\s+on\s+function\s+public\.wk_leaderboard\(timestamptz,\s*timestamptz\)\s+from\s+public/i)
+    expect(sql).toMatch(/grant\s+execute\s+on\s+function\s+public\.wk_leaderboard\(timestamptz,\s*timestamptz\)\s+to\s+authenticated/i)
   })
 })
 
 describe('leaderboard surfaces read the RPC, not RLS-clipped call rows', () => {
   it('the full board page uses useLeaderboard', () => {
     const page = read('src/features/crm/pages/LeaderboardPage.tsx')
-    expect(page).toMatch(/import \{ useLeaderboard \} from '\.\.\/hooks\/useLeaderboard'/)
+    expect(page).toMatch(/from '\.\.\/hooks\/useLeaderboard'/)
     expect(page).not.toMatch(/import .*from '\.\.\/hooks\/useReports'/)
   })
 
   it('the nav-bar trophy popover uses useLeaderboard', () => {
     const bar = read('src/features/crm/layout/Smsv2StatusBar.tsx')
-    expect(bar).toMatch(/import \{ useLeaderboard \} from '\.\.\/hooks\/useLeaderboard'/)
+    expect(bar).toMatch(/from '\.\.\/hooks\/useLeaderboard'/)
     expect(bar).not.toMatch(/import .*from '\.\.\/hooks\/useReports'/)
   })
 
@@ -94,5 +96,38 @@ describe('every competitor can be toggled off', () => {
     const settings = read('src/features/crm/pages/SettingsPage.tsx')
     expect(settings).toMatch(/show_on_leaderboard:\s*show/)
     expect(settings).toMatch(/onConflict:\s*'agent_id'/)
+  })
+})
+
+describe('backdated ranges — Hugo: "they called yesterday and the day before"', () => {
+  it('the RPC takes an optional exclusive upper bound', () => {
+    expect(sql).toMatch(/p_until\s+timestamptz\s+default\s+null/i)
+    expect(sql).toMatch(/p_until\s+is\s+null\s+or\s+k\.started_at\s*<\s*p_until/i)
+  })
+
+  it('bounds messages and spend by the same window, not just calls', () => {
+    expect(sql).toMatch(/p_until\s+is\s+null\s+or\s+m\.created_at\s*<\s*p_until/i)
+    const spendBounded = sql.split('spend_stats as (')[1] ?? ''
+    expect(spendBounded).toMatch(/p_until\s+is\s+null\s+or\s+k\.started_at\s*<\s*p_until/i)
+  })
+
+  it('drops the superseded 1-arg function so PostgREST cannot pick the wrong overload', () => {
+    expect(sql).toMatch(/drop\s+function\s+if\s+exists\s+public\.wk_leaderboard\(timestamptz\)/i)
+  })
+
+  it('the board opens on a window that already has calls in it, not today-only', () => {
+    const hook = read('src/features/crm/hooks/useLeaderboard.ts')
+    expect(hook).toMatch(/DEFAULT_LEADERBOARD_RANGE:\s*LeaderboardRange\s*=\s*'week'/)
+  })
+
+  it('yesterday is a closed day, not "since yesterday"', () => {
+    const hook = read('src/features/crm/hooks/useLeaderboard.ts')
+    const yesterday = hook.split("range === 'yesterday'")[1] ?? ''
+    expect(yesterday).toMatch(/until:\s*startOfToday/)
+  })
+
+  it('the page offers all four ranges', () => {
+    const page = read('src/features/crm/pages/LeaderboardPage.tsx')
+    expect(page).toMatch(/\['today',\s*'yesterday',\s*'week',\s*'month'\]/)
   })
 })
