@@ -6,9 +6,17 @@
 //
 // For each competing agent: pull today's calls + live transcripts, compute the
 // stats deterministically (never let the model count), then have Claude write a
-// short coaching report from the actual conversations. Upsert into
-// wk_agent_daily_reports (both agents see BOTH reports — Hugo's call, for the
-// competition), then email Hugo the lot.
+// short coaching report from the actual conversations.
+//
+// Each agent reads ONLY their own report (Hugo 2026-07-24, reversing an earlier
+// "both see both" — conduct criticism read in front of a colleague gets
+// defended rather than acted on, and it wasn't a fair contest while our own mic
+// fault was suppressing one agent's numbers). The leaderboard TABLE stays public
+// — that's the competition.
+//
+// The report stays fully candid. Conduct and compliance items are additionally
+// extracted into `flags` and headline Hugo's email, so a swear word or a
+// misleading claim about reviews can't sit unnoticed in paragraph four.
 //
 // Node runtime, not edge: two Claude calls with adaptive thinking can run well
 // past the edge budget.
@@ -167,7 +175,50 @@ Write in British English, plain language, second person ("you"). Markdown, no ti
 **Today** — two or three sentences on how the day actually went.
 **What worked** — up to three specific things, each with a quote or a company name.
 **Fix tomorrow** — every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
-**Tomorrow's one thing** — a single sentence naming the one change that would make the biggest difference.`;
+**Tomorrow's one thing** — a single sentence naming the one change that would make the biggest difference.
+
+After the report, and only if one or more of the non-negotiables above actually occurred, append this exact delimiter on its own line:
+
+---FLAGS---
+
+followed by a JSON array, one object per item, and nothing else:
+[{"type":"swearing|rudeness|pressure|misleading|wrong_name","quote":"their exact words","company":"company name","call_id":"the call_id","why":"one sentence on why it matters"}]
+
+Emit the delimiter only when there is at least one item. Never emit an empty array. The flags duplicate what you already wrote in the report — they are an index for the business owner, not a replacement.`;
+
+export interface ConductFlag {
+  type: string;
+  quote: string;
+  company: string;
+  call_id: string;
+  why: string;
+}
+
+/** Split the model's output into the agent-facing report and the owner-facing
+ *  conduct index. A malformed or missing FLAGS block must never cost us the
+ *  report — fall back to the whole text with no flags. */
+export function splitReport(raw: string): { body: string; flags: ConductFlag[] } {
+  const idx = raw.indexOf('---FLAGS---');
+  if (idx === -1) return { body: raw.trim(), flags: [] };
+  const body = raw.slice(0, idx).trim();
+  const tail = raw.slice(idx + '---FLAGS---'.length).trim();
+  const start = tail.indexOf('[');
+  const end = tail.lastIndexOf(']');
+  if (start === -1 || end <= start) return { body, flags: [] };
+  try {
+    const parsed = JSON.parse(tail.slice(start, end + 1)) as unknown;
+    if (!Array.isArray(parsed)) return { body, flags: [] };
+    return {
+      body,
+      flags: parsed.filter(
+        (f): f is ConductFlag =>
+          !!f && typeof f === 'object' && typeof (f as ConductFlag).quote === 'string',
+      ),
+    };
+  } catch {
+    return { body, flags: [] };
+  }
+}
 
 async function writeReport(
   agentName: string,
@@ -255,7 +306,12 @@ export default async function handler(
     .or([`workspace_role.eq.agent`, `id.in.(${limitIds.join(',') || '00000000-0000-0000-0000-000000000000'})`].join(','));
 
   const roster = (profiles ?? []).filter((p) => !hidden.has(p.id));
-  const written: Array<{ name: string; body: string; stats: ReturnType<typeof computeStats> }> = [];
+  const written: Array<{
+    name: string;
+    body: string;
+    stats: ReturnType<typeof computeStats>;
+    flags: ConductFlag[];
+  }> = [];
 
   for (const agent of roster) {
     const name = (agent.name || agent.email || 'Agent') as string;
@@ -295,29 +351,62 @@ export default async function handler(
     }));
 
     const stats = computeStats(rows);
-    let body: string;
+    let raw: string;
     try {
-      body = await writeReport(name, dateKey, stats, transcriptBlock(rows));
+      raw = await writeReport(name, dateKey, stats, transcriptBlock(rows));
     } catch (e) {
       console.error(`[daily-report] ${name} failed:`, e);
       continue;
     }
+    if (!raw) continue;
+    const { body, flags } = splitReport(raw);
     if (!body) continue;
 
     const { error } = await supabase.from('wk_agent_daily_reports').upsert(
-      { agent_id: agent.id, report_date: dateKey, stats, body_md: body, model: MODEL, updated_at: new Date().toISOString() },
+      { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: MODEL, updated_at: new Date().toISOString() },
       { onConflict: 'agent_id,report_date' },
     );
     if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);
-    else written.push({ name, body, stats });
+    else written.push({ name, body, stats, flags });
   }
 
   // Email Hugo the lot.
   const to = process.env.DAILY_REPORT_EMAIL || 'hugodesouzax@gmail.com';
   if (written.length > 0) {
+    const esc = (s: string) =>
+      String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+    const flagged = written.filter((w) => w.flags.length > 0);
+
+    // Conduct + compliance first. This is the part that must never be missed.
+    const alerts = flagged.length
+      ? `<div style="border:1px solid #FCA5A5;background:#FEF2F2;border-radius:12px;padding:16px;margin-bottom:20px">
+          <h3 style="margin:0 0 10px;color:#B91C1C">Needs your attention</h3>
+          ${flagged
+            .map(
+              (w) => `<div style="margin-bottom:12px">
+                <div style="font-weight:600;font-size:14px">${esc(w.name)}</div>
+                ${w.flags
+                  .map(
+                    (f) => `<div style="font-size:13px;line-height:1.5;margin-top:6px">
+                      <span style="display:inline-block;background:#B91C1C;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;text-transform:uppercase">${esc(f.type)}</span>
+                      <span style="color:#6B7280"> ${esc(f.company)}</span><br>
+                      &ldquo;${esc(f.quote)}&rdquo;<br>
+                      <span style="color:#6B7280">${esc(f.why)}</span>
+                      ${f.call_id ? `<br><a href="${appUrl}/admin/crm/calls/${esc(f.call_id)}" style="color:#B91C1C;font-size:12px">Listen to the call &rarr;</a>` : ''}
+                    </div>`,
+                  )
+                  .join('')}
+              </div>`,
+            )
+            .join('')}
+        </div>`
+      : '';
+
     const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:640px;color:#1A1A1A">
       <h2 style="margin:0 0 4px">Daily agent reports — ${dateKey}</h2>
-      <p style="color:#6B7280;margin:0 0 20px;font-size:14px">Also on the leaderboard, where both agents can read them.</p>
+      <p style="color:#6B7280;margin:0 0 20px;font-size:14px">Each agent sees only their own on the leaderboard. You see all of them.</p>
+      ${alerts}
       ${written
         .map(
           (r) => `<div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">

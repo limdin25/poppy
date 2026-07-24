@@ -1,8 +1,10 @@
 // DailyReportsPanel — the daily AI coaching reports, on the leaderboard.
 //
-// Hugo 2026-07-24: written at 17:30 UK every day, both agents read BOTH reports
-// (deliberate — it keeps it competitive), and the history stays so they can
-// scroll back to any past day.
+// Hugo 2026-07-24: written at 17:30 UK every day. Each agent reads ONLY their
+// own — RLS on wk_agent_daily_reports enforces it, so there is no filtering
+// here; an admin gets everyone's. The history stays so they can scroll back to
+// any past day. The leaderboard TABLE above stays public — that's the
+// competition; the coaching notes are not.
 //
 // Two sides on desktop: the day list on the left, that day's reports on the
 // right. Stacks on mobile.
@@ -73,6 +75,9 @@ export default function DailyReportsPanel() {
         <FileText className="w-4 h-4 text-[#3C5A87]" />
         <span className="text-[13px] font-semibold text-[#1A1A1A]">Daily reports</span>
         <span className="text-[11px] text-[#9CA3AF]">· written at 5:30pm each day</span>
+        <span className="ml-auto text-[10px] uppercase tracking-wide font-semibold text-[#9CA3AF]">
+          private
+        </span>
       </div>
 
       <div className="flex flex-col sm:flex-row">

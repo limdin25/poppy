@@ -11,6 +11,8 @@ import { resolve } from 'node:path'
 const read = (p: string) => readFileSync(resolve(__dirname, '..', p), 'utf8')
 const cron = read('api/cron/daily-agent-reports.ts')
 const sql = read('supabase/migrations/20260724000003_agent_daily_reports.sql')
+// The privacy migration supersedes the original staff-wide read policy.
+const privacySql = read('supabase/migrations/20260724000004_daily_reports_private.sql')
 const vercel = JSON.parse(read('vercel.json')) as { crons: Array<{ path: string; schedule: string }> }
 
 describe('daily agent reports — schedule', () => {
@@ -102,8 +104,17 @@ describe('storage and visibility', () => {
     expect(cron).toMatch(/onConflict: 'agent_id,report_date'/)
   })
 
-  it('lets every CRM agent read every report — the competition is the point', () => {
-    expect(sql).toMatch(/for select\s*\n\s*using \(wk_is_agent_or_admin\(\)\)/)
+  it('each agent reads ONLY their own report; admins read all', () => {
+    // Hugo 2026-07-24 reversed "both see both": conduct criticism read in front
+    // of a colleague gets defended, not acted on.
+    expect(privacySql).toMatch(/drop policy if exists wk_agent_daily_reports_staff_read/i)
+    expect(privacySql).toMatch(/using \(wk_is_admin\(\) or agent_id = auth\.uid\(\)\)/)
+  })
+
+  it('keeps the leaderboard TABLE public — that is where the competition lives', () => {
+    // wk_leaderboard is staff-wide on purpose; only the coaching notes are private.
+    const rpc = read('supabase/migrations/20260724000002_leaderboard_range.sql')
+    expect(rpc).toMatch(/where public\.wk_is_agent_or_admin\(\)/)
   })
 
   it('is staff-only — reviews clients and owners must never read it', () => {
@@ -128,9 +139,12 @@ describe('the leaderboard surfaces them with history', () => {
     expect(panel).toMatch(/setPicked/)
   })
 
-  it('does not filter to the signed-in agent — both agents see both', () => {
+  it('relies on RLS for privacy rather than a client-side filter', () => {
+    // A client-side filter would be security theatre — the rows must not reach
+    // the browser in the first place.
     const hook = read('src/features/crm/hooks/useDailyReports.ts')
     expect(hook).not.toMatch(/\.eq\('agent_id'/)
+    expect(hook).toMatch(/RLS|enforce/i)
   })
 })
 
@@ -147,5 +161,83 @@ describe('email to Hugo', () => {
   it('does not fail the run when the email fails', () => {
     const emailBlock = cron.split('Email Hugo the lot')[1] ?? ''
     expect(emailBlock).toMatch(/catch/)
+  })
+})
+
+describe('conduct flags — the owner must never miss a serious item', () => {
+  it('asks for a machine-readable FLAGS block covering the non-negotiables', () => {
+    expect(cron).toMatch(/---FLAGS---/)
+    expect(cron).toMatch(/swearing\|rudeness\|pressure\|misleading\|wrong_name/)
+  })
+
+  it('only emits the block when something actually happened', () => {
+    expect(cron).toMatch(/Never emit an empty array/i)
+  })
+
+  it('headlines them in the owner email with a link to the call', () => {
+    expect(cron).toMatch(/Needs your attention/)
+    expect(cron).toMatch(/admin\/crm\/calls\/\$\{esc\(f\.call_id\)\}/)
+  })
+
+  it('escapes flag text into the email — quotes come from call audio, not us', () => {
+    expect(cron).toMatch(/const esc = /)
+    expect(cron).toMatch(/esc\(f\.quote\)/)
+  })
+
+  it('still tells the agent — flags index the report, they do not replace it', () => {
+    expect(cron).toMatch(/an index for the business owner, not a replacement/i)
+  })
+})
+
+describe('splitReport — parsing the model output', () => {
+  // The cron module builds a Supabase client at import time.
+  process.env.SUPABASE_URL ||= 'https://example.supabase.co'
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-key'
+  const load = async () => (await import('../api/cron/daily-agent-reports')).splitReport
+
+  it('returns the whole text and no flags on a clean day', async () => {
+    const splitReport = await load()
+    const r = splitReport('**Today**\nGood day, nothing to flag.')
+    expect(r.flags).toEqual([])
+    expect(r.body).toContain('Good day')
+  })
+
+  it('separates the report from the flags', async () => {
+    const splitReport = await load()
+    const r = splitReport(
+      '**Today**\n224 dials.\n\n---FLAGS---\n' +
+        '[{"type":"swearing","quote":"you can just say fuck off","company":"Clayton Plumbing","call_id":"fa11780d","why":"Not acceptable on a customer call."}]',
+    )
+    expect(r.body).not.toContain('FLAGS')
+    expect(r.body).not.toContain('fuck off') // body keeps its own prose copy, not the JSON
+    expect(r.flags).toHaveLength(1)
+    expect(r.flags[0].type).toBe('swearing')
+    expect(r.flags[0].call_id).toBe('fa11780d')
+  })
+
+  it('keeps the report when the JSON is malformed — a bad block must not cost us the day', async () => {
+    const splitReport = await load()
+    const r = splitReport('**Today**\nSolid day.\n\n---FLAGS---\n[{"type":"swearing",')
+    expect(r.body).toContain('Solid day')
+    expect(r.flags).toEqual([])
+  })
+
+  it('ignores a non-array or junk payload', async () => {
+    const splitReport = await load()
+    expect(splitReport('Report\n---FLAGS---\nnone').flags).toEqual([])
+    expect(splitReport('Report\n---FLAGS---\n[]').flags).toEqual([])
+  })
+
+  it('drops entries that carry no quote', async () => {
+    const splitReport = await load()
+    const r = splitReport('Report\n---FLAGS---\n[{"type":"swearing"},{"type":"pressure","quote":"why are you not listening"}]')
+    expect(r.flags).toHaveLength(1)
+    expect(r.flags[0].quote).toBe('why are you not listening')
+  })
+
+  it('tolerates prose around the JSON array', async () => {
+    const splitReport = await load()
+    const r = splitReport('Report\n---FLAGS---\nHere you go:\n[{"quote":"x","type":"rudeness"}]\nThanks.')
+    expect(r.flags).toHaveLength(1)
   })
 })
