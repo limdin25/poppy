@@ -158,6 +158,19 @@ body{
 .line .who{font-weight:700}
 .line .who.you{color:#2f6db0}
 
+/* Live Google-search link (competitor demo) — filled per lead in the dialer */
+.gsearch{
+  display:inline-flex;align-items:center;gap:5px;
+  margin-top:8px;font-size:14px;font-weight:600;
+  color:#fff;background:#2f6db0;text-decoration:none;
+  padding:6px 12px;border-radius:8px;
+}
+.gsearch:hover{background:#255a93}
+
+/* Unfilled placeholder slot — brown so it's obvious it's a fill-in the dialer
+   replaces per lead (shown in Edit mode + on leads missing that field). */
+.ph{color:#8a4b1f;font-weight:700;background:#f6ecdf;border-radius:4px;padding:0 3px}
+
 /* Stage direction (coaching note) */
 .dir{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -367,8 +380,8 @@ const STAGES = ['OPENER','PERMISSION','DISCOVERY','DEMO','PIVOT','PRICE','CLOSE'
 const N = {
 
   start: {stage:'OPENER',
-    say:`"Hi, you alright? Quick one: is this [Business Name] Plumbing?"`,
-    dir:`Look them up before you dial, know exactly how many reviews they have. Keep it quick and casual, like a customer ringing, not a salesman.`,
+    say:`"Hi, quick one: is that [owner_first], from [business_name]?"`,
+    dir:`Open with their name and business, warm and casual, like a mate ringing, not a salesman. Their details are filled in for you; the lead facts (reviews, rank, website) are in the left column.`,
     r:[
       {l:`Yes / Yeah`,n:`opener_hook`},
       {l:`Who's calling? What's this about?`,n:`who_calling`,obj:true},
@@ -377,7 +390,7 @@ const N = {
     ]},
 
   opener_hook: {stage:'OPENER',
-    say:`"I noticed you've only got [X] reviews on Google, you've not long started up, have you?"`,
+    say:`"I noticed you've only got [reviews] reviews on Google, you've not long started up, have you?"`,
     dir:`Say "only", it makes the number feel small. Sound genuinely puzzled, then go silent. It hits their ego; they'll defend how long they've been around. Let them.`,
     r:[
       {l:`"No, been here years, what do you mean?"`,n:`permission`},
@@ -449,8 +462,8 @@ const N = {
     ]},
 
   ranking_demo: {stage:'DEMO',
-    say:`"Do you know where you're actually coming up on Google right now? Let me have a quick look for you… [type audibly] Okay, 'plumber in [their town]'… I've got [Competitor A], [Competitor B]… I'm not seeing you on page one. Page two… there you are, [X]th one down. So, that puts you around position [big number]. Means a customer scrolls past [N] other plumbers before they even get to you."`,
-    dir:`Look them up BEFORE the call, then do the look-up "live" as theatre. Always say the big number: "you're 23rd" hurts far more than "third on page two." Name competitors, half the time they'll react to a name.`,
+    say:`"Do you know where you're actually coming up on Google right now? Let me have a quick look for you… [type audibly] Okay, 'plumber in [town]'… I've got [competitor_1], [competitor_2] all above you. You're down at position [rank]. Means a customer scrolls past [plumbers_ahead] other plumbers before they even get to you." <a class="gsearch" href="[google_search_url]" target="_blank" rel="noopener">↗ open their live Google search</a>`,
+    dir:`Their real numbers are filled in above. Click the ↗ link to show the live ranking as theatre while you talk. Always say the big number: "you're [rank]" hurts far more than "a couple down." Name the competitors, half the time they'll react to a name.`,
     r:[
       {l:`"Bloody hell… really?"`,n:`ranking_stats`},
       {l:`"I rank number one"`,n:`rank_1_rebuttal`,obj:true},
@@ -500,8 +513,8 @@ const N = {
     r:[{l:`"Makes sense / okay"`,n:`price_present`}]},
 
   price_present: {stage:'PRICE',
-    say:`"So the way it works, you're doing about [X] jobs a month, so you're looking at £[179] a month, everything included, no contract. And the best bit: you don't pay a penny today. It's a 10-day free trial, I switch it on, the reviews start landing, and if you're not blown away in 10 days you cancel and owe nothing. Fair enough?"`,
-    dir:`⚠️ ONE price only, never read out the menu. Up to ~50 jobs/mo → £99 (Starter). ~50-100 → £179 (Growth, most common). 100+ → £279 (Pro). Say it like it's THE price, not a price.`,
+    say:`"So the way it works, at the number of jobs you're doing you're looking at £___ a month, everything included, no contract. And I'll be straight with you, this is the lowest it's going to be. I'm taking a few more plumbers on at this rate and then it goes up. Lock in now and this is your price, you keep it even when everyone joining after you is paying more. Best bit: you don't pay a penny today. It's a 10-day free trial, I switch it on, the reviews start landing, and if you're not blown away in 10 days you cancel and owe nothing. Fair enough?"`,
+    dir:`⚠️ ONE price only, never read out the menu. Type their jobs/month into the calculator (right rail) — it sets the price for you: up to 50 → £99 (Starter), 50–100 → £179 (Growth, most common), 100+ → £279 (Pro). Read that £___ figure as THE price, not "a" price. The urgency is "this price is going up soon, lock yours in" — it's honest ONLY because the price genuinely rises for later joiners while early ones keep their rate. Never bolt on a fake hard deadline ("closing this week", "last spot today") unless it's actually true — fake urgency is illegal in the UK.`,
     r:[
       {l:`"Yeah, fair enough"`,n:`takeaway`},
       {l:`"That's a lot / anything cheaper?"`,n:`price_cheaper`,obj:true},
@@ -555,8 +568,8 @@ const N = {
     ]},
 
   crm_connect: {stage:'CLOSE',
-    say:`"Last thing, and this one's a nice-to-have, not needed to start: once you're up and running we can link whatever you use to book your jobs, Jobber, Housecall Pro, ServiceTitan, QuickBooks, so every new customer gets that same review request automatically the moment you finish a job. Nothing for you to do today. Whatever you're on, I'll get your integration ready and text you a connection link today or tomorrow, no rush at all. What do you book your jobs on?"`,
-    dir:`You've already closed, this is a nice-to-have and must never sound like a barrier. Capture the software name, it decides which integration we build next (we build them one at a time). Promise the connection link today or tomorrow. No system? Take them to no_crm.`,
+    say:`"Last thing, and this one's a nice-to-have, not needed to start: once you're up and running we can link whatever you use to book your jobs, Jobber, Housecall Pro, ServiceTitan, QuickBooks, so every new customer gets that same review request automatically the moment you finish a job. Nothing for you to do today, and nothing to send back. I'll build it in the background and drop you a connection link once it's ready, separate from everything else. What do you book your jobs on?"`,
+    dir:`You've already closed, this is a nice-to-have and must never sound like a barrier. Keep it clearly SEPARATE from the one-minute list form (that's the only thing they send back). Capture the software name, it decides which integration we build next (we build them one at a time). No date promise here — "once it's ready." No system? Take them to no_crm.`,
     r:[
       {l:`Tells me their system`,n:`after_close`},
       {l:`"I don't use anything / won't connect"`,n:`no_crm`,obj:true},
@@ -587,7 +600,7 @@ const N = {
     ]},
 
   after_close: {stage:'DONE',
-    say:`"You're all set. Send that list back this afternoon, I'll have it built tonight, and we start texting your customers tomorrow. Any time I email you, you'll also get a text saying 'check your email,' so keep an eye out. The reviews start landing within days; the Google ranking is the longer game, that builds as the reviews stack up. Anyone who promises you the number one spot overnight is lying, but the reviews themselves, you'll see almost straight away. Welcome aboard. Let's get those reviews rolling in."`,
+    say:`"You're all set. One thing from you: send that list back this afternoon. I build it tonight, your customers start getting texted tomorrow, that's the whole job on your end. Any email I send you, you'll get a quick text nudge to check it, so keep an eye out. Reviews start landing within days; the Google ranking is the longer game, it builds as they stack up. Anyone promising you the number one spot overnight is lying, but the reviews themselves you'll see almost straight away. Welcome aboard."`,
     dir:`Set expectations now, never promise position one. The same-day list, built tonight, texting tomorrow cause-and-effect is what keeps the deal alive over the weekend.`,
     r:[],won:true},
 
@@ -783,6 +796,7 @@ const N = {
     dir:`Pre-frame the Google management-rights ask before you send the link.`,
     r:[
       {l:`"Okay, that seems fair"`,n:`card_ask`},
+      {l:`"But are you even a real company?"`,n:`legit_check`,obj:true},
       {l:`"What if I want to cancel?"`,n:`cancel_policy`,obj:true},
     ]},
 
@@ -858,8 +872,8 @@ const N = {
     ]},
 
   legit_check: {stage:'PRICE',
-    say:`"Here's my personal number, call or text me any time. That's all you need. Because let's be honest: if you Google my business and don't love what you see, are you suddenly going to feel better about spending £179? What you actually want to know is: will this work, and will I disappear? No contract answers that. The 10-day trial answers that."`,
-    dir:`Give your number. It builds more trust than any website.`,
+    say:`"Course, and this bit's easy to check: we're a fully registered UK company, ULINC UNICO GROUP LTD, company number 11197856, registered at 483 Green Lanes, London N13 4BS. We trade as HeyElsie. Look us up on Companies House right now if you want, I'll happily wait. And here's my personal number on top of that, call or text me any time. But be honest with yourself, what you really want to know is: will it work, and will I disappear? That's exactly what the no-contract 10-day trial answers, you see the reviews land before you've paid a penny."`,
+    dir:`They asked for proof, so give it. A real company number and registered address beats any reassurance. Read the company number slowly so they can write it down, then swing straight back to the trial: the registration proves you're real, the trial proves it works. Still don't VOLUNTEER the company name in the opener (they'll Google it and stall), only pull it out here, when they demand proof.`,
     r:[
       {l:`"Yeah okay, fair enough"`,n:`card_ask`},
       {l:`Still needs to check`,n:`final_push`,obj:true},
@@ -968,7 +982,8 @@ window.addEventListener('beforeprint', expandAll);
 
 // ── Left rail: general objections / FAQ ──
 const FAQ = [
-  {q:`Where are you based?`, a:`Manchester-based, UK, here's my personal number, call me any time to check me out.`},
+  {q:`Where are you based?`, a:`We're a UK company, registered in London, 483 Green Lanes, N13 4BS. Here's my personal number, call me any time to check me out.`},
+  {q:`Are you a real registered company?`, a:`Yes, registered at Companies House as ULINC UNICO GROUP LTD, company number 11197856, registered office 483 Green Lanes, London N13 4BS. We trade as HeyElsie, look us up any time.`},
   {q:`How long have you been doing this?`, a:`I'm building this up right now, which is exactly why it's free to try, no contract, and I only take one plumber per town. I'd rather earn your trust with results than a sales story.`},
   {q:`Is this a contract?`, a:`No contract at all, cancel any time, no notice, no penalty.`},
   {q:`Can I cancel whenever?`, a:`Any time before your next billing date, one message and it's done.`},
@@ -1017,12 +1032,23 @@ function calc(){
   s('co-roi', need<=1.15 ? 'Just one extra job a year covers the lot.'
     : `About ${Math.ceil(need)} extra jobs a year covers it.`);
 }
+// Price follows the tier the prospect's monthly jobs put them in
+// (≤50 → £99 Starter, 51–100 → £179 Growth, 100+ → £279 Pro), so the agent
+// just enters real jobs/month and the price + maths update live. Typing a
+// price by hand still overrides until jobs changes again.
+function tierPrice(jobs){ return jobs<=50?99 : jobs<=100?179 : 279; }
+function syncPrice(){
+  const jobs=parseFloat(document.getElementById('ci-jobs').value)||0;
+  const p=document.getElementById('ci-price');
+  if(p) p.value=tierPrice(jobs);
+}
 ['ci-years','ci-jobs','ci-rev','ci-price','ci-job'].forEach(id=>{
   const el=document.getElementById(id);
-  if(el) el.addEventListener('input', calc);
+  if(el) el.addEventListener('input', id==='ci-jobs' ? ()=>{syncPrice();calc();} : calc);
 });
 
 renderFAQ();
+syncPrice();
 calc();
 build();
 </script>

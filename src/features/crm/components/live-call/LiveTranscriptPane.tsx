@@ -7,21 +7,14 @@ import {
   MessageSquare,
   BookOpen,
   Megaphone,
+  ChevronRight,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { cn } from '@/core/lib/cn';
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from '@/features/crm/ui/resizable';
 import { MOCK_TRANSCRIPT, MOCK_COACH_EVENTS } from '../../data/mockTranscripts';
 import { useKillSwitch } from '../../hooks/useKillSwitch';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { supabase } from '@/integrations/supabase/browser';
-import { useAgentScript } from '../../hooks/useAgentScript';
-import { parseBlocks } from '../../lib/scriptParser';
-import { interpolateTemplate } from '../../lib/interpolateTemplate';
 
 interface Props {
   durationSec: number;
@@ -131,6 +124,9 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
   const scrollRef = useRef<HTMLDivElement>(null);
   const [liveLines, setLiveLines] = useState<LiveTranscriptRow[]>([]);
   const [liveEvents, setLiveEvents] = useState<LiveCoachRow[]>([]);
+  // Live transcript is collapsed by DEFAULT (Hugo 2026-07-22) so the coach
+  // cards (what the agent reads aloud) own the space. Toggle to peek at words.
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
   // PR 113: filler chip state. Set when caller speaks. Cleared the
   // moment a coach event arrives. Caller-utterance counter used so a
   // re-pick fires for each new utterance (not just the first).
@@ -145,23 +141,31 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     return first || 'Caller';
   })();
 
-  // PR 13 (Hugo 2026-04-26): the opener card now mirrors the agent's
-  // ACTUAL script. v8's hardcoded rotation produced lines like "Hey
-  // Hugo, calling from Elsie..." that didn't match what was on screen
-  // in col 3. Now we parse the script body, find the OPEN heading
-  // (## …Open…), pick the first read-aloud line under it, substitute
-  // {{first_name}} / {{agent_first_name}}, and use that as the opener.
-  // Falls back to a single canonical line if the script parser doesn't
-  // find an OPEN section.
-  const { script: agentScript } = useAgentScript();
+  // OPENER card = the FIRST blue line of the one-call sales script shown in
+  // col 2, filled for THIS lead, so "read when they pick up" matches EXACTLY
+  // what the agent reads. Hugo 2026-07-22: the old version parsed the
+  // wk_call_scripts table (which is EMPTY) and fell back to a generic "this is
+  // X from Elsie, got a couple of minutes?" that didn't match the script at
+  // all. Mirror src/core/content/one-call-script.html's opener line, greeting
+  // by the OWNER's first name and their BUSINESS (contact.name is the company).
   const opener = useMemo(() => {
-    const them = callerLabel === 'Caller' ? 'mate' : callerLabel;
-    const me = (agentFirstName ?? '').trim() || 'Hugo';
-    const FALLBACK = `Hi ${them}, this is ${me} from Elsie — have you got a couple of minutes?`;
-    const body = (agentScript.body_md || '').trim();
-    if (!body) return FALLBACK;
-    return extractOpenerFromScript(body, them, me) ?? FALLBACK;
-  }, [callerLabel, agentFirstName, agentScript.body_md]);
+    const c = store.getContact(contactId);
+    const cf = c?.customFields ?? {};
+    const ownerFirst =
+      (cf.owner_name ?? '').trim().split(/\s+/)[0] ||
+      (c?.name ?? '').trim().split(/\s+/)[0] ||
+      '';
+    const business = (cf.business_name ?? '').trim() || (c?.name ?? '').trim();
+    if (ownerFirst && business) {
+      return `Hi, quick one: is that ${ownerFirst}, from ${business}?`;
+    }
+    if (ownerFirst) {
+      return `Hi, quick one: is that ${ownerFirst}?`;
+    }
+    const me = (agentFirstName ?? '').trim() || 'there';
+    return `Hi, it's ${me} here — have you got a quick minute?`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactId, agentFirstName, store]);
   // ?demo=1 in the URL keeps the legacy mock transcript reachable for
   // internal demos / Storybook screenshots. Default behaviour: show an
   // explicit empty state instead, so production calls never surface mock
@@ -382,22 +386,23 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
         </div>
       )}
 
-      {/* Vertical resizable split (Hugo 2026-04-26):
-            TOP    — transcript stream (smaller default — the agent doesn't
-                     need to read every word back, it's the context).
-            BOTTOM — coach cards (bigger default — this is what the agent
-                     READS ALOUD; needs the most space + biggest text).
-          autoSaveId persists drag widths per browser. */}
-      <ResizablePanelGroup
-        direction="vertical"
-        autoSaveId="smsv2-livecall-transcript-coach"
-        className="flex-1 overflow-hidden"
-      >
-        <ResizablePanel defaultSize={40} minSize={20} className="overflow-hidden">
-          <div ref={scrollRef} className="h-full overflow-y-auto px-4 py-3 space-y-2">
-            <div className="sticky top-0 -mt-3 -mx-4 px-4 py-1.5 mb-2 bg-white/95 backdrop-blur text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
-              Live transcript
-            </div>
+      {/* Coach-first layout (Hugo 2026-07-22): the transcript is a collapsed-
+          by-default drawer so the read-aloud coach cards own the screen. The
+          agent expands it only when they want to see the words. */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className={cn('flex flex-col overflow-hidden flex-shrink-0', transcriptOpen && 'h-[38%]')}>
+          <button
+            onClick={() => setTranscriptOpen((o) => !o)}
+            className="flex items-center gap-1.5 px-4 py-1.5 border-b border-[#E5E7EB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF] hover:text-[#6B7280] hover:bg-[#F3F3EE]/40 transition-colors"
+          >
+            <ChevronRight className={cn('w-3 h-3 transition-transform', transcriptOpen && 'rotate-90')} />
+            Live transcript
+            {!transcriptOpen && lines.length > 0 && (
+              <span className="text-[#C4C4C4] font-medium normal-case tracking-normal">· {lines.length} lines</span>
+            )}
+          </button>
+          {transcriptOpen && (
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
             {showEmptyState && (
               <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10 text-[#9CA3AF]">
                 <MessageSquare className="w-8 h-8 mb-3 opacity-40" />
@@ -425,15 +430,13 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
               </div>
             ))}
           </div>
-        </ResizablePanel>
+          )}
+        </div>
 
-        <ResizableHandle withHandle />
-
-        <ResizablePanel defaultSize={60} minSize={25} className="overflow-hidden">
-          <div className="h-full overflow-y-auto px-4 py-3 space-y-2.5">
-            <div className="sticky top-0 -mt-3 -mx-4 px-4 py-1.5 mb-2 bg-white/95 backdrop-blur text-[10px] font-bold uppercase tracking-wide text-[#3C5A87]">
-              AI coach — read this aloud
-            </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 border-t border-[#E5E7EB]">
+          <div className="sticky top-0 -mt-3 -mx-4 px-4 py-1.5 mb-2 bg-white/95 backdrop-blur text-[10px] font-bold uppercase tracking-wide text-[#3C5A87]">
+            AI coach — read this aloud
+          </div>
             {/* PR 113: buy-time filler chip. Pops the instant a caller
                 utterance lands. Replaced when the real coach line
                 arrives. Same uppercase+pulse pattern as the OBJECTION
@@ -539,9 +542,8 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
                 );
               })
             )}
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        </div>
+      </div>
 
       <div className="px-4 py-2 border-t border-[#E5E7EB] bg-[#F3F3EE]/40">
         <textarea
@@ -554,58 +556,4 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
       </div>
     </div>
   );
-}
-
-// Pull the first read-aloud line of the OPEN section from the agent's
-// script body. Returns null if no usable line is found — caller falls
-// back to a hardcoded opener.
-//
-// "OPEN section" is detected as the first heading whose text contains
-// "open" (case-insensitive). The first read-aloud line under it is
-// the first list item OR the first paragraph. Quotes around the line
-// are stripped — the agent doesn't read the curly quotes aloud.
-function extractOpenerFromScript(
-  body: string,
-  contactFirstName: string,
-  agentFirstName: string
-): string | null {
-  const blocks = parseBlocks(body);
-  let inOpen = false;
-  let candidate: string | null = null;
-  for (const b of blocks) {
-    if (b.type === 'h') {
-      // New heading — only stay "in OPEN" while the first heading is
-      // the one we matched. Subsequent headings exit.
-      if (/open\b/i.test(b.text)) {
-        inOpen = true;
-        continue;
-      }
-      if (inOpen) break; // hit the next stage heading
-      continue;
-    }
-    if (!inOpen) continue;
-    if (b.type === 'ul') {
-      // First plain (non-IF) list item is the script's primary
-      // read-aloud line. Skip IF branches — those are situational.
-      const first = b.items.find((it) => it.kind === 'plain');
-      if (first) {
-        candidate = first.text;
-        break;
-      }
-    } else if (b.type === 'p') {
-      candidate = b.text;
-      break;
-    }
-  }
-  if (!candidate) return null;
-  // Strip wrapping quotes/backticks the script body uses for read-aloud.
-  const stripped = candidate
-    .trim()
-    .replace(/^["“”'`]+|["“”'`]+$/g, '')
-    .trim();
-  if (!stripped) return null;
-  return interpolateTemplate(stripped, {
-    firstName: contactFirstName,
-    agentFirstName,
-  });
 }
