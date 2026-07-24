@@ -7,7 +7,7 @@ import { useKillSwitch } from '../hooks/useKillSwitch';
 import { useAgentPresence } from '../hooks/useAgentPresence';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useInboxNotifications } from '../hooks/useInboxNotifications';
-import { useReports } from '../hooks/useReports';
+import { useLeaderboard } from '../hooks/useLeaderboard';
 import { formatPence, formatRelativeTime, formatDuration } from '../data/helpers';
 
 const STATUS_LABELS: Record<string, { label: string; colour: string }> = {
@@ -27,7 +27,7 @@ export default function Smsv2StatusBar() {
 
   // PR 109 (Hugo 2026-04-28): top-nav bell + mini leaderboard popovers.
   const notifications = useInboxNotifications();
-  const reports = useReports('today');
+  const board = useLeaderboard('today');
   const [bellOpen, setBellOpen] = useState(false);
   const [trophyOpen, setTrophyOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
@@ -52,12 +52,15 @@ export default function Smsv2StatusBar() {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [bellOpen, trophyOpen]);
 
+  // Ranked by calls MADE — "who's calling more" (Hugo 2026-07-24). Sourced
+  // from the wk_leaderboard RPC so agents see each other, not just
+  // themselves (wk_calls RLS clips the raw rows to your own).
   const top5 = useMemo(
     () =>
-      [...reports.leaderboard]
-        .sort((a, b) => b.answered - a.answered)
+      [...board.rows]
+        .sort((a, b) => b.calls - a.calls || b.answered - a.answered)
         .slice(0, 5),
-    [reports.leaderboard]
+    [board.rows]
   );
 
   return (
@@ -285,7 +288,7 @@ export default function Smsv2StatusBar() {
                       colSpan={5}
                       className="px-2 py-3 text-center text-[#9CA3AF] italic text-[11px]"
                     >
-                      {reports.loading ? 'Loading…' : 'No activity yet today.'}
+                      {board.loading ? 'Loading…' : 'No agents set to compete yet.'}
                     </td>
                   </tr>
                 )}

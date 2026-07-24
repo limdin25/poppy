@@ -54,13 +54,22 @@ export function useAgentsToday(): {
     const todayIso = startOfTodayIso();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const profilesRes = await (supabase.from('profiles' as any) as any)
-      .select('id, email, name, agent_status, agent_extension, workspace_role')
-      .in('workspace_role', ['agent', 'admin']);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const limitsRes = await (supabase.from('wk_voice_agent_limits' as any) as any)
       .select('agent_id, daily_limit_pence, daily_spend_pence, is_admin, show_on_leaderboard');
+
+    // Hugo 2026-07-24: this listed profiles by workspace_role only, so an
+    // account with a limits row but no role (Hugo's own admin login, the demo
+    // super) competed on the leaderboard with no tick-box here to take them
+    // off it. The roster the RPC uses is role OR limits row — match it, so
+    // every agent on the board can be toggled.
+    const limitAgentIds = ((limitsRes.data ?? []) as LimitRow[]).map((l) => l.agent_id);
+    const roleFilter = ['agent', 'admin'].map((r) => `workspace_role.eq.${r}`);
+    const idFilter =
+      limitAgentIds.length > 0 ? [`id.in.(${limitAgentIds.join(',')})`] : [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const profilesRes = await (supabase.from('profiles' as any) as any)
+      .select('id, email, name, agent_status, agent_extension, workspace_role')
+      .or([...roleFilter, ...idFilter].join(','));
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const callsRes = await (supabase.from('wk_calls' as any) as any)

@@ -1,26 +1,30 @@
 // LeaderboardPage — daily agent leaderboard.
 //
 // Hugo 2026-04-28 (PR 107): "I want to see who's pulling their weight
-// today." Hugo 2026-04-28 (PR 109): messagesSent + show_on_leaderboard
-// filter live in useReports now — no inline DB fetches here.
+// today." Hugo 2026-04-28 (PR 109): messagesSent + show_on_leaderboard.
 //
-// Sort: calls picked up (answered) DESC by default. The signed-in agent's
-// own row is highlighted in green so they can see where they stand.
+// Hugo 2026-07-24: source swapped from useReports (client-side aggregation
+// over wk_calls, which RLS clips to the signed-in agent's OWN calls — so
+// agents saw a board of one) to the wk_leaderboard RPC. Everyone now sees
+// everyone, agents with no calls yet included, so the head-to-head is real.
+//
+// Sort: calls MADE desc — "who's calling more". Picked up stays a column.
+// The signed-in agent's own row is highlighted so they see where they stand.
 
 import { useMemo } from 'react';
 import { Trophy } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
-import { useReports } from '../hooks/useReports';
+import { useLeaderboard } from '../hooks/useLeaderboard';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { formatDuration, formatPence } from '../data/helpers';
 
 export default function LeaderboardPage() {
-  const reports = useReports('today');
+  const reports = useLeaderboard('today');
   const { agent: me } = useCurrentAgent();
 
   const rows = useMemo(
-    () => [...reports.leaderboard].sort((a, b) => b.answered - a.answered),
-    [reports.leaderboard]
+    () => [...reports.rows].sort((a, b) => b.calls - a.calls || b.answered - a.answered),
+    [reports.rows]
   );
 
   return (
@@ -31,7 +35,7 @@ export default function LeaderboardPage() {
             <Trophy className="w-6 h-6 text-[#3C5A87]" /> Leaderboard
           </h1>
           <p className="text-[13px] text-[#6B7280]">
-            Today · ranked by calls picked up
+            Today · ranked by calls made · updates every minute
           </p>
         </div>
       </header>
@@ -120,7 +124,9 @@ export default function LeaderboardPage() {
                   colSpan={8}
                   className="px-4 py-12 text-center text-[#9CA3AF] italic"
                 >
-                  No activity today yet.
+                  {reports.error
+                    ? `Could not load the board: ${reports.error}`
+                    : 'Nobody is set to compete yet — tick agents in Settings → Agents & spend.'}
                 </td>
               </tr>
             )}
