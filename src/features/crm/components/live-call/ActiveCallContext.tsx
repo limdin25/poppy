@@ -178,6 +178,10 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
   const [lastEndedContactId, setLastEndedContactId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeTwilioCallRef = useRef<TwilioCall | null>(null);
+  // The winner-broadcast effect subscribes once and must read the CURRENT
+  // phase without re-subscribing on every transition.
+  const phaseRef = useRef<CallPhase>(phase);
+  phaseRef.current = phase;
 
   const toggleMute = useCallback(() => {
     // ROOT CAUSE of the "I clicked Mute, callee still hears me" bug:
@@ -266,6 +270,34 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
             }) => {
               const p = payload.payload;
               if (!p?.contact_id) return;
+
+              // Hugo 2026-07-24: "I was on the leaderboard page and my agent
+              // started calling on his browser — on my browser it opened the
+              // room. If they start calling, on my end should not open
+              // nothing."
+              //
+              // This broadcast goes to dialer:<agent_id>, so EVERY browser and
+              // tab signed in as that agent receives it — not just the one on
+              // the call. It used to take over all of them with a full call
+              // room for a conversation they weren't part of, complete with a
+              // live End call button that fires wk-dialer-hangup-leg
+              // SERVER-SIDE. One stray click on a bystander screen would have
+              // hung up the agent's real call with a lead.
+              //
+              // Take the screen only if this browser is genuinely on the call:
+              // it holds a Twilio Device call, or it is the browser that
+              // pressed Start and is sitting in 'placing' waiting for exactly
+              // this broadcast (the Device leg can land a beat later).
+              // Everything else ignores it and stays where it is.
+              const onThisBrowser =
+                getDeviceCalls().length > 0 || phaseRef.current === 'placing';
+              if (!onThisBrowser) {
+                console.log(
+                  '[dialer] winner broadcast ignored — this browser is not on the call',
+                );
+                return;
+              }
+
               const contact = store.getContact(p.contact_id);
               setCall({
                 contactId: p.contact_id,
