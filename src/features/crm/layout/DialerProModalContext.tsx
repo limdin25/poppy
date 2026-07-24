@@ -9,6 +9,8 @@ interface DialerProModalState {
 
 interface DialerProModalApi {
   openDialerPro: (contactId: string, opts?: { pipelineColumnId?: string }) => void;
+  /** Drop the pending auto-call once it has been dialled — see below. */
+  clearAutoCall: () => void;
   closeDialerPro: () => void;
   minimizeDialerPro: () => void;
   expandDialerPro: () => void;
@@ -40,6 +42,14 @@ export function DialerProModalProvider({ children }: { children: React.ReactNode
     [],
   );
 
+  // Hugo 2026-07-24: contactId used to stick around after the auto-call
+  // fired. Minimize unmounts the dialer content and expand remounts it, so
+  // the same lead got dialled again on its own. Clearing it means the
+  // auto-call happens exactly once, when the agent pressed Call.
+  const clearAutoCall = useCallback(() => {
+    setState((s) => (s.contactId === null ? s : { ...s, contactId: null }));
+  }, []);
+
   const closeDialerPro = useCallback(() => {
     setState({ isOpen: false, isMinimized: false, contactId: null, pipelineColumnId: null });
   }, []);
@@ -56,6 +66,7 @@ export function DialerProModalProvider({ children }: { children: React.ReactNode
     <Ctx.Provider
       value={{
         openDialerPro,
+        clearAutoCall,
         closeDialerPro,
         minimizeDialerPro,
         expandDialerPro,

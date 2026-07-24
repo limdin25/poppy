@@ -6,7 +6,7 @@ import { DialerProContent } from '@/features/crm/dialer-pro/DialerProPage';
 export default function DialerProModal() {
   const {
     isOpen, isMinimized, contactId, pipelineColumnId,
-    closeDialerPro, minimizeDialerPro, expandDialerPro,
+    closeDialerPro, minimizeDialerPro, expandDialerPro, clearAutoCall,
   } = useDialerProModal();
 
   if (!isOpen) return null;
@@ -54,7 +54,7 @@ export default function DialerProModal() {
         <DialerProContent
           autoCallContactId={contactId}
           pipelineColumnId={pipelineColumnId}
-          onAutoCallConsumed={() => {}}
+          onAutoCallConsumed={clearAutoCall}
         />
       </div>
     </div>,

@@ -7,6 +7,16 @@ import type { DialerState, DialerAction } from './types';
 
 export const LS_KEY = 'elsie_crm_pause_dialer';
 
+/** Speed: OFF (pause after every call) — read fresh, never cached. */
+export function readPauseAfterCall(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    return localStorage.getItem(LS_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export const INITIAL: DialerState = {
   phase: 'idle',
   currentLead: null,
@@ -18,7 +28,7 @@ export const INITIAL: DialerState = {
   isOnHold: false,
   voicemailDropped: false,
   sessionDrops: 0,
-  pauseAfterCall: typeof window !== 'undefined' && localStorage.getItem(LS_KEY) === 'true',
+  pauseAfterCall: readPauseAfterCall(),
   campaignId: null,
   autoPace: true,
   pacingDelaySec: 5,
@@ -80,7 +90,10 @@ export function reducer(s: DialerState, a: DialerAction): DialerState {
     case 'RESUME':
       return s.phase === 'paused' ? { ...s, phase: 'idle', pacingDeadlineMs: null } : s;
     case 'STOP':
-      return { ...INITIAL };
+      // Re-read the toggle. INITIAL captured localStorage once at module
+      // load, so Stop used to resurrect whatever Speed was when the tab
+      // opened — auto-advance came back while the button still read OFF.
+      return { ...INITIAL, pauseAfterCall: readPauseAfterCall() };
     case 'MUTE_TOGGLE':
       return { ...s, isMuted: !s.isMuted };
     case 'HOLD_TOGGLE':

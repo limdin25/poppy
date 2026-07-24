@@ -16,6 +16,7 @@ import { useLocation } from 'react-router-dom';
 import { cn } from '@/core/lib/cn';
 import { useActiveCallCtx } from './ActiveCallContext';
 import { useSmsV2 } from '../../store/SmsV2Store';
+import { isSpeedDialerOn, subscribeSpeedDialer } from '../../lib/speedDialer';
 import FollowupPromptModal from '../followups/FollowupPromptModal';
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -30,10 +31,18 @@ const ICON_MAP: Record<string, LucideIcon> = {
 export default function PostCallPanel() {
   const { applyOutcome, call, lastEndedContactId, openPreviousCall } = useActiveCallCtx();
   const store = useSmsV2();
-  const onCallerDialer = useLocation().pathname === '/admin/crm/dialer';
+  // Both dialer surfaces own their own pacing (CallerPad at /dialer, the
+  // WrapUpCard at /dialer-pro). Hugo 2026-07-24: this was an exact-match on
+  // '/admin/crm/dialer' only, so on /dialer-pro this panel ran a SECOND
+  // countdown on top of the dialer's own and auto-dialled the next lead.
+  const onCallerDialer = useLocation().pathname.startsWith('/admin/crm/dialer');
   const columns = store.columns;
   const autoAdvanceSeconds = store.activeCampaign?.autoAdvanceSeconds ?? 10;
   const [secondsLeft, setSecondsLeft] = useState(autoAdvanceSeconds);
+  // Speed: OFF must stop the countdown dead — no outcome is auto-submitted
+  // and no next call is placed until the agent presses for it.
+  const [speedOn, setSpeedOn] = useState(isSpeedDialerOn);
+  useEffect(() => subscribeSpeedDialer(() => setSpeedOn(isSpeedDialerOn())), []);
   const [paused, setPaused] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   // PR 105 (Hugo 2026-04-28): the chosen outcome card stays highlighted
@@ -57,18 +66,18 @@ export default function PostCallPanel() {
   }, [autoAdvanceSeconds]);
 
   useEffect(() => {
-    if (paused || submitted || pendingFollowupColId || onCallerDialer) return;
+    if (paused || submitted || pendingFollowupColId || onCallerDialer || !speedOn) return;
     const id = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(id);
-  }, [paused, submitted, pendingFollowupColId, onCallerDialer]);
+  }, [paused, submitted, pendingFollowupColId, onCallerDialer, speedOn]);
 
   useEffect(() => {
-    if (secondsLeft === 0 && !paused && !submitted && !onCallerDialer) {
+    if (secondsLeft === 0 && !paused && !submitted && !onCallerDialer && speedOn) {
       const def = columns.find((c) => c.isDefaultOnTimeout);
       if (def) handleClick(def.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [secondsLeft, paused, submitted, onCallerDialer]);
+  }, [secondsLeft, paused, submitted, onCallerDialer, speedOn]);
 
   const handleClick = (columnId: string) => {
     if (submitted) return;
@@ -240,7 +249,9 @@ export default function PostCallPanel() {
       {/* Footer auto-advance — hidden on /crm/dialer where CallerPad owns pacing */}
       {onCallerDialer ? null : <div className="px-5 py-3 border-t border-[#E5E7EB] bg-[#F3F3EE]/50 flex items-center gap-3">
         <div className="flex-1 text-[12px] text-[#6B7280]">
-          {paused ? (
+          {!speedOn ? (
+            <span>Speed: OFF — press <span className="text-[#1A1A1A] font-semibold">Next call</span> when you're ready</span>
+          ) : paused ? (
             <span>Paused — pick when ready</span>
           ) : (
             <>

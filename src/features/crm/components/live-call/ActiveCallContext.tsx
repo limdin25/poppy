@@ -11,6 +11,7 @@ import {
   muteAllCalls,
 } from '@/integrations/twilio/voice-browser';
 import { startCallOrchestration, type StartCallResult } from '../../lib/startCallOrchestration';
+import { isSpeedDialerOn } from '../../lib/speedDialer';
 
 export type CallPhase = 'idle' | 'placing' | 'in_call' | 'post_call';
 
@@ -112,7 +113,12 @@ interface ActiveCallCtx {
   startCall: (
     contactId: string,
     phoneOverride?: string,
-    nameOverride?: string
+    nameOverride?: string,
+    /** openRoom (default true): whether to take over the screen with the
+     *  full LiveCallScreen. Free-dial from the softphone passes false so the
+     *  call shows only the compact softphone bar — the ONE full call room is
+     *  the /dialer-pro room (Hugo 2026-07-22). */
+    opts?: { openRoom?: boolean }
   ) => Promise<StartCallResult>;
   /**
    * Internal: used by the dialer-winner broadcast handler when the call is
@@ -314,6 +320,8 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
         setPhase('in_call');
         setFullScreen(true);
         setMuted(false);
+        // Force the mic live at the SDK layer on connect (see startCall).
+        try { muteAllCalls(false, call); } catch { /* ignore */ }
 
         const isThisCall = () => activeTwilioCallRef.current === call;
         const onEnd = () => {
@@ -334,7 +342,7 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
   }, [store]);
 
   const startCall = useCallback<ActiveCallCtx['startCall']>(
-    async (contactId, phoneOverride, nameOverride) => {
+    async (contactId, phoneOverride, nameOverride, opts) => {
       const contact = store.getContact(contactId);
       const phone = (phoneOverride ?? contact?.phone ?? '').trim();
       const contactName = contact?.name ?? nameOverride ?? 'Unknown caller';
@@ -361,7 +369,10 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
       // is accepted, not now, so the duration reflects real talk time.
       setCall({ contactId, contactName, phone, startedAt: Date.now(), callId: null });
       setPhase('placing');
-      setFullScreen(true);
+      // Free-dial (openRoom:false) stays as the compact softphone bar so it
+      // never overlays the one dialer room; campaign/auto-advance dials keep
+      // the full-screen behaviour (openRoom defaults true).
+      setFullScreen(opts?.openRoom ?? true);
 
       const result = await startCallOrchestration(
         { contactId, contactName, phone },
@@ -423,6 +434,10 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
 
       const onAccept = () => {
         if (!isThisCall()) return;
+        // Force the mic live at the SDK layer on connect — the shared Twilio
+        // Device can carry a zombie track-mute from a prior call, silencing
+        // this one even though React state says unmuted (Hugo 2026-07-22).
+        try { muteAllCalls(false, result.twilioCall); } catch { /* ignore */ }
         setPhase('in_call');
         setCall((prev) => (prev ? { ...prev, startedAt: Date.now() } : prev));
       };
@@ -704,6 +719,17 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
               );
             }
           })();
+        }
+
+        // Speed: OFF — stop after this call. Hugo 2026-07-24: this whole
+        // auto-advance block ran regardless of the toggle, so the next lead
+        // was dialled with nobody pressing anything ("the dialer just starts
+        // on its own"). With Speed OFF the agent presses for the next call.
+        if (!isSpeedDialerOn()) {
+          store.pushToast('Speed: OFF — press Next call when you’re ready', 'info');
+          setPhase('idle');
+          setCall(null);
+          return;
         }
 
         if (nextContactId) {
