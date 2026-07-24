@@ -21,6 +21,7 @@ import {
   type LeaderboardRange,
 } from '../hooks/useLeaderboard';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
+import DailyReportsPanel from '../components/DailyReportsPanel';
 import { formatDuration, formatPence } from '../data/helpers';
 
 const RANGES: LeaderboardRange[] = ['today', 'yesterday', 'week', 'month'];
@@ -170,6 +171,10 @@ export default function LeaderboardPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Daily AI coaching reports — every agent reads every agent's, and the
+          history stays so they can scroll back (Hugo 2026-07-24). */}
+      <DailyReportsPanel />
     </div>
   );
 }

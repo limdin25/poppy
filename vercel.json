@@ -3,31 +3,65 @@
     {
       "source": "/index.html",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     },
     {
       "source": "/",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     }
   ],
   "rewrites": [
     {
       "source": "/",
-      "has": [{ "type": "host", "value": "heyelsie.com" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "heyelsie.com"
+        }
+      ],
       "destination": "/welcome"
     },
-    { "source": "/r/:token", "destination": "/api/reviews/click?token=:token" },
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/r/:token",
+      "destination": "/api/reviews/click?token=:token"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ],
   "functions": {
-    "api/cron/review-requests.ts": { "maxDuration": 60 },
-    "api/reviews/send-test.ts": { "maxDuration": 30 }
+    "api/cron/review-requests.ts": {
+      "maxDuration": 60
+    },
+    "api/reviews/send-test.ts": {
+      "maxDuration": 30
+    },
+    "api/cron/social-posts.ts": {
+      "maxDuration": 60
+    },
+    "api/reviews/social/publish.ts": {
+      "maxDuration": 30
+    }
   },
   "crons": [
+    {
+      "path": "/api/cron/social-posts",
+      "schedule": "*/5 * * * *"
+    },
     {
       "path": "/api/messages/poll",
       "schedule": "* * * * *"
@@ -103,6 +137,10 @@
     {
       "path": "/api/cron/review-weekly-email",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/daily-agent-reports",
+      "schedule": "30 16 * * *"
     }
   ]
 }
