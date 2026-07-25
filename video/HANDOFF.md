@@ -161,15 +161,18 @@ The voice never says a trade, but three visual props are plumbing-flavoured
 
 ## 7. Git / deploy status
 
-- `video/` is **entirely untracked**. `.gitignore` now excludes renders and
-  heavy media (`video/out/`, `video/public/*.mp4`, actor clips, TTS venv) —
-  so committing `video/` is safe and picks up source + the light assets
-  (logos, PNGs, audio/pedro-full.m4a is NOT excluded: 3.5MB, needed to
-  render). `public/pedro.mp4` (71MB, needed for the actor circle) IS
-  excluded — the pipeline dev needs it copied out-of-band or fetched from
-  storage; decide where it lives (Supabase storage bucket is the obvious
-  answer).
-- Committing is Hugo's call — the repo has unrelated in-flight changes.
+- `video/` source is **committed** on branch `reviews` (commit 516aa83).
+  `.gitignore` excludes renders and heavy media (`video/out/`,
+  `video/public/*.mp4`, actor clips, TTS venv); the light assets are in
+  (logos, PNGs, audio/pedro-full.m4a: 3.5MB, needed to render).
+- `public/pedro.mp4` (the actor video, needed for the actor circle) is
+  git-excluded. **Download it from the repo's release:**
+  https://github.com/limdin25/poppy/releases/tag/vsl-v12-assets
+  → `pedro-actor-1.2x-SEND-THIS.mp4`, save it as `video/public/pedro.mp4`.
+  Verify before rendering: **71,262,096 bytes, 2:32 duration,
+  MD5 `193bd850164cc2cf0bf68d08eef0476c`** — this is the 1.2×-speed cut the
+  scene timings are built on; the original 3:02 recording will put every
+  scene off-beat.
 
 ## 8. What already EXISTS vs what to build
 
