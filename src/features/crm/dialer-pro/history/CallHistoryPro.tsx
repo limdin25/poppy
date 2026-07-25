@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { Phone, Play, FileText, X, Pencil } from 'lucide-react';
+import { Phone, PhoneOutgoing, Play, FileText, X, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { signCallRecording } from '@/features/crm/hooks/useCalls';
 import CallTranscriptModal from '@/features/crm/components/calls/CallTranscriptModal';
@@ -10,6 +10,8 @@ const PAGE_SIZE = 25;
 interface CallHistoryProProps {
   onCountChange?: (count: number) => void;
   onEditContact?: (contactId: string) => void;
+  /** Redial a contact from history (queues + dials via the dialer machine). */
+  onRedial?: (contactId: string) => void;
 }
 
 interface CallRow {
@@ -80,7 +82,7 @@ async function fetchPage(pageParam: number): Promise<CallRow[]> {
   });
 }
 
-export default function CallHistoryPro({ onCountChange, onEditContact }: CallHistoryProProps = {}) {
+export default function CallHistoryPro({ onCountChange, onEditContact, onRedial }: CallHistoryProProps = {}) {
   const queryClient = useQueryClient();
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const [transcriptCallId, setTranscriptCallId] = useState<string | null>(null);
@@ -185,6 +187,15 @@ export default function CallHistoryPro({ onCountChange, onEditContact }: CallHis
             <div className="font-medium text-[#1A1A1A] text-[11px]">{call.contactName ?? call.contactPhone ?? 'Unknown'}</div>
             <div className="text-[10px] text-[#9CA3AF] tabular-nums">{formatDuration(call.durationSec)} · {formatDate(call.startedAt)}</div>
           </div>
+          {call.contactId && onRedial && (
+            <button
+              onClick={() => onRedial(call.contactId!)}
+              className="p-1 rounded-md text-[#3C5A87] hover:bg-[#EEF2F8] flex-shrink-0"
+              title="Redial this number"
+            >
+              <PhoneOutgoing className="w-3.5 h-3.5" />
+            </button>
+          )}
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             {call.contactId && onEditContact && (
               <button

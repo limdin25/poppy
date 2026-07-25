@@ -1,5 +1,6 @@
 // DialerScriptPane — col 2 of the dialer. Renders the one-call sales script,
-// but lean (no side rails / no built-in toolbar) and editable in place.
+// but lean (no side rails / no built-in toolbar), personalised per lead, and
+// editable in place.
 //
 // The script HTML (src/core/content/one-call-script.html) is shared with the
 // standalone /script page and must stay byte-for-byte, so we DON'T change the
@@ -7,14 +8,24 @@
 // and drive editing through the iframe's same-origin document (srcDoc iframes
 // share the parent origin, so no postMessage is needed).
 //
-// Admins can Edit → type → Save; the edited #page HTML persists to
-// wk_sales_script (RLS: admins write, agents read). Agents see it read-only.
+// Two layers of HTML:
+//   - TEMPLATE (raw, with [named] tokens) — what admins edit and what persists
+//     to wk_sales_script. Established once from savedHtml, or captured from the
+//     script's own default render when nothing is saved.
+//   - DISPLAY — interpolateScript(template, contact): the same HTML with THIS
+//     lead's owner name, business, reviews, rank, competitors and live Google-
+//     search link filled in. Re-rendered whenever the active contact changes.
+//
+// So editing never bakes one lead's numbers into the saved script, and every
+// agent dialling any lead sees that lead's own personalised script.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileText, Pencil, Printer, Save, X } from 'lucide-react';
 import scriptHtml from '@/core/content/one-call-script.html?raw';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useSalesScript } from '../../hooks/useSalesScript';
+import { interpolateScript, highlightTokens, stripHighlights } from '../../lib/interpolateScript';
+import type { Contact } from '../../types';
 
 // Reuse the script's own print rules (hide topbar/rails/controls, page full
 // width) but apply them always, so the dialer shows only the centre column.
@@ -27,35 +38,49 @@ const LEAN_STYLE = `<style id="__dialer_lean__">
 
 const LEAN_HTML = scriptHtml.replace('</head>', `${LEAN_STYLE}</head>`);
 
-export default function DialerScriptPane() {
+interface Props {
+  /** The lead being dialled — its custom_fields fill the script's tokens. */
+  contact?: Contact | null;
+}
+
+export default function DialerScriptPane({ contact }: Props) {
   const { isAdmin } = useAuth();
-  const { savedHtml, saving, error, save } = useSalesScript();
+  const { savedHtml, loading, saving, error, save } = useSalesScript();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [docReady, setDocReady] = useState(false);
   const [editing, setEditing] = useState(false);
-  const appliedRef = useRef<string | null>(null);   // last savedHtml pushed into #page
-  const snapshotRef = useRef<string>('');            // #page HTML when edit started
+  const [template, setTemplate] = useState<string | null>(null); // raw HTML with tokens
+  const lastSavedRef = useRef<string | null | undefined>(undefined); // last savedHtml folded in
 
   const pageEl = useCallback((): HTMLElement | null => {
     return iframeRef.current?.contentDocument?.getElementById('page') ?? null;
   }, []);
 
-  // Push the saved script into #page once the iframe is ready (and whenever the
-  // saved value changes), unless the admin is mid-edit.
+  // Establish / refresh the TEMPLATE. Runs once the iframe is ready and the
+  // saved script has settled. When nothing is saved we capture the script's
+  // own default render (build() has already populated #page by onLoad).
   useEffect(() => {
-    if (!docReady || editing || savedHtml == null) return;
-    if (appliedRef.current === savedHtml) return;
+    if (!docReady || loading || editing) return;
+    if (lastSavedRef.current === savedHtml && template != null) return;
     const page = pageEl();
-    if (page) {
-      page.innerHTML = savedHtml;
-      appliedRef.current = savedHtml;
-    }
-  }, [docReady, editing, savedHtml, pageEl]);
+    if (!page) return;
+    const tpl = savedHtml ?? template ?? page.innerHTML;
+    lastSavedRef.current = savedHtml;
+    setTemplate(tpl);
+  }, [docReady, loading, editing, savedHtml, template, pageEl]);
+
+  // Render the DISPLAY (template filled for the current contact) whenever the
+  // template or the active lead changes — but never while an admin is editing.
+  useEffect(() => {
+    if (editing || template == null) return;
+    const page = pageEl();
+    if (page) page.innerHTML = interpolateScript(template, contact);
+  }, [template, contact, editing, pageEl]);
 
   const startEdit = () => {
     const page = pageEl();
-    if (!page) return;
-    snapshotRef.current = page.innerHTML;
+    if (!page || template == null) return;
+    page.innerHTML = highlightTokens(template); // raw tokens, brown so slots are obvious
     page.setAttribute('contenteditable', 'true');
     setEditing(true);
     page.focus();
@@ -63,22 +88,20 @@ export default function DialerScriptPane() {
 
   const cancelEdit = () => {
     const page = pageEl();
-    if (page) {
-      page.innerHTML = snapshotRef.current;
-      page.setAttribute('contenteditable', 'false');
-    }
-    setEditing(false);
+    if (page) page.setAttribute('contenteditable', 'false');
+    setEditing(false);                    // the display effect re-fills from template
   };
 
   const saveEdit = async () => {
     const page = pageEl();
     if (!page) return;
-    const html = page.innerHTML;
-    const ok = await save(html);
+    const edited = stripHighlights(page.innerHTML); // strip brown styling → bare tokens
+    const ok = await save(edited);
     if (ok) {
-      appliedRef.current = html;
+      lastSavedRef.current = edited;
       page.setAttribute('contenteditable', 'false');
       setEditing(false);
+      setTemplate(edited);                // triggers a re-fill for the current lead
     }
   };
 

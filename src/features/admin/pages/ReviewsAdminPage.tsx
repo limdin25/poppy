@@ -2,11 +2,13 @@
 // only), referral payouts, and the closer's onboard-a-client flow.
 
 import { useState } from 'react'
-import { Star, Phone, Gift, UserPlus, ExternalLink, Copy, Check } from 'lucide-react'
+import { Star, Phone, Gift, UserPlus, ExternalLink, Copy, Check, Pencil, KeyRound, Mail } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { Button } from '@/core/ui/Button'
 import { Input } from '@/core/ui/Input'
+import { Select } from '@/core/ui/Select'
+import { Switch } from '@/core/ui/Switch'
 import { Dialog } from '@/core/ui/Dialog'
 import { useAdminApi } from '../hooks/useAdminApi'
 
@@ -32,6 +34,13 @@ interface Client {
 interface Plan { key: string; name: string; priceGbp: number; paymentLink: string }
 interface NumberRequest { id: string; business_id: string; business_name: string; status: string; note: string | null; purchased_number: string | null; created_at: string }
 interface Referral { id: string; referrer_name: string; invitee_email: string | null; invitee_business_name: string | null; status: string; created_at: string }
+interface ClientDetail {
+  business: { id: string; name: string; plan: string | null; billing_status: string | null }
+  owner: { user_id: string | null; email: string | null; name: string | null }
+  settings: Record<string, unknown>
+  plans: Array<{ key: string; name: string; priceGbp: number }>
+}
+interface EditForm { business_name: string; owner_name: string; owner_email: string; plan: string; settings: Record<string, unknown> }
 
 export default function ReviewsAdminPage() {
   const { session } = useAuth()
@@ -52,6 +61,16 @@ export default function ReviewsAdminPage() {
   const [obPlan, setObPlan] = useState('reviews_starter')
   const [obResult, setObResult] = useState<{ paymentLink: string; setPasswordLink: string | null } | null>(null)
 
+  // Edit-client dialog
+  const [editId, setEditId] = useState<string | null>(null)
+  const [detail, setDetail] = useState<ClientDetail | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
+  const [editBusy, setEditBusy] = useState<string | null>(null)
+  const [editMsg, setEditMsg] = useState<string | null>(null)
+  const [form, setForm] = useState<EditForm>({ business_name: '', owner_name: '', owner_email: '', plan: '', settings: {} })
+  const [newPw, setNewPw] = useState('')
+  const [resetLink, setResetLink] = useState<string | null>(null)
+
   async function post(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     const res = await fetch(`/api/admin/${path}`, {
       method: 'POST',
@@ -61,6 +80,86 @@ export default function ReviewsAdminPage() {
     const json = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error((json as { error?: string }).error || `Failed (${res.status})`)
     return json as Record<string, unknown>
+  }
+
+  async function get(path: string): Promise<Record<string, unknown>> {
+    const res = await fetch(`/api/admin/${path}`, {
+      headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((json as { error?: string }).error || `Failed (${res.status})`)
+    return json as Record<string, unknown>
+  }
+
+  async function openEdit(c: Client) {
+    setEditId(c.id); setDetail(null); setEditMsg(null); setNewPw(''); setResetLink(null); setEditLoading(true)
+    try {
+      const d = (await get(`reviews/client?business_id=${c.id}`)) as unknown as ClientDetail
+      setDetail(d)
+      setForm({
+        business_name: d.business.name ?? '',
+        owner_name: d.owner.name ?? '',
+        owner_email: d.owner.email ?? '',
+        plan: d.business.plan ?? '',
+        settings: d.settings ?? {},
+      })
+    } catch (err) {
+      setEditMsg((err as Error).message)
+    }
+    setEditLoading(false)
+  }
+
+  function setS(key: string, value: unknown) {
+    setForm((f) => ({ ...f, settings: { ...f.settings, [key]: value } }))
+  }
+
+  // Integer setter: rounds + clamps to [min,max] and treats a cleared field as
+  // the minimum, so a value can never violate the review_settings CHECK bounds.
+  function setNum(key: string, raw: string, min: number, max: number) {
+    if (raw === '') { setS(key, min); return }
+    const n = Math.round(Number(raw))
+    setS(key, Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min)
+  }
+
+  async function saveEdit() {
+    setEditBusy('save'); setEditMsg(null)
+    try {
+      await post('reviews/client', {
+        action: 'update', business_id: editId,
+        business_name: form.business_name, owner_name: form.owner_name, owner_email: form.owner_email,
+        plan: form.plan, settings: form.settings,
+      })
+      setEditMsg('Saved.')
+      clients.refetch()
+    } catch (err) {
+      setEditMsg((err as Error).message)
+    }
+    setEditBusy(null)
+  }
+
+  async function setPassword() {
+    if (newPw.length < 8) { setEditMsg('Password must be at least 8 characters.'); return }
+    setEditBusy('pw'); setEditMsg(null)
+    try {
+      await post('reviews/client', { action: 'set_password', business_id: editId, password: newPw })
+      setEditMsg('Password set — tell the client their new password.')
+      setNewPw('')
+    } catch (err) {
+      setEditMsg((err as Error).message)
+    }
+    setEditBusy(null)
+  }
+
+  async function sendReset() {
+    setEditBusy('reset'); setEditMsg(null)
+    try {
+      const out = await post('reviews/client', { action: 'send_reset', business_id: editId })
+      setResetLink(out.resetLink ? String(out.resetLink) : null)
+      setEditMsg(out.emailed ? 'Reset link emailed to the client.' : 'Email did not send — copy the link below and send it manually.')
+    } catch (err) {
+      setEditMsg((err as Error).message)
+    }
+    setEditBusy(null)
   }
 
   async function buyNumber(r: NumberRequest) {
@@ -110,6 +209,10 @@ export default function ReviewsAdminPage() {
     setCopied(key)
     setTimeout(() => setCopied(null), 1500)
   }
+
+  const sNum = (k: string, d: number) => { const v = form.settings[k]; return typeof v === 'number' ? v : (v == null || v === '' ? d : Number(v)) }
+  const sBool = (k: string, d: boolean) => { const v = form.settings[k]; return typeof v === 'boolean' ? v : d }
+  const sStr = (k: string) => { const v = form.settings[k]; return v == null ? '' : String(v) }
 
   const pendingNumbers = numbers.data.requests.filter((r) => r.status === 'pending')
   const payoutQueue = referrals.data.referrals.filter((r) => r.status === 'paid')
@@ -187,10 +290,16 @@ export default function ReviewsAdminPage() {
                     {c.pending_replies > 0 && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">{c.pending_replies} replies</span>}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <a href={`https://go.heyelsie.com/dashboard?as=${c.id}`} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
-                      View as client <ExternalLink style={{ width: 12, height: 12 }} />
-                    </a>
+                    <div className="flex items-center justify-end gap-3">
+                      <button onClick={() => openEdit(c)}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-ink-subtle hover:text-ink">
+                        <Pencil style={{ width: 12, height: 12 }} /> Edit
+                      </button>
+                      <a href={`https://go.heyelsie.com/dashboard?as=${c.id}`} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
+                        View as client <ExternalLink style={{ width: 12, height: 12 }} />
+                      </a>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -299,6 +408,114 @@ export default function ReviewsAdminPage() {
               <Button className="w-full" disabled={busy === 'onboard' || !obBusiness || !obName || !obEmail} onClick={onboard}>
                 {busy === 'onboard' ? 'Creating…' : 'Create account + get payment link'}
               </Button>
+            </>
+          )}
+        </div>
+      </Dialog>
+
+      <Dialog open={!!editId} onClose={() => setEditId(null)}>
+        <div className="max-h-[85vh] space-y-4 overflow-y-auto p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-ink">Edit client</h3>
+            {detail?.business.billing_status && (
+              <span className="rounded-full bg-border/50 px-2.5 py-0.5 text-[11px] font-medium text-ink-subtle">{detail.business.billing_status}</span>
+            )}
+          </div>
+
+          {editMsg && <p className="rounded-xl bg-brand-50 px-4 py-2 text-sm font-medium text-brand-700">{editMsg}</p>}
+          {editLoading && <p className="py-6 text-center text-sm text-ink-subtle">Loading…</p>}
+
+          {detail && !editLoading && (
+            <>
+              {/* Account */}
+              <div className="space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Account</p>
+                <label className="block text-xs font-medium text-ink-subtle">Company name
+                  <Input className="mt-1" value={form.business_name} onChange={(e) => setForm((f) => ({ ...f, business_name: e.target.value }))} />
+                </label>
+                <label className="block text-xs font-medium text-ink-subtle">Owner name
+                  <Input className="mt-1" value={form.owner_name} onChange={(e) => setForm((f) => ({ ...f, owner_name: e.target.value }))} />
+                </label>
+                <label className="block text-xs font-medium text-ink-subtle">Owner email
+                  <Input className="mt-1" type="email" value={form.owner_email} onChange={(e) => setForm((f) => ({ ...f, owner_email: e.target.value }))} />
+                </label>
+                <label className="block text-xs font-medium text-ink-subtle">Plan
+                  <Select className="mt-1" value={form.plan} onChange={(e) => setForm((f) => ({ ...f, plan: e.target.value }))}>
+                    <option value="">— no plan —</option>
+                    {detail.plans.map((p) => <option key={p.key} value={p.key}>{p.name} · £{p.priceGbp}/mo</option>)}
+                  </Select>
+                </label>
+              </div>
+
+              {/* Review settings */}
+              <div className="space-y-3 border-t border-border pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Review settings</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-xs font-medium text-ink-subtle">Greeting first name
+                    <Input className="mt-1" value={sStr('owner_first_name')} onChange={(e) => setS('owner_first_name', e.target.value)} />
+                  </label>
+                  <label className="block text-xs font-medium text-ink-subtle">AI reply business name
+                    <Input className="mt-1" value={sStr('business_display_name')} onChange={(e) => setS('business_display_name', e.target.value)} />
+                  </label>
+                  <label className="col-span-2 block text-xs font-medium text-ink-subtle">Sender number (Twilio)
+                    <Input className="mt-1" value={sStr('sms_from_number')} onChange={(e) => setS('sms_from_number', e.target.value)} placeholder="+44…" />
+                  </label>
+                  <label className="block text-xs font-medium text-ink-subtle">Timezone
+                    <Input className="mt-1" value={sStr('timezone')} onChange={(e) => setS('timezone', e.target.value)} placeholder="Europe/London" />
+                  </label>
+                  <div />
+                  <label className="block text-xs font-medium text-ink-subtle">Quiet start (24h)
+                    <Input className="mt-1" type="number" step={1} min={0} max={23} value={sNum('quiet_start', 9)} onChange={(e) => setNum('quiet_start', e.target.value, 0, 23)} />
+                  </label>
+                  <label className="block text-xs font-medium text-ink-subtle">Quiet end (24h)
+                    <Input className="mt-1" type="number" step={1} min={0} max={23} value={sNum('quiet_end', 20)} onChange={(e) => setNum('quiet_end', e.target.value, 0, 23)} />
+                  </label>
+                  <label className="block text-xs font-medium text-ink-subtle">Sends per day
+                    <Input className="mt-1" type="number" step={1} min={1} max={1000} value={sNum('drip_per_day', 25)} onChange={(e) => setNum('drip_per_day', e.target.value, 1, 1000)} />
+                  </label>
+                  <label className="block text-xs font-medium text-ink-subtle">First send delay (hrs)
+                    <Input className="mt-1" type="number" step={1} min={0} max={168} value={sNum('initial_delay_hours', 0)} onChange={(e) => setNum('initial_delay_hours', e.target.value, 0, 168)} />
+                  </label>
+                  <label className="block text-xs font-medium text-ink-subtle">Follow-ups
+                    <Input className="mt-1" type="number" step={1} min={0} max={3} value={sNum('followup_count', 2)} onChange={(e) => setNum('followup_count', e.target.value, 0, 3)} />
+                  </label>
+                  <label className="block text-xs font-medium text-ink-subtle">Follow-up gap (days)
+                    <Input className="mt-1" type="number" step={1} min={1} max={14} value={sNum('followup_gap_days', 3)} onChange={(e) => setNum('followup_gap_days', e.target.value, 1, 14)} />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <div className="flex items-center gap-2"><Switch checked={sBool('followups_enabled', true)} onChange={(v) => setS('followups_enabled', v)} /><span className="text-xs text-ink">Follow-ups on</span></div>
+                  <div className="flex items-center gap-2"><Switch checked={sBool('image_enabled', true)} onChange={(v) => setS('image_enabled', v)} /><span className="text-xs text-ink">Personalized image</span></div>
+                  <div className="flex items-center gap-2"><Switch checked={sBool('smart_messaging', true)} onChange={(v) => setS('smart_messaging', v)} /><span className="text-xs text-ink">Smart messaging</span></div>
+                  <div className="flex items-center gap-2"><Switch checked={sBool('sending_paused', false)} onChange={(v) => setS('sending_paused', v)} /><span className="text-xs text-ink">Sending paused</span></div>
+                </div>
+              </div>
+
+              <Button className="w-full" disabled={editBusy === 'save'} onClick={saveEdit}>
+                {editBusy === 'save' ? 'Saving…' : 'Save changes'}
+              </Button>
+
+              {/* Password */}
+              <div className="space-y-3 border-t border-border pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Password</p>
+                <div className="flex gap-2">
+                  <Input type="text" placeholder="New password (min 8 chars)" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+                  <Button size="sm" variant="secondary" disabled={editBusy === 'pw' || newPw.length < 8} onClick={setPassword}>
+                    <KeyRound style={{ width: 13, height: 13 }} /> {editBusy === 'pw' ? 'Setting…' : 'Set'}
+                  </Button>
+                </div>
+                <Button size="sm" variant="ghost" disabled={editBusy === 'reset'} onClick={sendReset}>
+                  <Mail style={{ width: 13, height: 13 }} /> {editBusy === 'reset' ? 'Sending…' : 'Email client a reset link'}
+                </Button>
+                {resetLink && (
+                  <div className="flex gap-2">
+                    <Input readOnly value={resetLink} className="text-xs" />
+                    <Button size="sm" variant="secondary" onClick={() => copy(resetLink, 'reset')}>
+                      {copied === 'reset' ? <Check style={{ width: 13, height: 13 }} /> : <Copy style={{ width: 13, height: 13 }} />}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

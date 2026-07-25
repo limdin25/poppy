@@ -4,7 +4,7 @@
 // Ships as a side-effect-only hook so the existing store-driven UI keeps
 // working unchanged. Pages and components keep reading from useSmsV2().
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../store/SmsV2Store';
 import type { Contact } from '../types';
@@ -47,6 +47,21 @@ export function rowToContact(row: WkContactRow, tags: string[]): Contact {
 
 export function useHydrateContacts(): void {
   const { setContacts, upsertContact, removeContact } = useSmsV2();
+
+  // CRITICAL (Hugo 2026-07-22): SmsV2Store builds its api inside useMemo([state,
+  // …]), so these actions get a FRESH reference on every dispatch. Depending on
+  // them in the effect below — whose load() ends with setContacts(), which
+  // dispatches — created an INFINITE re-fetch loop (~2.5×/s per open CRM tab)
+  // that pegged the Postgres CPU to 98% and took the whole project down.
+  // Same fix useHydratePipelineColumns already uses: hold them in refs and run
+  // the effect ONCE. The realtime handler + load() call .current, which always
+  // dispatches correctly regardless of ref churn.
+  const setContactsRef = useRef(setContacts);
+  const upsertContactRef = useRef(upsertContact);
+  const removeContactRef = useRef(removeContact);
+  setContactsRef.current = setContacts;
+  upsertContactRef.current = upsertContact;
+  removeContactRef.current = removeContact;
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +133,7 @@ export function useHydrateContacts(): void {
 
       // Atomic replace — never append-on-top of seed/realtime state, so the
       // store always reflects exactly what the DB returned.
-      setContacts(real);
+      setContactsRef.current(real);
     }
 
     void load();
@@ -133,12 +148,12 @@ export function useHydrateContacts(): void {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (payload: any) => {
           if (payload.eventType === 'DELETE' && payload.old?.id) {
-            removeContact(payload.old.id as string);
+            removeContactRef.current(payload.old.id as string);
             return;
           }
           const row = payload.new as WkContactRow | undefined;
           if (!row) return;
-          upsertContact(rowToContact(row, []));
+          upsertContactRef.current(rowToContact(row, []));
         }
       )
       .subscribe();
@@ -147,5 +162,8 @@ export function useHydrateContacts(): void {
       cancelled = true;
       void supabase.removeChannel(channel);
     };
-  }, [setContacts, upsertContact, removeContact]);
+    // Run ONCE per mount — refs above keep the store actions current without
+    // re-triggering the effect (which would re-loop). See the block comment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }

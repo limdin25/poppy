@@ -54,7 +54,10 @@ interface ImportResult {
 }
 
 const PHONE_KEYS = ['phone', 'mobile', 'number', 'tel', 'whatsapp'];
-const NAME_KEYS = ['name', 'full_name', 'fullname', 'contact_name'];
+const NAME_KEYS = [
+  'name', 'full_name', 'fullname', 'contact_name',
+  'company name', 'company', 'business name', 'business',
+];
 const EMAIL_KEYS = ['email', 'e-mail', 'mail'];
 
 // Header aliases that should be normalised to the canonical custom_fields
@@ -66,13 +69,29 @@ const PROPERTY_ADDRESS_KEYS = [
   'street address', 'street', 'location', 'property location',
 ];
 const PROPERTY_URL_KEYS = [
-  'property_url', 'property url', 'url', 'website', 'web', 'link',
+  'property_url', 'property url', 'url', 'link',
   'listing_url', 'listing url', 'property link', 'listing',
 ];
 
+// Plumber-leads export (UK_Plumbers_Leads_*.csv) → clean custom_fields keys the
+// sales-script interpolation + the dialer lead-facts block read back. Keys are
+// matched against the WHOLE lowercased header, so list each real header exactly.
 const CUSTOM_FIELD_ALIASES: Array<{ canonical: string; keys: string[] }> = [
   { canonical: 'property_address', keys: PROPERTY_ADDRESS_KEYS },
   { canonical: 'property_url', keys: PROPERTY_URL_KEYS },
+  { canonical: 'owner_name', keys: ['owner_name', 'owner name', 'owner name 1', 'owner name 1 (man)', 'owner name 1 (woman)', 'owner'] },
+  { canonical: 'rating', keys: ['rating', 'star rating', 'stars'] },
+  { canonical: 'reviews', keys: ['reviews', 'number of reviews', 'review count', 'reviews count'] },
+  { canonical: 'rank', keys: ['rank', 'rank position', 'position', 'google rank'] },
+  { canonical: 'plumbers_ahead', keys: ['plumbers_ahead', 'plumbers ahead', 'ahead'] },
+  { canonical: 'total_plumbers', keys: ['total_plumbers', 'total plumbers in town', 'total plumbers'] },
+  { canonical: 'competitor_1', keys: ['competitor_1', 'competitor 1'] },
+  { canonical: 'competitor_2', keys: ['competitor_2', 'competitor 2'] },
+  { canonical: 'town', keys: ['town', 'city', 'town/city', 'town / city', 'town_city'] },
+  { canonical: 'website', keys: ['website', 'web', 'site', 'web address'] },
+  { canonical: 'google_search_url', keys: ['google_search_url', 'google search url', 'search url'] },
+  { canonical: 'google_maps_url', keys: ['google_maps_url', 'google maps link', 'google maps url', 'maps link'] },
+  { canonical: 'registered_address', keys: ['registered_address', 'registered address'] },
 ];
 
 function pickKey(row: Record<string, string>, candidates: string[]): string | undefined {
@@ -100,6 +119,11 @@ export default function BulkUploadModal({
   const [assignTo, setAssignTo] = useState<string>('me');
   const [tags, setTags] = useState<string>('imported');
   const [result, setResult] = useState<ImportResult | null>(null);
+  // Plumber CSVs must go through scripts/process-plumber-leads.mjs (Google-
+  // enrich reviews → drop >65 → order A→Z). This UI importer only maps columns,
+  // so we warn if a plumber export is uploaded here. See
+  // docs/PLUMBER_LEADS_PIPELINE.md.
+  const [plumberDetected, setPlumberDetected] = useState(false);
   const { columns, pushToast } = useSmsV2();
   const { agents } = useAgentsToday();
   const { campaigns } = useDialerCampaigns({ includeInactive: true });
@@ -186,6 +210,7 @@ export default function BulkUploadModal({
     setAssignTo('me');
     setTags('imported');
     setResult(null);
+    setPlumberDetected(false);
     setStageId(columns[0]?.id ?? '');
     setCampaignId('');
   };
@@ -263,6 +288,12 @@ export default function BulkUploadModal({
 
           accepted.push({ name, phone, rawPhone: phoneRaw, email, customFields });
         }
+        // Flag a plumber-leads export (2+ of its signature custom_fields) so we
+        // can steer it to the enrich/filter/order pipeline instead.
+        const PLUMBER_KEYS = ['rank', 'plumbers_ahead', 'competitor_1', 'total_plumbers', 'owner_name', 'google_search_url'];
+        setPlumberDetected(
+          accepted.some((r) => PLUMBER_KEYS.filter((k) => r.customFields[k]).length >= 2)
+        );
         setRows(accepted);
         setParseErrors(errs);
         setStep('review');
@@ -486,6 +517,19 @@ export default function BulkUploadModal({
                   </span>
                 </div>
               </div>
+
+              {plumberDetected && (
+                <div className="flex items-start gap-2 bg-[#FEF3C7] border border-[#FCD34D] rounded-[10px] px-3 py-2 text-[11px] text-[#92400E]">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">This looks like a plumber-leads CSV.</span> This importer only
+                    maps columns — it does <span className="font-semibold">not</span> verify reviews on Google,
+                    drop leads over the 65-review cap, or order the list A→Z. For plumber leads, use the pipeline
+                    (<span className="font-mono">scripts/process-plumber-leads.mjs</span>) so those rules are applied —
+                    ask your agent to run it. See docs/PLUMBER_LEADS_PIPELINE.md.
+                  </div>
+                </div>
+              )}
 
               {parseErrors.length > 0 && (
                 <details className="bg-[#FEF2F2] border border-[#FECACA] rounded-[10px] px-3 py-2 text-[11px] text-[#991B1B]">

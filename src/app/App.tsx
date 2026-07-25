@@ -41,6 +41,7 @@ const AgentJoinPage = lazy(() => import('@/features/agent-onboarding/AgentJoinPa
 const ScriptPage = lazy(() => import('@/features/script/ScriptPage'))
 const LandingPage = lazy(() => import('@/features/landing/LandingPage'))
 const ReviewsApp = lazy(() => import('@/features/reviews/ReviewsApp'))
+const RankFrame = lazy(() => import('@/features/reviews/video/RankFrame'))
 const PrivacyPolicyPage = lazy(() => import('@/features/legal/PrivacyPolicyPage'))
 const TermsPage = lazy(() => import('@/features/legal/TermsPage'))
 const DpaPage = lazy(() => import('@/features/legal/DpaPage'))
@@ -127,6 +128,9 @@ export default function App() {
         <Route path="join" element={<AgentJoinPage />} />
         {/* PIN-gated one-call sales script (heyelsie.com/script). */}
         <Route path="script" element={<ScriptPage />} />
+        {/* Internal render surface for the personalised "you're buried on
+            Google" video. Google-styled, real lead + live local pack. */}
+        <Route path="rank-frame" element={<RankFrame />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />

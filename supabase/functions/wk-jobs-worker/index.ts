@@ -29,6 +29,16 @@ const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
 const BATCH_SIZE = 10;
 const RECORDING_BUCKET = 'call-recordings';
 
+// Same normaliser as wk-sms-send — UK national (07…) → +44 so Twilio accepts it.
+function normalizeE164(raw: string): string {
+  let s = (raw ?? '').replace(/[^\d+]/g, '');
+  if (!s) return '';
+  if (s.startsWith('+')) return s;
+  if (s.startsWith('00')) return '+' + s.slice(2);
+  if (s.startsWith('0')) return '+44' + s.slice(1);
+  return '+' + s;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -197,7 +207,10 @@ async function handleSendSms(
   if (!contactRow?.phone) {
     throw new Error(`send_sms: contact ${contactId} has no phone number`);
   }
-  const phone = contactRow.phone;
+  // Normalise to E.164 — UK leads are stored in national format (07…) which
+  // Twilio rejects with 21211. wk-sms-send does this; queued sends must too
+  // (adversarial review 2026-07-25).
+  const phone = normalizeE164(contactRow.phone);
   const contactFirstName = (contactRow.name ?? '').trim().split(/\s+/)[0] || '';
   const agentName = (
     (agentRes.data as { name?: string } | null)?.name ?? ''

@@ -56,16 +56,32 @@ export async function requireAuth(req: Request): Promise<AuthResult | Response> 
     return { userId: user.id, businessId: impersonateId, impersonating: true };
   }
 
-  const { data: member } = await supabase
+  // Resolve the caller's active business. The common (single-business, incl. all
+  // receptionist/CRM) case takes a zero-extra-query fast path identical to the old
+  // behaviour. Multi-business (Reviews) users get their active choice from
+  // profiles.active_business_id, ignoring unfinished draft businesses.
+  const { data: memberships } = await supabase
     .from('team_members')
     .select('business_id')
-    .eq('user_id', user.id)
-    .limit(1)
-    .single();
+    .eq('user_id', user.id);
 
-  if (!member) {
+  const memberIds = [...new Set((memberships ?? []).map((m) => m.business_id))];
+  if (!memberIds.length) {
     return new Response(JSON.stringify({ error: 'No business found' }), { status: 403 });
   }
+  if (memberIds.length === 1) {
+    return { userId: user.id, businessId: memberIds[0] };
+  }
 
-  return { userId: user.id, businessId: member.business_id };
+  const [{ data: profile }, { data: bizRows }] = await Promise.all([
+    supabase.from('profiles').select('active_business_id').eq('id', user.id).maybeSingle(),
+    supabase.from('businesses').select('id, status').in('id', memberIds),
+  ]);
+  const nonDraft = (bizRows ?? []).filter((b) => b.status !== 'draft').map((b) => b.id);
+  let businessId = nonDraft[0] ?? memberIds[0];
+  if (profile?.active_business_id && nonDraft.includes(profile.active_business_id)) {
+    businessId = profile.active_business_id;
+  }
+
+  return { userId: user.id, businessId };
 }

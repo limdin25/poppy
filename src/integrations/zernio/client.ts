@@ -125,6 +125,68 @@ export async function createGbpPost(opts: {
   });
 }
 
+// --- Facebook / Instagram social posting ---
+// Same Zernio account & profile as GBP. Standard (non-headless) connect mode:
+// Zernio hosts the OAuth + page/account picker and redirects back with
+// ?connected={platform}&profileId=…&accountId=…&username=…
+
+export type SocialPlatform = 'facebook' | 'instagram';
+
+export async function getSocialConnectUrl(platform: SocialPlatform, profileId: string, redirectUrl: string): Promise<string> {
+  const qs = new URLSearchParams({ profileId, redirect_url: redirectUrl });
+  const data = await zfetch<{ authUrl: string }>(`/connect/${platform}?${qs}`);
+  return data.authUrl;
+}
+
+export interface ZernioAccount {
+  _id: string;
+  platform: string;
+  username?: string;
+  displayName?: string;
+  profileUrl?: string;
+  avatarUrl?: string;
+  isActive?: boolean;
+}
+
+/** Connected accounts for a profile, optionally filtered to one platform. */
+export async function listAccounts(profileId: string, platform?: SocialPlatform): Promise<ZernioAccount[]> {
+  const qs = new URLSearchParams({ profileId, status: 'connected' });
+  if (platform) qs.set('platform', platform);
+  const data = await zfetch<{ accounts: ZernioAccount[] }>(`/accounts?${qs}`);
+  return data.accounts ?? [];
+}
+
+/** Publish (or schedule) an image post to a connected FB/IG account. */
+export async function createSocialPost(opts: {
+  platform: SocialPlatform;
+  accountId: string;
+  content: string;
+  imageUrl?: string;               // public HTTPS JPEG/PNG (IG feed requires media)
+  contentType?: 'story' | 'reels'; // omit for a feed post
+  scheduledFor?: string;           // ISO 8601; when omitted, publishNow
+  requestId?: string;              // idempotency (UUID)
+}): Promise<{ id?: string; platformPostUrl?: string }> {
+  const platformSpecificData: Record<string, unknown> = {};
+  if (opts.contentType) {
+    platformSpecificData.contentType = opts.contentType;
+    if (opts.platform === 'instagram' && opts.contentType === 'reels') platformSpecificData.shareToFeed = true;
+  }
+  const body: Record<string, unknown> = {
+    content: opts.content,
+    ...(opts.imageUrl ? { mediaItems: [{ type: 'image', url: opts.imageUrl }] } : {}),
+    platforms: [{ platform: opts.platform, accountId: opts.accountId, platformSpecificData }],
+    ...(opts.scheduledFor ? { scheduledFor: opts.scheduledFor, timezone: 'Europe/London' } : { publishNow: true }),
+  };
+  const res = await zfetch<Record<string, unknown>>('/posts', {
+    method: 'POST',
+    headers: opts.requestId ? { 'x-request-id': opts.requestId } : undefined,
+    body: JSON.stringify(body),
+  });
+  const post = (res.post ?? res) as { _id?: string; platforms?: Array<{ platformPostUrl?: string }> };
+  const url = (res.platformPostUrl as string | undefined) ?? post.platforms?.[0]?.platformPostUrl;
+  return { id: post._id, platformPostUrl: url };
+}
+
 // --- Analytics (dashboard panel) ---
 
 export async function getGbpPerformance(accountId: string, startDate: string, endDate: string): Promise<unknown> {

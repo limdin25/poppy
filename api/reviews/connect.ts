@@ -20,16 +20,27 @@ export default async function handler(req: Request): Promise<Response> {
   if (auth instanceof Response) return auth;
 
   try {
-    const { return_to } = (await req.json().catch(() => ({}))) as { return_to?: string };
+    const { return_to, business_id } = (await req.json().catch(() => ({}))) as { return_to?: string; business_id?: string };
     const goUrl = process.env.GO_APP_URL || 'https://go.heyelsie.com';
     const path = return_to && return_to.startsWith('/') ? return_to : '/onboarding';
     const redirectUrl = `${goUrl}${path}`;
+
+    // The Add-Business wizard connects a specific (draft) business. Verify the
+    // caller is a member before targeting it; otherwise use the active business.
+    let businessId = auth.businessId;
+    if (business_id && business_id !== auth.businessId) {
+      const { data: member } = await supabase
+        .from('team_members').select('business_id')
+        .eq('user_id', auth.userId).eq('business_id', business_id).maybeSingle();
+      if (!member) return new Response(JSON.stringify({ error: 'Not a member of that business' }), { status: 403 });
+      businessId = business_id;
+    }
 
     // Reuse the existing Zernio profile for this business, or create one.
     const { data: existing } = await supabase
       .from('gbp_connections')
       .select('zernio_profile_id')
-      .eq('business_id', auth.businessId)
+      .eq('business_id', businessId)
       .maybeSingle();
 
     let profileId = existing?.zernio_profile_id as string | undefined;
@@ -37,12 +48,12 @@ export default async function handler(req: Request): Promise<Response> {
       const { data: biz } = await supabase
         .from('businesses')
         .select('name')
-        .eq('id', auth.businessId)
+        .eq('id', businessId)
         .single();
-      const profile = await createProfile(`${biz?.name || 'Business'} (${auth.businessId.slice(0, 8)})`);
+      const profile = await createProfile(`${biz?.name || 'Business'} (${businessId.slice(0, 8)})`);
       profileId = profile._id;
       await supabase.from('gbp_connections').upsert({
-        business_id: auth.businessId,
+        business_id: businessId,
         zernio_profile_id: profileId,
         status: 'pending',
       });

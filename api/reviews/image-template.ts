@@ -61,7 +61,7 @@ export default async function handler(req: Request): Promise<Response> {
     const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/review-assets/${path}`;
 
     const nameX = parseFloat(String(form.get('name_x') ?? '0.5'));
-    const nameY = parseFloat(String(form.get('name_y') ?? '0.82'));
+    const nameY = parseFloat(String(form.get('name_y') ?? '0.72')); // match render fallback + preview
     const fontSize = parseInt(String(form.get('font_size') ?? '72'), 10);
     const fontColor = String(form.get('font_color') ?? '#ffffff');
     const greeting = String(form.get('greeting_prefix') ?? 'Hi');
@@ -79,7 +79,7 @@ export default async function handler(req: Request): Promise<Response> {
         storage_path: path,
         public_url: publicUrl,
         name_x: isFinite(nameX) ? Math.min(1, Math.max(0, nameX)) : 0.5,
-        name_y: isFinite(nameY) ? Math.min(1, Math.max(0, nameY)) : 0.82,
+        name_y: isFinite(nameY) ? Math.min(1, Math.max(0, nameY)) : 0.72,
         font_size: isFinite(fontSize) ? Math.min(200, Math.max(24, fontSize)) : 72,
         font_color: /^#[0-9a-fA-F]{6}$/.test(fontColor) ? fontColor : '#ffffff',
         greeting_prefix: greeting.slice(0, 12) || 'Hi',

@@ -61,7 +61,9 @@ export default function CrmGuard({ children }: Props) {
   }
 
   if (!user) {
-    return <Navigate to="/admin/crm/login" replace state={{ from: location.pathname }} />;
+    // One login for the whole app host — /login routes CRM staff straight back
+    // here after auth (via the `from` state), receptionist owners to /dashboard.
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
   // Hardcoded admins pass even if workspace_role column is null.
@@ -78,10 +80,10 @@ export default function CrmGuard({ children }: Props) {
             you.
           </p>
           <a
-            href="/admin/crm/login"
+            href="/login"
             className="mt-5 inline-block text-[13px] font-semibold text-white bg-[#3C5A87] px-4 py-2 rounded-[10px]"
           >
-            Sign in as agent
+            Sign in
           </a>
         </div>
       </div>

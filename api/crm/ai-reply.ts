@@ -128,6 +128,28 @@ export default async function handler(req: Request): Promise<Response> {
   let systemPrompt = s.system_prompt || '';
   if (firstName) systemPrompt += `\n\nThe lead's first name is ${firstName}.`;
 
+  // VSL context: if this lead has a video page, tell the model exactly where
+  // they are in the funnel so the reply pushes toward the £1 close (their
+  // page link included) instead of generic chat.
+  const { data: vsl } = await supabase
+    .from('wk_vsl_pages')
+    .select('slug, state, watched_pct, owner_first, business_name')
+    .eq('contact_id', contactId)
+    .maybeSingle();
+  if (vsl) {
+    const vslUrl = `https://heyelsie.com/${vsl.slug}`;
+    const stage: Record<string, string> = {
+      created: 'has not been sent their video yet',
+      sent: 'was texted their personalised video but has not opened it',
+      opened: `opened their video page but has only watched ${vsl.watched_pct || 0}%`,
+      watched: 'watched their video but has not tapped the sign-up button',
+      cta_clicked: 'tapped the button but did not pick a plan',
+      checkout_started: 'reached the payment page but did not finish — likely hesitating at the card',
+      paid: 'has already signed up and paid — help them get set up, do NOT sell',
+    };
+    systemPrompt += `\n\nVIDEO FUNNEL CONTEXT: this lead (${vsl.owner_first || 'owner'} at ${vsl.business_name}) ${stage[vsl.state] || vsl.state}. Their personal video page is ${vslUrl} — include it when nudging them to watch or sign up. Goal: get them to watch, then tap the button (it's £1 for the first 10 days, we set everything up for them). Keep it warm and human, never pushy.`;
+  }
+
   const reply = (await callLLM(s.model || 'claude-sonnet-4-6', systemPrompt, llmMessages, 300)).trim();
   if (!reply) return json(200, { skipped: 'empty_reply' });
 

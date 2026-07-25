@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, LogOut } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
+import ErrorBoundary from '@/core/components/ErrorBoundary';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import CrmGuard from '../components/CrmGuard';
 import Smsv2Sidebar from './Smsv2Sidebar';
@@ -38,8 +39,8 @@ export default function Smsv2Layout() {
   useEffect(() => {
     try { localStorage.setItem('crm_sidebar_collapsed', sidebarCollapsed ? '1' : '0'); } catch { /* ignore */ }
   }, [sidebarCollapsed]);
-  const onDialerPage = useLocation().pathname === '/admin/crm/dialer-pro';
   const { isAdmin } = useAuth();
+  const location = useLocation();
 
   return (
     <CrmGuard>
@@ -91,16 +92,29 @@ export default function Smsv2Layout() {
 
               {/* Sidebar + main */}
               <div className="flex-1 flex overflow-hidden">
-                <Smsv2Sidebar collapsed={sidebarCollapsed} onCollapse={setSidebarCollapsed} />
+                <Smsv2Sidebar
+                  collapsed={sidebarCollapsed}
+                  onCollapse={setSidebarCollapsed}
+                />
                 <main className="flex-1 overflow-auto flex flex-col">
                   <div className="flex-1 overflow-auto">
-                    <Outlet />
+                    {/* Per-route boundary: a page crash shows a recoverable
+                        card here and keeps the header/sidebar/softphone alive
+                        (no more whole-app blank screen). key resets it on nav. */}
+                    <ErrorBoundary label={`page:${location.pathname}`} key={location.pathname}>
+                      <Outlet />
+                    </ErrorBoundary>
                   </div>
                 </main>
               </div>
 
-              {/* Softphone hidden on /crm/dialer — CallerPad inside DialerPage handles it */}
-              {!onDialerPage && <Softphone />}
+              {/* Softphone floating launcher — on EVERY page so agents can
+                  free-dial from anywhere, including the dialer-pro room
+                  (Hugo 2026-07-22: one room, softphone everywhere). Isolated in
+                  its own boundary so a softphone throw can never blank a page. */}
+              <ErrorBoundary label="softphone" silent>
+                <Softphone />
+              </ErrorBoundary>
               <DialerProModal />
               <IncomingCallModal />
               <GlobalToasts />

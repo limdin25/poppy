@@ -11,6 +11,7 @@ import {
   listReviews,
   listWebhookSettings,
   createWebhookSetting,
+  listAccounts,
 } from '../../src/integrations/zernio/client.js';
 
 const supabase = createClient(
@@ -46,20 +47,40 @@ export default async function handler(req: Request): Promise<Response> {
   if (auth instanceof Response) return auth;
 
   try {
-    const { profileId, accountId } = (await req.json()) as { profileId?: string; accountId?: string };
+    const { profileId, accountId, business_id } = (await req.json()) as { profileId?: string; accountId?: string; business_id?: string };
     if (!profileId || !accountId) {
       return new Response(JSON.stringify({ error: 'profileId and accountId are required' }), { status: 400 });
+    }
+
+    // The Add-Business wizard completes a specific (draft) business; verify
+    // membership before targeting it, otherwise use the active business.
+    let businessId = auth.businessId;
+    if (business_id && business_id !== auth.businessId) {
+      const { data: member } = await supabase
+        .from('team_members').select('business_id')
+        .eq('user_id', auth.userId).eq('business_id', business_id).maybeSingle();
+      if (!member) return new Response(JSON.stringify({ error: 'Not a member of that business' }), { status: 403 });
+      businessId = business_id;
     }
 
     // The redirect params must match the Zernio profile we created for THIS business.
     const { data: conn } = await supabase
       .from('gbp_connections')
       .select('zernio_profile_id')
-      .eq('business_id', auth.businessId)
+      .eq('business_id', businessId)
       .maybeSingle();
     if (!conn || conn.zernio_profile_id !== profileId) {
       return new Response(JSON.stringify({ error: 'Connection mismatch. Restart the Google connect step' }), { status: 400 });
     }
+
+    // Guard against binding an accountId that isn't one of THIS profile's
+    // connected accounts (the account id is a client-supplied redirect param).
+    try {
+      const accounts = await listAccounts(profileId);
+      if (accounts.length && !accounts.some((a) => a._id === accountId)) {
+        return new Response(JSON.stringify({ error: 'That Google account is not connected to your profile' }), { status: 403 });
+      }
+    } catch { /* if the list call fails, fall through — profile match already checked */ }
 
     const details = await getLocationDetails(accountId);
     const loc = details.location;
@@ -74,7 +95,7 @@ export default async function handler(req: Request): Promise<Response> {
       if (page.reviews?.length) {
         await supabase.from('gbp_reviews').upsert(
           page.reviews.map((r) => ({
-            business_id: auth.businessId,
+            business_id: businessId,
             zernio_review_id: r.name,
             rating: r.rating,
             comment: r.comment ?? null,
@@ -106,13 +127,19 @@ export default async function handler(req: Request): Promise<Response> {
         connected_at: new Date().toISOString(),
         last_synced_at: new Date().toISOString(),
       })
-      .eq('business_id', auth.businessId);
+      .eq('business_id', businessId);
+
+    // Name a freshly-created draft business after its connected Google location.
+    const locationTitle = (details as { title?: string }).title ?? loc?.name ?? null;
+    if (locationTitle) {
+      await supabase.from('businesses').update({ name: locationTitle }).eq('id', businessId).eq('status', 'draft');
+    }
 
     if (loc?.placeId) {
       await supabase
         .from('businesses')
         .update({ google_place_id: loc.placeId })
-        .eq('id', auth.businessId)
+        .eq('id', businessId)
         .is('google_place_id', null);
     }
 
@@ -123,19 +150,19 @@ export default async function handler(req: Request): Promise<Response> {
     const { data: settings } = await supabase
       .from('review_settings')
       .select('sms_from_number')
-      .eq('business_id', auth.businessId)
+      .eq('business_id', businessId)
       .maybeSingle();
     if (!settings?.sms_from_number) {
       const { data: pending } = await supabase
         .from('review_number_requests')
         .select('id')
-        .eq('business_id', auth.businessId)
+        .eq('business_id', businessId)
         .eq('status', 'pending')
         .limit(1)
         .maybeSingle();
       if (!pending) {
         await supabase.from('review_number_requests').insert({
-          business_id: auth.businessId,
+          business_id: businessId,
           note: 'Auto-created at GBP connect. Assign a UK long code so SMS requests can send',
         });
       }

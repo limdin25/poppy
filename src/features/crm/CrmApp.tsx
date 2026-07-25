@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import CrmLayout from './layout/Smsv2Layout'
 import AdminOnlyRoute from './components/AdminOnlyRoute'
 
-const CrmLoginPage = lazy(() => import('./pages/CrmLoginPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const InboxPage = lazy(() => import('./pages/InboxPage'))
 const CallsPage = lazy(() => import('./pages/CallsPage'))
@@ -16,6 +15,7 @@ const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage'))
 const PipelinesPage = lazy(() => import('./pages/PipelinesPage'))
 const ReportsPage = lazy(() => import('./pages/ReportsPage'))
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
+const VideoFunnelPage = lazy(() => import('./pages/VideoFunnelPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const DialerProPage = lazy(() => import('./dialer-pro/DialerProPage'))
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage'))
@@ -39,8 +39,9 @@ export default function CrmApp() {
     <QueryClientProvider client={crmQueryClient}>
       <Suspense fallback={<Fallback />}>
         <Routes>
-          {/* Public — outside CrmGuard (CrmLayout embeds the guard). */}
-          <Route path="login" element={<CrmLoginPage />} />
+          {/* Old CRM login URL — consolidated into the single app login at
+              /login, which routes staff straight to the CRM by role. */}
+          <Route path="login" element={<Navigate to="/login" replace />} />
           <Route element={<CrmLayout />}>
             <Route index element={<Navigate to="inbox" replace />} />
             <Route path="dashboard" element={<AdminOnlyRoute><DashboardPage /></AdminOnlyRoute>} />
@@ -63,6 +64,7 @@ export default function CrmApp() {
             <Route path="pipelines" element={<PipelinesPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="leaderboard" element={<LeaderboardPage />} />
+            <Route path="video-funnel" element={<VideoFunnelPage />} />
             <Route path="settings" element={<AdminOnlyRoute><SettingsPage /></AdminOnlyRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/admin/crm" replace />} />

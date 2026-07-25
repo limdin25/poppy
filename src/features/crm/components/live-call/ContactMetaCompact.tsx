@@ -10,10 +10,12 @@
 // "Interested" was rendering the same word twice. Filter out any tag
 // whose lowercase matches the stage label before rendering.
 
-import { Tag, Flame, MapPin, ExternalLink } from 'lucide-react';
+import { Tag, Flame, MapPin, ExternalLink, Star, Search } from 'lucide-react';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { formatPence, formatRelativeTime } from '../../data/helpers';
 import type { Contact } from '../../types';
+import SubscribeButton from './SubscribeButton';
+import VideoLinkButton from './VideoLinkButton';
 
 interface Props {
   contact: Contact;
@@ -44,8 +46,34 @@ export default function ContactMetaCompact({ contact }: Props) {
     .replace(/^https?:\/\//i, '')
     .replace(/^www\./i, '');
 
+  // Plumber lead facts (custom_fields from the leads CSV import). Surface the
+  // website + ranking numbers so the agent has everything the script references
+  // in view during the call — no jumping to Google mid-pitch.
+  const cf = contact.customFields ?? {};
+  const rawSite = (cf.website ?? '').trim();
+  const websiteUrl = rawSite
+    ? (/^https?:\/\//i.test(rawSite) ? rawSite : `https://${rawSite}`)
+    : '';
+  const websiteLabel = rawSite.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+  const rating = (cf.rating ?? '').trim();
+  const reviews = (cf.reviews ?? '').trim();
+  const rank = (cf.rank ?? '').trim();
+  const plumbersAhead = (cf.plumbers_ahead ?? '').trim();
+  const town = (cf.town ?? '').trim();
+  const comp1 = (cf.competitor_1 ?? '').trim();
+  const comp2 = (cf.competitor_2 ?? '').trim();
+  const searchUrl = (cf.google_search_url ?? '').trim();
+  const hasLeadFacts = !!(websiteUrl || rating || reviews || rank || town || comp1);
+  const competitors = [comp1, comp2].filter(Boolean).join(', ');
+
   return (
     <div className="space-y-1.5">
+      {/* Video-first close: their personal VSL page, texted in one tap. */}
+      <VideoLinkButton contact={contact} />
+
+      {/* One-tap close: create the account + Stripe link and text it live. */}
+      <SubscribeButton contact={contact} />
+
       {/* Property address + URL — only render when one or both are set. */}
       {(propertyAddress || propertyUrl) && (
         <div className="space-y-1 pb-1.5 border-b border-[#E5E7EB]/70">
@@ -65,6 +93,58 @@ export default function ContactMetaCompact({ contact }: Props) {
             >
               <ExternalLink className="w-3 h-3 mt-0.5 flex-shrink-0" />
               <span className="truncate">{propertyUrlLabel}</span>
+            </a>
+          )}
+        </div>
+      )}
+      {/* Plumber lead facts — website + live ranking the script reads back. */}
+      {hasLeadFacts && (
+        <div className="space-y-1 pb-1.5 border-b border-[#E5E7EB]/70">
+          {websiteUrl && (
+            <a
+              href={websiteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-start gap-1.5 text-[11px] text-[#3C5A87] underline decoration-[#3C5A87]/40 hover:decoration-[#3C5A87] cursor-pointer"
+              title={websiteUrl}
+            >
+              <ExternalLink className="w-3 h-3 mt-0.5 flex-shrink-0" />
+              <span className="truncate">{websiteLabel}</span>
+            </a>
+          )}
+          {(rating || reviews || rank || town) && (
+            <div className="flex items-center gap-1.5 text-[11px] text-[#1A1A1A] flex-wrap">
+              {rating && (
+                <span className="inline-flex items-center gap-0.5">
+                  <Star className="w-3 h-3 text-[#F59E0B] fill-[#F59E0B]" />
+                  {rating}
+                </span>
+              )}
+              {reviews && <><span className="text-[#E5E7EB]">·</span><span>{reviews} reviews</span></>}
+              {rank && (
+                <>
+                  <span className="text-[#E5E7EB]">·</span>
+                  <span>rank #{rank}{plumbersAhead && ` (${plumbersAhead} ahead)`}</span>
+                </>
+              )}
+              {town && <><span className="text-[#E5E7EB]">·</span><span className="text-[#6B7280]">{town}</span></>}
+            </div>
+          )}
+          {competitors && (
+            <div className="text-[11px] text-[#6B7280] truncate" title={competitors}>
+              Ahead: {competitors}
+            </div>
+          )}
+          {searchUrl && (
+            <a
+              href={searchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#3C5A87] hover:underline cursor-pointer"
+              title="Open this lead's live Google search"
+            >
+              <Search className="w-3 h-3 flex-shrink-0" />
+              Live Google search ↗
             </a>
           )}
         </div>

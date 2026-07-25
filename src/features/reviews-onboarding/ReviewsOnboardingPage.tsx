@@ -14,7 +14,13 @@ import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { REVIEW_PLAN_CARDS, PLAN_FEATURES, reviewsApi } from '@/features/reviews/lib'
 
 type Step = 'account' | 'contacts' | 'compliance' | 'plan' | 'software' | 'done'
-const STEPS: Step[] = ['account', 'contacts', 'compliance', 'plan', 'software', 'done']
+// Two entry modes into the SAME funnel (Hugo 2026-07-22):
+//   onboarding — the normal public signup (account → set-up → pay near the end).
+//   subscribe  — the on-the-call close: email-only account, then PAY FIRST,
+//                then the rest of the setup. Sent as go.heyelsie.com/subscribe.
+type Mode = 'onboarding' | 'subscribe'
+const ONBOARDING_STEPS: Step[] = ['account', 'contacts', 'compliance', 'plan', 'software', 'done']
+const SUBSCRIBE_STEPS: Step[] = ['account', 'plan', 'contacts', 'compliance', 'software', 'done']
 const STEP_LABELS: Record<Step, string> = {
   account: 'Account', contacts: 'Customers', compliance: 'Consent', plan: 'Plan', software: 'Software', done: 'Done',
 }
@@ -46,17 +52,18 @@ function pick(row: Record<string, string>, keys: string[]): string {
   return ''
 }
 
-export default function ReviewsOnboardingPage() {
+export default function ReviewsOnboardingPage({ mode = 'onboarding' }: { mode?: Mode }) {
   const [params] = useSearchParams()
+  const STEPS = mode === 'subscribe' ? SUBSCRIBE_STEPS : ONBOARDING_STEPS
   const [step, setStep] = useState<Step>('account')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [hasSession, setHasSession] = useState(false)
 
-  // Account form
-  const [name, setName] = useState('')
-  const [businessName, setBusinessName] = useState('')
-  const [email, setEmail] = useState('')
+  // Account form (subscribe door prefills from the link the agent sent)
+  const [name, setName] = useState(params.get('name') ?? '')
+  const [businessName, setBusinessName] = useState(params.get('business') ?? '')
+  const [email, setEmail] = useState(params.get('email') ?? '')
   const [password, setPassword] = useState('')
 
   // Contacts
@@ -73,26 +80,38 @@ export default function ReviewsOnboardingPage() {
 
   const stepIndex = STEPS.indexOf(step)
 
-  // Resolve where the user is in the flow (fresh visit or Stripe return)
+  // Resolve where the user is in the flow (fresh visit or Stripe return).
+  // Mode-aware: subscribe pays FIRST (account → plan → pay → rest); onboarding
+  // pays near the end. The /continue door lands here already signed in + paid,
+  // so it resumes past the plan step automatically.
   useEffect(() => {
     async function resolve() {
       const { data: { session } } = await supabase.auth.getSession()
       setHasSession(!!session)
       if (!session) { setStep('account'); return }
-
-      // Stripe return — after paying we ask which software they use.
-      if (params.get('paid') === '1') { setStep('software'); return }
       if (params.get('cancelled') === '1') { setStep('plan'); return }
 
-      // Otherwise: derive the furthest incomplete step from data
       const [{ data: settings }, { data: member }] = await Promise.all([
         supabase.from('review_settings').select('attested_at, crm_provider').limit(1).maybeSingle(),
         supabase.from('team_members').select('business_id').eq('user_id', session.user.id).limit(1).maybeSingle(),
       ])
       if (!member) { setStep('account'); return }
-      if (!settings?.attested_at) { setStep('contacts'); return }
       const { data: biz } = await supabase.from('businesses').select('plan').eq('id', member.business_id).single()
-      if (!biz?.plan?.startsWith('reviews_')) { setStep('plan'); return }
+      const paid = !!biz?.plan?.startsWith('reviews_')
+
+      if (mode === 'subscribe') {
+        // Pay-first: account → plan → (Stripe) → contacts → compliance → software.
+        if (params.get('paid') === '1') { setStep('contacts'); return }
+        if (!paid) { setStep('plan'); return }
+        if (!settings?.attested_at) { setStep('contacts'); return }
+        if (!settings?.crm_provider) { setStep('software'); return }
+        setStep('done'); return
+      }
+
+      // onboarding mode (also where the /continue door lands, already paid).
+      if (params.get('paid') === '1') { setStep('software'); return }
+      if (!settings?.attested_at) { setStep('contacts'); return }
+      if (!paid) { setStep('plan'); return }
       if (!settings?.crm_provider) { setStep('software'); return }
       setStep('done')
     }
@@ -105,20 +124,27 @@ export default function ReviewsOnboardingPage() {
     setBusy(true)
     setError(null)
     try {
+      const isSub = mode === 'subscribe'
+      // Subscribe door: no password field — the customer sets nothing and later
+      // signs in with an emailed 6-digit code (/continue). We mint a strong
+      // random password server-side so the account exists; they never see it.
+      const pw = isSub ? `${crypto.randomUUID()}Aa1!` : password
+      const nm = isSub ? (name.trim() || businessName.trim() || email.split('@')[0]) : name
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name, email, password, businessName,
+          name: nm, email, password: pw, businessName,
           product: 'reviews',
           ref: params.get('ref') ?? undefined,
+          crm_contact_id: params.get('crm') ?? undefined,
         }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Registration failed')
       await supabase.auth.setSession({ access_token: json.access_token, refresh_token: json.refresh_token })
       setHasSession(true)
-      setStep('contacts')
+      setStep(isSub ? 'plan' : 'contacts')
     } catch (err) {
       setError((err as Error).message)
     }
@@ -153,7 +179,10 @@ export default function ReviewsOnboardingPage() {
     setError(null)
     try {
       await reviewsApi('/api/reviews/settings', { method: 'PUT', body: { attest: true } })
-      setStep('plan')
+      // Subscribe mode paid BEFORE compliance, so continue to software — never
+      // back to the pay screen (that would invite a second subscription).
+      // Matches resolve()'s own subscribe routing.
+      setStep(mode === 'subscribe' ? 'software' : 'plan')
     } catch (err) {
       setError((err as Error).message)
     }
@@ -196,7 +225,7 @@ export default function ReviewsOnboardingPage() {
     setBusy(true)
     setError(null)
     try {
-      const out = await reviewsApi<{ url: string }>('/api/billing/checkout', { body: { priceId, returnPath: '/onboarding' } })
+      const out = await reviewsApi<{ url: string }>('/api/billing/checkout', { body: { priceId, returnPath: mode === 'subscribe' ? '/subscribe' : '/onboarding' } })
       window.location.href = out.url
     } catch (err) {
       setError((err as Error).message)
@@ -248,24 +277,36 @@ export default function ReviewsOnboardingPage() {
         <div className="w-full max-w-md">
           {step === 'account' && (
             <div>
-              <h1 className="text-2xl font-semibold text-ink">Create your account</h1>
-              <p className="mt-1 text-sm text-ink-subtle">10-day free trial · set up in about 10 minutes</p>
+              <h1 className="text-2xl font-semibold text-ink">
+                {mode === 'subscribe' ? 'Start your subscription' : 'Create your account'}
+              </h1>
+              <p className="mt-1 text-sm text-ink-subtle">10-day free trial · nothing charged for 10 days</p>
               {hasSession ? (
                 <div className="mt-6 space-y-3">
                   <p className="text-sm text-ink">You're already signed in.</p>
-                  <Button onClick={() => setStep('contacts')}>Continue setup</Button>
+                  <Button onClick={() => setStep(mode === 'subscribe' ? 'plan' : 'contacts')}>Continue</Button>
                 </div>
               ) : (
                 <form onSubmit={createAccount} className="mt-6 space-y-3">
-                  <Input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required />
-                  <Input placeholder="Business name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} required />
-                  <Input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                  <Input type="password" placeholder="Choose a password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+                  {mode === 'subscribe' ? (
+                    <>
+                      <Input placeholder="Business name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} required />
+                      <Input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                      <p className="text-xs text-ink-subtle">No password needed — next time you'll sign in with a code we email you.</p>
+                    </>
+                  ) : (
+                    <>
+                      <Input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required />
+                      <Input placeholder="Business name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} required />
+                      <Input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                      <Input type="password" placeholder="Choose a password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+                    </>
+                  )}
                   <p className="text-xs text-ink-subtle">
                     By continuing you agree to our <a href="https://heyelsie.com/terms" className="underline">terms</a> and{' '}
                     <a href="https://heyelsie.com/privacy" className="underline">privacy policy</a>.
                   </p>
-                  <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Creating…' : 'Continue'}</Button>
+                  <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Creating…' : mode === 'subscribe' ? 'Continue to payment' : 'Continue'}</Button>
                 </form>
               )}
             </div>
@@ -273,6 +314,11 @@ export default function ReviewsOnboardingPage() {
 
           {step === 'contacts' && (
             <div>
+              {mode === 'subscribe' && params.get('paid') === '1' && (
+                <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+                  🎉 Payment received — your 10-day trial's started. Let's finish setting you up (about 2 minutes).
+                </div>
+              )}
               <h1 className="text-2xl font-semibold text-ink">Upload your customer list</h1>
               <p className="mt-1 text-sm text-ink-subtle">
                 Your past customers are your fastest reviews. Most businesses get 10-15% of them to leave one.

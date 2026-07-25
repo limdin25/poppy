@@ -13,7 +13,6 @@ import {
   ChevronRight,
   Download,
   MessageSquare,
-  ExternalLink,
   CalendarDays,
 } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, startOfYesterday, endOfYesterday } from '@/features/crm/lib/dates';
@@ -30,7 +29,6 @@ import { cn } from '@/core/lib/cn';
 import { useCalls, signCallRecording } from '../hooks/useCalls';
 import { useSmsV2 } from '../store/SmsV2Store';
 import { useContactPersistence } from '../hooks/useContactPersistence';
-import { useActiveCallCtx } from '../components/live-call/ActiveCallContext';
 import { useDemoMode } from '../lib/useDemoMode';
 import type { CallRecord, Contact } from '../types';
 
@@ -78,7 +76,6 @@ export default function CallsPage() {
   const { contacts: realContacts, columns, patchContact, upsertContact, pushToast } = useSmsV2();
   const persist = useContactPersistence();
   const { agents: realAgentsToday } = useAgentsToday();
-  const { openCallRoom } = useActiveCallCtx();
   const demoMode = useDemoMode();
   // PR 107: avoid the "unused" warning when columns are only consumed
   // through StageSelector now (no more inline IIFE that read them).
@@ -490,19 +487,6 @@ export default function CallsPage() {
                           title="View transcript (Hugo 2026-04-26)"
                         >
                           <MessageSquare className="w-3 h-3" /> Transcript
-                        </button>
-                        {/* PR 107 (Hugo 2026-04-28): "Open call room"
-                            now opens the live call-room preview for the
-                            contact (script + coach + glossary + SMS),
-                            not the historic /crm/calls/:id page. The
-                            past-call screen is still reachable via the
-                            transcript modal + the route itself. */}
-                        <button
-                          onClick={() => openCallRoom(c.contactId)}
-                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-[#3C5A87] hover:bg-[#3C5A87] hover:text-white rounded-[8px] transition-colors"
-                          title="Open the live call-room preview for this contact"
-                        >
-                          <ExternalLink className="w-3 h-3" /> Open call room
                         </button>
                       </div>
                     </td>

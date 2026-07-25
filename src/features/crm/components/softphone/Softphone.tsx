@@ -52,7 +52,9 @@ export default function Softphone() {
 
   const handleCall = (phone: string) => {
     if (spend.isLimitReached) return;
-    void startCall('manual-' + Date.now(), phone, 'Direct dial');
+    // Free-dial: show the compact softphone bar, not the full-screen call
+    // room — the one full room is /dialer-pro (Hugo 2026-07-22).
+    void startCall('manual-' + Date.now(), phone, 'Direct dial', { openRoom: false });
     setOpen(false);
   };
 

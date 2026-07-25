@@ -1,27 +1,41 @@
-// DialerRightTabs — col 3 of the dialer. Three tabs the agent flips between on
-// a live sales call: Calculator (default), Objections, and Messages. The
-// Messages tab is the SMS/WhatsApp/Email send box on top with the contact's
-// message history below it. Built for the dialer specifically; the legacy
-// LiveCallScreen still uses TerminologyPane.
+// DialerRightTabs — col 3 of the dialer. The tabs the agent flips between on
+// a live sales call: Coach (the LIVE transcript + AI coach), Calculator,
+// Objections, and Messages. The Messages tab is the SMS/WhatsApp/Email send
+// box on top with the contact's message history below it.
+//
+// Hugo 2026-07-22 — ONE ROOM: the real live AI coach (the "Live transcript +
+// AI coach" pane, bound to the active call's wk_calls.id) now lives HERE, in
+// the single dialer room, instead of a separate LiveCallScreen. It auto-opens
+// the moment a call connects so the agent's eye lands on the read-aloud line.
 
-import { useState } from 'react';
-import { Calculator, MessageSquare, ShieldAlert } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Calculator, MessageSquare, ShieldAlert, Sparkles } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import SalesCalculatorPane from './SalesCalculatorPane';
 import ObjectionsPane from './ObjectionsPane';
 import MidCallSmsSender from './MidCallSmsSender';
+import LiveTranscriptPane from './LiveTranscriptPane';
 import { useContactMessages, type CrmMessage } from '../../hooks/useContactMessages';
 
-type Tab = 'calculator' | 'objections' | 'messages';
+type Tab = 'coach' | 'calculator' | 'objections' | 'messages';
 
 interface Props {
   contactId?: string;
   contactName?: string;
   contactPhone?: string;
   contactEmail?: string;
+  /** Lead's owner (person) name — for plumber leads contactName is the
+   *  business, so {first_name} greetings must use this instead. */
+  ownerName?: string | null;
   agentFirstName: string;
   campaignId?: string | null;
   pipelineId?: string | null;
+  /** Live call binding (Hugo 2026-07-22). currentCallId is the active
+   *  wk_calls.id — the Coach pane subscribes to its transcript + coach
+   *  events. callConnected auto-opens the Coach tab on pickup. */
+  currentCallId?: string | null;
+  callConnected?: boolean;
+  liveDurationSec?: number;
 }
 
 export default function DialerRightTabs({
@@ -29,22 +43,44 @@ export default function DialerRightTabs({
   contactName,
   contactPhone,
   contactEmail,
+  ownerName,
   agentFirstName,
   campaignId,
   pipelineId,
+  currentCallId,
+  callConnected,
+  liveDurationSec,
 }: Props) {
   const [tab, setTab] = useState<Tab>('calculator');
   const { messages } = useContactMessages(contactId ?? '');
 
+  // Auto-open the Coach tab the instant the call connects, so the read-aloud
+  // line is in front of the agent without a click. Only fires on the
+  // idle→connected transition; the agent can freely switch tabs after.
+  const prevConnected = useRef(false);
+  useEffect(() => {
+    if (callConnected && !prevConnected.current) setTab('coach');
+    prevConnected.current = !!callConnected;
+  }, [callConnected]);
+
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="flex border-b border-[#E5E7EB]">
+        <TabButton active={tab === 'coach'} icon={<Sparkles className="w-3.5 h-3.5" />} label="Coach" onClick={() => setTab('coach')} />
         <TabButton active={tab === 'calculator'} icon={<Calculator className="w-3.5 h-3.5" />} label="Calculator" onClick={() => setTab('calculator')} />
         <TabButton active={tab === 'objections'} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Objections" onClick={() => setTab('objections')} />
         <TabButton active={tab === 'messages'} icon={<MessageSquare className="w-3.5 h-3.5" />} label="Messages" count={messages.length} onClick={() => setTab('messages')} />
       </div>
 
       <div className="flex-1 overflow-hidden">
+        {tab === 'coach' && (
+          <LiveTranscriptPane
+            durationSec={liveDurationSec ?? 0}
+            contactId={contactId ?? ''}
+            callId={currentCallId ?? null}
+            agentFirstName={agentFirstName}
+          />
+        )}
         {tab === 'calculator' && <SalesCalculatorPane />}
         {tab === 'objections' && <ObjectionsPane />}
         {tab === 'messages' && (
@@ -53,6 +89,7 @@ export default function DialerRightTabs({
             contactName={contactName}
             contactPhone={contactPhone}
             contactEmail={contactEmail}
+            ownerName={ownerName}
             agentFirstName={agentFirstName}
             campaignId={campaignId}
             pipelineId={pipelineId}
@@ -65,7 +102,7 @@ export default function DialerRightTabs({
 }
 
 function MessagesTab({
-  contactId, contactName, contactPhone, contactEmail, agentFirstName, campaignId, pipelineId, messages,
+  contactId, contactName, contactPhone, contactEmail, ownerName, agentFirstName, campaignId, pipelineId, messages,
 }: Props & { messages: CrmMessage[] }) {
   if (!contactId || !contactName || !contactPhone) {
     return (
@@ -83,6 +120,7 @@ function MessagesTab({
           contactName={contactName}
           contactPhone={contactPhone}
           contactEmail={contactEmail}
+          ownerName={ownerName}
           agentFirstName={agentFirstName}
           campaignId={campaignId ?? null}
           pipelineId={pipelineId ?? null}

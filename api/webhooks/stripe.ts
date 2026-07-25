@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
+import { provisionVslSale } from '../lib/vsl-provision.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -48,6 +49,17 @@ export default async function handler(req: Request): Promise<Response> {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
+
+        // VSL page sale (no account existed before checkout): provision the
+        // whole account from the session + page row. Separate metadata key, so
+        // the existing business_id flow below is untouched. Let it THROW on
+        // failure — the outer catch returns 500 so Stripe retries rather than
+        // leaving a paying customer with no account.
+        if (session.metadata?.vsl_page_id) {
+          await provisionVslSale(session);
+          break;
+        }
+
         const businessId = session.metadata?.business_id;
         if (businessId && session.subscription) {
           const sub = await stripe.subscriptions.retrieve(session.subscription as string);

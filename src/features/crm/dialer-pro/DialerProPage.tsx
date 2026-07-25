@@ -241,6 +241,62 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
     })();
   }, [autoCallContactId, deviceReady, camp, state.phase, queue, machine, onToast, refreshQueue, onAutoCallConsumed]);
 
+  // Redial straight from the call history — mirrors the ?call= auto-dial path:
+  // ensure the contact has a pending queue row, then hand it to the machine.
+  const handleRedial = useCallback(async (contactId: string) => {
+    if (!camp) { onToast('Pick a campaign first', 'error'); return; }
+    if (!deviceReady) { onToast('Phone still connecting — try again in a second', 'error'); return; }
+    if (state.phase !== 'idle' && state.phase !== 'paused') { onToast('Finish the current call first', 'error'); return; }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: c } = await (supabase.from('wk_contacts' as any) as any)
+      .select('id, name, phone, pipeline_column_id')
+      .eq('id', contactId)
+      .maybeSingle();
+    if (!c?.phone) { onToast('Contact has no phone number', 'error'); return; }
+
+    let queueLead = queue.find((q) => q.contactId === contactId);
+    if (!queueLead) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: existingRow } = await (supabase.from('wk_dialer_queue' as any) as any)
+        .select('id')
+        .eq('contact_id', contactId)
+        .eq('campaign_id', camp.id)
+        .maybeSingle();
+      let queueRowId: string;
+      if (existingRow) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase.from('wk_dialer_queue' as any) as any)
+          .update({ status: 'pending', priority: 9999 })
+          .eq('id', existingRow.id);
+        queueRowId = existingRow.id;
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: row, error: insertErr } = await (supabase.from('wk_dialer_queue' as any) as any)
+          .insert({ contact_id: contactId, campaign_id: camp.id, status: 'pending', priority: 9999, attempts: 0, agent_id: userId })
+          .select('id')
+          .single();
+        if (insertErr || !row) { onToast(insertErr?.message ?? 'Could not queue the redial', 'error'); return; }
+        queueRowId = row.id;
+      }
+      queueLead = {
+        id: c.id,
+        contactId: c.id,
+        phone: c.phone,
+        name: c.name ?? c.phone,
+        priority: 9999,
+        attempts: 0,
+        scheduledFor: null,
+        status: 'pending',
+        campaignId: camp.id,
+        pipelineColumnId: c.pipeline_column_id ?? null,
+        queueRowId,
+      };
+      refreshQueue();
+    }
+    void machine.dialLead(queueLead);
+  }, [camp, deviceReady, state.phase, queue, machine, onToast, refreshQueue, userId]);
+
   // Contact for the call room columns — during a call use currentLead,
   // when idle fall back to the next lead in queue so COL 1 (SMS/WA/Email)
   // is always populated and ready to send.
@@ -652,7 +708,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
 
           {/* COL 2 — Sales script: editable (admin), lean, read live. */}
           <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
-            <DialerScriptPane />
+            <DialerScriptPane contact={contact} />
           </ResizablePanel>
 
           <ResizableHandle withHandle />
@@ -667,9 +723,13 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
               contactName={contact?.name}
               contactPhone={contact?.phone}
               contactEmail={contact?.email}
+              ownerName={contact?.customFields?.owner_name}
               agentFirstName={agentFirstName}
               campaignId={camp?.id ?? null}
               pipelineId={camp?.pipelineId ?? null}
+              currentCallId={state.currentCallId}
+              callConnected={state.phase === 'connected'}
+              liveDurationSec={liveDuration}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -1059,7 +1119,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
               <span className="text-[10px] text-[#9CA3AF]">({historyCount})</span>
             </div>
             <div className="overflow-y-auto" style={{ maxHeight: 200 }}>
-              <CallHistoryPro onCountChange={setHistoryCount} onEditContact={openEditContactById} />
+              <CallHistoryPro onCountChange={setHistoryCount} onEditContact={openEditContactById} onRedial={handleRedial} />
             </div>
           </div>
         </div>

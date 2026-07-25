@@ -37,7 +37,7 @@ export default async function handler(req: Request): Promise<Response> {
     // Get business to check for existing Stripe customer
     const { data: business } = await supabase
       .from('businesses')
-      .select('stripe_customer_id, owner_id')
+      .select('stripe_customer_id, owner_id, plan')
       .eq('id', businessId)
       .single();
 
@@ -75,14 +75,28 @@ export default async function handler(req: Request): Promise<Response> {
     const isReviews = REVIEWS_PRICES.has(priceId);
     const GO_URL = process.env.GO_APP_URL || 'https://go.heyelsie.com';
 
+    // Defense-in-depth (adversarial review 2026-07-22): never open a SECOND
+    // reviews subscription for a business that's already on a reviews plan.
+    // Stops any double-charge, whatever UI path calls this.
+    if (isReviews && typeof business.plan === 'string' && business.plan.startsWith('reviews_')) {
+      return new Response(
+        JSON.stringify({ error: 'You already have an active subscription.' }),
+        { status: 409 },
+      );
+    }
+
+    // Keep the return destination on the SAME funnel the user came from
+    // (/subscribe vs /onboarding) for BOTH success and cancel.
+    const reviewsReturn = `${GO_URL}${typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : '/onboarding'}`;
+
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: isReviews
-        ? `${GO_URL}${typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : '/onboarding'}?paid=1`
+        ? `${reviewsReturn}?paid=1`
         : `${APP_URL}/account/billing?success=true`,
       cancel_url: isReviews
-        ? `${GO_URL}/onboarding?cancelled=1`
+        ? `${reviewsReturn}?cancelled=1`
         : `${APP_URL}/account/billing?cancelled=true`,
       metadata: { business_id: businessId },
       ...(isReviews

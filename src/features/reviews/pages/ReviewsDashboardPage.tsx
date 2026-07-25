@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Star, TrendingUp, MousePointerClick, Send, Users, Copy, ExternalLink, Check } from 'lucide-react'
+import { Star, TrendingUp, MousePointerClick, Send, Users, Copy, ExternalLink, Check, MapPin, Pencil } from 'lucide-react'
 import { StatCard } from '@/core/ui/StatCard'
 import { SectionCard } from '@/core/ui/SectionCard'
 import { Button } from '@/core/ui/Button'
+import { Input } from '@/core/ui/Input'
 import { cn } from '@/core/lib/cn'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { useReviewsSession, reviewsApi } from '../lib'
+import { projectRating, milestonesToRatings, clamp } from '../dashboard-metrics'
 
 type Range = '7d' | '30d' | 'all'
 
@@ -42,24 +44,34 @@ export default function ReviewsDashboardPage() {
   const [refreshKey, setRefreshKey] = useState(0)
   const imp = session.impersonating ? session.businessId : null
 
+  // Inline-editable business name + address
+  const [name, setName] = useState(session.businessName)
+  const [address, setAddress] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
   // Google connection happens here, after signup. Zernio's OAuth flow returns
   // the browser to /dashboard?connected=googlebusiness&profileId=…&accountId=…
   useEffect(() => {
     if (params.get('connected') !== 'googlebusiness' || !params.get('accountId')) return
-    setConnBusy(true)
-    reviewsApi<{ locationName: string | null }>('/api/reviews/connect-complete', {
-      body: { profileId: params.get('profileId'), accountId: params.get('accountId') },
-      impersonateBusinessId: imp,
-    })
-      .then((out) => {
+    async function finishConnect() {
+      setConnBusy(true)
+      try {
+        const out = await reviewsApi<{ locationName: string | null }>('/api/reviews/connect-complete', {
+          body: { profileId: params.get('profileId'), accountId: params.get('accountId') },
+          impersonateBusinessId: imp,
+        })
         setConnMsg(`${out.locationName ?? 'Your Google profile'} connected ✓`)
         setRefreshKey((k) => k + 1)
-      })
-      .catch((e) => setConnMsg((e as Error).message))
-      .finally(() => {
+      } catch (e) {
+        setConnMsg((e as Error).message)
+      } finally {
         setConnBusy(false)
         setParams({}, { replace: true })
-      })
+      }
+    }
+    finishConnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -82,15 +94,17 @@ export default function ReviewsDashboardPage() {
     const since30 = new Date(Date.now() - 30 * 86400_000).toISOString()
     async function load() {
       const b = session.businessId
-      const [connRes, reviewsRes, updatedRes, clicksRes, sentRes, contactsRes] = await Promise.all([
+      const [connRes, reviewsRes, updatedRes, clicksRes, sentRes, contactsRes, bizRes] = await Promise.all([
         supabase.from('gbp_connections').select('avg_rating, total_reviews, review_url, maps_url, status').eq('business_id', b).maybeSingle(),
         supabase.from('gbp_reviews').select('id', { count: 'exact', head: true }).eq('business_id', b).gte('review_created_at', since30),
         supabase.from('gbp_reviews').select('id', { count: 'exact', head: true }).eq('business_id', b).gte('review_updated_at', since30).lt('review_created_at', since30),
         supabase.from('review_events').select('id', { count: 'exact', head: true }).eq('business_id', b).eq('type', 'clicked').gte('created_at', since30),
         supabase.from('review_events').select('id', { count: 'exact', head: true }).eq('business_id', b).in('type', ['request_sent', 'followup_sent']).gte('created_at', since30),
         supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('business_id', b).gte('created_at', since30),
+        supabase.from('businesses').select('name, address').eq('id', b).maybeSingle(),
       ])
       setConn(connRes.data ? { ...connRes.data, avg_rating: connRes.data.avg_rating ? Number(connRes.data.avg_rating) : null } : null)
+      if (bizRes.data) { setName(bizRes.data.name ?? session.businessName); setAddress(bizRes.data.address ?? null) }
       setStats({
         newReviews: reviewsRes.count ?? 0,
         updatedReviews: updatedRes.count ?? 0,
@@ -126,22 +140,30 @@ export default function ReviewsDashboardPage() {
   const rating = conn?.avg_rating ?? 0
   const total = conn?.total_reviews ?? 0
 
-  const projected = useMemo(() => {
-    if (!projection) return rating
-    if (!total) return 5
-    return (rating * total + 5 * projection) / (total + projection)
-  }, [rating, total, projection])
-
-  const milestones = useMemo(() => {
-    if (!total || rating >= 4.9) return []
-    return [1, 2, 3, 4, 5].map((i) => {
-      const target = Math.min(5, Math.round((rating + i * 0.1) * 10) / 10)
-      const needed = target >= 5 ? Infinity : Math.ceil((total * (target - rating)) / (5 - target))
-      return { target, needed }
-    }).filter((m) => isFinite(m.needed) && m.needed > 0).slice(0, 5)
-  }, [rating, total])
+  const projected = useMemo(() => projectRating(rating, total, projection), [rating, total, projection])
+  const milestones = useMemo(() => milestonesToRatings(rating, total), [rating, total])
 
   const maxCount = Math.max(1, ...history.map((h) => h.count))
+
+  function startEditName() {
+    setNameDraft(name)
+    setEditingName(true)
+    setTimeout(() => nameInputRef.current?.focus(), 0)
+  }
+
+  async function saveName() {
+    const next = nameDraft.trim()
+    setEditingName(false)
+    if (!next || next === name) return
+    const prev = name
+    setName(next) // optimistic
+    try {
+      await reviewsApi('/api/reviews/business', { method: 'PATCH', body: { name: next }, impersonateBusinessId: imp })
+    } catch (err) {
+      setName(prev) // rollback
+      setConnMsg((err as Error).message)
+    }
+  }
 
   function copyLink() {
     if (!conn?.review_url) return
@@ -153,8 +175,27 @@ export default function ReviewsDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-black tracking-tight text-ink">{session.businessName}</h1>
-        <p className="text-sm text-ink-subtle">Your reviews at a glance</p>
+        {editingName ? (
+          <Input
+            ref={nameInputRef}
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={saveName}
+            onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false) }}
+            className="max-w-md text-2xl font-black"
+            aria-label="Business name"
+          />
+        ) : (
+          <button onClick={startEditName} className="group flex items-center gap-2 text-left" aria-label="Edit business name">
+            <h1 className="text-3xl font-black tracking-tight text-ink">{name}</h1>
+            <Pencil style={{ width: 16, height: 16 }} className="text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100" />
+          </button>
+        )}
+        {address ? (
+          <p className="mt-1 flex items-center gap-1 text-sm text-ink-subtle"><MapPin style={{ width: 14, height: 14 }} /> {address}</p>
+        ) : (
+          <p className="text-sm text-ink-subtle">Your reviews at a glance</p>
+        )}
       </div>
 
       {conn?.status !== 'connected' && (
@@ -253,16 +294,27 @@ export default function ReviewsDashboardPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="range" min={0} max={100} value={projection}
-                  onChange={(e) => setProjection(Number(e.target.value))}
+                  onChange={(e) => setProjection(clamp(Number(e.target.value), 0, 100))}
                   className="flex-1 accent-brand"
                   aria-label="Extra 5-star reviews"
                 />
-                <span className="w-10 text-right text-sm font-semibold text-ink">+{projection}</span>
+                <div className="flex items-center rounded-lg border border-border bg-surface px-2">
+                  <span className="text-sm font-semibold text-ink-subtle">+</span>
+                  <input
+                    type="number" min={0} max={100} value={projection}
+                    onChange={(e) => setProjection(clamp(Math.floor(Number(e.target.value)), 0, 100))}
+                    className="w-12 bg-transparent py-1 text-sm font-semibold text-ink focus:outline-none"
+                    aria-label="Extra 5-star reviews (number)"
+                  />
+                </div>
               </div>
-              {projection > 0 && (
+              <p className="mt-1 text-[11px] text-ink-subtle">5-star reviews</p>
+              {projection > 0 ? (
                 <p className="mt-1 text-sm font-medium text-brand-700">
                   → {projected.toFixed(2)} ★ with {projection} more 5-star review{projection === 1 ? '' : 's'}
                 </p>
+              ) : (
+                <p className="mt-2 rounded-lg bg-border/30 px-2 py-1.5 text-center text-[11px] text-ink-subtle">Move the slider to see your projected rating</p>
               )}
             </div>
 

@@ -264,7 +264,15 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
           if (isThisCall()) dispatch({ type: 'RINGING' });
         });
         twilioCall.on('accept', () => {
-          if (isThisCall()) dispatch({ type: 'CONNECTED' });
+          if (!isThisCall()) return;
+          // Force the mic LIVE at the SDK layer the moment the call connects.
+          // The Twilio Device's audio input is SHARED across calls; a prior
+          // call — or the global softphone now mounted on every page — can
+          // leave the track muted (track.enabled=false / replaced sender),
+          // which silences this fresh call even though our state says
+          // unmuted (Hugo 2026-07-22: "mic on but not working in the app").
+          try { muteAllCalls(false, twilioCall); } catch { /* ignore */ }
+          dispatch({ type: 'CONNECTED' });
         });
         twilioCall.on('disconnect', () => {
           if (!isThisCall()) return;

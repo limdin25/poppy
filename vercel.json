@@ -39,6 +39,16 @@
       "destination": "/api/report"
     },
     {
+      "source": "/:slug((?!api$|assets$|r$|report$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
+      "has": [
+        {
+          "type": "host",
+          "value": "heyelsie.com"
+        }
+      ],
+      "destination": "/api/vsl/page?slug=:slug"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
@@ -145,6 +155,10 @@
     {
       "path": "/api/cron/daily-agent-reports",
       "schedule": "30 16 * * *"
+    },
+    {
+      "path": "/api/cron/vsl-automation",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

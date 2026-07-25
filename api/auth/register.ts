@@ -16,7 +16,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { name, email, password, businessId, businessName, product, ref } = await req.json() as {
+    const { name, email, password, businessId, businessName, product, ref, crm_contact_id } = await req.json() as {
       name?: string;
       email?: string;
       password?: string;
@@ -24,6 +24,7 @@ export default async function handler(req: Request): Promise<Response> {
       businessName?: string;
       product?: string;   // 'reviews' → HeyElsie Reviews signup (go.heyelsie.com)
       ref?: string;       // referrer business id (referral attribution)
+      crm_contact_id?: string; // link this CRM lead (wk_contacts) to the new account
     };
 
     if (!name || !email || !password) {
@@ -149,6 +150,21 @@ export default async function handler(req: Request): Promise<Response> {
               status: 'signed_up',
             });
           }
+        }
+
+        // CRM link (Hugo 2026-07-22): the subscribe link carries ?crm=<contact_id>.
+        // Point that CRM lead at this new reviews account so the agent's pipeline
+        // stays connected. This endpoint is UNAUTHENTICATED, so the update is
+        // hard-guarded (adversarial review): only claim a lead that is currently
+        // UNLINKED (is business_id null) AND whose email matches this new
+        // account — so a caller can't relink someone else's or an already-linked
+        // contact by guessing an id. Best-effort; never fail signup on it.
+        if (crm_contact_id && /^[0-9a-f-]{36}$/i.test(crm_contact_id)) {
+          await supabase.from('wk_contacts')
+            .update({ business_id: bizId })
+            .eq('id', crm_contact_id)
+            .is('business_id', null)
+            .ilike('email', email.trim());
         }
       } else {
         // New sign-ups land in the simple client portal (slim menu). Admins
