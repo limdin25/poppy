@@ -24,3 +24,14 @@ scraper/*.bak*
 scraper/app.py.bak*
 scraper/**/*.bak*
 scripts/.crm-twilio-output.json
+
+# VSL video project — never commit renders, heavy media, or the TTS venv
+video/out/
+video/public/*.mp4
+video/public/actor*/
+video/public/clips/
+video/public/audio/r*.m4a
+video/public/audio/*backup*
+video/public/audio/voice/
+video/tts-env/
+video/node_modules/

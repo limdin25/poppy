@@ -1,0 +1,16 @@
+{
+  "name": "elsie-vsl-video",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Remotion render pipeline for the HeyElsie Reviews personalised VSL (rank-frame video)",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render FlowVideo out/flow.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "^4.0.0"
+  }
+}
