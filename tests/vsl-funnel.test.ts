@@ -812,3 +812,27 @@ describe('multi-trade', () => {
     expect(gen.trade.search_term).toContain(gen.town)
   })
 })
+
+describe('examples carousel — the hero follows the lead’s trade', () => {
+  const page = read('api/vsl/page.ts')
+
+  it('only leads with the plumber hero for plumbing-family leads', () => {
+    // Mayfair Plumbers heading an electrician's page is the same niche mismatch
+    // as labelling their Google cards "· Plumber".
+    expect(page).toMatch(/const heroFits = !trade \|\| trade\.profile_key === 'plumbing'/)
+    expect(page).toMatch(/if \(heroFits \|\| EXAMPLES\.length < 2\) EXAMPLES\.unshift\(HERO\)/)
+  })
+
+  it('still shows the hero when the live fetch gave us nothing to stand on', () => {
+    expect(page).toMatch(/EXAMPLES\.length < 2/)
+  })
+
+  it('keeps the hero in the dedupe set even when it is not shown', () => {
+    expect(page).toMatch(/new Set\(\[normBusinessName\(HERO\.name\), normBusinessName\(rawBusiness\)\]\)/)
+  })
+
+  it('tops up from the LEAD’s trade, not always London plumbers', () => {
+    expect(page).toMatch(/bigMarketExamples\(trade\?\.plural \|\| 'plumbers'\)/)
+    expect(page).toMatch(/\$\{plural\} in London/)
+  })
+})

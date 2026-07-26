@@ -102,7 +102,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const hash = (s: string) => [...s].reduce((a, c) => ((a * 31 + c.charCodeAt(0)) >>> 0), 7);
   const HERO: Example = { name: 'Mayfair Plumbers', rating: 4.8, before: 17, after: 356, pct: 40 };
   const MAX_EXAMPLES = 5;
-  const EXAMPLES: Example[] = [HERO];
+  const EXAMPLES: Example[] = [];
+  // seeded with the hero even when we may not show it, so a Mayfair coming back
+  // from Google can't sit next to the hardcoded one
   const seen = new Set([normBusinessName(HERO.name), normBusinessName(rawBusiness)]);
   const pushExample = (x: Example) => {
     const n = normBusinessName(x.name);
@@ -114,7 +116,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // the page and the video can never disagree). A failed/timed-out fetch leaves
   // it null and the Google cards simply omit the category line — a Google card
   // with no category still looks like a Google card.
-  let trade: { label: string | null; plural: string } | null = null;
+  let trade: { label: string | null; plural: string; profile_key?: string | null } | null = null;
   const asExample = (p: { name: string; rating: number | null; reviews: number }): Example => {
     const h = hash(p.name);
     return { name: p.name, rating: p.rating, before: 9 + (h % 20), after: p.reviews, pct: 30 + (h % 5) * 5 };
@@ -127,7 +129,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (r.ok) {
       const d = (await r.json()) as {
         pack?: Array<{ name?: string; rating?: number | null; reviews?: number | null; isLead?: boolean }>;
-        trade?: { label: string | null; plural: string };
+        trade?: { label: string | null; plural: string; profile_key?: string | null };
       };
       if (d.trade) trade = d.trade;
       (d.pack || [])
@@ -149,6 +151,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
     } catch { /* fine — show what we have */ }
   }
+  // Mayfair is a PLUMBER. Leading an electrician's page with a plumber is the
+  // same niche mismatch we just fixed on the Google cards, and by this point we
+  // usually have 3-4 real businesses from the lead's own trade. So the hero only
+  // leads for plumbing-family leads — or when the live fetch gave us too little
+  // to stand on its own.
+  const heroFits = !trade || trade.profile_key === 'plumbing';
+  if (heroFits || EXAMPLES.length < 2) EXAMPLES.unshift(HERO);
+  EXAMPLES.splice(MAX_EXAMPLES);
 
   // urgency: 3 of 5 spots when the page goes out, one fewer every 24h,
   // never below 1 (Hugo 2026-07-26)
