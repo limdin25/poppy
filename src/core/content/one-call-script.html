@@ -424,8 +424,8 @@ const N = {
     ]},
 
   permission_send: {stage:'PERMISSION',
-    say:`"I'm not going to take any more of your time, that's genuinely it, I just want you to have it. If you tell me you'll watch it, I'll text it to this number right now. Is that alright?"`,
-    dir:`Giving the time back disarms them. "Is that alright?" is the ONLY close on this call, and it's a yes to WATCHING, not to buying. Never mention price here.`,
+    say:`"I'm not going to take any more of your time, that's genuinely it. I'll get it over to you in the next few minutes. If I send it across, will you watch it?"`,
+    dir:`Do NOT promise it lands this second, it gets built for them after the call. The commitment you want is that they will WATCH it, not that they will buy. "Will you watch it?" is the only close on this call.`,
     r:[
       {l:`"Yeah, fine"`,n:`confirm_number`},
       {l:`"Send it to a different number"`,n:`confirm_number`},
@@ -433,11 +433,11 @@ const N = {
     ]},
 
   confirm_number: {stage:'SENT',
-    say:`"Perfect. Is this number I've rung you on the best one for a text? … Sending it over now, you'll have it in a few seconds. Has it come through?"`,
-    dir:`Read the number back and WAIT for the yes. Then tap Video, then "Text the video", in the dialer while they're still on the line. Stay on until they confirm it landed, a link they never received is a wasted call.`,
+    say:`"Perfect. Is this the best number for a text? … Great, I'll get it sent across to you shortly, keep an eye on your phone."`,
+    dir:`Confirm the number, then tap Video, then "Make video" in the dialer. It builds and texts itself after you hang up, so do NOT sit on the line waiting for it. Get the number right, that is the whole job here.`,
     r:[
-      {l:`"Yeah, got it"`,n:`sent_confirm`},
-      {l:`Nothing came through`,n:`resend`},
+      {l:`"Yeah, that's the one"`,n:`sent_confirm`},
+      {l:`Gives a different number`,n:`sent_confirm`},
     ]},
 
   resend: {stage:'SENT',
@@ -448,7 +448,7 @@ const N = {
     ]},
 
   sent_confirm: {stage:'DONE',
-    say:`"Great. It's 90 seconds, watch it tonight when you've got a minute. Everything's on that page, and if it makes sense you can start it yourself from there for a quid. I'll let you get back to it, cheers [owner_first]."`,
+    say:`"Great. It's 90 seconds, watch it when it lands, tonight's fine. Everything's on that page, and if it makes sense you can start it yourself from there for a quid. I'll let you get back to it, cheers [owner_first]."`,
     dir:`Say "for a quid" ONCE, lightly, as a fact and not a pitch. Then get off the phone. The video closes, you don't. Hang up while they still feel you gave them something for free.`,
     won:true,
     r:[]},
