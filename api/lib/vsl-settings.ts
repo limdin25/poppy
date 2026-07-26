@@ -59,7 +59,9 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
   agent_disabled: [],
   spots_per_town: 5,
   proof_image_url: '',
-  proof_caption: 'A recent client — Mayfair Plumbers',
+  // blank = the page's own default ("Examples of businesses that invest in
+  // reviews") — examples wording, never a client claim (Hugo 2026-07-26)
+  proof_caption: '',
   rules: {
     sent_not_opened: {
       enabled: true, delay_minutes: 180, max_sends: 2, repeat_hours: 24,

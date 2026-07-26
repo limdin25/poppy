@@ -511,7 +511,7 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
                 <input
                   value={cfg.proof_caption}
                   onChange={(e) => set({ proof_caption: e.target.value })}
-                  placeholder="A recent client — Mayfair Plumbers"
+                  placeholder="Examples of businesses that invest in reviews"
                   className="w-full px-2.5 py-2 text-[13px] border border-[#D1D5DB] rounded-[8px]"
                 />
               </div>

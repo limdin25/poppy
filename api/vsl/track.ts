@@ -1,5 +1,6 @@
 // VSL beacon sink. The public video page fires sendBeacon events here:
-// open (page load), progress (25/50/75/95), cta_click, tier_pick.
+// open (page load), progress (25/50/75/95), cta_click, tier_pick, calc
+// (first touch of the value calculator — measures if it earns its place).
 // State only ever moves FORWARD — replays, bots and out-of-order beacons can
 // bump counters but never demote a page. checkout_start/paid are set by their
 // own endpoints, not accepted from the browser.
@@ -17,7 +18,7 @@ const supabase = createClient(
 
 export const config = { runtime: 'edge' };
 
-const BROWSER_TYPES = new Set(['open', 'progress', 'cta_click', 'tier_pick']);
+const BROWSER_TYPES = new Set(['open', 'progress', 'cta_click', 'tier_pick', 'calc']);
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
@@ -61,7 +62,7 @@ export default async function handler(req: Request): Promise<Response> {
   } else if (type === 'cta_click') {
     await advanceVslState(page, 'cta_clicked');
   } else {
-    // tier_pick: event only — checkout endpoint owns the state change.
+    // tier_pick / calc: event only — no state change.
   }
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });

@@ -129,7 +129,9 @@ describe('public page', () => {
 
   it('escapes lead data into the HTML', () => {
     expect(page).toMatch(/const esc = /)
-    expect(page).toMatch(/esc\(page\.business_name\)/)
+    // raw* strings esc()'d at emission — never double-escaped into og tags
+    expect(page).toMatch(/esc\(rawBusiness\)/)
+    expect(page).toMatch(/esc\(ogTitle\)/)
   })
 })
 
@@ -473,7 +475,7 @@ describe('render pipeline — migration + worker', () => {
   it('worker uploads to vsl-videos and writes video_url + ready', () => {
     expect(worker).toMatch(/vsl-videos/)
     expect(worker).toMatch(/render_status: 'ready'/)
-    expect(worker).toMatch(/video_url: videoUrl/)
+    expect(worker).toMatch(/video_url: `\$\{videoUrl\}\?v=\$\{bust\}`/) // ?v= busts the CDN on re-renders
   })
 
   it('systemd unit is niced so the scrapers always win', () => {

@@ -42,9 +42,12 @@ const ActorCircle: React.FC = () => (
   </div>
 )
 
-// the same measured-at-27px name width the SERP selection uses, at card size
+// the same measured-at-27px name width the SERP selection uses, at card size.
+// Both the name and its highlight clamp to the card's content width — long
+// names ellipsize instead of spilling onto the page (adversarial review).
 const NAME_FONT = 34
-const SEL_W = Math.round(gen.sel_w * (NAME_FONT / 27))
+const NAME_MAX = 700 - 38 * 2 // card width minus padding
+const SEL_W = Math.min(Math.round(gen.sel_w * (NAME_FONT / 27)), NAME_MAX - 10)
 
 const ListingPoster: React.FC = () => (
   <AbsoluteFill style={{ background: '#fff', fontFamily: GOOGLE_FONT }}>
@@ -66,7 +69,7 @@ const ListingPoster: React.FC = () => (
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ position: 'relative', display: 'inline-block' }}>
+      <div style={{ position: 'relative', display: 'inline-block', maxWidth: NAME_MAX, overflow: 'hidden' }}>
         <span
           style={{
             position: 'absolute',
@@ -78,13 +81,21 @@ const ListingPoster: React.FC = () => (
             borderRadius: 4,
           }}
         />
-        <span style={{ position: 'relative', fontSize: NAME_FONT, color: TEXT, whiteSpace: 'nowrap' }}>{gen.business}</span>
+        <span style={{ position: 'relative', display: 'inline-block', maxWidth: NAME_MAX, fontSize: NAME_FONT, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{gen.business}</span>
       </div>
       <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10, fontSize: 24, color: SECONDARY }}>
-        <span style={{ color: TEXT }}>{Number(gen.rating).toFixed(1)}</span>
-        <Stars rating={Number(gen.rating)} size={24} />
-        <span>({gen.reviews})</span>
-        <span>· Plumber</span>
+        {/* null rating = a listing with no reviews yet — render like Google's
+            own (just the label), never a fake "0.0" (GoogleScrollV pattern) */}
+        {gen.rating != null ? (
+          <>
+            <span style={{ color: TEXT }}>{Number(gen.rating).toFixed(1)}</span>
+            <Stars rating={Number(gen.rating)} size={24} />
+            <span>({gen.reviews ?? 0})</span>
+            <span>· Plumber</span>
+          </>
+        ) : (
+          <span>Plumber</span>
+        )}
       </div>
       <div style={{ marginTop: 10, fontSize: 24, color: SECONDARY }}>Serves {gen.town} and nearby areas</div>
       <div style={{ marginTop: 8, fontSize: 24, color: SECONDARY }}>
