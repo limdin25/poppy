@@ -125,13 +125,17 @@ export function fillTemplate(
   vars: { first?: string | null; business?: string | null; url?: string | null; agent?: string | null },
 ): string {
   return template
-    .replace(/\{\{?\s*first(?:_name)?\s*\}?\}/gi, (vars.first || 'there').split(' ')[0])
+    // No name → drop it (NOT "there" — a fake first name reads like spam; the
+    // business name carries the personalisation). Grammar is cleaned below.
+    .replace(/\{\{?\s*first(?:_name)?\s*\}?\}/gi, (vars.first || '').split(' ')[0])
     .replace(/\{\{?\s*business\s*\}?\}/gi, vars.business || 'your business')
     .replace(/\{\{?\s*url\s*\}?\}/gi, vars.url || '')
     .replace(/\{\{?\s*agent(?:_first_name)?\s*\}?\}/gi, (vars.agent || 'the team').split(' ')[0])
     // Strip any leftover {token} so the SMS worker's own {first_name}→company
     // substitution can never touch an already-filled VSL body.
     .replace(/\{\{?[a-z_]+\}?\}/gi, '')
+    // Tidy up the hole a missing name leaves: "Hi , it's" → "Hi, it's".
+    .replace(/\s+([,.!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }

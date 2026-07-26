@@ -37,7 +37,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   const settings = await getVslSettings();
   const videoUrl = page.video_url || settings.default_video_url;
-  const first = esc((page.owner_first || 'there').split(' ')[0]);
+  // Real first name, or nothing — the business name personalises the no-name
+  // case (a fake "there" reads like spam). See fillTemplate for the SMS side.
+  const first = esc((page.owner_first || '').split(' ')[0]);
   const business = esc(page.business_name);
   const town = esc(page.town || 'your area');
   const ctaLabel = esc(
@@ -55,7 +57,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     spots = Math.max(1, settings.spots_per_town - (count || 0));
   }
 
-  const ogTitle = `${first}, I made this video for ${business}`;
+  const ogTitle = first ? `${first}, I made this video for ${business}` : `I made this video for ${business}`;
   const ogDesc = `A 90-second look at where ${business} sits on Google — and how to climb.`;
   const ogImage = page.og_image_url || '';
   // player poster: the render's own first frame beats the OG card
@@ -114,7 +116,7 @@ video{height:100%;max-width:100%;aspect-ratio:9/16;object-fit:cover;display:bloc
 .pound{margin-top:10px;text-align:center;font-size:13px;font-weight:700;color:#16A34A}
 </style></head><body>
 <div class="wrap">
-  <h1>Hi ${first} 👋 I made a video for ${business}</h1>
+  <h1>Hi ${first ? first + ' ' : ''}👋 I made a video for ${business}</h1>
   <p class="sub">90 seconds — where you rank on Google, and how to fix it.</p>
   <div class="vid">${
     videoUrl

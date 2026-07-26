@@ -38,7 +38,10 @@ describe('vsl lib — slugs', () => {
       first: 'Charlie Creed', business: 'CRE Plumbing', url: 'https://heyelsie.com/cre', agent: 'Pedro III',
     })
     expect(out).toBe('Hi Charlie, video for CRE Plumbing: https://heyelsie.com/cre — Pedro')
-    expect(fillTemplate('Hi {first}', {})).toBe('Hi there')
+    // No name → the name is dropped (not a spammy "Hi there"); grammar tidied.
+    expect(fillTemplate('Hi {first}', {})).toBe('Hi')
+    expect(fillTemplate("Hi {first}, it's Hugo — video for {business}", { business: 'CRE' }))
+      .toBe("Hi, it's Hugo — video for CRE")
   })
 
   it('accepts {first_name} and strips any leftover token so the SMS worker cannot re-substitute it', async () => {
