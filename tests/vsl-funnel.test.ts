@@ -905,3 +905,82 @@ describe('owner-name enrichment (Companies House)', () => {
     expect(writeLoop).not.toMatch(/leads\.find/)
   })
 })
+
+// Hugo 2026-07-26: the actor circle parked mid-right for the whole video and
+// sat on top of whatever each scene was pointing at — the Google-support
+// highlight, the logo grid, the three step dots, the closing headline. It now
+// rides the right-hand edge and re-parks per scene.
+describe('actor circle — per-scene parking', () => {
+  const flow = read('video/src/FlowVideo.tsx')
+  const load = async () => import('../video/src/theme')
+  // the scene cuts the parks are supposed to track
+  const sceneStarts = [...flow.matchAll(/<Sequence from=\{(\d+)\}/g)].map((m) => Number(m[1]))
+
+  it('re-parks on a scene cut, never mid-scene', async () => {
+    const { CIRCLE_PARKS } = await load()
+    expect(sceneStarts.length).toBeGreaterThan(4)
+    // park 0 is where the intro slide lands; every later one must sit exactly
+    // on a cut, or the circle slides while the viewer is reading
+    for (const p of CIRCLE_PARKS.slice(1)) expect(sceneStarts).toContain(p.at)
+  })
+
+  it('finishes the intro slide before the first cut', async () => {
+    const { CIRCLE_PARKS } = await load()
+    expect(CIRCLE_PARKS[0].at).toBeLessThanOrEqual(Math.min(...sceneStarts.filter((s) => s > 0)))
+  })
+
+  it("never parks under the page's floating buy button", async () => {
+    const { CIRCLE_PARKS, CIRCLE } = await load()
+    // the button covers roughly the last 130px of the 1920-tall canvas
+    for (const p of CIRCLE_PARKS) expect(p.y + CIRCLE / 2).toBeLessThanOrEqual(1720)
+  })
+
+  it('stays right of centre, clear of the bottom-left subtitles', async () => {
+    const { CIRCLE_X, CIRCLE, W } = await load()
+    expect(CIRCLE_X - CIRCLE / 2).toBeGreaterThan(W / 2)
+    expect(CIRCLE_X + CIRCLE / 2).toBeLessThanOrEqual(W)
+  })
+
+  it('keeps the SERP scene HIGH — the lead\'s own card is the low one', async () => {
+    // "…and there you are, near the bottom" is the single most important frame
+    // in the video. A low park covers it.
+    const { CIRCLE_PARKS } = await load()
+    expect(CIRCLE_PARKS[0].y).toBeLessThan(1100)
+  })
+
+  it('clears the centred content the later scenes put at y~950', async () => {
+    const { CIRCLE_PARKS, CIRCLE } = await load()
+    for (const p of CIRCLE_PARKS.slice(1)) expect(p.y - CIRCLE / 2).toBeGreaterThan(1000)
+  })
+
+  it('glides between parks instead of jumping', async () => {
+    const { CIRCLE_GLIDE } = await load()
+    expect(CIRCLE_GLIDE).toBeGreaterThan(8)
+    const bubble = read('video/src/comps/PedroBubbleV.tsx')
+    expect(bubble).toMatch(/CIRCLE_PARKS/)
+    expect(bubble).toMatch(/interpolate\(frame, PARK_FRAMES, PARK_YS/)
+  })
+})
+
+// Hugo 2026-07-26: "we need the timing bar showing at all times, so user know
+// how long until the end of the video".
+describe('vsl player — progress bar', () => {
+  const page = read('api/vsl/page.ts')
+
+  it('never auto-hides during playback', () => {
+    expect(page).not.toMatch(/classList\.add\('hid'\)/)
+    expect(page).not.toMatch(/\.vbar\.hid/)
+  })
+
+  it('shows elapsed AND total, so the end is visible', () => {
+    expect(page).toMatch(/fmtT\(v\.currentTime\)\+' \/ '\+fmtT\(v\.duration\)/)
+  })
+
+  it('knows the length before the first timeupdate tick', () => {
+    expect(page).toMatch(/loadedmetadata/)
+  })
+
+  it('never renders NaN:NaN while the duration is unknown', () => {
+    expect(page).toMatch(/function fmtT\(s\)\{if\(!isFinite\(s\)\|\|s<0\)s=0/)
+  })
+})

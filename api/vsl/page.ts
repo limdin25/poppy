@@ -262,8 +262,9 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .vpause span{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.94);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.4)}
 .vpause svg{margin-left:4px}
 .vbar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.55);border-radius:999px;padding:0 14px;height:40px;opacity:1;transition:opacity .3s}
-/* auto-hides during playback so it never sits on the subtitles */
-.vbar.hid{opacity:0;pointer-events:none}
+/* Stays up for the whole video (Hugo 2026-07-26) — a 2:35 VSL with no visible
+   end in sight is a reason to leave. It sits just ABOVE the burnt-in subtitle
+   band, not over it. */
 .vtime{color:#fff;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0}
 .vseek{-webkit-appearance:none;appearance:none;flex:1;height:26px;background:transparent;cursor:pointer;min-width:0}
 .vseek::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:linear-gradient(90deg,#fff var(--p,0%),rgba(255,255,255,.35) var(--p,0%))}
@@ -478,20 +479,22 @@ send('open');
    keeps scrolling while they listen. */
 var v=document.getElementById('v'),stage=document.getElementById('stage'),vt=document.getElementById('vt'),
 vs=document.getElementById('vs'),vp=document.getElementById('vp'),fired={};
-function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x}
+function fmtT(s){if(!isFinite(s)||s<0)s=0;var m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x}
 if(v){v.addEventListener('timeupdate',function(){if(!v.duration)return;var pct=v.currentTime/v.duration*100;
-if(vt)vt.textContent=fmtT(v.currentTime);
+/* elapsed / total — "how long until the end" is the question being asked */
+if(vt)vt.textContent=fmtT(v.currentTime)+' / '+fmtT(v.duration);
 if(vs){vs.value=String(Math.round(pct*10));vs.style.setProperty('--p',pct+'%')}
 [25,50,75,95].forEach(function(m){if(pct>=m&&!fired[m]){fired[m]=1;send('progress',{pct:m})}})});
-v.addEventListener('play',function(){if(vp)vp.style.display='none';barShow()});
-v.addEventListener('pause',function(){if(vp&&stage.classList.contains('playing'))vp.style.display='flex';barShow()})}
+/* show the full length BEFORE they press play, not after the first tick —
+   knowing it's 2:35 up front is the whole point */
+v.addEventListener('loadedmetadata',function(){if(vt)vt.textContent='0:00 / '+fmtT(v.duration)});
+if(v.readyState>0&&vt)vt.textContent='0:00 / '+fmtT(v.duration);
+v.addEventListener('play',function(){if(vp)vp.style.display='none'});
+v.addEventListener('pause',function(){if(vp&&stage.classList.contains('playing'))vp.style.display='flex'})}
 if(vs){vs.addEventListener('input',function(){if(!v||!v.duration)return;
-v.currentTime=Number(vs.value)/1000*v.duration;vs.style.setProperty('--p',(Number(vs.value)/10)+'%');barShow()})}
-var vb=document.querySelector('.vbar'),barT=0;
-function barShow(){if(!vb)return;vb.classList.remove('hid');clearTimeout(barT);
-if(v&&!v.paused){barT=setTimeout(function(){vb.classList.add('hid')},2500)}}
+v.currentTime=Number(vs.value)/1000*v.duration;vs.style.setProperty('--p',(Number(vs.value)/10)+'%')})}
 function togglePlay(){if(!v)return;if(v.paused){try{v.play()}catch(e){}}else{v.pause()}}
-function stageTap(){if(!v)return;barShow();if(stage.classList.contains('playing')){togglePlay()}else{play()}}
+function stageTap(){if(!v)return;if(stage.classList.contains('playing')){togglePlay()}else{play()}}
 function play(){if(!v)return;stage.classList.add('playing');try{v.play()}catch(e){}
 setTimeout(function(){stage.scrollIntoView({behavior:'smooth',block:'center'})},60)}
 /* before/after carousel dots */
