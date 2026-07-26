@@ -56,18 +56,40 @@ export function useContactChannelStatus(
       return;
     }
     (async () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase.from('wk_sms_messages' as any) as any)
-          .select('contact_id, body, created_at, channel')
-          .eq('direction', 'outbound')
-          .in('contact_id', list)
-          .order('created_at', { ascending: false });
-        if (cancelled || error) return;
-        setRows((data ?? []) as MessageRow[]);
-      } catch {
-        /* RLS / table missing — pipeline just hides the badges. */
-      }
+      // Batched. Every contact id used to go into ONE `in.(…)` filter, which
+      // on a full pipeline board (1,100+ cards) built a URL past the server's
+      // limit — the request failed, the catch below swallowed it, and the
+      // badges silently never rendered. Found while auditing, 2026-07-26.
+      const CHUNK = 100;
+      const chunks: string[][] = [];
+      for (let i = 0; i < list.length; i += CHUNK) chunks.push(list.slice(i, i + CHUNK));
+
+      const results = await Promise.all(
+        chunks.map(async (ids) => {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data, error } = await (supabase.from('wk_sms_messages' as any) as any)
+              .select('contact_id, body, created_at, channel')
+              .eq('direction', 'outbound')
+              .in('contact_id', ids)
+              .order('created_at', { ascending: false });
+            // Don't stay silent — a swallowed failure here is why nobody knew.
+            if (error) {
+              console.warn('[useContactChannelStatus] batch failed:', error.message);
+              return [];
+            }
+            return (data ?? []) as MessageRow[];
+          } catch (e) {
+            console.warn('[useContactChannelStatus] batch threw:', e);
+            return [];
+          }
+        })
+      );
+      if (cancelled) return;
+      // Newest-first overall, so the "first slot per (contact, channel)" walk
+      // below still picks the most recent message across batch boundaries.
+      const merged = results.flat().sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+      setRows(merged);
     })();
     return () => {
       cancelled = true;
