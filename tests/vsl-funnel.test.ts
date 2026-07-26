@@ -849,3 +849,46 @@ describe('render robustness', () => {
     expect(prep).toMatch(/let noWebsite = !safeSite/)
   })
 })
+
+// Hugo 2026-07-26: Google Places never returns an owner name, so a scraped
+// trade list opens "Hi," instead of "Hi Dave,". Companies House fills it — but
+// docs/PLUMBER_LEADS_PIPELINE.md is explicit that a WRONG first name in the
+// opener is worse than none, so the matcher has to stay conservative.
+describe('owner-name enrichment (Companies House)', () => {
+  const enrich = read('scripts/enrich-owner-names.mjs')
+  const scrape = read('scripts/scrape-trade-leads.mjs')
+
+  it('only accepts an EXACT name match on an ACTIVE company', () => {
+    expect(enrich).toMatch(/norm\(i\.title\) === target && i\.company_status === 'active'/)
+  })
+
+  it('refuses to guess between two same-named live companies', () => {
+    expect(enrich).toMatch(/if \(inTown\.length !== 1\) return \{ ambiguous/)
+  })
+
+  it('skips corporate officers — a company is not a person to greet', () => {
+    expect(enrich).toMatch(/o\.date_of_birth/)
+    expect(enrich).toMatch(/!o\.resigned_on/)
+  })
+
+  it('never writes a low-confidence match', () => {
+    expect(enrich).toMatch(/found\.filter\(\(x\) => x\.confidence !== 'low'\)/)
+  })
+
+  it('does NOT gate on the registered address matching the town', () => {
+    // Small trades register at their accountant's office — ALB Electrical
+    // trades in Winchester and is registered in Eastleigh. A town gate would
+    // throw away most genuine matches, so the town is only consulted to break
+    // a tie between two same-named live companies.
+    const primaryFilter = enrich.match(/let hits = search\.items\.filter\([\s\S]*?\)\n/)?.[0] ?? ''
+    expect(primaryFilter).toBeTruthy()
+    expect(primaryFilter).not.toMatch(/town/i)
+    // ...and the ONLY place town appears is the ambiguity tiebreak
+    expect(enrich).toMatch(/const inTown = hits\.filter/)
+  })
+
+  it('the scraper MERGES custom_fields so a phone collision cannot wipe owner_name', () => {
+    expect(scrape).toMatch(/\.\.\.\(existingCf\.get\(phone\) \|\| \{\}\), \.\.\.custom_fields/)
+    expect(scrape).not.toMatch(/upsert\(\{ name: l\.name, phone, custom_fields \}/)
+  })
+})

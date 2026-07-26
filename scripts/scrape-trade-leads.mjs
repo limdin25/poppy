@@ -184,6 +184,18 @@ const e164 = (raw) => {
   return null
 }
 
+// Existing contacts keyed by phone. The upsert below writes custom_fields as a
+// WHOLE object, so without this a phone collision silently wipes keys we didn't
+// scrape — owner_name in particular, which Companies House enrichment put there
+// and Google Places can never give back.
+const phones = picked.map((l) => e164(l.phone)).filter(Boolean)
+const existingCf = new Map()
+for (let i = 0; i < phones.length; i += 200) {
+  const { data } = await supa
+    .from('wk_contacts').select('phone, custom_fields').in('phone', phones.slice(i, i + 200))
+  for (const r of data || []) existingCf.set(r.phone, r.custom_fields || {})
+}
+
 let imported = 0, skipped = 0
 for (const l of picked) {
   const phone = e164(l.phone)
@@ -204,10 +216,12 @@ for (const l of picked) {
     reviews_source: 'google',
   }
   for (const k of Object.keys(custom_fields)) if (!custom_fields[k]) delete custom_fields[k]
+  // merge, don't clobber — scraped fields win, everything else survives
+  const merged = { ...(existingCf.get(phone) || {}), ...custom_fields }
 
   const { error } = await supa
     .from('wk_contacts')
-    .upsert({ name: l.name, phone, custom_fields }, { onConflict: 'phone', ignoreDuplicates: false })
+    .upsert({ name: l.name, phone, custom_fields: merged }, { onConflict: 'phone', ignoreDuplicates: false })
   if (error) { console.warn(`  ! ${l.name}: ${error.message}`); skipped++; continue }
   imported++
 }
