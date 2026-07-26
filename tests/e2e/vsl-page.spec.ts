@@ -22,9 +22,11 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
 
     // Personalised headline + the main button (plus its copy under the
     // calculator) + scarcity line.
-    await expect(page.locator('h1')).toContainText('I made a video for')
+    await expect(page.locator('h1')).toContainText('I made a 90-second video for')
     await expect(page.locator('.cta')).toHaveCount(2) // main + calculator copy
-    await expect(page.locator('.spots')).toContainText('left in')
+    // urgency stripe at the very top: 3 spots at send, −1 per 24h, floor 1
+    await expect(page.locator('.stripe.spots')).toContainText('left in')
+    await expect(page.locator('.trust')).toContainText('Cancel anytime')
 
     // OG tags are server-rendered for the SMS preview.
     const og = await page.locator('meta[property="og:title"]').getAttribute('content')
@@ -114,8 +116,9 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     await expect(page.locator('#cn')).not.toContainText('three months')
     expect(beacons.filter((b) => b === 'calc').length).toBe(1) // still once
 
-    // the second CTA under the calculator opens the tier sheet
-    await page.locator('.cta2').click()
+    // the CTA (sticky on mobile; the calculator copy is desktop-only) opens
+    // the tier sheet
+    await page.locator('.cta').first().click()
     await expect(page.locator('.sheet')).toBeVisible()
   })
 

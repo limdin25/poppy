@@ -17,6 +17,33 @@ const esc = (s: unknown) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string),
   );
 
+// big-market top-up for the examples carousel (lead-independent, cached per
+// warm lambda): real UK plumbing businesses with 300+ reviews
+const GOOGLE_KEY = process.env.GOOGLE_PLACES_KEY || process.env.VITE_GOOGLE_PLACES_KEY || '';
+interface BigExample { name: string; rating: number | null; reviews: number }
+let bigMarketCache: BigExample[] | null = null;
+async function bigMarketExamples(): Promise<BigExample[]> {
+  if (bigMarketCache) return bigMarketCache;
+  if (!GOOGLE_KEY) return [];
+  const r = await fetch(
+    `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent('plumbers in London')}&region=uk&key=${GOOGLE_KEY}`,
+    { headers: { Referer: 'https://poppy-henna.vercel.app/' }, signal: AbortSignal.timeout(2500) },
+  );
+  const j = (await r.json()) as {
+    status?: string;
+    results?: Array<{ name?: string; rating?: number; user_ratings_total?: number }>;
+  };
+  if (j.status !== 'OK' || !j.results) return [];
+  bigMarketCache = j.results
+    .filter((x) => x.name && typeof x.user_ratings_total === 'number' && x.user_ratings_total > 300)
+    .map((x) => ({
+      name: x.name as string,
+      rating: typeof x.rating === 'number' ? x.rating : null,
+      reviews: x.user_ratings_total as number,
+    }));
+  return bigMarketCache;
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || '/', 'https://heyelsie.com');
   const slug = (url.searchParams.get('slug') || '').toLowerCase();
@@ -91,10 +118,28 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         });
     }
   } catch { /* Mayfair-only fallback */ }
+  // top up to at least 4 real examples from the big-market list (Hugo: "add
+  // 3 more") when the lead's own town is thin on 300+ businesses
+  if (nicheExamples.length < 4) {
+    try {
+      const seen = new Set(nicheExamples.map((e) => e.name).concat(rawBusiness));
+      for (const p of await bigMarketExamples()) {
+        if (nicheExamples.length >= 4) break;
+        if (seen.has(p.name)) continue;
+        const h = hash(p.name);
+        nicheExamples.push({ name: p.name, rating: p.rating, before: 9 + (h % 20), after: p.reviews, pct: 30 + (h % 5) * 5 });
+      }
+    } catch { /* fine — show what we have */ }
+  }
   const EXAMPLES: Example[] = [
     { name: 'Mayfair Plumbers', rating: 4.8, before: 17, after: 356, pct: 40 },
     ...nicheExamples,
   ];
+
+  // urgency: 3 of 5 spots when the page goes out, one fewer every 24h,
+  // never below 1 (Hugo 2026-07-26)
+  const anchorTs = new Date(page.sent_at || page.created_at || Date.now()).getTime();
+  const spotsLeft = Math.max(1, 3 - Math.floor((Date.now() - anchorTs) / 86_400_000));
 
   const stars = (size: number) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#fbbc04"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`.repeat(5);
@@ -151,17 +196,21 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ''}
 <meta name="twitter:card" content="summary_large_image">
 <style>
 *{box-sizing:border-box;margin:0}
-body{font-family:Inter,-apple-system,'Segoe UI',sans-serif;background:#F7F5EF;color:#1A1A1A}
-.wrap{width:100%;max-width:460px;margin:0 auto;padding:16px 16px 40px}
-h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 3px;text-wrap:balance}
-.sub{color:#6B7280;font-size:clamp(12px,3.4vw,14px);margin-bottom:12px}
+/* white + blue (Hugo 2026-07-26): white predominates, blue for actions */
+body{font-family:Inter,-apple-system,'Segoe UI',sans-serif;background:#fff;color:#1A1A1A}
+.stripe{background:#1a73e8;color:#fff;text-align:center;font-size:12.5px;font-weight:800;letter-spacing:.2px;padding:8px 14px}
+.wrap{width:100%;max-width:460px;margin:0 auto;padding:14px 16px 40px}
+h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 3px;text-wrap:balance}
+.sub{color:#6B7280;font-size:clamp(12px,3.4vw,14px);margin-bottom:10px}
 /* The video is a compact RECTANGULAR preview (the poster shows the lead's
    site — or their Google card — behind the actor). Pressing play expands it
    IN PLACE to the vertical player (Hugo 2026-07-26: no popup — people scroll
    the page while they listen), with our custom slim controls — the native
    overlay's dark scrim never appears. */
-.stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#111;box-shadow:0 12px 34px rgba(0,0,0,.16);cursor:pointer;max-height:34vh}
-.stage.playing{aspect-ratio:9/16;height:min(62vh,163vw);height:min(62dvh,163vw);width:auto;max-width:100%;max-height:none;margin-left:auto;margin-right:auto}
+.stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#111;box-shadow:0 12px 34px rgba(0,0,0,.16);cursor:pointer;max-height:28vh}
+/* expanded: almost the whole screen, slightly squarer than 9:16, so the buy
+   button still peeks below (Hugo 2026-07-26) */
+.stage.playing{aspect-ratio:auto;height:min(70vh,170vw);height:min(70dvh,170vw);width:100%;max-height:none}
 .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111;display:none}
 .stage.playing video{display:block}
 .stage.playing .thumb{display:none}
@@ -170,9 +219,9 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 
 /* center 28% is a no-op for the exact-fit 16:9 PosterV art, but keeps the
    face framed if a legacy/fallback 9:16 frame-grab poster ever shows here */
 .thumb{position:absolute;inset:0;background-size:cover;background-position:center 28%;display:flex;align-items:center;justify-content:center}
-.thumb::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.02),rgba(0,0,0,.28))}
-.play{position:relative;z-index:1;width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.96);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.4)}
-.play svg{margin-left:5px}
+.thumb::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.44))}
+.play{position:relative;z-index:1;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.96);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.4)}
+.play svg{margin-left:6px}
 .badge{position:absolute;z-index:1;left:12px;bottom:12px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px}
 .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9CA3AF;font-size:13px}
 /* custom player chrome (inside the stage) */
@@ -189,21 +238,26 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 
 .vseek::-moz-range-track{height:5px;border-radius:999px;background:rgba(255,255,255,.35)}
 .vseek::-moz-range-progress{height:5px;border-radius:999px;background:#fff}
 .vseek::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:0}
-/* the button carries the offer; the line under it carries the urgency */
-.cta{display:flex;flex-direction:column;align-items:center;gap:3px;width:100%;margin-top:14px;padding:14px 16px;border:0;border-radius:14px;background:#1A1A1A;color:#fff;cursor:pointer;font-family:inherit}
+/* the button carries the offer; one quiet trust line under it */
+.cta{display:flex;flex-direction:column;align-items:center;gap:3px;width:100%;margin-top:22px;padding:17px 16px;border:0;border-radius:14px;background:#1a73e8;color:#fff;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(26,115,232,.3)}
 .cta:active{transform:scale(.985)}
-.ctamain{font-size:17px;font-weight:800}
-.ctasub{font-size:12.5px;font-weight:700;opacity:.82}
-.ctainfo{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
-.seal{font-size:12.5px;font-weight:800;color:#16A34A;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:999px;padding:5px 12px;margin:0}
-.spots{font-size:13px;font-weight:800;color:#B45309;margin:0}
-.ctanote{text-align:center;font-size:12px;font-weight:600;color:#9CA3AF;margin-top:6px}
+.ctamain{font-size:17.5px;font-weight:800}
+.ctasub{font-size:12.5px;font-weight:700;opacity:.85}
+.trust{text-align:center;font-size:12.5px;font-weight:700;color:#6B7280;margin-top:12px}
+/* mobile: the main CTA sticks to the bottom of the screen and the
+   calculator's duplicate disappears (Hugo 2026-07-26) */
+@media(max-width:719px){
+  .cta{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;margin-top:0;z-index:50;box-shadow:0 10px 30px rgba(26,115,232,.45)}
+  .cta.cta2{display:none}
+  .wrap{padding-bottom:130px}
+  .trust{margin-top:16px}
+}
 .proof{margin-top:22px}
 .prooflabel{text-align:center;font-size:11.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#6B7280;margin-bottom:8px}
 .proof img{width:100%;border-radius:14px;border:1px solid #E5E7EB;display:block;box-shadow:0 6px 18px rgba(0,0,0,.08)}
 /* before/after examples — FULL Google cards side by side (even at 360px),
    one business per slide, swipe or tap the dots for more (Hugo 2026-07-26) */
-.ba{margin-top:26px}
+.ba{margin-top:48px}
 .bahead{display:grid;grid-template-columns:1fr 22px 1fr;gap:8px;margin-bottom:6px}
 .batag{display:block;text-align:center;font-size:11px;font-weight:900;letter-spacing:1.6px;color:#5F6368}
 .batag.blue{color:#1a73e8}
@@ -233,26 +287,28 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 
 .calclabel{font-size:13.5px;font-weight:700;color:#6B7280;text-align:center;margin-top:14px}
 .calclabel b{color:#1A1A1A;font-size:15px}
 .jobval{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:8px}
-.jvb{width:44px;height:44px;border-radius:50%;border:1px solid #E5E7EB;background:#F7F5EF;font-size:22px;font-weight:800;color:#1A1A1A;cursor:pointer;flex-shrink:0}
+.jvb{width:44px;height:44px;border-radius:50%;border:1px solid #E5E7EB;background:#F8FAFD;font-size:22px;font-weight:800;color:#1a73e8;cursor:pointer;flex-shrink:0}
 .jvb:active{transform:scale(.94)}
 .jvwrap{display:flex;align-items:baseline;font-weight:900;font-size:30px;font-variant-numeric:tabular-nums}
 .jvwrap input{width:104px;border:0;background:transparent;font:inherit;color:#1A1A1A;padding:0;outline:none;-moz-appearance:textfield}
 .jvwrap input::-webkit-outer-spin-button,.jvwrap input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .njs{width:100%;margin-top:6px;height:44px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
-.njs::-webkit-slider-runnable-track{height:10px;border-radius:999px;background:linear-gradient(90deg,#1A1A1A var(--p,44%),#E5E7EB var(--p,44%))}
-.njs::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:#1A1A1A;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);margin-top:-9px}
+.njs::-webkit-slider-runnable-track{height:10px;border-radius:999px;background:linear-gradient(90deg,#1a73e8 var(--p,44%),#E5E7EB var(--p,44%))}
+.njs::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:#1a73e8;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);margin-top:-9px}
 .njs::-moz-range-track{height:10px;border-radius:999px;background:#E5E7EB}
-.njs::-moz-range-progress{height:10px;border-radius:999px;background:#1A1A1A}
-.njs::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#1A1A1A;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.njs::-moz-range-progress{height:10px;border-radius:999px;background:#1a73e8}
+.njs::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#1a73e8;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .calcout{text-align:center;margin-top:16px;font-weight:900;font-size:clamp(30px,9vw,40px);font-variant-numeric:tabular-nums}
 .cvyr{font-size:clamp(15px,4vw,18px);color:#6B7280;font-weight:800}
 .calcnote{text-align:center;font-size:13px;font-weight:600;color:#6B7280;margin-top:8px;line-height:1.45}
 /* desktop */
 @media(min-width:720px){
-  .wrap{max-width:680px;padding:44px 24px 64px}
+  .wrap{max-width:680px;padding:36px 24px 64px}
   h1{font-size:27px}
   .sub{font-size:15px;margin-bottom:16px}
-  .stage{max-height:46vh}
+  .stage{max-height:42vh}
+  /* desktop expanded: tall centred vertical player (full-width would crop) */
+  .stage.playing{width:auto;aspect-ratio:9/16;height:min(82vh,780px);margin-left:auto;margin-right:auto}
   .cta{max-width:460px;margin-left:auto;margin-right:auto}
   .gname{font-size:14.5px}
   .gmeta{font-size:13px}
@@ -266,16 +322,17 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 
 .open .sheet{bottom:0}
 .sh{font-weight:900;font-size:18px;margin-bottom:2px}
 .ss{color:#6B7280;font-size:13px;margin-bottom:14px}
-.tier{display:flex;flex-direction:column;width:100%;text-align:left;background:#F7F5EF;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px;margin:8px 0;cursor:pointer;font-family:inherit}
-.tier:active{border-color:#1A1A1A}
+.tier{display:flex;flex-direction:column;width:100%;text-align:left;background:#F8FAFD;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px;margin:8px 0;cursor:pointer;font-family:inherit}
+.tier:active{border-color:#1a73e8}
 .tl{font-weight:800;font-size:15px}
 .tr{font-size:13px;color:#374151;margin-top:2px}
 .tp{font-size:12px;color:#9CA3AF;margin-top:4px}
 .pound{margin-top:10px;text-align:center;font-size:13px;font-weight:700;color:#16A34A}
 </style></head><body>
+<div class="stripe spots">⏳ ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left in ${town}</div>
 <div class="wrap">
-  <h1>Hi ${first ? first + ' ' : ''}👋 I made a video for ${business}</h1>
-  <p class="sub">90 seconds — where you rank on Google, and how to fix it.</p>
+  <h1>Hi ${first ? first + ' ' : ''}👋<br>I made a 90-second video for ${business}</h1>
+  <p class="sub">Where you rank on Google — and how to fix it.</p>
   <div class="stage" id="stage" onclick="stageTap()">${
     videoUrl
       ? `<video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} playsinline preload="metadata"></video>
@@ -291,8 +348,7 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 
       : `<div class="ph">Video coming shortly</div>`
   }</div>
   ${ctaButton()}
-  <div class="ctainfo">${page.no_website ? `<p class="seal">🎁 FREE website included</p>` : ''}<p class="spots">2 spots left in ${town}</p></div>
-  <p class="ctanote">Cancel anytime in your first 10 days</p>
+  <p class="trust">⭐ Trusted by UK trades · Cancel anytime in your first 10 days${page.no_website ? ' · 🎁 Free website included' : ''}</p>
   ${settings.proof_image_url ? `<div class="proof">
     ${settings.proof_caption ? `<p class="prooflabel">${esc(settings.proof_caption)}</p>` : ''}
     <img src="${esc(settings.proof_image_url)}" alt="Before and after results">

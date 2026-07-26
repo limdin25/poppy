@@ -510,10 +510,12 @@ describe('render pipeline — prep + comps', () => {
     expect(flow).toMatch(/gen\.no_website \? <OpeningSearchV \/> : <OpeningWebsiteV \/>/)
   })
 
-  it('public page carries the free-website seal for no-website leads', () => {
+  it('public page carries the free-website promise for no-website leads', () => {
     const page = read('api/vsl/page.ts')
-    expect(page).toMatch(/page\.no_website \? `<p class="seal">/)
-    expect(page).toMatch(/FREE website included/)
+    // in the trust line under the CTA…
+    expect(page).toMatch(/page\.no_website \? ' · 🎁 Free website included'/)
+    // …and inside the tier sheet at the moment of purchase
+    expect(page).toMatch(/A free website is included with every plan\./)
   })
 })
 
