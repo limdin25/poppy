@@ -90,9 +90,28 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // only, real names + real current counts. The small "before" count and the
   // "≈N% more calls" line are deterministic per name (illustrative). A failed
   // fetch just means Mayfair stands alone.
+  // Dedupe is name-based and LOOSE (normBusinessName strips Ltd/Limited/plc),
+  // because the same company reaches us from three sources — the hardcoded
+  // hero, the lead's own live pack, and the big-market top-up — under slightly
+  // different names. The `seen` set is seeded with the HERO and the lead: not
+  // seeding the hero is what put "Mayfair Plumbers" on the page twice, once at
+  // 17→356 and again at 11→356 (Hugo spotted it 2026-07-26).
   interface Example { name: string; rating: number | null; before: number; after: number; pct: number }
   const hash = (s: string) => [...s].reduce((a, c) => ((a * 31 + c.charCodeAt(0)) >>> 0), 7);
-  let nicheExamples: Example[] = [];
+  const HERO: Example = { name: 'Mayfair Plumbers', rating: 4.8, before: 17, after: 356, pct: 40 };
+  const MAX_EXAMPLES = 5;
+  const EXAMPLES: Example[] = [HERO];
+  const seen = new Set([normBusinessName(HERO.name), normBusinessName(rawBusiness)]);
+  const pushExample = (x: Example) => {
+    const n = normBusinessName(x.name);
+    if (!n || seen.has(n) || EXAMPLES.length >= MAX_EXAMPLES) return;
+    seen.add(n);
+    EXAMPLES.push(x);
+  };
+  const asExample = (p: { name: string; rating: number | null; reviews: number }): Example => {
+    const h = hash(p.name);
+    return { name: p.name, rating: p.rating, before: 9 + (h % 20), after: p.reviews, pct: 30 + (h % 5) * 5 };
+  };
   try {
     const r = await fetch(
       `https://app.heyelsie.com/api/leads/rank-frame?contact=${encodeURIComponent(page.contact_id)}`,
@@ -102,39 +121,25 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const d = (await r.json()) as {
         pack?: Array<{ name?: string; rating?: number | null; reviews?: number | null; isLead?: boolean }>;
       };
-      nicheExamples = (d.pack || [])
+      (d.pack || [])
         .filter((p) => !p.isLead && p.name && typeof p.reviews === 'number' && p.reviews > 300)
         .sort((a, b) => (b.reviews ?? 0) - (a.reviews ?? 0))
-        .slice(0, 5)
-        .map((p) => {
-          const h = hash(p.name as string);
-          return {
-            name: p.name as string,
-            rating: p.rating ?? null,
-            before: 9 + (h % 20),
-            after: p.reviews as number,
-            pct: 30 + (h % 5) * 5,
-          };
-        });
+        .forEach((p) =>
+          pushExample(asExample({ name: p.name as string, rating: p.rating ?? null, reviews: p.reviews as number })),
+        );
     }
   } catch { /* Mayfair-only fallback */ }
-  // top up to at least 4 real examples from the big-market list (Hugo: "add
-  // 3 more") when the lead's own town is thin on 300+ businesses
-  if (nicheExamples.length < 4) {
+  // top up from the big-market list (Hugo: "add 3 more") when the lead's own
+  // town is thin on 300+ businesses. Same pushExample guard, so a London lead
+  // whose pack already contains Mayfair can't get it a second time here.
+  if (EXAMPLES.length < 4) {
     try {
-      const seen = new Set(nicheExamples.map((e) => e.name).concat(rawBusiness));
       for (const p of await bigMarketExamples()) {
-        if (nicheExamples.length >= 4) break;
-        if (seen.has(p.name)) continue;
-        const h = hash(p.name);
-        nicheExamples.push({ name: p.name, rating: p.rating, before: 9 + (h % 20), after: p.reviews, pct: 30 + (h % 5) * 5 });
+        if (EXAMPLES.length >= 4) break;
+        pushExample(asExample(p));
       }
     } catch { /* fine — show what we have */ }
   }
-  const EXAMPLES: Example[] = [
-    { name: 'Mayfair Plumbers', rating: 4.8, before: 17, after: 356, pct: 40 },
-    ...nicheExamples,
-  ];
 
   // urgency: 3 of 5 spots when the page goes out, one fewer every 24h,
   // never below 1 (Hugo 2026-07-26)
@@ -311,8 +316,14 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .calcout{text-align:center;margin-top:6px;font-weight:900;font-size:27px;font-variant-numeric:tabular-nums}
 .cvyr{font-size:14px;color:#6B7280;font-weight:800}
 .calcnote{text-align:center;font-size:11.5px;font-weight:600;color:#6B7280;margin-top:4px;line-height:1.4}
-/* the two columns are flow-transparent on mobile; real columns on desktop */
+/* wrappers are always flow-transparent — the desktop grid places the pieces */
 .cols,.colL,.colR{display:contents}
+/* extra desktop-landing CTAs (after calculator / after examples) — never on
+   mobile, where the single sticky button is the one call to action */
+.cta.ctad{display:none}
+.foot{margin-top:52px;padding-top:18px;border-top:1px solid #E5E7EB;text-align:center}
+.footlove{font-size:12.5px;font-weight:700;color:#6B7280}
+.footnote{font-size:10.5px;color:#9CA3AF;margin-top:6px;line-height:1.55;max-width:640px;margin-left:auto;margin-right:auto}
 /* desktop */
 @media(min-width:720px){
   .wrap{max-width:680px;padding:36px 24px 64px}
@@ -327,19 +338,33 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
   .gpill{font-size:12px}
   .calc{padding:24px 26px}
 }
-/* wide desktop: hero text on top, video left, calculator + examples right
-   (Hugo 2026-07-26) */
+/* wide desktop: a structured landing (Hugo 2026-07-26) — hero text + CTA
+   LEFT, hero-sized video RIGHT; then big calculator → CTA → examples → CTA
+   → footer, all centred */
 @media(min-width:1024px){
-  .wrap{max-width:1120px}
-  h1{font-size:30px}
-  .sub{font-size:16px}
-  .cols{display:flex;align-items:flex-start;gap:60px;margin-top:14px}
-  .colL{display:block;width:460px;flex-shrink:0;position:sticky;top:28px}
-  .colR{display:block;flex:1;min-width:0}
-  .colR .calc{margin-top:0}
-  .colR .ba{margin-top:36px}
-  .stage{max-height:none;aspect-ratio:16/9}
-  .stage.playing{height:min(82vh,780px)}
+  .wrap{max-width:1180px;display:grid;grid-template-columns:minmax(0,1fr) 580px;column-gap:70px;grid-template-rows:auto auto auto 1fr;grid-template-areas:"h1 stage" "sub stage" "cta stage" "trust stage" "calc calc" "cd1 cd1" "ba ba" "cd2 cd2" "foot foot";align-items:start;padding-top:56px}
+  h1{grid-area:h1;font-size:44px;line-height:1.12;margin-top:8px}
+  .sub{grid-area:sub;font-size:19px;margin:12px 0 26px}
+  .stage{grid-area:stage;max-height:none;aspect-ratio:16/9;width:100%}
+  .stage.playing{height:min(82vh,780px);width:auto;justify-self:center}
+  .cta{grid-area:cta;margin:0;max-width:420px}
+  .trust{grid-area:trust;text-align:left;margin-top:14px}
+  .calc{grid-area:calc;width:100%;max-width:780px;margin:64px auto 0;padding:36px 44px 30px}
+  .calchead{font-size:25px}
+  .calclbl{font-size:15.5px}
+  .calclbl2{font-size:15px;margin-top:16px}
+  .calclbl2 b{font-size:17px}
+  .jvb{width:44px;height:44px;font-size:21px}
+  .jvwrap{font-size:30px}
+  .calcout{font-size:46px;margin-top:12px}
+  .cvyr{font-size:19px}
+  .calcnote{font-size:14px;margin-top:8px}
+  .cta.ctad{display:flex;max-width:520px;margin:30px auto 0}
+  .cta.cd1{grid-area:cd1}
+  .cta.cd2{grid-area:cd2}
+  .ba{grid-area:ba;width:100%;max-width:880px;margin:64px auto 0}
+  .proof{grid-area:ba;width:100%;max-width:880px;margin:64px auto 0}
+  .foot{grid-area:foot;margin-top:64px}
 }
 /* z 70/71 so the tier sheet also opens above the video popup (its CTA) */
 .sheetbg{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
@@ -394,6 +419,7 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
     <p class="calcout"><span id="cv">£18,000</span><span class="cvyr"> a year</span></p>
     <p class="calcnote" id="cn">HeyElsie costs £1,188 a year. 4 extra jobs in a year covers it — that's one every three months.</p>
   </div>
+  ${ctaButton(' ctad cd1')}
   ${settings.proof_image_url ? `<div class="proof">
     ${settings.proof_caption ? `<p class="prooflabel">${esc(settings.proof_caption)}</p>` : ''}
     <img src="${esc(settings.proof_image_url)}" alt="Before and after results">
@@ -403,7 +429,12 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
     <div class="batrack" id="batrack">${EXAMPLES.map(exSlide).join('')}</div>
     ${EXAMPLES.length > 1 ? `<div class="badots">${EXAMPLES.map((_, i) => `<button class="badot${i === 0 ? ' on' : ''}" onclick="baGo(${i})" aria-label="Example ${i + 1}"></button>`).join('')}</div>` : ''}
   </div>`}
+  ${ctaButton(' ctad cd2')}
   </div></div>
+  <footer class="foot">
+    <p class="footlove">Made with ❤️ in the United Kingdom · © 2026 HeyElsie</p>
+    <p class="footnote">This site is not part of, or endorsed by, Facebook or Google. Facebook is a trademark of Meta Platforms, Inc. Google is a trademark of Google LLC. Example figures are illustrations, not guarantees.</p>
+  </footer>
 </div>
 <div class="sheetbg" onclick="closeSheet()"></div>
 <div class="sheet">

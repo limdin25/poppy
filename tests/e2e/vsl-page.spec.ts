@@ -23,7 +23,13 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     // Personalised headline + the main button (plus its copy under the
     // calculator) + scarcity line.
     await expect(page.locator('h1')).toContainText('I made a 90-second video for')
-    await expect(page.locator('.cta')).toHaveCount(1) // ONE call to action (Hugo)
+    // hero CTA + two desktop-landing copies (calc/examples) — on mobile only
+    // the sticky hero button is visible
+    await expect(page.locator('.cta')).toHaveCount(3)
+    const vpw = page.viewportSize()
+    if (vpw && vpw.width < 720) {
+      await expect(page.locator('.cta.ctad').first()).toBeHidden()
+    }
     // urgency stripe at the very top: 3 spots at send, −1 per 24h, floor 1
     await expect(page.locator('.stripe.spots')).toContainText('left in')
     await expect(page.locator('.trust')).toContainText('Cancel anytime')
