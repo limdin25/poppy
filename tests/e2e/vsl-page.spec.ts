@@ -23,7 +23,7 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     // Personalised headline + the main button (plus its copy under the
     // calculator) + scarcity line.
     await expect(page.locator('h1')).toContainText('I made a 90-second video for')
-    await expect(page.locator('.cta')).toHaveCount(2) // main + calculator copy
+    await expect(page.locator('.cta')).toHaveCount(1) // ONE call to action (Hugo)
     // urgency stripe at the very top: 3 spots at send, −1 per 24h, floor 1
     await expect(page.locator('.stripe.spots')).toContainText('left in')
     await expect(page.locator('.trust')).toContainText('Cancel anytime')
@@ -35,10 +35,13 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     // The open beacon fired on load.
     await expect.poll(() => beacons).toContain('open')
 
-    // CTA opens the tier sheet with the three plans + the £1 note.
+    // CTA opens the tier sheet with the three plans + the £1 note; Growth
+    // wears the Recommended pill.
     await page.locator('.cta').first().click()
     await expect(page.locator('.sheet')).toBeVisible()
     await expect(page.locator('.tier')).toHaveCount(3)
+    await expect(page.locator('.tier.rec')).toContainText('Growth')
+    await expect(page.locator('.recpill')).toHaveText('Recommended')
     await expect(page.locator('.pound')).toContainText('£1 today')
     await expect.poll(() => beacons).toContain('cta_click')
   })

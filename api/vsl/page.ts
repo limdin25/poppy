@@ -176,8 +176,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const tiers = Object.entries(VSL_PRICES)
     .map(
       ([priceId, t]) => `
-      <button class="tier" onclick="pick('${priceId}','${esc(t.label)}')">
-        <span class="tl">${esc(t.label)}</span>
+      <button class="tier${t.label === 'Growth' ? ' rec' : ''}" onclick="pick('${priceId}','${esc(t.label)}')">
+        <span class="tl">${esc(t.label)}${t.label === 'Growth' ? '<em class="recpill">Recommended</em>' : ''}</span>
         <span class="tr">${esc(t.requests)}</span>
         <span class="tp">${esc(t.monthly)}/month after your 10 days</span>
       </button>`,
@@ -254,7 +254,6 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
   .cta{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;margin-top:0;z-index:50;padding:11px 16px;gap:2px;animation:ctaglow 2.4s ease-in-out infinite}
   .cta .ctamain{font-size:16px}
   .cta .ctasub{font-size:11.5px}
-  .cta.cta2{display:none}
   .wrap{padding-bottom:120px}
   .trust{margin-top:16px}
   /* keep the slim bar clear of the floating button on the fullscreen video */
@@ -332,8 +331,10 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
    (Hugo 2026-07-26) */
 @media(min-width:1024px){
   .wrap{max-width:1120px}
-  .cols{display:flex;align-items:flex-start;gap:52px;margin-top:10px}
-  .colL{display:block;width:420px;flex-shrink:0;position:sticky;top:24px}
+  h1{font-size:30px}
+  .sub{font-size:16px}
+  .cols{display:flex;align-items:flex-start;gap:60px;margin-top:14px}
+  .colL{display:block;width:460px;flex-shrink:0;position:sticky;top:28px}
   .colR{display:block;flex:1;min-width:0}
   .colR .calc{margin-top:0}
   .colR .ba{margin-top:36px}
@@ -349,6 +350,8 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .ss{color:#6B7280;font-size:13px;margin-bottom:14px}
 .tier{display:flex;flex-direction:column;width:100%;text-align:left;background:#F8FAFD;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px;margin:8px 0;cursor:pointer;font-family:inherit}
 .tier:active{border-color:#1a73e8}
+.tier.rec{border-color:#1a73e8;background:#F3F8FF}
+.recpill{display:inline-block;margin-left:8px;font-style:normal;font-size:10.5px;font-weight:800;letter-spacing:.3px;color:#fff;background:#1a73e8;border-radius:999px;padding:2px 9px;vertical-align:2px}
 .tl{font-weight:800;font-size:15px}
 .tr{font-size:13px;color:#374151;margin-top:2px}
 .tp{font-size:12px;color:#9CA3AF;margin-top:4px}
@@ -400,7 +403,6 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
     <div class="batrack" id="batrack">${EXAMPLES.map(exSlide).join('')}</div>
     ${EXAMPLES.length > 1 ? `<div class="badots">${EXAMPLES.map((_, i) => `<button class="badot${i === 0 ? ' on' : ''}" onclick="baGo(${i})" aria-label="Example ${i + 1}"></button>`).join('')}</div>` : ''}
   </div>`}
-  ${ctaButton(' cta2')}
   </div></div>
 </div>
 <div class="sheetbg" onclick="closeSheet()"></div>
