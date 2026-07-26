@@ -156,12 +156,12 @@ function ListingCard({ row, i, frame }: { row: Row; i: number; frame: number }) 
             <span style={{ color: TEXT }}>{row.rating.toFixed(1)}</span>
             <Stars rating={row.rating} size={19} />
             <span>({row.reviews ?? 0})</span>
-            <span>· Plumber</span>
+            <span>· {gen.trade.label}</span>
           </>
         ) : (
           // no-rating rows (a category/area link) render like Google's own —
           // NO empty stars, just the label
-          <span>Plumber</span>
+          <span>{gen.trade.label}</span>
         )}
       </div>
       <div style={{ marginTop: 3, fontSize: 19, color: SECONDARY }}>{x.years} · Serves {lead.town}</div>
@@ -248,11 +248,11 @@ export const GoogleScrollV: React.FC = () => {
 
         <div style={{ padding: '0 30px' }}>
           <div style={{ margin: '14px 0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: 34, color: TEXT }}>plumbers in {lead.town}</div>
+            <div style={{ fontSize: 34, color: TEXT }}>{gen.trade.search_term}</div>
             <InfoIcon size={24} color={ICON_GREY} />
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
-            <SearchBox icon={<SearchIcon size={22} />} value="plumber" />
+            <SearchBox icon={<SearchIcon size={22} />} value={gen.trade.chip} />
             <SearchBox icon={<PinIcon size={22} />} value={lead.town} />
           </div>
           <div style={{ margin: '18px 0 0', display: 'flex', gap: 12 }}>

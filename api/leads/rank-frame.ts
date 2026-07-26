@@ -1,12 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { normBusinessName } from '../lib/vsl-settings.js'
+import { resolveTrade } from '../lib/trades.js'
 
 // rank-frame — feeds the personalised "you're buried on Google" video frame.
 //
 // Given a CRM contact id, returns the lead's own Google stats (real, from the
 // leads pipeline: rating, reviews, rank, town) PLUS the LIVE local pack for
-// "plumbers in {town}" pulled fresh from Google Places (real competitor names,
+// "{trade} in {town}" pulled fresh from Google Places (real competitor names,
 // star ratings and review counts). The frame page lays these out like Google's
 // local results with the lead sat down at its real rank — so the video shows
 // the truth, styled like Google, never fabricated numbers.
@@ -37,9 +38,9 @@ interface PackEntry {
 // Lives in lib/vsl-settings so api/vsl/page.ts dedupes its examples the same way.
 const norm = normBusinessName
 
-async function localPack(town: string, query: string): Promise<PackEntry[]> {
+async function localPack(query: string): Promise<PackEntry[]> {
   if (!GOOGLE_KEY) return []
-  const q = encodeURIComponent(query || `plumbers in ${town}`)
+  const q = encodeURIComponent(query)
   const url =
     `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${q}&region=uk&key=${GOOGLE_KEY}`
   const res = await fetch(url, { headers: { Referer: REFERER } })
@@ -87,12 +88,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     total_plumbers: num(cf.total_plumbers),
   }
 
-  // Query Google with the same search the ranking came from, if we have it.
-  const searchQuery =
-    (cf.google_search_url?.match(/search\/([^/?]+)/)?.[1]?.replace(/\+/g, ' ') || '')
-    || `plumbers in ${lead.town}`
+  // The trade drives the search, and the SAME string goes on screen in the
+  // video — so what we query Google for and what the lead sees are never
+  // different. (Previously this parsed the stored google_search_url, which for
+  // the 11k list always said "plumbers" — including for the ~950 leads Google
+  // files as electricians or builders.)
+  const trade = resolveTrade(cf, lead.town, lead.business)
 
-  let pack = await localPack(lead.town, searchQuery)
+  let pack = await localPack(trade.search_term)
 
   // Order the real competitors by review count (Google's #1 factor) so the
   // top of the list = the businesses eating the lead's jobs.
@@ -103,16 +106,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const leadNorm = norm(lead.business)
   pack = pack.filter((p) => norm(p.name) !== leadNorm)
 
-  // Insert the lead at its real rank (1-based). Clamp into the list we have.
+  // Place the lead. Prefer REVIEW COUNT over the stored rank: the pack above is
+  // already sorted by reviews, so slotting them by their own review count makes
+  // the video's core claim — "everyone above you has more reviews" — literally
+  // true, for any trade, with no dependency on a stored rank that may have come
+  // from a different search. Falls back to the stored rank when we have no
+  // review count. (This is also what unblocks rank 1-3 leads: they used to fail
+  // the ">=3 competitors above" render gate purely because of the old splice.)
   const leadCard: PackEntry = {
     name: lead.business,
     rating: lead.rating,
     reviews: lead.reviews,
     isLead: true,
   }
-  const at = Math.max(0, Math.min((lead.rank ?? pack.length + 1) - 1, pack.length))
+  let at: number
+  let rankSource: 'reviews' | 'stored'
+  if (lead.reviews != null) {
+    const i = pack.findIndex((p) => (p.reviews ?? 0) <= (lead.reviews as number))
+    at = i < 0 ? pack.length : i
+    rankSource = 'reviews'
+  } else {
+    at = Math.max(0, Math.min((lead.rank ?? pack.length + 1) - 1, pack.length))
+    rankSource = 'stored'
+  }
   pack.splice(at, 0, leadCard)
 
   res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=604800')
-  return res.status(200).json({ ok: true, lead, pack })
+  return res.status(200).json({
+    ok: true,
+    lead: { ...lead, rank_source: rankSource, shown_rank: at + 1 },
+    trade,
+    pack,
+  })
 }

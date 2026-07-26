@@ -53,7 +53,7 @@ const ListingPoster: React.FC = () => (
   <AbsoluteFill style={{ background: '#fff', fontFamily: GOOGLE_FONT }}>
     <img src={staticFile('google-logo.png')} alt="" style={{ position: 'absolute', left: 56, top: 44, height: 44 }} />
     <div style={{ position: 'absolute', left: 56, top: 112, fontSize: 26, color: TEXT }}>
-      plumbers in {gen.town}
+      {gen.trade.search_term}
     </div>
     <div
       style={{
@@ -91,10 +91,10 @@ const ListingPoster: React.FC = () => (
             <span style={{ color: TEXT }}>{Number(gen.rating).toFixed(1)}</span>
             <Stars rating={Number(gen.rating)} size={24} />
             <span>({gen.reviews ?? 0})</span>
-            <span>· Plumber</span>
+            <span>· {gen.trade.label}</span>
           </>
         ) : (
-          <span>Plumber</span>
+          <span>{gen.trade.label}</span>
         )}
       </div>
       <div style={{ marginTop: 10, fontSize: 24, color: SECONDARY }}>Serves {gen.town} and nearby areas</div>

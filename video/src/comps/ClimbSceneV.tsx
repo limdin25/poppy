@@ -1,24 +1,31 @@
 import React from 'react'
 import { spring } from 'remotion'
 import { BLUE, INK, GREY, BORDER, SOFT } from '../theme'
+import gen from '../data/lead-gen.json'
 
 // v12: the climb is no longer its own scene — the new script folds the
 // customer stream into step one ("or just send us your customer list") and
 // the ladder (MiniLadder, in StepsSceneV) into step three. Only the
 // customer stream lives here now.
 // GENERIC on purpose (Hugo 2026-07-25): the back half of the video is
-// permanent across every lead — but note the job labels below are
-// plumbing-flavoured; swap them if a campaign ever targets another trade.
-
-const CUSTOMERS = [
-  { i: 'K', name: 'Kate M.', job: 'New boiler · March' },
-  { i: 'J', name: 'James W.', job: 'Bathroom refit · February' },
-  { i: 'S', name: 'Sarah P.', job: 'Leak repair · May' },
-  { i: 'T', name: 'Tom B.', job: 'Radiators · January' },
-  { i: 'A', name: 'Aisha K.', job: 'Boiler service · June' },
-  { i: 'D', name: 'Dan R.', job: 'Full heating system · April' },
-  { i: 'E', name: 'Emma S.', job: 'Annual service · July' },
+// Names/months are permanent across every lead; the JOB on each row comes from
+// the lead's trade profile (api/lib/trades.ts via lead-gen.json), so an
+// electrician's customers ask for a fuse board, not a boiler. Fixed SEVEN — the
+// stagger timings below are keyed to that count.
+const MONTHS = ['March', 'February', 'May', 'January', 'June', 'April', 'July']
+const PEOPLE = [
+  { i: 'K', name: 'Kate M.' },
+  { i: 'J', name: 'James W.' },
+  { i: 'S', name: 'Sarah P.' },
+  { i: 'T', name: 'Tom B.' },
+  { i: 'A', name: 'Aisha K.' },
+  { i: 'D', name: 'Dan R.' },
+  { i: 'E', name: 'Emma S.' },
 ]
+const CUSTOMERS = PEOPLE.map((p, i) => ({
+  ...p,
+  job: `${gen.trade.jobs[i] ?? gen.trade.jobs[0]} · ${MONTHS[i]}`,
+}))
 
 export const CustomerStream: React.FC<{
   frame: number

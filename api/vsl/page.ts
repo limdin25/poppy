@@ -21,12 +21,13 @@ const esc = (s: unknown) =>
 // warm lambda): real UK plumbing businesses with 300+ reviews
 const GOOGLE_KEY = process.env.GOOGLE_PLACES_KEY || process.env.VITE_GOOGLE_PLACES_KEY || '';
 interface BigExample { name: string; rating: number | null; reviews: number }
-let bigMarketCache: BigExample[] | null = null;
-async function bigMarketExamples(): Promise<BigExample[]> {
-  if (bigMarketCache) return bigMarketCache;
+const bigMarketCache = new Map<string, BigExample[]>();
+async function bigMarketExamples(plural = 'plumbers'): Promise<BigExample[]> {
+  const cached = bigMarketCache.get(plural);
+  if (cached) return cached;
   if (!GOOGLE_KEY) return [];
   const r = await fetch(
-    `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent('plumbers in London')}&region=uk&key=${GOOGLE_KEY}`,
+    `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(`${plural} in London`)}&region=uk&key=${GOOGLE_KEY}`,
     { headers: { Referer: 'https://poppy-henna.vercel.app/' }, signal: AbortSignal.timeout(2500) },
   );
   const j = (await r.json()) as {
@@ -34,14 +35,15 @@ async function bigMarketExamples(): Promise<BigExample[]> {
     results?: Array<{ name?: string; rating?: number; user_ratings_total?: number }>;
   };
   if (j.status !== 'OK' || !j.results) return [];
-  bigMarketCache = j.results
+  const built = j.results
     .filter((x) => x.name && typeof x.user_ratings_total === 'number' && x.user_ratings_total > 300)
     .map((x) => ({
       name: x.name as string,
       rating: typeof x.rating === 'number' ? x.rating : null,
       reviews: x.user_ratings_total as number,
     }));
-  return bigMarketCache;
+  bigMarketCache.set(plural, built);
+  return built;
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
@@ -108,6 +110,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     seen.add(n);
     EXAMPLES.push(x);
   };
+  // The lead's trade, resolved by rank-frame (same source the video uses, so
+  // the page and the video can never disagree). A failed/timed-out fetch leaves
+  // it null and the Google cards simply omit the category line — a Google card
+  // with no category still looks like a Google card.
+  let trade: { label: string | null; plural: string } | null = null;
   const asExample = (p: { name: string; rating: number | null; reviews: number }): Example => {
     const h = hash(p.name);
     return { name: p.name, rating: p.rating, before: 9 + (h % 20), after: p.reviews, pct: 30 + (h % 5) * 5 };
@@ -120,7 +127,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (r.ok) {
       const d = (await r.json()) as {
         pack?: Array<{ name?: string; rating?: number | null; reviews?: number | null; isLead?: boolean }>;
+        trade?: { label: string | null; plural: string };
       };
+      if (d.trade) trade = d.trade;
       (d.pack || [])
         .filter((p) => !p.isLead && p.name && typeof p.reviews === 'number' && p.reviews > 300)
         .sort((a, b) => (b.reviews ?? 0) - (a.reviews ?? 0))
@@ -134,7 +143,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // whose pack already contains Mayfair can't get it a second time here.
   if (EXAMPLES.length < 4) {
     try {
-      for (const p of await bigMarketExamples()) {
+      for (const p of await bigMarketExamples(trade?.plural || 'plumbers')) {
         if (EXAMPLES.length >= 4) break;
         pushExample(asExample(p));
       }
@@ -158,9 +167,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // details. A same-named business arriving from Google would otherwise
   // inherit Mayfair's London address and phone number.
   const isMayfair = (x: Example) => x === HERO;
+  // Mayfair IS a plumber, so it keeps that label whatever the lead does. Real
+  // businesses pulled from the lead's own pack get the lead's trade.
+  const labelFor = (x: Example) => (x === HERO ? 'Plumber' : trade?.label ?? null);
   const gFull = (x: Example, after: boolean) => `<div class="gcard">
     <p class="gname">${esc(x.name)}</p>
-    <p class="gmeta"><b>${after && x.rating != null ? Number(x.rating).toFixed(1) : '5.0'}</b><span class="gstars">${stars(10)}</span><span>(${after ? x.after.toLocaleString('en-GB') : x.before})</span><span>· Plumber</span></p>
+    <p class="gmeta"><b>${after && x.rating != null ? Number(x.rating).toFixed(1) : '5.0'}</b><span class="gstars">${stars(10)}</span><span>(${after ? x.after.toLocaleString('en-GB') : x.before})</span>${labelFor(x) ? `<span>· ${esc(labelFor(x))}</span>` : ''}</p>
     <p class="gsub">${isMayfair(x) ? '5+ years in business · London' : `Serves ${town} and nearby areas`}</p>
     ${isMayfair(x) ? `<p class="gsub"><span class="gopen">Open 24 hours</span> · 020 3633 1526</p>` : ''}
     <div class="gbtns">

@@ -4,6 +4,7 @@ import { BG, BLUE, INK, GREY, BORDER, SOFT, UI_FONT } from '../theme'
 import { CustomerStream } from './ClimbSceneV'
 import { Stars, PhoneIcon } from './kimi'
 import { Wordmark } from './Wordmark'
+import gen from '../data/lead-gen.json'
 
 // S5 (1684–3110f global, 1426f local) — the three steps as a STORYBOARD,
 // v12 cues from the whisper word times of the 1.2x audio:
@@ -41,7 +42,7 @@ const SMS1_B = '! Thanks for having us out today 😊 Would you mind leaving us 
 const SMS1_LINK = 'g.page/r/your-business'
 const SMS1_FULL = SMS1_A + SMS1_NAME + SMS1_B + SMS1_LINK
 const SMS2 = "Hi Kate, just a friendly nudge 🙂 the review link's above whenever you've got a sec."
-const REVIEW_TEXT = 'Brilliant service — new boiler fitted next day. Tidy, friendly, fair price. Highly recommend!'
+const REVIEW_TEXT = gen.trade.review_long
 
 const TypingDots: React.FC<{ frame: number }> = ({ frame }) => (
   <div style={{ display: 'flex', gap: 8, padding: '18px 24px', background: SOFT, borderRadius: 24, width: 104 }}>

@@ -489,8 +489,22 @@ describe('render pipeline — prep + comps', () => {
   const scroll = read('video/src/comps/GoogleScrollV.tsx')
   const flow = read('video/src/FlowVideo.tsx')
 
-  it('prep fails loudly on degraded data (no town/rank = no render)', () => {
-    expect(prep).toMatch(/lead is missing town\/rank/)
+  it('prep fails loudly with no town (the search is built from it)', () => {
+    expect(prep).toMatch(/lead is missing town/)
+    expect(prep).toMatch(/if \(!rf\.lead\.town\) \{/)
+  })
+
+  // rank is no longer required: rank-frame places the lead by REVIEW COUNT, so
+  // a stored rank from a different search can't decide whether a lead renders.
+  // That's what unblocks the 207 rank-1-3 leads.
+  it('no longer refuses a lead just because it has no stored rank', () => {
+    expect(prep).not.toMatch(/!rf\.lead\.rank/)
+    expect(prep).not.toMatch(/only plumber-import leads render/)
+  })
+
+  it('refuses to invent competitors for a trade it has no vocabulary for', () => {
+    expect(prep).toMatch(/if \(!PROFILE\)/)
+    expect(prep).toMatch(/no trade profile for this lead/)
   })
 
   it('lead lands at index 18 — five audio-locked flicks reach it', () => {
@@ -691,5 +705,110 @@ describe('examples carousel — no duplicate businesses', () => {
     const rf = read('api/leads/rank-frame.ts')
     expect(rf).toMatch(/import \{ normBusinessName \} from '\.\.\/lib\/vsl-settings\.js'/)
     expect(rf).not.toMatch(/function norm\(s: string\)/)
+  })
+})
+
+// Hugo 2026-07-26: go multi-trade. The 11k list was scraped entirely from
+// PLUMBER searches — every row's rank/competitors is a fact about the plumber
+// SERP, even the ~950 rows Google files as Electrician or Home builder. So the
+// trade has to drive the Google query, the on-screen strings and the invented
+// padding, or an electrician's video shows them buried among plumbers.
+describe('multi-trade', () => {
+  const load = async () => import('../api/lib/trades')
+
+  it('resolves a trade from the business name before Google’s category', async () => {
+    const { resolveTrade } = await load()
+    // real rows from the list: Google files these as Construction Company /
+    // Bathroom Renovator, but the NAME is the stronger signal
+    expect(resolveTrade({ google_category: 'Construction Company' }, 'Redruth', 'Carn Brea Plumbing').key).toBe('plumber')
+    expect(resolveTrade({ google_category: 'Bathroom Renovator' }, 'Havant', 'Elite Plumbing Heating Solutions').key).toBe('plumber')
+    expect(resolveTrade({ google_category: 'Electrician' }, 'Skipton', 'R J TAYLOR ELECTRICAL').key).toBe('electrician')
+  })
+
+  it('an explicit niche override beats everything', async () => {
+    const { resolveTrade } = await load()
+    expect(resolveTrade({ niche: 'electrician', google_category: 'Plumber' }, 'Bath', 'Bob Plumbing').key).toBe('electrician')
+  })
+
+  it('builds the search term the video puts on screen', async () => {
+    const { resolveTrade } = await load()
+    expect(resolveTrade({ niche: 'electrician' }, 'Basingstoke').search_term).toBe('electricians in Basingstoke')
+    expect(resolveTrade({ niche: 'plumber' }, 'Glossop').search_term).toBe('plumbers in Glossop')
+  })
+
+  it('rejects a street address in the Category column (scraper column-shift)', async () => {
+    const { resolveTrade } = await load()
+    for (const junk of ['121 Quantock Rd', '460 Shore Rd', '3 Alison Way', '29 Kingsley Rd']) {
+      const t = resolveTrade({ google_category: junk }, 'Bath')
+      expect(t.label).toBeNull()
+      expect(t.profile).toBeNull()
+    }
+  })
+
+  it('gives merchants and shops a page but NO video', async () => {
+    const { resolveTrade } = await load()
+    for (const c of ["Plumbers' merchant", 'Hardware Shop', 'Tool Shop', 'Corporate office']) {
+      expect(resolveTrade({ google_category: c }, 'Bath').profile).toBeNull()
+    }
+  })
+
+  it('shows a truthful label for a category we have not mapped yet', async () => {
+    const { resolveTrade } = await load()
+    const t = resolveTrade({ google_category: 'Septic system service' }, 'Bath')
+    expect(t.label).toBe('Septic system service')
+    expect(t.profile).toBeNull()   // truthful page, no invented video copy
+  })
+
+  it('never returns null — callers only branch on profile', async () => {
+    const { resolveTrade } = await load()
+    for (const cf of [null, undefined, {}, { google_category: '' }]) {
+      const t = resolveTrade(cf as never, 'Bath')
+      expect(t).toBeTruthy()
+      expect(t.profile).toBeNull()
+    }
+  })
+
+  it('every profile fits the animation budgets it feeds', async () => {
+    const { TRADE_PROFILES } = await load()
+    for (const [key, p] of Object.entries(TRADE_PROFILES)) {
+      // ClimbSceneV is a fixed 7-row stagger
+      expect(p.jobs, key).toHaveLength(7)
+      // StepsSceneV types at 1.3cps inside a 104-frame gate
+      expect(p.review_long.length, key).toBeLessThanOrEqual(100)
+      // OfferSceneV types at 1.6cps into a minHeight:70 box
+      expect(p.owner_reply.length, key).toBeLessThanOrEqual(70)
+      p.review_short.forEach((r) => expect(r.length, key).toBeLessThanOrEqual(45))
+      expect(p.ghost_patterns.length, key).toBeGreaterThanOrEqual(8)
+    }
+  })
+
+  it('rank-frame searches the TRADE, not a stored plumber URL', async () => {
+    const rf = read('api/leads/rank-frame.ts')
+    expect(rf).toMatch(/resolveTrade\(cf, lead\.town, lead\.business\)/)
+    expect(rf).toMatch(/localPack\(trade\.search_term\)/)
+    expect(rf).not.toMatch(/google_search_url\?\.match/)   // the plumber-only signal
+    expect(rf).toMatch(/trade,/)                            // returned to page + prep-lead
+  })
+
+  it('the comps read the trade instead of hardcoding "Plumber"', () => {
+    const scroll = read('video/src/comps/GoogleScrollV.tsx')
+    const poster = read('video/src/comps/PosterV.tsx')
+    const search = read('video/src/comps/OpeningSearchV.tsx')
+    const climb = read('video/src/comps/ClimbSceneV.tsx')
+    for (const [name, src] of Object.entries({ scroll, poster })) {
+      expect(src, name).toMatch(/gen\.trade\.label/)
+      expect(src, name).not.toMatch(/<span>· Plumber<\/span>/)
+    }
+    expect(scroll).toMatch(/gen\.trade\.search_term/)
+    expect(scroll).toMatch(/value=\{gen\.trade\.chip\}/)
+    expect(search).toMatch(/const QUERY = gen\.trade\.search_term/)
+    expect(climb).toMatch(/gen\.trade\.jobs\[i\]/)
+  })
+
+  it('the committed lead-gen sample carries a trade (TS infers gen from it)', () => {
+    const gen = JSON.parse(read('video/src/data/lead-gen.json'))
+    expect(gen.trade).toBeTruthy()
+    expect(gen.trade.jobs).toHaveLength(7)
+    expect(gen.trade.search_term).toContain(gen.town)
   })
 })

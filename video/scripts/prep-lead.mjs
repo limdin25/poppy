@@ -75,8 +75,8 @@ const rf = await rfRes.json()
 if (!rf?.ok || !rf.lead) { console.error('rank-frame returned no lead'); process.exit(1) }
 
 // Fail loudly on degraded data — never render a broken pack (HANDOFF §4.5).
-if (!rf.lead.town || !rf.lead.rank) {
-  console.error(`lead is missing town/rank (town="${rf.lead.town}" rank=${rf.lead.rank}) — only plumber-import leads render`)
+if (!rf.lead.town) {
+  console.error(`lead is missing town (town="${rf.lead.town}") — the video builds their Google search from it`)
   process.exit(1)
 }
 
@@ -100,26 +100,31 @@ if (realAbove.length < 3) {
 }
 
 const SURNAMES = ['Whitfield', 'Ashworth', 'Hughes', 'McCabe', 'Cooper', 'Barlow', 'Kendall', 'Slater', 'Booth', 'Hartley', 'Ogden', 'Farrell']
-const PATTERNS = [
-  (t, s) => `${t} Plumbing Services`,
-  (t, s) => `${s} Plumbing & Heating`,
-  (t, s) => `${t} Boiler Care`,
-  (t, s) => `${s.charAt(0)}. ${s} & Son`,
-  (t, s) => `${t} Heating Solutions`,
-  (t, s) => `${s} & Sons`,
-  (t, s) => `${t} Gas Services`,
-  (t, s) => `J ${s} Plumbing & Heating`,
-  (t, s) => `${s.charAt(0)}&${SURNAMES[Math.floor(rand() * SURNAMES.length)].charAt(0)} Plumbing`,
-  (t, s) => `Rapid Response Plumbing ${t}`,
-]
+// Padding names come from the lead's TRADE profile (api/lib/trades.ts), handed
+// to us by rank-frame as plain string templates — an electrician's SERP must not
+// be padded with invented plumbers. Substitution keeps the existing seeded rand()
+// so a given lead always renders the same pack.
+const cap = (x) => String(x || '').replace(/^./, (c) => c.toUpperCase())
+const TRADE = rf.trade || {}
+const PROFILE = TRADE.profile || null
+if (!PROFILE) {
+  console.error(`no trade profile for this lead (trade=${TRADE.key || 'unknown'}, category="${TRADE.label || ''}") — refusing to invent competitors for a trade we have no vocabulary for`)
+  process.exit(1)
+}
+const PATTERNS = PROFILE.ghost_patterns
+const fillPattern = (tpl, t, s) => tpl
+  .replace(/\{town\}/g, t)
+  .replace(/\{surname\}/g, s)
+  .replace(/\{initial2\}/g, SURNAMES[Math.floor(rand() * SURNAMES.length)].charAt(0))
+  .replace(/\{initial\}/g, s.charAt(0))
 const taken = new Set(real.map((r) => r.name.toLowerCase()))
 function padName(town) {
   for (let i = 0; i < 40; i++) {
     const s = SURNAMES[Math.floor(rand() * SURNAMES.length)]
-    const name = PATTERNS[Math.floor(rand() * PATTERNS.length)](town, s)
+    const name = fillPattern(PATTERNS[Math.floor(rand() * PATTERNS.length)], town, s)
     if (!taken.has(name.toLowerCase())) { taken.add(name.toLowerCase()); return name }
   }
-  return `${town} Plumbing Co.`
+  return fillPattern(PROFILE.ghost_fallback, town, SURNAMES[0])
 }
 
 // Above: real rows first (their Google order tells the true story), padded to
@@ -145,7 +150,7 @@ while (above.length < LEAD_INDEX) {
 const below = [...realBelow]
 while (below.length < TOTAL - LEAD_INDEX - 1) {
   below.push(below.length >= 3 && rand() < 0.5
-    ? { name: `Plumbers in ${rf.lead.town}`, rating: null, reviews: null, isLead: false }
+    ? { name: `${cap(TRADE.plural || 'tradesmen')} in ${rf.lead.town}`, rating: null, reviews: null, isLead: false }
     : { name: padName(rf.lead.town), rating: 5, reviews: 1 + Math.floor(rand() * 2), isLead: false })
 }
 
@@ -223,6 +228,20 @@ const gen = {
   sel_w: selW,
   area_code: areaCode(),
   lead_phone: fmtReal(), // real number on the lead's own card, or null → hidden
+  // The trade travels to the Remotion comps as DATA (they can't import
+  // api/lib/trades.ts across bundlers). ghost_patterns stay behind — they're
+  // already spent above and the comps never need them.
+  trade: {
+    key: TRADE.key || 'plumber',
+    label: TRADE.label || 'Plumber',
+    plural: TRADE.plural || 'plumbers',
+    chip: TRADE.chip || 'plumber',
+    search_term: TRADE.search_term || `plumbers in ${rf.lead.town}`,
+    jobs: PROFILE.jobs,
+    review_long: PROFILE.review_long,
+    review_short: PROFILE.review_short,
+    owner_reply: PROFILE.owner_reply,
+  },
   rows,
 }
 writeFileSync(join(VIDEO_DIR, 'src', 'data', 'lead-gen.json'), JSON.stringify(gen, null, 2) + '\n')

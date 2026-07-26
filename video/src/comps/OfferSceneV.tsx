@@ -3,6 +3,7 @@ import { AbsoluteFill, useCurrentFrame, spring, interpolate } from 'remotion'
 import { BG, BLUE, RED, INK, GREY, BORDER, SOFT, UI_FONT } from '../theme'
 import { Stars, PhoneIcon } from './kimi'
 import { Wordmark } from './Wordmark'
+import gen from '../data/lead-gen.json'
 
 // S6 (3110–4650f global, 1540f local): the offer, v12 — the new script sells
 // the OUTCOME first, then the price never stands alone. Red appears ONLY on
@@ -24,12 +25,12 @@ import { Wordmark } from './Wordmark'
 //   local 1452+ (speech done)                             3s end-card hold
 
 const REVIEWS = [
-  { name: 'Sarah P.', ago: '2 days ago', text: 'Quick, tidy, sorted the leak same day.' },
-  { name: 'Tom B.', ago: '5 days ago', text: 'Great job on the radiators — spotless.' },
+  { name: 'Sarah P.', ago: '2 days ago', text: gen.trade.review_short[0] },
+  { name: 'Tom B.', ago: '5 days ago', text: gen.trade.review_short[1] },
   { name: 'Aisha K.', ago: '1 week ago', text: 'Friendly, on time, fair price.' },
 ]
 
-const OWNER_REPLY = 'Thanks Kate — pleasure as always. See you at the annual service!'
+const OWNER_REPLY = gen.trade.owner_reply
 
 function typed(text: string, frame: number, start: number, cps = 1.6): string {
   if (frame < start) return ''

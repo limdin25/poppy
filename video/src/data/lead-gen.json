@@ -11,28 +11,143 @@
   "area_code": "01457",
   "lead_phone": "01457 851 460",
   "rows": [
-    { "name": "GasCare - Glossop", "rating": 4.8, "reviews": 758 },
-    { "name": "Screwfix Glossop", "rating": 4.6, "reviews": 174 },
-    { "name": "High Peak Heating Solutions", "rating": 4.7, "reviews": 143 },
-    { "name": "The Boiler Club", "rating": 5, "reviews": 55 },
-    { "name": "Glossop Boiler Care", "rating": 4.9, "reviews": 88 },
-    { "name": "B.Cooper & Sons", "rating": 5, "reviews": 30 },
-    { "name": "Dinting Heating Co.", "rating": 4.6, "reviews": 61 },
-    { "name": "A&E Plumbing", "rating": 4.9, "reviews": 22 },
-    { "name": "M. Whitfield Plumbing & Heating", "rating": 4.5, "reviews": 34 },
-    { "name": "the 1 stop plumbing & green energy centre ltd", "rating": 4.7, "reviews": 21 },
-    { "name": "Simmondley Plumbing Services", "rating": 4.8, "reviews": 19 },
-    { "name": "Peter Hughes Plumbing", "rating": 4.8, "reviews": 17 },
-    { "name": "Peak District Gas Services", "rating": 4.4, "reviews": 27 },
-    { "name": "J McCabe Plumbing & Heating", "rating": 4.6, "reviews": 11 },
-    { "name": "R. Ashworth & Son", "rating": 4.3, "reviews": 9 },
-    { "name": "Joe Barber Plumbers Merchant Depot", "rating": 3.5, "reviews": 4 },
-    { "name": "Hadfield Plumbing & Heating", "rating": 4.6, "reviews": 12 },
-    { "name": "TitanFlameltd-Glossop", "rating": 5, "reviews": 3 },
-    { "name": "Energywise Heating Limited", "rating": 5, "reviews": 59, "isLead": true },
-    { "name": "Joe Barber Plumbers Merchants", "rating": 5, "reviews": 2 },
-    { "name": "In the pipeline plumbing & heating specialists Ltd", "rating": 5, "reviews": 2 },
-    { "name": "MG plumbing & heating", "rating": 5, "reviews": 1 },
-    { "name": "Plumbers in Hadfield", "rating": null, "reviews": null }
-  ]
+    {
+      "name": "GasCare - Glossop",
+      "rating": 4.8,
+      "reviews": 758
+    },
+    {
+      "name": "Screwfix Glossop",
+      "rating": 4.6,
+      "reviews": 174
+    },
+    {
+      "name": "High Peak Heating Solutions",
+      "rating": 4.7,
+      "reviews": 143
+    },
+    {
+      "name": "The Boiler Club",
+      "rating": 5,
+      "reviews": 55
+    },
+    {
+      "name": "Glossop Boiler Care",
+      "rating": 4.9,
+      "reviews": 88
+    },
+    {
+      "name": "B.Cooper & Sons",
+      "rating": 5,
+      "reviews": 30
+    },
+    {
+      "name": "Dinting Heating Co.",
+      "rating": 4.6,
+      "reviews": 61
+    },
+    {
+      "name": "A&E Plumbing",
+      "rating": 4.9,
+      "reviews": 22
+    },
+    {
+      "name": "M. Whitfield Plumbing & Heating",
+      "rating": 4.5,
+      "reviews": 34
+    },
+    {
+      "name": "the 1 stop plumbing & green energy centre ltd",
+      "rating": 4.7,
+      "reviews": 21
+    },
+    {
+      "name": "Simmondley Plumbing Services",
+      "rating": 4.8,
+      "reviews": 19
+    },
+    {
+      "name": "Peter Hughes Plumbing",
+      "rating": 4.8,
+      "reviews": 17
+    },
+    {
+      "name": "Peak District Gas Services",
+      "rating": 4.4,
+      "reviews": 27
+    },
+    {
+      "name": "J McCabe Plumbing & Heating",
+      "rating": 4.6,
+      "reviews": 11
+    },
+    {
+      "name": "R. Ashworth & Son",
+      "rating": 4.3,
+      "reviews": 9
+    },
+    {
+      "name": "Joe Barber Plumbers Merchant Depot",
+      "rating": 3.5,
+      "reviews": 4
+    },
+    {
+      "name": "Hadfield Plumbing & Heating",
+      "rating": 4.6,
+      "reviews": 12
+    },
+    {
+      "name": "TitanFlameltd-Glossop",
+      "rating": 5,
+      "reviews": 3
+    },
+    {
+      "name": "Energywise Heating Limited",
+      "rating": 5,
+      "reviews": 59,
+      "isLead": true
+    },
+    {
+      "name": "Joe Barber Plumbers Merchants",
+      "rating": 5,
+      "reviews": 2
+    },
+    {
+      "name": "In the pipeline plumbing & heating specialists Ltd",
+      "rating": 5,
+      "reviews": 2
+    },
+    {
+      "name": "MG plumbing & heating",
+      "rating": 5,
+      "reviews": 1
+    },
+    {
+      "name": "Plumbers in Hadfield",
+      "rating": null,
+      "reviews": null
+    }
+  ],
+  "trade": {
+    "key": "plumber",
+    "label": "Plumber",
+    "plural": "plumbers",
+    "chip": "plumber",
+    "search_term": "plumbers in Glossop",
+    "jobs": [
+      "New boiler",
+      "Bathroom refit",
+      "Leak repair",
+      "Radiators",
+      "Boiler service",
+      "Full heating system",
+      "Annual service"
+    ],
+    "review_long": "Brilliant service — new boiler fitted next day. Tidy, friendly, fair price. Highly recommend!",
+    "review_short": [
+      "Quick, tidy, sorted the leak same day.",
+      "Great job on the radiators — spotless."
+    ],
+    "owner_reply": "Thanks Kate — pleasure as always. See you at the annual service!"
+  }
 }

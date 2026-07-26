@@ -13,7 +13,7 @@ import { TEXT, SECONDARY, BORDER, ICON_GREY, SearchIcon } from './kimi'
 // pressed — cutting straight into S2's SERP. Fully synthetic + deterministic:
 // no capture, no cookie walls. Same frame window; the audio contract holds.
 
-const QUERY = `plumbers in ${gen.town}`
+const QUERY = gen.trade.search_term
 
 // typing: starts after the click, ~5 chars/sec of video time, code-point
 // sliced so multi-byte town names never tear
