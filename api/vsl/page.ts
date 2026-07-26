@@ -5,7 +5,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
-import { getVslSettings, VSL_PRICES } from '../lib/vsl-settings.js';
+import { getVslSettings, VSL_PRICES, normBusinessName } from '../lib/vsl-settings.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -154,7 +154,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // one FULL Google card (stars, lines, Website/Directions buttons — Hugo:
   // keep all the information, the pair just has to FIT side by side).
   // Mayfair carries its PPTX details; real businesses get real facts only.
-  const isMayfair = (x: Example) => x.name === 'Mayfair Plumbers';
+  // Identity, not name-equality: only the hardcoded hero carries its PPTX
+  // details. A same-named business arriving from Google would otherwise
+  // inherit Mayfair's London address and phone number.
+  const isMayfair = (x: Example) => x === HERO;
   const gFull = (x: Example, after: boolean) => `<div class="gcard">
     <p class="gname">${esc(x.name)}</p>
     <p class="gmeta"><b>${after && x.rating != null ? Number(x.rating).toFixed(1) : '5.0'}</b><span class="gstars">${stars(10)}</span><span>(${after ? x.after.toLocaleString('en-GB') : x.before})</span><span>· Plumber</span></p>

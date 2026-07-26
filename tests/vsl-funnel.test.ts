@@ -648,3 +648,48 @@ describe('prep data fidelity fixes', () => {
     expect(scroll).toMatch(/row\.rating != null \?/)
   })
 })
+
+// Hugo 2026-07-26: the examples carousel showed "Mayfair Plumbers" TWICE on
+// heyelsie.com/24-7-fast-flow-plumbing-ltd — slide 1 at 17→356, slide 3 at
+// 11→356. Root cause: EXAMPLES prepended a hardcoded Mayfair, but the dedupe
+// set was seeded only with the live pack names + the lead's own name, so the
+// 'plumbers in London' top-up handed it straight back.
+describe('examples carousel — no duplicate businesses', () => {
+  const page = read('api/vsl/page.ts')
+
+  it('seeds the dedupe set with the HERO, not just the lead', () => {
+    expect(page).toMatch(/new Set\(\[normBusinessName\(HERO\.name\), normBusinessName\(rawBusiness\)\]\)/)
+  })
+
+  it('routes BOTH the live pack and the big-market top-up through one guard', () => {
+    // exactly one place appends to EXAMPLES
+    expect(page.match(/EXAMPLES\.push\(/g) || []).toHaveLength(1)
+    expect(page).toMatch(/\.forEach\(\(p\) =>\s*\n?\s*pushExample\(/)
+    expect(page).toMatch(/pushExample\(asExample\(p\)\)/)
+  })
+
+  it('dedupes loosely so "Mayfair Plumbers Ltd" is caught too', async () => {
+    const { normBusinessName } = await import('../api/lib/vsl-settings')
+    expect(normBusinessName('Mayfair Plumbers Ltd')).toBe(normBusinessName('Mayfair Plumbers'))
+    expect(normBusinessName('The Pimlico Plumbers Limited')).toBe(normBusinessName('Pimlico Plumbers'))
+    expect(normBusinessName('24/7 Fast Flow Plumbing Ltd')).toBe(normBusinessName('24/7 Fast Flow Plumbing'))
+  })
+
+  it('caps the carousel so a rich pack cannot run away', () => {
+    expect(page).toMatch(/MAX_EXAMPLES = 5/)
+    expect(page).toMatch(/EXAMPLES\.length >= MAX_EXAMPLES/)
+  })
+
+  it('gives Mayfair its PPTX details by identity, never by name match', () => {
+    // a same-named business from Google must not inherit Mayfair's London
+    // address and phone number
+    expect(page).toMatch(/const isMayfair = \(x: Example\) => x === HERO/)
+    expect(page).not.toMatch(/x\.name === 'Mayfair Plumbers'/)
+  })
+
+  it('rank-frame and the page share ONE name-normaliser', () => {
+    const rf = read('api/leads/rank-frame.ts')
+    expect(rf).toMatch(/import \{ normBusinessName \} from '\.\.\/lib\/vsl-settings\.js'/)
+    expect(rf).not.toMatch(/function norm\(s: string\)/)
+  })
+})

@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { normBusinessName } from '../lib/vsl-settings.js'
 
 // rank-frame — feeds the personalised "you're buried on Google" video frame.
 //
@@ -33,9 +34,8 @@ interface PackEntry {
 
 // Loose name match — "24/7 Fast Flow Plumbing Ltd" vs Google's "24/7 Fast Flow
 // Plumbing" — so we don't double-list the lead if Google already returned it.
-function norm(s: string): string {
-  return s.toLowerCase().replace(/\b(ltd|limited|plc|the)\b/g, '').replace(/[^a-z0-9]/g, '')
-}
+// Lives in lib/vsl-settings so api/vsl/page.ts dedupes its examples the same way.
+const norm = normBusinessName
 
 async function localPack(town: string, query: string): Promise<PackEntry[]> {
   if (!GOOGLE_KEY) return []

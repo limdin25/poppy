@@ -178,6 +178,20 @@ export function slugifyBusiness(name: string): string {
   return VSL_RESERVED_SLUGS.has(safe) ? `${safe}-video` : safe;
 }
 
+/**
+ * Loose business-name match — "24/7 Fast Flow Plumbing Ltd" vs Google's
+ * "24/7 Fast Flow Plumbing". Used to dedupe a business against itself when the
+ * same company arrives from two sources under slightly different names.
+ * Shared by rank-frame (don't double-list the lead) and the VSL page's
+ * examples carousel (don't show the same business twice).
+ */
+export function normBusinessName(name: string): string {
+  return String(name ?? '')
+    .toLowerCase()
+    .replace(/\b(ltd|limited|plc|the)\b/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 /** Pipeline auto-move: funnel state -> board column name (forward-only). */
 export const VSL_STATE_TO_COLUMN: Record<string, string> = {
   sent: 'Video sent',
