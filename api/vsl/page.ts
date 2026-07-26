@@ -94,14 +94,37 @@ function isHumanNavigation(req: IncomingMessage): boolean {
  *  hop), so the page request IS the click. Awaited before res.end(): there is
  *  no waitUntil in this stack and the container freezes once the response
  *  completes, so a fire-and-forget promise may never run. */
+/** Is this us, or the lead?
+ *
+ *  Hugo 2026-07-26: opening a lead's page from the funnel board moved their
+ *  card to "Opened" — the board was reporting our own staff on it. `?p=1`
+ *  alone wasn't enough, because the link gets copied, pasted and shared
+ *  without it. So the FIRST staff visit drops a long-lived cookie and every
+ *  later visit from that browser is recognised as internal, flag or no flag. */
+const STAFF_COOKIE = 'elsie_staff';
+
+function isStaffView(req: IncomingMessage, url: URL): boolean {
+  if (url.searchParams.get('p') === '1') return true;
+  return new RegExp(`(?:^|;\\s*)${STAFF_COOKIE}=1`).test(String(req.headers.cookie || ''));
+}
+
 async function logLinkClick(
   req: IncomingMessage,
   url: URL,
   page: { id: string; contact_id: string; state: string } & Record<string, unknown>,
+  staff: boolean,
 ): Promise<void> {
-  // Internal previews (the board's "open page", the drawer) must never burn a
-  // lead's first touch — Hugo's own testing would otherwise consume it.
-  if (url.searchParams.get('p') === '1') return;
+  // Staff views are recorded but NEVER advance the funnel — the drawer shows
+  // them greyed, like a link-preview bot, so "did anyone look at this?" is
+  // still answerable without the board lying about the lead.
+  if (staff) {
+    await supabase.from('wk_vsl_events').insert({
+      page_id: page.id,
+      type: 'link_click',
+      meta: { internal: true },
+    });
+    return;
+  }
 
   const human = isHumanNavigation(req);
   const from = url.searchParams.get('from') || undefined;
@@ -147,9 +170,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     .maybeSingle();
   if (!page) return bounce();
 
+  const staff = isStaffView(req, url);
+  if (staff) {
+    // Remember this browser so a copied link opened later is still recognised
+    // as ours. Lax + a year; it carries no identity, only "don't count me".
+    res.setHeader('Set-Cookie',
+      `${STAFF_COOKIE}=1; Path=/; Max-Age=31536000; SameSite=Lax; Secure`);
+  }
+
   // The click, before anything slow. Never let tracking break the page for a
   // prospect — a thrown error here would blank a live sales page.
-  await logLinkClick(req, url, page).catch((e) => console.error('[vsl/page] click log failed:', e));
+  await logLinkClick(req, url, page, staff).catch((e) => console.error('[vsl/page] click log failed:', e));
 
   const settings = await getVslSettings();
   const videoUrl = page.video_url || settings.default_video_url;
@@ -499,6 +530,7 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .tp{font-size:12px;color:#9CA3AF;margin-top:4px}
 .pound{margin-top:10px;text-align:center;font-size:13px;font-weight:700;color:#16A34A}
 </style></head><body>
+${staff ? `<div style="background:#1A1A1A;color:#fff;font:600 12px/1.5 system-ui,sans-serif;padding:7px 12px;text-align:center">👁 Staff preview — nothing here is tracked, this lead's card will not move</div>` : ''}
 <div class="stripe spots">⏳ ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left in ${town}</div>
 <div class="wrap">
   <h1>Hi ${first ? first + ' ' : ''}👋<br>I made a 90-second video for ${business}</h1>
@@ -561,8 +593,12 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
   <p class="pound">£1 today. Nothing else until day 10.</p>
 </div>
 <script>
-var PAGE='${esc(page.id)}',VARIANT='${esc(page.cta_variant)}',TOKEN='${esc(beaconToken(page.id))}';
-function send(t,extra){try{var p=Object.assign({page_id:PAGE,type:t,variant:VARIANT,token:TOKEN},extra||{});
+var PAGE='${esc(page.id)}',VARIANT='${esc(page.cta_variant)}',TOKEN='${staff ? '' : esc(beaconToken(page.id))}',STAFF=${staff ? 'true' : 'false'};
+/* Staff viewing their own lead's page must not move that lead's card. Every
+   beacon — open, play, the watch milestones, the button click — goes through
+   here, so one guard covers the lot. The token is blank too, so even a
+   hand-crafted beacon from this page would be rejected. */
+function send(t,extra){if(STAFF)return;try{var p=Object.assign({page_id:PAGE,type:t,variant:VARIANT,token:TOKEN},extra||{});
 navigator.sendBeacon('/api/vsl/track',new Blob([JSON.stringify(p)],{type:'application/json'}))}catch(e){}}
 send('open');
 /* custom player — the native controls overlay (with its dark scrim) never

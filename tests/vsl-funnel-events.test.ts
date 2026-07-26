@@ -395,6 +395,48 @@ describe('notification fan-out', () => {
   })
 })
 
+describe('staff views must never move a lead\'s card', () => {
+  const page = read('api/vsl/page.ts')
+  const board = read('src/features/crm/pages/VideoFunnelPage.tsx')
+
+  it('recognises us by cookie, not just the ?p=1 flag', () => {
+    // Hugo 2026-07-26: opening a lead's page from the board moved it to
+    // "Opened". ?p=1 alone is not enough — the link gets copied and pasted
+    // without it, so the first staff visit marks the browser.
+    expect(page).toMatch(/function isStaffView/)
+    expect(page).toMatch(/elsie_staff/)
+    expect(page).toMatch(/Set-Cookie/)
+  })
+
+  it('kills EVERY browser beacon, not just the click log', () => {
+    // The original fix only guarded the server-side log; open / play /
+    // progress / cta_click all still fired and advanced the funnel. One guard
+    // inside send() now covers every beacon on the page.
+    expect(page).toMatch(/function send\(t,extra\)\{if\(STAFF\)return;/)
+    // …and the signing token is blank for staff, so a hand-made beacon 403s.
+    expect(page).toMatch(/TOKEN='\$\{staff \? '' :/)
+  })
+
+  it('never advances state from a staff visit', () => {
+    const fn = page.slice(page.indexOf('async function logLinkClick'))
+    const body = fn.slice(0, fn.indexOf('\nexport default'))
+    // The staff branch inserts an event and returns BEFORE advanceVslState.
+    const staffBranch = body.slice(body.indexOf('if (staff)'), body.indexOf('const human'))
+    expect(staffBranch).toMatch(/internal: true/)
+    expect(staffBranch).toMatch(/return;/)
+    expect(staffBranch).not.toMatch(/advanceVslState/)
+  })
+
+  it('tells the viewer they are not being tracked', () => {
+    expect(page).toMatch(/Staff preview — nothing here is tracked/)
+  })
+
+  it('the activity drawer labels our own views', () => {
+    expect(board).toMatch(/Viewed by us/)
+    expect(board).toMatch(/staff preview, not counted/)
+  })
+})
+
 describe('aggregates — counted from timestamps, never from state', () => {
   const mig = read('supabase/migrations/20260727000003_funnel_aggregates.sql')
 

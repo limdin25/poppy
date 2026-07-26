@@ -489,7 +489,7 @@ const EVENT_LABELS: Record<string, string> = {
 interface EventRow {
   id: string;
   type: string;
-  meta: { pct?: number; bot?: boolean; from?: string } | null;
+  meta: { pct?: number; bot?: boolean; from?: string; internal?: boolean } | null;
   created_at: string;
 }
 
@@ -562,12 +562,16 @@ function ActivityDrawer({ page, onClose }: { page: VslPage; onClose: () => void 
           <ul className="divide-y divide-[#E5E7EB]">
             {rows.map((e) => (
               <li key={e.id} className="py-1.5 flex items-baseline justify-between gap-3 text-[12px]">
-                <span className={e.meta?.bot ? 'text-[#9CA3AF]' : 'text-[#1A1A1A]'}>
-                  {e.type === 'progress' && typeof e.meta?.pct === 'number'
-                    ? `Watched ${e.meta.pct}%`
-                    : EVENT_LABELS[e.type] || e.type}
-                  {/* Preview fetchers are kept and labelled rather than hidden —
-                      that's how the header gate gets tuned against real traffic. */}
+                <span className={e.meta?.bot || e.meta?.internal ? 'text-[#9CA3AF]' : 'text-[#1A1A1A]'}>
+                  {e.meta?.internal
+                    ? 'Viewed by us'
+                    : e.type === 'progress' && typeof e.meta?.pct === 'number'
+                      ? `Watched ${e.meta.pct}%`
+                      : EVENT_LABELS[e.type] || e.type}
+                  {/* Staff and preview fetchers are kept and labelled rather
+                      than hidden — the board must never count them as the
+                      lead, but "did anyone look at this?" stays answerable. */}
+                  {e.meta?.internal && <span className="ml-1 text-[10px]">(staff preview, not counted)</span>}
                   {e.meta?.bot && <span className="ml-1 text-[10px]">(link preview, not counted)</span>}
                   {e.meta?.from === 'stripe' && <span className="ml-1 text-[10px]">(back from checkout)</span>}
                 </span>
