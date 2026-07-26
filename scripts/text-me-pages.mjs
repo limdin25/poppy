@@ -43,7 +43,7 @@ const lines = ready.map((p) => {
   return `${byId.get(p.contact_id)?.name} (${p.town}, #${cf.rank} of ${cf.total_plumbers}, ${cf.reviews} reviews)\nheyelsie.com/${p.slug}`
 })
 
-const body = `Electricians are live — real ${NICHE} leads, scraped from real "${NICHE}s in {town}" searches, so their rank and every competitor is from their OWN trade.\n\n${lines.join('\n\n')}\n\nEvery Google card in the video says Electrician, and the examples on the page are real London electricians now — no plumbers anywhere.`
+const body = `Electricians are live. 100 scraped fresh from real "electricians in {town}" searches, so every rank and competitor is from their OWN trade — not the plumber data.\n\n${lines.join('\n\n')}\n\nOpen one: every Google card in the video says Electrician, and the examples underneath are real London electricians. No plumbers anywhere.`
 
 console.log('--- to', TO, '---\n' + body + `\n\n(${body.length} chars, ${Math.ceil(body.length / 153)} segments)`)
 if (!APPLY) { console.log('\ndry run — add --apply to send'); process.exit(0) }
