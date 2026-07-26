@@ -49,27 +49,27 @@ describe('See-as: admin impersonation', () => {
   })
 
   it('every agent-scoped surface filters by the impersonated agent', () => {
-    const cases: Array<[string, RegExp]> = [
+    const cases: Array<[string, RegExp, boolean]> = [
       // store → pipelines + contacts pages
-      ['src/features/crm/hooks/useHydrateContacts.ts', /owner_agent_id', impId/],
-      // dialer queue
-      ['src/features/crm/dialer-pro/useQueuePro.ts', /agent_id', impAgentId/],
+      ['src/features/crm/hooks/useHydrateContacts.ts', /owner_agent_id', impId/, true],
       // calls list (Calls page + inbox calls filter)
-      ['src/features/crm/hooks/useCalls.ts', /agent_id', impAgentId/],
+      ['src/features/crm/hooks/useCalls.ts', /agent_id', impAgentId/, true],
       // dialer call history
-      ['src/features/crm/dialer-pro/history/CallHistoryPro.tsx', /agent_id', impAgentId/],
+      ['src/features/crm/dialer-pro/history/CallHistoryPro.tsx', /agent_id', impAgentId/, true],
       // reports / leaderboard data
-      ['src/features/crm/hooks/useReports.ts', /agent_id', impId/],
+      ['src/features/crm/hooks/useReports.ts', /agent_id', impId/, true],
       // dialer KPIs
-      ['src/features/crm/caller-pad/hooks/useDialerKpis.ts', /agent_id', effectiveId/],
+      ['src/features/crm/caller-pad/hooks/useDialerKpis.ts', /agent_id', effectiveId/, true],
       // video funnel board
-      ['src/features/crm/pages/VideoFunnelPage.tsx', /agent_id', impId/],
-      // dialer column-opened leads
-      ['src/features/crm/dialer-pro/DialerProPage.tsx', /owner_agent_id', impId/],
+      ['src/features/crm/pages/VideoFunnelPage.tsx', /agent_id', impId/, true],
+      // dialer: scope the CAMPAIGN LIST (queue rows have no agent_id until dialed)
+      // + column-opened leads by owner
+      ['src/features/crm/dialer-pro/DialerProPage.tsx', /scopedToAgentId: impId \?\?/, true],
+      ['src/features/crm/dialer-pro/DialerProPage.tsx', /owner_agent_id', impId/, true],
     ]
-    for (const [file, re] of cases) {
-      expect(read(file), file).toMatch(re)
-      expect(read(file), `${file} imports the helper`).toMatch(/useImpersonatedAgentId/)
+    for (const [file, re, needsHelper] of cases) {
+      expect(read(file), `${file} :: ${re}`).toMatch(re)
+      if (needsHelper) expect(read(file), `${file} imports the helper`).toMatch(/useImpersonatedAgentId/)
     }
   })
 })

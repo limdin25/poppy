@@ -102,7 +102,14 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
   // useSearchParams twice in the same tree is safe — it subscribes to the
   // same router context.
   const [contentSearchParams] = useSearchParams();
-  const { campaigns } = useDialerCampaigns({ scopedToAgentId: isAdmin ? null : userId, includeInactive: true });
+  // "See as: <agent>" — the dialer is per-campaign and campaigns map to agents
+  // via wk_campaign_agents, so scoping the CAMPAIGN LIST scopes the whole dialer
+  // (queue + KPIs follow the selected campaign). Impersonating → the agent's
+  // campaigns; a plain admin → all; a real agent → their own.
+  const { campaigns } = useDialerCampaigns({
+    scopedToAgentId: impId ?? (isAdmin ? null : userId),
+    includeInactive: true,
+  });
   const requestedCampaignId = contentSearchParams.get('campaign');
   const [activeCampaignId, setActiveCampaignId] = useState<string>('');
   useEffect(() => {

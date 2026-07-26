@@ -23,7 +23,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
-import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 import type { QueueLead } from './types';
 
 interface QueueRow {
@@ -64,7 +63,7 @@ function rowToLead(row: QueueRow): QueueLead | null {
   };
 }
 
-async function fetchQueueRows(campaignId: string | null, impAgentId: string | null): Promise<QueueLead[]> {
+async function fetchQueueRows(campaignId: string | null): Promise<QueueLead[]> {
   const nowIso = new Date().toISOString();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = (supabase.from('wk_dialer_queue' as any) as any)
@@ -80,13 +79,11 @@ async function fetchQueueRows(campaignId: string | null, impAgentId: string | nu
     .order('created_at', { ascending: true })
     .limit(200);
 
-  // "See as: <agent>" — an admin impersonating an agent sees that agent's whole
-  // pending queue (wk_dialer_queue.agent_id) across campaigns; the campaign
-  // dropdown is ignored so the count reflects the agent, not a mismatched
-  // campaign. Otherwise the normal campaign filter applies.
-  if (impAgentId) {
-    q = q.eq('agent_id', impAgentId);
-  } else if (campaignId && campaignId.trim() !== '') {
+  // The queue is per-CAMPAIGN. "See as: <agent>" scopes the dialer by
+  // restricting the CAMPAIGN LIST to the agent's campaigns (via
+  // wk_campaign_agents in useDialerCampaigns) — pending queue rows carry no
+  // agent_id until dialed, so filtering the queue by agent_id is wrong.
+  if (campaignId && campaignId.trim() !== '') {
     q = q.eq('campaign_id', campaignId);
   }
 
@@ -99,12 +96,11 @@ async function fetchQueueRows(campaignId: string | null, impAgentId: string | nu
 
 export function useQueuePro(campaignId: string | null) {
   const queryClient = useQueryClient();
-  const impId = useImpersonatedAgentId();
-  const queryKey = useMemo(() => ['dialer-queue', campaignId ?? 'all', impId ?? 'self'], [campaignId, impId]);
+  const queryKey = useMemo(() => ['dialer-queue', campaignId ?? 'all'], [campaignId]);
 
   const query = useQuery<QueueLead[]>({
     queryKey,
-    queryFn: () => fetchQueueRows(campaignId, impId),
+    queryFn: () => fetchQueueRows(campaignId),
     // The realtime channel below invalidates on every DB change — we
     // explicitly opt into focus + reconnect refetch so a stale tab
     // (e.g. agent switched away during a token refresh) self-heals.
