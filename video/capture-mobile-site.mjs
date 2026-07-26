@@ -15,15 +15,24 @@ import { chromium, devices } from 'playwright'
 import { writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { safeWebsiteUrl } from './scripts/lead-url.mjs'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 const RAW_URL = process.argv[2] || 'https://www.theboilerclubonline.co.uk/'
 const OUT = process.argv[3] || join(dir, 'public', 'client-mobile.png')
 
-// normalize: force https + www. (the resilient combination)
-let url = RAW_URL.trim()
-if (!/^https?:\/\//.test(url)) url = `https://${url}`
-if (!/^https?:\/\/www\./.test(url)) url = url.replace(/^(https?:\/\/)/, '$1www.')
+// SSRF guard (adversarial review 2026-07-26): the URL comes from an
+// agent-editable lead field and this runs as root. Reject anything that isn't
+// a safe PUBLIC http(s) website BEFORE the browser ever touches it. Both the
+// primary and the retry use only this validated URL — never the raw value.
+const safe = safeWebsiteUrl(RAW_URL)
+if (!safe) {
+  console.error(`refusing to capture unsafe/non-public URL: ${RAW_URL}`)
+  process.exit(2)
+}
+const url = safe
+// resilient variant: try www. first, fall back to the bare validated host
+const wwwUrl = /^https:\/\/www\./.test(url) ? url : url.replace(/^https:\/\//, 'https://www.')
 
 const browser = await chromium.launch({ headless: true })
 const ctx = await browser.newContext({
@@ -32,10 +41,10 @@ const ctx = await browser.newContext({
 })
 const page = await ctx.newPage()
 try {
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.goto(wwwUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
 } catch {
-  // some sites refuse the forced www. — retry exactly as given
-  await page.goto(RAW_URL.startsWith('http') ? RAW_URL : `https://${RAW_URL}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  // some sites refuse the forced www. — retry the validated bare host
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
 }
 await page.waitForTimeout(3000)
 // Remove cookie/consent furniture. Learned on real leads (2026-07-26,

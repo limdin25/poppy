@@ -140,31 +140,48 @@ export default function VideoFunnelPage() {
 
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [sendErr, setSendErr] = useState<string | null>(null);
+  // In-flight guard so a double-click can't text the lead twice (#7/#12).
+  const sendingRef = useRef<Set<string>>(new Set());
+  const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
+  // "SMS already went out, only the mark failed" — a retry re-marks, no re-text.
+  const smsSentRef = useRef<Set<string>>(new Set());
 
   // "Ready to send" → the agent has watched the preview → one tap texts the
   // lead + marks the page sent (identical path to the in-call button).
   async function sendVideo(p: VslPage) {
+    if (sendingRef.current.has(p.id) || sentIds.has(p.id)) return; // double-click / already sent
+    sendingRef.current.add(p.id);
+    setSendingIds((s) => new Set(s).add(p.id));
     setSendErr(null);
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
-    if (!token) return;
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
-    const infoRes = await fetch('/api/crm/vsl-page', {
-      method: 'POST', headers, body: JSON.stringify({ contact_id: p.contact_id }),
-    });
-    if (!infoRes.ok) { setSendErr(`${p.business_name}: couldn’t load the SMS`); return; }
-    const info = await infoRes.json();
-    if (info.enabled === false) { setSendErr('The funnel is switched off in Settings — turn it on to send.'); return; }
-    if (!info.can_send) { setSendErr(`${p.business_name}: video not ready yet`); return; }
-    const { error } = await supabase.functions.invoke('wk-sms-send', {
-      body: { contact_id: p.contact_id, body: info.sms_body },
-    });
-    if (error) { setSendErr(`${p.business_name}: text failed — try from the dialer`); return; }
-    const marked = await fetch('/api/crm/vsl-page', {
-      method: 'POST', headers, body: JSON.stringify({ contact_id: p.contact_id, mark_sent: true }),
-    });
-    if (!marked.ok) { setSendErr(`${p.business_name}: texted, but tracking didn’t arm — retry`); return; }
-    setSentIds((prev) => new Set(prev).add(p.id));
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) return;
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+      const infoRes = await fetch('/api/crm/vsl-page', {
+        method: 'POST', headers, body: JSON.stringify({ contact_id: p.contact_id }),
+      });
+      if (!infoRes.ok) { setSendErr(`${p.business_name}: couldn’t load the SMS`); return; }
+      const info = await infoRes.json();
+      if (info.enabled === false) { setSendErr('The funnel is switched off in Settings — turn it on to send.'); return; }
+      if (!info.can_send) { setSendErr(`${p.business_name}: video not ready yet`); return; }
+      if (!smsSentRef.current.has(p.id)) {
+        const { error } = await supabase.functions.invoke('wk-sms-send', {
+          body: { contact_id: p.contact_id, body: info.sms_body },
+        });
+        if (error) { setSendErr(`${p.business_name}: text failed — try from the dialer`); return; }
+        smsSentRef.current.add(p.id);
+      }
+      const marked = await fetch('/api/crm/vsl-page', {
+        method: 'POST', headers, body: JSON.stringify({ contact_id: p.contact_id, mark_sent: true }),
+      });
+      if (!marked.ok) { setSendErr(`${p.business_name}: texted, but tracking didn’t arm — tap again (won’t re-text)`); return; }
+      smsSentRef.current.delete(p.id);
+      setSentIds((prev) => new Set(prev).add(p.id));
+    } finally {
+      sendingRef.current.delete(p.id);
+      setSendingIds((s) => { const n = new Set(s); n.delete(p.id); return n; });
+    }
   }
 
   async function nudge(p: VslPage) {
@@ -271,11 +288,11 @@ export default function VideoFunnelPage() {
                         />
                         <button
                           onClick={() => sendVideo(p)}
-                          disabled={sentIds.has(p.id)}
+                          disabled={sentIds.has(p.id) || sendingIds.has(p.id)}
                           className="w-full flex items-center justify-center gap-1.5 text-[11.5px] font-bold text-white bg-[#16A34A] hover:bg-[#15803d] rounded-[8px] py-1.5 disabled:opacity-50"
                         >
-                          {sentIds.has(p.id) ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-                          {sentIds.has(p.id) ? 'Sent' : 'Looks good — text it'}
+                          {sendingIds.has(p.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : sentIds.has(p.id) ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                          {sendingIds.has(p.id) ? 'Sending…' : sentIds.has(p.id) ? 'Sent' : 'Looks good — text it'}
                         </button>
                       </div>
                     )}

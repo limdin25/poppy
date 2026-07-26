@@ -31,15 +31,24 @@ interface Row { name: string; rating: number | null; reviews: number | null; isL
 const ROWS: Row[] = gen.rows as Row[]
 
 // deterministic per-row extras so the mock looks alive (no Math.random)
+const d3 = (r: () => number) => `${100 + Math.floor(r() * 900)}`
+// UK-plausible number for a ghost row, formatted for the area-code shape:
+// 07xxx (varied prefix) xxx xxx · 3-digit area (020) xxxx xxxx · 5-digit
+// STD (01457) xxx xxx (adversarial review: 020 leads were 9-digit before).
+function ghostPhone(r: () => number): string {
+  const a = gen.area_code
+  if (a.startsWith('07')) return `07${300 + Math.floor(r() * 686)} ${d3(r)} ${d3(r)}`
+  if (a.length <= 3) return `${a} ${1000 + Math.floor(r() * 9000)} ${1000 + Math.floor(r() * 9000)}`
+  if (a.length === 4) return `${a} ${100 + Math.floor(r() * 900)} ${1000 + Math.floor(r() * 9000)}`
+  return `${a} ${d3(r)} ${d3(r)}`
+}
 const extras = ROWS.map((_, i) => {
   const r = rng(4242 + i * 97)
   const closes = ['Closes 6 pm', 'Closes 7 pm', 'Closes 8 pm', 'Closes 9 pm']
   return {
     open: r() < 0.28 ? 'Open 24 hours' : `Open · ${closes[Math.floor(r() * closes.length)]}`,
     years: `${5 + Math.floor(r() * 20)}+ years in business`,
-    // mobile fallback varies the prefix PER ROW — a whole pack sharing one
-    // 07xxx prefix reads as fake (caught on the first real render 2026-07-26)
-    phone: `${gen.area_code.startsWith('07') ? `07${300 + Math.floor(r() * 686)}` : gen.area_code} ${200 + Math.floor(r() * 700)} ${100 + Math.floor(r() * 900)}`,
+    phone: ghostPhone(r),
   }
 })
 
@@ -142,15 +151,27 @@ function ListingCard({ row, i, frame }: { row: Row; i: number; frame: number }) 
         <span style={{ fontSize: 27, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 850 }}>{row.name}</span>
       </div>
       <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 8, fontSize: 19, color: SECONDARY }}>
-        <span style={{ color: TEXT }}>{row.rating ? row.rating.toFixed(1) : '—'}</span>
-        <Stars rating={row.rating ?? 0} size={19} />
-        <span>({row.reviews ?? 0})</span>
-        <span>· Plumber</span>
+        {row.rating != null ? (
+          <>
+            <span style={{ color: TEXT }}>{row.rating.toFixed(1)}</span>
+            <Stars rating={row.rating} size={19} />
+            <span>({row.reviews ?? 0})</span>
+            <span>· Plumber</span>
+          </>
+        ) : (
+          // no-rating rows (a category/area link) render like Google's own —
+          // NO empty stars, just the label
+          <span>Plumber</span>
+        )}
       </div>
       <div style={{ marginTop: 3, fontSize: 19, color: SECONDARY }}>{x.years} · Serves {lead.town}</div>
       <div style={{ marginTop: 3, fontSize: 19, color: SECONDARY }}>
         <span style={{ color: GREEN }}>{x.open}</span>
-        <span> · {x.phone}</span>
+        {/* the lead's OWN card shows their REAL number; ghosts get a plausible
+            one; a lead with no usable number shows no phone (never a fake) */}
+        {row.isLead
+          ? (gen.lead_phone ? <span> · {gen.lead_phone}</span> : null)
+          : <span> · {x.phone}</span>}
       </div>
       <div style={{ marginTop: 16, display: 'flex', gap: 14 }}>
         {[

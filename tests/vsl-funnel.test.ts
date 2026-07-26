@@ -511,3 +511,132 @@ describe('render pipeline — prep + comps', () => {
     expect(page).toMatch(/FREE website included/)
   })
 })
+
+/* ============= adversarial-review fixes (2026-07-26) ============= */
+
+describe('SSRF + website classification', () => {
+  const load = async () => import('../video/scripts/lead-url.mjs')
+
+  it('blocks private / loopback / metadata / non-http targets', async () => {
+    const { safeWebsiteUrl } = await load()
+    for (const bad of [
+      'http://127.0.0.1:5050/', 'http://localhost/', 'https://169.254.169.254/latest/meta-data/',
+      'http://192.168.0.1/', 'http://10.0.0.5/', 'http://172.16.3.4/', 'file:///etc/passwd',
+      'http://metadata.google.internal/', 'https://box.local/', 'http://[::1]/', 'gopher://x',
+    ]) {
+      expect(safeWebsiteUrl(bad), bad).toBeNull()
+    }
+  })
+
+  it('treats social-only / directory links as no-website', async () => {
+    const { safeWebsiteUrl } = await load()
+    for (const social of ['https://facebook.com/joesplumbing', 'https://www.instagram.com/x', 'https://linktr.ee/x', 'https://g.page/x', 'https://checkatrade.com/x']) {
+      expect(safeWebsiteUrl(social), social).toBeNull()
+    }
+  })
+
+  it('accepts a real public site and forces https', async () => {
+    const { safeWebsiteUrl } = await load()
+    expect(safeWebsiteUrl('theboilerclubonline.co.uk')).toBe('https://theboilerclubonline.co.uk/')
+    expect(safeWebsiteUrl('http://www.wolverhamptongasplumbing.co.uk/')).toBe('https://www.wolverhamptongasplumbing.co.uk/')
+  })
+
+  it('capture script refuses unsafe URLs before launching the browser', () => {
+    const cap = read('video/capture-mobile-site.mjs')
+    expect(cap).toMatch(/safeWebsiteUrl\(RAW_URL\)/)
+    expect(cap).toMatch(/process\.exit\(2\)/)
+    // the retry must use the validated url, never RAW_URL
+    expect(cap).not.toMatch(/RAW_URL\.startsWith/)
+  })
+
+  it('API classifies website with the same rule (SMS matches the video)', () => {
+    const src = read('api/crm/vsl-page.ts')
+    expect(src).toMatch(/isCapturableWebsite/)
+    expect(src).toMatch(/noWebsite = !isCapturableWebsite/)
+  })
+})
+
+describe('dark-funnel send safety', () => {
+  const src = read('api/crm/vsl-page.ts')
+  const btn = read('src/features/crm/components/live-call/VideoLinkButton.tsx')
+
+  it('server returns 409 (not a 200 success) when marking sent while dark', () => {
+    expect(src).toMatch(/json\(409, \{\s*error: 'funnel_off'/)
+  })
+
+  it('the in-call button re-checks enabled/can_send right before texting', () => {
+    expect(btn).toMatch(/Re-check the server RIGHT BEFORE sending/)
+    expect(btn).toMatch(/freshInfo\.enabled === false/)
+    expect(btn).toMatch(/!freshInfo\.can_send/)
+  })
+})
+
+describe('button robustness', () => {
+  const btn = read('src/features/crm/components/live-call/VideoLinkButton.tsx')
+
+  it('always clears busy on lead switch (no bricked button)', () => {
+    // the contact-change effect resets busy, and finallys clear unconditionally
+    expect(btn).toMatch(/setBusy\(false\);[\s\S]*?setOpen\(false\)/)
+    expect(btn).not.toMatch(/if \(id === contactIdRef\.current\) setBusy\(false\)/)
+  })
+
+  it('retry after a failed mark does NOT re-text the lead', () => {
+    expect(btn).toMatch(/smsSentRef/)
+    expect(btn).toMatch(/if \(!smsSentRef\.current\.has\(id\)\)/)
+  })
+
+  it('marks tracking even if the agent switched leads after the SMS went out', () => {
+    // no lead-guard between the send and the mark
+    const send = btn.indexOf("invoke('wk-sms-send'")
+    const mark = btn.indexOf('mark_sent: true')
+    expect(send).toBeGreaterThan(0)
+    expect(mark).toBeGreaterThan(send)
+  })
+})
+
+describe('board send guard', () => {
+  const board = read('src/features/crm/pages/VideoFunnelPage.tsx')
+  it('ignores double-clicks while a send is in flight', () => {
+    expect(board).toMatch(/sendingRef\.current\.has\(p\.id\) \|\| sentIds\.has\(p\.id\)/)
+    expect(board).toMatch(/disabled=\{sentIds\.has\(p\.id\) \|\| sendingIds\.has\(p\.id\)\}/)
+  })
+})
+
+describe('worker robustness fixes', () => {
+  const worker = read('scripts/vsl-render-worker.mjs')
+  it('heartbeats every 30s during the long render', () => {
+    expect(worker).toMatch(/setInterval\(\(\) => \{ heartbeat/)
+  })
+  it('reclaims disk after uploading', () => {
+    expect(worker).toMatch(/rmSync\(mp4/)
+    expect(worker).toMatch(/rmSync\(jpg/)
+  })
+  it('does not overwrite no_website (API owns it)', () => {
+    expect(worker).not.toMatch(/no_website: !!gen/)
+  })
+})
+
+describe('prep data fidelity fixes', () => {
+  const prep = read('video/scripts/prep-lead.mjs')
+  const scroll = read('video/src/comps/GoogleScrollV.tsx')
+
+  it('refuses to render a mostly-fabricated SERP (thin real pack)', () => {
+    expect(prep).toMatch(/realAbove\.length < 3/)
+  })
+  it('clamps SEL_W to the 850px name ellipsis', () => {
+    expect(prep).toMatch(/Math\.min\(850,/)
+  })
+  it('cache-busts rank-frame so retries get fresh data', () => {
+    expect(prep).toMatch(/_r=\$\{Date\.now\(\)\}/)
+  })
+  it('puts the lead’s REAL phone on their own card', () => {
+    expect(prep).toMatch(/lead_phone: fmtReal\(\)/)
+    expect(scroll).toMatch(/row\.isLead[\s\S]*?gen\.lead_phone/)
+  })
+  it('formats ghost phones by area-code shape (02x no longer 9-digit)', () => {
+    expect(scroll).toMatch(/a\.length <= 3/)
+  })
+  it('hides stars on null-rating rows', () => {
+    expect(scroll).toMatch(/row\.rating != null \?/)
+  })
+})

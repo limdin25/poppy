@@ -23,6 +23,7 @@ import { execFileSync } from 'child_process'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import opentype from 'opentype.js'
+import { safeWebsiteUrl } from './lead-url.mjs'
 
 const VIDEO_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 const APP = process.env.APP_URL || 'https://app.heyelsie.com'
@@ -67,7 +68,8 @@ const [contact] = await sb(`wk_contacts?id=eq.${contactId}&select=id,name,phone,
 if (!contact) { console.error(`contact ${contactId} not found`); process.exit(1) }
 const cf = contact.custom_fields || {}
 
-const rfRes = await fetch(`${APP}/api/leads/rank-frame?contact=${contactId}`)
+// cache-bust so a retry after a data fix never reuses the 24h-cached pack
+const rfRes = await fetch(`${APP}/api/leads/rank-frame?contact=${contactId}&_r=${Date.now()}`)
 if (!rfRes.ok) { console.error(`rank-frame ${rfRes.status}`); process.exit(1) }
 const rf = await rfRes.json()
 if (!rf?.ok || !rf.lead) { console.error('rank-frame returned no lead'); process.exit(1) }
@@ -82,10 +84,20 @@ if (!rf.lead.town || !rf.lead.rank) {
 const LEAD_INDEX = 18
 const TOTAL = 23
 const real = rf.pack || []
-const leadRow = real.find((r) => r.isLead) ||
+const leadIdx = real.findIndex((r) => r.isLead)
+const leadRow = (leadIdx >= 0 && real[leadIdx]) ||
   { name: rf.lead.business, rating: rf.lead.rating, reviews: rf.lead.reviews, isLead: true }
-const realAbove = real.slice(0, real.findIndex((r) => r.isLead))
-const realBelow = real.filter((r, i) => !r.isLead && i > real.findIndex((x) => x.isLead))
+const realAbove = leadIdx >= 0 ? real.slice(0, leadIdx) : real.filter((r) => !r.isLead)
+const realBelow = leadIdx >= 0 ? real.slice(leadIdx + 1).filter((r) => !r.isLead) : []
+
+// Truthfulness guard (adversarial review 2026-07-26): the video tells the lead
+// "these are the businesses in your area" and "there you are, near the bottom".
+// If Google Places returned almost no real competitors above them, padding
+// would fabricate the whole story. Require a real spine or fail the render.
+if (realAbove.length < 3) {
+  console.error(`only ${realAbove.length} real competitors above the lead — refusing to render a mostly-fabricated SERP (lead ${rf.lead.business}, ${rf.lead.town})`)
+  process.exit(1)
+}
 
 const SURNAMES = ['Whitfield', 'Ashworth', 'Hughes', 'McCabe', 'Cooper', 'Barlow', 'Kendall', 'Slater', 'Booth', 'Hartley', 'Ogden', 'Farrell']
 const PATTERNS = [
@@ -151,30 +163,47 @@ const FONT_CANDIDATES = [
 const fontPath = FONT_CANDIDATES.find((p) => existsSync(p))
 if (!fontPath) { console.error('no Arial-metric font found (apt install fonts-liberation)'); process.exit(1) }
 const font = opentype.parse(readFileSync(fontPath).buffer.slice(0))
-const selW = Math.round(font.getAdvanceWidth(leadRow.name, 27))
+// Clamp to the card's 850px name ellipsis (GoogleScrollV maxWidth:850) — a very
+// long name truncates on screen, so the blue selection must not sweep past it.
+const selW = Math.min(850, Math.round(font.getAdvanceWidth(leadRow.name, 27)))
 
-// ---------- 4. ghost-phone area code ----------
+// ---------- 4. phone numbers ----------
+const nat = (() => {
+  const p = String(contact.phone || '').replace(/[^\d+]/g, '')
+  return p.startsWith('+44') ? '0' + p.slice(3) : p
+})()
 function areaCode() {
-  const phone = String(contact.phone || '').replace(/[^\d+]/g, '')
-  const nat = phone.startsWith('+44') ? '0' + phone.slice(3) : phone
-  if (/^02\d/.test(nat)) return nat.slice(0, 3)   // London/Cardiff/Belfast style
-  if (/^01\d{3}/.test(nat)) return nat.slice(0, 5) // classic 01xxx STD
+  if (/^02\d/.test(nat)) return nat.slice(0, 3)    // 020 / 0121 style (3-digit area)
+  if (/^01\d1/.test(nat)) return nat.slice(0, 4)   // 0121 / 0161 (4-digit area)
+  if (/^01\d{3}/.test(nat)) return nat.slice(0, 5) // classic 01xxx STD (5-digit)
   // mobile-only lead — seeded plausible UK mobile prefix for the ghosts
   return `07${Math.floor(400 + rand() * 500)}`
 }
+// The lead's OWN card shows their REAL number (they scrutinise it) — a
+// fabricated phone on "their" Google listing kills credibility instantly.
+// Formatted, or null → the comp hides the phone rather than invent one.
+function fmtReal() {
+  if (!/^0\d{9,10}$/.test(nat)) return null
+  if (nat.startsWith('07')) return `${nat.slice(0, 5)} ${nat.slice(5, 8)} ${nat.slice(8)}`
+  if (/^02/.test(nat)) return `${nat.slice(0, 3)} ${nat.slice(3, 7)} ${nat.slice(7)}`
+  return `${nat.slice(0, 5)} ${nat.slice(5, 8)} ${nat.slice(8)}`
+}
 
 // ---------- 5. website capture (skipped for no-website leads) ----------
-const website = String(cf.website || '').trim()
-const noWebsite = !website
+// One rule for "do they have a capturable website?", shared with the API's
+// isCapturableWebsite so the SMS variant matches the video scene. Social-only
+// / private / junk URLs → treated as no-website (search scene + free offer).
+const safeSite = safeWebsiteUrl(cf.website)
+const noWebsite = !safeSite
 let siteImage = 'client-mobile.png'
 let siteImageHeight = 0
 let siteUrl = ''
 
 if (!noWebsite) {
-  siteUrl = website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '')
+  siteUrl = safeSite.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '')
   siteImage = 'client-mobile-gen.png'
   const out = join(VIDEO_DIR, 'public', siteImage)
-  execFileSync('node', [join(VIDEO_DIR, 'capture-mobile-site.mjs'), website, out], {
+  execFileSync('node', [join(VIDEO_DIR, 'capture-mobile-site.mjs'), safeSite, out], {
     stdio: 'inherit', timeout: 180000,
   })
   const meta = JSON.parse(readFileSync(`${out}.json`, 'utf8'))
@@ -193,6 +222,7 @@ const gen = {
   site_image_height: siteImageHeight,
   sel_w: selW,
   area_code: areaCode(),
+  lead_phone: fmtReal(), // real number on the lead's own card, or null → hidden
   rows,
 }
 writeFileSync(join(VIDEO_DIR, 'src', 'data', 'lead-gen.json'), JSON.stringify(gen, null, 2) + '\n')

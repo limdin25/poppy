@@ -36,6 +36,25 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+// Mirror of video/scripts/lead-url.mjs safeWebsiteUrl (the video pipeline's
+// gate) — returns true only for a safe PUBLIC http(s) website. Social-only /
+// private / junk values are "no website" so the SMS + page + video all agree.
+const SOCIAL_HOST = /(^|\.)(facebook|fb|instagram|twitter|x|linktr|linkedin|tiktok|youtube|youtu|wa|whatsapp|yell|checkatrade|trustpilot|google|bark|thomsonlocal|freeindex)\b/i;
+function isCapturableWebsite(raw: string | undefined): boolean {
+  const v = (raw || '').trim();
+  if (!v) return false;
+  let url: URL;
+  try { url = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`); } catch { return false; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  if (url.port && !['', '80', '443'].includes(url.port)) return false;
+  const h = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (SOCIAL_HOST.test(h)) return false;
+  if (['g.page', 'g.co', 'goo.gl', 'maps.app.goo.gl', 'business.site'].includes(h) || h.endsWith('.business.site')) return false;
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':')) return false; // IP literal
+  return /\.[a-z]{2,}$/i.test(h);
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const json = (status: number, payload: unknown) => {
     res.statusCode = status;
@@ -83,7 +102,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const settings = await getVslSettings();
   const cf = (contact.custom_fields || {}) as Record<string, string>;
   const ownerFirst = (cf.owner_name || '').split(/\s+/)[0] || null;
-  const noWebsite = !(cf.website || '').trim();
+  // Same rule as video/scripts/lead-url.mjs safeWebsiteUrl — a social-only or
+  // junk "website" is treated as no-website so the SMS offer matches the video
+  // scene the render pipeline actually produces. KEEP IN LOCKSTEP.
+  const noWebsite = !isCapturableWebsite(cf.website);
 
   // One page per contact (unique index) — reuse if it exists.
   let { data: page } = await supabase
@@ -94,13 +116,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   // Master switch: while the funnel is dark, agents may still create pages and
   // queue renders (Hugo reviews the videos before launch) — but nothing may be
-  // MARKED SENT, so no lead is ever texted a dark-funnel page by automation.
+  // MARKED SENT. Return a 409 (not 200) so the UI can't mistake a blocked send
+  // for success and flip the card to "sent" (adversarial review 2026-07-26).
   if (!settings.enabled && body.mark_sent) {
-    return json(200, {
+    return json(409, {
+      error: 'funnel_off',
       page_id: page?.id ?? null,
-      url: page ? `https://heyelsie.com/${page.slug}` : null,
-      sms_body: '',
-      state: page?.state ?? 'created',
       enabled: false,
     });
   }

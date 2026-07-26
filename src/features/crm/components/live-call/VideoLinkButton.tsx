@@ -24,17 +24,22 @@ interface PageInfo {
   can_send: boolean;
 }
 
-async function callVslPage(body: Record<string, unknown>): Promise<PageInfo | null> {
+// Returns { ok, status, data } so callers can tell "blocked" (409 funnel_off /
+// no_video) from "network died" — a false success used to flip the card to
+// 'sent' (adversarial review 2026-07-26).
+async function callVslPage(
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; status: number; data: PageInfo | { error?: string } | null }> {
   const { data: sess } = await supabase.auth.getSession();
   const token = sess.session?.access_token;
-  if (!token) return null;
+  if (!token) return { ok: false, status: 0, data: null };
   const res = await fetch('/api/crm/vsl-page', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  if (!res.ok) return null;
-  return res.json();
+  const data = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, data };
 }
 
 export default function VideoLinkButton({ contact }: { contact: Contact }) {
@@ -48,10 +53,19 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
   // Guard every async result against the lead having been switched mid-request
   // — otherwise we'd text the wrong plumber and mark the new lead 'sent'.
   const contactIdRef = useRef(contact.id);
+  // Per-lead "SMS already went out, only the mark failed" flag so a retry
+  // re-marks WITHOUT re-texting the lead (adversarial review #13).
+  const smsSentRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     contactIdRef.current = contact.id;
+    // busy is a single-button flag, not lead-specific — always clear on switch
+    // so an in-flight request for the old lead can't brick the button (#3).
+    setBusy(false);
     setOpen(false); setInfo(null); setSent(false); setCopied(false); setNote('');
   }, [contact.id]);
+
+  const asInfo = (r: { ok: boolean; data: unknown }): PageInfo | null =>
+    (r.ok && r.data && 'page_id' in (r.data as object)) ? (r.data as PageInfo) : null;
 
   // While a render is in flight, poll every 15s so "Rendering" flips to
   // "Ready" on its own (the VPS worker writes the row; no realtime needed here).
@@ -60,7 +74,7 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
     if (!rendering) return;
     const id = contact.id;
     const t = setInterval(async () => {
-      const page = await callVslPage({ contact_id: id });
+      const page = asInfo(await callVslPage({ contact_id: id }));
       if (id !== contactIdRef.current) return;
       if (page) setInfo(page);
     }, 15000);
@@ -72,7 +86,7 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
     setBusy(true);
     setNote('');
     try {
-      const page = await callVslPage({ contact_id: id });
+      const page = asInfo(await callVslPage({ contact_id: id }));
       if (id !== contactIdRef.current) return; // lead changed — drop the result
       if (!page) { setNote('Could not create the video page — try again.'); return; }
       setInfo(page);
@@ -80,7 +94,7 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
       if (page.state && page.state !== 'created') setSent(true);
       setOpen(true);
     } finally {
-      if (id === contactIdRef.current) setBusy(false);
+      setBusy(false);
     }
   }
 
@@ -89,12 +103,12 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
     setBusy(true);
     setNote('');
     try {
-      const page = await callVslPage({ contact_id: id, request_render: true });
+      const page = asInfo(await callVslPage({ contact_id: id, request_render: true }));
       if (id !== contactIdRef.current) return;
       if (!page) { setNote('Could not queue the render — try again.'); return; }
       setInfo(page);
     } finally {
-      if (id === contactIdRef.current) setBusy(false);
+      setBusy(false);
     }
   }
 
@@ -105,17 +119,39 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
     setBusy(true);
     setNote('');
     try {
-      const { error } = await supabase.functions.invoke('wk-sms-send', {
-        body: { contact_id: id, body: info.sms_body },
-      });
+      // Re-check the server RIGHT BEFORE sending — closes the stale-flag window
+      // where the funnel was turned off after the panel opened (#2). Also gives
+      // us the freshest sms_body.
+      const fresh = await callVslPage({ contact_id: id });
+      const freshInfo = asInfo(fresh);
       if (id !== contactIdRef.current) return;
-      if (error) { setNote('Text failed — copy the link and send it manually.'); return; }
+      if (!freshInfo) { setNote('Could not reach the server — try again.'); return; }
+      setInfo(freshInfo);
+      if (freshInfo.enabled === false) { setNote('The video funnel is switched off — turn it on in Settings to send.'); return; }
+      if (!freshInfo.can_send) { setNote('The video isn’t ready yet — make it first.'); return; }
+
+      // Send once. If a previous attempt already texted this lead (and only the
+      // mark failed), skip the send and just re-arm tracking (#13).
+      if (!smsSentRef.current.has(id)) {
+        const { error } = await supabase.functions.invoke('wk-sms-send', {
+          body: { contact_id: id, body: freshInfo.sms_body },
+        });
+        if (error) { setNote('Text failed — copy the link and send it manually.'); return; }
+        smsSentRef.current.add(id);
+      }
+
+      // The SMS is out — ALWAYS mark, even if the agent switched leads meanwhile
+      // (the server keys off contact_id, not the UI). Dropping this used to
+      // leave a texted lead untracked (#14).
       const marked = await callVslPage({ contact_id: id, mark_sent: true });
+      const ok = marked.ok || (marked.data as { state?: string } | null)?.state === 'sent';
+      if (ok) smsSentRef.current.delete(id); // fully done — a later tap re-sends on purpose
       if (id !== contactIdRef.current) return;
-      if (!marked) { setNote('Texted, but tracking didn’t arm — tap again to retry.'); return; }
-      setSent(true);
+      if (ok) { setSent(true); }
+      else if (marked.status === 409) { setNote('Texted, but the funnel is off — tracking will arm when it’s on.'); }
+      else { setNote('Texted, but tracking didn’t arm — tap again to finish (won’t re-text).'); }
     } finally {
-      if (id === contactIdRef.current) setBusy(false);
+      setBusy(false);
     }
   }
 

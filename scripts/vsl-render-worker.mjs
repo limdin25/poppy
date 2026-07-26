@@ -15,7 +15,7 @@
 // Pipeline column move duplicates api/lib/vsl-settings.ts VSL_COLUMN_ORDER —
 // KEEP IN LOCKSTEP.
 
-import { readFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, existsSync, mkdirSync, rmSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -121,42 +121,53 @@ async function renderOne(page) {
   console.log(`[${new Date().toISOString()}] rendering ${slug} (contact ${page.contact_id})`)
   await moveCard(page.contact_id, 'Rendering')
   await heartbeat(slug)
+  // A render is 5–10 min of blocking work; without a pulse the admin panel
+  // declares the worker dead after 120s (adversarial review #4). Beat every
+  // 30s while rendering.
+  const pulse = setInterval(() => { heartbeat(slug).catch(() => {}) }, 30_000)
 
   const outDir = join(VIDEO, 'out', 'leads')
   mkdirSync(outDir, { recursive: true })
   const mp4 = join(outDir, `${slug}.mp4`)
   const jpg = join(outDir, `${slug}.jpg`)
 
-  // 1. prep — writes lead-gen.json (+ capture); loud failures propagate
-  run('node', [join(VIDEO, 'scripts', 'prep-lead.mjs'), page.contact_id], { cwd: REPO, timeout: 300_000 })
-  const gen = JSON.parse(readFileSync(join(VIDEO, 'src', 'data', 'lead-gen.json'), 'utf8'))
+  try {
+    // 1. prep — writes lead-gen.json (+ capture); loud failures propagate
+    run('node', [join(VIDEO, 'scripts', 'prep-lead.mjs'), page.contact_id], { cwd: REPO, timeout: 300_000 })
 
-  // 2. render (the long part)
-  run('npx', ['remotion', 'render', 'src/index.ts', 'FlowVideo', mp4, '--codec=h264', '--concurrency=8'],
-    { cwd: VIDEO, timeout: 45 * 60_000 })
-  if (!existsSync(mp4)) throw new Error('render produced no file')
+    // 2. render (the long part)
+    run('npx', ['remotion', 'render', 'src/index.ts', 'FlowVideo', mp4, '--codec=h264', '--concurrency=8'],
+      { cwd: VIDEO, timeout: 45 * 60_000 })
+    if (!existsSync(mp4)) throw new Error('render produced no file')
 
-  // 3. poster from frame 0
-  run('ffmpeg', ['-y', '-i', mp4, '-frames:v', '1', '-q:v', '4', jpg], { timeout: 60_000 })
+    // 3. poster from frame 0
+    run('ffmpeg', ['-y', '-i', mp4, '-frames:v', '1', '-q:v', '4', jpg], { timeout: 60_000 })
 
-  // 4. upload
-  const videoUrl = await upload(mp4, `${slug}.mp4`, 'video/mp4')
-  const posterUrl = await upload(jpg, `${slug}.jpg`, 'image/jpeg')
+    // 4. upload
+    const videoUrl = await upload(mp4, `${slug}.mp4`, 'video/mp4')
+    const posterUrl = await upload(jpg, `${slug}.jpg`, 'image/jpeg')
 
-  // 5. flip the row — the board's realtime subscription shows it instantly
-  await rest('PATCH', `wk_vsl_pages?id=eq.${page.id}`, {
-    render_status: 'ready',
-    render_done_at: new Date().toISOString(),
-    video_url: videoUrl,
-    poster_url: posterUrl,
-    no_website: !!gen.no_website,
-    render_error: null,
-  })
-  await moveCard(page.contact_id, 'Ready to send')
-  console.log(`[${new Date().toISOString()}] READY ${slug} → ${videoUrl}`)
-
-  // 6. leave the repo clean for the next lead
-  try { run('git', ['checkout', '--', 'video/src/data/lead-gen.json'], { cwd: REPO }) } catch { /* fine */ }
+    // 5. flip the row — the board's realtime subscription shows it instantly.
+    //    no_website is owned by the API at page-create (source of truth) — the
+    //    worker must NOT overwrite it, or a retry could break the promise trail
+    //    on an already-texted page (#19).
+    await rest('PATCH', `wk_vsl_pages?id=eq.${page.id}`, {
+      render_status: 'ready',
+      render_done_at: new Date().toISOString(),
+      video_url: videoUrl,
+      poster_url: posterUrl,
+      render_error: null,
+    })
+    await moveCard(page.contact_id, 'Ready to send')
+    console.log(`[${new Date().toISOString()}] READY ${slug} → ${videoUrl}`)
+  } finally {
+    clearInterval(pulse)
+    // 6. reclaim disk — the bucket is the system of record now (#5)
+    rmSync(mp4, { force: true })
+    rmSync(jpg, { force: true })
+    // leave the repo clean for the next lead
+    try { run('git', ['checkout', '--', 'video/src/data/lead-gen.json'], { cwd: REPO }) } catch { /* fine */ }
+  }
 }
 
 async function tick() {
