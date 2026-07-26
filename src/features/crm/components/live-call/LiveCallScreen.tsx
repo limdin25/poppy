@@ -28,11 +28,11 @@ import { useSmsV2 } from '../../store/SmsV2Store';
 import { useCurrentAgent } from '../../hooks/useCurrentAgent';
 import { useDialerCampaigns } from '../../hooks/useDialerCampaigns';
 import {
-import ContactIdentity from '../shared/ContactIdentity';
   formatDuration,
   formatPence,
   formatRelativeTime,
 } from '../../data/helpers';
+import ContactIdentity from '../shared/ContactIdentity';
 
 export default function LiveCallScreen() {
   const {
