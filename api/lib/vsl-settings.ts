@@ -17,6 +17,22 @@ export interface VslRule {
   repeat_hours: number;    // gap between nudge 1..N
 }
 
+/** Which funnel events email. Every one still lands in the bell regardless —
+ *  these only gate the email, so Hugo can dial the volume down without a
+ *  deploy. Defaults are all on: he asked for every event (2026-07-26). */
+export interface VslNotifySettings {
+  sent: boolean;
+  link_click: boolean;
+  open: boolean;
+  play: boolean;
+  watched_50: boolean;
+  watched_90: boolean;
+  watched_100: boolean;
+  cta_click: boolean;
+  checkout_start: boolean;
+  paid: boolean;
+}
+
 export interface VslSettings {
   enabled: boolean;                       // master switch — feature dark until true
   default_video_url: string;             // fallback when a page has no per-lead render
@@ -29,6 +45,7 @@ export interface VslSettings {
   spots_per_town: number;                // scarcity line pool size
   proof_image_url: string;               // before/after proof shown below the CTA
   proof_caption: string;                 // one-line caption above the proof
+  notify: VslNotifySettings;             // which events send an email
   rules: {
     sent_not_opened: VslRule;
     opened_not_watched: VslRule;
@@ -36,6 +53,18 @@ export interface VslSettings {
     checkout_abandoned: VslRule;
     paid_welcome: VslRule;
   };
+}
+
+/** Watch-coverage markers the page reports. 50/90/100 are the ones Hugo asked
+ *  for by name; 10/25/75 fill in the drop-off curve on the board. */
+export const VSL_PROGRESS_MARKERS = [10, 25, 50, 75, 90, 100] as const;
+
+/** Markers newly crossed by a beacon that moved coverage `before` → `after`.
+ *  The dedupe primitive: a reload, a rewind or a replayed beacon returns [],
+ *  so each milestone notifies exactly once. Inclusive at the marker itself. */
+export function crossedMilestones(before: number, after: number): number[] {
+  if (!(after > before)) return [];
+  return VSL_PROGRESS_MARKERS.filter((m) => m > before && m <= after);
 }
 
 export const VSL_PRICES: Record<string, { plan: string; label: string; monthly: string; requests: string }> = {
@@ -64,6 +93,13 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
   // blank = the page's own default ("Examples of businesses that invest in
   // reviews") — examples wording, never a client claim (Hugo 2026-07-26)
   proof_caption: '',
+  // Hugo 2026-07-26: "email notification for all action". Every event on by
+  // default; untick here to quieten one without a deploy.
+  notify: {
+    sent: true, link_click: true, open: true, play: true,
+    watched_50: true, watched_90: true, watched_100: true,
+    cta_click: true, checkout_start: true, paid: true,
+  },
   rules: {
     sent_not_opened: {
       enabled: true, delay_minutes: 180, max_sends: 2, repeat_hours: 24,
@@ -94,6 +130,9 @@ function deepMerge(base: VslSettings, patch: Partial<VslSettings>): VslSettings 
     ...patch,
     cta_labels: { ...base.cta_labels, ...(patch.cta_labels || {}) },
     quiet_hours: { ...base.quiet_hours, ...(patch.quiet_hours || {}) },
+    // Must be listed explicitly: the spread above would REPLACE the whole blob,
+    // so saving one toggle would silently reset the other eight.
+    notify: { ...base.notify, ...(patch.notify || {}) },
     rules: { ...base.rules },
   };
   const rules = (patch.rules || {}) as Partial<VslSettings['rules']>;
@@ -228,18 +267,42 @@ export function stateRank(state: string): number {
  *  Postgres), so concurrent beacons can't demote state or lose counter bumps.
  *  Moves the pipeline card only when the state genuinely advanced. `extra` may
  *  carry watched_pct / bump_open / business_id. */
+/** What the locked RPC saw before it wrote — the basis for notify-once. */
+export interface VslAdvanceResult {
+  state: string;
+  advanced: boolean;
+  contact_id: string;
+  /** watched_pct BEFORE this call; feed to crossedMilestones(). */
+  pct_before: number;
+  first_click: boolean;
+  first_open: boolean;
+  first_play: boolean;
+  first_complete: boolean;
+}
+
 export async function advanceVslState(
   page: { id: string; contact_id: string; state: string } & Record<string, unknown>,
   target: string | null,
-  extra: { watched_pct?: number; bump_open?: boolean; business_id?: string | null } = {},
-): Promise<void> {
-  const { data } = await supabase.rpc('wk_vsl_advance', {
+  extra: {
+    watched_pct?: number;
+    bump_open?: boolean;
+    business_id?: string | null;
+    link_click?: boolean;
+    play?: boolean;
+    completed?: boolean;
+  } = {},
+): Promise<VslAdvanceResult | null> {
+  const { data, error } = await supabase.rpc('wk_vsl_advance', {
     p_page_id: page.id,
     p_target: target,
     p_watched_pct: extra.watched_pct ?? null,
     p_bump_open: extra.bump_open ?? false,
+    p_link_click: extra.link_click ?? false,
+    p_play: extra.play ?? false,
+    p_completed: extra.completed ?? false,
   });
-  const row = Array.isArray(data) ? data[0] : data;
+  if (error) console.error('[vsl] advance failed:', error);
+  const row = (Array.isArray(data) ? data[0] : data) as VslAdvanceResult | undefined;
   if (row?.advanced && target) {
     await movePipelineCard(page.contact_id, target);
   }
@@ -248,6 +311,7 @@ export async function advanceVslState(
   if (extra.business_id) {
     await supabase.from('wk_vsl_pages').update({ business_id: extra.business_id }).eq('id', page.id);
   }
+  return row ?? null;
 }
 
 /** Move the contact's pipeline card to the column for this funnel state —

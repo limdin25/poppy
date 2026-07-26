@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Bell, Circle, Mail, MessageSquare, Phone, PhoneOff, Trophy } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import {
+  Bot, Bell, Circle, Mail, MessageSquare, Phone, PhoneOff, Trophy,
+  Clapperboard, Eye, MousePointerClick, PlayCircle, PoundSterling, Send,
+} from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/core/lib/cn';
 import { useSpendLimit } from '../hooks/useSpendLimit';
 import { useKillSwitch } from '../hooks/useKillSwitch';
 import { useAgentPresence } from '../hooks/useAgentPresence';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useInboxNotifications } from '../hooks/useInboxNotifications';
+import {
+  useNotifications, desktopPopupsSupported, showDesktopPopup,
+  type FunnelNotification,
+} from '../hooks/useNotifications';
 import { useLeaderboard, RANGE_LABELS, DEFAULT_LEADERBOARD_RANGE } from '../hooks/useLeaderboard';
-import { formatPence, formatRelativeTime, formatDuration } from '../data/helpers';
+import { formatPence, formatRelativeTime, formatDuration, formatDateTime } from '../data/helpers';
 
 const STATUS_LABELS: Record<string, { label: string; colour: string }> = {
   available: { label: 'Available', colour: '#3C5A87' },
@@ -16,6 +23,34 @@ const STATUS_LABELS: Record<string, { label: string; colour: string }> = {
   idle: { label: 'Idle', colour: '#F59E0B' },
   offline: { label: 'Offline', colour: '#9CA3AF' },
 };
+
+// Funnel rows carry a `kind`, not a `channel` — without this map every one of
+// them would fall through to the message icon.
+const KIND_ICON: Record<string, { Icon: typeof Bell; colour: string }> = {
+  vsl_sent: { Icon: Send, colour: 'text-[#0EA5E9]' },
+  vsl_link_click: { Icon: MousePointerClick, colour: 'text-[#38BDF8]' },
+  vsl_open: { Icon: Eye, colour: 'text-[#38BDF8]' },
+  vsl_play: { Icon: PlayCircle, colour: 'text-[#F59E0B]' },
+  vsl_watched_50: { Icon: Clapperboard, colour: 'text-[#F59E0B]' },
+  vsl_watched_90: { Icon: Clapperboard, colour: 'text-[#F97316]' },
+  vsl_watched_100: { Icon: Clapperboard, colour: 'text-[#F97316]' },
+  vsl_cta_click: { Icon: MousePointerClick, colour: 'text-[#F97316]' },
+  vsl_checkout_start: { Icon: PoundSterling, colour: 'text-[#A855F7]' },
+  vsl_paid: { Icon: PoundSterling, colour: 'text-[#16A34A]' },
+};
+
+/** One shape for both bell sources so the popover renders a single sorted list. */
+interface BellItem {
+  id: string;
+  Icon: typeof Bell;
+  colour: string;
+  title: string;
+  preview: string;
+  ts: string;
+  to: string;
+}
+
+const trim = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 3)}…` : s);
 
 export default function Smsv2StatusBar() {
   const spend = useSpendLimit();
@@ -27,8 +62,15 @@ export default function Smsv2StatusBar() {
 
   // PR 109 (Hugo 2026-04-28): top-nav bell + mini leaderboard popovers.
   const notifications = useInboxNotifications();
+  // Hugo 2026-07-26: funnel activity shares the SAME bell — a second one would
+  // just be a second thing to miss.
+  const funnel = useNotifications();
+  const navigate = useNavigate();
   const board = useLeaderboard(DEFAULT_LEADERBOARD_RANGE);
   const [bellOpen, setBellOpen] = useState(false);
+  const [popupsOn, setPopupsOn] = useState(
+    () => desktopPopupsSupported() && Notification.permission === 'granted'
+  );
   const [trophyOpen, setTrophyOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
   const trophyRef = useRef<HTMLDivElement>(null);
@@ -51,6 +93,65 @@ export default function Smsv2StatusBar() {
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [bellOpen, trophyOpen]);
+
+  // Desktop pop-up for a funnel event. Fired from an effect keyed on the newest
+  // unread row — NOT from inside a state updater, which under StrictMode would
+  // pop twice in dev.
+  const latestId = funnel.latest?.id;
+  useEffect(() => {
+    if (!funnel.latest) return;
+    const n = funnel.latest;
+    showDesktopPopup(n, () => navigate(n.link || `/admin/crm/contacts/${n.contactId ?? ''}`));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestId]);
+
+  // One list, newest first. Both sources normalise to BellItem so the popover
+  // stays a single renderer.
+  const bellItems: BellItem[] = useMemo(() => {
+    const fromFunnel: BellItem[] = funnel.items.map((n: FunnelNotification) => {
+      const k = KIND_ICON[n.kind] ?? { Icon: Clapperboard, colour: 'text-[#3C5A87]' };
+      return {
+        id: n.id,
+        Icon: k.Icon,
+        colour: k.colour,
+        title: n.title,
+        preview: n.body,
+        ts: n.createdAt,
+        // Relative path: react-router cannot navigate to an absolute URL.
+        to: n.link || `/admin/crm/contacts/${n.contactId ?? ''}`,
+      };
+    });
+    const fromInbox: BellItem[] = notifications.recent.map((n) => ({
+      id: n.id,
+      Icon: n.channel === 'whatsapp' ? MessageSquare : n.channel === 'email' ? Mail : Phone,
+      colour:
+        n.channel === 'whatsapp' ? 'text-[#25D366]'
+          : n.channel === 'email' ? 'text-[#3B82F6]'
+            : 'text-[#3C5A87]',
+      title: n.contactName,
+      preview: n.body,
+      ts: n.createdAt,
+      to: `/admin/crm/inbox?contact=${n.contactId}`,
+    }));
+    const seen = new Set<string>();
+    return [...fromFunnel, ...fromInbox]
+      .filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)))
+      .sort((a, b) => +new Date(b.ts) - +new Date(a.ts))
+      .slice(0, 30);
+  }, [funnel.items, notifications.recent]);
+
+  const unreadTotal = notifications.unread + funnel.unread;
+
+  const askForPopups = useCallback(async () => {
+    if (!desktopPopupsSupported()) return;
+    try {
+      // Must be inside a user gesture — hence a button, not an auto-prompt.
+      const p = await Notification.requestPermission();
+      setPopupsOn(p === 'granted');
+    } catch {
+      setPopupsOn(false);
+    }
+  }, []);
 
   // Ranked by calls MADE — "who's calling more" (Hugo 2026-07-24). Sourced
   // from the wk_leaderboard RPC so agents see each other, not just
@@ -105,76 +206,78 @@ export default function Smsv2StatusBar() {
           onClick={() => {
             const next = !bellOpen;
             setBellOpen(next);
-            if (next) notifications.markAllRead();
+            // One entry point for both sources; each markAllRead is idempotent.
+            if (next) { notifications.markAllRead(); funnel.markAllRead(); }
             if (next) setTrophyOpen(false);
           }}
           className="relative flex items-center justify-center w-7 h-7 rounded-full hover:bg-black/[0.05] text-[#6B7280] hover:text-[#1A1A1A]"
-          title="New messages"
+          title="New messages and funnel activity"
           data-testid="statusbar-bell"
         >
           <Bell className="w-3.5 h-3.5" strokeWidth={2} />
-          {notifications.unread > 0 && (
+          {unreadTotal > 0 && (
             <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-[#EF4444] text-white text-[9px] font-bold tabular-nums">
-              {notifications.unread > 99 ? '99+' : notifications.unread}
+              {unreadTotal > 99 ? '99+' : unreadTotal}
             </span>
           )}
         </button>
         {bellOpen && (
           <div
-            className="absolute right-0 top-full mt-2 bg-white border border-[#E5E7EB] rounded-xl shadow-lg w-[320px] max-h-[380px] overflow-y-auto z-50"
+            className="absolute right-0 top-full mt-2 bg-white border border-[#E5E7EB] rounded-xl shadow-lg w-[min(340px,calc(100vw-24px))] max-h-[420px] overflow-y-auto z-50"
             data-testid="statusbar-bell-popover"
           >
             <div className="px-3 py-2 border-b border-[#E5E7EB] text-[11px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
-              Recent inbound
+              Activity
             </div>
-            {notifications.recent.length === 0 ? (
+            {/* Desktop pop-ups are opt-in and the browser demands a click to
+                ask. Hidden where the API doesn't exist (iOS Safari). */}
+            {desktopPopupsSupported() && !popupsOn && (
+              <button
+                onClick={askForPopups}
+                data-testid="enable-desktop-popups"
+                className="w-full text-left px-3 py-2 border-b border-[#E5E7EB] bg-[#EEF2F8] text-[11.5px] font-semibold text-[#3C5A87] hover:bg-[#e3ebf5]"
+              >
+                🔔 Turn on desktop pop-ups — get told the moment a lead watches
+              </button>
+            )}
+            {bellItems.length === 0 ? (
               <div className="px-3 py-6 text-center text-[12px] text-[#9CA3AF] italic">
-                No new messages.
+                Nothing new yet.
               </div>
             ) : (
               <ul className="divide-y divide-[#E5E7EB]">
-                {notifications.recent.map((n) => {
-                  const ChIcon =
-                    n.channel === 'whatsapp'
-                      ? MessageSquare
-                      : n.channel === 'email'
-                        ? Mail
-                        : Phone;
-                  const colour =
-                    n.channel === 'whatsapp'
-                      ? 'text-[#25D366]'
-                      : n.channel === 'email'
-                        ? 'text-[#3B82F6]'
-                        : 'text-[#3C5A87]';
-                  const preview =
-                    n.body.length > 60 ? `${n.body.slice(0, 57)}…` : n.body;
-                  return (
-                    <li key={n.id}>
-                      <Link
-                        to={`/admin/crm/inbox?contact=${n.contactId}`}
-                        onClick={() => setBellOpen(false)}
-                        className="flex items-start gap-2 px-3 py-2 hover:bg-[#F3F3EE]/50"
-                      >
-                        <ChIcon
-                          className={cn('w-3.5 h-3.5 mt-0.5 flex-shrink-0', colour)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[12px] font-semibold text-[#1A1A1A] truncate">
-                              {n.contactName}
-                            </span>
-                            <span className="text-[10px] text-[#9CA3AF] tabular-nums whitespace-nowrap">
-                              {formatRelativeTime(n.createdAt)}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-[#6B7280] truncate">
-                            {preview}
-                          </div>
+                {bellItems.map((n) => (
+                  <li key={n.id}>
+                    <Link
+                      to={n.to}
+                      onClick={() => setBellOpen(false)}
+                      className="flex items-start gap-2 px-3 py-2 hover:bg-[#F3F3EE]/50"
+                      data-testid={`bell-item-${n.id}`}
+                    >
+                      <n.Icon className={cn('w-3.5 h-3.5 mt-0.5 flex-shrink-0', n.colour)} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[12px] font-semibold text-[#1A1A1A] truncate">
+                            {n.title}
+                          </span>
+                          {/* Relative reads fast; the exact stamp Hugo asked
+                              for is one hover away. */}
+                          <span
+                            className="text-[10px] text-[#9CA3AF] tabular-nums whitespace-nowrap"
+                            title={formatDateTime(n.ts)}
+                          >
+                            {formatRelativeTime(n.ts)}
+                          </span>
                         </div>
-                      </Link>
-                    </li>
-                  );
-                })}
+                        {n.preview && (
+                          <div className="text-[11px] text-[#6B7280] truncate">
+                            {trim(n.preview)}
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                ))}
               </ul>
             )}
           </div>

@@ -16,6 +16,7 @@ import {
   formatPence,
   formatRelativeTime,
   formatTimeOnly,
+  formatDateTime,
 } from '../data/helpers';
 import StageSelector from '../components/shared/StageSelector';
 import ContactAiToggle from '../components/contacts/ContactAiToggle';
@@ -315,6 +316,19 @@ export default function ContactDetailPage() {
               <div key={a.id} className="px-4 py-2 text-[12px]">
                 <span className="text-[#6B7280]">• {a.title}</span>
                 <span className="text-[10px] text-[#9CA3AF] ml-2">{formatRelativeTime(a.ts)}</span>
+              </div>
+            ))}
+            {/* Video funnel (Hugo 2026-07-26). A fourth block rather than a
+                merge: the three lists above use three different time formats
+                and each has its own ?demo=1 mock fallback, so merging AND
+                adding a source in one change would make a bug in either
+                impossible to tell apart. */}
+            {timeline.funnel.map((f) => (
+              <div key={`fun-${f.id}`} className="px-4 py-2 text-[12px]" data-testid="detail-funnel-event">
+                <span className="text-[#3C5A87] font-medium">▶ {f.label}</span>
+                <span className="text-[10px] text-[#9CA3AF] ml-2 tabular-nums">
+                  {formatDateTime(f.ts)}
+                </span>
               </div>
             ))}
           </div>

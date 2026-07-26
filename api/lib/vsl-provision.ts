@@ -20,6 +20,7 @@ import { createClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
 import { sendEmail } from '../../src/integrations/resend/client.js';
 import { VSL_PRICES, advanceVslState } from './vsl-settings.js';
+import { notifyFunnelEvent } from './vsl-notify.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -151,9 +152,19 @@ export async function provisionVslSale(session: Stripe.Checkout.Session): Promis
 
   await recordPaid(page, session, priceId, businessId);
 
-  await notifyOwner(`💰 VSL sale: ${page.business_name}`,
-    `<p><b>${page.business_name}</b> (${page.owner_first || 'owner'}, ${page.town || '—'}) just paid £1 and started the ${VSL_PRICES[priceId]?.label || 'Starter'} trial from their video page.</p>
-     <p>Email: ${email} · Agent: ${page.agent_id}</p>`);
+  // The sale notification goes through the shared fan-out so it also raises a
+  // bell entry and reaches the owning agent — not just Hugo's inbox.
+  //
+  // Deliberately HERE and not inside recordPaid: recordPaid also runs on the
+  // manual-link path above, where the sale was explicitly NOT provisioned. A
+  // "🎉 they paid" there would contradict the ⚠️ alert sent moments earlier.
+  await notifyFunnelEvent({
+    page,
+    kind: 'vsl_paid',
+    title: `💰 PAID — ${page.business_name}`,
+    body: `${page.owner_first || 'The owner'} paid £1 and started the ${VSL_PRICES[priceId]?.label || 'Starter'} trial · ${email}${page.town ? ` · ${page.town}` : ''}`,
+    meta: { email, price_id: priceId, business_id: businessId },
+  });
 }
 
 async function recordPaid(
@@ -162,11 +173,12 @@ async function recordPaid(
   priceId: string,
   businessId: string | null,
 ): Promise<void> {
-  await supabase.from('wk_vsl_events').insert({
+  const { error: evErr } = await supabase.from('wk_vsl_events').insert({
     page_id: page.id,
     type: 'paid',
     meta: { session_id: session.id, price_id: priceId, business_id: businessId },
   });
+  if (evErr) console.error('[vsl-provision] paid event insert failed:', evErr);
   await advanceVslState(page, 'paid', businessId ? { business_id: businessId } : {});
 }
 

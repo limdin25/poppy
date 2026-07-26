@@ -6,6 +6,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { VSL_PRICES, VSL_POUND_PRICE, advanceVslState } from '../lib/vsl-settings.js';
+import { notifyFunnelEvent } from '../lib/vsl-notify.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -73,12 +74,15 @@ export default async function handler(req: Request): Promise<Response> {
       },
     });
 
-    await supabase.from('wk_vsl_events').insert({
+    const { error: evErr } = await supabase.from('wk_vsl_events').insert({
       page_id: page.id,
       type: 'checkout_start',
       meta: { price_id: priceId, session_id: session.id },
     });
-    await advanceVslState(page, 'checkout_started');
+    if (evErr) console.error('[vsl/checkout] event insert failed:', evErr);
+    const adv = await advanceVslState(page, 'checkout_started');
+    // Only on the real transition — a second checkout attempt is not news.
+    if (adv?.advanced) await notifyFunnelEvent({ page, kind: 'vsl_checkout_start' });
 
     return new Response(JSON.stringify({ url: session.url }), { status: 200 });
   } catch (err: any) {

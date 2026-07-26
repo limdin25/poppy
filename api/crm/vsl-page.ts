@@ -22,6 +22,7 @@ import {
   movePipelineCardToColumn,
 } from '../lib/vsl-settings.js';
 import { renderVslOgCard } from '../lib/render-vsl-og.js';
+import { notifyFunnelEvent } from '../lib/vsl-notify.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -210,7 +211,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (!page.video_url && !settings.default_video_url) {
       return json(409, { error: 'no_video', render_status: page.render_status ?? null });
     }
-    await advanceVslState(page, 'sent');
+    const adv = await advanceVslState(page, 'sent');
+    // Only on the genuine transition — a retry after a failed mark must not
+    // re-announce the send.
+    if (adv?.advanced) await notifyFunnelEvent({ page, kind: 'vsl_sent' });
     return json(200, { ok: true, page_id: page.id, state: 'sent' });
   }
 

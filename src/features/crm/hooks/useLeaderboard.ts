@@ -41,10 +41,38 @@ interface LeaderboardRow {
   messages_sent: number | null;
   voicemail_drops: number | null;
   spend_pence: number | null;
+  // Video funnel (Hugo 2026-07-26: "all must show on leaderboard").
+  videos_sent: number | null;
+  links_clicked: number | null;
+  pages_opened: number | null;
+  videos_played: number | null;
+  watched_50: number | null;
+  watched_90: number | null;
+  watched_100: number | null;
+  cta_clicks: number | null;
+  paid: number | null;
+}
+
+/** AgentLeaderRow plus the funnel columns.
+ *
+ *  Declared HERE rather than widening AgentLeaderRow in useReports: that type is
+ *  built as an object literal in useReports.ts, so required new fields would
+ *  break it — and tests/leaderboard-rpc.test.ts asserts LeaderboardPage does not
+ *  import from useReports at all. */
+export interface FunnelLeaderRow extends AgentLeaderRow {
+  videosSent: number;
+  linksClicked: number;
+  pagesOpened: number;
+  videosPlayed: number;
+  watched50: number;
+  watched90: number;
+  watched100: number;
+  ctaClicks: number;
+  paid: number;
 }
 
 export interface LeaderboardData {
-  rows: AgentLeaderRow[];
+  rows: FunnelLeaderRow[];
   loading: boolean;
   error: string | null;
 }
@@ -70,7 +98,7 @@ function rangeBounds(range: LeaderboardRange): { since: Date; until: Date | null
 export function useLeaderboard(
   range: LeaderboardRange = DEFAULT_LEADERBOARD_RANGE,
 ): LeaderboardData {
-  const [rows, setRows] = useState<AgentLeaderRow[]>([]);
+  const [rows, setRows] = useState<FunnelLeaderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +126,15 @@ export function useLeaderboard(
         spendPence: r.spend_pence ?? 0,
         messagesSent: r.messages_sent ?? 0,
         voicemailDrops: r.voicemail_drops ?? 0,
+        videosSent: r.videos_sent ?? 0,
+        linksClicked: r.links_clicked ?? 0,
+        pagesOpened: r.pages_opened ?? 0,
+        videosPlayed: r.videos_played ?? 0,
+        watched50: r.watched_50 ?? 0,
+        watched90: r.watched_90 ?? 0,
+        watched100: r.watched_100 ?? 0,
+        ctaClicks: r.cta_clicks ?? 0,
+        paid: r.paid ?? 0,
       })),
     );
     setLoading(false);

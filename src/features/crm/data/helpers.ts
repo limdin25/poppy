@@ -25,6 +25,25 @@ export function formatTimeOnly(iso: string): string {
   return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Absolute date + time, pinned to Europe/London.
+ *
+ *  Hugo 2026-07-26: "of course all with date and time stamp". The explicit zone
+ *  is a no-op for a UK browser and the only way the stamp is right on a laptop
+ *  set to another zone — which is exactly when someone would be misled.
+ *  Pair it with formatRelativeTime: relative as the label, this in the title. */
+export function formatDateTime(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/London',
+  });
+}
+
 export function statusColour(status: string): string {
   switch (status) {
     case 'available':

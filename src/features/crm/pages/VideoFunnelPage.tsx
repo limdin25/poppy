@@ -6,12 +6,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Clapperboard, Copy, Check, ExternalLink, Settings2, X, Loader2, Send, Eye,
+  Clapperboard, Copy, Check, ExternalLink, Settings2, X, Loader2, Send, Eye, History,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 import ContactIdentity from '../components/shared/ContactIdentity';
+import { formatDateTime } from '../data/helpers';
+
+/** Preview marker. The board's own "open page" links must not burn the lead's
+ *  first touch — without this, Hugo checking pages would consume the very
+ *  first-click/first-open signal the notifications exist to report. */
+const PREVIEW = '?p=1';
 
 interface VslPage {
   id: string;
@@ -26,8 +32,14 @@ interface VslPage {
   open_count: number;
   cta_variant: string;
   sent_at: string | null;
+  first_click_at: string | null;
+  click_count: number | null;
   first_opened_at: string | null;
+  play_at: string | null;
   watched_at: string | null;
+  completed_at: string | null;
+  cta_clicked_at: string | null;
+  checkout_started_at: string | null;
   paid_at: string | null;
   updated_at: string;
   render_status: 'queued' | 'rendering' | 'ready' | 'failed' | null;
@@ -74,6 +86,38 @@ function ago(ts: string | null): string {
   return `${Math.floor(m / 1440)}d ago`;
 }
 
+/** Every stage of one lead's journey, with the exact moment it happened
+ *  (Hugo 2026-07-26: "of course all with date and time stamp"). */
+const STAGE_STAMPS: Array<{ key: keyof VslPage; label: string }> = [
+  { key: 'sent_at', label: 'Video texted' },
+  { key: 'first_click_at', label: 'Tapped the link' },
+  { key: 'first_opened_at', label: 'Opened the page' },
+  { key: 'play_at', label: 'Started the video' },
+  { key: 'watched_at', label: 'Watched (past halfway)' },
+  { key: 'completed_at', label: 'Watched to the end' },
+  { key: 'cta_clicked_at', label: 'Clicked "Start £1 Trial"' },
+  { key: 'checkout_started_at', label: 'Started checkout' },
+  { key: 'paid_at', label: 'Paid' },
+];
+
+interface Summary {
+  created: number; sent: number; clicked: number; opened: number; played: number;
+  watched_50: number; watched_90: number; watched_100: number;
+  cta_clicked: number; checkout_started: number; paid: number;
+}
+
+const STRIP: Array<{ key: keyof Summary; label: string }> = [
+  { key: 'sent', label: 'Sent' },
+  { key: 'clicked', label: 'Tapped' },
+  { key: 'opened', label: 'Opened' },
+  { key: 'played', label: 'Played' },
+  { key: 'watched_50', label: '50%' },
+  { key: 'watched_90', label: '90%' },
+  { key: 'watched_100', label: '100%' },
+  { key: 'cta_clicked', label: 'Clicked £1' },
+  { key: 'paid', label: 'Paid' },
+];
+
 export default function VideoFunnelPage() {
   const { agent } = useCurrentAgent();
   const isAdmin = agent?.isAdmin ?? false;
@@ -83,6 +127,8 @@ export default function VideoFunnelPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [nudged, setNudged] = useState<Set<string>>(new Set());
   const [showSettings, setShowSettings] = useState(false);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [drawerPage, setDrawerPage] = useState<VslPage | null>(null);
   const [watchingNow, setWatchingNow] = useState<Set<string>>(new Set());
   const watchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -99,6 +145,16 @@ export default function VideoFunnelPage() {
     const { data } = await q;
     setPages((data as VslPage[]) || []);
     setLoading(false);
+
+    // The strip gets its OWN aggregate. Counting the 500-row page above would
+    // be a made-up number past 500 pages, and — more importantly — `state` is
+    // forward-only, so a paid lead is no longer in 'opened' and every drop-off
+    // percentage derived from the board columns would be wrong.
+    const { data: sum, error: sumErr } = await (supabase as never as {
+      rpc: (n: string, a: Record<string, unknown>) => Promise<{ data: Summary[] | null; error: unknown }>;
+    }).rpc('wk_vsl_funnel_summary', { p_since: null, p_until: null, p_agent: impId ?? null });
+    if (sumErr) console.warn('[video-funnel] summary failed:', sumErr);
+    setSummary(Array.isArray(sum) ? sum[0] ?? null : (sum as Summary | null));
   }, [impId]);
 
   useEffect(() => {
@@ -234,6 +290,35 @@ export default function VideoFunnelPage() {
         </div>
       )}
 
+      {/* Conversion at a glance — every stage counted from its own timestamp,
+          so a lead who paid still counts as having opened and watched. */}
+      {summary && (
+        <div
+          className="flex gap-2 overflow-x-auto pb-3 mb-1"
+          data-testid="funnel-summary-strip"
+        >
+          {STRIP.map((s, i) => {
+            const n = summary[s.key] ?? 0;
+            const prev = i === 0 ? null : summary[STRIP[i - 1].key] ?? 0;
+            const drop = prev && prev > 0 ? Math.round((n / prev) * 100) : null;
+            return (
+              <div
+                key={s.key}
+                className="min-w-[92px] flex-shrink-0 bg-white border border-[#E5E7EB] rounded-[10px] px-3 py-2"
+              >
+                <div className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
+                  {s.label}
+                </div>
+                <div className="text-[18px] font-black text-[#1A1A1A] tabular-nums leading-tight">{n}</div>
+                {drop !== null && (
+                  <div className="text-[10px] text-[#6B7280] tabular-nums">{drop}% of prev</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {loading ? (
         <p className="text-[13px] text-[#9CA3AF] italic">Loading…</p>
       ) : (
@@ -277,8 +362,24 @@ export default function VideoFunnelPage() {
                       {p.watched_pct > 0 && <span>watched {p.watched_pct}%</span>}
                       {p.open_count > 0 && <span>{p.open_count} open{p.open_count === 1 ? '' : 's'}</span>}
                       {p.no_website && <span title="No website — video opens with the Google search" className="text-[#6B7280] font-bold">no site</span>}
-                      <span className="ml-auto">{ago(p.updated_at)}</span>
+                      <span className="ml-auto" title={formatDateTime(p.updated_at)}>{ago(p.updated_at)}</span>
                     </div>
+
+                    {/* The moment this lead reached the stage they're sitting
+                        in — relative to read fast, exact on hover. */}
+                    {(() => {
+                      const reached = [...STAGE_STAMPS].reverse().find((s) => p[s.key]);
+                      if (!reached) return null;
+                      const ts = p[reached.key] as string;
+                      return (
+                        <div
+                          className="mt-1 text-[10px] text-[#6B7280] tabular-nums"
+                          title={formatDateTime(ts)}
+                        >
+                          {reached.label} · {formatDateTime(ts)}
+                        </div>
+                      );
+                    })()}
 
                     {/* render lifecycle on the card */}
                     {s.key === 'rendering' && (
@@ -326,14 +427,22 @@ export default function VideoFunnelPage() {
                         {copied === p.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                       </button>
                       <a
-                        href={`https://heyelsie.com/${p.slug}`}
+                        href={`https://heyelsie.com/${p.slug}${PREVIEW}`}
                         target="_blank"
                         rel="noreferrer"
-                        title="Open page"
+                        title="Open page (preview — not counted as the lead's visit)"
                         className="flex-1 flex items-center justify-center text-[11px] text-[#3C5A87] border border-[#E5E7EB] rounded-[6px] py-1 hover:bg-[#eaf1f8]"
                       >
                         <ExternalLink className="w-3 h-3" />
                       </a>
+                      <button
+                        onClick={() => setDrawerPage(p)}
+                        title="Full activity, with timestamps"
+                        data-testid={`funnel-activity-${p.id}`}
+                        className="flex-1 flex items-center justify-center text-[11px] text-[#3C5A87] border border-[#E5E7EB] rounded-[6px] py-1 hover:bg-[#eaf1f8]"
+                      >
+                        <History className="w-3 h-3" />
+                      </button>
                       {p.state !== 'paid' && p.state !== 'created' && (
                         <button
                           onClick={() => nudge(p)}
@@ -357,6 +466,119 @@ export default function VideoFunnelPage() {
       )}
 
       {showSettings && <SettingsDrawer onClose={() => setShowSettings(false)} />}
+      {drawerPage && <ActivityDrawer page={drawerPage} onClose={() => setDrawerPage(null)} />}
+    </div>
+  );
+}
+
+/* ---------------- per-lead activity drawer ---------------- */
+
+const EVENT_LABELS: Record<string, string> = {
+  link_click: 'Tapped the video link',
+  open: 'Opened the page',
+  play: 'Started the video',
+  progress: 'Watched',
+  cta_click: 'Clicked "Start £1 Trial"',
+  tier_pick: 'Picked a plan',
+  calc: 'Used the value calculator',
+  checkout_start: 'Started checkout',
+  paid: 'Paid 🎉',
+  auto_sms: 'Follow-up text sent',
+};
+
+interface EventRow {
+  id: string;
+  type: string;
+  meta: { pct?: number; bot?: boolean; from?: string } | null;
+  created_at: string;
+}
+
+/** Every raw event on one page, newest first, each with its exact time.
+ *  wk_vsl_events has been written since the funnel shipped but nothing ever
+ *  read it — this is the first surface that does. */
+function ActivityDrawer({ page, onClose }: { page: VslPage; onClose: () => void }) {
+  const [rows, setRows] = useState<EventRow[] | null>(null);
+
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      const { data, error } = await (supabase.from('wk_vsl_events' as never) as never as {
+        select: (s: string) => {
+          eq: (c: string, v: string) => {
+            order: (c: string, o: { ascending: boolean }) => {
+              limit: (n: number) => Promise<{ data: EventRow[] | null; error: unknown }>;
+            };
+          };
+        };
+      })
+        .select('id, type, meta, created_at')
+        .eq('page_id', page.id)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) console.warn('[video-funnel] events failed:', error);
+      if (!dead) setRows(data || []);
+    })();
+    return () => { dead = true; };
+  }, [page.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
+      <div
+        className="w-full max-w-[520px] h-full bg-white overflow-y-auto p-5"
+        onClick={(e) => e.stopPropagation()}
+        data-testid="funnel-activity-drawer"
+      >
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-[16px] font-black">{page.business_name}</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-[#F3F3EE]"><X className="w-4 h-4" /></button>
+        </div>
+        <p className="text-[12px] text-[#6B7280] mb-4">
+          heyelsie.com/{page.slug} · watched {page.watched_pct}% · {page.open_count} open{page.open_count === 1 ? '' : 's'}
+        </p>
+
+        <div className="mb-5">
+          <p className="text-[12px] font-black mb-2">Journey</p>
+          <div className="space-y-1">
+            {STAGE_STAMPS.map((s) => {
+              const ts = page[s.key] as string | null;
+              return (
+                <div key={String(s.key)} className="flex items-baseline justify-between gap-3 text-[12px]">
+                  <span className={ts ? 'text-[#1A1A1A] font-medium' : 'text-[#D1D5DB]'}>{s.label}</span>
+                  <span className="text-[11px] text-[#6B7280] tabular-nums whitespace-nowrap">
+                    {ts ? formatDateTime(ts) : '—'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <p className="text-[12px] font-black mb-2">Every event</p>
+        {rows === null ? (
+          <p className="text-[12px] text-[#9CA3AF] italic">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-[12px] text-[#9CA3AF] italic">Nothing recorded yet.</p>
+        ) : (
+          <ul className="divide-y divide-[#E5E7EB]">
+            {rows.map((e) => (
+              <li key={e.id} className="py-1.5 flex items-baseline justify-between gap-3 text-[12px]">
+                <span className={e.meta?.bot ? 'text-[#9CA3AF]' : 'text-[#1A1A1A]'}>
+                  {e.type === 'progress' && typeof e.meta?.pct === 'number'
+                    ? `Watched ${e.meta.pct}%`
+                    : EVENT_LABELS[e.type] || e.type}
+                  {/* Preview fetchers are kept and labelled rather than hidden —
+                      that's how the header gate gets tuned against real traffic. */}
+                  {e.meta?.bot && <span className="ml-1 text-[10px]">(link preview, not counted)</span>}
+                  {e.meta?.from === 'stripe' && <span className="ml-1 text-[10px]">(back from checkout)</span>}
+                </span>
+                <span className="text-[11px] text-[#6B7280] tabular-nums whitespace-nowrap">
+                  {formatDateTime(e.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -376,8 +598,24 @@ interface Cfg {
   spots_per_town: number;
   proof_image_url: string;
   proof_caption: string;
+  notify: Record<string, boolean>;
   rules: Record<string, RuleCfg>;
 }
+
+// Hugo asked for an email on every action; these let him quieten one without a
+// deploy if the volume proves too much.
+const NOTIFY_LABELS: Record<string, string> = {
+  sent: 'Video texted',
+  link_click: 'Tapped the link',
+  open: 'Opened the page',
+  play: 'Started the video',
+  watched_50: 'Watched 50%',
+  watched_90: 'Watched 90%',
+  watched_100: 'Watched to the end',
+  cta_click: 'Clicked the £1 button',
+  checkout_start: 'Started checkout',
+  paid: 'Paid',
+};
 
 const RULE_LABELS: Record<string, string> = {
   sent_not_opened: 'Sent but never opened',
@@ -593,6 +831,26 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
                   onChange={(e) => set({ quiet_hours: { ...cfg.quiet_hours, end: e.target.value } })}
                   className="w-full px-2.5 py-2 text-[13px] border border-[#D1D5DB] rounded-[8px]"
                 />
+              </div>
+            </div>
+
+            <div className="rounded-[10px] p-3 border border-[#E5E7EB] bg-[#FAFAF7]">
+              <p className="text-[12.5px] font-black mb-1">Email me when…</p>
+              <p className="text-[10.5px] text-[#9CA3AF] mb-2">
+                Every event always shows in the bell and on the lead. These only
+                control the email.
+              </p>
+              <div className="grid grid-cols-2 gap-x-3">
+                {Object.keys(NOTIFY_LABELS).map((k) => (
+                  <label key={k} className="flex items-center gap-2 text-[12px] py-0.5">
+                    <input
+                      type="checkbox"
+                      checked={cfg.notify?.[k] !== false}
+                      onChange={(e) => set({ notify: { ...(cfg.notify || {}), [k]: e.target.checked } })}
+                    />
+                    {NOTIFY_LABELS[k]}
+                  </label>
+                ))}
               </div>
             </div>
 

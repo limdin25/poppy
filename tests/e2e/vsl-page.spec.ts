@@ -144,4 +144,65 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     const resp = await page.goto('/definitely-not-a-real-business-xyz')
     expect(resp?.url()).toContain('welcome')
   })
+
+  // ---- full funnel tracking (Hugo 2026-07-26) ----
+
+  test('play fires once, and every beacon carries its signing token', async ({ page }) => {
+    const sent: Array<{ type: string; pct?: number; token?: string }> = []
+    await page.route('**/api/vsl/track', async (route) => {
+      sent.push(JSON.parse(route.request().postData() || '{}'))
+      await route.fulfill({ status: 200, body: '{"ok":true}' })
+    })
+    await page.goto(`/${SLUG}`)
+    await expect.poll(() => sent.map((s) => s.type)).toContain('open')
+
+    await page.locator('#stage').click()
+    await expect(page.locator('#stage')).toHaveClass(/playing/)
+    await expect.poll(() => sent.filter((s) => s.type === 'play').length).toBe(1)
+
+    // Pause and resume — play must NOT fire again.
+    await page.locator('#stage').click()
+    await page.locator('#stage').click()
+    await page.waitForTimeout(600)
+    expect(sent.filter((s) => s.type === 'play').length).toBe(1)
+
+    // Forged replay is what the token stops; every beacon must carry one.
+    expect(sent.every((s) => typeof s.token === 'string' && s.token.length > 0)).toBe(true)
+  })
+
+  test('dragging the scrubber to the end does NOT report a full watch', async ({ page }) => {
+    // The whole point of measuring video.played instead of currentTime. A lead
+    // who drags to the end would otherwise trip completed_at, move the card to
+    // "Watched" and trigger the "saw you watched the video" nudge.
+    const pcts: number[] = []
+    await page.route('**/api/vsl/track', async (route) => {
+      const b = JSON.parse(route.request().postData() || '{}')
+      if (b.type === 'progress' && typeof b.pct === 'number') pcts.push(b.pct)
+      await route.fulfill({ status: 200, body: '{"ok":true}' })
+    })
+    await page.goto(`/${SLUG}`)
+
+    // Seek to the very end without watching anything.
+    await page.locator('#stage').click()
+    await expect(page.locator('#stage')).toHaveClass(/playing/)
+    await page.locator('#v').evaluate((el) => {
+      const v = el as HTMLVideoElement
+      v.pause()
+      if (v.duration && isFinite(v.duration)) v.currentTime = v.duration - 0.05
+    })
+    await page.waitForTimeout(1200)
+
+    // Coverage stays low: nothing before the seek point was ever decoded.
+    const max = pcts.length ? Math.max(...pcts) : 0
+    expect(max).toBeLessThan(90)
+  })
+
+  test('the markers Hugo asked for are the ones the page fires', async ({ page }) => {
+    const src = await page.goto(`/${SLUG}`).then((r) => r!.text())
+    expect(src).toContain('[10,25,50,75,90,100]')
+    // Coverage, not playhead.
+    expect(src).toContain('v.played')
+    // Flushes the true figure on the way out.
+    expect(src).toMatch(/pagehide/)
+  })
 })

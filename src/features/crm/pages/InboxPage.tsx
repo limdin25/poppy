@@ -14,17 +14,18 @@ import {
   Mail,
   Paperclip,
   Bot,
+  Clapperboard,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { MOCK_SMS, MOCK_ACTIVITIES } from '../data/mockCalls';
 import { useDemoMode } from '../lib/useDemoMode';
-import { formatRelativeTime, formatTimeOnly, formatDuration } from '../data/helpers';
+import { formatRelativeTime, formatTimeOnly, formatDuration, formatDateTime } from '../data/helpers';
 import StageSelector from '../components/shared/StageSelector';
 import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
 import FollowupPromptModal from '../components/followups/FollowupPromptModal';
 import { useSmsV2 } from '../store/SmsV2Store';
-import { useContactTimeline } from '../hooks/useContactTimeline';
+import { useContactTimeline, type FunnelEvent } from '../hooks/useContactTimeline';
 import { useContactMessages } from '../hooks/useContactMessages';
 import { useInboxThreads } from '../hooks/useInboxThreads';
 import { useContactPersistence } from '../hooks/useContactPersistence';
@@ -419,7 +420,7 @@ export default function InboxPage() {
 
   // Sort the unified thread by timestamp so SMS interleave with calls if present
   const threadItems = useMemo(() => {
-    const items: { kind: 'sms' | 'call' | 'activity'; ts: string; payload: unknown }[] = contactSms.map((m) => ({
+    const items: { kind: 'sms' | 'call' | 'activity' | 'funnel'; ts: string; payload: unknown }[] = contactSms.map((m) => ({
       kind: 'sms' as const,
       ts: m.sentAt,
       payload: m,
@@ -432,9 +433,14 @@ export default function InboxPage() {
         items.push({ kind: 'activity' as const, ts: a.ts, payload: a });
       }
     }
+    // Video-funnel activity, in line with the calls and texts (Hugo 2026-07-26)
+    // — the lead watching your video is part of the conversation.
+    for (const f of timeline.funnel) {
+      items.push({ kind: 'funnel' as const, ts: f.ts, payload: f });
+    }
     items.sort((a, b) => +new Date(a.ts) - +new Date(b.ts));
     return items;
-  }, [contactSms, timeline.calls, contactActivity]);
+  }, [contactSms, timeline.calls, contactActivity, timeline.funnel]);
 
   // Auto-scroll on thread change OR new message append.
   useEffect(() => {
@@ -882,6 +888,30 @@ export default function InboxPage() {
                   <div className="text-[10px] text-[#9CA3AF] mt-1 tabular-nums">
                     {formatTimeOnly(c.startedAt)}
                   </div>
+                </div>
+              );
+            }
+            // MUST come before the activity fallthrough below: that branch
+            // casts any unknown payload to ActivityEvent and would render an
+            // empty chip with `undefined` as its title.
+            if (item.kind === 'funnel') {
+              const f = item.payload as FunnelEvent;
+              return (
+                <div
+                  key={`fun-${f.id}`}
+                  data-testid="thread-funnel-event"
+                  className="mx-auto max-w-[80%] px-3 py-1.5 rounded-xl bg-[#EEF6FF] border border-[#BFDBFE] text-[11px] text-[#3C5A87] flex items-center gap-2"
+                >
+                  <Clapperboard className="w-3 h-3 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold">{f.label}</span>
+                  </div>
+                  <span
+                    className="text-[10px] text-[#9CA3AF] tabular-nums flex-shrink-0"
+                    title={formatDateTime(f.ts)}
+                  >
+                    {formatTimeOnly(f.ts)}
+                  </span>
                 </div>
               );
             }

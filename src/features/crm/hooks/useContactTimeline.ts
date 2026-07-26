@@ -65,11 +65,37 @@ interface SmsMessageRow {
   to_number: string;
 }
 
+/** A video-funnel event on this lead's page — link tapped, page opened, video
+ *  played, coverage milestone, £1 button, checkout, paid. Hugo 2026-07-26: this
+ *  activity was previously invisible on the lead itself. */
+export interface FunnelEvent {
+  id: string;
+  type: string;
+  /** Coverage % for a `progress` row. */
+  pct: number | null;
+  label: string;
+  ts: string;
+}
+
+const FUNNEL_LABELS: Record<string, string> = {
+  link_click: 'Tapped the video link',
+  open: 'Opened the video page',
+  play: 'Started the video',
+  progress: 'Watched',
+  cta_click: 'Clicked "Start £1 Trial"',
+  tier_pick: 'Picked a plan',
+  calc: 'Used the value calculator',
+  checkout_start: 'Started checkout',
+  paid: 'Paid 🎉',
+  auto_sms: 'Follow-up text sent',
+};
+
 export interface ContactTimeline {
   calls: CallRecord[];
   sms: SmsMessage[];
   activities: ActivityEvent[];
   tasks: Task[];
+  funnel: FunnelEvent[];
   loading: boolean;
 }
 
@@ -78,6 +104,7 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
   const [sms, setSms] = useState<SmsMessage[]>([]);
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [funnel, setFunnel] = useState<FunnelEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -116,6 +143,20 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
           .select('id, contact_id, assignee_id, title, due_at, status')
           .eq('contact_id', contactId)
           .order('due_at', { ascending: true, nullsFirst: false }),
+        // Video-funnel events. wk_vsl_events has no contact_id — it hangs off
+        // the page — so filter through an inner-joined wk_vsl_pages (one page
+        // per contact, enforced by wk_vsl_pages_contact_idx).
+        //
+        // MUST stay inside this FIXED block: the sms query below is pushed
+        // conditionally, and results[] is read positionally. Appended after it,
+        // this would land at index 6 or 7 depending on whether the contact has
+        // a phone, and every phoneless contact would render funnel rows as SMS.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase.from('wk_vsl_events' as any) as any)
+          .select('id, type, meta, created_at, wk_vsl_pages!inner(contact_id)')
+          .eq('wk_vsl_pages.contact_id', contactId)
+          .order('created_at', { ascending: false })
+          .limit(100),
       ];
 
       // sms_messages — only if we have the contact's phone to filter on.
@@ -151,7 +192,29 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
       const costRes = results[3];
       const actRes = results[4];
       const tasksRes = results[5];
-      const smsRes = contactPhone ? results[6] : { data: [] };
+      const funnelRes = results[6];
+      const smsRes = contactPhone ? results[7] : { data: [] };
+
+      // This hook checks no other errors, which is how a wrong embed would
+      // become a permanently empty funnel with no diagnostic anywhere.
+      if (funnelRes?.error) {
+        console.warn('[useContactTimeline] funnel events query failed:', funnelRes.error);
+      }
+      setFunnel(
+        ((funnelRes?.data ?? []) as Array<{
+          id: string; type: string; meta: { pct?: number } | null; created_at: string;
+        }>).map((e) => {
+          const pct = typeof e.meta?.pct === 'number' ? e.meta.pct : null;
+          const base = FUNNEL_LABELS[e.type] ?? e.type;
+          return {
+            id: e.id,
+            type: e.type,
+            pct,
+            label: e.type === 'progress' && pct !== null ? `Watched ${pct}% of the video` : base,
+            ts: e.created_at,
+          };
+        })
+      );
 
       // Build call list with joined metadata
       const recById = new Map<string, { call_id: string; storage_path: string | null; twilio_media_url: string | null; status: string }>();
@@ -253,5 +316,5 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
     };
   }, [contactId, contactPhone]);
 
-  return { calls, sms, activities, tasks, loading };
+  return { calls, sms, activities, tasks, funnel, loading };
 }

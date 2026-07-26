@@ -1,11 +1,14 @@
 // heyelsie.com/{slug} — the per-lead VSL page. Server-rendered (Node runtime,
 // report.ts pattern) so crawlers get real OG tags for the SMS link preview.
 // One headline, one vertical video, ONE button (A/B label) → tier sheet →
-// Stripe. Beacons: open / progress 25-50-75-95 / cta_click / tier_pick.
+// Stripe. Beacons: open / play / progress 10-25-50-75-90-100 / cta_click /
+// tier_pick / calc. The SMS link CLICK is logged here, server-side.
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
-import { getVslSettings, VSL_PRICES, normBusinessName } from '../lib/vsl-settings.js';
+import { createHmac } from 'node:crypto';
+import { getVslSettings, VSL_PRICES, normBusinessName, advanceVslState } from '../lib/vsl-settings.js';
+import { notifyFunnelEvent } from '../lib/vsl-notify.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -46,6 +49,86 @@ async function bigMarketExamples(plural = 'plumbers'): Promise<BigExample[]> {
   return built;
 }
 
+/** Beacon token: proves the sender actually loaded this page.
+ *
+ *  page_id is printed in the public HTML and slugs are guessable business
+ *  names, so anyone could previously replay beacons — and a forged
+ *  progress{pct:95} flips state to 'watched', which makes the automation cron
+ *  text a REAL lead about a video they never opened. Bucketed by hour so a
+ *  token is not a permanent key; track.ts accepts this hour or the last.
+ *
+ *  Deliberately not a defence against the lead themselves — only against
+ *  scripted replay by someone who never opened the page. */
+export function beaconToken(pageId: string, hourBucket?: number): string {
+  const secret = process.env.VSL_BEACON_SECRET || '';
+  if (!secret) return '';
+  const bucket = hourBucket ?? Math.floor(Date.now() / 3_600_000);
+  return createHmac('sha256', secret).update(`${pageId}:${bucket}`).digest('hex').slice(0, 32);
+}
+
+/** Is this request a human tapping the link, or a machine fetching a preview?
+ *
+ *  User-Agent is NOT enough. iMessage builds its rich preview with a stock
+ *  Safari UA — indistinguishable from a real visitor — and it fires the moment
+ *  the SMS is DELIVERED. Left unfiltered, Hugo would get "they clicked!"
+ *  seconds after every send to an iPhone, forever, and the dedupe would burn
+ *  the genuine first click permanently.
+ *
+ *  Real browser navigations carry Sec-Fetch-Dest: document. Apple's and
+ *  Google's preview fetchers send no Sec-Fetch-* headers at all. */
+function isHumanNavigation(req: IncomingMessage): boolean {
+  const h = req.headers;
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) || '';
+  // No req.method check existed here at all — a scanner's HEAD would have counted.
+  if ((req.method || 'GET').toUpperCase() !== 'GET') return false;
+  if (one(h['sec-fetch-dest']).toLowerCase() !== 'document') return false;
+  const purpose = `${one(h['sec-purpose'])} ${one(h['purpose'])} ${one(h['x-purpose'])}`.toLowerCase();
+  if (purpose.includes('prefetch') || purpose.includes('preview')) return false;
+  // Belt and braces on top of the header gate — the loud self-identifiers.
+  const ua = one(h['user-agent']).toLowerCase();
+  if (/bot|crawl|spider|facebookexternalhit|whatsapp|twitterbot|slackbot|discordbot|curl|wget|headlesschrome|preview/.test(ua)) return false;
+  return true;
+}
+
+/** Record the SMS link being tapped. Hugo kept the pretty link (no redirect
+ *  hop), so the page request IS the click. Awaited before res.end(): there is
+ *  no waitUntil in this stack and the container freezes once the response
+ *  completes, so a fire-and-forget promise may never run. */
+async function logLinkClick(
+  req: IncomingMessage,
+  url: URL,
+  page: { id: string; contact_id: string; state: string } & Record<string, unknown>,
+): Promise<void> {
+  // Internal previews (the board's "open page", the drawer) must never burn a
+  // lead's first touch — Hugo's own testing would otherwise consume it.
+  if (url.searchParams.get('p') === '1') return;
+
+  const human = isHumanNavigation(req);
+  const from = url.searchParams.get('from') || undefined;
+
+  const { error } = await supabase.from('wk_vsl_events').insert({
+    page_id: page.id,
+    type: 'link_click',
+    // Bots are logged, not counted — keeping them visible is how we tune the gate.
+    meta: { bot: !human || undefined, from, ua: String(req.headers['user-agent'] || '').slice(0, 200) },
+  });
+  if (error) console.error('[vsl/page] link_click insert failed:', error);
+  if (!human) return;
+
+  // Stripe's cancel_url re-enters this page; that is a return, not an arrival.
+  if (from === 'stripe') return;
+
+  // Only the FIRST click writes the page row. wk_vsl_pages has a before-update
+  // trigger on updated_at, and vsl-automation orders by updated_at ASC so that
+  // pages past its cap are not starved — bumping on every render would push a
+  // heavily-previewed page permanently to the back of its own nudge queue.
+  if (page.first_click_at) return;
+  const r = await advanceVslState(page, null, { link_click: true });
+  if (r?.first_click) {
+    await notifyFunnelEvent({ page, kind: 'vsl_link_click' });
+  }
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || '/', 'https://heyelsie.com');
   const slug = (url.searchParams.get('slug') || '').toLowerCase();
@@ -63,6 +146,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     .eq('slug', slug)
     .maybeSingle();
   if (!page) return bounce();
+
+  // The click, before anything slow. Never let tracking break the page for a
+  // prospect — a thrown error here would blank a live sales page.
+  await logLinkClick(req, url, page).catch((e) => console.error('[vsl/page] click log failed:', e));
 
   const settings = await getVslSettings();
   const videoUrl = page.video_url || settings.default_video_url;
@@ -474,8 +561,8 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
   <p class="pound">£1 today. Nothing else until day 10.</p>
 </div>
 <script>
-var PAGE='${esc(page.id)}',VARIANT='${esc(page.cta_variant)}';
-function send(t,extra){try{var p=Object.assign({page_id:PAGE,type:t,variant:VARIANT},extra||{});
+var PAGE='${esc(page.id)}',VARIANT='${esc(page.cta_variant)}',TOKEN='${esc(beaconToken(page.id))}';
+function send(t,extra){try{var p=Object.assign({page_id:PAGE,type:t,variant:VARIANT,token:TOKEN},extra||{});
 navigator.sendBeacon('/api/vsl/track',new Blob([JSON.stringify(p)],{type:'application/json'}))}catch(e){}}
 send('open');
 /* custom player — the native controls overlay (with its dark scrim) never
@@ -484,17 +571,38 @@ send('open');
 var v=document.getElementById('v'),stage=document.getElementById('stage'),vt=document.getElementById('vt'),
 vs=document.getElementById('vs'),vp=document.getElementById('vp'),fired={};
 function fmtT(s){if(!isFinite(s)||s<0)s=0;var m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x}
+/* COVERAGE, not playhead. v.played is the set of ranges actually decoded, so
+   dragging the seek bar to the end reports ~0 instead of 100. The seek bar
+   below is wired to v.currentTime — without this, one drag would register a
+   full watch, trip completed_at, move the card to "Watched" and fire the
+   "saw you watched the video" nudge at someone who watched nothing. */
+function cov(){if(!v||!v.duration)return 0;var played=v.played,t=0;
+/* every range, not just the first — they may watch, skip back and rewatch */
+for(var i=0;i<played.length;i++){t+=played.end(i)-played.start(i)}
+return Math.max(0,Math.min(100,Math.round(t/v.duration*100)))}
+var sentPct=0,playSent=0;
+function mark(){var c=cov();
+[10,25,50,75,90,100].forEach(function(m){if(c>=m&&!fired[m]){fired[m]=1;sentPct=m;send('progress',{pct:m})}});
+return c}
 if(v){v.addEventListener('timeupdate',function(){if(!v.duration)return;var pct=v.currentTime/v.duration*100;
 /* elapsed / total — "how long until the end" is the question being asked */
 if(vt)vt.textContent=fmtT(v.currentTime)+' / '+fmtT(v.duration);
 if(vs){vs.value=String(Math.round(pct*10));vs.style.setProperty('--p',pct+'%')}
-[25,50,75,95].forEach(function(m){if(pct>=m&&!fired[m]){fired[m]=1;send('progress',{pct:m})}})});
+mark()});
 /* show the full length BEFORE they press play, not after the first tick —
    knowing it's 2:35 up front is the whole point */
 v.addEventListener('loadedmetadata',function(){if(vt)vt.textContent='0:00 / '+fmtT(v.duration)});
 if(v.readyState>0&&vt)vt.textContent='0:00 / '+fmtT(v.duration);
-v.addEventListener('play',function(){if(vp)vp.style.display='none'});
+v.addEventListener('play',function(){if(vp)vp.style.display='none';
+if(!playSent){playSent=1;send('play')}});
+/* watching to the end may never tick timeupdate at exactly 100 */
+v.addEventListener('ended',function(){mark();if(!fired[100]){fired[100]=1;sentPct=100;send('progress',{pct:100})}});
 v.addEventListener('pause',function(){if(vp&&stage.classList.contains('playing'))vp.style.display='flex'})}
+/* Final flush: the EXACT coverage, so watched_pct is a real number rather than
+   whichever marker they happened to cross. One beacon, on the way out. */
+function flush(){if(!v||!v.duration)return;var c=cov();if(c>sentPct){sentPct=c;send('progress',{pct:c})}}
+window.addEventListener('pagehide',flush);
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flush()});
 if(vs){vs.addEventListener('input',function(){if(!v||!v.duration)return;
 v.currentTime=Number(vs.value)/1000*v.duration;vs.style.setProperty('--p',(Number(vs.value)/10)+'%');
 /* now the bar is visible over the POSTER, a drag there has to actually start

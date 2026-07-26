@@ -26,17 +26,29 @@ import { formatDuration, formatPence } from '../data/helpers';
 
 const RANGES: LeaderboardRange[] = ['today', 'yesterday', 'week', 'month'];
 
+/** Hugo 2026-07-26: "all must show on leaderboard". Sixteen columns is
+ *  unreadable, so the same rows wear two column sets. */
+type BoardView = 'calls' | 'funnel';
+
 export default function LeaderboardPage() {
   // Opens on the rolling week — a today-only board reads empty every morning
   // before anyone has dialled (Hugo 2026-07-24).
   const [range, setRange] = useState<LeaderboardRange>(DEFAULT_LEADERBOARD_RANGE);
+  const [view, setView] = useState<BoardView>('calls');
   const reports = useLeaderboard(range);
   const { agent: me } = useCurrentAgent();
 
   const rows = useMemo(
-    () => [...reports.rows].sort((a, b) => b.calls - a.calls || b.answered - a.answered),
-    [reports.rows]
+    () =>
+      view === 'funnel'
+        ? [...reports.rows].sort((a, b) => b.paid - a.paid || b.ctaClicks - a.ctaClicks || b.videosSent - a.videosSent)
+        // Calls view keeps the original comparator verbatim — ranked by calls
+        // MADE ("who's calling more", Hugo 2026-07-24).
+        : [...reports.rows].sort((a, b) => b.calls - a.calls || b.answered - a.answered),
+    [reports.rows, view]
   );
+
+  const COLS = view === 'funnel' ? 10 : 8;
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-5">
@@ -46,7 +58,7 @@ export default function LeaderboardPage() {
             <Trophy className="w-6 h-6 text-[#3C5A87]" /> Leaderboard
           </h1>
           <p className="text-[13px] text-[#6B7280]">
-            {RANGE_LABELS[range]} · ranked by calls made · updates every minute
+            {RANGE_LABELS[range]} · ranked by {view === 'funnel' ? 'sales' : 'calls made'} · updates every minute
           </p>
         </div>
         <div className="flex items-center gap-1 bg-white border border-[#E5E7EB] rounded-full p-1">
@@ -68,18 +80,55 @@ export default function LeaderboardPage() {
         </div>
       </header>
 
-      <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden">
-        <table className="w-full text-[13px]">
+      {/* Same rows, two column sets — the funnel numbers would be unreadable
+          bolted onto the call ones. */}
+      <div className="flex items-center gap-1 bg-white border border-[#E5E7EB] rounded-full p-1 w-fit">
+        {(['calls', 'funnel'] as BoardView[]).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            data-testid={`leaderboard-view-${v}`}
+            className={cn(
+              'px-3 py-1.5 text-[12px] font-medium rounded-full transition-colors',
+              view === v ? 'bg-[#1A1A1A] text-white' : 'text-[#6B7280] hover:bg-[#F3F3EE]'
+            )}
+          >
+            {v === 'calls' ? 'Calls' : 'Video funnel'}
+          </button>
+        ))}
+      </div>
+
+      {/* overflow-x-auto, NOT overflow-hidden: the wrapper used to CLIP, so the
+          last column was already unreachable on a phone with no scrollbar to
+          hint at it. */}
+      <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-x-auto">
+        <table className="w-full text-[13px] min-w-[720px]">
           <thead className="bg-[#F3F3EE]/50 text-[10px] uppercase tracking-wide text-[#9CA3AF]">
             <tr>
               <th className="text-left px-3 py-2.5 font-semibold w-10">#</th>
               <th className="text-left px-3 py-2.5 font-semibold">Agent</th>
-              <th className="text-right px-3 py-2.5 font-semibold">Calls made</th>
-              <th className="text-right px-3 py-2.5 font-semibold">Picked up</th>
-              <th className="text-right px-3 py-2.5 font-semibold">Messages</th>
-              <th className="text-right px-3 py-2.5 font-semibold">VM drops</th>
-              <th className="text-right px-3 py-2.5 font-semibold">Avg duration</th>
-              <th className="text-right px-3 py-2.5 font-semibold">Spend</th>
+              {view === 'calls' ? (
+                <>
+                  <th className="text-right px-3 py-2.5 font-semibold">Calls made</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Picked up</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Messages</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">VM drops</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Avg duration</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Spend</th>
+                </>
+              ) : (
+                <>
+                  <th className="text-right px-3 py-2.5 font-semibold">Videos sent</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Tapped</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Opened</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Played</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">50%</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">90%</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">100%</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Clicked £1</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Paid</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-[#E5E7EB]">
@@ -127,29 +176,49 @@ export default function LeaderboardPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{r.calls}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#3C5A87]">
-                    {r.answered}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
-                    {r.messagesSent}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
-                    {r.voicemailDrops || '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-[#6B7280]">
-                    {r.avgDurationSec > 0 ? formatDuration(r.avgDurationSec) : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-[#6B7280]">
-                    {formatPence(r.spendPence)}
-                  </td>
+                  {view === 'calls' ? (
+                    <>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.calls}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#3C5A87]">
+                        {r.answered}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {r.messagesSent}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {r.voicemailDrops || '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-[#6B7280]">
+                        {r.avgDurationSec > 0 ? formatDuration(r.avgDurationSec) : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-[#6B7280]">
+                        {formatPence(r.spendPence)}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.videosSent || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.linksClicked || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.pagesOpened || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.videosPlayed || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.watched50 || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.watched90 || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.watched100 || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#F97316]">
+                        {r.ctaClicks || '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#16A34A]">
+                        {r.paid || '—'}
+                      </td>
+                    </>
+                  )}
                 </tr>
               );
             })}
             {!reports.loading && rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={COLS}
                   className="px-4 py-12 text-center text-[#9CA3AF] italic"
                 >
                   {reports.error
@@ -161,7 +230,7 @@ export default function LeaderboardPage() {
             {reports.loading && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={COLS}
                   className="px-4 py-12 text-center text-[#9CA3AF] italic"
                 >
                   Loading…
