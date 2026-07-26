@@ -980,6 +980,19 @@ describe('vsl player — progress bar', () => {
     expect(page).toMatch(/loadedmetadata/)
   })
 
+  it('is visible on the POSTER, not only once playing', () => {
+    // Hugo: "that only when i click, i want it to be there even if i dont click"
+    expect(page).not.toMatch(/\.stage \.vbar\{display:none\}/)
+    // and it must out-stack the poster overlay + its "Watch" badge (z-index 1),
+    // or it renders underneath and is invisible anyway
+    expect(page).toMatch(/\.vbar\{position:absolute;z-index:2/)
+  })
+
+  it('the always-on scrubber actually starts the video', () => {
+    // over the poster the video is hidden, so a seek with no play() looks dead
+    expect(page).toMatch(/if\(!stage\.classList\.contains\('playing'\)\)play\(\)/)
+  })
+
   it('never renders NaN:NaN while the duration is unknown', () => {
     expect(page).toMatch(/function fmtT\(s\)\{if\(!isFinite\(s\)\|\|s<0\)s=0/)
   })

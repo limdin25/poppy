@@ -247,21 +247,25 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#fff;display:none}
 .stage.playing video{display:block}
 .stage.playing .thumb{display:none}
-.stage .vbar{display:none}
-.stage.playing .vbar{display:flex}
+/* the bar shows on the POSTER too (Hugo 2026-07-26: "i want it to be there
+   even if i dont click") — knowing the length is what decides whether they
+   press play, so it has to be readable before they do */
 /* center 28% is a no-op for the exact-fit 16:9 PosterV art, but keeps the
    face framed if a legacy/fallback 9:16 frame-grab poster ever shows here */
 .thumb{position:absolute;inset:0;background-size:cover;background-position:center 28%;display:flex;align-items:center;justify-content:center}
 .thumb::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.44))}
 .play{position:relative;z-index:1;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.96);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.4)}
 .play svg{margin-left:6px}
-.badge{position:absolute;z-index:1;left:12px;bottom:12px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px}
+/* lifted clear of the always-on timing bar below it */
+.badge{position:absolute;z-index:1;left:12px;bottom:60px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px}
 .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9CA3AF;font-size:13px}
 /* custom player chrome (inside the stage) */
 .vpause{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
 .vpause span{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.94);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.4)}
 .vpause svg{margin-left:4px}
-.vbar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.55);border-radius:999px;padding:0 14px;height:40px;opacity:1;transition:opacity .3s}
+/* z-index 2 clears BOTH the poster overlay and its "Watch" badge (z-index 1) —
+   without it the bar renders under the poster and is invisible until play */
+.vbar{position:absolute;z-index:2;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.55);border-radius:999px;padding:0 14px;height:40px}
 /* Stays up for the whole video (Hugo 2026-07-26) — a 2:35 VSL with no visible
    end in sight is a reason to leave. It sits just ABOVE the burnt-in subtitle
    band, not over it. */
@@ -492,7 +496,11 @@ if(v.readyState>0&&vt)vt.textContent='0:00 / '+fmtT(v.duration);
 v.addEventListener('play',function(){if(vp)vp.style.display='none'});
 v.addEventListener('pause',function(){if(vp&&stage.classList.contains('playing'))vp.style.display='flex'})}
 if(vs){vs.addEventListener('input',function(){if(!v||!v.duration)return;
-v.currentTime=Number(vs.value)/1000*v.duration;vs.style.setProperty('--p',(Number(vs.value)/10)+'%')})}
+v.currentTime=Number(vs.value)/1000*v.duration;vs.style.setProperty('--p',(Number(vs.value)/10)+'%');
+/* now the bar is visible over the POSTER, a drag there has to actually start
+   the video — otherwise it seeks a frame still hidden behind the poster and
+   reads as a broken control */
+if(!stage.classList.contains('playing'))play()})}
 function togglePlay(){if(!v)return;if(v.paused){try{v.play()}catch(e){}}else{v.pause()}}
 function stageTap(){if(!v)return;if(stage.classList.contains('playing')){togglePlay()}else{play()}}
 function play(){if(!v)return;stage.classList.add('playing');try{v.play()}catch(e){}
