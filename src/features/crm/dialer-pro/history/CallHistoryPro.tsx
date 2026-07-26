@@ -4,6 +4,7 @@ import { Phone, PhoneOutgoing, Play, FileText, X, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { cn } from '@/core/lib/cn';
 import { personName, websiteLabel } from '@/features/crm/lib/contactIdentity';
+import { useImpersonatedAgentId } from '@/features/crm/lib/ViewAsContext';
 import { signCallRecording } from '@/features/crm/hooks/useCalls';
 import CallTranscriptModal from '@/features/crm/components/calls/CallTranscriptModal';
 
@@ -31,15 +32,16 @@ interface CallRow {
   agentNote: string | null;
 }
 
-async function fetchPage(pageParam: number): Promise<CallRow[]> {
+async function fetchPage(pageParam: number, impAgentId: string | null): Promise<CallRow[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let callsQ = (supabase.from('wk_calls' as any) as any)
+    .select('id, contact_id, direction, status, started_at, duration_sec, agent_note')
+    .order('started_at', { ascending: false })
+    .range(pageParam * PAGE_SIZE, (pageParam + 1) * PAGE_SIZE - 1);
+  // "See as: <agent>" — admin impersonating sees that agent's call history.
+  if (impAgentId) callsQ = callsQ.eq('agent_id', impAgentId);
   const [callsRes, recRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase.from('wk_calls' as any) as any)
-      .select(
-        'id, contact_id, direction, status, started_at, duration_sec, agent_note'
-      )
-      .order('started_at', { ascending: false })
-      .range(pageParam * PAGE_SIZE, (pageParam + 1) * PAGE_SIZE - 1),
+    callsQ,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase.from('wk_recordings' as any) as any)
       .select('call_id, storage_path, status'),
@@ -94,6 +96,7 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
   const [transcriptCallId, setTranscriptCallId] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  const impId = useImpersonatedAgentId();
   const {
     data,
     isLoading,
@@ -101,8 +104,8 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['dialer-pro-call-history'],
-    queryFn: ({ pageParam }) => fetchPage(pageParam),
+    queryKey: ['dialer-pro-call-history', impId ?? 'self'],
+    queryFn: ({ pageParam }) => fetchPage(pageParam, impId),
     initialPageParam: 0,
     getNextPageParam: (lastPage, _allPages, lastPageParam) =>
       lastPage.length === PAGE_SIZE ? lastPageParam + 1 : undefined,

@@ -9,6 +9,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 import { countVoicemailDrops } from '../lib/callStats';
 
 export type ReportRange = 'today' | 'week' | 'month';
@@ -69,18 +70,22 @@ interface CallRow {
 }
 
 export function useReports(range: ReportRange): ReportData {
+  const impId = useImpersonatedAgentId();
   const [data, setData] = useState<ReportData>(ZERO);
 
   const refresh = useCallback(async () => {
     const start = rangeStart(range);
     const startIso = start.toISOString();
 
-    // 1. Calls in range
+    // 1. Calls in range ("See as: <agent>" scopes to that agent when an admin
+    // is impersonating).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const callsRes = await (supabase.from('wk_calls' as any) as any)
+    let callsQ = (supabase.from('wk_calls' as any) as any)
       .select('id, agent_id, status, duration_sec, started_at, voicemail_dropped')
       .gte('started_at', startIso)
       .order('started_at', { ascending: true });
+    if (impId) callsQ = callsQ.eq('agent_id', impId);
+    const callsRes = await callsQ;
 
     const calls = (callsRes.data ?? []) as CallRow[];
 
@@ -162,10 +167,12 @@ export function useReports(range: ReportRange): ReportData {
     // Single query; bucketed client-side. Cheap for typical CRM volume.
     const messagesByAgent = new Map<string, number>();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const msgsRes = await (supabase.from('wk_sms_messages' as any) as any)
+    let msgsQ = (supabase.from('wk_sms_messages' as any) as any)
       .select('created_by')
       .eq('direction', 'outbound')
       .gte('created_at', startIso);
+    if (impId) msgsQ = msgsQ.eq('created_by', impId);
+    const msgsRes = await msgsQ;
     for (const m of (msgsRes.data ?? []) as Array<{ created_by: string | null }>) {
       const aid = m.created_by ?? 'unknown';
       messagesByAgent.set(aid, (messagesByAgent.get(aid) ?? 0) + 1);
@@ -240,7 +247,7 @@ export function useReports(range: ReportRange): ReportData {
       leaderboard,
       loading: false,
     });
-  }, [range]);
+  }, [range, impId]);
 
   useEffect(() => {
     void refresh();

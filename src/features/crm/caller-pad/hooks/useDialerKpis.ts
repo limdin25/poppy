@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useImpersonatedAgentId } from '@/features/crm/lib/ViewAsContext';
 import type { Campaign } from '../types';
 
 export interface DialerKpis {
@@ -14,9 +15,12 @@ const EMPTY: DialerKpis = { pending: 0, total: 0, msgSent: 0, dials24h: 0 };
 export function useDialerKpis(camp: Campaign | null, userId: string | null): DialerKpis {
   const [msgSent, setMsgSent] = useState(0);
   const [dials24h, setDials24h] = useState(0);
+  // "See as: <agent>" — an admin impersonating scopes KPIs to that agent.
+  const impId = useImpersonatedAgentId();
+  const effectiveId = impId ?? userId;
 
   useEffect(() => {
-    if (!userId) return;
+    if (!effectiveId) return;
     let cancelled = false;
 
     async function load() {
@@ -31,12 +35,12 @@ export function useDialerKpis(camp: Campaign | null, userId: string | null): Dia
           .select('id', { count: 'exact', head: true })
           .gte('created_at', todayIso)
           .eq('direction', 'outbound')
-          .eq('created_by', userId),
+          .eq('created_by', effectiveId),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_calls' as any) as any)
           .select('id', { count: 'exact', head: true })
           .gte('started_at', cutoff24h)
-          .eq('agent_id', userId),
+          .eq('agent_id', effectiveId),
       ]);
       if (cancelled) return;
       setMsgSent((smsRes?.count ?? 0) as number);
@@ -77,7 +81,7 @@ export function useDialerKpis(camp: Campaign | null, userId: string | null): Dia
       try { void supabase.removeChannel(smsChan); } catch { /* ignore */ }
       try { void supabase.removeChannel(callsChan); } catch { /* ignore */ }
     };
-  }, [userId]);
+  }, [effectiveId]);
 
   if (!camp) return EMPTY;
 

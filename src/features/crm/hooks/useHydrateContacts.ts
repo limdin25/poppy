@@ -7,6 +7,7 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../store/SmsV2Store';
+import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 import type { Contact } from '../types';
 
 interface WkContactRow {
@@ -47,6 +48,10 @@ export function rowToContact(row: WkContactRow, tags: string[]): Contact {
 
 export function useHydrateContacts(): void {
   const { setContacts, upsertContact, removeContact } = useSmsV2();
+  // "See as: <agent>" — when an admin impersonates an agent, the store (which
+  // feeds the pipeline board, contacts page and contact enrichment everywhere)
+  // holds only that agent's leads. Null = whole workspace / RLS-scoped.
+  const impId = useImpersonatedAgentId();
 
   // CRITICAL (Hugo 2026-07-22): SmsV2Store builds its api inside useMemo([state,
   // …]), so these actions get a FRESH reference on every dispatch. Depending on
@@ -83,8 +88,10 @@ export function useHydrateContacts(): void {
 
       // 1. HEAD count
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { count: totalCount } = await (supabase.from('wk_contacts' as any) as any)
+      let headQ = (supabase.from('wk_contacts' as any) as any)
         .select('id', { count: 'exact', head: true });
+      if (impId) headQ = headQ.eq('owner_agent_id', impId);
+      const { count: totalCount } = await headQ;
       if (cancelled) return;
       const total = Math.min(typeof totalCount === 'number' ? totalCount : 0, HARD_CAP);
       const pageCount = total === 0 ? 1 : Math.ceil(total / PAGE_SIZE);
@@ -98,12 +105,14 @@ export function useHydrateContacts(): void {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase.from('wk_contacts' as any) as any)
+        let pageQ = (supabase.from('wk_contacts' as any) as any)
           .select(
             'id, name, phone, email, owner_agent_id, pipeline_column_id, deal_value_pence, is_hot, custom_fields, last_contact_at, created_at'
           )
           .order('created_at', { ascending: false })
           .range(from, to);
+        if (impId) pageQ = pageQ.eq('owner_agent_id', impId);
+        const { data, error } = await pageQ;
         if (error) {
           console.error('[useHydrateContacts] page', page, 'failed:', error);
           return [] as WkContactRow[];
@@ -153,6 +162,8 @@ export function useHydrateContacts(): void {
           }
           const row = payload.new as WkContactRow | undefined;
           if (!row) return;
+          // While impersonating, ignore realtime rows outside the agent's leads.
+          if (impId && (row.owner_agent_id ?? null) !== impId) return;
           upsertContactRef.current(rowToContact(row, []));
         }
       )
@@ -162,8 +173,9 @@ export function useHydrateContacts(): void {
       cancelled = true;
       void supabase.removeChannel(channel);
     };
-    // Run ONCE per mount — refs above keep the store actions current without
-    // re-triggering the effect (which would re-loop). See the block comment.
+    // Re-run only when the impersonation target changes (impId is a stable
+    // primitive — it does NOT churn per render, so no re-fetch loop). Store
+    // actions stay in refs above. See the block comment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [impId]);
 }

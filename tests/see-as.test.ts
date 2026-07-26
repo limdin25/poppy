@@ -40,4 +40,36 @@ describe('See-as: admin impersonation', () => {
     expect(layout).toMatch(/Viewing the CRM as/)
     expect(layout).toMatch(/Back to everyone/)
   })
+
+  it('a central useImpersonatedAgentId helper drives every page', () => {
+    const ctx = read('src/features/crm/lib/ViewAsContext.tsx')
+    expect(ctx).toMatch(/export function useImpersonatedAgentId\(\): string \| null/)
+    // null unless an admin is actively impersonating
+    expect(ctx).toMatch(/if \(loading \|\| !isAdmin\) return null/)
+  })
+
+  it('every agent-scoped surface filters by the impersonated agent', () => {
+    const cases: Array<[string, RegExp]> = [
+      // store → pipelines + contacts pages
+      ['src/features/crm/hooks/useHydrateContacts.ts', /owner_agent_id', impId/],
+      // dialer queue
+      ['src/features/crm/dialer-pro/useQueuePro.ts', /agent_id', impAgentId/],
+      // calls list (Calls page + inbox calls filter)
+      ['src/features/crm/hooks/useCalls.ts', /agent_id', impAgentId/],
+      // dialer call history
+      ['src/features/crm/dialer-pro/history/CallHistoryPro.tsx', /agent_id', impAgentId/],
+      // reports / leaderboard data
+      ['src/features/crm/hooks/useReports.ts', /agent_id', impId/],
+      // dialer KPIs
+      ['src/features/crm/caller-pad/hooks/useDialerKpis.ts', /agent_id', effectiveId/],
+      // video funnel board
+      ['src/features/crm/pages/VideoFunnelPage.tsx', /agent_id', impId/],
+      // dialer column-opened leads
+      ['src/features/crm/dialer-pro/DialerProPage.tsx', /owner_agent_id', impId/],
+    ]
+    for (const [file, re] of cases) {
+      expect(read(file), file).toMatch(re)
+      expect(read(file), `${file} imports the helper`).toMatch(/useImpersonatedAgentId/)
+    }
+  })
 })

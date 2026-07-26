@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
+import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 
 interface VslPage {
   id: string;
@@ -69,6 +70,7 @@ function ago(ts: string | null): string {
 export default function VideoFunnelPage() {
   const { agent } = useCurrentAgent();
   const isAdmin = agent?.isAdmin ?? false;
+  const impId = useImpersonatedAgentId();
   const [pages, setPages] = useState<VslPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
@@ -81,13 +83,16 @@ export default function VideoFunnelPage() {
   pagesRef.current = pages;
 
   const load = useCallback(async () => {
-    const { data } = await (supabase.from('wk_vsl_pages' as never) as any)
+    // "See as: <agent>" — admin impersonating sees that agent's video pages.
+    let q = (supabase.from('wk_vsl_pages' as never) as any)
       .select('*')
       .order('updated_at', { ascending: false })
       .limit(500);
+    if (impId) q = q.eq('agent_id', impId);
+    const { data } = await q;
     setPages((data as VslPage[]) || []);
     setLoading(false);
-  }, []);
+  }, [impId]);
 
   useEffect(() => {
     load();

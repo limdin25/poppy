@@ -71,6 +71,20 @@ export function useEffectiveAgentId(uid: string | null): { scopeAgentId: string 
   return { scopeAgentId: viewAsId, resolved: true };
 }
 
+/**
+ * The agent id to FILTER a query by — ONLY when an admin is impersonating.
+ * Returns null otherwise: a non-admin is already RLS-scoped to themselves, and
+ * a non-impersonating admin sees the whole workspace. Callers add
+ * `.eq(agentColumn, id)` to their query only when this is non-null, and include
+ * it in their effect deps so the view refetches when "See as" changes.
+ */
+export function useImpersonatedAgentId(): string | null {
+  const { isAdmin, loading } = useAuth();
+  const { viewAsId } = useViewAs();
+  if (loading || !isAdmin) return null;
+  return viewAsId;
+}
+
 /** Clear a stale impersonation when the tab is opened by a non-admin. */
 export function useResetViewAsForNonAdmin() {
   const { isAdmin, loading } = useAuth();

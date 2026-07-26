@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
+import { useImpersonatedAgentId } from '@/features/crm/lib/ViewAsContext';
 import { supabase } from '@/integrations/supabase/browser';
 import {
   ResizablePanelGroup,
@@ -68,6 +69,7 @@ interface DialerProContentProps {
 
 export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCallConsumed }: DialerProContentProps) {
   const { user, isAdmin } = useAuth();
+  const impId = useImpersonatedAgentId();
   const userId = user?.id ?? null;
   const { firstName: agentFirstName } = useCurrentAgent();
   const { patchContact: storePatch } = useSmsV2();
@@ -492,10 +494,12 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
     if (!pipelineColumnId) { columnContactsRef.current = []; setColumnLeads([]); return; }
     void (async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (supabase.from('wk_contacts' as any) as any)
+      let colQ = (supabase.from('wk_contacts' as any) as any)
         .select('id, name, phone, pipeline_column_id, custom_fields')
         .eq('pipeline_column_id', pipelineColumnId)
         .order('created_at', { ascending: true });
+      if (impId) colQ = colQ.eq('owner_agent_id', impId);
+      const { data } = await colQ;
       const rows = (data ?? []) as { id: string; name: string | null; phone: string | null; pipeline_column_id: string | null; custom_fields: Record<string, string> | null }[];
       columnContactsRef.current = rows.map((r) => r.id);
       const leads: QueueLead[] = rows
@@ -521,7 +525,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
         columnIndexRef.current = idx >= 0 ? idx : 0;
       }
     })();
-  }, [pipelineColumnId, autoCallContactId, camp?.id]);
+  }, [pipelineColumnId, autoCallContactId, camp?.id, impId]);
 
   const dialColumnContact = useCallback(async (contactId: string) => {
     if (!camp) return;

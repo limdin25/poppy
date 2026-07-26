@@ -8,6 +8,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 import type { CallRecord } from '../types';
 
 const PAGE_SIZE = 500;
@@ -83,16 +84,20 @@ export function rowToCall(
 }
 
 async function fetchCallPage(
-  offset: number
+  offset: number,
+  impAgentId: string | null,
 ): Promise<{ rows: CallRecord[]; total: number | null; fetchedCount: number }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const callsRes = await (supabase.from('wk_calls' as any) as any)
+  let callsQ = (supabase.from('wk_calls' as any) as any)
     .select(
       'id, contact_id, agent_id, direction, status, started_at, duration_sec, disposition_column_id, agent_note, from_e164, to_e164',
       { count: 'exact' }
     )
     .order('started_at', { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1);
+  // "See as: <agent>" — admin impersonating sees that agent's calls only.
+  if (impAgentId) callsQ = callsQ.eq('agent_id', impAgentId);
+  const callsRes = await callsQ;
 
   if (callsRes.error) throw new Error(callsRes.error.message);
 
@@ -150,6 +155,7 @@ export function useCalls(): UseCallsResult {
   const [total, setTotal] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const offsetRef = useRef(0);
+  const impId = useImpersonatedAgentId();
 
   useEffect(() => {
     let cancelled = false;
@@ -157,7 +163,7 @@ export function useCalls(): UseCallsResult {
     async function load() {
       setLoading(true);
       try {
-        const result = await fetchCallPage(0);
+        const result = await fetchCallPage(0, impId);
         if (cancelled) return;
         setCalls(result.rows);
         setTotal(result.total);
@@ -170,17 +176,19 @@ export function useCalls(): UseCallsResult {
       }
     }
 
+    offsetRef.current = 0;
     void load();
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [impId]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const result = await fetchCallPage(offsetRef.current);
+      const result = await fetchCallPage(offsetRef.current, impId);
       setCalls((prev) => [...prev, ...result.rows]);
       if (result.total != null) setTotal(result.total);
       setHasMore(result.fetchedCount >= PAGE_SIZE);
@@ -190,7 +198,7 @@ export function useCalls(): UseCallsResult {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore]);
+  }, [loadingMore, hasMore, impId]);
 
   return { calls, loading, loadingMore, error, total, hasMore, loadMore };
 }
