@@ -31,6 +31,10 @@ export interface InboxThread {
   contactId: string;
   contactName: string;
   contactPhone: string;
+  /** Hugo's rule: wherever the business name shows, the owner + website show
+   *  too. Named to match CallHistoryPro so there is one vocabulary. */
+  contactOwner: string;
+  contactWebsite: string;
   lastMessageBody: string;
   lastMessageAt: string;
   lastDirection: 'inbound' | 'outbound';
@@ -58,6 +62,7 @@ interface ContactRow {
   id: string;
   name: string;
   phone: string;
+  custom_fields?: Record<string, string> | null;
 }
 
 export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; refetch: () => void } {
@@ -136,7 +141,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         const chunk = neededIds.slice(i, i + 200);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data } = await (supabase.from('wk_contacts' as any) as any)
-          .select('id, name, phone')
+          .select('id, name, phone, custom_fields')
           .in('id', chunk);
         for (const c of (data ?? []) as ContactRow[]) {
           contactById.set(c.id, c);
@@ -164,6 +169,8 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         contactId: m.contact_id,
         contactName: c?.name || c?.phone || 'Unknown',
         contactPhone: c?.phone ?? '',
+        contactOwner: c?.custom_fields?.owner_name ?? '',
+        contactWebsite: c?.custom_fields?.website ?? '',
         lastMessageBody: m.body,
         lastMessageAt: m.created_at,
         lastDirection: m.direction,

@@ -28,6 +28,7 @@ import { useSmsV2 } from '../../store/SmsV2Store';
 import { useCurrentAgent } from '../../hooks/useCurrentAgent';
 import { useDialerCampaigns } from '../../hooks/useDialerCampaigns';
 import {
+import ContactIdentity from '../shared/ContactIdentity';
   formatDuration,
   formatPence,
   formatRelativeTime,
@@ -317,16 +318,13 @@ export default function LiveCallScreen() {
               </button>
             </div>
             {/* Owner name + website beside the company name (Hugo 2026-07-26). */}
-            {(() => {
-              const owner = (contact.customFields?.owner_name || '').trim();
-              const site = (contact.customFields?.website || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-              return (
-                <div className="mt-0.5 space-y-0.5">
-                  <div className={owner ? 'text-[12px] text-[#374151]' : 'text-[12px] text-[#C4302B] italic'}>{owner || 'Name not available'}</div>
-                  <div className={site ? 'text-[11px] text-[#3C5A87] truncate' : 'text-[11px] text-[#C4302B] italic'}>{site || 'Website not available'}</div>
-                </div>
-              );
-            })()}
+            <ContactIdentity
+              owner={contact.customFields?.owner_name}
+              website={contact.customFields?.website}
+              layout="stack"
+              size="sm"
+              className="mt-0.5 space-y-0.5"
+            />
             <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
             <div className="text-[11px] text-[#9CA3AF] mt-0.5">
               Added {formatRelativeTime(contact.createdAt)}

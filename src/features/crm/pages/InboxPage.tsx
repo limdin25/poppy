@@ -36,6 +36,7 @@ import { interpolateTemplate } from '../lib/interpolateTemplate';
 import { supabase } from '@/integrations/supabase/browser';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact, CallRecord, ActivityEvent } from '../types';
+import ContactIdentity from '../components/shared/ContactIdentity';
 
 const ACTIVITY_KINDS_FOR_THREAD = new Set(['note', 'outcome_applied', 'stage_moved', 'tag_added', 'task_created']);
 
@@ -202,6 +203,8 @@ export default function InboxPage() {
       name: string;
       phone: string;
       email?: string;
+      owner: string;
+      website: string;
       pipelineColumnId: string | undefined;
       lastMessageBody: string | null;
       lastMessageAt: string | null;
@@ -244,6 +247,8 @@ export default function InboxPage() {
           id: call.contactId,
           kind: 'call',
           name: c?.name || call.fromE164 || call.toE164 || 'Unknown',
+          owner: c?.customFields?.owner_name ?? '',
+          website: c?.customFields?.website ?? '',
           phone: c?.phone ?? call.fromE164 ?? call.toE164 ?? '',
           email: c?.email,
           pipelineColumnId: c?.pipelineColumnId,
@@ -269,6 +274,8 @@ export default function InboxPage() {
           name: c?.name || t.contactName || t.contactPhone || 'Unknown',
           phone: c?.phone ?? t.contactPhone,
           email: c?.email,
+          owner: c?.customFields?.owner_name || t.contactOwner,
+          website: c?.customFields?.website || t.contactWebsite,
           pipelineColumnId: c?.pipelineColumnId,
           lastMessageBody: t.lastMessageBody,
           lastMessageAt: t.lastMessageAt,
@@ -290,7 +297,7 @@ export default function InboxPage() {
     const q = searchQuery.trim().toLowerCase();
     if (q.length > 0) {
       rows = rows.filter((r) => {
-        const hay = `${r.name} ${r.phone} ${r.lastMessageBody ?? ''}`.toLowerCase();
+        const hay = `${r.name} ${r.phone} ${r.owner} ${r.website} ${r.lastMessageBody ?? ''}`.toLowerCase();
         return hay.includes(q);
       });
     }
@@ -636,6 +643,7 @@ export default function InboxPage() {
                     <div className="text-[13px] font-semibold text-[#1A1A1A] truncate flex items-center gap-1">
                       <EditableName value={r.name} onSave={(n) => renameContact(r.id, n)} className="text-[13px] font-semibold" />
                     </div>
+                    <ContactIdentity owner={r.owner} website={r.website} layout="inline" size="sm" />
                     <div className="text-[11px] text-[#6B7280] truncate flex items-center gap-1">
                       {r.kind === 'call' ? (
                         <>
@@ -708,6 +716,12 @@ export default function InboxPage() {
             <div className="text-[14px] font-semibold text-[#1A1A1A]">
               <EditableName value={activeContact.name} onSave={(n) => renameContact(activeContact.id, n)} className="text-[14px] font-semibold" />
             </div>
+            <ContactIdentity
+              owner={activeContact.customFields?.owner_name}
+              website={activeContact.customFields?.website}
+              layout="stack"
+              size="sm"
+            />
             <div className="text-[11px] text-[#6B7280] tabular-nums">
               {activeContact.phone}
             </div>

@@ -13,7 +13,12 @@ export function personName(ownerName?: string | null): string {
 
 /** Website, stripped to a bare host, or an explicit gap marker. */
 export function websiteLabel(website?: string | null): string {
-  const w = clean(website).replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  // strip www. too, so the same lead doesn't read "www.foo.co.uk" in the
+  // pipeline and "foo.co.uk" in the call panel (ContactMetaCompact strips it)
+  const w = clean(website)
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/+$/, '');
   return w || 'Website not available';
 }
 

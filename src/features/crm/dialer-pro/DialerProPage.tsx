@@ -41,6 +41,7 @@ import type { QueueLead } from './types';
 import CallHistoryPro from './history/CallHistoryPro';
 import QueueManagerPro from './history/QueueManagerPro';
 import DtmfKeypad from './controls/DtmfKeypad';
+import ContactIdentity from '../components/shared/ContactIdentity';
 
 function formatDuration(sec: number): string {
   const h = Math.floor(sec / 3600);
@@ -697,16 +698,13 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                   </div>
                   {/* Owner name + website beside the company name, everywhere
                       (Hugo 2026-07-26) — explicit "not available" when missing. */}
-                  {(() => {
-                    const owner = (contact.customFields?.owner_name || '').trim();
-                    const site = (contact.customFields?.website || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-                    return (
-                      <div className="mt-0.5 space-y-0.5">
-                        <div className={cn('text-[12px]', owner ? 'text-[#374151]' : 'text-[#C4302B] italic')}>{owner || 'Name not available'}</div>
-                        <div className={cn('text-[11px] truncate', site ? 'text-[#3C5A87]' : 'text-[#C4302B] italic')}>{site || 'Website not available'}</div>
-                      </div>
-                    );
-                  })()}
+                  <ContactIdentity
+                    owner={contact.customFields?.owner_name}
+                    website={contact.customFields?.website}
+                    layout="stack"
+                    size="sm"
+                    className="mt-0.5 space-y-0.5"
+                  />
                   <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
                   {!isLive && !state.currentLead && (
                     <div className="text-[10px] text-[#9CA3AF] mt-1">Next in queue</div>

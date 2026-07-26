@@ -14,6 +14,7 @@ import { rowToContact } from '../hooks/useHydrateContacts';
 import { supabase } from '@/integrations/supabase/browser';
 import { usePipelines } from '../hooks/usePipelines';
 import type { Contact } from '../types';
+import ContactIdentity from '../components/shared/ContactIdentity';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
 
@@ -263,6 +264,13 @@ export default function PipelinesPage() {
                           )}
                           <Pencil className="w-2.5 h-2.5 text-[#9CA3AF] opacity-0 group-hover:opacity-100 ml-auto" />
                         </div>
+                        <ContactIdentity
+                          owner={c.customFields?.owner_name}
+                          website={c.customFields?.website}
+                          layout="stack"
+                          size="xs"
+                          className="mt-0.5"
+                        />
                         <div className="text-[10px] text-[#6B7280] tabular-nums mt-0.5">
                           {c.phone}
                         </div>

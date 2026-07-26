@@ -11,6 +11,7 @@ import {
 import { supabase } from '@/integrations/supabase/browser';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useImpersonatedAgentId } from '../lib/ViewAsContext';
+import ContactIdentity from '../components/shared/ContactIdentity';
 
 interface VslPage {
   id: string;
@@ -35,6 +36,12 @@ interface VslPage {
   video_url: string | null;
   poster_url: string | null;
   no_website: boolean;
+  /** Joined live from wk_contacts — NOT snapshotted onto this row on purpose.
+   *  The board exists to make missing owner/website obvious so an agent fills
+   *  them in; a snapshot would keep showing the gap after they had. Null when
+   *  RLS hides the contact (page agent_id and contact participation don't line
+   *  up perfectly) — owner_first is the fallback. */
+  wk_contacts?: { owner_name: string | null; website: string | null } | null;
 }
 
 // 'rendering' and 'render_ready' are VIRTUAL groups carved out of state
@@ -85,7 +92,7 @@ export default function VideoFunnelPage() {
   const load = useCallback(async () => {
     // "See as: <agent>" — admin impersonating sees that agent's video pages.
     let q = (supabase.from('wk_vsl_pages' as never) as any)
-      .select('*')
+      .select('*, wk_contacts:contact_id ( owner_name:custom_fields->>owner_name, website:custom_fields->>website )')
       .order('updated_at', { ascending: false })
       .limit(500);
     if (impId) q = q.eq('agent_id', impId);
@@ -259,10 +266,14 @@ export default function VideoFunnelPage() {
                     >
                       {p.business_name}
                     </Link>
-                    <div className="text-[11px] text-[#6B7280]">
-                      {p.owner_first || '—'}{p.town ? ` · ${p.town}` : ''}
-                    </div>
+                    <ContactIdentity
+                      owner={p.wk_contacts?.owner_name || p.owner_first}
+                      website={p.wk_contacts?.website}
+                      layout="stack"
+                      size="xs"
+                    />
                     <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#9CA3AF]">
+                      {p.town && <span>{p.town}</span>}
                       {p.watched_pct > 0 && <span>watched {p.watched_pct}%</span>}
                       {p.open_count > 0 && <span>{p.open_count} open{p.open_count === 1 ? '' : 's'}</span>}
                       {p.no_website && <span title="No website — video opens with the Google search" className="text-[#6B7280] font-bold">no site</span>}
