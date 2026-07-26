@@ -312,6 +312,8 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .calcout{text-align:center;margin-top:6px;font-weight:900;font-size:27px;font-variant-numeric:tabular-nums}
 .cvyr{font-size:14px;color:#6B7280;font-weight:800}
 .calcnote{text-align:center;font-size:11.5px;font-weight:600;color:#6B7280;margin-top:4px;line-height:1.4}
+/* the two columns are flow-transparent on mobile; real columns on desktop */
+.cols,.colL,.colR{display:contents}
 /* desktop */
 @media(min-width:720px){
   .wrap{max-width:680px;padding:36px 24px 64px}
@@ -325,6 +327,18 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
   .gmeta{font-size:13px}
   .gpill{font-size:12px}
   .calc{padding:24px 26px}
+}
+/* wide desktop: hero text on top, video left, calculator + examples right
+   (Hugo 2026-07-26) */
+@media(min-width:1024px){
+  .wrap{max-width:1120px}
+  .cols{display:flex;align-items:flex-start;gap:52px;margin-top:10px}
+  .colL{display:block;width:420px;flex-shrink:0;position:sticky;top:24px}
+  .colR{display:block;flex:1;min-width:0}
+  .colR .calc{margin-top:0}
+  .colR .ba{margin-top:36px}
+  .stage{max-height:none;aspect-ratio:16/9}
+  .stage.playing{height:min(82vh,780px)}
 }
 /* z 70/71 so the tier sheet also opens above the video popup (its CTA) */
 .sheetbg{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
@@ -344,6 +358,7 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 <div class="wrap">
   <h1>Hi ${first ? first + ' ' : ''}👋<br>I made a 90-second video for ${business}</h1>
   <p class="sub">Where you rank on Google — and how to fix it.</p>
+  <div class="cols"><div class="colL">
   <div class="stage" id="stage" onclick="stageTap()">${
     videoUrl
       ? `<video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} playsinline preload="metadata"></video>
@@ -360,6 +375,7 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
   }</div>
   ${ctaButton()}
   <p class="trust">⭐ Trusted by UK trades · Cancel anytime in your first 10 days</p>
+  </div><div class="colR">
   <div class="calc">
     <p class="calchead">What's it worth to you?</p>
     <div class="calcrow">
@@ -385,6 +401,7 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
     ${EXAMPLES.length > 1 ? `<div class="badots">${EXAMPLES.map((_, i) => `<button class="badot${i === 0 ? ' on' : ''}" onclick="baGo(${i})" aria-label="Example ${i + 1}"></button>`).join('')}</div>` : ''}
   </div>`}
   ${ctaButton(' cta2')}
+  </div></div>
 </div>
 <div class="sheetbg" onclick="closeSheet()"></div>
 <div class="sheet">
