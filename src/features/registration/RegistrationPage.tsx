@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Building2, User, Mail, Lock } from 'lucide-react'
+import { Building2, User, Mail, Lock, Check } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/browser'
+import { BTN_BLUE, FIELD, DISPLAY } from '@/core/ui/brand'
 
 const ELSIE_MARK = (
   <svg className="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -9,7 +10,35 @@ const ELSIE_MARK = (
   </svg>
 )
 
-const FIELD = 'h-12 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-[15px] text-gray-900 outline-none placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10'
+/** Desktop-only reassurance rail — mirrors the sign-in page's proof panel. */
+function ValuePanel() {
+  return (
+    <div className="relative hidden overflow-hidden bg-[#1a73e8] p-12 lg:flex lg:flex-col lg:justify-center">
+      <div aria-hidden className="pointer-events-none absolute -right-32 -top-24 h-[420px] w-[420px] rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.28),transparent)]" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-28 -left-24 h-[360px] w-[360px] rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.16),transparent)]" />
+      <div className="relative mx-auto w-full max-w-md">
+        <p className="text-[11.5px] font-extrabold uppercase tracking-[0.5px] text-white/70">
+          Set up in minutes
+        </p>
+        <h2 className={`mt-3 text-[34px] leading-[1.12] text-white ${DISPLAY}`}>
+          Never miss another call, quote or review.
+        </h2>
+        <ul className="mt-8 space-y-3">
+          {[
+            'Answers the phone when you can\'t',
+            'Books the job straight into your diary',
+            'Asks every finished job for a review',
+            'No contract — cancel any time',
+          ].map((b) => (
+            <li key={b} className="flex items-start gap-2.5 text-[15px] text-white/90">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-white" /> {b}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
 
 export default function RegistrationPage() {
   const navigate = useNavigate()
@@ -54,57 +83,70 @@ export default function RegistrationPage() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-white px-6 py-10" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div className="w-full max-w-sm">
-        <Link to="/welcome" className="mb-8 flex items-center justify-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-900">{ELSIE_MARK}</div>
-          <span className="text-[18px] font-semibold tracking-tight text-gray-900">Elsie</span>
-        </Link>
+    <div
+      className="grid min-h-[100dvh] bg-white lg:grid-cols-[1fr_1.05fr]"
+      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
+    >
+      <div className="flex flex-col justify-center px-6 py-10 sm:px-10">
+        <div className="mx-auto w-full max-w-sm">
+          <Link to="/welcome" className="mb-9 flex items-center justify-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#1a73e8]">{ELSIE_MARK}</div>
+            <span className={`text-[19px] text-[#1A1A1A] ${DISPLAY}`}>HeyElsie</span>
+          </Link>
 
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Start free</h1>
-          <p className="mt-2 text-[15px] text-gray-500">Your AI receptionist on WhatsApp — set up in a minute.</p>
+          <div className="text-center">
+            <h1 className={`text-[28px] leading-tight text-[#1A1A1A] ${DISPLAY}`}>Start free</h1>
+            <p className="mt-2 text-[15px] text-[#6B7280]">
+              Your AI receptionist on WhatsApp — set up in a minute.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="mt-8 space-y-3.5">
+            {error && (
+              <div className="rounded-[10px] bg-red-50 px-4 py-2.5 text-[13px] font-semibold text-red-700">{error}</div>
+            )}
+
+            <div className="relative">
+              <Building2 size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input className={FIELD} placeholder="Business name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} required />
+            </div>
+            <div className="relative">
+              <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input className={FIELD} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div className="relative">
+              <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="email" className={FIELD} placeholder="you@business.co.uk" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            <div className="relative">
+              <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="password" className={FIELD} placeholder="Password (min 6 characters)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className={`flex h-[52px] w-full items-center justify-center text-[15.5px] ${BTN_BLUE}`}
+            >
+              {submitting
+                ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                : 'Create account'}
+            </button>
+          </form>
+
+          <p className="mt-4 text-center text-[11.5px] leading-relaxed text-gray-400">
+            By creating an account you agree to our{' '}
+            <Link to="/terms" className="underline">Terms</Link> and <Link to="/privacy" className="underline">Privacy Policy</Link>.
+          </p>
+
+          <p className="mt-6 text-center text-[13.5px] text-[#6B7280]">
+            Already have an account?{' '}
+            <Link to="/login" className="font-bold text-[#1a73e8] hover:underline">Log in</Link>
+          </p>
         </div>
-
-        <form onSubmit={handleSubmit} className="mt-8 space-y-3.5">
-          {error && <div className="rounded-lg bg-red-50 px-4 py-2 text-[13px] text-red-700">{error}</div>}
-
-          <div className="relative">
-            <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className={FIELD} placeholder="Business name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} required />
-          </div>
-          <div className="relative">
-            <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className={FIELD} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div className="relative">
-            <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="email" className={FIELD} placeholder="you@business.co.uk" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div className="relative">
-            <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="password" className={FIELD} placeholder="Password (min 6 characters)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-          </div>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="flex h-12 w-full items-center justify-center rounded-xl bg-gray-900 text-[15px] font-medium text-white transition hover:bg-gray-800 active:scale-[0.98] disabled:opacity-40"
-          >
-            {submitting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : 'Create account'}
-          </button>
-        </form>
-
-        <p className="mt-4 text-center text-[11px] text-gray-400">
-          By creating an account you agree to our{' '}
-          <Link to="/terms" className="underline">Terms</Link> and <Link to="/privacy" className="underline">Privacy Policy</Link>.
-        </p>
-
-        <p className="mt-6 text-center text-[13px] text-gray-500">
-          Already have an account?{' '}
-          <Link to="/login" className="font-medium text-gray-900 hover:underline">Log in</Link>
-        </p>
       </div>
+
+      <ValuePanel />
     </div>
   )
 }

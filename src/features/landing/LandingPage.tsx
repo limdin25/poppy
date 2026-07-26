@@ -3,13 +3,15 @@ import {
   ArrowRight, Check, ChevronDown, Star, MessageSquareText, ImageIcon,
   Bot, RefreshCw, Share2, Plug, ShieldCheck, Menu, X, Sparkles,
 } from 'lucide-react'
+import { DISPLAY, CARD, STAR } from '@/core/ui/brand'
 
 /* ──────────────────────────────────────────────────────────────────────────
    HeyElsie Reviews landing (heyelsie.com).
-   Visual language matched to alven.ai: warm cream body (#FEFDFD/#f5f3f1) with
-   charcoal text, white hairline cards, black pill buttons, peach/copper
-   accents — and a cinematic warm-blurred hero with frosted-glass panels.
-   Display type: heavy neutral sans (Inter 900), never a serif.
+   Visual language matched to the per-lead VSL page — the surface that actually
+   sells (api/vsl/page.ts). White ground, Google blue, heavy neutral display
+   type (Inter 900), one blue button carrying the offer, and Google-shaped
+   cards. Hugo 2026-07-26 replaced the previous alven.ai cream/copper skin:
+   "same colour blue and white, same feeling as the clients vsl page".
    Integrity rule: NO invented testimonials or fake case studies — social proof
    is industry data with sources; demo visuals are labelled as examples.
    ────────────────────────────────────────────────────────────────────────── */
@@ -17,10 +19,11 @@ import {
 const GO = 'https://go.heyelsie.com'
 const SIGNUP = `${GO}/onboarding`
 
-/* alven.ai palette */
-const INK = '#1a1816'
-const CREAM = '#FEFDFD'
-const CREAM_ALT = '#f5f3f1'
+/* palette — mirrors api/vsl/page.ts */
+const INK = '#1A1A1A'
+const WHITE = '#ffffff'
+/* the palest blue wash for alternating sections — never grey, never cream */
+const WASH = '#F8FAFD'
 
 const NAV_LINKS: [string, string][] = [
   ['Features', '#features'],
@@ -57,14 +60,8 @@ function Reveal({
   )
 }
 
-/** Display type — deliberately neutral & heavy ("black Arial"), never a serif. */
-const DISPLAY = 'font-black tracking-tight'
-/** White card on cream, hairline border, soft shadow — alven's card recipe. */
-const CARD = 'border border-[#e8e5e1] bg-white shadow-[0_1px_2px_rgba(26,24,22,0.04),0_8px_24px_rgba(26,24,22,0.04)]'
-/** Frosted glass over the warm hero backdrop. */
-const GLASS = 'border border-white/25 bg-white/10 backdrop-blur-[8px]'
-/** Black pill button (alven's primary). */
-const PILL_DARK = 'rounded-full bg-[#1a1816] text-[#FEFDFD] transition hover:bg-[#322d2d]'
+/** Blue pill button (the VSL page's primary, in pill form for the nav). */
+const PILL_BLUE = 'rounded-full bg-[#1a73e8] text-white shadow-[0_6px_18px_rgba(26,115,232,0.30)] transition hover:bg-[#1557b0]'
 
 const TRADES = ['Plumbers', 'Electricians', 'Roofers', 'Heating engineers', 'Builders', 'Decorators', 'Landscapers', 'Cleaners', 'Locksmiths', 'Pest control', 'Drainage', 'Removals']
 
@@ -131,7 +128,7 @@ function StarRow({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (
     <span className="flex gap-0.5">
       {[1, 2, 3, 4, 5].map((i) => (
-        <Star key={i} className={`${className} fill-[#e0a468] text-[#e0a468]`} />
+        <Star key={i} className={className} style={{ fill: STAR, color: STAR }} />
       ))}
     </span>
   )
@@ -146,19 +143,24 @@ export default function LandingPage() {
   }, [])
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: CREAM, color: INK }}>
-      {/* ── Nav — floating white glass pill (alven-style) ── */}
-      <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3">
-        <div className="mx-auto flex max-w-5xl items-center justify-between rounded-full border border-white/40 bg-white/70 px-5 py-2.5 shadow-[0_2px_16px_rgba(26,24,22,0.08)] backdrop-blur-[8px]">
+    <div className="min-h-screen" style={{ backgroundColor: WHITE, color: INK }}>
+      {/* ── Blue stat stripe — the VSL page opens on one too ── */}
+      <div className="fixed inset-x-0 top-0 z-50 bg-[#1a73e8] px-4 py-2 text-center text-[12.5px] font-extrabold tracking-[0.2px] text-white">
+        ⭐ 93% of people read reviews before choosing a local business
+      </div>
+
+      {/* ── Nav — white glass pill ── */}
+      <header className="fixed inset-x-0 top-[34px] z-40 px-3 pt-3">
+        <div className="mx-auto flex max-w-5xl items-center justify-between rounded-full border border-[#E5E7EB] bg-white/85 px-5 py-2.5 shadow-[0_2px_16px_rgba(0,0,0,0.06)] backdrop-blur-[8px]">
           <a href="/" className={`text-lg ${DISPLAY}`}>
-            HeyElsie <span className="font-light text-[#7D7467]">Reviews</span>
+            HeyElsie <span className="font-light text-[#6B7280]">Reviews</span>
           </a>
           <nav className="hidden items-center gap-6 md:flex">
             {NAV_LINKS.map(([label, href]) => (
-              <a key={href} href={href} className="text-sm text-[#5c5c5c] transition hover:text-[#1a1816]">{label}</a>
+              <a key={href} href={href} className="text-sm font-medium text-[#4B5563] transition hover:text-[#1a73e8]">{label}</a>
             ))}
-            <a href={GO} className="text-sm font-medium text-[#1a1816] hover:opacity-70">Log in</a>
-            <a href={SIGNUP} className={`px-4 py-2 text-sm font-semibold ${PILL_DARK}`}>
+            <a href={GO} className="text-sm font-bold text-[#1A1A1A] transition hover:text-[#1a73e8]">Log in</a>
+            <a href={SIGNUP} className={`px-4 py-2 text-sm font-extrabold ${PILL_BLUE}`}>
               Start free trial
             </a>
           </nav>
@@ -167,90 +169,87 @@ export default function LandingPage() {
           </button>
         </div>
         {menuOpen && (
-          <div className="mx-auto mt-2 max-w-5xl rounded-3xl border border-white/40 bg-white/90 px-5 py-3 shadow-lg backdrop-blur-[8px] md:hidden">
+          <div className="mx-auto mt-2 max-w-5xl rounded-3xl border border-[#E5E7EB] bg-white/95 px-5 py-3 shadow-lg backdrop-blur-[8px] md:hidden">
             {NAV_LINKS.map(([label, href]) => (
-              <a key={href} href={href} onClick={() => setMenuOpen(false)} className="block py-2 text-sm">{label}</a>
+              <a key={href} href={href} onClick={() => setMenuOpen(false)} className="block py-2 text-sm font-medium">{label}</a>
             ))}
-            <a href={GO} className="block py-2 text-sm font-medium">Log in</a>
-            <a href={SIGNUP} className={`mt-2 block px-4 py-2.5 text-center text-sm font-semibold ${PILL_DARK}`}>Start free trial</a>
+            <a href={GO} className="block py-2 text-sm font-bold">Log in</a>
+            <a href={SIGNUP} className={`mt-2 block px-4 py-2.5 text-center text-sm font-extrabold ${PILL_BLUE}`}>Start free trial</a>
           </div>
         )}
       </header>
 
-      {/* ── Hero — cinematic warm blur + frosted glass (alven's hero recipe) ── */}
-      <section className="relative overflow-hidden px-4 pb-16 pt-32 md:pt-40" style={{ backgroundColor: '#241c16' }}>
-        {/* warm soft-focus backdrop, built from layered gradients */}
-        <div aria-hidden className="absolute inset-0"
-          style={{ background: 'linear-gradient(115deg, #1f1712 0%, #3d2b1f 30%, #6b4a33 62%, #a97e57 88%, #c8a276 100%)' }} />
-        <div aria-hidden className="pointer-events-none absolute -right-40 top-10 h-[560px] w-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(229,194,169,0.55),transparent)] blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -left-48 bottom-0 h-[420px] w-[520px] rounded-full bg-[radial-gradient(closest-side,rgba(20,14,10,0.7),transparent)] blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute left-1/3 top-1/4 h-[300px] w-[460px] rounded-full bg-[radial-gradient(closest-side,rgba(253,204,169,0.18),transparent)] blur-3xl" />
+      {/* ── Hero — white, blue accents, one blue button ── */}
+      <section className="relative overflow-hidden px-4 pb-16 pt-40 md:pt-48">
+        {/* soft blue light instead of the old warm blur */}
+        <div aria-hidden className="pointer-events-none absolute -right-40 top-0 h-[560px] w-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(26,115,232,0.13),transparent)] blur-2xl" />
+        <div aria-hidden className="pointer-events-none absolute -left-48 bottom-0 h-[420px] w-[520px] rounded-full bg-[radial-gradient(closest-side,rgba(26,115,232,0.09),transparent)] blur-2xl" />
 
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 text-[#FEFDFD] lg:grid-cols-[1.15fr_1fr]">
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.15fr_1fr]">
           <div>
             <Reveal>
-              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs text-white/85 ${GLASS}`}>
-                <Star className="h-3.5 w-3.5 fill-[#FDCCA9] text-[#FDCCA9]" />
-                93% of people read reviews before choosing a local business
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#D6E4FB] bg-[#E8F0FE] px-3 py-1 text-xs font-bold text-[#1557b0]">
+                <Star className="h-3.5 w-3.5" style={{ fill: STAR, color: STAR }} />
+                Built for UK trades · 10-day free trial
               </span>
             </Reveal>
             <Reveal delay={80}>
               <h1 className={`mt-6 text-balance text-4xl leading-[1.05] sm:text-5xl md:text-6xl ${DISPLAY}`}>
                 When someone Googles a plumber, they call the one with{' '}
-                <span className="text-[#FDCCA9]">400 reviews</span>, not the one with 25.
+                <span className="text-[#1a73e8]">400 reviews</span>, not the one with 25.
               </h1>
             </Reveal>
             <Reveal delay={160}>
-              <p className="mt-6 max-w-xl text-lg text-white/75">
+              <p className="mt-6 max-w-xl text-lg text-[#4B5563]">
                 HeyElsie Reviews turns your happy customers into Google reviews automatically: personalised texts and
                 emails, clever follow-ups, AI replies. Set it up in 10 minutes, then forget it exists.
               </p>
             </Reveal>
             <Reveal delay={240}>
               <div className="mt-8 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                <a href={SIGNUP} className="flex w-full items-center justify-center gap-2 rounded-full bg-[#FEFDFD] px-7 py-3.5 text-base font-semibold text-[#1a1816] shadow-[0_8px_32px_rgba(0,0,0,0.25)] transition hover:bg-[#f5f3f1] sm:w-auto">
+                <a href={SIGNUP} className={`flex w-full items-center justify-center gap-2 px-7 py-3.5 text-base ${PILL_BLUE} sm:w-auto`}>
                   Get my first 25 reviews free <ArrowRight className="h-4 w-4" />
                 </a>
-                <a href="#how" className={`flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-medium text-white/95 transition hover:bg-white/20 sm:w-auto ${GLASS}`}>
+                <a href="#how" className="flex w-full items-center justify-center gap-2 rounded-full border border-[#E5E7EB] bg-white px-6 py-3.5 text-base font-bold text-[#1A1A1A] transition hover:border-[#1a73e8] hover:text-[#1a73e8] sm:w-auto">
                   See how it works
                 </a>
               </div>
-              <p className="mt-4 text-xs text-white/55">10-day free trial · no contract · built for UK trades</p>
+              <p className="mt-4 text-xs font-semibold text-[#6B7280]">10-day free trial · no contract · built for UK trades</p>
             </Reveal>
           </div>
 
-          {/* Right visual: frosted review card (demo data, clearly labelled) */}
+          {/* Right visual: a Google-shaped card (demo data, clearly labelled) */}
           <Reveal delay={200}>
             <div className="relative mx-auto w-full max-w-md">
-              <div className={`relative rounded-[2rem] p-6 ${GLASS} shadow-[0_24px_80px_rgba(0,0,0,0.35)]`}>
-                <p className="absolute right-5 top-4 text-[10px] uppercase tracking-widest text-white/40">Example</p>
+              <div className={`relative rounded-[2rem] p-6 ${CARD} shadow-[0_18px_50px_rgba(0,0,0,0.10)]`}>
+                <p className="absolute right-5 top-4 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">Example</p>
                 <div className="flex items-center gap-3">
-                  <div className={`grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-[#E5C2A9] to-[#b27e5a] text-lg text-[#1a1816] ${DISPLAY}`}>G</div>
+                  <div className={`grid h-11 w-11 place-items-center rounded-full bg-[#F8FAFD] text-lg text-[#1a73e8] ring-1 ring-[#E5E7EB] ${DISPLAY}`}>G</div>
                   <div>
-                    <p className="text-sm font-semibold text-white">Your Plumbing Co.</p>
-                    <p className="flex items-center gap-1.5 text-xs text-white/70">
-                      <span className="font-semibold text-[#FDCCA9]">4.9</span>
+                    <p className="text-sm font-bold text-[#1A1A1A]">Your Plumbing Co.</p>
+                    <p className="flex items-center gap-1.5 text-xs text-[#6B7280]">
+                      <span className="font-bold text-[#1A1A1A]">4.9</span>
                       <StarRow className="h-3 w-3" />
                       <span>· 412 Google reviews</span>
                     </p>
                   </div>
                 </div>
-                <div className="mt-5 rounded-2xl border border-white/20 bg-white/85 p-4 text-sm text-[#1a1816] backdrop-blur">
+                <div className="mt-5 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFD] p-4 text-sm text-[#1A1A1A]">
                   <StarRow />
                   <p className="mt-2 leading-relaxed">
                     "Came out same day, fixed the boiler, tidied up after. Got a text the next morning, took 10
                     seconds to leave the review."
                   </p>
-                  <p className="mt-3 text-xs text-[#7D7467]">(what your next review looks like)</p>
+                  <p className="mt-3 text-xs text-[#6B7280]">(what your next review looks like)</p>
                 </div>
-                <div className="mt-4 flex items-center justify-between rounded-2xl bg-white/10 p-3 text-xs backdrop-blur">
-                  <span className="text-white/70">This week</span>
-                  <span className="font-semibold text-[#FDCCA9]">+27 new reviews</span>
+                <div className="mt-4 flex items-center justify-between rounded-2xl bg-[#E8F0FE] p-3 text-xs">
+                  <span className="font-semibold text-[#4B5563]">This week</span>
+                  <span className="font-extrabold text-[#1a73e8]">+27 new reviews</span>
                 </div>
               </div>
-              <div className="absolute -left-4 -top-5 hidden -rotate-3 rounded-2xl bg-[#FEFDFD] px-4 py-3 text-[#1a1816] shadow-2xl sm:block">
-                <p className="text-[10px] uppercase tracking-wider text-[#7D7467]">SMS delivered</p>
-                <p className="mt-0.5 text-sm font-semibold">"Hi Sally, thanks for…"</p>
+              <div className="absolute -left-4 -top-5 hidden -rotate-3 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 shadow-xl sm:block">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">SMS delivered</p>
+                <p className="mt-0.5 text-sm font-bold">"Hi Sally, thanks for…"</p>
               </div>
             </div>
           </Reveal>
@@ -267,8 +266,8 @@ export default function LandingPage() {
               ['~4x', 'better response when the ask carries the customer\'s own name', 'industry benchmark'],
             ].map(([num, text, src]) => (
               <div key={text} className={`rounded-3xl p-5 ${CARD}`}>
-                <p className={`text-3xl ${DISPLAY}`}>{num}</p>
-                <p className="mt-1 text-xs text-[#7D7467]">{text}<br /><span className="opacity-70">({src})</span></p>
+                <p className={`text-3xl text-[#1a73e8] ${DISPLAY}`}>{num}</p>
+                <p className="mt-1 text-xs text-[#6B7280]">{text}<br /><span className="opacity-70">({src})</span></p>
               </div>
             ))}
           </div>
@@ -276,7 +275,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Pain ── */}
-      <section className="px-4 py-20" style={{ backgroundColor: CREAM_ALT }}>
+      <section className="px-4 py-20" style={{ backgroundColor: WASH }}>
         <div className="mx-auto max-w-5xl">
           <Reveal>
             <h2 className={`max-w-3xl text-3xl sm:text-4xl ${DISPLAY}`}>Your work deserves more reviews than it gets</h2>
@@ -290,16 +289,16 @@ export default function LandingPage() {
               <Reveal key={title} delay={i * 100}>
                 <div className={`h-full rounded-3xl p-6 ${CARD}`}>
                   <p className="text-2xl">{icon}</p>
-                  <h3 className="mt-3 font-semibold">{title}</h3>
-                  <p className="mt-2 text-sm text-[#5c5c5c]">{body}</p>
+                  <h3 className="mt-3 font-bold">{title}</h3>
+                  <p className="mt-2 text-sm text-[#4B5563]">{body}</p>
                 </div>
               </Reveal>
             ))}
           </div>
           <Reveal delay={200}>
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm font-medium">
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm font-bold">
               {['Win more jobs', 'Climb the Map Pack', 'Build instant trust', 'Stand out on Google'].map((b) => (
-                <span key={b} className="flex items-center gap-1.5"><Check className="h-4 w-4 text-[#5ab570]" /> {b}</span>
+                <span key={b} className="flex items-center gap-1.5"><Check className="h-4 w-4 text-[#1a73e8]" /> {b}</span>
               ))}
             </div>
           </Reveal>
@@ -320,9 +319,9 @@ export default function LandingPage() {
             ].map(([when, title, body], i) => (
               <Reveal key={when} delay={i * 100}>
                 <div className={`relative h-full rounded-3xl p-6 pt-7 ${CARD}`}>
-                  <span className="absolute -top-3 left-5 rounded-full bg-[#1a1816] px-3 py-0.5 text-xs font-semibold text-[#FEFDFD]">{when}</span>
-                  <h3 className="font-semibold">{title}</h3>
-                  <p className="mt-2 text-sm text-[#5c5c5c]">{body}</p>
+                  <span className="absolute -top-3 left-5 rounded-full bg-[#1a73e8] px-3 py-0.5 text-xs font-extrabold text-white">{when}</span>
+                  <h3 className="font-bold">{title}</h3>
+                  <p className="mt-2 text-sm text-[#4B5563]">{body}</p>
                 </div>
               </Reveal>
             ))}
@@ -331,7 +330,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── How it works ── */}
-      <section id="how" className="px-4 py-20" style={{ backgroundColor: CREAM_ALT }}>
+      <section id="how" className="px-4 py-20" style={{ backgroundColor: WASH }}>
         <div className="mx-auto max-w-5xl">
           <Reveal>
             <h2 className={`max-w-3xl text-3xl sm:text-4xl ${DISPLAY}`}>Set it. Forget it. Watch the stars stack up.</h2>
@@ -344,9 +343,9 @@ export default function LandingPage() {
             ].map(([n, title, body], i) => (
               <Reveal key={title} delay={i * 100}>
                 <div className={`h-full rounded-3xl p-6 ${CARD}`}>
-                  <p className={`text-5xl text-[#E5C2A9] ${DISPLAY}`}>{n}</p>
-                  <h3 className="mt-4 text-xl font-semibold">{title}</h3>
-                  <p className="mt-2 text-sm text-[#5c5c5c]">{body}</p>
+                  <p className={`text-5xl text-[#BFD7F5] ${DISPLAY}`}>{n}</p>
+                  <h3 className="mt-4 text-xl font-bold">{title}</h3>
+                  <p className="mt-2 text-sm text-[#4B5563]">{body}</p>
                 </div>
               </Reveal>
             ))}
@@ -359,17 +358,17 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-5xl items-center gap-12 md:grid-cols-2">
           <Reveal>
             <div>
-              <span className="flex w-fit items-center gap-1.5 rounded-full border border-[#E5C2A9] bg-[#FDCCA9]/30 px-3 py-1 text-xs font-semibold text-[#824C25]">
+              <span className="flex w-fit items-center gap-1.5 rounded-full border border-[#D6E4FB] bg-[#E8F0FE] px-3 py-1 text-xs font-extrabold text-[#1557b0]">
                 <Sparkles className="h-3.5 w-3.5" /> The bit nobody else in the UK does
               </span>
               <h2 className={`mt-4 text-3xl sm:text-4xl ${DISPLAY}`}>A message with their name on your photo</h2>
-              <p className="mt-3 text-[#5c5c5c]">
+              <p className="mt-3 text-[#4B5563]">
                 "Hi Sally!" rendered onto a photo of your actual team. It feels personal because it is, and personal
                 gets opened, clicked and acted on. Plain "please review us" texts get ignored; this doesn't.
               </p>
               <ul className="mt-4 space-y-2 text-sm">
                 {['Your photo, their name, generated automatically for every customer', 'Included with texts and emails', 'One upload, works forever'].map((b) => (
-                  <li key={b} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#5ab570]" /> {b}</li>
+                  <li key={b} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#1a73e8]" /> {b}</li>
                 ))}
               </ul>
             </div>
@@ -377,35 +376,35 @@ export default function LandingPage() {
           <Reveal delay={150}>
             {/* Phone mock (demo data) */}
             <div className={`mx-auto w-72 rounded-[36px] p-3 ${CARD}`}>
-              <div className="mx-auto mb-2 h-1 w-16 rounded-full bg-[#e8e5e1]" />
-              <div className="rounded-2xl bg-gradient-to-br from-[#b27e5a] to-[#824C25] p-6 text-center text-[#FEFDFD]">
+              <div className="mx-auto mb-2 h-1 w-16 rounded-full bg-[#E5E7EB]" />
+              <div className="rounded-2xl bg-gradient-to-br from-[#1a73e8] to-[#1557b0] p-6 text-center text-white">
                 <p className={`text-xl ${DISPLAY}`}>Hi Sally! 👋</p>
                 <p className="mt-1 text-xs text-white/75">(The HeyElsie demo team)</p>
               </div>
-              <div className="mt-2 rounded-2xl rounded-tl-sm bg-[#f5f3f1] p-3 text-[13px] leading-snug">
+              <div className="mt-2 rounded-2xl rounded-tl-sm bg-[#F8FAFD] p-3 text-[13px] leading-snug">
                 Hey Sally, thanks for choosing us! Would you mind leaving a quick Google review? It only takes a
-                minute and really helps: <span className="text-[#824C25] underline">go.heyelsie.com/r/x7k2q</span> Reply STOP to opt out.
+                minute and really helps: <span className="text-[#1a73e8] underline">go.heyelsie.com/r/x7k2q</span> Reply STOP to opt out.
               </div>
-              <p className="mt-1 text-right text-[10px] text-[#7D7467]">09:41</p>
+              <p className="mt-1 text-right text-[10px] text-[#6B7280]">09:41</p>
             </div>
           </Reveal>
         </div>
       </section>
 
       {/* ── Feature grid ── */}
-      <section id="features" className="px-4 py-20" style={{ backgroundColor: CREAM_ALT }}>
+      <section id="features" className="px-4 py-20" style={{ backgroundColor: WASH }}>
         <div className="mx-auto max-w-5xl">
           <Reveal>
             <h2 className={`text-center text-3xl sm:text-4xl ${DISPLAY}`}>Getting reviews has never been this hands-off</h2>
-            <p className="mt-2 text-center text-[#7D7467]">The platform does the heavy lifting. All of it.</p>
+            <p className="mt-2 text-center text-[#6B7280]">The platform does the heavy lifting. All of it.</p>
           </Reveal>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, body }, i) => (
               <Reveal key={title} delay={i * 60}>
                 <div className={`h-full rounded-3xl p-6 ${CARD}`}>
-                  <div className="grid h-10 w-10 place-items-center rounded-full bg-[#FDCCA9]/40 text-[#824C25]"><Icon className="h-5 w-5" /></div>
-                  <h3 className="mt-4 font-semibold">{title}</h3>
-                  <p className="mt-2 text-sm text-[#5c5c5c]">{body}</p>
+                  <div className="grid h-10 w-10 place-items-center rounded-full bg-[#E8F0FE] text-[#1a73e8]"><Icon className="h-5 w-5" /></div>
+                  <h3 className="mt-4 font-bold">{title}</h3>
+                  <p className="mt-2 text-sm text-[#4B5563]">{body}</p>
                 </div>
               </Reveal>
             ))}
@@ -415,41 +414,41 @@ export default function LandingPage() {
 
       {/* ── Trades marquee ── */}
       <section className="px-4 py-14">
-        <p className="text-center text-sm font-medium uppercase tracking-widest text-[#7D7467]">Built for every UK trade</p>
+        <p className="text-center text-[11.5px] font-extrabold uppercase tracking-[0.5px] text-[#6B7280]">Built for every UK trade</p>
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           {TRADES.map((t) => (
-            <span key={t} className="rounded-full border border-[#e8e5e1] bg-white px-4 py-1.5 text-sm text-[#5c5c5c]">{t}</span>
+            <span key={t} className="rounded-full border border-[#E5E7EB] bg-white px-4 py-1.5 text-sm font-medium text-[#4B5563]">{t}</span>
           ))}
         </div>
       </section>
 
       {/* ── Pricing ── */}
-      <section id="pricing" className="px-4 py-20" style={{ backgroundColor: CREAM_ALT }}>
+      <section id="pricing" className="px-4 py-20" style={{ backgroundColor: WASH }}>
         <div className="mx-auto max-w-5xl">
           <Reveal>
             <h2 className={`text-center text-3xl sm:text-4xl ${DISPLAY}`}>Simple pricing. Every feature, every plan.</h2>
-            <p className="mt-2 text-center text-[#7D7467]">The only difference is how many customers you can ask each month. 10-day free trial on all plans.</p>
+            <p className="mt-2 text-center text-[#6B7280]">The only difference is how many customers you can ask each month. 10-day free trial on all plans.</p>
           </Reveal>
           <div className="mt-12 grid gap-4 md:grid-cols-3">
             {PRICING.map((p, i) => (
               <Reveal key={p.name} delay={i * 80}>
                 <div className={`relative flex h-full flex-col rounded-[2rem] bg-white p-7 ${p.popular
-                  ? 'border-2 border-[#1a1816] shadow-[0_16px_48px_rgba(26,24,22,0.12)]'
-                  : 'border border-[#e8e5e1] shadow-[0_1px_2px_rgba(26,24,22,0.04),0_8px_24px_rgba(26,24,22,0.04)]'}`}>
+                  ? 'border-2 border-[#1a73e8] shadow-[0_16px_48px_rgba(26,115,232,0.18)]'
+                  : 'border border-[#E5E7EB] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_rgba(0,0,0,0.05)]'}`}>
                   {p.popular && (
-                    <span className="absolute right-6 top-6 rounded-full bg-[#1a1816] px-3 py-1 text-[11px] font-semibold text-[#FEFDFD]">Most popular</span>
+                    <span className="absolute right-6 top-6 rounded-full bg-[#1a73e8] px-3 py-1 text-[11px] font-extrabold text-white">Most popular</span>
                   )}
-                  <h3 className="text-sm font-medium text-[#7D7467]">{p.name}</h3>
-                  <p className={`mt-3 text-5xl ${DISPLAY}`}>£{p.price}<span className="text-sm font-normal text-[#7D7467]">/mo</span></p>
-                  <p className="mt-1 text-sm text-[#5c5c5c]">{p.requests}</p>
-                  <a href={SIGNUP} className={`mt-6 px-4 py-3 text-center text-sm font-semibold ${PILL_DARK}`}>
+                  <h3 className="text-sm font-bold text-[#6B7280]">{p.name}</h3>
+                  <p className={`mt-3 text-5xl ${DISPLAY}`}>£{p.price}<span className="text-sm font-normal text-[#6B7280]">/mo</span></p>
+                  <p className="mt-1 text-sm text-[#4B5563]">{p.requests}</p>
+                  <a href={SIGNUP} className={`mt-6 px-4 py-3 text-center text-sm font-extrabold ${PILL_BLUE}`}>
                     Start 10-day free trial
                   </a>
                   <ul className="mt-6 flex-1 space-y-2">
                     {PLAN_BULLETS.map((b) => (
                       <li key={b} className="flex items-center gap-2 text-sm">
-                        <Check className="h-3.5 w-3.5 shrink-0 text-[#5ab570]" />
-                        <span className="text-[#322d2d]">{b}</span>
+                        <Check className="h-3.5 w-3.5 shrink-0 text-[#1a73e8]" />
+                        <span className="text-[#4B5563]">{b}</span>
                       </li>
                     ))}
                   </ul>
@@ -457,7 +456,7 @@ export default function LandingPage() {
               </Reveal>
             ))}
           </div>
-          <p className="mt-6 text-center text-xs text-[#7D7467]">
+          <p className="mt-6 text-center text-xs text-[#6B7280]">
             Follow-up messages don't count towards your request limit. Multi-location? <a href="mailto:hello@heyelsie.com" className="underline">Email us</a> for a bundle.
           </p>
         </div>
@@ -466,12 +465,12 @@ export default function LandingPage() {
       {/* ── Compliance strip ── */}
       <section className="px-4 py-14">
         <div className={`mx-auto flex max-w-3xl items-start gap-4 rounded-3xl p-6 ${CARD}`}>
-          <ShieldCheck className="h-8 w-8 shrink-0 text-[#5ab570]" />
+          <ShieldCheck className="h-8 w-8 shrink-0 text-[#1a73e8]" />
           <div>
-            <h3 className="font-semibold">Done properly, because your Google profile is worth protecting</h3>
-            <p className="mt-1 text-sm text-[#5c5c5c]">
+            <h3 className="font-bold">Done properly, because your Google profile is worth protecting</h3>
+            <p className="mt-1 text-sm text-[#4B5563]">
               No fake reviews, no cherry-picking happy customers, no spam. Every ask goes to real customers with a
-              working opt-out, inside UK rules (PECR & the DMCC Act) and Google's policies. Tools that "filter out
+              working opt-out, inside UK rules (PECR &amp; the DMCC Act) and Google's policies. Tools that "filter out
               bad reviews" put your profile at risk of suspension. We never will.
             </p>
           </div>
@@ -479,40 +478,39 @@ export default function LandingPage() {
       </section>
 
       {/* ── FAQ ── */}
-      <section id="faq" className="px-4 py-20" style={{ backgroundColor: CREAM_ALT }}>
+      <section id="faq" className="px-4 py-20" style={{ backgroundColor: WASH }}>
         <div className="mx-auto max-w-3xl">
           <h2 className={`text-center text-3xl sm:text-4xl ${DISPLAY}`}>Questions, answered</h2>
           <div className="mt-10 space-y-3">
             {FAQS.map(([q, a], i) => (
               <button key={q} onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                className={`w-full rounded-2xl px-5 py-4 text-left transition hover:shadow-md ${CARD}`}>
+                className={`w-full rounded-2xl px-5 py-4 text-left transition hover:border-[#1a73e8] hover:shadow-md ${CARD}`}>
                 <span className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold">{q}</span>
-                  <ChevronDown className={`h-4 w-4 shrink-0 text-[#7D7467] transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
+                  <span className="text-sm font-bold">{q}</span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-[#1a73e8] transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
                 </span>
-                {openFaq === i && <span className="mt-2 block text-sm text-[#5c5c5c]">{a}</span>}
+                {openFaq === i && <span className="mt-2 block text-sm text-[#4B5563]">{a}</span>}
               </button>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Final CTA — warm glass block echoing the hero ── */}
+      {/* ── Final CTA — the blue block, echoing the VSL's buy button ── */}
       <section className="px-4 py-20">
-        <div className="relative mx-auto max-w-4xl overflow-hidden rounded-[2.5rem] p-10 text-center text-[#FEFDFD] sm:p-16" style={{ backgroundColor: '#241c16' }}>
-          <div aria-hidden className="absolute inset-0"
-            style={{ background: 'linear-gradient(115deg, #1f1712 0%, #3d2b1f 35%, #6b4a33 70%, #a97e57 100%)' }} />
-          <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-[360px] w-[360px] rounded-full bg-[radial-gradient(closest-side,rgba(229,194,169,0.5),transparent)] blur-3xl" />
+        <div className="relative mx-auto max-w-4xl overflow-hidden rounded-[2.5rem] bg-[#1a73e8] p-10 text-center text-white shadow-[0_18px_50px_rgba(26,115,232,0.30)] sm:p-16">
+          <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-[360px] w-[360px] rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.28),transparent)]" />
+          <div aria-hidden className="pointer-events-none absolute -bottom-28 -left-20 h-[320px] w-[320px] rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.16),transparent)]" />
           <div className="relative">
             <div className="mx-auto mb-5 flex w-fit gap-1">
-              {[1, 2, 3, 4, 5].map((i) => <Star key={i} className="h-6 w-6 fill-[#FDCCA9] text-[#FDCCA9]" />)}
+              {[1, 2, 3, 4, 5].map((i) => <Star key={i} className="h-6 w-6" style={{ fill: STAR, color: STAR }} />)}
             </div>
             <h2 className={`text-3xl sm:text-5xl ${DISPLAY}`}>Your next 25 reviews are on us</h2>
-            <p className="mx-auto mt-4 max-w-lg text-white/75">
+            <p className="mx-auto mt-4 max-w-lg text-white/80">
               Start the 10-day free trial, upload your customer list, and watch the first reviews arrive before you've
               paid a penny. If it doesn't work for your business, cancel in two clicks.
             </p>
-            <a href={SIGNUP} className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#FEFDFD] px-8 py-4 text-base font-semibold text-[#1a1816] shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition hover:bg-[#f5f3f1]">
+            <a href={SIGNUP} className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-base font-extrabold text-[#1a73e8] shadow-[0_8px_32px_rgba(0,0,0,0.20)] transition hover:bg-[#F8FAFD]">
               Start getting reviews <ArrowRight className="h-4 w-4" />
             </a>
           </div>
@@ -520,30 +518,30 @@ export default function LandingPage() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-[#e8e5e1] px-4 py-12" style={{ backgroundColor: CREAM_ALT }}>
+      <footer className="border-t border-[#E5E7EB] px-4 py-12 pb-28 md:pb-12" style={{ backgroundColor: WASH }}>
         <div className="mx-auto grid max-w-5xl gap-8 sm:grid-cols-3">
           <div>
-            <p className={`text-base ${DISPLAY}`}>HeyElsie <span className="font-light text-[#7D7467]">Reviews</span></p>
-            <p className="mt-2 text-xs text-[#7D7467]">Google review automation for UK service businesses.</p>
+            <p className={`text-base ${DISPLAY}`}>HeyElsie <span className="font-light text-[#6B7280]">Reviews</span></p>
+            <p className="mt-2 text-xs text-[#6B7280]">Google review automation for UK service businesses.</p>
           </div>
           <div className="text-sm">
-            <p className="font-semibold">Explore</p>
-            <ul className="mt-2 space-y-1 text-[#5c5c5c]">
-              <li><a href="#features" className="hover:text-[#1a1816]">Features</a></li>
-              <li><a href="#pricing" className="hover:text-[#1a1816]">Pricing</a></li>
-              <li><a href={GO} className="hover:text-[#1a1816]">Log in</a></li>
+            <p className="font-bold">Explore</p>
+            <ul className="mt-2 space-y-1 text-[#4B5563]">
+              <li><a href="#features" className="hover:text-[#1a73e8]">Features</a></li>
+              <li><a href="#pricing" className="hover:text-[#1a73e8]">Pricing</a></li>
+              <li><a href={GO} className="hover:text-[#1a73e8]">Log in</a></li>
             </ul>
           </div>
           <div className="text-sm">
-            <p className="font-semibold">Company</p>
-            <ul className="mt-2 space-y-1 text-[#5c5c5c]">
-              <li><a href="/terms" className="hover:text-[#1a1816]">Terms</a></li>
-              <li><a href="/privacy" className="hover:text-[#1a1816]">Privacy</a></li>
-              <li><a href="mailto:hello@heyelsie.com" className="hover:text-[#1a1816]">hello@heyelsie.com</a></li>
+            <p className="font-bold">Company</p>
+            <ul className="mt-2 space-y-1 text-[#4B5563]">
+              <li><a href="/terms" className="hover:text-[#1a73e8]">Terms</a></li>
+              <li><a href="/privacy" className="hover:text-[#1a73e8]">Privacy</a></li>
+              <li><a href="mailto:hello@heyelsie.com" className="hover:text-[#1a73e8]">hello@heyelsie.com</a></li>
             </ul>
           </div>
         </div>
-        <div className="mx-auto mt-8 max-w-5xl text-[11px] leading-relaxed text-[#7D7467]">
+        <div className="mx-auto mt-8 max-w-5xl text-[11px] leading-relaxed text-[#6B7280]">
           <p>
             Review requests are sent on behalf of our clients to their own customers only. Every message identifies
             the business and includes an opt-out: reply STOP to any text to unsubscribe instantly. Message and data
@@ -553,6 +551,17 @@ export default function LandingPage() {
           <p className="mt-2">© {new Date().getFullYear()} HeyElsie. All rights reserved.</p>
         </div>
       </footer>
+
+      {/* ── Mobile sticky CTA — the VSL page's floating buy button, same idea:
+             on a phone the offer should never be more than a thumb away ── */}
+      <a
+        href={SIGNUP}
+        className="fixed inset-x-3 bottom-3 z-50 flex flex-col items-center rounded-[14px] bg-[#1a73e8] px-4 py-2.5 text-center text-white shadow-[0_6px_18px_rgba(26,115,232,0.45)] md:hidden"
+        style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <span className="text-[16px] font-extrabold">Start getting reviews</span>
+        <span className="text-[11.5px] font-bold opacity-85">10-day free trial · no contract</span>
+      </a>
     </div>
   )
 }

@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Mail, Lock, ArrowRight } from 'lucide-react'
+import { Mail, Lock, ArrowRight, Star, Check } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/core/auth/AuthProvider'
 import { supabase } from '@/integrations/supabase/browser'
+import { BTN_BLUE, FIELD, DISPLAY, LABEL, STAR } from '@/core/ui/brand'
 
 const ELSIE_MARK = (
   <svg className="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -29,6 +30,56 @@ async function resolveDestination(from?: string): Promise<string> {
     if (adm) return '/admin/crm/inbox'
   }
   return '/dashboard'
+}
+
+/** The proof rail — desktop only. Same Google-card language as the VSL page. */
+function ProofPanel() {
+  return (
+    <div className="relative hidden overflow-hidden bg-[#1a73e8] p-12 lg:flex lg:flex-col lg:justify-center">
+      {/* soft light, same trick the VSL hero uses to stop a flat blue block */}
+      <div aria-hidden className="pointer-events-none absolute -right-32 -top-24 h-[420px] w-[420px] rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.28),transparent)]" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-28 -left-24 h-[360px] w-[360px] rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.16),transparent)]" />
+
+      <div className="relative mx-auto w-full max-w-md">
+        <p className="text-[11.5px] font-extrabold uppercase tracking-[0.5px] text-white/70">
+          Reviews win the job
+        </p>
+        <h2 className={`mt-3 text-[34px] leading-[1.12] text-white ${DISPLAY}`}>
+          When someone Googles a plumber, they call the one with 400 reviews.
+        </h2>
+
+        {/* a real-looking Google card, exactly the shape the VSL video shows */}
+        <div className="mt-8 rounded-[18px] bg-white p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+          <div className="flex items-center gap-3">
+            <div className={`grid h-11 w-11 place-items-center rounded-full bg-[#F8FAFD] text-lg text-[#1a73e8] ring-1 ring-[#E5E7EB] ${DISPLAY}`}>G</div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-[#1A1A1A]">Your business</p>
+              <p className="flex items-center gap-1.5 text-xs text-[#6B7280]">
+                <span className="font-bold text-[#1A1A1A]">4.9</span>
+                <span className="flex gap-0.5">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="h-3 w-3" style={{ fill: STAR, color: STAR }} />
+                  ))}
+                </span>
+                <span>· 412 reviews</span>
+              </p>
+            </div>
+            <span className="ml-auto shrink-0 rounded-full bg-[#E8F0FE] px-2.5 py-1 text-[11px] font-bold text-[#1a73e8]">
+              seen first
+            </span>
+          </div>
+        </div>
+
+        <ul className="mt-8 space-y-3">
+          {['Every finished job asks for a review', 'Follow-ups that stop the moment they reply', 'AI answers every review for you'].map((b) => (
+            <li key={b} className="flex items-start gap-2.5 text-[15px] text-white/90">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-white" /> {b}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
 }
 
 export default function LoginPage() {
@@ -58,107 +109,125 @@ export default function LoginPage() {
     await signIn(email, password)
   }
 
+  const tab = (active: boolean) =>
+    `h-10 rounded-[10px] text-[13px] font-bold transition ${
+      active ? 'bg-white text-[#1a73e8] shadow-sm' : 'text-[#6B7280] hover:text-[#1A1A1A]'
+    }`
+
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-white px-6" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div className="w-full max-w-sm">
-        <Link to="/welcome" className="mb-8 flex items-center justify-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-900">{ELSIE_MARK}</div>
-          <span className="text-[18px] font-semibold tracking-tight text-gray-900">Elsie</span>
-        </Link>
+    <div
+      className="grid min-h-[100dvh] bg-white lg:grid-cols-[1fr_1.05fr]"
+      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
+    >
+      {/* ── form side ── */}
+      <div className="flex flex-col justify-center px-6 py-10 sm:px-10">
+        <div className="mx-auto w-full max-w-sm">
+          <Link to="/welcome" className="mb-9 flex items-center justify-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#1a73e8]">{ELSIE_MARK}</div>
+            <span className={`text-[19px] text-[#1A1A1A] ${DISPLAY}`}>HeyElsie</span>
+          </Link>
 
-        {/* One front door, two kinds of people: staff/owners sign in here; Reviews
-            clients get sent to their own app on go.heyelsie.com. */}
-        <div className="mb-6 grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1">
-          <button
-            type="button"
-            onClick={() => setMode('team')}
-            className={`h-9 rounded-lg text-[13px] font-medium transition ${mode === 'team' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-          >
-            Staff &amp; owners
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('client')}
-            className={`h-9 rounded-lg text-[13px] font-medium transition ${mode === 'client' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-          >
-            Reviews client
-          </button>
-        </div>
-
-        {mode === 'client' ? (
-          <div className="text-center">
-            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Reviews clients</h1>
-            <p className="mt-2 text-[15px] text-gray-500">Your dashboard lives on go.heyelsie.com. Sign in there.</p>
-            <a
-              href={GO_URL}
-              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gray-900 text-[15px] font-medium text-white transition hover:bg-gray-800 active:scale-[0.98]"
-            >
-              Continue to go.heyelsie.com <ArrowRight size={16} />
-            </a>
-            <button onClick={() => setMode('team')} className="mt-4 text-[13px] text-gray-500 hover:text-gray-900">
-              ← I'm staff or a business owner
+          {/* One front door, two kinds of people: staff/owners sign in here; Reviews
+              clients get sent to their own app on go.heyelsie.com. */}
+          <div className="mb-7 grid grid-cols-2 gap-1 rounded-[13px] bg-[#F8FAFD] p-1 ring-1 ring-[#E5E7EB]">
+            <button type="button" onClick={() => setMode('team')} className={tab(mode === 'team')}>
+              Staff &amp; owners
+            </button>
+            <button type="button" onClick={() => setMode('client')} className={tab(mode === 'client')}>
+              Reviews client
             </button>
           </div>
-        ) : (
-          <>
+
+          {mode === 'client' ? (
             <div className="text-center">
-              <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Welcome back</h1>
-              <p className="mt-2 text-[15px] text-gray-500">Sign in — we'll take you to the right place.</p>
-            </div>
-
-            <form onSubmit={handlePassword} className="mt-8 space-y-4">
-              <div>
-                <label className="text-[13px] font-medium text-gray-900">Email address</label>
-                <div className="relative mt-1.5">
-                  <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@business.co.uk"
-                    required
-                    autoFocus
-                    className="h-12 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-[15px] text-gray-900 outline-none placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-[13px] font-medium text-gray-900">Password</label>
-                  <Link to="/forgot-password" className="text-[12px] text-gray-500 hover:text-gray-900">Forgot password?</Link>
-                </div>
-                <div className="relative mt-1.5">
-                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    className="h-12 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-[15px] text-gray-900 outline-none placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={!email || !password || loading}
-                className="flex h-12 w-full items-center justify-center rounded-xl bg-gray-900 text-[15px] font-medium text-white transition hover:bg-gray-800 active:scale-[0.98] disabled:opacity-40"
+              <h1 className={`text-[28px] leading-tight text-[#1A1A1A] ${DISPLAY}`}>Reviews clients</h1>
+              <p className="mt-2 text-[15px] text-[#6B7280]">
+                Your dashboard lives on go.heyelsie.com. Sign in there.
+              </p>
+              <a
+                href={GO_URL}
+                className={`mt-7 flex h-[52px] w-full items-center justify-center gap-2 text-[15.5px] ${BTN_BLUE}`}
               >
-                {loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : 'Sign in'}
+                Continue to go.heyelsie.com <ArrowRight size={16} />
+              </a>
+              <button
+                onClick={() => setMode('team')}
+                className="mt-4 text-[13px] font-semibold text-[#6B7280] transition hover:text-[#1a73e8]"
+              >
+                ← I'm staff or a business owner
               </button>
-            </form>
+            </div>
+          ) : (
+            <>
+              <div className="text-center">
+                <h1 className={`text-[28px] leading-tight text-[#1A1A1A] ${DISPLAY}`}>Welcome back</h1>
+                <p className="mt-2 text-[15px] text-[#6B7280]">Sign in — we'll take you to the right place.</p>
+              </div>
 
-            {errorMsg && <p className="mt-3 text-center text-[13px] text-red-600">{errorMsg}</p>}
+              <form onSubmit={handlePassword} className="mt-8 space-y-4">
+                <div>
+                  <label className={LABEL}>Email address</label>
+                  <div className="relative mt-2">
+                    <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@business.co.uk"
+                      required
+                      autoFocus
+                      className={FIELD}
+                    />
+                  </div>
+                </div>
 
-            <p className="mt-6 text-center text-[13px] text-gray-500">
-              Don't have an account?{' '}
-              <Link to="/register" className="font-medium text-gray-900 hover:underline">Sign up free</Link>
-            </p>
-          </>
-        )}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className={LABEL}>Password</label>
+                    <Link to="/forgot-password" className="text-[12px] font-semibold text-[#1a73e8] hover:underline">
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <div className="relative mt-2">
+                    <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className={FIELD}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!email || !password || loading}
+                  className={`flex h-[52px] w-full items-center justify-center text-[15.5px] ${BTN_BLUE}`}
+                >
+                  {loading
+                    ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    : 'Sign in'}
+                </button>
+              </form>
+
+              {errorMsg && (
+                <p className="mt-3 rounded-[10px] bg-red-50 px-4 py-2 text-center text-[13px] font-semibold text-red-700">
+                  {errorMsg}
+                </p>
+              )}
+
+              <p className="mt-7 text-center text-[13.5px] text-[#6B7280]">
+                Don't have an account?{' '}
+                <Link to="/register" className="font-bold text-[#1a73e8] hover:underline">Sign up free</Link>
+              </p>
+            </>
+          )}
+        </div>
       </div>
+
+      <ProofPanel />
     </div>
   )
 }
