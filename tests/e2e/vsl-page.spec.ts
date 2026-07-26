@@ -20,9 +20,10 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
 
     await page.goto(`/${SLUG}`)
 
-    // Personalised headline + one button + scarcity line.
+    // Personalised headline + the main button (plus its copy under the
+    // calculator) + scarcity line.
     await expect(page.locator('h1')).toContainText('I made a video for')
-    await expect(page.locator('.cta')).toHaveCount(1)
+    await expect(page.locator('.cta')).toHaveCount(2)
     await expect(page.locator('.spots')).toContainText('left in')
 
     // OG tags are server-rendered for the SMS preview.
@@ -33,7 +34,7 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     await expect.poll(() => beacons).toContain('open')
 
     // CTA opens the tier sheet with the three plans + the £1 note.
-    await page.locator('.cta').click()
+    await page.locator('.cta').first().click()
     await expect(page.locator('.sheet')).toBeVisible()
     await expect(page.locator('.tier')).toHaveCount(3)
     await expect(page.locator('.pound')).toContainText('£1 today')
