@@ -372,3 +372,142 @@ describe('migration', () => {
     expect(sql).toMatch(/alter publication supabase_realtime add table wk_vsl_pages/)
   })
 })
+
+/* ================= render pipeline (Hugo 2026-07-26) ================= */
+
+describe('render pipeline — lib', () => {
+  const load = async () => import('../api/lib/vsl-settings')
+
+  it('maps render statuses to the two review columns (failed stays put)', async () => {
+    const { VSL_RENDER_TO_COLUMN } = await load()
+    expect(VSL_RENDER_TO_COLUMN.queued).toBe('Rendering')
+    expect(VSL_RENDER_TO_COLUMN.rendering).toBe('Rendering')
+    expect(VSL_RENDER_TO_COLUMN.ready).toBe('Ready to send')
+    expect(VSL_RENDER_TO_COLUMN.failed).toBeUndefined()
+  })
+
+  it('orders the board Rendering → Ready to send → Video sent … Paid', async () => {
+    const { VSL_COLUMN_ORDER } = await load()
+    const i = (n: string) => VSL_COLUMN_ORDER.indexOf(n)
+    expect(i('Rendering')).toBe(0)
+    expect(i('Ready to send')).toBe(1)
+    expect(i('Video sent')).toBe(2)
+    expect(i('Rendering')).toBeLessThan(i('Paid'))
+  })
+
+  it('worker duplicates the exact same column order (lockstep guard)', async () => {
+    const { VSL_COLUMN_ORDER } = await load()
+    const worker = read('scripts/vsl-render-worker.mjs')
+    const m = worker.match(/const COLUMN_ORDER = \[([\s\S]*?)\]/)
+    expect(m).toBeTruthy()
+    const workerOrder = [...m![1].matchAll(/'([^']+)'/g)].map((x) => x[1])
+    expect(workerOrder).toEqual(VSL_COLUMN_ORDER)
+  })
+
+  it('no-website leads get the free-website SMS variant by default', async () => {
+    const { DEFAULT_VSL_SETTINGS, fillTemplate } = await load()
+    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).toMatch(/free/i)
+    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).toMatch(/website/i)
+    const out = fillTemplate(DEFAULT_VSL_SETTINGS.send_template_no_site, {
+      first: 'Kate', business: 'K Plumbing', url: 'https://heyelsie.com/k', agent: 'Pedro',
+    })
+    expect(out).toContain('website')
+    expect(out).not.toMatch(/\{[a-z_]+\}/)
+  })
+})
+
+describe('render pipeline — API gates', () => {
+  const src = read('api/crm/vsl-page.ts')
+
+  it('mark_sent refuses a page with nothing to play (review gate)', () => {
+    expect(src).toMatch(/if \(!page\.video_url && !settings\.default_video_url\)/)
+    expect(src).toMatch(/no_video/)
+    // the gate sits BEFORE the state advance
+    expect(src.indexOf('no_video')).toBeLessThan(src.indexOf("advanceVslState(page, 'sent')"))
+  })
+
+  it('request_render only queues from null/failed (idempotent)', () => {
+    expect(src).toMatch(/!page\.render_status \|\| page\.render_status === 'failed'/)
+  })
+
+  it('dark funnel: pages/renders allowed, sending blocked', () => {
+    expect(src).toMatch(/!settings\.enabled && body\.mark_sent/)
+  })
+
+  it('pages record no_website at creation and pick the SMS variant off it', () => {
+    expect(src).toMatch(/no_website: noWebsite/)
+    expect(src).toMatch(/page\.no_website \? settings\.send_template_no_site : settings\.send_template/)
+  })
+
+  it('response mirrors the send gate so the UI can disable the button', () => {
+    expect(src).toMatch(/can_send: !!\(page\.video_url \|\| settings\.default_video_url\)/)
+  })
+})
+
+describe('render pipeline — migration + worker', () => {
+  const mig = read('supabase/migrations/20260726000001_vsl_render.sql')
+  const worker = read('scripts/vsl-render-worker.mjs')
+  const unit = read('scripts/vsl-render-worker.service')
+
+  it('adds the render lifecycle columns with a status check', () => {
+    expect(mig).toMatch(/render_status text/)
+    expect(mig).toMatch(/'queued', 'rendering', 'ready', 'failed'/)
+    expect(mig).toMatch(/no_website boolean not null default false/)
+  })
+
+  it('inserts Rendering + Ready to send BEFORE Video sent (two-step shift)', () => {
+    expect(mig).toMatch(/'Rendering'/)
+    expect(mig).toMatch(/'Ready to send'/)
+    expect(mig).toMatch(/position \+ 1002/) // unique-constraint-safe shift
+  })
+
+  it('worker claims atomically and requeues stale renders', () => {
+    expect(worker).toMatch(/render_status=eq\.queued/) // claim is conditional
+    expect(worker).toMatch(/requeueStale/)
+    expect(worker).toMatch(/STALE_MIN = 45/)
+  })
+
+  it('worker uploads to vsl-videos and writes video_url + ready', () => {
+    expect(worker).toMatch(/vsl-videos/)
+    expect(worker).toMatch(/render_status: 'ready'/)
+    expect(worker).toMatch(/video_url: videoUrl/)
+  })
+
+  it('systemd unit is niced so the scrapers always win', () => {
+    expect(unit).toMatch(/Nice=10/)
+    expect(unit).toMatch(/\/usr\/bin\/node/)
+  })
+})
+
+describe('render pipeline — prep + comps', () => {
+  const prep = read('video/scripts/prep-lead.mjs')
+  const scroll = read('video/src/comps/GoogleScrollV.tsx')
+  const flow = read('video/src/FlowVideo.tsx')
+
+  it('prep fails loudly on degraded data (no town/rank = no render)', () => {
+    expect(prep).toMatch(/lead is missing town\/rank/)
+  })
+
+  it('lead lands at index 18 — five audio-locked flicks reach it', () => {
+    expect(prep).toMatch(/LEAD_INDEX = 18/)
+    const gen = JSON.parse(read('video/src/data/lead-gen.json'))
+    expect(gen.rows.findIndex((r: { isLead?: boolean }) => r.isLead)).toBe(18)
+    expect(gen.rows.length).toBe(23)
+  })
+
+  it('scroll comp derives flick targets and flyback from Y_LEAD (no constants)', () => {
+    expect(scroll).toMatch(/Y_LEAD \* 0\.19/)
+    expect(scroll).toMatch(/Y_LEAD \/ 2/)
+    expect(scroll).not.toMatch(/to: 780 \}/)
+  })
+
+  it('no-website leads render the Google-search opening instead', () => {
+    expect(flow).toMatch(/gen\.no_website \? <OpeningSearchV \/> : <OpeningWebsiteV \/>/)
+  })
+
+  it('public page carries the free-website seal for no-website leads', () => {
+    const page = read('api/vsl/page.ts')
+    expect(page).toMatch(/page\.no_website \? `<p class="seal">/)
+    expect(page).toMatch(/FREE website included/)
+  })
+})

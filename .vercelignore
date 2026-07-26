@@ -10,3 +10,9 @@ playwright-report
 test-results
 .claude
 scraper
+# VSL video factory — renders on the VPS, never ships to Vercel (71MB actor
+# file broke the 10MB upload limit 2026-07-26). Anchored: a bare `video`
+# would also swallow src/features/reviews/video and break the build.
+/video
+/out
+/public/clips

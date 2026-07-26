@@ -188,13 +188,19 @@ The voice never says a trade, but three visual props are plumbing-flavoured
   `src/features/crm/components/live-call/VideoLinkButton.tsx` — the dialer's
   "Send video" button already creates the page and texts the link.
 
-**The ONE missing piece — the render pipeline (§4 is its spec):**
-given a `wk_contacts` id → capture the mobile site → regenerate lead.json +
-ROWS (rank-frame API + pads) + SEL_W + area code + URL pill → render on this
-Mac (§2) → upload the MP4 (Supabase storage is the obvious home — also
-solves §7's pedro.mp4 problem) → **write its URL into
-`wk_vsl_pages.video_url`**. That column is the contract: the live page plays
-`page.video_url || settings.default_video_url`, and
-`api/lib/vsl-settings.ts` explicitly marks `default_video_url` as
-"placeholder until the render pipeline lands". Optional second piece:
-Hugo's agent review-before-send step (render → agent watches → then send).
+**The render pipeline — BUILT 2026-07-26 (nothing left to build here):**
+- `video/scripts/prep-lead.mjs <contact_id>` — implements the whole §4 swap
+  list: rank-frame pack (lead at index 18), measured SEL_W (Liberation Sans
+  = Arial metrics), area-code heuristic, parameterized site capture with
+  scroll clamp. Writes `src/data/lead-gen.json` (committed copy = the
+  Energywise sample); the comps read everything from it.
+- No-website leads: `OpeningSearchV.tsx` replaces S1 (a Google search types
+  out) and the funnel carries a "free website included" offer.
+- `scripts/vsl-render-worker.mjs` runs on the **Hostinger VPS**
+  (`ssh margarita-server`, systemd `vsl-render-worker`, Nice=10, repo clone
+  at `/root/heyelsie-vsl`): claims `wk_vsl_pages.render_status='queued'` →
+  prep → render → poster → uploads to the public `vsl-videos` bucket →
+  writes `video_url` + `render_status='ready'`.
+- CRM: "Make video" queues; the board's **Rendering → Ready to send**
+  columns hold the review step; `mark_sent` is refused until the page has a
+  playable video. Full plan: ~/.claude/plans/purring-gliding-thompson.md.
