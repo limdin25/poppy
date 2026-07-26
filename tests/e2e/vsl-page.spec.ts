@@ -23,7 +23,7 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     // Personalised headline + the main button (plus its copy under the
     // calculator) + scarcity line.
     await expect(page.locator('h1')).toContainText('I made a video for')
-    await expect(page.locator('.cta')).toHaveCount(2)
+    await expect(page.locator('.cta')).toHaveCount(3) // main + calculator copy + popup copy
     await expect(page.locator('.spots')).toContainText('left in')
 
     // OG tags are server-rendered for the SMS preview.
@@ -51,6 +51,7 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     if (imageProof) {
       await expect(page.locator('.proof img')).toBeVisible()
     } else {
+      // FULL Google cards side by side inside a swipeable carousel with dots
       await expect(page.locator('.ba .barow').first()).toBeVisible()
       expect(await page.locator('.ba .gcard').count()).toBeGreaterThanOrEqual(2)
       await expect(page.locator('.ba')).toContainText('Examples of businesses')
@@ -58,14 +59,32 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
       await expect(page.locator('.ba')).toContainText('(17)')
       await expect(page.locator('.ba')).toContainText('(356)')
       await expect(page.locator('.ba')).toContainText('more calls a month')
+      await expect(page.locator('.ba')).toContainText('5+ years in business')
+      await expect(page.locator('.ba .gbtn').first()).toContainText('Website')
       await expect(page.locator('.batag.blue')).toHaveText('AFTER')
+      const dots = await page.locator('.badot').count()
+      if (dots > 1) {
+        await page.locator('.badot').last().click()
+        await expect
+          .poll(async () => page.locator('#batrack').evaluate((el) => el.scrollLeft))
+          .toBeGreaterThan(0)
+      }
     }
 
     // Tapping the preview opens the fullscreen popup (the page itself never
-    // expands); ✕ closes it and the preview is still there.
+    // expands): custom slim bar (never the native controls overlay), and the
+    // buy button + urgency sit right below the expanded video.
     await page.locator('#stage').click()
     await expect(page.locator('.vmodal')).toBeVisible()
     await expect(page.locator('.vmodal video')).toBeVisible()
+    expect(await page.locator('.vmodal video').getAttribute('controls')).toBeNull()
+    await expect(page.locator('.vbar')).toBeVisible()
+    await expect(page.locator('.vmodal .cta')).toBeVisible()
+    await expect(page.locator('.vinfo')).toContainText('spots left')
+    // its CTA opens the tier sheet above the popup
+    await page.locator('.vmodal .cta').click()
+    await expect(page.locator('.sheet')).toBeVisible()
+    await page.locator('.sheetbg').click({ position: { x: 10, y: 10 } })
     await page.locator('.vx').click()
     await expect(page.locator('.vmodal')).toBeHidden()
     await expect(page.locator('#stage')).toBeVisible()

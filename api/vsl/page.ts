@@ -98,19 +98,32 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   const stars = (size: number) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="#fbbc04"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`.repeat(5);
-  // one business = one BEFORE→AFTER row, side by side even at 360px
-  const exRow = (x: Example) => `<div class="barow">
-    <div class="gcard">
-      <p class="gname">${esc(x.name)}</p>
-      <p class="gmeta"><b>5.0</b><span class="gstars">${stars(11)}</span><span>(${x.before})</span></p>
+  const GLOBE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="#1a73e8"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2 0 .68.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2 0-.68.07-1.35.16-2h4.68c.09.65.16 1.32.16 2 0 .68-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2 0-.68-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg>';
+  const DIRECTIONS = '<svg width="15" height="15" viewBox="0 0 24 24" fill="#1a73e8"><path d="M21.71 11.29l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.38.39-1.01 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
+
+  // one FULL Google card (stars, lines, Website/Directions buttons — Hugo:
+  // keep all the information, the pair just has to FIT side by side).
+  // Mayfair carries its PPTX details; real businesses get real facts only.
+  const isMayfair = (x: Example) => x.name === 'Mayfair Plumbers';
+  const gFull = (x: Example, after: boolean) => `<div class="gcard">
+    <p class="gname">${esc(x.name)}</p>
+    <p class="gmeta"><b>${after && x.rating != null ? Number(x.rating).toFixed(1) : '5.0'}</b><span class="gstars">${stars(10)}</span><span>(${after ? x.after.toLocaleString('en-GB') : x.before})</span><span>· Plumber</span></p>
+    <p class="gsub">${isMayfair(x) ? '5+ years in business · London' : `Serves ${town} and nearby areas`}</p>
+    ${isMayfair(x) ? `<p class="gsub"><span class="gopen">Open 24 hours</span> · 020 3633 1526</p>` : ''}
+    <div class="gbtns">
+      <div class="gbtn"><span class="gcirc">${GLOBE}</span>Website</div>
+      <div class="gbtn"><span class="gcirc">${DIRECTIONS}</span>Directions</div>
     </div>
-    <div class="baarr"><svg width="20" height="20" viewBox="0 0 24 24" fill="#1a73e8"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg></div>
-    <div class="gcard">
-      <p class="gname">${esc(x.name)}</p>
-      <p class="gmeta">${x.rating != null ? `<b>${Number(x.rating).toFixed(1)}</b>` : ''}<span class="gstars">${stars(11)}</span><span>(${x.after.toLocaleString('en-GB')})</span></p>
-      <p class="gpill">≈${x.pct}% more calls a month</p>
-    </div>
+    ${after ? `<p class="gpill">≈${x.pct}% more calls a month</p>` : ''}
   </div>`;
+
+  // one business = one carousel slide: BEFORE | AFTER side by side; dots
+  // below the track page through the other examples
+  const exSlide = (x: Example) => `<div class="baslide"><div class="barow">
+    ${gFull(x, false)}
+    <div class="baarr"><svg width="18" height="18" viewBox="0 0 24 24" fill="#1a73e8"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg></div>
+    ${gFull(x, true)}
+  </div></div>`;
 
   const ctaButton = (extra = '') =>
     `<button class="cta${extra}" onclick="cta()"><span class="ctamain">${ctaLabel}</span><span class="ctasub">£1 today · then from £99/month</span></button>`;
@@ -154,11 +167,31 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 
 .play svg{margin-left:5px}
 .badge{position:absolute;z-index:1;left:12px;bottom:12px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px}
 .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9CA3AF;font-size:13px}
-/* fullscreen popup player */
+/* fullscreen popup player — custom controls (a slim bar, never the native
+   overlay: its dark pre-hide scrim was the "dark layer" on the video), with
+   the buy button + urgency right below the expanded video (competitor
+   pattern Hugo sent 2026-07-26) */
 .vmodal{position:fixed;inset:0;z-index:60;background:rgba(8,9,12,.94);display:none;align-items:center;justify-content:center}
 body.watch .vmodal{display:flex}
 body.watch{overflow:hidden}
-.vmodal video{height:min(92vh,163vw);height:min(92dvh,163vw);aspect-ratio:9/16;max-width:96vw;object-fit:contain;background:#111;border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.vbox{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:96vw}
+.vwrap{position:relative;height:min(72vh,150vw);height:min(72dvh,150vw);aspect-ratio:9/16;max-width:96vw;border-radius:16px;overflow:hidden;background:#111;box-shadow:0 30px 80px rgba(0,0,0,.5);cursor:pointer}
+/* cover: the video is 9:16 like the box (no crop), and the 16:9 poster
+   fills it while loading instead of floating between black bars */
+.vwrap video{width:100%;height:100%;object-fit:cover;display:block}
+.vpause{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
+.vpause span{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.94);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.4)}
+.vpause svg{margin-left:4px}
+.vbar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.55);border-radius:999px;padding:0 14px;height:40px}
+.vtime{color:#fff;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0}
+.vseek{-webkit-appearance:none;appearance:none;flex:1;height:26px;background:transparent;cursor:pointer;min-width:0}
+.vseek::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:linear-gradient(90deg,#fff var(--p,0%),rgba(255,255,255,.35) var(--p,0%))}
+.vseek::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;margin-top:-4.5px}
+.vseek::-moz-range-track{height:5px;border-radius:999px;background:rgba(255,255,255,.35)}
+.vseek::-moz-range-progress{height:5px;border-radius:999px;background:#fff}
+.vseek::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:0}
+.vbox .cta{margin-top:0;width:100%}
+.vinfo{color:rgba(255,255,255,.85);font-size:12.5px;font-weight:700;text-align:center}
 .vx{position:fixed;top:max(14px,env(safe-area-inset-top));right:14px;z-index:61;width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:19px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
 /* the button carries the offer; the line under it carries the urgency */
 .cta{display:flex;flex-direction:column;align-items:center;gap:3px;width:100%;margin-top:14px;padding:14px 16px;border:0;border-radius:14px;background:#1A1A1A;color:#fff;cursor:pointer;font-family:inherit}
@@ -172,20 +205,32 @@ body.watch{overflow:hidden}
 .proof{margin-top:22px}
 .prooflabel{text-align:center;font-size:11.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#6B7280;margin-bottom:8px}
 .proof img{width:100%;border-radius:14px;border:1px solid #E5E7EB;display:block;box-shadow:0 6px 18px rgba(0,0,0,.08)}
-/* before/after examples — one row per business, BEFORE left / AFTER right
-   even on mobile (Hugo 2026-07-26) */
+/* before/after examples — FULL Google cards side by side (even at 360px),
+   one business per slide, swipe or tap the dots for more (Hugo 2026-07-26) */
 .ba{margin-top:26px}
-.bahead{display:grid;grid-template-columns:1fr 26px 1fr;gap:8px;margin-bottom:2px}
+.bahead{display:grid;grid-template-columns:1fr 22px 1fr;gap:8px;margin-bottom:6px}
 .batag{display:block;text-align:center;font-size:11px;font-weight:900;letter-spacing:1.6px;color:#5F6368}
 .batag.blue{color:#1a73e8}
-.barow{display:grid;grid-template-columns:1fr 26px 1fr;gap:8px;align-items:stretch;margin-top:8px}
+.batrack{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.batrack::-webkit-scrollbar{display:none}
+.baslide{flex:0 0 100%;scroll-snap-align:start;scroll-snap-stop:always}
+.barow{display:grid;grid-template-columns:1fr 22px 1fr;gap:8px;align-items:stretch}
 .baarr{display:flex;align-items:center;justify-content:center}
-.gcard{background:#fff;border:1px solid #dadce0;border-radius:12px;padding:10px 12px;font-family:Arial,Roboto,sans-serif;box-shadow:0 3px 10px rgba(32,33,36,.06);min-width:0}
-.gname{font-size:13px;color:#202124;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gmeta{display:flex;align-items:center;gap:4px;font-size:11.5px;color:#5F6368;margin-top:4px;flex-wrap:wrap}
+.gcard{background:#fff;border:1px solid #dadce0;border-radius:12px;padding:11px 12px;font-family:Arial,Roboto,sans-serif;box-shadow:0 3px 10px rgba(32,33,36,.06);min-width:0}
+.gname{font-size:12.5px;color:#202124;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmeta{display:flex;align-items:center;gap:3px;font-size:10.5px;color:#5F6368;margin-top:4px;flex-wrap:wrap}
 .gmeta b{color:#202124;font-weight:400}
 .gstars{display:inline-flex;gap:1px}
-.gpill{display:inline-block;margin-top:6px;font-size:10.5px;font-weight:800;color:#16A34A;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:999px;padding:3px 8px;font-family:Inter,-apple-system,'Segoe UI',sans-serif}
+.gsub{font-size:10.5px;color:#5F6368;margin-top:3px}
+.gopen{color:#188038}
+.gbtns{display:flex;gap:18px;margin-top:9px}
+.gbtn{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9.5px;font-weight:600;color:#1a73e8}
+.gcirc{width:30px;height:30px;border-radius:50%;background:#fff;border:1px solid #dadce0;display:flex;align-items:center;justify-content:center}
+.gpill{display:inline-block;margin-top:7px;font-size:10px;font-weight:800;color:#16A34A;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:999px;padding:3px 8px;font-family:Inter,-apple-system,'Segoe UI',sans-serif}
+.badots{display:flex;justify-content:center;margin-top:4px}
+.badot{position:relative;width:26px;height:26px;border:0;background:transparent;padding:0;cursor:pointer}
+.badot::after{content:"";position:absolute;inset:9px;border-radius:50%;background:#D1D5DB}
+.badot.on::after{background:#1A1A1A}
 /* the value calculator — a little tool in its own soft card */
 .calc{margin-top:26px;background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:20px 18px;box-shadow:0 6px 18px rgba(0,0,0,.05)}
 .calchead{font-weight:900;font-size:clamp(16px,4.6vw,19px);text-align:center}
@@ -218,8 +263,9 @@ body.watch{overflow:hidden}
   .gpill{font-size:12px}
   .calc{padding:24px 26px}
 }
-.sheetbg{position:fixed;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
-.sheet{position:fixed;left:0;right:0;bottom:-100%;background:#fff;border-radius:22px 22px 0 0;padding:20px 18px 30px;transition:bottom .25s;max-width:460px;margin:0 auto}
+/* z 70/71 so the tier sheet also opens above the video popup (its CTA) */
+.sheetbg{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
+.sheet{position:fixed;left:0;right:0;bottom:-100%;z-index:71;background:#fff;border-radius:22px 22px 0 0;padding:20px 18px 30px;transition:bottom .25s;max-width:460px;margin:0 auto}
 .open .sheetbg{opacity:1;pointer-events:auto}
 .open .sheet{bottom:0}
 .sh{font-weight:900;font-size:18px;margin-bottom:2px}
@@ -251,7 +297,8 @@ body.watch{overflow:hidden}
   </div>` : `<div class="ba">
     <p class="prooflabel">${esc(settings.proof_caption || 'Examples of businesses that invest in reviews')}</p>
     <div class="bahead"><span class="batag">BEFORE</span><span></span><span class="batag blue">AFTER</span></div>
-    ${EXAMPLES.map(exRow).join('')}
+    <div class="batrack" id="batrack">${EXAMPLES.map(exSlide).join('')}</div>
+    ${EXAMPLES.length > 1 ? `<div class="badots">${EXAMPLES.map((_, i) => `<button class="badot${i === 0 ? ' on' : ''}" onclick="baGo(${i})" aria-label="Example ${i + 1}"></button>`).join('')}</div>` : ''}
   </div>`}
   <div class="calc">
     <p class="calchead">What's it worth to you?</p>
@@ -261,7 +308,7 @@ body.watch{overflow:hidden}
       <div class="jvwrap">£<input id="jv" type="number" inputmode="numeric" value="300" min="50" max="5000" step="50"></div>
       <button class="jvb" onclick="jvStep(50)" aria-label="More">+</button>
     </div>
-    <p class="calclabel">If it brought you <b id="nj">5</b> more jobs a month</p>
+    <p class="calclabel">If more reviews and a higher rank brought you <b id="nj">5</b> more jobs a month</p>
     <input id="njs" class="njs" type="range" min="1" max="10" step="1" value="5" aria-label="Extra jobs a month">
     <p class="calcout"><span id="cv">£18,000</span><span class="cvyr"> a year</span></p>
     <p class="calcnote" id="cn">HeyElsie costs £1,188 a year. 4 extra jobs in a year covers it — that's one every three months.</p>
@@ -270,7 +317,18 @@ body.watch{overflow:hidden}
 </div>
 ${videoUrl ? `<div class="vmodal" id="vm">
   <button class="vx" onclick="closeVideo()" aria-label="Close">✕</button>
-  <video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} playsinline preload="metadata"></video>
+  <div class="vbox">
+    <div class="vwrap" onclick="togglePlay()">
+      <video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} playsinline preload="metadata"></video>
+      <div class="vpause" id="vp"><span><svg width="22" height="26" viewBox="0 0 26 30"><polygon points="0,0 26,15 0,30" fill="#14161a"/></svg></span></div>
+      <div class="vbar" onclick="event.stopPropagation()">
+        <span class="vtime" id="vt">0:00</span>
+        <input class="vseek" id="vs" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
+      </div>
+    </div>
+    ${ctaButton()}
+    <p class="vinfo">2 spots left in ${town} · Cancel anytime in your first 10 days</p>
+  </div>
 </div>` : ''}
 <div class="sheetbg" onclick="closeSheet()"></div>
 <div class="sheet">
@@ -284,18 +342,31 @@ var PAGE='${esc(page.id)}',VARIANT='${esc(page.cta_variant)}';
 function send(t,extra){try{var p=Object.assign({page_id:PAGE,type:t,variant:VARIANT},extra||{});
 navigator.sendBeacon('/api/vsl/track',new Blob([JSON.stringify(p)],{type:'application/json'}))}catch(e){}}
 send('open');
-var v=document.getElementById('v'),vm=document.getElementById('vm'),fired={};
+/* custom player — the native controls overlay (with its dark scrim) never
+   appears; we draw our own slim bar instead */
+var v=document.getElementById('v'),vm=document.getElementById('vm'),vt=document.getElementById('vt'),
+vs=document.getElementById('vs'),vp=document.getElementById('vp'),fired={};
+function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x}
 if(v){v.addEventListener('timeupdate',function(){if(!v.duration)return;var pct=v.currentTime/v.duration*100;
+if(vt)vt.textContent=fmtT(v.currentTime);
+if(vs){vs.value=String(Math.round(pct*10));vs.style.setProperty('--p',pct+'%')}
 [25,50,75,95].forEach(function(m){if(pct>=m&&!fired[m]){fired[m]=1;send('progress',{pct:m})}})});
 v.addEventListener('ended',function(){closeVideo()});
-/* controls only once playback starts — the native pre-play scrim was the
-   "dark layer on the video" Hugo saw in the popup */
-v.addEventListener('playing',function(){v.controls=true})}
+v.addEventListener('play',function(){if(vp)vp.style.display='none'});
+v.addEventListener('pause',function(){if(vp&&document.body.classList.contains('watch'))vp.style.display='flex'})}
+if(vs){vs.addEventListener('input',function(){if(!v||!v.duration)return;
+v.currentTime=Number(vs.value)/1000*v.duration;vs.style.setProperty('--p',(Number(vs.value)/10)+'%')})}
 if(vm){vm.addEventListener('click',function(e){if(e.target===vm)closeVideo()})}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeVideo()});
-function play(){if(!v)return;document.body.classList.add('watch');try{v.play()}catch(e){}
-setTimeout(function(){if(document.body.classList.contains('watch'))v.controls=true},1500)}
+function togglePlay(){if(!v)return;if(v.paused){try{v.play()}catch(e){}}else{v.pause()}}
+function play(){if(!v)return;document.body.classList.add('watch');try{v.play()}catch(e){}}
 function closeVideo(){document.body.classList.remove('watch');if(v){try{v.pause()}catch(e){}}}
+/* before/after carousel dots */
+var bat=document.getElementById('batrack');
+function baGo(i){if(!bat)return;bat.scrollTo({left:bat.clientWidth*i,behavior:'smooth'})}
+if(bat){bat.addEventListener('scroll',function(){var i=Math.round(bat.scrollLeft/bat.clientWidth);
+var ds=document.querySelectorAll('.badot');
+for(var j=0;j<ds.length;j++){ds[j].className='badot'+(j===i?' on':'')}},{passive:true})}
 /* ---- the value calculator ---- */
 var jv=document.getElementById('jv'),njs=document.getElementById('njs'),njEl=document.getElementById('nj'),
 cv=document.getElementById('cv'),cn=document.getElementById('cn'),calcSent=0,cvShown=18000,cvAnim=0;
