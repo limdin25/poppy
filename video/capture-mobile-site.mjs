@@ -38,13 +38,27 @@ try {
   await page.goto(RAW_URL.startsWith('http') ? RAW_URL : `https://${RAW_URL}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
 }
 await page.waitForTimeout(3000)
-// remove the cookie banner outright so it doesn't sit over the page
+// Remove cookie/consent furniture. Learned on real leads (2026-07-26,
+// wolverhamptongasplumbing said "We SERVE cookies" and sailed past the old
+// literal-text match): kill by id/class keyword, by fixed-position cookie
+// text, and finally any leftover full-screen dimmer overlay.
 await page.evaluate(() => {
-  // remove every container that carries the banner (outermost included),
-  // as long as it isn't a page-level wrapper
-  ;[...document.querySelectorAll('div,section,aside')]
-    .filter((e) => e.textContent?.includes('We use cookies') && e.clientHeight > 20 && e.clientHeight < 600)
-    .forEach((e) => e.remove())
+  const rx = /cookie|consent|gdpr|cmp-|qc-cmp|privacy-?(banner|popup|notice)/i
+  for (const el of [...document.querySelectorAll('div,section,aside,dialog')]) {
+    const idcls = `${el.id} ${typeof el.className === 'string' ? el.className : ''}`
+    if (rx.test(idcls) && el.clientHeight > 20) { el.remove(); continue }
+    const t = el.textContent || ''
+    if (/cookies?/i.test(t) && el.clientHeight > 20 && el.clientHeight < 700
+        && ['fixed', 'sticky'].includes(getComputedStyle(el).position)) el.remove()
+  }
+  // childless fixed overlays covering ~the viewport = modal dimmers
+  for (const el of [...document.querySelectorAll('div')]) {
+    const s = getComputedStyle(el)
+    if (s.position === 'fixed' && el.childElementCount === 0
+        && el.clientWidth >= innerWidth * 0.9 && el.clientHeight >= innerHeight * 0.9) el.remove()
+  }
+  document.documentElement.style.overflow = 'visible'
+  document.body.style.overflow = 'visible'
 })
 await page.waitForTimeout(800)
 await page.screenshot({ path: OUT, fullPage: true })

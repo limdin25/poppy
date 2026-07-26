@@ -37,7 +37,9 @@ const extras = ROWS.map((_, i) => {
   return {
     open: r() < 0.28 ? 'Open 24 hours' : `Open · ${closes[Math.floor(r() * closes.length)]}`,
     years: `${5 + Math.floor(r() * 20)}+ years in business`,
-    phone: `${gen.area_code} ${200 + Math.floor(r() * 700)} ${100 + Math.floor(r() * 900)}`,
+    // mobile fallback varies the prefix PER ROW — a whole pack sharing one
+    // 07xxx prefix reads as fake (caught on the first real render 2026-07-26)
+    phone: `${gen.area_code.startsWith('07') ? `07${300 + Math.floor(r() * 686)}` : gen.area_code} ${200 + Math.floor(r() * 700)} ${100 + Math.floor(r() * 900)}`,
   }
 })
 
