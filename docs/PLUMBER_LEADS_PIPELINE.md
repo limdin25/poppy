@@ -138,3 +138,7 @@ and the left column should show the lead facts.
 - Sales script + token contract: `src/core/content/one-call-script.html`,
   `src/features/crm/lib/interpolateScript.ts`.
 - Claude memory: `project_leads_and_script_fill.md`.
+- **VSL video factory** (consumes these leads): `video/HANDOFF.md` §8 —
+  `custom_fields` town/rank/reviews/website feed `video/scripts/prep-lead.mjs`;
+  leads missing town/rank can't get a video (the import above is what
+  populates them).

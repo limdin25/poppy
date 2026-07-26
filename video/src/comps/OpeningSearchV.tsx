@@ -21,8 +21,12 @@ const TYPE_START = 78
 const TYPE_END = 190
 const CHARS = [...QUERY]
 
-const BOX = { x: 90, y: 810, w: 900, h: 96 }
-const BTN_Y = 960
+// Laid out AROUND the actor circle, which sits centered (y≈495–825, 330px)
+// until ~7s: logo above it, search box + buttons below it (QA 2026-07-26 —
+// the first cut put the box's top edge under the circle).
+const LOGO_Y = 300
+const BOX = { x: 90, y: 870, w: 900, h: 96 }
+const BTN_Y = 1030
 
 const TRACK = compileTrack({ x: 840, y: 1500 }, [
   { at: 40, to: { x: BOX.x + 220, y: BOX.y + BOX.h / 2 }, click: true }, // click the box
@@ -46,7 +50,7 @@ export const OpeningSearchV: React.FC = () => {
       {/* absolutely positioned so the cursor track coordinates are exact by
           construction (HANDOFF: verify cursor coords with stills) */}
       <div style={{ position: 'absolute', inset: 0, opacity: enter }}>
-        <img src={staticFile('google-logo.png')} alt="Google" style={{ position: 'absolute', top: 430, left: 0, right: 0, margin: '0 auto', height: 120 }} />
+        <img src={staticFile('google-logo.png')} alt="Google" style={{ position: 'absolute', top: LOGO_Y, left: 0, right: 0, margin: '0 auto', height: 120 }} />
 
         {/* the search box */}
         <div
