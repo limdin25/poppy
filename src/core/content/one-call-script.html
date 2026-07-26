@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>One-Call Close, Plumbers (UK) · Live Script</title>
+<title>The 90-Second Audit · Live Script</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 
@@ -315,7 +315,7 @@ details.branch>summary .tag{
 <body>
 
 <div class="topbar">
-  <span class="title">One-Call Close · Plumbers (UK)</span>
+  <span class="title">The 90-Second Audit · UK trades</span>
   <span class="stage">Scroll the whole script · click an objection to open it</span>
 </div>
 
@@ -327,10 +327,10 @@ details.branch>summary .tag{
       <div class="whisper-sub">Mind gone blank? Buy yourself a beat with any of these.</div>
       <ul>
         <li>"What's the real thing here, what's actually stopping you?"</li>
-        <li>"Honestly, it's a free trial, what have you got to lose?"</li>
-        <li>"Can I ask, is it the price, is it me, or is it whether it'll actually work?"</li>
+        <li>"Honestly, it's a 90-second video, what have you got to lose?"</li>
+        <li>"Can I ask, is it me, is it the timing, or do you just not want a video?"</li>
         <li>"Let me ask you this…" <em>then any question; it buys you a beat.</em></li>
-        <li>"I only take one plumber per town, so I want to make sure it's you."</li>
+        <li>"I've only recorded a handful of these, so I'd rather you had one."</li>
       </ul>
     </div>
     <h3>If they ask…</h3>
@@ -375,13 +375,13 @@ details.branch>summary .tag{
 </div>
 
 <script>
-const STAGES = ['OPENER','PERMISSION','DISCOVERY','DEMO','PIVOT','PRICE','CLOSE','DONE'];
+const STAGES = ['OPENER','HOOK','OFFER','PERMISSION','SENT','DONE'];
 
 const N = {
 
   start: {stage:'OPENER',
-    say:`"Hi, quick one: is that [owner_first], from [business_name]?"`,
-    dir:`Open with their name and business, warm and casual, like a mate ringing, not a salesman. Their details are filled in for you; the lead facts (reviews, rank, website) are in the left column.`,
+    say:`"Hi, quick one: is that [owner_first], from [business_name]? … Just so you know, the call's recorded for training."`,
+    dir:`Open with their name and business, warm and casual, like a mate ringing, not a salesman. The recording line is a legal requirement, say it once, lightly, and keep moving, never apologise for it.`,
     r:[
       {l:`Yes / Yeah`,n:`opener_hook`},
       {l:`Who's calling? What's this about?`,n:`who_calling`,obj:true},
@@ -389,21 +389,75 @@ const N = {
       {l:`Not interested / busy`,n:`busy_opener`,obj:true},
     ]},
 
-  opener_hook: {stage:'OPENER',
-    say:`"I noticed you've only got [reviews] reviews on Google, you've not long started up, have you?"`,
-    dir:`Say "only", it makes the number feel small. Sound genuinely puzzled, then go silent. It hits their ego; they'll defend how long they've been around. Let them.`,
+  opener_hook: {stage:'HOOK',
+    say:`"I was looking at [business_name] on Google, you've only got [reviews] reviews. Are you new to the area?"`,
+    dir:`Say "only", it makes the number feel small. Sound genuinely puzzled, then go silent. It hits their ego and they'll defend how long they've been around, which is exactly what you want.`,
     r:[
-      {l:`"No, been here years, what do you mean?"`,n:`permission`},
-      {l:`"Yeah, fairly new actually"`,n:`permission_new`},
-      {l:`Not interested / in a rush`,n:`not_interested_early`,obj:true},
-      {l:`"How did you get my number?"`,n:`how_number`,obj:true},
+      {l:`"No, we've been here years"`,n:`new_in_area`},
+      {l:`"Yeah, fairly new"`,n:`new_in_area`},
+      {l:`Who's calling? What's this about?`,n:`who_calling`,obj:true},
+      {l:`Receptionist, not the owner`,n:`gatekeeper`,obj:true},
+      {l:`"Not interested" / "I'm busy"`,n:`busy_opener`,obj:true},
     ]},
+
+  new_in_area: {stage:'HOOK',
+    say:`"That's what I thought. So you've been going all that time and you've still only got [reviews] reviews, while [competitor_1] up the road is sat above you. That's the bit that's costing you."`,
+    dir:`Let them tell you how long they've been going, then land it gently. Do NOT pitch yet, and do not quote a price. One beat of silence here does more than another sentence.`,
+    r:[
+      {l:`"Yeah, never got round to it"`,n:`the_offer`},
+      {l:`"I get all my work word of mouth"`,n:`word_of_mouth`,obj:true},
+      {l:`"I'm always fully booked"`,n:`always_busy`,obj:true},
+      {l:`"I'm number one already"`,n:`rank_1_rebuttal`,obj:true},
+      {l:`"How much is this?"`,n:`price_too_early`,obj:true},
+    ]},
+
+  the_offer: {stage:'OFFER',
+    say:`"Right, so here's why I actually rang. I've recorded you a 90-second audit. It shows where [business_name] comes up in [town] right now, who's above you, and how to get more reviews and more jobs off the back of it. Can I send it to you?"`,
+    dir:`THIS IS THE WHOLE CALL. You are not selling anything, you are asking permission to send a video. Say "90 seconds" and mean it. Then STOP TALKING and let them answer.`,
+    r:[
+      {l:`"Yeah, go on then"`,n:`permission_send`},
+      {l:`"What is it? What's the catch?"`,n:`what_do_i_get`,obj:true},
+      {l:`"Just email it to me"`,n:`send_email`,obj:true},
+      {l:`"I'm busy / on a job"`,n:`busy_permission`,obj:true},
+      {l:`"Not interested"`,n:`not_interested_mid`,obj:true},
+      {l:`"How much is it?"`,n:`price_too_early`,obj:true},
+    ]},
+
+  permission_send: {stage:'PERMISSION',
+    say:`"I'm not going to take any more of your time, that's genuinely it, I just want you to have it. If you tell me you'll watch it, I'll text it to this number right now. Is that alright?"`,
+    dir:`Giving the time back disarms them. "Is that alright?" is the ONLY close on this call, and it's a yes to WATCHING, not to buying. Never mention price here.`,
+    r:[
+      {l:`"Yeah, fine"`,n:`confirm_number`},
+      {l:`"Send it to a different number"`,n:`confirm_number`},
+      {l:`"I won't watch it"`,n:`final_push`,obj:true},
+    ]},
+
+  confirm_number: {stage:'SENT',
+    say:`"Perfect. Is this number I've rung you on the best one for a text? … Sending it over now, you'll have it in a few seconds. Has it come through?"`,
+    dir:`Read the number back and WAIT for the yes. Then tap Video, then "Text the video", in the dialer while they're still on the line. Stay on until they confirm it landed, a link they never received is a wasted call.`,
+    r:[
+      {l:`"Yeah, got it"`,n:`sent_confirm`},
+      {l:`Nothing came through`,n:`resend`},
+    ]},
+
+  resend: {stage:'SENT',
+    say:`"No bother, let me read it back to you … that right? Sending again now."`,
+    dir:`If it still doesn't land, fix the number in the CRM before you hang up. Don't spend more than a minute on this.`,
+    r:[
+      {l:`"Got it now"`,n:`sent_confirm`},
+    ]},
+
+  sent_confirm: {stage:'DONE',
+    say:`"Great. It's 90 seconds, watch it tonight when you've got a minute. Everything's on that page, and if it makes sense you can start it yourself from there for a quid. I'll let you get back to it, cheers [owner_first]."`,
+    dir:`Say "for a quid" ONCE, lightly, as a fact and not a pitch. Then get off the phone. The video closes, you don't. Hang up while they still feel you gave them something for free.`,
+    won:true,
+    r:[]},
 
   permission: {stage:'PERMISSION',
     say:`"Oh right, perfect. So the reason I'm calling: I built a system that helps plumbers get more Google reviews, and I want to get you 25 completely free, just for some feedback. Got 30 seconds?"`,
     dir:`Say "30 seconds," not a minute, a minute feels longer. Assume the yes and move straight into discovery. Don't wait for permission.`,
     r:[
-      {l:`Yeah / go on / sure`,n:`discovery_years`},
+      {l:`Yeah / go on / sure`,n:`new_in_area`},
       {l:`"I'm busy / on a job"`,n:`busy_permission`,obj:true},
       {l:`"How much does it cost?"`,n:`price_too_early`,obj:true},
       {l:`"Not interested"`,n:`not_interested_mid`,obj:true},
@@ -413,110 +467,110 @@ const N = {
     say:`"Oh, so you're building things up, makes sense. The reason I'm calling: I built a system that helps new plumbers get their first big batch of reviews from past customers. I want to show you how it works, completely free. Got 30 seconds?"`,
     dir:`Same close, adjusted frame for a newer business.`,
     r:[
-      {l:`Yeah / go on`,n:`discovery_years`},
+      {l:`Yeah / go on`,n:`new_in_area`},
       {l:`"I'm busy"`,n:`busy_permission`,obj:true},
       {l:`"Not interested"`,n:`not_interested_mid`,obj:true},
     ]},
 
-  discovery_years: {stage:'DISCOVERY',
+  discovery_years: {stage:'HOOK',
     say:`"So, how long have you actually been going?"`,
     dir:`You roughly know from their listing, but let them say it. Their answer sets up the gap.`,
     r:[
-      {l:`Gives a number (5, 10, 20 years…)`,n:`discovery_jobs`},
-      {l:`"Just started / fairly new"`,n:`discovery_jobs`},
+      {l:`Gives a number (5, 10, 20 years…)`,n:`new_in_area`},
+      {l:`"Just started / fairly new"`,n:`new_in_area`},
     ]},
 
-  discovery_jobs: {stage:'DISCOVERY',
+  discovery_jobs: {stage:'HOOK',
     say:`"Right, and roughly how many jobs are you doing a month?"`,
     dir:`Get a number. Whatever they say, you'll low-ball it in the maths.`,
     r:[
-      {l:`Gives a number`,n:`discovery_math`},
-      {l:`"It varies / hard to say"`,n:`discovery_varies`},
+      {l:`Gives a number`,n:`new_in_area`},
+      {l:`"It varies / hard to say"`,n:`new_in_area`},
     ]},
 
-  discovery_varies: {stage:'DISCOVERY',
+  discovery_varies: {stage:'HOOK',
     say:`"Yeah, let's just use the low end then. What's a quiet month like, jobs-wise?"`,
     dir:`You want the conservative number, you'll low-ball it further in the maths.`,
-    r:[{l:`Gives a number`,n:`discovery_math`}]},
+    r:[{l:`Gives a number`,n:`new_in_area`}]},
 
-  discovery_math: {stage:'DISCOVERY',
+  discovery_math: {stage:'HOOK',
     say:`"Okay, let's use the low end, say [10] a month. That's [10] times 12, [120] a year. Times [5] years, that's over [600] jobs. And you've got [25] reviews. How come?"`,
     dir:`Do the maths OUT LOUD. Low-ball their monthly number, they'll correct you UPWARD and widen the gap themselves. Then stop talking. Let it sit. Let it paint.`,
     r:[
-      {l:`"Yeah, I never really ask…"`,n:`discovery_pain`},
-      {l:`"I do ask, people just don't bother"`,n:`discovery_pain`},
-      {l:`"I've got more than that actually"`,n:`discovery_math_more`,obj:true},
+      {l:`"Yeah, I never really ask…"`,n:`new_in_area`},
+      {l:`"I do ask, people just don't bother"`,n:`new_in_area`},
+      {l:`"I've got more than that actually"`,n:`new_in_area`,obj:true},
     ]},
 
-  discovery_math_more: {stage:'DISCOVERY',
+  discovery_math_more: {stage:'HOOK',
     say:`"Okay, even so. You've done [X] jobs and you've got [Y] reviews. Even at 10% that's [X×0.1]. You should be at 20-30%, that's [X×0.2] to [X×0.3]. Imagine what happens when you've got 10 times what you've got now."`,
     dir:`Never argue with their number, just recalibrate the maths around whatever they give you.`,
-    r:[{l:`"Yeah… fair point"`,n:`discovery_pain`}]},
+    r:[{l:`"Yeah… fair point"`,n:`new_in_area`}]},
 
-  discovery_pain: {stage:'DISCOVERY',
+  discovery_pain: {stage:'HOOK',
     say:`"Do you ever have it where, sometimes it's busy, and sometimes it goes a bit quiet?"`,
     dir:`Almost every plumber says yes. This is the pain you're going to solve.`,
     r:[
-      {l:`"Yeah, sometimes it goes quiet"`,n:`ranking_demo`},
+      {l:`"Yeah, sometimes it goes quiet"`,n:`the_offer`},
       {l:`"Nah, I'm always fully booked"`,n:`always_busy`,obj:true},
     ]},
 
-  ranking_demo: {stage:'DEMO',
+  ranking_demo: {stage:'HOOK',
     say:`"Do you know where you're actually coming up on Google right now? Let me have a quick look for you… [type audibly] Okay, 'plumber in [town]'… I've got [competitor_1], [competitor_2] all above you. You're down at position [rank]. Means a customer scrolls past [plumbers_ahead] other plumbers before they even get to you." <a class="gsearch" href="[google_search_url]" target="_blank" rel="noopener">↗ open their live Google search</a>`,
     dir:`Their real numbers are filled in above. Click the ↗ link to show the live ranking as theatre while you talk. Always say the big number: "you're [rank]" hurts far more than "a couple down." Name the competitors, half the time they'll react to a name.`,
     r:[
-      {l:`"Bloody hell… really?"`,n:`ranking_stats`},
+      {l:`"Bloody hell… really?"`,n:`the_offer`},
       {l:`"I rank number one"`,n:`rank_1_rebuttal`,obj:true},
-      {l:`"Yeah, I knew that"`,n:`ranking_stats`},
+      {l:`"Yeah, I knew that"`,n:`the_offer`},
     ]},
 
-  ranking_stats: {stage:'DEMO',
+  ranking_stats: {stage:'HOOK',
     say:`"Here's the thing: 33% of all clicks go to the number one spot. 84% happen in the top three. And zero percent go to page two. You know what they say about page two of Google? It's the best place to hide a body, nobody goes there. So how many calls do you reckon you're getting from page two?"`,
     dir:`Let them answer. They'll say "not many." Then: "Exactly. Now imagine what happens when you get to page one."`,
-    r:[{l:`"…probably none"`,n:`pivot`}]},
+    r:[{l:`"…probably none"`,n:`the_offer`}]},
 
-  pivot: {stage:'PIVOT',
+  pivot: {stage:'OFFER',
     say:`"Has anybody ever actually explained to you how Google decides who to show first? Like, has anyone walked you through how this works?"`,
     dir:`Almost always: "No." That's your setup, you're about to teach them something nobody else has bothered to.`,
     r:[
-      {l:`"No, not really"`,n:`why_reviews`},
-      {l:`"Someone mentioned it once"`,n:`why_reviews`},
+      {l:`"No, not really"`,n:`the_offer`},
+      {l:`"Someone mentioned it once"`,n:`the_offer`},
     ]},
 
-  why_reviews: {stage:'PIVOT',
+  why_reviews: {stage:'OFFER',
     say:`"Right, because everyone just calls you and goes 'you need this, trust me.' Nobody shows you. So let me show you. Reviews are about 80% of how Google decides who to put first in your area, the single biggest thing. Most plumbers just don't ask, or they ask once and the customer's forgotten by the time they're home. My system texts every customer automatically, the right way, chases the ones who don't reply, replies to every review for you, and posts your best ones to your socials. That's what pushes you up the map. That's the whole job."`,
     dir:`When they ask "so how does it actually get them to leave one?", that's the money question. It means: I can't be bothered doing this myself. They're buying.`,
     r:[
-      {l:`"So how does it get them to leave a review?"`,n:`buying_signal`},
-      {l:`"So you just do reviews? That's it?"`,n:`just_reviews`,obj:true},
+      {l:`"So how does it get them to leave a review?"`,n:`the_offer`},
+      {l:`"So you just do reviews? That's it?"`,n:`the_offer`,obj:true},
       {l:`"I already text my customers myself"`,n:`do_it_myself`,obj:true},
       {l:`"My lot aren't on Google, older crowd"`,n:`word_of_mouth`,obj:true},
       {l:`"I already have an SEO / marketing guy"`,n:`have_someone`,obj:true},
     ]},
 
-  buying_signal: {stage:'PIVOT',
+  buying_signal: {stage:'OFFER',
     say:`"Look, you're not going to have time to text every customer, chase the ones who ignore it, and reply to every review the right way, week in week out. That's exactly what the system does, automatically, in the background. You're the expert at plumbing. Getting you found on Google is what I do."`,
     dir:`Don't overexplain, they're sold. Move straight to price.`,
-    r:[{l:`They seem happy / "go on"`,n:`price_present`}]},
+    r:[{l:`They seem happy / "go on"`,n:`the_offer`}]},
 
-  just_reviews: {stage:'PIVOT',
+  just_reviews: {stage:'OFFER',
     say:`"Yep, reviews, done properly and on autopilot. That's the 80%. Nail that and you climb. Simple as that, it's exactly why it works so well. So let's get your 10-day free trial switched on."`,
     dir:`Say it with pride, no hedging.`,
     r:[
-      {l:`"Okay, what does it cost?"`,n:`price_present`},
-      {l:`"What about the other 20%?"`,n:`other_20`,obj:true},
+      {l:`"Okay, what does it cost?"`,n:`the_offer`},
+      {l:`"What about the other 20%?"`,n:`the_offer`,obj:true},
     ]},
 
-  other_20: {stage:'PIVOT',
+  other_20: {stage:'OFFER',
     say:`"The rest is citations, backlinks, the slower technical stuff. But reviews are the biggest lever you can pull right now, and you'll feel it faster than anything else. Get those sorted first, then we talk about the rest."`,
     dir:`Stay focused. Don't oversell.`,
-    r:[{l:`"Makes sense / okay"`,n:`price_present`}]},
+    r:[{l:`"Makes sense / okay"`,n:`the_offer`}]},
 
-  price_present: {stage:'PRICE',
+  price_present: {stage:'OFFER',
     say:`"So the way it works, at the number of jobs you're doing you're looking at £___ a month, everything included, no contract. And I'll be straight with you, this is the lowest it's going to be. I'm taking a few more plumbers on at this rate and then it goes up. Lock in now and this is your price, you keep it even when everyone joining after you is paying more. Best bit: you don't pay a penny today. It's a 10-day free trial, I switch it on, the reviews start landing, and if you're not blown away in 10 days you cancel and owe nothing. Fair enough?"`,
     dir:`⚠️ ONE price only, never read out the menu. Type their jobs/month into the calculator (right rail) — it sets the price for you: up to 50 → £99 (Starter), 50–100 → £179 (Growth, most common), 100+ → £279 (Pro). Read that £___ figure as THE price, not "a" price. The urgency is "this price is going up soon, lock yours in" — it's honest ONLY because the price genuinely rises for later joiners while early ones keep their rate. Never bolt on a fake hard deadline ("closing this week", "last spot today") unless it's actually true — fake urgency is illegal in the UK.`,
     r:[
-      {l:`"Yeah, fair enough"`,n:`takeaway`},
+      {l:`"Yeah, fair enough"`,n:`the_offer`},
       {l:`"That's a lot / anything cheaper?"`,n:`price_cheaper`,obj:true},
       {l:`"What do I actually get for that?"`,n:`what_do_i_get`,obj:true},
       {l:`"I need to think about it"`,n:`think_about_it`,obj:true},
@@ -524,78 +578,78 @@ const N = {
       {l:`"Can't afford it right now"`,n:`cant_afford`,obj:true},
     ]},
 
-  takeaway: {stage:'PRICE',
+  takeaway: {stage:'OFFER',
     say:`"One thing about me, I don't chase people with follow-up calls. And here's why: you and I both know that the second we hang up you'll get busy, you'll have a job on, and it'll slip. I only take one plumber per town, and I've genuinely got another setup call shortly. So, no pressure either way, it's a free trial, shall we get your 10 days going?"`,
     dir:`Straight into the card ask, no pause.`,
     r:[
-      {l:`"Yeah, alright then"`,n:`card_ask`},
+      {l:`"Yeah, alright then"`,n:`permission_send`},
       {l:`"I need to think about it"`,n:`think_about_it`,obj:true},
       {l:`"Send me an email"`,n:`send_email`,obj:true},
       {l:`"Need to speak to my wife / partner"`,n:`wife_partner`,obj:true},
       {l:`"I'm just not interested"`,n:`final_push`,obj:true},
     ]},
 
-  card_ask: {stage:'CLOSE',
+  card_ask: {stage:'PERMISSION',
     say:`"Brilliant, let's get you signed up so I can switch it on today and start pulling those reviews in. I'll text you the sign-up link now, what's the best mobile number for you? … Perfect, sending it over right now. Stay on the line with me while you do it, takes 30 seconds. Did it come through?"`,
     dir:`Confirm their mobile BEFORE you send, you can't text the link without it (and it's a natural, low-pressure ask). Frame the whole thing as "signing you up," NOT "giving a card." Give the reason to do it NOW (switch it on today). Send the link while you talk and keep them on the line, "later" means the deal's dead.`,
     r:[
-      {l:`"Yeah, got it"`,n:`card_link`},
-      {l:`"Can I just read you the card instead?"`,n:`card_read`},
+      {l:`"Yeah, got it"`,n:`confirm_number`},
+      {l:`"Can I just read you the card instead?"`,n:`confirm_number`},
       {l:`"Don't have my card on me"`,n:`no_card`,obj:true},
       {l:`"I never buy over the phone"`,n:`never_phone`,obj:true},
     ]},
 
-  card_link: {stage:'CLOSE',
+  card_link: {stage:'PERMISSION',
     say:`"Great, open it up and pop me on speaker while you sign up, takes 30 seconds. Just fill your details in and add a card to start the free trial. Nothing's charged for 10 days."`,
     dir:`Stay on the line and talk them through the sign-up. Confirm it's actually done before you move on, "all signed up? Perfect, I can see it come through my end."`,
     r:[
-      {l:`Signed up ✓`,n:`google_access`},
-      {l:`"I'll finish it later"`,n:`card_link_push`,obj:true},
+      {l:`Signed up ✓`,n:`sent_confirm`},
+      {l:`"I'll finish it later"`,n:`permission_send`,obj:true},
     ]},
 
-  card_read: {stage:'CLOSE',
+  card_read: {stage:'PERMISSION',
     say:`"Course, I can pop it into the sign-up for you if that's easier. Go on, starting with four."`,
     dir:`Only if THEY ask to read it out, never lead with this in the UK. Just start writing as they read. Then reassure: "Nothing's charged today, this just starts your free trial. Nothing comes off the card for 10 days."`,
-    r:[{l:`Card taken ✓`,n:`google_access`}]},
+    r:[{l:`Card taken ✓`,n:`sent_confirm`}]},
 
-  customer_list: {stage:'CLOSE',
+  customer_list: {stage:'PERMISSION',
     say:`"Right, the bit that actually gets your reviews rolling: your past customers. Quick one, where do you keep them, something like Jobber or QuickBooks, or just a phone full of numbers? However you've got them is fine. Second we hang up I'll text you a one-minute form, you send your list back this afternoon before you get busy, I'll have it built tonight, and we're texting your customers tomorrow. Name and mobile is all I need, email too if you've got it. That work for you?"`,
     dir:`Open by LOCATING the list, not collecting it, that keeps momentum. Set a same-day deadline: back this afternoon, built tonight, texting their customers tomorrow. Never say "next day" for their list, that's where it gets forgotten and they cancel in two weeks. Your VA texts the one-minute form within the hour and nudges same-day. Minimum you need: name plus mobile, email is a bonus.`,
     r:[
-      {l:`"Yeah, no problem"`,n:`reactivation_promise`},
+      {l:`"Yeah, no problem"`,n:`sent_confirm`},
       {l:`"I don't want to hand over my customer list"`,n:`list_privacy`,obj:true},
       {l:`"I don't really have a list / don't track them"`,n:`no_list`,obj:true},
     ]},
 
-  crm_connect: {stage:'CLOSE',
+  crm_connect: {stage:'PERMISSION',
     say:`"Last thing, and this one's a nice-to-have, not needed to start: once you're up and running we can link whatever you use to book your jobs, Jobber, Housecall Pro, ServiceTitan, QuickBooks, so every new customer gets that same review request automatically the moment you finish a job. Nothing for you to do today, and nothing to send back. I'll build it in the background and drop you a connection link once it's ready, separate from everything else. What do you book your jobs on?"`,
     dir:`You've already closed, this is a nice-to-have and must never sound like a barrier. Keep it clearly SEPARATE from the one-minute list form (that's the only thing they send back). Capture the software name, it decides which integration we build next (we build them one at a time). No date promise here — "once it's ready." No system? Take them to no_crm.`,
     r:[
-      {l:`Tells me their system`,n:`after_close`},
+      {l:`Tells me their system`,n:`sent_confirm`},
       {l:`"I don't use anything / won't connect"`,n:`no_crm`,obj:true},
     ]},
 
-  reactivation_promise: {stage:'CLOSE',
+  reactivation_promise: {stage:'PERMISSION',
     say:`"So here's exactly what happens first, this is the review reactivation: the moment your list lands, I text everyone you've served over the last few months, a proper personalised message with your name on it, asking for a quick Google review. They already like you, so that's your first wave landing within days. Then it keeps going automatically from there. That's the bit that gets you moving straight away."`,
     dir:`This is the "here's what you're actually paying for" beat, say it warm as you wrap up. It makes the list request make total sense and calms any buyer's remorse. Keep it human, not techy.`,
     r:[
-      {l:`They're happy / "brilliant"`,n:`crm_connect`},
+      {l:`They're happy / "brilliant"`,n:`sent_confirm`},
     ]},
 
-  card_link_push: {stage:'CLOSE',
+  card_link_push: {stage:'PERMISSION',
     say:`"I've only got that slot open right now, it takes 30 seconds. Sign up while I'm here and I'll get your system started today."`,
     dir:`If they still won't, you've probably lost this one.`,
     r:[
-      {l:`They do it`,n:`google_access`},
+      {l:`They do it`,n:`sent_confirm`},
       {l:`Still won't`,n:`lost`,obj:true},
     ]},
 
-  google_access: {stage:'CLOSE',
+  google_access: {stage:'PERMISSION',
     say:`"Perfect, you're signed up. Quick win while we're here: let's connect your Google so your reviews land straight on your profile. Got your Google login handy? It's about ten seconds. You'll just tick to give me management access, you keep full ownership and can pull it back in thirty seconds any time. And if you haven't got the login on you, no bother at all, it sits right there on your dashboard, so you can pop back and connect it any time later today. Shall we do it now?"`,
     dir:`Try to connect it live, it's a permanent quick win and easiest done together. Pre-frame the management-access tick BEFORE it appears so nothing surprises them. No login to hand? Point them to the dashboard, they can finish it themselves any time, and text them the link as a backup. Never make this a barrier, they can always come back to it.`,
     r:[
-      {l:`They connect it now ✓`,n:`customer_list`},
-      {l:`"Not got my login on me"`,n:`customer_list`},
+      {l:`They connect it now ✓`,n:`sent_confirm`},
+      {l:`"Not got my login on me"`,n:`sent_confirm`},
       {l:`"That sounds dodgy"`,n:`access_fear`,obj:true},
     ]},
 
@@ -610,7 +664,7 @@ const N = {
     say:`"Oh, [your name]. I'm calling because I noticed you've only got [X] reviews on Google. I built a system that helps plumbers get more of them, and I wanted to show you how it works. Got 30 seconds?"`,
     dir:`Don't give your company name, they'll Google it and go cold. Answer the energy, not the question.`,
     r:[
-      {l:`"Yeah, go on"`,n:`discovery_years`},
+      {l:`"Yeah, go on"`,n:`new_in_area`},
       {l:`Still not interested`,n:`not_interested_early`,obj:true},
     ]},
 
@@ -618,7 +672,7 @@ const N = {
     say:`"It's public, your number's right on your Google listing. I was looking at your profile and noticed you've only got [X] reviews. Wanted to help you sort that. Got 30 seconds?"`,
     dir:`Short, honest, straight back to the ask.`,
     r:[
-      {l:`"Okay, go on"`,n:`discovery_years`},
+      {l:`"Okay, go on"`,n:`new_in_area`},
       {l:`Still not interested`,n:`not_interested_early`,obj:true},
     ]},
 
@@ -639,7 +693,7 @@ const N = {
     say:`"I get it, two seconds though. I noticed you've only got [X] reviews and you're coming up [Nth] on Google in [their area]. I'm not selling you anything right now, I just want to show you something. If it's not useful, hang up."`,
     dir:`Never argue. Just buy 30 more seconds. Most early "not interested" haven't heard the offer yet.`,
     r:[
-      {l:`"Alright, what is it?"`,n:`permission`},
+      {l:`"Alright, what is it?"`,n:`the_offer`},
       {l:`Still not interested / hangs up`,n:`lost`,obj:true},
     ]},
 
@@ -647,7 +701,7 @@ const N = {
     say:`"I hear you, 30 seconds, that's it. I noticed you've only got [X] reviews and I want to get you 25 more for free, just for feedback. Got 30 seconds?"`,
     dir:`If they say "call me back," don't, you'll never get them. Push now.`,
     r:[
-      {l:`"Go on then"`,n:`discovery_years`},
+      {l:`"Go on then"`,n:`new_in_area`},
       {l:`"Call me back later"`,n:`no_callback`,obj:true},
       {l:`Hangs up`,n:`lost`,obj:true},
     ]},
@@ -656,7 +710,7 @@ const N = {
     say:`"I don't do callbacks, because we both know what happens: you get busy, forget, and we've both wasted time. It's literally 30 seconds. You know how big free reviews could be for your business."`,
     dir:`One push. If they insist, move on.`,
     r:[
-      {l:`"Alright, go on then"`,n:`discovery_years`},
+      {l:`"Alright, go on then"`,n:`new_in_area`},
       {l:`Still wants callback / hangs up`,n:`lost`,obj:true},
     ]},
 
@@ -664,40 +718,40 @@ const N = {
     say:`"It's literally 30 seconds. What are you worried about, it's free reviews, I'm not trying to sell you anything. Quick one: how many lads have you got working for you?"`,
     dir:`Keep asking questions. Every time they say "I've got to go," ask another one. If they're answering, they're staying.`,
     r:[
-      {l:`They answer`,n:`discovery_years`},
+      {l:`They answer`,n:`new_in_area`},
       {l:`Genuinely can't talk`,n:`lost`,obj:true},
     ]},
 
-  price_too_early: {stage:'PERMISSION',
-    say:`"Honestly it depends on your setup, I've not got a one-size-fits-all price. Let me get to know your situation first so I can make it make sense for you. Quick one: how long have you been going?"`,
-    dir:`Ignore the price question, too early. Straight back into discovery.`,
-    r:[{l:`They answer`,n:`discovery_jobs`}]},
+  price_too_early: {stage:'OFFER',
+    say:`"It starts at a pound, and that's genuinely all I'm going to say about money on this call. The video walks you through exactly what you get and what it costs after, so you can decide in your own time with no one on the phone at you. Can I send it?"`,
+    dir:`Do NOT quote the monthly tiers on the phone any more. "A pound" is true, it's disarming, and it kills the price objection without starting a negotiation. Then go straight back to asking permission to send.`,
+    r:[{l:`They answer`,n:`new_in_area`}]},
 
   not_interested_mid: {stage:'PERMISSION',
     say:`"What are you not interested in, reviews, or more work? I'm not selling you anything yet. I literally want to show you where you're ranking on Google, for free. Worst case you know exactly where you stand. You've got 30 seconds for that."`,
     dir:`Push once more. If it's no again, let them go.`,
     r:[
-      {l:`"Alright, fine"`,n:`discovery_years`},
+      {l:`"Alright, fine"`,n:`new_in_area`},
       {l:`Still not interested`,n:`lost`,obj:true},
     ]},
 
-  always_busy: {stage:'DISCOVERY',
+  always_busy: {stage:'HOOK',
     say:`"You're busy now, how far are you booked out? A week? A month? What happens in three months when five other plumbers in [their town] have done this and they've all got 200 reviews? By the time you feel it, you never catch up. Let's lock your spot in while you're busy, not after you've lost it."`,
     dir:`"Always busy" is a smokescreen. Dig in, how far out are they actually booked?`,
     r:[
-      {l:`"Fair point…"`,n:`ranking_demo`},
+      {l:`"Fair point…"`,n:`the_offer`},
       {l:`"I'm fine thanks"`,n:`final_push`,obj:true},
     ]},
 
-  rank_1_rebuttal: {stage:'DEMO',
+  rank_1_rebuttal: {stage:'HOOK',
     say:`"That's because you're searching from your own phone, at your own address, Google knows you're the owner, so it shows you what you want to see. Drive 10 minutes away, grab someone else's phone, search again. You're not there. I'm looking at a report right now showing your actual ranking. Which keyword matters most to you, [plumber in town]? [boiler repair]? I guarantee there's one you're invisible on."`,
     dir:`If they genuinely rank for their main keyword, find one they DON'T rank for and pivot the pressure there.`,
     r:[
-      {l:`Surprised / intrigued`,n:`ranking_stats`},
-      {l:`"I still reckon I rank fine"`,n:`ranking_stats`},
+      {l:`Surprised / intrigued`,n:`the_offer`},
+      {l:`"I still reckon I rank fine"`,n:`the_offer`},
     ]},
 
-  think_about_it: {stage:'PRICE',
+  think_about_it: {stage:'OFFER',
     say:`"What's there to think about? What else do you need to know to decide right now? Because here's what actually happens: you've got jobs on, you've got the kids, you've got dinner, this gets buried. On a scale of one to ten, where are you?"`,
     dir:`Listen to the number. 7+: one push to close. 5-6: find the real objection. Below 5: you may be losing them.`,
     r:[
@@ -706,16 +760,16 @@ const N = {
       {l:`"Four or below"`,n:`final_push`,obj:true},
     ]},
 
-  one_to_ten_high: {stage:'PRICE',
+  one_to_ten_high: {stage:'OFFER',
     say:`"Okay, so what's the one thing stopping you making it a ten right now? It's either the product, you don't trust me, or the price. Which is it?"`,
     dir:`Let them name it. Handle that one thing. Then close.`,
     r:[
       {l:`"The price"`,n:`cant_afford`},
       {l:`"Just need to think"`,n:`final_push`,obj:true},
-      {l:`"Nothing… go on then"`,n:`card_ask`},
+      {l:`"Nothing… go on then"`,n:`permission_send`},
     ]},
 
-  one_to_ten_mid: {stage:'PRICE',
+  one_to_ten_mid: {stage:'OFFER',
     say:`"If you're a five, it's one of three things: the product, you don't see the value; me, you don't trust me; or the price. It's not that you don't want more reviews. So which one is it?"`,
     dir:`Get them to name it, then handle that specific thing.`,
     r:[
@@ -725,17 +779,17 @@ const N = {
       {l:`"I just don't want it"`,n:`final_push`,obj:true},
     ]},
 
-  send_email: {stage:'PRICE',
-    say:`"I don't send emails. And you and I both know why, it'll sit in your inbox, you won't read it, and it wastes both our time. What is it you're actually going to do with that email? What's the real hold-up here?"`,
-    dir:`"Send me an email" is almost always a polite no. Dig for the real objection.`,
+  send_email: {stage:'OFFER',
+    say:`"I can do one better than an email, it's a 90-second video, so it's quicker to watch than an email is to read. I'll text you the link, you tap it, it plays. Is this number alright?"`,
+    dir:`The old script refused emails. Don't refuse any more, you WANT to send something, that's the whole call. Just move them from email to a text, because a text gets opened and an email doesn't. If they insist on email, take it and send it there too, a watched video is a watched video.`,
     r:[
       {l:`"I want to check you're legit"`,n:`legit_check`},
       {l:`"Want to see the details"`,n:`what_do_i_get`},
-      {l:`No real reason, they cave`,n:`card_ask`},
+      {l:`No real reason, they cave`,n:`permission_send`},
       {l:`Genuine no`,n:`final_push`,obj:true},
     ]},
 
-  wife_partner: {stage:'PRICE',
+  wife_partner: {stage:'OFFER',
     say:`"Oh, I didn't realise you had a business partner. If I'd known, I'd have set this up with both of you."`,
     dir:`Pause. 99% of the time: "Well, she's not my business partner." Exactly.`,
     r:[
@@ -743,148 +797,148 @@ const N = {
       {l:`"Yes, an actual business partner"`,n:`partner_call`},
     ]},
 
-  wife_not_partner: {stage:'PRICE',
-    say:`"Right, so here's the thing. You and I both know what she's going to say: she hears '£179' and she can't explain it the way I just explained it to you. And what does your wife actually want? For you to be happy and the business to do well. She's not going to tell you you can't spend £179 to rank higher on Google. In every marriage there's a number you can spend without asking, and this is under it."`,
-    dir:`Then close straight away. Don't leave them time to think.`,
+  wife_not_partner: {stage:'OFFER',
+    say:`"Fair enough, and honestly that's a good reason to watch it together. It's 90 seconds, I'll text it over, show it to her tonight and you can both decide with nobody on the phone at you. Is this number alright?"`,
+    dir:`The old script argued past the partner. Don't. The video is the perfect thing to hand to a second decision-maker, so make the partner a REASON to send it rather than an obstacle.`,
     r:[
-      {l:`"…Yeah alright"`,n:`card_ask`},
+      {l:`"…Yeah alright"`,n:`permission_send`},
       {l:`"I still want to ask her"`,n:`partner_call`,obj:true},
     ]},
 
-  partner_call: {stage:'PRICE',
+  partner_call: {stage:'OFFER',
     say:`"Okay, let's call them right now, I don't mind. I want to make sure you get the 10-day trial while we're talking. Can we get them on?"`,
     dir:`If willing, three-way it. If they genuinely can't reach them, set a specific callback within the hour with both on.`,
     r:[
-      {l:`Partner joins the call`,n:`price_present`},
+      {l:`Partner joins the call`,n:`the_offer`},
       {l:`Can't reach them right now`,n:`final_push`,obj:true},
     ]},
 
-  what_do_i_get: {stage:'PRICE',
+  what_do_i_get: {stage:'OFFER',
     say:`"Automated review texts and emails to every customer, the messages written for you so they sound human. Personalised image requests with the customer's name on them, that alone gets 30% more replies than a plain link. It reactivates all your past customers. Auto-replies to every review. Posts your best ones to your socials. And it plugs into whatever system you already use. All of it, done for you, you don't lift a finger."`,
     dir:`Pause after "personalised image requests", that one lands.`,
     r:[
-      {l:`"Okay, that sounds good"`,n:`takeaway`},
+      {l:`"Okay, that sounds good"`,n:`the_offer`},
       {l:`"That's still expensive"`,n:`price_cheaper`,obj:true},
     ]},
 
-  price_cheaper: {stage:'PRICE',
-    say:`"There is, I can do £99 a month, that covers up to 50 customers a month. Doing your numbers you'd probably grow out of it fairly quickly, but you can start there and move up whenever you're ready."`,
-    dir:`You dropped a TIER, not the price. Never invent a discount, it makes the whole thing look fake.`,
+  price_cheaper: {stage:'OFFER',
+    say:`"It starts at a pound, so it's already about as cheap as it gets to try. Watch the 90 seconds and the page shows you what it is after that, and you pick the size that fits you. Shall I send it?"`,
+    dir:`Never negotiate on the phone any more. "A pound" beats any discount you could offer, and the page does the tier explaining for you. Straight back to asking permission to send.`,
     r:[
-      {l:`"Okay, £99 works"`,n:`card_ask`},
+      {l:`"Alright, send it over"`,n:`permission_send`},
       {l:`"Still not sure"`,n:`think_about_it`,obj:true},
     ]},
 
-  cant_afford: {stage:'PRICE',
+  cant_afford: {stage:'OFFER',
     say:`"The last thing you cut is the thing that brings in work. In a quiet spell there's 100 people looking and 100 plumbers, you'd better be the one they find first. What's a boiler install worth, two grand? Three? This just needs to win you one extra job a year to pay for itself. One job."`,
     dir:`If it's genuinely cash flow: "When's your next big payout? We can set the billing to kick in then. Lock the trial in now so you're not losing time."`,
     r:[
-      {l:`"Fair enough / alright"`,n:`card_ask`},
+      {l:`"Fair enough / alright"`,n:`permission_send`},
       {l:`"Genuinely can't right now"`,n:`billing_delay`,obj:true},
     ]},
 
-  billing_delay: {stage:'PRICE',
+  billing_delay: {stage:'OFFER',
     say:`"When's your next big job paying out? … Not a problem, we can set the billing to start then. Let's get the trial switched on now so you're not losing time, and I'll set the first charge for [date]."`,
     dir:`Only offer this once. If they still won't, move on.`,
     r:[
-      {l:`"Yeah, let's do that"`,n:`card_ask`},
+      {l:`"Yeah, let's do that"`,n:`permission_send`},
       {l:`Still won't`,n:`final_push`,obj:true},
     ]},
 
-  been_burned: {stage:'PRICE',
-    say:`"I get it, everyone has. That's honestly why I do it differently: no contract, 10-day free trial, you see the reviews landing before you've paid anything. I waive the setup fee, which means I lose money in month one. I don't break even until month two. So I'm carrying the risk here, not you, the only way you keep paying me is if it's actually working."`,
-    dir:`Pre-frame the Google management-rights ask before you send the link.`,
+  been_burned: {stage:'OFFER',
+    say:`"I get it, everyone has. Which is exactly why I'm not asking you for anything today. I just want to send you a 90-second video, you watch it, you decide in your own time. If it's rubbish you've lost 90 seconds. Can I send it?"`,
+    dir:`Being burned before is a trust problem, and asking for nothing is the answer to it. Do not counter with contract terms or trials, just shrink the ask back to "watch a video".`,
     r:[
-      {l:`"Okay, that seems fair"`,n:`card_ask`},
+      {l:`"Okay, that seems fair"`,n:`permission_send`},
       {l:`"But are you even a real company?"`,n:`legit_check`,obj:true},
       {l:`"What if I want to cancel?"`,n:`cancel_policy`,obj:true},
     ]},
 
-  cancel_policy: {stage:'PRICE',
+  cancel_policy: {stage:'OFFER',
     say:`"Cancel any time, no notice period, no penalty. Just let me know before your next billing date, that's it. I'm not making money if it's not working for you, so I'm not going to hold you to something that isn't."`,
     dir:`Say it simply. Don't oversell the cancellation, it shouldn't be the focus.`,
-    r:[{l:`"Okay, alright"`,n:`card_ask`}]},
+    r:[{l:`"Okay, alright"`,n:`permission_send`}]},
 
-  never_phone: {stage:'CLOSE',
+  never_phone: {stage:'PERMISSION',
     say:`"That's the thing, you're not giving me anything over the phone. I text you a link, you sign up yourself on your own phone and pop the card in on a secure Stripe page, I never see it. Nothing comes off it for 10 days. Fair enough?"`,
     dir:`In the UK this objection is nearly always card fear, signing up themselves on a secure page removes it completely. Say it calmly.`,
     r:[
-      {l:`"Oh, alright then"`,n:`card_ask`},
+      {l:`"Oh, alright then"`,n:`permission_send`},
       {l:`Still won't`,n:`final_push`,obj:true},
     ]},
 
-  no_card: {stage:'CLOSE',
+  no_card: {stage:'PERMISSION',
     say:`"Card in the van, is it? How fast can you get to it? I only take one plumber per town and I've got another call in a couple of hours. Can you grab it quickly, or is there someone at the office who can read it off while you sign up?"`,
     dir:`"Don't have my card" is often a stall. Push once, if they're in the van, they can usually find it. They'll need the card in hand to finish the sign-up.`,
     r:[
-      {l:`"Hold on, I'll grab it…"`,n:`card_link`},
-      {l:`"Just read it to you?"`,n:`card_read`},
+      {l:`"Hold on, I'll grab it…"`,n:`confirm_number`},
+      {l:`"Just read it to you?"`,n:`confirm_number`},
       {l:`Genuinely no card available`,n:`final_push`,obj:true},
     ]},
 
-  access_fear: {stage:'CLOSE',
+  access_fear: {stage:'PERMISSION',
     say:`"Management rights just means we can post, reply to reviews, update the listing, we can't own it or delete it, and you can remove us in 30 seconds from your Google account any time. The fact I told you this before you even saw the link, that's the opposite of dodgy. Scammers go quiet when you push them. I'm doing the opposite."`,
     dir:`Stay calm. If they truly won't give access, you can't deliver, don't force it.`,
     r:[
-      {l:`"Okay, fair enough"`,n:`customer_list`},
+      {l:`"Okay, fair enough"`,n:`sent_confirm`},
       {l:`"I still don't want to"`,n:`lost`,obj:true},
     ]},
 
-  list_privacy: {stage:'CLOSE',
+  list_privacy: {stage:'PERMISSION',
     say:`"Totally fair to ask, but honestly there's nothing sensitive in it. No card details, no private info, it's literally just names and mobile numbers, and they're your customers, people who already know you and rang you in the first place. All I'm doing is texting them on your behalf to ask for a review, the exact thing you'd do yourself if you had a spare hour. And think about it: if I was after customer data to sell, I'd hardly be ringing a local plumber, would I? It stays on your account, and that's it."`,
     dir:`Stay relaxed, this is nearly always a reflex, not a real block. Lead with "no card details, nothing sensitive." Once they hear it's just names + numbers of their OWN people, it evaporates.`,
     r:[
-      {l:`"Yeah, alright, that's fine"`,n:`reactivation_promise`},
+      {l:`"Yeah, alright, that's fine"`,n:`sent_confirm`},
       {l:`"I'd still rather not"`,n:`no_list`,obj:true},
     ]},
 
-  no_list: {stage:'CLOSE',
+  no_list: {stage:'PERMISSION',
     say:`"No stress at all, most plumbers don't keep a neat list, that's normal. Two easy options: if you use any booking or invoicing software we can pull it from there in a couple of clicks. If not, just jot me down 40 or 50 recent customers with their mobile numbers, that's plenty to get your first batch of reviews. You can always add more later. I'll text you a simple form to drop them into so it takes you two minutes. Deal?"`,
     dir:`Never let "no list" kill the deal, shrink the ask. 40-50 names is enough to start. Offer to send a simple form/sheet so it feels effortless. Only their OWN recent customers.`,
     r:[
-      {l:`"Yeah, I can do that"`,n:`reactivation_promise`},
-      {l:`"I genuinely can't get any names"`,n:`reactivation_promise`,obj:true},
+      {l:`"Yeah, I can do that"`,n:`sent_confirm`},
+      {l:`"I genuinely can't get any names"`,n:`sent_confirm`,obj:true},
     ]},
 
-  no_crm: {stage:'CLOSE',
+  no_crm: {stage:'PERMISSION',
     say:`"Not a problem in the slightest, you don't need any special software for this to work. The list you're sending me does the job on its own. And the moment you tell me what you use to book your jobs, I'll prep the connection link for it and send it over. Nothing for you to worry about today."`,
     dir:`Reassure and move on. The CRM connection is a nice-to-have, never a requirement. Don't let the absence of software feel like a problem.`,
     r:[
-      {l:`"Okay, good"`,n:`after_close`},
+      {l:`"Okay, good"`,n:`sent_confirm`},
     ]},
 
-  do_it_myself: {stage:'PIVOT',
+  do_it_myself: {stage:'OFFER',
     say:`"Right, and how many actually reply? For every 10 you text, maybe one or two? Our messages include a personalised image with the customer's name on it, we tested it across 100,000 messages and the images got a 30% higher reply rate. Nobody clicks a plain link, they think it's spam. But a photo of you with their name on it? They trust it. And here's the deal: if I can't pull 25 reviews out of the customers you already have, you never have to speak to me again. But if I can, you're clearly missing something."`,
     dir:`The personalised image is your killer differentiator. Use it.`,
-    r:[{l:`"Okay, fair enough"`,n:`price_present`}]},
+    r:[{l:`"Okay, fair enough"`,n:`the_offer`}]},
 
-  word_of_mouth: {stage:'PIVOT',
+  word_of_mouth: {stage:'OFFER',
     say:`"That's a great sign, it means you do great work, which means you should have way more than [X] reviews. But here's the thing: even if someone tells their mate 'ring ABC Plumbing, they're brilliant', they still Google you first. And if they see you've got 25 reviews and your competitor's got 400, they might just ring them instead. The referrals are still coming, you're just losing some at the last step."`,
     dir:`Validate the referral business, then show what they're leaking.`,
-    r:[{l:`"Yeah, I suppose that's true"`,n:`price_present`}]},
+    r:[{l:`"Yeah, I suppose that's true"`,n:`the_offer`}]},
 
-  have_someone: {stage:'PIVOT',
+  have_someone: {stage:'OFFER',
     say:`"Okay, how long have you had them? And how much are you paying? … And you're still on page [X]. Look, this has nothing to do with SEO or your website. SEO is the website. This is Google rankings, completely separate. 80% of clicks go to the map listing, only 16% click through to the website. I'm not touching what your bloke does. He does his bit, I do mine."`,
     dir:`Separate ranking from SEO. They can keep their guy AND use you, different things.`,
     r:[
-      {l:`"Oh, I didn't know that"`,n:`why_reviews`},
+      {l:`"Oh, I didn't know that"`,n:`the_offer`},
       {l:`"Don't want two people doing things"`,n:`final_push`,obj:true},
     ]},
 
-  legit_check: {stage:'PRICE',
+  legit_check: {stage:'OFFER',
     say:`"Course, and this bit's easy to check: we're a fully registered UK company, ULINC UNICO GROUP LTD, company number 11197856, registered at 483 Green Lanes, London N13 4BS. We trade as HeyElsie. Look us up on Companies House right now if you want, I'll happily wait. And here's my personal number on top of that, call or text me any time. But be honest with yourself, what you really want to know is: will it work, and will I disappear? That's exactly what the no-contract 10-day trial answers, you see the reviews land before you've paid a penny."`,
     dir:`They asked for proof, so give it. A real company number and registered address beats any reassurance. Read the company number slowly so they can write it down, then swing straight back to the trial: the registration proves you're real, the trial proves it works. Still don't VOLUNTEER the company name in the opener (they'll Google it and stall), only pull it out here, when they demand proof.`,
     r:[
-      {l:`"Yeah okay, fair enough"`,n:`card_ask`},
+      {l:`"Yeah okay, fair enough"`,n:`permission_send`},
       {l:`Still needs to check`,n:`final_push`,obj:true},
     ]},
 
-  final_push: {stage:'PRICE',
-    say:`"Look, either this makes sense to you or it doesn't. You know you need more reviews, you know you need more work coming in, and there's genuinely nothing to lose on a free trial. So what's the real thing here? If there's something specific, let's fix it right now. And if not, that's fine too, but let's call it."`,
-    dir:`Last push. If they say no, let them go. Don't beg.`,
+  final_push: {stage:'OFFER',
+    say:`"No problem at all. Can I just send you the video anyway? It's 90 seconds, it costs you nothing, and if it's not for you then at least you'll know where you stand on Google. Yes or no, either's fine."`,
+    dir:`This is the last ask on the call and it is ONLY for permission to send. Never push for a sale here. A polite no is a fine outcome, a video sent is a good one.`,
     r:[
       {l:`They name a specific objection`,n:`think_about_it`},
-      {l:`"Alright, let's do it"`,n:`card_ask`},
+      {l:`"Alright, let's do it"`,n:`permission_send`},
       {l:`Genuine no`,n:`lost`,obj:true},
     ]},
 
@@ -897,10 +951,8 @@ const N = {
 
 // ── The straight line (main script, always visible top-to-bottom) ──
 const MAINLINE = [
-  'start','opener_hook','permission','discovery_years','discovery_jobs',
-  'discovery_math','discovery_pain','ranking_demo','ranking_stats','pivot',
-  'why_reviews','buying_signal','price_present','takeaway','card_ask',
-  'card_link','google_access','customer_list','reactivation_promise','crm_connect','after_close'
+  'start','opener_hook','new_in_area','the_offer','permission_send',
+  'confirm_number','sent_confirm'
 ];
 const MAIN_SET = new Set(MAINLINE);
 
@@ -935,7 +987,7 @@ function branchHTML(id, chain){
 
 // Build the whole document once
 function build(){
-  let html = `<div class="doc-head"><h1>The One-Call Close, Plumbers (UK)</h1>
+  let html = `<div class="doc-head"><h1>The 90-Second Audit</h1>
     <div class="sub">Read the <b>blue</b> lines aloud, top to bottom, that's the straight line to the close. Grey lines are notes for you only. If the prospect pushes back, click the amber button on that line to open exactly what to say, then carry on down.</div></div>`;
 
   let lastStage = null;
@@ -997,7 +1049,7 @@ const FAQ = [
   {q:`How long before I see results?`, a:`Reviews start landing within a few days; the Google ranking climbs over the following weeks.`},
   {q:`What happens after the trial?`, a:`It rolls onto your plan automatically, and you can still cancel any time.`},
   {q:`Do you only do plumbers?`, a:`No, any local home-service business; plumbers are just my main one.`},
-  {q:`How much is it again?`, a:`£179 a month, everything included, or £99 if you're a smaller outfit.`},
+  {q:`How much is it again?`, a:`It starts at a pound. The 90-second video shows exactly what it costs after that, so they can decide without you selling at them.`},
   {q:`Will you touch my website?`, a:`No, nothing to do with your website, this is all your Google listing.`},
   {q:`My son/family built my site, leave it alone.`, a:`Course, I'm not touching it. This is only your Google reviews and ranking; if anything it sends more people to their work.`},
   {q:`I'm retiring / selling up soon.`, a:`That's the best reason, a profile with 200 reviews is worth real money to whoever buys it, and it keeps you busy till you hand over the keys.`},

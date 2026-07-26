@@ -19,22 +19,10 @@ import { isRealContactId } from './useContactPersistence';
 import { rowToCall } from './useCalls';
 import type { CallRecord, SmsMessage, ActivityEvent, Task } from '../types';
 
-// PR 32 (Hugo 2026-04-27): Twilio + sms_messages don't always store
-// phone numbers in the same format. Build the common variants for the
-// .or filter so inbound messages don't miss when from_number arrives
-// without the leading '+'.
-function phoneVariants(e164: string): string[] {
-  const trimmed = e164.trim();
-  if (!trimmed) return [];
-  const digits = trimmed.replace(/[^0-9]/g, '');
-  const out = new Set<string>();
-  out.add(trimmed);                  // raw, e.g. '+447863992555'
-  if (digits) {
-    out.add(digits);                  // '447863992555'
-    out.add(`+${digits}`);            // ensures leading +
-  }
-  return Array.from(out);
-}
+// phoneVariants() lived here to match the legacy sms_messages table's
+// inconsistent number formats. That table is gone and both its query and its
+// realtime subscription were removed with it (2026-07-26), so the helper had
+// no remaining caller.
 
 interface WkActivityRow {
   id: string;
@@ -147,10 +135,8 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
         // the page — so filter through an inner-joined wk_vsl_pages (one page
         // per contact, enforced by wk_vsl_pages_contact_idx).
         //
-        // MUST stay inside this FIXED block: the sms query below is pushed
-        // conditionally, and results[] is read positionally. Appended after it,
-        // this would land at index 6 or 7 depending on whether the contact has
-        // a phone, and every phoneless contact would render funnel rows as SMS.
+        // results[] is read positionally, so anything added here must keep its
+        // fixed index (index 6).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_vsl_events' as any) as any)
           .select('id, type, meta, created_at, wk_vsl_pages!inner(contact_id)')
@@ -159,28 +145,12 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
           .limit(100),
       ];
 
-      // sms_messages — only if we have the contact's phone to filter on.
-      // Existing /sms/inbox owns this table; we only READ. Match either
-      // direction so inbound + outbound show up.
-      //
-      // PR 32 (Hugo 2026-04-27): Twilio sometimes sends from_number with
-      // the leading '+' and sometimes without; sms_messages stores the
-      // raw value. Build all phone variants the contact's E.164 might
-      // appear as so the .or() filter doesn't miss inbound messages.
-      if (contactPhone) {
-        const variants = phoneVariants(contactPhone);
-        const orClause = variants
-          .flatMap((v) => [`from_number.eq.${v}`, `to_number.eq.${v}`])
-          .join(',');
-        queries.push(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (supabase.from('sms_messages' as any) as any)
-            .select('id, body, direction, created_at, from_number, to_number')
-            .or(orClause)
-            .order('created_at', { ascending: false })
-            .limit(100)
-        );
-      }
+      // The legacy `sms_messages` table was queried here for every contact
+      // with a phone number. That table NO LONGER EXISTS — the CRM's messages
+      // live in wk_sms_messages, read by useContactMessages — so the request
+      // 404'd on every single contact open and was swallowed silently (this
+      // hook checks no errors). Removed 2026-07-26 after the audit; `sms`
+      // stays on the return type as an empty array so no caller breaks.
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any[] = await Promise.all(queries);
@@ -193,7 +163,9 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
       const actRes = results[4];
       const tasksRes = results[5];
       const funnelRes = results[6];
-      const smsRes = contactPhone ? results[7] : { data: [] };
+      // Legacy source removed — see the note above. Kept as an empty result so
+      // the mapping below and the `sms` field on the return type still hold.
+      const smsRes: { data: SmsMessageRow[] } = { data: [] };
 
       // This hook checks no other errors, which is how a wrong embed would
       // become a permanently empty funnel with no diagnostic anywhere.
@@ -276,43 +248,13 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
 
     void load();
 
-    // PR 32 (Hugo 2026-04-27): subscribe to realtime sms_messages
-    // INSERT so inbound replies appear in the inbox without having to
-    // refresh the page. Filter is best-effort — the supabase realtime
-    // filter syntax is exact-match only, so we listen on ALL inserts
-    // and re-load if a row's from_number / to_number matches one of
-    // the contact's phone variants.
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    if (contactPhone) {
-      const variantSet = new Set(phoneVariants(contactPhone));
-      channel = supabase
-        .channel(`sms_messages:${contactId}`)
-        .on(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          'postgres_changes' as any,
-          { event: 'INSERT', schema: 'public', table: 'sms_messages' },
-          (payload: { new?: { from_number?: string; to_number?: string } }) => {
-            const row = payload.new ?? {};
-            if (
-              (row.from_number && variantSet.has(row.from_number)) ||
-              (row.to_number && variantSet.has(row.to_number))
-            ) {
-              void load();
-            }
-          }
-        )
-        .subscribe();
-    }
+    // The realtime subscription that used to live here watched `sms_messages`
+    // INSERTs — the same dropped table as the query above, so it could never
+    // fire. Inbound replies already arrive live via useContactMessages, which
+    // listens on wk_sms_messages. Removed 2026-07-26 after the audit.
 
     return () => {
       cancelled = true;
-      if (channel) {
-        try {
-          void supabase.removeChannel(channel);
-        } catch {
-          /* ignore */
-        }
-      }
     };
   }, [contactId, contactPhone]);
 

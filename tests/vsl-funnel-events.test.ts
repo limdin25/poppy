@@ -506,8 +506,10 @@ describe('where Hugo and each agent can see it', () => {
     // The join has to go through wk_vsl_pages — wk_vsl_events has no contact_id.
     expect(timeline).toMatch(/wk_vsl_pages!inner\(contact_id\)/)
     expect(timeline).toMatch(/results\[6\]/)
-    // …and the sms index MUST shift, or phoneless contacts render funnel rows as SMS.
-    expect(timeline).toMatch(/contactPhone \? results\[7\]/)
+    // The dropped `sms_messages` table (which 404'd on every contact open) is
+    // gone, so results[] is no longer variable-length and nothing can shift
+    // under the funnel query's fixed index.
+    expect(timeline).not.toMatch(/from\('sms_messages'/)
     expect(inbox).toMatch(/thread-funnel-event/)
     expect(detail).toMatch(/detail-funnel-event/)
   })
@@ -521,5 +523,105 @@ describe('where Hugo and each agent can see it', () => {
   it('date+time is pinned to Europe/London', () => {
     expect(helpers).toMatch(/export function formatDateTime/)
     expect(helpers).toMatch(/timeZone: 'Europe\/London'/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// QA + AppSec audit, 2026-07-26. Each of these pins a defect found by driving
+// the live app, so it cannot come back silently.
+// ---------------------------------------------------------------------------
+
+describe('audit — the calling journey', () => {
+  const script = read('src/core/content/one-call-script.html')
+  const seed = read('scripts/seed-audit-call-motion.sql')
+  const vsl = read('api/lib/vsl-settings.ts')
+
+  it('the agent is told to say the call is recorded', () => {
+    // 784 recordings existed with no notice given to the person on the phone.
+    expect(script).toMatch(/recorded for training/)
+    expect(seed).toMatch(/recorded for training/)
+  })
+
+  it('the live-call script pane is seeded, so it is never the empty state', () => {
+    // wk_call_scripts had ZERO rows, so agents saw "No default script yet —
+    // open Settings", and Settings is admin-only. A dead end mid-call.
+    expect(seed).toMatch(/insert into wk_call_scripts/)
+    expect(seed).toMatch(/is_default/)
+  })
+
+  it('nothing in the rendered script closes on a card or quotes the tiers', () => {
+    // The whole call is now permission to send a video; the page takes payment.
+    const nodes = script.slice(script.indexOf('const N = {'), script.indexOf('const MAINLINE'))
+    const mainline = script.match(/const MAINLINE = \[[\s\S]*?\];/)![0]
+    const bodies = new Map<string, string>()
+    for (const m of nodes.matchAll(/\n {2}([a-z_0-9]+):\s*\{stage:[\s\S]*?(?=\n {2}[a-z_0-9]+:\s*\{stage:|$)/g)) {
+      bodies.set(m[1], m[0])
+    }
+    const reach = new Set(Array.from(mainline.matchAll(/'([a-z_0-9]+)'/g), (m) => m[1]))
+    const stack = [...reach]
+    while (stack.length) {
+      for (const t of Array.from((bodies.get(stack.pop()!) || '').matchAll(/n:`([a-z_0-9]+)`/g), (m) => m[1])) {
+        if (!reach.has(t)) { reach.add(t); stack.push(t) }
+      }
+    }
+    const rendered = [...reach].map((k) => bodies.get(k) || '').join(' ')
+    expect(rendered).not.toMatch(/£99|£179|£279/)
+    expect(rendered).not.toMatch(/\bcard\b/i)
+    expect(rendered).toMatch(/90-second audit/)
+  })
+
+  it('the coach may not be told to take a card or quote tiers', () => {
+    expect(seed).toMatch(/NEVER ask for a card/)
+    expect(seed).toMatch(/NEVER read out the monthly tiers/)
+  })
+
+  it('the SMS echoes what the agent promised on the phone', () => {
+    // "I'll text you the 90-second audit" then a text saying something else
+    // reads like a different offer from a stranger.
+    expect(vsl).toMatch(/90-second audit I just mentioned/)
+  })
+})
+
+describe('audit — security + correctness fixes', () => {
+  const guard = read('src/features/admin/AdminGuard.tsx')
+  const vercel = JSON.parse(read('vercel.json')) as {
+    headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }>
+  }
+  const timeline = read('src/features/crm/hooks/useContactTimeline.ts')
+  const queue = read('src/features/crm/dialer-pro/useQueuePro.ts')
+  const dnc = read('supabase/migrations/20260727000004_do_not_call.sql')
+
+  it('a logged-out visitor to /admin reaches a terminal state', () => {
+    // The effect used to bail before setting isAdmin, so it stayed null, the
+    // spinner never cleared and the redirect below was unreachable —
+    // /admin and /super hung on a blank page forever.
+    expect(guard).toMatch(/if \(!user\?\.email\) \{\s*setIsAdmin\(false\)/)
+    expect(guard).toMatch(/if \(!user\) return <Navigate to="\/login"/)
+  })
+
+  it('every response carries the baseline security headers', () => {
+    const global = vercel.headers.find((h) => h.source === '/(.*)')
+    expect(global, 'no global header rule').toBeTruthy()
+    const keys = global!.headers.map((h) => h.key)
+    // X-Frame-Options: the CRM was framable by any site (clickjacking an agent
+    // into clicking real buttons). SAMEORIGIN, not DENY — admin pages iframe
+    // our own /leads and the scraper.
+    expect(keys).toContain('X-Frame-Options')
+    expect(global!.headers.find((h) => h.key === 'X-Frame-Options')!.value).toBe('SAMEORIGIN')
+    expect(keys).toContain('X-Content-Type-Options')
+    expect(keys).toContain('Referrer-Policy')
+  })
+
+  it('no query hits the dropped sms_messages table', () => {
+    // It 404'd on every contact open and the failure was swallowed.
+    expect(timeline).not.toMatch(/from\('sms_messages'/)
+    expect(timeline).not.toMatch(/table: 'sms_messages'/)
+  })
+
+  it('suppressed leads never enter the dialer queue', () => {
+    expect(queue).toMatch(/\.eq\('wk_contacts\.do_not_call', false\)/)
+    expect(dnc).toMatch(/add column if not exists do_not_call boolean/)
+    // …and the flag also clears any row already queued.
+    expect(dnc).toMatch(/set status = 'skipped'/)
   })
 })

@@ -78,12 +78,15 @@ export const VSL_POUND_PRICE = process.env.VSL_POUND_PRICE || 'price_1Tx5miLdAEh
 export const DEFAULT_VSL_SETTINGS: VslSettings = {
   enabled: false,
   default_video_url: '',
+  // Must echo the exact words the agent just said on the phone — "a 90-second
+  // audit" — or the text reads like a different offer arriving from a stranger
+  // (Hugo 2026-07-26, the new video-first call).
   send_template:
-    "Hi {first}, it's {agent} from HeyElsie — here's the video I made for {business}: {url}",
+    "Hi {first}, it's {agent} from HeyElsie — here's the 90-second audit I just mentioned for {business}: {url}",
   // free-website offer withdrawn (Hugo 2026-07-26) — same message as the
   // with-site variant; the field stays so the drawer can differentiate later
   send_template_no_site:
-    "Hi {first}, it's {agent} from HeyElsie — here's the video I made for {business}: {url}",
+    "Hi {first}, it's {agent} from HeyElsie — here's the 90-second audit I just mentioned for {business}: {url}",
   cta_labels: { a: 'Start getting reviews', b: 'Get my reviews rolling' },
   watched_threshold_pct: 50,
   quiet_hours: { start: '08:00', end: '20:00' },

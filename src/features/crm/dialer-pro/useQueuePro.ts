@@ -69,9 +69,14 @@ async function fetchQueueRows(campaignId: string | null): Promise<QueueLead[]> {
   let q = (supabase.from('wk_dialer_queue' as any) as any)
     .select(
       'id, contact_id, campaign_id, priority, attempts, scheduled_for, status, ' +
-        'wk_contacts:contact_id ( id, name, phone, pipeline_column_id, custom_fields )',
+        'wk_contacts:contact_id!inner ( id, name, phone, pipeline_column_id, custom_fields, do_not_call )',
     )
     .eq('status', 'pending')
+    // Never surface a suppressed lead. A trigger also skips their pending queue
+    // rows the moment they're flagged, but this is the guard that matters: it
+    // holds even if a row was queued before the flag was set (PECR reg 21 —
+    // once they've said don't call, we don't call).
+    .eq('wk_contacts.do_not_call', false)
     .or(`scheduled_for.is.null,scheduled_for.lte.${nowIso}`)
     .order('priority', { ascending: false, nullsFirst: false })
     .order('scheduled_for', { ascending: true, nullsFirst: true })
