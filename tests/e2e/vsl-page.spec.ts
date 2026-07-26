@@ -23,7 +23,7 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     // Personalised headline + the main button (plus its copy under the
     // calculator) + scarcity line.
     await expect(page.locator('h1')).toContainText('I made a video for')
-    await expect(page.locator('.cta')).toHaveCount(3) // main + calculator copy + popup copy
+    await expect(page.locator('.cta')).toHaveCount(2) // main + calculator copy
     await expect(page.locator('.spots')).toContainText('left in')
 
     // OG tags are server-rendered for the SMS preview.
@@ -71,23 +71,21 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
       }
     }
 
-    // Tapping the preview opens the fullscreen popup (the page itself never
-    // expands): custom slim bar (never the native controls overlay), and the
-    // buy button + urgency sit right below the expanded video.
+    // Tapping the preview expands the player IN PLACE (no popup — the page
+    // keeps scrolling while they listen), with our custom slim bar and never
+    // the native controls overlay (its scrim was the "dark layer").
     await page.locator('#stage').click()
-    await expect(page.locator('.vmodal')).toBeVisible()
-    await expect(page.locator('.vmodal video')).toBeVisible()
-    expect(await page.locator('.vmodal video').getAttribute('controls')).toBeNull()
+    await expect(page.locator('#stage')).toHaveClass(/playing/)
+    await expect(page.locator('#stage video')).toBeVisible()
+    expect(await page.locator('#stage video').getAttribute('controls')).toBeNull()
     await expect(page.locator('.vbar')).toBeVisible()
-    await expect(page.locator('.vmodal .cta')).toBeVisible()
-    await expect(page.locator('.vinfo')).toContainText('spots left')
-    // its CTA opens the tier sheet above the popup
-    await page.locator('.vmodal .cta').click()
-    await expect(page.locator('.sheet')).toBeVisible()
-    await page.locator('.sheetbg').click({ position: { x: 10, y: 10 } })
-    await page.locator('.vx').click()
-    await expect(page.locator('.vmodal')).toBeHidden()
-    await expect(page.locator('#stage')).toBeVisible()
+    await expect(page.locator('#stage .thumb')).toBeHidden()
+    // the page is still scrollable to the CTA and beyond while it plays
+    await page.locator('.cta').first().scrollIntoViewIfNeeded()
+    await expect(page.locator('.cta').first()).toBeVisible()
+    // tapping the expanded video pauses it and shows the play-again button
+    await page.locator('#stage').click()
+    await expect(page.locator('#vp')).toBeVisible()
   })
 
   test('value calculator computes, animates and fires its beacon once', async ({ page }) => {

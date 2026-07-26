@@ -156,9 +156,17 @@ body{font-family:Inter,-apple-system,'Segoe UI',sans-serif;background:#F7F5EF;co
 h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 3px;text-wrap:balance}
 .sub{color:#6B7280;font-size:clamp(12px,3.4vw,14px);margin-bottom:12px}
 /* The video is a compact RECTANGULAR preview (the poster shows the lead's
-   site — or their Google card — behind the actor). Pressing play opens the
-   fullscreen popup player; the page itself never expands. */
+   site — or their Google card — behind the actor). Pressing play expands it
+   IN PLACE to the vertical player (Hugo 2026-07-26: no popup — people scroll
+   the page while they listen), with our custom slim controls — the native
+   overlay's dark scrim never appears. */
 .stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#111;box-shadow:0 12px 34px rgba(0,0,0,.16);cursor:pointer;max-height:34vh}
+.stage.playing{aspect-ratio:9/16;height:min(62vh,163vw);height:min(62dvh,163vw);width:auto;max-width:100%;max-height:none;margin-left:auto;margin-right:auto}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111;display:none}
+.stage.playing video{display:block}
+.stage.playing .thumb{display:none}
+.stage .vbar{display:none}
+.stage.playing .vbar{display:flex}
 /* center 28% is a no-op for the exact-fit 16:9 PosterV art, but keeps the
    face framed if a legacy/fallback 9:16 frame-grab poster ever shows here */
 .thumb{position:absolute;inset:0;background-size:cover;background-position:center 28%;display:flex;align-items:center;justify-content:center}
@@ -167,22 +175,13 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 
 .play svg{margin-left:5px}
 .badge{position:absolute;z-index:1;left:12px;bottom:12px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px}
 .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9CA3AF;font-size:13px}
-/* fullscreen popup player — custom controls (a slim bar, never the native
-   overlay: its dark pre-hide scrim was the "dark layer" on the video), with
-   the buy button + urgency right below the expanded video (competitor
-   pattern Hugo sent 2026-07-26) */
-.vmodal{position:fixed;inset:0;z-index:60;background:rgba(8,9,12,.94);display:none;align-items:center;justify-content:center}
-body.watch .vmodal{display:flex}
-body.watch{overflow:hidden}
-.vbox{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:96vw}
-.vwrap{position:relative;height:min(72vh,150vw);height:min(72dvh,150vw);aspect-ratio:9/16;max-width:96vw;border-radius:16px;overflow:hidden;background:#111;box-shadow:0 30px 80px rgba(0,0,0,.5);cursor:pointer}
-/* cover: the video is 9:16 like the box (no crop), and the 16:9 poster
-   fills it while loading instead of floating between black bars */
-.vwrap video{width:100%;height:100%;object-fit:cover;display:block}
+/* custom player chrome (inside the stage) */
 .vpause{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
 .vpause span{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.94);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.4)}
 .vpause svg{margin-left:4px}
-.vbar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.55);border-radius:999px;padding:0 14px;height:40px}
+.vbar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.55);border-radius:999px;padding:0 14px;height:40px;opacity:1;transition:opacity .3s}
+/* auto-hides during playback so it never sits on the subtitles */
+.vbar.hid{opacity:0;pointer-events:none}
 .vtime{color:#fff;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0}
 .vseek{-webkit-appearance:none;appearance:none;flex:1;height:26px;background:transparent;cursor:pointer;min-width:0}
 .vseek::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:linear-gradient(90deg,#fff var(--p,0%),rgba(255,255,255,.35) var(--p,0%))}
@@ -190,9 +189,6 @@ body.watch{overflow:hidden}
 .vseek::-moz-range-track{height:5px;border-radius:999px;background:rgba(255,255,255,.35)}
 .vseek::-moz-range-progress{height:5px;border-radius:999px;background:#fff}
 .vseek::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:0}
-.vbox .cta{margin-top:0;width:100%}
-.vinfo{color:rgba(255,255,255,.85);font-size:12.5px;font-weight:700;text-align:center}
-.vx{position:fixed;top:max(14px,env(safe-area-inset-top));right:14px;z-index:61;width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:19px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
 /* the button carries the offer; the line under it carries the urgency */
 .cta{display:flex;flex-direction:column;align-items:center;gap:3px;width:100%;margin-top:14px;padding:14px 16px;border:0;border-radius:14px;background:#1A1A1A;color:#fff;cursor:pointer;font-family:inherit}
 .cta:active{transform:scale(.985)}
@@ -280,9 +276,15 @@ body.watch{overflow:hidden}
 <div class="wrap">
   <h1>Hi ${first ? first + ' ' : ''}👋 I made a video for ${business}</h1>
   <p class="sub">90 seconds — where you rank on Google, and how to fix it.</p>
-  <div class="stage" id="stage" onclick="play()">${
+  <div class="stage" id="stage" onclick="stageTap()">${
     videoUrl
-      ? `<div class="thumb"${poster ? ` style="background-image:url('${esc(poster)}')"` : ''}>
+      ? `<video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} playsinline preload="metadata"></video>
+      <div class="vpause" id="vp"><span><svg width="22" height="26" viewBox="0 0 26 30"><polygon points="0,0 26,15 0,30" fill="#14161a"/></svg></span></div>
+      <div class="vbar" onclick="event.stopPropagation()">
+        <span class="vtime" id="vt">0:00</span>
+        <input class="vseek" id="vs" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
+      </div>
+      <div class="thumb"${poster ? ` style="background-image:url('${esc(poster)}')"` : ''}>
         <div class="play"><svg width="26" height="30" viewBox="0 0 26 30"><polygon points="0,0 26,15 0,30" fill="#14161a"/></svg></div>
         <div class="badge">▶ Watch · 90 sec</div>
       </div>`
@@ -315,21 +317,6 @@ body.watch{overflow:hidden}
   </div>
   ${ctaButton(' cta2')}
 </div>
-${videoUrl ? `<div class="vmodal" id="vm">
-  <button class="vx" onclick="closeVideo()" aria-label="Close">✕</button>
-  <div class="vbox">
-    <div class="vwrap" onclick="togglePlay()">
-      <video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} playsinline preload="metadata"></video>
-      <div class="vpause" id="vp"><span><svg width="22" height="26" viewBox="0 0 26 30"><polygon points="0,0 26,15 0,30" fill="#14161a"/></svg></span></div>
-      <div class="vbar" onclick="event.stopPropagation()">
-        <span class="vtime" id="vt">0:00</span>
-        <input class="vseek" id="vs" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
-      </div>
-    </div>
-    ${ctaButton()}
-    <p class="vinfo">2 spots left in ${town} · Cancel anytime in your first 10 days</p>
-  </div>
-</div>` : ''}
 <div class="sheetbg" onclick="closeSheet()"></div>
 <div class="sheet">
   <p class="sh">Pick your size</p>
@@ -343,24 +330,26 @@ function send(t,extra){try{var p=Object.assign({page_id:PAGE,type:t,variant:VARI
 navigator.sendBeacon('/api/vsl/track',new Blob([JSON.stringify(p)],{type:'application/json'}))}catch(e){}}
 send('open');
 /* custom player — the native controls overlay (with its dark scrim) never
-   appears; we draw our own slim bar instead */
-var v=document.getElementById('v'),vm=document.getElementById('vm'),vt=document.getElementById('vt'),
+   appears; we draw our own slim bar. The stage expands IN PLACE so the page
+   keeps scrolling while they listen. */
+var v=document.getElementById('v'),stage=document.getElementById('stage'),vt=document.getElementById('vt'),
 vs=document.getElementById('vs'),vp=document.getElementById('vp'),fired={};
 function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x}
 if(v){v.addEventListener('timeupdate',function(){if(!v.duration)return;var pct=v.currentTime/v.duration*100;
 if(vt)vt.textContent=fmtT(v.currentTime);
 if(vs){vs.value=String(Math.round(pct*10));vs.style.setProperty('--p',pct+'%')}
 [25,50,75,95].forEach(function(m){if(pct>=m&&!fired[m]){fired[m]=1;send('progress',{pct:m})}})});
-v.addEventListener('ended',function(){closeVideo()});
-v.addEventListener('play',function(){if(vp)vp.style.display='none'});
-v.addEventListener('pause',function(){if(vp&&document.body.classList.contains('watch'))vp.style.display='flex'})}
+v.addEventListener('play',function(){if(vp)vp.style.display='none';barShow()});
+v.addEventListener('pause',function(){if(vp&&stage.classList.contains('playing'))vp.style.display='flex';barShow()})}
 if(vs){vs.addEventListener('input',function(){if(!v||!v.duration)return;
-v.currentTime=Number(vs.value)/1000*v.duration;vs.style.setProperty('--p',(Number(vs.value)/10)+'%')})}
-if(vm){vm.addEventListener('click',function(e){if(e.target===vm)closeVideo()})}
-document.addEventListener('keydown',function(e){if(e.key==='Escape')closeVideo()});
+v.currentTime=Number(vs.value)/1000*v.duration;vs.style.setProperty('--p',(Number(vs.value)/10)+'%');barShow()})}
+var vb=document.querySelector('.vbar'),barT=0;
+function barShow(){if(!vb)return;vb.classList.remove('hid');clearTimeout(barT);
+if(v&&!v.paused){barT=setTimeout(function(){vb.classList.add('hid')},2500)}}
 function togglePlay(){if(!v)return;if(v.paused){try{v.play()}catch(e){}}else{v.pause()}}
-function play(){if(!v)return;document.body.classList.add('watch');try{v.play()}catch(e){}}
-function closeVideo(){document.body.classList.remove('watch');if(v){try{v.pause()}catch(e){}}}
+function stageTap(){if(!v)return;barShow();if(stage.classList.contains('playing')){togglePlay()}else{play()}}
+function play(){if(!v)return;stage.classList.add('playing');try{v.play()}catch(e){}
+setTimeout(function(){stage.scrollIntoView({behavior:'smooth',block:'center'})},60)}
 /* before/after carousel dots */
 var bat=document.getElementById('batrack');
 function baGo(i){if(!bat)return;bat.scrollTo({left:bat.clientWidth*i,behavior:'smooth'})}
