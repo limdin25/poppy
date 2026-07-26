@@ -21,6 +21,8 @@
 //     a stray "<") from breaking the markup. Inside an href the browser decodes
 //     the entities back, so the same escape is correct for the URL token too.
 
+import { resolveTrade } from '../../../../api/lib/trades';
+
 export interface ScriptContact {
   name?: string | null;
   customFields?: Record<string, string> | null;
@@ -30,6 +32,12 @@ export interface ScriptContact {
 export const SCRIPT_TEXT_TOKENS = [
   'owner_first', 'business_name', 'reviews', 'rating', 'rank', 'town',
   'competitor_1', 'competitor_2', 'plumbers_ahead', 'total_plumbers',
+  // Trade-neutral aliases. [plumbers_ahead]/[total_plumbers] keep their names
+  // (9 files reference them, including the voice-coach edge function) but the
+  // VALUES are trade-neutral — for an electrician lead they're electricians
+  // ahead, from an electricians search. Use these in script copy so the WORDS
+  // match the numbers: "you're behind [competitors_ahead] other [trade_plural]".
+  'trade', 'trade_plural', 'competitors_ahead', 'total_competitors',
 ] as const;
 
 const PH_OPEN = '<span class="ph">';
@@ -78,6 +86,7 @@ export function highlightTokens(html: string): string {
 export function interpolateScript(templateHtml: string, contact?: ScriptContact | null): string {
   const cf = contact?.customFields ?? {};
   const name = (contact?.name ?? '').trim();
+  const trade = resolveTrade(cf, cf.town?.trim(), name);
 
   // token -> resolved raw value (undefined = leave the token as an unfilled slot)
   const textTokens: Record<string, string | undefined> = {
@@ -91,6 +100,10 @@ export function interpolateScript(templateHtml: string, contact?: ScriptContact 
     '[competitor_2]': cf.competitor_2?.trim() || undefined,
     '[plumbers_ahead]': cf.plumbers_ahead?.trim() || undefined,
     '[total_plumbers]': cf.total_plumbers?.trim() || undefined,
+    '[trade]': trade.label ?? undefined,
+    '[trade_plural]': trade.plural,
+    '[competitors_ahead]': cf.plumbers_ahead?.trim() || undefined,
+    '[total_competitors]': cf.total_plumbers?.trim() || undefined,
   };
 
   // Start from bare tokens (defensive: a template captured from a highlighted
