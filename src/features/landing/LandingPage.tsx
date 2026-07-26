@@ -144,13 +144,17 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: WHITE, color: INK }}>
-      {/* ── Blue stat stripe — the VSL page opens on one too ── */}
-      <div className="fixed inset-x-0 top-0 z-50 bg-[#1a73e8] px-4 py-2 text-center text-[12.5px] font-extrabold tracking-[0.2px] text-white">
-        ⭐ 93% of people read reviews before choosing a local business
-      </div>
+      {/* ── Blue stat stripe + nav, in ONE fixed stack ──
+             They share a wrapper rather than the nav carrying a hardcoded top
+             offset: the stat wraps to two lines on a narrow phone, and a fixed
+             offset would then leave the nav sitting under the stripe. */}
+      <div className="fixed inset-x-0 top-0 z-50">
+        <div className="bg-[#1a73e8] px-4 py-2 text-center text-[12.5px] font-extrabold leading-snug tracking-[0.2px] text-white">
+          ⭐ 93% of people read reviews before choosing a local business
+        </div>
 
-      {/* ── Nav — white glass pill ── */}
-      <header className="fixed inset-x-0 top-[34px] z-40 px-3 pt-3">
+        {/* ── Nav — white glass pill ── */}
+        <header className="px-3 pt-3">
         <div className="mx-auto flex max-w-5xl items-center justify-between rounded-full border border-[#E5E7EB] bg-white/85 px-5 py-2.5 shadow-[0_2px_16px_rgba(0,0,0,0.06)] backdrop-blur-[8px]">
           <a href="/" className={`text-lg ${DISPLAY}`}>
             HeyElsie <span className="font-light text-[#6B7280]">Reviews</span>
@@ -177,7 +181,8 @@ export default function LandingPage() {
             <a href={SIGNUP} className={`mt-2 block px-4 py-2.5 text-center text-sm font-extrabold ${PILL_BLUE}`}>Start free trial</a>
           </div>
         )}
-      </header>
+        </header>
+      </div>
 
       {/* ── Hero — white, blue accents, one blue button ── */}
       <section className="relative overflow-hidden px-4 pb-16 pt-40 md:pt-48">
