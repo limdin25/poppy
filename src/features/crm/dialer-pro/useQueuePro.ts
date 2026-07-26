@@ -38,17 +38,21 @@ interface QueueRow {
     name: string | null;
     phone: string | null;
     pipeline_column_id: string | null;
+    custom_fields: Record<string, string> | null;
   } | null;
 }
 
 function rowToLead(row: QueueRow): QueueLead | null {
   const contact = row.wk_contacts;
   if (!contact || !contact.phone) return null;
+  const cf = contact.custom_fields || {};
   return {
     id: contact.id,
     contactId: contact.id,
     phone: contact.phone,
     name: contact.name ?? contact.phone,
+    ownerName: (cf.owner_name || '').trim() || null,
+    website: (cf.website || '').trim() || null,
     priority: row.priority ?? 0,
     attempts: row.attempts ?? 0,
     scheduledFor: row.scheduled_for,
@@ -65,7 +69,7 @@ async function fetchQueueRows(campaignId: string | null): Promise<QueueLead[]> {
   let q = (supabase.from('wk_dialer_queue' as any) as any)
     .select(
       'id, contact_id, campaign_id, priority, attempts, scheduled_for, status, ' +
-        'wk_contacts:contact_id ( id, name, phone, pipeline_column_id )',
+        'wk_contacts:contact_id ( id, name, phone, pipeline_column_id, custom_fields )',
     )
     .eq('status', 'pending')
     .or(`scheduled_for.is.null,scheduled_for.lte.${nowIso}`)

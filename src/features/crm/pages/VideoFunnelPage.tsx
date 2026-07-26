@@ -358,6 +358,8 @@ interface Cfg {
   quiet_hours: { start: string; end: string };
   agent_disabled: string[];
   spots_per_town: number;
+  proof_image_url: string;
+  proof_caption: string;
   rules: Record<string, RuleCfg>;
 }
 
@@ -486,6 +488,29 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
                   ? `✅ online${worker.current ? ` — rendering ${worker.current}` : ''} · ${queueDepth} in queue`
                   : `⚠️ last seen ${new Date(worker.last_seen).toLocaleString('en-GB')} — videos won't render until it's back`
                 : '⚠️ never seen — the VPS worker isn’t running yet'}
+            </div>
+
+            <div className="rounded-[10px] p-3 border border-[#E5E7EB] bg-[#FAFAF7] space-y-2">
+              <p className="text-[12.5px] font-black">Proof below the button (before/after)</p>
+              <div>
+                <label className="text-[11px] font-bold block mb-1">Image URL</label>
+                <input
+                  value={cfg.proof_image_url}
+                  onChange={(e) => set({ proof_image_url: e.target.value })}
+                  placeholder="https://…/mayfair-before-after.png"
+                  className="w-full px-2.5 py-2 text-[13px] border border-[#D1D5DB] rounded-[8px]"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold block mb-1">Caption above it</label>
+                <input
+                  value={cfg.proof_caption}
+                  onChange={(e) => set({ proof_caption: e.target.value })}
+                  placeholder="A recent client — Mayfair Plumbers"
+                  className="w-full px-2.5 py-2 text-[13px] border border-[#D1D5DB] rounded-[8px]"
+                />
+              </div>
+              <p className="text-[10.5px] text-[#9CA3AF]">Leave the URL blank to hide the proof block.</p>
             </div>
 
             <div>

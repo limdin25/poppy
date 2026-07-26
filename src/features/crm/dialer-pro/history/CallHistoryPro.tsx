@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Phone, PhoneOutgoing, Play, FileText, X, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
+import { cn } from '@/core/lib/cn';
+import { personName, websiteLabel } from '@/features/crm/lib/contactIdentity';
 import { signCallRecording } from '@/features/crm/hooks/useCalls';
 import CallTranscriptModal from '@/features/crm/components/calls/CallTranscriptModal';
 
@@ -18,6 +20,8 @@ interface CallRow {
   id: string;
   contactId: string | null;
   contactName: string | null;
+  contactOwner: string | null;
+  contactWebsite: string | null;
   contactPhone: string | null;
   direction: string;
   status: string;
@@ -51,14 +55,14 @@ async function fetchPage(pageParam: number): Promise<CallRow[]> {
   const callIds = ((callsRes.data ?? []) as Array<{ id: string; contact_id: string | null }>);
   const contactIds = [...new Set(callIds.map((c) => c.contact_id).filter(Boolean))] as string[];
 
-  let contactMap = new Map<string, { name: string | null; phone: string | null }>();
+  const contactMap = new Map<string, { name: string | null; phone: string | null; cf: Record<string, string> | null }>();
   if (contactIds.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: contacts } = await (supabase.from('wk_contacts' as any) as any)
-      .select('id, name, phone')
+      .select('id, name, phone, custom_fields')
       .in('id', contactIds);
-    for (const c of (contacts ?? []) as Array<{ id: string; name: string | null; phone: string | null }>) {
-      contactMap.set(c.id, { name: c.name, phone: c.phone });
+    for (const c of (contacts ?? []) as Array<{ id: string; name: string | null; phone: string | null; custom_fields: Record<string, string> | null }>) {
+      contactMap.set(c.id, { name: c.name, phone: c.phone, cf: c.custom_fields });
     }
   }
 
@@ -71,6 +75,8 @@ async function fetchPage(pageParam: number): Promise<CallRow[]> {
       id: r.id,
       contactId: r.contact_id,
       contactName: contact?.name ?? null,
+      contactOwner: (contact?.cf?.owner_name || '').trim() || null,
+      contactWebsite: (contact?.cf?.website || '').trim() || null,
       contactPhone: contact?.phone ?? null,
       direction: r.direction,
       status: r.status,
@@ -184,7 +190,13 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
         >
           <Phone className="w-3 h-3 text-[#9CA3AF] flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-[#1A1A1A] text-[11px]">{call.contactName ?? call.contactPhone ?? 'Unknown'}</div>
+            <div className="font-medium text-[#1A1A1A] text-[11px] truncate">{call.contactName ?? call.contactPhone ?? 'Unknown'}</div>
+            {call.contactId && (
+              <>
+                <div className={cn('text-[10px] truncate', call.contactOwner ? 'text-[#6B7280]' : 'text-[#C4302B] italic')}>{personName(call.contactOwner)}</div>
+                <div className={cn('text-[10px] truncate', call.contactWebsite ? 'text-[#3C5A87]' : 'text-[#C4302B] italic')}>{websiteLabel(call.contactWebsite)}</div>
+              </>
+            )}
             <div className="text-[10px] text-[#9CA3AF] tabular-nums">{formatDuration(call.durationSec)} · {formatDate(call.startedAt)}</div>
           </div>
           {call.contactId && onRedial && (

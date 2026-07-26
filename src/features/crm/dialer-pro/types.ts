@@ -11,6 +11,8 @@ export interface QueueLead {
   contactId: string;
   phone: string;
   name: string;
+  ownerName?: string | null;
+  website?: string | null;
   priority: number;
   attempts: number;
   scheduledFor: string | null;

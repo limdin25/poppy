@@ -557,13 +557,11 @@ export default function InboxPage() {
     }
   };
 
-  if (!activeContact) {
-    return (
-      <div className="p-12 text-center text-[14px] text-[#9CA3AF] italic">
-        No contacts yet. Import a CSV or add one in Contacts.
-      </div>
-    );
-  }
+  // NOTE: we intentionally do NOT early-return a blank page when nothing is
+  // selected. That used to replace the ENTIRE inbox (sidebar + filters) with a
+  // misleading "No contacts yet" — the "inbox glitch" Hugo saw when an agent
+  // had calls but no message threads. The sidebar always renders; Pane 2 shows
+  // a placeholder instead.
 
   return (
     <>
@@ -687,8 +685,17 @@ export default function InboxPage() {
         </div>
       </aside>
 
-      {/* Pane 2 — thread */}
+      {/* Pane 2 — thread (or a placeholder when nothing is selected) */}
       <section className="flex-1 bg-[#F3F3EE]/30 flex flex-col min-w-0">
+        {!activeContact ? (
+          <div className="flex-1 flex items-center justify-center p-12 text-center text-[#9CA3AF]">
+            <div className="max-w-[300px]">
+              <p className="text-[15px] font-semibold text-[#6B7280]">Pick a conversation on the left</p>
+              <p className="text-[12.5px] mt-1.5 leading-relaxed">No messages yet? Your calls are under the <b>Calls</b> filter — or start a new conversation from the dialer or Contacts.</p>
+            </div>
+          </div>
+        ) : (
+        <>
         <div className="px-5 py-3 bg-white border-b border-[#E5E7EB] flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-[#3C5A87]/15 text-[#3C5A87] text-[13px] font-bold flex items-center justify-center">
             {activeContact.name
@@ -1004,9 +1011,12 @@ export default function InboxPage() {
             </button>
           </div>
         </form>
+        </>
+        )}
       </section>
 
-      {/* Pane 3 — timeline */}
+      {/* Pane 3 — timeline (only with a selected conversation) */}
+      {activeContact && (
       <aside className="w-[320px] bg-white border-l border-[#E5E7EB] flex flex-col overflow-hidden">
         <div className="px-4 py-2.5 border-b border-[#E5E7EB]">
           <div className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
@@ -1036,6 +1046,7 @@ export default function InboxPage() {
           ))}
         </div>
       </aside>
+      )}
     </div>
     {followupTarget && (() => {
       const col = storeColumns.find((c) => c.id === followupTarget.columnId);

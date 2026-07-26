@@ -5,6 +5,7 @@ import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import EditContactModal from '@/features/crm/components/contacts/EditContactModal';
+import { personName, websiteLabel } from '@/features/crm/lib/contactIdentity';
 import type { Contact } from '@/features/crm/types';
 import type { QueueLead } from '../types';
 
@@ -171,7 +172,13 @@ export default function QueueManagerPro({ queue, campaignId, onRefresh, onToast 
           >
             <span className="font-mono text-[10px] text-[#9CA3AF] w-4 flex-shrink-0">{i + 1}</span>
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-[#1A1A1A] text-[11px]">{lead.name}</div>
+              <div className="font-medium text-[#1A1A1A] text-[11px] truncate">{lead.name}</div>
+              <div className={cn('text-[10px] truncate', lead.ownerName ? 'text-[#6B7280]' : 'text-[#C4302B] italic')}>
+                {personName(lead.ownerName)}
+              </div>
+              <div className={cn('text-[10px] truncate', lead.website ? 'text-[#3C5A87]' : 'text-[#C4302B] italic')}>
+                {websiteLabel(lead.website)}
+              </div>
               <div className="text-[10px] text-[#9CA3AF] font-mono">{lead.phone}</div>
             </div>
             {lead.attempts > 0 && (

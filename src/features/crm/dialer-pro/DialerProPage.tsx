@@ -493,10 +493,10 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
     void (async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (supabase.from('wk_contacts' as any) as any)
-        .select('id, name, phone, pipeline_column_id')
+        .select('id, name, phone, pipeline_column_id, custom_fields')
         .eq('pipeline_column_id', pipelineColumnId)
         .order('created_at', { ascending: true });
-      const rows = (data ?? []) as { id: string; name: string | null; phone: string | null; pipeline_column_id: string | null }[];
+      const rows = (data ?? []) as { id: string; name: string | null; phone: string | null; pipeline_column_id: string | null; custom_fields: Record<string, string> | null }[];
       columnContactsRef.current = rows.map((r) => r.id);
       const leads: QueueLead[] = rows
         .filter((r) => r.phone)
@@ -505,6 +505,8 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
           contactId: r.id,
           phone: r.phone!,
           name: r.name ?? r.phone!,
+          ownerName: (r.custom_fields?.owner_name || '').trim() || null,
+          website: (r.custom_fields?.website || '').trim() || null,
           priority: 0,
           attempts: 0,
           scheduledFor: null,
@@ -682,6 +684,18 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                     )}
                     {/* Full edit-contact lives on the call card / history, not here. */}
                   </div>
+                  {/* Owner name + website beside the company name, everywhere
+                      (Hugo 2026-07-26) — explicit "not available" when missing. */}
+                  {(() => {
+                    const owner = (contact.customFields?.owner_name || '').trim();
+                    const site = (contact.customFields?.website || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+                    return (
+                      <div className="mt-0.5 space-y-0.5">
+                        <div className={cn('text-[12px]', owner ? 'text-[#374151]' : 'text-[#C4302B] italic')}>{owner || 'Name not available'}</div>
+                        <div className={cn('text-[11px] truncate', site ? 'text-[#3C5A87]' : 'text-[#C4302B] italic')}>{site || 'Website not available'}</div>
+                      </div>
+                    );
+                  })()}
                   <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
                   {!isLive && !state.currentLead && (
                     <div className="text-[10px] text-[#9CA3AF] mt-1">Next in queue</div>

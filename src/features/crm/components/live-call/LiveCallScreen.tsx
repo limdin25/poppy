@@ -316,6 +316,17 @@ export default function LiveCallScreen() {
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             </div>
+            {/* Owner name + website beside the company name (Hugo 2026-07-26). */}
+            {(() => {
+              const owner = (contact.customFields?.owner_name || '').trim();
+              const site = (contact.customFields?.website || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+              return (
+                <div className="mt-0.5 space-y-0.5">
+                  <div className={owner ? 'text-[12px] text-[#374151]' : 'text-[12px] text-[#C4302B] italic'}>{owner || 'Name not available'}</div>
+                  <div className={site ? 'text-[11px] text-[#3C5A87] truncate' : 'text-[11px] text-[#C4302B] italic'}>{site || 'Website not available'}</div>
+                </div>
+              );
+            })()}
             <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
             <div className="text-[11px] text-[#9CA3AF] mt-0.5">
               Added {formatRelativeTime(contact.createdAt)}

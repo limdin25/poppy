@@ -46,17 +46,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     page.cta_variant === 'b' ? settings.cta_labels.b : settings.cta_labels.a,
   );
 
-  // Scarcity: pool minus paid pages in the same town, never below 1.
-  let spots = settings.spots_per_town;
-  if (page.town) {
-    const { count } = await supabase
-      .from('wk_vsl_pages')
-      .select('id', { count: 'exact', head: true })
-      .eq('town', page.town)
-      .eq('state', 'paid');
-    spots = Math.max(1, settings.spots_per_town - (count || 0));
-  }
-
   const ogTitle = first ? `${first}, I made this video for ${business}` : `I made this video for ${business}`;
   const ogDesc = `A 90-second look at where ${business} sits on Google — and how to climb.`;
   const ogImage = page.og_image_url || '';
@@ -86,24 +75,36 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ''}
 <meta name="twitter:card" content="summary_large_image">
 <style>
 *{box-sizing:border-box;margin:0}
-html,body{height:100%}
-body{font-family:Inter,-apple-system,'Segoe UI',sans-serif;background:#F7F5EF;color:#1A1A1A;display:flex;justify-content:center;padding:12px 14px}
-/* Everything — headline, video, button, spots — fits ONE phone screen: the
-   column is exactly the small-viewport height and the video flexes to
-   whatever space the text and button leave. */
-.wrap{width:100%;max-width:430px;height:calc(100svh - 24px);height:calc(100dvh - 24px);display:flex;flex-direction:column}
-h1{font-weight:900;font-size:clamp(17px,5vw,22px);line-height:1.22;margin:2px 0 2px}
-.sub{color:#6B7280;font-size:clamp(12px,3.4vw,13.5px);margin-bottom:10px}
-.vid{flex:1;min-height:120px;position:relative;display:flex;align-items:center;justify-content:center}
-video{height:100%;max-width:100%;aspect-ratio:9/16;object-fit:cover;display:block;border-radius:18px;box-shadow:0 10px 34px rgba(0,0,0,.14);background:#111}
-.vid .ph{height:100%;max-width:100%;aspect-ratio:9/16;border-radius:18px;background:#111;color:#9CA3AF;display:flex;align-items:center;justify-content:center;font-size:13px}
-.cta{display:block;width:100%;margin-top:12px;padding:15px;border:0;border-radius:14px;background:#1A1A1A;color:#fff;font-size:16px;font-weight:800;cursor:pointer;flex-shrink:0}
+body{font-family:Inter,-apple-system,'Segoe UI',sans-serif;background:#F7F5EF;color:#1A1A1A}
+.wrap{width:100%;max-width:460px;margin:0 auto;padding:16px 16px 40px}
+h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.22;margin:2px 0 3px;text-wrap:balance}
+.sub{color:#6B7280;font-size:clamp(12px,3.4vw,14px);margin-bottom:12px}
+/* The video starts as a compact RECTANGULAR thumbnail so the button + proof
+   show on the first screen; pressing play expands it (still leaving the button
+   visible below). */
+.stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#111;box-shadow:0 12px 34px rgba(0,0,0,.16);cursor:pointer;transition:aspect-ratio .35s ease,max-height .35s ease;max-height:32vh}
+.stage.playing{aspect-ratio:9/16;max-height:56vh;cursor:default}
+.thumb{position:absolute;inset:0;background-size:cover;background-position:center 28%;display:flex;align-items:center;justify-content:center}
+.thumb::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.35))}
+.play{position:relative;z-index:1;width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.96);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.4)}
+.play svg{margin-left:5px}
+.badge{position:absolute;z-index:1;left:12px;bottom:12px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#111;display:none}
+.stage.playing .thumb{display:none}
+.stage.playing video{display:block}
+.ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9CA3AF;font-size:13px}
+.cta{display:block;width:100%;margin-top:14px;padding:16px;border:0;border-radius:14px;background:#1A1A1A;color:#fff;font-size:17px;font-weight:800;cursor:pointer}
 .cta:active{transform:scale(.985)}
-.seal{text-align:center;margin-top:8px;font-size:12.5px;font-weight:800;color:#16A34A;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:999px;padding:5px 12px;width:fit-content;margin-left:auto;margin-right:auto;flex-shrink:0}
-.spots{text-align:center;margin-top:7px;font-size:12.5px;font-weight:700;color:#B45309;flex-shrink:0}
-.trust{text-align:center;margin-top:4px;font-size:11.5px;color:#9CA3AF;flex-shrink:0}
+.seal{text-align:center;margin-top:10px;font-size:13px;font-weight:800;color:#16A34A;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:999px;padding:6px 14px;width:fit-content;margin-left:auto;margin-right:auto}
+.spots{text-align:center;margin-top:10px;font-size:13.5px;font-weight:800;color:#B45309}
+.price{text-align:center;margin-top:4px;font-size:clamp(16px,4.4vw,19px);font-weight:900;line-height:1.3}
+.price .g{color:#16A34A}
+.price small{display:block;font-size:12px;font-weight:600;color:#9CA3AF;margin-top:2px}
+.proof{margin-top:22px}
+.prooflabel{text-align:center;font-size:11.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#6B7280;margin-bottom:8px}
+.proof img{width:100%;border-radius:14px;border:1px solid #E5E7EB;display:block;box-shadow:0 6px 18px rgba(0,0,0,.08)}
 .sheetbg{position:fixed;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
-.sheet{position:fixed;left:0;right:0;bottom:-100%;background:#fff;border-radius:22px 22px 0 0;padding:20px 18px 30px;transition:bottom .25s;max-width:430px;margin:0 auto}
+.sheet{position:fixed;left:0;right:0;bottom:-100%;background:#fff;border-radius:22px 22px 0 0;padding:20px 18px 30px;transition:bottom .25s;max-width:460px;margin:0 auto}
 .open .sheetbg{opacity:1;pointer-events:auto}
 .open .sheet{bottom:0}
 .sh{font-weight:900;font-size:18px;margin-bottom:2px}
@@ -118,15 +119,23 @@ video{height:100%;max-width:100%;aspect-ratio:9/16;object-fit:cover;display:bloc
 <div class="wrap">
   <h1>Hi ${first ? first + ' ' : ''}👋 I made a video for ${business}</h1>
   <p class="sub">90 seconds — where you rank on Google, and how to fix it.</p>
-  <div class="vid">${
+  <div class="stage" id="stage" onclick="play()">${
     videoUrl
-      ? `<video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} controls playsinline preload="metadata"></video>`
+      ? `<video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} controls playsinline preload="none"></video>
+      <div class="thumb"${poster ? ` style="background-image:url('${esc(poster)}')"` : ''}>
+        <div class="play"><svg width="26" height="30" viewBox="0 0 26 30"><polygon points="0,0 26,15 0,30" fill="#14161a"/></svg></div>
+        <div class="badge">▶ Watch · 90 sec</div>
+      </div>`
       : `<div class="ph">Video coming shortly</div>`
   }</div>
   <button class="cta" onclick="cta()">${ctaLabel}</button>
   ${page.no_website ? `<p class="seal">🎁 FREE website included</p>` : ''}
-  <p class="spots">${spots} spot${spots === 1 ? '' : 's'} left in ${town}</p>
-  <p class="trust">Start for £1 · 10 days · cancel anytime</p>
+  <p class="spots">2 spots left in ${town}</p>
+  <p class="price">£1 today <span class="g">— then from £99/month</span><small>Cancel anytime in your first 10 days</small></p>
+  ${settings.proof_image_url ? `<div class="proof">
+    ${settings.proof_caption ? `<p class="prooflabel">${esc(settings.proof_caption)}</p>` : ''}
+    <img src="${esc(settings.proof_image_url)}" alt="Before and after results">
+  </div>` : ''}
 </div>
 <div class="sheetbg" onclick="closeSheet()"></div>
 <div class="sheet">
@@ -143,6 +152,9 @@ send('open');
 var v=document.getElementById('v'),fired={};
 if(v){v.addEventListener('timeupdate',function(){if(!v.duration)return;var pct=v.currentTime/v.duration*100;
 [25,50,75,95].forEach(function(m){if(pct>=m&&!fired[m]){fired[m]=1;send('progress',{pct:m})}})})}
+function play(){var s=document.getElementById('stage');if(!v||s.classList.contains('playing'))return;
+s.classList.add('playing');try{v.play()}catch(e){}
+setTimeout(function(){s.scrollIntoView({behavior:'smooth',block:'center'})},60)}
 function cta(){send('cta_click');document.body.classList.add('open')}
 function closeSheet(){document.body.classList.remove('open')}
 function pick(priceId,label){send('tier_pick',{pct:0});

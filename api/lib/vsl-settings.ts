@@ -27,6 +27,8 @@ export interface VslSettings {
   quiet_hours: { start: string; end: string }; // Europe/London, automation only
   agent_disabled: string[];              // agent ids opted out of automation
   spots_per_town: number;                // scarcity line pool size
+  proof_image_url: string;               // before/after proof shown below the CTA
+  proof_caption: string;                 // one-line caption above the proof
   rules: {
     sent_not_opened: VslRule;
     opened_not_watched: VslRule;
@@ -56,6 +58,8 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
   quiet_hours: { start: '08:00', end: '20:00' },
   agent_disabled: [],
   spots_per_town: 5,
+  proof_image_url: '',
+  proof_caption: 'A recent client — Mayfair Plumbers',
   rules: {
     sent_not_opened: {
       enabled: true, delay_minutes: 180, max_sends: 2, repeat_hours: 24,
