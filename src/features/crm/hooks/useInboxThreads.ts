@@ -72,49 +72,51 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
     const { data: authData } = await supabase.auth.getUser();
     const uid = authData.user?.id ?? null;
 
-    // Build the contact-id allow-list for non-admins. Mirrors the
-    // wk_contacts RLS predicate: owner OR active lead-assignment.
-    let allowedContactIds: string[] | null = null;
+    // Build the allowed-contact set for non-admins. An agent sees a
+    // conversation for every lead they PARTICIPATED with (Hugo 2026-07-26):
+    // owner OR active assignment OR texted (wk_sms_messages.created_by) OR
+    // called (wk_calls.agent_id). The wk_contacts participation RLS policy
+    // (migration 20260726000002) lets them READ those leads' names.
+    let allowedSet: Set<string> | null = null;
     if (!isAdmin && uid) {
-      const [ownedRes, assignedRes] = await Promise.all([
+      const [ownedRes, assignedRes, textedRes, calledRes] = await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from('wk_contacts' as any) as any)
-          .select('id')
-          .eq('owner_agent_id', uid),
+        (supabase.from('wk_contacts' as any) as any).select('id').eq('owner_agent_id', uid),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_lead_assignments' as any) as any)
-          .select('contact_id')
-          .eq('agent_id', uid)
-          .in('status', ['assigned', 'in_progress']),
+          .select('contact_id').eq('agent_id', uid).in('status', ['assigned', 'in_progress']),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase.from('wk_sms_messages' as any) as any).select('contact_id').eq('created_by', uid),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase.from('wk_calls' as any) as any).select('contact_id').eq('agent_id', uid),
       ]);
       const ids = new Set<string>();
       for (const r of (ownedRes.data ?? []) as Array<{ id: string }>) ids.add(r.id);
-      for (const r of (assignedRes.data ?? []) as Array<{ contact_id: string }>) {
-        ids.add(r.contact_id);
-      }
-      allowedContactIds = Array.from(ids);
+      for (const r of (assignedRes.data ?? []) as Array<{ contact_id: string }>) if (r.contact_id) ids.add(r.contact_id);
+      for (const r of (textedRes.data ?? []) as Array<{ contact_id: string }>) if (r.contact_id) ids.add(r.contact_id);
+      for (const r of (calledRes.data ?? []) as Array<{ contact_id: string | null }>) if (r.contact_id) ids.add(r.contact_id);
+      allowedSet = ids;
 
-      // Agent owns nothing → empty inbox. Skip the round-trip.
-      if (allowedContactIds.length === 0) {
+      // Participated in nothing → empty inbox. Skip the round-trip.
+      if (allowedSet.size === 0) {
         setThreads([]);
         setLoading(false);
         return;
       }
     }
 
-    // Strategy: pull the last 500 messages, group client-side. Then
-    // fetch only the contacts referenced by those messages (not all
-    // 17k+ contacts). This keeps the query small and fast.
+    // Pull the last 1000 messages and group client-side, then filter to the
+    // agent's set IN MEMORY. We deliberately do NOT pass the set to `.in()` —
+    // an agent owning thousands of leads would blow the request URL length
+    // (that silent failure was making busy agents' inboxes look empty). At
+    // much larger message volumes this should move to a SECURITY DEFINER RPC.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let msgsQuery = (supabase.from('wk_sms_messages' as any) as any)
+    const msgsRes = await (supabase.from('wk_sms_messages' as any) as any)
       .select('id, contact_id, direction, body, created_at, channel')
       .order('created_at', { ascending: false })
-      .limit(500);
-    if (allowedContactIds !== null) {
-      msgsQuery = msgsQuery.in('contact_id', allowedContactIds);
-    }
-    const msgsRes = await msgsQuery;
-    const msgs = (msgsRes.data ?? []) as MessageRow[];
+      .limit(1000);
+    let msgs = (msgsRes.data ?? []) as MessageRow[];
+    if (allowedSet) msgs = msgs.filter((m) => allowedSet!.has(m.contact_id));
 
     // Collect unique contact IDs from messages, then fetch just those.
     const neededIds = Array.from(new Set(msgs.map((m) => m.contact_id)));
