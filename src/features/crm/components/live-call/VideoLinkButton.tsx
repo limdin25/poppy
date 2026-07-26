@@ -195,7 +195,7 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
         )}
         {info?.no_website && (
           <div className="text-[10.5px] text-[#166534] leading-snug">
-            No website on file — their video opens with the Google search instead, and the text offers a free website.
+            No website on file — their video opens with the Google search instead.
           </div>
         )}
 

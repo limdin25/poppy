@@ -409,14 +409,14 @@ describe('render pipeline — lib', () => {
     expect(workerOrder).toEqual(VSL_COLUMN_ORDER)
   })
 
-  it('no-website leads get the free-website SMS variant by default', async () => {
+  it('no-website SMS variant carries NO free-website offer (withdrawn 2026-07-26)', async () => {
     const { DEFAULT_VSL_SETTINGS, fillTemplate } = await load()
-    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).toMatch(/free/i)
-    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).toMatch(/website/i)
+    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).not.toMatch(/free/i)
+    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).not.toMatch(/website/i)
     const out = fillTemplate(DEFAULT_VSL_SETTINGS.send_template_no_site, {
       first: 'Kate', business: 'K Plumbing', url: 'https://heyelsie.com/k', agent: 'Pedro',
     })
-    expect(out).toContain('website')
+    expect(out).toContain('https://heyelsie.com/k')
     expect(out).not.toMatch(/\{[a-z_]+\}/)
   })
 })
@@ -510,12 +510,13 @@ describe('render pipeline — prep + comps', () => {
     expect(flow).toMatch(/gen\.no_website \? <OpeningSearchV \/> : <OpeningWebsiteV \/>/)
   })
 
-  it('public page carries the free-website promise for no-website leads', () => {
+  it('free-website offer is fully withdrawn (Hugo 2026-07-26)', () => {
     const page = read('api/vsl/page.ts')
-    // in the trust line under the CTA…
-    expect(page).toMatch(/page\.no_website \? ' · 🎁 Free website included'/)
-    // …and inside the tier sheet at the moment of purchase
-    expect(page).toMatch(/A free website is included with every plan\./)
+    expect(page).not.toMatch(/free website/i)
+    const settings = read('api/lib/vsl-settings.ts')
+    expect(settings).not.toMatch(/build you one free/i)
+    const provision = read('api/lib/vsl-provision.ts')
+    expect(provision).not.toMatch(/PROMISED: free website/)
   })
 })
 

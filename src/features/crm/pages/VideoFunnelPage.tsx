@@ -265,7 +265,7 @@ export default function VideoFunnelPage() {
                     <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#9CA3AF]">
                       {p.watched_pct > 0 && <span>watched {p.watched_pct}%</span>}
                       {p.open_count > 0 && <span>{p.open_count} open{p.open_count === 1 ? '' : 's'}</span>}
-                      {p.no_website && <span title="Free website promised" className="text-[#16A34A] font-bold">🎁 site</span>}
+                      {p.no_website && <span title="No website — video opens with the Google search" className="text-[#6B7280] font-bold">no site</span>}
                       <span className="ml-auto">{ago(p.updated_at)}</span>
                     </div>
 
@@ -529,7 +529,7 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <label className="text-[12px] font-bold block mb-1">Send-video SMS — no-website leads (free-website offer)</label>
+              <label className="text-[12px] font-bold block mb-1">Send-video SMS — no-website leads</label>
               <textarea
                 value={cfg.send_template_no_site}
                 onChange={(e) => set({ send_template_no_site: e.target.value })}

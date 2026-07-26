@@ -210,7 +210,8 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#111;box-shadow:0 12px 34px rgba(0,0,0,.16);cursor:pointer;max-height:28vh}
 /* expanded: almost the whole screen, slightly squarer than 9:16, so the buy
    button still peeks below (Hugo 2026-07-26) */
-.stage.playing{aspect-ratio:auto;height:min(70vh,170vw);height:min(70dvh,170vw);width:100%;max-height:none}
+/* exact 9:16 so the actor's face is never cropped (Hugo 2026-07-26) */
+.stage.playing{aspect-ratio:9/16;height:min(70vh,160vw);height:min(70dvh,160vw);width:auto;max-width:100%;max-height:none;margin-left:auto;margin-right:auto}
 .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111;display:none}
 .stage.playing video{display:block}
 .stage.playing .thumb{display:none}
@@ -247,9 +248,11 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 /* mobile: the main CTA sticks to the bottom of the screen and the
    calculator's duplicate disappears (Hugo 2026-07-26) */
 @media(max-width:719px){
-  .cta{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;margin-top:0;z-index:50;box-shadow:0 10px 30px rgba(26,115,232,.45)}
+  .cta{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;margin-top:0;z-index:50;box-shadow:0 10px 30px rgba(26,115,232,.45);padding:11px 16px;gap:2px}
+  .cta .ctamain{font-size:16px}
+  .cta .ctasub{font-size:11.5px}
   .cta.cta2{display:none}
-  .wrap{padding-bottom:130px}
+  .wrap{padding-bottom:120px}
   .trust{margin-top:16px}
 }
 .proof{margin-top:22px}
@@ -348,16 +351,7 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
       : `<div class="ph">Video coming shortly</div>`
   }</div>
   ${ctaButton()}
-  <p class="trust">⭐ Trusted by UK trades · Cancel anytime in your first 10 days${page.no_website ? ' · 🎁 Free website included' : ''}</p>
-  ${settings.proof_image_url ? `<div class="proof">
-    ${settings.proof_caption ? `<p class="prooflabel">${esc(settings.proof_caption)}</p>` : ''}
-    <img src="${esc(settings.proof_image_url)}" alt="Before and after results">
-  </div>` : `<div class="ba">
-    <p class="prooflabel">${esc(settings.proof_caption || 'Examples of businesses that invest in reviews')}</p>
-    <div class="bahead"><span class="batag">BEFORE</span><span></span><span class="batag blue">AFTER</span></div>
-    <div class="batrack" id="batrack">${EXAMPLES.map(exSlide).join('')}</div>
-    ${EXAMPLES.length > 1 ? `<div class="badots">${EXAMPLES.map((_, i) => `<button class="badot${i === 0 ? ' on' : ''}" onclick="baGo(${i})" aria-label="Example ${i + 1}"></button>`).join('')}</div>` : ''}
-  </div>`}
+  <p class="trust">⭐ Trusted by UK trades · Cancel anytime in your first 10 days</p>
   <div class="calc">
     <p class="calchead">What's it worth to you?</p>
     <p class="calclabel">An average job is worth about</p>
@@ -371,12 +365,21 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
     <p class="calcout"><span id="cv">£18,000</span><span class="cvyr"> a year</span></p>
     <p class="calcnote" id="cn">HeyElsie costs £1,188 a year. 4 extra jobs in a year covers it — that's one every three months.</p>
   </div>
+  ${settings.proof_image_url ? `<div class="proof">
+    ${settings.proof_caption ? `<p class="prooflabel">${esc(settings.proof_caption)}</p>` : ''}
+    <img src="${esc(settings.proof_image_url)}" alt="Before and after results">
+  </div>` : `<div class="ba">
+    <p class="prooflabel">${esc(settings.proof_caption || 'Examples of businesses that invest in reviews')}</p>
+    <div class="bahead"><span class="batag">BEFORE</span><span></span><span class="batag blue">AFTER</span></div>
+    <div class="batrack" id="batrack">${EXAMPLES.map(exSlide).join('')}</div>
+    ${EXAMPLES.length > 1 ? `<div class="badots">${EXAMPLES.map((_, i) => `<button class="badot${i === 0 ? ' on' : ''}" onclick="baGo(${i})" aria-label="Example ${i + 1}"></button>`).join('')}</div>` : ''}
+  </div>`}
   ${ctaButton(' cta2')}
 </div>
 <div class="sheetbg" onclick="closeSheet()"></div>
 <div class="sheet">
   <p class="sh">Pick your size</p>
-  <p class="ss">Every plan starts with £1 for your first 10 days — cancel anytime.${page.no_website ? ' A free website is included with every plan.' : ''}</p>
+  <p class="ss">Every plan starts with £1 for your first 10 days — cancel anytime.</p>
   ${tiers}
   <p class="pound">£1 today. Nothing else until day 10.</p>
 </div>

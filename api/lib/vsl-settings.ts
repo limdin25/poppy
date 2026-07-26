@@ -21,7 +21,7 @@ export interface VslSettings {
   enabled: boolean;                       // master switch — feature dark until true
   default_video_url: string;             // fallback when a page has no per-lead render
   send_template: string;                 // the SMS the agent sends with the link
-  send_template_no_site: string;         // variant for leads with no website (free-website offer)
+  send_template_no_site: string;         // variant for leads with no website
   cta_labels: { a: string; b: string };  // button A/B
   watched_threshold_pct: number;         // % progress that counts as "watched"
   quiet_hours: { start: string; end: string }; // Europe/London, automation only
@@ -51,8 +51,10 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
   default_video_url: '',
   send_template:
     "Hi {first}, it's {agent} from HeyElsie — here's the video I made for {business}: {url}",
+  // free-website offer withdrawn (Hugo 2026-07-26) — same message as the
+  // with-site variant; the field stays so the drawer can differentiate later
   send_template_no_site:
-    "Hi {first}, it's {agent} from HeyElsie — here's the video I made for {business}: {url} PS — noticed you haven't got a website. We build you one free when you join.",
+    "Hi {first}, it's {agent} from HeyElsie — here's the video I made for {business}: {url}",
   cta_labels: { a: 'Start getting reviews', b: 'Get my reviews rolling' },
   watched_threshold_pct: 50,
   quiet_hours: { start: '08:00', end: '20:00' },
