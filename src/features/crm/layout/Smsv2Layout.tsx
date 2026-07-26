@@ -7,6 +7,8 @@ import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import CrmGuard from '../components/CrmGuard';
 import Smsv2Sidebar from './Smsv2Sidebar';
 import Smsv2StatusBar from './Smsv2StatusBar';
+import ViewAsSelector from './ViewAsSelector';
+import { ViewAsProvider, useViewAs, useResetViewAsForNonAdmin } from '../lib/ViewAsContext';
 import Softphone from '../components/softphone/Softphone';
 import { ActiveCallProvider } from '../components/live-call/ActiveCallContext';
 import IncomingCallModal from '../components/live-call/IncomingCallModal';
@@ -27,6 +29,22 @@ function StoreHydrator() {
   return null;
 }
 
+// Thin amber strip while an admin is impersonating an agent, so it's never a
+// surprise that the CRM is filtered. Rendered under the top bar.
+function ViewAsBanner() {
+  useResetViewAsForNonAdmin();
+  const { viewAsId, viewAsName, setViewAs } = useViewAs();
+  if (!viewAsId) return null;
+  return (
+    <div className="bg-[#FEF3C7] text-[#92400E] text-[12.5px] font-semibold px-5 py-1.5 flex items-center gap-2 border-b border-[#FDE68A] flex-shrink-0">
+      <span>👁 Viewing the CRM as <b>{viewAsName || 'this agent'}</b> — you're seeing only their leads.</span>
+      <button onClick={() => setViewAs(null, null)} className="ml-auto underline hover:no-underline">
+        Back to everyone
+      </button>
+    </div>
+  );
+}
+
 export default function Smsv2Layout() {
   // Start collapsed the first time, then remember the user's choice across
   // loads (localStorage). Default collapsed keeps the dialer clean out of the box.
@@ -45,6 +63,7 @@ export default function Smsv2Layout() {
   return (
     <CrmGuard>
       <SmsV2Provider>
+      <ViewAsProvider>
         <StoreHydrator />
         <ActiveCallProvider>
           <DialerProModalProvider>
@@ -54,6 +73,7 @@ export default function Smsv2Layout() {
             >
               {/* Follow-up banner — above nav per Hugo */}
               <FollowupBanner />
+              <ViewAsBanner />
 
               {/* Top bar */}
               <header className="h-14 bg-white border-b border-[#E5E7EB] flex items-center px-5 z-[101] flex-shrink-0 gap-3">
@@ -66,6 +86,7 @@ export default function Smsv2Layout() {
                 <span className="text-sm font-medium text-[#9CA3AF]">CRM</span>
 
                 <div className="ml-auto flex items-center gap-3">
+                  <ViewAsSelector />
                   <Smsv2StatusBar />
                   {isAdmin && (
                     <Link
@@ -121,6 +142,7 @@ export default function Smsv2Layout() {
             </div>
           </DialerProModalProvider>
         </ActiveCallProvider>
+      </ViewAsProvider>
       </SmsV2Provider>
     </CrmGuard>
   );

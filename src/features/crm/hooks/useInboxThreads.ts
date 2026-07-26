@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
+import { useViewAs } from '@/features/crm/lib/ViewAsContext';
 
 export type ChannelKind = 'sms' | 'whatsapp' | 'email';
 
@@ -63,6 +64,9 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
   const [threads, setThreads] = useState<InboxThread[]>([]);
   const [loading, setLoading] = useState(true);
   const { isAdmin } = useAuth();
+  // "See as: <agent>" — when an admin impersonates an agent, scope the inbox to
+  // that agent's participation instead of the whole workspace.
+  const { viewAsId } = useViewAs();
 
   const load = useCallback(async () => {
     // PR 119: resolve current user + admin status before querying so
@@ -72,23 +76,28 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
     const { data: authData } = await supabase.auth.getUser();
     const uid = authData.user?.id ?? null;
 
+    // Effective scope: a non-admin is always themselves; an admin sees the
+    // whole workspace UNLESS they've picked "See as: <agent>", in which case
+    // they see exactly that agent's leads.
+    const scopeId: string | null = isAdmin ? viewAsId : uid;
+
     // Build the allowed-contact set for non-admins. An agent sees a
     // conversation for every lead they PARTICIPATED with (Hugo 2026-07-26):
     // owner OR active assignment OR texted (wk_sms_messages.created_by) OR
     // called (wk_calls.agent_id). The wk_contacts participation RLS policy
     // (migration 20260726000002) lets them READ those leads' names.
     let allowedSet: Set<string> | null = null;
-    if (!isAdmin && uid) {
+    if (scopeId) {
       const [ownedRes, assignedRes, textedRes, calledRes] = await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from('wk_contacts' as any) as any).select('id').eq('owner_agent_id', uid),
+        (supabase.from('wk_contacts' as any) as any).select('id').eq('owner_agent_id', scopeId),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_lead_assignments' as any) as any)
-          .select('contact_id').eq('agent_id', uid).in('status', ['assigned', 'in_progress']),
+          .select('contact_id').eq('agent_id', scopeId).in('status', ['assigned', 'in_progress']),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from('wk_sms_messages' as any) as any).select('contact_id').eq('created_by', uid),
+        (supabase.from('wk_sms_messages' as any) as any).select('contact_id').eq('created_by', scopeId),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from('wk_calls' as any) as any).select('contact_id').eq('agent_id', uid),
+        (supabase.from('wk_calls' as any) as any).select('contact_id').eq('agent_id', scopeId),
       ]);
       const ids = new Set<string>();
       for (const r of (ownedRes.data ?? []) as Array<{ id: string }>) ids.add(r.id);
@@ -165,7 +174,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
     }
     setThreads(out);
     setLoading(false);
-  }, [isAdmin]);
+  }, [isAdmin, viewAsId]);
 
   useEffect(() => {
     void load();
