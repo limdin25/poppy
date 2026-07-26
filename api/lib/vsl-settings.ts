@@ -19,8 +19,9 @@ export interface VslRule {
 
 export interface VslSettings {
   enabled: boolean;                       // master switch — feature dark until true
-  default_video_url: string;             // placeholder until the render pipeline lands
+  default_video_url: string;             // fallback when a page has no per-lead render
   send_template: string;                 // the SMS the agent sends with the link
+  send_template_no_site: string;         // variant for leads with no website (free-website offer)
   cta_labels: { a: string; b: string };  // button A/B
   watched_threshold_pct: number;         // % progress that counts as "watched"
   quiet_hours: { start: string; end: string }; // Europe/London, automation only
@@ -48,6 +49,8 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
   default_video_url: '',
   send_template:
     "Hi {first}, it's {agent} from HeyElsie — here's the video I made for {business}: {url}",
+  send_template_no_site:
+    "Hi {first}, it's {agent} from HeyElsie — here's the video I made for {business}: {url} PS — noticed you haven't got a website. We build you one free when you join.",
   cta_labels: { a: 'Start getting reviews', b: 'Get my reviews rolling' },
   watched_threshold_pct: 50,
   quiet_hours: { start: '08:00', end: '20:00' },
@@ -173,6 +176,20 @@ export const VSL_STATE_TO_COLUMN: Record<string, string> = {
   paid: 'Paid',
 };
 
+/** Render lifecycle -> board column ('failed' stays put on purpose). */
+export const VSL_RENDER_TO_COLUMN: Record<string, string> = {
+  queued: 'Rendering',
+  rendering: 'Rendering',
+  ready: 'Ready to send',
+};
+
+/** Every VSL board column, left→right — the forward-only ordering.
+ *  KEEP IN LOCKSTEP with scripts/vsl-render-worker.mjs (worker duplicates it). */
+export const VSL_COLUMN_ORDER = [
+  'Rendering', 'Ready to send',
+  ...Object.values(VSL_STATE_TO_COLUMN),
+];
+
 export const VSL_STATE_ORDER = [
   'created', 'sent', 'opened', 'watched', 'cta_clicked', 'checkout_started', 'paid',
 ] as const;
@@ -214,17 +231,23 @@ export async function advanceVslState(
 export async function movePipelineCard(contactId: string, state: string): Promise<void> {
   const columnName = VSL_STATE_TO_COLUMN[state];
   if (!columnName) return;
+  await movePipelineCardToColumn(contactId, columnName);
+}
+
+/** Same forward-only move, addressed by column name — used by the render
+ *  lifecycle (Rendering / Ready to send) as well as the funnel states. */
+export async function movePipelineCardToColumn(contactId: string, columnName: string): Promise<void> {
+  if (!VSL_COLUMN_ORDER.includes(columnName)) return;
 
   const { data: cols } = await supabase
     .from('wk_pipeline_columns')
     .select('id, name')
-    .in('name', Object.values(VSL_STATE_TO_COLUMN));
+    .in('name', VSL_COLUMN_ORDER);
   if (!cols?.length) return;
   const byName = new Map(cols.map((c) => [c.name, c.id]));
   const target = byName.get(columnName);
   if (!target) return;
 
-  const order = Object.values(VSL_STATE_TO_COLUMN);
   const { data: contact } = await supabase
     .from('wk_contacts')
     .select('id, pipeline_column_id')
@@ -233,7 +256,7 @@ export async function movePipelineCard(contactId: string, state: string): Promis
   if (!contact) return;
 
   const currentName = cols.find((c) => c.id === contact.pipeline_column_id)?.name;
-  if (currentName && order.indexOf(currentName) >= order.indexOf(columnName)) return;
+  if (currentName && VSL_COLUMN_ORDER.indexOf(currentName) >= VSL_COLUMN_ORDER.indexOf(columnName)) return;
 
   await supabase.from('wk_contacts').update({ pipeline_column_id: target }).eq('id', contactId);
 }

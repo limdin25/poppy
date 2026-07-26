@@ -1,5 +1,6 @@
 import React from 'react'
 import { AbsoluteFill, staticFile, useCurrentFrame, interpolate, spring, Easing } from 'remotion'
+import gen from '../data/lead-gen.json'
 import { BG } from '../theme'
 
 // S1 (0–246f): the client's REAL website — MOBILE version (Hugo 2026-07-25:
@@ -55,10 +56,18 @@ const SCREEN_W = PHONE.w - PHONE.pad * 2 // 676
 const IMG_SCALE = SCREEN_W / 780
 const URLBAR_H = 64
 
+// Scroll distance (in 780-wide source px): the classic 880, clamped to what
+// the capture actually has below the fold — a short site must never scroll
+// past its own bottom (HANDOFF §4.3). site_image_height=0 = unknown → legacy.
+const VIEW_SRC = Math.round((PHONE.h - PHONE.pad * 2 - URLBAR_H) / IMG_SCALE)
+const SCROLL_MAX = gen.site_image_height > 0
+  ? Math.max(0, Math.min(880, gen.site_image_height - VIEW_SRC))
+  : 880
+
 export const OpeningWebsiteV: React.FC = () => {
   const frame = useCurrentFrame()
   const enter = spring({ frame, fps: 30, config: { damping: 18, stiffness: 90 } })
-  const scroll = interpolate(frame, [50, 235], [0, 880], {
+  const scroll = interpolate(frame, [50, 235], [0, SCROLL_MAX], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.bezier(0.35, 0, 0.35, 1),
@@ -96,12 +105,12 @@ export const OpeningWebsiteV: React.FC = () => {
                 fontFamily: '-apple-system, Arial, sans-serif',
               }}
             >
-              🔒 theboilerclubonline.co.uk
+              🔒 {gen.site_url}
             </div>
           </div>
           <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
             <img
-              src={staticFile('client-mobile.png')}
+              src={staticFile(gen.site_image)}
               style={{
                 position: 'absolute',
                 left: 0,

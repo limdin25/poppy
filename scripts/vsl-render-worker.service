@@ -1,0 +1,22 @@
+# systemd unit for the VSL render worker — install on margarita-server:
+#   cp /root/heyelsie-vsl/scripts/vsl-render-worker.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now vsl-render-worker
+# Logs: journalctl -u vsl-render-worker -f
+[Unit]
+Description=HeyElsie VSL render worker (per-lead video factory)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/heyelsie-vsl
+# system node v20 — fine for Remotion (>=18) and shared with nothing we change
+ExecStart=/usr/bin/node scripts/vsl-render-worker.mjs
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=15
+# renders must never starve the production scrapers
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

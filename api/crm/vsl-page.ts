@@ -1,11 +1,16 @@
-// Create (or fetch) a lead's VSL page — called by the dialer's "Send video"
-// button. Node runtime (the OG renderer needs sharp). Auth: any CRM agent or
+// Create (or fetch) a lead's VSL page — called by the dialer's video button.
+// Node runtime (the OG renderer needs sharp). Auth: any CRM agent or
 // admin (their Supabase JWT), same gate as wk-schedule-send.
 //
-// POST { contact_id } → { url, sms_body, page_id, state }
-// The UI then texts sms_body through the existing wk-sms-send path (identical
-// to SubscribeButton) and POSTs { contact_id, mark_sent: true } back here so
-// the page flips to 'sent' + the pipeline card moves.
+// POST { contact_id }                        → page info (creates if missing)
+// POST { contact_id, request_render: true }  → queues the VPS video factory
+//                                              (card moves to "Rendering")
+// POST { contact_id, mark_sent: true }       → flips to 'sent' + moves the
+//                                              card; REFUSED until the page
+//                                              has a playable video (the
+//                                              review-before-send gate)
+// The UI texts sms_body through the existing wk-sms-send path (identical to
+// SubscribeButton).
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
@@ -14,6 +19,7 @@ import {
   fillTemplate,
   slugifyBusiness,
   advanceVslState,
+  movePipelineCardToColumn,
 } from '../lib/vsl-settings.js';
 import { renderVslOgCard } from '../lib/render-vsl-og.js';
 
@@ -53,7 +59,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const { data: allowed } = await caller.rpc('wk_is_agent_or_admin');
   if (!allowed) return json(403, { error: 'CRM access required' });
 
-  let body: { contact_id?: string; mark_sent?: boolean };
+  let body: { contact_id?: string; mark_sent?: boolean; request_render?: boolean };
   try {
     body = JSON.parse(await readBody(req) || '{}');
   } catch {
@@ -77,6 +83,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const settings = await getVslSettings();
   const cf = (contact.custom_fields || {}) as Record<string, string>;
   const ownerFirst = (cf.owner_name || '').split(/\s+/)[0] || null;
+  const noWebsite = !(cf.website || '').trim();
 
   // One page per contact (unique index) — reuse if it exists.
   let { data: page } = await supabase
@@ -85,10 +92,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     .eq('contact_id', contactId)
     .maybeSingle();
 
-  // Master switch: while the funnel is dark, don't mint new pages or mark them
-  // sent. Existing pages can still be inspected (info only) so the agent sees
-  // the "switched off" note rather than a hard error.
-  if (!settings.enabled && (!page || body.mark_sent)) {
+  // Master switch: while the funnel is dark, agents may still create pages and
+  // queue renders (Hugo reviews the videos before launch) — but nothing may be
+  // MARKED SENT, so no lead is ever texted a dark-funnel page by automation.
+  if (!settings.enabled && body.mark_sent) {
     return json(200, {
       page_id: page?.id ?? null,
       url: page ? `https://heyelsie.com/${page.slug}` : null,
@@ -135,6 +142,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         town: cf.town || null,
         og_image_url: og,
         cta_variant: variant,
+        no_website: noWebsite,
       })
       .select('*')
       .single();
@@ -156,7 +164,31 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   const url = `https://heyelsie.com/${page.slug}`;
 
+  // Queue the video factory (VPS worker picks it up within 30s). Idempotent:
+  // an in-flight or finished render is returned as-is; only null/'failed'
+  // (re)queues — the agent's Retry after a failure comes through here too.
+  if (body.request_render) {
+    if (!page.render_status || page.render_status === 'failed') {
+      const { data: queued } = await supabase
+        .from('wk_vsl_pages')
+        .update({
+          render_status: 'queued',
+          render_requested_at: new Date().toISOString(),
+          render_error: null,
+        })
+        .eq('id', page.id)
+        .select('*')
+        .single();
+      if (queued) page = queued;
+      await movePipelineCardToColumn(page.contact_id, 'Rendering');
+    }
+  }
+
   if (body.mark_sent) {
+    // Review-before-send gate: never text a page with nothing to play.
+    if (!page.video_url && !settings.default_video_url) {
+      return json(409, { error: 'no_video', render_status: page.render_status ?? null });
+    }
     await advanceVslState(page, 'sent');
     return json(200, { ok: true, page_id: page.id, state: 'sent' });
   }
@@ -167,12 +199,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     .eq('id', agentId)
     .maybeSingle();
 
-  const sms_body = fillTemplate(settings.send_template, {
-    first: page.owner_first,
-    business: page.business_name,
-    url,
-    agent: profile?.name || null,
-  });
+  const sms_body = fillTemplate(
+    page.no_website ? settings.send_template_no_site : settings.send_template,
+    {
+      first: page.owner_first,
+      business: page.business_name,
+      url,
+      agent: profile?.name || null,
+    },
+  );
 
   return json(200, {
     page_id: page.id,
@@ -180,5 +215,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     sms_body,
     state: page.state,
     enabled: settings.enabled,
+    render_status: page.render_status ?? null,
+    video_url: page.video_url ?? null,
+    poster_url: page.poster_url ?? null,
+    no_website: !!page.no_website,
+    // mirrors the mark_sent gate so the UI never offers a doomed send
+    can_send: !!(page.video_url || settings.default_video_url),
   });
 }

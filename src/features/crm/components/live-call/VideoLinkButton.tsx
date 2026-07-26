@@ -1,15 +1,13 @@
-// VideoLinkButton — "Send video" on the in-call contact panel.
+// VideoLinkButton — the video factory's front door on the in-call panel.
 //
-// Hugo 2026-07-25 (VSL funnel): the new close motion is video-first. One tap:
-//   1. POST /api/crm/vsl-page → creates/reuses the lead's page at
-//      heyelsie.com/{business-slug} (OG card rendered server-side) and returns
-//      the ready-to-send SMS body from the admin template.
-//   2. Text it through the SAME wk-sms-send path as every manual text.
-//   3. Mark the page 'sent' → the lead's card auto-moves to "Video sent" on
-//      the pipeline; tracking + automation take over from there.
+// Hugo 2026-07-26: two-step flow. "Make video" queues the lead's custom
+// render on the VPS (~10 min) → the agent WATCHES it ("Ready") → only then
+// "Text the video" sends. The server refuses mark_sent until the page has a
+// playable video, so review-before-send has teeth. No-website leads render
+// the Google-search opening and carry the free-website offer in the SMS.
 
 import { useEffect, useRef, useState } from 'react';
-import { Clapperboard, Send, Copy, Check, X, Loader2 } from 'lucide-react';
+import { Clapperboard, Send, Copy, Check, X, Loader2, Play, RefreshCw, Film } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import type { Contact } from '../../types';
 
@@ -19,6 +17,11 @@ interface PageInfo {
   sms_body: string;
   state: string;
   enabled: boolean;
+  render_status: 'queued' | 'rendering' | 'ready' | 'failed' | null;
+  video_url: string | null;
+  poster_url: string | null;
+  no_website: boolean;
+  can_send: boolean;
 }
 
 async function callVslPage(body: Record<string, unknown>): Promise<PageInfo | null> {
@@ -50,6 +53,20 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
     setOpen(false); setInfo(null); setSent(false); setCopied(false); setNote('');
   }, [contact.id]);
 
+  // While a render is in flight, poll every 15s so "Rendering" flips to
+  // "Ready" on its own (the VPS worker writes the row; no realtime needed here).
+  const rendering = open && (info?.render_status === 'queued' || info?.render_status === 'rendering');
+  useEffect(() => {
+    if (!rendering) return;
+    const id = contact.id;
+    const t = setInterval(async () => {
+      const page = await callVslPage({ contact_id: id });
+      if (id !== contactIdRef.current) return;
+      if (page) setInfo(page);
+    }, 15000);
+    return () => clearInterval(t);
+  }, [rendering, contact.id]);
+
   async function prepare() {
     const id = contact.id;
     setBusy(true);
@@ -62,6 +79,20 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
       // A page already past 'created' means it's been sent before.
       if (page.state && page.state !== 'created') setSent(true);
       setOpen(true);
+    } finally {
+      if (id === contactIdRef.current) setBusy(false);
+    }
+  }
+
+  async function makeVideo() {
+    const id = contact.id;
+    setBusy(true);
+    setNote('');
+    try {
+      const page = await callVslPage({ contact_id: id, request_render: true });
+      if (id !== contactIdRef.current) return;
+      if (!page) { setNote('Could not queue the render — try again.'); return; }
+      setInfo(page);
     } finally {
       if (id === contactIdRef.current) setBusy(false);
     }
@@ -97,13 +128,14 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
           className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white bg-[#3C5A87] hover:bg-[#33507a] disabled:opacity-60 rounded-[8px] py-1.5 transition-colors"
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Clapperboard className="w-3.5 h-3.5" />}
-          Send video
+          Video
         </button>
       </div>
     );
   }
 
   const funnelOff = info?.enabled === false;
+  const rs = info?.render_status ?? null;
 
   return (
     <div className="pb-1.5 border-b border-[#E5E7EB]/70">
@@ -122,7 +154,12 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
 
         {funnelOff && (
           <div className="text-[10.5px] text-[#b45309] leading-snug">
-            The video funnel is switched off in Settings — copy the link to share it manually, or turn the funnel on.
+            The video funnel is switched off in Settings — you can still make the video now; sending unlocks when it’s on.
+          </div>
+        )}
+        {info?.no_website && (
+          <div className="text-[10.5px] text-[#166534] leading-snug">
+            No website on file — their video opens with the Google search instead, and the text offers a free website.
           </div>
         )}
 
@@ -133,10 +170,53 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
           {info?.sms_body}
         </div>
 
+        {/* render lifecycle */}
+        {rs === null && (
+          <button
+            onClick={makeVideo}
+            disabled={busy}
+            className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white bg-[#3C5A87] hover:bg-[#33507a] disabled:opacity-60 rounded-[8px] py-1.5"
+          >
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Film className="w-3.5 h-3.5" />}
+            Make their video
+          </button>
+        )}
+        {(rs === 'queued' || rs === 'rendering') && (
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#3C5A87]">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {rs === 'queued' ? 'In the queue…' : 'Rendering — about 10 minutes.'} This updates on its own.
+          </div>
+        )}
+        {rs === 'failed' && (
+          <div className="space-y-1.5">
+            <div className="text-[10.5px] text-[#b91c1c] leading-snug">
+              Render failed{info?.no_website ? '' : ' (their website may not load)'} — try again, or tell Hugo.
+            </div>
+            <button
+              onClick={makeVideo}
+              disabled={busy}
+              className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-[#3C5A87] border border-[#c9d6e8] bg-white hover:bg-[#eaf1f8] rounded-[8px] py-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Retry
+            </button>
+          </div>
+        )}
+        {rs === 'ready' && info?.video_url && (
+          <a
+            href={info.video_url}
+            target="_blank"
+            rel="noreferrer"
+            className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-[#166534] border border-[#bbe5c8] bg-[#f0fdf4] hover:bg-[#dcfce7] rounded-[8px] py-1.5"
+          >
+            <Play className="w-3.5 h-3.5" /> Watch it first
+          </a>
+        )}
+
         <div className="flex gap-1.5">
           <button
             onClick={textIt}
-            disabled={busy || funnelOff}
+            disabled={busy || funnelOff || !info?.can_send}
+            title={!info?.can_send ? 'Make the video first — you send it after you’ve watched it' : undefined}
             className="flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white bg-[#3C5A87] hover:bg-[#33507a] disabled:opacity-60 rounded-[8px] py-1.5"
           >
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : sent ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}

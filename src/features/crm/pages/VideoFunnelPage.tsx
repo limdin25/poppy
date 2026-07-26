@@ -28,10 +28,20 @@ interface VslPage {
   watched_at: string | null;
   paid_at: string | null;
   updated_at: string;
+  render_status: 'queued' | 'rendering' | 'ready' | 'failed' | null;
+  render_error: string | null;
+  render_started_at: string | null;
+  video_url: string | null;
+  poster_url: string | null;
+  no_website: boolean;
 }
 
+// 'rendering' and 'render_ready' are VIRTUAL groups carved out of state
+// 'created' by render_status — the review step before anything is sent.
 const STATES: Array<{ key: string; label: string; color: string }> = [
   { key: 'created', label: 'Created', color: '#9CA3AF' },
+  { key: 'rendering', label: 'Rendering 🎬', color: '#94A3B8' },
+  { key: 'render_ready', label: 'Ready to send', color: '#64748B' },
   { key: 'sent', label: 'Video sent', color: '#0EA5E9' },
   { key: 'opened', label: 'Opened', color: '#38BDF8' },
   { key: 'watched', label: 'Watched', color: '#F59E0B' },
@@ -39,6 +49,13 @@ const STATES: Array<{ key: string; label: string; color: string }> = [
   { key: 'checkout_started', label: 'Checkout', color: '#A855F7' },
   { key: 'paid', label: 'Paid 🎉', color: '#16A34A' },
 ];
+
+function boardKey(p: VslPage): string {
+  if (p.state !== 'created') return p.state;
+  if (p.render_status === 'queued' || p.render_status === 'rendering') return 'rendering';
+  if (p.render_status === 'ready') return 'render_ready';
+  return 'created'; // incl. failed — the card wears the error
+}
 
 function ago(ts: string | null): string {
   if (!ts) return '';
@@ -117,9 +134,38 @@ export default function VideoFunnelPage() {
   const grouped = useMemo(() => {
     const g: Record<string, VslPage[]> = {};
     for (const s of STATES) g[s.key] = [];
-    for (const p of pages) (g[p.state] ||= []).push(p);
+    for (const p of pages) (g[boardKey(p)] ||= []).push(p);
     return g;
   }, [pages]);
+
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [sendErr, setSendErr] = useState<string | null>(null);
+
+  // "Ready to send" → the agent has watched the preview → one tap texts the
+  // lead + marks the page sent (identical path to the in-call button).
+  async function sendVideo(p: VslPage) {
+    setSendErr(null);
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (!token) return;
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    const infoRes = await fetch('/api/crm/vsl-page', {
+      method: 'POST', headers, body: JSON.stringify({ contact_id: p.contact_id }),
+    });
+    if (!infoRes.ok) { setSendErr(`${p.business_name}: couldn’t load the SMS`); return; }
+    const info = await infoRes.json();
+    if (info.enabled === false) { setSendErr('The funnel is switched off in Settings — turn it on to send.'); return; }
+    if (!info.can_send) { setSendErr(`${p.business_name}: video not ready yet`); return; }
+    const { error } = await supabase.functions.invoke('wk-sms-send', {
+      body: { contact_id: p.contact_id, body: info.sms_body },
+    });
+    if (error) { setSendErr(`${p.business_name}: text failed — try from the dialer`); return; }
+    const marked = await fetch('/api/crm/vsl-page', {
+      method: 'POST', headers, body: JSON.stringify({ contact_id: p.contact_id, mark_sent: true }),
+    });
+    if (!marked.ok) { setSendErr(`${p.business_name}: texted, but tracking didn’t arm — retry`); return; }
+    setSentIds((prev) => new Set(prev).add(p.id));
+  }
 
   async function nudge(p: VslPage) {
     const url = `https://heyelsie.com/${p.slug}`;
@@ -152,6 +198,12 @@ export default function VideoFunnelPage() {
           </button>
         )}
       </div>
+
+      {sendErr && (
+        <div className="mb-3 text-[12px] font-semibold text-[#B91C1C] bg-[#FEF2F2] border border-[#FECACA] rounded-[8px] px-3 py-2">
+          {sendErr}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-[13px] text-[#9CA3AF] italic">Loading…</p>
@@ -191,8 +243,43 @@ export default function VideoFunnelPage() {
                     <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#9CA3AF]">
                       {p.watched_pct > 0 && <span>watched {p.watched_pct}%</span>}
                       {p.open_count > 0 && <span>{p.open_count} open{p.open_count === 1 ? '' : 's'}</span>}
+                      {p.no_website && <span title="Free website promised" className="text-[#16A34A] font-bold">🎁 site</span>}
                       <span className="ml-auto">{ago(p.updated_at)}</span>
                     </div>
+
+                    {/* render lifecycle on the card */}
+                    {s.key === 'rendering' && (
+                      <div className="flex items-center gap-1.5 mt-1.5 text-[10.5px] font-semibold text-[#64748B]">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        {p.render_status === 'queued' ? 'queued' : `rendering ${ago(p.render_started_at)}`}
+                      </div>
+                    )}
+                    {p.render_status === 'failed' && s.key === 'created' && (
+                      <div className="mt-1.5 text-[10px] text-[#B91C1C] leading-snug" title={p.render_error || ''}>
+                        render failed — retry from the dialer
+                      </div>
+                    )}
+                    {s.key === 'render_ready' && p.video_url && (
+                      <div className="mt-1.5 space-y-1.5">
+                        <video
+                          src={p.video_url}
+                          poster={p.poster_url || undefined}
+                          controls
+                          playsInline
+                          preload="none"
+                          className="w-full rounded-[8px] bg-black aspect-[9/16] max-h-[220px]"
+                        />
+                        <button
+                          onClick={() => sendVideo(p)}
+                          disabled={sentIds.has(p.id)}
+                          className="w-full flex items-center justify-center gap-1.5 text-[11.5px] font-bold text-white bg-[#16A34A] hover:bg-[#15803d] rounded-[8px] py-1.5 disabled:opacity-50"
+                        >
+                          {sentIds.has(p.id) ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                          {sentIds.has(p.id) ? 'Sent' : 'Looks good — text it'}
+                        </button>
+                      </div>
+                    )}
+
                     <div className="flex gap-1 mt-2">
                       <button
                         onClick={() => {
@@ -248,6 +335,7 @@ interface Cfg {
   enabled: boolean;
   default_video_url: string;
   send_template: string;
+  send_template_no_site: string;
   cta_labels: { a: string; b: string };
   watched_threshold_pct: number;
   quiet_hours: { start: string; end: string };
@@ -268,6 +356,8 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
   const [cfg, setCfg] = useState<Cfg | null>(null);
   const [aiMode, setAiMode] = useState('draft');
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [worker, setWorker] = useState<{ last_seen: string; current: string | null } | null>(null);
+  const [queueDepth, setQueueDepth] = useState(0);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
@@ -289,7 +379,10 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
   const loadCfg = useCallback(() => {
     setErr('');
     call('GET')
-      .then((d) => { setCfg(d.settings); setAiMode(d.ai_reply_mode); setAgents(d.agents || []); })
+      .then((d) => {
+        setCfg(d.settings); setAiMode(d.ai_reply_mode); setAgents(d.agents || []);
+        setWorker(d.render_worker || null); setQueueDepth(d.render_queue_depth || 0);
+      })
       .catch((e) => setErr(e.message || 'Could not load settings.'));
   }, [call]);
 
@@ -364,11 +457,35 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
               />
             </div>
 
+            {/* the video factory's pulse */}
+            <div className={`rounded-[10px] p-3 border text-[12px] ${
+              worker && Date.now() - new Date(worker.last_seen).getTime() < 120_000
+                ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+                : 'bg-[#FEF2F2] border-[#FECACA] text-[#B91C1C]'
+            }`}>
+              <b>Render worker:</b>{' '}
+              {worker
+                ? Date.now() - new Date(worker.last_seen).getTime() < 120_000
+                  ? `✅ online${worker.current ? ` — rendering ${worker.current}` : ''} · ${queueDepth} in queue`
+                  : `⚠️ last seen ${new Date(worker.last_seen).toLocaleString('en-GB')} — videos won't render until it's back`
+                : '⚠️ never seen — the VPS worker isn’t running yet'}
+            </div>
+
             <div>
               <label className="text-[12px] font-bold block mb-1">Send-video SMS ({'{first} {business} {url} {agent}'})</label>
               <textarea
                 value={cfg.send_template}
                 onChange={(e) => set({ send_template: e.target.value })}
+                rows={3}
+                className="w-full px-2.5 py-2 text-[13px] border border-[#D1D5DB] rounded-[8px]"
+              />
+            </div>
+
+            <div>
+              <label className="text-[12px] font-bold block mb-1">Send-video SMS — no-website leads (free-website offer)</label>
+              <textarea
+                value={cfg.send_template_no_site}
+                onChange={(e) => set({ send_template_no_site: e.target.value })}
                 rows={3}
                 className="w-full px-2.5 py-2 text-[13px] border border-[#D1D5DB] rounded-[8px]"
               />

@@ -153,7 +153,11 @@ export async function provisionVslSale(session: Stripe.Checkout.Session): Promis
 
   await notifyOwner(`💰 VSL sale: ${page.business_name}`,
     `<p><b>${page.business_name}</b> (${page.owner_first || 'owner'}, ${page.town || '—'}) just paid £1 and started the ${VSL_PRICES[priceId]?.label || 'Starter'} trial from their video page.</p>
-     <p>Email: ${email} · Agent: ${page.agent_id}</p>`);
+     <p>Email: ${email} · Agent: ${page.agent_id}</p>${
+       page.no_website
+         ? `<p style="color:#b45309"><b>⚠️ PROMISED: free website</b> — this lead had no website; their page and SMS carried the "free website included" offer. Don't drop it.</p>`
+         : ''
+     }`);
 }
 
 async function recordPaid(

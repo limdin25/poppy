@@ -58,6 +58,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const ogTitle = `${first}, I made this video for ${business}`;
   const ogDesc = `A 90-second look at where ${business} sits on Google — and how to climb.`;
   const ogImage = page.og_image_url || '';
+  // player poster: the render's own first frame beats the OG card
+  const poster = page.poster_url || ogImage;
 
   const tiers = Object.entries(VSL_PRICES)
     .map(
@@ -95,6 +97,7 @@ video{height:100%;max-width:100%;aspect-ratio:9/16;object-fit:cover;display:bloc
 .vid .ph{height:100%;max-width:100%;aspect-ratio:9/16;border-radius:18px;background:#111;color:#9CA3AF;display:flex;align-items:center;justify-content:center;font-size:13px}
 .cta{display:block;width:100%;margin-top:12px;padding:15px;border:0;border-radius:14px;background:#1A1A1A;color:#fff;font-size:16px;font-weight:800;cursor:pointer;flex-shrink:0}
 .cta:active{transform:scale(.985)}
+.seal{text-align:center;margin-top:8px;font-size:12.5px;font-weight:800;color:#16A34A;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:999px;padding:5px 12px;width:fit-content;margin-left:auto;margin-right:auto;flex-shrink:0}
 .spots{text-align:center;margin-top:7px;font-size:12.5px;font-weight:700;color:#B45309;flex-shrink:0}
 .trust{text-align:center;margin-top:4px;font-size:11.5px;color:#9CA3AF;flex-shrink:0}
 .sheetbg{position:fixed;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .2s}
@@ -115,17 +118,18 @@ video{height:100%;max-width:100%;aspect-ratio:9/16;object-fit:cover;display:bloc
   <p class="sub">90 seconds — where you rank on Google, and how to fix it.</p>
   <div class="vid">${
     videoUrl
-      ? `<video id="v" src="${esc(videoUrl)}" ${ogImage ? `poster="${esc(ogImage)}"` : ''} controls playsinline preload="metadata"></video>`
+      ? `<video id="v" src="${esc(videoUrl)}" ${poster ? `poster="${esc(poster)}"` : ''} controls playsinline preload="metadata"></video>`
       : `<div class="ph">Video coming shortly</div>`
   }</div>
   <button class="cta" onclick="cta()">${ctaLabel}</button>
+  ${page.no_website ? `<p class="seal">🎁 FREE website included</p>` : ''}
   <p class="spots">${spots} spot${spots === 1 ? '' : 's'} left in ${town}</p>
   <p class="trust">Start for £1 · 10 days · cancel anytime</p>
 </div>
 <div class="sheetbg" onclick="closeSheet()"></div>
 <div class="sheet">
   <p class="sh">Pick your size</p>
-  <p class="ss">Every plan starts with £1 for your first 10 days — cancel anytime.</p>
+  <p class="ss">Every plan starts with £1 for your first 10 days — cancel anytime.${page.no_website ? ' A free website is included with every plan.' : ''}</p>
   ${tiers}
   <p class="pound">£1 today. Nothing else until day 10.</p>
 </div>

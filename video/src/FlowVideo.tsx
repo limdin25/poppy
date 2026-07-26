@@ -1,7 +1,9 @@
 import React from 'react'
 import { AbsoluteFill, Sequence, Audio, staticFile } from 'remotion'
 import { OpeningWebsiteV } from './comps/OpeningWebsiteV'
+import { OpeningSearchV } from './comps/OpeningSearchV'
 import { GoogleScrollV } from './comps/GoogleScrollV'
+import gen from './data/lead-gen.json'
 import { SupportSceneV } from './comps/SupportSceneV'
 import { WhySceneV } from './comps/WhySceneV'
 import { StepsSceneV } from './comps/StepsSceneV'
@@ -26,8 +28,10 @@ import { SubtitlesV } from './comps/SubtitlesV'
 export const FlowVideo: React.FC = () => {
   return (
     <AbsoluteFill style={{ background: '#fff' }}>
+      {/* S1: their website — or, for no-website leads, a live Google search
+          typed out (the free-website offer rides on the page/SMS instead) */}
       <Sequence from={0} durationInFrames={246}>
-        <OpeningWebsiteV />
+        {gen.no_website ? <OpeningSearchV /> : <OpeningWebsiteV />}
       </Sequence>
       {/* the SERP stays on screen (holding at the top pack) through "the only
           reason they're up there is more reviews…" — we only leave it when he

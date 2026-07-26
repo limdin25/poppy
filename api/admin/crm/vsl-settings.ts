@@ -18,16 +18,22 @@ export default async function handler(req: Request): Promise<Response> {
   if (gate instanceof Response) return gate;
 
   if (req.method === 'GET') {
-    const [settings, aiReply, agents] = await Promise.all([
+    const [settings, aiReply, agents, workerRow, queue] = await Promise.all([
       getVslSettings(),
       supabase.from('wk_ai_reply_settings').select('mode, enabled').eq('id', 'default').maybeSingle(),
       supabase.from('profiles').select('id, name').in('workspace_role', ['agent', 'admin']).order('name'),
+      supabase.from('platform_settings').select('value').eq('key', 'vsl_render_worker').maybeSingle(),
+      supabase.from('wk_vsl_pages').select('id', { count: 'exact', head: true }).in('render_status', ['queued', 'rendering']),
     ]);
+    let renderWorker: unknown = null;
+    try { renderWorker = workerRow.data?.value ? JSON.parse(workerRow.data.value) : null; } catch { /* stale */ }
     return Response.json({
       settings,
       ai_reply_mode: aiReply.data?.mode ?? 'draft',
       ai_reply_enabled: aiReply.data?.enabled ?? false,
       agents: agents.data ?? [],
+      render_worker: renderWorker,
+      render_queue_depth: queue.count ?? 0,
     });
   }
 

@@ -1,6 +1,6 @@
 import React from 'react'
 import { AbsoluteFill, useCurrentFrame, interpolate, Easing, staticFile } from 'remotion'
-import data from '../data/lead.json'
+import gen from '../data/lead-gen.json'
 import { compileTrack, tremor, rng } from '../lib/human'
 import { Cursor } from './Cursor'
 import { GOOGLE_FONT } from '../theme'
@@ -19,37 +19,16 @@ import {
 // - the lead card is not in frame during the downs; it arrives on the last
 //   flick looking identical to every other listing
 
-const lead = data.lead
+// All per-lead values now come from lead-gen.json — written by
+// video/scripts/prep-lead.mjs (the committed copy is the Energywise sample so
+// the project always renders standalone).
+const lead = { business: gen.business, town: gen.town, rating: gen.rating, reviews: gen.reviews }
 
 interface Row { name: string; rating: number | null; reviews: number | null; isLead?: boolean }
 
-// live pack (lead.json) interleaved with the 8 pad businesses — plain names,
-// 4.3–4.9★, 8–200 reviews, inserted ABOVE the lead
-const ROWS: Row[] = [
-  { name: 'GasCare - Glossop', rating: 4.8, reviews: 758 },
-  { name: 'Screwfix Glossop', rating: 4.6, reviews: 174 },
-  { name: 'High Peak Heating Solutions', rating: 4.7, reviews: 143 },
-  { name: 'The Boiler Club', rating: 5, reviews: 55 },
-  { name: 'Glossop Boiler Care', rating: 4.9, reviews: 88 },
-  { name: 'B.Cooper & Sons', rating: 5, reviews: 30 },
-  { name: 'Dinting Heating Co.', rating: 4.6, reviews: 61 },
-  { name: 'A&E Plumbing', rating: 4.9, reviews: 22 },
-  { name: 'M. Whitfield Plumbing & Heating', rating: 4.5, reviews: 34 },
-  { name: 'the 1 stop plumbing & green energy centre ltd', rating: 4.7, reviews: 21 },
-  { name: 'Simmondley Plumbing Services', rating: 4.8, reviews: 19 },
-  { name: 'Peter Hughes Plumbing', rating: 4.8, reviews: 17 },
-  { name: 'Peak District Gas Services', rating: 4.4, reviews: 27 },
-  { name: 'J McCabe Plumbing & Heating', rating: 4.6, reviews: 11 },
-  { name: 'R. Ashworth & Son', rating: 4.3, reviews: 9 },
-  { name: 'Joe Barber Plumbers Merchant Depot', rating: 3.5, reviews: 4 },
-  { name: 'Hadfield Plumbing & Heating', rating: 4.6, reviews: 12 },
-  { name: 'TitanFlameltd-Glossop', rating: 5, reviews: 3 },
-  { name: lead.business, rating: lead.rating, reviews: lead.reviews, isLead: true },
-  { name: 'Joe Barber Plumbers Merchants', rating: 5, reviews: 2 },
-  { name: 'In the pipeline plumbing & heating specialists Ltd', rating: 5, reviews: 2 },
-  { name: 'MG plumbing & heating', rating: 5, reviews: 1 },
-  { name: 'Plumbers in Hadfield', rating: null, reviews: null },
-]
+// the 23-row pack: real competitors interleaved with locale-flavoured pads,
+// lead at index ≈18 so exactly 5 down-flicks reach it (audio-locked)
+const ROWS: Row[] = gen.rows as Row[]
 
 // deterministic per-row extras so the mock looks alive (no Math.random)
 const extras = ROWS.map((_, i) => {
@@ -58,7 +37,7 @@ const extras = ROWS.map((_, i) => {
   return {
     open: r() < 0.28 ? 'Open 24 hours' : `Open · ${closes[Math.floor(r() * closes.length)]}`,
     years: `${5 + Math.floor(r() * 20)}+ years in business`,
-    phone: `01457 ${200 + Math.floor(r() * 700)} ${100 + Math.floor(r() * 900)}`,
+    phone: `${gen.area_code} ${200 + Math.floor(r() * 700)} ${100 + Math.floor(r() * 900)}`,
   }
 })
 
@@ -71,12 +50,14 @@ const Y_LEAD = LEAD_TOP - 640 // lead card sits at screen y 640 when parked
 
 // — scroll: one mac-momentum flick per spoken "Down" (word times → local
 // frames: (t·30)−246) — the last flick lands the lead card just before
-// "there you are" (20.5s → f369) —
+// "there you are" (20.5s → f369). The `at` frames are AUDIO-LOCKED (never
+// change); the intermediate targets are fractions of Y_LEAD so any pack
+// size/lead index keeps the same choreography (HANDOFF §4.7).
 const FLICKS = [
-  { at: 191, to: 780 },
-  { at: 220, to: 1620 },
-  { at: 273, to: 2520 },
-  { at: 299, to: 3400 },
+  { at: 191, to: Math.round(Y_LEAD * 0.19) },
+  { at: 220, to: Math.round(Y_LEAD * 0.39) },
+  { at: 273, to: Math.round(Y_LEAD * 0.61) },
+  { at: 299, to: Math.round(Y_LEAD * 0.82) },
   { at: 348, to: Y_LEAD },
 ]
 const FLICK_LEN = 22
@@ -89,9 +70,11 @@ const UP1 = 458 // 23.5s "So the best jobs…" — first upward momentum flick
 const UP2 = 482
 const Y_TOP = 40
 
+const Y_MID = Math.round(Y_LEAD / 2) // fly-back midpoint scales with the pack (HANDOFF §4.8)
+
 function scrollY(f: number): number {
-  if (f >= UP2) return 2100 + (Y_TOP - 2100) * easeFlick(Math.min(1, (f - UP2) / 26))
-  if (f >= UP1) return Y_LEAD + (2100 - Y_LEAD) * easeFlick(Math.min(1, (f - UP1) / 22))
+  if (f >= UP2) return Y_MID + (Y_TOP - Y_MID) * easeFlick(Math.min(1, (f - UP2) / 26))
+  if (f >= UP1) return Y_LEAD + (Y_MID - Y_LEAD) * easeFlick(Math.min(1, (f - UP1) / 22))
   // gentle read-drift before the first flick
   let y = f < 100 ? interpolate(f, [0, 100], [0, 46], { extrapolateRight: 'clamp' }) : interpolate(f, [100, 191], [46, 90], { extrapolateRight: 'clamp' })
   let from = 90
@@ -110,7 +93,7 @@ function scrollY(f: number): number {
 // driven by this same track so the blue sweep follows the cursor exactly
 const NAME_X0 = 56 // screen x where the name text starts
 const NAME_Y = 683 // screen y of the name row while the card is parked
-const SEL_W = 362 // width of "Energywise Heating Limited" at 27px
+const SEL_W = gen.sel_w // measured width of the lead's name at 27px Arial (prep-lead.mjs)
 const DRAG_START = 385
 const DRAG_END = 435
 
@@ -119,8 +102,9 @@ const TRACK = compileTrack({ x: 900, y: 1500 }, [
   { at: 180, to: { x: 940, y: 900 } },              // rest before the flicks
   { at: DRAG_START, to: { x: NAME_X0, y: NAME_Y } }, // to the start of the name
   // the drag in short segments so the human-motion arc stays on the line
-  { at: 400, to: { x: NAME_X0 + 120, y: NAME_Y + 2 } },
-  { at: 415, to: { x: NAME_X0 + 245, y: NAME_Y + 1 } },
+  // (segment targets scale with the measured name width)
+  { at: 400, to: { x: NAME_X0 + Math.round(SEL_W * 0.33), y: NAME_Y + 2 } },
+  { at: 415, to: { x: NAME_X0 + Math.round(SEL_W * 0.68), y: NAME_Y + 1 } },
   { at: DRAG_END, to: { x: NAME_X0 + SEL_W + 4, y: NAME_Y } },
   { at: 495, to: { x: 900, y: 840 } },              // release, wheel back up
   { at: 565, to: { x: 700, y: 560 } },              // rest at the top pack
