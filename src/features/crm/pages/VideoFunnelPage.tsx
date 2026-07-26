@@ -515,7 +515,7 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
                   className="w-full px-2.5 py-2 text-[13px] border border-[#D1D5DB] rounded-[8px]"
                 />
               </div>
-              <p className="text-[10.5px] text-[#9CA3AF]">Leave the URL blank to hide the proof block.</p>
+              <p className="text-[10.5px] text-[#9CA3AF]">Leave the URL blank to show the built-in Mayfair before/after cards; set it to override them with an image.</p>
             </div>
 
             <div>

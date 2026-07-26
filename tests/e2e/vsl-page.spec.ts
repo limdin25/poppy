@@ -40,6 +40,27 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     await expect.poll(() => beacons).toContain('cta_click')
   })
 
+  test('play opens the popup player; before/after cards sit below the button', async ({ page }) => {
+    await page.goto(`/${SLUG}`)
+
+    // The Mayfair before/after Google cards render below the buy button
+    // (native HTML — shown whenever no proof image overrides them).
+    await expect(page.locator('.ba .gcard')).toHaveCount(2)
+    await expect(page.locator('.ba')).toContainText('Mayfair Plumbers')
+    await expect(page.locator('.ba')).toContainText('(17)')
+    await expect(page.locator('.ba')).toContainText('(356)')
+    await expect(page.locator('.batag.blue')).toHaveText('AFTER')
+
+    // Tapping the preview opens the fullscreen popup (the page itself never
+    // expands); ✕ closes it and the preview is still there.
+    await page.locator('#stage').click()
+    await expect(page.locator('.vmodal')).toBeVisible()
+    await expect(page.locator('.vmodal video')).toBeVisible()
+    await page.locator('.vx').click()
+    await expect(page.locator('.vmodal')).toBeHidden()
+    await expect(page.locator('#stage')).toBeVisible()
+  })
+
   test('unknown slug bounces to the marketing site', async ({ page }) => {
     const resp = await page.goto('/definitely-not-a-real-business-xyz')
     expect(resp?.url()).toContain('welcome')

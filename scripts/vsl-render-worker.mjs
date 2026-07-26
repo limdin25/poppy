@@ -140,8 +140,17 @@ async function renderOne(page) {
       { cwd: VIDEO, timeout: 45 * 60_000 })
     if (!existsSync(mp4)) throw new Error('render produced no file')
 
-    // 3. poster from frame 0
-    run('ffmpeg', ['-y', '-i', mp4, '-frames:v', '1', '-q:v', '4', jpg], { timeout: 60_000 })
+    // 3. poster — the PosterV 16:9 still (site or Google card behind the
+    //    actor; frame 90 = the vetted actor pose). lead-gen.json is still
+    //    this lead's here. Fall back to frame 0 so a poster hiccup never
+    //    throws away a finished 10-minute render.
+    try {
+      run('npx', ['remotion', 'still', 'src/index.ts', 'PosterV', jpg, '--frame=90'],
+        { cwd: VIDEO, timeout: 5 * 60_000 })
+    } catch (e) {
+      console.error('PosterV still failed, using frame 0:', String(e.stderr || e.message).slice(0, 300))
+      run('ffmpeg', ['-y', '-i', mp4, '-frames:v', '1', '-q:v', '4', jpg], { timeout: 60_000 })
+    }
 
     // 4. upload
     const videoUrl = await upload(mp4, `${slug}.mp4`, 'video/mp4')
@@ -151,11 +160,13 @@ async function renderOne(page) {
     //    no_website is owned by the API at page-create (source of truth) — the
     //    worker must NOT overwrite it, or a retry could break the promise trail
     //    on an already-texted page (#19).
+    //    ?v= busts the storage CDN on re-renders (same object name is upserted).
+    const bust = Date.now()
     await rest('PATCH', `wk_vsl_pages?id=eq.${page.id}`, {
       render_status: 'ready',
       render_done_at: new Date().toISOString(),
-      video_url: videoUrl,
-      poster_url: posterUrl,
+      video_url: `${videoUrl}?v=${bust}`,
+      poster_url: `${posterUrl}?v=${bust}`,
       render_error: null,
     })
     await moveCard(page.contact_id, 'Ready to send')
