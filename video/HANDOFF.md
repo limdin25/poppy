@@ -102,20 +102,37 @@ source's end).
    `Y_LEAD/2` instead of the constant when the pack changes.
 9. **Area code (GoogleScrollV.tsx:61)** — ghost listings' phone numbers are
    `01457 …` (Glossop). Substitute the lead town's STD code.
-10. **Trade strings** — "plumbers in {town}" (:244), pill `value="plumber"`
-    (:248), "· Plumber" row label (:162). Fine for the current plumber
-    campaign; parameterize when another trade is targeted.
+10. ~~**Trade strings**~~ **DONE 2026-07-26 — the video is multi-trade.** The
+    search line, the search pill and the "· Plumber" row label all read
+    `gen.trade.*`, written into `lead-gen.json` by prep-lead from the `trade`
+    block rank-frame returns. The dictionary is `api/lib/trades.ts` — the ONLY
+    place a trade is defined. Add a trade there (~4 lines) and every surface
+    follows. NOTE: trades.ts must stay pure JSON-serialisable, because the
+    comps and the .mjs script receive it as data, not as an import.
 11. The signed-in Google avatar in the SERP header (:238) is a hardcoded "M"
     monogram — a **generic mock**, not the lead's initial (it coincidentally
     matches the demo lead's owner "Michael"). Leave it or randomize; don't
     wire it to lead data.
 
-### The "generic" back half — one caveat
-The voice never says a trade, but three visual props are plumbing-flavoured
-(fine for the plumber CSV, swap for other trades):
-- `StepsSceneV.tsx` `REVIEW_TEXT` — "new boiler fitted next day…"
-- `ClimbSceneV.tsx` `CUSTOMERS` — job labels (New boiler, Radiators…)
-- `OfferSceneV.tsx` `REVIEWS` — "sorted the leak", "radiators"
+### The "generic" back half — now trade-aware too
+The voice never says a trade (that's the design contract). The three visual
+props that WERE plumbing-flavoured now read from `gen.trade`:
+- `StepsSceneV.tsx` `REVIEW_TEXT` → `gen.trade.review_long` (≤100 chars — it's
+  typed at 1.3cps inside a 104-frame gate)
+- `ClimbSceneV.tsx` `CUSTOMERS` → `gen.trade.jobs` (exactly 7 — fixed stagger)
+- `OfferSceneV.tsx` `REVIEWS`/`OWNER_REPLY` → `review_short[2]` (≤45 each) and
+  `owner_reply` (≤70)
+
+Those limits are enforced by `tests/vsl-funnel.test.ts`; break one and the text
+overruns its box or never finishes typing.
+
+**Two traps when adding a trade:**
+1. `video/src/data/lead-gen.json` is COMMITTED sample data and TypeScript infers
+   `gen`'s type from it (`resolveJsonModule`). Anything you read as `gen.trade.x`
+   must exist in that file or the build fails.
+2. `vsl-render-worker.mjs` runs `git checkout -- video/src/data/lead-gen.json`
+   after every render. Deploy trade changes to the VPS as one `git reset --hard`
+   + `systemctl restart vsl-render-worker`, or renders restore a stale sample.
 
 ## 5. If the voice recording ever changes (the retime recipe)
 
