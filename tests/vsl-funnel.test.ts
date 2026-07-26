@@ -891,4 +891,17 @@ describe('owner-name enrichment (Companies House)', () => {
     expect(scrape).toMatch(/\.\.\.\(existingCf\.get\(phone\) \|\| \{\}\), \.\.\.custom_fields/)
     expect(scrape).not.toMatch(/upsert\(\{ name: l\.name, phone, custom_fields \}/)
   })
+
+  it('re-reads custom_fields immediately before writing, not the pre-run snapshot', () => {
+    // Same family of bug as the scraper's clobber: custom_fields is written as
+    // ONE whole column, so anything built on a stale copy reverts every key it
+    // didn't know about. The lookup loop runs ~700ms a lead, so on a full list
+    // the snapshot is half an hour old by the time it's written back — long
+    // enough for an agent to have saved a call note that would vanish.
+    const writeLoop = enrich.slice(enrich.indexOf('let wrote = 0'))
+    expect(writeLoop).toMatch(/select\('custom_fields'\)\.eq\('id', f\.id\)/)
+    expect(writeLoop).toMatch(/\.\.\.\(fresh\.custom_fields \|\| \{\}\)/)
+    // the stale snapshot must not be the thing that gets spread
+    expect(writeLoop).not.toMatch(/leads\.find/)
+  })
 })

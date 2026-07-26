@@ -162,12 +162,22 @@ if (!APPLY) { console.log('\ndry run — re-run with --apply to write'); process
 
 // Only HIGH and MEDIUM go in. A low-confidence guess in the opener is worse
 // than no name — the agent can just ask who they're speaking to.
-let wrote = 0
+let wrote = 0, vanished = 0
 for (const f of found.filter((x) => x.confidence !== 'low')) {
-  const lead = leads.find((l) => l.id === f.id)
-  const cf = { ...(lead.custom_fields || {}), owner_name: f.owner_name, owner_source: 'companies_house', company_number: f.company_number }
+  // Re-read the row immediately before writing rather than spreading the copy
+  // in `leads`. That snapshot was taken BEFORE the lookup loop, which costs
+  // ~700ms a lead — over 3,000 plumbers that's half an hour, and a whole-column
+  // write built on a 30-minute-old spread silently reverts anything changed in
+  // the meantime. Agents write custom_fields.notes from the dialer all day
+  // (DialerProPage.tsx saveNotes), so a call note taken during a long run is
+  // exactly what would disappear.
+  const { data: fresh } = await supa
+    .from('wk_contacts').select('custom_fields').eq('id', f.id).maybeSingle()
+  if (!fresh) { vanished++; continue }   // deleted mid-run — don't resurrect it
+  const cf = { ...(fresh.custom_fields || {}), owner_name: f.owner_name, owner_source: 'companies_house', company_number: f.company_number }
   const { error: e } = await supa.from('wk_contacts').update({ custom_fields: cf }).eq('id', f.id)
   if (e) { console.warn(`  ! ${f.name}: ${e.message}`); continue }
   wrote++
 }
+if (vanished) console.log(`${vanished} lead(s) disappeared mid-run — skipped`)
 console.log(`wrote ${wrote} owner names (low-confidence matches deliberately skipped)`)
