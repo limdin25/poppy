@@ -293,17 +293,17 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
    button on a phone (Hugo 2026-07-26: it was showing half) */
 .calc{margin-top:24px;background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:14px 16px 12px;box-shadow:0 6px 18px rgba(0,0,0,.05)}
 .calchead{font-weight:900;font-size:16px;text-align:center}
-.calcrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
-.calclbl{font-size:12.5px;font-weight:700;color:#6B7280;flex:1;line-height:1.3}
+.calcrow{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px;flex-wrap:wrap}
+.calclbl{font-size:12.5px;font-weight:700;color:#6B7280;line-height:1.3}
 .calclbl2{font-size:12px;font-weight:700;color:#6B7280;margin-top:10px;line-height:1.35}
 .calclbl2 b{color:#1A1A1A;font-size:13.5px}
 .jobval{display:flex;align-items:center;gap:8px}
 .jvb{width:36px;height:36px;border-radius:50%;border:1px solid #E5E7EB;background:#F8FAFD;font-size:18px;font-weight:800;color:#1a73e8;cursor:pointer;flex-shrink:0}
 .jvb:active{transform:scale(.94)}
 .jvwrap{display:flex;align-items:baseline;font-weight:900;font-size:22px;font-variant-numeric:tabular-nums}
-.jvwrap input{width:72px;border:0;background:transparent;font:inherit;color:#1A1A1A;padding:0;outline:none;-moz-appearance:textfield}
+.jvwrap input{width:3.5ch;border:0;background:transparent;font:inherit;color:#1A1A1A;padding:0;outline:none;-moz-appearance:textfield}
 .jvwrap input::-webkit-outer-spin-button,.jvwrap input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.njs{width:100%;margin-top:2px;height:36px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+.njs{width:100%;margin-top:2px;height:36px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer;outline:none}
 .njs::-webkit-slider-runnable-track{height:8px;border-radius:999px;background:linear-gradient(90deg,#1a73e8 var(--p,44%),#E5E7EB var(--p,44%))}
 .njs::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);margin-top:-8px}
 .njs::-moz-range-track{height:8px;border-radius:999px;background:#E5E7EB}
@@ -437,6 +437,7 @@ cvShown=from+(to-from)*e;cv.textContent=fmtPounds(cvShown);if(k<1)cvAnim=request
 cvAnim=requestAnimationFrame(step)}
 function calcRender(touched){if(!jv||!njs)return;
 var val=parseInt(jv.value,10);if(!isFinite(val)||val<1)val=1;
+jv.style.width=(String(val).length+0.5)+'ch';
 var n=parseInt(njs.value,10)||5;
 njEl.textContent=n;
 njs.style.setProperty('--p',((n-1)/9*100)+'%');
