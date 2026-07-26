@@ -199,20 +199,32 @@ function fmtReal() {
 // isCapturableWebsite so the SMS variant matches the video scene. Social-only
 // / private / junk URLs → treated as no-website (search scene + free offer).
 const safeSite = safeWebsiteUrl(cf.website)
-const noWebsite = !safeSite
+let noWebsite = !safeSite
 let siteImage = 'client-mobile.png'
 let siteImageHeight = 0
 let siteUrl = ''
 
-if (!noWebsite) {
-  siteUrl = safeSite.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '')
-  siteImage = 'client-mobile-gen.png'
-  const out = join(VIDEO_DIR, 'public', siteImage)
-  execFileSync('node', [join(VIDEO_DIR, 'capture-mobile-site.mjs'), safeSite, out], {
-    stdio: 'inherit', timeout: 180000,
-  })
-  const meta = JSON.parse(readFileSync(`${out}.json`, 'utf8'))
-  siteImageHeight = meta.imageHeight // px in the 780-wide capture space
+if (safeSite) {
+  // A URL can pass every safety check and STILL not render — dead host, TLS
+  // error, bot wall, JS that never settles. That's the lead's site being broken,
+  // not our render being broken, and it is exactly the lead most worth calling.
+  // Fall back to the no-website opening scene instead of failing the whole video.
+  try {
+    siteUrl = safeSite.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '')
+    siteImage = 'client-mobile-gen.png'
+    const out = join(VIDEO_DIR, 'public', siteImage)
+    execFileSync('node', [join(VIDEO_DIR, 'capture-mobile-site.mjs'), safeSite, out], {
+      stdio: 'inherit', timeout: 180000,
+    })
+    const meta = JSON.parse(readFileSync(`${out}.json`, 'utf8'))
+    siteImageHeight = meta.imageHeight // px in the 780-wide capture space
+  } catch (e) {
+    console.error(`site capture failed for ${safeSite} (${e.message.slice(0, 120)}) — falling back to the search scene`)
+    noWebsite = true
+    siteImage = 'client-mobile.png'
+    siteImageHeight = 0
+    siteUrl = ''
+  }
 }
 
 // ---------- 6. write lead-gen.json ----------

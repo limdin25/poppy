@@ -836,3 +836,16 @@ describe('examples carousel — the hero follows the lead’s trade', () => {
     expect(page).toMatch(/\$\{plural\} in London/)
   })
 })
+
+describe('render robustness', () => {
+  const prep = read('video/scripts/prep-lead.mjs')
+
+  // A lead whose site is dead / bot-walled / never settles is exactly the lead
+  // most worth calling. Losing their whole video over it is the wrong trade.
+  it('a failed site capture falls back to the search scene, not a dead render', () => {
+    expect(prep).toMatch(/falling back to the search scene/)
+    expect(prep).toMatch(/noWebsite = true/)
+    // noWebsite has to be reassignable for the fallback to work
+    expect(prep).toMatch(/let noWebsite = !safeSite/)
+  })
+})
