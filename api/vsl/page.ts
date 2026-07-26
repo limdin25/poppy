@@ -103,9 +103,20 @@ function isHumanNavigation(req: IncomingMessage): boolean {
  *  later visit from that browser is recognised as internal, flag or no flag. */
 const STAFF_COOKIE = 'elsie_staff';
 
+/** Hosts that only WE are ever on. A lead arrives from an SMS (no referrer) or
+ *  types the address; they never arrive from inside the CRM. */
+const INTERNAL_REFERRERS = ['app.heyelsie.com', 'go.heyelsie.com'];
+
 function isStaffView(req: IncomingMessage, url: URL): boolean {
+  // 1. The explicit flag the board's own links carry.
   if (url.searchParams.get('p') === '1') return true;
-  return new RegExp(`(?:^|;\\s*)${STAFF_COOKIE}=1`).test(String(req.headers.cookie || ''));
+  // 2. This browser has previewed before — covers a copied link pasted later.
+  if (new RegExp(`(?:^|;\\s*)${STAFF_COOKIE}=1`).test(String(req.headers.cookie || ''))) return true;
+  // 3. Clicked through from the CRM itself. Catches a device with no cookie
+  //    yet — a phone, a second laptop, an incognito window — which would
+  //    otherwise be counted as the lead.
+  const ref = String(req.headers.referer || req.headers.referrer || '');
+  return INTERNAL_REFERRERS.some((h) => ref.includes(h));
 }
 
 async function logLinkClick(

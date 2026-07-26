@@ -399,6 +399,15 @@ describe('staff views must never move a lead\'s card', () => {
   const page = read('api/vsl/page.ts')
   const board = read('src/features/crm/pages/VideoFunnelPage.tsx')
 
+  it('recognises a click through from the CRM on a device with no cookie', () => {
+    // A phone, a second laptop or an incognito window has no cookie yet and
+    // would otherwise be counted as the lead. A prospect never arrives from
+    // inside the CRM — they come from an SMS, with no referrer at all.
+    expect(page).toMatch(/INTERNAL_REFERRERS/)
+    expect(page).toMatch(/app\.heyelsie\.com/)
+    expect(page).toMatch(/req\.headers\.referer/)
+  })
+
   it('recognises us by cookie, not just the ?p=1 flag', () => {
     // Hugo 2026-07-26: opening a lead's page from the board moved it to
     // "Opened". ?p=1 alone is not enough — the link gets copied and pasted
