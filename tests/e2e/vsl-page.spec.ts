@@ -82,6 +82,15 @@ test.describe('heyelsie.com/{slug} — the video page', () => {
     expect(await page.locator('#stage video').getAttribute('controls')).toBeNull()
     await expect(page.locator('.vbar')).toBeVisible()
     await expect(page.locator('#stage .thumb')).toBeHidden()
+    // on a phone the expanded player takes the ENTIRE screen, with the
+    // glowing buy button floating on top of it
+    const vp = page.viewportSize()
+    if (vp && vp.width < 720) {
+      const box = await page.locator('#stage').boundingBox()
+      expect(box!.height).toBeGreaterThan(vp.height * 0.95)
+      expect(box!.width).toBeGreaterThan(vp.width * 0.95)
+      await expect(page.locator('.cta').first()).toBeVisible()
+    }
     // the page is still scrollable to the CTA and beyond while it plays
     await page.locator('.cta').first().scrollIntoViewIfNeeded()
     await expect(page.locator('.cta').first()).toBeVisible()

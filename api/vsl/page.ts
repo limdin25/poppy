@@ -210,9 +210,11 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#111;box-shadow:0 12px 34px rgba(0,0,0,.16);cursor:pointer;max-height:28vh}
 /* expanded: almost the whole screen, slightly squarer than 9:16, so the buy
    button still peeks below (Hugo 2026-07-26) */
-/* exact 9:16 so the actor's face is never cropped (Hugo 2026-07-26) */
-.stage.playing{aspect-ratio:9/16;height:min(70vh,160vw);height:min(70dvh,160vw);width:auto;max-width:100%;max-height:none;margin-left:auto;margin-right:auto}
-.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111;display:none}
+/* expanded: the ENTIRE screen (Hugo 2026-07-26) — full-bleed 100dvh in the
+   page flow; contain + white ground means nothing is ever cropped, and the
+   glowing buy button floats over the bottom band */
+.stage.playing{width:100vw;margin-left:calc(50% - 50vw);height:100vh;height:100dvh;aspect-ratio:auto;max-height:none;border-radius:0;box-shadow:none;background:#fff}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#fff;display:none}
 .stage.playing video{display:block}
 .stage.playing .thumb{display:none}
 .stage .vbar{display:none}
@@ -247,13 +249,16 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .trust{text-align:center;font-size:12.5px;font-weight:700;color:#6B7280;margin-top:12px}
 /* mobile: the main CTA sticks to the bottom of the screen and the
    calculator's duplicate disappears (Hugo 2026-07-26) */
+@keyframes ctaglow{0%,100%{box-shadow:0 0 14px rgba(26,115,232,.45)}50%{box-shadow:0 0 32px rgba(26,115,232,.95)}}
 @media(max-width:719px){
-  .cta{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;margin-top:0;z-index:50;box-shadow:0 10px 30px rgba(26,115,232,.45);padding:11px 16px;gap:2px}
+  .cta{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;margin-top:0;z-index:50;padding:11px 16px;gap:2px;animation:ctaglow 2.4s ease-in-out infinite}
   .cta .ctamain{font-size:16px}
   .cta .ctasub{font-size:11.5px}
   .cta.cta2{display:none}
   .wrap{padding-bottom:120px}
   .trust{margin-top:16px}
+  /* keep the slim bar clear of the floating button on the fullscreen video */
+  .stage.playing .vbar{bottom:calc(92px + env(safe-area-inset-bottom))}
 }
 .proof{margin-top:22px}
 .prooflabel{text-align:center;font-size:11.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#6B7280;margin-bottom:8px}
@@ -284,34 +289,37 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 .badot{position:relative;width:26px;height:26px;border:0;background:transparent;padding:0;cursor:pointer}
 .badot::after{content:"";position:absolute;inset:9px;border-radius:50%;background:#D1D5DB}
 .badot.on::after{background:#1A1A1A}
-/* the value calculator — a little tool in its own soft card */
-.calc{margin-top:26px;background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:20px 18px;box-shadow:0 6px 18px rgba(0,0,0,.05)}
-.calchead{font-weight:900;font-size:clamp(16px,4.6vw,19px);text-align:center}
-.calclabel{font-size:13.5px;font-weight:700;color:#6B7280;text-align:center;margin-top:14px}
-.calclabel b{color:#1A1A1A;font-size:15px}
-.jobval{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:8px}
-.jvb{width:44px;height:44px;border-radius:50%;border:1px solid #E5E7EB;background:#F8FAFD;font-size:22px;font-weight:800;color:#1a73e8;cursor:pointer;flex-shrink:0}
+/* the value calculator — compact card that fits whole above the sticky
+   button on a phone (Hugo 2026-07-26: it was showing half) */
+.calc{margin-top:24px;background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:14px 16px 12px;box-shadow:0 6px 18px rgba(0,0,0,.05)}
+.calchead{font-weight:900;font-size:16px;text-align:center}
+.calcrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+.calclbl{font-size:12.5px;font-weight:700;color:#6B7280;flex:1;line-height:1.3}
+.calclbl2{font-size:12px;font-weight:700;color:#6B7280;margin-top:10px;line-height:1.35}
+.calclbl2 b{color:#1A1A1A;font-size:13.5px}
+.jobval{display:flex;align-items:center;gap:8px}
+.jvb{width:36px;height:36px;border-radius:50%;border:1px solid #E5E7EB;background:#F8FAFD;font-size:18px;font-weight:800;color:#1a73e8;cursor:pointer;flex-shrink:0}
 .jvb:active{transform:scale(.94)}
-.jvwrap{display:flex;align-items:baseline;font-weight:900;font-size:30px;font-variant-numeric:tabular-nums}
-.jvwrap input{width:104px;border:0;background:transparent;font:inherit;color:#1A1A1A;padding:0;outline:none;-moz-appearance:textfield}
+.jvwrap{display:flex;align-items:baseline;font-weight:900;font-size:22px;font-variant-numeric:tabular-nums}
+.jvwrap input{width:72px;border:0;background:transparent;font:inherit;color:#1A1A1A;padding:0;outline:none;-moz-appearance:textfield}
 .jvwrap input::-webkit-outer-spin-button,.jvwrap input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.njs{width:100%;margin-top:6px;height:44px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
-.njs::-webkit-slider-runnable-track{height:10px;border-radius:999px;background:linear-gradient(90deg,#1a73e8 var(--p,44%),#E5E7EB var(--p,44%))}
-.njs::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:#1a73e8;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);margin-top:-9px}
-.njs::-moz-range-track{height:10px;border-radius:999px;background:#E5E7EB}
-.njs::-moz-range-progress{height:10px;border-radius:999px;background:#1a73e8}
-.njs::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#1a73e8;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3)}
-.calcout{text-align:center;margin-top:16px;font-weight:900;font-size:clamp(30px,9vw,40px);font-variant-numeric:tabular-nums}
-.cvyr{font-size:clamp(15px,4vw,18px);color:#6B7280;font-weight:800}
-.calcnote{text-align:center;font-size:13px;font-weight:600;color:#6B7280;margin-top:8px;line-height:1.45}
+.njs{width:100%;margin-top:2px;height:36px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+.njs::-webkit-slider-runnable-track{height:8px;border-radius:999px;background:linear-gradient(90deg,#1a73e8 var(--p,44%),#E5E7EB var(--p,44%))}
+.njs::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:#1a73e8;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);margin-top:-8px}
+.njs::-moz-range-track{height:8px;border-radius:999px;background:#E5E7EB}
+.njs::-moz-range-progress{height:8px;border-radius:999px;background:#1a73e8}
+.njs::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:#1a73e8;border:4px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.calcout{text-align:center;margin-top:6px;font-weight:900;font-size:27px;font-variant-numeric:tabular-nums}
+.cvyr{font-size:14px;color:#6B7280;font-weight:800}
+.calcnote{text-align:center;font-size:11.5px;font-weight:600;color:#6B7280;margin-top:4px;line-height:1.4}
 /* desktop */
 @media(min-width:720px){
   .wrap{max-width:680px;padding:36px 24px 64px}
   h1{font-size:27px}
   .sub{font-size:15px;margin-bottom:16px}
   .stage{max-height:42vh}
-  /* desktop expanded: tall centred vertical player (full-width would crop) */
-  .stage.playing{width:auto;aspect-ratio:9/16;height:min(82vh,780px);margin-left:auto;margin-right:auto}
+  /* desktop expanded: tall centred vertical player, back in the column */
+  .stage.playing{width:auto;aspect-ratio:9/16;height:min(82vh,780px);margin-left:auto;margin-right:auto;border-radius:18px;box-shadow:0 12px 34px rgba(0,0,0,.16)}
   .cta{max-width:460px;margin-left:auto;margin-right:auto}
   .gname{font-size:14.5px}
   .gmeta{font-size:13px}
@@ -354,13 +362,15 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
   <p class="trust">⭐ Trusted by UK trades · Cancel anytime in your first 10 days</p>
   <div class="calc">
     <p class="calchead">What's it worth to you?</p>
-    <p class="calclabel">An average job is worth about</p>
-    <div class="jobval">
-      <button class="jvb" onclick="jvStep(-50)" aria-label="Less">−</button>
-      <div class="jvwrap">£<input id="jv" type="number" inputmode="numeric" value="300" min="50" max="5000" step="50"></div>
-      <button class="jvb" onclick="jvStep(50)" aria-label="More">+</button>
+    <div class="calcrow">
+      <span class="calclbl">An average job is worth</span>
+      <div class="jobval">
+        <button class="jvb" onclick="jvStep(-50)" aria-label="Less">−</button>
+        <div class="jvwrap">£<input id="jv" type="number" inputmode="numeric" value="300" min="50" max="5000" step="50"></div>
+        <button class="jvb" onclick="jvStep(50)" aria-label="More">+</button>
+      </div>
     </div>
-    <p class="calclabel">If more reviews and a higher rank brought you <b id="nj">5</b> more jobs a month</p>
+    <p class="calclbl2">If more reviews and a higher rank brought you <b id="nj">5</b> more jobs a month</p>
     <input id="njs" class="njs" type="range" min="1" max="10" step="1" value="5" aria-label="Extra jobs a month">
     <p class="calcout"><span id="cv">£18,000</span><span class="cvyr"> a year</span></p>
     <p class="calcnote" id="cn">HeyElsie costs £1,188 a year. 4 extra jobs in a year covers it — that's one every three months.</p>

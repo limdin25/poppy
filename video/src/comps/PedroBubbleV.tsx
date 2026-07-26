@@ -3,8 +3,8 @@ import { OffthreadVideo, staticFile, useCurrentFrame, interpolate, Easing, Freez
 import { CIRCLE, CIRCLE_END } from '../theme'
 
 // The pedro actor in the Loom circle — 330px (rule 8). Vertical layout:
-// opening CENTERED over the client's website card, slides to the bottom-RIGHT
-// corner at ~7s and stays. Face crop from the 1920×1080 source: 700×700 at
+// opening CENTERED over the client's website card, slides to MIDDLE-RIGHT
+// at ~7s and stays. Face crop from the 1920×1080 source: 700×700 at
 // (610,80). pedro.mp4 is 25fps — OffthreadVideo maps by time, no conversion.
 
 const SCALE = CIRCLE / 700
