@@ -69,7 +69,8 @@ export default async function handler(req: Request): Promise<Response> {
   // Contact.
   const { data: c } = await supabase
     .from('wk_contacts')
-    .select('id, name, phone, ai_enabled, ai_reply_count, pipeline_column_id')
+    // custom_fields carries owner_name — the PERSON. `name` is the COMPANY.
+    .select('id, name, phone, ai_enabled, ai_reply_count, pipeline_column_id, custom_fields')
     .eq('id', contactId).maybeSingle();
   if (!c) return json(200, { skipped: 'no_contact' });
   if (c.ai_enabled === false) return json(200, { skipped: 'contact_disabled' });
@@ -110,7 +111,16 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Build the LLM messages: inbound=user, outbound=assistant.
-  const firstName = (c.name || '').trim().split(/\s+/)[0] || '';
+  //
+  // The name model: wk_contacts.name is the COMPANY, custom_fields.owner_name
+  // is the PERSON. Taking the first word of `name` greeted Ryan at "James
+  // brothers plumbing" as "James" — mid-conversation, live, on 2026-07-27,
+  // right after our own opener had correctly called him Ryan. Owner first,
+  // and only fall back to the company word when there is no owner on file.
+  const ownerName = String(
+    (c.custom_fields as Record<string, unknown> | null)?.owner_name ?? '',
+  ).trim();
+  const firstName = (ownerName || (c.name || '')).trim().split(/\s+/)[0] || '';
   const llmMessages = history.map((m) => ({
     role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
     content: m.body || '',

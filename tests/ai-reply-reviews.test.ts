@@ -75,3 +75,27 @@ describe('the [number] hole', () => {
     expect(route).toMatch(/never invent a number|do not invent a number|no number/i);
   });
 });
+
+describe('who the AI thinks it is talking to', () => {
+  // Hugo 2026-07-27, live mid-conversation: our opener correctly greeted Ryan
+  // at "James brothers plumbing and property renovation", he replied "We have
+  // loads of reviews. Who is this?", and the AI answered "Sorry for the
+  // confusion James!". `wk_contacts.name` is the COMPANY. The person lives in
+  // custom_fields.owner_name. Taking the first word of the company name puts a
+  // stranger's name in a real lead's phone.
+  it('greets the OWNER, not the first word of the company name', () => {
+    expect(route).toMatch(/custom_fields/);
+    expect(route).toMatch(/owner_name/);
+    // Owner wins, company is only the fallback.
+    expect(route).toMatch(/ownerName \|\| \(c\.name \|\| ''\)/);
+  });
+
+  it('selects custom_fields, or owner_name is never on the row to read', () => {
+    const select = route.match(/\.select\('id, name, phone[^']*'\)/)?.[0] ?? '';
+    expect(select).toMatch(/custom_fields/);
+  });
+
+  it('never goes back to reading the first name straight off the company', () => {
+    expect(route).not.toMatch(/const firstName = \(c\.name \|\| ''\)/);
+  });
+});
