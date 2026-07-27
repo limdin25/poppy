@@ -86,31 +86,43 @@ export const VSL_PRICES: Record<string, {
 // One-time "first 10 days" pound, created 2026-07-25 under prod_Uv8eim0pBOmEGZ.
 export const VSL_POUND_PRICE = process.env.VSL_POUND_PRICE || 'price_1Tx5miLdAEhwWg6wqTTWjQsC';
 
+/** The message itself. Both variants send THIS; the no-website one only adds a
+ *  P.S. Built from one constant so they cannot drift apart, because they are
+ *  not meant to differ (Hugo 2026-07-27: "the audit is always from Google
+ *  anyway, so the message should be the same").
+ *
+ *  Must echo the exact words the agent just said on the phone, "a 90-second
+ *  audit", or the text reads like a different offer arriving from a stranger
+ *  (Hugo 2026-07-26, the new video-first call).
+ *
+ *  Laid out in paragraphs with the link on its own line: it lands on a phone,
+ *  where a single run-on sentence hides the one thing we want tapped. Every
+ *  character is GSM-7 (see api/lib/sms-charset.ts). NO LONG DASHES, ever
+ *  (Hugo 2026-07-27): tests/message-copy.test.ts fails the build if one
+ *  comes back. */
+const VIDEO_SMS =
+  "Hi {first}, it's {agent} from HeyElsie.\n\n" +
+  "Here's the 90-second audit I just mentioned for {business}:\n{url}\n\n" +
+  'Any questions, just message me here any time.';
+
+/** The free-website offer, REINSTATED by Hugo on 2026-07-27 after he withdrew
+ *  it on 2026-07-26. It rides only the no-website variant, as a P.S. after the
+ *  same message everyone else gets, so a lead who already has a site is never
+ *  told we could not find one. Costs a third SMS segment; Hugo asked for it
+ *  knowing the message gets longer. */
+const FREE_SITE_PS =
+  "By the way, I couldn't find a website for you. If you haven't got one, " +
+  "we're happy to make you one for free, just let us know.";
+
 export const DEFAULT_VSL_SETTINGS: VslSettings = {
   enabled: false,
   default_video_url: '',
-  // Must echo the exact words the agent just said on the phone, "a 90-second
-  // audit", or the text reads like a different offer arriving from a stranger
-  // (Hugo 2026-07-26, the new video-first call).
-  //
-  // Laid out in paragraphs with the link on its own line: it lands on a phone,
-  // where a single run-on sentence hides the one thing we want tapped. Every
-  // character is GSM-7 (see api/lib/sms-charset.ts) so this costs two texts and
-  // not three. NO LONG DASHES, ever (Hugo 2026-07-27): tests/message-copy.test.ts
-  // fails the build if one comes back.
-  send_template:
-    "Hi {first}, it's {agent} from HeyElsie.\n\n" +
-    "Here's the 90-second audit I just mentioned for {business}:\n{url}\n\n" +
-    "Any questions, just message me here any time.",
-  // Free-website offer withdrawn 2026-07-26, and it must not creep back in.
-  // What this variant DOES say is why their audit opens on Google: we couldn't
-  // find them a website, which is exactly what the render pipeline saw. Saying
-  // it out loud beats letting them wonder (Hugo 2026-07-27).
-  send_template_no_site:
-    "Hi {first}, it's {agent} from HeyElsie.\n\n" +
-    "I couldn't find a website for {business}, so I've run the 90-second audit " +
-    "from your Google listing instead:\n{url}\n\n" +
-    "Any questions, just message me here any time.",
+  send_template: VIDEO_SMS,
+  // Identical, plus the free-website P.S. The earlier version of this variant
+  // explained that the audit ran "from your Google listing instead", which was
+  // wrong: it runs from Google either way, so that read as a difference where
+  // there is none.
+  send_template_no_site: `${VIDEO_SMS}\n\n${FREE_SITE_PS}`,
   cta_labels: { a: 'Start getting reviews', b: 'Get my reviews rolling' },
   watched_threshold_pct: 50,
   quiet_hours: { start: '08:00', end: '20:00' },

@@ -66,8 +66,12 @@ describe('every message we send a lead', () => {
     }
   });
 
-  it('is under three texts once a real name and URL are filled in', async () => {
+  it('stays within its segment budget once a real name and URL are filled in', async () => {
     const { fillTemplate } = await load();
+    // Two texts for everything, except the no-website variant, which carries
+    // the free-website offer on the end and is allowed a third. Hugo asked for
+    // that offer on 2026-07-27 knowing the message gets longer.
+    const BUDGET: Record<string, number> = { send_template_no_site: 3 };
     for (const [name, tpl] of await messages()) {
       const filled = fillTemplate(tpl, {
         first: 'Jonathan',
@@ -75,7 +79,8 @@ describe('every message we send a lead', () => {
         url: 'https://heyelsie.com/carters-plumbing-and-gas-ltd',
         agent: 'Hugo',
       });
-      expect(`${name}: ${smsSegments(filled)}`).toBe(`${name}: ${Math.min(smsSegments(filled), 2)}`);
+      const max = BUDGET[name] ?? 2;
+      expect(`${name}: ${smsSegments(filled)}`).toBe(`${name}: ${Math.min(smsSegments(filled), max)}`);
     }
   });
 });
@@ -103,15 +108,25 @@ describe('the message that carries the video', () => {
     }
   });
 
-  it('tells a lead with no website why the audit starts on Google', async () => {
+  it('is the SAME message either way, with the no-website one only adding to it', async () => {
+    // Hugo 2026-07-27: "the audit is always from Google anyway, so the message
+    // should be the same". The earlier variant claimed the audit ran "from your
+    // Google listing instead", which read as a difference where there is none.
+    const { DEFAULT_VSL_SETTINGS: s } = await load();
+    expect(s.send_template_no_site.startsWith(s.send_template)).toBe(true);
+    expect(s.send_template).not.toMatch(/instead/i);
+  });
+
+  it('offers the free website, but only to a lead who has not got one', async () => {
+    // REINSTATED by Hugo on 2026-07-27, having been withdrawn on 2026-07-26.
     const { DEFAULT_VSL_SETTINGS: s } = await load();
     expect(s.send_template_no_site).toMatch(/couldn't find a website/i);
-    expect(s.send_template_no_site).toMatch(/Google/);
-    // The offer was withdrawn on 2026-07-26. Mentioning the missing website
-    // must never slide back into promising to build one.
-    expect(s.send_template_no_site).not.toMatch(/free website|build you|make you a (new )?(site|website)/i);
-    // …and the lead who HAS a website must not be told they haven't.
+    expect(s.send_template_no_site).toMatch(/for free/i);
+    expect(s.send_template_no_site).toMatch(/make you one|build you one/i);
+    // A lead who HAS a website must never be told we couldn't find one, nor be
+    // offered a second one.
     expect(s.send_template).not.toMatch(/couldn't find a website/i);
+    expect(s.send_template).not.toMatch(/for free/i);
   });
 });
 

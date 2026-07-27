@@ -454,15 +454,16 @@ describe('render pipeline — lib', () => {
     expect(workerOrder).toEqual(VSL_COLUMN_ORDER)
   })
 
-  it('no-website SMS variant carries NO free-website offer (withdrawn 2026-07-26)', async () => {
+  it('no-website SMS variant carries the free-website offer (reinstated 2026-07-27)', async () => {
     const { DEFAULT_VSL_SETTINGS, fillTemplate } = await load()
-    // This used to ban the WORD "website", which was a blunt proxy for banning
-    // the OFFER. Hugo asked on 2026-07-27 for the message to say we couldn't
-    // find them a website, so the ban has to be on the offer itself.
-    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).not.toMatch(/free/i)
-    expect(DEFAULT_VSL_SETTINGS.send_template_no_site)
-      .not.toMatch(/build you|set you up with a|make you a (new )?(site|website)|website for free/i)
+    // History, so nobody "fixes" this back: the offer shipped, was WITHDRAWN on
+    // 2026-07-26, and was REINSTATED by Hugo on 2026-07-27 ("if you don't have
+    // one, you can make one for free, just let us know"). It rides the
+    // no-website variant only.
+    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).toMatch(/for free/i)
     expect(DEFAULT_VSL_SETTINGS.send_template_no_site).toMatch(/couldn't find a website/i)
+    // Never on the variant for a lead who already has a site.
+    expect(DEFAULT_VSL_SETTINGS.send_template).not.toMatch(/for free/i)
     const out = fillTemplate(DEFAULT_VSL_SETTINGS.send_template_no_site, {
       first: 'Kate', business: 'K Plumbing', url: 'https://heyelsie.com/k', agent: 'Pedro',
     })
