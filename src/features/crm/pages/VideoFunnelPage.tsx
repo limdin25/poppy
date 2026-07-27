@@ -232,7 +232,7 @@ export default function VideoFunnelPage() {
     const first = (p.owner_first || 'there').split(' ')[0];
     const body =
       p.state === 'sent'
-        ? `Hi ${first}, did you get a chance to watch your video? Takes 90 seconds: ${url}`
+        ? `Hi ${first}, did you get a chance to watch your video? Takes 2 minutes: ${url}`
         : `Hi ${first}, saw you had a look at the video — want me to get ${p.business_name} set up? It's £1 to start: ${url}`;
     const { error } = await supabase.functions.invoke('wk-schedule-send', {
       body: { contact_id: p.contact_id, body, delay_hours: 0 },

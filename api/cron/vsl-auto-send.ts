@@ -183,7 +183,7 @@ async function deliver(
   if (!to) throw new Error('no_destination');
   const from = await emailFromLine();
   if (!from) throw new Error('no_email_from');
-  const subj = (subject || '').trim() || `Your 90-second audit for ${page.business_name}`;
+  const subj = (subject || '').trim() || `Your 2-minute audit for ${page.business_name}`;
   const id = await sendEmail(from, to, subj, body);
   await supabase.from('wk_sms_messages').insert({
     contact_id: page.contact_id, direction: 'outbound', channel: 'email', body,

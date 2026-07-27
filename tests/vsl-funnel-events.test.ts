@@ -624,7 +624,7 @@ describe('audit — the calling journey', () => {
     const rendered = [...reach].map((k) => bodies.get(k) || '').join(' ')
     expect(rendered).not.toMatch(/£99|£179|£279/)
     expect(rendered).not.toMatch(/\bcard\b/i)
-    expect(rendered).toMatch(/90-second audit/)
+    expect(rendered).toMatch(/2-minute audit/)
   })
 
   it('the coach may not be told to take a card or quote tiers', () => {
@@ -633,9 +633,29 @@ describe('audit — the calling journey', () => {
   })
 
   it('the SMS echoes what the agent promised on the phone', () => {
-    // "I'll text you the 90-second audit" then a text saying something else
+    // "I'll text you the 2-minute audit" then a text saying something else
     // reads like a different offer from a stranger.
-    expect(vsl).toMatch(/90-second audit I just mentioned/)
+    expect(vsl).toMatch(/2-minute audit I just mentioned/)
+  })
+
+  it('never promises a length the video does not have', () => {
+    // The video is 2:35 and every surface called it "90 seconds" until
+    // 2026-07-27, so the first thing a lead saw on pressing play was a timer
+    // reading 2:35. Our own script forbids exactly this: "never say a minute
+    // and then send five." Hugo: "lets call it a 2 minutes videos."
+    const surfaces: Array<[string, string]> = [
+      ['sms', vsl],
+      ['page', read('api/vsl/page.ts')],
+      ['follow-ups', read('api/lib/vsl-sequence.ts')],
+      ['email subject', read('api/cron/vsl-auto-send.ts')],
+      ['call script', read('scripts/seed-audit-call-motion.sql')],
+      ['objection script', read('src/core/content/one-call-script.html')],
+    ]
+    for (const [name, src] of surfaces) {
+      // Strip the one comment that documents the rename itself.
+      const copy = src.replace(/It said "90-second" until[\s\S]*?a 2 minutes videos\."/g, '')
+      expect(`${name}: ${(copy.match(/90[- ]?seconds?/gi) || []).join(',')}`).toBe(`${name}: `)
+    }
   })
 })
 

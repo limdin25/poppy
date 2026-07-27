@@ -216,7 +216,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   );
 
   const ogTitle = rawFirst ? `${rawFirst}, I made this video for ${rawBusiness}` : `I made this video for ${rawBusiness}`;
-  const ogDesc = `A 90-second look at where ${rawBusiness} sits on Google — and how to climb.`;
+  const ogDesc = `A 2-minute look at where ${rawBusiness} sits on Google, and how to climb.`;
   const ogImage = page.og_image_url || '';
   // player poster: the render's own first frame beats the OG card
   const poster = page.poster_url || ogImage;
@@ -551,8 +551,8 @@ h1{font-weight:900;font-size:clamp(18px,5vw,23px);line-height:1.25;margin:2px 0 
 ${staff ? `<div style="background:#1A1A1A;color:#fff;font:600 12px/1.5 system-ui,sans-serif;padding:7px 12px;text-align:center">👁 Staff preview — nothing here is tracked, this lead's card will not move</div>` : ''}
 <div class="stripe spots">⏳ ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left in ${town}</div>
 <div class="wrap">
-  <h1>Hi ${first ? first + ' ' : ''}👋<br>I made a 90-second video for ${business}</h1>
-  <p class="sub">Where you rank on Google — and how to fix it.</p>
+  <h1>Hi ${first ? first + ' ' : ''}👋<br>I made a 2-minute video for ${business}</h1>
+  <p class="sub">Where you rank on Google, and how to fix it.</p>
   <div class="cols"><div class="colL">
   <div class="stage" id="stage" onclick="stageTap()">${
     videoUrl
@@ -564,7 +564,7 @@ ${staff ? `<div style="background:#1A1A1A;color:#fff;font:600 12px/1.5 system-ui
       </div>
       <div class="thumb"${poster ? ` style="background-image:url('${esc(poster)}')"` : ''}>
         <div class="play"><svg width="26" height="30" viewBox="0 0 26 30"><polygon points="0,0 26,15 0,30" fill="#14161a"/></svg></div>
-        <div class="badge">▶ Watch · 90 sec</div>
+        <div class="badge">▶ Watch · 2 min</div>
       </div>`
       : `<div class="ph">Video coming shortly</div>`
   }</div>

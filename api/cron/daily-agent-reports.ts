@@ -151,7 +151,10 @@ function computeStats(calls: CallRow[]) {
 const SAYS_WHO_I_AM = /my name is|it'?s \w+ (from|with|here)|i'?m \w+ from|from hey ?els?ie|hey ?els?ie|from l\.? ?c\b/i;
 const SAYS_RECORDING = /record(ed|ing) for|being recorded|call'?s recorded|calls? (is|are) recorded/i;
 const SAYS_HOOK = /new to the area|only got .{0,12}reviews|only have .{0,12}reviews/i;
-const SAYS_OFFER = /90[- ]second|ninety second|audit/i;
+// Keeps the retired "90 second" wording so days before 2026-07-27 still grade
+// the same way. The video is 2:35; it was called 90 seconds until Hugo renamed
+// it, and agents will keep saying the old words for a while yet.
+const SAYS_OFFER = /90[- ]second|ninety second|2[- ]minute|two minute|audit/i;
 const SAYS_CLOSE = /will you watch|you'?ll watch it|watch it\?/i;
 /** A question asking for their number. "I'll send it to this number" is fine
  *  and must not match — we dialled their mobile, we already have it. */

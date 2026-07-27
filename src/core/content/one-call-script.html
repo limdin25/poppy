@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The 90-Second Audit · Live Script</title>
+<title>The 2-Minute Audit · Live Script</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 
@@ -315,7 +315,7 @@ details.branch>summary .tag{
 <body>
 
 <div class="topbar">
-  <span class="title">The 90-Second Audit · UK trades</span>
+  <span class="title">The 2-Minute Audit · UK trades</span>
   <span class="stage">Scroll the whole script · click an objection to open it</span>
 </div>
 
@@ -327,7 +327,7 @@ details.branch>summary .tag{
       <div class="whisper-sub">Mind gone blank? Buy yourself a beat with any of these.</div>
       <ul>
         <li>"What's the real thing here, what's actually stopping you?"</li>
-        <li>"Honestly, it's a 90-second video, what have you got to lose?"</li>
+        <li>"Honestly, it's a 2-minute video, what have you got to lose?"</li>
         <li>"Can I ask, is it me, is it the timing, or do you just not want a video?"</li>
         <li>"Let me ask you this…" <em>then any question; it buys you a beat.</em></li>
         <li>"I've only recorded a handful of these, so I'd rather you had one."</li>
@@ -412,8 +412,8 @@ const N = {
     ]},
 
   the_offer: {stage:'OFFER',
-    say:`"Right, so here's why I actually rang. I've recorded you a 90-second audit. It shows where [business_name] comes up in [town] right now, who's above you, and how to get more reviews and more jobs off the back of it. Can I send it to you?"`,
-    dir:`THIS IS THE WHOLE CALL. You are not selling anything, you are asking permission to send a video. Say "90 seconds" and mean it. Then STOP TALKING and let them answer.`,
+    say:`"Right, so here's why I actually rang. I've recorded you a 2-minute audit. It shows where [business_name] comes up in [town] right now, who's above you, and how to get more reviews and more jobs off the back of it. Can I send it to you?"`,
+    dir:`THIS IS THE WHOLE CALL. You are not selling anything, you are asking permission to send a video. Say "2 minutes" and mean it. Then STOP TALKING and let them answer.`,
     r:[
       {l:`"Yeah, go on then"`,n:`permission_send`},
       {l:`"What is it? What's the catch?"`,n:`what_do_i_get`,obj:true},
@@ -453,7 +453,7 @@ const N = {
     ]},
 
   sent_confirm: {stage:'DONE',
-    say:`"Great. It's 90 seconds, watch it when it lands, tonight's fine. Everything's on that page, and if it makes sense you can start it yourself from there for a quid. I'll let you get back to it, cheers [owner_first]."`,
+    say:`"Great. It's 2 minutes, watch it when it lands, tonight's fine. Everything's on that page, and if it makes sense you can start it yourself from there for a quid. I'll let you get back to it, cheers [owner_first]."`,
     dir:`Say "for a quid" ONCE, lightly, as a fact and not a pitch. Then get off the phone. The video closes, you don't. Hang up while they still feel you gave them something for free.`,
     won:true,
     r:[]},
@@ -785,7 +785,7 @@ const N = {
     ]},
 
   send_email: {stage:'OFFER',
-    say:`"I can do one better than an email, it's a 90-second video, so it's quicker to watch than an email is to read. I'll text you the link, you tap it, it plays. Is this number alright?"`,
+    say:`"I can do one better than an email, it's a 2-minute video, so it's quicker to watch than an email is to read. I'll text you the link, you tap it, it plays. Is this number alright?"`,
     dir:`The old script refused emails. Don't refuse any more, you WANT to send something, that's the whole call. Just move them from email to a text, because a text gets opened and an email doesn't. If they insist on email, take it and send it there too, a watched video is a watched video.`,
     r:[
       {l:`"I want to check you're legit"`,n:`legit_check`},
@@ -803,7 +803,7 @@ const N = {
     ]},
 
   wife_not_partner: {stage:'OFFER',
-    say:`"Fair enough, and honestly that's a good reason to watch it together. It's 90 seconds, I'll text it over, show it to her tonight and you can both decide with nobody on the phone at you. Is this number alright?"`,
+    say:`"Fair enough, and honestly that's a good reason to watch it together. It's 2 minutes, I'll text it over, show it to her tonight and you can both decide with nobody on the phone at you. Is this number alright?"`,
     dir:`The old script argued past the partner. Don't. The video is the perfect thing to hand to a second decision-maker, so make the partner a REASON to send it rather than an obstacle.`,
     r:[
       {l:`"…Yeah alright"`,n:`permission_send`},
@@ -827,7 +827,7 @@ const N = {
     ]},
 
   price_cheaper: {stage:'OFFER',
-    say:`"It starts at a pound, so it's already about as cheap as it gets to try. Watch the 90 seconds and the page shows you what it is after that, and you pick the size that fits you. Shall I send it?"`,
+    say:`"It starts at a pound, so it's already about as cheap as it gets to try. Watch the 2 minutes and the page shows you what it is after that, and you pick the size that fits you. Shall I send it?"`,
     dir:`Never negotiate on the phone any more. "A pound" beats any discount you could offer, and the page does the tier explaining for you. Straight back to asking permission to send.`,
     r:[
       {l:`"Alright, send it over"`,n:`permission_send`},
@@ -851,7 +851,7 @@ const N = {
     ]},
 
   been_burned: {stage:'OFFER',
-    say:`"I get it, everyone has. Which is exactly why I'm not asking you for anything today. I just want to send you a 90-second video, you watch it, you decide in your own time. If it's rubbish you've lost 90 seconds. Can I send it?"`,
+    say:`"I get it, everyone has. Which is exactly why I'm not asking you for anything today. I just want to send you a 2-minute video, you watch it, you decide in your own time. If it's rubbish you've lost 2 minutes. Can I send it?"`,
     dir:`Being burned before is a trust problem, and asking for nothing is the answer to it. Do not counter with contract terms or trials, just shrink the ask back to "watch a video".`,
     r:[
       {l:`"Okay, that seems fair"`,n:`permission_send`},
@@ -939,7 +939,7 @@ const N = {
     ]},
 
   final_push: {stage:'OFFER',
-    say:`"No problem at all. Can I just send you the video anyway? It's 90 seconds, it costs you nothing, and if it's not for you then at least you'll know where you stand on Google. Yes or no, either's fine."`,
+    say:`"No problem at all. Can I just send you the video anyway? It's 2 minutes, it costs you nothing, and if it's not for you then at least you'll know where you stand on Google. Yes or no, either's fine."`,
     dir:`This is the last ask on the call and it is ONLY for permission to send. Never push for a sale here. A polite no is a fine outcome, a video sent is a good one.`,
     r:[
       {l:`They name a specific objection`,n:`think_about_it`},
@@ -992,7 +992,7 @@ function branchHTML(id, chain){
 
 // Build the whole document once
 function build(){
-  let html = `<div class="doc-head"><h1>The 90-Second Audit</h1>
+  let html = `<div class="doc-head"><h1>The 2-Minute Audit</h1>
     <div class="sub">Read the <b>blue</b> lines aloud, top to bottom, that's the straight line to the close. Grey lines are notes for you only. If the prospect pushes back, click the amber button on that line to open exactly what to say, then carry on down.</div></div>`;
 
   let lastStage = null;
@@ -1054,7 +1054,7 @@ const FAQ = [
   {q:`How long before I see results?`, a:`Reviews start landing within a few days; the Google ranking climbs over the following weeks.`},
   {q:`What happens after the trial?`, a:`It rolls onto your plan automatically, and you can still cancel any time.`},
   {q:`Do you only do plumbers?`, a:`No, any local home-service business; plumbers are just my main one.`},
-  {q:`How much is it again?`, a:`It starts at a pound. The 90-second video shows exactly what it costs after that, so they can decide without you selling at them.`},
+  {q:`How much is it again?`, a:`It starts at a pound. The 2-minute video shows exactly what it costs after that, so they can decide without you selling at them.`},
   {q:`Will you touch my website?`, a:`No, nothing to do with your website, this is all your Google listing.`},
   {q:`My son/family built my site, leave it alone.`, a:`Course, I'm not touching it. This is only your Google reviews and ranking; if anything it sends more people to their work.`},
   {q:`I'm retiring / selling up soon.`, a:`That's the best reason, a profile with 200 reviews is worth real money to whoever buys it, and it keeps you busy till you hand over the keys.`},

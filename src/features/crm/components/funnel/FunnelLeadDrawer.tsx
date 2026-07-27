@@ -211,7 +211,7 @@ export default function FunnelLeadDrawer({
     if (!res.ok || !data) { setNote('Could not load the message — try again.'); return; }
     setInfo(data);
     setBody((b) => (b.trim() ? b : data.sms_body));  // never clobber an edit
-    setSubject((s) => s || `A quick 90-second audit for ${page.business_name}`);
+    setSubject((s) => s || `A quick 2-minute audit for ${page.business_name}`);
   }, [page.contact_id, page.business_name]);
 
   useEffect(() => {

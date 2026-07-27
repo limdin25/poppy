@@ -4,7 +4,7 @@
 -- used to live here fought with it — whichever ran last won — so they were
 -- removed. Edit facts in salesObjections.ts / seed-coach-facts.mjs and re-run
 -- that script. This file still owns the SCRIPT + COACH PROMPT sections.
--- The 90-second audit call — script, coach and knowledge base, all aligned.
+-- The 2-minute audit call — script, coach and knowledge base, all aligned.
 --
 -- Hugo 2026-07-26: the close moved OFF the phone. The agent's only job is now
 -- to earn permission to text the lead their personal video page; the page and
@@ -26,7 +26,7 @@
 -- (src/core/content/one-call-script.html); this is the teleprompter version
 -- the agent's eye follows while actually talking.
 insert into wk_call_scripts (name, body_md, is_default)
-select 'The 90-second audit', $md$
+select 'The 2-minute audit', $md$
 ## 1 · Opener
 
 > Hi, quick one, is that {{first_name}}, from the business? It's {{agent_first_name}} from HeyElsie. Just so you know, the call's recorded for training.
@@ -44,10 +44,10 @@ select 'The 90-second audit', $md$
 
 ## 3 · The offer, this is the whole call
 
-> Right, so here's why I actually rang. I've recorded you a 90-second audit. It shows where you come up on Google right now, who's above you, and how to get more reviews and more jobs off the back of it. Can I send it to you?
+> Right, so here's why I actually rang. I've recorded you a 2-minute audit. It shows where you come up on Google right now, who's above you, and how to get more reviews and more jobs off the back of it. Can I send it to you?
 
 - You are **not selling anything here**. You are asking permission to send a video.
-- Say "90 seconds" and mean it. Then stop talking.
+- Say "2 minutes" and mean it. Then stop talking.
 
 ## 4 · Get the yes
 
@@ -66,7 +66,7 @@ select 'The 90-second audit', $md$
 
 ## 6 · Get off the phone
 
-> Great. It's 90 seconds, watch it when it lands, tonight's fine. Everything's on that page, and if it makes sense you can start it yourself from there for a quid. I'll let you get back to it. Cheers.
+> Great. It's 2 minutes, watch it when it lands, tonight's fine. Everything's on that page, and if it makes sense you can start it yourself from there for a quid. I'll let you get back to it. Cheers.
 
 - Say "for a quid" **once**, lightly, as a fact. Not a pitch.
 - Then hang up while they still feel you gave them something.
@@ -91,10 +91,10 @@ update wk_ai_settings set coach_script_prompt = regexp_replace(
   $stages$CALL STAGES (strict forward-only progression)
 1. Opener. Warm, casual, like a mate ringing. Their name + business, then the recording notice in passing ("just so you know, the call's recorded for training"), then the hook: "I noticed you've only got [X] reviews on Google, are you new to the area?"
 2. Hook. Let them defend how long they've been going, then land the gap: all those years, still only [X] reviews, and [competitor] sitting above them. No pitch yet. Silence does the work.
-3. Offer. THE WHOLE CALL: "I've recorded you a 90-second audit, where you come up in [town] right now, who's above you, and how to get more reviews and more jobs off it. Can I send it to you?"
+3. Offer. THE WHOLE CALL: "I've recorded you a 2-minute audit, where you come up in [town] right now, who's above you, and how to get more reviews and more jobs off it. Can I send it to you?"
 4. Permission. Give the time back: "I'm not going to take any more of your time, that's genuinely it. I'll get it over to you in the next few minutes. If I send it across, will you watch it?" This is the ONLY close on the call, and it is a yes to WATCHING, not to buying. NEVER promise the video arrives during the call, it is built after the agent hangs up.
 5. Sent. Tell them it is coming over to this number shortly and let them go. NEVER ask for their phone number: we dialled it, we already have it, and asking makes the agent sound like they bought a list. Only take a number if THEY volunteer a different one. The agent taps Send as video; it renders and texts itself minutes later. Do not hold them on the line waiting for it.
-6. Done. "90 seconds, watch it tonight. If it makes sense you can start it yourself from there for a quid." Then get off the phone.
+6. Done. "2 minutes, watch it tonight. If it makes sense you can start it yourself from there for a quid." Then get off the phone.
 
 WHAT THE AGENT MUST NOT DO ON THIS CALL (hard rules)
 - NEVER read out the monthly tiers (£99/£179/£279). If asked the price, the only answer is "it starts at a pound, and the video explains the rest", then go straight back to asking permission to send.
@@ -110,7 +110,7 @@ where coach_script_prompt like '%CALL STAGES%';
 -- Facts that now contradict the motion. Left in place but rewritten, so the
 -- coach cannot quote the old close back at an agent mid-call.
 update wk_coach_facts set value =
-  'They do not need to decide anything on the call. The agent sends a 90-second video to their mobile; the video shows where they rank, who is above them, and what the service does. They start it themselves from that page for £1, which covers the first 10 days. No card is ever taken over the phone.'
+  'They do not need to decide anything on the call. The agent sends a 2-minute video to their mobile; the video shows where they rank, who is above them, and what the service does. They start it themselves from that page for £1, which covers the first 10 days. No card is ever taken over the phone.'
 where key = 'free_trial';
 
 update wk_coach_facts set value =
@@ -118,7 +118,7 @@ update wk_coach_facts set value =
 where key in ('pricing_tiers', 'obj_how_much_does_it_cost', 'faq_how_much_is_it_again');
 
 update wk_coach_facts set value =
-  'Say yes. The whole call is about sending them something. "I can do one better than an email — it is a 90-second video, quicker to watch than an email is to read. I will text you the link, you tap it, it plays. Is this number alright?" If they insist on email, take it and send it there too.'
+  'Say yes. The whole call is about sending them something. "I can do one better than an email — it is a 2-minute video, quicker to watch than an email is to read. I will text you the link, you tap it, it plays. Is this number alright?" If they insist on email, take it and send it there too.'
 where key = 'obj_send_me_an_email';
 
 update wk_coach_facts set value =
@@ -126,7 +126,7 @@ update wk_coach_facts set value =
 where key = 'obj_dont_have_my_card_on';
 
 update wk_coach_facts set value =
-  'There is nothing to think about yet — they have not seen anything. "That is exactly why I want to send it. Watch the 90 seconds tonight, then you have actually got something to think about. Can I send it?"'
+  'There is nothing to think about yet — they have not seen anything. "That is exactly why I want to send it. Watch the 2 minutes tonight, then you have actually got something to think about. Can I send it?"'
 where key = 'obj_i_need_to_think_about';
 
 update wk_coach_facts set value =
@@ -137,10 +137,10 @@ where key = 'obj_i_never_buy_over_the';
 insert into wk_coach_facts (key, label, value, keywords, category, sort_order, is_active)
 select * from (values
   ('the_video', 'What the video is',
-   'A 90-second video recorded for that specific business. It shows their real Google listing, where they actually rank in their town, the competitors sitting above them, and what more reviews would do to that. It ends with a £1 button. It is personalised, not a generic advert.',
+   'A 2-minute video recorded for that specific business. It shows their real Google listing, where they actually rank in their town, the competitors sitting above them, and what more reviews would do to that. It ends with a £1 button. It is personalised, not a generic advert.',
    '{"what is the video","what will you send","what is it","what am i watching"}'::text[], 'deal', 100, true),
-  ('why_90_seconds', 'Why 90 seconds',
-   'Because that is genuinely all it is. Saying "90 seconds" and meaning it is what earns the yes — never say "a minute" and then send five.',
+  ('why_90_seconds', 'Why 2 minutes',
+   'Because that is genuinely all it is. Saying "2 minutes" and meaning it is what earns the yes — never say "a minute" and then send five.',
    '{"how long is it","how long will it take","havent got time"}'::text[], 'deal', 101, true),
   ('call_recorded', 'Calls are recorded',
    'Yes — every call is recorded for training and quality, and the agent says so in the opener. If the lead objects, that is fine: tell them plainly, offer to carry on without notes, and never argue about it.',

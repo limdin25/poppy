@@ -90,9 +90,14 @@ export const VSL_POUND_PRICE = process.env.VSL_POUND_PRICE || 'price_1Tx5miLdAEh
  *  not meant to differ (Hugo 2026-07-27: "the audit is always from Google
  *  anyway, so the message should be the same").
  *
- *  Must echo the exact words the agent just said on the phone, "a 90-second
+ *  Must echo the exact words the agent just said on the phone, "a 2-minute
  *  audit", or the text reads like a different offer arriving from a stranger
  *  (Hugo 2026-07-26, the new video-first call).
+ *
+ *  It said "90-second" until 2026-07-27. The video is 2:35. Promising 90
+ *  seconds and then opening a player that reads 2:35 is the exact thing our
+ *  own script warns against ("never say a minute and then send five"), and
+ *  every lead saw it. Hugo: "lets call it a 2 minutes videos."
  *
  *  Laid out in paragraphs with the link on its own line: it lands on a phone,
  *  where a single run-on sentence hides the one thing we want tapped. Every
@@ -101,7 +106,7 @@ export const VSL_POUND_PRICE = process.env.VSL_POUND_PRICE || 'price_1Tx5miLdAEh
  *  comes back. */
 const VIDEO_SMS =
   "Hi {first}, it's {agent} from HeyElsie.\n\n" +
-  "Here's the 90-second audit I just mentioned for {business}:\n{url}\n\n" +
+  "Here's the 2-minute audit I just mentioned for {business}:\n{url}\n\n" +
   'Any questions, just message me here any time.';
 
 /** The free-website offer, REINSTATED by Hugo on 2026-07-27 after he withdrew

@@ -586,7 +586,7 @@ export const DEFAULT_VSL_RULES: VslRules = {
   },
   sent_not_opened_24h: {
     enabled: true, delay_minutes: 1440, max_sends: 1, repeat_hours: 24,
-    template: "Hi {first}, just checking you didn't miss my video. It's only about 90 seconds and shows a few things I spotted on your Google profile.",
+    template: "Hi {first}, just checking you didn't miss my video. It's about 2 minutes and shows a few things I spotted on your Google profile.",
   },
   sent_not_opened_72h: {
     enabled: true, delay_minutes: 4320, max_sends: 1, repeat_hours: 24,
@@ -600,7 +600,7 @@ export const DEFAULT_VSL_RULES: VslRules = {
   },
   opened_not_played_24h: {
     enabled: true, delay_minutes: 1440, max_sends: 1, repeat_hours: 24,
-    template: "Hi {first}, whenever you have 90 seconds, have a quick look at the video. I think you'll find it interesting.",
+    template: "Hi {first}, whenever you have a couple of minutes, have a quick look at the video. I think you'll find it interesting.",
   },
 
   // C. Played, stopped under halfway: 4h.
