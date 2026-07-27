@@ -10,9 +10,9 @@ Phase 0 complete (2026-07-20). This is the execution plan for Phase 1. Grounding
 
 | Tier | Requests/mo | Price | Trial |
 |---|---|---|---|
-| Starter | up to 50 | £99/mo | 14-day free, card on file |
-| Growth ⭐ Popular | 50–100 | £179/mo | 14-day free, card on file |
-| Pro | 100–300 | £279/mo | 14-day free, card on file |
+| Starter | up to 50 | £99/mo | £1 today, 10-day trial, card on file |
+| Growth ⭐ Recommended | up to 100 | £179/mo | £1 today, 10-day trial, card on file |
+| Pro | up to 300 | £279/mo | £1 today, 10-day trial, card on file |
 
 All features on every tier (4x-reviews claim, automated text & email, reactivation, dynamic follow-ups, AI smart messaging, personalized image requests, auto AI review replies, social review posting, review widgets, referral program, CRM integration, Zapier, unlimited users, 1-1 setup call). "Request" = one send to one contact; follow-ups don't count. Cap → pause + self-serve Stripe upgrade with proration. No free tier, no enterprise tier.
 
@@ -58,11 +58,11 @@ All features on every tier (4x-reviews claim, automated text & email, reactivati
 - Feature flag `reviews`; new signups get reviews-only UI; receptionist hidden for them.
 
 ### Stage 6 — Onboarding at go.heyelsie.com/onboarding (1.5 days)
-Clone the RH flow shape (see REVIEWHARVEST_MAP.md): account → verify → **connect Google via Zernio** → pick location → pick CRM or spreadsheet → upload contacts → PECR attestation (ours, they don't have it) → message preview + image template → card via Stripe (14-day trial) → first reactivation batch armed (but NOT sent until number assigned + Hugo-gate passed). Target: 10 minutes.
+Clone the RH flow shape (see REVIEWHARVEST_MAP.md): account → verify → **connect Google via Zernio** → pick location → pick CRM or spreadsheet → upload contacts → PECR attestation (ours, they don't have it) → message preview + image template → card via Stripe (£1 today + 10-day trial) → first reactivation batch armed (but NOT sent until number assigned + Hugo-gate passed). Target: 10 minutes.
 - Abandoned-onboarding nudge email (Resend, day-0 "finish setup" — RH's proven email, map §6) when a signup stalls mid-flow. Their educational drip stays v2.
 
 ### Stage 7 — Billing (1 day)
-- Create 3 Stripe products/prices (GBP, 14-day trial) + payment links via API; extend `PRICE_TO_PLAN`; cap-pause + upgrade prompt; proration self-serve.
+- Create 3 Stripe products/prices (GBP, £1 entry + 10-day trial) + payment links via API; extend `PRICE_TO_PLAN`; cap-pause + upgrade prompt; proration self-serve.
 
 ### Stage 8 — /super + CRM bridge (1.5 days)
 - `/super/reviews` clients overview, health, approval queues, onboard-a-client wizard.
@@ -128,4 +128,4 @@ Intercom-lite, built from Hugo's approved mockup — **[docs/support-widget-mock
 - RH runs a 10-day trial; you specified 14 — keeping 14.
 - WhatsApp bulk sends via Unipile technically violate WhatsApp ToS (ban risk per client number). Plan: SMS+email primary, WhatsApp off by default per client until you opt a client in. OK?
 - Annual billing ("2 months free") exists on RH — skipped for v1 unless you want it.
-- "First 25 reviews free" hero offer: implemented as marketing copy on the 14-day trial (not a separate billing mechanic) for v1.
+- "First 25 reviews free" hero offer: WITHDRAWN — the entry offer is £1 today (2026-07-27) (not a separate billing mechanic) for v1.

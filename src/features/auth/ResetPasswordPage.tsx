@@ -1,10 +1,20 @@
 import { useState } from 'react'
 import { Lock, CheckCircle2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/integrations/supabase/browser'
+
+/** Only same-origin paths. Rejects protocol-relative (`//evil`) and the
+ *  backslash variant browsers normalise to a slash — otherwise ?next= is an
+ *  open redirect on a page that has just authenticated someone. */
+function safeNext(next: string | null): string | null {
+  if (!next || !next.startsWith('/')) return null
+  if (next.startsWith('//') || next.startsWith('/\\')) return null
+  return next
+}
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
@@ -32,7 +42,9 @@ export default function ResetPasswordPage() {
       setError(updateError.message)
     } else {
       setDone(true)
-      setTimeout(() => navigate('/dashboard'), 2000)
+      // The reviews welcome email sends ?next=/onboarding so a new client lands
+      // back in setup rather than an empty dashboard.
+      setTimeout(() => navigate(safeNext(params.get('next')) ?? '/dashboard'), 2000)
     }
   }
 

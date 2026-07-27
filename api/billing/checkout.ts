@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import { requireAuth } from '../lib/auth.js';
+import { REVIEW_PRICE_IDS, TRIAL_DAYS } from '../lib/review-plans.js';
+import { VSL_POUND_PRICE } from '../lib/vsl-settings.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -65,14 +67,9 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
-    // HeyElsie Reviews tiers: 10-day free trial, card on file, and the
+    // HeyElsie Reviews tiers: £1 today, TRIAL_DAYS free, card on file, and the
     // checkout returns to the go.heyelsie.com app instead of the receptionist.
-    const REVIEWS_PRICES = new Set([
-      'price_1TvIMsLdAEhwWg6w9VFZFSJ0',
-      'price_1TvIMtLdAEhwWg6wjAfYPZeq',
-      'price_1TvIMtLdAEhwWg6wiQM7pKvR',
-    ]);
-    const isReviews = REVIEWS_PRICES.has(priceId);
+    const isReviews = REVIEW_PRICE_IDS.has(priceId);
     const GO_URL = process.env.GO_APP_URL || 'https://go.heyelsie.com';
 
     // Defense-in-depth (adversarial review 2026-07-22): never open a SECOND
@@ -91,9 +88,16 @@ export default async function handler(req: Request): Promise<Response> {
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [
+        { price: priceId, quantity: 1 },
+        // £1 today on THIS door too (Hugo 2026-07-27). Until now the homepage
+        // sold a £0 trial while the video page sold £1 — the same product at
+        // two prices depending on how the customer found us.
+        ...(isReviews ? [{ price: VSL_POUND_PRICE, quantity: 1 }] : []),
+      ],
       success_url: isReviews
-        ? `${reviewsReturn}?paid=1`
+        // {CHECKOUT_SESSION_ID} is a Stripe token — never URL-encode it.
+        ? `${reviewsReturn}?paid=1&session_id={CHECKOUT_SESSION_ID}`
         : `${APP_URL}/account/billing?success=true`,
       cancel_url: isReviews
         ? `${reviewsReturn}?cancelled=1`
@@ -101,7 +105,10 @@ export default async function handler(req: Request): Promise<Response> {
       metadata: { business_id: businessId },
       ...(isReviews
         ? {
-            subscription_data: { trial_period_days: 10 },
+            subscription_data: {
+              trial_period_days: TRIAL_DAYS,
+              metadata: { business_id: businessId },
+            },
             payment_method_collection: 'always' as const,
           }
         : {}),

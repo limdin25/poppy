@@ -21,9 +21,13 @@ test.describe.configure({ mode: 'serial' })
 
 test.beforeEach(async ({ page }) => {
   await page.goto(`${GO}/login`)
+  // Password form is behind the "instead" toggle — the code door is primary now.
+  const toggle = page.getByText(/Sign in with a password instead/i)
+  await toggle.first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+  if (await toggle.count()) await toggle.first().click()
   await page.getByPlaceholder('Email').fill(EMAIL)
   await page.getByPlaceholder('Password').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('button', { name: /^Sign in$/i }).click()
   // Signed in once the app shell renders its nav (attached, not visible — the
   // aside is display:none on the mobile project)
   await page.locator('aside nav a').first().waitFor({ state: 'attached', timeout: 20_000 })

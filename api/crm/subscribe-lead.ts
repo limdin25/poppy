@@ -15,7 +15,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { planByKey, REVIEW_PLANS } from '../lib/review-plans.js';
+import { planByKey, REVIEW_PLANS, TRIAL_DAYS } from '../lib/review-plans.js';
+import { VSL_POUND_PRICE } from '../lib/vsl-settings.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -172,11 +173,19 @@ export default async function handler(req: Request): Promise<Response> {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: customerId,
-      line_items: [{ price: plan.stripePriceId, quantity: 1 }],
-      success_url: `${GO_URL}/onboarding?paid=1`,
+      line_items: [
+        { price: plan.stripePriceId, quantity: 1 },
+        // £1 today — same offer as every other door (Hugo 2026-07-27).
+        { price: VSL_POUND_PRICE, quantity: 1 },
+      ],
+      // {CHECKOUT_SESSION_ID} is a Stripe token — never URL-encode it.
+      success_url: `${GO_URL}/onboarding?paid=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${GO_URL}/onboarding?cancelled=1`,
       metadata: { business_id: businessId },
-      subscription_data: { trial_period_days: 10 },
+      subscription_data: {
+        trial_period_days: TRIAL_DAYS,
+        metadata: { business_id: businessId },
+      },
       payment_method_collection: 'always',
     });
 

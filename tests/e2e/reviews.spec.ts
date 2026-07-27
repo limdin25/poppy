@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 /**
  * HeyElsie Reviews e2e — runs against the DEPLOYED stack (the reviews app
@@ -11,6 +11,23 @@ import { test, expect } from '@playwright/test'
 const GO = process.env.REVIEWS_E2E_GO_URL || 'https://go.heyelsie.com'
 const APP = process.env.REVIEWS_E2E_APP_URL || 'https://app.heyelsie.com'
 const MARKETING = process.env.REVIEWS_E2E_MARKETING_URL || 'https://heyelsie.com'
+
+/** Sign in with a password on go.heyelsie.com.
+ *  The password form now sits behind a "Sign in with a password instead"
+ *  toggle — the email-code door is primary, because customers who came in on
+ *  the £1 offer never set a password. */
+async function passwordLogin(page: Page, email: string, password: string) {
+  const toggle = page.getByText(/Sign in with a password instead/i)
+  // Wait for the login screen to actually render before probing for the
+  // toggle — a bare count() right after goto() races hydration and returns 0,
+  // leaving the password fields collapsed and unfillable.
+  await toggle.first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+  if (await toggle.count()) await toggle.first().click()
+  await page.getByPlaceholder('Email').fill(email)
+  await page.getByPlaceholder('Password').fill(password)
+  await page.getByRole('button', { name: /^Sign in$/i }).click()
+}
+
 
 const RUN_ID = Date.now().toString(36)
 const QA_EMAIL = `reviews-e2e-${RUN_ID}@heyelsie-qa.com`
@@ -44,7 +61,7 @@ test('marketing landing sells the reviews product with UK pricing', async ({ pag
   await expect(page.getByText('£99', { exact: false }).first()).toBeVisible()
   await expect(page.getByText('£179', { exact: false }).first()).toBeVisible()
   await expect(page.getByText('£279', { exact: false }).first()).toBeVisible()
-  await expect(page.getByText('Most popular').first()).toBeVisible()
+  await expect(page.getByText('Recommended').first()).toBeVisible()
   // Signup CTAs hand off to the go. subdomain
   const cta = page.getByRole('link', { name: /Start getting reviews/i })
   await expect(cta).toHaveAttribute('href', /go\.heyelsie\.com\/onboarding/)
@@ -68,9 +85,11 @@ test('onboarding: account creation lands on the customer upload step', async ({ 
 test('reviews dashboard renders for the new account (login flow)', async ({ page }) => {
   // Fresh context per test — prove the login screen works too.
   await page.goto(`${GO}/dashboard`)
-  await page.getByPlaceholder('Email').fill(QA_EMAIL)
-  await page.getByPlaceholder('Password').fill(QA_PASSWORD)
-  await page.getByRole('button', { name: /Sign in/i }).click()
+  // The code door is now PRIMARY: customers who came in on the £1 offer never
+  // set a password, and this screen used to offer them nothing else.
+  await expect(page.getByRole('link', { name: /Email me a sign-in code/i })).toHaveAttribute('href', '/continue')
+  // Password sign-in still works, one click behind the toggle.
+  await passwordLogin(page, QA_EMAIL, QA_PASSWORD)
   await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
   await expect(page.getByText('New reviews', { exact: false }).first()).toBeVisible()
   await expect(page.getByText('Requests sent', { exact: false }).first()).toBeVisible()
@@ -91,9 +110,7 @@ test('reviews dashboard renders for the new account (login flow)', async ({ page
 
 test('add a single contact with consent, see it in contacts', async ({ page }) => {
   await page.goto(`${GO}/dashboard`)
-  await page.getByPlaceholder('Email').fill(QA_EMAIL)
-  await page.getByPlaceholder('Password').fill(QA_PASSWORD)
-  await page.getByRole('button', { name: /Sign in/i }).click()
+  await passwordLogin(page, QA_EMAIL, QA_PASSWORD)
   await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
 
   await page.getByRole('link', { name: 'Add Contacts' }).click()
@@ -110,9 +127,7 @@ test('add a single contact with consent, see it in contacts', async ({ page }) =
 
 test('billing shows the three tiers and creates a real Stripe checkout session', async ({ page }) => {
   await page.goto(`${GO}/dashboard`)
-  await page.getByPlaceholder('Email').fill(QA_EMAIL)
-  await page.getByPlaceholder('Password').fill(QA_PASSWORD)
-  await page.getByRole('button', { name: /Sign in/i }).click()
+  await passwordLogin(page, QA_EMAIL, QA_PASSWORD)
   await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
   await grabSession(page)
 
@@ -120,9 +135,9 @@ test('billing shows the three tiers and creates a real Stripe checkout session',
   await expect(page.getByText('£99')).toBeVisible()
   await expect(page.getByText('£179')).toBeVisible()
   await expect(page.getByText('£279')).toBeVisible()
-  await expect(page.getByText('Popular')).toBeVisible()
+  await expect(page.getByText('Recommended').first()).toBeVisible()
 
-  // Checkout session creation (14-day trial, card required) — server-side call,
+  // Checkout session creation (£1 today + 10-day trial, card required) — server-side call,
   // no card is charged by creating a session.
   const out = await page.evaluate(async (token) => {
     const res = await fetch('/api/billing/checkout', {
@@ -137,9 +152,7 @@ test('billing shows the three tiers and creates a real Stripe checkout session',
 
 test('referrals page exposes the £100/£100 link', async ({ page }) => {
   await page.goto(`${GO}/dashboard`)
-  await page.getByPlaceholder('Email').fill(QA_EMAIL)
-  await page.getByPlaceholder('Password').fill(QA_PASSWORD)
-  await page.getByRole('button', { name: /Sign in/i }).click()
+  await passwordLogin(page, QA_EMAIL, QA_PASSWORD)
   await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
 
   await page.getByRole('link', { name: 'Refer a Friend' }).click()
@@ -148,15 +161,16 @@ test('referrals page exposes the £100/£100 link', async ({ page }) => {
   await expect(linkInput).toHaveValue(/onboarding\?ref=/)
 })
 
-test('scheduling: exact first-request delay options, follow-up labels, no pace slider', async ({ page }) => {
+test('scheduling (now on Messaging): exact first-request delay options, follow-up labels, no pace slider', async ({ page }) => {
   await page.goto(`${GO}/dashboard`)
-  await page.getByPlaceholder('Email').fill(QA_EMAIL)
-  await page.getByPlaceholder('Password').fill(QA_PASSWORD)
-  await page.getByRole('button', { name: /Sign in/i }).click()
+  await passwordLogin(page, QA_EMAIL, QA_PASSWORD)
   await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
 
-  await page.getByRole('link', { name: 'Scheduling' }).click()
-  await expect(page.getByText('Initial request scheduling')).toBeVisible({ timeout: 15000 })
+  // Scheduling was merged into Messaging on 2026-07-23 and the nav item removed;
+  // this test kept clicking a link that no longer exists. The assertions below
+  // are still the right ones — they just live on /messaging now.
+  await page.getByRole('link', { name: 'Messaging' }).click()
+  await expect(page.getByText('First request timing')).toBeVisible({ timeout: 15000 })
   const delaySelect = page.locator('select')
   await expect(delaySelect).toBeVisible()
   const options = await delaySelect.locator('option').allTextContents()
@@ -177,9 +191,7 @@ test('scheduling: exact first-request delay options, follow-up labels, no pace s
 
 test('social posting: toggle, post preview, posted + eligible sections', async ({ page }) => {
   await page.goto(`${GO}/dashboard`)
-  await page.getByPlaceholder('Email').fill(QA_EMAIL)
-  await page.getByPlaceholder('Password').fill(QA_PASSWORD)
-  await page.getByRole('button', { name: /Sign in/i }).click()
+  await passwordLogin(page, QA_EMAIL, QA_PASSWORD)
   await expect(page.getByText('Last 30 days performance')).toBeVisible({ timeout: 20000 })
 
   await page.getByRole('link', { name: 'Social Posting' }).click()

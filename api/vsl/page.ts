@@ -9,6 +9,13 @@ import { createClient } from '@supabase/supabase-js';
 import { createHmac } from 'node:crypto';
 import { getVslSettings, VSL_PRICES, normBusinessName, advanceVslState } from '../lib/vsl-settings.js';
 import { notifyFunnelEvent } from '../lib/vsl-notify.js';
+import { POUND_ENTRY_GBP, CHEAPEST_PLAN_GBP, CHEAPEST_ANNUAL_GBP, TRIAL_DAYS, BADGE_LABEL } from '../lib/review-plans.js';
+
+// Derived once — the ROI calculator used to hardcode £1,188 in two places
+// (server copy + inline JS), so a price change silently broke the maths.
+const ANNUAL_STR = CHEAPEST_ANNUAL_GBP.toLocaleString('en-GB');
+const DEFAULT_JOB_VALUE = 300;
+const INITIAL_BE = Math.ceil(CHEAPEST_ANNUAL_GBP / DEFAULT_JOB_VALUE);
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -330,15 +337,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   </div></div>`;
 
   const ctaButton = (extra = '') =>
-    `<button class="cta${extra}" onclick="cta()"><span class="ctamain">${ctaLabel}</span><span class="ctasub">£1 today · then from £99/month</span></button>`;
+    `<button class="cta${extra}" onclick="cta()"><span class="ctamain">${ctaLabel}</span><span class="ctasub">£${POUND_ENTRY_GBP} today · then from £${CHEAPEST_PLAN_GBP}/month</span></button>`;
 
   const tiers = Object.entries(VSL_PRICES)
     .map(
       ([priceId, t]) => `
-      <button class="tier${t.label === 'Growth' ? ' rec' : ''}" onclick="pick('${priceId}','${esc(t.label)}')">
-        <span class="tl">${esc(t.label)}${t.label === 'Growth' ? '<em class="recpill">Recommended</em>' : ''}</span>
+      <button class="tier${t.popular ? ' rec' : ''}" onclick="pick('${priceId}','${esc(t.label)}')">
+        <span class="tl">${esc(t.label)}${t.popular ? `<em class="recpill">${BADGE_LABEL}</em>` : ''}</span>
         <span class="tr">${esc(t.requests)}</span>
-        <span class="tp">${esc(t.monthly)}/month after your 10 days</span>
+        <span class="tp">${esc(t.monthly)}/month after your ${TRIAL_DAYS} days</span>
       </button>`,
     )
     .join('');
@@ -562,7 +569,7 @@ ${staff ? `<div style="background:#1A1A1A;color:#fff;font:600 12px/1.5 system-ui
       : `<div class="ph">Video coming shortly</div>`
   }</div>
   ${ctaButton()}
-  <p class="trust">⭐ Trusted by UK trades · Cancel anytime in your first 10 days</p>
+  <p class="trust">⭐ Trusted by UK trades · Cancel anytime in your first ${TRIAL_DAYS} days</p>
   </div><div class="colR">
   <div class="calc">
     <p class="calchead">What's it worth to you?</p>
@@ -577,7 +584,7 @@ ${staff ? `<div style="background:#1A1A1A;color:#fff;font:600 12px/1.5 system-ui
     <p class="calclbl2">If more reviews and a higher rank brought you <b id="nj">5</b> more jobs a month</p>
     <input id="njs" class="njs" type="range" min="1" max="10" step="1" value="5" aria-label="Extra jobs a month">
     <p class="calcout"><span id="cv">£18,000</span><span class="cvyr"> a year</span></p>
-    <p class="calcnote" id="cn">HeyElsie costs £1,188 a year. 4 extra jobs in a year covers it — that's one every three months.</p>
+    <p class="calcnote" id="cn">HeyElsie costs £${ANNUAL_STR} a year. ${INITIAL_BE} extra jobs in a year covers it${INITIAL_BE <= 4 ? " — that's one every three months." : "."}</p>
   </div>
   ${ctaButton(' ctad cd1')}
   ${settings.proof_image_url ? `<div class="proof">
@@ -599,11 +606,12 @@ ${staff ? `<div style="background:#1A1A1A;color:#fff;font:600 12px/1.5 system-ui
 <div class="sheetbg" onclick="closeSheet()"></div>
 <div class="sheet">
   <p class="sh">Pick your size</p>
-  <p class="ss">Every plan starts with £1 for your first 10 days — cancel anytime.</p>
+  <p class="ss">Every plan starts with £${POUND_ENTRY_GBP} for your first ${TRIAL_DAYS} days — cancel anytime.</p>
   ${tiers}
-  <p class="pound">£1 today. Nothing else until day 10.</p>
+  <p class="pound">£${POUND_ENTRY_GBP} today. Nothing else until day ${TRIAL_DAYS}.</p>
 </div>
 <script>
+var ANNUAL=${CHEAPEST_ANNUAL_GBP};
 var PAGE='${esc(page.id)}',VARIANT='${esc(page.cta_variant)}',TOKEN='${staff ? '' : esc(beaconToken(page.id))}',STAFF=${staff ? 'true' : 'false'};
 /* Staff viewing their own lead's page must not move that lead's card. Every
    beacon — open, play, the watch milestones, the button click — goes through
@@ -683,8 +691,8 @@ var n=parseInt(njs.value,10)||5;
 njEl.textContent=n;
 njs.style.setProperty('--p',((n-1)/9*100)+'%');
 cvTween(val*n*12);
-var be=Math.ceil(1188/val);
-cn.textContent='HeyElsie costs £1,188 a year. '+be+' extra jobs in a year covers it'+(be<=4?' — that\\'s one every three months.':'.');
+var be=Math.ceil(ANNUAL/val);
+cn.textContent='HeyElsie costs £'+ANNUAL.toLocaleString('en-GB')+' a year. '+be+' extra jobs in a year covers it'+(be<=4?' — that\\'s one every three months.':'.');
 if(touched)calcTouched()}
 function jvStep(d){if(!jv)return;var x=(parseInt(jv.value,10)||300)+d;if(x<50)x=50;if(x>5000)x=5000;jv.value=x;calcRender(true)}
 if(jv){jv.addEventListener('input',function(){calcRender(true)})}

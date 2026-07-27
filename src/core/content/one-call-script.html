@@ -427,18 +427,23 @@ const N = {
     say:`"I'm not going to take any more of your time, that's genuinely it. I'll get it over to you in the next few minutes. If I send it across, will you watch it?"`,
     dir:`Do NOT promise it lands this second, it gets built for them after the call. The commitment you want is that they will WATCH it, not that they will buy. "Will you watch it?" is the only close on this call.`,
     r:[
-      {l:`"Yeah, fine"`,n:`confirm_number`},
-      {l:`"Send it to a different number"`,n:`confirm_number`},
+      {l:`"Yeah, fine"`,n:`send_now`},
+      {l:`"Send it to a different number"`,n:`sent_other_number`},
       {l:`"I won't watch it"`,n:`final_push`,obj:true},
     ]},
 
-  confirm_number: {stage:'SENT',
-    say:`"Perfect. Is this the best number for a text? … Great, I'll get it sent across to you shortly, keep an eye on your phone."`,
-    dir:`Confirm the number, then tap Video, then "Make video" in the dialer. It builds and texts itself after you hang up, so do NOT sit on the line waiting for it. Get the number right, that is the whole job here.`,
+  send_now: {stage:'SENT',
+    say:`"Perfect, I'll get it sent across to this number shortly. Keep an eye on your phone."`,
+    dir:`Do NOT ask for their number — you are already on it, and asking makes you sound like you bought a list. Just tap Video, then "Make video" in the dialer. It builds and texts itself after you hang up, so do not sit on the line waiting for it.`,
     r:[
-      {l:`"Yeah, that's the one"`,n:`sent_confirm`},
-      {l:`Gives a different number`,n:`sent_confirm`},
+      {l:`"Great, thanks"`,n:`sent_confirm`},
+      {l:`Wants it on a different number`,n:`sent_other_number`},
     ]},
+
+  sent_other_number: {stage:'SENT',
+    say:`"No problem, what's the best one? … Got it, I'll send it there instead."`,
+    dir:`ONLY reached when THEY volunteer a different number. Update the mobile on the lead before tapping "Make video" or the text goes to the old one.`,
+    r:[{l:`Got the number`,n:`sent_confirm`}]},
 
   resend: {stage:'SENT',
     say:`"No bother, let me read it back to you … that right? Sending again now."`,
@@ -593,8 +598,8 @@ const N = {
     say:`"Brilliant, let's get you signed up so I can switch it on today and start pulling those reviews in. I'll text you the sign-up link now, what's the best mobile number for you? … Perfect, sending it over right now. Stay on the line with me while you do it, takes 30 seconds. Did it come through?"`,
     dir:`Confirm their mobile BEFORE you send, you can't text the link without it (and it's a natural, low-pressure ask). Frame the whole thing as "signing you up," NOT "giving a card." Give the reason to do it NOW (switch it on today). Send the link while you talk and keep them on the line, "later" means the deal's dead.`,
     r:[
-      {l:`"Yeah, got it"`,n:`confirm_number`},
-      {l:`"Can I just read you the card instead?"`,n:`confirm_number`},
+      {l:`"Yeah, got it"`,n:`send_now`},
+      {l:`"Can I just read you the card instead?"`,n:`send_now`},
       {l:`"Don't have my card on me"`,n:`no_card`,obj:true},
       {l:`"I never buy over the phone"`,n:`never_phone`,obj:true},
     ]},
@@ -871,8 +876,8 @@ const N = {
     say:`"Card in the van, is it? How fast can you get to it? I only take one plumber per town and I've got another call in a couple of hours. Can you grab it quickly, or is there someone at the office who can read it off while you sign up?"`,
     dir:`"Don't have my card" is often a stall. Push once, if they're in the van, they can usually find it. They'll need the card in hand to finish the sign-up.`,
     r:[
-      {l:`"Hold on, I'll grab it…"`,n:`confirm_number`},
-      {l:`"Just read it to you?"`,n:`confirm_number`},
+      {l:`"Hold on, I'll grab it…"`,n:`send_now`},
+      {l:`"Just read it to you?"`,n:`send_now`},
       {l:`Genuinely no card available`,n:`final_push`,obj:true},
     ]},
 
@@ -926,7 +931,7 @@ const N = {
     ]},
 
   legit_check: {stage:'OFFER',
-    say:`"Course, and this bit's easy to check: we're a fully registered UK company, ULINC UNICO GROUP LTD, company number 11197856, registered at 483 Green Lanes, London N13 4BS. We trade as HeyElsie. Look us up on Companies House right now if you want, I'll happily wait. And here's my personal number on top of that, call or text me any time. But be honest with yourself, what you really want to know is: will it work, and will I disappear? That's exactly what the no-contract 10-day trial answers, you see the reviews land before you've paid a penny."`,
+    say:`"Course, and this bit's easy to check: we're a fully registered UK company, ULINC UNICO GROUP LTD, company number 11197856, registered at 483 Green Lanes, London N13 4BS. We trade as HeyElsie. Look us up on Companies House right now if you want, I'll happily wait. And here's my personal number on top of that, call or text me any time. But be honest with yourself, what you really want to know is: will it work, and will I disappear? That's exactly what the pound-to-start trial answers, you see the reviews land before you're paying anything real."`,
     dir:`They asked for proof, so give it. A real company number and registered address beats any reassurance. Read the company number slowly so they can write it down, then swing straight back to the trial: the registration proves you're real, the trial proves it works. Still don't VOLUNTEER the company name in the opener (they'll Google it and stall), only pull it out here, when they demand proof.`,
     r:[
       {l:`"Yeah okay, fair enough"`,n:`permission_send`},
@@ -952,7 +957,7 @@ const N = {
 // ── The straight line (main script, always visible top-to-bottom) ──
 const MAINLINE = [
   'start','opener_hook','new_in_area','the_offer','permission_send',
-  'confirm_number','sent_confirm'
+  'send_now','sent_other_number','sent_confirm'
 ];
 const MAIN_SET = new Set(MAINLINE);
 
@@ -1039,7 +1044,7 @@ const FAQ = [
   {q:`How long have you been doing this?`, a:`I'm building this up right now, which is exactly why it's free to try, no contract, and I only take one plumber per town. I'd rather earn your trust with results than a sales story.`},
   {q:`Is this a contract?`, a:`No contract at all, cancel any time, no notice, no penalty.`},
   {q:`Can I cancel whenever?`, a:`Any time before your next billing date, one message and it's done.`},
-  {q:`Is it really free for 10 days?`, a:`Yes, the card just starts the trial, nothing's charged for 10 days.`},
+  {q:`How much to start?`, a:`A pound — that covers the first 10 days. The video shows the monthly price; don't read the tiers out.`},
   {q:`Are these fake reviews?`, a:`No, real reviews from your actual customers, we just make it effortless for them to leave one.`},
   {q:`How do you get them to leave a review?`, a:`A personalised text with their name on it and a one-tap link, then we chase the ones who forget.`},
   {q:`Won't this annoy my customers?`, a:`We only message people who haven't reviewed yet, and stop the second they do.`},

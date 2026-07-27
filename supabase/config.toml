@@ -131,7 +131,11 @@ password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# Raised from 2: sign-in codes are the PRIMARY login for reviews clients, and 2
+# per hour project-wide meant the second person to sign in got nothing. Must be
+# raised in the dashboard too (Authentication → Rate Limits), with Resend SMTP
+# configured — the built-in sender is dev-only.
+email_sent = 100
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
@@ -168,20 +172,40 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
+# Production SMTP — Resend, the same account the app already sends through
+# (RESEND_API_KEY is set on Vercel; heyelsie.com is a verified sending domain).
+# Mirror of what must be entered in the dashboard under
+# Project Settings → Authentication → SMTP Settings.
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# host = "smtp.resend.com"
+# port = 465
+# user = "resend"
+# pass = "env(RESEND_API_KEY)"
+# admin_email = "hello@heyelsie.com"
+# sender_name = "HeyElsie"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
+
+# The sign-in code for go.heyelsie.com/continue. signInWithOtp() against an
+# existing user sends the MAGIC LINK template, so that is the one that has to
+# render {{ .Token }} — the page shows a 6-digit code box, and Supabase's stock
+# template sends only a link.
+#
+# ⚠️ TWO THINGS TO KNOW:
+#   1. This block does nothing to the HOSTED project unless `supabase config
+#      push` is run. The live copy is Authentication → Email Templates → Magic
+#      Link in the dashboard. Keep them in sync; this file is the source of truth.
+#   2. Built-in SMTP is capped at [auth.rate_limit] email_sent below — 2 per
+#      HOUR, project-wide. Two clients signing in in the same hour and the
+#      second gets nothing. Configure the Resend SMTP block above in the
+#      dashboard before relying on code login.
+[auth.email.template.magic_link]
+subject = "Your HeyElsie sign-in code"
+content_path = "./supabase/templates/magic-link.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

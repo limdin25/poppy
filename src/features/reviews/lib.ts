@@ -44,11 +44,22 @@ export async function reviewsApi<T = Record<string, unknown>>(
   return json
 }
 
-export const REVIEW_PLAN_CARDS = [
-  { key: 'reviews_starter', name: 'Starter', price: 99, requests: 'Up to 50 requests/mo', priceId: 'price_1TvIMsLdAEhwWg6w9VFZFSJ0', popular: false },
-  { key: 'reviews_growth', name: 'Growth', price: 179, requests: '50–100 requests/mo', priceId: 'price_1TvIMtLdAEhwWg6wjAfYPZeq', popular: true },
-  { key: 'reviews_pro', name: 'Pro', price: 279, requests: '100–300 requests/mo', priceId: 'price_1TvIMtLdAEhwWg6wiQM7pKvR', popular: false },
-] as const
+// Pricing comes from the ONE canon — api/lib/review-plans.ts. There used to be
+// a hand-written copy here that had already drifted ("50–100 requests/mo"
+// implied a floor that never existed). Precedent for src→api/lib imports:
+// src/features/crm/lib/interpolateScript.ts.
+export {
+  REVIEW_PLANS,
+  TRIAL_DAYS,
+  POUND_ENTRY_GBP,
+  BADGE_LABEL,
+  CHEAPEST_PLAN_GBP,
+  planCap,
+  planByKey,
+  requestsLabel,
+  offerLine,
+} from '../../../api/lib/review-plans'
+export type { ReviewPlan } from '../../../api/lib/review-plans'
 
 export const PLAN_FEATURES = [
   'Get 4x more reviews',
@@ -64,12 +75,6 @@ export const PLAN_FEATURES = [
   'Unlimited users',
   '1-1 setup call',
 ]
-
-export function planCap(plan: string | null | undefined): number {
-  if (plan === 'reviews_growth') return 100
-  if (plan === 'reviews_pro') return 300
-  return 50
-}
 
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return ''

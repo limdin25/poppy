@@ -1,3 +1,9 @@
+-- NOTE (2026-07-27): wk_coach_facts is now owned SOLELY by
+-- scripts/seed-coach-facts.mjs (which re-derives every fact from
+-- salesObjections.ts and wipes the table first). The fact inserts/updates that
+-- used to live here fought with it — whichever ran last won — so they were
+-- removed. Edit facts in salesObjections.ts / seed-coach-facts.mjs and re-run
+-- that script. This file still owns the SCRIPT + COACH PROMPT sections.
 -- The 90-second audit call — script, coach and knowledge base, all aligned.
 --
 -- Hugo 2026-07-26: the close moved OFF the phone. The agent's only job is now

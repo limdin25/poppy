@@ -4,7 +4,7 @@ import { Button } from '@/core/ui/Button'
 import { SectionCard } from '@/core/ui/SectionCard'
 import { cn } from '@/core/lib/cn'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
-import { useReviewsSession, reviewsApi, REVIEW_PLAN_CARDS, PLAN_FEATURES, planCap } from '../lib'
+import { useReviewsSession, reviewsApi, REVIEW_PLANS, PLAN_FEATURES, planCap, requestsLabel, BADGE_LABEL, POUND_ENTRY_GBP, TRIAL_DAYS } from '../lib'
 
 export default function ReviewsBillingPage() {
   const session = useReviewsSession()
@@ -90,19 +90,19 @@ export default function ReviewsBillingPage() {
       </SectionCard>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {REVIEW_PLAN_CARDS.map((p) => {
+        {REVIEW_PLANS.map((p) => {
           const isCurrent = plan === p.key
           return (
             <div key={p.key} className={cn('relative rounded-2xl border bg-surface p-5 shadow-soft',
               p.popular ? 'border-brand' : 'border-border')}>
               {p.popular && (
                 <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-brand px-3 py-0.5 text-[11px] font-semibold text-white">
-                  Popular
+                  {BADGE_LABEL}
                 </span>
               )}
               <p className="text-sm font-semibold text-ink">{p.name}</p>
-              <p className="mt-1 text-2xl font-bold text-ink">£{p.price}<span className="text-sm font-normal text-ink-subtle">/mo</span></p>
-              <p className="text-xs text-ink-subtle">{p.requests}</p>
+              <p className="mt-1 text-2xl font-bold text-ink">£{p.priceGbp}<span className="text-sm font-normal text-ink-subtle">/mo</span></p>
+              <p className="text-xs text-ink-subtle">{requestsLabel(p)}</p>
               <ul className="mt-3 space-y-1">
                 {PLAN_FEATURES.slice(0, 6).map((f) => (
                   <li key={f} className="flex items-center gap-1.5 text-xs text-ink">
@@ -116,9 +116,9 @@ export default function ReviewsBillingPage() {
                 size="sm"
                 variant={isCurrent ? 'secondary' : p.popular ? 'primary' : 'outline'}
                 disabled={isCurrent || busy !== null}
-                onClick={() => choosePlan(p.priceId)}
+                onClick={() => choosePlan(p.stripePriceId)}
               >
-                {isCurrent ? 'Current plan' : busy === p.priceId ? 'Redirecting…' : onReviewsPlan ? `Switch to ${p.name}` : `Start 10-day free trial`}
+                {isCurrent ? 'Current plan' : busy === p.stripePriceId ? 'Redirecting…' : onReviewsPlan ? `Switch to ${p.name}` : `Start for £${POUND_ENTRY_GBP}`}
               </Button>
             </div>
           )
@@ -126,6 +126,7 @@ export default function ReviewsBillingPage() {
       </div>
       <p className="text-xs text-ink-subtle">
         Every plan has every feature. The only difference is monthly request volume. Upgrades pro-rate automatically.
+        New accounts start at £{POUND_ENTRY_GBP} for the first {TRIAL_DAYS} days.
       </p>
 
       {onReviewsPlan && (

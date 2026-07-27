@@ -110,9 +110,9 @@ Per-client sender numbers: resurrect the dormant `searchNumbers`/`provisionNumbe
 
 | Tier | Requests/mo | Price | Trial |
 |---|---|---|---|
-| Starter | up to 50 | £99/mo | 14-day free, card on file |
-| Growth ⭐ Popular | 50–100 | £179/mo | 14-day free, card on file |
-| Pro | 100–300 | £279/mo | 14-day free, card on file |
+| Starter | up to 50 | £99/mo | £1 today, then 10-day trial, card on file |
+| Growth ⭐ Recommended | up to 100 | £179/mo | £1 today, then 10-day trial, card on file |
+| Pro | up to 300 | £279/mo | £1 today, then 10-day trial, card on file |
 
 Identical features on all tiers; volume is the only differentiator. Three new Stripe products + prices (GBP, `trial_period_days: 14`, card required) + one **payment link per tier** for closers. Webhook extends the existing `PRICE_TO_PLAN` map → `businesses.plan`. Cap enforcement in the send cron via `review_usage`; at cap → pause + in-app upgrade prompt → self-serve upgrade (Stripe portal/checkout with proration). "Request" = one review request to one contact (SMS or email each count as one; follow-ups don't). No free tier, no enterprise tier.
 

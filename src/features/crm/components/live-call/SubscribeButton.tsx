@@ -91,7 +91,7 @@ function LinkSender({
   const first = name.trim().split(/\s+/)[0] || 'there';
 
   const smsBody = isSub
-    ? `Hi ${first}, here's your HeyElsie sign-up link — 10-day free trial, nothing's charged for 10 days: ${link} — pop your details in while I'm on the line and I'll get your reviews rolling.`
+    ? `Hi ${first}, here's your HeyElsie sign-up link — it's £1 to start and nothing else for 10 days: ${link} — pop your details in while I'm on the line and I'll get your reviews rolling.`
     : `Thanks for the call ${first}! Here's your setup link to finish getting started — upload your customers and connect your Google, takes about 10 minutes: ${link} — any bother, just reply.`;
   const emailSubject = isSub ? 'Your HeyElsie reviews sign-up link' : 'Your HeyElsie setup link';
   const emailBody = isSub

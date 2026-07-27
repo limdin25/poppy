@@ -9,7 +9,7 @@ import { ArrowLeft, Check, Star } from 'lucide-react'
 import { Button } from '@/core/ui/Button'
 import { Input } from '@/core/ui/Input'
 import { cn } from '@/core/lib/cn'
-import { reviewsApi, REVIEW_PLAN_CARDS } from '../lib'
+import { reviewsApi, REVIEW_PLANS, requestsLabel, BADGE_LABEL } from '../lib'
 import { wizardReducer, canAdvance, initialWizard, STEPS, stepIndex } from '../add-business-machine'
 
 const STEP_LABELS: Record<string, string> = { connect: 'Connect', select: 'Select', plan: 'Plan', confirm: 'Confirm' }
@@ -85,9 +85,9 @@ export default function AddBusinessPage() {
     setBusy(true)
     try {
       // Activate the draft, then take payment through the standard reviews
-      // checkout (10-day trial + card) — no free paid-tier access.
+      // checkout (£1 today + trial + card) — no free paid-tier access.
       await reviewsApi('/api/reviews/businesses', { method: 'POST', body: { action: 'finalize', business_id: state.businessId } })
-      const priceId = REVIEW_PLAN_CARDS.find((p) => p.key === state.plan)?.priceId
+      const priceId = REVIEW_PLANS.find((p) => p.key === state.plan)?.stripePriceId
       if (priceId) {
         const out = await reviewsApi<{ url: string }>('/api/billing/checkout', { body: { priceId, returnPath: '/dashboard' } })
         window.location.href = out.url
@@ -148,12 +148,12 @@ export default function AddBusinessPage() {
           <div className="mt-6 space-y-4">
             <h2 className="text-lg font-semibold text-ink">Choose a plan</h2>
             <div className="grid gap-3 sm:grid-cols-3">
-              {REVIEW_PLAN_CARDS.map((p) => (
+              {REVIEW_PLANS.map((p) => (
                 <button key={p.key} onClick={() => dispatch({ type: 'selectPlan', plan: p.key })}
                   className={cn('rounded-xl border p-3 text-left', state.plan === p.key ? 'border-brand bg-brand-50' : 'border-border hover:border-ink-subtle/50')}>
-                  <p className="text-sm font-semibold text-ink">{p.name}{p.popular && <span className="ml-1 text-[10px] font-bold text-brand">POPULAR</span>}</p>
-                  <p className="text-lg font-black text-ink">£{p.price}<span className="text-xs font-medium text-ink-subtle">/mo</span></p>
-                  <p className="text-xs text-ink-subtle">{p.requests}</p>
+                  <p className="text-sm font-semibold text-ink">{p.name}{p.popular && <span className="ml-1 text-[10px] font-bold text-brand">{BADGE_LABEL.toUpperCase()}</span>}</p>
+                  <p className="text-lg font-black text-ink">£{p.priceGbp}<span className="text-xs font-medium text-ink-subtle">/mo</span></p>
+                  <p className="text-xs text-ink-subtle">{requestsLabel(p)}</p>
                 </button>
               ))}
             </div>
@@ -170,7 +170,7 @@ export default function AddBusinessPage() {
             <h2 className="text-lg font-semibold text-ink">Review &amp; finish</h2>
             <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
               <div className="flex justify-between"><span className="text-ink-subtle">Location</span><span className="font-medium text-ink">{state.locationName ?? '—'}</span></div>
-              <div className="flex justify-between"><span className="text-ink-subtle">Plan</span><span className="font-medium text-ink">{REVIEW_PLAN_CARDS.find((p) => p.key === state.plan)?.name ?? '—'}</span></div>
+              <div className="flex justify-between"><span className="text-ink-subtle">Plan</span><span className="font-medium text-ink">{REVIEW_PLANS.find((p) => p.key === state.plan)?.name ?? '—'}</span></div>
               <div className="flex items-center gap-1 text-emerald-700"><Star style={{ width: 13, height: 13 }} className="fill-emerald-500 text-emerald-500" /> Google connected</div>
             </div>
             <div className="flex justify-between">

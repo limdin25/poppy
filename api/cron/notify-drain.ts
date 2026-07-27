@@ -17,6 +17,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { drainNotificationEmails } from '../lib/vsl-notify.js';
+import { drainReviewsWelcome } from '../lib/reviews-welcome.js';
 
 export const config = { maxDuration: 60 };
 
@@ -30,8 +31,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   try {
     const out = await drainNotificationEmails();
+    // Rides the same minute. Independently caught: a stuck welcome email must
+    // never stop the funnel notifications (or vice versa).
+    const welcome = await drainReviewsWelcome().catch((e) => {
+      console.error('[notify-drain] reviews welcome sweep failed:', (e as Error).message);
+      return { sent: 0 };
+    });
     res.statusCode = 200;
-    res.end(JSON.stringify({ ok: true, ...out }));
+    res.end(JSON.stringify({ ok: true, ...out, welcomeSent: welcome.sent }));
   } catch (e) {
     console.error('[notify-drain] failed:', e);
     res.statusCode = 500;

@@ -29,6 +29,12 @@ const BillingPage = lazy(() => import('./pages/ReviewsBillingPage'))
 const OnboardingPage = lazy(() => import('@/features/reviews-onboarding/ReviewsOnboardingPage'))
 const ContinuePage = lazy(() => import('@/features/reviews-onboarding/ReviewsContinuePage'))
 const AddBusinessPage = lazy(() => import('./pages/AddBusinessPage'))
+// Cross-feature import, same exception already taken for reviews-onboarding
+// above: these two pages were only mounted in the non-`go` branch of
+// src/app/App.tsx, so on go.heyelsie.com "Forgot password" fell through the
+// catch-all to the password login — unreachable for every reviews client.
+const ForgotPasswordPage = lazy(() => import('@/features/auth/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('@/features/auth/ResetPasswordPage'))
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -71,14 +77,32 @@ function LoginScreen() {
       <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 shadow-card">
         <h1 className="text-xl font-black tracking-tight text-ink">HeyElsie Reviews</h1>
         <p className="mt-1 text-sm text-ink-subtle">Sign in to your reviews dashboard</p>
-        <form onSubmit={submit} className="mt-6 space-y-4">
-          <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          {error && <p className="text-sm text-danger">{error}</p>}
-          <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
-        </form>
+
+        {/* The code door is PRIMARY (Hugo 2026-07-27). Customers who started on
+            the £1 offer never chose a password — this screen used to offer them
+            nothing but a password box and no forgot-password link, so their only
+            way in was typing /continue by hand. */}
+        <a
+          href="/continue"
+          className="mt-6 flex w-full items-center justify-center rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+        >
+          Email me a sign-in code
+        </a>
+        <p className="mt-1.5 text-center text-xs text-ink-subtle">No password needed — the usual way in.</p>
+
+        <details className="mt-5">
+          <summary className="cursor-pointer text-center text-sm text-ink-subtle">Sign in with a password instead</summary>
+          <form onSubmit={submit} className="mt-4 space-y-4">
+            <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
+            <a href="/forgot-password" className="block text-center text-xs text-ink-subtle underline">Forgot password?</a>
+          </form>
+        </details>
+
         <p className="mt-4 text-center text-sm text-ink-subtle">
-          New here? <a href="/onboarding" className="font-medium text-brand">Start your free trial</a>
+          New here? <a href="/onboarding" className="font-medium text-brand">Get started</a>
         </p>
         <div className="mt-5 border-t border-border pt-4">
           <p className="mb-2 text-center text-xs text-ink-subtle">Part of the team, not a reviews client?</p>
@@ -294,6 +318,10 @@ export default function ReviewsApp() {
         <Route path="/subscribe" element={<OnboardingPage mode="subscribe" />} />
         {/* Public: already-paid door — email + code, then resume onboarding. */}
         <Route path="/continue" element={<ContinuePage />} />
+        {/* Public: password recovery, for clients who chose one (or who follow
+            the "set your password" button in the welcome email). */}
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/*" element={
           state.loading ? <Loading />
           : !state.authed || !state.session ? <LoginScreen />

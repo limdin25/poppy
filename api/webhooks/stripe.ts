@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import { provisionVslSale } from '../lib/vsl-provision.js';
+import { REVIEWS_PRICE_TO_PLAN, CHEAPEST_PLAN_GBP } from '../lib/review-plans.js';
+import { ensureNumberRequest } from '../lib/vsl-provision.js';
+import { sendReviewsWelcome } from '../lib/reviews-welcome.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -14,13 +17,14 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET!;
 
 const PRICE_TO_PLAN: Record<string, string> = {
+  // Legacy receptionist product — not in the reviews canon.
   'price_1TTj1DLdAEhwWg6w9uuBcjJl': 'starter',
   'price_1TTj1DLdAEhwWg6wERoybYsY': 'professional',
   'price_1TTj1DLdAEhwWg6w2l8IOzJ9': 'business',
-  // HeyElsie Reviews tiers (product prod_Uv8eim0pBOmEGZ)
-  'price_1TvIMsLdAEhwWg6w9VFZFSJ0': 'reviews_starter',
-  'price_1TvIMtLdAEhwWg6wjAfYPZeq': 'reviews_growth',
-  'price_1TvIMtLdAEhwWg6wiQM7pKvR': 'reviews_pro',
+  // HeyElsie Reviews tiers, from the canon. Adding a price here by hand was
+  // the easiest thing in the codebase to forget — and forgetting it means a
+  // paying customer silently gets no plan written.
+  ...REVIEWS_PRICE_TO_PLAN,
 };
 
 function planFromSubscription(subscription: Stripe.Subscription): string | null {
@@ -41,8 +45,13 @@ export default async function handler(req: Request): Promise<Response> {
 
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(rawBody, signature, STRIPE_WEBHOOK_SECRET);
-    } catch {
+      // MUST be constructEventAsync. This handler runs on edge, where the Stripe
+      // SDK resolves its `worker` export to SubtleCryptoProvider — whose
+      // synchronous computeHMACSignature is a hard throw. The sync
+      // constructEvent therefore returns 401 on EVERY delivery, silently.
+      event = await stripe.webhooks.constructEventAsync(rawBody, signature, STRIPE_WEBHOOK_SECRET);
+    } catch (err: any) {
+      console.error('[stripe-webhook] signature verification failed:', err?.message);
       return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401 });
     }
 
@@ -62,17 +71,39 @@ export default async function handler(req: Request): Promise<Response> {
 
         const businessId = session.metadata?.business_id;
         if (businessId && session.subscription) {
+          // Same claim as the VSL path, so a duplicate delivery can't double-write.
+          const { data: claimed } = await supabase.rpc('claim_stripe_provision', {
+            p_key: `provision:${session.id}`,
+          });
+          if (!claimed) break;
+
           const sub = await stripe.subscriptions.retrieve(session.subscription as string);
           const plan = planFromSubscription(sub);
-          await supabase
+          // Take the real status from Stripe rather than assuming 'active' — a
+          // trialing subscription written as 'active' loses the customer their
+          // "Free trial" pill and contradicts their own billing page.
+          const { error: bizErr } = await supabase
             .from('businesses')
             .update({
               stripe_customer_id: session.customer as string,
               stripe_subscription_id: session.subscription as string,
-              billing_status: 'active',
+              billing_status: sub.status === 'trialing' ? 'trialing' : 'active',
               ...(plan && { plan }),
             })
             .eq('id', businessId);
+          if (bizErr) throw new Error(`checkout.session.completed: ${bizErr.message}`);
+
+          await supabase.rpc('finish_stripe_provision', {
+            p_key: `provision:${session.id}`,
+            p_business_id: businessId,
+          });
+
+          // Reviews accounts need a sender number queued or they can never send.
+          if (plan?.startsWith('reviews_')) {
+            await ensureNumberRequest(businessId, 'Self-serve reviews signup');
+            await sendReviewsWelcome(businessId).catch((e) =>
+              console.error('[stripe-webhook] welcome email deferred to cron:', (e as Error).message));
+          }
         }
         break;
       }
@@ -80,14 +111,28 @@ export default async function handler(req: Request): Promise<Response> {
       case 'invoice.paid': {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
-        await supabase
-          .from('businesses')
-          .update({ billing_status: 'active' })
-          .eq('stripe_customer_id', customerId);
 
-        // Referral program: the invitee's first PAID invoice (trials invoice £0,
-        // which Stripe doesn't emit invoice.paid for) unlocks the £100/£100 reward.
-        if ((invoice.amount_paid ?? 0) > 0) {
+        // Only a real renewal flips a business to 'active'. The trial-start
+        // invoice (billing_reason 'subscription_create') now carries the £1
+        // entry charge, so it IS paid — writing 'active' off it would race the
+        // 'trialing' written at provisioning time and land non-deterministically.
+        // customer.subscription.created/updated is the authority on status.
+        if (invoice.billing_reason === 'subscription_cycle') {
+          await supabase
+            .from('businesses')
+            .update({ billing_status: 'active' })
+            .eq('stripe_customer_id', customerId);
+        }
+
+        // Referral program: the invitee's first real RENEWAL unlocks the
+        // £100/£100 reward. This used to be "any invoice over £0" on the
+        // assumption that trials invoice £0 — an assumption the £1 entry charge
+        // breaks for every single customer on day 0, handing out £100 for £1.
+        // Belt and braces: the amount must also clear the cheapest plan.
+        if (
+          invoice.billing_reason === 'subscription_cycle' &&
+          (invoice.amount_paid ?? 0) >= CHEAPEST_PLAN_GBP * 100
+        ) {
           const { data: paidBiz } = await supabase
             .from('businesses')
             .select('id')
@@ -114,6 +159,9 @@ export default async function handler(req: Request): Promise<Response> {
         break;
       }
 
+      // created + updated share a handler: with invoice.paid no longer writing
+      // status, the subscription events are the single source of truth for it.
+      case 'customer.subscription.created':
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;

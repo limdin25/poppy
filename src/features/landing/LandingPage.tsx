@@ -4,6 +4,7 @@ import {
   Bot, RefreshCw, Share2, Plug, ShieldCheck, Menu, X, Sparkles,
 } from 'lucide-react'
 import { DISPLAY, CARD, STAR } from '@/core/ui/brand'
+import { REVIEW_PLANS, TRIAL_DAYS, POUND_ENTRY_GBP, CHEAPEST_PLAN_GBP, BADGE_LABEL, requestsLabel } from '@/features/reviews/lib'
 
 /* ──────────────────────────────────────────────────────────────────────────
    HeyElsie Reviews landing (heyelsie.com).
@@ -98,11 +99,9 @@ const FEATURES = [
   },
 ]
 
-const PRICING = [
-  { name: 'Starter', price: 99, requests: 'Up to 50 requests/mo', popular: false },
-  { name: 'Growth', price: 179, requests: '50–100 requests/mo', popular: true },
-  { name: 'Pro', price: 279, requests: '100–300 requests/mo', popular: false },
-]
+// Prices come from the ONE canon (api/lib/review-plans.ts). The hand-written
+// copy that used to live here said "50–100 requests/mo", implying a floor that
+// has never existed, and drifted from what the send engine enforces.
 
 const PLAN_BULLETS = [
   'Get 4x more reviews', 'Automated texts & emails', 'Review reactivation',
@@ -120,7 +119,7 @@ const FAQS: [string, string][] = [
   ['What\'s a "request"? What happens if I hit my limit?', 'A request is one review ask to one customer. Follow-ups are free and don\'t count. Hit your monthly cap and sending simply pauses until you upgrade (takes one click) or the month rolls over.'],
   ['Which review sites do you support?', 'Google, because that\'s what wins you jobs. When someone searches "plumber near me", Google reviews decide who they call.'],
   ['Does it work with my job software?', 'Yes, via Zapier (5,000+ apps) or our simple webhook. And a spreadsheet upload always works.'],
-  ['Is there a contract?', 'No contract. 10-day free trial, cancel any time from your dashboard.'],
+  ['Is there a contract?', `No contract. £${POUND_ENTRY_GBP} to start, then your plan after ${TRIAL_DAYS} days — cancel any time from your dashboard.`],
   ['Do you write fake reviews?', 'Absolutely not. Every review comes from your real customers, in their own words. We just make asking effortless.'],
 ]
 
@@ -165,7 +164,7 @@ export default function LandingPage() {
             ))}
             <a href={GO} className="text-sm font-bold text-[#1A1A1A] transition hover:text-[#1a73e8]">Log in</a>
             <a href={SIGNUP} className={`px-4 py-2 text-sm font-extrabold ${PILL_BLUE}`}>
-              Start free trial
+              Start for £{POUND_ENTRY_GBP}
             </a>
           </nav>
           <button className="md:hidden" onClick={() => setMenuOpen((v) => !v)} aria-label="Menu">
@@ -178,7 +177,7 @@ export default function LandingPage() {
               <a key={href} href={href} onClick={() => setMenuOpen(false)} className="block py-2 text-sm font-medium">{label}</a>
             ))}
             <a href={GO} className="block py-2 text-sm font-bold">Log in</a>
-            <a href={SIGNUP} className={`mt-2 block px-4 py-2.5 text-center text-sm font-extrabold ${PILL_BLUE}`}>Start free trial</a>
+            <a href={SIGNUP} className={`mt-2 block px-4 py-2.5 text-center text-sm font-extrabold ${PILL_BLUE}`}>Start for £{POUND_ENTRY_GBP}</a>
           </div>
         )}
         </header>
@@ -195,7 +194,7 @@ export default function LandingPage() {
             <Reveal>
               <span className="inline-flex items-center gap-2 rounded-full border border-[#D6E4FB] bg-[#E8F0FE] px-3 py-1 text-xs font-bold text-[#1557b0]">
                 <Star className="h-3.5 w-3.5" style={{ fill: STAR, color: STAR }} />
-                Built for UK trades · 10-day free trial
+                Built for UK trades · £{POUND_ENTRY_GBP} to start
               </span>
             </Reveal>
             <Reveal delay={80}>
@@ -213,13 +212,13 @@ export default function LandingPage() {
             <Reveal delay={240}>
               <div className="mt-8 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                 <a href={SIGNUP} className={`flex w-full items-center justify-center gap-2 px-7 py-3.5 text-base ${PILL_BLUE} sm:w-auto`}>
-                  Get my first 25 reviews free <ArrowRight className="h-4 w-4" />
+                  Start for £{POUND_ENTRY_GBP} <ArrowRight className="h-4 w-4" />
                 </a>
                 <a href="#how" className="flex w-full items-center justify-center gap-2 rounded-full border border-[#E5E7EB] bg-white px-6 py-3.5 text-base font-bold text-[#1A1A1A] transition hover:border-[#1a73e8] hover:text-[#1a73e8] sm:w-auto">
                   See how it works
                 </a>
               </div>
-              <p className="mt-4 text-xs font-semibold text-[#6B7280]">10-day free trial · no contract · built for UK trades</p>
+              <p className="mt-4 text-xs font-semibold text-[#6B7280]">£{POUND_ENTRY_GBP} today · then from £{CHEAPEST_PLAN_GBP}/month · cancel anytime</p>
             </Reveal>
           </div>
 
@@ -432,22 +431,22 @@ export default function LandingPage() {
         <div className="mx-auto max-w-5xl">
           <Reveal>
             <h2 className={`text-center text-3xl sm:text-4xl ${DISPLAY}`}>Simple pricing. Every feature, every plan.</h2>
-            <p className="mt-2 text-center text-[#6B7280]">The only difference is how many customers you can ask each month. 10-day free trial on all plans.</p>
+            <p className="mt-2 text-center text-[#6B7280]">The only difference is how many customers you can ask each month. £{POUND_ENTRY_GBP} starts any of them.</p>
           </Reveal>
           <div className="mt-12 grid gap-4 md:grid-cols-3">
-            {PRICING.map((p, i) => (
+            {REVIEW_PLANS.map((p, i) => (
               <Reveal key={p.name} delay={i * 80}>
                 <div className={`relative flex h-full flex-col rounded-[2rem] bg-white p-7 ${p.popular
                   ? 'border-2 border-[#1a73e8] shadow-[0_16px_48px_rgba(26,115,232,0.18)]'
                   : 'border border-[#E5E7EB] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_rgba(0,0,0,0.05)]'}`}>
                   {p.popular && (
-                    <span className="absolute right-6 top-6 rounded-full bg-[#1a73e8] px-3 py-1 text-[11px] font-extrabold text-white">Most popular</span>
+                    <span className="absolute right-6 top-6 rounded-full bg-[#1a73e8] px-3 py-1 text-[11px] font-extrabold text-white">{BADGE_LABEL}</span>
                   )}
                   <h3 className="text-sm font-bold text-[#6B7280]">{p.name}</h3>
-                  <p className={`mt-3 text-5xl ${DISPLAY}`}>£{p.price}<span className="text-sm font-normal text-[#6B7280]">/mo</span></p>
-                  <p className="mt-1 text-sm text-[#4B5563]">{p.requests}</p>
+                  <p className={`mt-3 text-5xl ${DISPLAY}`}>£{p.priceGbp}<span className="text-sm font-normal text-[#6B7280]">/mo</span></p>
+                  <p className="mt-1 text-sm text-[#4B5563]">{requestsLabel(p)}</p>
                   <a href={SIGNUP} className={`mt-6 px-4 py-3 text-center text-sm font-extrabold ${PILL_BLUE}`}>
-                    Start 10-day free trial
+                    Start for £{POUND_ENTRY_GBP}
                   </a>
                   <ul className="mt-6 flex-1 space-y-2">
                     {PLAN_BULLETS.map((b) => (
@@ -512,8 +511,8 @@ export default function LandingPage() {
             </div>
             <h2 className={`text-3xl sm:text-5xl ${DISPLAY}`}>Your next 25 reviews are on us</h2>
             <p className="mx-auto mt-4 max-w-lg text-white/80">
-              Start the 10-day free trial, upload your customer list, and watch the first reviews arrive before you've
-              paid a penny. If it doesn't work for your business, cancel in two clicks.
+              Start for £{POUND_ENTRY_GBP}, upload your customer list, and watch the first reviews arrive
+              during your {TRIAL_DAYS}-day trial. If it doesn't work for your business, cancel in two clicks.
             </p>
             <a href={SIGNUP} className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-base font-extrabold text-[#1a73e8] shadow-[0_8px_32px_rgba(0,0,0,0.20)] transition hover:bg-[#F8FAFD]">
               Start getting reviews <ArrowRight className="h-4 w-4" />
@@ -565,7 +564,7 @@ export default function LandingPage() {
         style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
       >
         <span className="text-[16px] font-extrabold">Start getting reviews</span>
-        <span className="text-[11.5px] font-bold opacity-85">10-day free trial · no contract</span>
+        <span className="text-[11.5px] font-bold opacity-85">£{POUND_ENTRY_GBP} today · no contract</span>
       </a>
     </div>
   )

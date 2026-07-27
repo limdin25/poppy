@@ -200,9 +200,16 @@ export default async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: signInError.message }), { status: 500 });
     }
 
-    // Send welcome email (non-blocking — don't fail registration if email fails)
-    const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
-    sendWelcomeEmail(name, email, `${appUrl}/login`).catch(() => {});
+    // Send welcome email (non-blocking — don't fail registration if email fails).
+    // Reviews signups get their OWN email: the receptionist one linked to
+    // app.heyelsie.com/login, a different origin where a reviews client has no
+    // session, and said "set your password" while pointing at a page that
+    // can't set one. Reviews accounts aren't paid at this point, so the real
+    // welcome is sent after checkout — this is just the account confirmation.
+    if (product !== 'reviews') {
+      const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
+      sendWelcomeEmail(name, email, `${appUrl}/login`).catch(() => {});
+    }
 
     return new Response(
       JSON.stringify({

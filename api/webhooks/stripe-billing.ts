@@ -25,8 +25,12 @@ export default async function handler(req: Request): Promise<Response> {
 
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(rawBody, signature, WEBHOOK_SECRET);
-    } catch {
+      // constructEventAsync — see the note in api/webhooks/stripe.ts. The sync
+      // variant cannot work on edge (SubtleCryptoProvider throws) and 401s
+      // every delivery.
+      event = await stripe.webhooks.constructEventAsync(rawBody, signature, WEBHOOK_SECRET);
+    } catch (err: any) {
+      console.error('[stripe-billing-webhook] signature verification failed:', err?.message);
       return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401 });
     }
 

@@ -27,7 +27,7 @@ Shipped to production 2026-07-20, branch `reviews` (local commits `b8c7bc7`+, no
 
 ## 3. What's real vs. what needs one more step
 
-**Fully real:** request engine + drip cron (live, every minute), suppression/STOP (cross-channel), tier metering + cap pause, personalized images, AI smart messaging, AI review replies (auto 4–5★ / approval 1–3★), review repurposing to GBP posts, weekly stats email (Mondays 08:00), widgets, referrals (attribution + paid-invoice flip live in the Stripe webhook), Zapier/webhook trigger endpoint, closer onboarding, number purchases, audit-logged API impersonation, Stripe tiers £99/£179/£279 with 14-day trials + payment links:
+**Fully real:** request engine + drip cron (live, every minute), suppression/STOP (cross-channel), tier metering + cap pause, personalized images, AI smart messaging, AI review replies (auto 4–5★ / approval 1–3★), review repurposing to GBP posts, weekly stats email (Mondays 08:00), widgets, referrals (attribution + paid-invoice flip live in the Stripe webhook), Zapier/webhook trigger endpoint, closer onboarding, number purchases, audit-logged API impersonation, Stripe tiers £99/£179/£279 with a £1 entry charge + 10-day trials + payment links:
 - Starter: https://buy.stripe.com/eVq00k4OvbfyetdbE0fbq00
 - Growth: https://buy.stripe.com/dRm28sbcT2J21GrdM8fbq01
 - Pro: https://buy.stripe.com/3cI3cwft94RagBl5fCfbq02
@@ -35,7 +35,7 @@ Shipped to production 2026-07-20, branch `reviews` (local commits `b8c7bc7`+, no
 **Needs a first real-world pass (not code):**
 1. **Zernio GBP connect end-to-end** — the flow is built and the key verified, but no location has been OAuth-connected yet (needs a real Google Business Profile login — 2 connections are free on Zernio's tier). First connect also auto-registers the `review.new` webhook. **Action: connect your own GBP (or a client's) through go.heyelsie.com onboarding.**
 2. **Zernio plan** — review webhooks need their usage-based (card-on-file) plan; confirm hello@lemlin.com has a card. ~\$6/account/mo after the free two.
-3. **Stripe checkout completion** — session creation is e2e-tested; an end-to-end paid signup needs a real card (14-day trial, cancel after, or use the trial itself as the test).
+3. **Stripe checkout completion** — session creation is e2e-tested; an end-to-end paid signup needs a real card (£1 today + 10-day trial; refund the £1 and cancel immediately after).
 
 **Known v1 boundaries (deliberate):**
 - UK SMS carries the personalized image **as part of the ask via link/email embed** — UK long codes cannot send MMS (confirmed: purchased number reports `MMS: false`). Emails embed the image; US senders would attach it natively later.
@@ -54,7 +54,7 @@ Shipped to production 2026-07-20, branch `reviews` (local commits `b8c7bc7`+, no
 
 ## 5. Team runbook — closer sells a client on the phone
 
-1. **Mid-call:** open **app.heyelsie.com/super/reviews → Onboard client** — business name, owner name, email, tier. Copy the **payment link**, text it to the client on the call ("14-day free trial, card just holds your place").
+1. **Mid-call:** open **app.heyelsie.com/super/reviews → Onboard client** — business name, owner name, email, tier. Copy the **payment link**, text it to the client on the call ("it's £1 to start, then nothing for 10 days") — ⚠️ the trial on a static Stripe PAYMENT LINK is configured on the link itself, not by TRIAL_DAYS; verify each link reads 10 days and carries the £1.
 2. The client gets a set-password email automatically; a **sender-number request is already queued**.
 3. **Admin (2 clicks):** /super/reviews → Numbers → **Buy UK number** (uses the approved regulatory bundle; STOP webhook wires itself).
 4. **Client (or you, via "View as client"):** go.heyelsie.com — connect Google (their own login), upload the customer CSV, confirm the consent step, launch reactivation. Ten minutes.

@@ -7,11 +7,14 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { VSL_PRICES, VSL_POUND_PRICE, advanceVslState } from '../lib/vsl-settings.js';
 import { notifyFunnelEvent } from '../lib/vsl-notify.js';
+import { TRIAL_DAYS } from '../lib/review-plans.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+
+const GO_URL = process.env.GO_APP_URL || 'https://go.heyelsie.com';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-06-20' as any,
@@ -58,14 +61,29 @@ export default async function handler(req: Request): Promise<Response> {
         // subscription itself trials for 10 days.
         { price: VSL_POUND_PRICE, quantity: 1 },
       ],
-      subscription_data: { trial_period_days: 10 },
+      subscription_data: {
+        trial_period_days: TRIAL_DAYS,
+        // The Subscription object used to carry NOTHING, so every later
+        // customer.subscription.* event was unreconcilable back to the funnel.
+        metadata: {
+          vsl_page_id: page.id,
+          contact_id: page.contact_id,
+          agent_id: page.agent_id,
+          price_id: priceId,
+        },
+      },
+      client_reference_id: page.id,
       payment_method_collection: 'always',
       allow_promotion_codes: false,
       // Sessions self-expire in 1h so an abandoned tab can't be paid days later
       // against stale pricing.
       expires_at: Math.floor(Date.now() / 1000) + 3600,
-      success_url: 'https://go.heyelsie.com/continue?paid=1',
-      cancel_url: `https://heyelsie.com/${page.slug}`,
+      // {CHECKOUT_SESSION_ID} is a Stripe template token — it must NOT be
+      // URL-encoded. /continue uses it to confirm the payment, pre-fill the
+      // email and poll until provisioning lands, instead of asking a customer
+      // who just paid to retype the address they used seconds ago.
+      success_url: `${GO_URL}/continue?paid=1&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `https://heyelsie.com/${page.slug}?from=stripe`,
       metadata: {
         vsl_page_id: page.id,
         contact_id: page.contact_id,

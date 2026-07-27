@@ -3,7 +3,7 @@
 // 10-day trial) → done. Google Business Profile connection happens AFTER
 // signup, from the dashboard. Handles the Stripe checkout round-trip.
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Papa from 'papaparse'
 import { Upload, ShieldCheck, PartyPopper } from 'lucide-react'
@@ -11,7 +11,7 @@ import { Button } from '@/core/ui/Button'
 import { Input } from '@/core/ui/Input'
 import { cn } from '@/core/lib/cn'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
-import { REVIEW_PLAN_CARDS, PLAN_FEATURES, reviewsApi } from '@/features/reviews/lib'
+import { REVIEW_PLANS, PLAN_FEATURES, reviewsApi, requestsLabel, BADGE_LABEL, POUND_ENTRY_GBP, TRIAL_DAYS, CHEAPEST_PLAN_GBP } from '@/features/reviews/lib'
 
 type Step = 'account' | 'contacts' | 'compliance' | 'plan' | 'software' | 'done'
 // Two entry modes into the SAME funnel (Hugo 2026-07-22):
@@ -77,47 +77,93 @@ export default function ReviewsOnboardingPage({ mode = 'onboarding' }: { mode?: 
 
   // Plan
   const [launched, setLaunched] = useState<string | null>(null)
+  const [paid, setPaid] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   const stepIndex = STEPS.indexOf(step)
 
-  // Resolve where the user is in the flow (fresh visit or Stripe return).
-  // Mode-aware: subscribe pays FIRST (account → plan → pay → rest); onboarding
-  // pays near the end. The /continue door lands here already signed in + paid,
-  // so it resumes past the plan step automatically.
-  useEffect(() => {
-    async function resolve() {
-      const { data: { session } } = await supabase.auth.getSession()
-      setHasSession(!!session)
-      if (!session) { setStep('account'); return }
-      if (params.get('cancelled') === '1') { setStep('plan'); return }
+  // Resolve where the user is in the flow, from SERVER state only.
+  //
+  // Two bugs used to live here. (1) onboarding mode checked attestation BEFORE
+  // payment, so a customer who paid but hadn't attested was routed to
+  // contacts → compliance → and then attest() pushed them to the PAY screen,
+  // where the checkout 409s "you already have an active subscription" with no
+  // way forward. Every VSL buyer hit that. (2) `?paid=1` short-circuited
+  // straight to 'software', skipping the PECR gate entirely and leaving
+  // attested_at NULL — which makes api/reviews/campaigns.ts refuse to create
+  // any campaign, forever. A silent dead client.
+  //
+  // Now: one ladder, both modes, payment first, and ?paid=1 only drives the
+  // banner. Order of the steps still differs per mode (the progress bar), but
+  // the RESUME rule is identical.
+  const resolve = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    setHasSession(!!session)
+    if (!session) { setStep('account'); return }
 
-      const [{ data: settings }, { data: member }] = await Promise.all([
-        supabase.from('review_settings').select('attested_at, crm_provider').limit(1).maybeSingle(),
-        supabase.from('team_members').select('business_id').eq('user_id', session.user.id).limit(1).maybeSingle(),
-      ])
-      if (!member) { setStep('account'); return }
-      const { data: biz } = await supabase.from('businesses').select('plan').eq('id', member.business_id).single()
-      const paid = !!biz?.plan?.startsWith('reviews_')
+    const { data: members } = await supabase
+      .from('team_members').select('business_id').eq('user_id', session.user.id)
+    const memberIds = [...new Set((members ?? []).map((m) => m.business_id))]
+    if (!memberIds.length) { setStep('account'); return }
 
-      if (mode === 'subscribe') {
-        // Pay-first: account → plan → (Stripe) → contacts → compliance → software.
-        if (params.get('paid') === '1') { setStep('contacts'); return }
-        if (!paid) { setStep('plan'); return }
-        if (!settings?.attested_at) { setStep('contacts'); return }
-        if (!settings?.crm_provider) { setStep('software'); return }
-        setStep('done'); return
-      }
+    // Respect the active business for multi-business owners; drafts are not
+    // real accounts yet.
+    const { data: prof } = await supabase
+      .from('profiles').select('active_business_id').eq('id', session.user.id).maybeSingle()
+    const { data: bizRows } = await supabase
+      .from('businesses')
+      .select('id, plan, billing_status, stripe_subscription_id, status')
+      .in('id', memberIds)
+    const nonDraft = (bizRows ?? []).filter((b) => b.status !== 'draft')
+    const biz = nonDraft.find((b) => b.id === prof?.active_business_id) ?? nonDraft[0] ?? null
+    if (!biz) { setStep('account'); return }
 
-      // onboarding mode (also where the /continue door lands, already paid).
-      if (params.get('paid') === '1') { setStep('software'); return }
-      if (!settings?.attested_at) { setStep('contacts'); return }
-      if (!paid) { setStep('plan'); return }
-      if (!settings?.crm_provider) { setStep('software'); return }
-      setStep('done')
-    }
-    resolve()
+    // Scoped by business_id. The old query was an unfiltered .limit(1) that
+    // leaned entirely on RLS — for a multi-business owner it returned an
+    // arbitrary row, so business A's resume state could be decided by B's.
+    const { data: settings } = await supabase
+      .from('review_settings').select('attested_at, crm_provider').eq('business_id', biz.id).maybeSingle()
+
+    // Tolerant of a partially-applied webhook (sub id written, plan not yet):
+    // being strict here would re-strand the user on the pay screen, which is
+    // the exact bug this rewrite exists to kill.
+    const isPaid = biz.billing_status !== 'cancelled' &&
+      (String(biz.plan ?? '').startsWith('reviews_') || !!biz.stripe_subscription_id)
+    setPaid(isPaid)
+
+    if (!isPaid) { setStep('plan'); return }
+    if (!settings?.attested_at) { setStep('contacts'); return }
+    if (!settings?.crm_provider) { setStep('software'); return }
+    setStep('done')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => { resolve() }, [resolve])
+
+  // Returning from Stripe: the redirect is instant but provisioning is
+  // webhook-async, so a fast returner would read a stale plan and get bounced
+  // to the pay screen they just came from. Poll until the account is ready.
+  useEffect(() => {
+    const sessionId = params.get('session_id')
+    if (!sessionId || paid) return
+    let attempt = 0
+    let stop = false
+    setConfirming(true)
+    ;(async () => {
+      while (!stop && attempt < 30) {
+        attempt++
+        try {
+          const res = await fetch(`/api/billing/session-status?session_id=${encodeURIComponent(sessionId)}&attempt=${attempt}`)
+          const data = await res.json() as { paid?: boolean; ready?: boolean }
+          if (data.ready) { await resolve(); break }
+        } catch { /* transient — keep polling */ }
+        await new Promise((r) => setTimeout(r, attempt > 7 ? 5000 : 2000))
+      }
+      setConfirming(false)
+    })()
+    return () => { stop = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, paid, resolve])
 
   async function createAccount(e: FormEvent) {
     e.preventDefault()
@@ -179,10 +225,12 @@ export default function ReviewsOnboardingPage({ mode = 'onboarding' }: { mode?: 
     setError(null)
     try {
       await reviewsApi('/api/reviews/settings', { method: 'PUT', body: { attest: true } })
-      // Subscribe mode paid BEFORE compliance, so continue to software — never
-      // back to the pay screen (that would invite a second subscription).
-      // Matches resolve()'s own subscribe routing.
-      setStep(mode === 'subscribe' ? 'software' : 'plan')
+      // Route on PAYMENT, not on mode. This line used to read
+      // `mode === 'subscribe' ? 'software' : 'plan'` — the fix was applied to
+      // the subscribe door only, so every customer arriving via /continue
+      // (i.e. every £1 buyer) was pushed to the pay screen after attesting and
+      // then hard-blocked by the checkout's already-subscribed 409.
+      setStep(paid ? 'software' : 'plan')
     } catch (err) {
       setError((err as Error).message)
     }
@@ -228,7 +276,17 @@ export default function ReviewsOnboardingPage({ mode = 'onboarding' }: { mode?: 
       const out = await reviewsApi<{ url: string }>('/api/billing/checkout', { body: { priceId, returnPath: mode === 'subscribe' ? '/subscribe' : '/onboarding' } })
       window.location.href = out.url
     } catch (err) {
-      setError((err as Error).message)
+      const msg = (err as Error).message
+      // The checkout's double-charge guard. Reaching it means our own state was
+      // stale, not that the customer did anything wrong — recover instead of
+      // showing them a terminal red message with no way forward.
+      if (/already have an active subscription/i.test(msg)) {
+        setPaid(true)
+        setBusy(false)
+        await resolve()
+        return
+      }
+      setError(msg)
       setBusy(false)
     }
   }
@@ -280,7 +338,7 @@ export default function ReviewsOnboardingPage({ mode = 'onboarding' }: { mode?: 
               <h1 className="text-2xl font-semibold text-ink">
                 {mode === 'subscribe' ? 'Start your subscription' : 'Create your account'}
               </h1>
-              <p className="mt-1 text-sm text-ink-subtle">10-day free trial · nothing charged for 10 days</p>
+              <p className="mt-1 text-sm text-ink-subtle">£{POUND_ENTRY_GBP} today · then from £{CHEAPEST_PLAN_GBP}/month after {TRIAL_DAYS} days · cancel anytime</p>
               {hasSession ? (
                 <div className="mt-6 space-y-3">
                   <p className="text-sm text-ink">You're already signed in.</p>
@@ -314,9 +372,9 @@ export default function ReviewsOnboardingPage({ mode = 'onboarding' }: { mode?: 
 
           {step === 'contacts' && (
             <div>
-              {mode === 'subscribe' && params.get('paid') === '1' && (
+              {params.get('paid') === '1' && (
                 <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
-                  🎉 Payment received — your 10-day trial's started. Let's finish setting you up (about 2 minutes).
+                  🎉 Payment received — your {TRIAL_DAYS}-day trial has started. Let's finish setting you up (about 2 minutes).
                 </div>
               )}
               <h1 className="text-2xl font-semibold text-ink">Upload your customer list</h1>
@@ -359,21 +417,39 @@ export default function ReviewsOnboardingPage({ mode = 'onboarding' }: { mode?: 
             </div>
           )}
 
-          {step === 'plan' && (
+          {/* Already paying? Never show the price cards — a back button, a
+              stale bookmark or a ?cancelled=1 link would otherwise park them on
+              a screen whose only button refuses their money. */}
+          {step === 'plan' && paid && (
             <div>
+              <h1 className="text-2xl font-semibold text-ink">You're all set on billing</h1>
+              <p className="mt-1 text-sm text-ink-subtle">
+                Your subscription is active — there's nothing more to pay right now. Let's finish setting you up.
+              </p>
+              <Button className="mt-6 w-full" onClick={() => setStep('contacts')}>Continue setup</Button>
+            </div>
+          )}
+
+          {step === 'plan' && !paid && (
+            <div>
+              {confirming && (
+                <div className="mb-3 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">
+                  Payment received ✓ — setting up your account, one moment…
+                </div>
+              )}
               <h1 className="text-2xl font-semibold text-ink">Choose your plan</h1>
-              <p className="mt-1 text-sm text-ink-subtle">Every plan has every feature. Only the monthly request volume differs. 10-day free trial, cancel anytime.</p>
+              <p className="mt-1 text-sm text-ink-subtle">Every plan has every feature. Only the monthly request volume differs. £{POUND_ENTRY_GBP} today, then this price after {TRIAL_DAYS} days — cancel anytime.</p>
               <div className="mt-5 space-y-3">
-                {REVIEW_PLAN_CARDS.map((p) => (
-                  <button key={p.key} onClick={() => choosePlan(p.priceId)} disabled={busy}
+                {REVIEW_PLANS.map((p) => (
+                  <button key={p.key} onClick={() => choosePlan(p.stripePriceId)} disabled={busy}
                     className={cn('relative w-full rounded-2xl border p-4 text-left transition-colors hover:border-brand',
                       p.popular ? 'border-brand bg-brand-50/50' : 'border-border bg-surface')}>
-                    {p.popular && <span className="absolute -top-2 right-4 rounded-full bg-brand px-2.5 py-0.5 text-[10px] font-semibold text-white">POPULAR</span>}
+                    {p.popular && <span className="absolute -top-2 right-4 rounded-full bg-brand px-2.5 py-0.5 text-[10px] font-semibold text-white">{BADGE_LABEL}</span>}
                     <div className="flex items-baseline justify-between">
                       <span className="text-sm font-semibold text-ink">{p.name}</span>
-                      <span className="text-lg font-bold text-ink">£{p.price}<span className="text-xs font-normal text-ink-subtle">/mo</span></span>
+                      <span className="text-lg font-bold text-ink">£{p.priceGbp}<span className="text-xs font-normal text-ink-subtle">/mo</span></span>
                     </div>
-                    <p className="text-xs text-ink-subtle">{p.requests}</p>
+                    <p className="text-xs text-ink-subtle">{requestsLabel(p)}</p>
                   </button>
                 ))}
               </div>

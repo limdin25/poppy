@@ -28,7 +28,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data: business } = await supabase
       .from('businesses')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, plan')
       .eq('id', businessId)
       .single();
 
@@ -39,9 +39,17 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
+    // Return reviews clients to THEIR app. APP_URL is the receptionist host,
+    // where a reviews client has no session at all (Supabase sessions are
+    // per-origin) — so closing the portal dropped them on a login screen.
+    const isReviews = String(business.plan ?? '').startsWith('reviews_');
+    const returnUrl = isReviews
+      ? `${process.env.GO_APP_URL || 'https://go.heyelsie.com'}/billing`
+      : `${APP_URL}/account/billing`;
+
     const session = await stripe.billingPortal.sessions.create({
       customer: business.stripe_customer_id,
-      return_url: `${APP_URL}/account/billing`,
+      return_url: returnUrl,
     });
 
     return new Response(JSON.stringify({ url: session.url }), { status: 200 });
