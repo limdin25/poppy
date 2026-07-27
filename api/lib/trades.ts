@@ -23,7 +23,7 @@
 // categories: the video's whole premise ("a customer searches your trade and
 // scrolls past you") does not apply to a plumbers' merchant.
 
-export type ProfileKey = 'plumbing' | 'electrical' | 'building' | 'interiors';
+export type ProfileKey = 'plumbing' | 'electrical' | 'building' | 'interiors' | 'locksmith' | 'pest-control';
 
 export interface TradeProfile {
   /** fake-but-plausible competitor names padding the SERP. {town} {surname} {initial} {initial2} */
@@ -121,6 +121,38 @@ export const TRADE_PROFILES: Record<ProfileKey, TradeProfile> = {
     review_short: ['Quick, tidy, finished the tiling same day.', 'Great job on the wardrobes — spotless.'],
     owner_reply: 'Thanks Kate — pleasure as always. Enjoy the new kitchen!',
   },
+  locksmith: {
+    ghost_patterns: [
+      '{town} Locksmiths', '{surname} Lock & Key', '{town} Emergency Locksmiths',
+      '{initial}. {surname} Locksmiths', '{town} Lock Services', '{surname} & Sons Locksmiths',
+      '{town} 24hr Locksmiths', 'J {surname} Locksmiths', '{initial}&{initial2} Locksmiths',
+      'Rapid Response Locksmiths {town}',
+    ],
+    ghost_fallback: '{town} Locksmiths Co.',
+    jobs: [
+      'Lock change', 'Emergency lockout', 'uPVC door repair', 'Safe installation',
+      'Multi-point lock', 'Key cutting', 'Burglary repair',
+    ],
+    review_long: 'Brilliant service, out within the hour and had a new lock fitted fast. Tidy, fair price.',
+    review_short: ['Quick, tidy, sorted the lock same day.', 'Great job on the new lock, spotless.'],
+    owner_reply: 'Thanks Kate, pleasure as always. Give us a shout if you need us again!',
+  },
+  'pest-control': {
+    ghost_patterns: [
+      '{town} Pest Control', '{surname} Pest Control Ltd', '{town} Pest Services',
+      '{initial}. {surname} Pest Control', '{town} Wildlife Solutions', '{surname} & Sons Pest Control',
+      '{town} Pest Management', 'J {surname} Pest Control', '{initial}&{initial2} Pest Control',
+      'Rapid Response Pest Control {town}',
+    ],
+    ghost_fallback: '{town} Pest Control Co.',
+    jobs: [
+      'Wasp nest removal', 'Mice control', 'Rat treatment', 'Bed bug treatment',
+      'Ant treatment', 'Pest proofing', 'Flea treatment',
+    ],
+    review_long: 'Brilliant service, wasp nest gone same day and no comeback since. Tidy, fair price.',
+    review_short: ['Quick, tidy, sorted the mice same day.', 'Great job on the wasp nest, spotless.'],
+    owner_reply: 'Thanks Kate, pleasure as always. Give us a shout if they come back!',
+  },
 };
 
 interface TradeDef { label: string; plural: string; chip: string; profile: ProfileKey }
@@ -144,6 +176,8 @@ export const TRADES: Record<string, TradeDef> = {
   flooring:         { label: 'Flooring contractor',plural: 'flooring fitters',    chip: 'flooring',          profile: 'interiors' },
   glazier:          { label: 'Window installer',   plural: 'window fitters',      chip: 'window fitter',     profile: 'interiors' },
   handyman:         { label: 'Handyman',           plural: 'handymen',            chip: 'handyman',          profile: 'interiors' },
+  locksmith:        { label: 'Locksmith',          plural: 'locksmiths',          chip: 'locksmith',         profile: 'locksmith' },
+  'pest-control':   { label: 'Pest control service', plural: 'pest control',      chip: 'pest control',      profile: 'pest-control' },
 };
 
 export const TRADE_KEYS = Object.keys(TRADES);
@@ -195,6 +229,10 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'handyman/handywoman/handyperson': 'handyman',
   'property maintenance': 'handyman',
   'repair service': 'handyman',
+  'locksmith': 'locksmith',
+  'pest control service': 'pest-control',
+  'pest control contractor': 'pest-control',
+  'exterminator': 'pest-control',
 };
 
 /** Fallback scan, in precedence order. First hit wins. */
@@ -214,6 +252,8 @@ const CATEGORY_PATTERNS: Array<[RegExp, string]> = [
   [/glaz|window/i, 'glazier'],
   [/plaster/i, 'plasterer'],
   [/handy|maintenance/i, 'handyman'],
+  [/locksmith/i, 'locksmith'],
+  [/pest control|exterminat/i, 'pest-control'],
   [/build|construct|contractor/i, 'builder'],
 ];
 
@@ -233,6 +273,8 @@ const NAME_PATTERNS: Array<[RegExp, string]> = [
   [/\bplastering\b/i, 'plasterer'],
   [/\bkitchens?\b/i, 'kitchen-fitter'],
   [/\bbathrooms?\b/i, 'bathroom-fitter'],
+  [/\blocksmiths?\b/i, 'locksmith'],
+  [/\bpest control\b/i, 'pest-control'],
 ];
 
 /**
