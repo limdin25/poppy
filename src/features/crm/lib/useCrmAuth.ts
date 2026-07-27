@@ -60,7 +60,14 @@ export function useAuth(): CrmAuthState {
       setAdminResolved(true)
       return
     }
-    setAdminResolved(false)
+    // Do NOT reset adminResolved here. This effect re-runs whenever Supabase
+    // refreshes the session, and blanking the answer we already have makes
+    // `loading` flap false -> true -> false. Every consumer that treats
+    // "loading" as "no impersonation filter" then fires an UNFILTERED query
+    // mid-session, and whichever response lands last wins. That is exactly how
+    // the video funnel showed an admin all 14 pages while viewing as one agent
+    // (Hugo 2026-07-27). checkAdmin is cached per email, so the re-check is
+    // free and the previous answer stays valid until it returns.
     checkAdmin(user.email).then((ok) => {
       if (!active) return
       setIsAdmin(ok)

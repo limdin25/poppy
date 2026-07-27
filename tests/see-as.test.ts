@@ -60,8 +60,12 @@ describe('See-as: admin impersonation', () => {
       ['src/features/crm/hooks/useReports.ts', /agent_id', impId/, true],
       // dialer KPIs
       ['src/features/crm/caller-pad/hooks/useDialerKpis.ts', /agent_id', effectiveId/, true],
-      // video funnel board
-      ['src/features/crm/pages/VideoFunnelPage.tsx', /agent_id', impId/, true],
+      // video funnel board — uses the STRICTER useVideoScope, not
+      // useImpersonatedAgentId: an agent must see only videos THEY made, and
+      // wk_vsl_pages RLS also permits any video on a lead they own, so an
+      // agent would otherwise see Hugo's test videos on their own leads
+      // (Hugo 2026-07-27: "marr should only see his videos, same for pedro").
+      ['src/features/crm/pages/VideoFunnelPage.tsx', /agent_id', impId/, false],
       // dialer: scope the CAMPAIGN LIST (queue rows have no agent_id until dialed)
       // + column-opened leads by owner
       ['src/features/crm/dialer-pro/DialerProPage.tsx', /scopedToAgentId: impId \?\?/, true],
@@ -70,6 +74,11 @@ describe('See-as: admin impersonation', () => {
     for (const [file, re, needsHelper] of cases) {
       expect(read(file), `${file} :: ${re}`).toMatch(re)
       if (needsHelper) expect(read(file), `${file} imports the helper`).toMatch(/useImpersonatedAgentId/)
+    }
+    // …and the video board still takes its scope from the shared context, never
+    // from a hand-rolled read of localStorage or auth.
+    expect(read('src/features/crm/pages/VideoFunnelPage.tsx')).toMatch(/useVideoScope/)
+    {
     }
   })
 })

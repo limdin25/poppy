@@ -10,7 +10,7 @@ import {
 import { supabase } from '@/integrations/supabase/browser';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useSmsV2 } from '../store/SmsV2Store';
-import { useImpersonatedAgentId } from '../lib/ViewAsContext';
+import { useVideoScope } from '../lib/ViewAsContext';
 import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
@@ -61,7 +61,7 @@ export default function VideoFunnelPage() {
     [contacts, columns],
   );
   const isAdmin = agent?.isAdmin ?? false;
-  const impId = useImpersonatedAgentId();
+  const { scopeId: impId, resolved: scopeResolved } = useVideoScope();
   const [pages, setPages] = useState<VslPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
@@ -81,7 +81,17 @@ export default function VideoFunnelPage() {
   const pagesRef = useRef<VslPage[]>([]);
   pagesRef.current = pages;
 
+  /** Monotonic request id. Two loads can be in flight when "See as" changes or
+   *  auth re-resolves, and without this the SLOWER one wins — which is exactly
+   *  how an admin viewing as one agent saw all 14 pages (Hugo 2026-07-27). */
+  const loadSeq = useRef(0);
+
   const load = useCallback(async () => {
+    // Never query on an unresolved scope. `impId === null` means BOTH "not
+    // impersonating, show everything" and "auth hasn't answered yet", so
+    // fetching early issues an UNFILTERED query whose response can land last.
+    if (!scopeResolved) return;
+    const seq = ++loadSeq.current;
     // "See as: <agent>" — admin impersonating sees that agent's video pages.
     let q = (supabase.from('wk_vsl_pages' as never) as any)
       .select('*, wk_contacts:contact_id ( owner_name:custom_fields->>owner_name, website:custom_fields->>website )')
@@ -89,6 +99,7 @@ export default function VideoFunnelPage() {
       .limit(500);
     if (impId) q = q.eq('agent_id', impId);
     const { data } = await q;
+    if (seq !== loadSeq.current) return; // a newer load already answered
     setPages((data as VslPage[]) || []);
     setLoading(false);
 
@@ -99,9 +110,10 @@ export default function VideoFunnelPage() {
     const { data: sum, error: sumErr } = await (supabase as never as {
       rpc: (n: string, a: Record<string, unknown>) => Promise<{ data: Summary[] | null; error: unknown }>;
     }).rpc('wk_vsl_funnel_summary', { p_since: null, p_until: null, p_agent: impId ?? null });
+    if (seq !== loadSeq.current) return; // stale scope
     if (sumErr) console.warn('[video-funnel] summary failed:', sumErr);
     setSummary(Array.isArray(sum) ? sum[0] ?? null : (sum as Summary | null));
-  }, [impId]);
+  }, [impId, scopeResolved]);
 
   useEffect(() => {
     load();

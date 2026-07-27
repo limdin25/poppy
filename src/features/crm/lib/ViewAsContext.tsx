@@ -78,6 +78,46 @@ export function useEffectiveAgentId(uid: string | null): { scopeAgentId: string 
  * `.eq(agentColumn, id)` to their query only when this is non-null, and include
  * it in their effect deps so the view refetches when "See as" changes.
  */
+/**
+ * The impersonation filter AND whether we yet know what it is.
+ *
+ * `useImpersonatedAgentId()` returns null for two very different situations:
+ * "this admin is not impersonating, show everything" and "auth has not resolved,
+ * ask me again". A caller that fetches on the second one issues an UNFILTERED
+ * query, and if its response lands after the filtered one it silently wins.
+ * That is the bug Hugo hit on the video funnel on 2026-07-27: viewing as one
+ * agent, seeing all 14 pages.
+ *
+ * Callers that fetch should use THIS and skip the fetch until `resolved`.
+ */
+export function useImpersonation(): { impId: string | null; resolved: boolean } {
+  const { isAdmin, loading } = useAuth();
+  const { viewAsId } = useViewAs();
+  if (loading) return { impId: null, resolved: false };
+  return { impId: isAdmin ? viewAsId : null, resolved: true };
+}
+
+/**
+ * The agent id a VIDEO board should filter by, for anyone.
+ *
+ *   agent (not admin)          -> themselves
+ *   admin, impersonating       -> that agent
+ *   admin, not impersonating   -> null, the whole workspace
+ *
+ * Hugo 2026-07-27: "marr should only see his videos, same for pedro."
+ * RLS alone does NOT achieve that. wk_vsl_pages_agent_read allows a row when
+ * `agent_id = auth.uid()` OR the caller owns the CONTACT, so an agent sees
+ * every video anyone made for one of their leads, including videos made by
+ * Hugo while testing. The board has to filter explicitly.
+ */
+export function useVideoScope(): { scopeId: string | null; resolved: boolean } {
+  const { isAdmin, loading, user } = useAuth();
+  const { viewAsId } = useViewAs();
+  if (loading) return { scopeId: null, resolved: false };
+  if (!isAdmin) return { scopeId: user?.id ?? null, resolved: true };
+  return { scopeId: viewAsId, resolved: true };
+}
+
 export function useImpersonatedAgentId(): string | null {
   const { isAdmin, loading } = useAuth();
   const { viewAsId } = useViewAs();
