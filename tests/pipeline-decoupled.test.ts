@@ -114,3 +114,25 @@ describe('every funnel stage stays on screen', () => {
     ])
   })
 })
+
+describe('the live badge only claims what it can prove', () => {
+  // Hugo 2026-07-27: "lead watched but it didnt move to watch." The lead had
+  // opened the page and never pressed play. The board said WATCHING NOW because
+  // `prev ? …increase… : true` treated any realtime event on a row it had not
+  // seen before as proof of a live viewer.
+  it('needs a previous row to compare against', () => {
+    expect(board).toMatch(/const watching = !!prev && row\.watched_pct > prev\.watched_pct/)
+    expect(board).toMatch(/const onPage = !!prev && row\.open_count > prev\.open_count/)
+    expect(board).not.toMatch(/prev \? row\.open_count > prev\.open_count/)
+  })
+
+  it('says "on the page" when they have only opened it', () => {
+    expect(board).toMatch(/ON THE PAGE NOW, call them!/)
+    expect(board).toMatch(/WATCHING NOW, call them!/)
+  })
+
+  it('carries no long dash, like every other string we show', () => {
+    const badge = board.split("liveNow.get(p.id) === 'watching'")[1]?.slice(0, 200) ?? ''
+    expect(badge).not.toContain('—')
+  })
+})

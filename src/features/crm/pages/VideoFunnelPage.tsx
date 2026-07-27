@@ -75,7 +75,13 @@ export default function VideoFunnelPage() {
   /** Set when the card's green button opened the drawer, so it lands on the
    *  composer instead of the journey. */
   const [composeForId, setComposeForId] = useState<string | null>(null);
-  const [watchingNow, setWatchingNow] = useState<Set<string>>(new Set());
+  /** What a lead is doing RIGHT NOW, when we can honestly tell.
+   *  'watching' = their watch coverage just went up.
+   *  'onpage'   = they just opened it again, but have not started the video.
+   *  Saying "watching" for the second one sends an agent into a call believing
+   *  the lead has seen the pitch (Hugo 2026-07-27: "lead watched but it didnt
+   *  move to watch" — they never pressed play). */
+  const [liveNow, setLiveNow] = useState<Map<string, 'watching' | 'onpage'>>(new Map());
   const watchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const pagesRef = useRef<VslPage[]>([]);
@@ -128,17 +134,22 @@ export default function VideoFunnelPage() {
           // went up), not an automation/cron bookkeeping write. Refresh the
           // 3-minute timer each time so an active viewer never clears early.
           const prev = pagesRef.current.find((p) => p.id === row.id);
-          const liveBeacon =
-            (prev ? row.open_count > prev.open_count || row.watched_pct > prev.watched_pct : true) &&
-            (row.state === 'opened' || row.state === 'watched');
-          if (liveBeacon) {
-            setWatchingNow((s) => new Set(s).add(row.id));
+          // A row we have NEVER seen tells us nothing: the event may be the
+          // funnel's own bookkeeping, or the card simply arriving on the board.
+          // The old `prev ? … : true` lit the badge for every one of those.
+          const watching = !!prev && row.watched_pct > prev.watched_pct;
+          const onPage = !!prev && row.open_count > prev.open_count;
+          const kind = (row.state === 'opened' || row.state === 'watched')
+            ? (watching ? 'watching' as const : onPage ? 'onpage' as const : null)
+            : null;
+          if (kind) {
+            setLiveNow((m) => new Map(m).set(row.id, kind));
             const existing = timers.get(row.id);
             if (existing) clearTimeout(existing);
             timers.set(
               row.id,
               setTimeout(() => {
-                setWatchingNow((s) => { const n = new Set(s); n.delete(row.id); return n; });
+                setLiveNow((m) => { const n = new Map(m); n.delete(row.id); return n; });
                 timers.delete(row.id);
               }, 3 * 60_000),
             );
@@ -306,12 +317,15 @@ export default function VideoFunnelPage() {
                     }}
                     title="Open this lead"
                     className={`bg-white border rounded-[10px] p-2.5 cursor-pointer hover:border-[#c9d6e8] hover:shadow-sm transition-colors ${
-                      watchingNow.has(p.id) ? 'border-[#F59E0B] shadow-[0_0_0_2px_rgba(245,158,11,.25)]' : 'border-[#E5E7EB]'
+                      liveNow.has(p.id) ? 'border-[#F59E0B] shadow-[0_0_0_2px_rgba(245,158,11,.25)]' : 'border-[#E5E7EB]'
                     }`}
                   >
-                    {watchingNow.has(p.id) && (
+                    {liveNow.get(p.id) && (
                       <div className="flex items-center gap-1 text-[10px] font-bold text-[#B45309] mb-1">
-                        <Eye className="w-3 h-3" /> WATCHING NOW — call them!
+                        <Eye className="w-3 h-3" />
+                        {liveNow.get(p.id) === 'watching'
+                          ? 'WATCHING NOW, call them!'
+                          : 'ON THE PAGE NOW, call them!'}
                       </div>
                     )}
                     {/* Plain text, not a link: one card, one action. The full
