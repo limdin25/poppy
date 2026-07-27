@@ -80,6 +80,25 @@ test.describe('the dialer video panel', () => {
     expect(text).toMatch(/heyelsie\.com/)
     expect(text.length).toBeGreaterThan(30)
   })
+
+  // Hugo 2026-07-27: "say something like if you have any question just shoot me
+  // a message at any time", and "no long dashes ever".
+  test('the message invites a reply, in paragraphs, with no long dash', async ({ authedPage: page }) => {
+    const channel = await openVideoPanel(page)
+    if (!channel) test.skip(true, 'no lead in the dialer on this account')
+
+    const text = await page.getByTestId('video-send-body').first().inputValue()
+
+    expect(text).toMatch(/Any questions, just message me here any time\./)
+    // The link on its own line, so it is tappable rather than buried.
+    expect(text).toMatch(/\nhttps:\/\/heyelsie\.com\//)
+    expect(text.split('\n\n').length).toBeGreaterThanOrEqual(3)
+
+    // One long dash would flip the whole text to UCS-2 and cost a third segment.
+    expect(text).not.toContain('—')
+    expect(text).not.toContain('–')
+    expect(text).not.toContain('’')
+  })
 })
 
 test.describe('Templates', () => {
