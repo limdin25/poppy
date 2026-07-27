@@ -391,7 +391,17 @@ export default function VideoFunnelPage() {
                     </div>
                     <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#9CA3AF]">
                       {p.town && <span>{p.town}</span>}
-                      {p.watched_pct > 0 && <span>watched {p.watched_pct}%</span>}
+                      {/* NOT the word "watched": the card said "watched 26%"
+                          while sitting in Opened, which reads as the board
+                          contradicting itself (Hugo 2026-07-27: "if Ignition
+                          was watched why it under opened"). The number is how
+                          far in they got; the STAGE is a separate thing they
+                          only reach at the threshold. */}
+                      {p.watched_pct > 0 && (
+                        <span title="How far into the video they actually got. The card only moves to the Watched stage once this passes the threshold in settings.">
+                          {p.watched_pct}% of video
+                        </span>
+                      )}
                       {p.open_count > 0 && <span>{p.open_count} open{p.open_count === 1 ? '' : 's'}</span>}
                       {p.no_website && <span title="No website — video opens with the Google search" className="text-[#6B7280] font-bold">no site</span>}
                       <span className="ml-auto" title={formatDateTime(p.updated_at)}>{ago(p.updated_at)}</span>

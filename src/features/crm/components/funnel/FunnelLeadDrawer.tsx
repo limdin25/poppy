@@ -367,7 +367,11 @@ export default function FunnelLeadDrawer({
             <span>·</span>
             <span>heyelsie.com/{page.slug}</span>
             <span>·</span>
-            <span>watched {page.watched_pct}%</span>
+            {/* "% of video", never "watched N%" — beside the stage pill above
+                it, the old wording read as a second, contradicting stage. */}
+            <span title="How far into the video they actually got. The lead only reaches the Watched stage once this passes the threshold in settings.">
+              {page.watched_pct}% of video
+            </span>
             <span>·</span>
             <span>{page.open_count} open{page.open_count === 1 ? '' : 's'}</span>
           </div>
