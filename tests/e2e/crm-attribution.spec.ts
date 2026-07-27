@@ -13,13 +13,33 @@ import { test, expect } from './helpers/auth'
  * never clicked, and neither is anything inside EditContactModal's footer.
  */
 
+/** The board fetches after mount — counting straight after goto() finds zero
+ *  cards and silently skips the whole suite. Wait for one to exist. */
+async function openBoard(page: import('@playwright/test').Page) {
+  await page.goto('/admin/crm/video-funnel')
+  const card = page.locator('[data-testid^="funnel-card-"]').first()
+  try {
+    await card.waitFor({ state: 'visible', timeout: 20_000 })
+  } catch {
+    return null
+  }
+  return card
+}
+
+/** Click the card the way a human does — on its name.
+ *  card.click() targets the geometric CENTRE, which on a "Ready to send" card is
+ *  the <video>; that sits inside the stopPropagation wrapper on purpose so you
+ *  can scrub the preview without the drawer flying open. */
+async function openCard(card: import('@playwright/test').Locator) {
+  await card.locator('div.text-\\[13px\\].font-bold').first().click()
+}
+
 test.describe('video funnel — open a lead at any stage', () => {
   test('clicking a card body opens the lead drawer', async ({ authedPage: page }) => {
-    await page.goto('/admin/crm/video-funnel')
-    const card = page.locator('[data-testid^="funnel-card-"]').first()
-    if ((await card.count()) === 0) test.skip(true, 'no video pages on this account yet')
+    const card = await openBoard(page)
+    if (!card) test.skip(true, 'no video pages on this account yet')
 
-    await card.click()
+    await openCard(card!)
     const drawer = page.locator('[data-testid="funnel-lead-drawer"]')
     await expect(drawer).toBeVisible({ timeout: 8000 })
 
@@ -29,11 +49,10 @@ test.describe('video funnel — open a lead at any stage', () => {
   })
 
   test('the drawer carries the render timeline, not just the funnel stages', async ({ authedPage: page }) => {
-    await page.goto('/admin/crm/video-funnel')
-    const card = page.locator('[data-testid^="funnel-card-"]').first()
-    if ((await card.count()) === 0) test.skip(true, 'no video pages on this account yet')
+    const card = await openBoard(page)
+    if (!card) test.skip(true, 'no video pages on this account yet')
 
-    await card.click()
+    await openCard(card!)
     const drawer = page.locator('[data-testid="funnel-lead-drawer"]')
     await expect(drawer).toBeVisible({ timeout: 8000 })
     // "date and time when agent click to create the video"
@@ -43,21 +62,19 @@ test.describe('video funnel — open a lead at any stage', () => {
   })
 
   test('a card action button does NOT open the drawer', async ({ authedPage: page }) => {
-    await page.goto('/admin/crm/video-funnel')
-    const card = page.locator('[data-testid^="funnel-card-"]').first()
-    if ((await card.count()) === 0) test.skip(true, 'no video pages on this account yet')
+    const card = await openBoard(page)
+    if (!card) test.skip(true, 'no video pages on this account yet')
 
     // Copy link is safe to click and sits inside the stopPropagation wrapper.
-    await card.getByTitle('Copy link').click()
+    await card!.getByTitle('Copy link').click()
     await expect(page.locator('[data-testid="funnel-lead-drawer"]')).toHaveCount(0)
   })
 
   test('ESC closes the drawer', async ({ authedPage: page }) => {
-    await page.goto('/admin/crm/video-funnel')
-    const card = page.locator('[data-testid^="funnel-card-"]').first()
-    if ((await card.count()) === 0) test.skip(true, 'no video pages on this account yet')
+    const card = await openBoard(page)
+    if (!card) test.skip(true, 'no video pages on this account yet')
 
-    await card.click()
+    await openCard(card!)
     const drawer = page.locator('[data-testid="funnel-lead-drawer"]')
     await expect(drawer).toBeVisible({ timeout: 8000 })
     await page.keyboard.press('Escape')
@@ -74,9 +91,12 @@ test.describe('the owning agent is named everywhere', () => {
   ] as const) {
     test(`${label} renders an agent chip`, async ({ authedPage: page }) => {
       await page.goto(path)
-      await page.waitForTimeout(2500) // let the roster + rows land
       const chips = page.locator('[data-testid="agent-chip"]')
-      if ((await chips.count()) === 0) test.skip(true, `no leads visible on ${label}`)
+      try {
+        await chips.first().waitFor({ state: 'visible', timeout: 20_000 })
+      } catch {
+        test.skip(true, `no leads visible on ${label}`)
+      }
       // Whatever it says, it must not still be resolving.
       await expect(chips.first()).not.toHaveText('…', { timeout: 8000 })
     })
@@ -84,10 +104,8 @@ test.describe('the owning agent is named everywhere', () => {
 
   test('the pipeline board says where each card last moved', async ({ authedPage: page }) => {
     await page.goto('/admin/crm/pipelines')
-    await page.waitForTimeout(2500)
     const chips = page.locator('[data-testid="stage-move-chip"]')
-    if ((await chips.count()) === 0) test.skip(true, 'no pipeline cards visible')
-    await expect(chips.first()).toBeVisible()
+    await expect(chips.first()).toBeVisible({ timeout: 20_000 })
   })
 })
 
@@ -95,13 +113,21 @@ test.describe('leaderboard follows "See as"', () => {
   test('an admin can pick an agent on the page itself', async ({ authedPage: page }) => {
     await page.goto('/admin/crm/leaderboard')
     const picker = page.getByTestId('leaderboard-agent-picker')
-    if ((await picker.count()) === 0) test.skip(true, 'not an admin on this account')
+    // Must render for Hugo. It did not, until the admin source was corrected
+    // from useCurrentAgent (wk_voice_agent_limits.is_admin = false for him) to
+    // useAuth, the same source the "See as" switcher uses.
+    await expect(picker).toBeVisible({ timeout: 20_000 })
+
+    // Wait for the roster to land — reading the options too early used to skip
+    // this test silently, which would have hidden an empty directory.
+    await expect
+      .poll(async () => picker.locator('option').count(), { timeout: 20_000 })
+      .toBeGreaterThan(1)
 
     // Every agent stays on the board — Hugo's explicit choice.
     const rowsBefore = await page.locator('[data-testid^="leaderboard-row-"]').count()
     const options = await picker.locator('option').allTextContents()
-    const target = options.find((o) => o && o !== 'Everyone')
-    if (!target) test.skip(true, 'no agents in the roster')
+    const target = options.find((o) => o && o !== 'Everyone')!
 
     await picker.selectOption({ label: target! })
     await page.waitForTimeout(2000)
@@ -117,10 +143,12 @@ test.describe('leaderboard follows "See as"', () => {
 test.describe('dialer', () => {
   test('the contact pane has a pencil and the video button reads "Send as video"', async ({ authedPage: page }) => {
     await page.goto('/admin/crm/dialer-pro')
-    await page.waitForTimeout(3000)
     const pencil = page.getByTestId('dialer-edit-contact')
-    if ((await pencil.count()) === 0) test.skip(true, 'no lead in the queue')
-    await expect(pencil).toBeVisible()
+    try {
+      await pencil.waitFor({ state: 'visible', timeout: 20_000 })
+    } catch {
+      test.skip(true, 'no lead in the queue')
+    }
     await expect(page.locator('body')).toContainText('Send as video')
   })
 })

@@ -22,6 +22,7 @@ import {
 } from '../hooks/useLeaderboard';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useViewAs } from '../lib/ViewAsContext';
+import { useAuth } from '../lib/useCrmAuth';
 import { useAgentDirectory } from '../hooks/useAgentDirectory';
 import DailyReportsPanel from '../components/DailyReportsPanel';
 import { formatDuration, formatPence } from '../data/helpers';
@@ -44,7 +45,11 @@ export default function LeaderboardPage() {
   // EVERY agent (a one-row leaderboard is not a leaderboard); the one being
   // viewed is highlighted, and the reports filter to them. The page carries its
   // own picker too, so it works without the global switcher.
-  const isAdmin = me?.isAdmin ?? false;
+  // useAuth().isAdmin, NOT useCurrentAgent().agent.isAdmin — the latter reads
+  // wk_voice_agent_limits.is_admin, which is false for Hugo, so the picker would
+  // never have rendered for the one person who needs it. This is the same source
+  // ViewAsSelector gates on, so the two controls agree.
+  const { isAdmin } = useAuth();
   const { viewAsId, viewAsName, setViewAs } = useViewAs();
   const directory = useAgentDirectory();
   const focusId = viewAsId;
