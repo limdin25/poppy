@@ -396,3 +396,83 @@ describe('the report always covers the standing coaching', () => {
     expect(cron).toMatch(/believe the transcripts/i)
   })
 })
+
+// Hugo 2026-07-27: "we need videos sent on the grade as well" / "and
+// conversations". Dials and script steps are process. A video landing on a
+// plumber's phone is the only thing that pays, so it is the score.
+
+describe('the grade: videos sent', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  const SINCE = '2026-07-27T00:00:00.000Z'
+  const UNTIL = '2026-07-28T00:00:00.000Z'
+  const page = (p: Partial<Record<string, string | null>> = {}) => ({
+    created_at: '2026-07-27T11:00:00.000Z', sent_at: null, render_status: 'ready',
+    first_opened_at: null, watched_at: null, ...p,
+  })
+
+  it('counts videos made and videos sent separately', async () => {
+    const { videoStats } = await load()
+    const v = videoStats([
+      page({ sent_at: '2026-07-27T11:05:00.000Z' }),
+      page(),
+    ] as never, SINCE, UNTIL)
+    expect(v.videos_made).toBe(2)
+    expect(v.videos_sent).toBe(1)
+    expect(v.videos_ready_not_sent).toBe(1) // built, sitting there, theirs to fix
+  })
+
+  it('counts a video SENT today off a page made yesterday', async () => {
+    // The agent did the sending work today; the grade has to see it.
+    const { videoStats } = await load()
+    const v = videoStats([
+      page({ created_at: '2026-07-26T15:00:00.000Z', sent_at: '2026-07-27T09:30:00.000Z' }),
+    ] as never, SINCE, UNTIL)
+    expect(v.videos_made).toBe(0)
+    expect(v.videos_sent).toBe(1)
+  })
+
+  it('does not blame the agent for a render that failed or is still going', async () => {
+    const { videoStats } = await load()
+    const v = videoStats([
+      page({ render_status: 'failed' }),
+      page({ render_status: 'rendering' }),
+    ] as never, SINCE, UNTIL)
+    expect(v.videos_render_failed).toBe(1)
+    expect(v.videos_still_rendering).toBe(1)
+    expect(v.videos_ready_not_sent).toBe(0) // neither is the agent's fault
+    expect(cron).toMatch(/OUR system, not the agent/i)
+    expect(cron).toMatch(/Never criticise them for those/i)
+  })
+
+  it('only counts engagement on videos actually sent that day', async () => {
+    const { videoStats } = await load()
+    const v = videoStats([
+      page({ sent_at: '2026-07-27T11:05:00.000Z', first_opened_at: '2026-07-27T12:00:00.000Z', watched_at: '2026-07-27T12:01:00.000Z' }),
+      page({ first_opened_at: '2026-07-27T12:00:00.000Z' }), // never sent, cannot have been opened
+    ] as never, SINCE, UNTIL)
+    expect(v.videos_opened).toBe(1)
+    expect(v.videos_watched).toBe(1)
+  })
+
+  it('makes videos sent the headline of the grade, not a footnote', () => {
+    expect(cron).toMatch(/\*\*The grade\*\*/)
+    expect(cron).toMatch(/Videos sent is the score that matters/i)
+    // A tidy-sounding day with nothing sent must not read as a good day.
+    expect(cron).toMatch(/perfect calls with no videos sent is not a good day/i)
+  })
+
+  it('states the funnel as dials to conversations to offers to videos', () => {
+    expect(cron).toMatch(/dials -> conversations -> offers/)
+    expect(cron).toMatch(/videos made -> videos sent/)
+  })
+
+  it('leads Hugo\'s email with videos sent over conversations and dials', () => {
+    expect(cron).toMatch(/videos_sent\}<\/strong> videos sent/)
+    expect(cron).toMatch(/from \$\{r\.stats\.conversations\} conversations and \$\{r\.stats\.dials\} dials/)
+  })
+
+  it('fetches pages by created_at OR sent_at, not just one', () => {
+    expect(cron).toMatch(/and\(created_at\.gte/)
+    expect(cron).toMatch(/and\(sent_at\.gte/)
+  })
+})

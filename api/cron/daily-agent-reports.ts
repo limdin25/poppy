@@ -216,6 +216,38 @@ export function paceStats(calls: CallRow[]) {
   };
 }
 
+export interface VslPageRow {
+  created_at: string | null;
+  sent_at: string | null;
+  render_status: string | null;
+  first_opened_at: string | null;
+  watched_at: string | null;
+}
+
+/** The scoreboard. Everything else on this report is a means to this end.
+ *
+ *  Hugo 2026-07-27: "we need videos sent on the grade as well, and
+ *  conversations". Dials and script steps are process; a video landing on a
+ *  plumber's phone is the only thing that pays, so it leads the grade.
+ *
+ *  A render that failed or is still going is NOT held against the agent: they
+ *  did their job on the call, the box let them down.
+ */
+export function videoStats(pages: VslPageRow[], since: string, until: string) {
+  const inDay = (t: string | null) => !!t && t >= since && t < until;
+  const made = pages.filter((p) => inDay(p.created_at));
+  const sent = pages.filter((p) => inDay(p.sent_at));
+  return {
+    videos_made: made.length,
+    videos_sent: sent.length,
+    videos_still_rendering: made.filter((p) => p.render_status === 'queued' || p.render_status === 'rendering').length,
+    videos_render_failed: made.filter((p) => p.render_status === 'failed').length,
+    videos_ready_not_sent: made.filter((p) => p.render_status === 'ready' && !p.sent_at).length,
+    videos_opened: sent.filter((p) => p.first_opened_at).length,
+    videos_watched: sent.filter((p) => p.watched_at).length,
+  };
+}
+
 /** Transcripts of real conversations only — voicemails carry no coaching signal. */
 function transcriptBlock(calls: CallRow[]): string {
   return calls
@@ -254,6 +286,7 @@ Write in British English, plain language, second person ("you"). Markdown, no ti
 
 **Today** — two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, and any long gap with no calls. A perfect script at 49 dials loses to a rough one at 177, so say which of the two is holding them back.
 **What worked** — up to three specific things, each with a quote or a company name.
+**The grade** — the day as one funnel, on its own lines: dials, conversations, offers made, videos made, videos sent. Then say plainly which step is losing the most and what that costs. Videos sent is the score that matters; a day of perfect calls with no videos sent is not a good day, and a rough day with videos sent beats it. If a render failed or is still going, say so and make clear it is not held against them.
 **Script check** — go through the six steps in order and give the number for each: opener (name and HeyElsie BEFORE the recording line), hook, offer, the close, and the two rule breaks (asking for their number, reading out monthly prices). One line per step, the count, then a word on whether that is good or not. Where a step is being missed, quote the words they used instead. Praise the steps they are hitting; do not only list failures.
 **Fix tomorrow** — every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
 **Tomorrow's one thing** — a single sentence naming the one change that would make the biggest difference.
@@ -309,6 +342,7 @@ async function writeReport(
   script: string,
   adherence: ReturnType<typeof scriptCheck>,
   pace: ReturnType<typeof paceStats>,
+  videos: ReturnType<typeof videoStats>,
 ): Promise<string> {
   const prompt = `Agent: ${agentName}
 Date: ${dateKey}
@@ -320,6 +354,15 @@ Notes on the stats:
 - "dead_air" = a human answered but the agent's audio never reached them. This is a KNOWN SYSTEM FAULT, not the agent's fault. If it is above zero, say so explicitly and reassure them it is not counted against them.
 - "conversations" excludes voicemail. "real_conversations" are those lasting 60s or more.
 - "talk_ratio" is agent words per lead word. Above ~1.8 means they are talking over the prospect.
+
+VIDEOS (authoritative — this is the scoreboard):
+${JSON.stringify(videos, null, 2)}
+
+Notes on videos:
+- "videos_sent" is the number that counts. Everything else on this report exists to move it.
+- The whole day's funnel is: dials -> conversations -> offers ("can I send it to you?") -> videos made -> videos sent. Name the step where most is lost.
+- "videos_render_failed" and "videos_still_rendering" are OUR system, not the agent. Never criticise them for those; mention them so the agent knows the video did not land and can follow up.
+- "videos_ready_not_sent" IS theirs: the video is built and sitting there waiting to be texted.
 
 DIALLING PACE (authoritative):
 ${JSON.stringify(pace, null, 2)}
@@ -422,6 +465,7 @@ export default async function handler(
     body: string;
     stats: ReturnType<typeof computeStats>
       & ReturnType<typeof paceStats>
+      & ReturnType<typeof videoStats>
       & { script_check: ReturnType<typeof scriptCheck> };
     flags: ConductFlag[];
   }> = [];
@@ -463,12 +507,24 @@ export default async function handler(
       lines: byCall.get(c.id) ?? [],
     }));
 
-    const stats = { ...computeStats(rows), ...paceStats(rows), script_check: scriptCheck(rows) };
+    // Videos are fetched on their own window rather than joined to the day's
+    // calls: a video made today off yesterday's call still counts as today's
+    // work, and a video SENT today counts today even if it was made yesterday.
+    const { data: pages } = await supabase
+      .from('wk_vsl_pages')
+      .select('created_at, sent_at, render_status, first_opened_at, watched_at')
+      .eq('agent_id', agent.id)
+      .or(`and(created_at.gte.${since},created_at.lt.${until}),and(sent_at.gte.${since},sent_at.lt.${until})`);
+    const videos = videoStats((pages ?? []) as VslPageRow[], since, until);
+
+    const stats = {
+      ...computeStats(rows), ...paceStats(rows), ...videos, script_check: scriptCheck(rows),
+    };
     let raw: string;
     try {
       raw = await writeReport(
         name, dateKey, computeStats(rows), transcriptBlock(rows),
-        script, scriptCheck(rows), paceStats(rows),
+        script, scriptCheck(rows), paceStats(rows), videos,
       );
     } catch (e) {
       console.error(`[daily-report] ${name} failed:`, e);
@@ -527,8 +583,20 @@ export default async function handler(
         .map(
           (r) => `<div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">
             <h3 style="margin:0 0 8px">${r.name}</h3>
+            <p style="font-size:14px;margin:0 0 6px">
+              <strong style="font-size:20px">${r.stats.videos_sent}</strong> videos sent
+              <span style="color:#6B7280">from ${r.stats.conversations} conversations and ${r.stats.dials} dials</span>${
+                r.stats.videos_ready_not_sent > 0
+                  ? ` <span style="color:#B45309">· ${r.stats.videos_ready_not_sent} built and not sent</span>`
+                  : ''
+              }${
+                r.stats.videos_render_failed + r.stats.videos_still_rendering > 0
+                  ? ` <span style="color:#6B7280">· ${r.stats.videos_render_failed + r.stats.videos_still_rendering} stuck our end</span>`
+                  : ''
+              }
+            </p>
             <p style="color:#6B7280;font-size:13px;margin:0 0 12px">
-              ${r.stats.dials} dials · ${r.stats.conversations} conversations · ${r.stats.interested + r.stats.booked} interested/booked · ${r.stats.talk_minutes} min talking · ${r.stats.idle_minutes} min idle
+              ${r.stats.script_check.reached_offer} offers made · ${r.stats.interested + r.stats.booked} interested/booked · ${r.stats.talk_minutes} min talking · ${r.stats.idle_minutes} min idle
             </p>
             <p style="color:#6B7280;font-size:12px;margin:0 0 12px">
               Script, out of ${r.stats.script_check.conversations_graded}:
