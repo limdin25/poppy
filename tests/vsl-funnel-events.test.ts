@@ -441,8 +441,11 @@ describe('staff views must never move a lead\'s card', () => {
   })
 
   it('the activity drawer labels our own views', () => {
-    expect(board).toMatch(/Viewed by us/)
-    expect(board).toMatch(/staff preview, not counted/)
+    // Moved out of VideoFunnelPage into FunnelLeadDrawer when the drawer grew
+    // editing (Hugo 2026-07-27). Same labelling, new home.
+    const drawer = read('src/features/crm/components/funnel/FunnelLeadDrawer.tsx')
+    expect(drawer).toMatch(/Viewed by us/)
+    expect(drawer).toMatch(/staff preview, not counted/)
   })
 })
 
@@ -512,8 +515,11 @@ describe('where Hugo and each agent can see it', () => {
 
   it('board cards carry a real date+time and open a full activity drawer', () => {
     expect(board).toMatch(/formatDateTime/)
-    expect(board).toMatch(/funnel-activity-drawer/)
     expect(board).toMatch(/STAGE_STAMPS/)
+    // The drawer itself now lives in components/funnel and does the editing too.
+    const drawer = read('src/features/crm/components/funnel/FunnelLeadDrawer.tsx')
+    expect(drawer).toMatch(/funnel-activity-drawer/)
+    expect(board).toMatch(/<FunnelLeadDrawer/)
   })
 
   it('board preview links do not count as the lead visiting', () => {

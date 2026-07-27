@@ -130,7 +130,9 @@ describe('storage and visibility', () => {
 describe('the leaderboard surfaces them with history', () => {
   it('renders the reports panel on the leaderboard page', () => {
     const page = read('src/features/crm/pages/LeaderboardPage.tsx')
-    expect(page).toMatch(/<DailyReportsPanel \/>/)
+    // Now takes the See-as focus so the panel follows the selected agent
+    // (Hugo 2026-07-27: picking "See as: Marr" still showed Pedro's report).
+    expect(page).toMatch(/<DailyReportsPanel/)
   })
 
   it('shows a day list so agents can go back to any past report', () => {

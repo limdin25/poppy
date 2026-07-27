@@ -16,6 +16,8 @@ import ObjectionsPane from './ObjectionsPane';
 import MidCallSmsSender from './MidCallSmsSender';
 import LiveTranscriptPane from './LiveTranscriptPane';
 import { useContactMessages, type CrmMessage } from '../../hooks/useContactMessages';
+import { useSmsV2 } from '../../store/SmsV2Store';
+import VideoLinkButton from './VideoLinkButton';
 
 type Tab = 'coach' | 'calculator' | 'objections' | 'messages';
 
@@ -104,6 +106,12 @@ export default function DialerRightTabs({
 function MessagesTab({
   contactId, contactName, contactPhone, contactEmail, ownerName, agentFirstName, campaignId, pipelineId, messages,
 }: Props & { messages: CrmMessage[] }) {
+  // Hugo 2026-07-27: "under message put option to send video there as well."
+  // Same component as the contact pane — its send guards are module-scoped, so
+  // two mounts can't text the lead twice.
+  const { getContact } = useSmsV2();
+  const contact = contactId ? getContact(contactId) : undefined;
+
   if (!contactId || !contactName || !contactPhone) {
     return (
       <div className="text-[12px] text-[#9CA3AF] text-center px-4 py-6 leading-snug">
@@ -113,8 +121,9 @@ function MessagesTab({
   }
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* Send box on top */}
-      <div className="px-3 py-3 border-b border-[#E5E7EB]">
+      {/* Send box on top, with the video as its own one-tap option above it. */}
+      <div className="px-3 py-3 border-b border-[#E5E7EB] space-y-2">
+        {contact && <VideoLinkButton contact={contact} compact />}
         <MidCallSmsSender
           contactId={contactId}
           contactName={contactName}

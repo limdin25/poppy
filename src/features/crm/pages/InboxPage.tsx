@@ -38,6 +38,10 @@ import { supabase } from '@/integrations/supabase/browser';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact, CallRecord, ActivityEvent } from '../types';
 import ContactIdentity from '../components/shared/ContactIdentity';
+import AgentChip from '../components/shared/AgentChip';
+import { CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
+import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
+import { usePendingDrafts } from '../hooks/usePendingDrafts';
 
 const ACTIVITY_KINDS_FOR_THREAD = new Set(['note', 'outcome_applied', 'stage_moved', 'tag_added', 'task_created']);
 
@@ -147,7 +151,7 @@ export default function InboxPage() {
     // (17k+ contacts exceed the store's load limit).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data } = await (supabase.from('wk_contacts' as any) as any)
-      .select('id, name, phone, email, owner_agent_id, pipeline_column_id, deal_value_pence, is_hot, custom_fields, last_contact_at, created_at')
+      .select(CONTACT_COLUMNS)
       .eq('id', fallback.id)
       .maybeSingle();
     if (data) {
@@ -207,6 +211,7 @@ export default function InboxPage() {
       owner: string;
       website: string;
       pipelineColumnId: string | undefined;
+      ownerAgentId: string | undefined;
       lastMessageBody: string | null;
       lastMessageAt: string | null;
       lastDirection: 'inbound' | 'outbound' | null;
@@ -253,6 +258,7 @@ export default function InboxPage() {
           phone: c?.phone ?? call.fromE164 ?? call.toE164 ?? '',
           email: c?.email,
           pipelineColumnId: c?.pipelineColumnId,
+          ownerAgentId: c?.ownerAgentId,
           lastMessageBody: call.aiSummary ? `${label} — ${call.aiSummary}` : label,
           lastMessageAt: call.startedAt,
           lastDirection: call.direction,
@@ -278,6 +284,7 @@ export default function InboxPage() {
           owner: c?.customFields?.owner_name || t.contactOwner,
           website: c?.customFields?.website || t.contactWebsite,
           pipelineColumnId: c?.pipelineColumnId,
+          ownerAgentId: c?.ownerAgentId,
           lastMessageBody: t.lastMessageBody,
           lastMessageAt: t.lastMessageAt,
           lastDirection: t.lastDirection,
@@ -304,6 +311,35 @@ export default function InboxPage() {
     }
     return rows;
   }, [inboxThreads, calls, contacts, filter, searchQuery]);
+
+  // Video + "waiting on you" decoration.
+  //
+  // The id list comes from the UNFILTERED sources, never from sidebarRows:
+  // feeding it post-search would re-query wk_vsl_pages on every keystroke. And
+  // it is a SECOND memo, not part of sidebarRows — putting it inside while
+  // feeding the hook from sidebarRows is circular.
+  const allRowIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...inboxThreads.map((t) => t.contactId),
+          ...calls.map((c) => c.contactId).filter(Boolean),
+        ]),
+      ),
+    [inboxThreads, calls],
+  );
+  const funnelByContact = useContactFunnelStatus(allRowIds);
+  const { contactIds: pendingDraftIds, refetch: refetchDrafts } = usePendingDrafts();
+
+  const decoratedRows = useMemo(
+    () =>
+      sidebarRows.map((r) => ({
+        ...r,
+        vsl: funnelByContact.get(r.id) ?? null,
+        draftPending: pendingDraftIds.has(r.id),
+      })),
+    [sidebarRows, funnelByContact, pendingDraftIds],
+  );
 
   // Auto-select the newest thread on first load (Hugo's spec: newest
   // conversation must be visible without scrolling).
@@ -380,8 +416,12 @@ export default function InboxPage() {
       await supabase.functions.invoke('wk-draft-action', { body: { draft_id: draftId, action, body } });
     } finally {
       setDraftBusy(null);
+      // Clear the row's "AI reply" pill straight away rather than waiting on
+      // the realtime UPDATE — approving and still seeing the badge reads as a
+      // failed action.
+      refetchDrafts();
     }
-  }, []);
+  }, [refetchDrafts]);
 
   // PR 105 (Hugo 2026-04-28): channel must be re-picked every time —
   // no auto-default to last-used channel, no carry-over between contacts.
@@ -625,7 +665,7 @@ export default function InboxPage() {
               rows ordered newest-first by latest wk_sms_messages,
               and (b) contacts with no messages yet. Newest message
               ALWAYS sits at the top — Hugo's spec. */}
-          {sidebarRows.map((r) => {
+          {decoratedRows.map((r) => {
             const initials = (r.name || r.phone)
               .split(' ')
               .map((n) => n[0])
@@ -638,7 +678,8 @@ export default function InboxPage() {
                 onClick={() => setActiveContactId(r.id)}
                 className={cn(
                   'w-full text-left px-3 py-2.5 hover:bg-[#F3F3EE]/50',
-                  activeContactId === r.id && 'bg-[#EEF2F8]'
+                  activeContactId === r.id && 'bg-[#EEF2F8]',
+                  (r.draftPending || r.vsl?.readyToSend) && 'border-l-2 border-l-[#F59E0B]'
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -650,7 +691,40 @@ export default function InboxPage() {
                       <EditableName value={r.name} onSave={(n) => renameContact(r.id, n)} className="text-[13px] font-semibold" />
                     </div>
                     <ContactIdentity owner={r.owner} website={r.website} layout="inline" size="sm" />
+                    <AgentChip agentId={r.ownerAgentId} size="xs" />
                     <div className="text-[11px] text-[#6B7280] truncate flex items-center gap-1">
+                      {/* Waiting on a human — leftmost, so a scan finds it. */}
+                      {r.draftPending && (
+                        <span
+                          data-testid={`inbox-draft-pending-${r.id}`}
+                          title="An AI reply is waiting for your approval"
+                          className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9.5px] font-bold uppercase tracking-wide px-1 py-px rounded bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309]"
+                        >
+                          <Bot style={{ width: 9, height: 9 }} /> AI reply
+                        </span>
+                      )}
+                      {r.vsl?.readyToSend && (
+                        <span
+                          data-testid={`inbox-video-ready-${r.id}`}
+                          title="Video rendered — approve and text it"
+                          className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9.5px] font-bold uppercase tracking-wide px-1 py-px rounded bg-[#F0FDF4] border border-[#BBF7D0] text-[#166534]"
+                        >
+                          <Send style={{ width: 9, height: 9 }} /> Send video
+                        </span>
+                      )}
+                      {/* Stage chip, in the board's own colour for that stage.
+                          Suppressed when the green pill shows — "Ready to send"
+                          and "Send video" side by side is one fact twice. */}
+                      {r.vsl && !r.vsl.readyToSend && (
+                        <span
+                          data-testid={`inbox-vsl-${r.id}`}
+                          title={`Video funnel — ${r.vsl.label}`}
+                          className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9.5px] font-bold uppercase tracking-wide px-1 py-px rounded"
+                          style={{ background: `${r.vsl.color}1F`, color: r.vsl.color }}
+                        >
+                          <Clapperboard style={{ width: 9, height: 9 }} /> {r.vsl.label}
+                        </span>
+                      )}
                       {r.kind === 'call' ? (
                         <>
                           {r.callStatus === 'missed' ? (

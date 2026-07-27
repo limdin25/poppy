@@ -5,6 +5,7 @@ import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import EditContactModal from '@/features/crm/components/contacts/EditContactModal';
+import AgentChip from '../../components/shared/AgentChip';
 import { personName, websiteLabel } from '@/features/crm/lib/contactIdentity';
 import type { Contact } from '@/features/crm/types';
 import type { QueueLead } from '../types';
@@ -179,7 +180,10 @@ export default function QueueManagerPro({ queue, campaignId, onRefresh, onToast 
               <div className={cn('text-[10px] truncate', lead.website ? 'text-[#3C5A87]' : 'text-[#C4302B] italic')}>
                 {websiteLabel(lead.website)}
               </div>
-              <div className="text-[10px] text-[#9CA3AF] font-mono">{lead.phone}</div>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] text-[#9CA3AF] font-mono flex-shrink-0">{lead.phone}</span>
+                <AgentChip agentId={lead.ownerAgentId} size="xs" className="ml-auto" />
+              </div>
             </div>
             {lead.attempts > 0 && (
               <span className="text-[10px] text-[#9CA3AF]">×{lead.attempts}</span>

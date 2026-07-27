@@ -45,15 +45,26 @@ function Body({ md }: { md: string }) {
   );
 }
 
-export default function DailyReportsPanel() {
+interface Props {
+  /** When set, show only this agent's report. Hugo 2026-07-27: picking
+   *  "See as: Marr" on the leaderboard left this panel showing Pedro, which is
+   *  what he actually saw as "it shows me pedro static". */
+  focusAgentId?: string | null;
+  focusAgentName?: string | null;
+}
+
+export default function DailyReportsPanel({ focusAgentId = null, focusAgentName = null }: Props = {}) {
   const { reports, dates, loading, error } = useDailyReports();
   const { agent: me } = useCurrentAgent();
   const [picked, setPicked] = useState<string | null>(null);
   const day = picked ?? dates[0] ?? null;
 
   const shown = useMemo(
-    () => reports.filter((r) => r.reportDate === day),
-    [reports, day],
+    () =>
+      reports.filter(
+        (r) => r.reportDate === day && (!focusAgentId || r.agentId === focusAgentId),
+      ),
+    [reports, day, focusAgentId],
   );
 
   if (!loading && dates.length === 0) {
@@ -75,6 +86,11 @@ export default function DailyReportsPanel() {
         <FileText className="w-4 h-4 text-[#3C5A87]" />
         <span className="text-[13px] font-semibold text-[#1A1A1A]">Daily reports</span>
         <span className="text-[11px] text-[#9CA3AF]">· written at 5:30pm each day</span>
+        {focusAgentId && (
+          <span className="text-[11px] font-semibold text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-full px-2 py-0.5">
+            {focusAgentName ?? 'this agent'} only
+          </span>
+        )}
         <span className="ml-auto text-[10px] uppercase tracking-wide font-semibold text-[#9CA3AF]">
           private
         </span>
@@ -132,7 +148,11 @@ export default function DailyReportsPanel() {
             );
           })}
           {!loading && shown.length === 0 && (
-            <p className="text-[13px] text-[#9CA3AF] italic">No report for this day.</p>
+            <p className="text-[13px] text-[#9CA3AF] italic">
+              {focusAgentId
+                ? `No report for ${focusAgentName ?? 'this agent'} on this day.`
+                : 'No report for this day.'}
+            </p>
           )}
         </div>
       </div>

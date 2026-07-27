@@ -2,12 +2,15 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Phone, MessageSquare, Mail, Flame, Pencil, Upload, Trash2, Download, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { formatPence, formatRelativeTime } from '../data/helpers';
+import { formatPence, formatRelativeTime, formatDateTime } from '../data/helpers';
 import StageSelector from '../components/shared/StageSelector';
 import BulkUploadModal from '../components/contacts/BulkUploadModal';
 import ContactSmsModal from '../components/contacts/ContactSmsModal';
 import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
+import ContactIdentity from '../components/shared/ContactIdentity';
+import AgentChip from '../components/shared/AgentChip';
+import { useContactVslPages, lastAutoMove } from '../hooks/useContactVslPages';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useSmsV2 } from '../store/SmsV2Store';
 import { useContactPersistence, isRealContactId } from '../hooks/useContactPersistence';
@@ -141,6 +144,11 @@ export default function ContactsPage() {
     () => filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE),
     [filtered, page]
   );
+
+  // Video-funnel facts for the rows actually on screen. Passing all 3,500 ids
+  // would be 36 round-trips per render; the visible 100 is one.
+  const visibleIds = useMemo(() => visibleSlice.map((c) => c.id), [visibleSlice]);
+  const vslByContact = useContactVslPages(visibleIds);
 
   const setStage = (id: string, col: string) => {
     patchContact(id, { pipelineColumnId: col });
@@ -323,12 +331,12 @@ export default function ContactsPage() {
               <th className="text-left px-2 py-2.5 font-semibold">Property URL</th>
               <th className="text-right px-2 py-2.5 font-semibold">Value</th>
               <th className="text-left px-2 py-2.5 font-semibold">Last contact</th>
+              <th className="text-left px-2 py-2.5 font-semibold">Video</th>
               <th className="px-2 py-2.5"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#E5E7EB]">
             {visibleSlice.map((c) => {
-              const owner = agents.find((a) => a.id === c.ownerAgentId);
               return (
                 <tr key={c.id} className="hover:bg-[#F3F3EE]/30">
                   <td className="px-4 py-2.5">
@@ -344,6 +352,15 @@ export default function ContactsPage() {
                         />
                       )}
                     </Link>
+                    {/* contact.name is the COMPANY. This page was the only lead
+                        surface not showing the person too. */}
+                    <ContactIdentity
+                      owner={c.customFields?.owner_name}
+                      website={c.customFields?.website}
+                      layout="inline"
+                      size="sm"
+                      className="mt-0.5"
+                    />
                   </td>
                   <td className="px-2 py-2.5 text-[#6B7280] tabular-nums">{c.phone}</td>
                   <td className="px-2 py-2.5">
@@ -353,7 +370,9 @@ export default function ContactsPage() {
                       size="sm"
                     />
                   </td>
-                  <td className="px-2 py-2.5 text-[#6B7280]">{owner?.name ?? 'Unassigned'}</td>
+                  <td className="px-2 py-2.5 text-[#6B7280]">
+                    <AgentChip agentId={c.ownerAgentId} variant="text" size="sm" />
+                  </td>
                   <td className="px-2 py-2.5 text-[#6B7280] max-w-[220px] truncate" title={c.customFields?.property_address ?? ''}>
                     {c.customFields?.property_address || '—'}
                   </td>
@@ -386,6 +405,35 @@ export default function ContactsPage() {
                   </td>
                   <td className="px-2 py-2.5 text-[11px] text-[#9CA3AF]">
                     {c.lastContactAt ? formatRelativeTime(c.lastContactAt) : '—'}
+                  </td>
+                  {/* When the agent made the video, when the lead opened it, and
+                      when the funnel last moved the card by itself. Relative to
+                      read fast, exact stamp on hover. */}
+                  <td className="px-2 py-2.5 whitespace-nowrap" data-testid={`contact-video-${c.id}`}>
+                    {(() => {
+                      const v = vslByContact.get(c.id);
+                      if (!v) return <span className="text-[#D1D5DB]">—</span>;
+                      const auto = lastAutoMove(v);
+                      const line = (icon: string, label: string, iso: string | null, tone = 'text-[#6B7280]') =>
+                        iso ? (
+                          <div
+                            className={`text-[10px] ${tone} tabular-nums`}
+                            title={`${label} · ${formatDateTime(iso)}`}
+                          >
+                            {icon} {label} {formatRelativeTime(iso)}
+                          </div>
+                        ) : null;
+                      return (
+                        <div className="space-y-0.5">
+                          {line('🎬', 'Created', v.renderRequestedAt ?? v.createdAt)}
+                          {line('👁', 'Opened', v.firstOpenedAt, 'text-[#0EA5E9]')}
+                          {auto && line('↗', `Auto → ${auto.column}`, auto.at)}
+                          {v.renderStatus === 'failed' && (
+                            <div className="text-[10px] text-[#B91C1C]">render failed</div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-2 py-2.5 text-right">
                     <div className="flex justify-end gap-0.5">

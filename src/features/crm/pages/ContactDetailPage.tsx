@@ -24,6 +24,9 @@ import ContactFollowupScheduler from '../components/contacts/ContactFollowupSche
 import ContactSmsModal from '../components/contacts/ContactSmsModal';
 import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
+import ContactIdentity from '../components/shared/ContactIdentity';
+import AgentChip from '../components/shared/AgentChip';
+import StageMoveChip from '../components/shared/StageMoveChip';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useSmsV2 } from '../store/SmsV2Store';
 import { useContactTimeline } from '../hooks/useContactTimeline';
@@ -34,7 +37,10 @@ import type { Contact } from '../types';
 
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { getContact, agents, patchContact, upsertContact, pushToast } = useSmsV2();
+  // NOT store `agents` — nothing in the codebase ever dispatches upsertAgent, so
+  // it is permanently []. The Owner field here read from it and therefore said
+  // "Unassigned" for all 3,510 leads. AgentChip reads the real directory.
+  const { getContact, patchContact, upsertContact, pushToast } = useSmsV2();
   const { openDialerPro } = useDialerProModal();
   const contact = getContact(id ?? '');
   const [editing, setEditing] = useState<Contact | null>(null);
@@ -80,7 +86,6 @@ export default function ContactDetailPage() {
   const tasks = timeline.tasks.length > 0
     ? timeline.tasks
     : demoMode ? MOCK_TASKS.filter((t) => t.contactId === contact.id) : [];
-  const owner = agents.find((a) => a.id === contact.ownerAgentId);
 
   // Optimistic local + write-through to wk_contacts
   const setStage = (col: string) => {
@@ -140,6 +145,13 @@ export default function ContactDetailPage() {
               </span>
             )}
           </div>
+          <ContactIdentity
+            owner={contact.customFields?.owner_name}
+            website={contact.customFields?.website}
+            layout="inline"
+            size="sm"
+            className="mt-0.5"
+          />
           <div className="text-[13px] text-[#6B7280] tabular-nums">{contact.phone}</div>
         </div>
         <div className="flex gap-2">
@@ -173,7 +185,7 @@ export default function ContactDetailPage() {
               <div className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
                 Owner
               </div>
-              <div className="text-[13px] text-[#1A1A1A]">{owner?.name ?? 'Unassigned'}</div>
+              <AgentChip agentId={contact.ownerAgentId} size="sm" className="text-[13px]" />
             </div>
             {contact.email && (
               <div>
@@ -192,6 +204,7 @@ export default function ContactDetailPage() {
                 onChange={setStage}
                 size="md"
               />
+              <StageMoveChip contact={contact} size="sm" className="mt-1" />
             </div>
             <ContactAiToggle contactId={contact.id} />
             <ContactFollowupScheduler contactId={contact.id} />

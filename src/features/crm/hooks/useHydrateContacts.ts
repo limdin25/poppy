@@ -22,12 +22,24 @@ interface WkContactRow {
   custom_fields: Record<string, string> | null;
   last_contact_at: string | null;
   created_at: string;
+  stage_moved_at?: string | null;
+  stage_moved_by?: string | null;
+  stage_moved_from?: string | null;
+  stage_move_source?: string | null;
 }
 
 interface WkContactTagRow {
   contact_id: string;
   tag: string;
 }
+
+/** The full-contact column list. One constant so the seven places that hydrate
+ *  a whole Contact can't drift apart — adding a column to rowToContact without
+ *  adding it here is how the stage-move stamps would silently render blank. */
+export const CONTACT_COLUMNS =
+  'id, name, phone, email, owner_agent_id, pipeline_column_id, deal_value_pence, ' +
+  'is_hot, custom_fields, last_contact_at, created_at, ' +
+  'stage_moved_at, stage_moved_by, stage_moved_from, stage_move_source';
 
 export function rowToContact(row: WkContactRow, tags: string[]): Contact {
   return {
@@ -43,6 +55,10 @@ export function rowToContact(row: WkContactRow, tags: string[]): Contact {
     customFields: (row.custom_fields ?? {}) as Record<string, string>,
     createdAt: row.created_at,
     lastContactAt: row.last_contact_at ?? undefined,
+    stageMovedAt: row.stage_moved_at ?? undefined,
+    stageMovedBy: row.stage_moved_by ?? undefined,
+    stageMovedFrom: row.stage_moved_from ?? undefined,
+    stageMoveSource: row.stage_move_source ?? undefined,
   };
 }
 
@@ -107,7 +123,7 @@ export function useHydrateContacts(): void {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let pageQ = (supabase.from('wk_contacts' as any) as any)
           .select(
-            'id, name, phone, email, owner_agent_id, pipeline_column_id, deal_value_pence, is_hot, custom_fields, last_contact_at, created_at'
+            CONTACT_COLUMNS
           )
           .order('created_at', { ascending: false })
           .range(from, to);

@@ -21,6 +21,8 @@ import {
   type LeaderboardRange,
 } from '../hooks/useLeaderboard';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
+import { useViewAs } from '../lib/ViewAsContext';
+import { useAgentDirectory } from '../hooks/useAgentDirectory';
 import DailyReportsPanel from '../components/DailyReportsPanel';
 import { formatDuration, formatPence } from '../data/helpers';
 
@@ -37,6 +39,15 @@ export default function LeaderboardPage() {
   const [view, setView] = useState<BoardView>('calls');
   const reports = useLeaderboard(range);
   const { agent: me } = useCurrentAgent();
+  // Hugo 2026-07-27: picking "See as: Marr" did nothing here — the table
+  // ignored it and the Daily reports below still showed Pedro. The board keeps
+  // EVERY agent (a one-row leaderboard is not a leaderboard); the one being
+  // viewed is highlighted, and the reports filter to them. The page carries its
+  // own picker too, so it works without the global switcher.
+  const isAdmin = me?.isAdmin ?? false;
+  const { viewAsId, viewAsName, setViewAs } = useViewAs();
+  const directory = useAgentDirectory();
+  const focusId = viewAsId;
 
   const rows = useMemo(
     () =>
@@ -48,7 +59,9 @@ export default function LeaderboardPage() {
     [reports.rows, view]
   );
 
-  const COLS = view === 'funnel' ? 10 : 8;
+  // Derived, not a literal: the funnel view renders 11 <th> (# + Agent + 9
+  // metrics), so the hardcoded 10 under-spanned the empty/loading row.
+  const COLS = view === 'funnel' ? 11 : 8;
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-5">
@@ -82,7 +95,8 @@ export default function LeaderboardPage() {
 
       {/* Same rows, two column sets — the funnel numbers would be unreadable
           bolted onto the call ones. */}
-      <div className="flex items-center gap-1 bg-white border border-[#E5E7EB] rounded-full p-1 w-fit">
+      <div className="flex items-center w-fit">
+        <div className="flex items-center gap-1 bg-white border border-[#E5E7EB] rounded-full p-1 w-fit">
         {(['calls', 'funnel'] as BoardView[]).map((v) => (
           <button
             key={v}
@@ -96,6 +110,27 @@ export default function LeaderboardPage() {
             {v === 'calls' ? 'Calls' : 'Video funnel'}
           </button>
         ))}
+        </div>
+        {isAdmin && (
+          <select
+            value={focusId ?? ''}
+            onChange={(e) => {
+              const id = e.target.value;
+              const hit = directory.all.find((a) => a.id === id);
+              setViewAs(id || null, hit?.name ?? null);
+            }}
+            data-testid="leaderboard-agent-picker"
+            title="Highlight one agent and show only their daily report"
+            className="ml-2 text-[12px] px-2.5 py-1.5 bg-white border border-[#E5E7EB] rounded-full text-[#6B7280]"
+          >
+            <option value="">Everyone</option>
+            {directory.all.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* overflow-x-auto, NOT overflow-hidden: the wrapper used to CLIP, so the
@@ -134,6 +169,7 @@ export default function LeaderboardPage() {
           <tbody className="divide-y divide-[#E5E7EB]">
             {rows.map((r, i) => {
               const isMe = me?.id === r.agentId;
+              const isFocus = !!focusId && focusId === r.agentId;
               const initials = (r.agentName || '?')
                 .split(' ')
                 .map((n) => n[0])
@@ -145,7 +181,8 @@ export default function LeaderboardPage() {
                   key={r.agentId}
                   className={cn(
                     'hover:bg-[#F3F3EE]/30 transition-colors',
-                    isMe && 'bg-[#EEF2F8] hover:bg-[#EEF2F8]'
+                    isMe && 'bg-[#EEF2F8] hover:bg-[#EEF2F8]',
+                    isFocus && 'bg-[#FFFBEB] hover:bg-[#FFFBEB] ring-1 ring-inset ring-[#FDE68A]'
                   )}
                   data-testid={`leaderboard-row-${r.agentId}`}
                 >
@@ -170,6 +207,11 @@ export default function LeaderboardPage() {
                           {isMe && (
                             <span className="ml-1.5 text-[10px] uppercase tracking-wide font-semibold text-[#3C5A87]">
                               you
+                            </span>
+                          )}
+                          {isFocus && !isMe && (
+                            <span className="ml-1.5 text-[10px] uppercase tracking-wide font-semibold text-[#B45309]">
+                              viewing
                             </span>
                           )}
                         </div>
@@ -243,7 +285,7 @@ export default function LeaderboardPage() {
 
       {/* Daily AI coaching reports — every agent reads every agent's, and the
           history stays so they can scroll back (Hugo 2026-07-24). */}
-      <DailyReportsPanel />
+      <DailyReportsPanel focusAgentId={focusId} focusAgentName={viewAsName} />
     </div>
   );
 }

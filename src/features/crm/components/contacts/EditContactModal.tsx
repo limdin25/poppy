@@ -1,26 +1,32 @@
 import { useMemo, useState, useEffect } from 'react';
 import { X, Plus, Trash2, Bell } from 'lucide-react';
-import type { Agent, Contact } from '../../types';
-import { MOCK_AGENTS } from '../../data/mockAgents';
+import type { Contact } from '../../types';
 import { ACTIVE_PIPELINE } from '../../data/mockPipelines';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { useFollowups } from '../../hooks/useFollowups';
+import { useAgentDirectory } from '../../hooks/useAgentDirectory';
 
 interface Props {
   contact: Contact | null;
   onClose: () => void;
   onSave: (c: Contact) => void;
   /**
-   * Real agents from useAgentsToday() etc. When provided, replaces
-   * MOCK_AGENTS in the owner dropdown so the saved owner_agent_id is
-   * a real profiles.id (UUID), not a synthetic mock id like "a-hugo".
+   * Optional override. Normally leave this off — the modal reads the real
+   * roster itself. Kept only so a test can inject a fixed list.
    */
-  agents?: Agent[];
+  agents?: Array<{ id: string; name: string }>;
 }
 
 export default function EditContactModal({ contact, onClose, onSave, agents }: Props) {
-  // Real agents when provided, mock fallback so dev/Storybook still works.
-  const ownerOptions = agents && agents.length > 0 ? agents : MOCK_AGENTS;
+  // The MOCK_AGENTS fallback that used to live here was worse than cosmetic:
+  // 7 of the 10 call sites passed no `agents`, so the Owner dropdown offered
+  // synthetic ids like "a-hugo". Picking one made patchContact's
+  // sanitizeUuidFields silently DROP the field and return true — the modal
+  // toasted "Saved ✓" and the lead was never reassigned. The directory is now
+  // read here, so every call site is correct by construction.
+  const directory = useAgentDirectory();
+  const ownerOptions = agents && agents.length > 0 ? agents : directory.agents;
+  const ownersLoading = directory.loading && ownerOptions.length === 0;
   // PR 83 (Hugo 2026-04-27): pipeline stages from the DB-hydrated store
   // so the UUID stage IDs we save on contact edit actually match real
   // wk_pipeline_columns.id (mock IDs were silently dropped on save).
@@ -91,10 +97,36 @@ export default function EditContactModal({ contact, onClose, onSave, agents }: P
 
         <div className="p-5 space-y-4 overflow-y-auto">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Name">
+            <Field label="Business name">
               <input
                 value={draft.name}
                 onChange={(e) => set('name', e.target.value)}
+                className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px]"
+              />
+            </Field>
+            {/* The PERSON, kept in custom_fields.owner_name (contact.name is
+                the COMPANY throughout this CRM). It used to be reachable only
+                through the generic custom-field list below, which renders keys
+                that ALREADY EXIST — so on a lead missing it there was no way to
+                add the person's name at all. Hugo 2026-07-27 asked for exactly
+                that, so both it and the website are first-class here. */}
+            <Field label="Person's name">
+              <input
+                value={draft.customFields.owner_name ?? ''}
+                placeholder="Who you ask for on the phone"
+                onChange={(e) =>
+                  set('customFields', { ...draft.customFields, owner_name: e.target.value })
+                }
+                className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px]"
+              />
+            </Field>
+            <Field label="Website">
+              <input
+                value={draft.customFields.website ?? ''}
+                placeholder="theirsite.co.uk"
+                onChange={(e) =>
+                  set('customFields', { ...draft.customFields, website: e.target.value })
+                }
                 className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px]"
               />
             </Field>
@@ -129,14 +161,21 @@ export default function EditContactModal({ contact, onClose, onSave, agents }: P
               <select
                 value={draft.ownerAgentId ?? ''}
                 onChange={(e) => set('ownerAgentId', e.target.value)}
-                className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px] bg-white"
+                disabled={ownersLoading}
+                className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px] bg-white disabled:text-[#9CA3AF]"
               >
-                <option value="">Unassigned</option>
-                {ownerOptions.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
+                {ownersLoading ? (
+                  <option value="">Loading agents…</option>
+                ) : (
+                  <>
+                    <option value="">Unassigned</option>
+                    {ownerOptions.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </Field>
             <Field label="Pipeline stage">
@@ -327,7 +366,14 @@ export default function EditContactModal({ contact, onClose, onSave, agents }: P
             <Label>Custom fields</Label>
             <div className="space-y-1.5 mb-2">
               {Object.entries(draft.customFields)
-                .filter(([k]) => k !== 'property_address' && k !== 'property_url')
+                .filter(
+                  ([k]) =>
+                    k !== 'property_address' &&
+                    k !== 'property_url' &&
+                    // promoted to first-class fields above — don't render twice
+                    k !== 'owner_name' &&
+                    k !== 'website'
+                )
                 .map(([k, v]) => (
                 <div key={k} className="flex gap-1.5 items-center">
                   <input

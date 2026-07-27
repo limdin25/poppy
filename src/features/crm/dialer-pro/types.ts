@@ -12,6 +12,9 @@ export interface QueueLead {
   phone: string;
   name: string;
   ownerName?: string | null;
+  /** profiles.id of the agent this lead belongs to — Hugo 2026-07-27 wants the
+   *  owning agent's name on every lead surface, the queue included. */
+  ownerAgentId?: string | null;
   website?: string | null;
   priority: number;
   attempts: number;

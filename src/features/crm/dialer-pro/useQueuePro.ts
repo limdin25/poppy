@@ -37,6 +37,7 @@ interface QueueRow {
     id: string;
     name: string | null;
     phone: string | null;
+    owner_agent_id: string | null;
     pipeline_column_id: string | null;
     custom_fields: Record<string, string> | null;
   } | null;
@@ -52,6 +53,7 @@ function rowToLead(row: QueueRow): QueueLead | null {
     phone: contact.phone,
     name: contact.name ?? contact.phone,
     ownerName: (cf.owner_name || '').trim() || null,
+    ownerAgentId: contact.owner_agent_id ?? null,
     website: (cf.website || '').trim() || null,
     priority: row.priority ?? 0,
     attempts: row.attempts ?? 0,
@@ -69,7 +71,7 @@ async function fetchQueueRows(campaignId: string | null): Promise<QueueLead[]> {
   let q = (supabase.from('wk_dialer_queue' as any) as any)
     .select(
       'id, contact_id, campaign_id, priority, attempts, scheduled_for, status, ' +
-        'wk_contacts:contact_id!inner ( id, name, phone, pipeline_column_id, custom_fields, do_not_call )',
+        'wk_contacts:contact_id!inner ( id, name, phone, owner_agent_id, pipeline_column_id, custom_fields, do_not_call )',
     )
     .eq('status', 'pending')
     // Never surface a suppressed lead. A trigger also skips their pending queue

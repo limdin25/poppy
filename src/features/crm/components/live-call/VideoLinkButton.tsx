@@ -42,7 +42,13 @@ async function callVslPage(
   return { ok: res.ok, status: res.status, data };
 }
 
-export default function VideoLinkButton({ contact }: { contact: Contact }) {
+/** Module scope on purpose: the button is mounted in BOTH the contact pane and
+ *  the Messages tab, and a per-instance guard would let each copy text the same
+ *  lead independently. Keyed by contact id. */
+const smsSentByContact = new Set<string>();
+const sendInFlight = new Set<string>();
+
+export default function VideoLinkButton({ contact, compact = false }: { contact: Contact; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<PageInfo | null>(null);
@@ -53,9 +59,6 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
   // Guard every async result against the lead having been switched mid-request
   // — otherwise we'd text the wrong plumber and mark the new lead 'sent'.
   const contactIdRef = useRef(contact.id);
-  // Per-lead "SMS already went out, only the mark failed" flag so a retry
-  // re-marks WITHOUT re-texting the lead (adversarial review #13).
-  const smsSentRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     contactIdRef.current = contact.id;
     // busy is a single-button flag, not lead-specific — always clear on switch
@@ -116,6 +119,9 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
     if (!info) return;
     const id = contact.id;
     if (!contact.phone) { setNote('This lead has no mobile number — copy the link instead.'); return; }
+    // Shared across every mounted copy of this button.
+    if (sendInFlight.has(id)) return;
+    sendInFlight.add(id);
     setBusy(true);
     setNote('');
     try {
@@ -132,12 +138,12 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
 
       // Send once. If a previous attempt already texted this lead (and only the
       // mark failed), skip the send and just re-arm tracking (#13).
-      if (!smsSentRef.current.has(id)) {
+      if (!smsSentByContact.has(id)) {
         const { error } = await supabase.functions.invoke('wk-sms-send', {
           body: { contact_id: id, body: freshInfo.sms_body },
         });
         if (error) { setNote('Text failed — copy the link and send it manually.'); return; }
-        smsSentRef.current.add(id);
+        smsSentByContact.add(id);
       }
 
       // The SMS is out — ALWAYS mark, even if the agent switched leads meanwhile
@@ -145,26 +151,27 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
       // leave a texted lead untracked (#14).
       const marked = await callVslPage({ contact_id: id, mark_sent: true });
       const ok = marked.ok || (marked.data as { state?: string } | null)?.state === 'sent';
-      if (ok) smsSentRef.current.delete(id); // fully done — a later tap re-sends on purpose
+      if (ok) smsSentByContact.delete(id); // fully done — a later tap re-sends on purpose
       if (id !== contactIdRef.current) return;
       if (ok) { setSent(true); }
       else if (marked.status === 409) { setNote('Texted, but the funnel is off — tracking will arm when it’s on.'); }
       else { setNote('Texted, but tracking didn’t arm — tap again to finish (won’t re-text).'); }
     } finally {
+      sendInFlight.delete(id);
       setBusy(false);
     }
   }
 
   if (!open) {
     return (
-      <div className="pb-1.5 border-b border-[#E5E7EB]/70">
+      <div className={compact ? '' : 'pb-1.5 border-b border-[#E5E7EB]/70'}>
         <button
           onClick={prepare}
           disabled={busy}
           className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white bg-[#3C5A87] hover:bg-[#33507a] disabled:opacity-60 rounded-[8px] py-1.5 transition-colors"
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Clapperboard className="w-3.5 h-3.5" />}
-          Video
+          Send as video
         </button>
       </div>
     );
@@ -174,7 +181,7 @@ export default function VideoLinkButton({ contact }: { contact: Contact }) {
   const rs = info?.render_status ?? null;
 
   return (
-    <div className="pb-1.5 border-b border-[#E5E7EB]/70">
+    <div className={compact ? '' : 'pb-1.5 border-b border-[#E5E7EB]/70'}>
       <div className="rounded-[10px] border border-[#c9d6e8] bg-[#f2f6fb] p-2.5 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-bold uppercase tracking-wide text-[#3C5A87]">

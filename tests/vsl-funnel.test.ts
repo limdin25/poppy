@@ -603,8 +603,11 @@ describe('button robustness', () => {
   })
 
   it('retry after a failed mark does NOT re-text the lead', () => {
-    expect(btn).toMatch(/smsSentRef/)
-    expect(btn).toMatch(/if \(!smsSentRef\.current\.has\(id\)\)/)
+    // The guard moved from a component ref to MODULE scope on 2026-07-27, when
+    // the button gained a second mount in the Messages tab — two per-instance
+    // refs would each keep their own memory and the lead would get it twice.
+    expect(btn).toMatch(/const smsSentByContact = new Set<string>\(\)/)
+    expect(btn).toMatch(/if \(!smsSentByContact\.has\(id\)\)/)
   })
 
   it('marks tracking even if the agent switched leads after the SMS went out', () => {

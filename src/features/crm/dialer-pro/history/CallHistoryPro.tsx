@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Phone, PhoneOutgoing, Play, FileText, X, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { cn } from '@/core/lib/cn';
+import AgentChip from '../../components/shared/AgentChip';
 import { personName, websiteLabel } from '@/features/crm/lib/contactIdentity';
 import { useImpersonatedAgentId } from '@/features/crm/lib/ViewAsContext';
 import { signCallRecording } from '@/features/crm/hooks/useCalls';
@@ -21,6 +22,7 @@ interface CallRow {
   id: string;
   contactId: string | null;
   contactName: string | null;
+  contactOwnerAgentId: string | null;
   contactOwner: string | null;
   contactWebsite: string | null;
   contactPhone: string | null;
@@ -57,14 +59,14 @@ async function fetchPage(pageParam: number, impAgentId: string | null): Promise<
   const callIds = ((callsRes.data ?? []) as Array<{ id: string; contact_id: string | null }>);
   const contactIds = [...new Set(callIds.map((c) => c.contact_id).filter(Boolean))] as string[];
 
-  const contactMap = new Map<string, { name: string | null; phone: string | null; cf: Record<string, string> | null }>();
+  const contactMap = new Map<string, { name: string | null; phone: string | null; ownerAgentId: string | null; cf: Record<string, string> | null }>();
   if (contactIds.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: contacts } = await (supabase.from('wk_contacts' as any) as any)
-      .select('id, name, phone, custom_fields')
+      .select('id, name, phone, owner_agent_id, custom_fields')
       .in('id', contactIds);
-    for (const c of (contacts ?? []) as Array<{ id: string; name: string | null; phone: string | null; custom_fields: Record<string, string> | null }>) {
-      contactMap.set(c.id, { name: c.name, phone: c.phone, cf: c.custom_fields });
+    for (const c of (contacts ?? []) as Array<{ id: string; name: string | null; phone: string | null; owner_agent_id: string | null; custom_fields: Record<string, string> | null }>) {
+      contactMap.set(c.id, { name: c.name, phone: c.phone, ownerAgentId: c.owner_agent_id, cf: c.custom_fields });
     }
   }
 
@@ -77,6 +79,7 @@ async function fetchPage(pageParam: number, impAgentId: string | null): Promise<
       id: r.id,
       contactId: r.contact_id,
       contactName: contact?.name ?? null,
+      contactOwnerAgentId: contact?.ownerAgentId ?? null,
       contactOwner: (contact?.cf?.owner_name || '').trim() || null,
       contactWebsite: (contact?.cf?.website || '').trim() || null,
       contactPhone: contact?.phone ?? null,
@@ -198,6 +201,7 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
               <>
                 <div className={cn('text-[10px] truncate', call.contactOwner ? 'text-[#6B7280]' : 'text-[#C4302B] italic')}>{personName(call.contactOwner)}</div>
                 <div className={cn('text-[10px] truncate', call.contactWebsite ? 'text-[#3C5A87]' : 'text-[#C4302B] italic')}>{websiteLabel(call.contactWebsite)}</div>
+                <AgentChip agentId={call.contactOwnerAgentId} size="xs" />
               </>
             )}
             <div className="text-[10px] text-[#9CA3AF] tabular-nums">{formatDuration(call.durationSec)} · {formatDate(call.startedAt)}</div>

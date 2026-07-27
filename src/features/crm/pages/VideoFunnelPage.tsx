@@ -4,7 +4,6 @@
 // (platform_settings.vsl_automation via /api/admin/crm/vsl-settings).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Clapperboard, Copy, Check, ExternalLink, Settings2, X, Loader2, Send, Eye, History,
 } from 'lucide-react';
@@ -12,93 +11,19 @@ import { supabase } from '@/integrations/supabase/browser';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 import ContactIdentity from '../components/shared/ContactIdentity';
+import AgentChip from '../components/shared/AgentChip';
+import FunnelLeadDrawer from '../components/funnel/FunnelLeadDrawer';
 import { formatDateTime } from '../data/helpers';
+// Stage rules live in lib/funnelStages so the inbox badges can share them —
+// two copies of the rendering/render_ready carve-out WILL drift.
+import {
+  STATES, STAGE_STAMPS, boardKey, ago, type VslPage,
+} from '../lib/funnelStages';
 
 /** Preview marker. The board's own "open page" links must not burn the lead's
  *  first touch — without this, Hugo checking pages would consume the very
  *  first-click/first-open signal the notifications exist to report. */
 const PREVIEW = '?p=1';
-
-interface VslPage {
-  id: string;
-  slug: string;
-  contact_id: string;
-  agent_id: string;
-  business_name: string;
-  owner_first: string | null;
-  town: string | null;
-  state: string;
-  watched_pct: number;
-  open_count: number;
-  cta_variant: string;
-  sent_at: string | null;
-  first_click_at: string | null;
-  click_count: number | null;
-  first_opened_at: string | null;
-  play_at: string | null;
-  watched_at: string | null;
-  completed_at: string | null;
-  cta_clicked_at: string | null;
-  checkout_started_at: string | null;
-  paid_at: string | null;
-  updated_at: string;
-  render_status: 'queued' | 'rendering' | 'ready' | 'failed' | null;
-  render_error: string | null;
-  render_started_at: string | null;
-  video_url: string | null;
-  poster_url: string | null;
-  no_website: boolean;
-  /** Joined live from wk_contacts — NOT snapshotted onto this row on purpose.
-   *  The board exists to make missing owner/website obvious so an agent fills
-   *  them in; a snapshot would keep showing the gap after they had. Null when
-   *  RLS hides the contact (page agent_id and contact participation don't line
-   *  up perfectly) — owner_first is the fallback. */
-  wk_contacts?: { owner_name: string | null; website: string | null } | null;
-}
-
-// 'rendering' and 'render_ready' are VIRTUAL groups carved out of state
-// 'created' by render_status — the review step before anything is sent.
-const STATES: Array<{ key: string; label: string; color: string }> = [
-  { key: 'created', label: 'Created', color: '#9CA3AF' },
-  { key: 'rendering', label: 'Rendering 🎬', color: '#94A3B8' },
-  { key: 'render_ready', label: 'Ready to send', color: '#64748B' },
-  { key: 'sent', label: 'Video sent', color: '#0EA5E9' },
-  { key: 'opened', label: 'Opened', color: '#38BDF8' },
-  { key: 'watched', label: 'Watched', color: '#F59E0B' },
-  { key: 'cta_clicked', label: 'Clicked', color: '#F97316' },
-  { key: 'checkout_started', label: 'Checkout', color: '#A855F7' },
-  { key: 'paid', label: 'Paid 🎉', color: '#16A34A' },
-];
-
-function boardKey(p: VslPage): string {
-  if (p.state !== 'created') return p.state;
-  if (p.render_status === 'queued' || p.render_status === 'rendering') return 'rendering';
-  if (p.render_status === 'ready') return 'render_ready';
-  return 'created'; // incl. failed — the card wears the error
-}
-
-function ago(ts: string | null): string {
-  if (!ts) return '';
-  const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  if (m < 1440) return `${Math.floor(m / 60)}h ago`;
-  return `${Math.floor(m / 1440)}d ago`;
-}
-
-/** Every stage of one lead's journey, with the exact moment it happened
- *  (Hugo 2026-07-26: "of course all with date and time stamp"). */
-const STAGE_STAMPS: Array<{ key: keyof VslPage; label: string }> = [
-  { key: 'sent_at', label: 'Video texted' },
-  { key: 'first_click_at', label: 'Tapped the link' },
-  { key: 'first_opened_at', label: 'Opened the page' },
-  { key: 'play_at', label: 'Started the video' },
-  { key: 'watched_at', label: 'Watched (past halfway)' },
-  { key: 'completed_at', label: 'Watched to the end' },
-  { key: 'cta_clicked_at', label: 'Clicked "Start £1 Trial"' },
-  { key: 'checkout_started_at', label: 'Started checkout' },
-  { key: 'paid_at', label: 'Paid' },
-];
 
 interface Summary {
   created: number; sent: number; clicked: number; opened: number; played: number;
@@ -128,7 +53,10 @@ export default function VideoFunnelPage() {
   const [nudged, setNudged] = useState<Set<string>>(new Set());
   const [showSettings, setShowSettings] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [drawerPage, setDrawerPage] = useState<VslPage | null>(null);
+  // An ID, not the row: the board replaces every page object on each realtime
+  // reload, so holding the object would freeze the drawer at its opening
+  // snapshot while the board updated behind it.
+  const [drawerPageId, setDrawerPageId] = useState<string | null>(null);
   const [watchingNow, setWatchingNow] = useState<Set<string>>(new Set());
   const watchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -198,6 +126,19 @@ export default function VideoFunnelPage() {
       timers.clear();
     };
   }, [load]);
+
+  // Derived from the LIVE list, so the open drawer updates as beacons land.
+  const drawerPage = useMemo(
+    () => (drawerPageId ? (pages.find((p) => p.id === drawerPageId) ?? null) : null),
+    [pages, drawerPageId],
+  );
+  // Close only when the row genuinely vanished. Without the `pages.length > 0`
+  // half, the transient empty array during a reload slams the drawer shut.
+  useEffect(() => {
+    if (drawerPageId && pages.length > 0 && !pages.some((p) => p.id === drawerPageId)) {
+      setDrawerPageId(null);
+    }
+  }, [pages, drawerPageId]);
 
   const grouped = useMemo(() => {
     const g: Record<string, VslPage[]> = {};
@@ -336,7 +277,21 @@ export default function VideoFunnelPage() {
                 {(grouped[s.key] || []).map((p) => (
                   <div
                     key={p.id}
-                    className={`bg-white border rounded-[10px] p-2.5 ${
+                    role="button"
+                    tabIndex={0}
+                    data-testid={`funnel-card-${p.id}`}
+                    onClick={() => setDrawerPageId(p.id)}
+                    onKeyDown={(e) => {
+                      // Only when the CARD itself has focus — Space pressed
+                      // inside a nested control must not re-open the drawer.
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setDrawerPageId(p.id);
+                      }
+                    }}
+                    title="Open this lead"
+                    className={`bg-white border rounded-[10px] p-2.5 cursor-pointer hover:border-[#c9d6e8] hover:shadow-sm transition-colors ${
                       watchingNow.has(p.id) ? 'border-[#F59E0B] shadow-[0_0_0_2px_rgba(245,158,11,.25)]' : 'border-[#E5E7EB]'
                     }`}
                   >
@@ -345,18 +300,18 @@ export default function VideoFunnelPage() {
                         <Eye className="w-3 h-3" /> WATCHING NOW — call them!
                       </div>
                     )}
-                    <Link
-                      to={`/admin/crm/contacts/${p.contact_id}`}
-                      className="text-[13px] font-bold text-[#1A1A1A] hover:text-[#3C5A87] leading-tight block"
-                    >
+                    {/* Plain text, not a link: one card, one action. The full
+                        lead record is a footer link inside the drawer. */}
+                    <div className="text-[13px] font-bold text-[#1A1A1A] leading-tight">
                       {p.business_name}
-                    </Link>
+                    </div>
                     <ContactIdentity
                       owner={p.wk_contacts?.owner_name || p.owner_first}
                       website={p.wk_contacts?.website}
                       layout="stack"
                       size="xs"
                     />
+                    <AgentChip agentId={p.agent_id} size="xs" className="mt-0.5" />
                     <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#9CA3AF]">
                       {p.town && <span>{p.town}</span>}
                       {p.watched_pct > 0 && <span>watched {p.watched_pct}%</span>}
@@ -393,8 +348,9 @@ export default function VideoFunnelPage() {
                         render failed — retry from the dialer
                       </div>
                     )}
+                    {/* Scrubbing the preview must not open the drawer. */}
                     {s.key === 'render_ready' && p.video_url && (
-                      <div className="mt-1.5 space-y-1.5">
+                      <div className="mt-1.5 space-y-1.5" onClick={(e) => e.stopPropagation()}>
                         <video
                           src={p.video_url}
                           poster={p.poster_url || undefined}
@@ -414,7 +370,7 @@ export default function VideoFunnelPage() {
                       </div>
                     )}
 
-                    <div className="flex gap-1 mt-2">
+                    <div className="flex gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => {
                           navigator.clipboard?.writeText(`https://heyelsie.com/${p.slug}`);
@@ -436,7 +392,7 @@ export default function VideoFunnelPage() {
                         <ExternalLink className="w-3 h-3" />
                       </a>
                       <button
-                        onClick={() => setDrawerPage(p)}
+                        onClick={() => setDrawerPageId(p.id)}
                         title="Full activity, with timestamps"
                         data-testid={`funnel-activity-${p.id}`}
                         className="flex-1 flex items-center justify-center text-[11px] text-[#3C5A87] border border-[#E5E7EB] rounded-[6px] py-1 hover:bg-[#eaf1f8]"
@@ -466,123 +422,18 @@ export default function VideoFunnelPage() {
       )}
 
       {showSettings && <SettingsDrawer onClose={() => setShowSettings(false)} />}
-      {drawerPage && <ActivityDrawer page={drawerPage} onClose={() => setDrawerPage(null)} />}
-    </div>
-  );
-}
-
-/* ---------------- per-lead activity drawer ---------------- */
-
-const EVENT_LABELS: Record<string, string> = {
-  link_click: 'Tapped the video link',
-  open: 'Opened the page',
-  play: 'Started the video',
-  progress: 'Watched',
-  cta_click: 'Clicked "Start £1 Trial"',
-  tier_pick: 'Picked a plan',
-  calc: 'Used the value calculator',
-  checkout_start: 'Started checkout',
-  paid: 'Paid 🎉',
-  auto_sms: 'Follow-up text sent',
-};
-
-interface EventRow {
-  id: string;
-  type: string;
-  meta: { pct?: number; bot?: boolean; from?: string; internal?: boolean } | null;
-  created_at: string;
-}
-
-/** Every raw event on one page, newest first, each with its exact time.
- *  wk_vsl_events has been written since the funnel shipped but nothing ever
- *  read it — this is the first surface that does. */
-function ActivityDrawer({ page, onClose }: { page: VslPage; onClose: () => void }) {
-  const [rows, setRows] = useState<EventRow[] | null>(null);
-
-  useEffect(() => {
-    let dead = false;
-    void (async () => {
-      const { data, error } = await (supabase.from('wk_vsl_events' as never) as never as {
-        select: (s: string) => {
-          eq: (c: string, v: string) => {
-            order: (c: string, o: { ascending: boolean }) => {
-              limit: (n: number) => Promise<{ data: EventRow[] | null; error: unknown }>;
-            };
-          };
-        };
-      })
-        .select('id, type, meta, created_at')
-        .eq('page_id', page.id)
-        .order('created_at', { ascending: false })
-        .limit(200);
-      if (error) console.warn('[video-funnel] events failed:', error);
-      if (!dead) setRows(data || []);
-    })();
-    return () => { dead = true; };
-  }, [page.id]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
-      <div
-        className="w-full max-w-[520px] h-full bg-white overflow-y-auto p-5"
-        onClick={(e) => e.stopPropagation()}
-        data-testid="funnel-activity-drawer"
-      >
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-[16px] font-black">{page.business_name}</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-[#F3F3EE]"><X className="w-4 h-4" /></button>
-        </div>
-        <p className="text-[12px] text-[#6B7280] mb-4">
-          heyelsie.com/{page.slug} · watched {page.watched_pct}% · {page.open_count} open{page.open_count === 1 ? '' : 's'}
-        </p>
-
-        <div className="mb-5">
-          <p className="text-[12px] font-black mb-2">Journey</p>
-          <div className="space-y-1">
-            {STAGE_STAMPS.map((s) => {
-              const ts = page[s.key] as string | null;
-              return (
-                <div key={String(s.key)} className="flex items-baseline justify-between gap-3 text-[12px]">
-                  <span className={ts ? 'text-[#1A1A1A] font-medium' : 'text-[#D1D5DB]'}>{s.label}</span>
-                  <span className="text-[11px] text-[#6B7280] tabular-nums whitespace-nowrap">
-                    {ts ? formatDateTime(ts) : '—'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <p className="text-[12px] font-black mb-2">Every event</p>
-        {rows === null ? (
-          <p className="text-[12px] text-[#9CA3AF] italic">Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="text-[12px] text-[#9CA3AF] italic">Nothing recorded yet.</p>
-        ) : (
-          <ul className="divide-y divide-[#E5E7EB]">
-            {rows.map((e) => (
-              <li key={e.id} className="py-1.5 flex items-baseline justify-between gap-3 text-[12px]">
-                <span className={e.meta?.bot || e.meta?.internal ? 'text-[#9CA3AF]' : 'text-[#1A1A1A]'}>
-                  {e.meta?.internal
-                    ? 'Viewed by us'
-                    : e.type === 'progress' && typeof e.meta?.pct === 'number'
-                      ? `Watched ${e.meta.pct}%`
-                      : EVENT_LABELS[e.type] || e.type}
-                  {/* Staff and preview fetchers are kept and labelled rather
-                      than hidden — the board must never count them as the
-                      lead, but "did anyone look at this?" stays answerable. */}
-                  {e.meta?.internal && <span className="ml-1 text-[10px]">(staff preview, not counted)</span>}
-                  {e.meta?.bot && <span className="ml-1 text-[10px]">(link preview, not counted)</span>}
-                  {e.meta?.from === 'stripe' && <span className="ml-1 text-[10px]">(back from checkout)</span>}
-                </span>
-                <span className="text-[11px] text-[#6B7280] tabular-nums whitespace-nowrap">
-                  {formatDateTime(e.created_at)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {drawerPage && (
+        <FunnelLeadDrawer
+          page={drawerPage}
+          previewUrl={`https://heyelsie.com/${drawerPage.slug}${PREVIEW}`}
+          onClose={() => setDrawerPageId(null)}
+          onSendVideo={sendVideo}
+          onNudge={nudge}
+          sending={sendingIds.has(drawerPage.id)}
+          sent={sentIds.has(drawerPage.id)}
+          nudged={nudged.has(drawerPage.id)}
+        />
+      )}
     </div>
   );
 }

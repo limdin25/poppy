@@ -5,8 +5,7 @@ import {
   Phone, PhoneOff, Mic, MicOff, Pause as PauseIcon, Play, Square,
   SkipForward, Flame, Maximize2, Minus,
   MessageSquare, FileText, PhoneForwarded, Hash, Circle,
-  ChevronDown, Voicemail,
-} from 'lucide-react';
+  ChevronDown, Voicemail, Pencil} from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useImpersonatedAgentId } from '@/features/crm/lib/ViewAsContext';
@@ -42,6 +41,7 @@ import CallHistoryPro from './history/CallHistoryPro';
 import QueueManagerPro from './history/QueueManagerPro';
 import DtmfKeypad from './controls/DtmfKeypad';
 import ContactIdentity from '../components/shared/ContactIdentity';
+import AgentChip from '../components/shared/AgentChip';
 
 function formatDuration(sec: number): string {
   const h = Math.floor(sec / 3600);
@@ -694,7 +694,16 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                         <Flame className="w-3 h-3" /> HOT
                       </span>
                     )}
-                    {/* Full edit-contact lives on the call card / history, not here. */}
+                    {/* Hugo 2026-07-27: edit the lead from here — name, the
+                        person's name, email, phone — without leaving the call. */}
+                    <button
+                      onClick={() => setEditing(contact)}
+                      data-testid="dialer-edit-contact"
+                      title="Edit this lead — name, person, email, phone"
+                      className="ml-auto p-1 rounded text-[#6B7280] hover:text-[#3C5A87] hover:bg-[#EEF2F8] flex-shrink-0"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   {/* Owner name + website beside the company name, everywhere
                       (Hugo 2026-07-26) — explicit "not available" when missing. */}
@@ -705,7 +714,10 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                     size="sm"
                     className="mt-0.5 space-y-0.5"
                   />
-                  <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[12px] text-[#6B7280] tabular-nums">{contact.phone}</span>
+                    <AgentChip agentId={contact.ownerAgentId} size="xs" className="ml-auto" />
+                  </div>
                   {!isLive && !state.currentLead && (
                     <div className="text-[10px] text-[#9CA3AF] mt-1">Next in queue</div>
                   )}

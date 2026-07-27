@@ -49,6 +49,16 @@ export interface Contact {
   customFields: Record<string, string>;
   createdAt: string;
   lastContactAt?: string;
+  /** Last pipeline move — stamped by the wk_contacts triggers in migration
+   *  20260727000006. Denormalised onto the row so a full board renders the
+   *  "last moved by who" line with no extra queries. See lib/stageHistory.ts. */
+  stageMovedAt?: string;
+  /** profiles.id of the mover. Undefined whenever the source isn't 'agent'. */
+  stageMovedBy?: string;
+  /** The column it came FROM. Undefined for a first-ever stage or a backfill. */
+  stageMovedFrom?: string;
+  /** 'agent' | 'automation' | 'import' | 'backfill' */
+  stageMoveSource?: string;
 }
 
 export interface SmsMessage {

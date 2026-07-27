@@ -10,11 +10,13 @@ import { useContactPersistence } from '../hooks/useContactPersistence';
 import { useContactChannelStatus } from '../hooks/useContactSmsStatus';
 import { useFollowups } from '../hooks/useFollowups';
 import { useDialerProModal } from '../layout/DialerProModalContext';
-import { rowToContact } from '../hooks/useHydrateContacts';
+import { rowToContact, CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
 import { supabase } from '@/integrations/supabase/browser';
 import { usePipelines } from '../hooks/usePipelines';
 import type { Contact } from '../types';
 import ContactIdentity from '../components/shared/ContactIdentity';
+import AgentChip from '../components/shared/AgentChip';
+import StageMoveChip from '../components/shared/StageMoveChip';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
 
@@ -103,7 +105,7 @@ export default function PipelinesPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const [contactsRes, tagsRes] = await Promise.all([
         (supabase.from('wk_contacts' as any) as any)
-          .select('id, name, phone, email, owner_agent_id, pipeline_column_id, deal_value_pence, is_hot, custom_fields, last_contact_at, created_at')
+          .select(CONTACT_COLUMNS)
           .not('pipeline_column_id', 'is', null),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_contact_tags' as any) as any).select('contact_id, tag'),
@@ -271,9 +273,16 @@ export default function PipelinesPage() {
                           size="xs"
                           className="mt-0.5"
                         />
-                        <div className="text-[10px] text-[#6B7280] tabular-nums mt-0.5">
-                          {c.phone}
+                        <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                          <span className="text-[10px] text-[#6B7280] tabular-nums flex-shrink-0">
+                            {c.phone}
+                          </span>
+                          <AgentChip agentId={c.ownerAgentId} size="xs" className="ml-auto" />
                         </div>
+                        {/* Hugo 2026-07-27: the board must always say where this
+                            card last moved and who moved it — including the
+                            moves the video funnel makes on its own. */}
+                        <StageMoveChip contact={c} size="xs" className="mt-1" />
                         {c.dealValuePence && (
                           <div className="text-[11px] font-semibold text-[#3C5A87] tabular-nums mt-1">
                             {formatPence(c.dealValuePence)}
