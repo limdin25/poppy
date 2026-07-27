@@ -131,6 +131,20 @@ describe('the arm is stored on the page, not held in the browser', () => {
   });
 });
 
+describe('who the message is signed by', () => {
+  it('is the agent who MADE the video, not whoever is looking at it', () => {
+    // Hugo 2026-07-27, admin viewing as Marr: "my name is on the text template,
+    // thats wrong, need to be Marr name". The name is also what the lead heard
+    // on the phone, and the auto-send cron takes the FROM number from the same
+    // page.agent_id — a text from Marr's number signed "Hugo" is worse than
+    // either alone.
+    const block = vslPage.split('const sms_body = fillTemplate(')[0];
+    const lookup = block.slice(block.lastIndexOf("from('profiles')"));
+    expect(lookup).toMatch(/\.eq\('id', page\.agent_id\)/);
+    expect(lookup).not.toMatch(/\.eq\('id', agentId\)/);
+  });
+});
+
 describe('the arming endpoint', () => {
   it('accepts an arm alongside the render request', () => {
     expect(vslPage).toMatch(/auto_send/);

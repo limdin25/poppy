@@ -301,10 +301,18 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return json(200, { ok: true, page_id: page.id, state: 'sent' });
   }
 
+  // The name in the message is the agent who MADE the video, never whoever
+  // happens to be looking at the screen (Hugo 2026-07-27: admin viewing as Marr
+  // saw Marr's text signed "Hugo"). Two reasons it must be page.agent_id:
+  //   - the lead spoke to THAT agent on the phone; the text has to match
+  //   - api/cron/vsl-auto-send.ts resolves the FROM number with
+  //     agentSmsLine(page.agent_id), so signing it with the viewer's name sends
+  //     a text from Marr's number signed by someone else
+  // On a page's first request agent_id IS the caller, so nothing changes there.
   const { data: profile } = await supabase
     .from('profiles')
     .select('name')
-    .eq('id', agentId)
+    .eq('id', page.agent_id)
     .maybeSingle();
 
   const sms_body = fillTemplate(
