@@ -92,9 +92,17 @@ describe('the board can rescue a card stuck in Created', () => {
     resolve(__dirname, '..', 'src/features/crm/pages/VideoFunnelPage.tsx'), 'utf8',
   );
 
-  it('offers Make their video on a card with no render', () => {
+  it('offers the video on a card with no render, AND on one that failed', () => {
+    // A failed card used to say "retry from the dialer", which meant leaving the
+    // board, finding the lead in the queue and reopening the panel. Two of them
+    // sat dead for half an hour on 2026-07-27 because of a transient network
+    // blip during a deploy.
     expect(board).toMatch(/data-testid=\{`funnel-make-video-\$\{p\.id\}`\}/);
-    expect(board).toMatch(/\{!p\.render_status && \(/);
+    expect(board).toMatch(/\(!p\.render_status \|\| p\.render_status === 'failed'\) && \(/);
+    expect(board).toMatch(/Try the video again/);
+    // and the card names the real cause rather than guessing
+    expect(board).toMatch(/renderErrorText\(p\.render_error\)/);
+    expect(board).not.toMatch(/retry from the dialer/);
   });
 
   it('queues the render WITHOUT arming a send', () => {

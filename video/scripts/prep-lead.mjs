@@ -56,10 +56,47 @@ function rng(seed) {
 const rand = rng(seedFrom(contactId))
 
 // ---------- 1. contact + live pack ----------
+
+/**
+ * fetch with a short retry. Every network call in here was previously a single
+ * unguarded attempt, so one blip killed the whole render and the agent saw a
+ * dead card reading "render failed".
+ *
+ * The blip is not hypothetical and it is not rare: rank-frame below is served by
+ * the Vercel app, and a deploy makes it briefly unreachable. Two real leads died
+ * that way on 2026-07-27, both inside a deploy window, both with the useless
+ * message "fetch failed". A render takes ten minutes; throwing it away because a
+ * request lost a race with a deploy is the wrong trade.
+ *
+ * Retries a TRANSPORT failure and a 5xx. A 4xx is the server telling us
+ * something true, so that fails immediately.
+ */
+async function fetchRetry(url, init = {}, label = 'request') {
+  const waits = [1000, 4000, 10000]
+  let lastErr = null
+  for (let i = 0; i <= waits.length; i++) {
+    try {
+      const res = await fetch(url, init)
+      if (res.status >= 500) {
+        lastErr = new Error(`${label}: http ${res.status}`)
+      } else {
+        return res
+      }
+    } catch (e) {
+      lastErr = new Error(`${label}: ${e && e.message ? e.message : String(e)}`)
+    }
+    if (i < waits.length) {
+      console.error(`${lastErr.message} — retrying in ${waits[i] / 1000}s`)
+      await new Promise((r) => setTimeout(r, waits[i]))
+    }
+  }
+  throw lastErr
+}
+
 async function sb(path) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const res = await fetchRetry(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-  })
+  }, `supabase ${path}`)
   if (!res.ok) throw new Error(`supabase ${path}: ${res.status}`)
   return res.json()
 }
@@ -69,7 +106,7 @@ if (!contact) { console.error(`contact ${contactId} not found`); process.exit(1)
 const cf = contact.custom_fields || {}
 
 // cache-bust so a retry after a data fix never reuses the 24h-cached pack
-const rfRes = await fetch(`${APP}/api/leads/rank-frame?contact=${contactId}&_r=${Date.now()}`)
+const rfRes = await fetchRetry(`${APP}/api/leads/rank-frame?contact=${contactId}&_r=${Date.now()}`, {}, 'rank-frame')
 if (!rfRes.ok) { console.error(`rank-frame ${rfRes.status}`); process.exit(1) }
 const rf = await rfRes.json()
 if (!rf?.ok || !rf.lead) { console.error('rank-frame returned no lead'); process.exit(1) }

@@ -20,7 +20,7 @@ import { formatDateTime } from '../data/helpers';
 // Stage rules live in lib/funnelStages so the inbox badges can share them —
 // two copies of the rendering/render_ready carve-out WILL drift.
 import {
-  STATES, STAGE_STAMPS, boardKey, ago, type VslPage,
+  STATES, STAGE_STAMPS, boardKey, ago, renderErrorText, type VslPage,
 } from '../lib/funnelStages';
 
 /** Preview marker. The board's own "open page" links must not burn the lead's
@@ -422,7 +422,11 @@ export default function VideoFunnelPage() {
                     )}
                     {p.render_status === 'failed' && s.key === 'created' && (
                       <div className="mt-1.5 text-[10px] text-[#B91C1C] leading-snug" title={p.render_error || ''}>
-                        render failed — retry from the dialer
+                        {/* The real reason. The old text sent the agent off to the
+                            dialer and told them nothing about why, which had
+                            Hugo checking a website that was fine (2026-07-27).
+                            Retrying is a button on this card now. */}
+                        {renderErrorText(p.render_error)}
                       </div>
                     )}
                     {/* Scrubbing the preview must not open the drawer. */}
@@ -451,7 +455,7 @@ export default function VideoFunnelPage() {
                       </div>
                     )}
 
-                    {!p.render_status && (
+                    {(!p.render_status || p.render_status === 'failed') && (
                       <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => void makeVideo(p.id, p.contact_id)}
@@ -462,7 +466,7 @@ export default function VideoFunnelPage() {
                           {making.has(p.id)
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <Film className="w-3.5 h-3.5" />}
-                          Make their video
+                          {p.render_status === 'failed' ? 'Try the video again' : 'Make their video'}
                         </button>
                       </div>
                     )}
