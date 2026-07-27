@@ -306,9 +306,12 @@ export async function advanceVslState(
   });
   if (error) console.error('[vsl] advance failed:', error);
   const row = (Array.isArray(data) ? data[0] : data) as VslAdvanceResult | undefined;
-  if (row?.advanced && target) {
-    await movePipelineCard(page.contact_id, target);
-  }
+  // NOTE (Hugo 2026-07-27): this used to call movePipelineCard() here, which
+  // wrote wk_contacts.pipeline_column_id. That DESTROYED the agent's call
+  // outcome — a lead marked "Interested" was silently moved to "Video sent" the
+  // moment the video went out. The funnel's state lives on wk_vsl_pages and has
+  // its own board; the pipeline column belongs to the human. Two independent
+  // axes on purpose. See 20260727000009_unhijack_pipeline.sql.
   // business_id is set once, on the paid transition — write it separately
   // (the RPC only owns the funnel columns).
   if (extra.business_id) {
@@ -317,39 +320,21 @@ export async function advanceVslState(
   return row ?? null;
 }
 
-/** Move the contact's pipeline card to the column for this funnel state —
- *  forward-only: never demotes a card already sitting in a later funnel column.
- *  Manual drags outside the funnel columns are respected (we still promote on
- *  the next funnel event, matching "auto-moves on funnel events only"). */
-export async function movePipelineCard(contactId: string, state: string): Promise<void> {
-  const columnName = VSL_STATE_TO_COLUMN[state];
-  if (!columnName) return;
-  await movePipelineCardToColumn(contactId, columnName);
-}
-
-/** Same forward-only move, addressed by column name — used by the render
- *  lifecycle (Rendering / Ready to send) as well as the funnel states. */
-export async function movePipelineCardToColumn(contactId: string, columnName: string): Promise<void> {
-  if (!VSL_COLUMN_ORDER.includes(columnName)) return;
-
-  const { data: cols } = await supabase
-    .from('wk_pipeline_columns')
-    .select('id, name')
-    .in('name', VSL_COLUMN_ORDER);
-  if (!cols?.length) return;
-  const byName = new Map(cols.map((c) => [c.name, c.id]));
-  const target = byName.get(columnName);
-  if (!target) return;
-
-  const { data: contact } = await supabase
-    .from('wk_contacts')
-    .select('id, pipeline_column_id')
-    .eq('id', contactId)
-    .maybeSingle();
-  if (!contact) return;
-
-  const currentName = cols.find((c) => c.id === contact.pipeline_column_id)?.name;
-  if (currentName && VSL_COLUMN_ORDER.indexOf(currentName) >= VSL_COLUMN_ORDER.indexOf(columnName)) return;
-
-  await supabase.from('wk_contacts').update({ pipeline_column_id: target }).eq('id', contactId);
-}
+/**
+ * REMOVED ON PURPOSE — Hugo 2026-07-27.
+ *
+ * `movePipelineCard()` / `movePipelineCardToColumn()` used to promote a lead
+ * through Rendering -> Ready to send -> Video sent -> Opened page -> ... by
+ * writing wk_contacts.pipeline_column_id. That overwrote whatever outcome the
+ * agent had picked on the call: mark a lead "Interested", send the video, and
+ * it silently became "Video sent".
+ *
+ * The pipeline is the HUMAN's axis (Interested / Nurturing / No pickup / ...).
+ * The funnel is the VIDEO's axis and lives on wk_vsl_pages.state, which has its
+ * own board. The funnel card now shows the call outcome beside its stage, so
+ * nothing is lost by keeping them apart.
+ *
+ * The eight funnel columns are archived by 20260727000009_unhijack_pipeline.sql.
+ * If you are about to re-add an automatic pipeline write here: don't. Surface
+ * the funnel state on the card instead.
+ */

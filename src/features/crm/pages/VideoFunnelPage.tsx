@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
+import { useSmsV2 } from '../store/SmsV2Store';
 import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
@@ -45,6 +46,19 @@ const STRIP: Array<{ key: keyof Summary; label: string }> = [
 
 export default function VideoFunnelPage() {
   const { agent } = useCurrentAgent();
+  // The lead's CALL OUTCOME (Interested / Nurturing / No pickup / ...). It is a
+  // separate axis from the funnel stage — Hugo 2026-07-27: "inside the video
+  // funnel we can see the label of each lead like interested, nurturing etc."
+  // The funnel no longer writes it, so it stays whatever the agent picked.
+  const { contacts, columns } = useSmsV2();
+  const outcomeOf = useCallback(
+    (contactId: string) => {
+      const c = contacts.find((x) => x.id === contactId);
+      if (!c?.pipelineColumnId) return null;
+      return columns.find((col) => col.id === c.pipelineColumnId) ?? null;
+    },
+    [contacts, columns],
+  );
   const isAdmin = agent?.isAdmin ?? false;
   const impId = useImpersonatedAgentId();
   const [pages, setPages] = useState<VslPage[]>([]);
@@ -57,6 +71,9 @@ export default function VideoFunnelPage() {
   // reload, so holding the object would freeze the drawer at its opening
   // snapshot while the board updated behind it.
   const [drawerPageId, setDrawerPageId] = useState<string | null>(null);
+  /** Set when the card's green button opened the drawer, so it lands on the
+   *  composer instead of the journey. */
+  const [composeForId, setComposeForId] = useState<string | null>(null);
   const [watchingNow, setWatchingNow] = useState<Set<string>>(new Set());
   const watchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -148,50 +165,11 @@ export default function VideoFunnelPage() {
   }, [pages]);
 
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
-  const [sendErr, setSendErr] = useState<string | null>(null);
-  // In-flight guard so a double-click can't text the lead twice (#7/#12).
-  const sendingRef = useRef<Set<string>>(new Set());
-  const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
-  // "SMS already went out, only the mark failed" — a retry re-marks, no re-text.
-  const smsSentRef = useRef<Set<string>>(new Set());
-
-  // "Ready to send" → the agent has watched the preview → one tap texts the
-  // lead + marks the page sent (identical path to the in-call button).
-  async function sendVideo(p: VslPage) {
-    if (sendingRef.current.has(p.id) || sentIds.has(p.id)) return; // double-click / already sent
-    sendingRef.current.add(p.id);
-    setSendingIds((s) => new Set(s).add(p.id));
-    setSendErr(null);
-    try {
-      const { data: sess } = await supabase.auth.getSession();
-      const token = sess.session?.access_token;
-      if (!token) return;
-      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
-      const infoRes = await fetch('/api/crm/vsl-page', {
-        method: 'POST', headers, body: JSON.stringify({ contact_id: p.contact_id }),
-      });
-      if (!infoRes.ok) { setSendErr(`${p.business_name}: couldn’t load the SMS`); return; }
-      const info = await infoRes.json();
-      if (info.enabled === false) { setSendErr('The funnel is switched off in Settings — turn it on to send.'); return; }
-      if (!info.can_send) { setSendErr(`${p.business_name}: video not ready yet`); return; }
-      if (!smsSentRef.current.has(p.id)) {
-        const { error } = await supabase.functions.invoke('wk-sms-send', {
-          body: { contact_id: p.contact_id, body: info.sms_body },
-        });
-        if (error) { setSendErr(`${p.business_name}: text failed — try from the dialer`); return; }
-        smsSentRef.current.add(p.id);
-      }
-      const marked = await fetch('/api/crm/vsl-page', {
-        method: 'POST', headers, body: JSON.stringify({ contact_id: p.contact_id, mark_sent: true }),
-      });
-      if (!marked.ok) { setSendErr(`${p.business_name}: texted, but tracking didn’t arm — tap again (won’t re-text)`); return; }
-      smsSentRef.current.delete(p.id);
-      setSentIds((prev) => new Set(prev).add(p.id));
-    } finally {
-      sendingRef.current.delete(p.id);
-      setSendingIds((s) => { const n = new Set(s); n.delete(p.id); return n; });
-    }
-  }
+  // sendVideo() used to live here and fired wk-sms-send with a body the agent
+  // had never seen. Sending now happens only inside FunnelLeadDrawer's
+  // composer, where the message is visible and editable and the channel is a
+  // choice (Hugo 2026-07-27). Keeping a second send path here would also mean
+  // two independent "already sent" guards — and a lead texted twice.
 
   async function nudge(p: VslPage) {
     const url = `https://heyelsie.com/${p.slug}`;
@@ -224,12 +202,6 @@ export default function VideoFunnelPage() {
           </button>
         )}
       </div>
-
-      {sendErr && (
-        <div className="mb-3 text-[12px] font-semibold text-[#B91C1C] bg-[#FEF2F2] border border-[#FECACA] rounded-[8px] px-3 py-2">
-          {sendErr}
-        </div>
-      )}
 
       {/* Conversion at a glance — every stage counted from its own timestamp,
           so a lead who paid still counts as having opened and watched. */}
@@ -264,14 +236,43 @@ export default function VideoFunnelPage() {
         <p className="text-[13px] text-[#9CA3AF] italic">Loading…</p>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-4">
-          {STATES.map((s) => (
-            <div key={s.key} className="min-w-[240px] w-[240px] flex-shrink-0">
+          {STATES.map((s) => {
+            // Nine full-width columns is 2,256px — well past the page, so the
+            // later stages sat off-screen and read as "missing" (Hugo
+            // 2026-07-27). An EMPTY stage collapses to a slim labelled spine,
+            // so every stage of the funnel is on screen at once and the cards
+            // still get their full width.
+            const count = grouped[s.key]?.length || 0;
+            const collapsed = count === 0;
+            return (
+            <div
+              key={s.key}
+              data-testid={`funnel-col-${s.key}`}
+              className={collapsed
+                ? 'min-w-[40px] w-[40px] flex-shrink-0'
+                : 'min-w-[240px] w-[240px] flex-shrink-0'}
+            >
+              {collapsed ? (
+                <div
+                  className="h-full min-h-[120px] rounded-[10px] border border-dashed border-[#E5E7EB] bg-[#FAFAF7] flex flex-col items-center justify-start pt-2 gap-2"
+                  title={`${s.label} — empty`}
+                >
+                  <span className="text-[11px] font-bold tabular-nums" style={{ color: s.color }}>0</span>
+                  <span
+                    className="text-[10px] font-semibold whitespace-nowrap text-[#9CA3AF]"
+                    style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+              ) : (
+              <>
               <div
                 className="flex items-center gap-2 px-2 py-1.5 rounded-t-[10px] border-b-2"
                 style={{ borderColor: s.color }}
               >
                 <span className="text-[12px] font-bold" style={{ color: s.color }}>{s.label}</span>
-                <span className="text-[11px] text-[#9CA3AF] tabular-nums">{grouped[s.key]?.length || 0}</span>
+                <span className="text-[11px] text-[#9CA3AF] tabular-nums">{count}</span>
               </div>
               <div className="space-y-2 pt-2">
                 {(grouped[s.key] || []).map((p) => (
@@ -311,7 +312,23 @@ export default function VideoFunnelPage() {
                       layout="stack"
                       size="xs"
                     />
-                    <AgentChip agentId={p.agent_id} size="xs" className="mt-0.5" />
+                    <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                      <AgentChip agentId={p.agent_id} size="xs" />
+                      {(() => {
+                        const outcome = outcomeOf(p.contact_id);
+                        if (!outcome) return null;
+                        return (
+                          <span
+                            title={`Call outcome — ${outcome.name}`}
+                            className="ml-auto flex-shrink-0 inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wide px-1.5 py-px rounded-full"
+                            style={{ background: `${outcome.colour}1F`, color: outcome.colour }}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: outcome.colour }} />
+                            {outcome.name}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#9CA3AF]">
                       {p.town && <span>{p.town}</span>}
                       {p.watched_pct > 0 && <span>watched {p.watched_pct}%</span>}
@@ -359,13 +376,17 @@ export default function VideoFunnelPage() {
                           preload="none"
                           className="w-full rounded-[8px] bg-black aspect-[9/16] max-h-[220px]"
                         />
+                        {/* Opens the composer rather than sending — the agent
+                            reads and can edit the message first, and picks the
+                            channel (Hugo 2026-07-27). */}
                         <button
-                          onClick={() => sendVideo(p)}
-                          disabled={sentIds.has(p.id) || sendingIds.has(p.id)}
+                          onClick={() => { setComposeForId(p.id); setDrawerPageId(p.id); }}
+                          disabled={sentIds.has(p.id)}
+                          data-testid={`funnel-review-send-${p.id}`}
                           className="w-full flex items-center justify-center gap-1.5 text-[11.5px] font-bold text-white bg-[#16A34A] hover:bg-[#15803d] rounded-[8px] py-1.5 disabled:opacity-50"
                         >
-                          {sendingIds.has(p.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : sentIds.has(p.id) ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-                          {sendingIds.has(p.id) ? 'Sending…' : sentIds.has(p.id) ? 'Sent' : 'Looks good — text it'}
+                          {sentIds.has(p.id) ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                          {sentIds.has(p.id) ? 'Sent' : 'Looks good — review & send'}
                         </button>
                       </div>
                     )}
@@ -416,8 +437,11 @@ export default function VideoFunnelPage() {
                   <p className="text-[11px] text-[#D1D5DB] italic px-2">none</p>
                 )}
               </div>
+              </>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -426,12 +450,11 @@ export default function VideoFunnelPage() {
         <FunnelLeadDrawer
           page={drawerPage}
           previewUrl={`https://heyelsie.com/${drawerPage.slug}${PREVIEW}`}
-          onClose={() => setDrawerPageId(null)}
-          onSendVideo={sendVideo}
+          onClose={() => { setDrawerPageId(null); setComposeForId(null); }}
           onNudge={nudge}
-          sending={sendingIds.has(drawerPage.id)}
-          sent={sentIds.has(drawerPage.id)}
           nudged={nudged.has(drawerPage.id)}
+          startInCompose={composeForId === drawerPage.id}
+          onSent={(id) => setSentIds((prev) => new Set(prev).add(id))}
         />
       )}
     </div>

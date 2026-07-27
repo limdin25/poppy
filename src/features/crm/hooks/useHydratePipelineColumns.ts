@@ -93,6 +93,11 @@ export function useHydratePipelineColumns(): void {
           .select(
             'id, pipeline_id, name, colour, icon, position, is_default_on_timeout, requires_followup, call_script_id, coach_profile_id'
           )
+          // Archived columns are hidden from the board AND from every stage
+          // picker. The eight video-funnel columns were archived on 2026-07-27
+          // — the funnel has its own board and no longer overwrites the call
+          // outcome (20260727000009_unhijack_pipeline.sql).
+          .eq('archived', false)
           .order('position', { ascending: true }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_pipeline_automations' as any) as any).select(

@@ -57,12 +57,34 @@ describe('the drawer', () => {
     expect(drawer).toMatch(/isn't visible under your access/)
   })
 
-  it('never opens a second send path — the board owns sendVideo', () => {
-    // Two copies would carry two independent "already texted" guards and the
-    // lead would get the video twice.
-    expect(drawer).not.toMatch(/wk-sms-send/)
-    expect(drawer).toMatch(/onSendVideo/)
+  it('is the ONE send path, and shows the message before it goes', () => {
+    // Hugo 2026-07-27: "it says looks good text it but is not showing the text."
+    // Sending moved here from the board so there is exactly one path, one
+    // guard, and a message the agent has actually read.
+    expect(drawer).toMatch(/wk-sms-send/)
+    expect(drawer).toMatch(/data-testid="funnel-send-composer"/)
+    expect(drawer).toMatch(/data-testid="funnel-send-body"/)
     expect(drawer).toMatch(/onNudge/)
+  })
+
+  it('offers all three channels, with text as the default', () => {
+    expect(drawer).toMatch(/useState<Channel>\('sms'\)/)
+    expect(drawer).toMatch(/invoke\('unipile-send'/)   // WhatsApp
+    expect(drawer).toMatch(/invoke\('wk-email-send'/)  // Email
+    // A channel the lead has no address for is disabled, not left to fail on send.
+    expect(drawer).toMatch(/c === 'email' \? !!contact\?\.email : !!contact\?\.phone/)
+  })
+
+  it('re-checks the server immediately before sending', () => {
+    // The funnel may have been switched off, or the render may not be ready,
+    // since the composer was opened.
+    expect(drawer).toMatch(/freshInfo\.enabled === false/)
+    expect(drawer).toMatch(/!freshInfo\.can_send/)
+  })
+
+  it('lets the agent edit the message without losing it on a refetch', () => {
+    expect(drawer).toMatch(/setBody\(\(b\) => \(b\.trim\(\) \? b : data\.sms_body\)\)/)
+    expect(drawer).toMatch(/Reset to template/)
   })
 
   it('gates ESC so one keypress cannot close two layers', () => {

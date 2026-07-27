@@ -621,9 +621,27 @@ describe('button robustness', () => {
 
 describe('board send guard', () => {
   const board = read('src/features/crm/pages/VideoFunnelPage.tsx')
+  const drawer = read('src/features/crm/components/funnel/FunnelLeadDrawer.tsx')
+
+  it('the board no longer sends at all — the composer is the one path', () => {
+    // Hugo 2026-07-27: the board's green button fired a message the agent had
+    // never seen. It now opens the drawer's composer. Two send paths would also
+    // mean two independent "already sent" guards, and a lead texted twice.
+    expect(board).not.toMatch(/invoke\('wk-sms-send'/)
+    expect(board).toMatch(/setComposeForId\(p\.id\)/)
+    expect(board).toMatch(/disabled=\{sentIds\.has\(p\.id\)\}/)
+  })
+
   it('ignores double-clicks while a send is in flight', () => {
-    expect(board).toMatch(/sendingRef\.current\.has\(p\.id\) \|\| sentIds\.has\(p\.id\)/)
-    expect(board).toMatch(/disabled=\{sentIds\.has\(p\.id\) \|\| sendingIds\.has\(p\.id\)\}/)
+    // Module scope, not a component ref: the drawer can be closed and reopened.
+    expect(drawer).toMatch(/const sendInFlight = new Set<string>\(\)/)
+    expect(drawer).toMatch(/if \(sendInFlight\.has\(id\)\) return/)
+    expect(drawer).toMatch(/sendInFlight\.delete\(id\)/)
+  })
+
+  it('still re-marks without re-sending after a failed mark', () => {
+    expect(drawer).toMatch(/const sentByContact = new Set<string>\(\)/)
+    expect(drawer).toMatch(/if \(!sentByContact\.has\(id\)\)/)
   })
 })
 

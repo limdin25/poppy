@@ -19,7 +19,6 @@ import {
   fillTemplate,
   slugifyBusiness,
   advanceVslState,
-  movePipelineCardToColumn,
 } from '../lib/vsl-settings.js';
 import { renderVslOgCard } from '../lib/render-vsl-og.js';
 import { notifyFunnelEvent } from '../lib/vsl-notify.js';
@@ -202,7 +201,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .select('*')
         .single();
       if (queued) page = queued;
-      await movePipelineCardToColumn(page.contact_id, 'Rendering');
+      // No pipeline write: queueing a render must not move the lead out of the
+      // outcome the agent picked on the call (Hugo 2026-07-27). The board reads
+      // render_status directly.
     }
   }
 

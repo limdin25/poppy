@@ -50,12 +50,34 @@ export interface FunnelLeadDrawerProps {
   /** Built by the board so the ?p=1 staff-preview marker lives in one place. */
   previewUrl: string;
   onClose: () => void;
-  onSendVideo: (p: VslPage) => void | Promise<void>;
   onNudge: (p: VslPage) => void | Promise<void>;
-  sending: boolean;
-  sent: boolean;
   nudged: boolean;
+  /** Open straight into the send composer (the card's green button). */
+  startInCompose?: boolean;
+  /** Told when a send succeeded, so the board can mark the card. */
+  onSent?: (pageId: string) => void;
 }
+
+type Channel = 'sms' | 'whatsapp' | 'email';
+
+const CHANNEL_LABEL: Record<Channel, string> = {
+  sms: 'Text',
+  whatsapp: 'WhatsApp',
+  email: 'Email',
+};
+
+interface PageInfo {
+  sms_body: string;
+  url: string;
+  enabled: boolean;
+  can_send: boolean;
+}
+
+/** Module scope, keyed by contact — the drawer can be reopened, and a per-mount
+ *  ref would forget that the message already went out and re-send it. Same
+ *  reason VideoLinkButton's guard lives at module scope. */
+const sentByContact = new Set<string>();
+const sendInFlight = new Set<string>();
 
 type ContactState = 'loading' | 'ready' | 'denied';
 
@@ -102,7 +124,7 @@ function useContactForPage(contactId: string): { contact: Contact | null; state:
 }
 
 export default function FunnelLeadDrawer({
-  page, previewUrl, onClose, onSendVideo, onNudge, sending, sent, nudged,
+  page, previewUrl, onClose, onNudge, nudged, startInCompose = false, onSent,
 }: FunnelLeadDrawerProps) {
   const { contact, state } = useContactForPage(page.contact_id);
   const { upsertContact, patchContact, pushToast } = useSmsV2();
@@ -112,6 +134,19 @@ export default function FunnelLeadDrawer({
   const [smsTo, setSmsTo] = useState<Contact | null>(null);
   const [copied, setCopied] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // ── the send composer ─────────────────────────────────────────────────────
+  // Hugo 2026-07-27: "it says looks good text it but is not showing the text."
+  // The old button fired a send with a message nobody had seen. Now the message
+  // is fetched, shown, editable, and the channel is a choice.
+  const [composing, setComposing] = useState(startInCompose);
+  const [channel, setChannel] = useState<Channel>('sms');
+  const [body, setBody] = useState('');
+  const [subject, setSubject] = useState('');
+  const [info, setInfo] = useState<PageInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const [sent, setSent] = useState(sentByContact.has(page.contact_id));
 
   useEffect(() => {
     let dead = false;
@@ -147,6 +182,91 @@ export default function FunnelLeadDrawer({
   }, [editing, smsTo, onClose]);
 
   useEffect(() => { panelRef.current?.focus(); }, []);
+
+  /** Load the message the server would send, so the agent sees it before it goes. */
+  const loadMessage = useCallback(async () => {
+    setNote('');
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (!token) { setNote('Session expired — sign in again.'); return; }
+    const res = await fetch('/api/crm/vsl-page', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ contact_id: page.contact_id }),
+    });
+    const data = (await res.json().catch(() => null)) as PageInfo | null;
+    if (!res.ok || !data) { setNote('Could not load the message — try again.'); return; }
+    setInfo(data);
+    setBody((b) => (b.trim() ? b : data.sms_body));  // never clobber an edit
+    setSubject((s) => s || `A quick 90-second audit for ${page.business_name}`);
+  }, [page.contact_id, page.business_name]);
+
+  useEffect(() => {
+    if (composing && !info) void loadMessage();
+  }, [composing, info, loadMessage]);
+
+  async function send() {
+    const id = page.contact_id;
+    if (sendInFlight.has(id)) return;
+    if (!body.trim()) { setNote('The message is empty.'); return; }
+    if (channel === 'email' && !contact?.email) { setNote('This lead has no email address.'); return; }
+    if (channel !== 'email' && !contact?.phone) { setNote('This lead has no mobile number.'); return; }
+
+    sendInFlight.add(id);
+    setBusy(true);
+    setNote('');
+    try {
+      // Re-check right before sending: the funnel may have been switched off, or
+      // the render may not actually be ready, since the panel was opened.
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) { setNote('Session expired — sign in again.'); return; }
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+      const fresh = await fetch('/api/crm/vsl-page', {
+        method: 'POST', headers, body: JSON.stringify({ contact_id: id }),
+      });
+      const freshInfo = (await fresh.json().catch(() => null)) as PageInfo | null;
+      if (!fresh.ok || !freshInfo) { setNote('Could not reach the server — try again.'); return; }
+      if (freshInfo.enabled === false) {
+        setNote('The video funnel is switched off in Settings — turn it on to send.');
+        return;
+      }
+      if (!freshInfo.can_send) { setNote('The video isn’t ready yet.'); return; }
+
+      // Send once. If a previous attempt already delivered and only the mark
+      // failed, retry re-marks WITHOUT re-sending.
+      if (!sentByContact.has(id)) {
+        const fn = supabase.functions;
+        const payload = { contact_id: id, body: body.trim() };
+        const resp =
+          channel === 'sms' ? await fn.invoke('wk-sms-send', { body: payload })
+          : channel === 'whatsapp' ? await fn.invoke('unipile-send', { body: payload })
+          : await fn.invoke('wk-email-send', { body: { ...payload, subject: subject.trim() } });
+        const err = resp.error || (resp.data as { error?: string } | null)?.error;
+        if (err) {
+          setNote(`${CHANNEL_LABEL[channel]} failed: ${typeof err === 'string' ? err : err.message}`);
+          return;
+        }
+        sentByContact.add(id);
+      }
+
+      const marked = await fetch('/api/crm/vsl-page', {
+        method: 'POST', headers, body: JSON.stringify({ contact_id: id, mark_sent: true }),
+      });
+      if (!marked.ok) {
+        setNote('Sent, but tracking didn’t arm — tap again (it won’t re-send).');
+        return;
+      }
+      sentByContact.delete(id);
+      setSent(true);
+      setComposing(false);
+      onSent?.(page.id);
+      pushToast(`${CHANNEL_LABEL[channel]} sent`, 'success');
+    } finally {
+      sendInFlight.delete(id);
+      setBusy(false);
+    }
+  }
 
   // Optimistic, with a real revert. The field list is deliberately WIDE:
   // ContactDetailPage's version persists only name/email/stage, so copying it
@@ -316,16 +436,107 @@ export default function FunnelLeadDrawer({
                 preload="none"
                 className="w-full rounded-[10px] border border-[#E5E7EB] bg-black"
               />
-              {key === 'render_ready' && (
+              {key === 'render_ready' && !composing && (
                 <button
-                  onClick={() => void onSendVideo(page)}
-                  disabled={sending || sent}
+                  onClick={() => setComposing(true)}
+                  disabled={sent}
+                  data-testid="funnel-drawer-review-send"
                   className="mt-2 w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white bg-[#16A34A] hover:bg-[#15803d] disabled:opacity-60 rounded-[8px] py-2"
                 >
                   <Play className="w-3.5 h-3.5" />
-                  {sending ? 'Sending…' : sent ? 'Sent' : 'Looks good — text it'}
+                  {sent ? 'Sent' : 'Looks good — write the message'}
                 </button>
               )}
+            </div>
+          )}
+
+          {/* ── the composer: see the message, pick the channel, edit it ──
+              Hugo 2026-07-27: the old button sent a message nobody had read. */}
+          {composing && (
+            <div
+              className="mb-5 rounded-[10px] border border-[#c9d6e8] bg-[#f2f6fb] p-3 space-y-2"
+              data-testid="funnel-send-composer"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-[#3C5A87]">
+                  Send the video
+                </span>
+                <button
+                  onClick={() => setComposing(false)}
+                  className="p-0.5 rounded hover:bg-black/[0.06] text-[#6B7280]"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Text is the default and always first. WhatsApp and Email are
+                  offered only when the lead actually has the address for them —
+                  a disabled tab explains itself rather than failing on send. */}
+              <div className="flex items-center gap-1 bg-white border border-[#d5e0ee] rounded-full p-0.5 w-fit">
+                {(['sms', 'whatsapp', 'email'] as Channel[]).map((c) => {
+                  const usable = c === 'email' ? !!contact?.email : !!contact?.phone;
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => usable && setChannel(c)}
+                      disabled={!usable}
+                      data-testid={`funnel-channel-${c}`}
+                      title={usable ? undefined : c === 'email' ? 'No email address on this lead' : 'No mobile number on this lead'}
+                      className={`px-2.5 py-1 text-[11px] font-semibold rounded-full transition-colors ${
+                        channel === c ? 'bg-[#3C5A87] text-white'
+                        : usable ? 'text-[#6B7280] hover:bg-[#eaf1f8]'
+                        : 'text-[#D1D5DB] cursor-not-allowed'
+                      }`}
+                    >
+                      {CHANNEL_LABEL[c]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {channel === 'email' && (
+                <input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Subject"
+                  data-testid="funnel-send-subject"
+                  className="w-full px-2 py-1.5 text-[12px] border border-[#d5e0ee] rounded-[8px] bg-white"
+                />
+              )}
+
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={5}
+                placeholder={info ? '' : 'Loading the message…'}
+                data-testid="funnel-send-body"
+                className="w-full px-2 py-1.5 text-[12px] leading-snug border border-[#d5e0ee] rounded-[8px] bg-white resize-y"
+              />
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10.5px] text-[#6B7280] tabular-nums">
+                  {body.length}
+                  {channel === 'sms' && `/160${body.length > 160 ? ` · ${Math.ceil(body.length / 160)} texts` : ''}`}
+                </span>
+                <button
+                  onClick={() => { setBody(info?.sms_body ?? ''); }}
+                  disabled={!info}
+                  className="text-[10.5px] text-[#3C5A87] hover:underline disabled:text-[#D1D5DB]"
+                >
+                  Reset to template
+                </button>
+                <button
+                  onClick={() => void send()}
+                  disabled={busy || !body.trim() || !info}
+                  data-testid="funnel-send-confirm"
+                  className="ml-auto flex items-center gap-1.5 text-[12px] font-semibold text-white bg-[#16A34A] hover:bg-[#15803d] disabled:opacity-60 rounded-[8px] px-3 py-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {busy ? 'Sending…' : `Send ${CHANNEL_LABEL[channel]}`}
+                </button>
+              </div>
+
+              {note && <div className="text-[10.5px] text-[#b45309] leading-snug">{note}</div>}
             </div>
           )}
 
