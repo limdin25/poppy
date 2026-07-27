@@ -44,6 +44,11 @@ const TRADE = arg('trade', 'electrician')
 const WANT = parseInt(arg('count', '100'), 10)
 const MAX_REVIEWS = parseInt(arg('max-reviews', '65'), 10)
 const APPLY = process.argv.includes('--apply')
+// A no-website lead still renders fine (prep-lead.mjs falls back to the
+// search-scene opening instead of the site-capture scene) — the website
+// requirement only exists to prefer the nicer variant. Off by default so
+// established trades keep their current pool; opt in per run for a volume top-up.
+const ALLOW_NO_WEBSITE = process.argv.includes('--allow-no-website')
 
 // The search stem per trade — this exact string is what the video puts on
 // screen, so it has to read like something a real customer would type.
@@ -187,7 +192,7 @@ async function scrapeTown(town) {
     const d = await places('details', { place_id: r.place_id, fields: 'website,formatted_phone_number,name' })
     const website = d.result?.website || ''
     const phone = d.result?.formatted_phone_number || ''
-    if (!website) continue                        // scene 1 needs a real site
+    if (!website && !ALLOW_NO_WEBSITE) continue    // scene 1 prefers a real site
     if (!isUkMobile(phone)) continue               // Hugo: mobile numbers only, no landlines
 
     out.push({
