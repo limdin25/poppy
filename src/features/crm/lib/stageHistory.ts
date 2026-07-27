@@ -40,15 +40,21 @@ function firstName(full: string | null): string | null {
 
 /** Who/what gets the credit, in the fewest words that stay true. */
 function actorSuffix(m: StageMove, useFullName: boolean): string {
+  const who = useFullName ? m.byName : firstName(m.byName);
   switch (m.source) {
-    case 'agent': {
-      const who = useFullName ? m.byName : firstName(m.byName);
+    case 'agent':
       return who ? ` · ${useFullName ? 'by ' : ''}${who}` : '';
-    }
     case 'automation':
       return ' · moved automatically';
     case 'backfill':
-      return ' · recorded before tracking';
+      // Most backfilled rows came from a call disposition, which DOES record
+      // the agent — 697 of the 698 reconstructed on 2026-07-27 name a real
+      // person. Throwing that away and printing "recorded before tracking" at
+      // all of them would hide a fact we actually hold. The hedge is only for
+      // the ones with no evidence of who.
+      return who
+        ? ` · ${useFullName ? 'by ' : ''}${who}${useFullName ? ' (from an earlier call outcome)' : ''}`
+        : ' · recorded before tracking';
     case 'import':
       return ' · imported';
     default:

@@ -95,14 +95,26 @@ describe('stage-move copy', () => {
     expect(isAutomaticMove('agent')).toBe(false)
   })
 
-  it('admits when the history pre-dates tracking, and invents no "from"', async () => {
+  it('still names the mover on a reconstructed row when we know who', async () => {
+    // 697 of the 698 rows backfilled on 2026-07-27 came from call dispositions,
+    // which record agent_id. Hedging all of them would hide a real fact.
+    const { stageMoveLabel, stageMoveTitle } = await load()
+    const m = { ...base, fromName: null, source: 'backfill' as const }
+    expect(stageMoveLabel(m, '3d ago')).toBe('Interested · 3d ago · Pedro')
+    expect(stageMoveTitle(m, '24 Jul, 09:00')).toBe(
+      'Moved to Interested on 24 Jul, 09:00 · by Pedro III Almedina (from an earlier call outcome)',
+    )
+  })
+
+  it('hedges only when the reconstruction has no mover, and invents no "from"', async () => {
     const { stageMoveLabel, stageMoveTitle } = await load()
     const m = { ...base, byName: null, fromName: null, source: 'backfill' as const }
     expect(stageMoveLabel(m, '3d ago')).toBe('Interested · 3d ago · recorded before tracking')
     expect(stageMoveTitle(m, '24 Jul, 09:00')).toBe(
       'Moved to Interested on 24 Jul, 09:00 · recorded before tracking',
     )
-    expect(stageMoveTitle(m, 'x')).not.toMatch(/from/)
+    // A backfilled row never knows the column it came FROM.
+    expect(stageMoveTitle(m, 'x')).not.toMatch(/from [A-Z]/)
   })
 
   it('says so plainly when nothing was ever recorded', async () => {
