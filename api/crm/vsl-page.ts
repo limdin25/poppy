@@ -337,6 +337,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     no_website: !!page.no_website,
     // mirrors the mark_sent gate so the UI never offers a doomed send
     can_send: !!(page.video_url || settings.default_video_url),
+    render_error: page.render_error ?? null,
     auto_send_channel: page.auto_send_channel ?? null,
     auto_send_body: page.auto_send_body ?? null,
     auto_send_error: page.auto_send_error ?? null,

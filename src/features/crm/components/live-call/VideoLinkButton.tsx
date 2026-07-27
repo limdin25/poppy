@@ -24,6 +24,7 @@ import {
   SEND_CHANNEL_LABEL, channelOptions, defaultChannel,
   type SendChannel, type WorkspaceChannels,
 } from '../../lib/sendChannels';
+import { renderErrorText } from '../../lib/funnelStages';
 import type { Contact } from '../../types';
 
 interface PageInfo {
@@ -37,6 +38,7 @@ interface PageInfo {
   poster_url: string | null;
   no_website: boolean;
   can_send: boolean;
+  render_error: string | null;
   auto_send_channel: SendChannel | null;
   auto_send_body: string | null;
   auto_send_error: string | null;
@@ -419,7 +421,10 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
         {rs === 'failed' && (
           <div className="space-y-1.5">
             <div className="text-[10.5px] text-[#b91c1c] leading-snug">
-              Render failed{info?.no_website ? '' : ' (their website may not load)'} — try again, or tell Hugo.
+              {/* The REAL reason. This used to guess "their website may not
+                  load" for every failure, and said it about a lead whose site
+                  was fine (Hugo 2026-07-27). */}
+              {renderErrorText(info?.render_error)}
             </div>
             <button
               onClick={retryRender}

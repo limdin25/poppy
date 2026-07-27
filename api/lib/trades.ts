@@ -53,7 +53,7 @@ export interface Trade {
   profile_key: ProfileKey | null;
   /** null => cannot render a video (see header) */
   profile: TradeProfile | null;
-  source: 'override' | 'name' | 'category' | 'derived' | 'default';
+  source: 'override' | 'name' | 'category' | 'search' | 'derived' | 'default';
 }
 
 export const TRADE_PROFILES: Record<ProfileKey, TradeProfile> = {
@@ -293,6 +293,59 @@ function fallback(town: string | undefined, source: Trade['source'], label: stri
   };
 }
 
+/** Every way this dictionary names a trade, mapped back to its key. Built from
+ *  TRADES so it can never drift: no second vocabulary to keep in step. */
+const TERM_TO_KEY: Record<string, string> = Object.fromEntries(
+  Object.entries(TRADES).flatMap(([key, t]) => [
+    [t.plural.toLowerCase(), key],
+    [t.chip.toLowerCase(), key],
+    [String(t.label).toLowerCase(), key],
+  ]),
+);
+
+const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The trade implied by the search that produced this lead's OWN ranking data.
+ *
+ * A lead scraped from "plumbers in Enfield" carries that search in
+ * `google_search_url`, and the importer's counters carry it again in their key
+ * names (`total_plumbers`, `plumbers_ahead`). Both name the trade outright.
+ *
+ * This is not guessing. The video's SERP scene shows that exact search, so
+ * reading the trade from it uses the same source the screen already relies on.
+ * Without it, a lead like Clean Blue Water Ltd — a plumber whose company name
+ * says nothing and whose Google category we never stored — fails the render
+ * with "no trade profile", which is what happened on 2026-07-27.
+ */
+function tradeFromRankSearch(
+  f: Record<string, string | undefined | null>,
+  town?: string,
+): Trade | null {
+  const terms: string[] = [];
+
+  const url = String(f.google_search_url || '');
+  const m = url.match(/\/maps\/search\/([^/?#]+)/i);
+  if (m) {
+    try { terms.push(decodeURIComponent(m[1]).replace(/\+/g, ' ')); } catch { /* junk url */ }
+  }
+  for (const k of Object.keys(f)) {
+    const hit = k.match(/^total_(.+)$/) || k.match(/^(.+)_ahead$/);
+    if (hit) terms.push(hit[1].replace(/_/g, ' '));
+  }
+
+  const townLow = String(town || '').trim().toLowerCase();
+  for (const raw of terms) {
+    let t = String(raw).toLowerCase().trim();
+    if (townLow) t = t.replace(new RegExp(`\\b${escapeRe(townLow)}\\b`, 'g'), ' ');
+    t = t.replace(/\bin\b|\bnear me\b/g, ' ').replace(/[^a-z ]+/g, ' ')
+         .replace(/\s+/g, ' ').trim();
+    const key = TERM_TO_KEY[t];
+    if (key) return build(key, 'search', town);
+  }
+  return null;
+}
+
 export function tradeByKey(key: string | null | undefined, town?: string): Trade {
   if (key && TRADES[key]) return build(key, 'override', town);
   return fallback(town, 'default', null, 'tradesmen');
@@ -323,6 +376,7 @@ export function resolveTrade(
   }
 
   // 3. Google's category
+  let derived: Trade | null = null;
   const raw = String(f.google_category || '').trim();
   if (raw && !JUNK_CATEGORY.test(raw)) {
     const low = raw.toLowerCase();
@@ -330,11 +384,19 @@ export function resolveTrade(
       const alias = CATEGORY_ALIASES[low];
       if (alias) return build(alias, 'category', town);
       for (const [re, key] of CATEGORY_PATTERNS) if (re.test(raw)) return build(key, 'category', town);
-      // 4. a real category we simply haven't mapped — show it, don't invent copy
-      return fallback(town, 'derived', titleCase(raw), naivePlural(raw));
+      // a real category we simply haven't mapped — held, not returned yet: a
+      // known trade from step 4 renders a video, and this one cannot.
+      derived = fallback(town, 'derived', titleCase(raw), naivePlural(raw));
     }
   }
 
-  // 5. nothing usable
+  // 4. the search their own ranking data came from
+  const searched = tradeFromRankSearch(f, town);
+  if (searched) return searched;
+
+  // 5. show the real category rather than invent copy for it
+  if (derived) return derived;
+
+  // 6. nothing usable
   return fallback(town, 'default', null, 'tradesmen');
 }

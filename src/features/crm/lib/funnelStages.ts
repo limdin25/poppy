@@ -163,3 +163,30 @@ export const EVENT_LABELS: Record<string, string> = {
   paid: 'Paid 🎉',
   auto_sms: 'Follow-up text sent',
 };
+
+/**
+ * What a failed render actually means, in words an agent can act on.
+ *
+ * The panel used to say "Render failed (their website may not load)" for EVERY
+ * failure. On 2026-07-27 that was shown for Clean Blue Water Ltd, whose website
+ * was fine: the real cause was that we had no trade for them, so the pipeline
+ * refused to invent competitors. Guessing at a cause sends people to fix the
+ * wrong thing, so we show the real one.
+ */
+export function renderErrorText(raw: string | null | undefined): string {
+  const e = String(raw || '').trim();
+  if (!e) return 'The video failed to render. Try again, or tell Hugo.';
+  if (/no trade profile/i.test(e)) {
+    return "We don't know this lead's trade, so the video can't honestly name who ranks above them. Set the trade on the lead, then retry.";
+  }
+  if (/real competitors above/i.test(e)) {
+    return "Google didn't return enough real businesses above them to build a truthful search, so the video was refused rather than faked.";
+  }
+  if (/missing town/i.test(e)) {
+    return 'This lead has no town, and the video builds their Google search from it. Add the town, then retry.';
+  }
+  if (/website|navigation|timeout|net::|ERR_/i.test(e)) {
+    return 'Their website would not load for the recording. Retry, or clear the website on the lead to record the Google search instead.';
+  }
+  return e;
+}

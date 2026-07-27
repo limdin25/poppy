@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Clapperboard, Copy, Check, ExternalLink, Settings2, X, Loader2, Send, Eye, History,
+  Clapperboard, Copy, Check, ExternalLink, Settings2, X, Loader2, Send, Eye, History, Film,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
@@ -91,6 +91,37 @@ export default function VideoFunnelPage() {
    *  auth re-resolves, and without this the SLOWER one wins — which is exactly
    *  how an admin viewing as one agent saw all 14 pages (Hugo 2026-07-27). */
   const loadSeq = useRef(0);
+
+  /** Queue the render for a card sitting in Created.
+   *
+   *  Hugo 2026-07-27: opening the panel on a call creates the page, and if the
+   *  agent never presses the make button the lead parks in Created forever.
+   *  Two real leads did that in one morning, one of them marked Interested.
+   *  Rather than change when the page is created, he asked for the rescue to
+   *  live here, on the card. */
+  const [making, setMaking] = useState<Set<string>>(new Set());
+  const makeVideo = useCallback(async (pageId: string, contactId: string) => {
+    setMaking((m) => new Set(m).add(pageId));
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const res = await fetch('/api/crm/vsl-page', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sess.session?.access_token}`,
+        },
+        // No auto_send: from the board there is no call in progress and no
+        // message on screen, so arming a send nobody has read would be exactly
+        // the blind send we removed. The agent reviews it in Ready to send.
+        body: JSON.stringify({ contact_id: contactId, request_render: true }),
+      });
+      if (!res.ok) console.warn('[funnel] render request failed:', res.status);
+    } catch (e) {
+      console.warn('[funnel] render request threw:', e);
+    } finally {
+      setMaking((m) => { const n = new Set(m); n.delete(pageId); return n; });
+    }
+  }, []);
 
   const load = useCallback(async () => {
     // Never query on an unresolved scope. `impId === null` means BOTH "not
@@ -415,6 +446,22 @@ export default function VideoFunnelPage() {
                         >
                           {sentIds.has(p.id) ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
                           {sentIds.has(p.id) ? 'Sent' : 'Looks good — review & send'}
+                        </button>
+                      </div>
+                    )}
+
+                    {!p.render_status && (
+                      <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => void makeVideo(p.id, p.contact_id)}
+                          disabled={making.has(p.id)}
+                          data-testid={`funnel-make-video-${p.id}`}
+                          className="w-full flex items-center justify-center gap-1.5 text-[11.5px] font-bold text-white bg-[#3C5A87] hover:bg-[#33507a] rounded-[8px] py-1.5 disabled:opacity-60"
+                        >
+                          {making.has(p.id)
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Film className="w-3.5 h-3.5" />}
+                          Make their video
                         </button>
                       </div>
                     )}
