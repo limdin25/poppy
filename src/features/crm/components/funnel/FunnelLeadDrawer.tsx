@@ -17,7 +17,7 @@
 // a second copy would carry its own "already texted" guard and the lead would
 // get the video twice.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   X, Pencil, Send, Copy, Check, ExternalLink, Bell, Play, ArrowRight,
@@ -36,12 +36,25 @@ import {
   EVENT_LABELS, FULL_TIMELINE, boardKey, columnEnteredAt, stateMeta,
   type VslPage,
 } from '../../lib/funnelStages';
+import {
+  buildSentLog, countdownLabel, insideQuietHoursLondon, londonStamp,
+} from '../../lib/followUpTimeline';
+// The ONE copy of the follow-up schedule. The five-minute cron calls this same
+// function with the same page row, so what this drawer promises is exactly what
+// the lead gets. A second table of delays in the UI would drift the day either
+// side is edited, and the board would be quietly lying.
+import { nextSequenceStep, type SequenceVerdict } from '../../../../../api/lib/vsl-sequence';
+import type { VslSettings } from '../../../../../api/lib/vsl-settings';
 import type { Contact } from '../../types';
 
 interface EventRow {
   id: string;
   type: string;
-  meta: { pct?: number; bot?: boolean; from?: string; internal?: boolean } | null;
+  meta: {
+    pct?: number; bot?: boolean; from?: string; internal?: boolean;
+    /** auto_sms rows only: which rule fired, and which message of that rule. */
+    rule?: string; nudge?: number;
+  } | null;
   created_at: string;
 }
 
@@ -563,6 +576,8 @@ export default function FunnelLeadDrawer({
             </div>
           </div>
 
+          <FollowUps page={page} events={rows} />
+
           <p className="text-[12px] font-black mb-2">Every event</p>
           {rows === null ? (
             <p className="text-[12px] text-[#9CA3AF] italic">Loading…</p>
@@ -613,6 +628,191 @@ export default function FunnelLeadDrawer({
         />
       )}
       {smsTo && <ContactSmsModal contact={smsTo} onClose={() => setSmsTo(null)} />}
+    </div>
+  );
+}
+
+/**
+ * Follow-ups. Hugo 2026-07-27: "add log with timeline of what happened and
+ * what is next with time counting."
+ *
+ * Three things, in the order an agent asks for them: what has already gone out,
+ * what goes next and how long until it does, and when nothing is next, the
+ * honest reason.
+ *
+ * The schedule is not decided here. nextSequenceStep() owns every delay, the
+ * one-text-per-24h cap and the deepest-first ordering, and the five-minute cron
+ * calls that same function, so this panel cannot promise a text the cron will
+ * not send.
+ */
+function FollowUps({ page, events }: { page: VslPage; events: EventRow[] | null }) {
+  const [settings, setSettings] = useState<VslSettings | null>(null);
+  const [settingsNote, setSettingsNote] = useState('');
+  const [repliedAt, setRepliedAt] = useState<string | null>(null);
+
+  // ONE interval for the whole panel, cleared on unmount. The board is never
+  // refetched to make the countdown move: the labels are minute-granular, so
+  // re-reading the clock is the entire job.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(tick);
+  }, []);
+
+  // The delays are configurable per workspace, so the countdown has to read the
+  // live config rather than assume the defaults. Admin-gated endpoint: an agent
+  // who cannot see it still gets the sent log, with the gap explained.
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      const { data: sess } = await supabase.auth.getSession();
+      const res = await fetch('/api/admin/crm/vsl-settings', {
+        headers: { Authorization: `Bearer ${sess.session?.access_token}` },
+      }).catch(() => null);
+      if (dead) return;
+      if (!res || !res.ok) {
+        setSettingsNote(
+          res?.status === 403
+            ? 'The follow-up schedule is only visible to admins.'
+            : 'Could not load the follow-up schedule.',
+        );
+        return;
+      }
+      const d = (await res.json().catch(() => null)) as { settings?: VslSettings } | null;
+      if (!dead && d?.settings) setSettings(d.settings);
+      else if (!dead) setSettingsNote('Could not load the follow-up schedule.');
+    })();
+    return () => { dead = true; };
+  }, []);
+
+  // A reply stops the sequence for good. nextSequenceStep is pure and cannot
+  // read wk_sms_messages, so the last inbound is looked up here and handed to it
+  // as context, exactly as the cron does. Whether it counts (only inbound after
+  // the video went out does) stays the sequence's call, not this panel's.
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from('wk_sms_messages' as any) as any)
+        .select('created_at')
+        .eq('contact_id', page.contact_id)
+        .eq('direction', 'inbound')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (error) console.warn('[funnel-drawer] reply check failed:', error.message);
+      if (!dead) setRepliedAt((data?.[0]?.created_at as string | undefined) ?? null);
+    })();
+    return () => { dead = true; };
+  }, [page.contact_id]);
+
+  const log = useMemo(() => buildSentLog(page.automation, events), [page.automation, events]);
+
+  // The page row IS the sequence's input (SequencePage is structurally the
+  // stamps this row already carries), so nothing is copied or reshaped on the
+  // way in. Everything the schedule cannot see for itself is context: the reply,
+  // the master switch, the agent opt-out and the quiet-hours window.
+  const verdict = useMemo<SequenceVerdict | null>(() => {
+    if (!settings) return null;
+    return nextSequenceStep(page, {
+      rules: settings.rules,
+      now: new Date(now),
+      lastInboundAt: repliedAt,
+      enabled: settings.enabled,
+      agentDisabled: settings.agent_disabled.includes(page.agent_id),
+      insideQuietHours: insideQuietHoursLondon(settings.quiet_hours, now),
+    });
+  }, [page, settings, repliedAt, now]);
+
+  // What is coming, whether it goes out on this run or a later one.
+  const step = verdict?.due ?? verdict?.next ?? null;
+  // The reason sentence is worth printing whenever it says something the
+  // countdown does not: held by the 24h cap, quiet hours, replied, paid, capped.
+  const detail =
+    verdict && verdict.reason !== 'due' && verdict.reason !== 'waiting' ? verdict.detail : '';
+
+  return (
+    <div className="mb-5" data-testid="funnel-followups">
+      <p className="text-[12px] font-black mb-2">Follow-ups</p>
+
+      {log.length === 0 ? (
+        <p className="text-[12px] text-[#9CA3AF] italic" data-testid="funnel-followup-log">
+          No automatic messages have gone out yet.
+        </p>
+      ) : (
+        <ol className="space-y-1" data-testid="funnel-followup-log">
+          {log.map((s, i) => (
+            <li
+              key={`${s.key}-${s.at}-${i}`}
+              className="flex items-baseline justify-between gap-3 text-[12px]"
+            >
+              <span className="text-[#1A1A1A]">
+                {s.label}
+                {s.nudge > 1 && <span className="text-[#6B7280]"> (message {s.nudge})</span>}
+                {/* Reconstructed from the page counters, which remember only the
+                    last send per rule. Labelled rather than passed off as exact. */}
+                {!s.exact && (
+                  <span className="ml-1 text-[10px] text-[#9CA3AF]">(latest of this rule)</span>
+                )}
+              </span>
+              <span
+                className="text-[11px] text-[#6B7280] tabular-nums whitespace-nowrap"
+                title={londonStamp(s.at)}
+              >
+                {formatDateTime(s.at)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div
+        className="mt-2 rounded-[8px] border border-[#E5E7EB] bg-[#FAFAF7] px-2.5 py-2"
+        data-testid="funnel-followup-next"
+      >
+        {!settings ? (
+          <p className="text-[12px] text-[#9CA3AF] italic">
+            {settingsNote || 'Checking the schedule.'}
+          </p>
+        ) : (
+          <>
+            {step && (
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-[12px] text-[#1A1A1A]">
+                  <span className="font-semibold">Next:</span> {step.label}
+                </span>
+                <span
+                  className="text-[11px] font-semibold text-[#3C5A87] tabular-nums whitespace-nowrap"
+                  title={londonStamp(step.at)}
+                  data-testid="funnel-followup-countdown"
+                >
+                  {verdict?.due ? 'any minute now' : countdownLabel(step.at, now)}
+                </span>
+              </div>
+            )}
+            {step && !verdict?.due && (
+              <p
+                className="mt-0.5 text-[10.5px] text-[#9CA3AF] tabular-nums"
+                title={londonStamp(step.at)}
+              >
+                {formatDateTime(step.at)}
+              </p>
+            )}
+            {(detail || !step) && (
+              <p
+                className={`text-[12px] text-[#6B7280] leading-snug${step ? ' mt-1' : ''}`}
+                data-testid="funnel-followup-reason"
+              >
+                {detail || 'Nothing is due.'}
+                {/* The module says they replied; the drawer knows when, because
+                    it is the side that can read the inbox. */}
+                {verdict?.reason === 'replied' && repliedAt && (
+                  <span title={londonStamp(repliedAt)}> They replied on {formatDateTime(repliedAt)}.</span>
+                )}
+              </p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -4,19 +4,23 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { REVIEW_PLANS, requestsLabel } from './review-plans.js';
+import {
+  DEFAULT_VSL_RULES,
+  VSL_RULE_KEYS,
+  type VslRule,
+  type VslRuleKey,
+  type VslRules,
+} from './vsl-sequence.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-export interface VslRule {
-  enabled: boolean;
-  delay_minutes: number;   // wait this long in the state before the first nudge
-  template: string;        // {first} {business} {url} {agent}
-  max_sends: number;       // total nudges for this rule per page
-  repeat_hours: number;    // gap between nudge 1..N
-}
+// The rules themselves live in vsl-sequence.ts, which has no supabase import so
+// the cron, the tests and the funnel drawer can all read the same schedule.
+// Re-exported here because everything already imports rules from this file.
+export type { VslRule, VslRuleKey, VslRules };
 
 /** Which funnel events email. Every one still lands in the bell regardless —
  *  these only gate the email, so Hugo can dial the volume down without a
@@ -48,13 +52,7 @@ export interface VslSettings {
   proof_image_url: string;               // before/after proof shown below the CTA
   proof_caption: string;                 // one-line caption above the proof
   notify: VslNotifySettings;             // which events send an email
-  rules: {
-    sent_not_opened: VslRule;
-    opened_not_watched: VslRule;
-    watched_no_click: VslRule;
-    checkout_abandoned: VslRule;
-    paid_welcome: VslRule;
-  };
+  rules: VslRules;                       // the 14 follow-ups + the welcome
 }
 
 /** Watch-coverage markers the page reports. 50/90/100 are the ones Hugo asked
@@ -140,31 +138,12 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
     watched_50: true, watched_90: true, watched_100: true,
     cta_click: true, checkout_start: true, paid: true,
   },
-  rules: {
-    // Follow-ups stay to one short paragraph plus the link. A nudge that looks
-    // as considered as the first message reads as a campaign, not as a person
-    // checking back.
-    sent_not_opened: {
-      enabled: true, delay_minutes: 180, max_sends: 2, repeat_hours: 24,
-      template: 'Hi {first}, did you get a chance to watch your video? It only takes 90 seconds:\n{url}',
-    },
-    opened_not_watched: {
-      enabled: true, delay_minutes: 60, max_sends: 1, repeat_hours: 24,
-      template: "Hi {first}, the video is only 90 seconds and it shows exactly where {business} sits on Google right now:\n{url}",
-    },
-    watched_no_click: {
-      enabled: true, delay_minutes: 30, max_sends: 2, repeat_hours: 24,
-      template: 'Nice one {first}, saw you watched the video. Want me to get {business} set up? It takes 2 minutes:\n{url}',
-    },
-    checkout_abandoned: {
-      enabled: true, delay_minutes: 30, max_sends: 2, repeat_hours: 24,
-      template: "Hi {first}, you were nearly there. It's just £1 to start and we set the whole thing up for you:\n{url}",
-    },
-    paid_welcome: {
-      enabled: true, delay_minutes: 1, max_sends: 1, repeat_hours: 24,
-      template: "Welcome aboard {first}! We're setting {business} up now and your reviews will start rolling shortly.\n\nAny questions, just message me here any time.",
-    },
-  },
+  // Hugo's 14-step sequence plus the welcome. The old five rules are GONE, and
+  // deepMerge below only ever copies keys that exist in the defaults, so a saved
+  // blob still carrying `watched_no_click` ("saw you watched the video", which
+  // told a lead we were tracking them) is dropped on the next read rather than
+  // resurrected.
+  rules: DEFAULT_VSL_RULES,
 };
 
 function deepMerge(base: VslSettings, patch: Partial<VslSettings>): VslSettings {
@@ -178,8 +157,11 @@ function deepMerge(base: VslSettings, patch: Partial<VslSettings>): VslSettings 
     notify: { ...base.notify, ...(patch.notify || {}) },
     rules: { ...base.rules },
   };
-  const rules = (patch.rules || {}) as Partial<VslSettings['rules']>;
-  for (const k of Object.keys(base.rules) as (keyof VslSettings['rules'])[]) {
+  const rules = (patch.rules || {}) as Partial<VslRules>;
+  // VSL_RULE_KEYS, not Object.keys(patch): a key that is not in the sequence is
+  // not a rule the cron can run, so a stale one in a saved blob is dropped here
+  // rather than carried forever.
+  for (const k of VSL_RULE_KEYS) {
     merged.rules[k] = { ...base.rules[k], ...(rules[k] || {}) };
   }
   return merged;

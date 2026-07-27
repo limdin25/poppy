@@ -339,7 +339,9 @@ describe('automation cron', () => {
     expect(cron).toMatch(/settings\.enabled/)
     expect(cron).toMatch(/insideQuietHours/)
     expect(cron).toMatch(/agent_disabled\.includes/)
-    expect(cron).toMatch(/count >= rule\.max_sends/)
+    // max_sends moved into the shared schedule on 2026-07-27 (api/lib/vsl-sequence.ts)
+    // so the cron and the drawer count sends the same way. See tests/vsl-sequence.test.ts.
+    expect(read('api/lib/vsl-sequence.ts')).toMatch(/count >= rule\.max_sends/)
   })
 
   it('rides the existing send_sms job with reply-cancel', () => {

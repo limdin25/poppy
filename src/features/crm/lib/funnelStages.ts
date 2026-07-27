@@ -43,6 +43,10 @@ export interface VslPage {
   video_url: string | null;
   poster_url: string | null;
   no_website: boolean;
+  /** Per-rule follow-up bookkeeping the automation cron writes before it
+   *  enqueues each nudge: { rule_key: { count, last_at } }. The board selects
+   *  `*`, so it is already on every row the drawer gets. */
+  automation?: Record<string, { count?: number; last_at?: string }> | null;
   /** Joined live from wk_contacts — NOT snapshotted onto this row on purpose.
    *  The board exists to make missing owner/website obvious so an agent fills
    *  them in; a snapshot would keep showing the gap after they had. Null when

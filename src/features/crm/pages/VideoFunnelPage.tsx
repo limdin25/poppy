@@ -8,6 +8,7 @@ import {
   Clapperboard, Copy, Check, ExternalLink, Settings2, X, Loader2, Send, Eye, History, Film,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
+import { VSL_SEQUENCE } from '../../../../api/lib/vsl-sequence';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useSmsV2 } from '../store/SmsV2Store';
 import { useVideoScope } from '../lib/ViewAsContext';
@@ -571,13 +572,11 @@ const NOTIFY_LABELS: Record<string, string> = {
   paid: 'Paid',
 };
 
-const RULE_LABELS: Record<string, string> = {
-  sent_not_opened: 'Sent but never opened',
-  opened_not_watched: 'Opened but didn’t watch',
-  watched_no_click: 'Watched but didn’t click',
-  checkout_abandoned: 'Started checkout, didn’t pay',
-  paid_welcome: 'Paid — welcome message',
-};
+// From the sequence, never a hand-kept copy: this list went stale the moment
+// the rules were rebuilt and the drawer showed nothing for the new keys.
+const RULE_LABELS: Record<string, string> = Object.fromEntries(
+  VSL_SEQUENCE.map((r) => [r.key, r.label]),
+);
 
 function SettingsDrawer({ onClose }: { onClose: () => void }) {
   const [cfg, setCfg] = useState<Cfg | null>(null);

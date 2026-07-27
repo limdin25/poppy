@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Clapperboard, Check, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
+import { VSL_SEQUENCE } from '../../../../../api/lib/vsl-sequence';
 
 interface Rule {
   enabled: boolean;
@@ -32,21 +33,13 @@ interface Templates {
 
 /** Left→right through the funnel, so the page reads as the journey the lead
  *  actually takes rather than as whatever order the JSON happens to be in. */
-const RULE_ORDER = [
-  'sent_not_opened',
-  'opened_not_watched',
-  'watched_no_click',
-  'checkout_abandoned',
-  'paid_welcome',
-] as const;
-
-const RULE_LABEL: Record<string, string> = {
-  sent_not_opened: 'They never opened it',
-  opened_not_watched: 'Opened, didn’t watch',
-  watched_no_click: 'Watched, didn’t click',
-  checkout_abandoned: 'Started checkout, didn’t pay',
-  paid_welcome: 'Paid — welcome message',
-};
+// Order and wording BOTH come from the sequence itself. This file used to keep
+// its own list of five keys, so the 2026-07-27 rules rendered as an empty page:
+// a second copy of the schedule is a second thing to forget to update.
+const RULE_ORDER = VSL_SEQUENCE.map((r) => r.key);
+const RULE_LABEL: Record<string, string> = Object.fromEntries(
+  VSL_SEQUENCE.map((r) => [r.key, r.label]),
+);
 
 const RULE_WHEN = (r: Rule): string => {
   const first = r.delay_minutes >= 60

@@ -32,13 +32,17 @@ describe('the Video template list', () => {
     expect(list).toMatch(/send_template_no_site/);
   });
 
-  it('shows every automatic follow-up too, so nothing sends unseen', () => {
-    for (const rule of [
-      'sent_not_opened', 'opened_not_watched', 'watched_no_click',
-      'checkout_abandoned', 'paid_welcome',
-    ]) {
-      expect(list).toContain(rule);
-    }
+  it('shows every automatic follow-up too, so nothing sends unseen', async () => {
+    // This used to grep for five hardcoded keys. It kept its own list, so when
+    // the sequence was rebuilt on 2026-07-27 the page rendered NOTHING for the
+    // new rules and an agent reading it saw an empty follow-up section. Both the
+    // order and the wording now come from the sequence, so the page cannot fall
+    // behind the schedule again.
+    expect(list).toMatch(/RULE_ORDER = VSL_SEQUENCE\.map/);
+    expect(list).toMatch(/VSL_SEQUENCE\.map\(\(r\) => \[r\.key, r\.label\]\)/);
+    const { VSL_SEQUENCE } = await import('../api/lib/vsl-sequence');
+    expect(VSL_SEQUENCE.length).toBeGreaterThanOrEqual(15);
+    for (const r of VSL_SEQUENCE) expect(r.label.length).toBeGreaterThan(3);
   });
 
   it('says which follow-ups are switched off rather than hiding them', () => {
