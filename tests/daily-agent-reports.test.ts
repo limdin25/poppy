@@ -243,3 +243,156 @@ describe('splitReport — parsing the model output', () => {
     expect(r.flags).toHaveLength(1)
   })
 })
+
+// Hugo 2026-07-27, after the first full transcript audit of a calling day:
+//   "please also make sure daily feedback reports all those things as well, on
+//    what needs to improve together with what we already tell them."
+//
+// The report used to grade whatever the model noticed that day. The standing
+// coaching (the six script steps) now gets counted in code and graded every
+// day, so it cannot quietly drop off because the day went well.
+
+describe('the script check', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  const conv = (agent: string[], caller = ['Hello.', 'Yeah go on then.']) => ({
+    id: 'c1', started_at: '2026-07-27T10:00:00Z', duration_sec: 90, status: 'completed',
+    disposition: null, company: 'Acme Plumbing',
+    lines: [
+      { speaker: 'caller', body: caller[0] ?? 'Hello.' },
+      ...agent.map((b) => ({ speaker: 'agent', body: b })),
+      { speaker: 'caller', body: caller[1] ?? 'Ok.' },
+    ],
+  })
+
+  it('grades against the live script, not a copy pasted into the code', () => {
+    expect(cron).toMatch(/from\('wk_call_scripts'\)/)
+    expect(cron).toMatch(/THE SCRIPT THEY ARE MEANT TO FOLLOW/)
+  })
+
+  it('counts the six steps in code so the model never tallies', () => {
+    expect(cron).toMatch(/export function scriptCheck/)
+    for (const f of [
+      'said_who_they_are', 'said_recording_notice', 'name_before_recording',
+      'reached_hook', 'reached_offer', 'used_close',
+      'asked_for_their_number', 'read_out_monthly_tiers',
+    ]) expect(cron).toContain(f)
+  })
+
+  it('catches the opener inverted — recording line first, name never', async () => {
+    // Marr, 2026-07-27: said the recording line in 57 of 63 conversations and
+    // his own name in 2. That inversion is the single biggest thing costing us
+    // conversations, so it has to be its own number.
+    const { scriptCheck } = await load()
+    const bad = scriptCheck([conv([
+      "Hey, just a quick one, is this Dave from Acme Plumbing?",
+      "Just so you know this call is being recorded for training purposes.",
+    ])] as never)
+    expect(bad.said_recording_notice).toBe(1)
+    expect(bad.said_who_they_are).toBe(0)
+    expect(bad.name_before_recording).toBe(0)
+
+    const good = scriptCheck([conv([
+      "Hi, quick one, is that Dave? It's Pedro from HeyElsie.",
+      "Just so you know the call's recorded for training.",
+    ])] as never)
+    expect(good.name_before_recording).toBe(1)
+  })
+
+  it('does not credit the opener when the name comes AFTER the recording line', async () => {
+    const { scriptCheck } = await load()
+    const r = scriptCheck([conv([
+      "Just so you know this call is recorded for training.",
+      "My name is Pedro and I'm from HeyElsie.",
+    ])] as never)
+    expect(r.said_who_they_are).toBe(1)
+    expect(r.name_before_recording).toBe(0) // said it, but too late to help
+  })
+
+  it('flags asking for a number, and does NOT flag promising to send to it', async () => {
+    // Hugo 2026-07-27: "we don't need to ask for number because we are already
+    // calling the mobile number". Telling them it is on its way is the script;
+    // asking them to read it out is the rule break.
+    const { scriptCheck } = await load()
+    expect(scriptCheck([conv(["Perfect, is this the best number for a text?"])] as never)
+      .asked_for_their_number).toBe(1)
+    expect(scriptCheck([conv(["I'll get it sent across to this number shortly."])] as never)
+      .asked_for_their_number).toBe(0)
+  })
+
+  it('flags reading out the monthly tiers', async () => {
+    const { scriptCheck } = await load()
+    expect(scriptCheck([conv(["It's £99 a month for the basic one."])] as never)
+      .read_out_monthly_tiers).toBe(1)
+    expect(scriptCheck([conv(["You can start it yourself from there for a quid."])] as never)
+      .read_out_monthly_tiers).toBe(0)
+  })
+
+  it('grades live conversations only, never voicemail', async () => {
+    const { scriptCheck } = await load()
+    const vm = {
+      id: 'v1', started_at: '2026-07-27T10:00:00Z', duration_sec: 20, status: 'completed',
+      disposition: 'Voicemail', company: 'Acme',
+      lines: [
+        { speaker: 'caller', body: 'Please leave a message after the tone.' },
+        { speaker: 'agent', body: 'Hi, just so you know this call is recorded.' },
+      ],
+    }
+    expect(scriptCheck([vm] as never).conversations_graded).toBe(0)
+  })
+})
+
+describe('dialling pace', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  const call = (startIso: string, sec: number) => ({
+    id: startIso, started_at: startIso, duration_sec: sec, status: 'completed',
+    disposition: null, company: null, lines: [],
+  })
+
+  it('measures the gaps between calls, not just the total', async () => {
+    // Pedro, 2026-07-27: 49 dials to Marr's 177, and a two-hour hole after
+    // 13:05 with 1,185 leads waiting. Volume is half the job and the report
+    // was blind to it.
+    const { paceStats } = await load()
+    const p = paceStats([
+      call('2026-07-27T09:00:00Z', 60),
+      call('2026-07-27T09:05:00Z', 60),
+      call('2026-07-27T11:05:00Z', 60),
+    ] as never)
+    expect(p.dials).toBe(3)
+    expect(p.longest_gap_minutes).toBe(119)
+    expect(p.gaps_over_10_min).toBe(1)
+    expect(p.minutes_on_calls).toBe(3)
+  })
+
+  it('survives a day with no calls at all', async () => {
+    const { paceStats } = await load()
+    expect((await load()).paceStats([] as never).dials).toBe(0)
+  })
+
+  it('tells the model a single long gap is a lunch break, not slacking', () => {
+    expect(cron).toMatch(/lunch break and is theirs to take/i)
+  })
+})
+
+describe('the report always covers the standing coaching', () => {
+  it('has a Script check section that runs even on a good day', () => {
+    expect(cron).toMatch(/\*\*Script check\*\*/)
+    expect(cron).toMatch(/even on a good day/i)
+    expect(cron).toMatch(/does not get dropped/i)
+  })
+
+  it('reports pace in the opening paragraph, not just call quality', () => {
+    expect(cron).toMatch(/A perfect script at 49 dials loses to a rough one at 177/)
+  })
+
+  it('praises the steps they hit rather than listing only failures', () => {
+    expect(cron).toMatch(/do not only list failures/i)
+  })
+
+  it('admits the counts come from imperfect speech recognition', () => {
+    // Overstating a derived number to an agent who knows what they said is how
+    // a coaching report loses its authority.
+    expect(cron).toMatch(/close, not exact/i)
+    expect(cron).toMatch(/believe the transcripts/i)
+  })
+})

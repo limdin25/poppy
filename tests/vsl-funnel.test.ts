@@ -522,7 +522,11 @@ describe('render pipeline — migration + worker', () => {
   it('worker claims atomically and requeues stale renders', () => {
     expect(worker).toMatch(/render_status=eq\.queued/) // claim is conditional
     expect(worker).toMatch(/requeueStale/)
-    expect(worker).toMatch(/STALE_MIN = 45/)
+    // 25, not 45. A render takes 6 to 8 minutes, so 45 left a card frozen on
+    // "rendering" for the best part of an hour when the worker died mid-job
+    // (2026-07-27: the VPS was at load 9.4 and its own mark-failed write threw,
+    // so nothing recorded the failure and only this sweep could rescue it).
+    expect(worker).toMatch(/STALE_MIN = 25/)
   })
 
   it('worker uploads to vsl-videos and writes video_url + ready', () => {

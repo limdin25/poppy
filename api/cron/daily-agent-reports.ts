@@ -138,6 +138,84 @@ function computeStats(calls: CallRow[]) {
   };
 }
 
+/** The six script steps, counted in code so the report grades the same way
+ *  every day and the model never has to tally.
+ *
+ *  Hugo 2026-07-27: "make sure daily feedback reports all those things as well,
+ *  what needs to improve together with what we already tell them."
+ *
+ *  These run over ASR text, so they are close but not perfect. The model sees
+ *  the transcripts too and is told to believe those over the counter when the
+ *  two disagree.
+ */
+const SAYS_WHO_I_AM = /my name is|it'?s \w+ (from|with|here)|i'?m \w+ from|from hey ?els?ie|hey ?els?ie|from l\.? ?c\b/i;
+const SAYS_RECORDING = /record(ed|ing) for|being recorded|call'?s recorded|calls? (is|are) recorded/i;
+const SAYS_HOOK = /new to the area|only got .{0,12}reviews|only have .{0,12}reviews/i;
+const SAYS_OFFER = /90[- ]second|ninety second|audit/i;
+const SAYS_CLOSE = /will you watch|you'?ll watch it|watch it\?/i;
+/** A question asking for their number. "I'll send it to this number" is fine
+ *  and must not match — we dialled their mobile, we already have it. */
+const ASKS_FOR_NUMBER = /(best|right|correct|good) number|what'?s your (mobile|number)|which number|number to (text|reach) you|number for a text/i;
+const READS_OUT_TIERS = /£ ?(99|179|279)|\b(99|179|279) (a|per) month/i;
+
+export function scriptCheck(calls: CallRow[]) {
+  const convs = calls.filter((c) => c.lines?.length && agentWords(c) > 0 && !isVoicemail(c));
+  const agentLines = (c: CallRow) =>
+    (c.lines ?? []).filter((l) => l.speaker === 'agent').map((l) => (l.body ?? '').trim());
+  const any = (c: CallRow, re: RegExp) => agentLines(c).some((b) => re.test(b));
+  const firstIdx = (c: CallRow, re: RegExp) => agentLines(c).findIndex((b) => re.test(b));
+  const n = (f: (c: CallRow) => boolean) => convs.filter(f).length;
+
+  return {
+    conversations_graded: convs.length,
+    // Step 1. Two halves, and the ORDER between them is the whole point: the
+    // name earns the right to say the recording line, not the other way round.
+    said_who_they_are: n((c) => any(c, SAYS_WHO_I_AM)),
+    said_recording_notice: n((c) => any(c, SAYS_RECORDING)),
+    name_before_recording: n((c) => {
+      const a = firstIdx(c, SAYS_WHO_I_AM);
+      const b = firstIdx(c, SAYS_RECORDING);
+      return a !== -1 && (b === -1 || a <= b);
+    }),
+    // Steps 2 to 4.
+    reached_hook: n((c) => any(c, SAYS_HOOK)),
+    reached_offer: n((c) => any(c, SAYS_OFFER)),
+    used_close: n((c) => any(c, SAYS_CLOSE)),
+    // Rule breaks. Both should be zero.
+    asked_for_their_number: n((c) => any(c, ASKS_FOR_NUMBER)),
+    read_out_monthly_tiers: n((c) => any(c, READS_OUT_TIERS)),
+  };
+}
+
+/** Dialling pace and dead time. A perfect script at 49 dials loses to a rough
+ *  one at 177, so the report has to see both. Gaps are measured between the end
+ *  of one call and the start of the next; a lunch break shows up here as one
+ *  long gap, which is exactly what we want the agent to see. */
+export function paceStats(calls: CallRow[]) {
+  const t = calls
+    .filter((c) => c.started_at)
+    .map((c) => ({
+      start: new Date(c.started_at as string).getTime(),
+      end: new Date(c.started_at as string).getTime() + (c.duration_sec ?? 0) * 1000,
+    }))
+    .sort((a, b) => a.start - b.start);
+  if (t.length === 0) {
+    return { dials: 0, minutes_on_calls: 0, longest_gap_minutes: 0, gaps_over_10_min: 0, idle_minutes: 0, dials_per_hour: null as number | null };
+  }
+  const gaps: number[] = [];
+  for (let i = 1; i < t.length; i += 1) gaps.push(Math.max(0, (t[i].start - t[i - 1].end) / 60_000));
+  const spanMin = (t[t.length - 1].end - t[0].start) / 60_000;
+  const onCalls = t.reduce((s, x) => s + (x.end - x.start) / 60_000, 0);
+  return {
+    dials: calls.length,
+    minutes_on_calls: Math.round(onCalls),
+    longest_gap_minutes: Math.round(Math.max(0, ...gaps)),
+    gaps_over_10_min: gaps.filter((g) => g > 10).length,
+    idle_minutes: Math.round(gaps.reduce((s, g) => s + g, 0)),
+    dials_per_hour: spanMin > 0 ? Number((calls.length / (spanMin / 60)).toFixed(1)) : null,
+  };
+}
+
 /** Transcripts of real conversations only — voicemails carry no coaching signal. */
 function transcriptBlock(calls: CallRow[]): string {
   return calls
@@ -170,10 +248,13 @@ Never leave one of these out because the day went well otherwise.
 
 Ground every point in what actually happened. Quote the agent's own words, and cite the company name so they can find the call. Never invent a quote. The statistics are given to you and are correct — never recompute or contradict them.
 
-Write in British English, plain language, second person ("you"). Markdown, no title heading, roughly 250-400 words, in this order:
+You are given THE SCRIPT the agent is supposed to follow, and a step-by-step count of how often they actually reached each part of it. Grade them against that script every single day, even on a good day. This is the standing coaching, and it does not get dropped because the day went well or because you found something more interesting to write about.
 
-**Today** — two or three sentences on how the day actually went.
+Write in British English, plain language, second person ("you"). Markdown, no title heading, roughly 300-450 words, in this order:
+
+**Today** — two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, and any long gap with no calls. A perfect script at 49 dials loses to a rough one at 177, so say which of the two is holding them back.
 **What worked** — up to three specific things, each with a quote or a company name.
+**Script check** — go through the six steps in order and give the number for each: opener (name and HeyElsie BEFORE the recording line), hook, offer, the close, and the two rule breaks (asking for their number, reading out monthly prices). One line per step, the count, then a word on whether that is good or not. Where a step is being missed, quote the words they used instead. Praise the steps they are hitting; do not only list failures.
 **Fix tomorrow** — every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
 **Tomorrow's one thing** — a single sentence naming the one change that would make the biggest difference.
 
@@ -225,6 +306,9 @@ async function writeReport(
   dateKey: string,
   stats: ReturnType<typeof computeStats>,
   transcripts: string,
+  script: string,
+  adherence: ReturnType<typeof scriptCheck>,
+  pace: ReturnType<typeof paceStats>,
 ): Promise<string> {
   const prompt = `Agent: ${agentName}
 Date: ${dateKey}
@@ -236,6 +320,23 @@ Notes on the stats:
 - "dead_air" = a human answered but the agent's audio never reached them. This is a KNOWN SYSTEM FAULT, not the agent's fault. If it is above zero, say so explicitly and reassure them it is not counted against them.
 - "conversations" excludes voicemail. "real_conversations" are those lasting 60s or more.
 - "talk_ratio" is agent words per lead word. Above ~1.8 means they are talking over the prospect.
+
+DIALLING PACE (authoritative):
+${JSON.stringify(pace, null, 2)}
+
+Notes on pace:
+- "idle_minutes" is the total time between calls. One long gap is a lunch break and is theirs to take; say so rather than treating it as slacking. Several long gaps, or a "longest_gap_minutes" running into hours, is the day leaking away and should be named plainly.
+
+THE SCRIPT THEY ARE MEANT TO FOLLOW:
+${script || '(no script on file)'}
+
+SCRIPT STEPS REACHED, out of ${adherence.conversations_graded} live conversations:
+${JSON.stringify(adherence, null, 2)}
+
+Notes on the script counts:
+- These are detected from the transcript text, which comes from imperfect speech recognition. They are close, not exact. Where a count disagrees with what you can plainly read in the transcripts, believe the transcripts and say what you actually saw.
+- "name_before_recording" is the one that matters most in the opener. Saying the recording notice without first saying who you are and that you are from HeyElsie makes the call sound like a scam, and prospects react to it.
+- "asked_for_their_number" and "read_out_monthly_tiers" are rule breaks and should both be zero. We dial their mobile, so we already have their number; asking for it makes us sound like we bought a list.
 
 TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS (voicemails excluded):
 ${transcripts || '(no live conversations today)'}`;
@@ -306,10 +407,22 @@ export default async function handler(
     .or([`workspace_role.eq.agent`, `id.in.(${limitIds.join(',') || '00000000-0000-0000-0000-000000000000'})`].join(','));
 
   const roster = (profiles ?? []).filter((p) => !hidden.has(p.id));
+
+  // The script the report grades against. Read live rather than hardcoded, so
+  // an edit in the CRM changes tomorrow's coaching with no deploy.
+  const { data: scriptRow } = await supabase
+    .from('wk_call_scripts')
+    .select('body_md')
+    .eq('is_default', true)
+    .maybeSingle();
+  const script = (scriptRow?.body_md as string | undefined) ?? '';
+
   const written: Array<{
     name: string;
     body: string;
-    stats: ReturnType<typeof computeStats>;
+    stats: ReturnType<typeof computeStats>
+      & ReturnType<typeof paceStats>
+      & { script_check: ReturnType<typeof scriptCheck> };
     flags: ConductFlag[];
   }> = [];
 
@@ -350,10 +463,13 @@ export default async function handler(
       lines: byCall.get(c.id) ?? [],
     }));
 
-    const stats = computeStats(rows);
+    const stats = { ...computeStats(rows), ...paceStats(rows), script_check: scriptCheck(rows) };
     let raw: string;
     try {
-      raw = await writeReport(name, dateKey, stats, transcriptBlock(rows));
+      raw = await writeReport(
+        name, dateKey, computeStats(rows), transcriptBlock(rows),
+        script, scriptCheck(rows), paceStats(rows),
+      );
     } catch (e) {
       console.error(`[daily-report] ${name} failed:`, e);
       continue;
@@ -412,7 +528,22 @@ export default async function handler(
           (r) => `<div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">
             <h3 style="margin:0 0 8px">${r.name}</h3>
             <p style="color:#6B7280;font-size:13px;margin:0 0 12px">
-              ${r.stats.dials} dials · ${r.stats.conversations} conversations · ${r.stats.interested + r.stats.booked} interested/booked · ${r.stats.talk_minutes} min talking
+              ${r.stats.dials} dials · ${r.stats.conversations} conversations · ${r.stats.interested + r.stats.booked} interested/booked · ${r.stats.talk_minutes} min talking · ${r.stats.idle_minutes} min idle
+            </p>
+            <p style="color:#6B7280;font-size:12px;margin:0 0 12px">
+              Script, out of ${r.stats.script_check.conversations_graded}:
+              opener ${r.stats.script_check.name_before_recording} ·
+              hook ${r.stats.script_check.reached_hook} ·
+              offer ${r.stats.script_check.reached_offer} ·
+              close ${r.stats.script_check.used_close}${
+                r.stats.script_check.asked_for_their_number > 0
+                  ? ` · <span style="color:#B91C1C">asked for a number ${r.stats.script_check.asked_for_their_number}</span>`
+                  : ''
+              }${
+                r.stats.script_check.read_out_monthly_tiers > 0
+                  ? ` · <span style="color:#B91C1C">read out tiers ${r.stats.script_check.read_out_monthly_tiers}</span>`
+                  : ''
+              }
             </p>
             <div style="font-size:14px;line-height:1.55;white-space:pre-wrap">${r.body
               .replace(/&/g, '&amp;').replace(/</g, '&lt;')
