@@ -41,6 +41,32 @@ describe('boardKey — the rendering carve-out', () => {
     expect(boardKey({ state: 'created', render_status: 'failed' })).toBe('created')
   })
 
+  it('carves playing out of opened the moment they press play', async () => {
+    // A lead who watched 26% sat in Opened looking identical to one who tapped
+    // and left, so the board read as broken (Hugo 2026-07-27).
+    const { boardKey } = await load()
+    expect(boardKey({ state: 'opened', render_status: 'ready', play_at: null })).toBe('opened')
+    expect(boardKey({ state: 'opened', render_status: 'ready', play_at: '2026-07-27T16:34:13Z' }))
+      .toBe('playing')
+  })
+
+  it('degrades to opened when the caller never selected play_at', async () => {
+    // The inbox uses a short select. If it drops the column, every playing lead
+    // must badge as Opened — never crash, never guess.
+    const { boardKey } = await load()
+    expect(boardKey({ state: 'opened', render_status: null })).toBe('opened')
+  })
+
+  it('does NOT drag a lead back from a later stage into playing', async () => {
+    // play_at is set forever after. Keying 'playing' off it alone would pull a
+    // paying customer back to the middle of the board.
+    const { boardKey } = await load()
+    const played = { play_at: '2026-07-27T16:34:13Z', render_status: null }
+    expect(boardKey({ ...played, state: 'watched' })).toBe('watched')
+    expect(boardKey({ ...played, state: 'cta_clicked' })).toBe('cta_clicked')
+    expect(boardKey({ ...played, state: 'paid' })).toBe('paid')
+  })
+
   it('NEVER calls an already-sent page "ready to send"', async () => {
     // render_status never resets after sending. Keying "waiting on a human" off
     // it alone would badge every sent lead as waiting, forever — the single
@@ -62,6 +88,7 @@ describe('columnEnteredAt — "when did it move to this column"', () => {
       [{ render_status: 'ready', render_done_at: '2026-07-21T11:00:00Z' }, 'render_ready', '2026-07-21T11:00:00Z'],
       [{ state: 'sent', sent_at: '2026-07-22T09:00:00Z' }, 'sent', '2026-07-22T09:00:00Z'],
       [{ state: 'opened', first_opened_at: '2026-07-22T10:00:00Z' }, 'opened', '2026-07-22T10:00:00Z'],
+      [{ state: 'opened', play_at: '2026-07-22T10:30:00Z' }, 'playing', '2026-07-22T10:30:00Z'],
       [{ state: 'watched', watched_at: '2026-07-22T11:00:00Z' }, 'watched', '2026-07-22T11:00:00Z'],
       [{ state: 'cta_clicked', cta_clicked_at: '2026-07-22T12:00:00Z' }, 'cta_clicked', '2026-07-22T12:00:00Z'],
       [{ state: 'checkout_started', checkout_started_at: '2026-07-22T13:00:00Z' }, 'checkout_started', '2026-07-22T13:00:00Z'],
@@ -118,7 +145,12 @@ describe('the module stays unit-testable', () => {
 
   it('exposes one colour per stage so board and inbox agree', async () => {
     const { STATES, stateMeta } = await load()
-    expect(STATES).toHaveLength(9)
+    expect(STATES).toHaveLength(10)
+    // Playing sits BETWEEN opened and watched, or the board reads out of order.
+    const keys = STATES.map((s) => s.key)
+    expect(keys.indexOf('playing')).toBe(keys.indexOf('opened') + 1)
+    expect(keys.indexOf('watched')).toBe(keys.indexOf('playing') + 1)
+    expect(new Set(keys.map((k) => stateMeta(k).color)).size).toBe(STATES.length)
     expect(stateMeta('paid').label).toBe('Paid 🎉')
     // Unknown key degrades instead of throwing.
     expect(stateMeta('nonsense').color).toBe('#9CA3AF')

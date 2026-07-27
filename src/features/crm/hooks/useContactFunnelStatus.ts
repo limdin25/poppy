@@ -35,6 +35,9 @@ interface PageRow {
   slug: string;
   state: string;
   render_status: 'queued' | 'rendering' | 'ready' | 'failed' | null;
+  /** Selected because boardKey carves 'playing' out of 'opened' with it. Drop
+   *  it from the select and every playing lead silently badges as Opened. */
+  play_at: string | null;
   watched_pct: number | null;
   calc_at: string | null;
   calc_count: number | null;
@@ -65,7 +68,7 @@ export function useContactFunnelStatus(contactIds: string[]): Map<string, Contac
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data, error } = await (supabase.from('wk_vsl_pages' as any) as any)
-              .select('contact_id, slug, state, render_status, watched_pct, calc_at, calc_count')
+              .select('contact_id, slug, state, render_status, play_at, watched_pct, calc_at, calc_count')
               .in('contact_id', ids);
             if (error) {
               console.warn('[useContactFunnelStatus] batch failed:', error.message);

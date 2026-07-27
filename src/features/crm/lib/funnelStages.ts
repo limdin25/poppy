@@ -54,14 +54,18 @@ export interface VslPage {
   wk_contacts?: { owner_name: string | null; website: string | null } | null;
 }
 
-// 'rendering' and 'render_ready' are VIRTUAL groups carved out of state
-// 'created' by render_status — the review step before anything is sent.
+// Three VIRTUAL groups, carved out of a stored state rather than stored
+// themselves:
+//   'rendering' / 'render_ready' — out of 'created', by render_status. The
+//                                  review step before anything is sent.
+//   'playing'                    — out of 'opened', by play_at. See below.
 export const STATES: Array<{ key: string; label: string; color: string }> = [
   { key: 'created', label: 'Created', color: '#9CA3AF' },
   { key: 'rendering', label: 'Rendering 🎬', color: '#94A3B8' },
   { key: 'render_ready', label: 'Ready to send', color: '#64748B' },
   { key: 'sent', label: 'Video sent', color: '#0EA5E9' },
   { key: 'opened', label: 'Opened', color: '#38BDF8' },
+  { key: 'playing', label: 'Playing', color: '#14B8A6' },
   { key: 'watched', label: 'Watched', color: '#F59E0B' },
   { key: 'cta_clicked', label: 'Clicked', color: '#F97316' },
   { key: 'checkout_started', label: 'Checkout', color: '#A855F7' },
@@ -69,14 +73,29 @@ export const STATES: Array<{ key: string; label: string; color: string }> = [
 ];
 
 /** The minimum a row needs for boardKey — so the inbox can call this with a
- *  5-column select instead of the whole page row. */
-export type StageShape = Pick<VslPage, 'state' | 'render_status'>;
+ *  short select instead of the whole page row. `play_at` is optional so a
+ *  caller that has not selected it degrades to 'opened' rather than failing. */
+export type StageShape = Pick<VslPage, 'state' | 'render_status'> & {
+  play_at?: string | null;
+};
 
 export function boardKey(p: StageShape): string {
-  if (p.state !== 'created') return p.state;
-  if (p.render_status === 'queued' || p.render_status === 'rendering') return 'rendering';
-  if (p.render_status === 'ready') return 'render_ready';
-  return 'created'; // incl. failed — the card wears the error
+  if (p.state === 'created') {
+    if (p.render_status === 'queued' || p.render_status === 'rendering') return 'rendering';
+    if (p.render_status === 'ready') return 'render_ready';
+    return 'created'; // incl. failed — the card wears the error
+  }
+  /* Pressing play IS movement, and the board has to show it. Without this a
+     lead who watched 26% sat in Opened looking identical to one who tapped the
+     link and left, so the board read as broken (Hugo 2026-07-27: "if Ignition
+     was watched why it under opened").
+
+     Deliberately NOT solved by lowering the watched threshold: someone who
+     quit at 26% and someone who sat through 96% are different phone calls, and
+     merging them makes Watched useless for choosing who to ring. Playing is
+     "started the pitch", Watched stays "got through it". */
+  if (p.state === 'opened' && p.play_at) return 'playing';
+  return p.state;
 }
 
 export function stateMeta(key: string): { label: string; color: string } {
@@ -146,6 +165,7 @@ export function columnEnteredAt(p: VslPage): { key: string; label: string; at: s
     : key === 'render_ready' ? pick(p.render_done_at)
     : key === 'sent' ? pick(p.sent_at)
     : key === 'opened' ? pick(p.first_opened_at)
+    : key === 'playing' ? pick(p.play_at)
     : key === 'watched' ? pick(p.watched_at)
     : key === 'cta_clicked' ? pick(p.cta_clicked_at)
     : key === 'checkout_started' ? pick(p.checkout_started_at)

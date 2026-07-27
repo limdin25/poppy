@@ -103,13 +103,16 @@ describe('every funnel stage stays on screen', () => {
     expect(board).toMatch(/data-testid=\{`funnel-col-\$\{s\.key\}`\}/)
   })
 
-  it('still renders all nine stages', () => {
+  it('still renders every stage, in order', () => {
     const lib = read('src/features/crm/lib/funnelStages.ts')
     // Scope to STATES — STAGE_STAMPS uses the same `{ key: …, label: … }` shape.
     const statesBlock = lib.split('export const STATES')[1].split('];')[0]
     const keys = [...statesBlock.matchAll(/\{ key: '([a-z_]+)', label:/g)].map((m) => m[1])
     expect(keys).toEqual([
       'created', 'rendering', 'render_ready', 'sent', 'opened',
+      // 'playing' added 2026-07-27: pressing play is movement, and a 26%
+      // viewer parked in Opened made the whole board look broken.
+      'playing',
       'watched', 'cta_clicked', 'checkout_started', 'paid',
     ])
   })

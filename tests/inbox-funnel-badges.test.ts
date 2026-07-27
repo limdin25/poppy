@@ -30,7 +30,14 @@ describe('useContactFunnelStatus', () => {
   })
 
   it('selects only what a badge needs', () => {
-    expect(funnelHook).toMatch(/contact_id, slug, state, render_status, watched_pct/)
+    expect(funnelHook).toMatch(/contact_id, slug, state, render_status, play_at, watched_pct/)
+  })
+
+  it('selects play_at, or every playing lead silently badges as Opened', () => {
+    // boardKey carves 'playing' out of 'opened' with play_at. The column is
+    // optional in StageShape precisely so a missing select degrades instead of
+    // crashing, which is exactly what makes this easy to drop by accident.
+    expect(funnelHook).toMatch(/\.select\('[^']*play_at[^']*'\)/)
   })
 
   it('derives readiness from the SHARED rule, never a local render_status check', () => {
