@@ -21,12 +21,53 @@ describe('the video button', () => {
     expect(videoBtn).toMatch(/Send as video/)
   })
 
-  it('keeps the two-step review — make it, watch it, THEN text it', () => {
-    // The relabel must not turn the collapsed button into a one-tap send.
-    expect(videoBtn).toMatch(/Make their video/)
-    expect(videoBtn).toMatch(/Watch it first/)
-    expect(videoBtn).toMatch(/Text the video/)
+  it('opens the panel rather than firing a send on the first tap', () => {
     expect(videoBtn).toMatch(/onClick=\{prepare\}/)
+  })
+
+  // Hugo 2026-07-27: "it should say make their video and send when ready. The
+  // agent knows exactly what's gonna happen." The agent is on the phone; a
+  // ~10-minute render means a second button is a button nobody comes back for.
+  describe('the one-button flow', () => {
+    it('says what will happen, not just what it does now', () => {
+      // &amp; in the source; the agent reads "&".
+      expect(videoBtn).toMatch(/Make their video &(amp;)? send when ready/)
+    })
+
+    it('drops the dead "Text the video" button', () => {
+      // It sat there disabled until a video existed, which read as broken.
+      expect(videoBtn).not.toMatch(/Text the video/)
+    })
+
+    it('still lets the agent watch it before it goes, and pull the send back', () => {
+      expect(videoBtn).toMatch(/Watch it first/)
+      expect(videoBtn).toMatch(/Cancel auto-send/)
+    })
+
+    it('sends immediately — no arming — when the video already exists', () => {
+      expect(videoBtn).toMatch(/Send it now/)
+    })
+
+    it('shows the message that will go, and lets the agent change it', () => {
+      expect(videoBtn).toMatch(/<textarea/)
+      expect(videoBtn).toMatch(/data-testid="video-send-body"/)
+    })
+  })
+
+  describe('the channel picker', () => {
+    it('names the channel and the address it is going to', () => {
+      expect(videoBtn).toMatch(/data-testid="video-channel"/)
+      expect(videoBtn).toMatch(/SEND_CHANNEL_LABEL/)
+    })
+
+    it('has the Change dropdown Hugo asked for', () => {
+      expect(videoBtn).toMatch(/Change/)
+      expect(videoBtn).toMatch(/channelOptions|useSendChannels/)
+    })
+
+    it('explains why a channel is off instead of just grey', () => {
+      expect(videoBtn).toMatch(/o\.reason/)
+    })
   })
 
   it('guards sends at MODULE scope, now that it is mounted twice', () => {
@@ -38,9 +79,9 @@ describe('the video button', () => {
   })
 
   it('releases the in-flight guard even when a send throws', () => {
-    // Scope to textIt() — prepare() has its own finally block first.
-    const textIt = videoBtn.split('async function textIt(')[1] ?? ''
-    const finallyBlock = textIt.split('} finally {')[1]?.split('\n  }')[0] ?? ''
+    // Scope to sendNow() — prepare() has its own finally block first.
+    const sendNow = videoBtn.split('async function sendNow(')[1] ?? ''
+    const finallyBlock = sendNow.split('} finally {')[1]?.split('\n  }')[0] ?? ''
     expect(finallyBlock).toMatch(/sendInFlight\.delete\(id\)/)
   })
 })

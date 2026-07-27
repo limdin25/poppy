@@ -182,6 +182,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/vsl-auto-send",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/notify-drain",
       "schedule": "* * * * *"
     }

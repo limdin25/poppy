@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Mail, FileText } from 'lucide-react';
+import { MessageSquare, Mail, FileText, Clapperboard } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import TemplateList from '../components/templates/TemplateList';
 import AgreementTemplateList from '../components/templates/AgreementTemplateList';
+import VideoTemplateList from '../components/templates/VideoTemplateList';
 
 const TABS = [
   { id: 'sms', label: 'SMS', icon: MessageSquare },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { id: 'email', label: 'Email', icon: Mail },
+  // The video messages live in platform_settings, not wk_sms_templates — so
+  // this page could never have listed them (Hugo 2026-07-27).
+  { id: 'video', label: 'Video', icon: Clapperboard },
   { id: 'agreements', label: 'Agreements', icon: FileText },
 ] as const;
 
@@ -82,6 +86,9 @@ export default function TemplatesPage() {
           )}
           {activeTab === 'email' && (
             <TemplateList filterChannel="email" isAdmin={isAdminOrWorkspaceAdmin} />
+          )}
+          {activeTab === 'video' && (
+            <VideoTemplateList isAdmin={isAdminOrWorkspaceAdmin} />
           )}
           {activeTab === 'agreements' && (
             <AgreementTemplateList isAdmin={isAdminOrWorkspaceAdmin} />

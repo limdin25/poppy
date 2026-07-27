@@ -4,11 +4,17 @@
 //
 // POST { contact_id }                        → page info (creates if missing)
 // POST { contact_id, request_render: true }  → queues the VPS video factory
-//                                              (card moves to "Rendering")
-// POST { contact_id, mark_sent: true }       → flips to 'sent' + moves the
-//                                              card; REFUSED until the page
-//                                              has a playable video (the
-//                                              review-before-send gate)
+// POST { contact_id, auto_send: {channel, body, subject?} }
+//                                            → arms the send; api/cron/vsl-auto-send.ts
+//                                              fires it the minute the render is
+//                                              ready. Usually sent together with
+//                                              request_render — the agent is on
+//                                              the phone and will not come back
+//                                              ten minutes later (Hugo 2026-07-27)
+// POST { contact_id, cancel_auto_send: true }→ disarms it
+// POST { contact_id, mark_sent: true }       → flips to 'sent'; REFUSED until
+//                                              the page has a playable video
+//                                              (the review-before-send gate)
 // The UI texts sms_body through the existing wk-sms-send path (identical to
 // SubscribeButton).
 
@@ -55,6 +61,30 @@ function isCapturableWebsite(raw: string | undefined): boolean {
   return /\.[a-z]{2,}$/i.test(h);
 }
 
+/** The only channels the auto-send cron knows how to deliver on. Validated here
+ *  as well as by the CHECK constraint: a 400 the agent can read beats a 500. */
+const AUTO_SEND_CHANNELS = ['sms', 'whatsapp', 'email'] as const;
+type AutoSendChannel = (typeof AUTO_SEND_CHANNELS)[number];
+
+/** What this workspace can send on at all, so the panel can grey a channel out
+ *  with a reason instead of failing at send time. Email rides Resend, which is
+ *  a platform service rather than a paired channel. */
+async function workspaceChannels(
+  db: ReturnType<typeof createClient>,
+): Promise<{ sms: boolean; whatsapp: boolean; email: boolean }> {
+  const [sms, wa] = await Promise.all([
+    db.from('wk_numbers').select('id', { count: 'exact', head: true })
+      .eq('channel', 'sms').eq('sms_enabled', true).eq('is_active', true),
+    db.from('wk_numbers').select('id', { count: 'exact', head: true })
+      .eq('channel', 'whatsapp').eq('provider', 'unipile').eq('is_active', true),
+  ]);
+  return {
+    sms: (sms.count ?? 0) > 0,
+    whatsapp: (wa.count ?? 0) > 0,
+    email: !!(process.env.RESEND_API_KEY && (process.env.CRM_EMAIL_FROM || process.env.EMAIL_FROM)),
+  };
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const json = (status: number, payload: unknown) => {
     res.statusCode = status;
@@ -78,7 +108,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const { data: allowed } = await caller.rpc('wk_is_agent_or_admin');
   if (!allowed) return json(403, { error: 'CRM access required' });
 
-  let body: { contact_id?: string; mark_sent?: boolean; request_render?: boolean };
+  let body: {
+    contact_id?: string;
+    mark_sent?: boolean;
+    request_render?: boolean;
+    cancel_auto_send?: boolean;
+    auto_send?: { channel?: string; body?: string; subject?: string };
+  };
   try {
     body = JSON.parse(await readBody(req) || '{}');
   } catch {
@@ -94,7 +130,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // page (+ leak its owner_name/business_name). Admins pass RLS for all rows.
   const { data: contact } = await caller
     .from('wk_contacts')
-    .select('id, name, phone, custom_fields')
+    .select('id, name, phone, email, custom_fields')
     .eq('id', contactId)
     .maybeSingle();
   if (!contact) return json(404, { error: 'Contact not found or not yours' });
@@ -207,6 +243,49 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
   }
 
+  // Disarm first, so { cancel_auto_send, auto_send } in one call can't leave a
+  // stale arm behind — cancel always wins.
+  if (body.cancel_auto_send) {
+    const { data: cleared } = await supabase
+      .from('wk_vsl_pages')
+      .update({ auto_send_channel: null, auto_send_error: null })
+      .eq('id', page.id)
+      .select('*')
+      .single();
+    if (cleared) page = cleared;
+  } else if (body.auto_send) {
+    const channel = (body.auto_send.channel || '').trim() as AutoSendChannel;
+    if (!AUTO_SEND_CHANNELS.includes(channel)) {
+      return json(400, { error: 'bad_channel' });
+    }
+    const smsBody = (body.auto_send.body || '').trim();
+    if (!smsBody) return json(400, { error: 'body required' });
+
+    // Arming a send to nowhere is worse than refusing: the agent hangs up
+    // believing the lead has the link.
+    const destination = channel === 'email'
+      ? (contact.email || '').trim()
+      : (contact.phone || '').trim();
+    if (!destination) return json(400, { error: 'no_destination', channel });
+
+    const { data: armed } = await supabase
+      .from('wk_vsl_pages')
+      .update({
+        auto_send_channel: channel,
+        auto_send_armed_at: new Date().toISOString(),
+        auto_send_by: agentId,
+        // Stored verbatim — re-templating at send time would let a settings
+        // edit change a message the agent already read out on the phone.
+        auto_send_body: smsBody,
+        auto_send_subject: (body.auto_send.subject || '').trim() || null,
+        auto_send_error: null,
+      })
+      .eq('id', page.id)
+      .select('*')
+      .single();
+    if (armed) page = armed;
+  }
+
   if (body.mark_sent) {
     // Review-before-send gate: never text a page with nothing to play.
     if (!page.video_url && !settings.default_video_url) {
@@ -216,6 +295,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     // Only on the genuine transition — a retry after a failed mark must not
     // re-announce the send.
     if (adv?.advanced) await notifyFunnelEvent({ page, kind: 'vsl_sent' });
+    // A hand-sent page must not also auto-send ten minutes later.
+    await supabase.from('wk_vsl_pages')
+      .update({ auto_send_channel: null }).eq('id', page.id);
     return json(200, { ok: true, page_id: page.id, state: 'sent' });
   }
 
@@ -247,5 +329,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     no_website: !!page.no_website,
     // mirrors the mark_sent gate so the UI never offers a doomed send
     can_send: !!(page.video_url || settings.default_video_url),
+    auto_send_channel: page.auto_send_channel ?? null,
+    auto_send_body: page.auto_send_body ?? null,
+    auto_send_error: page.auto_send_error ?? null,
+    // Resolved server-side: wk_numbers is not readable by every agent, and the
+    // panel must be able to say WHY a channel is off.
+    channels: await workspaceChannels(supabase),
+    to: { phone: (contact.phone || '') || null, email: (contact.email || '') || null },
   });
 }

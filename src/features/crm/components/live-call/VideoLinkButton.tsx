@@ -1,14 +1,29 @@
 // VideoLinkButton — the video factory's front door on the in-call panel.
 //
-// Hugo 2026-07-26: two-step flow. "Make video" queues the lead's custom
-// render on the VPS (~10 min) → the agent WATCHES it ("Ready") → only then
-// "Text the video" sends. The server refuses mark_sent until the page has a
-// playable video, so review-before-send has teeth. No-website leads render
-// the Google-search opening and carry the free-website offer in the SMS.
+// Hugo 2026-07-27: "it should say make their video and send when ready. The
+// agent knows exactly what's gonna happen." One button, one promise.
+//
+// It used to be two steps: queue the render, then come back ~10 minutes later
+// and press "Text the video". But the agent is ON THE PHONE when they press the
+// first button, and by the time the render lands they are three leads down the
+// queue. The second button was a button nobody came back for — and because it
+// sat there disabled until a video existed, it read as broken. Now the intent
+// is armed with the render and api/cron/vsl-auto-send.ts fires it the minute
+// the video is ready. "Cancel auto-send" is the undo.
+//
+// Review-before-send keeps its teeth: the server still refuses to mark a page
+// sent with nothing playable on it, and the message is on screen, editable,
+// before anything is armed.
 
-import { useEffect, useRef, useState } from 'react';
-import { Clapperboard, Send, Copy, Check, X, Loader2, Play, RefreshCw, Film } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Clapperboard, Send, Copy, Check, X, Loader2, Play, RefreshCw, Film, ChevronDown, Ban,
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
+import {
+  SEND_CHANNEL_LABEL, channelOptions, defaultChannel,
+  type SendChannel, type WorkspaceChannels,
+} from '../../lib/sendChannels';
 import type { Contact } from '../../types';
 
 interface PageInfo {
@@ -22,6 +37,11 @@ interface PageInfo {
   poster_url: string | null;
   no_website: boolean;
   can_send: boolean;
+  auto_send_channel: SendChannel | null;
+  auto_send_body: string | null;
+  auto_send_error: string | null;
+  channels: WorkspaceChannels;
+  to: { phone: string | null; email: string | null };
 }
 
 // Returns { ok, status, data } so callers can tell "blocked" (409 funnel_off /
@@ -48,6 +68,23 @@ async function callVslPage(
 const smsSentByContact = new Set<string>();
 const sendInFlight = new Set<string>();
 
+/** Plain-English versions of what the cron writes to auto_send_error. */
+const AUTO_SEND_ERROR: Record<string, string> = {
+  render_failed: 'The video failed to render, so nothing was sent.',
+  expired: 'The send was armed over a day ago and expired — arm it again if it’s still worth sending.',
+  no_video: 'There was no video to send.',
+  no_contact: 'This lead’s record went missing before the send.',
+  no_body: 'The message was empty, so nothing was sent.',
+  already_sent: 'It had already been sent by hand.',
+};
+
+function autoSendErrorText(raw: string | null): string | null {
+  if (!raw) return null;
+  if (AUTO_SEND_ERROR[raw]) return AUTO_SEND_ERROR[raw];
+  if (raw.startsWith('send_failed:')) return `The send failed — ${raw.slice(12)}. Send it by hand below.`;
+  return `The last automatic send didn’t go: ${raw}`;
+}
+
 export default function VideoLinkButton({ contact, compact = false }: { contact: Contact; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,6 +92,9 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
   const [sent, setSent] = useState(false);
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState('');
+  const [body, setBody] = useState('');
+  const [channel, setChannel] = useState<SendChannel>('sms');
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Guard every async result against the lead having been switched mid-request
   // — otherwise we'd text the wrong plumber and mark the new lead 'sent'.
@@ -65,13 +105,20 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
     // so an in-flight request for the old lead can't brick the button (#3).
     setBusy(false);
     setOpen(false); setInfo(null); setSent(false); setCopied(false); setNote('');
+    setBody(''); setChannel('sms'); setPickerOpen(false);
   }, [contact.id]);
 
   const asInfo = (r: { ok: boolean; data: unknown }): PageInfo | null =>
     (r.ok && r.data && 'page_id' in (r.data as object)) ? (r.data as PageInfo) : null;
 
+  /** Take a fresh server payload without stamping on an edit in progress. */
+  const absorb = useCallback((page: PageInfo) => {
+    setInfo(page);
+    setBody((b) => (b.trim() ? b : page.auto_send_body || page.sms_body));
+  }, []);
+
   // While a render is in flight, poll every 15s so "Rendering" flips to
-  // "Ready" on its own (the VPS worker writes the row; no realtime needed here).
+  // "Ready" — and, once auto-send fires, to "Sent" — on its own.
   const rendering = open && (info?.render_status === 'queued' || info?.render_status === 'rendering');
   useEffect(() => {
     if (!rendering) return;
@@ -79,10 +126,22 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
     const t = setInterval(async () => {
       const page = asInfo(await callVslPage({ contact_id: id }));
       if (id !== contactIdRef.current) return;
-      if (page) setInfo(page);
+      if (page) {
+        setInfo(page);
+        if (page.state && page.state !== 'created') setSent(true);
+      }
     }, 15000);
     return () => clearInterval(t);
   }, [rendering, contact.id]);
+
+  const options = useMemo(
+    () => channelOptions(
+      info?.channels ?? { sms: true, whatsapp: false, email: true },
+      { phone: info?.to.phone ?? contact.phone, email: info?.to.email ?? contact.email },
+    ),
+    [info, contact.phone, contact.email],
+  );
+  const chosen = options.find((o) => o.channel === channel) ?? options[0];
 
   async function prepare() {
     const id = contact.id;
@@ -92,33 +151,86 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
       const page = asInfo(await callVslPage({ contact_id: id }));
       if (id !== contactIdRef.current) return; // lead changed — drop the result
       if (!page) { setNote('Could not create the video page — try again.'); return; }
-      setInfo(page);
+      absorb(page);
       // A page already past 'created' means it's been sent before.
       if (page.state && page.state !== 'created') setSent(true);
+      // Default to whatever is armed, else text, else the first channel that works.
+      setChannel(page.auto_send_channel ?? defaultChannel(
+        channelOptions(page.channels, page.to),
+      ));
       setOpen(true);
     } finally {
       setBusy(false);
     }
   }
 
-  async function makeVideo() {
+  /** Queue the render AND arm the send in one call — the whole point. */
+  async function makeAndArm() {
     const id = contact.id;
+    if (!chosen?.usable) { setNote(chosen?.reason ?? 'Pick a channel that works first.'); return; }
+    if (!body.trim()) { setNote('The message is empty — write something first.'); return; }
     setBusy(true);
     setNote('');
     try {
-      const page = asInfo(await callVslPage({ contact_id: id, request_render: true }));
+      const r = await callVslPage({
+        contact_id: id,
+        request_render: true,
+        auto_send: { channel, body: body.trim() },
+      });
+      const page = asInfo(r);
       if (id !== contactIdRef.current) return;
-      if (!page) { setNote('Could not queue the render — try again.'); return; }
+      if (!page) {
+        const err = (r.data as { error?: string } | null)?.error;
+        setNote(err === 'no_destination'
+          ? chosen.reason ?? 'This lead has no address for that channel.'
+          : 'Could not queue the render — try again.');
+        return;
+      }
       setInfo(page);
     } finally {
       setBusy(false);
     }
   }
 
-  async function textIt() {
+  async function cancelAuto() {
+    const id = contact.id;
+    setBusy(true);
+    setNote('');
+    try {
+      const page = asInfo(await callVslPage({ contact_id: id, cancel_auto_send: true }));
+      if (id !== contactIdRef.current) return;
+      if (page) setInfo(page);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Retry a render that failed, keeping whatever is armed. */
+  async function retryRender() {
+    const id = contact.id;
+    setBusy(true);
+    setNote('');
+    try {
+      const page = asInfo(await callVslPage({ contact_id: id, request_render: true }));
+      if (id !== contactIdRef.current) return;
+      if (page) setInfo(page);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Send right now — used when the video already exists, so there is nothing
+   *  to wait for. Text only: WhatsApp and email have no browser send path here,
+   *  and arming is the honest route for them. */
+  async function sendNow() {
     if (!info) return;
     const id = contact.id;
-    if (!contact.phone) { setNote('This lead has no mobile number — copy the link instead.'); return; }
+    if (channel !== 'sms') {
+      setNote(`Arm it instead — ${SEND_CHANNEL_LABEL[channel]} goes out through the sender.`);
+      return;
+    }
+    if (!chosen?.usable) { setNote(chosen?.reason ?? 'This lead has no mobile number.'); return; }
+    if (!body.trim()) { setNote('The message is empty — write something first.'); return; }
     // Shared across every mounted copy of this button.
     if (sendInFlight.has(id)) return;
     sendInFlight.add(id);
@@ -126,8 +238,7 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
     setNote('');
     try {
       // Re-check the server RIGHT BEFORE sending — closes the stale-flag window
-      // where the funnel was turned off after the panel opened (#2). Also gives
-      // us the freshest sms_body.
+      // where the funnel was turned off after the panel opened (#2).
       const fresh = await callVslPage({ contact_id: id });
       const freshInfo = asInfo(fresh);
       if (id !== contactIdRef.current) return;
@@ -140,7 +251,7 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
       // mark failed), skip the send and just re-arm tracking (#13).
       if (!smsSentByContact.has(id)) {
         const { error } = await supabase.functions.invoke('wk-sms-send', {
-          body: { contact_id: id, body: freshInfo.sms_body },
+          body: { contact_id: id, body: body.trim() },
         });
         if (error) { setNote('Text failed — copy the link and send it manually.'); return; }
         smsSentByContact.add(id);
@@ -179,6 +290,9 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
 
   const funnelOff = info?.enabled === false;
   const rs = info?.render_status ?? null;
+  const armed = !!info?.auto_send_channel;
+  const armedLabel = info?.auto_send_channel ? SEND_CHANNEL_LABEL[info.auto_send_channel] : '';
+  const lastError = autoSendErrorText(info?.auto_send_error ?? null);
 
   return (
     <div className={compact ? '' : 'pb-1.5 border-b border-[#E5E7EB]/70'}>
@@ -197,7 +311,7 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
 
         {funnelOff && (
           <div className="text-[10.5px] text-[#b45309] leading-snug">
-            The video funnel is switched off in Settings — you can still make the video now; sending unlocks when it’s on.
+            The video funnel is switched off in Settings — you can still make the video now; it sends when it’s back on.
           </div>
         )}
         {info?.no_website && (
@@ -205,38 +319,108 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
             No website on file — their video opens with the Google search instead.
           </div>
         )}
+        {lastError && (
+          <div className="text-[10.5px] text-[#b91c1c] leading-snug">{lastError}</div>
+        )}
 
         <div className="text-[10px] text-[#374151] break-all bg-white border border-[#d5e0ee] rounded-[8px] px-2 py-1.5">
           {info?.url}
         </div>
-        <div className="text-[11px] text-[#374151] bg-white border border-[#d5e0ee] rounded-[8px] px-2 py-1.5 leading-snug">
-          {info?.sms_body}
+
+        {/* how it goes out */}
+        <div className="relative">
+          <div
+            data-testid="video-channel"
+            className="flex items-center justify-between gap-2 bg-white border border-[#d5e0ee] rounded-[8px] px-2 py-1.5"
+          >
+            <span className="text-[10.5px] text-[#374151] leading-snug min-w-0">
+              Sending by <span className="font-semibold">{SEND_CHANNEL_LABEL[channel]}</span>
+              {chosen?.to ? <> to <span className="break-all">{chosen.to}</span></> : null}
+              {!chosen?.usable && (
+                <span className="block text-[#b45309]">{chosen?.reason}</span>
+              )}
+            </span>
+            <button
+              onClick={() => setPickerOpen((v) => !v)}
+              disabled={armed}
+              title={armed ? 'Cancel the auto-send first to change channel' : 'Change how this goes out'}
+              className="shrink-0 flex items-center gap-0.5 text-[10.5px] font-semibold text-[#3C5A87] disabled:opacity-40 hover:underline"
+            >
+              Change <ChevronDown className="w-3 h-3" />
+            </button>
+          </div>
+
+          {pickerOpen && (
+            <div className="absolute right-0 z-10 mt-1 w-full rounded-[8px] border border-[#d5e0ee] bg-white shadow-lg overflow-hidden">
+              {options.map((o) => (
+                <button
+                  key={o.channel}
+                  disabled={!o.usable}
+                  onClick={() => { setChannel(o.channel); setPickerOpen(false); setNote(''); }}
+                  className="w-full text-left px-2 py-1.5 text-[11px] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#eaf1f8] disabled:hover:bg-transparent"
+                >
+                  <span className="font-semibold text-[#1A1A1A]">{o.label}</span>
+                  {o.usable
+                    ? <span className="block text-[10px] text-[#6B7280] break-all">{o.to}</span>
+                    : <span className="block text-[10px] text-[#b45309] leading-snug">{o.reason}</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* the message that will actually go */}
+        <textarea
+          data-testid="video-send-body"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          disabled={armed}
+          rows={3}
+          className="w-full text-[11px] text-[#374151] bg-white border border-[#d5e0ee] rounded-[8px] px-2 py-1.5 leading-snug resize-y disabled:bg-[#f7f9fc] disabled:text-[#6B7280]"
+        />
 
         {/* render lifecycle */}
         {rs === null && (
           <button
-            onClick={makeVideo}
-            disabled={busy}
+            onClick={makeAndArm}
+            disabled={busy || !chosen?.usable}
             className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white bg-[#3C5A87] hover:bg-[#33507a] disabled:opacity-60 rounded-[8px] py-1.5"
           >
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Film className="w-3.5 h-3.5" />}
-            Make their video
+            Make their video &amp; send when ready
           </button>
         )}
+
         {(rs === 'queued' || rs === 'rendering') && (
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#3C5A87]">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            {rs === 'queued' ? 'In the queue…' : 'Rendering — about 10 minutes.'} This updates on its own.
+          <div className="space-y-1.5">
+            <div className="flex items-start gap-1.5 text-[11px] font-semibold text-[#3C5A87]">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 mt-px" />
+              <span>
+                {rs === 'queued' ? 'In the queue' : 'Rendering'} — about 10 minutes.{' '}
+                {armed
+                  ? `It sends itself by ${armedLabel} the moment it’s ready. You can hang up.`
+                  : 'Nothing will be sent automatically.'}
+              </span>
+            </div>
+            {armed && (
+              <button
+                onClick={cancelAuto}
+                disabled={busy}
+                className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-[#b91c1c] border border-[#f3c9c9] bg-white hover:bg-[#fef2f2] rounded-[8px] py-1.5"
+              >
+                <Ban className="w-3.5 h-3.5" /> Cancel auto-send
+              </button>
+            )}
           </div>
         )}
+
         {rs === 'failed' && (
           <div className="space-y-1.5">
             <div className="text-[10.5px] text-[#b91c1c] leading-snug">
               Render failed{info?.no_website ? '' : ' (their website may not load)'} — try again, or tell Hugo.
             </div>
             <button
-              onClick={makeVideo}
+              onClick={retryRender}
               disabled={busy}
               className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-[#3C5A87] border border-[#c9d6e8] bg-white hover:bg-[#eaf1f8] rounded-[8px] py-1.5"
             >
@@ -244,35 +428,63 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
             </button>
           </div>
         )}
-        {rs === 'ready' && info?.video_url && (
-          <a
-            href={info.video_url}
-            target="_blank"
-            rel="noreferrer"
-            className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-[#166534] border border-[#bbe5c8] bg-[#f0fdf4] hover:bg-[#dcfce7] rounded-[8px] py-1.5"
-          >
-            <Play className="w-3.5 h-3.5" /> Watch it first
-          </a>
+
+        {rs === 'ready' && (
+          <div className="space-y-1.5">
+            {info?.video_url && (
+              <a
+                href={info.video_url}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold text-[#166534] border border-[#bbe5c8] bg-[#f0fdf4] hover:bg-[#dcfce7] rounded-[8px] py-1.5"
+              >
+                <Play className="w-3.5 h-3.5" /> Watch it first
+              </a>
+            )}
+            {armed ? (
+              <>
+                <div className="text-[10.5px] text-[#166534] leading-snug">
+                  Ready — going out by {armedLabel} within the minute.
+                </div>
+                <button
+                  onClick={cancelAuto}
+                  disabled={busy}
+                  className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-[#b91c1c] border border-[#f3c9c9] bg-white hover:bg-[#fef2f2] rounded-[8px] py-1.5"
+                >
+                  <Ban className="w-3.5 h-3.5" /> Cancel auto-send
+                </button>
+              </>
+            ) : (
+              <div className="flex gap-1.5">
+                <button
+                  onClick={sendNow}
+                  disabled={busy || funnelOff || !info?.can_send || !chosen?.usable}
+                  title={!chosen?.usable ? chosen?.reason ?? undefined : undefined}
+                  className="flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white bg-[#3C5A87] hover:bg-[#33507a] disabled:opacity-60 rounded-[8px] py-1.5"
+                >
+                  {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : sent ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+                  {sent ? 'Send again' : 'Send it now'}
+                </button>
+                <button
+                  onClick={() => { if (info) { navigator.clipboard?.writeText(info.url); setCopied(true); } }}
+                  title="Copy link"
+                  className="flex items-center justify-center text-[12px] font-semibold text-[#3C5A87] border border-[#c9d6e8] bg-white hover:bg-[#eaf1f8] rounded-[8px] px-2.5 py-1.5"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
-        <div className="flex gap-1.5">
-          <button
-            onClick={textIt}
-            disabled={busy || funnelOff || !info?.can_send}
-            title={!info?.can_send ? 'Make the video first — you send it after you’ve watched it' : undefined}
-            className="flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-white bg-[#3C5A87] hover:bg-[#33507a] disabled:opacity-60 rounded-[8px] py-1.5"
-          >
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : sent ? <Check className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-            {sent ? 'Text again' : 'Text the video'}
-          </button>
+        {rs !== 'ready' && (
           <button
             onClick={() => { if (info) { navigator.clipboard?.writeText(info.url); setCopied(true); } }}
-            title="Copy link"
-            className="flex items-center justify-center text-[12px] font-semibold text-[#3C5A87] border border-[#c9d6e8] bg-white hover:bg-[#eaf1f8] rounded-[8px] px-2.5 py-1.5"
+            className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-[#3C5A87] border border-[#c9d6e8] bg-white hover:bg-[#eaf1f8] rounded-[8px] py-1.5"
           >
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />} Copy link
           </button>
-        </div>
+        )}
 
         {note && <div className="text-[10.5px] text-[#b45309] leading-snug">{note}</div>}
       </div>

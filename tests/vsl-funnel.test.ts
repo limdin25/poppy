@@ -274,7 +274,11 @@ describe('cron double-text safety', () => {
   })
 
   it('falls back to a workspace line when the agent has none', () => {
-    expect(cron).toMatch(/fallback/)
+    // agentSmsLine moved to api/lib/vsl-settings.ts on 2026-07-27 so the nudge
+    // cron and the auto-send cron resolve the same from-line — two funnel texts
+    // arriving from two different numbers read as two different companies.
+    expect(read('api/lib/vsl-settings.ts')).toMatch(/fallback/)
+    expect(cron).toMatch(/agentSmsLine\(/)
   })
 })
 
@@ -304,7 +308,8 @@ describe('automation cron', () => {
   })
 
   it('sends from the owning agent line when one exists', () => {
-    expect(cron).toMatch(/wk_number_agents/)
+    expect(read('api/lib/vsl-settings.ts')).toMatch(/wk_number_agents/)
+    expect(cron).toMatch(/await agentSmsLine\(page\.agent_id\)/)
   })
 })
 

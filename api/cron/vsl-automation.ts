@@ -13,6 +13,7 @@ import {
   getVslSettings,
   fillTemplate,
   insideQuietHours,
+  agentSmsLine,
   type VslSettings,
   type VslRule,
 } from '../lib/vsl-settings.js';
@@ -32,36 +33,6 @@ const RULE_STATE: Record<keyof VslSettings['rules'], { state: string; since: str
   checkout_abandoned: { state: 'checkout_started', since: 'checkout_started_at' },
   paid_welcome: { state: 'paid', since: 'paid_at' },
 };
-
-/** The owning agent's SMS line (wk_number_agents → wk_numbers, GB preferred).
- *  Falls back to the workspace's first GB-preferred sms-enabled line so a lead
- *  never silently goes un-nudged just because their agent has no assigned
- *  number (mirrors wk-sms-send's workspace-default fallback). */
-async function agentLine(agentId: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('wk_number_agents')
-    .select('is_primary, wk_numbers ( e164, channel, sms_enabled, is_active )')
-    .eq('agent_id', agentId);
-  const rows = (data || [])
-    .map((r: any) => ({ primary: r.is_primary, n: r.wk_numbers }))
-    .filter((r) => r.n && r.n.channel === 'sms' && r.n.sms_enabled && r.n.is_active);
-  if (rows.length) {
-    rows.sort((a, b) => {
-      const gb = Number((b.n.e164 || '').startsWith('+44')) - Number((a.n.e164 || '').startsWith('+44'));
-      if (gb) return gb;
-      return Number(b.primary) - Number(a.primary);
-    });
-    return rows[0].n.e164;
-  }
-  const { data: fallback } = await supabase
-    .from('wk_numbers')
-    .select('e164')
-    .eq('channel', 'sms')
-    .eq('sms_enabled', true)
-    .eq('is_active', true)
-    .order('e164', { ascending: false }); // +44 sorts before +1
-  return fallback?.[0]?.e164 ?? null;
-}
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const auth = req.headers.authorization || '';
@@ -131,7 +102,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .from('wk_vsl_pages').update({ automation: auto }).eq('id', page.id);
       if (bookErr) continue;
 
-      const from = await agentLine(page.agent_id);
+      const from = await agentSmsLine(page.agent_id);
       await supabase.from('wk_jobs').insert({
         kind: 'send_sms',
         status: 'pending',

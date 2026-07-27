@@ -128,6 +128,14 @@ export default async function handler(req: Request): Promise<Response> {
   let systemPrompt = s.system_prompt || '';
   if (firstName) systemPrompt += `\n\nThe lead's first name is ${firstName}.`;
 
+  // The callback number, spelled out. Without this the prompt asked for a
+  // call-back while never saying which line it was texting from, and the model
+  // filled the hole with the literal text "[number]" — which reached a draft in
+  // Hugo's inbox on 2026-07-27.
+  systemPrompt += replyFrom
+    ? `\n\nYou are texting from ${replyFrom}. If you ask them to ring you, use exactly that number and no other.`
+    : '\n\nYou do not know which number this text came from, so never invent a number. Say "just reply here" or "give us a ring on the number this text came from" instead.';
+
   // VSL context: if this lead has a video page, tell the model exactly where
   // they are in the funnel so the reply pushes toward the £1 close (their
   // page link included) instead of generic chat.
