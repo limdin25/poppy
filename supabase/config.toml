@@ -107,9 +107,9 @@ file_size_limit = "50MiB"
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "env(SUPABASE_AUTH_SITE_URL)"  # prod: https://app.heyelsie.com
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["https://app.heyelsie.com/**", "https://go.heyelsie.com/**", "https://heyelsie.com/**", "https://127.0.0.1:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # If disabled, the refresh token will never expire.
@@ -132,9 +132,8 @@ password_requirements = ""
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
 # Raised from 2: sign-in codes are the PRIMARY login for reviews clients, and 2
-# per hour project-wide meant the second person to sign in got nothing. Must be
-# raised in the dashboard too (Authentication → Rate Limits), with Resend SMTP
-# configured — the built-in sender is dev-only.
+# per hour project-wide meant the second person to sign in got nothing.
+# APPLIED to the hosted project 2026-07-27 alongside the Resend SMTP block below.
 email_sent = 100
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
@@ -174,16 +173,18 @@ otp_expiry = 3600
 
 # Production SMTP — Resend, the same account the app already sends through
 # (RESEND_API_KEY is set on Vercel; heyelsie.com is a verified sending domain).
-# Mirror of what must be entered in the dashboard under
-# Project Settings → Authentication → SMTP Settings.
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.resend.com"
-# port = 465
-# user = "resend"
-# pass = "env(RESEND_API_KEY)"
-# admin_email = "hello@heyelsie.com"
-# sender_name = "HeyElsie"
+# LIVE on the hosted project since 2026-07-27, set via the Management API
+# (PATCH /v1/projects/{ref}/config/auth — note smtp_port must be a STRING).
+# Built-in SMTP was capped at 2 auth emails per HOUR project-wide, which made
+# code login unusable the moment two clients signed in in the same hour.
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+admin_email = "hello@heyelsie.com"
+sender_name = "HeyElsie"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
