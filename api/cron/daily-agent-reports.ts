@@ -157,6 +157,11 @@ const SAYS_CLOSE = /will you watch|you'?ll watch it|watch it\?/i;
  *  and must not match — we dialled their mobile, we already have it. */
 const ASKS_FOR_NUMBER = /(best|right|correct|good) number|what'?s your (mobile|number)|which number|number to (text|reach) you|number for a text/i;
 const READS_OUT_TIERS = /£ ?(99|179|279)|\b(99|179|279) (a|per) month/i;
+/** What the prospect says AFTER the offer. Refusal is checked first, because
+ *  "yeah, no, I'm all right" and "yeah I'm not interested" both open with a
+ *  yes and are both a no. */
+const LEAD_REFUSED = /\bnot interested\b|\bno thank|\bi'?m (ok|all ?right|good|fine|busy)\b|don'?t need|no,? ?no\b|call (me |us )?back|tomorrow|another time|too busy|take me off/i;
+const LEAD_AGREED = /\b(yes|yeah|yep|sure|go on|please do|send it|send me|send that|ping it|fire it|ok(ay)?)\b/i;
 
 export function scriptCheck(calls: CallRow[]) {
   const convs = calls.filter((c) => c.lines?.length && agentWords(c) > 0 && !isVoicemail(c));
@@ -180,6 +185,20 @@ export function scriptCheck(calls: CallRow[]) {
     // Steps 2 to 4.
     reached_hook: n((c) => any(c, SAYS_HOOK)),
     reached_offer: n((c) => any(c, SAYS_OFFER)),
+    // Asking is not the same as being told yes, and conflating the two invents
+    // a loss that never happened. On 2026-07-27 the report told an agent that
+    // "21 asks turned into only 7 videos, that is your money walking out the
+    // door" — in fact 5 of those 21 said yes and all 5 got a video. The gap was
+    // 16 people saying no, which is a different problem with a different fix.
+    offer_agreed: convs.filter((c) => {
+      const lines = c.lines ?? [];
+      const at = lines.findIndex((l) => l.speaker === 'agent' && SAYS_OFFER.test(l.body ?? ''));
+      if (at === -1) return false;
+      return lines.slice(at + 1).some((l) => {
+        const b = (l.body ?? '').trim();
+        return l.speaker === 'caller' && !LEAD_REFUSED.test(b) && LEAD_AGREED.test(b);
+      });
+    }).length,
     used_close: n((c) => any(c, SAYS_CLOSE)),
     // Rule breaks. Both should be zero.
     asked_for_their_number: n((c) => any(c, ASKS_FOR_NUMBER)),
@@ -286,7 +305,7 @@ Write in British English, plain language, second person ("you"). Markdown, no ti
 
 **Today** — two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, and any long gap with no calls. A perfect script at 49 dials loses to a rough one at 177, so say which of the two is holding them back.
 **What worked** — up to three specific things, each with a quote or a company name.
-**The grade** — the day as one funnel, on its own lines: dials, conversations, offers made, videos made, videos sent. Then say plainly which step is losing the most and what that costs. Videos sent is the score that matters; a day of perfect calls with no videos sent is not a good day, and a rough day with videos sent beats it. If a render failed or is still going, say so and make clear it is not held against them.
+**The grade** — the day as one funnel, on its own lines: dials, conversations, offers made, offers agreed, videos made, videos sent. Then say plainly which step is losing the most and what that costs. Videos sent is the score that matters; a day of perfect calls with no videos sent is not a good day, and a rough day with videos sent beats it. If a render failed or is still going, say so and make clear it is not held against them.
 **Script check** — go through the six steps in order and give the number for each: opener (name and HeyElsie BEFORE the recording line), hook, offer, the close, and the two rule breaks (asking for their number, reading out monthly prices). One line per step, the count, then a word on whether that is good or not. Where a step is being missed, quote the words they used instead. Praise the steps they are hitting; do not only list failures.
 **Fix tomorrow** — every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
 **Tomorrow's one thing** — a single sentence naming the one change that would make the biggest difference.
@@ -360,7 +379,8 @@ ${JSON.stringify(videos, null, 2)}
 
 Notes on videos:
 - "videos_sent" is the number that counts. Everything else on this report exists to move it.
-- The whole day's funnel is: dials -> conversations -> offers ("can I send it to you?") -> videos made -> videos sent. Name the step where most is lost.
+- The whole day's funnel is: dials -> conversations -> offers ("can I send it to you?") -> agreed -> videos made -> videos sent. Name the step where most is lost.
+- "reached_offer" is how many times they ASKED. "offer_agreed" is how many said yes. They are not the same number and you must never treat them as one. Losing people between asking and agreeing is prospects saying no, which is a persuasion problem. Losing people between agreeing and a video is a video that never got made, which is a completely different and much more serious problem. Do not claim a yes was lost unless you can see that yes in a transcript with no video behind it.
 - "videos_render_failed" and "videos_still_rendering" are OUR system, not the agent. Never criticise them for those; mention them so the agent knows the video did not land and can follow up.
 - "videos_ready_not_sent" IS theirs: the video is built and sitting there waiting to be texted.
 

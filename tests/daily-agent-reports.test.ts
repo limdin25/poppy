@@ -476,3 +476,69 @@ describe('the grade: videos sent', () => {
     expect(cron).toMatch(/and\(sent_at\.gte/)
   })
 })
+
+// Hugo 2026-07-27: "Are you sure fourteen plumbers said yes today and never got
+// anything. 100% sure? why?"
+//
+// No. That claim was wrong, and the report made the same mistake in the same
+// hour: it told Marr "21 asks turned into only 7 built, that is your money
+// walking out the door". Checked against the transcripts, 5 of those 21 said
+// yes and every one of the 5 got a video. The other 16 said no.
+//
+// Asking is not agreeing. Conflating them invents a loss that never happened
+// and points the agent at the wrong fix.
+
+describe('asked is not the same as agreed', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  const call = (lines: Array<[string, string]>) => ({
+    id: 'x', started_at: '2026-07-27T10:00:00Z', duration_sec: 120, status: 'completed',
+    disposition: null, company: 'Acme',
+    lines: lines.map(([speaker, body]) => ({ speaker, body })),
+  })
+  const OFFER = "I've recorded you a 90 second audit, can I send it to you?"
+
+  it('counts a real yes', async () => {
+    const { scriptCheck } = await load()
+    const r = scriptCheck([call([
+      ['caller', 'Hello.'], ['agent', OFFER], ['caller', 'Yeah, go on and send it.'],
+    ])] as never)
+    expect(r.reached_offer).toBe(1)
+    expect(r.offer_agreed).toBe(1)
+  })
+
+  it('does NOT count a no as a yes, even when it opens with "yeah"', async () => {
+    // Real replies from 2026-07-27. Every one of these is a refusal that starts
+    // with an agreement word, which is exactly how a naive counter inflates.
+    const { scriptCheck } = await load()
+    for (const no of [
+      "Yeah, no, I'm not I'm all right. I'm not interested. Thank you.",
+      "Yeah, I'm honestly mate. I'm I'm not interested, but thank you.",
+      "Uh could you try calling back tomorrow, please? I'm right in the middle of something.",
+      "No, I don't need any more jobs. I'm far too busy.",
+    ]) {
+      const r = scriptCheck([call([['caller', 'Hello.'], ['agent', OFFER], ['caller', no]])] as never)
+      expect(`${no} => ${r.offer_agreed}`).toBe(`${no} => 0`)
+    }
+  })
+
+  it('ignores an agreement said BEFORE the offer', async () => {
+    const { scriptCheck } = await load()
+    const r = scriptCheck([call([
+      ['caller', 'Yeah, speaking.'],           // agreeing they are the owner
+      ['agent', OFFER],
+      ['caller', "No, I'm not interested."],
+    ])] as never)
+    expect(r.offer_agreed).toBe(0)
+  })
+
+  it('forbids the report from claiming a lost yes it cannot see', () => {
+    expect(cron).toMatch(/is how many times they ASKED/)
+    expect(cron).toMatch(/never treat them as one/i)
+    expect(cron).toMatch(/Do not claim a yes was lost unless you can see that yes in a transcript/)
+  })
+
+  it('puts agreed in the funnel between offers and videos', () => {
+    expect(cron).toMatch(/offers made, offers agreed, videos made, videos sent/)
+    expect(cron).toMatch(/offers \("can I send it to you\?"\) -> agreed -> videos made/)
+  })
+})

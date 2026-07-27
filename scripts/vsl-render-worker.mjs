@@ -132,15 +132,57 @@ async function claim() {
   return won?.length ? won[0] : null
 }
 
+/**
+ * Node's global fetch reports every transport failure as the same three words,
+ * "fetch failed", and hides the real reason on `error.cause`. Gas First Ltd
+ * failed five times on 2026-07-27 with nothing but those three words in
+ * render_error, and prep, render and upload all worked when run by hand. Hours
+ * went into guessing because the message named neither the step nor the cause.
+ *
+ * So: never let a bare "fetch failed" reach the row again.
+ */
+function why(e) {
+  const parts = [e?.message || String(e)]
+  let c = e?.cause
+  for (let i = 0; c && i < 3; i++) {
+    const bit = [c.code, c.message].filter(Boolean).join(' ')
+    if (bit) parts.push(bit)
+    c = c.cause
+  }
+  return parts.join(' <- ')
+}
+
+/** A 45 MB upload over a link we do not control, at the END of a ten-minute
+ *  render. Losing that to one dropped socket is the worst possible trade, and
+ *  it was a single unguarded attempt. A 4xx is the server telling us something
+ *  true (too big, bad auth) so it fails immediately; transport blips retry. */
 async function upload(localPath, remoteName, contentType) {
   const buf = readFileSync(localPath)
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${remoteName}`, {
-    method: 'POST',
-    headers: { ...H, 'Content-Type': contentType, 'x-upsert': 'true' },
-    body: buf,
-  })
-  if (!res.ok) throw new Error(`upload ${remoteName}: ${res.status} ${await res.text()}`)
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${remoteName}`
+  const waits = [2000, 8000, 20000]
+  let lastErr = null
+  for (let i = 0; i <= waits.length; i++) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${remoteName}`, {
+        method: 'POST',
+        headers: { ...H, 'Content-Type': contentType, 'x-upsert': 'true' },
+        body: buf,
+      })
+      if (res.ok) return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${remoteName}`
+      const text = (await res.text()).slice(0, 300)
+      // 413 arrives as a 400 with statusCode 413 in the body. Either way the
+      // file is too big for the project limit and retrying cannot help.
+      if (res.status < 500) throw new Error(`upload ${remoteName}: ${res.status} ${text}`)
+      lastErr = new Error(`upload ${remoteName}: ${res.status} ${text}`)
+    } catch (e) {
+      if (/upload .*: 4\d\d/.test(e.message || '')) throw e
+      lastErr = new Error(`upload ${remoteName}: ${why(e)}`)
+    }
+    if (i < waits.length) {
+      console.error(`${lastErr.message} — retrying in ${waits[i] / 1000}s`)
+      await new Promise((r) => setTimeout(r, waits[i]))
+    }
+  }
+  throw lastErr
 }
 
 function run(cmd, args, opts = {}) {
@@ -163,9 +205,14 @@ async function renderOne(page) {
   const jpg = join(outDir, `${slug}.jpg`)
 
   try {
+    // Which step we are on, so a failure names it. "fetch failed" on its own
+    // could be prep, the upload of the video, the upload of the poster or the
+    // row update, and they need completely different fixes.
+    page.__stage = 'prep'
     // 1. prep — writes lead-gen.json (+ capture); loud failures propagate
     run('node', [join(VIDEO, 'scripts', 'prep-lead.mjs'), page.contact_id], { cwd: REPO, timeout: 300_000 })
 
+    page.__stage = 'render'
     // 2. render (the long part)
     run('npx', ['remotion', 'render', 'src/index.ts', 'FlowVideo', mp4, '--codec=h264', '--concurrency=8'],
       { cwd: VIDEO, timeout: 45 * 60_000 })
@@ -183,9 +230,12 @@ async function renderOne(page) {
       run('ffmpeg', ['-y', '-i', mp4, '-frames:v', '1', '-q:v', '4', jpg], { timeout: 60_000 })
     }
 
+    page.__stage = 'upload-video'
     // 4. upload
     const videoUrl = await upload(mp4, `${slug}.mp4`, 'video/mp4')
+    page.__stage = 'upload-poster'
     const posterUrl = await upload(jpg, `${slug}.jpg`, 'image/jpeg')
+    page.__stage = 'save'
 
     // 5. flip the row — the board's realtime subscription shows it instantly.
     //    no_website is owned by the API at page-create (source of truth) — the
@@ -220,7 +270,7 @@ async function tick() {
   try {
     await renderOne(page)
   } catch (e) {
-    const msg = String(e.stderr || e.message || e).slice(0, 500)
+    const msg = `[${page.__stage || 'start'}] ${String(e.stderr || why(e)).slice(0, 460)}`
     console.error(`FAILED ${page.slug}:`, msg)
     try {
       await rest('PATCH', `wk_vsl_pages?id=eq.${page.id}`, { render_status: 'failed', render_error: msg })
