@@ -10,6 +10,7 @@ import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
 import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
+import CalcChip from '../components/shared/CalcChip';
 import { useContactVslPages, lastAutoMove } from '../hooks/useContactVslPages';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useSmsV2 } from '../store/SmsV2Store';
@@ -372,6 +373,7 @@ export default function ContactsPage() {
                   </td>
                   <td className="px-2 py-2.5 text-[#6B7280]">
                     <AgentChip agentId={c.ownerAgentId} variant="text" size="sm" />
+                    <CalcChip calcAt={vslByContact.get(c.id)?.calcAt} count={vslByContact.get(c.id)?.calcCount} />
                   </td>
                   <td className="px-2 py-2.5 text-[#6B7280] max-w-[220px] truncate" title={c.customFields?.property_address ?? ''}>
                     {c.customFields?.property_address || '—'}

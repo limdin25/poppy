@@ -13,6 +13,7 @@ import { useSmsV2 } from '../store/SmsV2Store';
 import { useImpersonatedAgentId } from '../lib/ViewAsContext';
 import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
+import CalcChip from '../components/shared/CalcChip';
 import FunnelLeadDrawer from '../components/funnel/FunnelLeadDrawer';
 import { formatDateTime } from '../data/helpers';
 // Stage rules live in lib/funnelStages so the inbox badges can share them —
@@ -314,6 +315,7 @@ export default function VideoFunnelPage() {
                     />
                     <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
                       <AgentChip agentId={p.agent_id} size="xs" />
+                      <CalcChip calcAt={p.calc_at} count={p.calc_count} />
                       {(() => {
                         const outcome = outcomeOf(p.contact_id);
                         if (!outcome) return null;
@@ -487,6 +489,7 @@ const NOTIFY_LABELS: Record<string, string> = {
   link_click: 'Tapped the link',
   open: 'Opened the page',
   play: 'Started the video',
+  calc: 'Played with the calculator',
   watched_50: 'Watched 50%',
   watched_90: 'Watched 90%',
   watched_100: 'Watched to the end',

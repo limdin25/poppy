@@ -25,6 +25,8 @@ export interface VslPage {
   sent_at: string | null;
   first_click_at: string | null;
   click_count: number | null;
+  calc_at?: string | null;
+  calc_count?: number | null;
   first_opened_at: string | null;
   play_at: string | null;
   watched_at: string | null;

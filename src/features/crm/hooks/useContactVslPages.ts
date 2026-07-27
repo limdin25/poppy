@@ -32,6 +32,9 @@ export interface ContactVslPage {
   state: string;
   watchedPct: number;
   openCount: number;
+  /** They moved the ROI calculator (Hugo 2026-07-27). */
+  calcAt: string | null;
+  calcCount: number;
 }
 
 interface Row {
@@ -51,12 +54,14 @@ interface Row {
   state: string;
   watched_pct: number | null;
   open_count: number | null;
+  calc_at: string | null;
+  calc_count: number | null;
 }
 
 const COLUMNS =
   'contact_id, slug, agent_id, created_at, render_status, render_requested_at, ' +
   'render_done_at, sent_at, first_opened_at, watched_at, cta_clicked_at, ' +
-  'checkout_started_at, paid_at, state, watched_pct, open_count';
+  'checkout_started_at, paid_at, state, watched_pct, open_count, calc_at, calc_count';
 
 const CHUNK = 100;
 
@@ -146,6 +151,8 @@ export function useContactVslPages(contactIds: string[]): Map<string, ContactVsl
         state: r.state,
         watchedPct: r.watched_pct ?? 0,
         openCount: r.open_count ?? 0,
+        calcAt: r.calc_at ?? null,
+        calcCount: r.calc_count ?? 0,
       });
     }
     return map;

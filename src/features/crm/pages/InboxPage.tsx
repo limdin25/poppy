@@ -39,6 +39,7 @@ import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact, CallRecord, ActivityEvent } from '../types';
 import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
+import CalcChip from '../components/shared/CalcChip';
 import { CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 import { usePendingDrafts } from '../hooks/usePendingDrafts';
@@ -692,6 +693,7 @@ export default function InboxPage() {
                     </div>
                     <ContactIdentity owner={r.owner} website={r.website} layout="inline" size="sm" />
                     <AgentChip agentId={r.ownerAgentId} size="xs" />
+                    <CalcChip calcAt={r.vsl?.calcAt} count={r.vsl?.calcCount} />
                     <div className="text-[11px] text-[#6B7280] truncate flex items-center gap-1">
                       {/* Waiting on a human — leftmost, so a scan finds it. */}
                       {r.draftPending && (

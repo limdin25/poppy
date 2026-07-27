@@ -33,6 +33,9 @@ export const VSL_NOTIFY_KINDS: Record<string, { label: string; hot?: boolean }> 
   vsl_watched_50: { label: 'Watched half the video' },
   vsl_watched_90: { label: 'Watched 90% of the video' },
   vsl_watched_100: { label: 'Watched the whole video' },
+  // Hot on purpose: typing your own job value into the ROI calculator is the
+  // strongest pre-purchase signal on the page. Watching is passive.
+  vsl_calc: { label: 'Played with the calculator', hot: true },
   vsl_cta_click: { label: 'Clicked "Start £1 Trial"', hot: true },
   vsl_checkout_start: { label: 'Started checkout', hot: true },
   vsl_paid: { label: 'PAID 🎉', hot: true },

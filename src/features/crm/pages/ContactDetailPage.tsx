@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -26,6 +26,8 @@ import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
 import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
+import CalcChip from '../components/shared/CalcChip';
+import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 import StageMoveChip from '../components/shared/StageMoveChip';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useSmsV2 } from '../store/SmsV2Store';
@@ -43,6 +45,10 @@ export default function ContactDetailPage() {
   const { getContact, patchContact, upsertContact, pushToast } = useSmsV2();
   const { openDialerPro } = useDialerProModal();
   const contact = getContact(id ?? '');
+  // Same batched hook the inbox uses, with a list of one. useMemo on the id
+  // so a re-render never rebuilds the array and re-fires the query.
+  const funnelIds = useMemo(() => (id ? [id] : []), [id]);
+  const funnel = useContactFunnelStatus(funnelIds).get(id ?? '');
   const [editing, setEditing] = useState<Contact | null>(null);
   const [smsTo, setSmsTo] = useState<Contact | null>(null);
   const { firstName: agentFirstName } = useCurrentAgent();
@@ -186,6 +192,7 @@ export default function ContactDetailPage() {
                 Owner
               </div>
               <AgentChip agentId={contact.ownerAgentId} size="sm" className="text-[13px]" />
+              <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} variant="full" />
             </div>
             {contact.email && (
               <div>

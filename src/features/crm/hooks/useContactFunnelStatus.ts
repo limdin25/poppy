@@ -24,6 +24,10 @@ export interface ContactFunnelStatus {
   watchedPct: number;
   /** A human must watch it and text it. */
   readyToSend: boolean;
+  /** First time they moved the ROI calculator. Null for almost every lead;
+   *  the strongest pre-purchase signal when it is not (Hugo 2026-07-27). */
+  calcAt: string | null;
+  calcCount: number;
 }
 
 interface PageRow {
@@ -32,6 +36,8 @@ interface PageRow {
   state: string;
   render_status: 'queued' | 'rendering' | 'ready' | 'failed' | null;
   watched_pct: number | null;
+  calc_at: string | null;
+  calc_count: number | null;
 }
 
 const CHUNK = 100;
@@ -59,7 +65,7 @@ export function useContactFunnelStatus(contactIds: string[]): Map<string, Contac
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data, error } = await (supabase.from('wk_vsl_pages' as any) as any)
-              .select('contact_id, slug, state, render_status, watched_pct')
+              .select('contact_id, slug, state, render_status, watched_pct, calc_at, calc_count')
               .in('contact_id', ids);
             if (error) {
               console.warn('[useContactFunnelStatus] batch failed:', error.message);
@@ -90,6 +96,8 @@ export function useContactFunnelStatus(contactIds: string[]): Map<string, Contac
         color: meta.color,
         watchedPct: r.watched_pct ?? 0,
         readyToSend: isReadyToSend(r),
+        calcAt: r.calc_at ?? null,
+        calcCount: r.calc_count ?? 0,
       });
     }
     return map;

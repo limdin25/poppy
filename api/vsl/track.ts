@@ -117,8 +117,15 @@ export default async function handler(req: Request): Promise<Response> {
   } else if (type === 'cta_click') {
     const r = await advanceVslState(page, 'cta_clicked');
     if (r?.advanced) await notifyFunnelEvent({ page, kind: 'vsl_cta_click' });
+  } else if (type === 'calc') {
+    // Stamped on the page, not just logged as an event, so every lead card in
+    // the CRM can show the icon without a second query (Hugo 2026-07-27).
+    // Target 'opened': moving the calculator proves they are on the page, even
+    // if the open beacon was dropped. It does NOT count as watched.
+    const r = await advanceVslState(page, 'opened', { calc: true });
+    if (r?.first_calc) await notifyFunnelEvent({ page, kind: 'vsl_calc' });
   } else {
-    // tier_pick / calc: event only — no state change, no notification.
+    // tier_pick: event only, no state change, no notification.
   }
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });

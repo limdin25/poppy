@@ -42,6 +42,8 @@ import QueueManagerPro from './history/QueueManagerPro';
 import DtmfKeypad from './controls/DtmfKeypad';
 import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
+import CalcChip from '../components/shared/CalcChip';
+import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 
 function formatDuration(sec: number): string {
   const h = Math.floor(sec / 3600);
@@ -315,6 +317,10 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
     ?? queue[0]?.contactId
     ?? null;
   const [contact, setContact] = useState<Contact | null>(null);
+  // The lead on the phone, through the same batched hook every other surface
+  // uses, with a list of one.
+  const funnelIds = useMemo(() => (contact?.id ? [contact.id] : []), [contact?.id]);
+  const funnel = useContactFunnelStatus(funnelIds).get(contact?.id ?? '');
   useEffect(() => {
     if (!activeContactId) { setContact(null); return; }
     let cancelled = false;
@@ -716,6 +722,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
                   />
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[12px] text-[#6B7280] tabular-nums">{contact.phone}</span>
+                    <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} />
                     <AgentChip agentId={contact.ownerAgentId} size="xs" className="ml-auto" />
                   </div>
                   {!isLive && !state.currentLead && (

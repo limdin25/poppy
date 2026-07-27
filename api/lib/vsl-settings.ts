@@ -26,6 +26,7 @@ export interface VslNotifySettings {
   link_click: boolean;
   open: boolean;
   play: boolean;
+  calc: boolean;
   watched_50: boolean;
   watched_90: boolean;
   watched_100: boolean;
@@ -135,7 +136,7 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
   // Hugo 2026-07-26: "email notification for all action". Every event on by
   // default; untick here to quieten one without a deploy.
   notify: {
-    sent: true, link_click: true, open: true, play: true,
+    sent: true, link_click: true, open: true, play: true, calc: true,
     watched_50: true, watched_90: true, watched_100: true,
     cta_click: true, checkout_start: true, paid: true,
   },
@@ -364,6 +365,10 @@ export interface VslAdvanceResult {
   first_open: boolean;
   first_play: boolean;
   first_complete: boolean;
+  /** They moved the ROI calculator for the first time. The strongest
+   *  pre-purchase signal on the page: watching is passive, typing your own job
+   *  value in is working out whether this pays for itself. */
+  first_calc: boolean;
 }
 
 export async function advanceVslState(
@@ -376,6 +381,7 @@ export async function advanceVslState(
     link_click?: boolean;
     play?: boolean;
     completed?: boolean;
+    calc?: boolean;
   } = {},
 ): Promise<VslAdvanceResult | null> {
   const { data, error } = await supabase.rpc('wk_vsl_advance', {
@@ -386,6 +392,7 @@ export async function advanceVslState(
     p_link_click: extra.link_click ?? false,
     p_play: extra.play ?? false,
     p_completed: extra.completed ?? false,
+    p_calc: extra.calc ?? false,
   });
   if (error) console.error('[vsl] advance failed:', error);
   const row = (Array.isArray(data) ? data[0] : data) as VslAdvanceResult | undefined;
