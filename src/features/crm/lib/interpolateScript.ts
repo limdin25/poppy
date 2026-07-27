@@ -110,6 +110,16 @@ export function interpolateScript(templateHtml: string, contact?: ScriptContact 
   // view still fills cleanly).
   let html = stripHighlights(templateHtml);
 
+  // No owner name on file (e.g. a sole-trader lead Companies House can't
+  // confirm) — collapse the two spots that read the name into a natural
+  // business-only phrasing instead of leaving a raw "[owner_first]" bracket
+  // mid-sentence. Only fires when owner_first is truly unfilled, so every
+  // named lead (the vast majority) is completely unaffected.
+  if (textTokens['[owner_first]'] == null) {
+    html = html.split('[owner_first], from [business_name]').join('[business_name]');
+    html = html.split(', cheers [owner_first]').join(', cheers');
+  }
+
   for (const [token, value] of Object.entries(textTokens)) {
     if (value == null) continue; // leave it — it becomes a brown slot below
     html = replaceAll(html, token, esc(value));

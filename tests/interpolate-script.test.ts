@@ -89,6 +89,29 @@ describe('interpolateScript', () => {
     expect(interpolateScript('[town]', contact)).toBe('Basingstoke');
   });
 
+  it('no owner name: collapses the opener/sign-off to a business-only phrasing (no raw bracket)', () => {
+    const noOwner = { name: 'Ace Locksmiths', customFields: { town: 'Crawley' } };
+    expect(interpolateScript('is that [owner_first], from [business_name]?', noOwner)).toBe(
+      'is that Ace Locksmiths?'
+    );
+    expect(interpolateScript("I'll let you get back to it, cheers [owner_first].", noOwner)).toBe(
+      "I'll let you get back to it, cheers."
+    );
+  });
+
+  it('no owner name: an unrelated lone [owner_first] still falls back to a brown slot', () => {
+    const noOwner = { name: 'Ace Locksmiths', customFields: {} };
+    expect(interpolateScript('ask for [owner_first] directly', noOwner)).toBe(
+      'ask for <span class="ph">[owner_first]</span> directly'
+    );
+  });
+
+  it('owner name present: the collapse rule never fires (byte-identical to before)', () => {
+    expect(interpolateScript('is that [owner_first], from [business_name]?', contact)).toBe(
+      'is that Lewis, from In Goes Plumbing Services?'
+    );
+  });
+
   it('leaves calculator illustration numbers untouched (not brown, not filled)', () => {
     expect(interpolateScript('say [10] a month, [120] a year', contact)).toBe(
       'say [10] a month, [120] a year'

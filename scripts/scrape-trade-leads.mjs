@@ -54,13 +54,23 @@ const SEARCH = {
   carpenter: 'carpenters in',
   plasterer: 'plasterers in',
   plumber: 'plumbers in',
+  locksmith: 'locksmiths in',
+  'pest-control': 'pest control in',
+}
+const CATEGORY_LABEL = {
+  electrician: 'Electrician', builder: 'Home builder', roofer: 'Roofing Service',
+  carpenter: 'Carpenter', plasterer: 'Plasterer', plumber: 'Plumber',
+  locksmith: 'Locksmith', 'pest-control': 'Pest control service',
 }
 const stem = SEARCH[TRADE]
 if (!stem) { console.error(`unknown trade "${TRADE}" — one of ${Object.keys(SEARCH).join(', ')}`); process.exit(2) }
 
-// Mid-size UK towns: big enough to have a real local pack, small enough that a
-// business with <65 reviews is genuinely competing rather than invisible.
+// UK towns/cities to sweep. Big enough to have a real local pack, small enough
+// that a business with <65 reviews is genuinely competing rather than invisible.
+// Expanded 2026-07-27 (locksmith/pest-control are far rarer per-town than
+// plumbers, so hitting 1,000 clean leads needs a much wider sweep than 55 towns).
 const TOWNS = [
+  // original 55
   'Basingstoke', 'Crawley', 'Chester', 'Wakefield', 'Grantham', 'Kidderminster',
   'Chatham', 'Winchester', 'Havant', 'Haywards Heath', 'Great Yarmouth', 'Wickford',
   'Macclesfield', 'Redruth', 'Skipton', 'Buckingham', 'Northampton', 'Warrington',
@@ -70,6 +80,62 @@ const TOWNS = [
   'Nuneaton', 'Tamworth', 'Burton upon Trent', 'Loughborough', 'Mansfield',
   'Chesterfield', 'Rotherham', 'Barnsley', 'Halifax', 'Keighley', 'Accrington',
   'Burnley', 'Blackburn', 'Chorley', 'Widnes', 'Runcorn', 'Crewe', 'Stafford',
+  // south east
+  'Guildford', 'Woking', 'Reigate', 'Redhill', 'Horsham', 'Tonbridge', 'Tunbridge Wells',
+  'Maidstone', 'Ashford', 'Canterbury', 'Dover', 'Folkestone', 'Margate', 'Ramsgate',
+  'Sittingbourne', 'Gravesend', 'Dartford', 'Sevenoaks', 'Epsom', 'Leatherhead',
+  'Staines', 'Slough', 'High Wycombe', 'Amersham', 'Aylesbury', 'Bicester', 'Banbury',
+  'Thame', 'Newbury', 'Fareham', 'Gosport', 'Petersfield', 'Alton', 'Bognor Regis',
+  'Worthing', 'Chichester', 'Burgess Hill', 'East Grinstead', 'Lewes', 'Eastbourne',
+  'Hastings', 'Bexhill',
+  // south west
+  'Bath', 'Frome', 'Shepton Mallet', 'Wells', 'Glastonbury', 'Street', 'Weston-super-Mare',
+  'Yate', 'Thornbury', 'Cheltenham', 'Gloucester', 'Stroud', 'Cirencester', 'Tewkesbury',
+  'Swindon', 'Salisbury', 'Devizes', 'Marlborough', 'Melksham', 'Warminster', 'Exeter',
+  'Exmouth', 'Newton Abbot', 'Torquay', 'Paignton', 'Barnstaple', 'Bideford', 'Truro',
+  'Falmouth', 'Penzance', 'St Austell', 'Bodmin', 'Launceston', 'Poole', 'Christchurch',
+  'Ferndown', 'Wimborne', 'Blandford Forum', 'Dorchester', 'Weymouth', 'Bridport',
+  // east of england
+  'Cambridge', 'Ely', 'Huntingdon', 'St Neots', 'Peterborough', 'Wisbech', "King's Lynn",
+  'Norwich', 'Ipswich', 'Colchester', 'Chelmsford', 'Braintree', "Bishop's Stortford",
+  'Harlow', 'Stevenage', 'Hitchin', 'Letchworth', 'Bedford', 'Luton', 'St Albans',
+  'Watford', 'Hemel Hempstead', 'Hatfield', 'Welwyn Garden City', 'Sudbury',
+  'Bury St Edmunds', 'Newmarket', 'Thetford', 'Diss', 'Lowestoft',
+  // east midlands
+  'Leicester', 'Hinckley', 'Coalville', 'Melton Mowbray', 'Wigston', 'Derby',
+  'Ilkeston', 'Long Eaton', 'Belper', 'Matlock', 'Worksop', 'Retford',
+  'Newark-on-Trent', 'Lincoln', 'Boston', 'Sleaford', 'Spalding', 'Nottingham',
+  'Beeston', 'Sutton-in-Ashfield', 'Kirkby-in-Ashfield',
+  // west midlands
+  'Coventry', 'Solihull', 'Sutton Coldfield', 'Walsall', 'Wolverhampton', 'Dudley',
+  'Stourbridge', 'Halesowen', 'West Bromwich', 'Redditch', 'Bromsgrove', 'Worcester',
+  'Malvern', 'Evesham', 'Droitwich', 'Telford', 'Shrewsbury', 'Newcastle-under-Lyme',
+  'Stoke-on-Trent', 'Leek', 'Uttoxeter', 'Rugeley', 'Cannock', 'Lichfield', 'Bedworth',
+  'Warwick', 'Leamington Spa', 'Stratford-upon-Avon',
+  // yorkshire & humber
+  'Leeds', 'Harrogate', 'York', 'Selby', 'Wetherby', 'Otley', 'Ilkley', 'Bradford',
+  'Huddersfield', 'Dewsbury', 'Batley', 'Pontefract', 'Castleford', 'Normanton',
+  'Sheffield', 'Goole', 'Beverley', 'Bridlington', 'Scarborough', 'Whitby', 'Hull',
+  'Grimsby', 'Cleethorpes',
+  // north west
+  'Liverpool', 'Southport', 'St Helens', 'Wigan', 'Bolton', 'Bury', 'Rochdale',
+  'Oldham', 'Stockport', 'Altrincham', 'Sale', 'Wilmslow', 'Northwich', 'Winsford',
+  'Congleton', 'Nantwich', 'Ellesmere Port', 'Birkenhead', 'Wallasey', 'Preston',
+  'Blackpool', 'Lytham St Annes', 'Fleetwood', 'Kendal', 'Barrow-in-Furness',
+  'Workington', 'Whitehaven',
+  // north east
+  'Newcastle upon Tyne', 'Gateshead', 'Sunderland', 'Durham', 'Darlington',
+  'Middlesbrough', 'Stockton-on-Tees', 'Hartlepool', 'Bishop Auckland', 'Consett',
+  'Berwick-upon-Tweed', 'Morpeth', 'Hexham',
+  // scotland
+  'Edinburgh', 'Glasgow', 'Aberdeen', 'Dundee', 'Stirling', 'Perth', 'Inverness',
+  'Ayr', 'Kilmarnock', 'Paisley', 'East Kilbride', 'Livingston', 'Falkirk',
+  'Dunfermline', 'Kirkcaldy', 'St Andrews', 'Motherwell', 'Hamilton', 'Dumfries',
+  // wales
+  'Cardiff', 'Swansea', 'Newport', 'Wrexham', 'Bangor', 'Aberystwyth', 'Carmarthen',
+  'Llanelli', 'Bridgend', 'Merthyr Tydfil', 'Neath', 'Port Talbot', 'Barry',
+  // northern ireland
+  'Belfast', 'Lisburn', 'Derry', 'Newry',
 ]
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -93,7 +159,12 @@ async function places(path, params) {
 }
 
 // Reject obvious non-traders that pollute a trade search.
-const JUNK = /\b(wholesal|merchant|supplies|supply|superstore|screwfix|toolstation|city electrical|edmundson|rexel|college|training|academy|council|jobcentre|recruit)\b/i
+const JUNK = /\b(wholesal|merchant|supplies|supply|superstore|screwfix|toolstation|city electrical|edmundson|rexel|college|training|academy|council|jobcentre|recruit|timpson|mr minit|max spielmann|rentokil|terminix)\b/i
+
+// Hugo's rule: mobile numbers only, never a landline. UK mobile = 07xxx xxxxxx
+// (11 digits total). Checked here, straight off the Google Details response,
+// so a landline-only business never makes it into the leads file at all.
+const isUkMobile = (raw) => /^0?7\d{9}$/.test(String(raw || '').replace(/[\s()-]/g, '').replace(/^\+44/, '0'))
 
 async function scrapeTown(town) {
   const query = `${stem} ${town}`
@@ -117,6 +188,7 @@ async function scrapeTown(town) {
     const website = d.result?.website || ''
     const phone = d.result?.formatted_phone_number || ''
     if (!website) continue                        // scene 1 needs a real site
+    if (!isUkMobile(phone)) continue               // Hugo: mobile numbers only, no landlines
 
     out.push({
       name: r.name,
@@ -132,11 +204,7 @@ async function scrapeTown(town) {
       phone,
       place_id: r.place_id,
       google_search_url: `https://www.google.com/maps/search/${encodeURIComponent(query)}/`,
-      category: TRADE === 'electrician' ? 'Electrician'
-        : TRADE === 'builder' ? 'Home builder'
-        : TRADE === 'roofer' ? 'Roofing Service'
-        : TRADE === 'carpenter' ? 'Carpenter'
-        : TRADE === 'plasterer' ? 'Plasterer' : 'Plumber',
+      category: CATEGORY_LABEL[TRADE] || 'Plumber',
     })
     await sleep(120)
   }
