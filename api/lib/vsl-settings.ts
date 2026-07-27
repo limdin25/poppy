@@ -227,6 +227,21 @@ export async function agentSmsLine(agentId: string): Promise<string | null> {
   return fallback?.[0]?.e164 ?? null;
 }
 
+/** The first name, with the punctuation stripped off both ends.
+ *
+ *  Owner names arrive from Companies House and from CSVs in every shape there
+ *  is: "Hywel, Mr. Herbert" gives a first token of "Hywel," and the template
+ *  then produced "Hi Hywel,, it's Marr". Caught on a real lead moments before
+ *  it was sent (2026-07-27).
+ *
+ *  Only the EDGES are stripped, so O'Brien and Anne-Marie survive intact. */
+export function firstName(raw: string | null | undefined): string {
+  return String(raw || '')
+    .trim()
+    .split(/\s+/)[0]
+    .replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
+}
+
 /** Fill {first} {business} {url} {agent} into a template. */
 export function fillTemplate(
   template: string,
@@ -235,7 +250,7 @@ export function fillTemplate(
   return template
     // No name → drop it (NOT "there" — a fake first name reads like spam; the
     // business name carries the personalisation). Grammar is cleaned below.
-    .replace(/\{\{?\s*first(?:_name)?\s*\}?\}/gi, (vars.first || '').split(' ')[0])
+    .replace(/\{\{?\s*first(?:_name)?\s*\}?\}/gi, firstName(vars.first))
     .replace(/\{\{?\s*business\s*\}?\}/gi, vars.business || 'your business')
     .replace(/\{\{?\s*url\s*\}?\}/gi, vars.url || '')
     .replace(/\{\{?\s*agent(?:_first_name)?\s*\}?\}/gi, (vars.agent || 'the team').split(' ')[0])

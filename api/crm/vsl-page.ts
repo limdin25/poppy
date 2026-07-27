@@ -23,6 +23,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   getVslSettings,
   fillTemplate,
+  firstName,
   slugifyBusiness,
   advanceVslState,
 } from '../lib/vsl-settings.js';
@@ -137,7 +138,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   const settings = await getVslSettings();
   const cf = (contact.custom_fields || {}) as Record<string, string>;
-  const ownerFirst = (cf.owner_name || '').split(/\s+/)[0] || null;
+  // Stored clean: "Hywel, Mr. Herbert" must not become "Hi Hywel,,".
+  const ownerFirst = firstName(cf.owner_name) || null;
   // Same rule as video/scripts/lead-url.mjs safeWebsiteUrl — a social-only or
   // junk "website" is treated as no-website so the SMS offer matches the video
   // scene the render pipeline actually produces. KEEP IN LOCKSTEP.

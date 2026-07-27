@@ -168,3 +168,26 @@ describe('the AI reply prompt', () => {
     expect(prompt).not.toContain('—');
   });
 });
+
+describe('the first name a lead actually sees', () => {
+  // Caught on a real lead seconds before it was sent, 2026-07-27. Their owner
+  // name is stored "Hywel, Mr. Herbert", the first token is "Hywel," and the
+  // greeting came out as "Hi Hywel,, it's Marr from HeyElsie."
+  it('strips punctuation clinging to the name', async () => {
+    const { fillTemplate } = await load();
+    expect(fillTemplate('Hi {first}, ok?', { first: 'Hywel, Mr. Herbert' })).toBe('Hi Hywel, ok?');
+    expect(fillTemplate('Hi {first}.', { first: '  "Dave"  ' })).toBe('Hi Dave.');
+  });
+
+  it('leaves a real name alone, punctuation and all', async () => {
+    const { fillTemplate } = await load();
+    expect(fillTemplate('Hi {first}.', { first: "O'Brien" })).toBe("Hi O'Brien.");
+    expect(fillTemplate('Hi {first}.', { first: 'Anne-Marie Smith' })).toBe('Hi Anne-Marie.');
+  });
+
+  it('still drops the greeting entirely when there is no name', async () => {
+    const { fillTemplate } = await load();
+    expect(fillTemplate("Hi {first}, it's {agent}.", { agent: 'Marr' })).toBe("Hi, it's Marr.");
+    expect(fillTemplate('Hi {first}.', { first: ',,,' })).toBe('Hi.');
+  });
+});

@@ -36,7 +36,10 @@ const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 if (!SUPABASE_URL || !KEY) { console.error('missing SUPABASE_URL / SERVICE_ROLE_KEY'); process.exit(1) }
 
 const POLL_MS = 30_000
-const STALE_MIN = 45
+// Renders observed at 6 to 8 minutes, so 25 is a threefold margin and still
+// rescues a stuck row three times faster than the old 45. The worker is single
+// threaded, so requeueing cannot start a second render of the same page.
+const STALE_MIN = 25
 const BUCKET = 'vsl-videos'
 
 // KEEP IN LOCKSTEP with api/lib/vsl-settings.ts
@@ -48,13 +51,41 @@ const COLUMN_ORDER = [
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}` }
 const HJ = { ...H, 'Content-Type': 'application/json' }
 
+/**
+ * Every call this worker makes to Supabase, with a short retry.
+ *
+ * Rendering pins the CPU for minutes at a time (chromium + ffmpeg), and under
+ * that load a request can simply time out. On 2026-07-27 that produced
+ * "mark-failed also failed: fetch failed": the render died, and the write
+ * recording that it died died too, so the row sat at 'rendering' until
+ * requeueStale noticed 45 minutes later and an agent stared at a frozen card.
+ *
+ * A transport failure or a 5xx is worth another go. A 4xx is Supabase telling
+ * us something true, so that throws immediately.
+ */
 async function rest(method, path, body, headers = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method, headers: { ...HJ, ...headers }, body: body ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`)
-  const text = await res.text()
-  return text ? JSON.parse(text) : null
+  const waits = [500, 2000, 6000]
+  let lastErr = null
+  for (let i = 0; i <= waits.length; i++) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+        method, headers: { ...HJ, ...headers }, body: body ? JSON.stringify(body) : undefined,
+      })
+      if (res.status >= 500) {
+        lastErr = new Error(`${method} ${path}: ${res.status}`)
+      } else {
+        if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`)
+        const text = await res.text()
+        return text ? JSON.parse(text) : null
+      }
+    } catch (e) {
+      // A 4xx we raised above must not be retried.
+      if (/: 4\d\d/.test(e.message || '')) throw e
+      lastErr = e
+    }
+    if (i < waits.length) await new Promise((r) => setTimeout(r, waits[i]))
+  }
+  throw lastErr
 }
 
 async function moveCard(contactId, columnName) {
