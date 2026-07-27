@@ -160,10 +160,19 @@ describe('checkout — £1 + trial', () => {
     expect(checkout).toMatch(/VSL_PRICES\[priceId\]/)
   })
 
-  it('charges £1 today with a 10-day trial on the subscription', () => {
+  it('charges £1 today with the canonical trial on the subscription', () => {
     expect(checkout).toMatch(/VSL_POUND_PRICE/)
-    expect(checkout).toMatch(/trial_period_days: 10/)
+    // Trial length is no longer hardcoded per checkout — one constant drives
+    // all three doors AND every line of user-facing copy.
+    expect(checkout).toMatch(/trial_period_days: TRIAL_DAYS/)
     expect(checkout).toMatch(/payment_method_collection: 'always'/)
+    expect(read('api/lib/review-plans.ts')).toMatch(/TRIAL_DAYS = 10/)
+  })
+
+  it('returns the session id so /continue can confirm the payment', () => {
+    // Without this the buyer lands on a page that has no idea they paid and
+    // asks them to retype the email they just used on Stripe.
+    expect(checkout).toMatch(/session_id=\{CHECKOUT_SESSION_ID\}/)
   })
 
   it('carries the page identity for webhook provisioning', () => {
@@ -196,8 +205,39 @@ describe('webhook provisioning', () => {
     expect(prov).not.toMatch(/existing\?\.business_id[\s\S]{0,400}\.from\('businesses'\)\s*\.update/)
   })
 
-  it('is idempotent — a duplicate delivery for a paid page is a no-op', () => {
-    expect(prov).toMatch(/page\.state === 'paid'\) return/)
+  it('is idempotent AND resumable — claims the session before any write', () => {
+    // The old guard was `page.state === 'paid'`, written only at the END of
+    // provisioning. A crash in between left a businesses row whose slug is
+    // deterministic, so every Stripe retry died on the UNIQUE constraint and
+    // the paying customer was wedged permanently.
+    expect(prov).toMatch(/claim_stripe_provision/)
+    expect(prov).toMatch(/finish_stripe_provision/)
+    expect(prov).toMatch(/fail_stripe_provision/)
+    // Legacy belt-and-braces for sessions provisioned before the ledger.
+    expect(prov).toMatch(/page\.state === 'paid'/)
+  })
+
+  it('every write on the resume path tolerates a conflict and is error-checked', () => {
+    for (const table of ['feature_flags', 'review_settings', 'team_members']) {
+      expect(prov).toMatch(new RegExp(`from\\('${table}'\\)[\\s\\S]{0,400}upsert`))
+    }
+    // ignoreDuplicates on review_settings is load-bearing: a plain upsert would
+    // regenerate inbound_token and break any Zapier URL already issued.
+    expect(prov).toMatch(/onConflict: 'business_id', ignoreDuplicates: true/)
+    expect(prov).toMatch(/team member failed/)
+  })
+
+  it('queues a sender number, or the paid account can never send', () => {
+    expect(prov).toMatch(/ensureNumberRequest/)
+    expect(prov).toMatch(/review_number_requests/)
+  })
+
+  it('emails the buyer — never inline-only', () => {
+    expect(prov).toMatch(/sendReviewsWelcome/)
+    // A Resend 429 throws; letting it propagate would 500 the webhook, Stripe
+    // would retry, the ledger would short-circuit, and the email would never send.
+    expect(prov).toMatch(/sendReviewsWelcome\(businessId\)\.catch/)
+    expect(read('api/cron/notify-drain.ts')).toMatch(/drainReviewsWelcome/)
   })
 
   it('recovers the user on duplicate-email instead of dropping a paid customer', () => {
@@ -416,8 +456,13 @@ describe('render pipeline — lib', () => {
 
   it('no-website SMS variant carries NO free-website offer (withdrawn 2026-07-26)', async () => {
     const { DEFAULT_VSL_SETTINGS, fillTemplate } = await load()
+    // This used to ban the WORD "website", which was a blunt proxy for banning
+    // the OFFER. Hugo asked on 2026-07-27 for the message to say we couldn't
+    // find them a website, so the ban has to be on the offer itself.
     expect(DEFAULT_VSL_SETTINGS.send_template_no_site).not.toMatch(/free/i)
-    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).not.toMatch(/website/i)
+    expect(DEFAULT_VSL_SETTINGS.send_template_no_site)
+      .not.toMatch(/build you|set you up with a|make you a (new )?(site|website)|website for free/i)
+    expect(DEFAULT_VSL_SETTINGS.send_template_no_site).toMatch(/couldn't find a website/i)
     const out = fillTemplate(DEFAULT_VSL_SETTINGS.send_template_no_site, {
       first: 'Kate', business: 'K Plumbing', url: 'https://heyelsie.com/k', agent: 'Pedro',
     })

@@ -375,7 +375,9 @@ export default function VideoLinkButton({ contact, compact = false }: { contact:
           value={body}
           onChange={(e) => setBody(e.target.value)}
           disabled={armed}
-          rows={3}
+          // The message is five lines now that it has paragraphs; three rows
+          // hid the sign-off the agent is meant to be checking.
+          rows={7}
           className="w-full text-[11px] text-[#374151] bg-white border border-[#d5e0ee] rounded-[8px] px-2 py-1.5 leading-snug resize-y disabled:bg-[#f7f9fc] disabled:text-[#6B7280]"
         />
 

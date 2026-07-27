@@ -3,6 +3,7 @@
 // without a deploy lives here: templates, delays, quiet hours, CTA A/B labels.
 
 import { createClient } from '@supabase/supabase-js';
+import { REVIEW_PLANS, requestsLabel } from './review-plans.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -67,26 +68,49 @@ export function crossedMilestones(before: number, after: number): number[] {
   return VSL_PROGRESS_MARKERS.filter((m) => m > before && m <= after);
 }
 
-export const VSL_PRICES: Record<string, { plan: string; label: string; monthly: string; requests: string }> = {
-  price_1TvIMsLdAEhwWg6w9VFZFSJ0: { plan: 'reviews_starter', label: 'Starter', monthly: '£99', requests: 'up to 50 review requests a month' },
-  price_1TvIMtLdAEhwWg6wjAfYPZeq: { plan: 'reviews_growth', label: 'Growth', monthly: '£179', requests: 'up to 100 review requests a month' },
-  price_1TvIMtLdAEhwWg6wiQM7pKvR: { plan: 'reviews_pro', label: 'Pro', monthly: '£279', requests: 'up to 200 review requests a month' },
-};
+// Derived from the canon — NOT a second price table. The hand-written version
+// this replaced advertised Pro as "up to 200 review requests a month" while
+// capForPlan() enforced 300, so a lead was quoted a smaller product than they
+// were billed for.
+export const VSL_PRICES: Record<string, {
+  plan: string; label: string; monthly: string; requests: string; popular: boolean;
+}> = Object.fromEntries(
+  REVIEW_PLANS.map((p) => [p.stripePriceId, {
+    plan: p.key,
+    label: p.name,
+    monthly: `£${p.priceGbp}`,
+    requests: requestsLabel(p).toLowerCase(),
+    popular: !!p.popular,
+  }]),
+);
 // One-time "first 10 days" pound, created 2026-07-25 under prod_Uv8eim0pBOmEGZ.
 export const VSL_POUND_PRICE = process.env.VSL_POUND_PRICE || 'price_1Tx5miLdAEhwWg6wqTTWjQsC';
 
 export const DEFAULT_VSL_SETTINGS: VslSettings = {
   enabled: false,
   default_video_url: '',
-  // Must echo the exact words the agent just said on the phone — "a 90-second
-  // audit" — or the text reads like a different offer arriving from a stranger
+  // Must echo the exact words the agent just said on the phone, "a 90-second
+  // audit", or the text reads like a different offer arriving from a stranger
   // (Hugo 2026-07-26, the new video-first call).
+  //
+  // Laid out in paragraphs with the link on its own line: it lands on a phone,
+  // where a single run-on sentence hides the one thing we want tapped. Every
+  // character is GSM-7 (see api/lib/sms-charset.ts) so this costs two texts and
+  // not three. NO LONG DASHES, ever (Hugo 2026-07-27) — tests/message-copy.test.ts
+  // fails the build if one comes back.
   send_template:
-    "Hi {first}, it's {agent} from HeyElsie — here's the 90-second audit I just mentioned for {business}: {url}",
-  // free-website offer withdrawn (Hugo 2026-07-26) — same message as the
-  // with-site variant; the field stays so the drawer can differentiate later
+    "Hi {first}, it's {agent} from HeyElsie.\n\n" +
+    "Here's the 90-second audit I just mentioned for {business}:\n{url}\n\n" +
+    "Any questions, just message me here any time.",
+  // Free-website offer withdrawn 2026-07-26, and it must not creep back in.
+  // What this variant DOES say is why their audit opens on Google: we couldn't
+  // find them a website, which is exactly what the render pipeline saw. Saying
+  // it out loud beats letting them wonder (Hugo 2026-07-27).
   send_template_no_site:
-    "Hi {first}, it's {agent} from HeyElsie — here's the 90-second audit I just mentioned for {business}: {url}",
+    "Hi {first}, it's {agent} from HeyElsie.\n\n" +
+    "I couldn't find a website for {business}, so I've run the 90-second audit " +
+    "from your Google listing instead:\n{url}\n\n" +
+    "Any questions, just message me here any time.",
   cta_labels: { a: 'Start getting reviews', b: 'Get my reviews rolling' },
   watched_threshold_pct: 50,
   quiet_hours: { start: '08:00', end: '20:00' },
@@ -104,25 +128,28 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
     cta_click: true, checkout_start: true, paid: true,
   },
   rules: {
+    // Follow-ups stay to one short paragraph plus the link. A nudge that looks
+    // as considered as the first message reads as a campaign, not as a person
+    // checking back.
     sent_not_opened: {
       enabled: true, delay_minutes: 180, max_sends: 2, repeat_hours: 24,
-      template: 'Hi {first}, did you get a chance to watch your video? Takes 90 seconds — worth a look: {url}',
+      template: 'Hi {first}, did you get a chance to watch your video? It only takes 90 seconds:\n{url}',
     },
     opened_not_watched: {
       enabled: true, delay_minutes: 60, max_sends: 1, repeat_hours: 24,
-      template: 'Hi {first}, the video’s only 90 seconds — it shows exactly where {business} sits on Google right now: {url}',
+      template: "Hi {first}, the video is only 90 seconds and it shows exactly where {business} sits on Google right now:\n{url}",
     },
     watched_no_click: {
       enabled: true, delay_minutes: 30, max_sends: 2, repeat_hours: 24,
-      template: 'Nice one {first} — saw you watched the video. Want me to get {business} set up? Takes 2 minutes: {url}',
+      template: 'Nice one {first}, saw you watched the video. Want me to get {business} set up? It takes 2 minutes:\n{url}',
     },
     checkout_abandoned: {
       enabled: true, delay_minutes: 30, max_sends: 2, repeat_hours: 24,
-      template: 'Hi {first}, you were nearly there — it’s just £1 to start and we set everything up for you: {url}',
+      template: "Hi {first}, you were nearly there. It's just £1 to start and we set the whole thing up for you:\n{url}",
     },
     paid_welcome: {
       enabled: true, delay_minutes: 1, max_sends: 1, repeat_hours: 24,
-      template: 'Welcome aboard {first}! We’re setting {business} up now — your reviews start rolling shortly. Any questions, just reply here.',
+      template: "Welcome aboard {first}! We're setting {business} up now and your reviews will start rolling shortly.\n\nAny questions, just message me here any time.",
     },
   },
 };
@@ -221,8 +248,16 @@ export function fillTemplate(
     // substitution can never touch an already-filled VSL body.
     .replace(/\{\{?[a-z_]+\}?\}/gi, '')
     // Tidy up the hole a missing name leaves: "Hi , it's" → "Hi, it's".
-    .replace(/\s+([,.!?])/g, '$1')
-    .replace(/\s{2,}/g, ' ')
+    // HORIZONTAL whitespace only, here and below: \s matches \n, so the old
+    // /\s{2,}/g → ' ' flattened every paragraph break the moment the templates
+    // gained one (Hugo 2026-07-27 asked for paragraphs).
+    .replace(/[^\S\n]+([,.!?])/g, '$1')
+    .replace(/[^\S\n]{2,}/g, ' ')
+    // Trailing spaces a stripped token leaves at the end of a line.
+    .replace(/[^\S\n]+\n/g, '\n')
+    // A token that resolved to nothing can leave a line empty; three or more
+    // newlines in a row reads to a lead like a broken message.
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 

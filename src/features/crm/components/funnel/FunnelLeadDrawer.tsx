@@ -507,7 +507,7 @@ export default function FunnelLeadDrawer({
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                rows={5}
+                rows={8}
                 placeholder={info ? '' : 'Loading the message…'}
                 data-testid="funnel-send-body"
                 className="w-full px-2 py-1.5 text-[12px] leading-snug border border-[#d5e0ee] rounded-[8px] bg-white resize-y"
