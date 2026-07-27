@@ -3,7 +3,6 @@
 // without a deploy lives here: templates, delays, quiet hours, CTA A/B labels.
 
 import { createClient } from '@supabase/supabase-js';
-import { REVIEW_PLANS, requestsLabel } from './review-plans.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -68,21 +67,11 @@ export function crossedMilestones(before: number, after: number): number[] {
   return VSL_PROGRESS_MARKERS.filter((m) => m > before && m <= after);
 }
 
-// Derived from the canon — NOT a second price table. The hand-written version
-// this replaced advertised Pro as "up to 200 review requests a month" while
-// capForPlan() enforced 300, so a lead was quoted a smaller product than they
-// were billed for.
-export const VSL_PRICES: Record<string, {
-  plan: string; label: string; monthly: string; requests: string; popular: boolean;
-}> = Object.fromEntries(
-  REVIEW_PLANS.map((p) => [p.stripePriceId, {
-    plan: p.key,
-    label: p.name,
-    monthly: `£${p.priceGbp}`,
-    requests: requestsLabel(p).toLowerCase(),
-    popular: !!p.popular,
-  }]),
-);
+export const VSL_PRICES: Record<string, { plan: string; label: string; monthly: string; requests: string }> = {
+  price_1TvIMsLdAEhwWg6w9VFZFSJ0: { plan: 'reviews_starter', label: 'Starter', monthly: '£99', requests: 'up to 50 review requests a month' },
+  price_1TvIMtLdAEhwWg6wjAfYPZeq: { plan: 'reviews_growth', label: 'Growth', monthly: '£179', requests: 'up to 100 review requests a month' },
+  price_1TvIMtLdAEhwWg6wiQM7pKvR: { plan: 'reviews_pro', label: 'Pro', monthly: '£279', requests: 'up to 200 review requests a month' },
+};
 // One-time "first 10 days" pound, created 2026-07-25 under prod_Uv8eim0pBOmEGZ.
 export const VSL_POUND_PRICE = process.env.VSL_POUND_PRICE || 'price_1Tx5miLdAEhwWg6wqTTWjQsC';
 
@@ -96,7 +85,7 @@ export const DEFAULT_VSL_SETTINGS: VslSettings = {
   // Laid out in paragraphs with the link on its own line: it lands on a phone,
   // where a single run-on sentence hides the one thing we want tapped. Every
   // character is GSM-7 (see api/lib/sms-charset.ts) so this costs two texts and
-  // not three. NO LONG DASHES, ever (Hugo 2026-07-27) — tests/message-copy.test.ts
+  // not three. NO LONG DASHES, ever (Hugo 2026-07-27): tests/message-copy.test.ts
   // fails the build if one comes back.
   send_template:
     "Hi {first}, it's {agent} from HeyElsie.\n\n" +
