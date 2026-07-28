@@ -40,7 +40,7 @@ describe('every message a lead can receive', () => {
   });
 
   it.each(everyBody)('$what contains no long dash, curly quote or ellipsis', ({ body }) => {
-    expect(body).not.toMatch(/[‐-―‘’“”…]/);
+    expect(body).not.toMatch(/[\u2010-\u2015\u2018\u2019\u201C\u201D\u2026]/);
   });
 
   // Not a hard failure at 2, but a body that has quietly grown to 4 segments
