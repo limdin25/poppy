@@ -162,8 +162,15 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     if (ownerFirst) {
       return `Hi, quick one: is that ${ownerFirst}?`;
     }
+    // No owner name on file (e.g. a sole-trader lead with no Companies House
+    // record) — mirror interpolateScript.ts's fallback: ask for the business,
+    // never a generic agent-intro line, so the opener card and the col-2
+    // script never disagree.
+    if (business) {
+      return `Hi, quick one: is that ${business}?`;
+    }
     const me = (agentFirstName ?? '').trim() || 'there';
-    return `Hi, it's ${me} here — have you got a quick minute?`;
+    return `Hi, it's ${me} here, have you got a quick minute?`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactId, agentFirstName, store]);
   // ?demo=1 in the URL keeps the legacy mock transcript reachable for
