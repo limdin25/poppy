@@ -179,18 +179,18 @@ function homeBody(ctx: PageContext): string {
 
   return `
 <section class="hero">
-  ${photoTag(photos.hero, 'shot', true)}
-  <div class="scrim"></div>
   <div class="wrap">
+   <div class="herocopy">
     ${ratingRow}
     <p class="kicker r">${esc(content.tagline)}</p>
     <h1 class="name r">${esc(content.businessName)}</h1>
     <p class="blurb r">${esc(heroBlurb)}</p>
     <div class="acts r">
-      <a class="btn btn-call" href="tel:${esc(content.phoneE164)}" data-tap="1">${svg('phone', 19)}Call ${esc(content.phoneDisplay)}</a>
+      <a class="btn btn-call" href="tel:${esc(content.phoneE164)}" data-tap="1">${svg('arrow', 18)}Call ${esc(content.phoneDisplay)}</a>
       ${askBtn}
     </div>
-  </div>
+   </div>
+  <div class="figure r">${photoTag(photos.hero, 'shot', true)}</div>
 </section>
 
 ${territory(content.bands[0])}

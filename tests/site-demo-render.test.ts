@@ -153,7 +153,7 @@ describe('the composition survives', () => {
 
   it('offers the phone in every place a thumb might land', () => {
     const h = html();
-    expect(h).toContain('class="headcall"'); // header, wide screens
+    expect(h).toContain('class="util"'); // utility strip, wide screens
     expect(h).toContain('class="callbar"'); // fixed bar, phones
     expect(h).toContain('class="btn btn-call"'); // the hero
     expect(h).toContain('class="tel z"'); // the close, largest type on the page

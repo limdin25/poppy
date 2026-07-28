@@ -23,14 +23,20 @@ export interface ChromeContext extends NavContext {
 export function styles(accent: string, blue: string): string {
   return `
 :root{
-  --paper:#FFFFFF; --soft:#F4F7FB; --tint:#EDF3FA;
+  /* Cream page, white cards. A white page under a vivid panel looks like a
+     default template; the warm ground is what makes the colour read as chosen. */
+  --cream:#F5F1E8; --paper:#FFFFFF; --soft:#F4F7FB; --tint:#EDF3FA;
   --ink:#0B1B2D; --muted:#58687C; --line:#E4EAF2;
   --blue:${esc(blue)}; --navy:#0C2138; --deep:#12304F; --accent:${esc(accent)};
   /* Matches the tint baked into public/site/*.webp by
      scripts/build-site-photos.mjs, so a trade with no photograph falls back to
      a solid plane of the same colour rather than to a broken page. */
   --duo-base:#0E2E52;
-  --pill:999px;
+  --pill:999px; --round:30px;
+  /* The display face. A serif at a LIGHT weight and a large size is the whole
+     character of this design: heavy sans at the same size reads as a SaaS
+     landing page, which is what got rejected. */
+  --display:Georgia,"Iowan Old Style","Palatino Linotype",Palatino,"Times New Roman",serif;
   --shadow:0 1px 2px rgba(12,28,46,.05), 0 12px 32px rgba(12,28,46,.07);
   --shadow-lg:0 2px 4px rgba(12,28,46,.06), 0 24px 60px rgba(12,28,46,.12);
   --s1:8px; --s2:16px; --s3:24px; --s4:36px; --s5:56px; --s6:84px;
@@ -39,7 +45,7 @@ export function styles(accent: string, blue: string): string {
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
 @media(prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
-body{margin:0; background:var(--paper); color:var(--ink);
+body{margin:0; background:var(--cream); color:var(--ink);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   font-size:1.0625rem; line-height:1.6; -webkit-font-smoothing:antialiased;
   padding-bottom:var(--bar)}
@@ -50,8 +56,9 @@ img,svg{display:block}
 @media(min-width:760px){ .wrap{padding:0 32px} }
 .eyebrow{font-size:.75rem; letter-spacing:.16em; text-transform:uppercase;
   font-weight:700; color:var(--muted); margin:0 0 12px}
-.h2{font-size:clamp(1.75rem,4.4vw,2.6rem); line-height:1.1; letter-spacing:-.024em;
-  font-weight:800; margin:0 0 var(--s2)}
+.h2{font-family:var(--display); font-size:clamp(1.9rem,4.8vw,3rem); line-height:1.08;
+  letter-spacing:-.02em; font-weight:400; margin:0 0 var(--s2)}
+.h2 em{font-style:italic}
 .h3{font-size:1.2rem; font-weight:750; letter-spacing:-.012em; margin:0 0 8px}
 .lede{color:var(--muted); max-width:56ch; margin:0 0 var(--s4)}
 .prose p{color:var(--muted); max-width:62ch}
@@ -65,17 +72,30 @@ img,svg{display:block}
 
 /* ---- Header. Transparent over an opening photograph, solid once it moves.
    Interior pages start solid, because they open below a shorter frame. */
-.head{position:fixed; top:var(--banner,0px); left:0; right:0; z-index:60;
-  background:transparent; border-bottom:1px solid transparent;
-  transition:background .25s ease, border-color .25s ease}
-.head.stuck,.head.solid{background:var(--paper); border-bottom-color:var(--line)}
+/* A solid dark bar, always. The reference keeps its chrome dark and lets the
+   vivid panel below do the shouting; a transparent header over a photograph is
+   the pattern this replaced. */
+.head{position:sticky; top:0; z-index:60; background:var(--navy); color:#fff}
+.util{background:var(--navy); color:rgba(255,255,255,.86); border-bottom:1px solid rgba(255,255,255,.12)}
+.utilin{display:flex; align-items:center; justify-content:flex-end; gap:18px;
+  height:46px; font-size:.9rem}
+.util .seg{display:flex; align-items:center; gap:10px; margin-right:auto; font-weight:600}
+.util .seg span{opacity:.6}
+.util .seg b{background:rgba(255,255,255,.14); padding:5px 14px; border-radius:var(--pill);
+  font-weight:700}
+.util a{text-decoration:none; display:inline-flex; align-items:center; gap:8px;
+  font-variant-numeric:tabular-nums; font-weight:650}
+.util .wa{background:#fff; color:var(--navy); padding:8px 16px; border-radius:var(--pill);
+  font-weight:700}
+@media(max-width:860px){ .util .seg,.util .tel{display:none} .utilin{justify-content:center} }
 .headin{height:var(--head); display:flex; align-items:center; gap:16px}
 .brand{display:flex; align-items:center; gap:10px; min-width:0; color:#fff;
   text-decoration:none; margin-right:auto}
-.head.stuck .brand,.head.solid .brand{color:var(--ink)}
+.brand b{font-family:var(--display); font-weight:400; font-size:1.15rem}
+
 .brand .bm{width:32px; height:32px; flex:none; display:grid; place-items:center;
   background:rgba(255,255,255,.16); color:#fff}
-.head.stuck .brand .bm,.head.solid .brand .bm{background:var(--tint); color:var(--blue)}
+
 .brand b{font-size:1rem; font-weight:800; letter-spacing:-.015em; white-space:nowrap;
   overflow:hidden; text-overflow:ellipsis}
 
@@ -87,7 +107,7 @@ img,svg{display:block}
   .navtop{display:inline-flex; align-items:center; gap:6px; padding:10px 14px;
     color:#fff; text-decoration:none; font-weight:650; font-size:.95rem;
     background:none; border:0; font-family:inherit; cursor:pointer}
-  .head.stuck .navtop,.head.solid .navtop{color:var(--ink)}
+
   .navtop:hover{opacity:.75}
   .navtop .chev{transition:transform .2s ease}
   .nav>li:hover .navtop .chev,.nav>li:focus-within .navtop .chev{transform:rotate(180deg)}
@@ -105,17 +125,18 @@ img,svg{display:block}
   .headcall{display:inline-flex; align-items:center; gap:8px; color:#fff;
     text-decoration:none; font-weight:700; font-size:.98rem;
     font-variant-numeric:tabular-nums; flex:none}
-  .head.stuck .headcall,.head.solid .headcall{color:var(--blue)}
+
 }
 .headbook{display:none}
 @media(min-width:1000px){
-  .headbook{display:inline-flex; align-items:center; background:var(--accent); color:#fff;
-    text-decoration:none; font-weight:700; font-size:.95rem; padding:12px 20px; flex:none}
-  .headbook:hover{filter:brightness(1.08)}
+  .headbook{display:inline-flex; align-items:center; background:#fff; color:var(--navy);
+    text-decoration:none; font-weight:700; font-size:.95rem; padding:12px 24px;
+    border-radius:var(--pill); flex:none}
+  .headbook:hover{background:var(--cream)}
 }
 .burger{display:inline-flex; align-items:center; justify-content:center; width:42px;
   height:42px; background:rgba(255,255,255,.14); border:0; color:#fff; cursor:pointer; flex:none}
-.head.stuck .burger,.head.solid .burger{background:var(--tint); color:var(--ink)}
+
 @media(min-width:1000px){ .burger{display:none} }
 
 /* ---- Mobile menu. A full sheet, because a trade site's nav is long and a
@@ -138,9 +159,9 @@ img,svg{display:block}
 
 /* ---- Page opening frame. Shorter than the home hero: an interior page has
    to get to its content, not perform. */
-.top{position:relative; overflow:hidden; color:#fff; background:var(--duo-base);
-  padding:calc(var(--head) + var(--banner) + var(--s5)) 0 var(--s5)}
-@media(min-width:760px){ .top{padding-top:calc(var(--head) + var(--banner) + var(--s6))} }
+.top{position:relative; overflow:hidden; color:#fff; background:var(--blue);
+  border-radius:var(--round); margin:10px; padding:var(--s6) 0}
+@media(min-width:760px){ .top{margin:12px} }
 .top .wrap{position:relative; z-index:2}
 .shot{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0}
 .scrim{position:absolute; inset:0; z-index:1; pointer-events:none;
@@ -149,17 +170,32 @@ img,svg{display:block}
 .crumb{font-size:.8rem; color:rgba(255,255,255,.72); margin:0 0 12px}
 .crumb a{text-decoration:none}
 .crumb a:hover{text-decoration:underline}
-.top h1{font-size:clamp(2rem,6vw,3.4rem); line-height:1.05; letter-spacing:-.03em;
-  font-weight:800; margin:0 0 var(--s2); text-wrap:balance}
+.top h1{font-family:var(--display); font-size:clamp(2.1rem,5.6vw,3.6rem); line-height:1.04;
+  letter-spacing:-.02em; font-weight:400; margin:0 0 var(--s2); text-wrap:balance}
 .top .sub{color:rgba(255,255,255,.86); max-width:52ch; margin:0 0 var(--s4)}
 
 /* ---- Home hero. Taller than an interior page's frame: it is the whole first
    impression, and it is the only page that gets to perform. */
-.hero{position:relative; overflow:hidden; color:#fff; background:var(--duo-base);
-  min-height:92svh; display:flex; align-items:flex-end;
-  padding:calc(var(--head) + var(--banner) + var(--s5)) 0 var(--s5)}
-@media(min-width:760px){ .hero{min-height:88vh; padding-bottom:var(--s6)} }
-.hero .wrap{position:relative; z-index:2; width:100%}
+/* THE PANEL. A flat vivid plane, inset from the page edge with a large radius,
+   sitting on the cream ground. No photograph behind the type and no scrim: the
+   colour is the background, and the figure stands ON it. */
+.hero{position:relative; overflow:hidden; color:#fff; background:var(--blue);
+  border-radius:var(--round); margin:10px; padding:var(--s5) 0 0}
+@media(min-width:900px){ .hero{margin:12px; padding-top:var(--s6)} }
+/* The grid lives INSIDE the centred wrap. Making .hero itself the grid puts a
+   max-width centred column in one cell and leaves the other empty, which is
+   what it did on the first pass. */
+.hero .wrap{position:relative; z-index:2; display:grid; grid-template-columns:1fr;
+  align-items:end; gap:var(--s4)}
+@media(min-width:900px){
+  .hero .wrap{grid-template-columns:1.02fr .98fr; gap:var(--s5); min-height:64vh}
+}
+.herocopy{padding-bottom:var(--s5)}
+/* The cut-out figure. Bottom aligned so they stand on the panel's lower edge. */
+.figure{position:relative; z-index:1; align-self:end; justify-self:stretch;
+  border-radius:22px; overflow:hidden; aspect-ratio:4/3}
+.figure img{width:100%; height:100%; object-fit:cover; display:block}
+@media(min-width:900px){ .figure{aspect-ratio:3/4; max-height:64vh} }
 .rating{display:flex; align-items:center; gap:9px; margin:0 0 var(--s3);
   font-size:.92rem; font-weight:600}
 .rating .stars{display:flex; gap:2px; color:#FFC24A}
@@ -167,26 +203,28 @@ img,svg{display:block}
 .rating b{font-variant-numeric:tabular-nums}
 .rating span{color:rgba(255,255,255,.72); font-weight:500}
 .kicker{font-size:.76rem; letter-spacing:.18em; text-transform:uppercase; font-weight:700;
-  color:rgba(255,255,255,.74); margin:0 0 12px}
-.name{font-size:clamp(2.6rem,9vw,5.2rem); line-height:1.0; letter-spacing:-.035em;
-  font-weight:800; margin:0 0 var(--s3); text-wrap:balance;
-  text-shadow:0 2px 30px rgba(0,0,0,.28)}
-.blurb{font-size:clamp(1rem,2vw,1.15rem); color:rgba(255,255,255,.86);
-  max-width:46ch; margin:0 0 var(--s4)}
+  color:rgba(255,255,255,.8); margin:0 0 14px}
+.name{font-family:var(--display); font-size:clamp(2.7rem,7.4vw,5rem); line-height:1.02;
+  letter-spacing:-.022em; font-weight:400; margin:0 0 var(--s3); text-wrap:balance}
+.name em{font-style:italic; font-weight:700}
+.blurb{font-size:clamp(1rem,2vw,1.12rem); color:rgba(255,255,255,.9);
+  max-width:44ch; margin:0 0 var(--s4)}
 
 /* ---- The inventory: an editorial list beside a tall photograph. NOT cards. */
 .inv{display:grid; gap:var(--s5); align-items:start}
 @media(min-width:900px){ .inv{grid-template-columns:.85fr 1.15fr; gap:var(--s6)} }
-.invshot{position:relative; background:var(--duo-base); overflow:hidden; aspect-ratio:16/11}
+.invshot{position:relative; background:var(--duo-base); overflow:hidden;
+  border-radius:20px; aspect-ratio:16/11}
 @media(min-width:900px){ .invshot{aspect-ratio:4/5; position:sticky; top:calc(var(--head) + 24px)} }
 .invshot img{width:100%; height:100%; object-fit:cover; display:block}
 
 /* ---- Proof: the white slab over the outcome photograph. */
-.proof{position:relative; background:var(--soft); overflow:hidden;
+.proof{position:relative; background:var(--soft); overflow:hidden; border-radius:var(--round);
+  margin:10px;
   aspect-ratio:4/3; display:flex; align-items:flex-start; justify-content:flex-end}
 @media(min-width:760px){ .proof{aspect-ratio:21/9} }
 .proof img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0}
-.proof .slab{position:relative; background:var(--paper); color:var(--ink);
+.proof .slab{position:relative; background:var(--paper); color:var(--ink); border-radius:20px;
   padding:30px 34px; margin:var(--s4) var(--s3) 0 0; text-align:center; max-width:none}
 @media(min-width:760px){ .proof .slab{margin:var(--s5) var(--s5) 0 0; padding:36px 48px} }
 .proof .stars{display:flex; justify-content:center; gap:5px; color:#F5A623; margin-bottom:10px}
@@ -201,14 +239,17 @@ img,svg{display:block}
 .proof .sub{color:var(--muted); margin:0; font-weight:600; font-size:.95rem}
 
 /* ---- Buttons. */
-.btn{display:inline-flex; align-items:center; justify-content:center; gap:10px;
-  padding:16px 26px; text-decoration:none; font-weight:700; font-size:1.02rem;
-  border:1px solid transparent; cursor:pointer; font-family:inherit;
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:12px;
+  padding:17px 30px; border-radius:var(--pill); text-decoration:none; font-weight:700;
+  font-size:1.02rem; border:1px solid transparent; cursor:pointer; font-family:inherit;
   transition:transform .16s ease, background .18s ease, filter .18s ease}
 .btn:active{transform:translateY(1px)}
-.btn-call{background:var(--accent); color:#fff; font-variant-numeric:tabular-nums}
+.btn-call{background:var(--ink); color:#fff; font-variant-numeric:tabular-nums}
+.btn-call:hover{background:var(--deep)}
 .btn-call:hover{filter:brightness(1.08)}
-.btn-ghost{background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.42)}
+.btn-ghost{background:transparent; color:var(--ink); border-color:rgba(11,27,45,.35)}
+.hero .btn-ghost,.top .btn-ghost{color:#fff; border-color:rgba(255,255,255,.5)}
+.hero .btn-ghost:hover,.top .btn-ghost:hover{background:rgba(255,255,255,.14)}
 .btn-ghost:hover{background:rgba(255,255,255,.18)}
 .btn-solid{background:var(--blue); color:#fff}
 .btn-solid:hover{background:var(--deep)}
@@ -219,7 +260,7 @@ img,svg{display:block}
 .grid{display:grid; gap:18px; grid-template-columns:1fr}
 @media(min-width:640px){ .grid.two{grid-template-columns:repeat(2,1fr)} }
 @media(min-width:960px){ .grid.three{grid-template-columns:repeat(3,1fr)} }
-.tile{background:var(--paper); border:1px solid var(--line); padding:26px 24px;
+.tile{background:var(--paper); border:1px solid var(--line); border-radius:20px; padding:28px 26px;
   text-decoration:none; color:inherit; display:block;
   transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease}
 a.tile:hover{border-color:#C7D6E8; box-shadow:var(--shadow); transform:translateY(-2px)}
@@ -251,30 +292,32 @@ a.item:hover h3{color:var(--blue)}
 .faq p{margin:0 0 20px; color:var(--muted); max-width:62ch}
 
 /* ---- The colour rest. One per page, never two. */
-.territory{background:var(--blue); color:#fff; padding:var(--s6) 0}
+.territory{background:var(--navy); color:#fff; border-radius:var(--round); margin:10px;
+  padding:var(--s6) 0}
 .territory .row{display:flex; gap:18px; align-items:flex-start; max-width:26ch}
 .territory .ico{flex:none; opacity:.7; margin-top:6px}
 .territory p{margin:0; font-size:clamp(1.4rem,3.6vw,2.1rem); font-weight:700;
   line-height:1.25; letter-spacing:-.018em}
 
 /* ---- The signature composition: a solid slab overlapping a photograph. */
-.slab{position:absolute; z-index:2; background:var(--blue); color:#fff;
+.slab{position:absolute; z-index:2; background:var(--navy); color:#fff; border-radius:16px;
   padding:18px 22px; max-width:80%}
-.slab.bl{left:0; bottom:24px}
+.slab.bl{left:16px; bottom:16px}
 .slab .k{margin:0 0 4px; font-size:.68rem; letter-spacing:.15em; text-transform:uppercase;
   color:rgba(255,255,255,.72); font-weight:700}
 .slab p{margin:0; font-weight:700; font-size:1.02rem; line-height:1.35}
 
 /* ---- The close. */
-.close{background:var(--deep); color:#fff; padding:var(--s6) 0; text-align:center}
+.close{background:var(--navy); color:#fff; border-radius:var(--round); margin:10px;
+  padding:var(--s6) 0; text-align:center}
 .close .eyebrow{color:rgba(255,255,255,.6)}
-.close .tel{display:inline-block; font-size:clamp(2.2rem,8vw,3.6rem); font-weight:800;
-  letter-spacing:-.035em; text-decoration:none; font-variant-numeric:tabular-nums;
+.close .tel{display:inline-block; font-family:var(--display); font-weight:400;
+  font-size:clamp(2.2rem,8vw,3.6rem); letter-spacing:-.02em; text-decoration:none; font-variant-numeric:tabular-nums;
   margin:0 0 var(--s2); line-height:1}
 .close .tel:hover{color:var(--accent)}
 .close .where{color:rgba(255,255,255,.72); margin:0 auto var(--s4); max-width:36ch}
 .getstarted{display:inline-block; background:var(--paper); color:var(--ink); border:0;
-  padding:16px 30px; font:inherit; font-weight:700; font-size:1rem; cursor:pointer;
+  border-radius:var(--pill); padding:16px 32px; font:inherit; font-weight:700; font-size:1rem; cursor:pointer;
   transition:background .18s ease, color .18s ease}
 .getstarted:hover{background:var(--accent); color:#fff}
 .getstarted[disabled]{opacity:.7; cursor:default}
@@ -396,7 +439,8 @@ const WA =
 export function header(ctx: ChromeContext): string {
   const { content, slug } = ctx;
   const groups = buildNav(ctx);
-  const solid = ctx.page !== 'home';
+  const waDigits = (ctx.whatsapp || '').replace(/[^\d]/g, '');
+  const waHref = waDigits ? `https://wa.me/${waDigits}` : '';
 
   const nav = groups
     .map((g) => {
@@ -414,14 +458,24 @@ export function header(ctx: ChromeContext): string {
     .join('');
 
   return `
-<header class="head${solid ? ' solid' : ''}" id="head">
+<div class="util">
+  <div class="wrap utilin">
+    <span class="seg"><b>Residential</b><span>Commercial</span></span>
+    <a class="tel" href="tel:${esc(content.phoneE164)}" data-tap="1">${svg('phone', 16)}${esc(content.phoneDisplay)}</a>
+    ${
+      waHref
+        ? `<a class="wa" href="${esc(waHref)}" data-tap="1" target="_blank" rel="noopener">${WA}WhatsApp us</a>`
+        : ''
+    }
+  </div>
+</div>
+<header class="head" id="head">
   <div class="wrap headin">
     <a class="brand" href="${esc(pageUrl(slug, 'home'))}">
       <span class="bm">${brandMark(content.glyph)}</span>
       <b>${esc(content.businessName)}</b>
     </a>
     <ul class="nav">${nav}</ul>
-    <a class="headcall" href="tel:${esc(content.phoneE164)}" data-tap="1">${svg('phone', 17)}${esc(content.phoneDisplay)}</a>
     <a class="headbook" href="${esc(pageUrl(slug, 'book'))}">Book an expert</a>
     <button class="burger" id="burger" type="button" aria-label="Open menu" aria-controls="sheet">
       ${svg('menu', 20)}
