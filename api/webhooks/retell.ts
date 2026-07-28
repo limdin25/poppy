@@ -4,6 +4,13 @@ import { handleBrrrCallEvent, handleBrrrTranscriptUpdate } from '../lib/brrr.js'
 import { sendSMS } from '../../src/integrations/twilio/client.js';
 import { getSmsFromNumber } from '../lib/channel-lookup.js';
 import { callLLM } from '../lib/llm.js';
+import {
+  advanceSiteState,
+  findSitePageByPhone,
+  logSiteEvent,
+  siteUrl,
+} from '../lib/site-demo.js';
+import { SITE_DEMO_SMS } from '../../src/core/site-demo/messages.js';
 
 // Demo receptionist line: text the caller a recap after EVERY call (even hang-ups
 // / dead calls), done system-side so it never depends on the agent remembering.
@@ -107,7 +114,7 @@ async function buildDemoRecap(transcript: string, phone: string, businessId: str
       max_tokens: 400,
       messages: [{
         role: 'user',
-        content: `Today is ${today} (Europe/London). This was a DEMO call: a business owner tried our AI phone receptionist by role-playing one of their own customers booking an appointment, and MAY have agreed to a 15-minute ONBOARDING for themselves at the end. Do TWO things and return JSON ONLY:\n1. "sms": the follow-up SMS to the business owner, plain text, in EXACTLY this shape (keep blank lines + every label):\nThanks for calling, <owner's first name>!\n\nQuick recap — this is how I'll send you every lead:\n\nName: <the mock customer's name>\nPhone: ${phone}\nDate: <booking date, or "to confirm">\nTime: <booking time, or "to confirm">\n\nSummary: <1-2 short sentences on the job>\n\nGood luck with the job!\n2. Detect if the OWNER (not the mock customer) agreed a specific ONBOARDING day/time for themselves. "booked": true/false; "iso": full ISO-8601 with the correct +01:00 BST offset for that onboarding (empty if none); "label": short e.g. "Tuesday morning".\nReturn: {"sms":"...","booked":false,"iso":"","label":""}\nRules: use the phone exactly as ${phone}; if owner's first name unclear write just "Thanks for calling!"; keep the Name/Phone/Date/Time/Summary labels; no markdown.\n\nTranscript:\n${transcript}`,
+        content: `Today is ${today} (Europe/London). This was a DEMO call: a business owner tried our AI phone receptionist by role-playing one of their own customers booking an appointment, and MAY have agreed to a 15-minute ONBOARDING for themselves at the end. Do TWO things and return JSON ONLY:\n1. "sms": the follow-up SMS to the business owner, plain text, in EXACTLY this shape (keep blank lines + every label):\nThanks for calling, <owner's first name>!\n\nQuick recap, this is how I'll send you every lead:\n\nName: <the mock customer's name>\nPhone: ${phone}\nDate: <booking date, or "to confirm">\nTime: <booking time, or "to confirm">\n\nSummary: <1-2 short sentences on the job>\n\nGood luck with the job!\n2. Detect if the OWNER (not the mock customer) agreed a specific ONBOARDING day/time for themselves. "booked": true/false; "iso": full ISO-8601 with the correct +01:00 BST offset for that onboarding (empty if none); "label": short e.g. "Tuesday morning".\nReturn: {"sms":"...","booked":false,"iso":"","label":""}\nRules: use the phone exactly as ${phone}; if owner's first name unclear write just "Thanks for calling!"; keep the Name/Phone/Date/Time/Summary labels; no markdown.\n\nTranscript:\n${transcript}`,
       }],
     }),
   });
@@ -119,9 +126,73 @@ async function buildDemoRecap(transcript: string, phone: string, businessId: str
   } catch { return { sms: '', booked: false }; }
 }
 
+/**
+ * A site-demo call WE placed, from the escalation ladder.
+ *
+ * Kept separate from the inbound flow because there is no business mapping and
+ * no customer conversation to create: this is us ringing a lead about the
+ * website we built them.
+ *
+ * The close is sent whatever was said, exactly as on the inbound side. Voice
+ * consent is unreliable to parse, so the text does the closing rather than an
+ * extraction guessing whether "yeah go on then" meant yes.
+ */
+async function handleSiteDemoOutboundCall(
+  call: any,
+  meta: Record<string, any>,
+): Promise<{ ok: boolean; site_demo: boolean; skipped?: string }> {
+  if (call.event && call.event !== 'call_ended') return { ok: true, site_demo: true, skipped: 'not_ended' };
+  const pageId = String(meta.page_id || '');
+  if (!pageId) return { ok: true, site_demo: true, skipped: 'no_page_id' };
+
+  const durationSec = Math.round((call.duration_ms || 0) / 1000);
+  const answered = durationSec > 5;
+
+  await logSiteEvent(pageId, 'call_ended', {
+    direction: 'outbound',
+    duration_sec: durationSec,
+    attempt: meta.attempt,
+    answered,
+  });
+
+  // An unanswered dial is not engagement. Advancing on it would stand the
+  // ladder down and silently end the funnel for a lead who never picked up.
+  if (!answered) return { ok: true, site_demo: true, skipped: 'no_answer' };
+
+  const { data: page } = await supabase
+    .from('wk_site_pages')
+    .select('id, slug, business_name, owner_first, contact_id, state')
+    .eq('id', pageId)
+    .maybeSingle();
+  if (!page) return { ok: true, site_demo: true, skipped: 'page_gone' };
+
+  await advanceSiteState(page, 'engaged', { call: true });
+
+  try {
+    const smsFrom = await getSmsFromNumber('f8b98eb2-192e-4c22-87fd-90c865123fe7');
+    const toNumber = call.to_number;
+    if (smsFrom && toNumber) {
+      const close = SITE_DEMO_SMS.afterCall({
+        ownerFirst: page.owner_first,
+        businessName: page.business_name,
+        url: siteUrl(page.slug),
+        demoNumber: '',
+        checkoutUrl: siteUrl(page.slug),
+      });
+      await sendSMS(smsFrom, toNumber, close);
+      await logSiteEvent(pageId, 'followup_sent', { stage: 'after_call_close' });
+      await advanceSiteState(page, 'checkout_sent');
+    }
+  } catch (e) {
+    console.error('[retell-webhook] site demo close SMS failed:', e);
+  }
+
+  return { ok: true, site_demo: true };
+}
+
 export const config = { runtime: 'edge' };
 
-const DEAD_CALL_SUMMARY = 'No conversation — caller hung up.';
+const DEAD_CALL_SUMMARY = 'No conversation, caller hung up.';
 
 // A call is "dead" when the caller never actually said anything — the AI
 // analysis on those produces junk like "Please provide a valid transcript",
@@ -288,6 +359,15 @@ export default async function handler(req: Request): Promise<Response> {
     // the inbound flow: they have no business mapping and must not create
     // contacts/conversations like a normal customer call.
     const callMeta = (call.metadata || {}) as Record<string, any>;
+
+    // Site demo calls WE placed. Branched out before the BRRR check below,
+    // which claims every outbound call and would otherwise try to process ours
+    // as a property qualification.
+    if (callMeta.type === 'site_demo') {
+      const result = await handleSiteDemoOutboundCall(call, callMeta);
+      return new Response(JSON.stringify(result), { status: 200 });
+    }
+
     if (callMeta.type === 'brrr_property' || call.direction === 'outbound') {
       const result = await handleBrrrCallEvent(event, call);
       if (result.ok || callMeta.type === 'brrr_property') {
@@ -632,15 +712,46 @@ export default async function handler(req: Request): Promise<Response> {
           let recap: string;
           let booking: DemoRecap | null = null;
           if (isDeadCall) {
-            recap = `Thanks for calling ${bizName}! Looks like we got cut off — call back any time and Elsie will pick straight up.`;
+            recap = `Thanks for calling ${bizName}! Looks like we got cut off, call back any time and Elsie will pick straight up.`;
           } else {
             booking = await buildDemoRecap(transcript, callerPhone, businessId).catch(() => null);
             recap = (booking?.sms) || `Thanks for calling${callerName ? ', ' + callerName : ''}! Quick recap from Elsie: ${info.summary || summaryText}.`;
           }
           await sendSMS(smsFrom, callerPhone, recap);
+
+          // Site demo: did the owner of a site we built just ring the number on
+          // it? Then the close is the site's checkout, not the generic
+          // onboarding pitch. It REPLACES that pitch rather than adding to it:
+          // three texts after one call reads as spam.
+          //
+          // Sent whatever was said on the call. Voice consent is unreliable to
+          // parse, so the text does the closing rather than an extraction
+          // guessing whether "yeah go on then" was a yes.
+          const sitePage = await findSitePageByPhone(callerPhone).catch(() => null);
+
+          if (sitePage) {
+            await logSiteEvent(sitePage.id, 'call_ended', {
+              direction: 'inbound',
+              dead: isDeadCall || undefined,
+            });
+            await advanceSiteState(sitePage, 'engaged', { call: true });
+            if (!isDeadCall) {
+              const close = SITE_DEMO_SMS.afterCall({
+                ownerFirst: sitePage.owner_first,
+                businessName: sitePage.business_name,
+                url: siteUrl(sitePage.slug),
+                demoNumber: '',
+                checkoutUrl: siteUrl(sitePage.slug),
+              });
+              await sendSMS(smsFrom, callerPhone, close).catch(() => {});
+              await logSiteEvent(sitePage.id, 'followup_sent', { stage: 'after_call_close' });
+              await advanceSiteState(sitePage, 'checkout_sent');
+            }
+          }
+
           // Follow-up pitch — arrives right after the recap (only when they engaged).
-          if (!isDeadCall) {
-            const pitch = `P.S. If you liked how that felt, I can set Elsie up to answer YOUR calls too. Are you free tomorrow for a quick 15-min onboarding? Just reply with a time that suits and I'll sort it. — Elsie`;
+          if (!isDeadCall && !sitePage) {
+            const pitch = `P.S. If you liked how that felt, I can set Elsie up to answer YOUR calls too. Are you free tomorrow for a quick 15-min onboarding? Just reply with a time that suits and I'll sort it. Elsie`;
             await sendSMS(smsFrom, callerPhone, pitch).catch(() => {});
             // Capture an on-call onboarding agreement as a real appointment.
             if (booking?.booked && booking.iso && contactId) {

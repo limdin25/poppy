@@ -234,6 +234,60 @@ export async function advanceSiteState(
   return row ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Caller-ID lookup
+//
+// The demo works because the owner rings the shared line FROM the mobile we
+// already have on file, so we can answer as their business without asking who
+// they are. Used by retell-inbound.ts to personalise the greeting and by
+// retell.ts after the call to know whose page to advance.
+// ---------------------------------------------------------------------------
+
+export interface MatchedSitePage {
+  id: string;
+  slug: string;
+  contact_id: string;
+  business_name: string;
+  owner_first: string | null;
+  trade_label: string | null;
+  town: string | null;
+  state: string;
+}
+
+/**
+ * Phone numbers are stored E.164 by convention but not by constraint, and the
+ * lead lists were imported by several different scripts over time. Match the
+ * same three shapes wk-sms-incoming does rather than assuming.
+ */
+export function phoneVariants(raw: string): string[] {
+  const trimmed = String(raw || '').replace(/^whatsapp:/, '').trim();
+  if (!trimmed) return [];
+  const digits = trimmed.replace(/[^\d]/g, '');
+  const e164 = trimmed.startsWith('+') ? trimmed : `+${digits}`;
+  return Array.from(new Set([trimmed, e164, digits].filter(Boolean)));
+}
+
+/** The site page belonging to whoever is calling, or null. */
+export async function findSitePageByPhone(phone: string): Promise<MatchedSitePage | null> {
+  const variants = phoneVariants(phone);
+  if (!variants.length) return null;
+
+  const { data: contact } = await supabase
+    .from('wk_contacts')
+    .select('id')
+    .in('phone', variants)
+    .limit(1)
+    .maybeSingle();
+  if (!contact) return null;
+
+  const { data: page } = await supabase
+    .from('wk_site_pages')
+    .select('id, slug, contact_id, business_name, owner_first, trade_label, town, state')
+    .eq('contact_id', contact.id)
+    .maybeSingle();
+  return (page as MatchedSitePage) || null;
+}
+
 /** The public URL for a site. One place, so the SMS and the OG tag agree. */
 export function siteUrl(slug: string): string {
   const base = process.env.SITE_DEMO_BASE_URL || 'https://heyelsie.com';
