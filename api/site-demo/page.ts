@@ -11,6 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tradeByKey } from '../lib/trades.js';
 import { beaconToken } from '../lib/site-beacon.js';
 import { fillSiteContent } from '../../src/core/site-demo/fill.js';
+import { tradePhotos } from '../../src/core/site-demo/photos.js';
 import { renderSite } from '../../src/core/site-demo/render.js';
 import type { SiteContent } from '../../src/core/site-demo/types.js';
 import {
@@ -156,6 +157,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   let content: SiteContent;
   if (stored && stored.v === 1) {
     content = stored;
+    // Documents written before the photographs existed carry none, and the
+    // renderer's last-resort fallback is the NEUTRAL set: a paintbrush on a
+    // plumber's page. Backfill from the trade instead, so no data migration is
+    // needed and a stored document can never be worse than a fresh one.
+    if (!content.photos) {
+      const trade = tradeByKey(page.trade_key as string | null, page.town || undefined);
+      content = { ...content, photos: tradePhotos(trade.profile_key) };
+    }
   } else {
     // Only reachable for a row written before the fill step ran. Resolve the
     // trade properly rather than guessing: profile_key is not a column, it is
