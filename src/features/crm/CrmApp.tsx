@@ -16,6 +16,7 @@ const PipelinesPage = lazy(() => import('./pages/PipelinesPage'))
 const ReportsPage = lazy(() => import('./pages/ReportsPage'))
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
 const VideoFunnelPage = lazy(() => import('./pages/VideoFunnelPage'))
+const SiteFlowPage = lazy(() => import('./pages/SiteFlowPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const DialerProPage = lazy(() => import('./dialer-pro/DialerProPage'))
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage'))
@@ -65,6 +66,9 @@ export default function CrmApp() {
             <Route path="reports" element={<ReportsPage />} />
             <Route path="leaderboard" element={<LeaderboardPage />} />
             <Route path="video-funnel" element={<VideoFunnelPage />} />
+            {/* React Flow is a heavy dependency, so this page is lazy like the rest
+                and must never land in the main bundle. */}
+            <Route path="site-flow" element={<SiteFlowPage />} />
             <Route path="settings" element={<AdminOnlyRoute><SettingsPage /></AdminOnlyRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/admin/crm" replace />} />
