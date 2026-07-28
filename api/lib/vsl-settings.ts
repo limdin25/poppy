@@ -287,7 +287,9 @@ export function insideQuietHours(s: VslSettings, now = new Date()): boolean {
 /** Slugify a business name for heyelsie.com/{slug}. */
 // Keep in lockstep with the heyelsie.com slug rewrite in vercel.json.
 export const VSL_RESERVED_SLUGS = new Set([
-  'api', 'assets', 'r', 'report', 'welcome', 'subscribe', 'onboarding', 'login',
+  // 's' is the site-demo funnel's prefix (heyelsie.com/s/{slug}). A business
+  // slugging to a bare 's' would be swallowed by that rewrite.
+  'api', 'assets', 'r', 's', 'report', 'welcome', 'subscribe', 'onboarding', 'login',
   'continue', 'join', 'integrations', 'favicon', 'robots', 'sitemap', 'index',
   'admin', 'super', 'app', 'go', 'www', 'pricing', 'terms', 'privacy', 'dpa', 'blog',
   'register', 'forgot-password', 'reset-password', 'script', 'rank-frame', 'leads',

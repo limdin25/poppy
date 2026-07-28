@@ -60,7 +60,17 @@
       "destination": "/api/report"
     },
     {
-      "source": "/:slug((?!api$|assets$|r$|report$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
+      "source": "/s/:slug([a-z0-9][a-z0-9-]*$)",
+      "has": [
+        {
+          "type": "host",
+          "value": "heyelsie.com"
+        }
+      ],
+      "destination": "/api/site-demo/page?slug=:slug"
+    },
+    {
+      "source": "/:slug((?!api$|assets$|r$|s$|report$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|blueprint$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
       "has": [
         {
           "type": "host",
