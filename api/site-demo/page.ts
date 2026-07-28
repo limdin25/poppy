@@ -12,6 +12,7 @@ import { tradeByKey } from '../lib/trades.js';
 import { beaconToken } from '../lib/site-beacon.js';
 import { fillSiteContent } from '../../src/core/site-demo/fill.js';
 import { tradePhotos } from '../../src/core/site-demo/photos.js';
+import { resolvePage } from '../../src/core/site-demo/sitemap.js';
 import { renderSite } from '../../src/core/site-demo/render.js';
 import type { SiteContent } from '../../src/core/site-demo/types.js';
 import {
@@ -183,17 +184,36 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     });
   }
 
+  // The nested path arrives as p1/p2 from the vercel.json rewrites, because a
+  // rewrite cannot hand over a variable number of segments.
+  const p1 = (url.searchParams.get('p1') || '').toLowerCase();
+  const p2 = (url.searchParams.get('p2') || '').toLowerCase();
+  const target = resolvePage([p1, p2].filter(Boolean));
+  if (!target) return bounce();
+
   const html = renderSite(content, {
+    page: target.key,
+    item: target.item,
     slug: page.slug,
     pageId: page.id,
     // Staff views carry no token at all, so the page cannot beacon even if
     // something in the client script forgets to check the flag.
     beaconToken: staff ? '' : beaconToken(page.id),
     staff,
-    canonicalUrl: siteUrl(page.slug),
     chatEnabled: settings.chat_enabled,
     checkoutEnabled: settings.checkout_enabled && page.state !== 'converted',
+    origin: new URL(siteUrl(page.slug)).origin,
   });
+
+  // A page that does not exist for THIS site: a service the owner deleted, an
+  // area we never resolved. Bounce to the sales page rather than serve an
+  // apology, because the visitor is a prospect either way.
+  if (html === null) {
+    res.statusCode = 302;
+    res.setHeader('Location', siteUrl(page.slug));
+    res.end();
+    return;
+  }
 
   res.statusCode = 200;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');

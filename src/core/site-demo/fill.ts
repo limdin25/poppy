@@ -117,6 +117,7 @@ export function fillSiteContent(data: SiteDemoData): SiteContent {
     colours: { accent: copy.accent, blue: BLUE },
     glyph: copy.glyph,
     photos: tradePhotos(data.profileKey),
+    areas: (data.areas || []).slice(0, 10),
     chatGreeting: town
       ? `Hi, thanks for stopping by. Do you need a hand with something in ${town}?`
       : 'Hi, thanks for stopping by. What can we help you with?',

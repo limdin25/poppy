@@ -5,6 +5,7 @@
 // They differ only in how they authenticate and how they decide to call it.
 
 import { resolveTrade } from './trades.js';
+import { nearbyUkTowns } from './uk-areas.js';
 import { fillSiteContent, firstWord, formatUkPhone } from '../../src/core/site-demo/fill.js';
 import { slugifySite, dedupeSlug } from '../../src/core/site-demo/slug.js';
 import { SITE_DEMO_SMS } from '../../src/core/site-demo/messages.js';
@@ -77,6 +78,17 @@ export async function generateSiteForContact(opts: GenerateOptions): Promise<Gen
 
   const ownerFirst = firstWord(cf.owner_name);
 
+  // Nearby towns for the areas pages. Resolved from Google's geocoder, hard
+  // filtered to GB, and NEVER invented: an empty list simply deletes the areas
+  // pages rather than substituting plausible-sounding names. A failure here
+  // must not stop a site being generated, so it is caught.
+  const areas = town
+    ? await nearbyUkTowns(town).catch((e) => {
+        console.error('[site-demo] nearby towns failed:', e);
+        return [];
+      })
+    : [];
+
   // The number the SITE shows is the shared demo line, because the demo is the
   // owner ringing it and hearing their own AI answer for their own business.
   // Their real mobile stays on the contact row, where the caller-ID lookup in
@@ -89,6 +101,7 @@ export async function generateSiteForContact(opts: GenerateOptions): Promise<Gen
     tradePlural: trade.plural,
     profileKey: trade.profile_key,
     town,
+    areas,
     // NO ADDRESS ON PURPOSE. cf.registered_address is the Companies House
     // registered office, which for a one-van trader is very often his
     // accountant's office in another county. It shipped once as "Brentwood,

@@ -30,6 +30,8 @@ export interface SiteDemoData {
   profileKey?: string | null;
   town?: string;
   address?: string;
+  /** Nearby towns, resolved by api/lib/uk-areas.ts. Never invented. */
+  areas?: SiteArea[];
   /**
    * THE NUMBER THE SITE SHOWS AND VISITORS DIAL. Not necessarily the lead's own
    * number. Before the sale this is the shared demo receptionist line, because
@@ -52,9 +54,32 @@ export interface SiteDemoData {
 }
 
 import type { TradePhotos } from './photos.js';
+import type { PageKey } from './sitemap.js';
 
 /** A single service line in the index. */
 export type SiteService = string;
+
+/**
+ * A town the business covers. Resolved from Google's geocoder and never
+ * invented: see api/lib/uk-areas.ts. An empty list deletes the areas pages
+ * rather than substituting anything.
+ */
+export interface SiteArea {
+  name: string;
+  slug: string;
+}
+
+/**
+ * Per-page copy the owner can override after the sale. Absent fields fall back
+ * to the generated default, so an owner who edits one heading does not have to
+ * rewrite a page, and a page he has never opened still reads properly.
+ */
+export interface PageCopy {
+  heading?: string;
+  blurb?: string;
+  /** Body paragraphs, in order. */
+  body?: string[];
+}
 
 /**
  * Google proof. Present ONLY when we actually pulled it from Google.
@@ -104,6 +129,18 @@ export interface SiteContent {
    * with no images, which is the version the client rejected twice.
    */
   photos?: TradePhotos;
+  /**
+   * Towns near the business, nearest first. Drives the areas pages and the
+   * areas dropdown. Empty or absent removes both entirely.
+   */
+  areas?: SiteArea[];
+  /** Owner overrides, keyed by page. Everything falls back to the default. */
+  pages?: Partial<Record<PageKey, PageCopy>>;
+  /**
+   * E.164 number for click-to-chat. Pre-sale this is the shared demo line, so
+   * a lead pressing WhatsApp reaches us rather than a dead number.
+   */
+  whatsapp?: string;
   logoUrl?: string;
   /** Opening line the chat widget greets with. */
   chatGreeting: string;

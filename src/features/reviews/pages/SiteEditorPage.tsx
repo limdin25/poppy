@@ -77,6 +77,9 @@ export default function SiteEditorPage() {
 
   const preview = useMemo(() => {
     if (!draft || !data) return '';
+    // renderSite returns null for a page that does not exist for this site.
+    // The editor only ever previews the home page, so null means something is
+    // genuinely wrong and an empty frame is the honest thing to show.
     return renderSite(draft, {
       slug: data.slug,
       pageId: 'preview',
@@ -84,10 +87,9 @@ export default function SiteEditorPage() {
       // burn anything on the real page's numbers.
       beaconToken: '',
       staff: true,
-      canonicalUrl: data.url,
       chatEnabled: false,
       checkoutEnabled: false,
-    });
+    }) ?? '';
   }, [draft, data]);
 
   const set = <K extends keyof SiteContent>(key: K, value: SiteContent[K]) => {

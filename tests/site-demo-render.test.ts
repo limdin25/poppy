@@ -4,7 +4,7 @@ import { TRADE_COPY } from '../src/core/site-demo/trade-services';
 import { TRADE_PHOTOS } from '../src/core/site-demo/photos';
 import { fillSiteContent } from '../src/core/site-demo/fill';
 import { nonGsm7 } from '../api/lib/sms-charset';
-import type { SiteDemoData } from '../src/core/site-demo/types';
+import type { SiteContent, SiteDemoData } from '../src/core/site-demo/types';
 
 const lead = (over: Partial<SiteDemoData> = {}): SiteDemoData => ({
   businessName: 'MJR Plumbing',
@@ -22,12 +22,19 @@ const opts = (over: Partial<RenderOptions> = {}): RenderOptions => ({
   slug: 'mjr-plumbing',
   pageId: '11111111-2222-3333-4444-555555555555',
   beaconToken: 'abc123',
-  canonicalUrl: 'https://heyelsie.com/s/mjr-plumbing',
+  origin: 'https://heyelsie.com',
   chatEnabled: true,
   ...over,
 });
 
-const html = (l = lead(), o = opts()) => renderSite(fillSiteContent(l), o);
+// renderSite returns null for a page that does not exist for this site. Every
+// helper below asks for a page that does exist, so a null here is a real bug.
+const render = (c: SiteContent, o = opts()) => {
+  const out = renderSite(c, o);
+  if (out === null) throw new Error('renderSite returned null for ' + (o.page || 'home'));
+  return out;
+};
+const html = (l = lead(), o = opts()) => render(fillSiteContent(l), o);
 
 describe('the document', () => {
   it('is a complete standalone page', () => {
@@ -189,11 +196,10 @@ describe('photography', () => {
 
   it('drops the work and outcome photographs without changing shape', () => {
     // electrical has a hero and a work shot but no outcome shot
-    const h = renderSite(
+    const h = render(
       fillSiteContent(
         lead({ profileKey: 'electrical', rating: 4.9, reviews: 12, reviewsSource: 'google' }),
       ),
-      opts(),
     );
     expect(h).toContain('class="proof"');
     expect(h).toContain('class="score"'); // the rating still renders
@@ -205,7 +211,7 @@ describe('photography', () => {
   it('falls back to the neutral set for a legacy content document', () => {
     const legacy = fillSiteContent(lead());
     delete legacy.photos;
-    const h = renderSite(legacy, opts());
+    const h = render(legacy, opts());
     expect(h).toContain('/site/neutral-hero.webp');
     expect(h).toContain('class="shot"');
   });
