@@ -174,6 +174,33 @@ serve(async (req: Request) => {
       resolvedContactId = contact?.id ?? null;
     }
 
+    // One-agent-per-lead lock (2026-07-28): mirrors wk-sms-send. Once ANY
+    // agent has texted or called this contact, no OTHER agent may dial it.
+    // Admin never checks or sets the lock. Manual dials with no resolved
+    // contact (DialPad synthetic ids) have nothing to lock, so skip.
+    if (resolvedContactId) {
+      const { data: adminRow } = await supa
+        .from('admin_users')
+        .select('email')
+        .eq('email', userResp.user.email ?? '')
+        .maybeSingle();
+      const { data: callerProfile } = await supa
+        .from('profiles')
+        .select('workspace_role')
+        .eq('id', agentId)
+        .maybeSingle();
+      const isAdminCaller = !!adminRow || callerProfile?.workspace_role === 'admin';
+      if (!isAdminCaller && callerProfile?.workspace_role === 'agent') {
+        const { data: lockedAgent } = await supa.rpc('wk_contact_locked_agent', { p_contact: resolvedContactId });
+        if (lockedAgent && lockedAgent !== agentId) {
+          return jsonResponse(200, {
+            allowed: false,
+            reason: 'already contacted by another agent',
+          });
+        }
+      }
+    }
+
     // Live AI coach gate — workspace-level toggle in wk_ai_settings. We mint
     // the call with ai_coach_enabled=true ONLY if all three are set: the
     // master ai_enabled flag, the live_coach_enabled flag, AND an OpenAI key.

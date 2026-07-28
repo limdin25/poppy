@@ -31,6 +31,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import Papa from 'papaparse';
 import { createClient } from '@supabase/supabase-js';
+import { isTextableUkMobile } from './lib/verify-phone.mjs';
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_PLACES_KEY } = process.env;
 const ENRICH = process.env.ENRICH === '1';
@@ -124,7 +125,7 @@ const raw = ORDER_ONLY ? '' : readFileSync(CSV_PATH, 'utf8').replace(/^﻿/, '')
 const parsed = ORDER_ONLY ? { data: [] } : Papa.parse(raw, { header: true, skipEmptyLines: true });
 const seen = new Set();
 const byTier = { HIGH: [], medium: [], low: [] };
-let named = 0, dupOrKnown = 0, unverified = 0, overCap = 0;
+let named = 0, dupOrKnown = 0, unverified = 0, overCap = 0, notMobile = 0;
 for (const row of parsed.data) {
   const owner = clean(pick(row, 'owner name 1 (man)'));
   if (!owner) continue;
@@ -133,6 +134,7 @@ for (const row of parsed.data) {
   if (!tier) continue;
   const phone = normalizeE164(pick(row, 'mobile'));
   if (!phone || seen.has(phone) || existingPhones.has(phone)) { dupOrKnown++; continue; }
+  if (!isTextableUkMobile(phone)) { notMobile++; continue; } // landline/VoIP/toll-free can't be texted
   seen.add(phone);
   const cf = {};
   for (const [h, k] of Object.entries(CF_MAP)) { const v = clean(pick(row, h)); if (v) cf[k] = v; }
@@ -146,7 +148,8 @@ for (const row of parsed.data) {
   byTier[tier].push({ name: clean(pick(row, 'company name')) || phone, phone, customFields: cf, tier, csvReviews });
 }
 if (!ORDER_ONLY) console.log(`CSV: ${named} named-owner rows · available after skip/dedupe — HIGH ${byTier.HIGH.length}, medium ${byTier.medium.length}, low ${byTier.low.length}` +
-  (ENRICH ? ' (ENRICH on)' : ` (dropped ${unverified} unverified "0-review", ${overCap} over ${MAX_REVIEWS})`));
+  (ENRICH ? ' (ENRICH on)' : ` (dropped ${unverified} unverified "0-review", ${overCap} over ${MAX_REVIEWS})`) +
+  ` (not a mobile number: ${notMobile})`);
 
 // Fill from the best owner-name confidence tier down, alphabetical within tier.
 const keepers = [];

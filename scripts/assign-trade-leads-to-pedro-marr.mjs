@@ -27,6 +27,7 @@ import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isTextableUkMobile } from './lib/verify-phone.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -57,7 +58,7 @@ const BATCHES = [
 ]
 
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
-const isUkMobile = (raw) => /^0?7\d{9}$/.test(String(raw || '').replace(/[\s()-]/g, '').replace(/^\+44/, '0'))
+const isUkMobile = isTextableUkMobile
 
 // ---- 1. pull every unassigned lead for the target niches (paginated — PostgREST caps at 1000/response) ----
 const candidates = []

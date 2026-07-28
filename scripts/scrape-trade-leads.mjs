@@ -23,6 +23,7 @@ import { createClient } from '@supabase/supabase-js'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isTextableUkMobile } from './lib/verify-phone.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -166,10 +167,13 @@ async function places(path, params) {
 // Reject obvious non-traders that pollute a trade search.
 const JUNK = /\b(wholesal|merchant|supplies|supply|superstore|screwfix|toolstation|city electrical|edmundson|rexel|college|training|academy|council|jobcentre|recruit|timpson|mr minit|max spielmann|rentokil|terminix)\b/i
 
-// Hugo's rule: mobile numbers only, never a landline. UK mobile = 07xxx xxxxxx
-// (11 digits total). Checked here, straight off the Google Details response,
-// so a landline-only business never makes it into the leads file at all.
-const isUkMobile = (raw) => /^0?7\d{9}$/.test(String(raw || '').replace(/[\s()-]/g, '').replace(/^\+44/, '0'))
+// Hugo's rule: mobile numbers only, never a landline. Checked here, straight
+// off the Google Details response, so a landline-only business never makes
+// it into the leads file at all. Uses the same libphonenumber-js validator
+// as /admin/phone-validation (scripts/lib/verify-phone.mjs) rather than a
+// hand-rolled regex, so scrape-time and send-time agree on what counts as
+// a real mobile.
+const isUkMobile = isTextableUkMobile
 
 async function scrapeTown(town) {
   const query = `${stem} ${town}`

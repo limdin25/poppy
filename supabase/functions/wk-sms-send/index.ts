@@ -103,6 +103,27 @@ serve(async (req: Request) => {
     const toE164 = normalizeE164((contact.phone as string | null) ?? '');
     if (!toE164) return json(400, { error: 'Contact has no phone number' });
 
+    // One-agent-per-lead lock (2026-07-28): once ANY agent has texted or
+    // called this contact, no OTHER agent may text it. Admin sends never
+    // check or set the lock, so Hugo can always follow up on any lead.
+    const { data: adminRow } = await supa
+      .from('admin_users')
+      .select('email')
+      .eq('email', userResp.user.email ?? '')
+      .maybeSingle();
+    const { data: senderProfile } = await supa
+      .from('profiles')
+      .select('workspace_role')
+      .eq('id', agentId)
+      .maybeSingle();
+    const isAdminSender = !!adminRow || senderProfile?.workspace_role === 'admin';
+    if (!isAdminSender && senderProfile?.workspace_role === 'agent') {
+      const { data: lockedAgent } = await supa.rpc('wk_contact_locked_agent', { p_contact: contactId });
+      if (lockedAgent && lockedAgent !== agentId) {
+        return json(409, { error: 'This lead has already been contacted by another agent — send blocked.' });
+      }
+    }
+
     // Resolve sender number. Precedence (same order as the send_sms job
     // handler in wk-jobs-worker — the two paths must route alike):
     //   1. explicit from_e164 (caller pinned)
