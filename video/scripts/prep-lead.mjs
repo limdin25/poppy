@@ -129,10 +129,31 @@ const realBelow = leadIdx >= 0 ? real.slice(leadIdx + 1).filter((r) => !r.isLead
 
 // Truthfulness guard (adversarial review 2026-07-26): the video tells the lead
 // "these are the businesses in your area" and "there you are, near the bottom".
-// If Google Places returned almost no real competitors above them, padding
-// would fabricate the whole story. Require a real spine or fail the render.
-if (realAbove.length < 3) {
-  console.error(`only ${realAbove.length} real competitors above the lead — refusing to render a mostly-fabricated SERP (lead ${rf.lead.business}, ${rf.lead.town})`)
+// If almost no real competitors sit above them, padding would fabricate the
+// whole story. Require a real spine or fail the render.
+//
+// The VERDICT is rank-frame's, not ours (api/lib/uk-places.ts), so the API, this
+// render and the CRM card can never disagree about who counts as being above the
+// lead. Disagreeing about exactly that is what put two leads behind a red card
+// reading "Google didn't return enough real businesses" on 2026-07-28, when
+// Google had returned six and eight. The local count is only a backstop for an
+// older edge-cached response that predates the `serp` block.
+const serp = rf.serp || {}
+const minAbove = serp.min_required ?? 3
+const refusal = serp.refusal !== undefined
+  ? serp.refusal
+  : (realAbove.length < minAbove ? (real.length === 0 ? 'no_results' : 'thin_market') : null)
+
+if (refusal === 'no_results') {
+  console.error(`no real businesses came back from Google for "${rf.trade?.search_term || rf.lead.town}", so there is no local search to show (lead ${rf.lead.business})`)
+  process.exit(1)
+}
+if (refusal === 'thin_market') {
+  // Not a fault and not retryable: the lead genuinely out-reviews their area.
+  // The video's baked line "the only reason they're up there is more reviews"
+  // cannot be true for them, and GoogleScrollV prints every review count on
+  // screen, so there is nowhere to hide it.
+  console.error(`this lead out-reviews everyone we can reach: only ${serp.real_above ?? realAbove.length} real businesses in ${rf.lead.town} or nearby have more than ${rf.lead.business}'s ${rf.lead.reviews} reviews, and the video needs ${minAbove}`)
   process.exit(1)
 }
 

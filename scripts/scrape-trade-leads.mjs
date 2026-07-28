@@ -27,6 +27,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isTextableUkMobile } from './lib/verify-phone.mjs'
 import { screenLineStatus, warnIfShort } from './lib/line-status.mjs'
+import { inUk, isTrader, NON_TRADER } from './lib/uk-places.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -177,8 +178,9 @@ async function places(path, params) {
   return { status: 'ERROR' }
 }
 
-// Reject obvious non-traders that pollute a trade search.
-const JUNK = /\b(wholesal|merchant|supplies|supply|superstore|screwfix|toolstation|city electrical|edmundson|rexel|college|training|academy|council|jobcentre|recruit|timpson|mr minit|max spielmann|rentokil|terminix)\b/i
+// Reject obvious non-traders that pollute a trade search. Shared with the API
+// so the render's idea of a competitor matches the one that picked the lead.
+const JUNK = NON_TRADER
 
 // Hugo's rule: mobile numbers only, never a landline. Checked here, straight
 // off the Google Details response, so a landline-only business never makes
@@ -191,7 +193,17 @@ const isUkMobile = isTextableUkMobile
 async function scrapeTown(town) {
   const query = `${stem} ${town}`
   const j = await places('textsearch', { query, region: 'uk' })
-  const results = (j.results || []).filter((r) => r.name && !JUNK.test(r.name))
+  // `region: 'uk'` is a BIAS, NOT A FILTER. "pest control in Scarborough" comes
+  // back four-sevenths Canadian, because Scarborough is also part of Toronto.
+  // Unfiltered, those foreign rows inflate every UK lead below them: a
+  // Yorkshire firm was stored at rank 9 with "8 businesses ahead of you", and
+  // most of the 8 were in Ontario. Agents read that number out on calls.
+  // See api/lib/uk-places.ts.
+  // isTrader drops the shops. "pest control in Taunton" returns Pets at Home
+  // (1,395 reviews) and a garden centre (790) above every real pest controller,
+  // and each one silently pushed a genuine lead's stored rank down by one.
+  const results = (j.results || [])
+    .filter((r) => r.name && !JUNK.test(r.name) && inUk(r.formatted_address) && isTrader(r.types))
   if (results.length < 6) return []
 
   const total = results.length

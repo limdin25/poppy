@@ -20,7 +20,7 @@ import { formatDateTime } from '../data/helpers';
 // Stage rules live in lib/funnelStages so the inbox badges can share them —
 // two copies of the rendering/render_ready carve-out WILL drift.
 import {
-  STATES, STAGE_STAMPS, boardKey, ago, renderErrorText, type VslPage,
+  STATES, STAGE_STAMPS, boardKey, ago, renderErrorText, canRetryRender, type VslPage,
 } from '../lib/funnelStages';
 
 /** Preview marker. The board's own "open page" links must not burn the lead's
@@ -465,7 +465,12 @@ export default function VideoFunnelPage() {
                       </div>
                     )}
 
-                    {(!p.render_status || p.render_status === 'failed') && (
+                    {/* The retry is hidden when the failure can never clear
+                        (canRetryRender). A button that reruns the same sum and
+                        fails the same way reads as "just have another go", and
+                        an agent will keep pressing it. */}
+                    {(!p.render_status
+                      || (p.render_status === 'failed' && canRetryRender(p.render_error))) && (
                       <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => void makeVideo(p.id, p.contact_id)}

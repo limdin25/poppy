@@ -721,7 +721,17 @@ describe('prep data fidelity fixes', () => {
   const scroll = read('video/src/comps/GoogleScrollV.tsx')
 
   it('refuses to render a mostly-fabricated SERP (thin real pack)', () => {
-    expect(prep).toMatch(/realAbove\.length < 3/)
+    // The guard still refuses, but the VERDICT moved to rank-frame on
+    // 2026-07-28 (api/lib/uk-places.ts) so the API, the render and the CRM card
+    // cannot hold three different opinions about who is above the lead. Holding
+    // two is what produced a red card reading "Google didn't return enough real
+    // businesses" for a lead Google had returned six businesses for.
+    expect(prep).toMatch(/serp\.refusal/)
+    expect(prep).toMatch(/refusal === 'no_results'/)
+    expect(prep).toMatch(/refusal === 'thin_market'/)
+    expect(prep).toMatch(/process\.exit\(1\)/)
+    // and it still stands on its own against an older edge-cached response
+    expect(prep).toMatch(/realAbove\.length < minAbove/)
   })
   it('clamps SEL_W to the 850px name ellipsis', () => {
     expect(prep).toMatch(/Math\.min\(850,/)
@@ -863,7 +873,7 @@ describe('multi-trade', () => {
   it('rank-frame searches the TRADE, not a stored plumber URL', async () => {
     const rf = read('api/leads/rank-frame.ts')
     expect(rf).toMatch(/resolveTrade\(cf, lead\.town, lead\.business\)/)
-    expect(rf).toMatch(/localPack\(trade\.search_term\)/)
+    expect(rf).toMatch(/townPack\(trade\.search_term\)/)    // renamed 2026-07-28: the town search is now one of two
     expect(rf).not.toMatch(/google_search_url\?\.match/)   // the plumber-only signal
     expect(rf).toMatch(/trade,/)                            // returned to page + prep-lead
   })

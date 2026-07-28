@@ -196,6 +196,11 @@ export const EVENT_LABELS: Record<string, string> = {
  * was fine: the real cause was that we had no trade for them, so the pipeline
  * refused to invent competitors. Guessing at a cause sends people to fix the
  * wrong thing, so we show the real one.
+ *
+ * The same lesson, learned again on 2026-07-28: two leads wore "Google didn't
+ * return enough real businesses above them" when Google had returned six and
+ * eight. The truth was the opposite of what the card said, so the agent had
+ * nothing to act on and a retry button that could only fail again.
  */
 export function renderErrorText(raw: string | null | undefined): string {
   const e = String(raw || '').trim();
@@ -203,8 +208,13 @@ export function renderErrorText(raw: string | null | undefined): string {
   if (/no trade profile/i.test(e)) {
     return "We don't know this lead's trade, so the video can't honestly name who ranks above them. Set the trade on the lead, then retry.";
   }
-  if (/real competitors above/i.test(e)) {
-    return "Google didn't return enough real businesses above them to build a truthful search, so the video was refused rather than faked.";
+  // `real competitors above` is the WORDING OF THE OLD ERROR, kept so rows that
+  // failed before 2026-07-28 read correctly instead of keeping the old lie.
+  if (/out-reviews everyone|real competitors above/i.test(e)) {
+    return 'This lead already has more reviews than almost every business in their town and the towns around it. The video says the ones above them are there because of more reviews, and that would not be true for them, so it was refused rather than faked. Worth a call instead.';
+  }
+  if (/no real businesses came back/i.test(e)) {
+    return 'Google returned no local businesses at all for this search, so there is no search to put on screen. Check the town and the trade on the lead, then retry.';
   }
   if (/missing town/i.test(e)) {
     return 'This lead has no town, and the video builds their Google search from it. Add the town, then retry.';
@@ -213,4 +223,19 @@ export function renderErrorText(raw: string | null | undefined): string {
     return 'Their website would not load for the recording. Retry, or clear the website on the lead to record the Google search instead.';
   }
   return e;
+}
+
+/**
+ * Can this failure ever succeed on a retry?
+ *
+ * Only one cannot: the lead out-reviewing their whole area is a fact about the
+ * lead, computed the same way every time, so "Try the video again" reruns an
+ * identical sum and fails identically. Offering that button is worse than
+ * offering nothing, because it reads as "we just need another go" and an agent
+ * will keep pressing it. Everything else is either transient (a deploy, a dead
+ * website) or fixable on the lead (no trade, no town), so the button stays.
+ */
+export function canRetryRender(raw: string | null | undefined): boolean {
+  const e = String(raw || '').trim();
+  return !/out-reviews everyone|real competitors above/i.test(e);
 }

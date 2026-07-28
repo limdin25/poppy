@@ -97,8 +97,13 @@ describe('the board can rescue a card stuck in Created', () => {
     // board, finding the lead in the queue and reopening the panel. Two of them
     // sat dead for half an hour on 2026-07-27 because of a transient network
     // blip during a deploy.
+    //
+    // Narrowed on 2026-07-28: still offered on every failure EXCEPT the one a
+    // retry can never clear (canRetryRender, see tests/uk-places.test.ts). A
+    // button that re-runs the same sum and fails the same way is worse than no
+    // button, because an agent reads it as "just have another go".
     expect(board).toMatch(/data-testid=\{`funnel-make-video-\$\{p\.id\}`\}/);
-    expect(board).toMatch(/\(!p\.render_status \|\| p\.render_status === 'failed'\) && \(/);
+    expect(board).toMatch(/!p\.render_status\s*\n?\s*\|\| \(p\.render_status === 'failed' && canRetryRender\(p\.render_error\)\)/);
     expect(board).toMatch(/Try the video again/);
     // and the card names the real cause rather than guessing
     expect(board).toMatch(/renderErrorText\(p\.render_error\)/);

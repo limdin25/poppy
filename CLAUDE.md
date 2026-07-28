@@ -126,6 +126,39 @@ Also worth saying plainly: a screened list does not stay screened. A number is c
 
 ---
 
+## `region=uk` on a Google Places search restricts NOTHING
+
+Learned 2026-07-28. Full write-up: [docs/VIDEO_SERP_TRUTH.md](docs/VIDEO_SERP_TRUTH.md).
+
+`region=uk` is a **bias**, not a filter. "pest control in Scarborough" comes back
+four-sevenths Canadian, because Scarborough is also part of Toronto. Over 727 real
+result rows from 60 town searches, 6 were foreign and 4 of those landed on one lead.
+This put Toronto firms in a Yorkshire lead's video, and inflated the stored `rank` /
+`plumbers_ahead` that **agents read out loud on calls**.
+
+| What you want | What actually does it |
+|---|---|
+| Restrict to the UK | Geocoding `components=country:GB` (hard), or Nearby Search `location`+`radius` around a GB point |
+| Nothing at all | Places Text Search `region=uk` |
+
+Two more traps from the same day, both the same shape (two parts of the repo each
+holding their own idea of who a competitor is):
+
+- **Detect the country by the SUFFIX, never the postcode shape.** Canadian postal
+  codes ("M1J 3C9") look exactly like British ones. `inUk()` reads the last
+  comma-separated part: a UK address ends in a postcode (has a digit), a foreign one
+  ends in its country name (does not).
+- **A name blocklist cannot keep shops out.** "pest control in Taunton" returns Pets
+  at Home (1,395 reviews) and a garden centre (790) above every real pest controller,
+  because shops collect thousands of reviews and a one-van trader collects forty. Use
+  Google's `types`: shops carry `store`, tradesmen never do.
+
+The rules live in ONE place, [api/lib/uk-places.ts](api/lib/uk-places.ts), with an
+`.mjs` twin for the scraper. `tests/uk-places.test.ts` fails if the two drift. Do not
+re-derive "who ranks above this lead" anywhere else, that is the bug.
+
+---
+
 ## Test loop (run before every commit)
 
 ```bash
@@ -160,6 +193,7 @@ Keep these current as we go:
 - [docs/DECISIONS_LOG.md](docs/DECISIONS_LOG.md)
 - [docs/PLUMBER_LEADS_PIPELINE.md](docs/PLUMBER_LEADS_PIPELINE.md) — **loading a plumber-leads CSV**: run `scripts/process-plumber-leads.mjs` (named-owner only → Google-enrich reviews → drop >65 → import+queue → order A→Z). Hugo points you at a CSV; this is the one right way.
 - [docs/SMS_BLAST_PLAYBOOK.md](docs/SMS_BLAST_PLAYBOOK.md), **read before any bulk send**: every rule in it exists because something went wrong, including the line-status screen above.
+- [docs/VIDEO_SERP_TRUTH.md](docs/VIDEO_SERP_TRUTH.md), **read before touching the video's Google search**: who may appear above a lead, why `region=uk` does not restrict anything, and why the render refuses.
 
 ---
 
