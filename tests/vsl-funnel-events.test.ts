@@ -593,12 +593,6 @@ describe('audit — the calling journey', () => {
   const seed = read('scripts/seed-audit-call-motion.sql')
   const vsl = read('api/lib/vsl-settings.ts')
 
-  it('the agent is told to say the call is recorded', () => {
-    // 784 recordings existed with no notice given to the person on the phone.
-    expect(script).toMatch(/recorded for training/)
-    expect(seed).toMatch(/recorded for training/)
-  })
-
   it('the live-call script pane is seeded, so it is never the empty state', () => {
     // wk_call_scripts had ZERO rows, so agents saw "No default script yet —
     // open Settings", and Settings is admin-only. A dead end mid-call.

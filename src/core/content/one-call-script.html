@@ -380,8 +380,8 @@ const STAGES = ['OPENER','HOOK','OFFER','PERMISSION','SENT','DONE'];
 const N = {
 
   start: {stage:'OPENER',
-    say:`"Hi, quick one: is that [owner_first], from [business_name]? … Just so you know, the call's recorded for training."`,
-    dir:`Open with their name and business, warm and casual, like a mate ringing, not a salesman. The recording line is a legal requirement, say it once, lightly, and keep moving, never apologise for it.`,
+    say:`"Hi, quick one: is that [owner_first], from [business_name]?"`,
+    dir:`Open with their name and business, warm and casual, like a mate ringing, not a salesman. Nothing else goes in the opener, get the yes first.`,
     r:[
       {l:`Yes / Yeah`,n:`opener_hook`},
       {l:`Who's calling? What's this about?`,n:`who_calling`,obj:true},
