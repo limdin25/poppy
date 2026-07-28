@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import { provisionVslSale } from '../lib/vsl-provision.js';
+import { provisionSiteSale } from '../lib/site-provision.js';
 import { REVIEWS_PRICE_TO_PLAN, CHEAPEST_PLAN_GBP } from '../lib/review-plans.js';
 import { ensureNumberRequest } from '../lib/vsl-provision.js';
 import { sendReviewsWelcome } from '../lib/reviews-welcome.js';
@@ -66,6 +67,15 @@ export default async function handler(req: Request): Promise<Response> {
         // leaving a paying customer with no account.
         if (session.metadata?.vsl_page_id) {
           await provisionVslSale(session);
+          break;
+        }
+
+        // Site demo sale. Its own metadata key and its own provisioning, so the
+        // two funnels can change independently. Same reasoning as above: let it
+        // THROW, so the outer catch 500s and Stripe retries rather than leaving
+        // someone who paid with no account.
+        if (session.metadata?.site_page_id) {
+          await provisionSiteSale(session);
           break;
         }
 
