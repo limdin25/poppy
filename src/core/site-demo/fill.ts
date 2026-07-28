@@ -13,6 +13,7 @@
 // That is why there are no "[town]" style placeholders anywhere below: the
 // copy is assembled from parts, never interpolated into a fixed string.
 
+import { tradePhotos } from './photos.js';
 import { tradeCopy } from './trade-services.js';
 import { reviewsAreGoogleSourced, type SiteContent, type SiteDemoData } from './types.js';
 
@@ -115,6 +116,7 @@ export function fillSiteContent(data: SiteDemoData): SiteContent {
     contactHeading: 'Get in touch',
     colours: { accent: copy.accent, blue: BLUE },
     glyph: copy.glyph,
+    photos: tradePhotos(data.profileKey),
     chatGreeting: town
       ? `Hi, thanks for stopping by. Do you need a hand with something in ${town}?`
       : 'Hi, thanks for stopping by. What can we help you with?',

@@ -25,6 +25,7 @@
 // is a round trip on a phone on mobile data and a privacy leak on a lead's
 // page. Icons are inline SVG. Type is the system stack.
 
+import { tradePhotos, type SitePhoto } from './photos.js';
 import type { SiteContent } from './types.js';
 
 export interface RenderOptions {
@@ -219,9 +220,13 @@ function brandMark(key: string): string {
 function styles(accent: string, blue: string): string {
   return `
 :root{
-  --paper:#FFFFFF; --soft:#F5F8FC; --tint:#EDF3FA;
-  --ink:#0C1C2E; --muted:#5B6B80; --line:#E3EAF3;
-  --blue:${esc(blue)}; --navy:#0C2138; --deep:#15355C; --accent:${esc(accent)};
+  --paper:#FFFFFF; --soft:#F4F7FB; --tint:#EDF3FA;
+  --ink:#0B1B2D; --muted:#58687C; --line:#E4EAF2;
+  --blue:${esc(blue)}; --navy:#0C2138; --deep:#12304F; --accent:${esc(accent)};
+  /* Matches the tint baked into public/site/*.webp by
+     scripts/build-site-photos.mjs. A trade with no photograph falls back to
+     this as a solid plane, so the page keeps its colour either way. */
+  --duo-base:#0E2E52;
   --r:16px; --r-sm:12px; --pill:999px;
   --shadow:0 1px 2px rgba(12,28,46,.05), 0 12px 32px rgba(12,28,46,.07);
   --shadow-lg:0 2px 4px rgba(12,28,46,.06), 0 24px 60px rgba(12,28,46,.12);
@@ -248,144 +253,145 @@ img,svg{display:block}
   font-weight:800; margin:0 0 var(--s2)}
 .lede{color:var(--muted); max-width:56ch; margin:0}
 
-/* ---- Header. Sticky, quiet, and it always carries the number. */
-.head{position:sticky; top:0; z-index:30; background:rgba(255,255,255,.86);
-  backdrop-filter:saturate(160%) blur(12px); -webkit-backdrop-filter:saturate(160%) blur(12px);
-  border-bottom:1px solid transparent; transition:border-color .2s ease, box-shadow .2s ease}
-.head.stuck{border-bottom-color:var(--line); box-shadow:0 6px 20px rgba(12,28,46,.05)}
+/* ---- Header. Transparent over the opening photograph, solid once it moves. */
+.head{position:fixed; top:0; left:0; right:0; z-index:30; background:transparent;
+  border-bottom:1px solid transparent; transition:background .25s ease, border-color .25s ease}
+.head.stuck{background:var(--paper); border-bottom-color:var(--line)}
 .headin{height:var(--head); display:flex; align-items:center; justify-content:space-between; gap:16px}
-.brand{display:flex; align-items:center; gap:10px; min-width:0}
-.brand .bm{width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
-  background:var(--tint); color:var(--blue); flex:none}
+.brand{display:flex; align-items:center; gap:10px; min-width:0; color:#fff}
+.head.stuck .brand{color:var(--ink)}
+.brand .bm{width:32px; height:32px; flex:none; display:grid; place-items:center;
+  background:rgba(255,255,255,.16); color:#fff}
+.head.stuck .brand .bm{background:var(--tint); color:var(--blue)}
 .brand b{font-size:1rem; font-weight:800; letter-spacing:-.015em; white-space:nowrap;
   overflow:hidden; text-overflow:ellipsis}
 .headcall{display:none}
 @media(min-width:620px){
-  .headcall{display:inline-flex; align-items:center; gap:8px; background:var(--blue);
-    color:#fff; text-decoration:none; padding:11px 18px; border-radius:var(--pill);
-    font-weight:700; font-size:.95rem; font-variant-numeric:tabular-nums; flex:none}
-  .headcall:hover{background:var(--deep)}
+  .headcall{display:inline-flex; align-items:center; gap:8px; color:#fff; text-decoration:none;
+    font-weight:700; font-size:1rem; font-variant-numeric:tabular-nums; flex:none}
+  .head.stuck .headcall{color:var(--blue)}
 }
 
-/* ---- Hero. Depth without photography: a graded plane, a soft light source,
-   and a faint rule pattern so the surface reads as a material. */
-.hero{position:relative; overflow:hidden; color:#fff;
-  background:
-    radial-gradient(900px 520px at 78% -12%, rgba(120,180,255,.34), transparent 62%),
-    radial-gradient(700px 420px at 8% 108%, rgba(255,255,255,.11), transparent 60%),
-    linear-gradient(158deg, var(--navy) 4%, var(--blue) 96%);
-  padding:var(--s5) 0 calc(var(--s6) + 44px)}
-@media(min-width:760px){ .hero{padding:var(--s6) 0 calc(var(--s6) + 60px)} }
-.hero::before{content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
-  background-image:repeating-linear-gradient(115deg, rgba(255,255,255,.055) 0 1px, transparent 1px 76px);
-  mask-image:linear-gradient(to bottom, #000 10%, transparent 92%);
-  -webkit-mask-image:linear-gradient(to bottom, #000 10%, transparent 92%)}
-.hero .wrap{position:relative}
-.rating{display:inline-flex; align-items:center; gap:10px; background:rgba(255,255,255,.13);
-  border:1px solid rgba(255,255,255,.24); border-radius:var(--pill); padding:7px 16px 7px 12px;
-  font-size:.9rem; font-weight:600; margin:0 0 var(--s3); backdrop-filter:blur(6px)}
+/* ---- BEAT 1. Hero: a full-bleed photograph, title low-left.
+   The photograph is an <img>, not a CSS background, so it can carry alt text
+   and fetchpriority. Its absence must cost nothing: --duo-base matches the
+   tint baked into the files, so a trade with no photograph reads as a solid
+   plane of the same colour rather than as a broken page. */
+.hero{position:relative; overflow:hidden; color:#fff; background:var(--duo-base);
+  min-height:92svh; display:flex; align-items:flex-end;
+  padding:calc(var(--head) + var(--s5)) 0 var(--s5)}
+@media(min-width:760px){ .hero{min-height:88vh; padding-bottom:var(--s6)} }
+.shot{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0}
+/* One directional source with deep falloff. This is the film reference and it
+   is also the only reason white type is legible over an unknown photograph. */
+.scrim{position:absolute; inset:0; z-index:1; pointer-events:none;
+  background:linear-gradient(to top, rgba(9,26,45,.95) 0%, rgba(9,26,45,.84) 36%,
+    rgba(9,26,45,.48) 66%, rgba(9,26,45,.22) 100%)}
+.hero .wrap{position:relative; z-index:2; width:100%}
+.rating{display:flex; align-items:center; gap:9px; margin:0 0 var(--s3);
+  font-size:.92rem; font-weight:600}
 .rating .stars{display:flex; gap:2px; color:#FFC24A}
 .rating .stars svg{fill:currentColor; stroke:none}
 .rating b{font-variant-numeric:tabular-nums}
-.rating span{color:rgba(255,255,255,.82); font-weight:500}
-.kicker{font-size:.8rem; letter-spacing:.16em; text-transform:uppercase; font-weight:700;
-  color:rgba(255,255,255,.72); margin:0 0 14px}
-.name{font-size:clamp(2.35rem,8.2vw,4.4rem); line-height:1.03; letter-spacing:-.032em;
-  font-weight:800; margin:0 0 var(--s2); text-wrap:balance}
-.blurb{font-size:clamp(1.02rem,2.1vw,1.2rem); color:rgba(255,255,255,.84);
-  max-width:52ch; margin:0 0 var(--s4)}
+.rating span{color:rgba(255,255,255,.72); font-weight:500}
+.kicker{font-size:.76rem; letter-spacing:.18em; text-transform:uppercase; font-weight:700;
+  color:rgba(255,255,255,.74); margin:0 0 12px}
+.name{font-size:clamp(2.6rem,9vw,5.2rem); line-height:1.0; letter-spacing:-.035em;
+  font-weight:800; margin:0 0 var(--s3); text-wrap:balance;
+  text-shadow:0 2px 30px rgba(0,0,0,.28)}
+.blurb{font-size:clamp(1rem,2vw,1.15rem); color:rgba(255,255,255,.86);
+  max-width:46ch; margin:0 0 var(--s4)}
 .acts{display:flex; flex-wrap:wrap; gap:12px}
 .btn{display:inline-flex; align-items:center; justify-content:center; gap:10px;
-  padding:16px 26px; border-radius:var(--pill); text-decoration:none; font-weight:700;
+  padding:16px 26px; text-decoration:none; font-weight:700;
   font-size:1.02rem; border:1px solid transparent; cursor:pointer; font-family:inherit;
-  transition:transform .16s ease, background .18s ease, box-shadow .18s ease}
+  transition:transform .16s ease, background .18s ease, filter .18s ease}
 .btn:active{transform:translateY(1px)}
-.btn-call{background:var(--accent); color:#fff; font-variant-numeric:tabular-nums;
-  box-shadow:0 10px 30px rgba(0,0,0,.24)}
-.btn-call:hover{filter:brightness(1.07)}
-.btn-ghost{background:rgba(255,255,255,.1); color:#fff; border-color:rgba(255,255,255,.34)}
+.btn-call{background:var(--accent); color:#fff; font-variant-numeric:tabular-nums}
+.btn-call:hover{filter:brightness(1.08)}
+.btn-ghost{background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.42)}
 .btn-ghost:hover{background:rgba(255,255,255,.18)}
 @media(prefers-reduced-motion:reduce){ .btn{transition:none} }
 
-/* ---- The three facts, on cards lifted over the hero edge. */
-.facts{margin-top:-56px; position:relative; z-index:5}
-.factgrid{display:grid; gap:14px; grid-template-columns:1fr}
-@media(min-width:760px){ .factgrid{grid-template-columns:repeat(3,1fr); gap:20px} }
-.fact{background:var(--paper); border:1px solid var(--line); border-radius:var(--r);
-  padding:22px; box-shadow:var(--shadow); display:flex; gap:14px; align-items:flex-start}
-.fact .tile{width:42px; height:42px; border-radius:11px; flex:none; display:grid;
-  place-items:center; background:var(--tint); color:var(--blue)}
-.fact h3{margin:0 0 4px; font-size:.74rem; letter-spacing:.13em; text-transform:uppercase;
-  color:var(--muted); font-weight:700}
-.fact p{margin:0; font-weight:650; font-size:1.02rem; line-height:1.4}
-.fact p a{text-decoration:none; font-variant-numeric:tabular-nums}
-.fact p a:hover{color:var(--blue)}
+/* ---- BEAT 2. Territory: the one solid rest, and deliberately image-free.
+   We cannot honestly show HIS town, and a generic town captioned with his town
+   is a quiet lie. Colour carries this beat instead. */
+.territory{background:var(--blue); color:#fff; padding:var(--s6) 0}
+.territory .row{display:flex; gap:18px; align-items:flex-start; max-width:24ch}
+.territory .ico{flex:none; opacity:.7; margin-top:6px}
+.territory p{margin:0; font-size:clamp(1.4rem,3.6vw,2.1rem); font-weight:700;
+  line-height:1.25; letter-spacing:-.018em}
 
-/* ---- Services. */
+/* ---- BEAT 3. Inventory: an editorial list beside a tall photograph.
+   NOT cards. The rejected version made these cards and it read as a template. */
 .sec{padding:var(--s6) 0}
-.sec.soft{background:var(--soft); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
-.sechead{max-width:56ch; margin:0 0 var(--s5)}
-.cards{display:grid; gap:16px; grid-template-columns:1fr}
-@media(min-width:560px){ .cards{grid-template-columns:repeat(2,1fr)} }
-@media(min-width:960px){ .cards{grid-template-columns:repeat(3,1fr)} }
-.card{background:var(--paper); border:1px solid var(--line); border-radius:var(--r);
-  padding:26px 24px; transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
-.card:hover{transform:translateY(-3px); box-shadow:var(--shadow); border-color:#CFDCEC}
-@media(prefers-reduced-motion:reduce){ .card{transition:none} .card:hover{transform:none} }
-.card .tile{width:46px; height:46px; border-radius:12px; display:grid; place-items:center;
-  background:var(--tint); color:var(--blue); margin-bottom:18px}
-.card h3{margin:0; font-size:1.08rem; font-weight:700; letter-spacing:-.01em; line-height:1.35}
+.inv{display:grid; gap:var(--s5); align-items:start}
+@media(min-width:900px){ .inv{grid-template-columns:.85fr 1.15fr; gap:var(--s6)} }
+.invshot{position:relative; background:var(--duo-base); overflow:hidden; aspect-ratio:16/11}
+@media(min-width:900px){ .invshot{aspect-ratio:4/5; position:sticky; top:calc(var(--head) + 24px)} }
+.invshot img{width:100%; height:100%; object-fit:cover; display:block}
+/* SIGNATURE COMPOSITION, instance one: a solid slab overlapping the corner of
+   a photograph, carrying exactly one fact. A card grid cannot do this. */
+.slab{position:absolute; z-index:2; background:var(--blue); color:#fff;
+  padding:18px 22px; max-width:80%}
+.slab.bl{left:0; bottom:24px}
+.slab .k{margin:0 0 4px; font-size:.68rem; letter-spacing:.15em; text-transform:uppercase;
+  color:rgba(255,255,255,.72); font-weight:700}
+.slab p{margin:0; font-weight:700; font-size:1.02rem; line-height:1.35}
+.eyebrow{font-size:.75rem; letter-spacing:.16em; text-transform:uppercase;
+  font-weight:700; color:var(--muted); margin:0 0 12px}
+.h2{font-size:clamp(1.75rem,4.4vw,2.6rem); line-height:1.1; letter-spacing:-.024em;
+  font-weight:800; margin:0 0 var(--s2)}
+.lede{color:var(--muted); max-width:52ch; margin:0 0 var(--s4)}
+.index{list-style:none; margin:0; padding:0}
+.item{display:flex; gap:18px; align-items:center; padding:18px 0;
+  border-bottom:1px solid var(--line)}
+.item:first-child{border-top:1px solid var(--line)}
+.item .n{font-size:.75rem; color:var(--muted); font-variant-numeric:tabular-nums;
+  font-weight:700; min-width:2ch}
+.item .ico{color:var(--blue); flex:none}
+.item h3{margin:0; font-size:1.05rem; font-weight:650; letter-spacing:-.01em}
 
-/* ---- Proof. Renders only when Google gave it to us. */
-.proof{padding:var(--s6) 0}
-/* the services block already ends on its own generous margin */
-.sec + .proof{padding-top:0}
-.proofbox{background:linear-gradient(160deg,#fff,var(--tint)); border:1px solid var(--line);
-  border-radius:22px; padding:44px 24px; text-align:center; box-shadow:var(--shadow)}
-.proofbox .stars{display:flex; justify-content:center; gap:6px; color:#F5A623; margin-bottom:14px}
-.proofbox .stars svg{fill:currentColor; stroke:none}
-.score{font-size:clamp(3.2rem,10vw,4.6rem); font-weight:800; letter-spacing:-.035em;
-  line-height:1; margin:0 0 8px; font-variant-numeric:tabular-nums}
-.proofbox .sub{color:var(--muted); margin:0; font-weight:600}
+/* ---- BEAT 4. Proof: a white slab over the outcome photograph.
+   Mirrors beat 3, so the two instances of the signature read as a pair. */
+.proof{position:relative; background:var(--soft); overflow:hidden;
+  aspect-ratio:4/3; display:flex; align-items:flex-start; justify-content:flex-end}
+@media(min-width:760px){ .proof{aspect-ratio:21/9} }
+.proof img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0}
+.proof .slab{position:relative; background:var(--paper); color:var(--ink);
+  padding:30px 34px; margin:var(--s4) var(--s3) 0 0; text-align:center; max-width:none}
+@media(min-width:760px){ .proof .slab{margin:var(--s5) var(--s5) 0 0; padding:36px 48px} }
+.proof .stars{display:flex; justify-content:center; gap:5px; color:#F5A623; margin-bottom:10px}
+.proof .stars svg{fill:currentColor; stroke:none}
+/* Scoped to .proof deliberately. As a bare .score it lost to the .slab p rule,
+   which is one class more specific, and the rating rendered at 16px instead of
+   48px. Specificity, not cascade order.
+   (No backticks in these comments: the whole stylesheet is a template literal
+   and a stray backtick ends it mid-file.) */
+.proof .score{font-size:clamp(3rem,8vw,4.2rem); font-weight:800; letter-spacing:-.038em;
+  line-height:1; margin:0 0 6px; font-variant-numeric:tabular-nums}
+.proof .sub{color:var(--muted); margin:0; font-weight:600; font-size:.95rem}
 
-/* ---- The one wide colour band. Carries the number, nothing else competes. */
-.band{background:
-    radial-gradient(600px 300px at 85% 0%, rgba(120,180,255,.26), transparent 60%),
-    linear-gradient(150deg, var(--deep), var(--blue));
-  color:#fff; padding:var(--s6) 0; text-align:center}
-.band h2{font-size:clamp(1.7rem,4.6vw,2.6rem); line-height:1.15; letter-spacing:-.022em;
-  font-weight:800; margin:0 0 12px; text-wrap:balance}
-.band p{color:rgba(255,255,255,.82); margin:0 auto var(--s4); max-width:44ch}
-.band .btn-call{box-shadow:0 12px 34px rgba(0,0,0,.26)}
-
-/* ---- Contact. */
-.split{display:grid; gap:var(--s5); align-items:start}
-@media(min-width:860px){ .split{grid-template-columns:1.15fr .85fr; gap:var(--s6)} }
-.about{color:var(--muted); margin:0 0 var(--s4); max-width:52ch}
-.panel{background:var(--paper); border:1px solid var(--line); border-radius:var(--r);
-  padding:28px; box-shadow:var(--shadow)}
-.pair{display:flex; gap:14px; align-items:flex-start; padding:16px 0; border-bottom:1px solid var(--line)}
-.pair:first-child{padding-top:0}
-.pair:last-of-type{border-bottom:0; padding-bottom:22px}
-.pair .tile{width:40px; height:40px; border-radius:11px; flex:none; display:grid;
-  place-items:center; background:var(--tint); color:var(--blue)}
-.pair .k{margin:0 0 2px; font-size:.72rem; letter-spacing:.13em; text-transform:uppercase;
-  color:var(--muted); font-weight:700}
-.pair .v{margin:0; font-size:1.15rem; font-weight:700; letter-spacing:-.01em;
-  font-variant-numeric:tabular-nums}
-.pair .v a{text-decoration:none}
-.pair .v a:hover{color:var(--blue)}
-.getstarted{display:block; width:100%; background:var(--ink); color:#fff; text-align:center;
-  border:0; border-radius:var(--pill); padding:16px 22px; font:inherit; font-weight:700;
-  font-size:1rem; cursor:pointer; transition:background .18s ease}
-.getstarted:hover{background:var(--blue)}
+/* ---- BEAT 5. The reckoning: the number, as the largest type on the page. */
+.close{background:var(--deep); color:#fff; padding:var(--s6) 0 calc(var(--s6) + 40px);
+  text-align:center}
+.close .eyebrow{color:rgba(255,255,255,.6)}
+.close .tel{display:inline-block; font-size:clamp(2.2rem,8vw,3.6rem); font-weight:800;
+  letter-spacing:-.035em; text-decoration:none; font-variant-numeric:tabular-nums;
+  margin:0 0 var(--s2); line-height:1}
+.close .tel:hover{color:var(--accent)}
+.close .where{color:rgba(255,255,255,.72); margin:0 auto var(--s4); max-width:34ch}
+.getstarted{display:inline-block; background:var(--paper); color:var(--ink);
+  border:0; padding:16px 30px; font:inherit; font-weight:700; font-size:1rem;
+  cursor:pointer; transition:background .18s ease, color .18s ease}
+.getstarted:hover{background:var(--accent); color:#fff}
 .getstarted[disabled]{opacity:.7; cursor:default}
 
 /* ---- Footer. Extra clearance so the launcher never sits on the last line. */
-.foot{background:var(--navy); color:rgba(255,255,255,.62);
-  padding:var(--s5) 0 calc(var(--s5) + 56px); font-size:.9rem}
-.footin{display:flex; flex-wrap:wrap; gap:12px 24px; align-items:center; justify-content:space-between}
-.foot b{color:#fff; font-size:1rem; letter-spacing:-.01em}
+.foot{background:var(--navy); color:rgba(255,255,255,.6);
+  padding:var(--s4) 0 calc(var(--s4) + 56px); font-size:.88rem}
+.footin{display:flex; flex-wrap:wrap; gap:10px 24px; align-items:center; justify-content:space-between}
+.foot b{color:#fff; font-size:.98rem; letter-spacing:-.01em}
 .foot a{text-decoration:none; font-variant-numeric:tabular-nums}
 .foot a:hover{color:#fff}
 
@@ -439,13 +445,36 @@ img,svg{display:block}
   font:inherit; font-weight:700; cursor:pointer}
 .chat button.send:hover{background:var(--deep)}
 
-/* ---- Motion. Baseline is VISIBLE. Start states are applied by JS only, so a
-   dropped script can never hand a lead a blank page. */
+/* ---- Motion.
+   Baseline is VISIBLE. Every start state is applied by JS only, behind .js, so
+   a dropped script can never hand a lead a blank sales page.
+
+   NOTHING HERE CLIPS AN OBSERVED ELEMENT. Chromium counts an element's own
+   clip-path when deciding whether it intersects, so clipping the node the
+   observer is watching means it never reveals. The first version of this page
+   shipped an invisible band for exactly that reason. Opacity, transform and
+   scale only. */
 .js .r{opacity:0; transform:translateY(14px)}
 .js .r.in{opacity:1; transform:none;
   transition:opacity .6s ease, transform .6s cubic-bezier(.22,.7,.24,1)}
+/* beat 1: the scrim lifts while the title rises. Load only. */
+.js .scrim{opacity:.42}
+.js .scrim.in{opacity:1; transition:opacity .9s ease}
+/* beat 3: the camera settles on the work photograph. */
+.js .invshot img{transform:scale(1.06)}
+.js .invshot.in img{transform:scale(1); transition:transform 1.1s cubic-bezier(.2,.6,.2,1)}
+/* beat 4: the only lateral move on the page. */
+.js .proof .slab{opacity:0; transform:translateX(26px)}
+.js .proof .slab.in{opacity:1; transform:none;
+  transition:opacity .5s ease, transform .7s cubic-bezier(.2,.7,.2,1)}
+/* beat 5: one step of scale, terminal emphasis. */
+.js .z{opacity:0; transform:scale(.97)}
+.js .z.in{opacity:1; transform:none;
+  transition:opacity .5s ease, transform .6s cubic-bezier(.2,.7,.2,1)}
 @media(prefers-reduced-motion:reduce){
-  .js .r{opacity:1 !important; transform:none !important; transition:none !important}
+  .js .r,.js .z,.js .scrim,.js .proof .slab{opacity:1 !important; transform:none !important;
+    transition:none !important}
+  .js .invshot img{transform:none !important}
 }
 `.trim();
 }
@@ -455,17 +484,25 @@ function starRow(n = 5, size = 15): string {
   return Array.from({ length: n }, () => svg('star', size, 'st')).join('');
 }
 
-function proofSection(content: SiteContent): string {
+/**
+ * BEAT 4. The one spectacle. Renders only when Google gave us the numbers,
+ * unchanged rule: absence deletes the section rather than substituting
+ * anything. The photograph behind it is optional too, and its absence leaves
+ * the slab on the soft plane with the section's shape intact.
+ */
+function proofSection(content: SiteContent, photo?: SitePhoto): string {
   if (!content.proof) return '';
   const full = Math.max(0, Math.min(5, Math.round(content.proof.rating)));
+  const img = photo
+    ? `<img src="${esc(photo.src)}" alt="${esc(photo.alt)}" loading="lazy" decoding="async">`
+    : '';
   return `
 <section class="proof">
-  <div class="wrap">
-    <div class="proofbox r">
-      <div class="stars" aria-hidden="true">${starRow(full, 22)}</div>
-      <p class="score">${esc(content.proof.rating.toFixed(1))}</p>
-      <p class="sub">${esc(content.proof.reviews)} Google reviews</p>
-    </div>
+  ${img}
+  <div class="slab">
+    <div class="stars" aria-hidden="true">${starRow(full, 20)}</div>
+    <p class="score">${esc(content.proof.rating.toFixed(1))}</p>
+    <p class="sub">${esc(content.proof.reviews)} Google reviews</p>
   </div>
 </section>`;
 }
@@ -486,35 +523,21 @@ export function renderSite(content: SiteContent, opts: RenderOptions): string {
   const heroBlurb = sentences.length > 1 ? sentences[0] : content.about;
   const aboutRest = sentences.length > 1 ? sentences.slice(1).join(' ') : content.about;
 
-  // The three true facts, promoted from prose onto cards. Same strings the
-  // content document already carries, so the editor still owns every word.
-  const facts = [
-    { icon: 'pin', k: 'Where we work', v: content.bands[0] },
-    { icon: 'clock', k: 'Availability', v: content.bands[1] },
-    {
-      icon: 'phone',
-      k: 'Call us',
-      v: `<a href="tel:${esc(tel)}" data-tap="1">${esc(content.phoneDisplay)}</a>`,
-      raw: true,
-    },
-  ]
-    .map(
-      (f) =>
-        `<div class="fact r"><div class="tile">${svg(f.icon, 21)}</div><div>` +
-        `<h3>${esc(f.k)}</h3><p>${f.raw ? f.v : esc(f.v)}</p></div></div>`,
-    )
-    .join('');
+  // Photographs. A document written before photography existed has none, so it
+  // falls back to the neutral set rather than to a page with no images, which
+  // is the version that was rejected twice.
+  const photos = content.photos ?? tradePhotos(null);
 
   const services = content.services
     .map(
-      (s) =>
-        `<article class="card r"><div class="tile">${svg(iconFor(s), 23)}</div>` +
-        `<h3>${esc(s)}</h3></article>`,
+      (s, i) =>
+        `<li class="item r"><span class="n">${String(i + 1).padStart(2, '0')}</span>` +
+        `<span class="ico">${svg(iconFor(s), 21)}</span><h3>${esc(s)}</h3></li>`,
     )
     .join('');
 
   const ratingPill = content.proof
-    ? `<p class="rating r"><span class="stars" aria-hidden="true">${starRow(5)}</span>` +
+    ? `<p class="rating r"><span class="stars" aria-hidden="true">${starRow(5, 14)}</span>` +
       `<b>${esc(content.proof.rating.toFixed(1))}</b>` +
       `<span>${esc(content.proof.reviews)} Google reviews</span></p>`
     : '';
@@ -540,7 +563,7 @@ export function renderSite(content: SiteContent, opts: RenderOptions): string {
     : '';
 
   const getStarted = opts.checkoutEnabled
-    ? `<button class="getstarted" id="getstarted" type="button">Get started</button>`
+    ? `<button class="getstarted z" id="getstarted" type="button">Get started</button>`
     : '';
 
   // Built from parts, never interpolated into a fixed string, so a missing town
@@ -586,7 +609,11 @@ ${staffBanner}
 </header>
 
 <main>
+  <!-- BEAT 1. Silent labour: the work, photographed, with his name on it. -->
   <section class="hero">
+    <img class="shot" src="${esc(photos.hero.src)}" alt="${esc(photos.hero.alt)}"
+      fetchpriority="high" decoding="async">
+    <div class="scrim"></div>
     <div class="wrap">
       ${ratingPill}
       <p class="kicker r">${esc(content.tagline)}</p>
@@ -599,55 +626,48 @@ ${staffBanner}
     </div>
   </section>
 
-  <section class="facts">
-    <div class="wrap"><div class="factgrid">${facts}</div></div>
+  <!-- BEAT 2. The claim on territory. The one solid rest, no photograph: we
+       cannot honestly show HIS town. -->
+  <section class="territory">
+    <div class="wrap">
+      <div class="row"><span class="ico">${svg('pin', 26)}</span>
+        <p>${esc(content.bands[0])}</p></div>
+    </div>
   </section>
 
+  <!-- BEAT 3. The inventory, counted off beside the work. -->
   <section class="sec">
-    <div class="wrap">
-      <div class="sechead r">
-        <p class="eyebrow">Services</p>
-        <h2 class="h2">What we take care of</h2>
-        <p class="lede">Whatever the job, ring the number and tell us what is going on. We will tell you straight what needs doing.</p>
-      </div>
-      <div class="cards">${services}</div>
-    </div>
-  </section>
-
-  ${proofSection(content)}
-
-  <section class="band">
-    <div class="wrap">
-      <h2 class="r">${esc(bandHeading)}</h2>
-      <p class="r">${esc(content.bands[1])}</p>
-      <div class="r"><a class="btn btn-call" href="tel:${esc(tel)}" data-tap="1">${svg('phone', 19)}Call ${esc(content.phoneDisplay)}</a></div>
-    </div>
-  </section>
-
-  <section class="sec soft">
-    <div class="wrap split">
-      <div class="r">
-        <p class="eyebrow">${esc(content.contactHeading)}</p>
-        <h2 class="h2">${esc(content.town ? 'Local, and easy to reach' : 'Easy to reach')}</h2>
-        <p class="about">${esc(aboutRest)}</p>
-      </div>
-      <div class="panel r">
-        <div class="pair"><div class="tile">${svg('phone', 20)}</div><div>
-          <p class="k">Phone</p>
-          <p class="v"><a href="tel:${esc(tel)}" data-tap="1">${esc(content.phoneDisplay)}</a></p></div></div>
-        <div class="pair"><div class="tile">${svg('pin', 20)}</div><div>
-          <p class="k">Area covered</p>
-          <p class="v">${esc(content.bands[0])}</p></div></div>
+    <div class="wrap inv">
+      <div class="invshot">
         ${
-          // Only ever what the owner typed into the editor. Nothing seeds this
-          // at generation: see the note in api/lib/site-demo-generate.ts.
-          content.address
-            ? `<div class="pair"><div class="tile">${svg('pin', 20)}</div><div>` +
-              `<p class="k">Where we are</p><p class="v">${esc(content.address)}</p></div></div>`
+          photos.work
+            ? `<img src="${esc(photos.work.src)}" alt="${esc(photos.work.alt)}" loading="lazy" decoding="async">`
             : ''
         }
-        ${getStarted}
+        <div class="slab bl"><p class="k">Availability</p><p>${esc(content.bands[1])}</p></div>
       </div>
+      <div>
+        <p class="eyebrow r">Services</p>
+        <h2 class="h2 r">What we take care of</h2>
+        <p class="lede r">${esc(aboutRest)}</p>
+        <ul class="index">${services}</ul>
+      </div>
+    </div>
+  </section>
+
+  ${proofSection(content, photos.outcome)}
+
+  <!-- BEAT 5. The reckoning: the number, as the largest type on the page. -->
+  <section class="close">
+    <div class="wrap">
+      <p class="eyebrow z">${esc(bandHeading)}</p>
+      <a class="tel z" href="tel:${esc(tel)}" data-tap="1">${esc(content.phoneDisplay)}</a>
+      <p class="where z">${esc(content.bands[0])}${
+        // Only ever what the owner typed into the editor. Nothing seeds this at
+        // generation: see the note in api/lib/site-demo-generate.ts.
+        content.address ? `. ${esc(content.address)}` : ''
+      }</p>
+      ${getStarted}
     </div>
   </section>
 </main>
@@ -675,31 +695,34 @@ ${chat}
   }
   bar(); addEventListener('resize', bar);
 
-  // Header hairline only once the page has actually moved.
+  // The header sits over the opening photograph until the page moves.
   var head=d.getElementById('head');
-  function stick(){ if(head) head.classList.toggle('stuck', scrollY > 8); }
+  function stick(){ if(head) head.classList.toggle('stuck', scrollY > 40); }
   stick(); addEventListener('scroll', stick, {passive:true});
 
   // Entrances. Never leaves anything hidden: if IntersectionObserver is
-  // missing we reveal everything immediately.
-  var animated=[].slice.call(d.querySelectorAll('.r'));
+  // missing, everything reveals immediately.
+  var animated=[].slice.call(d.querySelectorAll('.r,.z,.invshot,.proof .slab'));
   if(!('IntersectionObserver' in window)){
     animated.forEach(function(el){ el.classList.add('in'); });
+    var s0=d.querySelector('.scrim'); if(s0) s0.classList.add('in');
   } else {
     var io=new IntersectionObserver(function(entries){
       entries.forEach(function(e){
         if(!e.isIntersecting) return;
         var el=e.target, p=el.parentNode;
-        var grid=p && (p.classList.contains('cards') || p.classList.contains('factgrid'));
-        var delay=grid ? ([].indexOf.call(p.children, el)*55) : 0;
+        // The service list counts itself off; nothing else staggers.
+        var listed=p && p.classList.contains('index');
+        var delay=listed ? ([].indexOf.call(p.children, el)*55) : 0;
         setTimeout(function(){ el.classList.add('in'); }, delay);
         io.unobserve(el);
       });
     },{rootMargin:'0px 0px -8% 0px', threshold:.08});
     animated.forEach(function(el){ io.observe(el); });
-    // The hero is above the fold: reveal on the next frame rather than waiting.
+    // Beat 1 is above the fold: the scrim lifts and the title rises on load
+    // rather than waiting for a scroll that may never come.
     requestAnimationFrame(function(){
-      var above=d.querySelectorAll('.hero .r');
+      var above=d.querySelectorAll('.hero .r,.scrim');
       for(var i=0;i<above.length;i++) above[i].classList.add('in');
     });
   }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderSite, esc, ICONS, iconFor, type RenderOptions } from '../src/core/site-demo/render';
 import { TRADE_COPY } from '../src/core/site-demo/trade-services';
+import { TRADE_PHOTOS } from '../src/core/site-demo/photos';
 import { fillSiteContent } from '../src/core/site-demo/fill';
 import { nonGsm7 } from '../api/lib/sms-charset';
 import type { SiteDemoData } from '../src/core/site-demo/types';
@@ -65,14 +66,38 @@ describe('the document', () => {
 });
 
 describe('the composition survives', () => {
-  it('gives every service its own card and its own icon', () => {
+  // Five beats, from the storyboard. Losing one collapses the arc back into
+  // the generic marketing flow the design exists to avoid.
+  it('renders all five beats in order', () => {
+    const h = html(lead({ rating: 4.8, reviews: 37, reviewsSource: 'google' }));
+    const order = ['class="hero"', 'class="territory"', 'class="wrap inv"', 'class="proof"', 'class="close"'];
+    let at = -1;
+    for (const beat of order) {
+      const next = h.indexOf(beat);
+      expect({ beat, found: next > -1 }).toEqual({ beat, found: true });
+      expect(next, `${beat} out of order`).toBeGreaterThan(at);
+      at = next;
+    }
+  });
+
+  it('gives every service a row and its own icon, and never a card', () => {
     const h = html();
-    expect(h.match(/class="card r"/g) || []).toHaveLength(6);
+    expect(h.match(/class="item r"/g) || []).toHaveLength(6);
+    expect(h).not.toContain('class="card');
     // Keyword matched, not positional, so a renamed service keeps a sensible
     // picture. A plumber's first two lines must not share one glyph.
     expect(h).toContain(ICONS.drop);
     expect(h).toContain(ICONS.flame);
     expect(h).toContain(ICONS.shower);
+  });
+
+  // The signature composition: a solid slab overlapping a photograph, carrying
+  // one fact. Used exactly twice, mirrored. This is the move that does not
+  // survive being flattened into a card grid, which is what got rejected.
+  it('uses the overlapping slab exactly twice', () => {
+    const h = html(lead({ rating: 4.8, reviews: 37, reviewsSource: 'google' }));
+    expect(h.match(/class="slab/g) || []).toHaveLength(2);
+    expect(h).toContain('class="slab bl"'); // over the work photograph
   });
 
   // Icons are keyword matched, and a sloppy pattern is invisible in the HTML
@@ -110,28 +135,79 @@ describe('the composition survives', () => {
     expect(body).toContain(esc('No call centre, no waiting on hold.'));
   });
 
-  it('promotes the three true facts onto cards rather than burying them', () => {
+  it('states the area on its own, with no photograph behind it', () => {
     const h = html();
-    expect(h.match(/class="fact r"/g) || []).toHaveLength(3);
     expect(h).toContain('Covering Wigan and the surrounding area');
-    expect(h).toContain('Where we work');
+    // Beat 2 is deliberately image-free: we cannot show HIS town, and a stock
+    // town captioned with his town would be a quiet lie.
+    const beat = h.slice(h.indexOf('class="territory"'), h.indexOf('class="sec"'));
+    expect(beat).not.toContain('<img');
   });
 
   it('offers the phone in every place a thumb might land', () => {
     const h = html();
-    expect(h).toContain('class="headcall"'); // sticky header, wide screens
+    expect(h).toContain('class="headcall"'); // header, wide screens
     expect(h).toContain('class="callbar"'); // fixed bar, phones
-    expect(h).toContain('class="btn btn-call"'); // hero and the colour band
-    expect(h.match(/href="tel:\+447576558278"/g)!.length).toBeGreaterThanOrEqual(6);
+    expect(h).toContain('class="btn btn-call"'); // the hero
+    expect(h).toContain('class="tel z"'); // the close, largest type on the page
+    expect(h.match(/href="tel:\+447576558278"/g)!.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+// The reason this version exists. Two designs shipped without photography and
+// both were rejected on sight; the no-images rule in the original spec was the
+// actual fault. If the photographs ever fall out again, that is a regression.
+describe('photography', () => {
+  it('opens on a photograph of the trade, with real alt text', () => {
+    const h = html();
+    expect(h).toContain('class="shot"');
+    expect(h).toContain('/site/plumbing-hero.webp');
+    expect(h).toContain('alt="Close-up of hands tightening a pipe fitting under a sink"');
+    expect(h).toContain('fetchpriority="high"');
   });
 
-  // The whole point of the redesign. If the page has no depth left it has
-  // drifted back to a text document on a white background.
-  it('carries the depth that stands in for photography we do not have', () => {
-    const style = html().slice(html().indexOf('<style>'), html().indexOf('</style>'));
-    expect(style).toContain('radial-gradient');
-    expect(style).toContain('box-shadow');
-    expect(style).toContain('border-radius');
+  it('serves every photograph from our own origin, as a relative path', () => {
+    const h = html();
+    const srcs = [...h.matchAll(/<img[^>]+src="([^"]+)"/g)].map((m) => m[1]);
+    expect(srcs.length).toBeGreaterThan(0);
+    for (const s of srcs) expect({ s, ok: s.startsWith('/site/') }).toEqual({ s, ok: true });
+  });
+
+  // Alt text describes the PHOTOGRAPH. "Our engineer fixing a boiler" would
+  // assert a member of staff who does not exist, which is the same class of
+  // problem as inventing a Gas Safe number.
+  it('never lets alt text claim the photograph is of this business', () => {
+    for (const trade of Object.values(TRADE_PHOTOS)) {
+      for (const photo of Object.values(trade)) {
+        expect({ alt: photo.alt, bad: /\b(our|we|us|their|his|team)\b/i.test(photo.alt) }).toEqual({
+          alt: photo.alt,
+          bad: false,
+        });
+      }
+    }
+  });
+
+  it('drops the work and outcome photographs without changing shape', () => {
+    // electrical has a hero and a work shot but no outcome shot
+    const h = renderSite(
+      fillSiteContent(
+        lead({ profileKey: 'electrical', rating: 4.9, reviews: 12, reviewsSource: 'google' }),
+      ),
+      opts(),
+    );
+    expect(h).toContain('class="proof"');
+    expect(h).toContain('class="score"'); // the rating still renders
+    const beat = h.slice(h.indexOf('class="proof"'));
+    expect(beat.slice(0, beat.indexOf('class="close"'))).not.toContain('<img');
+  });
+
+  // A document written before photography existed must not render imageless.
+  it('falls back to the neutral set for a legacy content document', () => {
+    const legacy = fillSiteContent(lead());
+    delete legacy.photos;
+    const h = renderSite(legacy, opts());
+    expect(h).toContain('/site/neutral-hero.webp');
+    expect(h).toContain('class="shot"');
   });
 });
 
@@ -141,14 +217,14 @@ describe('the composition survives', () => {
 // often an accountant's in another county. It shipped once as "Brentwood,
 // Essex" under "Where we are" on a Middlesbrough plumber's page.
 describe('never states a place we cannot stand behind', () => {
-  it('shows no address block at all on a freshly generated page', () => {
+  it('shows no address on a freshly generated page', () => {
     const h = html();
-    expect(h).not.toContain('Where we are');
+    expect(h).not.toContain('Mill Lane');
+    expect(h).not.toContain('Regency Court');
   });
 
   it('shows the address once the owner has set one in the editor', () => {
     const h = html(lead({ address: '12 Mill Lane, Wigan, WN1 1AA' }));
-    expect(h).toContain('Where we are');
     expect(h).toContain('12 Mill Lane, Wigan, WN1 1AA');
   });
 });

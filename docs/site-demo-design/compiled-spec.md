@@ -1,91 +1,125 @@
-# Phase 3 — Compiled Spec
+# Phase 3 — Compiled Spec (v3, photographic)
 
-Implementation source of truth. The CSS itself ships inside `src/core/site-demo/render.ts` as one inline `<style>` block, because the page is standalone HTML with no build step and no external requests.
+Implementation source of truth. The CSS ships inside
+`src/core/site-demo/render.ts` as one inline `<style>` block, because the page
+is standalone HTML with no build step.
 
 ## External Library Decision
 
-**No external libraries.** No CDN, no webfont, no icon package, no animation library. Enforced by the brief: the page must be self-contained, and every external host is a round trip on a phone on mobile data plus a privacy leak on a lead's page. Motion is CSS only. Glyphs are inline SVG paths.
+**No external libraries and no third-party hosts.** No CDN, no webfont, no icon
+package, no animation library. Motion is CSS only, icons are inline SVG.
 
-## Library source ids
+**Photographs are the one addition in v3, and they are first-party.** Pexels
+files are downloaded, cropped, duotoned and compressed at build time by
+`scripts/build-site-photos.mjs`, then committed to `public/site/` and served
+from our own origin as **relative URLs**. The self-contained rule is intact:
+still no third-party host, no privacy leak, no CDN round trip.
 
-Every major move on this page is marked `Custom`. Each derives from a named Ozu technique rather than from a library entry, and the guardrails permit `Custom` when justified:
+## Photography pipeline
 
-| Move | Status | Justification |
-|---|---|---|
-| Low eye-line tableau | `Custom` | Direct translation of Ozu's fixed low camera. No library entry encodes a vertical anchoring rule. |
-| Pillow band | `Custom` | Direct translation of the pillow shot. The library's section archetypes are all content-bearing; the pillow band's defining property is that it carries almost nothing. |
-| Plane wipe entrance | `Custom` | Reads as a cut rather than a fade, which is required because Ozu does not dissolve. |
-| Doorway frame | `Custom` | Ozu frames through door and window openings. Implemented as an inset three-sided hairline. |
+`scripts/build-site-photos.mjs`, run by hand when the set changes.
+
+1. Download from `images.pexels.com` at 1600w.
+2. Crop to role aspect: hero 4:5 portrait-ish for phones (1400x1750), work
+   3:4 (1200x1600), outcome 3:2 (1400x933).
+3. `.greyscale()` then `.tint({ brand blue })` — sharp's tint preserves
+   luminance and replaces chroma, which is a true duotone.
+4. `.linear(1.06, -8)` for a small contrast lift, so the duotone does not go
+   flat in the midtones.
+5. `.webp({ quality: 72 })`. Budget: **under 110KB per image**, checked by the
+   script, which fails loudly rather than shipping a 400KB hero.
+
+Output: `public/site/{profileKey}-{role}.webp`.
 
 ## Tokens
 
 ```
---paper:      #FBFBF9   page ground, warm paper white, not pure white
---plane:      #FFFFFF   raised planes
---mist:       #F1F4F8   the quiet alternate ground
---ink:        #10203A   near-black with blue in it, never #000
---ink-soft:   #46566E   secondary text
---rule:       #C9D4E2   hairline
---blue:       #1D4E89   the ink blue plane, late-Ozu flat blue
---blue-deep:  #14385F   pressed state
---accent:     #C2452D   the single saturated accent, one per frame (Ozu's red kettle)
+--paper #FFFFFF     --soft #F4F7FB      --line #E4EAF2
+--ink   #0B1B2D     --muted #58687C
+--blue  #1D4E89 (from content.colours.blue, per-trade override possible)
+--deep  #12304F     --duo-base #0E2E52  (the duotone shadow, matches the files)
+--accent per trade (content.colours.accent)
 ```
 
-`--accent` is per-trade and is the only token the trade map may override. Everything else is fixed so the brand stays coherent across every generated site.
+Type: system stack. Title `clamp(2.6rem, 9vw, 5.2rem)`, weight 800, tracking
+`-.035em`. Body one size, `1.0625rem`.
 
-Type: system stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`). Display `clamp(3.2rem, 11vw, 6.5rem)`, tracking `-0.03em`, weight 800. Body `1.0625rem`, line height `1.65`, weight 400. Tabular figures on the phone number and the rating.
+## Section specs
 
-Spacing scale: 8, 16, 24, 40, 64, 96, 140. Tall tableaux use 96 and 140. Pillow bands use a fixed `min-height: 30vh`.
+### Beat 1 — Hero. Full-bleed photograph, title low-left
+- `min-height: 92svh` on phones, `88vh` from 760px.
+- Photograph as a `<img>` positioned `absolute; inset:0; object-fit:cover`, not
+  a CSS background: it must be in the DOM so it can carry `alt` text, be
+  `fetchpriority="high"` and be `decoding="async"`.
+- Scrim: `linear-gradient(to top, rgba(9,26,45,.92) 0%, rgba(9,26,45,.55) 42%, rgba(9,26,45,.18) 100%)`.
+  One directional source, deep falloff. This is the film reference, and it is
+  also what makes white type legible over an unknown photograph.
+- Content anchored bottom-left: rating row, business name, one line, call
+  button, then a thin rule.
+- **Entrance (Custom, from the film's slow reveal):** the scrim wipes from
+  `opacity .4` to `1` while the title translates up 18px. Load only.
+- Fallback: if there is no photograph for the trade, the `<img>` is omitted and
+  the section keeps `--duo-base` as a solid plane. Nothing else changes.
 
-## Sections
+### Beat 2 — Territory. Solid blue rest, no photograph
+- Solid `--blue`, `padding: var(--s6) 0`, one line of type at
+  `clamp(1.4rem, 3.6vw, 2.1rem)`, max 22ch, left aligned, plus a small pin icon.
+- **Entrance: none, intentional.** The rest beat must not perform.
+- Deliberately image-free: see the storyboard. A generic town photograph
+  captioned with his town is a quiet lie.
 
-### 1. Title tableau
-Full viewport minus the call bar. Content anchored to the lower third via `justify-content: flex-end` with `padding-bottom: var(--s-140)`. Four visual elements beyond the text, satisfying the hero density rule: the doorway frame (inset hairline on left, right and bottom), the hairline rule above the name, the solid blue call slab, and a small line-drawn trade glyph set as a printer's mark in the upper left.
+### Beat 3 — Inventory. Editorial list beside a tall photograph
+- Two columns from 900px: photograph left at `4/5`, list right. Single column
+  below, photograph first at `16/11`.
+- Services are `<li>` rows: index number in `--muted` tabular, then the name,
+  then a hairline. **Not cards.** No borders except the hairline, no radius, no
+  shadow.
+- Blue slab overlapping the photograph's bottom-left corner carrying the
+  availability line. `position:absolute; left:0; bottom:24px; padding:18px 22px`.
+  This is the signature composition, instance one.
+- **Entrance (Custom):** photograph scales `1.06 -> 1` over its own scroll
+  range; list items stagger `opacity + translateY(10px)` at 55ms intervals.
 
-Entrance: hairline scales from `scaleX(0)` at `transform-origin: left`, 520ms, then the name settles from `translateY(12px)`. The only compound entrance on the page.
+### Beat 4 — Proof. White slab over the outcome photograph
+- Only renders when `content.proof` exists. Google-sourced only, unchanged rule.
+- Full-bleed photograph at `21/9` on desktop, `4/3` on phones.
+- White slab overlapping **top-right** (the mirror of beat 3), carrying stars,
+  the score at `clamp(3rem, 8vw, 4.2rem)` and the review count.
+- **Entrance:** slab translates in from the right, 24px, over the still image.
+  The only lateral move on the page.
+- If the trade has no outcome photograph, the slab sits on `--soft` instead and
+  the section keeps its shape.
 
-### 2, 4, 6. Pillow bands
-Full bleed, `min-height: 30vh`, `background: var(--blue)`, text `var(--plane)`, centred both axes, one line of copy at `clamp(1.5rem, 4vw, 2.5rem)`, weight 600, tracking `-0.01em`. Nothing else may enter this band. Entrance: `clip-path: inset(100% 0 0 0)` to `inset(0 0 0 0)`, 620ms, so the plane wipes up as a cut.
+### Beat 5 — Reckoning. Deep blue close
+- Solid `--deep`, centred, the phone number set as the largest type on the page
+  (`clamp(2.2rem, 8vw, 3.6rem)`, tabular, `tel:` link), the area line under it,
+  then the checkout button.
+- **Entrance:** single-step scale `.97 -> 1` with opacity.
 
-Band C is the phone number itself, rendered as a `tel:` link, treated as the fact rather than as a button.
+### Chrome
+- **Header:** transparent over the hero, `background:#fff` + hairline once
+  `scrollY > 40`. Mark, business name, and the number as a text link from 620px.
+- **Fixed call bar** below 620px, unchanged from v2 (it works).
+- **Chat launcher** hides whenever a `.btn-call` or `.getstarted` is on screen.
+  Kept from v2 verbatim: it was a real bug, twice.
 
-### 3. Service index
-Not cards. A numbered index: two columns on desktop collapsing to one on mobile, each row a hairline-separated line with a two-digit ordinal in `--ink-soft` and the service name in `--ink`. No icons, no borders, no hover lift. Rows stagger 40ms with opacity plus 8px translate. This is the page's single permitted `fadeUp`.
+## Motion rules
 
-### 5. Rating tableau — conditional
-Renders **only** when `content.proof` is present, which the fill step sets only when `custom_fields.reviews_source === 'google'`. Otherwise the section, its pillow band spacing and its entrance are all omitted. Straight cut, no motion: stillness on the one section carrying proof. Shows the rating, the review count, and the word "Google", and claims nothing else.
+- Every start state lives behind `.js`, applied by script. A dropped script must
+  never hand a lead a blank page. Non-negotiable, this is a paying sales asset.
+- **Nothing clips an element the IntersectionObserver is watching.** Chromium
+  counts an element's own `clip-path` when deciding intersection; v1 shipped an
+  invisible band for exactly this reason. Reveals are opacity, transform and
+  scale only.
+- `prefers-reduced-motion: reduce` forces every start state to its end state.
 
-### 7. Contact tableau
-`--mist` ground. Phone, address if known, and the chat affordance. Hairline draw entrance echoing the opening.
+## Phase 3 checklist
 
-### 8. Colophon
-Small, quiet, `--ink-soft`. Business name, year, and the ownership line.
-
-### Persistent call bar
-Fixed to the bottom on viewports under 720px. `--blue` plane, full width, the phone number as a `tel:` link. The only shadow on the page: `0 -1px 0 rgba(16,32,58,.08), 0 -8px 24px rgba(16,32,58,.06)`. This is the page's one heavy interaction; it needs no JS beyond the chat toggle.
-
-## Motion
-
-All motion sits inside an `IntersectionObserver` that adds `.in` and inside:
-
-```css
-@media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
-  .r, .pillow, .row { opacity: 1; transform: none; clip-path: none; }
-}
-```
-
-Entrances must be idempotent and must never leave content invisible if the observer fails: every animated element starts at `opacity: 1` in the no-JS baseline, and only gets its start state when the script has confirmed it is running. A lead must never receive a blank page because a script did not execute.
-
-## Accessibility
-
-Contrast: `--ink` on `--paper` is about 15:1, `--plane` on `--blue` about 8.6:1, `--ink-soft` on `--paper` about 7:1. Focus states are a 2px `--accent` outline with 2px offset, never removed. The trade glyph is decorative and carries `aria-hidden`. The chat widget is a labelled button, the panel is a `dialog` with a focus trap, and Escape closes it.
-
-## Quality checklist
-
-- Two sections structurally unlike default marketing layouts: the pillow bands and the service index. Yes.
-- Adjacent sections never share an entrance. Yes, by the entrance map.
-- One heavy interaction. Yes, the call bar.
-- `fadeUp` used once. Yes, the service index.
-- Survives a trade swap with words and one hue only. Yes.
-- Would break as a card grid. Yes, per the grid fallback test.
+- [x] Signature composition locked before shared primitives
+- [x] 5 distinct entrance types, one intentional `none`
+- [x] `opacity + translateY` used twice (beats 3, 5)
+- [x] 1 heavy interaction (beat 3 scroll-linked scale)
+- [x] 2 attention-seeking reveals (beats 1, 4)
+- [x] No section survives being reduced to a card grid unchanged
+- [x] No process language in the rendered UI
+- [x] Image failure and missing-photograph paths both specified

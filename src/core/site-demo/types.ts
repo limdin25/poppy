@@ -51,6 +51,8 @@ export interface SiteDemoData {
   reviewsSource?: string | null;
 }
 
+import type { TradePhotos } from './photos.js';
+
 /** A single service line in the index. */
 export type SiteService = string;
 
@@ -93,6 +95,15 @@ export interface SiteContent {
   colours: SiteColours;
   /** Which line-drawn mark to set as the printer's mark. */
   glyph: string;
+  /**
+   * The trade's photographs, resolved at fill time and stored on the document
+   * so the post-sale editor can replace them one by one with the owner's own.
+   *
+   * OPTIONAL because documents written before photography existed do not carry
+   * it. render.ts falls back to the neutral set rather than dropping to a page
+   * with no images, which is the version the client rejected twice.
+   */
+  photos?: TradePhotos;
   logoUrl?: string;
   /** Opening line the chat widget greets with. */
   chatGreeting: string;

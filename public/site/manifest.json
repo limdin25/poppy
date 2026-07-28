@@ -1,0 +1,96 @@
+{
+  "plumbing": {
+    "hero": {
+      "file": "plumbing-hero.webp",
+      "alt": "Close-up of hands tightening a pipe fitting under a sink",
+      "pexels": 6419128
+    },
+    "work": {
+      "file": "plumbing-work.webp",
+      "alt": "Gloved hands fitting a radiator valve",
+      "pexels": 29226620
+    },
+    "outcome": {
+      "file": "plumbing-outcome.webp",
+      "alt": "A finished bathroom with a basin and bath",
+      "pexels": 6920614
+    }
+  },
+  "electrical": {
+    "hero": {
+      "file": "electrical-hero.webp",
+      "alt": "A hand working inside a consumer unit full of wiring",
+      "pexels": 257736
+    },
+    "work": {
+      "file": "electrical-work.webp",
+      "alt": "An electrician checking a fuse board on a wall",
+      "pexels": 32497160
+    }
+  },
+  "building": {
+    "hero": {
+      "file": "building-hero.webp",
+      "alt": "A roofer working on the roof of a red brick building",
+      "pexels": 31762405
+    },
+    "work": {
+      "file": "building-work.webp",
+      "alt": "Two workers on a pitched roof against the sky",
+      "pexels": 37704240
+    },
+    "outcome": {
+      "file": "building-outcome.webp",
+      "alt": "Rows of terracotta roof tiles being laid",
+      "pexels": 31763541
+    }
+  },
+  "interiors": {
+    "hero": {
+      "file": "interiors-hero.webp",
+      "alt": "A hand holding a paintbrush loaded with white paint",
+      "pexels": 8481698
+    },
+    "work": {
+      "file": "interiors-work.webp",
+      "alt": "A paint roller and brushes resting on a surface",
+      "pexels": 5799047
+    }
+  },
+  "locksmith": {
+    "hero": {
+      "file": "locksmith-hero.webp",
+      "alt": "Hands cutting a key on a key-cutting machine",
+      "pexels": 35287856
+    },
+    "work": {
+      "file": "locksmith-work.webp",
+      "alt": "Close-up of a lock cylinder and its key",
+      "pexels": 28119421
+    },
+    "outcome": {
+      "file": "locksmith-outcome.webp",
+      "alt": "A stainless steel handle and lock on a blue door",
+      "pexels": 830899
+    }
+  },
+  "pest-control": {
+    "hero": {
+      "file": "pest-control-hero.webp",
+      "alt": "A paper wasp nest built under the eaves of a building",
+      "pexels": 38680283
+    },
+    "work": {
+      "file": "pest-control-work.webp",
+      "alt": "A rat inside a wire trap",
+      "pexels": 69221
+    }
+  },
+  "neutral": {
+    "hero": {
+      "file": "neutral-hero.webp",
+      "alt": "A hand holding a brush at work against a plain wall",
+      "pexels": 8481698
+    }
+  }
+}

@@ -87,7 +87,9 @@ describe('fillSiteContent', () => {
     });
     const all = JSON.stringify(bare);
     expect(all).not.toMatch(/\[[a-z_]+\]/);
-    expect(all).not.toMatch(/\{\{|\}\}/);
+    // A whole mustache pair, not a bare {{ or }}. The document carries nested
+    // objects now (photos), and serialised JSON legitimately ends "...\"}}".
+    expect(all).not.toMatch(/\{\{[^{}]*\}\}/);
     expect(all).not.toContain('undefined');
     expect(all).not.toContain('null');
   });
