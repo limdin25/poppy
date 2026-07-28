@@ -44,9 +44,16 @@ export interface InboxThread {
   /** Per-channel count of messages on this thread (helps the agent
    *  see "this contact has 4 SMS + 1 WA + 2 email" at a glance). */
   channelCounts: Record<ChannelKind, number>;
-  /** Inbound-only count of messages newer than the contact's
-   *  last_read_at (not yet implemented — placeholder = 0). */
-  unreadCount: number;
+  /** Newest message FROM the lead, null if they've never replied.
+   *  Feeds the unread rule in lib/inboxOrder.ts. */
+  lastInboundAt: string | null;
+  /** Newest message we actually SENT. Unsent AI drafts are excluded — a
+   *  draft is not a reply, and counting it as one would mark the lead's
+   *  message read before a human ever saw it. */
+  lastOutboundAt: string | null;
+  /** Inbound messages newer than our last real reply. Shown as the unread
+   *  count badge on the row. */
+  inboundSinceReply: number;
 }
 
 interface MessageRow {
@@ -56,6 +63,7 @@ interface MessageRow {
   body: string;
   created_at: string;
   channel: ChannelKind | null;
+  status: string | null;
 }
 
 interface ContactRow {
@@ -126,11 +134,16 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
     // much larger message volumes this should move to a SECURITY DEFINER RPC.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const msgsRes = await (supabase.from('wk_sms_messages' as any) as any)
-      .select('id, contact_id, direction, body, created_at, channel')
+      .select('id, contact_id, direction, body, created_at, channel, status')
       .order('created_at', { ascending: false })
       .limit(1000);
     let msgs = (msgsRes.data ?? []) as MessageRow[];
     if (allowedSet) msgs = msgs.filter((m) => allowedSet!.has(m.contact_id));
+    // An unsent AI draft is not a message. It used to become the row's preview
+    // and its timestamp, so a thread where the lead said "Yeah sure" looked
+    // like we had already answered. Discarded rows are hidden in the thread
+    // view too, so they must not drive the list either.
+    msgs = msgs.filter((m) => m.status !== 'draft' && m.status !== 'discarded');
 
     // Collect unique contact IDs from messages, then fetch just those.
     const neededIds = Array.from(new Set(msgs.map((m) => m.contact_id)));
@@ -151,11 +164,27 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
 
     // Per-contact channel counts (walk all 500 once).
     const counts = new Map<string, Record<ChannelKind, number>>();
+    // Newest inbound / newest outbound per contact — the two timestamps the
+    // unread rule compares. msgs is newest-first, so the FIRST one we meet in
+    // each direction is the newest.
+    const lastIn = new Map<string, string>();
+    const lastOut = new Map<string, string>();
     for (const m of msgs) {
       const cur = counts.get(m.contact_id) ?? { sms: 0, whatsapp: 0, email: 0 };
       const ch: ChannelKind = (m.channel ?? 'sms') as ChannelKind;
       cur[ch] = (cur[ch] ?? 0) + 1;
       counts.set(m.contact_id, cur);
+      const bucket = m.direction === 'inbound' ? lastIn : lastOut;
+      if (!bucket.has(m.contact_id)) bucket.set(m.contact_id, m.created_at);
+    }
+
+    // How many of the lead's messages are still unanswered.
+    const sinceReply = new Map<string, number>();
+    for (const m of msgs) {
+      if (m.direction !== 'inbound') continue;
+      const ourLast = lastOut.get(m.contact_id);
+      if (ourLast && +new Date(ourLast) >= +new Date(m.created_at)) continue;
+      sinceReply.set(m.contact_id, (sinceReply.get(m.contact_id) ?? 0) + 1);
     }
 
     // Walk newest → oldest, take the first message we see per contact.
@@ -176,7 +205,9 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         lastDirection: m.direction,
         lastChannel: (m.channel ?? 'sms') as ChannelKind,
         channelCounts: counts.get(m.contact_id) ?? { sms: 0, whatsapp: 0, email: 0 },
-        unreadCount: 0,
+        lastInboundAt: lastIn.get(m.contact_id) ?? null,
+        lastOutboundAt: lastOut.get(m.contact_id) ?? null,
+        inboundSinceReply: sinceReply.get(m.contact_id) ?? 0,
       });
     }
     setThreads(out);
@@ -192,6 +223,16 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         'postgres_changes' as any,
         { event: 'INSERT', schema: 'public', table: 'wk_sms_messages' },
+        () => { void load(); },
+      )
+      // UPDATE matters now that unsent drafts are excluded: approving a draft
+      // flips status draft -> sent, which is the moment it becomes the thread's
+      // newest message. An INSERT-only subscription would leave the row showing
+      // the lead's question until the 30s poll.
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        'postgres_changes' as any,
+        { event: 'UPDATE', schema: 'public', table: 'wk_sms_messages' },
         () => { void load(); },
       )
       .subscribe();

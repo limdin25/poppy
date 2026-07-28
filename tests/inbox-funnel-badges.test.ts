@@ -94,7 +94,11 @@ describe('the inbox row', () => {
   })
 
   it('marks the whole row when something is waiting', () => {
-    expect(inbox).toMatch(/\(r\.draftPending \|\| r\.vsl\?\.readyToSend\) && 'border-l-2/)
+    // The amber bar means "a human is holding this up". Since the unread work
+    // (2026-07-28) the row can also carry a blue bar (unread) or a grey one
+    // (pinned), so this is now a three-way choice — but amber must still win.
+    expect(inbox).toMatch(/const actionNeeded = r\.draftPending \|\| r\.vsl\?\.readyToSend/)
+    expect(inbox).toMatch(/actionNeeded\s*\n?\s*\? 'border-l-2 border-l-\[#F59E0B\]'/)
   })
 
   it('names the agent the lead belongs to', () => {

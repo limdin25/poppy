@@ -15,6 +15,10 @@ import {
   Paperclip,
   Bot,
   Clapperboard,
+  Pin,
+  PinOff,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { MOCK_SMS, MOCK_ACTIVITIES } from '../data/mockCalls';
@@ -43,6 +47,8 @@ import CalcChip from '../components/shared/CalcChip';
 import { CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 import { usePendingDrafts } from '../hooks/usePendingDrafts';
+import { useInboxState } from '../hooks/useInboxState';
+import { isThreadUnread, sortInboxRows } from '../lib/inboxOrder';
 
 const ACTIVITY_KINDS_FOR_THREAD = new Set(['note', 'outcome_applied', 'stage_moved', 'tag_added', 'task_created']);
 
@@ -64,7 +70,23 @@ interface SmsSendInvoke {
   }>;
 }
 
-type Filter = 'all' | 'sms' | 'whatsapp' | 'email' | 'calls' | 'voicemail' | 'missed';
+type Filter =
+  | 'all'
+  | 'unread'
+  | 'drafts'
+  | 'sms'
+  | 'whatsapp'
+  | 'email'
+  | 'calls'
+  | 'voicemail'
+  | 'missed'
+  | 'archived';
+
+/** Pill order in the sidebar. Unread and Drafts sit next to All because they
+ *  are the two "someone is waiting on you" views. Archived is last. */
+const FILTERS: Filter[] = [
+  'all', 'unread', 'drafts', 'sms', 'whatsapp', 'email', 'calls', 'voicemail', 'missed', 'archived',
+];
 
 type ChannelKindUI = 'sms' | 'whatsapp' | 'email';
 
@@ -218,6 +240,9 @@ export default function InboxPage() {
       lastDirection: 'inbound' | 'outbound' | null;
       lastChannel: ChannelKindUI | null;
       channelCounts: Record<ChannelKindUI, number>;
+      lastInboundAt: string | null;
+      lastOutboundAt: string | null;
+      inboundSinceReply: number;
       callStatus?: CallRecord['status'];
       isHot: boolean;
       tags: string[];
@@ -265,6 +290,10 @@ export default function InboxPage() {
           lastDirection: call.direction,
           lastChannel: null,
           channelCounts: { sms: 0, whatsapp: 0, email: 0 },
+          // Unread is a message concept; a call row is never bolded.
+          lastInboundAt: null,
+          lastOutboundAt: null,
+          inboundSinceReply: 0,
           callStatus: call.status,
           isHot: !!c?.isHot,
           tags: c?.tags ?? [],
@@ -291,6 +320,9 @@ export default function InboxPage() {
           lastDirection: t.lastDirection,
           lastChannel: t.lastChannel,
           channelCounts: t.channelCounts,
+          lastInboundAt: t.lastInboundAt,
+          lastOutboundAt: t.lastOutboundAt,
+          inboundSinceReply: t.inboundSinceReply,
           isHot: !!c?.isHot,
           tags: c?.tags ?? [],
         });
@@ -331,15 +363,80 @@ export default function InboxPage() {
   );
   const funnelByContact = useContactFunnelStatus(allRowIds);
   const { contactIds: pendingDraftIds, refetch: refetchDrafts } = usePendingDrafts();
+  const { flags: inboxFlags, markRead, togglePin, toggleArchive } = useInboxState();
 
-  const decoratedRows = useMemo(
-    () =>
-      sidebarRows.map((r) => ({
+  // One pass: decorate, drop what this filter hides, then order.
+  //
+  // Hugo 2026-07-28: pinned first, then unread, then newest. A 100-lead blast
+  // used to bury every reply under 100 outbound rows.
+  const decoratedRows = useMemo(() => {
+    const decorated = sidebarRows.map((r) => {
+      const f = inboxFlags.get(r.id);
+      return {
         ...r,
         vsl: funnelByContact.get(r.id) ?? null,
         draftPending: pendingDraftIds.has(r.id),
-      })),
-    [sidebarRows, funnelByContact, pendingDraftIds],
+        pinnedAt: f?.pinnedAt ?? null,
+        archivedAt: f?.archivedAt ?? null,
+        unread: isThreadUnread(r, f?.lastReadAt),
+      };
+    });
+
+    // Archived threads are hidden from every other view — that is the point of
+    // archiving. They come back under the ARCHIVED pill, un-archive included.
+    const scoped =
+      filter === 'archived'
+        ? decorated.filter((r) => r.archivedAt)
+        : decorated.filter((r) => !r.archivedAt);
+
+    const byFilter =
+      filter === 'unread' ? scoped.filter((r) => r.unread)
+      : filter === 'drafts' ? scoped.filter((r) => r.draftPending)
+      : scoped;
+
+    return sortInboxRows(byFilter);
+  }, [sidebarRows, funnelByContact, pendingDraftIds, inboxFlags, filter]);
+
+  // Badge counts on the pills. Both are computed off the whole non-archived
+  // list, not the current view, so switching filters never changes them.
+  const { unreadTotal, draftTotal } = useMemo(() => {
+    let unreadTotal = 0;
+    let draftTotal = 0;
+    for (const r of sidebarRows) {
+      if (inboxFlags.get(r.id)?.archivedAt) continue;
+      if (isThreadUnread(r, inboxFlags.get(r.id)?.lastReadAt)) unreadTotal += 1;
+      if (pendingDraftIds.has(r.id)) draftTotal += 1;
+    }
+    return { unreadTotal, draftTotal };
+  }, [sidebarRows, inboxFlags, pendingDraftIds]);
+
+  const openThread = useCallback(
+    (contactId: string) => {
+      setActiveContactId(contactId);
+      // Marked read on a DELIBERATE click only. The inbox auto-selects the top
+      // row on load; marking that read would silently clear the bold on the
+      // newest reply before anyone had looked at it.
+      markRead(contactId);
+    },
+    [markRead],
+  );
+
+  const onPin = useCallback(
+    async (contactId: string, pinned: boolean) => {
+      const err = await togglePin(contactId);
+      if (err) pushToast(`Could not ${pinned ? 'unpin' : 'pin'}: ${err}`, 'error');
+      else pushToast(pinned ? 'Unpinned' : 'Pinned to the top', 'success');
+    },
+    [togglePin, pushToast],
+  );
+
+  const onArchive = useCallback(
+    async (contactId: string, archived: boolean) => {
+      const err = await toggleArchive(contactId);
+      if (err) pushToast(`Could not ${archived ? 'restore' : 'archive'}: ${err}`, 'error');
+      else pushToast(archived ? 'Back in the inbox' : 'Archived. Find it under ARCHIVED.', 'success');
+    },
+    [toggleArchive, pushToast],
   );
 
   // Auto-select the newest thread on first load (Hugo's spec: newest
@@ -356,15 +453,17 @@ export default function InboxPage() {
       setSearchParams(next, { replace: true });
       return;
     }
-    if (!activeContactId && sidebarRows.length > 0) {
-      setActiveContactId(sidebarRows[0].id);
+    if (!activeContactId && decoratedRows.length > 0) {
+      setActiveContactId(decoratedRows[0].id);
     }
-    // If the currently-selected contact disappeared from the list
-    // entirely, fall back to the newest.
-    if (activeContactId && !sidebarRows.some((r) => r.id === activeContactId) && sidebarRows.length > 0) {
-      setActiveContactId(sidebarRows[0].id);
+    // If the currently-selected contact disappeared from the VISIBLE list
+    // (archived, or filtered out), fall back to the top row. Deliberately the
+    // visible list and not sidebarRows, so archiving the open thread moves the
+    // agent on to the next one instead of leaving a ghost selected.
+    if (activeContactId && !decoratedRows.some((r) => r.id === activeContactId) && decoratedRows.length > 0) {
+      setActiveContactId(decoratedRows[0].id);
     }
-  }, [sidebarRows, activeContactId, searchParams, setSearchParams]);
+  }, [decoratedRows, activeContactId, searchParams, setSearchParams]);
 
   // Resolve activeContact from the store first (full Contact shape
   // for stage selector / edit modal) — fall back to a synthesized
@@ -637,28 +736,44 @@ export default function InboxPage() {
               SMS / WhatsApp / Email at a glance. Industry-standard
               pattern (HubSpot Conversations, Front, Intercom). */}
           <div className="flex gap-1 flex-wrap">
-            {(['all', 'sms', 'whatsapp', 'email', 'calls', 'voicemail', 'missed'] as Filter[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                data-testid={`inbox-filter-${f}`}
-                className={cn(
-                  'inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors uppercase tracking-wide',
-                  filter === f
-                    ? 'bg-[#3C5A87] text-white'
-                    : 'bg-[#F3F3EE] text-[#6B7280] hover:bg-black/[0.05]'
-                )}
-              >
-                {(f === 'sms' || f === 'whatsapp' || f === 'email') && (
-                  <ChannelGlyph
-                    channel={f}
-                    size={9}
-                    className={filter === f ? 'text-white' : ''}
-                  />
-                )}
-                {f}
-              </button>
-            ))}
+            {FILTERS.map((f) => {
+              const count = f === 'unread' ? unreadTotal : f === 'drafts' ? draftTotal : 0;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  data-testid={`inbox-filter-${f}`}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors uppercase tracking-wide',
+                    filter === f
+                      ? 'bg-[#3C5A87] text-white'
+                      : 'bg-[#F3F3EE] text-[#6B7280] hover:bg-black/[0.05]'
+                  )}
+                >
+                  {(f === 'sms' || f === 'whatsapp' || f === 'email') && (
+                    <ChannelGlyph
+                      channel={f}
+                      size={9}
+                      className={filter === f ? 'text-white' : ''}
+                    />
+                  )}
+                  {f === 'archived' && <Archive style={{ width: 9, height: 9 }} />}
+                  {f === 'drafts' && <Bot style={{ width: 9, height: 9 }} />}
+                  {f}
+                  {count > 0 && (
+                    <span
+                      data-testid={`inbox-filter-count-${f}`}
+                      className={cn(
+                        'ml-0.5 min-w-[14px] px-1 rounded-full text-[9px] font-bold tabular-nums',
+                        filter === f ? 'bg-white/25 text-white' : 'bg-[#3C5A87] text-white'
+                      )}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
         <div className="flex-1 overflow-y-auto divide-y divide-[#E5E7EB]">
@@ -672,29 +787,70 @@ export default function InboxPage() {
               .map((n) => n[0])
               .join('')
               .slice(0, 2);
+            const actionNeeded = r.draftPending || r.vsl?.readyToSend;
             return (
-              <button
+              // A div, not a button: the row now carries its own pin and
+              // archive buttons, and a button inside a button is invalid HTML
+              // that browsers "fix" by unnesting, which loses the click.
+              <div
                 key={r.id}
+                role="button"
+                tabIndex={0}
                 data-testid={`inbox-row-${r.id}`}
-                onClick={() => setActiveContactId(r.id)}
+                data-unread={r.unread ? '1' : '0'}
+                data-pinned={r.pinnedAt ? '1' : '0'}
+                onClick={() => openThread(r.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openThread(r.id); }
+                }}
                 className={cn(
-                  'w-full text-left px-3 py-2.5 hover:bg-[#F3F3EE]/50',
+                  'group relative w-full text-left px-3 py-2.5 cursor-pointer hover:bg-[#F3F3EE]/50',
+                  // Unread gets its own tint so a reply is findable in a list of
+                  // 100 blast rows without reading a word of it.
+                  r.unread && activeContactId !== r.id && 'bg-[#EFF6FF]',
                   activeContactId === r.id && 'bg-[#EEF2F8]',
-                  (r.draftPending || r.vsl?.readyToSend) && 'border-l-2 border-l-[#F59E0B]'
+                  actionNeeded
+                    ? 'border-l-2 border-l-[#F59E0B]'
+                    : r.unread
+                      ? 'border-l-2 border-l-[#3C5A87]'
+                      : r.pinnedAt
+                        ? 'border-l-2 border-l-[#94A3B8]'
+                        : ''
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-[#3C5A87]/15 text-[#3C5A87] text-[11px] font-bold flex items-center justify-center flex-shrink-0">
+                  <div className={cn(
+                    'w-7 h-7 rounded-full text-[11px] font-bold flex items-center justify-center flex-shrink-0',
+                    r.unread ? 'bg-[#3C5A87] text-white' : 'bg-[#3C5A87]/15 text-[#3C5A87]'
+                  )}>
                     {initials}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-[#1A1A1A] truncate flex items-center gap-1">
-                      <EditableName value={r.name} onSave={(n) => renameContact(r.id, n)} className="text-[13px] font-semibold" />
+                    <div className={cn(
+                      'text-[13px] truncate flex items-center gap-1',
+                      r.unread ? 'font-extrabold text-[#0F172A]' : 'font-semibold text-[#1A1A1A]'
+                    )}>
+                      {r.pinnedAt && (
+                        <Pin
+                          data-testid={`inbox-pinned-${r.id}`}
+                          style={{ width: 10, height: 10 }}
+                          className="flex-shrink-0 text-[#3C5A87]"
+                          aria-label="Pinned"
+                        />
+                      )}
+                      <EditableName
+                        value={r.name}
+                        onSave={(n) => renameContact(r.id, n)}
+                        className={r.unread ? 'text-[13px] font-extrabold' : 'text-[13px] font-semibold'}
+                      />
                     </div>
                     <ContactIdentity owner={r.owner} website={r.website} layout="inline" size="sm" />
                     <AgentChip agentId={r.ownerAgentId} size="xs" />
                     <CalcChip calcAt={r.vsl?.calcAt} count={r.vsl?.calcCount} />
-                    <div className="text-[11px] text-[#6B7280] truncate flex items-center gap-1">
+                    <div className={cn(
+                      'text-[11px] truncate flex items-center gap-1',
+                      r.unread ? 'text-[#1A1A1A] font-semibold' : 'text-[#6B7280]'
+                    )}>
                       {/* Waiting on a human — leftmost, so a scan finds it. */}
                       {r.draftPending && (
                         <span
@@ -752,22 +908,79 @@ export default function InboxPage() {
                       )}
                     </div>
                   </div>
-                  {r.lastMessageAt && (
-                    <div className="text-[10px] text-[#9CA3AF] tabular-nums">
-                      {formatRelativeTime(r.lastMessageAt)}
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {r.lastMessageAt && (
+                      <div className={cn(
+                        'text-[10px] tabular-nums',
+                        r.unread ? 'text-[#3C5A87] font-bold' : 'text-[#9CA3AF]'
+                      )}>
+                        {formatRelativeTime(r.lastMessageAt)}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1">
+                      {r.unread && (
+                        <span
+                          data-testid={`inbox-unread-${r.id}`}
+                          title={`${r.inboundSinceReply || 1} unanswered message${(r.inboundSinceReply || 1) === 1 ? '' : 's'}`}
+                          className="min-w-[16px] h-[16px] px-1 rounded-full bg-[#3C5A87] text-white text-[9px] font-bold flex items-center justify-center tabular-nums"
+                        >
+                          {r.inboundSinceReply > 9 ? '9+' : r.inboundSinceReply || 1}
+                        </span>
+                      )}
+                      {/* Pin / archive. Hidden until the row is hovered or is
+                          the open one, so a 100-row list stays quiet — except a
+                          pinned row, which keeps its button visible so the way
+                          to undo it is always in reach. */}
+                      <button
+                        type="button"
+                        data-testid={`inbox-pin-${r.id}`}
+                        title={r.pinnedAt ? 'Unpin' : 'Pin to the top'}
+                        aria-label={r.pinnedAt ? 'Unpin conversation' : 'Pin conversation to the top'}
+                        onClick={(e) => { e.stopPropagation(); void onPin(r.id, !!r.pinnedAt); }}
+                        className={cn(
+                          'p-1 rounded-md text-[#6B7280] hover:bg-white hover:text-[#3C5A87] transition-opacity',
+                          r.pinnedAt || activeContactId === r.id
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+                        )}
+                      >
+                        {r.pinnedAt
+                          ? <PinOff style={{ width: 12, height: 12 }} />
+                          : <Pin style={{ width: 12, height: 12 }} />}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`inbox-archive-${r.id}`}
+                        title={r.archivedAt ? 'Put back in the inbox' : 'Archive'}
+                        aria-label={r.archivedAt ? 'Restore conversation to the inbox' : 'Archive conversation'}
+                        onClick={(e) => { e.stopPropagation(); void onArchive(r.id, !!r.archivedAt); }}
+                        className={cn(
+                          'p-1 rounded-md text-[#6B7280] hover:bg-white hover:text-[#3C5A87] transition-opacity',
+                          r.archivedAt || activeContactId === r.id
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+                        )}
+                      >
+                        {r.archivedAt
+                          ? <ArchiveRestore style={{ width: 12, height: 12 }} />
+                          : <Archive style={{ width: 12, height: 12 }} />}
+                      </button>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </button>
+              </div>
             );
           })}
-          {sidebarRows.length === 0
+          {decoratedRows.length === 0
             && !((filter === 'calls' || filter === 'voicemail' || filter === 'missed') ? callsLoading : threadsLoading)
             && (
             <div className="px-4 py-10 text-center text-[12px] text-[#9CA3AF]">
               {filter === 'calls' ? 'No calls yet.'
                 : filter === 'voicemail' ? 'No voicemails yet.'
                 : filter === 'missed' ? 'No missed calls yet.'
+                : filter === 'unread' ? 'Nothing unread. Every reply has been answered.'
+                : filter === 'drafts' ? 'No AI replies waiting for approval.'
+                : filter === 'archived' ? 'Nothing archived.'
                 : searchQuery.trim() ? 'No matches.'
                 : 'No conversations yet.'}
             </div>
