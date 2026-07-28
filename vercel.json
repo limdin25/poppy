@@ -198,6 +198,10 @@
     {
       "path": "/api/cron/notify-drain",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/site-demo-followups",
+      "schedule": "* * * * *"
     }
   ]
 }
