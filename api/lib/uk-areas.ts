@@ -15,7 +15,18 @@
 // point is actually inside. Ring the lead's town with points and you get its
 // real neighbours, with no ranking, no bias and nothing to invent.
 
-const KEY = () => process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
+/**
+ * Four different names for the same Google key exist across this repo, and the
+ * one actually set on Vercel is VITE_GOOGLE_PLACES_KEY. Reading only the
+ * tidiest name returned an empty area list with no error, which looks exactly
+ * like "this town has no neighbours" and silently deletes the areas pages.
+ */
+const KEY = () =>
+  process.env.GOOGLE_PLACES_API_KEY ||
+  process.env.GOOGLE_PLACES_KEY ||
+  process.env.VITE_GOOGLE_PLACES_KEY ||
+  process.env.GOOGLE_MAPS_API_KEY ||
+  '';
 
 export interface UkArea {
   name: string;
@@ -131,10 +142,31 @@ export async function nearbyUkTowns(town: string, limit = 10): Promise<UkArea[]>
     .sort((a, b) => a[1] - b[1])
     .slice(0, limit)
     .map(([k]) => {
-      // Recover the original casing from the first sighting.
-      const proper = k.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+      const proper = titleCaseUkPlace(k);
       return { name: proper, slug: slugArea(proper) };
     });
+}
+
+/**
+ * British place names keep their joining words lowercase: Stockton-on-Tees,
+ * Newcastle upon Tyne, Stoke-on-Trent, Barrow-in-Furness. Upper-casing every
+ * word boundary produced "Stockton-On-Tees", which any local reads instantly
+ * as someone who is not from there.
+ */
+const SMALL = new Set(['on', 'in', 'upon', 'under', 'le', 'de', 'la', 'the', 'by', 'and', 'cum']);
+
+export function titleCaseUkPlace(name: string): string {
+  return name
+    .split(/(\s+|-)/)
+    .map((part, i) => {
+      if (/^(\s+|-)$/.test(part)) return part;
+      const lower = part.toLowerCase();
+      // Never lowercase the first word: "On The Hill" is not a place, but
+      // "Lee-on-the-Solent" keeps its middle words down.
+      if (i > 0 && SMALL.has(lower)) return lower;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join('');
 }
 
 export { slugArea };
