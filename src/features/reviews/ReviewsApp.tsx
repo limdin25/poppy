@@ -7,7 +7,7 @@ import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import { Routes, Route, NavLink, Navigate, useSearchParams } from 'react-router-dom'
 import {
   LayoutDashboard, Users, UserPlus, MessageSquareText,
-  Star, Blocks, Share2, Plug, Gift, CreditCard, LogOut, Menu, X,
+  Star, Blocks, Share2, Plug, Gift, CreditCard, LogOut, Menu, X, Globe,
 } from 'lucide-react'
 import { supabase } from '@/core/hooks/useSupabaseQuery'
 import { Button } from '@/core/ui/Button'
@@ -24,6 +24,7 @@ const ReviewsInboxPage = lazy(() => import('./pages/ReviewsInboxPage'))
 const WidgetsPage = lazy(() => import('./pages/ReviewsWidgetsPage'))
 const SocialPostingPage = lazy(() => import('./pages/ReviewsSocialPostingPage'))
 const IntegrationsPage = lazy(() => import('./pages/ReviewsIntegrationsPage'))
+const SiteEditorPage = lazy(() => import('./pages/SiteEditorPage'))
 const ReferralsPage = lazy(() => import('./pages/ReviewsReferralsPage'))
 const BillingPage = lazy(() => import('./pages/ReviewsBillingPage'))
 const OnboardingPage = lazy(() => import('@/features/reviews-onboarding/ReviewsOnboardingPage'))
@@ -45,6 +46,7 @@ const NAV = [
   { to: '/widgets', label: 'Widgets', icon: Blocks },
   { to: '/social', label: 'Social Posting', icon: Share2 },
   { to: '/integrations', label: 'Integrations', icon: Plug },
+  { to: '/website', label: 'My website', icon: Globe },
   { to: '/referrals', label: 'Refer a Friend', icon: Gift },
   { to: '/billing', label: 'Billing', icon: CreditCard },
 ]
@@ -200,6 +202,11 @@ function Shell({ session }: { session: ReviewsSession }) {
               <Route path="/widgets" element={<WidgetsPage />} />
               <Route path="/social" element={<SocialPostingPage />} />
               <Route path="/integrations" element={<IntegrationsPage />} />
+              {/* The site-demo editor. Lives in this feature because it is a
+                  page of the go. client app; the markup it previews comes from
+                  src/core/site-demo so the api route and this render the same
+                  HTML. */}
+              <Route path="/website" element={<SiteEditorPage />} />
               <Route path="/referrals" element={<ReferralsPage />} />
               <Route path="/billing" element={<BillingPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
