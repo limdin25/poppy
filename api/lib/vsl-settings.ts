@@ -106,7 +106,7 @@ export const VSL_POUND_PRICE = process.env.VSL_POUND_PRICE || 'price_1Tx5miLdAEh
  *  comes back. */
 const VIDEO_SMS =
   "Hi {first}, it's {agent} from HeyElsie.\n\n" +
-  "Here's the 2-minute audit I just mentioned for {business}:\n{url}\n\n" +
+  "Here's the 2-minute video I just mentioned for {business}:\n{url}\n\n" +
   'Any questions, just message me here any time.';
 
 /** The free-website offer, REINSTATED by Hugo on 2026-07-27 after he withdrew

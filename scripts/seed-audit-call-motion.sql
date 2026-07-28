@@ -4,7 +4,7 @@
 -- used to live here fought with it — whichever ran last won — so they were
 -- removed. Edit facts in salesObjections.ts / seed-coach-facts.mjs and re-run
 -- that script. This file still owns the SCRIPT + COACH PROMPT sections.
--- The 2-minute audit call — script, coach and knowledge base, all aligned.
+-- The 2-minute video call, script, coach and knowledge base, all aligned.
 --
 -- Hugo 2026-07-26: the close moved OFF the phone. The agent's only job is now
 -- to earn permission to text the lead their personal video page; the page and
@@ -26,30 +26,22 @@
 -- (src/core/content/one-call-script.html); this is the teleprompter version
 -- the agent's eye follows while actually talking.
 insert into wk_call_scripts (name, body_md, is_default)
-select 'The 2-minute audit', $md$
+select 'The 2-minute video', $md$
 ## 1 · Opener
 
-> Hi, quick one, is that {{first_name}}, from the business? It's {{agent_first_name}} from HeyElsie. Just so you know, the call's recorded for training.
+> Hi, quick one, is that {{first_name}}, from the business?
 
-- Warm and casual, like a mate ringing. Say the recording line once, lightly, and keep moving. Never apologise for it.
-- Your name and HeyElsie come FIRST, before the recording line. Skip it and you sound like a scam call.
+- Warm and casual, like a mate ringing. Their name and business, nothing else.
+- No recording line, no review count, no "are you new to the area". Get the yes, then go straight to the offer.
 
-## 2 · The hook
+## 2 · The offer, this is the whole call
 
-> I was looking at you on Google, you've only got a handful of reviews. Are you new to the area?
-
-- Say "only". Then go **silent**. They'll defend how long they've been going, which is exactly what you want.
-- Wait for their answer before you use the next line. Said too early it sounds like a trap.
-- If they say they've been going years: "That's what I thought, so you've been going all that time and still only got those reviews. That's the bit that's costing you."
-
-## 3 · The offer, this is the whole call
-
-> Right, so here's why I actually rang. I've recorded you a 2-minute audit. It shows where you come up on Google right now, who's above you, and how to get more reviews and more jobs off the back of it. Can I send it to you?
+> Right, so here's why I actually rang. I've recorded you a 2-minute video that shows how we can help you rank higher on Google and of course get more jobs. Can I send it to you?
 
 - You are **not selling anything here**. You are asking permission to send a video.
 - Say "2 minutes" and mean it. Then stop talking.
 
-## 4 · Get the yes
+## 3 · Get the yes
 
 > I'm not going to take any more of your time, that's genuinely it. I'll get it over to you in the next few minutes. If I send it across, will you watch it?
 
@@ -89,18 +81,18 @@ update wk_ai_settings set coach_script_prompt = regexp_replace(
   coach_script_prompt,
   'CALL STAGES \(strict forward-only progression\).*?(?=STAGE LOCK)',
   $stages$CALL STAGES (strict forward-only progression)
-1. Opener. Warm, casual, like a mate ringing. Their name + business, then the recording notice in passing ("just so you know, the call's recorded for training"), then the hook: "I noticed you've only got [X] reviews on Google, are you new to the area?"
-2. Hook. Let them defend how long they've been going, then land the gap: all those years, still only [X] reviews, and [competitor] sitting above them. No pitch yet. Silence does the work.
-3. Offer. THE WHOLE CALL: "I've recorded you a 2-minute audit, where you come up in [town] right now, who's above you, and how to get more reviews and more jobs off it. Can I send it to you?"
-4. Permission. Give the time back: "I'm not going to take any more of your time, that's genuinely it. I'll get it over to you in the next few minutes. If I send it across, will you watch it?" This is the ONLY close on the call, and it is a yes to WATCHING, not to buying. NEVER promise the video arrives during the call, it is built after the agent hangs up.
-5. Sent. Tell them it is coming over to this number shortly and let them go. NEVER ask for their phone number: we dialled it, we already have it, and asking makes the agent sound like they bought a list. Only take a number if THEY volunteer a different one. The agent taps Send as video; it renders and texts itself minutes later. Do not hold them on the line waiting for it.
-6. Done. "2 minutes, watch it tonight. If it makes sense you can start it yourself from there for a quid." Then get off the phone.
+1. Opener. Warm, casual, like a mate ringing. Their name and business and NOTHING else: "Hi, quick one: is that [name], from [business]?" No recording notice, no review count, no "are you new to the area". Get the yes and move straight to the offer.
+2. Offer. THE WHOLE CALL, and it comes straight after the opener: "Right, so here's why I actually rang. I've recorded you a 2-minute video that shows how we can help you rank higher on Google and of course get more jobs. Can I send it to you?"
+3. Permission. Give the time back: "I'm not going to take any more of your time, that's genuinely it. I'll get it over to you in the next few minutes. If I send it across, will you watch it?" This is the ONLY close on the call, and it is a yes to WATCHING, not to buying. NEVER promise the video arrives during the call, it is built after the agent hangs up.
+4. Sent. Tell them it is coming over to this number shortly and let them go. NEVER ask for their phone number: we dialled it, we already have it, and asking makes the agent sound like they bought a list. Only take a number if THEY volunteer a different one. The agent taps Send as video; it renders and texts itself minutes later. Do not hold them on the line waiting for it.
+5. Done. "2 minutes, watch it tonight. If it makes sense you can start it yourself from there for a quid." Then get off the phone.
 
 WHAT THE AGENT MUST NOT DO ON THIS CALL (hard rules)
 - NEVER read out the monthly tiers (£99/£179/£279). If asked the price, the only answer is "it starts at a pound, and the video explains the rest", then go straight back to asking permission to send.
 - NEVER ask for a card, a sign-up, or bank details. The video page takes payment, the agent never does.
 - NEVER ask for their phone number. We dialled their mobile to reach them, so we already have it.
 - NEVER refuse to send something. The old script said "I don't send emails", that is now WRONG. The entire call exists to send them a video. If they ask for email, move them to a text because texts get opened, but send it either way.
+- NEVER lead with their review count and NEVER name a competitor sitting above them. This call does not diagnose them and does not tell them what they are doing wrong. Opener, then the video ask, that is the whole call.
 - The video is the closer. The agent is the opener. A polite no is a fine outcome; a video sent is a good one.
 
 $stages$)

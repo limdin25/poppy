@@ -383,42 +383,23 @@ const N = {
     say:`"Hi, quick one: is that [owner_first], from [business_name]?"`,
     dir:`Open with their name and business, warm and casual, like a mate ringing, not a salesman. Nothing else goes in the opener, get the yes first.`,
     r:[
-      {l:`Yes / Yeah`,n:`opener_hook`},
+      {l:`Yes / Yeah`,n:`the_offer`},
       {l:`Who's calling? What's this about?`,n:`who_calling`,obj:true},
       {l:`Receptionist, not the owner`,n:`gatekeeper`,obj:true},
       {l:`Not interested / busy`,n:`busy_opener`,obj:true},
     ]},
 
-  opener_hook: {stage:'HOOK',
-    say:`"I was looking at [business_name] on Google, you've only got [reviews] reviews. Are you new to the area?"`,
-    dir:`Say "only", it makes the number feel small. Sound genuinely puzzled, then go silent. It hits their ego and they'll defend how long they've been around, which is exactly what you want.`,
-    r:[
-      {l:`"No, we've been here years"`,n:`new_in_area`},
-      {l:`"Yeah, fairly new"`,n:`new_in_area`},
-      {l:`Who's calling? What's this about?`,n:`who_calling`,obj:true},
-      {l:`Receptionist, not the owner`,n:`gatekeeper`,obj:true},
-      {l:`"Not interested" / "I'm busy"`,n:`busy_opener`,obj:true},
-    ]},
-
-  new_in_area: {stage:'HOOK',
-    say:`"That's what I thought. So you've been going all that time and you've still only got [reviews] reviews, while [competitor_1] up the road is sat above you. That's the bit that's costing you."`,
-    dir:`Let them tell you how long they've been going, then land it gently. Do NOT pitch yet, and do not quote a price. One beat of silence here does more than another sentence.`,
-    r:[
-      {l:`"Yeah, never got round to it"`,n:`the_offer`},
-      {l:`"I get all my work word of mouth"`,n:`word_of_mouth`,obj:true},
-      {l:`"I'm always fully booked"`,n:`always_busy`,obj:true},
-      {l:`"I'm number one already"`,n:`rank_1_rebuttal`,obj:true},
-      {l:`"How much is this?"`,n:`price_too_early`,obj:true},
-    ]},
-
   the_offer: {stage:'OFFER',
-    say:`"Right, so here's why I actually rang. I've recorded you a 2-minute audit. It shows where [business_name] comes up in [town] right now, who's above you, and how to get more reviews and more jobs off the back of it. Can I send it to you?"`,
-    dir:`THIS IS THE WHOLE CALL. You are not selling anything, you are asking permission to send a video. Say "2 minutes" and mean it. Then STOP TALKING and let them answer.`,
+    say:`"Right, so here's why I actually rang. I've recorded you a 2-minute video that shows how we can help you rank higher on Google and of course get more jobs. Can I send it to you?"`,
+    dir:`THIS IS THE WHOLE CALL. Straight from the opener into this, no digging, no comparisons, no telling them what they are doing wrong. You are not selling anything, you are asking permission to send a video. Say "2 minutes" and mean it. Then STOP TALKING and let them answer.`,
     r:[
       {l:`"Yeah, go on then"`,n:`permission_send`},
       {l:`"What is it? What's the catch?"`,n:`what_do_i_get`,obj:true},
       {l:`"Just email it to me"`,n:`send_email`,obj:true},
       {l:`"I'm busy / on a job"`,n:`busy_permission`,obj:true},
+      {l:`"I get all my work word of mouth"`,n:`word_of_mouth`,obj:true},
+      {l:`"I'm always fully booked"`,n:`always_busy`,obj:true},
+      {l:`"I'm number one already"`,n:`rank_1_rebuttal`,obj:true},
       {l:`"Not interested"`,n:`not_interested_mid`,obj:true},
       {l:`"How much is it?"`,n:`price_too_early`,obj:true},
     ]},
@@ -462,7 +443,7 @@ const N = {
     say:`"Oh right, perfect. So the reason I'm calling: I built a system that helps plumbers get more Google reviews, and I want to get you 25 completely free, just for some feedback. Got 30 seconds?"`,
     dir:`Say "30 seconds," not a minute, a minute feels longer. Assume the yes and move straight into discovery. Don't wait for permission.`,
     r:[
-      {l:`Yeah / go on / sure`,n:`new_in_area`},
+      {l:`Yeah / go on / sure`,n:`the_offer`},
       {l:`"I'm busy / on a job"`,n:`busy_permission`,obj:true},
       {l:`"How much does it cost?"`,n:`price_too_early`,obj:true},
       {l:`"Not interested"`,n:`not_interested_mid`,obj:true},
@@ -472,7 +453,7 @@ const N = {
     say:`"Oh, so you're building things up, makes sense. The reason I'm calling: I built a system that helps new plumbers get their first big batch of reviews from past customers. I want to show you how it works, completely free. Got 30 seconds?"`,
     dir:`Same close, adjusted frame for a newer business.`,
     r:[
-      {l:`Yeah / go on`,n:`new_in_area`},
+      {l:`Yeah / go on`,n:`the_offer`},
       {l:`"I'm busy"`,n:`busy_permission`,obj:true},
       {l:`"Not interested"`,n:`not_interested_mid`,obj:true},
     ]},
@@ -481,36 +462,36 @@ const N = {
     say:`"So, how long have you actually been going?"`,
     dir:`You roughly know from their listing, but let them say it. Their answer sets up the gap.`,
     r:[
-      {l:`Gives a number (5, 10, 20 years…)`,n:`new_in_area`},
-      {l:`"Just started / fairly new"`,n:`new_in_area`},
+      {l:`Gives a number (5, 10, 20 years…)`,n:`the_offer`},
+      {l:`"Just started / fairly new"`,n:`the_offer`},
     ]},
 
   discovery_jobs: {stage:'HOOK',
     say:`"Right, and roughly how many jobs are you doing a month?"`,
     dir:`Get a number. Whatever they say, you'll low-ball it in the maths.`,
     r:[
-      {l:`Gives a number`,n:`new_in_area`},
-      {l:`"It varies / hard to say"`,n:`new_in_area`},
+      {l:`Gives a number`,n:`the_offer`},
+      {l:`"It varies / hard to say"`,n:`the_offer`},
     ]},
 
   discovery_varies: {stage:'HOOK',
     say:`"Yeah, let's just use the low end then. What's a quiet month like, jobs-wise?"`,
     dir:`You want the conservative number, you'll low-ball it further in the maths.`,
-    r:[{l:`Gives a number`,n:`new_in_area`}]},
+    r:[{l:`Gives a number`,n:`the_offer`}]},
 
   discovery_math: {stage:'HOOK',
     say:`"Okay, let's use the low end, say [10] a month. That's [10] times 12, [120] a year. Times [5] years, that's over [600] jobs. And you've got [25] reviews. How come?"`,
     dir:`Do the maths OUT LOUD. Low-ball their monthly number, they'll correct you UPWARD and widen the gap themselves. Then stop talking. Let it sit. Let it paint.`,
     r:[
-      {l:`"Yeah, I never really ask…"`,n:`new_in_area`},
-      {l:`"I do ask, people just don't bother"`,n:`new_in_area`},
-      {l:`"I've got more than that actually"`,n:`new_in_area`,obj:true},
+      {l:`"Yeah, I never really ask…"`,n:`the_offer`},
+      {l:`"I do ask, people just don't bother"`,n:`the_offer`},
+      {l:`"I've got more than that actually"`,n:`the_offer`,obj:true},
     ]},
 
   discovery_math_more: {stage:'HOOK',
     say:`"Okay, even so. You've done [X] jobs and you've got [Y] reviews. Even at 10% that's [X×0.1]. You should be at 20-30%, that's [X×0.2] to [X×0.3]. Imagine what happens when you've got 10 times what you've got now."`,
     dir:`Never argue with their number, just recalibrate the maths around whatever they give you.`,
-    r:[{l:`"Yeah… fair point"`,n:`new_in_area`}]},
+    r:[{l:`"Yeah… fair point"`,n:`the_offer`}]},
 
   discovery_pain: {stage:'HOOK',
     say:`"Do you ever have it where, sometimes it's busy, and sometimes it goes a bit quiet?"`,
@@ -669,7 +650,7 @@ const N = {
     say:`"Oh, [your name]. I'm calling because I noticed you've only got [X] reviews on Google. I built a system that helps plumbers get more of them, and I wanted to show you how it works. Got 30 seconds?"`,
     dir:`Don't give your company name, they'll Google it and go cold. Answer the energy, not the question.`,
     r:[
-      {l:`"Yeah, go on"`,n:`new_in_area`},
+      {l:`"Yeah, go on"`,n:`the_offer`},
       {l:`Still not interested`,n:`not_interested_early`,obj:true},
     ]},
 
@@ -677,7 +658,7 @@ const N = {
     say:`"It's public, your number's right on your Google listing. I was looking at your profile and noticed you've only got [X] reviews. Wanted to help you sort that. Got 30 seconds?"`,
     dir:`Short, honest, straight back to the ask.`,
     r:[
-      {l:`"Okay, go on"`,n:`new_in_area`},
+      {l:`"Okay, go on"`,n:`the_offer`},
       {l:`Still not interested`,n:`not_interested_early`,obj:true},
     ]},
 
@@ -685,7 +666,7 @@ const N = {
     say:`"Oh, hiya, is the owner about? I was just looking at their Google listing and wanted to run something by them quickly."`,
     dir:`Don't pitch the gatekeeper. If they ask what it's about: "It's about their Google profile, quick question, takes a second." If no owner available, get the direct mobile.`,
     r:[
-      {l:`Transferred to owner`,n:`opener_hook`},
+      {l:`Transferred to owner`,n:`the_offer`},
       {l:`"They're on a job / not in"`,n:`gatekeeper_callback`,obj:true},
     ]},
 
@@ -706,7 +687,7 @@ const N = {
     say:`"I hear you, 30 seconds, that's it. I noticed you've only got [X] reviews and I want to get you 25 more for free, just for feedback. Got 30 seconds?"`,
     dir:`If they say "call me back," don't, you'll never get them. Push now.`,
     r:[
-      {l:`"Go on then"`,n:`new_in_area`},
+      {l:`"Go on then"`,n:`the_offer`},
       {l:`"Call me back later"`,n:`no_callback`,obj:true},
       {l:`Hangs up`,n:`lost`,obj:true},
     ]},
@@ -715,7 +696,7 @@ const N = {
     say:`"I don't do callbacks, because we both know what happens: you get busy, forget, and we've both wasted time. It's literally 30 seconds. You know how big free reviews could be for your business."`,
     dir:`One push. If they insist, move on.`,
     r:[
-      {l:`"Alright, go on then"`,n:`new_in_area`},
+      {l:`"Alright, go on then"`,n:`the_offer`},
       {l:`Still wants callback / hangs up`,n:`lost`,obj:true},
     ]},
 
@@ -723,20 +704,20 @@ const N = {
     say:`"It's literally 30 seconds. What are you worried about, it's free reviews, I'm not trying to sell you anything. Quick one: how many lads have you got working for you?"`,
     dir:`Keep asking questions. Every time they say "I've got to go," ask another one. If they're answering, they're staying.`,
     r:[
-      {l:`They answer`,n:`new_in_area`},
+      {l:`They answer`,n:`the_offer`},
       {l:`Genuinely can't talk`,n:`lost`,obj:true},
     ]},
 
   price_too_early: {stage:'OFFER',
     say:`"It starts at a pound, and that's genuinely all I'm going to say about money on this call. The video walks you through exactly what you get and what it costs after, so you can decide in your own time with no one on the phone at you. Can I send it?"`,
     dir:`Do NOT quote the monthly tiers on the phone any more. "A pound" is true, it's disarming, and it kills the price objection without starting a negotiation. Then go straight back to asking permission to send.`,
-    r:[{l:`They answer`,n:`new_in_area`}]},
+    r:[{l:`They answer`,n:`the_offer`}]},
 
   not_interested_mid: {stage:'PERMISSION',
     say:`"What are you not interested in, reviews, or more work? I'm not selling you anything yet. I literally want to show you where you're ranking on Google, for free. Worst case you know exactly where you stand. You've got 30 seconds for that."`,
     dir:`Push once more. If it's no again, let them go.`,
     r:[
-      {l:`"Alright, fine"`,n:`new_in_area`},
+      {l:`"Alright, fine"`,n:`the_offer`},
       {l:`Still not interested`,n:`lost`,obj:true},
     ]},
 
@@ -956,7 +937,7 @@ const N = {
 
 // ── The straight line (main script, always visible top-to-bottom) ──
 const MAINLINE = [
-  'start','opener_hook','new_in_area','the_offer','permission_send',
+  'start','the_offer','permission_send',
   'send_now','sent_other_number','sent_confirm'
 ];
 const MAIN_SET = new Set(MAINLINE);

@@ -618,7 +618,7 @@ describe('audit — the calling journey', () => {
     const rendered = [...reach].map((k) => bodies.get(k) || '').join(' ')
     expect(rendered).not.toMatch(/£99|£179|£279/)
     expect(rendered).not.toMatch(/\bcard\b/i)
-    expect(rendered).toMatch(/2-minute audit/)
+    expect(rendered).toMatch(/2-minute video/)
   })
 
   it('the coach may not be told to take a card or quote tiers', () => {
@@ -627,9 +627,9 @@ describe('audit — the calling journey', () => {
   })
 
   it('the SMS echoes what the agent promised on the phone', () => {
-    // "I'll text you the 2-minute audit" then a text saying something else
+    // "I'll text you the 2-minute video" then a text saying something else
     // reads like a different offer from a stranger.
-    expect(vsl).toMatch(/2-minute audit I just mentioned/)
+    expect(vsl).toMatch(/2-minute video I just mentioned/)
   })
 
   it('never promises a length the video does not have', () => {
