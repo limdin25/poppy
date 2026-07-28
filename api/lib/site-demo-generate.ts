@@ -89,7 +89,12 @@ export async function generateSiteForContact(opts: GenerateOptions): Promise<Gen
     tradePlural: trade.plural,
     profileKey: trade.profile_key,
     town,
-    address: cf.registered_address,
+    // NO ADDRESS ON PURPOSE. cf.registered_address is the Companies House
+    // registered office, which for a one-van trader is very often his
+    // accountant's office in another county. It shipped once as "Brentwood,
+    // Essex" on a Middlesbrough plumber's own website, under the heading
+    // "Where we are". The town carries the place claim instead, and the owner
+    // types a real address into the editor after the sale.
     phoneDisplay: formatUkPhone(DEMO_LINE_E164),
     phoneE164: DEMO_LINE_E164,
     rating: cf.rating ? Number(cf.rating) : null,
@@ -116,7 +121,7 @@ export async function generateSiteForContact(opts: GenerateOptions): Promise<Gen
     town: town || null,
     phone_display: content.phoneDisplay,
     phone_e164: content.phoneE164,
-    address: cf.registered_address || null,
+    address: null,
     content,
   };
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { renderSite, esc, type RenderOptions } from '../src/core/site-demo/render';
+import { renderSite, esc, ICONS, iconFor, type RenderOptions } from '../src/core/site-demo/render';
+import { TRADE_COPY } from '../src/core/site-demo/trade-services';
 import { fillSiteContent } from '../src/core/site-demo/fill';
 import { nonGsm7 } from '../api/lib/sms-charset';
 import type { SiteDemoData } from '../src/core/site-demo/types';
@@ -64,23 +65,91 @@ describe('the document', () => {
 });
 
 describe('the composition survives', () => {
-  it('renders the three pillow bands, which is the one thing it cannot lose', () => {
+  it('gives every service its own card and its own icon', () => {
     const h = html();
-    expect(h.match(/class="pillow"/g) || []).toHaveLength(3);
+    expect(h.match(/class="card r"/g) || []).toHaveLength(6);
+    // Keyword matched, not positional, so a renamed service keeps a sensible
+    // picture. A plumber's first two lines must not share one glyph.
+    expect(h).toContain(ICONS.drop);
+    expect(h).toContain(ICONS.flame);
+    expect(h).toContain(ICONS.shower);
   });
 
-  it('renders services as a numbered index, not as cards', () => {
+  // Icons are keyword matched, and a sloppy pattern is invisible in the HTML
+  // but obvious on the page. Two real ones caught this way: a bare /lock/
+  // matched "Blocked drains", and the locksmith's six lines all resolved to
+  // the same key.
+  it('gives every trade a spread of icons, not one repeated six times', () => {
+    for (const [profileKey, copy] of Object.entries(TRADE_COPY)) {
+      const used = copy.services.map((s) => iconFor(s));
+      const distinct = new Set(used).size;
+      expect({ profileKey, distinct, used }).toEqual({
+        profileKey,
+        distinct: expect.any(Number),
+        used,
+      });
+      expect(distinct, `${profileKey} services share too few icons`).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it('does not read "Blocked drains" as a lock', () => {
+    expect(iconFor('Blocked drains')).toBe('waves');
+    expect(iconFor('Lock changes and upgrades')).toBe('key');
+  });
+
+  // One editable field, two places on the page. Printing it whole in both read
+  // as padding, so the hero takes the opening sentence and the contact block
+  // takes the rest. Neither may go missing.
+  it('splits the about paragraph instead of printing it twice', () => {
+    const c = fillSiteContent(lead());
+    // Body only. The meta description and the og:description legitimately
+    // carry the same opening sentence, and they are not visible copy.
+    const body = html().slice(html().indexOf('<body>'));
+    const first = c.about.split(/(?<=\.)\s+/)[0];
+    expect(body.split(esc(first)).length - 1).toBe(1);
+    expect(body).toContain(esc('No call centre, no waiting on hold.'));
+  });
+
+  it('promotes the three true facts onto cards rather than burying them', () => {
     const h = html();
-    expect(h).toContain('class="index"');
-    expect(h).toContain('<span class="n">01</span>');
-    expect(h).not.toContain('class="card"');
+    expect(h.match(/class="fact r"/g) || []).toHaveLength(3);
+    expect(h).toContain('Covering Wigan and the surrounding area');
+    expect(h).toContain('Where we work');
   });
 
   it('offers the phone in every place a thumb might land', () => {
     const h = html();
-    expect(h).toContain('class="callslab"');
-    expect(h).toContain('class="callbar"');
-    expect(h.match(/href="tel:\+447576558278"/g)!.length).toBeGreaterThanOrEqual(3);
+    expect(h).toContain('class="headcall"'); // sticky header, wide screens
+    expect(h).toContain('class="callbar"'); // fixed bar, phones
+    expect(h).toContain('class="btn btn-call"'); // hero and the colour band
+    expect(h.match(/href="tel:\+447576558278"/g)!.length).toBeGreaterThanOrEqual(6);
+  });
+
+  // The whole point of the redesign. If the page has no depth left it has
+  // drifted back to a text document on a white background.
+  it('carries the depth that stands in for photography we do not have', () => {
+    const style = html().slice(html().indexOf('<style>'), html().indexOf('</style>'));
+    expect(style).toContain('radial-gradient');
+    expect(style).toContain('box-shadow');
+    expect(style).toContain('border-radius');
+  });
+});
+
+// The generated page states a town and nothing more precise. The address block
+// belongs to the owner and appears only once he has typed one in, because the
+// only address we hold pre-sale is the Companies House registered office, very
+// often an accountant's in another county. It shipped once as "Brentwood,
+// Essex" under "Where we are" on a Middlesbrough plumber's page.
+describe('never states a place we cannot stand behind', () => {
+  it('shows no address block at all on a freshly generated page', () => {
+    const h = html();
+    expect(h).not.toContain('Where we are');
+  });
+
+  it('shows the address once the owner has set one in the editor', () => {
+    const h = html(lead({ address: '12 Mill Lane, Wigan, WN1 1AA' }));
+    expect(h).toContain('Where we are');
+    expect(h).toContain('12 Mill Lane, Wigan, WN1 1AA');
   });
 });
 
@@ -135,7 +204,7 @@ describe('motion never costs a lead the page', () => {
   it('keeps every start state behind the js class', () => {
     const h = html();
     const style = h.slice(h.indexOf('<style>'), h.indexOf('</style>'));
-    const hidden = style.match(/^\s*\.(r|rule|pillow|row)\b[^{]*\{[^}]*opacity:0/gm) || [];
+    const hidden = style.match(/^\s*\.r\b[^{]*\{[^}]*opacity:0/gm) || [];
     expect(hidden).toHaveLength(0);
     expect(style).toContain('.js .r{opacity:0');
   });
@@ -144,18 +213,16 @@ describe('motion never costs a lead the page', () => {
     expect(html()).toContain('prefers-reduced-motion:reduce');
   });
 
-  // Regression, and a nasty one: Chromium's IntersectionObserver accounts for
-  // an element's own clip-path. Clipping the OBSERVED element to zero area
-  // means it never reports as intersecting, so it never gets .in and stays
-  // invisible forever. The band rendered as a blank white gap on a real page.
-  // The clip must therefore live on an inner element.
+  // Regression: the previous design clipped the very element the observer was
+  // watching, and Chromium counts an element's own clip-path when deciding
+  // whether it intersects. The band never intersected, never got .in, and
+  // shipped as a blank white gap on a real lead's page. Reveals are opacity
+  // and transform only now, which cannot reproduce it, and nothing may
+  // reintroduce a clip on an observed node.
   it('never clips the element the observer is watching', () => {
     const h = html();
     const style = h.slice(h.indexOf('<style>'), h.indexOf('</style>'));
-    expect(h).toContain('<section class="pillow"><div class="plane">');
-    expect(style).toContain('.js .pillow .plane{clip-path:inset(100% 0 0 0)}');
-    // the bare selector would re-introduce the bug
-    expect(style).not.toMatch(/\.js \.pillow\{[^}]*clip-path/);
+    expect(style).not.toMatch(/\.js \.r[.\s{][^}]*clip-path/);
   });
 });
 
