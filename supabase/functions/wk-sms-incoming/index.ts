@@ -27,6 +27,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+// Site demo hand-off (step 3d). Same shape wk-jobs-worker uses to reach the
+// app: CRM_JOBS_KEY if it is set, service role otherwise.
+const APP_URL = Deno.env.get('APP_URL') ?? 'https://app.heyelsie.com';
+const SITE_REPLY_KEY = Deno.env.get('CRM_JOBS_KEY') || SUPABASE_SERVICE_KEY;
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
 
 const corsHeaders = {
@@ -341,12 +345,61 @@ serve(async (req: Request) => {
         }
       }
 
+      // 3d. Site demo: did they just say yes to the website we offered them?
+      //
+      //     PRE-GATED HERE, CLASSIFIED THERE. The gate is one indexed lookup
+      //     (does this lead already have a site?) so the vast majority of the
+      //     CRM's inbound traffic costs nothing extra and never reaches the
+      //     classifier. Everything past the gate is decided by
+      //     /api/site-demo/reply, which owns the word list and the offer check,
+      //     because that logic is shared code with tests behind it and a Deno
+      //     edge function cannot import from src/.
+      //
+      //     Awaited on purpose: generation is sub-second and we need the answer
+      //     before deciding whether to also queue an AI reply. A lead must never
+      //     get a site link AND a chatbot reply to the same message.
+      let siteHandled = false;
+      if (!msgErr && !optOut && APP_URL && SITE_REPLY_KEY) {
+        try {
+          const { data: hasPage } = await supa
+            .from('wk_site_pages')
+            .select('id')
+            .eq('contact_id', contactId)
+            .maybeSingle();
+
+          if (!hasPage) {
+            const res = await fetch(`${APP_URL}/api/site-demo/reply`, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                authorization: `Bearer ${SITE_REPLY_KEY}`,
+              },
+              body: JSON.stringify({ contact_id: contactId, body }),
+            });
+            if (res.ok) {
+              const out = await res.json().catch(() => null);
+              siteHandled = Boolean(out?.generated);
+              if (siteHandled) {
+                console.log(`[wk-sms-incoming] site demo generated for contact=${contactId}`);
+              }
+            } else {
+              console.error('[wk-sms-incoming] site-demo reply failed', res.status);
+            }
+          }
+        } catch (e) {
+          // Never fatal. A failed site generation must not stop the inbound
+          // message being saved or the normal AI reply running.
+          console.error('[wk-sms-incoming] site-demo reply threw (non-fatal)', e);
+        }
+      }
+
       // 4. Maybe enqueue an AI warm-up reply. Light guard here (global enabled,
       //    contact enabled, under the per-contact cap); the generator re-checks
       //    the full guards (hours, human-replied-since, booking) at run time.
-      //    Skipped for duplicate inbound (idempotent path above set msgErr)
-      //    and for opt-out keywords (never AI-reply to a STOP).
-      if (!msgErr && !optOut) {
+      //    Skipped for duplicate inbound (idempotent path above set msgErr),
+      //    for opt-out keywords (never AI-reply to a STOP), and when the site
+      //    demo already answered this message with the link they asked for.
+      if (!msgErr && !optOut && !siteHandled) {
         try {
           const { data: s } = await supa
             .from('wk_ai_reply_settings')
