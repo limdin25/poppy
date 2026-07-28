@@ -20,7 +20,12 @@
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
  *     node scripts/assign-trade-leads-to-pedro-marr.mjs [--niche=locksmith,pest-control] [--apply]
  *
- * Dry run by default — pass --apply to actually write.
+ * Dry run by default for the WRITES, pass --apply to actually write. The paid
+ * line-status screen runs in the dry run too, on purpose: the dry run's counts
+ * are then the real ones, and the result is cached for 7 days so the --apply
+ * pass costs nothing. So a dry run is free of consequences, not free of charge.
+ * SKIP_LINE_STATUS=1 (alias NO_LINE_STATUS_SPEND=1) skips the paid screen
+ * entirely and keeps every lead unscreened, dead numbers included.
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -28,6 +33,7 @@ import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isTextableUkMobile } from './lib/verify-phone.mjs'
+import { dropDeadNumbers } from './lib/line-status.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -92,6 +98,29 @@ const keepers = candidates.filter((c) => {
 console.log(`Keepers: ${keepers.length} (dropped ${droppedMobile} non-mobile, ${droppedReviews} bad review count, ${droppedNoOwner} no-owner-where-required)`)
 if (!keepers.length) { console.log('Nothing to assign.'); process.exit(0) }
 
+// ---- 2b. LAST GATE: live mobile-network screen (the only paid check) --------
+// After every free filter above, so a lookup is only ever bought for a lead that
+// already passed them. isUkMobile is libphonenumber, an OFFLINE rulebook: it
+// proves a well-formed allocated GB mobile, never that the subscription is
+// alive. Five of Maria's first 100 were dead and every one passed it. Only
+// "inactive" is dropped; "unreachable" is a live subscriber whose handset is off
+// right now and is always kept. SKIP_LINE_STATUS=1 skips this check and spends
+// nothing (the assignment still runs, so it is not a dry run of the script).
+//
+// It runs without --apply too, so the dry run's counts are the real ones and the
+// --apply pass that follows re-bills nothing. Said out loud here because a dry
+// run that spends money should never be a surprise.
+if (!APPLY) {
+  console.log('Dry run. Nothing will be written. The paid network screen still runs so the')
+  console.log('counts below are real (cached 7 days, so --apply adds nothing). SKIP_LINE_STATUS=1 to skip it.')
+}
+const screened = await dropDeadNumbers(keepers, (c) => c.phone, { label: 'trade leads' })
+const droppedDead = keepers.length - screened.kept.length
+keepers.length = 0
+keepers.push(...screened.kept)
+if (droppedDead) console.log(`Dropped ${droppedDead} lead(s) dead on the network.`)
+if (!keepers.length) { console.log('Nothing to assign after the line-status screen.'); process.exit(0) }
+
 // A→Z within the whole keeper set, then dealt alternately so both agents get an
 // even spread of the alphabet and of both trades (mirrors assign-agent-batches.mjs).
 keepers.sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()))
@@ -102,7 +131,10 @@ if (!APPLY) {
   for (let b = 0; b < BATCHES.length; b++) {
     console.log(`[${BATCHES[b].label}] would get ${dealt[b].length} leads`)
   }
-  console.log('\ndry run — re-run with --apply to write')
+  console.log('\ndry run, nothing written. Re-run with --apply to write.')
+  console.log(screened.screen.skipped
+    ? 'The network screen was skipped, so this cost nothing and the counts are UNSCREENED.'
+    : `The network screen cost about GBP ${screened.screen.costGbp.toFixed(2)}, cached 7 days, so --apply adds nothing.`)
   process.exit(0)
 }
 

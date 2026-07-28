@@ -96,14 +96,53 @@ The CRM shows `queued` for messages Twilio has already delivered, because the
 status webhook does not write back. Always confirm a campaign against
 `GET /Messages.json`, not the app.
 
-### 8. Two failures are never preventable
+### 8. Dead numbers ARE preventable, screen them before you send
 
-`30003` (handset off/unreachable) and `30005` (unknown/disconnected number)
-are live mobiles in every database, including a freshly scraped one. Budget
-for roughly 5% and do not go hunting for a data-quality bug that isn't there.
+This rule said the opposite until 2026-07-28. It was wrong, and it was wrong
+because nobody had checked. The honest numbers first:
 
 - Maria's 50-lead test, 2026-07-27: 48/50 delivered, 2 dead.
-- This 100-lead blast: 95 delivered or in flight, 5 dead.
+- The 100-lead blast, 2026-07-28: 5 dead.
+- **Real total: 8 failures in 156 cold sends (5.1%)**, and a further **8
+  messages never returned a delivery receipt at all**, so they are unproven,
+  not proven delivered.
+
+`30003` ("unreachable") and `30005` ("unknown/disconnected") are misleading
+names. We looked all 8 up on the live network and **7 came back `inactive`,
+including both 30003s**. They were not handsets that happened to be switched
+off, they were dead subscriptions that no amount of retrying would reach.
+
+`libphonenumber` cannot see this. It is an offline rulebook, so it proves the
+number is a well-formed, allocated UK mobile and nothing more. Twilio's
+`line_type_intelligence` cannot see it either: all 8 dead numbers returned
+`valid: true`, `type: mobile`, on real carriers.
+
+**What catches it:** Twilio Lookup `line_status`, GBP 0.00529 a number
+(GBP 5.29 per 1,000, before VAT, so budget GBP 6.35). On this batch it flagged
+7 of 8 dead and cleared all 91 that delivered, with zero false positives.
+
+**Where it runs, exactly.** It is the last gate inside the lead-import scripts
+and inside `blast-maria-website-opener.mjs`, all of which a human runs by hand.
+**It does NOT run anywhere in the app.** Mass sends (`wk-sms-broadcast`), the
+CRM inbox and dialer (`wk-sms-send`), the shared `send_sms` job worker and the
+crons (`review-requests.ts`, `vsl-auto-send.ts`, `follow-up.ts`) all text
+unscreened numbers today. See the line-status section of CLAUDE.md,
+[api/lib/twilio-lookup.ts](../api/lib/twilio-lookup.ts) and
+[scripts/lib/line-status.mjs](../scripts/lib/line-status.mjs).
+
+**`SKIP_LINE_STATUS=1` is not a dry run.** It skips the paid screen and texts
+everyone unscreened. The dry run is leaving `--apply` off, which is the default
+and the only switch that means "nothing happens".
+
+**Screen out `inactive` only. Never `unreachable`.** That one really is a
+live subscriber with the phone off, and the network holds the text for them.
+"No data" (`line_status: null` on an HTTP 200) is not a death certificate
+either: keep the lead.
+
+It does not pay for itself in saved texts, it loses about 3 to 1. The reason
+to do it is the sender number's reputation: texts to dead numbers are what
+carriers grade a sender on, and once they mark the number, the messages to the
+good leads stop arriving too.
 
 ### 9. Check the send window and the inbound webhook before the first send
 
@@ -126,11 +165,21 @@ accepting that he will build on demand for anyone who says yes.
 So: **every "yes" is now a commitment.** At a normal cold reply rate that is
 roughly 5 or 6 sites.
 
-**Replies will not answer themselves.** `wk_ai_reply_settings` is a single
-global row shared by every agent, currently `mode='draft'` — replies queue for
-human approval and send to nobody until someone approves them. This exact
-failure has already cost money once: the 22–24 July audit found **15 inbound
-texts dead in the draft queue**. Somebody has to watch Maria's inbox today.
+**Replies will not answer themselves.** "Plumbers - Maria" is on
+`sms_reply_mode = 'draft'`, so replies queue for human approval and send to
+nobody until someone approves them. This exact failure has already cost money
+once: the 22 to 24 July audit found **15 inbound texts dead in the draft
+queue**. Somebody has to watch Maria's inbox today.
+
+**The reply prompt is per campaign now** (2026-07-28). The first blast went out
+before that: six leads replied to "this is Pedro, I built you one" and the AI
+drafted the Google reviews pitch at all six, because one global prompt served
+every campaign. "Plumbers - Maria" now has its own prompt that stays Pedro, says
+the site is being finished and the link follows, and never invents a URL. Before
+any new blast with new copy, open
+`/admin/crm/settings?scope=campaign&campaignId=<id>&tab=replies` and write the
+reply prompt that matches the opener. Empty means it inherits the workspace
+default, which is the reviews pitch.
 
 ---
 
@@ -140,3 +189,4 @@ texts dead in the draft queue**. Somebody has to watch Maria's inbox today.
 - [PLUMBER_LEADS_PIPELINE.md](PLUMBER_LEADS_PIPELINE.md) — the lead rules (named owner, review cap, A→Z)
 - `scripts/blast-maria-website-opener.mjs` — the send script, preflight included
 - `scripts/feed-maria-leads.mjs` — how her unused-only lead pool was built
+- `api/lib/twilio-lookup.ts` + `scripts/lib/line-status.mjs`, the live line-status screen from rule 8

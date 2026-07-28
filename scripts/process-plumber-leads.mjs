@@ -9,6 +9,12 @@
  *      scraper defaults to 0; enrich BEFORE filtering so the threshold is real).
  *   3. Keep only <= 65 reviews (drop high-review plumbers — the review-gap pitch
  *      doesn't fit them). CONFIGURABLE via MAX_REVIEWS / arg.
+ *   3b. Live mobile-network screen (Twilio Lookup line_status), LAST because it
+ *      is the only paid gate. Drops numbers whose subscription is dead, which
+ *      the offline libphonenumber check cannot see. SKIP_LINE_STATUS=1 (alias
+ *      NO_LINE_STATUS_SPEND=1) skips THIS CHECK ONLY and spends nothing; it is
+ *      not a dry run, the import still happens. The run stops before spending
+ *      anything if the screen would cost over GBP 15 (LINE_STATUS_MAX_SPEND).
  *   4. Import to hugo@lemlin.com + queue to the "Plumbers - test" campaign
  *      (caller-ID +447460035763).
  *   5. Order the whole pending dial queue A->Z by business name.
@@ -34,6 +40,7 @@ import { join } from 'node:path';
 import Papa from 'papaparse';
 import { createClient } from '@supabase/supabase-js';
 import { isTextableUkMobile } from './lib/verify-phone.mjs';
+import { dropDeadNumbers, warnIfShort } from './lib/line-status.mjs';
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_PLACES_KEY } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !GOOGLE_PLACES_KEY) {
@@ -148,6 +155,28 @@ console.log(`Scanned ${scanned} named-owner leads → ${keepers.length} keepers 
   + `(enriched ${enriched}, not-found ${notFound}, dropped >${MAX_REVIEWS}: ${droppedHigh}, `
   + `not a mobile number: ${notMobile}).`);
 if (keepers.length === 0) { console.error('No keepers — aborting.'); process.exit(1); }
+
+// ── rule 3b, THE LAST GATE: is the line alive on the mobile network? ─────────
+// Deliberately after the free checks and after Google, because it is the only
+// gate that costs money (about half a penny a number). isTextableUkMobile above
+// is libphonenumber, an OFFLINE rulebook. It proves the number is a well-formed
+// allocated GB mobile, never that the subscription still exists. Five of Maria's
+// first 100 numbers were dead and all of them passed it. Only "inactive" is
+// removed; "unreachable" is a real subscriber with the handset off right now and
+// is always kept. SKIP_LINE_STATUS=1 to skip this check and spend nothing (the
+// import still runs, so it is not a dry run of the script).
+{
+  const screened = await dropDeadNumbers(keepers, (l) => l.phone, { label: 'plumbers' });
+  const removedDead = keepers.length - screened.kept.length;
+  keepers.length = 0;
+  keepers.push(...screened.kept);
+  if (removedDead) console.log(`Removed ${removedDead} number(s) that are dead on the network.`);
+  if (keepers.length === 0) { console.error('No keepers after the line-status screen. Aborting.'); process.exit(1); }
+  // The keeper loop above stops the moment it has COUNT, and this screen then
+  // takes the dead numbers back off the end, so asking for 1000 lands about 950.
+  // Say so: nobody should have to count rows in the CRM to find that out.
+  warnIfShort(COUNT, keepers.length, { label: 'plumbers', what: 'leads' });
+}
 
 // ── rule 4: upsert + campaign + queue ────────────────────────────────────────
 const contactRows = keepers.map((l) => ({

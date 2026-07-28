@@ -139,17 +139,28 @@ from Hugo.
 
 ## 6. AI auto-reply mode
 
-`wk_ai_reply_settings` is a **single global row shared by every agent** —
-there is no per-agent AI configuration in this system. Checked live
-2026-07-28: `mode = 'draft'`, `enabled = true`. Draft mode means every AI
-reply is queued for a human to approve before it sends — it never auto-sends
-to anyone, Maria included, until someone flips it to `'auto'` in the
-settings drawer.
+`wk_ai_reply_settings` is a **single global row**, the workspace default.
+Checked live 2026-07-28: `mode = 'draft'`, `enabled = true`. Draft mode means
+every AI reply is queued for a human to approve before it sends, so it never
+auto-sends to anyone, Maria included, until someone flips it to `'auto'`.
 
-**Caveat worth knowing:** because it's global, this is not a Maria-specific
-switch. If `'auto'` is ever turned on for anyone, it is on for every agent's
-leads at once, Maria's included, and vice versa. There is currently no way
-to give one agent auto-replies while keeping another on draft.
+**Per campaign since 2026-07-28** (Hugo: "every campaign should have own reply
+prompt"). `wk_campaign_ai_settings` now carries `sms_reply_prompt`,
+`sms_reply_mode`, `sms_reply_model` and `sms_reply_enabled`. NULL or empty means
+inherit the global row, so campaigns that set nothing behave exactly as before.
+Edit at `/admin/crm/settings?scope=campaign&campaignId=<id>&tab=replies`.
+
+- Which campaign an inbound text belongs to is resolved by
+  `wk_sms_reply_campaign(contact, number)` through `wk_dialer_queue`, ranked by
+  the number the lead texted, then the lead owner's campaign, then most recently
+  queued. No queue row means no campaign, and the global row is used untouched.
+- `sms_reply_mode` IS a per-campaign switch, so one campaign can run on `'auto'`
+  while another stays on `'draft'`. It is still per campaign, not per agent.
+- `sms_reply_enabled` is an AND, never an override. The global `enabled` decides
+  whether a reply job is enqueued at all, so a campaign can only turn itself off.
+- Still global on purpose: hours, days, timezone, `max_replies_per_contact`,
+  `reply_delay_seconds`, `handoff_keywords`, `auto_off_on_human_reply`,
+  `auto_off_on_booking`. Those are safety rails, not pitch.
 
 ---
 

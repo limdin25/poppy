@@ -16,6 +16,8 @@
 //   - reviews 1..65   (enough of a gap to be worth pitching, low enough to be true)
 //   - rank >= 4       (needs >=3 real businesses above them or the SERP is invented)
 //   - has a website   (scene 1 films their site; no-site leads use the search scene)
+//   - alive on the network (Twilio Lookup line_status, the LAST gate because it
+//     is the only one that costs money; SKIP_LINE_STATUS=1 to skip it)
 //
 // Writes nothing without --apply.
 
@@ -24,6 +26,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isTextableUkMobile } from './lib/verify-phone.mjs'
+import { screenLineStatus, warnIfShort } from './lib/line-status.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -146,6 +149,16 @@ const TOWNS = [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// UK number -> E.164. These are business numbers straight from Google.
+// Defined up here because the line-status screen (before the leads file is
+// written) needs it as well as the import step further down.
+const e164 = (raw) => {
+  const p = String(raw || '').replace(/[\s()-]/g, '')
+  if (/^0\d{9,10}$/.test(p)) return `+44${p.slice(1)}`
+  if (/^\+44\d{9,10}$/.test(p)) return p
+  return null
+}
+
 async function places(path, params) {
   const url = `https://maps.googleapis.com/maps/api/place/${path}/json?${new URLSearchParams({ ...params, key: KEY })}`
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -228,7 +241,28 @@ for (const town of TOWNS) {
   console.log(`${town.padEnd(20)} +${String(got.length).padStart(2)}  (total ${leads.length})`)
   await sleep(200)
 }
-const picked = leads.slice(0, WANT)
+let picked = leads.slice(0, WANT)
+
+// ---- LAST GATE: live mobile-network screen (the only paid check) ------------
+// Everything above is free: the Places search, the review/rank rules, and
+// isUkMobile (libphonenumber, an OFFLINE rulebook that proves the number is a
+// well-formed allocated GB mobile and nothing more). Five of Maria's first 100
+// numbers were dead subscriptions that passed exactly that check, so the last
+// word belongs to the operator. Screened here, before the leads file is written,
+// so a dead number never even reaches the import step. Only "inactive" is
+// dropped; "unreachable" means the handset is off right now and stays.
+// SKIP_LINE_STATUS=1 skips this check and spends nothing (the scrape still runs
+// and still writes its leads file, so it is not a dry run of the script).
+{
+  const screen = await screenLineStatus(picked.map((l) => e164(l.phone)), { label: TRADE })
+  const before = picked.length
+  picked = picked.filter((l) => !screen.dead.has(e164(l.phone)))
+  if (before !== picked.length) console.log(`dropped ${before - picked.length} lead(s) dead on the network`)
+}
+if (!picked.length) { console.error('nothing left after the line-status screen'); process.exit(1) }
+// picked was already capped at WANT before the screen, so dead numbers come off
+// the end and are not replaced. Say so rather than quietly returning fewer.
+warnIfShort(WANT, picked.length, { label: TRADE, what: 'leads' })
 
 const outPath = resolve(REPO, `scripts/out-${TRADE}-leads.json`)
 writeFileSync(outPath, JSON.stringify(picked, null, 2))
@@ -237,7 +271,14 @@ console.log(`  towns covered : ${new Set(picked.map((l) => l.town)).size}`)
 console.log(`  reviews       : ${Math.min(...picked.map((l) => l.reviews))}–${Math.max(...picked.map((l) => l.reviews))}`)
 console.log(`  ranks         : ${Math.min(...picked.map((l) => l.rank))}–${Math.max(...picked.map((l) => l.rank))}`)
 
-if (!APPLY) { console.log('\ndry run — re-run with --apply to import'); process.exit(0) }
+if (!APPLY) {
+  // "dry run" here means nothing is IMPORTED. The scrape itself already spent
+  // Google Places calls and the screen above already spent its lookups, both
+  // before this line, so it was never a free run.
+  console.log('\ndry run, nothing imported. The Google scrape and the network screen above already ran.')
+  console.log('re-run with --apply to import')
+  process.exit(0)
+}
 
 // ---- import ----------------------------------------------------------------
 const supa = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
@@ -253,13 +294,6 @@ if (!campaignId) {
   campaignId = data.id
 }
 
-// UK landline -> E.164. These are business numbers straight from Google.
-const e164 = (raw) => {
-  const p = String(raw || '').replace(/[\s()-]/g, '')
-  if (/^0\d{9,10}$/.test(p)) return `+44${p.slice(1)}`
-  if (/^\+44\d{9,10}$/.test(p)) return p
-  return null
-}
 
 // Existing contacts keyed by phone. The upsert below writes custom_fields as a
 // WHOLE object, so without this a phone collision silently wipes keys we didn't

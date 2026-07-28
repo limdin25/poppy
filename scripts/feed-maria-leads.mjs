@@ -8,22 +8,48 @@
  * reviews and no website ... I will tell you what to text later."
  *
  * Rules, all enforced before a row counts as a keeper:
- *   1. Named-owner only (same as every other plumber pipeline — the opener
+ *   1. Named-owner only (same as every other plumber pipeline, the opener
  *      needs a first name).
- *   2. UNUSED — the phone must not already exist ANYWHERE in wk_contacts.
+ *   2. UNUSED. The phone must not already exist ANYWHERE in wk_contacts.
  *      Unlike process-plumber-leads.mjs (which upserts and can silently
  *      re-queue a lead someone else already owns), this preloads every
  *      existing phone and skips it outright, so nothing here can collide
  *      with the one-agent-per-lead lock.
- *   3. Real mobile number (scripts/lib/verify-phone.mjs — same check
+ *   3. Real mobile number (scripts/lib/verify-phone.mjs, the same check
  *      /admin/phone-validation uses).
- *   4. No website — Website column must be blank.
- *   5. 0–25 reviews, Google-enriched (the CSV count defaults to 0 when the
+ *   4. No website, VERIFIED LIVE AGAINST GOOGLE, not just a blank CSV column.
+ *      The blank column is a cheap pre-filter only. Every surviving candidate
+ *      is checked against Google Places in the same pass as the reviews, and a
+ *      lead with a real site is dropped before it can be queued.
+ *      Hugo, 2026-07-28: this cost him credibility on a LIVE send. 100 plumbers
+ *      got "I saw you on Google and noticed you dont have a website, I built you
+ *      one". One of the six who replied wrote back "Look again". He has a site.
+ *      A blank column means "no website link on the Google listing", which is
+ *      NOT the same thing as "no website", so it is no longer trusted on its own.
+ *      Two gates now: Google Places (the field the CSV copied, checked live),
+ *      then the open web (scripts/lib/find-live-website.mjs) for the sites
+ *      Google cannot see because the owner never linked them.
+ *   5. 0 to 25 reviews, Google-enriched (the CSV count defaults to 0 when the
  *      scraper couldn't read it, so this re-checks with Places before
- *      trusting a "0").
+ *      trusting a "0"). Same single Places call as rule 4.
+ *   6. Verifiable. If Google returns no record for the candidate we cannot
+ *      stand behind "you dont have a website", so the lead is dropped.
+ *   7. ALIVE ON THE NETWORK. Rule 3 is libphonenumber, an offline rulebook: it
+ *      proves the number is a well-formed, allocated GB mobile and nothing more.
+ *      Five of Maria's first 100 numbers were dead subscriptions that passed it
+ *      cleanly. Twilio Lookup line_status asks the operator, and it is checked
+ *      LAST because it is the only gate that costs money (about half a penny a
+ *      number). Only "inactive" is dropped, never "unreachable" (that is a real
+ *      subscriber with the handset switched off right now).
+ *      SKIP_LINE_STATUS=1 (alias NO_LINE_STATUS_SPEND=1) skips THIS ONE CHECK and
+ *      spends nothing, keeping every number unscreened. It is NOT a dry run of
+ *      the script: everything else, including writing leads to the CRM, still
+ *      happens for real.
+ *      Spend cap: the run stops before buying anything if the screen would cost
+ *      more than GBP 15 (LINE_STATUS_MAX_SPEND to raise it for one run).
  *
  * Queues everything to a dedicated "Plumbers - Maria" campaign on her own
- * number, ordered A→Z — same pattern as Pedro/Marr's campaigns. QUEUES ONLY.
+ * number, ordered A to Z, the same pattern as Pedro/Marr's campaigns. QUEUES ONLY.
  * Nothing is texted or dialled by this script; Hugo will supply the copy
  * before anyone sends.
  *
@@ -39,6 +65,9 @@ import { join } from 'node:path';
 import Papa from 'papaparse';
 import { createClient } from '@supabase/supabase-js';
 import { isTextableUkMobile } from './lib/verify-phone.mjs';
+import { lookupPlace } from './lib/google-place.mjs';
+import { findOwnWebsite } from './lib/find-live-website.mjs';
+import { dropDeadNumbers, warnIfShort } from './lib/line-status.mjs';
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_PLACES_KEY } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !GOOGLE_PLACES_KEY) {
@@ -53,7 +82,7 @@ const MAX_REVIEWS = 25;
 const AGENT_ID = '2b382f7f-defe-4c7d-b25a-470625a038bb';        // plumberstexttest@heyelsie.com (Maria)
 const CAMPAIGN_NAME = 'Plumbers - Maria';
 const PIPELINE_ID = 'c2022b21-7a79-4203-90dd-5b06b46eef11';     // Default workspace pipeline
-const CALLER_ID_NUMBER_ID = 'c8a0346b-b197-4fd1-8ed6-19847f938c82'; // +447460035763 — Maria's own line
+const CALLER_ID_NUMBER_ID = 'c8a0346b-b197-4fd1-8ed6-19847f938c82'; // +447460035763, Maria's own line
 const REFERER = 'https://poppy-henna.vercel.app/';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
@@ -75,28 +104,13 @@ const CF_MAP = {
   'rank position': 'rank', 'plumbers ahead': 'plumbers_ahead', 'total plumbers in town': 'total_plumbers',
   'competitor 1': 'competitor_1', 'competitor 2': 'competitor_2', 'town/city': 'town',
   'website': 'website', 'google maps address': 'google_maps_url', 'registered address': 'registered_address',
+  'google maps link': 'google_maps_link',
 };
 function pick(row, header) {
   for (const k of Object.keys(row)) {
     if (k.replace(/^﻿/, '').toLowerCase().trim() === header) return row[k];
   }
   return undefined;
-}
-
-async function findPlace(name, town) {
-  const q = encodeURIComponent([name, town].filter(Boolean).join(' '));
-  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json`
-    + `?input=${q}&inputtype=textquery&fields=name,rating,user_ratings_total&key=${GOOGLE_PLACES_KEY}`;
-  try {
-    const res = await fetch(url, { headers: { Referer: REFERER } });
-    const json = await res.json();
-    if (json.status !== 'OK' || !json.candidates?.length) return null;
-    const c = json.candidates[0];
-    return {
-      reviews: typeof c.user_ratings_total === 'number' ? c.user_ratings_total : null,
-      rating: typeof c.rating === 'number' ? String(c.rating) : null,
-    };
-  } catch { return null; }
 }
 
 // ── preload EVERY existing phone so "unused" actually means unused ──────────
@@ -121,7 +135,8 @@ console.log(`Parsed ${parsed.data.length} CSV rows from ${CSV_PATH}.`);
 
 const seen = new Set();
 const keepers = [];
-let scanned = 0, dupOrUsed = 0, notMobile = 0, hasWebsite = 0, droppedHigh = 0, enriched = 0, notFound = 0;
+let scanned = 0, dupOrUsed = 0, notMobile = 0, hasWebsiteCsv = 0, hasWebsiteGoogle = 0,
+    hasWebsiteLive = 0, droppedHigh = 0, enriched = 0, unverified = 0;
 for (const row of parsed.data) {
   if (keepers.length >= COUNT) break;
   const owner = clean(pick(row, 'owner name 1 (man)'));
@@ -132,43 +147,92 @@ for (const row of parsed.data) {
   if (!isTextableUkMobile(phone)) { notMobile++; continue; }   // rule 3
   seen.add(phone);
 
-  const website = clean(pick(row, 'website'));
-  if (website) { hasWebsite++; continue; }                     // rule 4
+  // rule 4, part one: the CSV column is a FREE pre-filter, nothing more. A value
+  // here is a reliable "yes they have a site", a blank is not a reliable "no".
+  if (clean(pick(row, 'website'))) { hasWebsiteCsv++; continue; }
 
-  scanned++;
   const cf = {};
   for (const [header, key] of Object.entries(CF_MAP)) {
     const v = clean(pick(row, header));
     if (v) cf[key] = v;
   }
   const csvReviews = Number(cf.reviews || 0);
+  // Cheap drop before spending a Places call: the CSV count only ever
+  // under-reports (it defaults to 0 when the scraper can't read it), so a CSV
+  // count already over the cap can never come back under it.
+  if (csvReviews > MAX_REVIEWS) { droppedHigh++; continue; }
 
-  // rule 5: enrich reviews/rating from Google before trusting a "0" or any
-  // count already <= MAX_REVIEWS (the scraper defaults to 0 when it can't read it).
+  scanned++;
+  // ONE Places call per candidate answers rules 4, 5 and 6 together. The CSV
+  // carries the exact place id in its Maps link, so this is a single round trip
+  // and it looks up THE right business, not the closest name match.
+  const g = await lookupPlace({
+    name: clean(pick(row, 'company name')),
+    town: cf.town,
+    mapsLink: cf.google_maps_link,
+    key: GOOGLE_PLACES_KEY,
+    referer: REFERER,
+  });
+  await sleep(110);
+
+  // rule 6: no Google record means we cannot honestly say "you have no website".
+  if (!g) { unverified++; continue; }
+
+  // rule 4, part two: Google says they DO have a site, so this lead never
+  // reaches a queue and never gets the "I built you one" opener.
+  if (g.website) { hasWebsiteGoogle++; continue; }
+
+  // rule 5: trust Google's count over the CSV's. Done before the open-web check
+  // so a lead that fails on reviews never costs us a page fetch.
   let realReviews = csvReviews;
-  if (csvReviews <= MAX_REVIEWS) {
-    const g = await findPlace(clean(pick(row, 'company name')), cf.town);
-    await sleep(110);
-    if (g && g.reviews != null) {
-      enriched++;
-      cf.reviews_csv = cf.reviews ?? '';
-      cf.reviews = String(g.reviews);
-      if (g.rating != null) cf.rating = g.rating;
-      cf.reviews_source = 'google';
-      realReviews = g.reviews;
-    } else {
-      notFound++;
-    }
+  if (g.reviews != null) {
+    enriched++;
+    cf.reviews_csv = cf.reviews ?? '';
+    cf.reviews = String(g.reviews);
+    if (g.rating != null) cf.rating = g.rating;
+    cf.reviews_source = 'google';
+    realReviews = g.reviews;
   }
   if (realReviews > MAX_REVIEWS) { droppedHigh++; continue; }
 
+  // rule 4, part three: Google only knows the URL an owner typed into their
+  // Business Profile. SJC Plumbing Heating and Gas in Salisbury has no website
+  // field on Google and a live site at sjcplumbingheatingandgas.co.uk, which is
+  // why its owner replied "Look again". Free DNS-first check, strict proof
+  // (the lead's own mobile printed on the page), so it drops the real hits
+  // without throwing away same-name businesses in other towns.
+  const own = await findOwnWebsite({ name: clean(pick(row, 'company name')), town: cf.town, phone });
+  if (own) { hasWebsiteLive++; continue; }
+  cf.website_checked = 'google_and_web_no_site';
+
   keepers.push({ name: clean(pick(row, 'company name')) || phone, phone, customFields: cf });
 }
-console.log(`Scanned ${scanned} named-owner/no-website/mobile candidates → ${keepers.length} keepers `
-  + `(enriched ${enriched}, not-found ${notFound}, dropped >${MAX_REVIEWS}: ${droppedHigh}, `
-  + `already used/dup: ${dupOrUsed}, not mobile: ${notMobile}, has website: ${hasWebsite}).`);
-if (keepers.length === 0) { console.error('No keepers — aborting.'); process.exit(1); }
-if (keepers.length < COUNT) console.warn(`Only found ${keepers.length}/${COUNT} — CSV may be running low on this filter.`);
+console.log(`Checked ${scanned} named-owner/mobile candidates against Google -> ${keepers.length} keepers `
+  + `(enriched ${enriched}, dropped >${MAX_REVIEWS}: ${droppedHigh}, `
+  + `already used/dup: ${dupOrUsed}, not mobile: ${notMobile}, `
+  + `website in CSV: ${hasWebsiteCsv}, website found on Google: ${hasWebsiteGoogle}, `
+  + `website found live on the web: ${hasWebsiteLive}, unverifiable on Google: ${unverified}).`);
+if (keepers.length === 0) { console.error('No keepers, aborting.'); process.exit(1); }
+
+// ── rule 7, THE LAST GATE: is the line actually alive on the network? ───────
+// Runs last on purpose. It is the only check that costs money (about half a
+// penny a number), so it only ever sees candidates that already survived the
+// free offline format check and the Google/website/review checks.
+// Rule 3 above proved the number is a well-formed, allocated GB mobile. It
+// cannot prove the subscription still exists: Maria's first 100 sends had 5
+// dead numbers that all looked perfect offline. Only the operator knows, and
+// undeliverables on a brand-new long code are a reputation problem, not a 4p
+// problem. Dead ("inactive") numbers are removed here, before anything is
+// written to wk_contacts, so they never reach a queue or a send.
+const screened = await dropDeadNumbers(keepers, (l) => l.phone, { label: 'Maria' });
+const removedDead = keepers.length - screened.kept.length;
+keepers.length = 0;
+keepers.push(...screened.kept);
+if (removedDead) console.log(`Removed ${removedDead} number(s) that are dead on the network.`);
+if (keepers.length === 0) { console.error('No keepers after the line-status screen, aborting.'); process.exit(1); }
+// The keeper loop stopped at COUNT and the screen then took dead numbers back
+// off the end, so this run almost always lands a little under the ask.
+warnIfShort(COUNT, keepers.length, { label: 'Maria', what: 'leads' });
 
 // ── insert (fresh phones only, so this is a plain insert, not upsert) ───────
 const contactRows = keepers.map((l) => ({
@@ -194,7 +258,7 @@ for (let i = 0; i < phones.length; i += 200) {
 }
 const contactIds = phones.map((p) => idByPhone.get(p)).filter(Boolean);
 
-// campaign (reuse or create) — dedicated to Maria, mirrors Pedro/Marr's pattern
+// campaign (reuse or create), dedicated to Maria, mirrors Pedro/Marr's pattern
 let campaignId;
 const { data: existing } = await sb.from('wk_dialer_campaigns').select('id').eq('name', CAMPAIGN_NAME).maybeSingle();
 if (existing?.id) campaignId = existing.id;
@@ -241,7 +305,7 @@ for (let i = 0; i < ordered.length; i++) {
 }
 
 console.log('');
-console.log('DONE — queued only, nothing texted or dialled.');
+console.log('DONE. Queued only, nothing texted or dialled.');
 console.log(`  campaign:    ${CAMPAIGN_NAME} (${campaignId})`);
 console.log(`  caller ID:   +447460035763 (Maria's own line)`);
 console.log(`  contacts:    ${inserted} new, all owner_agent_id=Maria, all previously unused`);

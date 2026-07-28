@@ -21,6 +21,12 @@
  *
  * Batches are configured inline below. Count-per-agent via arg (default 1000).
  *
+ * WHAT IT COSTS. The live network screen at the end is the only paid step, about
+ * half a penny a number. The default run is 1000 per agent x 2 agents = 2,000
+ * numbers, about GBP 10.60. Anything that would cost over GBP 15 stops before
+ * spending a penny and tells you the command to allow more (LINE_STATUS_MAX_SPEND).
+ * SKIP_LINE_STATUS=1 skips the screen and spends nothing; the import still runs.
+ *
  * Secrets from env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *                   GOOGLE_PLACES_KEY (only when ENRICH=1)
  * Usage: node scripts/assign-agent-batches.mjs [perAgent] [csvPath] [maxReviews]
@@ -32,6 +38,7 @@ import { join } from 'node:path';
 import Papa from 'papaparse';
 import { createClient } from '@supabase/supabase-js';
 import { isTextableUkMobile } from './lib/verify-phone.mjs';
+import { dropDeadNumbers, warnIfShort } from './lib/line-status.mjs';
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_PLACES_KEY } = process.env;
 const ENRICH = process.env.ENRICH === '1';
@@ -176,11 +183,34 @@ for (const tier of ORDER_ONLY ? [] : CONF_TIERS) {
   if (keepers.length >= NEEDED) break;
   console.log(`  tier "${tier}" exhausted at ${keepers.length}/${NEEDED} — falling through to the next tier`);
 }
+// ---- 1b. LAST GATE: live mobile-network screen (the only paid check) --------
+// Runs after the free CSV/tier/mobile filters and after the optional ENRICH
+// Google pass, so a lookup is only ever bought for a lead that already survived
+// everything free. isTextableUkMobile is libphonenumber, an OFFLINE rulebook: it
+// proves the number is a well-formed allocated GB mobile, never that anyone
+// still pays the bill. Five of Maria's first 100 were dead and all passed it.
+// Only "inactive" is dropped; "unreachable" is a live subscriber whose handset
+// is off right now and is always kept. SKIP_LINE_STATUS=1 skips this check and
+// spends nothing (the import still runs, so it is not a dry run of the script).
+if (!ORDER_ONLY && keepers.length) {
+  const screened = await dropDeadNumbers(keepers, (k) => k.phone, { label: 'batches' });
+  const removedDead = keepers.length - screened.kept.length;
+  keepers.length = 0;
+  keepers.push(...screened.kept);
+  if (removedDead) console.log(`Removed ${removedDead} number(s) that are dead on the network.`);
+}
+
 const tierCount = keepers.reduce((a, k) => ((a[k.tier] = (a[k.tier] || 0) + 1), a), {});
 if (ORDER_ONLY) console.log('ORDER_ONLY — importing nothing, just re-sorting the pending queues A→Z.');
 else {
   console.log(`Selected ${keepers.length} keepers by owner-name confidence:`, tierCount);
-  if (keepers.length < NEEDED) console.warn(`⚠ only ${keepers.length} keepers (< ${NEEDED}); batches will be smaller.`);
+  // Two separate reasons the batch can come up short, so say both plainly:
+  // the tiers can run out, and the paid screen runs AFTER the keeper loop has
+  // already stopped at NEEDED, taking dead numbers back off the end.
+  warnIfShort(NEEDED, keepers.length, { label: 'batches', what: 'leads' });
+  if (keepers.length < NEEDED) {
+    console.warn(`Each agent gets about ${Math.floor(keepers.length / BATCHES.length)} instead of ${PER_AGENT}.`);
+  }
 }
 
 // Deal alternately (Pedro, Marr, Pedro, …) so both agents get an even spread of

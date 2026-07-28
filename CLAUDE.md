@@ -77,6 +77,55 @@ A standing rule, not a preference, and it is enforced rather than remembered.
 
 ---
 
+## Line status screening: the hand-run scripts only, the app is NOT covered
+
+Built 2026-07-28 after Maria's cold batch. `libphonenumber` is an offline rulebook: it proves the number is a well-formed, allocated UK mobile and nothing more. `api/lib/phone-validation.ts` hardcodes `active_status: 'unknown'` for exactly that reason. Twilio `line_type_intelligence` does not help either, all 8 dead numbers came back `valid: true`, `type: mobile`, on real carriers.
+
+### What is actually covered (read this before you trust anything else here)
+
+The screen runs **only** in the lead scripts a human runs by hand in a terminal. **No part of the Elsie app screens anything.** The shared TypeScript helper `checkLineStatus()` is written and tested, and nothing imports it. Do not take that on trust, it is one command:
+
+```bash
+grep -rn "checkLineStatus" api src supabase scripts tests
+```
+
+Verified 2026-07-28: that returns exactly one line, the definition at `api/lib/twilio-lookup.ts:399`, and no callers anywhere in the product. If it ever returns more than one line, somebody has wired it in and this section is out of date.
+
+**COVERED, the hand-run `.mjs` scripts, all sharing `scripts/lib/line-status.mjs`:** `feed-maria-leads.mjs`, `process-plumber-leads.mjs`, `assign-agent-batches.mjs`, `scrape-trade-leads.mjs`, `assign-trade-leads-to-pedro-marr.mjs`, `import-plumber-leads.mjs`, `blast-maria-website-opener.mjs`.
+
+**NOT YET COVERED. Every send path the product itself uses is unscreened:**
+
+| Send path | What goes out unscreened |
+|---|---|
+| `supabase/functions/wk-sms-broadcast` | in-product mass SMS |
+| `supabase/functions/wk-jobs-worker` (`send_sms` job) | the delivery step for broadcasts, scheduled sends, outcome automations and VSL automation |
+| `supabase/functions/wk-sms-send` | CRM inbox replies and the dialer |
+| `api/cron/review-requests.ts` | **the main paying product**, texting a client's own customer list, which is exactly where years-old dead numbers live |
+| `api/cron/vsl-auto-send.ts` | the VSL video texts |
+| `api/cron/follow-up.ts` | automated follow-ups |
+
+Also worth saying plainly: a screened list does not stay screened. A number is checked once, on the day it is imported, and nothing re-checks it before the app texts that person months later.
+
+**Open decision for Hugo, do not take it for him.** Wiring the screen into the shared `send_sms` job worker would cover broadcast, the inbox and the crons in one place. The cost is that it adds a per-message lookup fee to the paying product, on every send, forever, including repeat texts to the same customer. That is a pricing call, not an engineering one, so it stays open until Hugo decides.
+
+### How the check itself works
+
+- **The check:** `GET https://lookups.twilio.com/v2/PhoneNumbers/{E164}?Fields=line_status`. Statuses are `active`, `reachable`, `unreachable`, `inactive`, `unknown`. Ground truth on the failed batch: 7 of 8 dead numbers were `inactive`, and all 91 that delivered were `reachable`. Zero false positives.
+- **Only `inactive` is screened out.** `unreachable` is kept on purpose, it is a live subscriber with the handset off and the network queues the SMS. `unknown`, an HTTP 200 with `line_status: null`, and any undocumented status all fail open and keep the lead. Note `error_code` is a nullable integer *inside* the `line_status` object, not at the top level.
+- **Cost, measured on our own account:** 117 lookups billed GBP 0.61893, so **GBP 0.00529 each**, GBP 5.29 per 1,000 leads. Twilio quotes usage before VAT and nobody has confirmed whether this account is VAT-charged, so budget GBP 6.35 per 1,000 until someone checks. It costs more than the texts it saves, roughly 3 to 1. We do it for the sender number's reputation with the carriers, not for the pennies.
+- **Where it lives:** [api/lib/twilio-lookup.ts](api/lib/twilio-lookup.ts) (`lineAlive()` decides, `checkLineStatus()` runs cache-first with 20-way concurrency and 429 retry) and its script twin [scripts/lib/line-status.mjs](scripts/lib/line-status.mjs) (`screenLineStatus`, `dropDeadNumbers`, loads the repo `.env` itself so a run with only `SUPABASE_*` on the command line cannot silently fail open). Tests: `tests/line-status.test.ts`.
+- **Cache is its own table with a 7-day TTL** (`phone_line_status_cache`, RLS on, no policies), never the 90-day `phone_lti_cache`. Line type is a numbering-plan fact, line status is live state, so a 90-day-old `reachable` would re-open the exact hole. Cache writes are fed from the misses only, so a repeat pass bills nothing.
+- **Gate order inside those scripts, cheapest first, money last:** free offline format and line-type checks, then the existing Google Places / website / review checks, then `line_status` (paid, last), then write to the CRM.
+- On a script send path a dead number is **dropped from the batch, it never aborts the batch**. The preflight aborts on copy problems because those are fixable, a dead subscription is not, and refusing to text 99 good leads over one of them is the wrong trade.
+- **`SKIP_LINE_STATUS=1` is the no-spend switch, and it is NOT a dry run.** It skips the paid screen, so every number goes out unscreened. `SKIP_LINE_STATUS=1 node scripts/blast-maria-website-opener.mjs --apply` really does send 100 unscreened cold texts and really does charge for them. All the flag saves you is the lookup fee.
+- **There is no single "nothing happens" switch. Check the script first.** Only three of the seven take `--apply`, and only those three are dry by default:
+  - **`--apply` exists, dry until you add it:** `scrape-trade-leads.mjs`, `assign-trade-leads-to-pedro-marr.mjs`, `blast-maria-website-opener.mjs`. Without `--apply` they send no text and write no lead. They can still **charge** for the line-status lookups, because the screen runs before the dry-run exit so the preview counts are real. Not free, just harmless.
+  - **NO `--apply`, writes on every single run:** `feed-maria-leads.mjs`, `process-plumber-leads.mjs`, `assign-agent-batches.mjs`, `import-plumber-leads.mjs`. Running one of these imports leads into the CRM and queues them to a campaign immediately. `node scripts/feed-maria-leads.mjs list.csv 1000` writes 1,000 leads and spends about GBP 5.29. There is no preview mode. None of them texts anybody, but the CRM is changed for real.
+  - To try one of the second group safely, ask for a tiny count first (say 5) and look at what landed before running the real number.
+- A cost estimate for the lookups is always printed before any lookup spend, including under `SKIP_LINE_STATUS=1`, which is the only thing about that flag that resembles a dry run.
+
+---
+
 ## Test loop (run before every commit)
 
 ```bash
@@ -110,6 +159,7 @@ Keep these current as we go:
 - [docs/BUILD_PHASES.md](docs/BUILD_PHASES.md)
 - [docs/DECISIONS_LOG.md](docs/DECISIONS_LOG.md)
 - [docs/PLUMBER_LEADS_PIPELINE.md](docs/PLUMBER_LEADS_PIPELINE.md) — **loading a plumber-leads CSV**: run `scripts/process-plumber-leads.mjs` (named-owner only → Google-enrich reviews → drop >65 → import+queue → order A→Z). Hugo points you at a CSV; this is the one right way.
+- [docs/SMS_BLAST_PLAYBOOK.md](docs/SMS_BLAST_PLAYBOOK.md), **read before any bulk send**: every rule in it exists because something went wrong, including the line-status screen above.
 
 ---
 

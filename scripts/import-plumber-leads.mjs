@@ -33,6 +33,7 @@ import { join } from 'node:path';
 import Papa from 'papaparse';
 import { createClient } from '@supabase/supabase-js';
 import { isTextableUkMobile } from './lib/verify-phone.mjs';
+import { dropDeadNumbers, warnIfShort } from './lib/line-status.mjs';
 
 // ── SUPERSEDED ───────────────────────────────────────────────────────────────
 // Use scripts/process-plumber-leads.mjs — it enforces ALL of Hugo's rules in one
@@ -134,6 +135,26 @@ for (const row of parsed.data) {
 
 console.log(`Parsed ${leads.length} named-owner leads (target ${COUNT}) from ${CSV_PATH} (not a mobile number: ${notMobile})`);
 if (leads.length === 0) { console.error('No leads to import — aborting.'); process.exit(1); }
+
+// ---- LAST GATE: live mobile-network screen (the only paid check) ------------
+// After the free offline checks above, never before them. isTextableUkMobile is
+// libphonenumber, an OFFLINE rulebook: it proves the number is a well-formed
+// allocated GB mobile, never that the subscription is still alive. Five of
+// Maria's first 100 numbers were dead and every one of them passed it. Only
+// "inactive" is dropped; "unreachable" is a real subscriber with the handset
+// switched off right now and is always kept. SKIP_LINE_STATUS=1 skips this check
+// and spends nothing (the import still runs, so it is not a dry run).
+{
+  const screened = await dropDeadNumbers(leads, (l) => l.phone, { label: 'legacy import' });
+  const removedDead = leads.length - screened.kept.length;
+  leads.length = 0;
+  leads.push(...screened.kept);
+  if (removedDead) console.log(`Removed ${removedDead} number(s) that are dead on the network.`);
+  if (leads.length === 0) { console.error('No leads left after the line-status screen. Aborting.'); process.exit(1); }
+  // The parse loop stopped at COUNT and this screen then removed dead numbers
+  // from that finished list, so the delivered count is normally under the ask.
+  warnIfShort(COUNT, leads.length, { label: 'legacy import', what: 'leads' });
+}
 
 // Write a cleaned copy to the Desktop for Hugo.
 const cleanCsv = Papa.unparse(

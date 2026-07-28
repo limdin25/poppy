@@ -37,6 +37,7 @@ import { COACH_PROMPTS } from '../data/mockCampaigns';
 import { formatPence } from '../data/helpers';
 import { useKillSwitch } from '../hooks/useKillSwitch';
 import { useAiSettings } from '../hooks/useAiSettings';
+import { useSmsReplySettings } from '../hooks/useSmsReplySettings';
 import { useDialerCampaigns } from '../hooks/useDialerCampaigns';
 import { validateDropRecording } from '../lib/dropRecordingValidation';
 import { usePipelines } from '../hooks/usePipelines';
@@ -153,7 +154,7 @@ function ScopeBadge({
   return (
     <span
       className="inline-flex items-center ml-2 text-[9px] uppercase font-bold tracking-wide text-[#9CA3AF] bg-[#F3F3EE] px-1.5 py-0.5 rounded"
-      title="Inherited from workspace default — edit to create a campaign override"
+      title="Inherited from workspace default. Edit to create a campaign override."
     >
       inherited
     </span>
@@ -183,6 +184,8 @@ const CAMPAIGN_BUNDLE_TABS = [
   { id: 'pipelines', label: 'Pipeline', icon: Kanban },
   { id: 'templates', label: 'Templates (SMS / WA / Email)', icon: MessageSquare },
   { id: 'ai', label: 'AI Coach', icon: Bot },
+  // Hugo 2026-07-28: "every campaign should have own reply prompt".
+  { id: 'replies', label: 'AI text replies', icon: Bot },
   { id: 'agents', label: 'Assigned agents', icon: Users },
   { id: 'numbers', label: 'Assigned channels (SMS/WA/Email)', icon: Phone },
   { id: 'leads', label: 'Upload leads (CSV)', icon: Plus },
@@ -510,6 +513,7 @@ function CampaignBundle({
       {validTab === 'pipelines' && <PipelinesTab campaignId={campaignId} />}
       {validTab === 'templates' && <TemplatesTab campaignId={campaignId} />}
       {validTab === 'ai' && <UnifiedCoachTab campaignId={campaignId} />}
+      {validTab === 'replies' && <SmsReplyTab campaignId={campaignId} />}
       {validTab === 'agents' && <CampaignAgentsPanelStandalone campaignId={campaignId} />}
       {validTab === 'numbers' && <CampaignNumbersPanelStandalone campaignId={campaignId} />}
       {validTab === 'leads' && (
@@ -3027,6 +3031,191 @@ function ProfileEditor({
 }
 
 // ─── AI — API key + model dropdown ─────────────────────────────────
+// AI text replies tab: the prompt this campaign answers inbound texts with.
+//
+// Hugo 2026-07-28: "every campaign should have own reply prompt". Maria's
+// website opener ("this is Pedro, I built you one") got answered with the Google
+// reviews pitch, because until now there was one prompt for the whole workspace.
+//
+// Empty box = inherit the workspace default. The generator does the same merge
+// server-side in api/lib/campaign-reply-settings.ts.
+function SmsReplyTab({ campaignId }: { campaignId: string }) {
+  const {
+    settings, global, loading, saving, error, saved, fieldSource, setField, save, resetField,
+  } = useSmsReplySettings(campaignId);
+
+  // A campaign may be MORE cautious than the workspace, never less. Auto send
+  // needs BOTH switches on, so a workspace on draft holds every campaign on
+  // draft. api/lib/campaign-reply-settings.ts is the twin of this line and is
+  // what actually decides. Draft on either side wins.
+  const wantedMode = settings.mode ?? global.mode;
+  const effectiveMode = global.mode === 'auto' && wantedMode === 'auto' ? 'auto' : 'draft';
+  const heldBackByWorkspace = wantedMode === 'auto' && global.mode !== 'auto';
+
+  return (
+    <>
+      <Card
+        title="Reply prompt for this campaign"
+        hint="Inbound texts only. Calls are the AI Coach tab."
+      >
+        <div className="space-y-3">
+          <div>
+            <Label>
+              System prompt
+              <ScopeBadge
+                source={fieldSource.prompt}
+                campaignId={campaignId}
+                onReset={() => void resetField('prompt')}
+              />
+            </Label>
+            <div className="text-[10px] text-[#9CA3AF] mb-1">
+              Leave it empty to use the workspace default. Write it to match the
+              opener this campaign actually sent, or the AI answers with a
+              different offer than the one the lead replied to.
+            </div>
+            <textarea
+              value={settings.prompt}
+              onChange={(e) => setField('prompt', e.target.value)}
+              disabled={loading}
+              rows={14}
+              placeholder={loading ? 'Loading' : 'Empty = inherit the workspace default below'}
+              className="w-full px-3 py-2 text-[12px] font-mono leading-relaxed border border-[#E5E7EB] rounded-[10px] disabled:bg-[#F9FAFB]"
+            />
+          </div>
+
+          <details className="border border-[#E5E7EB] rounded-[10px] p-3 bg-[#FAFAF7]">
+            <summary className="text-[11px] font-semibold text-[#6B7280] cursor-pointer">
+              Workspace default (used when the box above is empty)
+            </summary>
+            <pre className="mt-2 text-[11px] text-[#6B7280] whitespace-pre-wrap font-mono">
+              {global.system_prompt || 'Not set'}
+            </pre>
+            <div className="text-[10px] text-[#9CA3AF] mt-2">
+              Editing the default for every campaign? Open AI Personality at
+              <code className="bg-[#F3F3EE] px-1 rounded ml-1">
+                /admin/crm/agent/personality?ch=sms
+              </code>
+            </div>
+          </details>
+
+          <div className="flex items-center gap-2 pt-2 border-t border-[#E5E7EB]">
+            <button
+              onClick={() => void save()}
+              disabled={saving || loading}
+              className="bg-[#3C5A87] text-white text-[12px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
+            >
+              {saving ? 'Saving' : saved ? 'Saved' : 'Save reply settings'}
+            </button>
+            <span className="text-[10px] text-[#9CA3AF]">
+              Takes effect on the next inbound text. No redeploy.
+            </span>
+            {error && <span className="text-[10px] text-[#EF4444]">{error}</span>}
+          </div>
+        </div>
+      </Card>
+
+      <Card title="What happens with the reply">
+        <div className="space-y-4">
+          <div>
+            <Label>
+              Mode
+              <ScopeBadge
+                source={fieldSource.mode}
+                campaignId={campaignId}
+                onReset={() => void resetField('mode')}
+              />
+            </Label>
+            <div className="flex gap-1.5">
+              {([
+                { id: null, label: `Inherit (${global.mode})` },
+                { id: 'draft' as const, label: 'Draft for approval' },
+                { id: 'auto' as const, label: 'Auto send' },
+              ]).map((opt) => (
+                <button
+                  key={String(opt.id)}
+                  type="button"
+                  onClick={() => setField('mode', opt.id)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-[10px] text-[12px] font-medium border transition-colors',
+                    settings.mode === opt.id
+                      ? 'bg-[#3C5A87] text-white border-[#3C5A87]'
+                      : 'bg-white text-[#6B7280] border-[#E5E7EB] hover:bg-[#F3F3EE]',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] text-[#9CA3AF] mt-1">
+              This campaign is on <strong>{effectiveMode}</strong>. Auto send
+              texts real leads with nobody reading it first. Draft puts it in the
+              inbox for an agent to approve. A campaign can only be more careful
+              than the workspace, never less: auto send needs the workspace
+              switch on auto as well, and draft on either side wins.
+            </div>
+            {heldBackByWorkspace && (
+              <div className="text-[10px] text-[#B45309] mt-1">
+                The workspace is on {global.mode}, so this campaign stays on
+                draft until the workspace itself is switched to auto.
+              </div>
+            )}
+          </div>
+
+          <div>
+            <Label>
+              Model
+              <ScopeBadge
+                source={fieldSource.model}
+                campaignId={campaignId}
+                onReset={() => void resetField('model')}
+              />
+            </Label>
+            <select
+              value={settings.model}
+              onChange={(e) => setField('model', e.target.value)}
+              className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px] bg-white"
+            >
+              <option value="">Inherit ({global.model || 'claude-sonnet-4-6'})</option>
+              <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+              <option value="claude-haiku-4-6">claude-haiku-4-6</option>
+              <option value="gpt-5.4-mini">gpt-5.4-mini</option>
+            </select>
+          </div>
+
+          <div className="pt-2 border-t border-[#E5E7EB]">
+            <label className="flex items-center gap-2 text-[12px] text-[#1A1A1A]">
+              <input
+                type="checkbox"
+                checked={settings.enabled === false}
+                onChange={(e) => setField('enabled', e.target.checked ? false : null)}
+              />
+              AI replies OFF for this campaign
+            </label>
+            <div className="text-[10px] text-[#9CA3AF] mt-1">
+              This can only switch replies off. The workspace switch still decides
+              whether they are on at all, so ticking nothing here leaves the
+              campaign following the workspace.
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 pt-2 border-t border-[#E5E7EB]">
+            <button
+              onClick={() => void save()}
+              disabled={saving || loading}
+              className="bg-[#3C5A87] text-white text-[12px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-60"
+            >
+              {saving ? 'Saving' : saved ? 'Saved' : 'Save reply settings'}
+            </button>
+            <span className="text-[10px] text-[#9CA3AF]">
+              Stored in <code className="bg-[#F3F3EE] px-1 rounded">wk_campaign_ai_settings</code> (admin only).
+            </span>
+          </div>
+        </div>
+      </Card>
+    </>
+  );
+}
+
 function AITab({ campaignId = null }: { campaignId?: string | null } = {}) {
   const ks = useKillSwitch();
   const { settings, loading, saving, error, saved, fieldSource, setField, save, resetField } =

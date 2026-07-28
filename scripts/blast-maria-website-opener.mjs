@@ -19,13 +19,30 @@
  *   - GSM-7 only, 1 segment (a name with a curly char would triple the cost)
  *   - the lead is unlocked (no other agent has touched them)
  *
- * DRY RUN BY DEFAULT. Pass --apply to actually send.
+ * Then, LAST because it is the only paid check, a live mobile-network screen
+ * (Twilio Lookup line_status, about half a penny a number, cached 7 days).
+ * Numbers that are "inactive" are dropped from the send rather than aborting it.
+ *
+ * NO TEXT IS SENT WITHOUT --apply. BUT THE DRY RUN IS NOT FREE.
+ * Read that twice, it is the one surprising thing in this script. Without
+ * --apply nothing is texted, nobody is contacted and no CRM row is written, but
+ * the paid network screen DOES run: about half a penny a number, so roughly 50p
+ * for 100 leads. That is deliberate, not an oversight:
+ *   - the dry run's headline number is then the REAL count of people who will be
+ *     texted, not a count that still has dead numbers in it
+ *   - the result is cached for 7 days, so the --apply run straight afterwards
+ *     re-bills nothing. You pay once either way, you just pay it before you
+ *     commit instead of after
+ * For a genuinely zero-spend dry run: SKIP_LINE_STATUS=1 (alias
+ * NO_LINE_STATUS_SPEND=1). That keeps every number unscreened, dead ones
+ * included, so it is for checking the copy, not for deciding a send.
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { screenLineStatus } from './lib/line-status.mjs';
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -97,11 +114,55 @@ if (problems.length) {
   console.error(`\nRefusing to send: ${problems.length} lead(s) failed preflight. Fix them or exclude them explicitly.`);
   process.exit(1);
 }
+if (!planned.length) { console.error('\nNo sendable leads. Nothing to do.'); process.exit(1); }
+
+// ---- LAST PREFLIGHT: is the line alive on the mobile network? ---------------
+// This is the generic send path, so it gets the screen too, not just the import
+// scripts. Leads can be imported weeks before they are texted and a subscription
+// can die in between. Runs last because it is the only preflight that costs
+// money (about half a penny a number, and cached for 7 days so a re-run of this
+// script is free).
+//
+// A dead number is EXCLUDED from the send, it does NOT abort the run. The
+// preflight above aborts on problems because those are fixable copy problems and
+// sending half a list with a broken greeting is worse than sending none. A dead
+// subscription is not fixable and not our mistake, so refusing to text the other
+// 99 good leads over it would be the wrong trade.
+//
+// Only "inactive" is excluded. "unreachable" is a real subscriber whose handset
+// is switched off right now, the network holds the SMS and delivers it when the
+// phone comes back, so those are texted as normal.
+//
+// IT RUNS WITHOUT --apply TOO. Money before the exit, on purpose: it makes the
+// dry run's count the true count, and the 7-day cache means the --apply run that
+// follows re-bills nothing. Announced here as well as in the header, because
+// nobody reads a header.
+if (!APPLY) {
+  console.log('\nDry run. Nothing will be texted. The paid network screen still runs so this');
+  console.log('dry run reports the real sendable count (cached 7 days, so --apply adds nothing).');
+  console.log('SKIP_LINE_STATUS=1 to skip it and spend nothing.');
+}
+const lineScreen = await screenLineStatus(planned.map((p) => p.phone), { label: 'preflight' });
+const dead = planned.filter((p) => lineScreen.dead.has(p.phone));
+if (dead.length) {
+  console.log(`\nDEAD LINE, not texted (${dead.length}). The number is inactive on the network:`);
+  for (const d of dead) console.log(`  ${d.company} ${d.phone}`);
+}
+const sendable = planned.filter((p) => !lineScreen.dead.has(p.phone));
+if (!sendable.length) { console.error('\nEvery lead is dead on the network. Nothing to send.'); process.exit(1); }
+planned.length = 0;
+planned.push(...sendable);
+
 console.log(`\nEvery message: GSM-7, 1 segment. Est. cost ${planned.length} x £0.0423 = £${(planned.length * 0.0423).toFixed(2)}`);
 console.log(`Sample: ${planned[0].body}`);
 
 if (!APPLY) {
-  console.log('\nDRY RUN — nothing sent. Re-run with --apply to send.');
+  console.log('\nDRY RUN. Nothing sent, nobody contacted, no CRM row written.');
+  console.log(lineScreen.skipped
+    ? 'The network screen was skipped, so this run cost nothing and the count above is UNSCREENED.'
+    : `The network screen did run and cost about GBP ${lineScreen.costGbp.toFixed(2)}. `
+      + 'It is cached for 7 days, so --apply now adds nothing to that.');
+  console.log('Re-run with --apply to send.');
   process.exit(0);
 }
 
