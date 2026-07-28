@@ -10,6 +10,7 @@
 
 import { createHmac } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+import { resolveLadderConfig, type LadderConfig } from '../../src/core/site-demo/ladder.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -66,6 +67,46 @@ export async function getSiteDemoSettings(): Promise<SiteDemoSettings> {
   } catch {
     return { ...DEFAULT_SITE_DEMO_SETTINGS };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ladder timings.
+//
+// A SEPARATE platform_settings key from the settings above, on purpose. This is
+// the one the flow canvas edits, and keeping it separate means saving a timing
+// from the canvas cannot clobber the master switch or the quiet hours, which
+// live in a different panel and are edited by a different person.
+//
+// The cron READS this. It hardcodes nothing. If it ever hardcodes a timing
+// again, editing the canvas becomes decorative.
+// ---------------------------------------------------------------------------
+
+export const SITE_DEMO_LADDER_KEY = 'site_demo_ladder';
+
+export async function getLadderConfig(): Promise<LadderConfig> {
+  const { data } = await supabase
+    .from('platform_settings')
+    .select('value')
+    .eq('key', SITE_DEMO_LADDER_KEY)
+    .maybeSingle();
+  if (!data?.value) return resolveLadderConfig(null);
+  try {
+    return resolveLadderConfig(JSON.parse(data.value) as Partial<LadderConfig>);
+  } catch {
+    // A corrupt value must not stop the funnel. Documented defaults, and a log.
+    console.error('[site-demo] ladder config unparseable, using defaults');
+    return resolveLadderConfig(null);
+  }
+}
+
+export async function saveLadderConfig(patch: Partial<LadderConfig>): Promise<LadderConfig> {
+  const merged = resolveLadderConfig({ ...(await getLadderConfig()), ...patch });
+  await supabase.from('platform_settings').upsert({
+    key: SITE_DEMO_LADDER_KEY,
+    value: JSON.stringify(merged),
+    updated_at: new Date().toISOString(),
+  });
+  return merged;
 }
 
 export async function saveSiteDemoSettings(

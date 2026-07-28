@@ -6,6 +6,8 @@ import {
   type LadderPage,
   type LadderContext,
   type LadderStageKey,
+  resolveLadderConfig,
+  DEFAULT_LADDER_CONFIG,
 } from '../src/core/site-demo/ladder';
 
 const T0 = Date.parse('2026-07-28T09:00:00.000Z');
@@ -33,7 +35,6 @@ const ctx = (over: Partial<LadderContext> = {}): LadderContext => ({
   businessName: 'MJR Plumbing',
   url: 'https://heyelsie.com/s/mjr-plumbing',
   demoNumber: '07576 558278',
-  maxOutboundCalls: 2,
   ...over,
 });
 
@@ -146,7 +147,7 @@ describe('track C: we ring them', () => {
 
   it('honours a lowered cap from settings immediately', () => {
     const p = stalled({ outbound_call_attempts: 1, automation: fired('engage_1', 'engage_2', 'ai_call_1') });
-    expect(nextLadderStep(p, ctx({ now: at(99 * HOUR), maxOutboundCalls: 1 }))).toEqual({
+    expect(nextLadderStep(p, ctx({ now: at(99 * HOUR), config: { max_outbound_calls: 1 } }))).toEqual({
       kind: 'none',
       reason: 'calls_exhausted',
     });
@@ -241,5 +242,61 @@ describe('copy', () => {
     expect(ladderCopy('unopened_2', c)).toContain(c.url);
     expect(ladderCopy('engage_1', c)).toContain(c.demoNumber);
     expect(ladderCopy('engage_2', c)).toContain(c.demoNumber);
+  });
+});
+
+// The flow canvas edits platform_settings.site_demo_ladder. If these timings
+// were hardcoded, changing them on the canvas would relabel a picture without
+// changing what the system does.
+describe('timings come from config, never from constants', () => {
+  it('honours a shortened first nudge', () => {
+    const fast = ctx({ now: at(30 * 60_000), config: { unopened_1_hours: 0.5 } });
+    expect(nextLadderStep(page(), fast)).toMatchObject({ kind: 'sms', stage: 'unopened_1' });
+    // and the default would still be waiting
+    expect(nextLadderStep(page(), ctx({ now: at(30 * 60_000) })).kind).toBe('none');
+  });
+
+  it('honours a lengthened engage window', () => {
+    const p = page({ state: 'opened', first_opened_at: new Date(T0).toISOString(), automation: fired('unopened_1') });
+    const slow = ctx({ now: at(20 * 60_000), config: { engage_1_minutes: 60 } });
+    expect(nextLadderStep(p, slow).kind).toBe('none');
+    expect(nextLadderStep(p, ctx({ now: at(20 * 60_000) })).kind).toBe('sms');
+  });
+
+  it('honours a raised call cap from config', () => {
+    const p = page({
+      state: 'opened',
+      first_opened_at: new Date(T0).toISOString(),
+      automation: fired('engage_1', 'engage_2', 'ai_call_1'),
+      outbound_call_attempts: 2,
+      last_call_at: new Date(T0).toISOString(),
+    });
+    expect(nextLadderStep(p, ctx({ now: at(99 * HOUR), config: { max_outbound_calls: 3 } }))).toMatchObject({
+      kind: 'call',
+      stage: 'ai_call_2',
+    });
+  });
+
+  it('falls back to the documented defaults when the key is absent', () => {
+    const withNull = nextLadderStep(page(), ctx({ now: at(2 * HOUR), config: null }));
+    const withNothing = nextLadderStep(page(), ctx({ now: at(2 * HOUR) }));
+    expect(withNull).toEqual(withNothing);
+    expect(withNull).toMatchObject({ kind: 'sms', stage: 'unopened_1' });
+  });
+
+  it('ignores rubbish in a saved config rather than breaking the cron', () => {
+    const junk = { unopened_1_hours: -5, engage_1_minutes: NaN, max_outbound_calls: 'lots' };
+    const r = nextLadderStep(page(), ctx({ now: at(2 * HOUR), config: junk as never }));
+    expect(r).toMatchObject({ kind: 'sms', stage: 'unopened_1' });
+  });
+});
+
+describe('resolveLadderConfig', () => {
+  it('fills every gap so a partial save cannot break anything', () => {
+    expect(resolveLadderConfig({ engage_1_minutes: 5 })).toEqual({
+      ...DEFAULT_LADDER_CONFIG,
+      engage_1_minutes: 5,
+    });
+    expect(resolveLadderConfig(null)).toEqual(DEFAULT_LADDER_CONFIG);
   });
 });
