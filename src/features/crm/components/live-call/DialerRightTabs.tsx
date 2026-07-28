@@ -17,6 +17,7 @@ import MidCallSmsSender from './MidCallSmsSender';
 import LiveTranscriptPane from './LiveTranscriptPane';
 import { useContactMessages, type CrmMessage } from '../../hooks/useContactMessages';
 import { useSmsV2 } from '../../store/SmsV2Store';
+import SendSiteButton from './SendSiteButton';
 import VideoLinkButton from './VideoLinkButton';
 
 type Tab = 'coach' | 'calculator' | 'objections' | 'messages';
@@ -124,6 +125,7 @@ function MessagesTab({
       {/* Send box on top, with the video as its own one-tap option above it. */}
       <div className="px-3 py-3 border-b border-[#E5E7EB] space-y-2">
         {contact && <VideoLinkButton contact={contact} compact />}
+              {contact && <SendSiteButton contact={contact} compact />}
         <MidCallSmsSender
           contactId={contactId}
           contactName={contactName}

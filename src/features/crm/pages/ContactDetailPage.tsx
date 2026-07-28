@@ -351,6 +351,18 @@ export default function ContactDetailPage() {
                 </span>
               </div>
             ))}
+
+            {/* Website funnel. A fifth unmerged block for the same reason the
+                other four are unmerged: one source per block means a bug in
+                either is obvious rather than blended into the others. */}
+            {timeline.site.map((e) => (
+              <div key={`site-${e.id}`} className="px-4 py-2 text-[12px]" data-testid="detail-site-event">
+                <span className="text-[#166534] font-medium">◆ {e.label}</span>
+                <span className="text-[10px] text-[#9CA3AF] ml-2 tabular-nums">
+                  {formatDateTime(e.ts)}
+                </span>
+              </div>
+            ))}
           </div>
         </section>
 

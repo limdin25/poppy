@@ -15,6 +15,7 @@ import {
   Paperclip,
   Bot,
   Clapperboard,
+  Globe,
   Pin,
   PinOff,
   Archive,
@@ -29,7 +30,7 @@ import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
 import FollowupPromptModal from '../components/followups/FollowupPromptModal';
 import { useSmsV2 } from '../store/SmsV2Store';
-import { useContactTimeline, type FunnelEvent } from '../hooks/useContactTimeline';
+import { useContactTimeline, type FunnelEvent, type SiteEvent } from '../hooks/useContactTimeline';
 import { useContactMessages } from '../hooks/useContactMessages';
 import { useInboxThreads } from '../hooks/useInboxThreads';
 import { useContactPersistence } from '../hooks/useContactPersistence';
@@ -560,7 +561,7 @@ export default function InboxPage() {
 
   // Sort the unified thread by timestamp so SMS interleave with calls if present
   const threadItems = useMemo(() => {
-    const items: { kind: 'sms' | 'call' | 'activity' | 'funnel'; ts: string; payload: unknown }[] = contactSms.map((m) => ({
+    const items: { kind: 'sms' | 'call' | 'activity' | 'funnel' | 'site'; ts: string; payload: unknown }[] = contactSms.map((m) => ({
       kind: 'sms' as const,
       ts: m.sentAt,
       payload: m,
@@ -577,6 +578,9 @@ export default function InboxPage() {
     // — the lead watching your video is part of the conversation.
     for (const f of timeline.funnel) {
       items.push({ kind: 'funnel' as const, ts: f.ts, payload: f });
+    }
+    for (const e of timeline.site) {
+      items.push({ kind: 'site' as const, ts: e.ts, payload: e });
     }
     items.sort((a, b) => +new Date(a.ts) - +new Date(b.ts));
     return items;
@@ -1183,6 +1187,30 @@ export default function InboxPage() {
             // MUST come before the activity fallthrough below: that branch
             // casts any unknown payload to ActivityEvent and would render an
             // empty chip with `undefined` as its title.
+            // Website-funnel event. MUST sit before the activity fallthrough
+            // for the same reason the video one does: that branch casts any
+            // unknown payload to ActivityEvent and renders `undefined`.
+            if (item.kind === 'site') {
+              const e = item.payload as SiteEvent;
+              return (
+                <div
+                  key={`site-${e.id}`}
+                  data-testid="thread-site-event"
+                  className="mx-auto max-w-[80%] px-3 py-1.5 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] text-[11px] text-[#166534] flex items-center gap-2"
+                >
+                  <Globe className="w-3 h-3 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold">{e.label}</span>
+                  </div>
+                  <span
+                    className="text-[10px] text-[#9CA3AF] tabular-nums flex-shrink-0"
+                    title={formatDateTime(e.ts)}
+                  >
+                    {formatTimeOnly(e.ts)}
+                  </span>
+                </div>
+              );
+            }
             if (item.kind === 'funnel') {
               const f = item.payload as FunnelEvent;
               return (

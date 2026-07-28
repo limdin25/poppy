@@ -78,12 +78,37 @@ const FUNNEL_LABELS: Record<string, string> = {
   auto_sms: 'Follow-up text sent',
 };
 
+/** A website-funnel event on this lead's demo site: opened, tapped the phone,
+ *  used the chat, rang the AI, or got a follow-up. Same shape as FunnelEvent so
+ *  the render branches stay simple. */
+export interface SiteEvent {
+  id: string;
+  type: string;
+  label: string;
+  ts: string;
+}
+
+const SITE_LABELS: Record<string, string> = {
+  sent: 'Website link texted',
+  link_click: 'Tapped the website link',
+  open: 'Opened their website',
+  phone_tap: 'Tapped the phone number',
+  chat_message: 'Used the chat on their site',
+  call_started: 'Rang the AI receptionist',
+  call_ended: 'Finished the AI call',
+  followup_sent: 'Follow-up text sent',
+  outbound_call: 'The AI rang them',
+  checkout_start: 'Started checkout',
+  converted: 'Paid',
+};
+
 export interface ContactTimeline {
   calls: CallRecord[];
   sms: SmsMessage[];
   activities: ActivityEvent[];
   tasks: Task[];
   funnel: FunnelEvent[];
+  site: SiteEvent[];
   loading: boolean;
 }
 
@@ -93,6 +118,7 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [funnel, setFunnel] = useState<FunnelEvent[]>([]);
+  const [site, setSite] = useState<SiteEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -143,6 +169,16 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
           .eq('wk_vsl_pages.contact_id', contactId)
           .order('created_at', { ascending: false })
           .limit(100),
+        // Website-funnel events (index 7). Same shape of problem as the video
+        // events above: wk_site_events hangs off the page, not the contact, so
+        // it joins through wk_site_pages (one page per contact, enforced by
+        // wk_site_pages_contact_idx).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase.from('wk_site_events' as any) as any)
+          .select('id, type, meta, created_at, wk_site_pages!inner(contact_id)')
+          .eq('wk_site_pages.contact_id', contactId)
+          .order('created_at', { ascending: false })
+          .limit(100),
       ];
 
       // The legacy `sms_messages` table was queried here for every contact
@@ -163,6 +199,7 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
       const actRes = results[4];
       const tasksRes = results[5];
       const funnelRes = results[6];
+      const siteRes = results[7];
       // Legacy source removed — see the note above. Kept as an empty result so
       // the mapping below and the `sms` field on the return type still hold.
       const smsRes: { data: SmsMessageRow[] } = { data: [] };
@@ -183,6 +220,28 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
             type: e.type,
             pct,
             label: e.type === 'progress' && pct !== null ? `Watched ${pct}% of the video` : base,
+            ts: e.created_at,
+          };
+        })
+      );
+
+      if (siteRes?.error) {
+        console.warn('[useContactTimeline] site events query failed:', siteRes.error);
+      }
+      setSite(
+        ((siteRes?.data ?? []) as Array<{
+          id: string; type: string; meta: Record<string, unknown> | null; created_at: string;
+        }>).map((e) => {
+          const base = SITE_LABELS[e.type] ?? e.type;
+          const dir = (e.meta as { direction?: string } | null)?.direction;
+          return {
+            id: e.id,
+            type: e.type,
+            // An inbound call is the lead ringing us, an outbound one is us
+            // ringing them. Showing both as "call" would hide the difference
+            // that actually matters to an agent.
+            label:
+              e.type === 'call_started' && dir === 'outbound' ? 'The AI rang them' : base,
             ts: e.created_at,
           };
         })
@@ -258,5 +317,5 @@ export function useContactTimeline(contactId: string, contactPhone?: string): Co
     };
   }, [contactId, contactPhone]);
 
-  return { calls, sms, activities, tasks, funnel, loading };
+  return { calls, sms, activities, tasks, funnel, site, loading };
 }

@@ -14,6 +14,7 @@ import { Tag, Flame, MapPin, ExternalLink, Star, Search } from 'lucide-react';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { formatPence, formatRelativeTime } from '../../data/helpers';
 import type { Contact } from '../../types';
+import SendSiteButton from './SendSiteButton';
 import SubscribeButton from './SubscribeButton';
 import VideoLinkButton from './VideoLinkButton';
 
@@ -73,6 +74,11 @@ export default function ContactMetaCompact({ contact }: Props) {
 
       {/* One-tap close: create the account + Stripe link and text it live. */}
       <SubscribeButton contact={contact} />
+
+      {/* Build them a website and text the link. Third in the stack because
+          the other two assume a conversation is already going, and this one is
+          what starts it. */}
+      <SendSiteButton contact={contact} />
 
       {/* Property address + URL — only render when one or both are set. */}
       {(propertyAddress || propertyUrl) && (
