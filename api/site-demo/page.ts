@@ -9,13 +9,13 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tradeByKey } from '../lib/trades.js';
+import { beaconToken } from '../lib/site-beacon.js';
 import { fillSiteContent } from '../../src/core/site-demo/fill.js';
 import { renderSite } from '../../src/core/site-demo/render.js';
 import type { SiteContent } from '../../src/core/site-demo/types.js';
 import {
   DEMO_LINE_E164,
   advanceSiteState,
-  beaconToken,
   getSiteDemoSettings,
   logSiteEvent,
   siteDemoDb as supabase,

@@ -8,7 +8,6 @@
 // ladder is in src/core/site-demo/ladder.ts with no supabase import, so the
 // cron, the unit tests and the board all share one schedule.
 
-import { createHmac } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { resolveLadderConfig, type LadderConfig } from '../../src/core/site-demo/ladder.js';
 
@@ -122,29 +121,14 @@ export async function saveSiteDemoSettings(
 }
 
 // ---------------------------------------------------------------------------
-// Beacons
+// Beacons live in api/lib/site-beacon.ts, NOT here.
 //
-// The threat is concrete, not theoretical. page_id is printed in the public
-// HTML and slugs are guessable, so without a signature anyone could POST a
-// forged 'chat_message' or 'open' against a real lead's page, flip its state,
-// and trip a real nudge SMS to a real business. The token is hour-bucketed so
-// a captured one expires on its own.
-//
-// Its own secret. Deliberately NOT VSL_BEACON_SECRET: two funnels sharing one
-// signing key means rotating either one breaks both.
+// Minting the token needs node:crypto, and this module is imported by four
+// edge functions (track, chat, checkout, crm/site-flow). Keeping createHmac in
+// here failed the whole deploy with "referencing unsupported modules". The
+// verifying side re-derives the same value with crypto.subtle inside each edge
+// route, because that is the only crypto the edge runtime has.
 // ---------------------------------------------------------------------------
-
-export function hourBucket(now = Date.now()): number {
-  return Math.floor(now / 3_600_000);
-}
-
-/** Empty string when unconfigured, which the page reads as "send nothing". */
-export function beaconToken(pageId: string, bucket?: number): string {
-  const secret = process.env.SITE_BEACON_SECRET || '';
-  if (!secret) return '';
-  const b = bucket ?? hourBucket();
-  return createHmac('sha256', secret).update(`${pageId}:${b}`).digest('hex').slice(0, 32);
-}
 
 export type SiteEventType =
   | 'sent'
