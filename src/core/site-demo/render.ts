@@ -253,8 +253,15 @@ img,svg{display:block}
   font-weight:800; margin:0 0 var(--s2)}
 .lede{color:var(--muted); max-width:56ch; margin:0}
 
+/* ---- Staff preview banner. Only ever rendered for us, never for a lead, but
+   the header is fixed so it has to be told the banner is there or the two
+   stack on top of each other in every preview we look at. Height is measured,
+   not assumed, because the line wraps on a narrow phone. */
+.staffbar{position:relative; z-index:40; background:#0C2138; color:#fff;
+  padding:8px 16px; font-size:.8rem; text-align:center}
+
 /* ---- Header. Transparent over the opening photograph, solid once it moves. */
-.head{position:fixed; top:0; left:0; right:0; z-index:30; background:transparent;
+.head{position:fixed; top:var(--banner,0px); left:0; right:0; z-index:30; background:transparent;
   border-bottom:1px solid transparent; transition:background .25s ease, border-color .25s ease}
 .head.stuck{background:var(--paper); border-bottom-color:var(--line)}
 .headin{height:var(--head); display:flex; align-items:center; justify-content:space-between; gap:16px}
@@ -573,8 +580,7 @@ export function renderSite(content: SiteContent, opts: RenderOptions): string {
     : `Need ${/^[aeiou]/i.test(content.tradeLabel) ? 'an' : 'a'} ${content.tradeLabel.toLowerCase()}?`;
 
   const staffBanner = opts.staff
-    ? `<div style="background:#0C2138;color:#fff;padding:8px 16px;font-size:.8rem;text-align:center">` +
-      `Internal preview. Nothing on this view is tracked.</div>`
+    ? `<div class="staffbar">Internal preview. Nothing on this view is tracked.</div>`
     : '';
 
   return `<!doctype html>
@@ -687,11 +693,17 @@ ${chat}
   var d=document, root=d.documentElement;
   root.className+=' js';
 
-  // Bottom bar overlaps content on small screens; reserve exactly its height.
+  // Two fixed elements need exact measurements rather than guessed constants:
+  // the bottom call bar (which would cover the last line of content) and the
+  // staff preview banner (which the fixed header would otherwise sit on top
+  // of, in every internal preview we look at). Both wrap on narrow screens, so
+  // both are measured on load and on resize.
   function bar(){
     var b=d.querySelector('.callbar');
     var h=(b && getComputedStyle(b).display!=='none') ? b.offsetHeight : 0;
     root.style.setProperty('--bar', h+'px');
+    var sb=d.querySelector('.staffbar');
+    root.style.setProperty('--banner', (sb ? sb.offsetHeight : 0)+'px');
   }
   bar(); addEventListener('resize', bar);
 
