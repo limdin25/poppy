@@ -159,6 +159,19 @@ class VoiceActivity:
         self._silence_ms = 0.0
 
 
+def pcm_from_wav(wav: bytes) -> bytes:
+    """Pull the samples out of a complete WAV file.
+
+    Finds the data chunk rather than assuming a 44 byte header, for the same
+    reason the capture path does: encoders add metadata chunks and the header
+    is routinely longer than the textbook says.
+    """
+    idx = wav.find(b"data", 12)
+    if idx < 0 or len(wav) < idx + 8:
+        return wav
+    return wav[idx + 8:]
+
+
 def trim_tail(pcm: bytes, silence_ms: float, keep_ms: float = 200.0) -> bytes:
     """Cut the end-of-turn silence off a buffer before sending it to the STT.
 

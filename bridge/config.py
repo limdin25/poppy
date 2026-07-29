@@ -144,6 +144,18 @@ VOICE_SIMILARITY = float(os.environ.get("BRIDGE_VOICE_SIMILARITY", "0.75"))
 VOICE_STYLE = float(os.environ.get("BRIDGE_VOICE_STYLE", "0.35"))
 VOICE_SPEED = float(os.environ.get("BRIDGE_VOICE_SPEED", "0.98"))
 
+# Cartesia: what the Retell agent Hugo rates actually runs.
+CARTESIA_MODEL = os.environ.get("BRIDGE_CARTESIA_MODEL", "sonic-3.5")
+# Fish Audio. s2.1-pro-free is genuinely free until 2026-08-31, with no character
+# cap and no card, which makes it the cheapest way to find out whether the voice
+# is right. Two caveats that come with the free tier and matter later, not now:
+# they give no uptime or latency guarantee on it ("built for experimentation"),
+# and requests may be used to improve their model. Switch to "s2.1-pro" before
+# running anything that depends on it staying up.
+FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro-free")
+# Google Chirp 3: HD, en-GB. 1M characters a month free, then $30/M.
+GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
+
 # --- Telnyx ----------------------------------------------------------------
 # How long to let it ring. Ofcom requires at least 15 seconds before abandoning
 # an unanswered call, so this floor is a rule, not a preference.

@@ -346,28 +346,33 @@ class ElevenLabsTTS(TextToSpeech):
 
 
 class CartesiaTTS(TextToSpeech):
-    """Production voice. Tight latency tail and a real en-GB voice set.
+    """What Retell itself uses, so it is the closest match to a sound Hugo rates.
 
-    Needs CARTESIA_API_KEY, which does not exist yet.
+    Needs CARTESIA_API_KEY and CARTESIA_VOICE_ID.
     """
 
     URL = "https://api.cartesia.ai/tts/bytes"
 
-    def __init__(self, voice_id: str | None = None):
+    def __init__(self, voice_id: str | None = None, telephony: bool = False):
         self.api_key = config.key("CARTESIA_API_KEY", required=True)
         self.voice_id = voice_id or config.key("CARTESIA_VOICE_ID", required=True)
+        self.telephony = telephony
 
     def say(self, text: str) -> bytes:
+        # Cartesia emits mu-law natively, so on a phone call there is no
+        # conversion at all. The old code asked for 44.1kHz WAV, which the
+        # telephony path cannot use.
+        fmt = (
+            {"container": "raw", "encoding": "pcm_mulaw", "sample_rate": 8000}
+            if self.telephony
+            else {"container": "wav", "encoding": "pcm_s16le", "sample_rate": 44100}
+        )
         body = json.dumps(
             {
-                "model_id": "sonic-2",
+                "model_id": config.CARTESIA_MODEL,
                 "transcript": text,
                 "voice": {"mode": "id", "id": self.voice_id},
-                "output_format": {
-                    "container": "wav",
-                    "encoding": "pcm_s16le",
-                    "sample_rate": 44100,
-                },
+                "output_format": fmt,
                 "language": "en",
             }
         ).encode()
@@ -382,8 +387,99 @@ class CartesiaTTS(TextToSpeech):
         )
 
 
-def build_tts() -> TextToSpeech:
-    """Prefer Cartesia when a key exists, otherwise fall back to ElevenLabs."""
+class FishAudioTTS(TextToSpeech):
+    """Fish Audio S2.1, which Retell also run in production.
+
+    Needs FISH_API_KEY, and FISH_VOICE_ID for a cloned or chosen voice.
+    Emits 8 kHz PCM, which is already the sample rate the phone network uses,
+    so the only step is the mu-law encode.
+    """
+
+    URL = "https://api.fish.audio/v1/tts"
+
+    def __init__(self, voice_id: str | None = None, telephony: bool = False):
+        self.api_key = config.key("FISH_API_KEY", required=True)
+        self.voice_id = voice_id or config.key("FISH_VOICE_ID")
+        self.telephony = telephony
+
+    def say(self, text: str) -> bytes:
+        payload: dict = {
+            "text": text,
+            "format": "wav",
+            "sample_rate": 8000 if self.telephony else 44100,
+            # Their own low-latency mode. On a live call the tail matters more
+            # than the median, which is the whole reason Cartesia beat
+            # ElevenLabs in the benchmark.
+            "latency": "low",
+            "normalize": True,
+        }
+        if self.voice_id:
+            payload["reference_id"] = self.voice_id
+        raw = _post(
+            self.URL,
+            {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "model": config.FISH_MODEL,
+            },
+            json.dumps(payload).encode(),
+        )
+        if not self.telephony:
+            return raw
+        from . import ulaw
+        return ulaw.encode(audio.pcm_from_wav(raw))
+
+
+class GoogleTTS(TextToSpeech):
+    """Google Chirp 3: HD. Cheapest of the lot and 1M characters a month free.
+
+    Needs GOOGLE_TTS_API_KEY, a key with the Text-to-Speech API allowed. The
+    existing Places key is restricted to Places and returns
+    API_KEY_SERVICE_BLOCKED.
+    """
+
+    URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
+
+    def __init__(self, voice_id: str | None = None, telephony: bool = False):
+        self.api_key = config.key("GOOGLE_TTS_API_KEY", required=True)
+        self.voice = voice_id or config.GOOGLE_VOICE
+        self.telephony = telephony
+
+    def say(self, text: str) -> bytes:
+        body = json.dumps(
+            {
+                "input": {"text": text},
+                "voice": {"languageCode": "en-GB", "name": self.voice},
+                # MULAW at 8 kHz is exactly what Telnyx carries, so like
+                # Cartesia there is no conversion on the call path.
+                "audioConfig": (
+                    {"audioEncoding": "MULAW", "sampleRateHertz": 8000}
+                    if self.telephony
+                    else {"audioEncoding": "MP3"}
+                ),
+            }
+        ).encode()
+        raw = _post(f"{self.URL}?key={self.api_key}", {"Content-Type": "application/json"}, body)
+        import base64
+        content = base64.b64decode(json.loads(raw)["audioContent"])
+        # Google wraps MULAW in a WAV container; Telnyx wants the bare samples.
+        return audio.pcm_from_wav(content) if self.telephony else content
+
+
+def build_tts(telephony: bool = False) -> TextToSpeech:
+    """Pick a voice from whichever key exists.
+
+    Order is deliberate. Cartesia first because it is literally what the Retell
+    agent Hugo already rates is using, so it is the known-good sound. Then Fish,
+    which Retell also run and which is cheaper. Then Google, cheapest of all with
+    a free monthly allowance. ElevenLabs last: its Prohibited Use Policy bans
+    "unauthorized robocalling", so it is the wrong vendor to run a campaign on
+    however good it sounds.
+    """
     if config.key("CARTESIA_API_KEY") and config.key("CARTESIA_VOICE_ID"):
-        return CartesiaTTS()
-    return ElevenLabsTTS()
+        return CartesiaTTS(telephony=telephony)
+    if config.key("FISH_API_KEY"):
+        return FishAudioTTS(telephony=telephony)
+    if config.key("GOOGLE_TTS_API_KEY"):
+        return GoogleTTS(telephony=telephony)
+    return ElevenLabsTTS(output_format="ulaw_8000" if telephony else "mp3_44100_128")

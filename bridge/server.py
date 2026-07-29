@@ -198,9 +198,12 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
             transport=transport,
             system_prompt=runmod.SYSTEM_PROMPT,
             opener=runmod.build_opener(business, reviews),
-            # mu-law at 8 kHz is what the network carries and what Telnyx wants,
-            # so asking the TTS for it directly removes transcoding entirely.
-            tts=ai.ElevenLabsTTS(output_format="ulaw_8000"),
+            # telephony=True means every provider is asked for mu-law at 8 kHz,
+            # which is what the network carries and what Telnyx wants, so there
+            # is no transcoding on the call path whichever one is in use.
+            # This MUST go through build_tts(): hardcoding a provider here meant
+            # adding a key changed nothing, which is a config trap.
+            tts=ai.build_tts(telephony=True),
             on_event=show,
         )
         result = a.call(number)
