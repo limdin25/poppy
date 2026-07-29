@@ -62,7 +62,11 @@ MAX_WAV_HEADER_BYTES = 4096
 # Dropped from 700ms. Every millisecond here is dead air before the agent even
 # starts thinking, and dead air is what makes a call feel robotic. 500 still
 # comfortably clears the natural pause inside a sentence.
-END_OF_TURN_SILENCE_MS = 400
+# Cut again to 250: measured, this wait plus transcription is 878ms of the
+# 1222ms a prospect experiences, all of it before the model even starts. The
+# risk is real, a slow talker mid-pause gets cut off, so if that starts
+# happening put it back up rather than living with it.
+END_OF_TURN_SILENCE_MS = 250
 
 # The noises a person makes while thinking. Taken from the Retell agent Hugo
 # already rates ("Yeah", "Right", "Okay", "Gotcha", "Exactly", "No worries",

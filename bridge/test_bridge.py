@@ -179,10 +179,26 @@ def _():
     # The buffer always ends with the 700 ms of silence that closed the turn, so
     # a length test could never fail. One 21 ms click uploaded 700 ms of near
     # silence, the STT invented "Thank you.", and the agent answered it aloud.
+    # Stated in terms of the principle, not the current timings. It used to
+    # assert that one click plus the end-of-turn pad exceeded the gate, which
+    # was true at a 700ms pad and stopped being true when the pad dropped to
+    # 250ms. The bug is not about any particular number: it is that the buffer
+    # always carries the closing silence, so its LENGTH says nothing about
+    # whether anyone spoke.
     click_ms = 21.4
-    buffer_ms = click_ms + config.END_OF_TURN_SILENCE_MS
-    assert buffer_ms > config.MIN_UTTERANCE_MS, "premise of the bug"
-    assert click_ms < config.MIN_UTTERANCE_MS, "speech-only gate must reject it"
+    assert click_ms < config.MIN_UTTERANCE_MS, "speech-only gate must reject a click"
+    # A long pause with a single click in it must still be rejected, however
+    # long the buffer ends up being.
+    for pad_ms in (250.0, 400.0, 700.0, 1500.0):
+        speech_only = click_ms
+        buffer_len = click_ms + pad_ms
+        assert speech_only < config.MIN_UTTERANCE_MS, f"pad {pad_ms}"
+        if buffer_len > config.MIN_UTTERANCE_MS:
+            # exactly the case a length-based gate would wave through
+            assert speech_only < config.MIN_UTTERANCE_MS, (
+                f"a {buffer_len:.0f}ms buffer holding {speech_only:.0f}ms of speech "
+                "must be judged on the speech"
+            )
 
 
 @case("trim_tail cuts the end-of-turn pad but keeps a little")
