@@ -9,6 +9,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const InboxPage = lazy(() => import('./pages/InboxPage'))
 const CallsPage = lazy(() => import('./pages/CallsPage'))
 const PastCallScreen = lazy(() => import('./pages/PastCallScreen'))
+const AiCallsPage = lazy(() => import('./pages/AiCallsPage'))
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 const ContactsPage = lazy(() => import('./pages/ContactsPage'))
 const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage'))
@@ -50,6 +51,11 @@ export default function CrmApp() {
             <Route path="inbox" element={<InboxPage />} />
             <Route path="calls" element={<CallsPage />} />
             <Route path="calls/:callId" element={<PastCallScreen />} />
+            {/* The outbound AI campaign, which is a different system from the
+                human dialler above: this reads wk_ai_called, that reads
+                wk_calls. Admin only, because these are recordings of people
+                who did not ask to be recorded. */}
+            <Route path="ai-calls" element={<AdminOnlyRoute><AiCallsPage /></AdminOnlyRoute>} />
             <Route path="templates" element={<TemplatesPage />} />
             <Route path="dialer" element={<Navigate to="/admin/crm/dialer-pro" replace />} />
             <Route path="dialer-pro" element={<DialerProPage />} />

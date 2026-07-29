@@ -351,12 +351,27 @@ def _run_call(number: str, from_number: str, business, reviews, campaign=None) -
             f"{len(result.turns)} turns  -> {path.name}"
             f"{'  + ' + wav.name if wav else ''}")
         if campaign and not _release_if_never_rang(number, result.error):
+            # Outcome FIRST, then the audio. The outcome row is what the runner
+            # waits on to call the batch finished, and a slow upload of a
+            # minute of WAV must not hold that up or, worse, push it past the
+            # batch timeout and be reported as a call that never came back.
             dialqueue.record(
                 number, outcome=result.outcome, duration_s=int(result.duration),
                 turns=len(result.turns), hangup_cause=transport.hangup_cause,
                 transcript_path=path.name, booked_slot=result.booked,
                 final_stage=a.last_stage, error=result.error,
             )
+            # Now the heavy part, so Hugo can play the call back in the CRM
+            # instead of me reading it to him off the VPS over ssh.
+            # Re-read the turns from the file just written rather than
+            # re-serialising the objects, so what he sees and what is on disk
+            # can never drift.
+            try:
+                turns = json.loads(path.read_text()).get("turns")
+            except Exception:
+                turns = None
+            dialqueue.attach_recording(
+                number, dialqueue.upload_recording(wav, number), turns)
     except Exception as e:
         log(f"CALL FAILED | {type(e).__name__}: {e}")
         if campaign and not _release_if_never_rang(number, str(e)):

@@ -53,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Video funnel', path: '/admin/crm/video-funnel', icon: Clapperboard },
   { label: 'Website flow', path: '/admin/crm/site-flow', icon: Workflow },
   { label: 'Call history', path: '/admin/crm/calls', icon: PhoneCall },
+  { label: 'AI calls', path: '/admin/crm/ai-calls', icon: Bot, adminOnly: true },
   { label: 'Templates', path: '/admin/crm/templates', icon: FileText },
   { label: 'Settings', path: '/admin/crm/settings', icon: Settings, adminOnly: true },
 ];

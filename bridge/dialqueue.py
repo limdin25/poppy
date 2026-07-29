@@ -147,6 +147,76 @@ def record(e164: str, *, outcome: str, duration_s: int | None = None,
         print(f"QUEUE    | could not record {e164}: {e}", flush=True)
 
 
+RECORDING_BUCKET = "call-recordings"
+
+
+def upload_recording(wav_path, e164: str) -> str | None:
+    """Put the audio in the private bucket. Returns the object path, or None.
+
+    Never raises. The call is already over and the WAV is already safe on disk,
+    so a storage hiccup must not take the runner down or lose the outcome row
+    that is written straight after this.
+
+    The bucket is PRIVATE on purpose. These are recordings of strangers who did
+    not ask to be recorded, and a public bucket would put them on a guessable
+    URL; the history page mints a short-lived signed URL instead.
+    """
+    url = config.key("SUPABASE_URL")
+    key = config.key("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key or wav_path is None:
+        return None
+    try:
+        from pathlib import Path
+        p = Path(wav_path)
+        if not p.exists():
+            return None
+        # Foldered by campaign date so the bucket stays browsable by hand, and
+        # named by the file we already write, which carries the timestamp and
+        # the number.
+        obj = f"ai-calls/{p.name}"
+        req = urllib.request.Request(
+            f"{url.rstrip('/')}/storage/v1/object/{RECORDING_BUCKET}/{urllib.parse.quote(obj)}",
+            data=p.read_bytes(),
+            headers={
+                "apikey": key, "Authorization": f"Bearer {key}",
+                "Content-Type": "audio/wav",
+                # So a re-run of the backfill replaces rather than 409s.
+                "x-upsert": "true",
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=120).read()
+        return obj
+    except Exception as e:
+        print(f"QUEUE    | recording upload failed for {e164}: {e}", flush=True)
+        return None
+
+
+def attach_recording(e164: str, obj_path: str | None, turns: list | None) -> None:
+    """Hang the audio path and the transcript off the ledger row. Never raises."""
+    url = config.key("SUPABASE_URL")
+    key = config.key("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        return
+    body = {}
+    if obj_path:
+        body["recording_path"] = obj_path
+    if turns is not None:
+        body["transcript"] = turns
+    if not body:
+        return
+    try:
+        req = urllib.request.Request(
+            f"{url.rstrip('/')}/rest/v1/wk_ai_called?e164=eq.{urllib.parse.quote(e164)}",
+            data=json.dumps(body).encode(),
+            headers={"apikey": key, "Authorization": f"Bearer {key}",
+                     "Content-Type": "application/json", "Prefer": "return=minimal"},
+            method="PATCH")
+        urllib.request.urlopen(req, timeout=20).read()
+    except Exception as e:
+        print(f"QUEUE    | could not attach recording for {e164}: {e}", flush=True)
+
+
 def counts(campaign: str) -> dict:
     """How the campaign stands. Best effort, for the runner's progress line."""
     url = config.key("SUPABASE_URL")
