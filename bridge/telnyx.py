@@ -90,6 +90,9 @@ class TelnyxTransport(Transport):
         self._streaming = False
         # When sound actually started reaching the far end (see audio_started_at).
         self._audio_began = 0.0
+        # Optional tap on the raw inbound mu-law, before any decoding.
+        # Used to fork audio to the live transcriber.
+        self.listener = None
 
     # -- called by the server, from the event loop --------------------------
 
@@ -102,7 +105,17 @@ class TelnyxTransport(Transport):
     def feed(self, payload_b64: str) -> None:
         """One inbound media frame, straight off the websocket."""
         try:
-            pcm8 = ulaw.decode(base64.b64decode(payload_b64))
+            raw = base64.b64decode(payload_b64)
+        except Exception:
+            return
+        # Fork the UNTOUCHED mu-law to the transcriber. Telnyx carries exactly
+        # the format AssemblyAI wants, and their docs are explicit that
+        # upsampling telephony audio degrades accuracy, so nothing is converted
+        # on this path at all.
+        if self.listener is not None:
+            self.listener(raw)
+        try:
+            pcm8 = ulaw.decode(raw)
         except Exception:
             return
         chunk = ulaw.upsample_2x(pcm8)

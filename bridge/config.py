@@ -133,6 +133,25 @@ LLM_MAX_TOKENS = 150
 # first call of a session is slower than the rest.
 WHISPER_MODEL = os.environ.get("BRIDGE_STT_MODEL", "gpt-4o-mini-transcribe")
 
+# --- AssemblyAI streaming speech-to-text ------------------------------------
+# Replaces batch Whisper. Measured cost of the old path: 250ms waiting for
+# silence plus 478ms uploading and transcribing, all of it AFTER they stopped
+# talking. This transcribes continuously and reports end-of-turn itself.
+AAI_STREAMING = os.environ.get("BRIDGE_AAI_STREAMING", "1") != "0"
+# min_latency / balanced / max_accuracy. Latency is the complaint, so start
+# there; move to "balanced" if regional accents start coming back wrong.
+AAI_MODE = os.environ.get("BRIDGE_AAI_MODE", "min_latency")
+# Their telephony guidance: on 8 kHz mu-law, ask it to admit when audio is
+# genuinely unintelligible rather than inventing a plausible word. A wrong guess
+# reaches Claude as fact and gets answered as if the prospect had said it.
+AAI_PROMPT = os.environ.get(
+    "BRIDGE_AAI_PROMPT",
+    "A UK phone call with a tradesperson about Google reviews. "
+    "Tag genuinely unclear speech as [unclear] rather than guessing.",
+)
+# How long to wait for a finished turn before treating the line as quiet.
+AAI_TURN_TIMEOUT_S = 12.0
+
 ELEVENLABS_VOICE = os.environ.get("BRIDGE_VOICE_ID", "o6wnoeR1UlXDVucYjZmq")
 # flash_v2_5 is the FASTEST ElevenLabs model, not the most natural. It buys its
 # latency by flattening prosody, which is exactly the "robotic tonality" Hugo

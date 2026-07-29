@@ -25,7 +25,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import agent, ai, config, fish_stream, run as runmod, settings
+from . import agent, ai, assembly_stt, config, fish_stream, run as runmod, settings
 from .telnyx import TelnyxTransport
 
 TRANSCRIPTS = Path(__file__).resolve().parent / "transcripts"
@@ -216,6 +216,18 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
         # Open the voice socket now, while the phone is still ringing. It costs
         # about half a second to establish and nobody is waiting during a ring;
         # paying it per reply instead would wipe out the whole benefit.
+        # Live transcription, opened during the ring like the voice socket.
+        # Replaces the VAD, the end-of-turn wait and batch Whisper in one go.
+        if config.AAI_STREAMING and config.key("ASSEMBLYAI_API_KEY"):
+            keyterms = [t for t in ["HeyElsie", "Google reviews", business] if t]
+            ears = assembly_stt.AssemblyStream(keyterms=keyterms, on_event=show)
+            if ears.connect():
+                a.ears = ears
+                transport.listener = ears.feed
+                log("EARS     | live transcription open")
+            else:
+                log(f"EARS     | streaming unavailable, using batch ({ears._failed})")
+
         if config.FISH_STREAMING and config.key("FISH_API_KEY"):
             stream = fish_stream.FishStream(
                 voice_id=saved.get("voice_id") or None, on_event=show)
@@ -237,6 +249,11 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
         stream = locals().get("stream")
         if stream is not None:
             stream.close()
+        # Must always run: an abandoned transcription socket keeps billing
+        # until their 3 hour cap.
+        ears = locals().get("ears")
+        if ears is not None:
+            ears.close()
         if transport.call_control_id:
             CALLS.pop(transport.call_control_id, None)
 

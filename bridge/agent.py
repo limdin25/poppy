@@ -141,6 +141,9 @@ class Agent:
         # reply starts speaking in about a quarter of a second instead of
         # waiting for the whole clip to render.
         self.voice_stream = None
+        # A live transcription socket, if the caller handed one over. When
+        # present it replaces the VAD, the end-of-turn wait and batch Whisper.
+        self.ears = None
         self._backchannel: list[tuple[str, bytes]] = []
         # Generate the opener NOW, while the phone is still ringing, instead of
         # after they say hello. It used to be made on answer, so its generation
@@ -308,6 +311,11 @@ class Agent:
 
         full = "".join(said)
         words = spoken_words(_strip_marker(full))
+        # Tell the transcriber what she just said. Their docs: biggest impact on
+        # short replies ("yes", "about twenty", a name), which on a sales call
+        # is most of them.
+        if words and self.ears is not None:
+            self.ears.set_agent_context(words)
         if words:
             self._emit("ai", words)
             result.turns.append(
@@ -389,6 +397,34 @@ class Agent:
                      " ".join(spoken), time.time() - result.started_at)
             )
         return saw_end.is_set(), interrupted
+
+    def _listen_streaming(self, result: CallResult) -> str:
+        """Wait for AssemblyAI to say a turn finished.
+
+        There is no VAD here and no end-of-turn wait, because AssemblyAI is
+        already listening continuously and decides for itself when somebody has
+        stopped. The text exists the moment they finish, which is the whole
+        point: the old path spent 250ms waiting for silence and another 478ms
+        uploading, both of them AFTER the prospect had finished speaking.
+
+        Audio is pumped over by the transport's reader, not from here.
+        """
+        deadline = time.time() + config.AAI_TURN_TIMEOUT_S
+        while time.time() < deadline:
+            if time.time() - result.started_at > config.MAX_CALL_SECONDS:
+                return ""
+            if not self.transport.is_live():
+                return ""
+            text = self.ears.next_turn(timeout=0.4)
+            if text is None:
+                continue          # nothing yet, keep waiting
+            if not text:
+                return ""         # socket closed
+            self._heard_at = time.monotonic()
+            self._emit("them", text)
+            result.turns.append(Turn("them", text, time.time() - result.started_at))
+            return text
+        return ""
 
     def _listen(self, result: CallResult) -> str:
         """Collect audio until they stop talking, then transcribe it."""
@@ -486,7 +522,8 @@ class Agent:
                 if not self.transport.is_live():
                     result.outcome = "far_end_hungup"
                     break
-                heard = self._listen(result)
+                heard = (self._listen_streaming(result) if self.ears is not None
+                         else self._listen(result))
                 if not heard:
                     quiet_rounds += 1
                     if quiet_rounds >= 2:
