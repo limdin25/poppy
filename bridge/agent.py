@@ -69,6 +69,40 @@ def _has_marker(text: str) -> bool:
     return _MARKER_RE.search(text) is not None
 
 
+# Words that mean the thought is still going, even though the sound stopped.
+# Somebody saying "we've got about twenty, but" has not finished, and answering
+# there talks over the important half of the sentence.
+_UNFINISHED_TAIL = {
+    "and", "but", "so", "or", "because", "cos", "if", "when", "while", "though",
+    "although", "unless", "since", "that", "which", "who", "the", "a", "an",
+    "to", "of", "for", "with", "at", "in", "on", "is", "was", "we", "i", "it",
+    "they", "you", "my", "our", "their", "like", "just", "well", "erm", "um",
+    "uh", "actually", "basically", "obviously", "yeah",
+}
+
+
+def sounds_unfinished(text: str) -> bool:
+    """Does this look like somebody mid-thought rather than done?
+
+    Silence is not the same as finishing. "Don't answer just because there's
+    silence. Wait if the thought feels unfinished." A trailing conjunction or a
+    dangling article is the clearest signal there is more coming.
+
+    Deliberately conservative: it only holds on for an obvious cue, because
+    waiting when they HAVE finished is its own kind of rude.
+    """
+    words = re.sub(r"[^\w\s']", " ", text.lower()).split()
+    if not words:
+        return False
+    if text.rstrip().endswith(","):
+        return True
+    # A single word is a complete answer far more often than not ("yeah",
+    # "twenty", "no"), so never hold on one.
+    if len(words) < 2:
+        return False
+    return words[-1] in _UNFINISHED_TAIL
+
+
 def _stop_after_question(tokens):
     """Stop speaking once a question has been asked.
 
@@ -207,8 +241,31 @@ class Agent:
             except Exception:
                 return  # not worth failing a call over
 
-    def _pick_backchannel(self) -> tuple[str, bytes] | None:
-        if not self._backchannel or random.random() > config.BACKCHANNEL_CHANCE:
+    def _pick_backchannel(self, heard: str = "") -> tuple[str, bytes] | None:
+        """An acknowledgement, but only where one actually makes sense.
+
+        This used to fire on a 45% coin flip regardless of what was said, which
+        produced exactly what Hugo heard: "Right." and "Yeah." dropped in with
+        no context, including in reply to "who is this?". You do not say "Right"
+        to a question. You say it when somebody has just TOLD you something.
+
+        So: only after a statement, never after a question, and never after a
+        one-word reply where an acknowledgement is longer than the thing it is
+        acknowledging.
+        """
+        if not self._backchannel:
+            return None
+        text = heard.strip()
+        if not text or text.endswith("?"):
+            return None
+        if len(text.split()) < 3:
+            return None
+        # Questions do not always carry a question mark once transcribed.
+        first = text.lower().split()[0]
+        if first in {"who", "what", "why", "when", "where", "how", "is", "are",
+                     "do", "does", "did", "can", "could", "would", "will"}:
+            return None
+        if random.random() > config.BACKCHANNEL_CHANCE:
             return None
         return random.choice(self._backchannel)
 
@@ -334,7 +391,7 @@ class Agent:
         said: list[str] = []
         tokens = _stop_after_question(self.brain.stream_tokens(heard, seen=said))
 
-        ack = self._pick_backchannel()
+        ack = self._pick_backchannel(heard)
         if ack is not None:
             # Plays over the model's first tokens, so it costs nothing.
             self._emit("ai", ack[0])
@@ -450,11 +507,28 @@ class Agent:
                 return ""
             if not self.transport.is_live():
                 return ""
-            text = self.ears.next_turn(timeout=0.4)
+            text = self.ears.next_turn(timeout=0.15)
             if text is None:
-                continue          # nothing yet, keep waiting
+                # Nothing confirmed yet. But if their partial has stopped
+                # growing they have actually stopped talking, and waiting for
+                # AssemblyAI to say so costs about two seconds. Acting on the
+                # pause is what a person does: you answer when someone stops,
+                # not when you have proof they finished.
+                early = self.ears.settled_partial(config.SETTLED_PARTIAL_S)
+                if early and not sounds_unfinished(early):
+                    self.ears.accept(early)   # so its final is not answered twice
+                    text = early
+                else:
+                    continue
             if not text:
                 return ""         # socket closed
+            # They stopped making noise, but did they stop talking? If the
+            # thought is obviously unfinished, give them a moment and join it up
+            # rather than answering half a sentence.
+            if sounds_unfinished(text):
+                more = self.ears.next_turn(timeout=config.UNFINISHED_WAIT_S)
+                if more:
+                    text = f"{text} {more}".strip()
             self._heard_at = time.monotonic()
             self._emit("them", text)
             result.turns.append(Turn("them", text, time.time() - result.started_at))

@@ -156,6 +156,25 @@ AAI_PROMPT = os.environ.get(
 )
 # How long to wait for a finished turn before treating the line as quiet.
 AAI_TURN_TIMEOUT_S = 12.0
+# When a turn ends on an obviously unfinished thought ("...twenty, but"), hold
+# on this long for the rest before replying. Silence is not the same as having
+# finished, and answering half a sentence is how an agent talks over the
+# important half. Short enough that a genuine full stop is barely delayed.
+UNFINISHED_WAIT_S = 1.6
+# How long a partial transcript must stop changing before we treat the person as
+# having finished. AssemblyAI is deliberately patient about declaring a turn
+# over, around two seconds, because it would rather be right than quick. A
+# partial that has not moved for this long already tells us they stopped, so
+# acting on it is the single biggest latency win available. Too short and we
+# interrupt a thinking pause; too long and we have gained nothing.
+SETTLED_PARTIAL_S = 0.7
+# A partial must also be a real utterance, not a fragment, before we answer it.
+# Measured on a live call at 0.45s with no length floor: it fired on "Uh, who's"
+# and replied to half a question, while the actual question ("Uh, who is this?")
+# arrived seconds later. Short answers do not need this path anyway, because
+# AssemblyAI declares those finished quickly on its own; the speculative route
+# only earns its keep on longer sentences where the 2s wait actually hurts.
+SETTLED_PARTIAL_MIN_WORDS = 4
 
 ELEVENLABS_VOICE = os.environ.get("BRIDGE_VOICE_ID", "o6wnoeR1UlXDVucYjZmq")
 # flash_v2_5 is the FASTEST ElevenLabs model, not the most natural. It buys its

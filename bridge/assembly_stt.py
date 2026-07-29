@@ -69,6 +69,11 @@ class AssemblyStream:
         self._partial = ""
         self._speaking_since = 0.0
         self._out = bytearray()
+        # When the current partial last CHANGED, and the last one we already
+        # answered, so a partial acted on early is not answered twice when
+        # its final version arrives.
+        self._partial_at = 0.0
+        self._last_seen = ""
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -134,13 +139,18 @@ class AssemblyStream:
                     text = (msg.get("transcript") or "").strip()
                     if msg.get("end_of_turn"):
                         self._partial = ""
-                        if text:
+                        # Already answered from the partial? Then this final
+                        # is old news; replying again would repeat the turn.
+                        if text and text != self._last_seen:
                             self._turns.put(text)
+                        self._last_seen = ""
                     else:
                         # A partial means they are mid-sentence. Worth knowing:
                         # it is how we tell "still talking" from "gone quiet"
                         # without running a VAD of our own.
-                        self._partial = text
+                        if text != self._partial:
+                            self._partial = text
+                            self._partial_at = time.monotonic()
                         self._speaking_since = time.monotonic()
                 elif kind == "SpeechStarted":
                     self._speaking_since = time.monotonic()
@@ -215,6 +225,36 @@ class AssemblyStream:
             pass
 
     # -- text out ------------------------------------------------------------
+
+    def settled_partial(self, stable_for_s: float) -> str | None:
+        """A partial that has stopped growing, i.e. they have paused.
+
+        This is what makes the agent quick. AssemblyAI is deliberately patient
+        about declaring a turn over, roughly two seconds, because it would
+        rather be right than fast. But it publishes partials continuously, and a
+        partial that has not changed for a few hundred milliseconds means the
+        person has stopped talking RIGHT NOW.
+
+        So we can act on that instead of waiting to be told, which is how a
+        human does it: you do not wait for proof somebody has finished, you
+        start answering when they pause and back off if they carry on.
+
+        Returns None while they are still going.
+        """
+        text = self._partial.strip()
+        if not text or self._last_seen == text:
+            return None
+        if time.monotonic() - self._partial_at < stable_for_s:
+            return None
+        # A fragment is not a turn. See SETTLED_PARTIAL_MIN_WORDS.
+        if len(text.split()) < config.SETTLED_PARTIAL_MIN_WORDS:
+            return None
+        return text
+
+    def accept(self, text: str) -> None:
+        """Mark a partial as answered, so its final version is not replied to twice."""
+        self._last_seen = text
+        self._partial = ""
 
     def next_turn(self, timeout: float) -> str | None:
         """The next finished utterance, or None if nothing arrives in time."""
