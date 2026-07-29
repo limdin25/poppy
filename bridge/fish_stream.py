@@ -307,6 +307,37 @@ class FishStream:
                                 self._ws.send(msgpack.packb({"event": "flush"})),
                                 self._loop,
                             )
+                            # CARRY THE EMOTION OVER THE SEAM.
+                            #
+                            # A cue only ever coloured its own chunk. That is
+                            # not a guess, it is what the comma-flush build
+                            # measured: the spread between cues collapsed from
+                            # 0.46s to 0.32s once the reply was split, "because
+                            # the cue sits at the start of the reply and only
+                            # ever coloured the first chunk". Hugo heard it as
+                            # "its tonality are not really coming across
+                            # naturally".
+                            #
+                            # The full-stop flush has the same hole, just once
+                            # instead of every few words: sentence one is warm
+                            # and everything after it is flat. So the last cue
+                            # of the flushed chunk is re-sent at the head of the
+                            # next one, which is the only continuation signal
+                            # the API gives us.
+                            #
+                            # It lands after any text that followed the full
+                            # stop inside the same token, so on those turns the
+                            # tag sits a word or two into the sentence rather
+                            # than in front of it. Fish reads cues in band
+                            # wherever they appear, so that costs placement
+                            # precision, not the emotion.
+                            cues = _CUE.findall(buf[:cut])
+                            if cues:
+                                asyncio.run_coroutine_threadsafe(
+                                    self._ws.send(msgpack.packb(
+                                        {"event": "text", "text": cues[-1] + " "})),
+                                    self._loop,
+                                )
                             flushed = True
             except Exception as e:
                 self.on_event("error", f"token stream failed: {e}")

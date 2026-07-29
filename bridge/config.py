@@ -206,6 +206,22 @@ LLM_MAX_TOKENS = 150
 # list, because a cap can only ever chop a monologue, not prevent one.
 MAX_SPOKEN_WORDS = int(os.environ.get("BRIDGE_MAX_WORDS", "28"))
 
+# The upstream fix that comment asks for, finally in code. The prompt fix held
+# for one call and then the list came straight back, so the clause count is
+# enforced in bridge/copy_guard.py instead, which is the same move the long-dash
+# rule and the cue allowlist both ended up making.
+#
+# Two clauses, then the sentence ends. "Takes the calls you'd otherwise miss,
+# books jobs straight in" is a person talking; adding "texts people back,
+# basically covers your line when you can't" is a brochure being read out.
+#
+# The word floor is what keeps the rule off ordinary speech: "Yeah, no worries,
+# I'll be quick." and "Okay, got it, so what's your setup?" both carry two
+# commas inside five words and both are fine. Measured against all 89 AI turns
+# of the US campaign, 5 was the highest floor that still caught every list.
+LIST_MAX_CLAUSES = int(os.environ.get("BRIDGE_LIST_MAX_CLAUSES", "2"))
+LIST_MIN_WORDS = int(os.environ.get("BRIDGE_LIST_MIN_WORDS", "5"))
+
 # Measured on a 2.7s utterance, best of 2, warm:
 #   gpt-4o-mini-transcribe  637 ms   <- chosen
 #   gpt-4o-transcribe       701 ms

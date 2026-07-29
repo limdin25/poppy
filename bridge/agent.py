@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import ai, audio, config, stages
+from . import ai, audio, config, copy_guard, stages
 from .transport import CaptureFailed, Transport
 
 # One pattern, used both to detect the end-of-call marker and to strip it. They
@@ -1052,6 +1052,11 @@ class Agent:
         # leaves nothing: if the backchannel already said "Right.", silence is
         # right; if it did not, saying the original beats saying nothing.
         raw = _drop_leading_ack(raw, acked=ack is not None)
+        # The banned register and the clause cap, in code rather than in the
+        # prompt. Upstream of _clip_reply so `spoken` records what actually
+        # reached the voice. See bridge/copy_guard.py for why both rules had to
+        # stop being suggestions.
+        raw = copy_guard.guard(raw, on_event=self._emit)
         tokens = clean_cues(_clip_reply(raw, spoken))
 
         if ack is not None:
@@ -1148,7 +1153,14 @@ class Agent:
                     # that does not perform cues at all the word was read out
                     # loud. The guarantee has to hold on every route to the
                     # voice, not just the usual one.
-                    clean = "".join(clean_cues([_strip_marker(sentence)])).strip()
+                    # Same two rules as the live path. This route is taken
+                    # whenever the Fish socket fails to open, and a guarantee
+                    # that only holds on the fast path is not a guarantee.
+                    guarded, notes = copy_guard.swap(_strip_marker(sentence))
+                    for note in notes:
+                        self._emit("guard", note)
+                    guarded = copy_guard.trim_list(guarded, self._emit)
+                    clean = "".join(clean_cues([guarded])).strip()
                     # Emptiness checked AFTER the filter: a sentence that was
                     # nothing but a refused cue is now empty and must be
                     # skipped, not sent as a bare space.

@@ -12,7 +12,7 @@ import math
 import sys
 import time
 
-from . import agent, ai, audio, config
+from . import agent, ai, audio, config, copy_guard
 
 
 def tone(ms: float, dbfs: float, rate: int = config.AI_RATE) -> bytes:
@@ -1488,6 +1488,127 @@ def _():
         "Perfect Pipes Plumbing here.",
     ]:
         assert agent._strip_ack(line) == line, f"ate a real sentence: {line!r}"
+
+
+# -- copy_guard: the rules that stopped being suggestions --------------------
+
+# THE LINE THAT CAUSED THIS MODULE. Spoken on the verification call Hugo asked
+# me to place on 2026-07-29, after the prompt-only fix had already "worked" once.
+# Four items, 29 words, no question, and the prospect replied "Okay."
+BROCHURE = (
+    "So I answer phones while you're out on a job. Takes the calls you'd "
+    "otherwise miss, books jobs straight in, texts people back, basically "
+    "covers your line when you can't."
+)
+
+# Real AI turns from the US plumber campaign that carry two or more commas and
+# must survive untouched. If a change to the rule breaks one of these, it has
+# started eating ordinary speech, which is the only way this feature can hurt.
+SPARE = [
+    "Hey there, sorry to catch you cold like this, I'm Maria, and I'm actually "
+    "calling because I'm looking for work. You got a second?",
+    "Hi, it's Maria from HeyElsie. I'm calling because I answer phones for trade "
+    "businesses, I don't miss calls, I don't take holidays, and I cost under "
+    "five bucks a day.",
+    "Hi there, it's Maria. I'm calling because I'm looking for a job answering "
+    "phones for a trade business, and I figured I'd just ask, would you be open "
+    "to hearing what that looks like?",
+    "Look, I know this is a weird call, I'm ringing you cold to ask for a job.",
+    "Yeah, no worries, I'll be quick.",
+    "Okay, got it, so what's your setup?",
+    "Never miss anything, never take a day off.",
+    "You're on about 4.2 stars, and there are 1,200 of them, so that's solid.",
+    # The three the first version of the rule broke. A company name is the one
+    # comma-heavy proper noun on these calls, and it is the first thing out of
+    # her mouth, so a cut here is heard on every call to a business with a
+    # comma in its name.
+    "Hi, is that Master Drains & Plumbing, Inc., Littleton?",
+    "Hi, is that Limitless Plumbing and Sewer, LLC?",
+    "Hi, is that Tech Sewer Cleaning, Plumber Queens Village NY "
+    "(Camera Inspection, Hydro Jetting & More)?",
+]
+
+
+@case("the brochure list is cut to two items")
+def _():
+    out = copy_guard.trim_list(BROCHURE)
+    assert "texts people back" not in out, out
+    assert "books jobs straight in." in out, out
+    assert len(agent.spoken_words(out).split()) < 25, out
+
+
+@case("a list cut does not eat the closing question")
+def _():
+    # The failure mode this rule could easily have caused, and the one that has
+    # already killed calls twice: cutting the turn instead of the sentence.
+    line = ("I answer calls, book jobs in, chase people up. Never miss "
+            "anything, never take a day off. How does that land?")
+    out = copy_guard.trim_list(line)
+    assert out.endswith("How does that land?"), out
+    assert "chase people up" not in out, out
+    assert "never take a day off" in out, out
+
+
+@case("the list rule leaves ordinary speech alone")
+def _():
+    for line in SPARE:
+        assert copy_guard.trim_list(line) == line, f"cut real speech: {line!r}"
+
+
+@case("a comma inside a cue or a number is not a clause boundary")
+def _():
+    for line in [
+        "[very warm, quite playful] Right, that makes sense.",
+        "You've got 1,000 reviews, 4.2 stars, and none of them are recent.",
+    ]:
+        assert copy_guard.trim_list(line) == line, line
+
+
+@case("streaming the guard gives the same answer as one string")
+def _():
+    # The live path feeds it Claude's tokens, which arrive in whatever sizes the
+    # API decides. A rule that only holds on a whole string is not a rule.
+    for line in [BROCHURE] + SPARE:
+        whole, _ = copy_guard.swap(line)
+        whole = copy_guard.trim_list(whole)
+        for size in (1, 3, 7):
+            bits = [line[i:i + size] for i in range(0, len(line), size)]
+            assert "".join(copy_guard.guard(iter(bits))) == whole, (size, line)
+
+
+@case("banned register is swapped, and the capital is kept")
+def _():
+    out, notes = copy_guard.swap(
+        "Furthermore, I would be happy to assist you prior to Tuesday.")
+    assert "Furthermore" not in out and "Also," in out, out
+    assert "I can help you before Tuesday" in out, out
+    assert len(notes) == 4, notes
+
+
+@case("the guard never touches the AI disclosure")
+def _():
+    # _DISCLOSED_RE decides whether she has declared herself, which is a
+    # compliance record. A swap that reworded it would make the code believe a
+    # disclosure happened that did not.
+    for line in [
+        "Just so you know, I'm an A.I., not a person.",
+        "I should say I'm artificial intelligence, if that matters to you.",
+    ]:
+        out, _ = copy_guard.swap(line)
+        assert out == line, out
+        assert agent._DISCLOSED_RE.search(copy_guard.trim_list(out)), out
+
+
+@case("the live path records what the guard let through, not what was written")
+def _():
+    # The guard sits upstream of _clip_reply on purpose. If it sat downstream,
+    # `spoken` would claim the items she was stopped from saying, and the model
+    # would believe it had already delivered them.
+    spoken: list[str] = []
+    tokens = agent._clip_reply(copy_guard.guard(iter([BROCHURE])), spoken)
+    said = "".join(tokens)
+    assert "texts people back" not in said, said
+    assert "texts people back" not in "".join(spoken), spoken
 
 
 def main() -> int:
