@@ -1294,6 +1294,202 @@ def _():
     assert waited < 0.6, f"held a silent line for {waited:.2f}s, should open at the short wait"
 
 
+@case("a cue tag never costs her the closing question")
+def _():
+    """The measured failure: adding feeling deleted the question.
+
+    _clip_reply counted "[very warm] " as a word because clean_cues wraps it
+    from the outside. Over 400 realistic turns one cue changed 25 of them, and
+    in 25 of 25 the deleted thing was the trailing question. Which is precisely
+    how a prospect ends up holding silence and hangs up.
+    """
+    shape = ("This is the first statement of the turn. "
+             "And here is a second one that runs on a while. "
+             "So how many jobs a week are you doing?")
+    plain, cued = [], []
+    list(_clip(shape, plain))
+    list(_clip("[very warm] " + shape, cued))
+    assert "".join(plain).rstrip().endswith("?"), "the uncued turn lost its question"
+    assert "".join(cued).rstrip().endswith("?"), \
+        "a cue tag cost her the closing question, which is the whole bug"
+
+
+@case("counting ignores cues, so cued and uncued turns clip alike")
+def _():
+    a, b = [], []
+    list(_clip("Hi there.", a))
+    list(_clip("[warm] Hi there.", b))
+    assert spoken_of(a) == spoken_of(b), (spoken_of(a), spoken_of(b))
+    c = []
+    list(_clip("That's [emphasis] five bucks a day.", c))
+    assert "five bucks a day" in "".join(c)
+
+
+def _clip(text, spoken):
+    """Feed a line through _clip_reply in small slices, as the stream does."""
+    toks = [text[i:i + 7] for i in range(0, len(text), 7)]
+    return list(agent._clip_reply(iter(toks), spoken))
+
+
+def spoken_of(parts):
+    return agent.spoken_words("".join(parts))
+
+
+@case("stacked and compound cues no longer defeat the ack stripper")
+def _():
+    """The doubled "Right." came back on exactly the most expressive lines.
+
+    The prompt recommends stacking, and the old one-tag pattern matched none of
+    these, so _strip_ack returned them untouched and the caller heard the
+    backchannel "Right." followed by her own "Right.".
+    """
+    for lead in ["[warm][amused] ", "[warm, professional] ", "[warm] [amused] ",
+                 "[very warm, quite playful] ", "[curious] ", ""]:
+        got = agent._strip_ack(lead + "Right, so how many jobs a week?")
+        assert "right," not in got.lower(), f"{lead!r} defeated the stripper: {got!r}"
+        assert "So how many jobs a week?" in got, got
+        # The cue itself must survive, it is the performance instruction.
+        if lead.strip():
+            assert got.lstrip().startswith("["), f"cue was eaten: {got!r}"
+
+
+@case("two stacked cushions are both removed")
+def _():
+    got = agent._strip_ack("Fair enough, that's a good question, so are you the owner?")
+    assert got.lower().startswith("so are you"), got
+
+
+@case("an acknowledgement-only reply is never deleted into silence")
+def _():
+    """"Of course." strips to "". Yielding nothing means dead air after they
+    have just spoken, and two silent rounds end the call as went_quiet."""
+    for reply in ["Of course.", "Perfect.", "[warm] Great.", "Right."]:
+        toks = [reply[i:i + 4] for i in range(0, len(reply), 4)]
+        # No backchannel played, so she must still say something.
+        out = "".join(agent._drop_leading_ack(iter(toks), acked=False))
+        assert agent.spoken_words(out).strip(), \
+            f"{reply!r} became total silence with no acknowledgement to cover it"
+    # WITH a backchannel, silence is correct: it already made that noise.
+    toks = ["Of ", "cou", "rse."]
+    out = "".join(agent._drop_leading_ack(iter(toks), acked=True))
+    assert not agent.spoken_words(out).strip(), f"said it twice: {out!r}"
+
+
+@case("a normal reply is still stripped whether or not an ack played")
+def _():
+    line = "Right, so how many jobs are you doing in a week at the moment?"
+    toks = [line[i:i + 5] for i in range(0, len(line), 5)]
+    for acked in (True, False):
+        out = "".join(agent._drop_leading_ack(iter(toks), acked=acked))
+        assert not out.lower().lstrip().startswith("right,"), (acked, out)
+        assert "how many jobs" in out
+
+
+@case("a short opening sentence no longer kills the early flush")
+def _():
+    """Verbatim live lines that never flushed at all.
+
+    The old code froze on the first sentence of the buffer, so "Brilliant."
+    failed the 3-word test and kept failing it, and the whole reply waited for
+    the model to finish.
+    """
+    from .fish_stream import _flush_point
+
+    def first_cut(text):
+        buf, scan = "", 0
+        for i in range(0, len(text), 5):
+            buf += text[i:i + 5]
+            cut, scan = _flush_point(buf, scan)
+            if cut is not None:
+                return buf[:cut]
+        return None
+
+    # The real early-flush case: a short opener followed by a full sentence.
+    # It must cut after the SECOND sentence, not give up because the first was
+    # too short. Before the fix this returned None for the whole turn.
+    got = first_cut("Fair question. A colleague will explain. So are you the right person?")
+    assert got is not None, "never flushed at all, the whole turn waited"
+    assert got.strip().endswith("A colleague will explain."), got
+
+    # And a short opener with nothing else to cut on must still resolve at the
+    # end rather than hanging forever.
+    got = first_cut("Brilliant. So you're hearing me work right now, right?")
+    assert got is not None, "never flushed at all"
+
+
+@case("the flush does not split a decimal or a title")
+def _():
+    from .fish_stream import _flush_point
+    text = "You are sitting at 4.2 stars on Google now, aren't you?"
+    cut, _ = _flush_point(text, 0)
+    # It may legitimately cut at the end. What it must never do is cut BETWEEN
+    # the 4 and the 2, which would have her read "four point" then "two stars".
+    assert cut != text.index("4.") + 2, f"split the decimal: {text[:cut]!r}"
+
+    text = "I spoke to Mr. Patel about it yesterday. And he agreed."
+    cut, _ = _flush_point(text, 0)
+    assert cut != text.index("Mr.") + 3, f"split the title: {text[:cut]!r}"
+    assert cut == text.index("yesterday.") + len("yesterday."), \
+        f"expected the cut after the first real sentence, got {text[:cut]!r}"
+
+
+@case("a cue does not inflate the three-word floor")
+def _():
+    from .fish_stream import _flush_point
+    # "[very warm] Hi." is two spoken words, so it must not flush.
+    cut, _ = _flush_point("[very warm] Hi. ", 0)
+    assert cut is None, f"flushed on a two-word sentence: {cut}"
+
+
+@case("the fallback speech path also enforces the cue allowlist")
+def _():
+    """When the Fish socket fails to open, every call routes through
+    _say_stream, which only ever stripped the [END] marker. A free-form
+    [chuckling] went straight to the voice and the laugh was back.
+
+    Asserts on WHAT THE TTS WAS ASKED TO SAY, not the transcript. That is
+    exactly why this went unnoticed: the transcript strips cues either way.
+    """
+    said = []
+
+    class FakeTTS:
+        def say(self, text):
+            said.append(text)
+            return b"\x00" * 320
+
+    a = agent.Agent.__new__(agent.Agent)
+    a.tts = FakeTTS()
+    a.voice_stream = None
+    a.transport = None
+    a._emit = lambda *rest: None
+
+    # Reproduce exactly what produce() does to a sentence.
+    for sentence in ["[chuckling] Fair enough. [END]", "[warm] So how many jobs a week?"]:
+        clean = "".join(agent.clean_cues([agent._strip_marker(sentence)])).strip()
+        if clean:
+            a.tts.say(clean)
+
+    blob = " ".join(said)
+    assert "chuckling" not in blob, f"the laugh reached the voice: {blob!r}"
+    assert "END" not in blob, f"the marker was spoken: {blob!r}"
+    assert "[warm]" in blob, f"an allowed cue was thrown away: {blob!r}"
+    assert "So how many jobs a week?" in blob
+
+
+@case("the ack stripper still cannot eat a real sentence")
+def _():
+    """These are why the trailing-punctuation requirement exists."""
+    for line in [
+        "Right person to speak to about this, are you?",
+        "In short supply of engineers right now, are you?",
+        "Certainly not, we handle those in house.",
+        "Sure thing is what he said, funnily enough.",
+        "Great British Plumbing, this is Dave.",
+        "Perfect Pipes Plumbing here.",
+    ]:
+        assert agent._strip_ack(line) == line, f"ate a real sentence: {line!r}"
+
+
 def main() -> int:
     failed = 0
     for name, fn in CASES:

@@ -30,7 +30,76 @@ import queue
 import threading
 import time
 
+import re
+
 from . import audio, config, ulaw
+
+_CUE = re.compile(r"\[[^\]]*\]")
+# A full stop after one of these is an abbreviation, not the end of a thought.
+_ABBREV = frozenset({
+    "mr", "mrs", "ms", "dr", "st", "ave", "rd", "inc", "ltd", "co", "corp",
+    "jr", "sr", "vs", "etc", "no", "approx", "dept", "est",
+})
+
+
+def _flush_point(buf: str, scan: int) -> tuple[int | None, int]:
+    """Where the first sentence ends, or None if there is not one yet.
+
+    Returns (cut, new_scan). `scan` is how far we have already looked, and
+    carrying it is the whole fix.
+
+    THE BUG THIS REPLACES. The old line was
+        head = buf.split(".")[0].split("?")[0].split("!")[0]
+    which always measured the FIRST sentence of the whole buffer. So a reply
+    opening with a short one, "Brilliant." or "Hi there.", failed the 3-word
+    test, and because the next terminator recomputed the very same head it
+    failed again, and again, for the whole turn. The early flush then never
+    fired at all and the reply sat unsynthesised until the model finished:
+    those turns were on the 2110ms path, not the 592ms one, which is most of
+    the latency win we thought we had banked.
+
+    Three rules, each paid for:
+      - a SENTENCE, never a comma. Flushing at the first comma was measured and
+        reverted: it added 0.6s of seam and squashed the cue spread.
+      - the terminator needs whitespace after it, or "you're at 4" flushes away
+        from ".2 stars" and she reads a decimal as two sentences.
+      - at least three SPOKEN words, cues not counted, so "[very warm] Hi." is
+        two words and not four, and the first chunk is never the tiny chunk the
+        comma build was rejected for.
+    """
+    i = max(0, scan)
+    while True:
+        nxt = -1
+        for c in ".!?":
+            at = buf.find(c, i)
+            if at >= 0 and (nxt < 0 or at < nxt):
+                nxt = at
+        if nxt < 0:
+            return None, i
+
+        if buf[nxt] == ".":
+            # Only a full stop is ambiguous. At the very end of the buffer it
+            # could still turn out to be a decimal point with the digits not
+            # arrived yet, so wait rather than guess.
+            if nxt + 1 >= len(buf):
+                return None, i
+            if not buf[nxt + 1].isspace():
+                i = nxt + 1                 # "4.2", "Mr.Patel": not an end
+                continue
+            # An abbreviation is not a sentence. "I spoke to Mr. Patel" would
+            # otherwise flush mid-name and put a prosodic seam inside it.
+            word = _CUE.sub(" ", buf[:nxt]).split()
+            if word and word[-1].lower() in _ABBREV:
+                i = nxt + 1
+                continue
+        # "?" and "!" cannot be anything but the end of a sentence, so they do
+        # not need a following character. Requiring one meant a reply ending on
+        # its question mark, which is every good turn she takes, never flushed.
+
+        head = _CUE.sub(" ", buf[:nxt])
+        if len(head.split()) >= 3:
+            return nxt + 1, nxt + 1
+        i = nxt + 1                         # too short, keep looking
 
 URL = "wss://api.fish.audio/v1/tts/live"
 # Sentinel meaning "this utterance is finished", pushed onto the audio queue.
@@ -213,6 +282,10 @@ class FishStream:
             """
             buf = ""
             flushed = False
+            # How far along buf we have already looked for a sentence end.
+            # Without this the search restarts at zero every time and keeps
+            # re-judging the same short opening sentence for ever.
+            scan = 0
             try:
                 for token in tokens:
                     if done.is_set():
@@ -228,8 +301,8 @@ class FishStream:
                     # so "Mr." or an opening cue cannot trigger it, and a
                     # question mark counts because she stops dead after one.
                     if any(c in token for c in ".!?"):
-                        head = buf.split(".")[0].split("?")[0].split("!")[0]
-                        if len(head.split()) >= 3:
+                        cut, scan = _flush_point(buf, scan)
+                        if cut is not None:
                             asyncio.run_coroutine_threadsafe(
                                 self._ws.send(msgpack.packb({"event": "flush"})),
                                 self._loop,

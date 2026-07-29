@@ -45,6 +45,10 @@ _BOOK_RE = re.compile(r"\[\s*BOOK\s*:\s*([^\]]{1,60})\]", re.IGNORECASE)
 # they are not on the allowlist, but a narrower pattern here left them sitting in
 # the saved transcript as if they had been spoken.
 _CUE_RE = re.compile(r"\[[a-z][a-z\s,-]{0,30}\]", re.IGNORECASE)
+# A cue AND the space after it, for word counting. Swallowing the trailing
+# space keeps the off-by-one identical to an uncued line, so "[warm] Hi." and
+# "Hi." count the same rather than differing by one.
+_CUE_SPAN_WS = re.compile(r"\[[^\]]*\]\s*")
 # An interruption can cut a reply off in the middle of a cue, leaving a dangling
 # "[" or "[curi" with no closing bracket. It never reaches the voice, because
 # clean_cues holds an unclosed bracket back and drops it, but the transcript is
@@ -279,7 +283,21 @@ def _clip_reply(tokens, spoken: list[str], max_words: int | None = None):
         if done:
             continue                       # drain, so the socket closes cleanly
         text += token
-        words = text.count(" ")
+        # Count SPEECH, not tags. clean_cues wraps this from the outside, so
+        # the text here still carries "[very warm] " and every one of those
+        # spent a word of the budget.
+        #
+        # That is not cosmetic. Measured over 400 realistic turns shaped
+        # "statement. statement. closing question?", adding a single cue
+        # changed the output on 25 of them, and in 25 out of 25 the thing
+        # deleted was THE CLOSING QUESTION. Which is the exact way every
+        # prospect who got this far was lost: she stops on a full stop, they
+        # are left holding silence, they hang up.
+        #
+        # It was also perversely coupled. The more feeling she put into a line,
+        # the more likely her question got chopped, so the two things we have
+        # been tuning all day were fighting each other through a word counter.
+        words = _CUE_SPAN_WS.sub("", text).count(" ")
         cut = None
         if "?" in token:
             cut = token.index("?") + 1
@@ -303,10 +321,26 @@ def _clip_reply(tokens, spoken: list[str], max_words: int | None = None):
 # The acknowledgement words, as they appear at the START of a written reply.
 # The optional group is a cue tag, which must survive: "[curious] Right, so..."
 # has to become "[curious] so...", not "so...".
+#
+# THE LEADING GROUP IS A RUN, not one tag. The prompt actively recommends
+# stacking ("[warm][amused]") and intensifiers ("[very warm, quite playful]"),
+# and the old single-tag pattern matched none of those, so _strip_ack returned
+# "[warm][amused] Right, ..." completely unchanged. On exactly those turns the
+# backchannel said "Right." and then she said "Right." again: the doubled
+# filler Hugo reported, alive again on the most expressive lines.
+#
+# The trailing "\s*[,.!]+" is load-bearing and must not be relaxed. It is the
+# entire reason this cannot eat a real sentence: it spares "Right person to
+# speak to", "In short supply of engineers" and "Certainly not, we do that
+# ourselves", because none of those has punctuation after the first word.
 _ACK_OPENER = re.compile(
-    r"^(\s*\[[a-z][a-z\s-]{0,20}\]\s*)?"
+    r"^((?:\s*\[[a-z][a-z\s,-]{0,30}\]\s*)+)?"
+    r"\s*"
     r"(right|okay|ok|yeah|yep|yes|sure|gotcha|got it|mm+|mm hmm|no worries|"
-    r"fair enough|absolutely|of course)"
+    r"fair enough|absolutely|of course|certainly|great|perfect|brilliant|"
+    r"that[' ’]?s a (?:good|great|fair) question|"
+    r"in short|to sum up|to summari[sz]e|furthermore|moreover|additionally|"
+    r"consequently)"
     r"\s*[,.!]+\s*",
     re.IGNORECASE,
 )
@@ -319,7 +353,14 @@ def _strip_ack(text: str) -> str:
     sentence starting with a lowercase "so". Heard on a live call, and it reads
     as her having lost her thread.
     """
-    out = _ACK_OPENER.sub(lambda m: m.group(1) or "", text, count=1)
+    # TWO BITES. "Fair enough, that's a good question, so..." is two cushions
+    # stacked, and one pass leaves the second one to be spoken.
+    out = text
+    for _ in range(2):
+        nxt = _ACK_OPENER.sub(lambda m: m.group(1) or "", out, count=1)
+        if nxt == out:
+            break
+        out = nxt
     if out == text:
         return out
     # Step over a leading cue tag ENTIRELY before capitalising. Walking
@@ -342,7 +383,7 @@ def _strip_ack(text: str) -> str:
     return out
 
 
-def _drop_leading_ack(tokens):
+def _drop_leading_ack(tokens, acked: bool = False):
     """Do not say the acknowledgement twice.
 
     The backchannel plays "Right." while the model is still writing. The model
@@ -355,9 +396,22 @@ def _drop_leading_ack(tokens):
     job, because it is what covers the thinking gap, and the model's copy is
     removed here.
 
-    Only used on turns where an acknowledgement actually played, so the small
-    buffering delay is never paid on the turns that did not have one.
+    Applied on EVERY turn, not only acked ones. Gating it on an acknowledgement
+    having played still let "Right. You're talking to me now" through on the
+    turns where none did.
+
+    `acked` therefore does not decide whether to strip, only what to do when
+    stripping leaves NOTHING. A reply that is nothing but an acknowledgement,
+    "Of course." or "Perfect.", strips to the empty string, and yielding
+    nothing means she says nothing at all: the prospect has just spoken and
+    gets dead air, and two silent rounds end the call as went_quiet. So when
+    there is nothing speakable left, say the original, unless the backchannel
+    has already made that exact noise, in which case silence is correct.
     """
+    def speakable(s):
+        # Cue tags are not words. "[warm] " is truthy and says nothing.
+        return bool(spoken_words(s or "").strip())
+
     buf = ""
     decided = False
     for token in tokens:
@@ -365,16 +419,23 @@ def _drop_leading_ack(tokens):
             yield token
             continue
         buf += token
-        if len(buf) < 28:
+        # Measure SPEECH, not tags. A run of stacked cues can be 28 characters
+        # on its own, which decided the turn before the cushion had even
+        # arrived and made the strip a no-op on exactly the expressive lines.
+        if len(spoken_words(buf)) < 28 and len(buf) < 72:
             continue                       # not yet enough to judge
         decided = True
         head = _strip_ack(buf)
-        if head:
+        if speakable(head):
             yield head
+        elif not acked:
+            yield buf
     if not decided and buf:
         head = _strip_ack(buf)
-        if head:
+        if speakable(head):
             yield head
+        elif not acked:
+            yield buf
 
 
 # Fish documents intensity modifiers as a first-class feature: "[slightly sad]",
@@ -933,6 +994,24 @@ class Agent:
         # speaking meant a TTS failure or a barge-in still produced a transcript
         # claiming the whole line, disclosure included, had been spoken.
         words = spoken_words(spoken)
+        # WHICH CUES ACTUALLY WENT TO THE VOICE, and where in the line.
+        #
+        # spoken_words() strips them, and it feeds BOTH the log and the saved
+        # transcript, so until now the emotion cues were invisible everywhere.
+        # That is the one feature Hugo has spent the most time tuning, and
+        # nobody could tell from any record whether she used a single one. I
+        # tried to measure it across 456 turns and got zero, which was the
+        # stripping, not the truth.
+        #
+        # Position matters as much as presence: a cue at index 0 is the "light
+        # switch at the start of every line" pattern, and one in the middle is
+        # the gear-change a person actually makes. Recording where they land is
+        # what makes that difference measurable instead of a matter of opinion.
+        if words:
+            found = [(m.start(), m.group(0)) for m in _CUE_RE.finditer(spoken)]
+            if found:
+                self._emit("cues", ", ".join(
+                    f"{c}@{'start' if i < 3 else 'mid'}" for i, c in found))
         self._last_spoken = words
         self._stopped_at = time.monotonic()
         if words:
@@ -969,7 +1048,10 @@ class Agent:
         # "Right"/"Okay" opener outright, and it kept coming back on turns where
         # no acknowledgement had played, because the stripper was gated on one
         # having played. "Right. You're talking to me now" on a live call.
-        raw = _drop_leading_ack(raw)
+        # acked does NOT gate the strip, only what happens when the strip
+        # leaves nothing: if the backchannel already said "Right.", silence is
+        # right; if it did not, saying the original beats saying nothing.
+        raw = _drop_leading_ack(raw, acked=ack is not None)
         tokens = clean_cues(_clip_reply(raw, spoken))
 
         if ack is not None:
@@ -1046,6 +1128,10 @@ class Agent:
         saw_end = threading.Event()
         stop_producing = threading.Event()
 
+        # Mutable so the closure can flip it; only the first sentence of a turn
+        # can carry a leading acknowledgement.
+        first_sentence = [True]
+
         def produce():
             try:
                 for sentence, _is_final in sentences:
@@ -1053,9 +1139,30 @@ class Agent:
                         break
                     if _has_marker(sentence):
                         saw_end.set()
-                    clean = _strip_marker(sentence)
+                    # THE CUE ALLOWLIST HAS TO RUN HERE TOO.
+                    #
+                    # This path is taken whenever the Fish websocket fails to
+                    # open, and it only ever stripped the [END] marker. So a
+                    # free-form "[chuckling]" went straight to the voice and
+                    # the laugh Hugo reported twice was back, and on a provider
+                    # that does not perform cues at all the word was read out
+                    # loud. The guarantee has to hold on every route to the
+                    # voice, not just the usual one.
+                    clean = "".join(clean_cues([_strip_marker(sentence)])).strip()
+                    # Emptiness checked AFTER the filter: a sentence that was
+                    # nothing but a refused cue is now empty and must be
+                    # skipped, not sent as a bare space.
                     if not clean:
                         continue
+                    # And the banned opener, for the same reason. Only the
+                    # first sentence can carry one. Unlike _drop_leading_ack
+                    # this consumes whole sentences, so if stripping empties it
+                    # entirely, keep the original rather than fall silent.
+                    if first_sentence[0]:
+                        first_sentence[0] = False
+                        stripped = _strip_ack(clean)
+                        if spoken_words(stripped).strip():
+                            clean = stripped
                     try:
                         if self.voice_stream is not None:
                             # Not rendered yet: the transport pulls audio out of
