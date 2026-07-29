@@ -164,10 +164,12 @@ FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro")
 # friendly, expressive. Hugo picked it by ear, replacing an earlier one tagged
 # narration and ASMR: those tags are baked into how a voice was trained, not a
 # setting you can turn off, and it read as dawdling on a call.
-# At speed 1.3 this one measures 16.4 characters a second, squarely in the
-# 15 to 19 range of ordinary conversation.
+# 1.3 measured 16.4 characters a second, top of the natural range, and Hugo
+# heard it as rushed. 1.1 sits nearer 14, which reads as unhurried. Pace is
+# not only speed though: the pauses come from [break] cues in the script, and
+# a voice that never pauses sounds hurried at any speed.
 FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "a4c68282850b4568bc92749fa2c16815")
-FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.3"))
+FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.1"))
 # Measured: the library voices land around -23 dBFS, a phone line wants ~-17.
 FISH_VOLUME = float(os.environ.get("BRIDGE_FISH_VOLUME", "6"))
 # 100 is their floor and starts sooner; 300 is the default and starts later.
