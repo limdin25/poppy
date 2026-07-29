@@ -86,6 +86,37 @@ export default function CrmFishAgentPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState('[warm] Hi, is that Smith Plumbing?');
+  const [playing, setPlaying] = useState(false);
+  const [studio, setStudio] = useState(false);
+  const [took, setTook] = useState<number | null>(null);
+
+  const play = useCallback(async () => {
+    setPlaying(true);
+    setError(null);
+    setTook(null);
+    try {
+      const res = await fetch('/api/fish/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...cfg, text: preview, telephony: !studio }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: `Preview failed (${res.status}).` }));
+        throw new Error(j.error ?? 'Preview failed.');
+      }
+      const ms = res.headers.get('X-Fish-Ms');
+      if (ms) setTook(Number(ms));
+      const url = URL.createObjectURL(await res.blob());
+      const el = new Audio(url);
+      el.onended = () => URL.revokeObjectURL(url);
+      await el.play();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Preview failed.');
+    } finally {
+      setPlaying(false);
+    }
+  }, [cfg, preview, studio]);
 
   useEffect(() => {
     let cancelled = false;
@@ -248,6 +279,33 @@ export default function CrmFishAgentPage() {
             value={cfg.system_prompt} onChange={(e) => set('system_prompt', e.target.value)}
             placeholder="Leave blank to use the built-in caller prompt." />
         </Field>
+      </div>
+
+      {/* PREVIEW */}
+      <div className="bg-white border border-[#E5E7EB] rounded-2xl p-5">
+        <h3 className="text-[15px] font-bold text-[#1A1A1A] mb-1">Listen before you dial</h3>
+        <p className="text-[12px] text-[#6B7280] mb-4 leading-snug">
+          Plays through the same 8 kHz phone quality the prospect actually hears, not studio quality.
+          A voice can sound lovely in a browser and thin on a call, which is exactly how the library
+          voices catch you out. Try emotion cues here too, like <code className="bg-[#F3F3EE] px-1 rounded">[warm]</code>.
+        </p>
+        <textarea className={`${INPUT} min-h-[64px] mb-3`} value={preview}
+          onChange={(e) => setPreview(e.target.value)} />
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={play} disabled={playing}
+            className="inline-flex items-center gap-2 bg-[#1A1A1A] hover:bg-black disabled:opacity-60 text-white text-[14px] font-semibold px-4 py-2.5 rounded-xl transition-colors">
+            {playing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {playing ? 'Generating' : 'Play as heard on the phone'}
+          </button>
+          <label className="flex items-center gap-2 text-[13px] text-[#6B7280]">
+            <input type="checkbox" className="accent-[#3C5A87] w-4 h-4"
+              checked={studio} onChange={(e) => setStudio(e.target.checked)} />
+            Studio quality instead (flattering, not what they hear)
+          </label>
+          {took !== null && (
+            <span className="text-[12px] text-[#6B7280] tabular-nums">generated in {took}ms</span>
+          )}
+        </div>
       </div>
 
       {error && (
