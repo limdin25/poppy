@@ -167,14 +167,26 @@ UNFINISHED_WAIT_S = 1.6
 # partial that has not moved for this long already tells us they stopped, so
 # acting on it is the single biggest latency win available. Too short and we
 # interrupt a thinking pause; too long and we have gained nothing.
-SETTLED_PARTIAL_S = 0.7
+SETTLED_PARTIAL_S = 1.1
 # A partial must also be a real utterance, not a fragment, before we answer it.
 # Measured on a live call at 0.45s with no length floor: it fired on "Uh, who's"
 # and replied to half a question, while the actual question ("Uh, who is this?")
 # arrived seconds later. Short answers do not need this path anyway, because
 # AssemblyAI declares those finished quickly on its own; the speculative route
 # only earns its keep on longer sentences where the 2s wait actually hurts.
+#
+# Raised 0.7 -> 1.1 after a second live failure: it fired on "Um, I just say,
+# hey, please leave" during a mid-sentence thinking pause, so the prospect got
+# two near-identical questions. This is the real tension in the whole idea: a
+# thinking pause and a finished sentence sound identical, and only time tells
+# them apart. 1.1s still beats AssemblyAI's ~2s while being much harder to fool.
+# If double-replies appear again, raise it rather than trying to be clever.
 SETTLED_PARTIAL_MIN_WORDS = 4
+# How long to let the person who answered say "hello" before speaking. Talking
+# over their greeting is the most obviously machine thing a caller can do, and it
+# also guarantees the opener is half-heard and has to be repeated. Long enough
+# for a real greeting, short enough that a silent pickup is not awkward.
+WAIT_FOR_HELLO_S = 2.5
 
 ELEVENLABS_VOICE = os.environ.get("BRIDGE_VOICE_ID", "o6wnoeR1UlXDVucYjZmq")
 # flash_v2_5 is the FASTEST ElevenLabs model, not the most natural. It buys its

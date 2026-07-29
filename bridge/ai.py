@@ -133,9 +133,11 @@ class Brain:
         note = f"\n\nYOU HAVE ALREADY SAID THIS, out loud, as your opening line:\n{opener}\n"
         if truncated:
             note += (
-                "WARNING: the prospect spoke over it, so they may only have heard "
-                "the first few words. Work the fact that you are an AI assistant "
-                "back into your next reply, naturally, in case they missed it.\n"
+                "They spoke over it, so they may only have caught the first few "
+                "words. Do NOT repeat the greeting or start again, that is the "
+                "single most robotic thing you could do. Just carry on from what "
+                "they said, and make sure the AI disclosure lands somewhere in "
+                "your next reply.\n"
             )
         else:
             note += "Do not introduce yourself again.\n"

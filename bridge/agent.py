@@ -619,6 +619,31 @@ class Agent:
             # apart and the same fixed threshold cannot serve both.
             self._baseline = self.transport.baseline_level()
 
+            # Let THEM speak first. Whoever picks up a phone says "hello", and
+            # a caller who starts talking over that sounds like a machine that
+            # was already running. Hugo, hearing exactly that: "when calling she
+            # should not talk first". So wait a beat for their greeting, and only
+            # open into silence if none comes.
+            greeting = ""
+            if self.ears is not None:
+                waited = time.time()
+                while time.time() - waited < config.WAIT_FOR_HELLO_S:
+                    if not self.transport.is_live():
+                        break
+                    got = self.ears.next_turn(timeout=0.2)
+                    if got:
+                        greeting = got
+                        break
+                    early = self.ears.settled_partial(config.SETTLED_PARTIAL_S)
+                    if early:
+                        self.ears.accept(early)
+                        greeting = early
+                        break
+            if greeting:
+                self._emit("them", greeting)
+                result.turns.append(Turn("them", greeting, time.time() - result.started_at))
+                self._heard_at = time.monotonic()
+
             cut_off = self._say(self.opener, result)
             # The model has to know what it already said, or it introduces itself
             # again on the next turn. If the opener was cut short it also has to
