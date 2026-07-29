@@ -187,8 +187,8 @@ FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro")
 # heard it as rushed. 1.1 sits nearer 14, which reads as unhurried. Pace is
 # not only speed though: the pauses come from [break] cues in the script, and
 # a voice that never pauses sounds hurried at any speed.
-FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "a4c68282850b4568bc92749fa2c16815")
-FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.1"))
+FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "5e34045cc3314c7383e774a6b64367a8")
+FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.0"))
 # Measured: the library voices land around -23 dBFS, a phone line wants ~-17.
 FISH_VOLUME = float(os.environ.get("BRIDGE_FISH_VOLUME", "6"))
 # 100 is their floor and starts sooner; 300 is the default and starts later.
