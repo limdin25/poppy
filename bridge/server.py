@@ -264,9 +264,20 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
                     reader = prosody.Prosody()
                     a.prosody = reader
 
-                    def both(raw: bytes, _t=ear_feed, _p=reader) -> None:
+                    def both(raw: bytes, _t=ear_feed, _p=reader, _tr=transport) -> None:
                         _t(raw)
+                        # NOT while she is talking. Her own voice comes back off
+                        # the prospect's handset, which was proved on a live
+                        # call when a whole sentence of hers returned as a
+                        # transcribed turn. The contour reader was therefore
+                        # measuring HER intonation: the fall at the end of her
+                        # own sentence read as "the prospect finished", and she
+                        # answered 0.6s later into somebody who had not spoken.
+                        # That is the "she doesn't wait" Hugo reported.
                         try:
+                            if _tr.is_speaking():
+                                _p.reset()
+                                return
                             _p.feed(raw)
                         except Exception as e:
                             # Never let the contour reader break transcription.

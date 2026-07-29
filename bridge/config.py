@@ -125,6 +125,11 @@ ECHO_SETTLE_MS = 400
 # coming back off the prospect's handset. Draining our audio buffer does not
 # help: the transcriber already has those bytes. See Agent._own_echo.
 ECHO_WINDOW_S = float(os.environ.get("BRIDGE_ECHO_WINDOW_S", "1.2"))
+# How alike a whole turn has to be to what she just said before it is treated as
+# her own voice returning rather than the prospect. 0.72 catches a near verbatim
+# echo through a transcriber that adds its own punctuation, and leaves room for
+# somebody genuinely repeating a phrase back at her.
+ECHO_SIMILARITY = float(os.environ.get("BRIDGE_ECHO_SIMILARITY", "0.72"))
 
 # Give up on a call that produces no audio at all.
 NO_AUDIO_TIMEOUT_S = 45
@@ -428,7 +433,12 @@ GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
 # stopped three words into a sentence is worse than half a second of overlap.
 TELNYX_BARGE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_MS", "700"))
 TELNYX_BARGE_GRACE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_GRACE_MS", "250"))
-TELNYX_BARGE_MARGIN_DB = float(os.environ.get("BRIDGE_TELNYX_BARGE_MARGIN_DB", "14"))
+# Raised from 14, which was chosen on the belief that our own voice could not
+# come back on a VoIP leg. A live call disproved that outright: her sentence
+# returned as a transcribed turn, so it was plainly loud enough to trip a 14 dB
+# interrupt as well. Echo is attenuated compared with somebody actually
+# speaking, so a wider margin tells them apart.
+TELNYX_BARGE_MARGIN_DB = float(os.environ.get("BRIDGE_TELNYX_BARGE_MARGIN_DB", "22"))
 # How long to let it ring. Ofcom requires at least 15 seconds before abandoning
 # an unanswered call, so this floor is a rule, not a preference.
 TELNYX_RING_SECONDS = 30

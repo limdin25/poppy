@@ -584,6 +584,31 @@ def _():
     assert brain.system_prompt == once, "told twice, the prompt grows every turn"
 
 
+# -- her own voice coming back ----------------------------------------------
+
+@case("a whole sentence of her own coming back is not treated as the prospect")
+def _():
+    import time as _t
+    # THE bug behind "she is all over the place", "she doesn't wait" and the
+    # stray "Right". Telnyx was believed to send only the far end, so nothing
+    # guarded against her own voice returning. On a live call she said
+    # "Brilliant. So you're hearing me work right" and it came straight back as
+    # a turn reading "Brilliant. So you're hearing me work, right?", which she
+    # answered. Hugo's next words were "I didn't say anything."
+    a = agent.Agent.__new__(agent.Agent)
+    a._last_spoken = "Brilliant. So you're hearing me work right"
+    a._stopped_at = _t.monotonic()
+    assert a._own_echo("Brilliant. So you're hearing me work, right?")
+    assert a._own_echo("work right"), "a contiguous fragment is echo too"
+    # A real reply must always get through, however much it overlaps.
+    for real in ("I didn't say anything.", "Right.", "Yes.", "No thanks.",
+                 "What happens if I'm out on a job?"):
+        assert not a._own_echo(real), real
+    # And once the window has passed, nothing is echo any more.
+    a._stopped_at = _t.monotonic() - (config.ECHO_WINDOW_S + 1)
+    assert not a._own_echo("Brilliant. So you're hearing me work, right?")
+
+
 # -- answering the same turn twice ------------------------------------------
 
 @case("a turn already answered from its partial is not answered again")

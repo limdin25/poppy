@@ -160,8 +160,15 @@ class TelnyxTransport(Transport):
     # the agent talked straight over the prospect for 96 seconds.
     #
     # What is left to guard against is acoustic echo at THEIR end, a speakerphone
-    # in a van carrying our voice back through their microphone. That is real but
-    # much quieter than someone actually speaking, so a modest margin handles it.
+    # in a van carrying our voice back through their microphone.
+    #
+    # 2026-07-29: this was underestimated, badly, and a "modest margin" was NOT
+    # enough. On a live call she said "Brilliant. So you're hearing me work
+    # right" and it came back as a transcribed turn reading "Brilliant. So
+    # you're hearing me work, right?", which she then answered. Clean enough to
+    # transcribe verbatim means clean enough to trip a 14 dB interrupt as well,
+    # and it also meant the prosody reader was measuring her own intonation.
+    # Three separate symptoms, one wrong assumption. See Agent._own_echo.
 
     # Read from config rather than hardcoded, so the sliders on the agent page
     # actually reach a live call. They used to be literals here while the

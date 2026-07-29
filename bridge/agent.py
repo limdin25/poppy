@@ -5,6 +5,7 @@ up. Transport-agnostic: hand it a SimTransport today or a VoIP transport later.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import math
 import queue
@@ -690,19 +691,35 @@ class Agent:
         if time.monotonic() - self._stopped_at > config.ECHO_WINDOW_S:
             return False
         words = re.sub(r"[^\w\s']", " ", text.lower()).split()
-        if not words or len(words) > 3:
+        if not words:
+            return False
+        mine_raw = " ".join(re.sub(r"[^\w\s']", " ", self._last_spoken.lower()).split())
+        theirs = " ".join(words)
+        # A LONG echo. Proved on a live call: she said "Brilliant. So you're
+        # hearing me work right" and it came straight back as a turn reading
+        # "Brilliant. So you're hearing me work, right?", which she then
+        # answered. The whole sentence, near verbatim, so the short-fragment
+        # test below could never have caught it.
+        #
+        # The old assumption was that Telnyx sends only the far end and our own
+        # voice cannot return. That is wrong: the prospect's handset carries it
+        # back, and on a speakerphone it comes back clean enough to transcribe
+        # perfectly. Everything tuned on that assumption was tuned wrong.
+        if len(words) >= 4 and difflib.SequenceMatcher(
+                None, theirs, mine_raw).ratio() >= config.ECHO_SIMILARITY:
+            return True
+        if len(words) > 3:
             return False
         # NEVER eat a word that is a complete answer on its own. The first
         # version of this tested word overlap alone, so a prospect saying "Yes."
         # was discarded whenever she happened to have said "yes" in her last
         # line. The end-to-end test caught it; on a live call it would have
         # looked like her ignoring the answer she had just asked for.
-        if any(w in _STANDALONE_REPLY for w in words):
+        if len(words) == 1 and words[0] in _STANDALONE_REPLY:
             return False
         # Contiguous, not scattered. Echo is a fragment of what she said, in
         # the order she said it, not a bag of words that happen to appear.
-        mine = " ".join(re.sub(r"[^\w\s']", " ", self._last_spoken.lower()).split())
-        return " ".join(words) in mine
+        return theirs in mine_raw
 
     def _settle(self) -> None:
         """Let our own echo pass before listening.
