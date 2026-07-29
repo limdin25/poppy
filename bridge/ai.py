@@ -121,6 +121,9 @@ class Brain:
         self.api_key = config.key("ANTHROPIC_API_KEY", required=True)
         self.system_prompt = system_prompt
         self.history: list[dict[str, str]] = []
+        # Set once the AI disclosure has actually been delivered uninterrupted.
+        self._disclosed = False
+        self._chasing = False
 
     def note_opening(self, opener: str, truncated: bool = False) -> None:
         """Tell the model what it already said before the prospect replied.
@@ -142,6 +145,53 @@ class Brain:
         else:
             note += "Do not introduce yourself again.\n"
         self.system_prompt += note
+
+    def note_disclosed(self) -> None:
+        """Record that the AI disclosure has been made, and heard, exactly once.
+
+        The prompt makes the disclosure mandatory on the first substantive turn,
+        which is a policy requirement and stays. What it did not say is what to
+        do once it has landed, so being asked "who is this?" got the whole
+        introduction again eight seconds after the first one.
+
+        Only called on a turn that was NOT cut off, because a disclosure the
+        prospect talked over is a disclosure they did not hear, and that one does
+        need saying again.
+        """
+        if self._disclosed:
+            return
+        self._disclosed = True
+        self._chasing = False
+        self.system_prompt += (
+            "\n\nYOU HAVE ALREADY TOLD THEM YOU ARE AN AI, out loud, and they "
+            "heard it. Never introduce yourself that way again. If they ask who "
+            "you are, give your name and the company in a handful of words and "
+            "carry on. Do not repeat the introduction.\n"
+        )
+
+    def chase_disclosure(self) -> None:
+        """A substantive turn went by without her saying she is an AI. Insist.
+
+        Telling the model in the prompt that the disclosure is required is not
+        enough, and it is not a preference we can afford to lose: Anthropic's
+        acceptable use policy requires it contractually, and Ofcom aside it is
+        the honest thing to do. Observed on two live calls, she compressed
+        "I'm Elsie, an AI assistant at HeyElsie" down to "Elsie, from HeyElsie"
+        and the disclosure vanished.
+
+        So the code checks, and if it is missing after the first real turn it
+        says so in terms the model cannot compress away. Added once, because a
+        note appended every turn would grow the prompt for the whole call.
+        """
+        if self._disclosed or self._chasing:
+            return
+        self._chasing = True
+        self.system_prompt += (
+            "\n\nYOU HAVE NOT YET SAID YOU ARE AN AI, and you were required to. "
+            "Say it in your VERY NEXT reply, in the first sentence, using the "
+            "words \"an AI assistant at HeyElsie\". Keep it short, then carry on "
+            "with the conversation as normal.\n"
+        )
 
     def amend_last(self, spoken: str) -> None:
         """Replace the last thing the model thinks it said with what was said.

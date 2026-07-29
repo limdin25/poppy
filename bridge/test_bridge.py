@@ -424,6 +424,27 @@ def _():
     assert brain.history == [], brain.history
 
 
+@case("the AI disclosure is noticed once, and only when it was heard in full")
+def _():
+    for line in ("I'm Elsie, an AI assistant at HeyElsie.",
+                 "Yeah, I'm an A.I.",
+                 "I'm an artificial intelligence, if that's alright."):
+        assert agent._DISCLOSED_RE.search(line), line
+    # Ordinary words that merely contain those letters must not trip it, or she
+    # goes quiet about being an AI before she has ever said so.
+    for line in ("We'll wait for the rain to stop.", "Email is fine.",
+                 "That said, plumbers do alright."):
+        assert not agent._DISCLOSED_RE.search(line), line
+
+    brain = ai.Brain("sys")
+    before = brain.system_prompt
+    brain.note_disclosed()
+    assert brain.system_prompt != before, "the model has to be told it landed"
+    once = brain.system_prompt
+    brain.note_disclosed()
+    assert brain.system_prompt == once, "told twice, the prompt grows every turn"
+
+
 def main() -> int:
     failed = 0
     for name, fn in CASES:

@@ -25,6 +25,9 @@ _MARKER_RE = re.compile(r"\[\s*END\s*\]", re.IGNORECASE)
 # Emotion cues are for the voice, not for the record. They must survive all the
 # way to Fish, so they are stripped only where text is shown or stored.
 _CUE_RE = re.compile(r"\[[a-z][a-z\s-]{0,20}\]", re.IGNORECASE)
+# "an AI assistant", "I'm an A.I." and so on. Word boundaries keep it off every
+# ordinary word that happens to contain those two letters.
+_DISCLOSED_RE = re.compile(r"\bA\.?\s?I\.?\b|artificial intelligence", re.IGNORECASE)
 
 
 def spoken_words(text: str) -> str:
@@ -537,6 +540,17 @@ class Agent:
         # uncorrected it believes it delivered the half of the reply that was
         # cut off, so it never says it, and the call quietly loses the thread.
         self.brain.amend_last(words)
+        # Only once it has actually been delivered in full. A disclosure the
+        # prospect talked over is one they did not hear, and that one does need
+        # saying again.
+        if words and not interrupted and _DISCLOSED_RE.search(words):
+            self.brain.note_disclosed()
+        elif words and not interrupted:
+            # A real turn went by without it. Observed twice on live calls, she
+            # compressed the disclosure down to "Elsie, from HeyElsie" and it
+            # disappeared. Required by Anthropic's acceptable use policy, so it
+            # is chased rather than hoped for.
+            self.brain.chase_disclosure()
         # Tell the transcriber what she just said. Their docs: biggest impact on
         # short replies ("yes", "about twenty", a name), which on a sales call
         # is most of them.
