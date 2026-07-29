@@ -79,7 +79,11 @@ def _():
     out = agent.straighten(bad)
     for ch in ("—", "–", "‘", "’", "“", "”", "…"):
         assert ch not in out, f"{ch!r} survived: {out!r}"
-    assert out == "Fair enough, that's a good question,a colleague will confirm...", out
+    # Note the space after that comma. Replacing a long dash with a comma used
+    # to leave "question,a colleague", because the dash carried its own spacing
+    # and the comma did not. This assertion locked that defect in until the
+    # missing-space rule was added.
+    assert out == "Fair enough, that's a good question, a colleague will confirm...", out
     # and it must run on the model's output path, not only on the opener
     assert "—" not in agent._strip_marker("Right—yes. [END]")
 
@@ -456,6 +460,18 @@ def _():
         == "the figure, the team handles it"
     assert agent.straighten("a well-known plumber") == "a well-known plumber"
     assert agent.straighten("ninety-seven a month") == "ninety-seven a month"
+
+
+@case("a missing space after punctuation is put back, without breaking numbers")
+def _():
+    # Live call: "you're hearing me work right now,this call is the
+    # demonstration". Fish runs the words together when the space is absent.
+    assert agent.straighten("right now,this call is it") == "right now, this call is it"
+    assert agent.straighten("three quid a day.Want to see?") == "three quid a day. Want to see?"
+    # A decimal price and an abbreviation must survive, which is why a full stop
+    # only gets a space when a CAPITAL follows it.
+    assert agent.straighten("about 3.20 a day") == "about 3.20 a day"
+    assert agent.straighten("a local one, e.g. yours") == "a local one, e.g. yours"
 
 
 @case("dropping a cue never leaves a space stranded before punctuation")

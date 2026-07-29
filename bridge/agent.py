@@ -117,6 +117,10 @@ _SPACED_HYPHEN = re.compile(r"\s+-\s+")
 # is what I do". Putting a space where a cue was is right in general and wrong
 # next to punctuation, so it is taken back out.
 _SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.!?;:])")
+# And the mirror image, which turned up on a live call as "right now,this call
+# is the demonstration". A comma, semicolon or colon always wants a space after
+# it; a full stop only when a capital follows, so "e.g." and "3.20" survive.
+_MISSING_SPACE = re.compile(r"([,;:])(?=[A-Za-z])|([.!?])(?=[A-Z])")
 
 
 def straighten(text: str) -> str:
@@ -124,7 +128,8 @@ def straighten(text: str) -> str:
     for bad, good in _PUNCTUATION.items():
         text = text.replace(bad, good)
     text = _SPACED_HYPHEN.sub(", ", text)
-    return _SPACE_BEFORE_PUNCT.sub(r"\1", text)
+    text = _SPACE_BEFORE_PUNCT.sub(r"\1", text)
+    return _MISSING_SPACE.sub(lambda m: (m.group(1) or m.group(2)) + " ", text)
 
 
 def _strip_marker(text: str) -> str:
