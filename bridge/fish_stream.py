@@ -30,7 +30,7 @@ import queue
 import threading
 import time
 
-from . import config, ulaw
+from . import audio, config, ulaw
 
 URL = "wss://api.fish.audio/v1/tts/live"
 # Sentinel meaning "this utterance is finished", pushed onto the audio queue.
@@ -196,6 +196,7 @@ class FishStream:
 
         started = time.monotonic()
         heard_any = False
+        level = audio.Leveller()
         try:
             while True:
                 wait = config.FISH_QUIET_TAIL_S if heard_any else config.FISH_FIRST_AUDIO_S
@@ -208,7 +209,7 @@ class FishStream:
                 heard_any = True
                 if time.monotonic() - started > config.MAX_UTTERANCE_MS / 1000.0:
                     return
-                yield ulaw.encode(item)
+                yield ulaw.encode(level.apply(item))
         finally:
             done.set()
 
@@ -240,6 +241,7 @@ class FishStream:
 
         started = time.monotonic()
         heard_any = False
+        level = audio.Leveller()
         while True:
             # Generous before the first chunk, tight after it.
             wait = config.FISH_QUIET_TAIL_S if heard_any else config.FISH_FIRST_AUDIO_S

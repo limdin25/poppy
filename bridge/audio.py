@@ -172,6 +172,53 @@ def pcm_from_wav(wav: bytes) -> bytes:
     return wav[idx + 8:]
 
 
+class Leveller:
+    """Hold streamed speech at a steady loudness, chunk to chunk.
+
+    Fish generates a streamed reply in pieces, and the pieces do not come out at
+    the same level. Measured on a live sentence: speech chunks ranged over 8 dB,
+    which is a doubling of loudness, and Hugo heard it as "goes from loud to
+    sounding like she's inside a box... seems like it's changing voice". None of
+    Fish's own controls fix it. normalize_loudness, condition_on_previous_chunks
+    and a larger chunk_length all measured the same spread, because it is
+    inherent to generating in chunks.
+
+    So it is corrected here instead, where we own the audio.
+
+    Two things this must NOT do. It must not touch silence, or the gaps between
+    words get amplified into hiss. And it must not chase every chunk exactly, or
+    quiet speech gets yanked up and loud speech shoved down within a single
+    sentence, which sounds worse than the problem. Hence a floor and a slew
+    limit: gain moves gradually and only on chunks that contain speech.
+    """
+
+    def __init__(self, target_dbfs: float = -17.0, floor_dbfs: float = -45.0,
+                 max_step_db: float = 2.0, max_gain_db: float = 12.0):
+        self.target = target_dbfs
+        self.floor = floor_dbfs
+        self.max_step = max_step_db
+        self.max_gain = max_gain_db
+        self._gain_db = 0.0
+
+    def apply(self, pcm: bytes) -> bytes:
+        level = rms_dbfs(pcm)
+        if level > self.floor:                    # speech, not a gap
+            wanted = self.target - level
+            wanted = max(-self.max_gain, min(self.max_gain, wanted))
+            step = max(-self.max_step, min(self.max_step, wanted - self._gain_db))
+            self._gain_db += step
+        if abs(self._gain_db) < 0.1:
+            return pcm
+        factor = 10 ** (self._gain_db / 20.0)
+        samples = array.array("h")
+        samples.frombytes(pcm[: len(pcm) - (len(pcm) % 2)])
+        out = array.array("h")
+        for s in samples:
+            v = int(s * factor)
+            out.append(32767 if v > 32767 else -32768 if v < -32768 else v)
+        return out.tobytes()
+
+
 def trim_tail(pcm: bytes, silence_ms: float, keep_ms: float = 200.0) -> bytes:
     """Cut the end-of-turn silence off a buffer before sending it to the STT.
 
