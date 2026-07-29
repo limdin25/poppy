@@ -119,6 +119,10 @@ class Brain:
 
     def __init__(self, system_prompt: str):
         self.api_key = config.key("ANTHROPIC_API_KEY", required=True)
+        # The prompt WITHOUT any stage brief. The brief is re-appended each
+        # turn rather than accumulated, so a ten turn call does not end up
+        # carrying ten stage instructions that contradict each other.
+        self.base_prompt = system_prompt
         self.system_prompt = system_prompt
         self.history: list[dict[str, str]] = []
         # Set once the AI disclosure has actually been delivered uninterrupted.
@@ -144,7 +148,17 @@ class Brain:
             )
         else:
             note += "Do not introduce yourself again.\n"
+        self._append(note)
+
+    def _append(self, note: str) -> None:
+        """Add a permanent note. Goes on the BASE prompt, or the next stage
+        change would silently wipe it."""
+        self.base_prompt += note
         self.system_prompt += note
+
+    def set_stage(self, brief: str) -> None:
+        """Replace the stage instruction. See bridge/stages.py for why."""
+        self.system_prompt = self.base_prompt + brief
 
     def note_disclosed(self) -> None:
         """Record that the AI disclosure has been made, and heard, exactly once.
@@ -162,12 +176,12 @@ class Brain:
             return
         self._disclosed = True
         self._chasing = False
-        self.system_prompt += (
+        self._append((
             "\n\nYOU HAVE ALREADY TOLD THEM YOU ARE AN AI, out loud, and they "
             "heard it. Never introduce yourself that way again. If they ask who "
             "you are, give your name and the company in a handful of words and "
             "carry on. Do not repeat the introduction.\n"
-        )
+        ))
 
     def chase_disclosure(self) -> None:
         """A substantive turn went by without her saying she is an AI. Insist.
@@ -186,12 +200,12 @@ class Brain:
         if self._disclosed or self._chasing:
             return
         self._chasing = True
-        self.system_prompt += (
+        self._append((
             "\n\nYOU HAVE NOT YET SAID YOU ARE AN AI, and you were required to. "
             "Say it in your VERY NEXT reply, in the first sentence, using the "
             "words \"an AI assistant at HeyElsie\". Keep it short, then carry on "
             "with the conversation as normal.\n"
-        )
+        ))
 
     def amend_last(self, spoken: str) -> None:
         """Replace the last thing the model thinks it said with what was said.

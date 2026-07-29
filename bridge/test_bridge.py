@@ -373,8 +373,17 @@ def _():
     # The BASE still has to be allowed, or the laugh returns by the side door.
     for bad in ("[very chuckling]", "[extremely laughing]", "[slightly sighing]"):
         assert "[" not in _drain(agent.clean_cues([f"{bad} Ha."])), bad
-    # And an emotion that is simply not on the list stays off it.
-    assert "[" not in _drain(agent.clean_cues(["[furious] What?"]))
+    # The whole documented emotion palette is available, not a hand-picked few:
+    # cut back to eleven she came across muted, and the fix is more, not less.
+    for good in ("[proud]", "[grateful]", "[surprised]", "[hopeful]",
+                 "[determined]", "[nostalgic]", "[very grateful]"):
+        assert "[" in _drain(agent.clean_cues([f"{good} Right."])), good
+    # But anything that makes a NOISE is still refused, in every wording.
+    for noise in ("[sighs]", "[gasping]", "[groaning]", "[coughing]",
+                  "[giggles]", "[very sighing]", "[audience laughing]"):
+        assert "[" not in _drain(agent.clean_cues([f"{noise} Right."])), noise
+    # And a made-up phrase is not a feeling.
+    assert "[" not in _drain(agent.clean_cues(["[nonsense phrase] What?"]))
 
 
 @case("two agreeing cues may stack, and emphasis works mid-sentence")
@@ -432,12 +441,18 @@ def _():
 @case("the model's copy of the acknowledgement is dropped, the cue is kept")
 def _():
     # Two sources of "Right." on one turn is exactly what Hugo reported.
+    # Capitalised, and the CUE is stepped over rather than capitalised itself.
+    # Both were live defects: "so you're doing it all yourself then?" started
+    # lowercase and read as her losing her thread, and the first attempt at
+    # fixing it produced "[Curious] so..." by capitalising the tag instead.
     out = _drain(agent._drop_leading_ack(
         ["[curious] Right, so you're not asking customers at the moment then?"]))
-    assert out.startswith("[curious] so"), out
+    assert out.startswith("[curious] So you're"), out
     out = _drain(agent._drop_leading_ack(
         ["Okay. And how many jobs do you do in a week, roughly?"]))
     assert out.startswith("And how many"), out
+    out = _drain(agent._drop_leading_ack(["[very warm] Yeah, that makes sense."]))
+    assert out == "[very warm] That makes sense.", out
 
 
 @case("a genuine word is not mistaken for the acknowledgement")
@@ -567,6 +582,130 @@ def _():
     once = brain.system_prompt
     brain.note_disclosed()
     assert brain.system_prompt == once, "told twice, the prompt grows every turn"
+
+
+# -- answering the same turn twice ------------------------------------------
+
+@case("a turn already answered from its partial is not answered again")
+def _():
+    from . import assembly_stt
+    s = assembly_stt.AssemblyStream.__new__(assembly_stt.AssemblyStream)
+
+    # The live failure. She acted on the partial, he kept talking, and the
+    # longer final failed the old equality check and was answered as a brand
+    # new turn: the same question twice, four seconds apart.
+    s._last_seen = "It sounds like a very efficient"
+    assert s._only_the_new_part("It sounds like a very efficient person or bot.") == ""
+
+    # An identical final is old news too.
+    s._last_seen = "we answer them ourselves"
+    assert s._only_the_new_part("we answer them ourselves") == ""
+
+    # A few words that merely finish the thought are not news either.
+    s._last_seen = "It sounds like a very efficient"
+    assert s._only_the_new_part("It sounds like a very efficient person or bot") == ""
+
+    # But a genuine continuation IS news, and the WHOLE sentence goes through,
+    # not just the tail: "usually when we're under a sink" arriving on its own
+    # reads as a non sequitur, and the model has its own last reply in history.
+    s._last_seen = "we miss a fair few"
+    full = "we miss a fair few, usually when we're under a sink"
+    assert s._only_the_new_part(full) == full
+
+    # And a completely different final is always a real turn.
+    s._last_seen = "hello"
+    assert s._only_the_new_part("actually take me off your list") == \
+        "actually take me off your list"
+
+    # Nothing answered yet means nothing to subtract.
+    s._last_seen = ""
+    assert s._only_the_new_part("who is this?") == "who is this?"
+
+
+# -- the stage gate ---------------------------------------------------------
+
+@case("[NEXT] is recognised but never spoken")
+def _():
+    from . import stages
+    assert agent._wants_next("Great, I'll do that. [NEXT]")
+    assert agent._wants_next("Sure thing. [ next ]"), "whitespace tolerant, like [END]"
+    assert not agent._wants_next("No marker here.")
+    # Saying the literal "[NEXT]" down the phone would be as bad as "[END]".
+    assert agent._strip_marker("Right you are. [NEXT]") == "Right you are."
+    assert "NEXT" not in agent._strip_marker("Ok. [ NEXT ] [END]")
+    assert len(stages.STAGES) >= 3
+
+
+@case("setting the stage reaches the brain, and is not fatal when it cannot")
+def _():
+    from . import stages
+
+    class Spy:
+        def __init__(self): self.briefs = []
+        def set_stage(self, brief): self.briefs.append(brief)
+
+    class Broken:
+        def set_stage(self, brief): raise RuntimeError("no")
+
+    # It really has to call through. A copy-paste error made _set_stage call
+    # ITSELF, which surfaced on a live call as "maximum recursion depth
+    # exceeded" once a turn, with the gate silently dead for the whole call and
+    # only the non-fatal guard keeping it up.
+    a = agent.Agent.__new__(agent.Agent)
+    a.on_event = lambda k, t: None
+    a.brain = Spy()
+    a._set_stage(1, 0)
+    assert len(a.brain.briefs) == 1, "the brief never reached the brain"
+    assert "STAGE 2 OF" in a.brain.briefs[0]
+
+    # And a brain that cannot take it must not end the call.
+    errors = []
+    a.brain = Broken()
+    a.on_event = lambda k, t: errors.append((k, t))
+    a._set_stage(0, 0)
+    assert errors and errors[0][0] == "error", errors
+    assert len(stages.STAGES) == 5
+
+
+@case("the stage brief is swapped, never accumulated")
+def _():
+    from . import stages
+    brain = ai.Brain("BASE PROMPT.")
+    brain.set_stage(stages.brief(0))
+    assert "STAGE 1 OF" in brain.system_prompt
+    brain.set_stage(stages.brief(1))
+    assert "STAGE 2 OF" in brain.system_prompt
+    assert "STAGE 1 OF" not in brain.system_prompt, "two stages at once contradict"
+    # A long call must not grow the prompt without bound.
+    grown = len(brain.system_prompt)
+    for i in range(30):
+        brain.set_stage(stages.brief(i % len(stages.STAGES)))
+    assert len(brain.system_prompt) < grown * 2, len(brain.system_prompt)
+
+
+@case("a permanent note survives a stage change")
+def _():
+    from . import stages
+    # These append to the prompt, and a naive set_stage would wipe them: she
+    # would forget she had already disclosed, and say it again.
+    brain = ai.Brain("BASE.")
+    brain.note_disclosed()
+    brain.note_opening("Hi, is that Smith Plumbing?", truncated=False)
+    brain.set_stage(stages.brief(2))
+    assert "ALREADY TOLD THEM YOU ARE AN AI" in brain.system_prompt
+    assert "ALREADY SAID THIS" in brain.system_prompt
+
+
+@case("the last stage cannot advance, and the gate has an escape")
+def _():
+    from . import stages
+    last = stages.brief(len(stages.STAGES) - 1)
+    assert "[NEXT]" not in last, "nothing to advance to from the last stage"
+    assert "[END]" in last, "the last stage has to be able to finish the call"
+    # A gate with no escape is worse than the jumping it fixes.
+    assert 1 <= config.STAGE_MAX_TRIES <= 5, config.STAGE_MAX_TRIES
+    # And being stuck must change what she is told, or she repeats herself.
+    assert stages.brief(0, 0) != stages.brief(0, 2)
 
 
 # -- prosody ----------------------------------------------------------------

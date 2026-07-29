@@ -43,6 +43,12 @@ BASE = "wss://streaming.assemblyai.com/v3/ws"
 # so they MUST be gathered up before forwarding: sending them raw earns close
 # code 3007 and the socket dies mid-call. 100ms at 8 kHz mu-law is 800 bytes,
 # comfortably inside their window and small enough not to add real delay.
+# How many words somebody has to add, after we already answered them, before it
+# counts as new. Below this they were only finishing the sentence: "...person or
+# bot" after "it sounds like a very efficient" adds nothing to reply to, and
+# replying anyway is how she asked the same question twice on a live call.
+MEANINGFUL_TAIL_WORDS = 4
+
 SEND_MS = 100
 SEND_BYTES = 8000 * SEND_MS // 1000
 
@@ -139,9 +145,8 @@ class AssemblyStream:
                     text = (msg.get("transcript") or "").strip()
                     if msg.get("end_of_turn"):
                         self._partial = ""
-                        # Already answered from the partial? Then this final
-                        # is old news; replying again would repeat the turn.
-                        if text and text != self._last_seen:
+                        text = self._only_the_new_part(text)
+                        if text:
                             self._turns.put(text)
                         self._last_seen = ""
                     else:
@@ -254,6 +259,42 @@ class AssemblyStream:
             min_words = config.SETTLED_PARTIAL_MIN_WORDS
         if len(text.split()) < min_words:
             return None
+        return text
+
+    def _only_the_new_part(self, final: str) -> str:
+        """What is left of a finished turn once the answered part is removed.
+
+        Acting on a settled partial is what makes the agent quick, and the
+        guard against answering the same thing twice used to be a plain
+        equality test. That only works if the person stops talking the instant
+        we act. When they carry on, the final is LONGER than the partial, the
+        equality fails, and the whole thing is answered again as if it were a
+        new turn.
+
+        Heard on a live call. She answered "it sounds like a very efficient"
+        with "what happens when someone rings and you're under a sink?", then
+        the full sentence arrived and she asked essentially the same question a
+        second time, four seconds later.
+
+        So the answered prefix is measured. If what they added merely finishes
+        the thought, three or four words, it is not news and is dropped: that is
+        the double reply.
+
+        If they genuinely said more, the WHOLE sentence goes through, not just
+        the tail. Passing the tail alone reads as "person or bot" arriving out
+        of nowhere, and the model has its own previous reply in history so it
+        can see what it has already covered. Context intact beats context
+        clipped.
+        """
+        text = (final or "").strip()
+        if not text or not self._last_seen:
+            return text
+        seen = self._last_seen.strip()
+        if text == seen:
+            return ""
+        if text.lower().startswith(seen.lower()):
+            rest = text[len(seen):].strip(" ,.;:")
+            return text if len(rest.split()) >= MEANINGFUL_TAIL_WORDS else ""
         return text
 
     def accept(self, text: str) -> None:

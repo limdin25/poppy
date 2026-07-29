@@ -121,6 +121,10 @@ BARGE_IN_ENABLED = os.environ.get("BRIDGE_NO_BARGE", "") != "1"
 # After we stop speaking, let the tail of our own echo pass before we start
 # listening, or the agent transcribes itself and replies to its own words.
 ECHO_SETTLE_MS = 400
+# How long after she stops speaking a short fragment may still be her own voice
+# coming back off the prospect's handset. Draining our audio buffer does not
+# help: the transcriber already has those bytes. See Agent._own_echo.
+ECHO_WINDOW_S = float(os.environ.get("BRIDGE_ECHO_WINDOW_S", "1.2"))
 
 # Give up on a call that produces no audio at all.
 NO_AUDIO_TIMEOUT_S = 45
@@ -133,6 +137,11 @@ ANSWER_GATE_DBFS = -70.0
 ANSWER_ONSET_CHUNKS = 3
 # Hard cap so a stuck call cannot run up a bill.
 MAX_CALL_SECONDS = 420
+
+# How many times she may try to get one stage's answer before moving on anyway.
+# A gate with no escape is a worse bug than the jumping it fixes: asking the
+# same question five times running is how a person gets hung up on.
+STAGE_MAX_TRIES = int(os.environ.get("BRIDGE_STAGE_MAX_TRIES", "3"))
 
 # --- Models ----------------------------------------------------------------
 # Re-measured on the REAL prompt with a real mid-call history, which is the only
@@ -161,7 +170,12 @@ LLM_MAX_TOKENS = 150
 # is cut at the next full stop, and a question always ends the turn wherever it
 # lands. Hugo, twice: "she keep talking over and over and over me", "ask one
 # question at a time and wait to get the answer".
-MAX_SPOKEN_WORDS = int(os.environ.get("BRIDGE_MAX_WORDS", "28"))
+# Cut from 28. The cap bites at the NEXT full stop past the limit, so 28 was
+# letting 32 word features lists through: "I answer the phone, take messages,
+# book jobs in, text people back. No missed calls, no holidays..." which is
+# word for word the "Bad" example in her own prompt. 24 makes the cap land
+# before the third clause.
+MAX_SPOKEN_WORDS = int(os.environ.get("BRIDGE_MAX_WORDS", "24"))
 
 # Measured on a 2.7s utterance, best of 2, warm:
 #   gpt-4o-mini-transcribe  637 ms   <- chosen
@@ -189,6 +203,19 @@ AAI_PROMPT = os.environ.get(
 )
 # How long to wait for a finished turn before treating the line as quiet.
 AAI_TURN_TIMEOUT_S = 12.0
+# But NOT after she has been cut off. Somebody who interrupts is usually about
+# to say something, and when they do not, both sides end up waiting: she sits in
+# the 12 second window and they sit waiting for her to carry on. Measured on a
+# live call, that produced six seconds of dead air twice, and the second time
+# the prospect had to say "What? Sorry?" to break it. The call then died as
+# "went_quiet" with nobody having hung up.
+# So after an interruption she waits only this long, and if nothing comes she
+# picks up where she left off, which is what a person does.
+RESUME_AFTER_CUT_S = float(os.environ.get("BRIDGE_RESUME_AFTER_CUT_S", "2.5"))
+# What she is handed as their turn when that happens. It reaches the model as a
+# user message and the prompt explains it, so the behaviour is visible in the
+# transcript rather than being a silent special case.
+WENT_QUIET = "(they said nothing)"
 # When a turn ends on an obviously unfinished thought ("...twenty, but"), hold
 # on this long for the rest before replying. Silence is not the same as having
 # finished, and answering half a sentence is how an agent talks over the
@@ -319,34 +346,56 @@ FISH_LATENCY = os.environ.get("BRIDGE_FISH_LATENCY", "low")
 FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "0.9"))
 FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.9"))
 
-# --- Emotion cues, and why they are an allowlist rather than an instruction --
-# S2.1 Pro takes free-form natural language in square brackets, "15,000+ tags"
-# by their own count, so [chuckling] or [laughing nervously] are as valid to it
-# as [warm] is. The prompt saying "never [laughs]" therefore guarantees nothing:
-# the model reaches for a synonym and Fish performs it.
+# --- Emotion cues: block the NOISES, allow the feelings ---------------------
+# Hugo: "she has access to all emotions she wants to use, that might be
+# something better". He is right, and Fish's own documentation draws the line
+# for us. It separates EMOTIONS, which change how a line is delivered, from
+# AUDIO EFFECTS, which produce an actual sound. Only the second kind was ever
+# the problem.
 #
-# Measured on our own voice, mean of three renders of the same line:
-#   bare        3.10s
-#   warm        2.93s     delivery only
-#   curious     3.10s     delivery only
-#   amused      3.16s     delivery only, so this one was NOT the laugh
-#   chuckling   4.13s     +0.93s of actual laughing
-#   break       3.94s     +0.74s, a real pause, which is the one we want
-# Nothing leaks as text: all of them transcribe back as the clean sentence.
+# Measured, mean of three renders of one line: warm 2.93s, curious 3.10s,
+# amused 3.16s, all within noise of the bare 3.10s. [chuckling] came out at
+# 4.13s, which is 0.93s of her actually laughing.
 #
-# So anything outside this list is dropped before it reaches Fish. Fish's own
-# docs also warn "don't overuse emotion tags in short text" and to give an
-# emotion enough text to develop, and our replies are about eight words, which
-# is precisely the case they mean.
-# Re-run on the second voice Hugo picked, three renders each. Everything below
-# is delivery only; [chuckling] was the only one that made a noise, again, at
-# +0.87s. So the palette can be WIDE, and it needs to be: trimmed to five cues
-# and told most turns needed none, she came back "zero emotion, no charisma".
-# The allowlist exists to stop the laugh, not to flatten her.
-SAFE_CUES = {"warm", "curious", "amused", "confident", "delighted", "excited",
-             "playful", "sincere", "empathetic", "calm", "emphasis",
-             "break", "long-break"}
-# The master switch behind the toggle on /admin/crm/agent/fish.
+# So the code blocks the noises and nothing else, and the prompt handles taste.
+# The old list of eleven was cutting her off from 38 documented feelings for no
+# reason: cut back to five she came back "zero emotion, no charisma", and the
+# fix for that is more palette, not less.
+NOISES = {
+    # Fish's "Audio Effects" table, every one of which makes a sound.
+    "laughing", "chuckling", "sobbing", "crying loudly", "sighing", "groaning",
+    "panting", "gasping", "yawning", "snoring", "clear throat",
+    # And the crowd effects, which put a room full of people on the line.
+    "audience laughing", "background laughter", "crowd laughing",
+    # Wordings the model reaches for that mean the same thing.
+    "laughs", "laugh", "chuckles", "chuckle", "giggles", "giggling", "sighs",
+    "sigh", "gasp", "gasps", "cough", "coughs", "coughing", "sniffs",
+    "lip-smacking", "breath", "inhale", "exhale", "ha ha", "haha",
+}
+# Every emotion Fish document, basic and advanced, plus the free-form ones
+# measured safe here. All delivery only.
+SAFE_CUES = {
+    # Basic, 24
+    "happy", "sad", "angry", "excited", "calm", "nervous", "confident",
+    "surprised", "satisfied", "delighted", "scared", "worried", "upset",
+    "frustrated", "depressed", "empathetic", "embarrassed", "disgusted",
+    "moved", "proud", "relaxed", "grateful", "curious", "sarcastic",
+    # Advanced, 25
+    "disdainful", "unhappy", "anxious", "hysterical", "indifferent",
+    "uncertain", "doubtful", "confused", "disappointed", "regretful", "guilty",
+    "ashamed", "jealous", "envious", "hopeful", "optimistic", "pessimistic",
+    "nostalgic", "lonely", "bored", "contemptuous", "sympathetic",
+    "compassionate", "determined", "resigned",
+    # Free-form, measured safe on our own voice
+    "warm", "playful", "sincere", "amused", "friendly", "reassuring",
+    # Tone markers that suit a phone call. Deliberately NOT shouting,
+    # screaming or whispering: the first two are wrong for a sales call and the
+    # third is unusable on an 8 kHz line.
+    "emphasis", "soft tone",
+    # Timing, which is not an emotion but is the one cue measured to change the
+    # length of a line in the way we want: +0.74s of real pause.
+    "break", "long-break",
+}
 CUES_ENABLED = os.environ.get("BRIDGE_CUES", "") != "0"
 # Stream over a websocket held open for the call. Measured on the FREE model:
 # ~510ms to open (paid once, during the ring) then 271-278ms to first audio on
@@ -367,7 +416,17 @@ GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
 # so there is no path for our own voice to come back and be mistaken for the
 # prospect, and the thresholds can be far tighter than the SIM rig's.
 # These live here, not as literals in telnyx.py, so the agent page can move them.
-TELNYX_BARGE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_MS", "350"))
+# 350 was too twitchy. A prospect saying "okay" or "mm" WHILE she talks is
+# agreeing, not interrupting, and stopping dead for it left her three words into
+# an introduction with nothing to show for it. Measured on a live call: two
+# stops inside ninety seconds, both on a single word of agreement, both leaving
+# a fragment. A real interruption is sustained; agreement is one short word.
+# 550ms is about a word and a half, which agreement rarely reaches.
+# 550 was still too quick to give way: Hugo, "she's too sensitive". Raised to
+# 700, which is about two words. Below that she is reacting to agreement and
+# throat-clearing rather than to somebody actually taking the floor, and being
+# stopped three words into a sentence is worse than half a second of overlap.
+TELNYX_BARGE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_MS", "700"))
 TELNYX_BARGE_GRACE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_GRACE_MS", "250"))
 TELNYX_BARGE_MARGIN_DB = float(os.environ.get("BRIDGE_TELNYX_BARGE_MARGIN_DB", "14"))
 # How long to let it ring. Ofcom requires at least 15 seconds before abandoning

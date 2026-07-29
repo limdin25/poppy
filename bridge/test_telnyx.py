@@ -182,6 +182,9 @@ def _():
     class FakeBrain:
         def __init__(self): self.system_prompt = ""; self.history = []
         def note_opening(self, o, truncated=False): pass
+        def set_stage(self, brief):
+            self.stage_brief = brief
+
         def stream_sentences(self, heard):
             yield "We get trades more Google reviews.", False
             yield "Shall I have a colleague ring you? [END]", True

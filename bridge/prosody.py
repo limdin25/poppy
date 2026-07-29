@@ -81,7 +81,11 @@ STALE_S = 2.0
 # produced "+70.1 st/s" and, because any rise over 3.0 counted as a question,
 # she answered early on pure nonsense and then got cut off mid-word for it.
 # Anything past this is refused outright rather than believed.
-MAX_ST_PER_S = 25.0
+# Tightened 25 -> 18 after a live call logged "+24.2 st/s" and squeaked under
+# the old ceiling. Conversational English rarely moves more than about 15
+# semitones a second even on a sharp question, so anything nearer 25 is far
+# more likely to be the tracker than the talker.
+MAX_ST_PER_S = 18.0
 # How much of the tail may be octave jumps before the whole reading is thrown
 # away. One bad frame in a contour is survivable; a third of them is not.
 MAX_JUMP_RATIO = 0.25

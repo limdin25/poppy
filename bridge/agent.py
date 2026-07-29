@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import ai, audio, config
+from . import ai, audio, config, stages
 from .transport import CaptureFailed, Transport
 
 # One pattern, used both to detect the end-of-call marker and to strip it. They
@@ -23,6 +23,12 @@ from .transport import CaptureFailed, Transport
 # "[ END ]" was quietly removed from the speech and never ended the call: the
 # agent agreed to take an annoyed prospect off the list, then stayed on the line.
 _MARKER_RE = re.compile(r"\[\s*END\s*\]", re.IGNORECASE)
+# The model asking to move to the next stage. It only ever ASKS: the code in
+# bridge/stages.py decides, and a reply without this marker leaves her exactly
+# where she was. Whitespace-tolerant for the same reason [END] is, because
+# "[ NEXT ]" being stripped from the speech but not recognised would leave her
+# silently stuck on one stage for the whole call.
+_NEXT_RE = re.compile(r"\[\s*NEXT\s*\]", re.IGNORECASE)
 # Emotion cues are for the voice, not for the record. They must survive all the
 # way to Fish, so they are stripped only where text is shown or stored.
 # Commas allowed: the model writes compound cues like "[warm, professional]" of
@@ -40,6 +46,15 @@ _PART_CUE_RE = re.compile(r"\[[a-z\s-]*$", re.IGNORECASE)
 # "an AI assistant", "I'm an A.I." and so on. Word boundaries keep it off every
 # ordinary word that happens to contain those two letters.
 _DISCLOSED_RE = re.compile(r"\bA\.?\s?I\.?\b|artificial intelligence", re.IGNORECASE)
+# Words that are a complete reply on their own. These are never mistaken for
+# her own echo, however well they match what she just said, because discarding
+# one means ignoring the answer she asked for.
+_STANDALONE_REPLY = {
+    "yes", "yeah", "yep", "yup", "no", "nope", "nah", "sure", "okay", "ok",
+    "right", "hello", "hi", "what", "sorry", "pardon", "again", "why", "who",
+    "when", "where", "how", "maybe", "fine", "alright", "cheers", "thanks",
+    "bye", "stop", "go", "on", "please", "wait", "hang", "hold", "speaking",
+}
 
 
 def spoken_words(text: str) -> str:
@@ -133,12 +148,22 @@ def straighten(text: str) -> str:
 
 
 def _strip_marker(text: str) -> str:
-    """Remove the [END] control marker wherever the model put it, and tidy."""
-    return re.sub(r"\s+", " ", straighten(_MARKER_RE.sub(" ", text))).strip()
+    """Remove the control markers wherever the model put them, and tidy.
+
+    Both of them, always. Saying the literal text "[NEXT]" down the phone would
+    be as humiliating as saying "[END]".
+    """
+    clean = _NEXT_RE.sub(" ", _MARKER_RE.sub(" ", text))
+    return re.sub(r"\s+", " ", straighten(clean)).strip()
 
 
 def _has_marker(text: str) -> bool:
     return _MARKER_RE.search(text) is not None
+
+
+def _wants_next(text: str) -> bool:
+    """Did the model ask to move on? It asks; stages.py decides."""
+    return _NEXT_RE.search(text) is not None
 
 
 # Words that mean the thought is still going, even though the sound stopped.
@@ -242,6 +267,36 @@ _ACK_OPENER = re.compile(
 )
 
 
+def _strip_ack(text: str) -> str:
+    """Remove a leading acknowledgement and repair the capital it took with it.
+
+    Stripping "Okay, " off "Okay, so you're doing it all yourself?" leaves a
+    sentence starting with a lowercase "so". Heard on a live call, and it reads
+    as her having lost her thread.
+    """
+    out = _ACK_OPENER.sub(lambda m: m.group(1) or "", text, count=1)
+    if out == text:
+        return out
+    # Step over a leading cue tag ENTIRELY before capitalising. Walking
+    # character by character capitalises the cue instead, turning
+    # "[curious] Right, so..." into "[Curious] so...", which is both wrong and
+    # invisible until it reaches a call.
+    i = 0
+    while i < len(out):
+        if out[i] == " ":
+            i += 1
+        elif out[i] == "[":
+            close = out.find("]", i)
+            if close < 0:
+                break
+            i = close + 1
+        else:
+            break
+    if i < len(out) and out[i].isalpha():
+        return out[:i] + out[i].upper() + out[i + 1:]
+    return out
+
+
 def _drop_leading_ack(tokens):
     """Do not say the acknowledgement twice.
 
@@ -268,11 +323,11 @@ def _drop_leading_ack(tokens):
         if len(buf) < 28:
             continue                       # not yet enough to judge
         decided = True
-        head = _ACK_OPENER.sub(lambda m: m.group(1) or "", buf, count=1)
+        head = _strip_ack(buf)
         if head:
             yield head
     if not decided and buf:
-        head = _ACK_OPENER.sub(lambda m: m.group(1) or "", buf, count=1)
+        head = _strip_ack(buf)
         if head:
             yield head
 
@@ -298,12 +353,16 @@ def _allowed_cue(raw: str) -> str | None:
     if not config.CUES_ENABLED:
         return None
     cue = " ".join(raw.strip().lower().split())
-    if cue in config.SAFE_CUES:
-        return cue
+    base = cue
     for word in _INTENSITY:
-        if cue.startswith(word + " ") and cue[len(word) + 1:] in config.SAFE_CUES:
-            return cue
-    return None
+        if cue.startswith(word + " "):
+            base = cue[len(word) + 1:]
+            break
+    # The noise check runs on BOTH forms, so "[very chuckling]" is refused
+    # exactly like "[chuckling]" and the laugh has no side door.
+    if cue in config.NOISES or base in config.NOISES:
+        return None
+    return cue if base in config.SAFE_CUES else None
 
 
 def clean_cues(tokens):
@@ -426,6 +485,10 @@ class Agent:
         self._baseline = -55.0
         # When the prospect stopped talking, so lag can be measured honestly.
         self._heard_at = 0.0
+        # The last thing SHE said, and when she stopped. Used to recognise her
+        # own voice coming back off the prospect's handset.
+        self._last_spoken = ""
+        self._stopped_at = 0.0
         # A live voice stream, if the caller handed one over. When present every
         # reply starts speaking in about a quarter of a second instead of
         # waiting for the whole clip to render.
@@ -500,6 +563,20 @@ class Agent:
 
     def _emit(self, kind: str, text: str) -> None:
         self.on_event(kind, text)
+
+    def _set_stage(self, stage: int, tries: int) -> None:
+        """Tell the model which stage it is on. Never fatal.
+
+        The gate is an enhancement on top of speaking, not a prerequisite for
+        it, so a brain that does not implement it, or one that throws, must
+        degrade to the old behaviour rather than ending the call. Caught by the
+        end-to-end test, where a stand-in brain without set_stage took the whole
+        call down and the only symptom was "the prospect was never transcribed".
+        """
+        try:
+            self.brain.set_stage(stages.brief(stage, tries))
+        except Exception as e:
+            self._emit("error", f"stage brief not applied: {e}")
 
     def _play(self, text: str, payload: bytes, so_far=None) -> tuple[str, bool, float]:
         """Play one piece of speech.
@@ -591,6 +668,42 @@ class Agent:
             return text, False, speak_ms
         return _spoken_prefix(text, speak_ms), True, speak_ms
 
+    def _own_echo(self, text: str) -> bool:
+        """Is this her own voice coming back, rather than the prospect?
+
+        Seen live: she finished "Hi, is that Smith Plumbing? ... Have you got a
+        minute?" and in the SAME second a turn arrived reading "that." She then
+        spent a turn asking him to clarify a word he had never said.
+
+        Draining our own audio buffer does not prevent it, because the
+        transcriber has already been fed those bytes and will report them
+        whatever we do afterwards. The far end's handset echoes us, most often
+        on speakerphone, and there is no way to stop that at the source.
+
+        So it is recognised instead, and the test is deliberately narrow: only a
+        very short fragment, only just after she stopped, and only when every
+        word in it is one she just said. A genuine interruption is longer than
+        three words or contains something new, and either way survives this.
+        """
+        if not self._last_spoken or not text:
+            return False
+        if time.monotonic() - self._stopped_at > config.ECHO_WINDOW_S:
+            return False
+        words = re.sub(r"[^\w\s']", " ", text.lower()).split()
+        if not words or len(words) > 3:
+            return False
+        # NEVER eat a word that is a complete answer on its own. The first
+        # version of this tested word overlap alone, so a prospect saying "Yes."
+        # was discarded whenever she happened to have said "yes" in her last
+        # line. The end-to-end test caught it; on a live call it would have
+        # looked like her ignoring the answer she had just asked for.
+        if any(w in _STANDALONE_REPLY for w in words):
+            return False
+        # Contiguous, not scattered. Echo is a fragment of what she said, in
+        # the order she said it, not a bag of words that happen to appear.
+        mine = " ".join(re.sub(r"[^\w\s']", " ", self._last_spoken.lower()).split())
+        return " ".join(words) in mine
+
     def _settle(self) -> None:
         """Let our own echo pass before listening.
 
@@ -620,6 +733,8 @@ class Agent:
         # speaking meant a TTS failure or a barge-in still produced a transcript
         # claiming the whole line, disclosure included, had been spoken.
         words = spoken_words(spoken)
+        self._last_spoken = words
+        self._stopped_at = time.monotonic()
         if words:
             self._emit("ai", words)
             result.turns.append(
@@ -696,6 +811,8 @@ class Agent:
         # Tell the transcriber what she just said. Their docs: biggest impact on
         # short replies ("yes", "about twenty", a name), which on a sales call
         # is most of them.
+        self._last_spoken = words
+        self._stopped_at = time.monotonic()
         if words and self.ears is not None:
             self.ears.set_agent_context(words)
         if words:
@@ -704,7 +821,7 @@ class Agent:
                 Turn("ai_truncated" if interrupted else "ai", words,
                      time.time() - result.started_at)
             )
-        return _has_marker(full), interrupted
+        return _has_marker(full), interrupted, _wants_next(full)
 
     def _say_stream(self, sentences, result: CallResult) -> tuple[bool, bool]:
         """Speak sentences as the model writes them.
@@ -780,7 +897,7 @@ class Agent:
             )
         return saw_end.is_set(), interrupted
 
-    def _listen_streaming(self, result: CallResult) -> str:
+    def _listen_streaming(self, result: CallResult, timeout: float | None = None) -> str:
         """Wait for AssemblyAI to say a turn finished.
 
         There is no VAD here and no end-of-turn wait, because AssemblyAI is
@@ -791,7 +908,7 @@ class Agent:
 
         Audio is pumped over by the transport's reader, not from here.
         """
-        deadline = time.time() + config.AAI_TURN_TIMEOUT_S
+        deadline = time.time() + (config.AAI_TURN_TIMEOUT_S if timeout is None else timeout)
         said_why = False
         while time.time() < deadline:
             if time.time() - result.started_at > config.MAX_CALL_SECONDS:
@@ -837,6 +954,9 @@ class Agent:
                     continue
             if not text:
                 return ""         # socket closed
+            if self._own_echo(text):
+                self._emit("echo", f"ignored own voice coming back: {text!r}")
+                continue
             # They stopped making noise, but did they stop talking? If the
             # thought is obviously unfinished, give them a moment and join it up
             # rather than answering half a sentence.
@@ -973,12 +1093,29 @@ class Agent:
             self.brain.note_opening(self.opener, truncated=cut_off)
 
             quiet_rounds = 0
+            # Set when the last thing she said was cut short, which changes how
+            # long she is willing to wait before picking the thread back up.
+            was_cut = False
+            listen_for: float | None = None
+            # THE GATE. This number lives here, in code, and the model cannot
+            # change it. It may ask to move on with [NEXT] and it advances only
+            # when this agrees. See bridge/stages.py.
+            stage = 0
+            tries = 0
+            self._set_stage(stage, tries)
             while time.time() - result.started_at < config.MAX_CALL_SECONDS:
                 if not self.transport.is_live():
                     result.outcome = "far_end_hungup"
                     break
-                heard = (self._listen_streaming(result) if self.ears is not None
-                         else self._listen(result))
+                heard = (self._listen_streaming(result, listen_for)
+                         if self.ears is not None else self._listen(result))
+                if not heard and was_cut:
+                    # They cut in and then said nothing. Do not sit here: carry
+                    # on from where she was stopped, which is what the prompt
+                    # tells her to do with this marker.
+                    self._emit("resume", "cut off, then silence, so carrying on")
+                    heard = config.WENT_QUIET
+                    was_cut = False
                 if not heard:
                     quiet_rounds += 1
                     if quiet_rounds >= 2:
@@ -992,11 +1129,37 @@ class Agent:
                 # the literal text "[END]" down the phone would be humiliating.
                 try:
                     if self.voice_stream is not None:
-                        ends, _interrupted = self._say_live(heard, result)
+                        ends, was_cut, move_on = self._say_live(heard, result)
                     else:
-                        ends, _interrupted = self._say_stream(
+                        ends, was_cut = self._say_stream(
                             self.brain.stream_sentences(heard), result
                         )
+                        move_on = False
+                    listen_for = config.RESUME_AFTER_CUT_S if was_cut else None
+
+                    # Advance only on her asking AND only one stage at a time.
+                    # A reply with no marker leaves her exactly where she was,
+                    # which is the whole point: she cannot skip a stage because
+                    # there is nothing here to skip with.
+                    if move_on and stage < len(stages.STAGES) - 1:
+                        stage += 1
+                        tries = 0
+                        self._emit("stage",
+                                   f"{stage + 1}/{len(stages.STAGES)} "
+                                   f"{stages.STAGES[stage].name}")
+                    elif not move_on:
+                        tries += 1
+                        if tries >= config.STAGE_MAX_TRIES:
+                            # Asking the same thing forever is worse than moving
+                            # on. A person would take the hint.
+                            if stage < len(stages.STAGES) - 1:
+                                stage += 1
+                                self._emit("stage",
+                                           f"{stage + 1}/{len(stages.STAGES)} "
+                                           f"{stages.STAGES[stage].name} "
+                                           f"(gave up asking)")
+                            tries = 0
+                    self._set_stage(stage, tries)
                 except Exception as e:
                     result.error = str(e)
                     self._emit("error", f"LLM failed: {e}")
