@@ -89,7 +89,7 @@ const DEFAULTS: FishConfig = {
   barge_in_ms: 350,
   barge_margin_db: 14,
   finish_word_ms: 200,
-  test_number: '',
+  test_number: '+447863992555',
   test_business: 'Smith Plumbing',
 };
 
@@ -453,13 +453,13 @@ export default function CrmFishAgentPage() {
       <div className="bg-white border border-[#E5E7EB] rounded-2xl p-5">
         <h3 className="text-[15px] font-bold text-[#1A1A1A] mb-4">Script</h3>
 
-        <Field label="Opening line" hint="The first thing they hear. Keep it under about 7 seconds: the original ran 16 and people hang up. It must still say she is an AI, which is required by Anthropic's and Fish's policies, not optional. Leave blank to use the built-in one.">
+        <Field label="Opening line" hint="The first thing they hear. Keep it under about 7 seconds: the original ran 16 and people hung up. Write {business} and {reviews} where this lead's own details should go, or every prospect gets called Smith Plumbing. If you use {business} on a lead with no business name saved, she falls back to the built-in opener rather than saying something daft. Leave blank for the built-in.">
           <textarea className={`${INPUT} min-h-[70px]`} value={cfg.opener}
             onChange={(e) => set('opener', e.target.value)}
             placeholder="Hi, is that {business}? It's Elsie, an AI assistant at HeyElsie. Have you got thirty seconds?" />
         </Field>
 
-        <Field label="System prompt" hint="How she behaves for the rest of the call. Leave blank to use the built-in one, which caps her at a few words a turn and forbids stacking more than one idea per breath.">
+        <Field label="System prompt" hint="Everything she knows and every rule she follows, in full. This box is now the source of truth: whatever is in here is what she uses on the next call, so nothing about her behaviour is hidden in code any more. {business} and {reviews} work here too. Clearing it falls back to the built-in.">
           <textarea className={`${INPUT} min-h-[220px] font-mono text-[12px] leading-relaxed`}
             value={cfg.system_prompt} onChange={(e) => set('system_prompt', e.target.value)}
             placeholder="Leave blank to use the built-in caller prompt." />

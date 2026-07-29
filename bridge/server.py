@@ -39,6 +39,32 @@ def log(*parts) -> None:
     print(time.strftime("%H:%M:%S"), *parts, flush=True)
 
 
+def _fill(text: str | None, business: str | None, reviews: int | None) -> str:
+    """Put this lead's details into a prompt or opener saved on the agent page.
+
+    Without this, a saved opener is used exactly as typed, so the moment Hugo
+    writes "Hi, is that Smith Plumbing?" into the settings box every lead in the
+    country gets called Smith Plumbing. The tokens are what make a prompt he can
+    see and edit safe to use on a real campaign.
+
+    str.format is deliberately not used: the prompt is full of square brackets
+    and prose, and one stray brace in something Hugo typed would raise
+    mid-call. A plain replace cannot fail.
+
+    Returns "" when the saved text needs a business name and this call has none,
+    so the caller falls back to the built-in rather than saying "is that the
+    business?" down the phone.
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+    if "{business}" in text and not business:
+        return ""
+    return (text
+            .replace("{business}", business or "")
+            .replace("{reviews}", str(reviews) if reviews is not None else "some"))
+
+
 # --------------------------------------------------------------------------
 # Webhook signature
 # --------------------------------------------------------------------------
@@ -203,8 +229,10 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
     try:
         a = agent.Agent(
             transport=transport,
-            system_prompt=(saved.get("system_prompt") or "").strip() or runmod.SYSTEM_PROMPT,
-            opener=(saved.get("opener") or "").strip() or runmod.build_opener(business, reviews),
+            system_prompt=_fill(saved.get("system_prompt"), business, reviews)
+            or runmod.SYSTEM_PROMPT,
+            opener=_fill(saved.get("opener"), business, reviews)
+            or runmod.build_opener(business, reviews),
             # telephony=True means every provider is asked for mu-law at 8 kHz,
             # which is what the network carries and what Telnyx wants, so there
             # is no transcoding on the call path whichever one is in use.
