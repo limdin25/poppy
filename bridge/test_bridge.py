@@ -11,7 +11,7 @@ import array
 import math
 import sys
 
-from . import agent, audio, config
+from . import agent, ai, audio, config
 
 
 def tone(ms: float, dbfs: float, rate: int = config.AI_RATE) -> bytes:
@@ -317,6 +317,111 @@ def _():
     out = audio.to_mono_16k(stereo.tobytes())
     assert abs(audio.ms_of(out) - 500) < 5, audio.ms_of(out)
     assert abs(audio.rms_dbfs(out) - (-20.0)) < 1.5, audio.rms_dbfs(out)
+
+
+# -- what actually reaches the voice ----------------------------------------
+
+def _drain(gen) -> str:
+    return "".join(gen)
+
+
+@case("a laughing cue never reaches Fish, however it is worded")
+def _():
+    # Measured: [chuckling] renders 0.93s longer than the bare line, which is
+    # her laughing. The prompt banning it is not enough, Fish takes free-form
+    # natural language so the model can always find another wording.
+    for bad in ("[chuckling]", "[laughs]", "[laughing softly]", "[giggles]",
+                "[amused chuckle]"):
+        out = _drain(agent.clean_cues([f"{bad} Fair enough."]))
+        assert "[" not in out, f"{bad} survived as {out!r}"
+        assert "Fair enough." in out, out
+
+
+@case("the safe cues do survive, including a cue split across tokens")
+def _():
+    assert _drain(agent.clean_cues(["[warm] Hi there."])) == "[warm] Hi there."
+    # Claude streams deltas, so a cue arrives in pieces far more often than not.
+    assert _drain(agent.clean_cues(["[cur", "ious", "] Go on?"])) == "[curious] Go on?"
+    assert _drain(agent.clean_cues(["[chuck", "ling] Go on?"])) == " Go on?"
+
+
+@case("an unclosed bracket is dropped rather than read out loud")
+def _():
+    assert "[" not in _drain(agent.clean_cues(["[chuck"]))
+
+
+@case("[END] is stripped from the voice but still ends the call")
+def _():
+    assert "END" not in _drain(agent.clean_cues(["[END] All the best."]))
+
+
+@case("a question ends the turn, and the rest is never spoken")
+def _():
+    spoken: list[str] = []
+    out = _drain(agent._clip_reply(
+        ["How many reviews", " have you got? ", "Most trades lose work because"],
+        spoken))
+    assert out == "How many reviews have you got?", out
+    assert "".join(spoken) == out, "spoken must record exactly what was yielded"
+
+
+@case("past the word cap the reply ends at the next full stop, not mid-clause")
+def _():
+    # Over the cap at word 10, but the sentence does not end until word 13, so
+    # she finishes it rather than stopping dead on the cap.
+    words = [f"word{i} " for i in range(13)]
+    spoken: list[str] = []
+    out = _drain(agent._clip_reply(words + ["end. ", "And more besides."],
+                                   spoken, max_words=10))
+    # Cut at the full stop itself, so the trailing space goes with the rest.
+    assert out.endswith("end."), repr(out)
+    assert "And more" not in out, out
+    assert len(out.split()) == 14, len(out.split())
+    assert "".join(spoken) == out, "spoken must record exactly what was yielded"
+
+
+@case("a reply that never punctuates is still cut, at twice the cap")
+def _():
+    spoken: list[str] = []
+    out = _drain(agent._clip_reply([f"word{i} " for i in range(60)], spoken,
+                                   max_words=10))
+    assert len(out.split()) <= 22, len(out.split())
+
+
+@case("the model's copy of the acknowledgement is dropped, the cue is kept")
+def _():
+    # Two sources of "Right." on one turn is exactly what Hugo reported.
+    out = _drain(agent._drop_leading_ack(
+        ["[curious] Right, so you're not asking customers at the moment then?"]))
+    assert out.startswith("[curious] so"), out
+    out = _drain(agent._drop_leading_ack(
+        ["Okay. And how many jobs do you do in a week, roughly?"]))
+    assert out.startswith("And how many"), out
+
+
+@case("a genuine word is not mistaken for the acknowledgement")
+def _():
+    line = "Sure thing, I'll get a colleague to give you a ring tomorrow."
+    assert _drain(agent._drop_leading_ack([line])) == line
+    line = "Right person to speak to about the reviews, are you?"
+    assert _drain(agent._drop_leading_ack([line])) == line
+
+
+@case("history is corrected to what was actually spoken, not what was written")
+def _():
+    brain = ai.Brain("sys")
+    brain.history = [{"role": "user", "content": "About three."},
+                     {"role": "assistant", "content": "Full reply that was cut."}]
+    brain.amend_last("Full reply")
+    assert brain.history[-1]["content"] == "Full reply", brain.history
+
+    # A reply that was nothing but a cue leaves nothing audible. Dropping only
+    # the assistant turn would put two user messages back to back, which the
+    # Messages API will not take.
+    brain.history = [{"role": "user", "content": "About three."},
+                     {"role": "assistant", "content": "[curious]"}]
+    brain.amend_last("")
+    assert brain.history == [], brain.history
 
 
 def main() -> int:

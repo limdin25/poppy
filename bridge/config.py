@@ -125,10 +125,33 @@ ANSWER_ONSET_CHUNKS = 3
 MAX_CALL_SECONDS = 420
 
 # --- Models ----------------------------------------------------------------
+# Re-measured on the REAL prompt with a real mid-call history, which is the only
+# test that means anything. The earlier bench used a single cold turn and got
+# the ranking right but the margins badly wrong.
+#
+#   model                TTFT     whole reply   what it wrote
+#   claude-haiku-4-5     764ms      960ms       "Three reviews across how long?"
+#   claude-sonnet-4-5    986ms     1595ms       two sentences, then a question
+#   claude-sonnet-5     1805ms     2228ms       too slow
+#   claude-fable-5      3095ms     4148ms       far too slow
+#
+# Haiku wins on both counts, and the second column is the one that matters:
+# Fish only starts synthesising once it has chunk_length characters (floor 100)
+# or a flush, and our replies are ~50 characters, so the buffer NEVER fills and
+# every reply waits for the whole thing to be written. A model that answers in
+# eight words is therefore faster than its time-to-first-token suggests, and a
+# chatty one is slower. Sonnet was not "smarter", it was wordier, and wordier is
+# the actual defect: it ignored the twelve-word rule on every turn.
 LLM_MODEL = os.environ.get("BRIDGE_LLM_MODEL", "claude-haiku-4-5-20251001")
 # Reasoning must stay OFF. Measured time-to-first-token with reasoning enabled
 # runs to tens of seconds, which is unusable on a live call.
 LLM_MAX_TOKENS = 150
+# Hard ceiling on how much of a reply is ever spoken, enforced in code because
+# the prompt asking for it plainly did not work. Past this many words the reply
+# is cut at the next full stop, and a question always ends the turn wherever it
+# lands. Hugo, twice: "she keep talking over and over and over me", "ask one
+# question at a time and wait to get the answer".
+MAX_SPOKEN_WORDS = int(os.environ.get("BRIDGE_MAX_WORDS", "28"))
 
 # Measured on a 2.7s utterance, best of 2, warm:
 #   gpt-4o-mini-transcribe  637 ms   <- chosen
@@ -232,6 +255,30 @@ FISH_CHUNK = int(os.environ.get("BRIDGE_FISH_CHUNK", "120"))
 # Their defaults. Higher temperature is more expressive and less predictable.
 FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "0.7"))
 FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.7"))
+
+# --- Emotion cues, and why they are an allowlist rather than an instruction --
+# S2.1 Pro takes free-form natural language in square brackets, "15,000+ tags"
+# by their own count, so [chuckling] or [laughing nervously] are as valid to it
+# as [warm] is. The prompt saying "never [laughs]" therefore guarantees nothing:
+# the model reaches for a synonym and Fish performs it.
+#
+# Measured on our own voice, mean of three renders of the same line:
+#   bare        3.10s
+#   warm        2.93s     delivery only
+#   curious     3.10s     delivery only
+#   amused      3.16s     delivery only, so this one was NOT the laugh
+#   chuckling   4.13s     +0.93s of actual laughing
+#   break       3.94s     +0.74s, a real pause, which is the one we want
+# Nothing leaks as text: all of them transcribe back as the clean sentence.
+#
+# So anything outside this list is dropped before it reaches Fish. Fish's own
+# docs also warn "don't overuse emotion tags in short text" and to give an
+# emotion enough text to develop, and our replies are about eight words, which
+# is precisely the case they mean.
+SAFE_CUES = {"warm", "curious", "calm", "empathetic", "confident", "amused",
+             "break", "long-break"}
+# The master switch behind the toggle on /admin/crm/agent/fish.
+CUES_ENABLED = os.environ.get("BRIDGE_CUES", "") != "0"
 # Stream over a websocket held open for the call. Measured on the FREE model:
 # ~510ms to open (paid once, during the ring) then 271-278ms to first audio on
 # every reply, against 477ms and up to 1150ms for the plain HTTP call.

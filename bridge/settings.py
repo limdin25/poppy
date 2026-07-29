@@ -68,4 +68,20 @@ def apply(cfg: dict) -> list[str]:
             changed.append(f"{src}={value}")
         except (TypeError, ValueError):
             continue
+
+    # The two emotion controls, which until now were saved by the settings page
+    # and read by nobody. Toggling them changed the row in Supabase and had no
+    # effect whatsoever on a call, which is the exact failure this module's
+    # docstring warns about. They are separate from the mapping above because
+    # neither is a plain scalar copied onto config.
+    if isinstance(cfg.get("emotions_enabled"), bool):
+        config.CUES_ENABLED = cfg["emotions_enabled"]
+        changed.append(f"emotions_enabled={cfg['emotions_enabled']}")
+    allowed = cfg.get("allowed_emotions")
+    if isinstance(allowed, list) and allowed:
+        # [break] is a pause, not an emotion, so it is not on the settings page
+        # and must survive whatever Hugo ticks there.
+        config.SAFE_CUES = {str(x).strip().lower() for x in allowed if str(x).strip()}
+        config.SAFE_CUES |= {"break", "long-break"}
+        changed.append(f"allowed_emotions={len(config.SAFE_CUES)}")
     return changed

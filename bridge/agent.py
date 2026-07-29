@@ -103,8 +103,8 @@ def sounds_unfinished(text: str) -> bool:
     return words[-1] in _UNFINISHED_TAIL
 
 
-def _stop_after_question(tokens):
-    """Stop speaking once a question has been asked.
+def _clip_reply(tokens, spoken: list[str], max_words: int | None = None):
+    """Cut the reply short, in code, at the first of two limits.
 
     A person asks one thing and then shuts up. The model does not: it will ask
     "how many reviews have you got?" and carry straight on into the pitch, so the
@@ -113,23 +113,141 @@ def _stop_after_question(tokens):
     not keep talking after asking a question."
 
     Telling it not to in the prompt is not enough, because a streamed reply is
-    already on its way to the voice by the time the sentence ends. So the tokens
-    are simply cut off at the question mark, which makes it impossible.
+    already on its way to the voice by the time the sentence ends. So:
+
+      - a question mark ends the turn wherever it lands, mid-token if need be
+      - past MAX_SPOKEN_WORDS the turn ends at the next full stop, so she
+        finishes the sentence she is in rather than stopping mid-clause
+      - twice the cap is a hard stop, for a reply that never punctuates at all
 
     Anything before the question still plays, so "Fair question. A colleague
     will explain. So are you the right person?" keeps all three parts and stops
     at the end.
+
+    Whatever is actually yielded is appended to `spoken`. That list, not the
+    model's full output, is the truth about what the prospect heard. Recording
+    the untruncated reply meant the transcript claimed lines that were never
+    said, and worse, the model believed it had already said them and moved on.
     """
+    if max_words is None:
+        max_words = config.MAX_SPOKEN_WORDS
     done = False
+    text = ""
     for token in tokens:
         if done:
-            continue                       # drain, so history still records it
+            continue                       # drain, so the socket closes cleanly
+        text += token
+        words = text.count(" ")
+        cut = None
         if "?" in token:
-            head, _, _tail = token.partition("?")
-            yield head + "?"
+            cut = token.index("?") + 1
+        elif words >= max_words:
+            ends = [token.index(c) for c in ".!" if c in token]
+            if ends:
+                cut = min(ends) + 1
+            elif words >= max_words * 2:
+                cut = len(token)           # it is never going to stop on its own
+        if cut is None:
+            spoken.append(token)
+            yield token
+        else:
+            piece = token[:cut]
+            if piece:
+                spoken.append(piece)
+                yield piece
             done = True
+
+
+# The acknowledgement words, as they appear at the START of a written reply.
+# The optional group is a cue tag, which must survive: "[curious] Right, so..."
+# has to become "[curious] so...", not "so...".
+_ACK_OPENER = re.compile(
+    r"^(\s*\[[a-z][a-z\s-]{0,20}\]\s*)?"
+    r"(right|okay|ok|yeah|yep|yes|sure|gotcha|got it|mm+|mm hmm|no worries|"
+    r"fair enough|absolutely|of course)"
+    r"\s*[,.!]+\s*",
+    re.IGNORECASE,
+)
+
+
+def _drop_leading_ack(tokens):
+    """Do not say the acknowledgement twice.
+
+    The backchannel plays "Right." while the model is still writing. The model
+    then writes "Right. And are you asking customers now?" of its own accord: it
+    did it on three runs out of three when measured. So the prospect hears
+    "Right." ... "Right. And are you..." and it sounds exactly like Hugo said it
+    did, "saying thing like Right / yeah when makes no sense and no context".
+
+    Two independent sources of the same filler word. The backchannel keeps the
+    job, because it is what covers the thinking gap, and the model's copy is
+    removed here.
+
+    Only used on turns where an acknowledgement actually played, so the small
+    buffering delay is never paid on the turns that did not have one.
+    """
+    buf = ""
+    decided = False
+    for token in tokens:
+        if decided:
+            yield token
             continue
-        yield token
+        buf += token
+        if len(buf) < 28:
+            continue                       # not yet enough to judge
+        decided = True
+        head = _ACK_OPENER.sub(lambda m: m.group(1) or "", buf, count=1)
+        if head:
+            yield head
+    if not decided and buf:
+        head = _ACK_OPENER.sub(lambda m: m.group(1) or "", buf, count=1)
+        if head:
+            yield head
+
+
+def clean_cues(tokens):
+    """Drop any bracketed cue that is not on the verified-safe list.
+
+    Fish takes free-form natural language in brackets, so the prompt listing six
+    permitted cues is a suggestion the model is free to improvise around, and it
+    does. [chuckling] measured 0.93 seconds longer than the bare line: that is
+    not a delivery difference, that is her laughing. Hugo has now reported the
+    laugh twice.
+
+    So the list is enforced here instead, on the way to the voice, the same way
+    the long-dash rule is enforced in code rather than remembered.
+
+    A cue can be split across tokens ("[", "chuck", "ling]"), so an unclosed
+    bracket is held back until the closing one arrives. Anything still held when
+    the stream ends is dropped rather than spoken: a stray "[chuck" down the
+    phone is worse than a missing cue nobody would have noticed.
+    """
+    held = ""
+    for token in tokens:
+        text, held = held + token, ""
+        out = []
+        while text:
+            start = text.find("[")
+            if start < 0:
+                out.append(text)
+                break
+            out.append(text[:start])
+            end = text.find("]", start)
+            if end < 0:
+                held = text[start:]        # incomplete, wait for the rest
+                break
+            cue = text[start + 1:end].strip().lower()
+            if config.CUES_ENABLED and cue in config.SAFE_CUES:
+                out.append(f"[{cue}]")
+            text = text[end + 1:]
+        # Last stop before the voice, so the punctuation rule is enforced here
+        # too. The streamed path never passed through straighten(), which only
+        # ever ran on the opener and on the saved transcript, so a long dash in
+        # a live reply reached Fish untouched. Newlines collapse for the same
+        # reason: the model writes paragraphs, and nobody speaks in paragraphs.
+        piece = re.sub(r"\s+", " ", straighten("".join(out)))
+        if piece:
+            yield piece
 
 
 def _spoken_prefix(text: str, elapsed_ms: float) -> str:
@@ -388,10 +506,22 @@ class Agent:
 
         Returns (saw end marker, was interrupted).
         """
-        said: list[str] = []
-        tokens = _stop_after_question(self.brain.stream_tokens(heard, seen=said))
-
+        # Two lists on purpose. `written` is everything the model produced, and
+        # is what the end-of-call marker is looked for in, because [END] often
+        # lands after the point the reply was cut. `spoken` is only what got as
+        # far as the voice, and is the only honest basis for the transcript.
+        written: list[str] = []
+        spoken: list[str] = []
+        # Chosen before the stream is built, because whether an acknowledgement
+        # played decides whether the model's own copy of it has to be removed.
+        # Nothing has run yet: stream_tokens is a generator, so the request does
+        # not leave until the first token is pulled.
         ack = self._pick_backchannel(heard)
+        raw = self.brain.stream_tokens(heard, seen=written)
+        if ack is not None:
+            raw = _drop_leading_ack(raw)
+        tokens = clean_cues(_clip_reply(raw, spoken))
+
         if ack is not None:
             # Plays over the model's first tokens, so it costs nothing.
             self._emit("ai", ack[0])
@@ -401,8 +531,12 @@ class Agent:
         _, interrupted = self._play("", chunks)
         self._settle()
 
-        full = "".join(said)
-        words = spoken_words(_strip_marker(full))
+        full = "".join(written)
+        words = spoken_words(_strip_marker("".join(spoken)))
+        # Correct the model's own record to what actually left the phone. Left
+        # uncorrected it believes it delivered the half of the reply that was
+        # cut off, so it never says it, and the call quietly loses the thread.
+        self.brain.amend_last(words)
         # Tell the transcriber what she just said. Their docs: biggest impact on
         # short replies ("yes", "about twenty", a name), which on a sales call
         # is most of them.

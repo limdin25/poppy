@@ -143,6 +143,28 @@ class Brain:
             note += "Do not introduce yourself again.\n"
         self.system_prompt += note
 
+    def amend_last(self, spoken: str) -> None:
+        """Replace the last thing the model thinks it said with what was said.
+
+        The reply is cut short in two places, at a question mark and at a word
+        cap, so the text the model generated and the text the prospect heard are
+        routinely different. History has to hold the second one. Otherwise the
+        model carries on from a pitch it never delivered, which on a live call
+        sounds like it has skipped a step, and the saved transcript claims lines
+        that were never spoken.
+        """
+        if not self.history or self.history[-1]["role"] != "assistant":
+            return
+        if spoken.strip():
+            self.history[-1]["content"] = spoken.strip()
+            return
+        # Nothing audible survived, which happens when a reply is nothing but a
+        # cue. Drop the prospect's turn along with it: leaving the user message
+        # behind would put two of them back to back on the next request.
+        self.history.pop()
+        if self.history and self.history[-1]["role"] == "user":
+            self.history.pop()
+
     def stream_tokens(self, heard: str, seen=None):
         """Yield the model's output as raw deltas, the instant each arrives.
 
