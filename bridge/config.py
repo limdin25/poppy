@@ -275,7 +275,13 @@ FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.7"))
 # docs also warn "don't overuse emotion tags in short text" and to give an
 # emotion enough text to develop, and our replies are about eight words, which
 # is precisely the case they mean.
-SAFE_CUES = {"warm", "curious", "calm", "empathetic", "confident", "amused",
+# Re-run on the second voice Hugo picked, three renders each. Everything below
+# is delivery only; [chuckling] was the only one that made a noise, again, at
+# +0.87s. So the palette can be WIDE, and it needs to be: trimmed to five cues
+# and told most turns needed none, she came back "zero emotion, no charisma".
+# The allowlist exists to stop the laugh, not to flatten her.
+SAFE_CUES = {"warm", "curious", "amused", "confident", "delighted", "excited",
+             "playful", "sincere", "empathetic", "calm", "emphasis",
              "break", "long-break"}
 # The master switch behind the toggle on /admin/crm/agent/fish.
 CUES_ENABLED = os.environ.get("BRIDGE_CUES", "") != "0"

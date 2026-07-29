@@ -17,11 +17,16 @@ import { supabase } from '@/integrations/supabase/browser';
 
 // Fish performs a cue in square brackets instead of reading it. Verified: the
 // words come back clean through speech-to-text with the cue absent.
+// Every one below was measured on 2026-07-29, three renders each against the
+// bare line: all of them change only HOW she says it. [chuckling] was the odd
+// one out at +0.87s, which is her actually laughing, so it is not offered here
+// and the bridge drops it even if something asks for it.
 const EMOTIONS = [
-  'warm', 'curious', 'calm', 'confident', 'empathetic', 'amused', 'surprised',
-  'excited', 'nervous', 'sarcastic', 'sympathetic', 'determined',
+  'warm', 'curious', 'amused', 'confident', 'delighted', 'excited', 'playful',
+  'sincere', 'empathetic', 'calm', 'emphasis', 'surprised', 'sympathetic',
+  'determined',
 ] as const;
-const EFFECTS = ['laughs', 'chuckles', 'sighs', 'break', 'emphasis'] as const;
+const EFFECTS = ['break', 'long-break'] as const;
 
 export interface FishConfig {
   voice_id: string;
@@ -46,7 +51,10 @@ const DEFAULTS: FishConfig = {
   top_p: 0.7,
   chunk_length: 120,
   emotions_enabled: true,
-  allowed_emotions: ['warm', 'curious', 'calm', 'confident', 'empathetic', 'amused'],
+  // Wide on purpose. Cut back to five, she came back "zero emotion, no
+  // charisma": the list is here to stop the laugh, not to flatten her.
+  allowed_emotions: ['warm', 'curious', 'amused', 'confident', 'delighted',
+    'excited', 'playful', 'sincere', 'empathetic', 'calm', 'emphasis'],
   system_prompt: '',
   opener: '',
 };
