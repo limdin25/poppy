@@ -231,6 +231,19 @@ class AssemblyStream:
 
     # -- text out ------------------------------------------------------------
 
+    def partial_text(self) -> str:
+        """What they are saying RIGHT NOW, before it has settled.
+
+        Exists so the opener can tell "they are mid-sentence" from "the line is
+        silent" without waiting for a finished turn. A US trade answers with
+        "Stroh Bros Plumbing, Dave speaking", which takes about three seconds to
+        say and longer than that to settle, so a two and a half second wait for
+        a FINISHED turn sees nothing and opens straight over the top of them.
+        That happened to Stroh Bros: her opener and their greeting are stamped
+        at the same 15.7 seconds.
+        """
+        return self._partial.strip()
+
     def settled_partial(self, stable_for_s: float,
                         min_words: int | None = None) -> str | None:
         """A partial that has stopped growing, i.e. they have paused.

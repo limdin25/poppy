@@ -291,6 +291,19 @@ PROSODY_ENABLED = os.environ.get("BRIDGE_PROSODY", "") != "0"
 # also guarantees the opener is half-heard and has to be repeated. Long enough
 # for a real greeting, short enough that a silent pickup is not awkward.
 WAIT_FOR_HELLO_S = 2.5
+# The ceiling on that wait, used only once they have actually STARTED talking.
+#
+# 2.5s is the right amount of silence to tolerate before opening into a dead
+# line. It is nowhere near enough to hear out "Stroh Bros Plumbing, Dave
+# speaking": that takes about three seconds to say, and AssemblyAI needs
+# another second on top before it will call the turn finished. So the plain
+# 2.5s wait expired mid-greeting and she talked straight over them, which is
+# both rude and the reason the warm opener never got chosen.
+#
+# So: wait 2.5s for them to start. If they never do, open. If they DO, hold on
+# until they finish, up to this. Silence is never punished, and nobody gets
+# talked over.
+WAIT_FOR_HELLO_MAX_S = float(os.environ.get("BRIDGE_WAIT_FOR_HELLO_MAX_S", "6.0"))
 
 ELEVENLABS_VOICE = os.environ.get("BRIDGE_VOICE_ID", "o6wnoeR1UlXDVucYjZmq")
 # flash_v2_5 is the FASTEST ElevenLabs model, not the most natural. It buys its

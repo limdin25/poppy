@@ -515,6 +515,18 @@ class CallResult:
         }
 
 
+# Words that appear in half the plumbers in America, so finding one in a
+# greeting proves nothing about whether they announced THEMSELVES. Only the
+# distinctive part of a name is evidence.
+_GENERIC_TRADE_WORDS = frozenset({
+    "plumbing", "plumber", "plumbers", "heating", "cooling", "drain",
+    "drains", "sewer", "rooter", "services", "service", "company",
+    "solutions", "contractors", "contracting", "incorporated", "limited",
+    "brothers", "sons", "group", "systems", "mechanical", "emergency",
+    "repair", "installation", "residential", "commercial", "water",
+})
+
+
 class Agent:
     def __init__(
         self,
@@ -524,12 +536,23 @@ class Agent:
         stt: ai.SpeechToText | None = None,
         tts: ai.TextToSpeech | None = None,
         on_event=None,
+        business: str | None = None,
     ):
         self.transport = transport
         self.stt = stt or ai.WhisperSTT()
         self.tts = tts or ai.build_tts()
         self.brain = ai.Brain(system_prompt)
         self.opener = opener
+        self.opener_warm = "[warm] Hi there, it's Maria."
+        # The distinctive words of their name, for spotting it coming back at
+        # us in their greeting. Four letters and up, and the generic trade
+        # words dropped, so "Plumbing" cannot match every plumber who says
+        # "plumbing" while answering a phone. What is left is the bit that is
+        # actually theirs: "waterways", "chavarria".
+        self.business_words = tuple(
+            w for w in re.findall(r"[a-z]+", (business or "").lower())
+            if len(w) >= 4 and w not in _GENERIC_TRADE_WORDS
+        )
         self.on_event = on_event or (lambda kind, text: None)
         # Replaced with this line's measured quiet level once the call connects.
         self._baseline = -55.0
@@ -558,6 +581,19 @@ class Agent:
         # time landed as dead air at the very start of every call, which is the
         # worst possible place for it. Nobody is waiting during the ring.
         self._opener_audio: bytes | None = None
+        # A SECOND opener, for when they answer by announcing themselves.
+        #
+        # US trades do not say "hello", they say "Waterways Plumbing and Drain
+        # Cleaning, this is Mike". Asking "is that Waterways Plumbing and Drain
+        # Cleaning?" back at that is asking a man to confirm the name he said
+        # two seconds ago, and it is the most robotic thing on the call. It
+        # happened to Mike verbatim, and he hung up two turns later.
+        #
+        # Rendered during the ring alongside the other one, so choosing between
+        # them on answer costs nothing. Deliberately name-free: we cannot know
+        # his name before he says it, and "Hi there" is what a person says
+        # while they are still catching it.
+        self._opener_warm_audio: bytes | None = None
         threading.Thread(target=self._prepare_opener, daemon=True).start()
         threading.Thread(target=self._prepare_backchannel, daemon=True).start()
 
@@ -566,6 +602,10 @@ class Agent:
             self._opener_audio = self.tts.say(straighten(self.opener))
         except Exception as e:
             self._emit("error", f"opener TTS failed, will retry on answer: {e}")
+        try:
+            self._opener_warm_audio = self.tts.say(straighten(self.opener_warm))
+        except Exception as e:
+            self._emit("error", f"warm opener TTS failed, will retry on answer: {e}")
 
     def _prepare_backchannel(self) -> None:
         """Generate the little acknowledgements up front, during the ring.
@@ -616,6 +656,35 @@ class Agent:
 
     def _emit(self, kind: str, text: str) -> None:
         self.on_event(kind, text)
+
+    def announced_themselves(self, greeting: str) -> bool:
+        """Did they say who they are, or just say hello?
+
+        Decides which opener to use. "Hello?" needs "is that Waterways
+        Plumbing?", because we genuinely do not know we have the right person.
+        "Waterways Plumbing, this is Mike" does NOT: asking him to confirm the
+        name he just said wastes a turn, sounds like a machine reading a
+        script, and is what Mike actually got before he hung up.
+
+        Wrong in the safe direction. Treating a real greeting as an
+        announcement costs nothing, because "Hi there, it's Maria" is a
+        perfectly normal thing to say to anybody. Treating an announcement as a
+        bare hello is the failure that just cost us a call.
+        """
+        g = (greeting or "").strip().lower()
+        if not g:
+            return False
+        if "this is" in g or "speaking" in g or "how can i help" in g:
+            return True
+        # Any real word from the business name coming back at us means they
+        # led with it. Short words are skipped: "and", "the", "inc" match
+        # everything and would make a bare "hello" look like an announcement.
+        for word in (self.business_words or ()):
+            if word in g:
+                return True
+        # A bare greeting is one or two words. Anything longer is somebody
+        # telling us something, and answering it with a name-check is odd.
+        return len(g.split()) >= 4
 
     def _answerphone(self, result, heard: str | None = None) -> bool:
         """Is this a machine? Sets the outcome and returns True if so.
@@ -825,7 +894,16 @@ class Agent:
     def _say(self, text: str, result: CallResult) -> bool:
         """Speak one fixed line, such as the opener. Returns True if cut off."""
         text = straighten(text)
-        payload = self._opener_audio if text == straighten(self.opener) else None
+        # Either opener may be the one chosen on the day, so both pre-rendered
+        # clips are eligible. Missing this would silently re-render the warm
+        # one on answer, putting its generation time back as dead air at the
+        # start of the call, which is the exact cost the pre-render exists to
+        # avoid.
+        payload = None
+        if text == straighten(self.opener):
+            payload = self._opener_audio
+        elif text == straighten(self.opener_warm):
+            payload = self._opener_warm_audio
         if payload is None:
             try:
                 payload = self.tts.say(text)
@@ -1189,8 +1267,9 @@ class Agent:
             # open into silence if none comes.
             greeting = ""
             if self.ears is not None:
-                waited = time.time()
-                while time.time() - waited < config.WAIT_FOR_HELLO_S:
+                deadline = time.time() + config.WAIT_FOR_HELLO_S
+                hard = time.time() + config.WAIT_FOR_HELLO_MAX_S
+                while time.time() < deadline:
                     if not self.transport.is_live():
                         break
                     got = self.ears.next_turn(timeout=0.2)
@@ -1202,17 +1281,32 @@ class Agent:
                         self.ears.accept(early)
                         greeting = early
                         break
+                    # They have started. Do not open over the top of them: give
+                    # them room to finish, up to the hard ceiling. Without this
+                    # the wait expires mid-greeting and she and the plumber
+                    # speak at the same instant, which is what Stroh Bros got.
+                    if getattr(self.ears, "partial_text", None) and self.ears.partial_text():
+                        deadline = min(hard, time.time() + config.WAIT_FOR_HELLO_S)
             if greeting:
                 self._emit("them", greeting)
                 result.turns.append(Turn("them", greeting, time.time() - result.started_at))
                 self._heard_at = time.monotonic()
 
-            cut_off = self._say(self.opener, result)
+            # Pick the opener AFTER hearing how they answered. A name-check is
+            # useful against "Hello?" and insulting against "Waterways
+            # Plumbing, this is Mike".
+            opening = self.opener
+            if self.announced_themselves(greeting):
+                opening = self.opener_warm
+                self._emit("opener", "they announced themselves, skipping the name check")
+            cut_off = self._say(opening, result)
             # The model has to know what it already said, or it introduces itself
             # again on the next turn. If the opener was cut short it also has to
             # know the AI disclosure may not have landed, because saying it is
             # required by Anthropic's and ElevenLabs' policies, not optional.
-            self.brain.note_opening(self.opener, truncated=cut_off)
+            # The one she ACTUALLY said. Telling the brain she opened with the
+            # name check when she did not means she introduces herself twice.
+            self.brain.note_opening(opening, truncated=cut_off)
 
             quiet_rounds = 0
             # Set when the last thing she said was cut short, which changes how

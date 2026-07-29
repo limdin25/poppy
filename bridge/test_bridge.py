@@ -1122,6 +1122,133 @@ def _():
     assert time.monotonic() - start < 0.2, "waited on a line that was already dead"
 
 
+# -- which opener --------------------------------------------------------------
+
+
+def _greeter(business):
+    a = agent.Agent.__new__(agent.Agent)
+    a.business_words = tuple(
+        w for w in __import__("re").findall(r"[a-z]+", (business or "").lower())
+        if len(w) >= 4 and w not in agent._GENERIC_TRADE_WORDS)
+    return a
+
+
+@case("announcing yourself skips the name check")
+def _():
+    a = _greeter("Waterways Plumbing and Drain Cleaning LLP")
+    # Verbatim from Mike, the call this fix exists for.
+    for g in ["Waterways Plumbing and Drain Cleaning LLP.",
+              "Waterways Plumbing and Drain Cleaning. This is Mike speaking.",
+              "Hassle Free Plumbing, this is Crystal. How can I help you?",
+              "Chavarria's Plumbing, Tony speaking."]:
+        assert a.announced_themselves(g), f"should have skipped the name check: {g!r}"
+
+
+@case("a bare hello still gets the name check")
+def _():
+    a = _greeter("Waterways Plumbing and Drain Cleaning LLP")
+    for g in ["Hello?", "Hello", "Yeah?", "Yep", "Hi", "", None, "  "]:
+        assert not a.announced_themselves(g), f"should have asked who it is: {g!r}"
+
+
+@case("a generic trade word is not somebody announcing themselves")
+def _():
+    """"Plumbing" is in half the plumbers in America, so it proves nothing."""
+    a = _greeter("Highland Plumbing")
+    assert not a.announced_themselves("plumbing"), \
+        "matched a generic trade word, so every plumber looks like an announcement"
+    assert a.announced_themselves("Highland Plumbing"), "missed the distinctive word"
+
+
+@case("both openers are eligible for pre-rendered audio")
+def _():
+    """Otherwise the warm one is re-rendered on answer, as dead air."""
+    a = agent.Agent.__new__(agent.Agent)
+    a.opener = "[warm] Hi, is that Kuhn Plumbing?"
+    a.opener_warm = "[warm] Hi there, it's Maria."
+    a._opener_audio = b"COLD"
+    a._opener_warm_audio = b"WARM"
+    for text, want in ((a.opener, b"COLD"), (a.opener_warm, b"WARM")):
+        t = agent.straighten(text)
+        got = (a._opener_audio if t == agent.straighten(a.opener)
+               else a._opener_warm_audio if t == agent.straighten(a.opener_warm)
+               else None)
+        assert got == want, f"{text!r} would have been re-rendered live"
+
+
+@case("a greeting still in progress holds the opener back")
+def _():
+    """Stroh Bros: her opener and their greeting are stamped the same second.
+
+    The plain 2.5s wait is for SILENCE. It is not enough to hear out "Stroh
+    Bros Plumbing, Dave speaking", so without the extension she opens straight
+    over them and never learns they announced themselves.
+    """
+    class Ears:
+        """Talks for 3.5s, then settles."""
+        def __init__(self):
+            self.t0 = time.monotonic()
+
+        def _elapsed(self):
+            return time.monotonic() - self.t0
+
+        def next_turn(self, timeout):
+            time.sleep(min(timeout, 0.05))
+            return "Stroh Bros Plumbing, Dave speaking." if self._elapsed() > 0.35 else None
+
+        def settled_partial(self, *rest):
+            return None
+
+        def partial_text(self):
+            return "Stroh Bros" if self._elapsed() <= 0.35 else ""
+
+        def accept(self, text):
+            pass
+
+    ears, greeting = Ears(), ""
+    # Squeezed timings so the test is quick; the shape is what matters.
+    deadline = time.time() + 0.2
+    hard = time.time() + 2.0
+    while time.time() < deadline:
+        got = ears.next_turn(timeout=0.05)
+        if got:
+            greeting = got
+            break
+        if ears.partial_text():
+            deadline = min(hard, time.time() + 0.2)
+    assert greeting, "opened over the top of a greeting that was still in progress"
+
+
+@case("silence is never punished by the extended wait")
+def _():
+    """A dead line must still get the opener at the normal 2.5s, not the ceiling."""
+    class Silent:
+        def next_turn(self, timeout):
+            time.sleep(min(timeout, 0.02))
+            return None
+
+        def settled_partial(self, *rest):
+            return None
+
+        def partial_text(self):
+            return ""
+
+        def accept(self, text):
+            pass
+
+    ears = Silent()
+    start = time.time()
+    deadline = start + 0.3
+    hard = start + 3.0
+    while time.time() < deadline:
+        if ears.next_turn(timeout=0.02):
+            break
+        if ears.partial_text():
+            deadline = min(hard, time.time() + 0.3)
+    waited = time.time() - start
+    assert waited < 0.6, f"held a silent line for {waited:.2f}s, should open at the short wait"
+
+
 def main() -> int:
     failed = 0
     for name, fn in CASES:

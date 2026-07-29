@@ -275,6 +275,9 @@ def _run_call(number: str, from_number: str, business, reviews, campaign=None) -
             # adding a key changed nothing, which is a config trap.
             tts=ai.build_tts(telephony=True),
             on_event=show,
+            # So she can tell "Hello?" from "Waterways Plumbing, this is Mike"
+            # and pick the opener that suits.
+            business=business,
         )
         # Open the voice socket now, while the phone is still ringing. It costs
         # about half a second to establish and nobody is waiting during a ring;
