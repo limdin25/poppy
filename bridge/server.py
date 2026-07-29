@@ -220,6 +220,29 @@ async def start_call(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "dialling": number, "from": from_number})
 
 
+# Telnyx codes meaning the call was never placed at all, so nobody's phone
+# rang. The dial happens on the call thread, not in POST /call, so this is the
+# only place that can see them.
+NEVER_RANG = ("90041",)   # user channel limit exceeded: account concurrency
+
+
+def _release_if_never_rang(number: str, error: str | None) -> bool:
+    """Put a lead back when Telnyx refused to dial it. True if it was freed.
+
+    The ledger is written before the call so that a crash mid-conversation
+    still counts as "we rang them". A refused dial is the opposite case: the
+    phone never rang, and recording it burns a good lead for ever over a
+    transient account limit. Kyle's Plumbing was lost exactly this way on the
+    first mobile batch.
+    """
+    if not error or not any(code in str(error) for code in NEVER_RANG):
+        return False
+    freed = dialqueue.release(number)
+    log(f"NEVER RANG | {number} channel limit, "
+        f"{'back in the queue' if freed else 'COULD NOT be released'}")
+    return freed
+
+
 def _run_call(number: str, from_number: str, business, reviews, campaign=None) -> None:
     """One whole call, on its own thread.
 
@@ -324,7 +347,7 @@ def _run_call(number: str, from_number: str, business, reviews, campaign=None) -
         log(f"DONE     | {result.outcome}  {result.duration:.0f}s  "
             f"{len(result.turns)} turns  -> {path.name}"
             f"{'  + ' + wav.name if wav else ''}")
-        if campaign:
+        if campaign and not _release_if_never_rang(number, result.error):
             dialqueue.record(
                 number, outcome=result.outcome, duration_s=int(result.duration),
                 turns=len(result.turns), hangup_cause=transport.hangup_cause,
@@ -333,7 +356,7 @@ def _run_call(number: str, from_number: str, business, reviews, campaign=None) -
             )
     except Exception as e:
         log(f"CALL FAILED | {type(e).__name__}: {e}")
-        if campaign:
+        if campaign and not _release_if_never_rang(number, str(e)):
             # The ledger row already exists, so this only records WHY. It must
             # never mark the number callable again.
             dialqueue.record(number, outcome="crashed", error=f"{type(e).__name__}: {e}")

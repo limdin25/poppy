@@ -87,6 +87,45 @@ def claim(campaign: str, limit: int) -> list[Lead]:
     ]
 
 
+def release(e164: str) -> bool:
+    """Undo a claim for a call that PROVABLY never happened. Returns True if freed.
+
+    The ledger means "we rang this person", and it is written before dialling
+    on purpose, so a crash mid-call still counts. But Telnyx refusing to place
+    the call at all is a different thing entirely: nobody's phone rang, so
+    recording it as rung burns a good lead for ever over a transient account
+    limit. That happened on the first mobile batch, error 90041, channel limit
+    exceeded.
+
+    ONLY call this when the dial request itself failed. Never after a call has
+    connected, and never on a timeout, because a timeout cannot tell you
+    whether the phone rang.
+    """
+    url = config.key("SUPABASE_URL")
+    key = config.key("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        return False
+    head = {"apikey": key, "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"}
+    try:
+        # Ledger row first. If this fails the lead stays claimed, which is the
+        # safe direction: worst case we lose one lead rather than ring twice.
+        req = urllib.request.Request(
+            f"{url.rstrip('/')}/rest/v1/wk_ai_called?e164=eq.{urllib.parse.quote(e164)}",
+            headers=head, method="DELETE")
+        urllib.request.urlopen(req, timeout=15).read()
+        req = urllib.request.Request(
+            f"{url.rstrip('/')}/rest/v1/wk_ai_call_leads"
+            f"?e164=eq.{urllib.parse.quote(e164)}&status=eq.claimed",
+            data=json.dumps({"status": "queued", "claimed_at": None}).encode(),
+            headers=head, method="PATCH")
+        urllib.request.urlopen(req, timeout=15).read()
+        return True
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        print(f"QUEUE    | could not release {e164}, it stays claimed: {e}", flush=True)
+        return False
+
+
 def record(e164: str, *, outcome: str, duration_s: int | None = None,
            turns: int | None = None, hangup_cause: str | None = None,
            transcript_path: str | None = None, booked_slot: str | None = None,

@@ -73,6 +73,23 @@ function arg(name, fallback = null) {
 }
 const APPLY = process.argv.includes('--apply');
 const INCLUDE_WIRELESS = process.argv.includes('--include-wireless');
+// Hugo, 2026-07-29, after 22 landline calls returned 18 machines and one
+// receptionist: "Switch to mobiles."
+//
+// WHY THE LANDLINE BATCH FAILED, since it is the whole reason this flag
+// exists. A plumber with a landline has an office, and an office has an
+// auto-attendant, a hold queue and somebody on reception. He already has what
+// Maria is selling, so the pitch lands on staff whose job it threatens. The
+// plumber who WANTS her is the one answering his own mobile between jobs.
+//
+// The cost of being right about the buyer is legal, and it is real. The FCC
+// ruled on 2024-02-08 that an AI voice is an "artificial voice", and an
+// artificial voice to a US mobile without prior express consent is 500 dollars
+// a call under 47 USC 227(b), up to 1,500 if a court calls it willful. This
+// list is scraped from Google Maps, so it is not opt-in and that exposure is
+// live. Hugo was shown this and chose to proceed; it is his call to make and
+// it is recorded here rather than buried.
+const WIRELESS_ONLY = process.argv.includes('--wireless-only');
 const LIMIT = Math.min(Number(arg('limit', HARD_CAP)) || HARD_CAP, HARD_CAP);
 const SOURCE = arg('source', path.join(HERE, 'out-usa-plumber-leads.json'));
 
@@ -146,12 +163,16 @@ async function main() {
   }
   log(`  line types: ${JSON.stringify(counts)}`);
 
-  const allowedTypes = INCLUDE_WIRELESS
-    ? new Set(['landline', 'wireless', 'voip', 'unknown'])
-    : new Set(['landline']);
+  const allowedTypes = WIRELESS_ONLY
+    ? new Set(['wireless'])
+    : INCLUDE_WIRELESS
+      ? new Set(['landline', 'wireless', 'voip', 'unknown'])
+      : new Set(['landline']);
+  const mode = WIRELESS_ONLY
+    ? 'MOBILES ONLY, see the TCPA note above: this is the exposed segment'
+    : INCLUDE_WIRELESS ? 'wireless included' : 'landline only';
   let pool = trades.filter((l) => allowedTypes.has(l.line_type));
-  log(`Gate 3 line type     : ${pool.length} kept  `
-    + `(${INCLUDE_WIRELESS ? 'WIRELESS INCLUDED, see the TCPA note in lib/us-leads.mjs' : 'landline only'})`);
+  log(`Gate 3 line type     : ${pool.length} kept  (${mode})`);
 
   // ---- Gate 4: is it a civil hour where they live, free -------------------
   const now = new Date();

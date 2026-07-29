@@ -45,6 +45,18 @@ BATCH_TIMEOUT_S = 420
 # looks like a person working a list.
 STAGGER_S = 1.5
 
+# The account, not the profile, caps concurrent outbound calls. The outbound
+# voice profile reports concurrent_call_limit: null, which reads as "no limit"
+# and is not: a batch of ten hit error 90041, "user channel limit exceeded D1",
+# and lost a lead. So hold below it rather than discovering it per batch.
+MAX_CONCURRENT = int(__import__("os").environ.get("BRIDGE_MAX_CONCURRENT", "6"))
+# How long to wait for a slot before giving up on a lead and putting it back.
+SLOT_WAIT_S = 90
+
+# Telnyx codes that mean the call was never placed, so the lead is untouched
+# and must go back in the queue rather than be recorded as rung.
+NEVER_RANG = ("90041",)
+
 
 def log(*parts) -> None:
     print(time.strftime("%H:%M:%S"), *parts, flush=True)
@@ -118,13 +130,29 @@ def run_batch(base: str, secret: str, campaign: str, size: int, apply: bool) -> 
 
     started = []
     for l in leads:
+        # Wait for a free channel rather than firing into the account limit.
+        waited = 0.0
+        while waited < SLOT_WAIT_S:
+            live = _live_calls(base)
+            if live is None or live < MAX_CONCURRENT:
+                break
+            time.sleep(3)
+            waited += 3
         ok, msg = _post_call(base, secret, l, campaign)
         if ok:
             started.append(l)
+        elif any(code in msg for code in NEVER_RANG):
+            # Telnyx refused to place it, so nobody's phone rang. Putting the
+            # lead back is the whole point: the ledger records who we RANG, and
+            # burning a good plumber over a transient channel limit is exactly
+            # the waste this branch exists to stop.
+            freed = dialqueue.release(l.e164)
+            log(f"   {l.e164} not placed (channel limit), "
+                f"{'back in the queue' if freed else 'COULD NOT be released'}")
         else:
             log(f"   FAILED to start {l.e164}: {msg}")
-            # It is already in the ledger and must stay there. Record why, so
-            # the row does not sit for ever looking like a call in flight.
+            # A real failure. It stays in the ledger, but say why, so the row
+            # does not sit for ever looking like a call in flight.
             dialqueue.record(l.e164, outcome="dial_failed", error=msg)
         time.sleep(STAGGER_S)
     log(f"started {len(started)}/{len(leads)} call(s), waiting for the batch to finish")
