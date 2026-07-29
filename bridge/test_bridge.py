@@ -584,6 +584,23 @@ def _():
     assert brain.system_prompt == once, "told twice, the prompt grows every turn"
 
 
+# -- thinking, not answering ------------------------------------------------
+
+@case("a thinking noise is not an answer and never earns a reply")
+def _():
+    # Live call: she asked "how often's that happening?", got "Um.", rephrased,
+    # got "Um." again, rephrased again. Three questions in ten seconds over the
+    # top of a man trying to think.
+    for filler in ("Um.", "Uh,", "Hmm.", "Er...", "Uh, well,", "Mm.", "Oh."):
+        assert agent.is_thinking_noise(filler), filler
+    # Real answers must always get through, however short or unhelpful. "Yeah"
+    # is deliberately NOT filler: discarding it means ignoring something they
+    # actually said.
+    for real in ("Yeah.", "Okay.", "No.", "Um, about thirty.", "More than that.",
+                 "Well, we miss a few", "Myself.", "A thousand a week"):
+        assert not agent.is_thinking_noise(real), real
+
+
 # -- her own voice coming back ----------------------------------------------
 
 @case("a whole sentence of her own coming back is not treated as the prospect")

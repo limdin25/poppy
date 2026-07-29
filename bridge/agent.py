@@ -179,6 +179,35 @@ _UNFINISHED_TAIL = {
 }
 
 
+# Noises somebody makes while thinking. A turn made of nothing but these is not
+# an answer, it is the sound of somebody working out how to answer, and the only
+# right response to it is to keep quiet. On a live call she asked "how often's
+# that happening?", got "Um.", and rephrased the question. Then got "Um." again
+# and rephrased it a second time: three questions in ten seconds, over the top
+# of a man trying to think.
+_FILLER_ONLY = {
+    "um", "uh", "er", "erm", "hmm", "hm", "mm", "mmm", "ah", "oh", "eh",
+    "well", "so", "like", "y'know", "you know", "i mean", "let me see",
+    "let's see", "hang on", "hold on", "one sec", "just a sec",
+}
+
+
+def is_thinking_noise(text: str) -> bool:
+    """Is this somebody thinking rather than answering?
+
+    Deliberately narrow. "Yeah" and "okay" are real answers and are NOT here,
+    however unhelpful they sometimes are, because discarding one means ignoring
+    something the prospect actually said.
+    """
+    words = re.sub(r"[^\w\s']", " ", text.lower()).split()
+    if not words or len(words) > 3:
+        return False
+    joined = " ".join(words)
+    if joined in _FILLER_ONLY:
+        return True
+    return all(w in _FILLER_ONLY for w in words)
+
+
 def sounds_unfinished(text: str) -> bool:
     """Does this look like somebody mid-thought rather than done?
 
@@ -974,6 +1003,12 @@ class Agent:
             if self._own_echo(text):
                 self._emit("echo", f"ignored own voice coming back: {text!r}")
                 continue
+            if is_thinking_noise(text):
+                # They are working out what to say. Interrupting that with a
+                # rephrased question is how she asked the same thing three
+                # times in ten seconds on a live call.
+                self._emit("thinking", f"{text!r}, giving them a moment")
+                continue
             # They stopped making noise, but did they stop talking? If the
             # thought is obviously unfinished, give them a moment and join it up
             # rather than answering half a sentence.
@@ -1126,6 +1161,20 @@ class Agent:
                     break
                 heard = (self._listen_streaming(result, listen_for)
                          if self.ears is not None else self._listen(result))
+                if (not heard and was_cut
+                        and self._last_spoken.rstrip().endswith("?")):
+                    # She asked something and was cut short. Silence after a
+                    # question is a person thinking, not a stalemate, so the
+                    # resume shortcut must not fire here: it would mean asking
+                    # again before they had a chance to answer once.
+                    self._emit("waiting", "asked a question, so waiting properly")
+                    was_cut = False
+                    listen_for = None
+                    quiet_rounds += 1
+                    if quiet_rounds >= 2:
+                        result.outcome = "went_quiet"
+                        break
+                    continue
                 if not heard and was_cut:
                     # They cut in and then said nothing. Do not sit here: carry
                     # on from where she was stopped, which is what the prompt
