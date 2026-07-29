@@ -166,7 +166,11 @@ _add(Stage(
         Exit("booked", "they gave you a day AND a time", ""),
         Exit("later", "they want to think about it, or check something first",
              "soft_close"),
-        Exit("no", "they said no", "decline"),
+        Exit("no", "they explicitly refused the call itself: not interested, "
+                   "don't call me. A HALF answer is not this. \"Morning\", "
+                   "\"sometime next week\", \"after five\" all mean YES and you "
+                   "are one question away, so stay here and ask for the missing "
+                   "half", "decline"),
     ),
     "They have not given you a time. Offer two different slots, then leave it.",
     "soft_close",

@@ -472,6 +472,66 @@ TELNYX_RING_SECONDS = 30
 # to pick up" into a fake websocket error on a live call.
 TELNYX_ATTACH_TIMEOUT_S = 15.0
 
+# ---------------------------------------------------------------------------
+# Answerphone detection
+# ---------------------------------------------------------------------------
+# On the first US batch, one of two answered calls was Atlas Plumbing's
+# voicemail. Maria delivered the whole pitch to it, for fifty-four seconds, and
+# the ledger recorded "completed". At ordinary cold-call pickup rates that is
+# about half of every batch: half the spend, and a results table that flatters
+# itself.
+#
+# Telnyx runs the classifier on its own leg and reports over the webhook, so a
+# HUMAN waits for nothing. That is why it beats deciding from our own
+# transcript, which cannot know until the greeting is already several seconds
+# in and the opener has been spoken over it.
+AMD_ENABLED = os.environ.get("BRIDGE_AMD", "1") != "0"
+# "detect" classifies human vs machine and stops there. "greeting_end" would
+# also wait for the beep, which is only worth paying for if we ever decide to
+# LEAVE a message; today a machine simply gets hung up on.
+AMD_MODE = os.environ.get("BRIDGE_AMD_MODE", "detect")
+# Telnyx can take a few seconds to decide, and until it does the opener is
+# already playing. This is how long the call loop will go on waiting for a
+# verdict before giving up and treating the call as human.
+AMD_WAIT_S = float(os.environ.get("BRIDGE_AMD_WAIT_S", "8"))
+
+# The backstop, for when Telnyx says "not_sure" or says nothing at all.
+#
+# These are phrases a PERSON answering their own business phone does not say.
+# Deliberately short and unambiguous: "leave a message" is a machine, but
+# "can I take a message" is a receptionist, so the list matches the machine's
+# side of that pair only. Anything vaguer belongs nowhere near a rule that
+# hangs up on people.
+AMD_PHRASES = (
+    "leave a message", "leave your name", "leave your number",
+    "after the tone", "after the beep", "at the tone", "at the beep",
+    "you have reached", "you've reached",
+    "not available to take your call", "unable to take your call",
+    "can't get to the phone", "cannot get to the phone",
+    "our office is currently closed", "we are currently closed",
+    "your call is important to us", "press one for", "press 1 for",
+)
+# A human answering a phone says a handful of words and then stops to listen.
+# A greeting runs on. Used only together with a phrase hit, never alone, since
+# a chatty receptionist reading out opening hours would otherwise be cut off.
+AMD_MIN_GREETING_WORDS = 12
+
+# ---------------------------------------------------------------------------
+# Ending the call
+# ---------------------------------------------------------------------------
+# Hugo, 2026-07-29: "when she finished the call, don't hang up immediately, no?"
+#
+# He is right, and it is two faults in one. Her closing line is still PLAYING
+# when the loop decides the call is over, because _play_until is in the future
+# at that moment, so cutting the line there chops her last few words off. And
+# even once she has finished, a person does not drop the line the instant they
+# stop speaking: there is a beat where the other party says "cheers" or "bye",
+# and hanging up through that is the rudest thing on a phone call.
+#
+# So: wait for her audio to actually finish, THEN hold the line briefly.
+HANGUP_DRAIN_MAX_S = float(os.environ.get("BRIDGE_HANGUP_DRAIN_MAX_S", "6"))
+HANGUP_PAUSE_S = float(os.environ.get("BRIDGE_HANGUP_PAUSE_S", "1.6"))
+
 # --- Device ----------------------------------------------------------------
 ADB_SERIAL = os.environ.get("BRIDGE_ADB_SERIAL")  # None = first device found
 # The handset's own automatic gain control amplifies a quiet input and clips it,

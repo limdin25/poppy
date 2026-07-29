@@ -549,6 +549,9 @@ class Agent:
         # A pitch and loudness reader on the far end, if the caller handed one
         # over. Optional on purpose: without it everything behaves as before.
         self.prosody = None
+        # The last stage she reached, for the campaign ledger. Set by
+        # _set_stage; None means the call never got as far as starting one.
+        self.last_stage: str | None = None
         self._backchannel: list[tuple[str, bytes]] = []
         # Generate the opener NOW, while the phone is still ringing, instead of
         # after they say hello. It used to be made on answer, so its generation
@@ -614,7 +617,41 @@ class Agent:
     def _emit(self, kind: str, text: str) -> None:
         self.on_event(kind, text)
 
-    def _set_stage(self, stage: int, tries: int) -> None:
+    def _answerphone(self, result, heard: str | None = None) -> bool:
+        """Is this a machine? Sets the outcome and returns True if so.
+
+        Two independent readers, because each covers the other's blind spot.
+
+        Telnyx classifies from the audio on its own leg and is usually right
+        within a few seconds, but returns "not_sure" often enough to matter.
+        The phrase list reads the transcript, which is slower (we must hear the
+        greeting first) but catches exactly the case Telnyx hedges on.
+
+        BOTH fail towards keeping the call. Hanging up on a real plumber
+        mid-sentence is a worse outcome than a wasted minute of API time: one
+        costs pennies, the other costs the lead and sounds like a broken
+        robocall. So "not_sure" is not a machine, and a phrase hit on its own
+        is not either.
+        """
+        if getattr(self.transport, "is_machine", None) and self.transport.is_machine():
+            result.outcome = "answering_machine"
+            self._emit("amd", "Telnyx says answerphone, hanging up")
+            return True
+        if not heard:
+            return False
+        text = heard.lower()
+        hit = next((p for p in config.AMD_PHRASES if p in text), None)
+        # A phrase AND a greeting long enough that nobody is waiting for a
+        # reply. "Can I take a message" from a receptionist is short and is a
+        # question; "please leave your name and number after the tone" is
+        # neither. Requiring both is what keeps a human out of this branch.
+        if hit and len(text.split()) >= config.AMD_MIN_GREETING_WORDS:
+            result.outcome = "answering_machine"
+            self._emit("amd", f"answerphone from the greeting ({hit!r}), hanging up")
+            return True
+        return False
+
+    def _set_stage(self, stage: str, tries: int) -> None:
         """Tell the model which stage it is on. Never fatal.
 
         The gate is an enhancement on top of speaking, not a prerequisite for
@@ -623,6 +660,10 @@ class Agent:
         end-to-end test, where a stand-in brain without set_stage took the whole
         call down and the only symptom was "the prospect was never transcribed".
         """
+        # Where she got to, kept on the agent so a campaign run can record it
+        # without reaching into the call loop's locals. Set before the brain is
+        # told, so it is right even when telling the brain fails.
+        self.last_stage = stage
         try:
             self.brain.set_stage(stages.brief(stage, tries))
         except Exception as e:
@@ -1188,8 +1229,19 @@ class Agent:
                 if not self.transport.is_live():
                     result.outcome = "far_end_hungup"
                     break
+                # Telnyx's own verdict, which arrives a few seconds in while
+                # the opener is still playing. Checked at the TOP of every
+                # turn so the pitch stops at the end of the current sentence
+                # rather than running the full minute at a machine.
+                if self._answerphone(result):
+                    break
                 heard = (self._listen_streaming(result, listen_for)
                          if self.ears is not None else self._listen(result))
+                # The backstop, for a machine Telnyx was not sure about. Only
+                # readable once we have heard the greeting, hence the second
+                # check here rather than one at the top.
+                if heard and self._answerphone(result, heard):
+                    break
                 if (not heard and was_cut
                         and self._last_spoken.rstrip().endswith("?")):
                     # She asked something and was cut short. Silence after a
@@ -1310,6 +1362,31 @@ class Agent:
             result.outcome = "error"
             self._emit("error", str(e))
         finally:
+            # Let her finish, and then let the moment land, before the line
+            # goes dead. Hugo: "when she finished the call, don't hang up
+            # immediately, no?"
+            #
+            # Two separate things. The DRAIN waits for audio already handed to
+            # Telnyx to actually play, because the loop reaches here while her
+            # closing sentence is still going out and hanging up mid-word is
+            # how "Perfect, ten o'clock tomorrow" became "Perfect, ten o'clo".
+            # The PAUSE then holds the line a beat longer, because a person
+            # says "bye" into that gap and a call that dies the instant she
+            # stops speaking feels like being cut off.
+            #
+            # Skipped entirely when THEY hung up on US: there is no line left
+            # to be polite on, and waiting would just delay the next call.
+            try:
+                if self.transport.is_live():
+                    drain = time.monotonic() + config.HANGUP_DRAIN_MAX_S
+                    while (self.transport.is_speaking()
+                           and self.transport.is_live()
+                           and time.monotonic() < drain):
+                        time.sleep(0.1)
+                    if self.transport.is_live():
+                        time.sleep(config.HANGUP_PAUSE_S)
+            except Exception as e:
+                self._emit("error", f"drain before hangup failed: {e}")
             result.ended_at = time.time()
             # Teardown never raises out of here. An exception escaping this block
             # skipped the transcript save entirely, losing the whole conversation.

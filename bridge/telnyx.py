@@ -115,6 +115,11 @@ class TelnyxTransport(Transport):
         self._ended = threading.Event()
         self._play_until = 0.0
         self._hangup_cause: str | None = None
+        # Set from the call.machine.detection.ended webhook. The Event is what
+        # the call loop watches; the string is kept for the ledger, so a batch
+        # can be read back as "how many were answerphones" afterwards.
+        self._machine = threading.Event()
+        self._machine_result: str | None = None
         self._recording = bytearray()
         # True while a stream feeder is running, so is_speaking() stays true
         # in the gap before the first chunk of a streamed reply arrives.
@@ -250,9 +255,39 @@ class TelnyxTransport(Transport):
         self._play_until = 0.0
         self._comfort_stop.set()
 
+    def mark_machine(self, result: str) -> None:
+        """Telnyx has decided what picked up. Only "machine" stops the call.
+
+        "not_sure" and "silence" deliberately do NOT count. A false positive
+        here hangs up on a real plumber mid-sentence, which is far worse than
+        the thing it is trying to save: talking to a machine costs a minute of
+        API time, hanging up on a human costs the lead and looks like a
+        malfunctioning robocall. So this fails towards keeping the call.
+        """
+        self._machine_result = result
+        if str(result).lower() == "machine":
+            self._machine.set()
+
+    @property
+    def machine_result(self) -> str | None:
+        return self._machine_result
+
+    def is_machine(self) -> bool:
+        return self._machine.is_set()
+
     @property
     def ended(self) -> bool:
         return self._ended.is_set()
+
+    @property
+    def hangup_cause(self) -> str | None:
+        """Telnyx's word for why the call ended, once it has told us.
+
+        Worth recording on a campaign: "call_rejected" and "user_busy" are a
+        person declining, while "timeout" is nobody there, and the three want
+        different follow-up.
+        """
+        return self._hangup_cause or None
 
     def is_live(self) -> bool:
         return not self._ended.is_set()
@@ -338,6 +373,21 @@ class TelnyxTransport(Transport):
             # requires at least 15 seconds of ring before abandoning it.
             "timeout_secs": config.TELNYX_RING_SECONDS,
         }
+        # ANSWERPHONE DETECTION.
+        #
+        # Proved necessary on the first US batch: one of two calls was Atlas
+        # Plumbing's voicemail, and Maria pitched to it for fifty-four seconds
+        # and then filed it as "completed". At normal cold-call pickup rates
+        # that is roughly half of every batch, so without this the campaign
+        # spends most of its money talking to machines and the results table
+        # says the conversations went fine.
+        #
+        # Telnyx classifies on its own leg, in parallel, and tells us over the
+        # webhook. It costs a HUMAN nothing, which is the whole reason for
+        # using theirs rather than waiting on our own transcript: we still say
+        # the opener immediately, and only a machine gets hung up on.
+        if config.AMD_ENABLED:
+            body["answering_machine_detection"] = config.AMD_MODE
         data = _request("POST", "/calls", body).get("data", {})
         self.call_control_id = data.get("call_control_id")
         if not self.call_control_id:

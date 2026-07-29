@@ -10,6 +10,7 @@ from __future__ import annotations
 import array
 import math
 import sys
+import time
 
 from . import agent, ai, audio, config
 
@@ -969,6 +970,156 @@ def _():
     assert p.verdict()[0] == "fell"
     p.reset()
     assert p.verdict()[0] == "unsure"
+
+
+# -- answerphone detection ---------------------------------------------------
+#
+# This is the one piece of logic in the bridge that HANGS UP ON PEOPLE, so the
+# tests that matter most are the ones proving it does not fire on a human.
+
+
+class _FakeAMD:
+    """Just enough transport for _answerphone."""
+    def __init__(self, machine=False):
+        self._m = machine
+
+    def is_machine(self):
+        return self._m
+
+
+def _amd(heard=None, machine=False):
+    """Run the detector without building a whole Agent."""
+    a = agent.Agent.__new__(agent.Agent)
+    a.transport = _FakeAMD(machine)
+    a.on_event = None
+    a._emit = lambda *rest: None
+    r = agent.CallResult(number="+15550001111")
+    return a._answerphone(r, heard), r.outcome
+
+
+@case("Telnyx saying machine hangs up")
+def _():
+    hit, outcome = _amd(machine=True)
+    assert hit and outcome == "answering_machine", outcome
+
+
+@case("a real voicemail greeting is caught from its words alone")
+def _():
+    # Verbatim from Atlas Plumbing, the call that started all this.
+    greeting = ("Thank you for calling Atlas Plumbing. We can't get to the phone "
+                "right now. Please leave your name and phone number and we will "
+                "call you back as soon as we can. Thank you.")
+    hit, outcome = _amd(greeting)
+    assert hit and outcome == "answering_machine", outcome
+
+
+@case("a HUMAN answering their own phone is never cut off")
+def _():
+    # Verbatim from Crystal at Hassle Free Plumbing, who is a person.
+    for human in [
+        "Hassle Free Plumbing, this is Crystal. How can I help you?",
+        "Hello?",
+        "Yeah, hi.",
+        "Smith and Sons, Dave speaking.",
+        "Good morning, plumbing department.",
+        # The dangerous near-miss: a receptionist OFFERING to take a message
+        # says something very close to what a machine says.
+        "He's out on a job right now, can I take a message for you?",
+        "I can take your name and number and get him to call you back.",
+    ]:
+        hit, outcome = _amd(human)
+        assert not hit, f"would have hung up on a person: {human!r} -> {outcome}"
+
+
+@case("a machine phrase alone is not enough, it must also run on")
+def _():
+    # Short enough that somebody is plainly waiting for a reply.
+    hit, _ = _amd("Leave a message.")
+    assert not hit, "a four word answer is a person being terse, not a greeting"
+    # Same phrase, full greeting length, is a machine.
+    hit, _ = _amd("You have reached the office of Kuhn Plumbing, please leave "
+                  "a message and somebody will return your call shortly.")
+    assert hit
+
+
+@case("not_sure and silence are not a machine")
+def _():
+    # mark_machine must only latch on the exact word "machine": everything else
+    # would mean hanging up on a human on a hunch.
+    from .telnyx import TelnyxTransport
+    t = TelnyxTransport.__new__(TelnyxTransport)
+    t._machine = __import__("threading").Event()
+    t._machine_result = None
+    for verdict in ("not_sure", "silence", "human", "", None):
+        t.mark_machine(verdict)
+        assert not t.is_machine(), f"{verdict!r} must not count as a machine"
+    t.mark_machine("machine")
+    assert t.is_machine()
+
+
+class _HangupRig:
+    """The smallest transport the teardown touches: is it live, is she talking."""
+    def __init__(self, speaking_for=0.0, live=True):
+        self._until = time.monotonic() + speaking_for
+        self._live = live
+        self.hung_up_at = None
+
+    def is_speaking(self):
+        return time.monotonic() < self._until
+
+    def is_live(self):
+        return self._live and self.hung_up_at is None
+
+    def hangup(self):
+        self.hung_up_at = time.monotonic()
+
+
+def _teardown(t):
+    """Exactly the wait the real call() does before hanging up."""
+    if t.is_live():
+        drain = time.monotonic() + config.HANGUP_DRAIN_MAX_S
+        while t.is_speaking() and t.is_live() and time.monotonic() < drain:
+            time.sleep(0.05)
+        if t.is_live():
+            time.sleep(config.HANGUP_PAUSE_S)
+    t.hangup()
+
+
+@case("her last words are not chopped off by the hangup")
+def _():
+    """The drain must wait for audio already sent to finish playing.
+
+    Hugo: "when she finished the call, don't hang up immediately, no?" The loop
+    reaches teardown while the closing sentence is still going out, so without
+    this the line dies mid-word.
+    """
+    t = _HangupRig(speaking_for=0.4)
+    start = time.monotonic()
+    _teardown(t)
+    waited = t.hung_up_at - start
+    assert waited >= 0.4, f"hung up while she was still talking, after {waited:.2f}s"
+    assert waited >= 0.4 + config.HANGUP_PAUSE_S - 0.15, \
+        f"did not hold the line for the closing beat, only {waited:.2f}s"
+    assert waited < config.HANGUP_DRAIN_MAX_S + config.HANGUP_PAUSE_S + 1, \
+        f"dawdled for {waited:.2f}s"
+
+
+@case("a stuck speaking flag cannot hold the line open for ever")
+def _():
+    t = _HangupRig(speaking_for=9999)
+    start = time.monotonic()
+    _teardown(t)
+    assert t.hung_up_at is not None
+    assert time.monotonic() - start <= config.HANGUP_DRAIN_MAX_S + config.HANGUP_PAUSE_S + 1
+
+
+@case("no polite pause when THEY hung up on us")
+def _():
+    """Nothing to be polite to, and the next call should not be held up."""
+    t = _HangupRig(speaking_for=9999, live=False)
+    start = time.monotonic()
+    _teardown(t)
+    assert time.monotonic() - start < 0.2, "waited on a line that was already dead"
 
 
 def main() -> int:

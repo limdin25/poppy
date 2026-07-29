@@ -25,7 +25,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import (agent, ai, assembly_stt, config, fish_stream, prosody,
+from . import (agent, ai, assembly_stt, config, dialqueue, fish_stream, prosody,
                run as runmod, settings)
 from .telnyx import TelnyxTransport
 
@@ -126,6 +126,12 @@ async def webhook(request: web.Request) -> web.Response:
         call.mark_answered()
     elif event == "call.hangup" and call:
         call.mark_ended(payload.get("hangup_cause", ""))
+    elif event == "call.machine.detection.ended" and call:
+        # Telnyx's verdict on what picked up. Only "machine" acts; see
+        # mark_machine for why "not_sure" must not.
+        result = payload.get("result", "")
+        log(f"AMD      | {result} on {ccid[:12]}")
+        call.mark_machine(result)
     return web.json_response({"ok": True})
 
 
@@ -202,14 +208,19 @@ async def start_call(request: web.Request) -> web.Response:
     business = body.get("business")
     reviews = body.get("reviews")
     from_number = body.get("from") or config.key("TELNYX_FROM_NUMBER", required=True)
+    # Set only by the campaign runner. When present, how the call went is
+    # written back to the dial ledger so the batch can be read afterwards
+    # without trawling the log.
+    campaign = body.get("campaign")
 
     threading.Thread(
-        target=_run_call, args=(number, from_number, business, reviews), daemon=True
+        target=_run_call, args=(number, from_number, business, reviews, campaign),
+        daemon=True,
     ).start()
     return web.json_response({"ok": True, "dialling": number, "from": from_number})
 
 
-def _run_call(number: str, from_number: str, business, reviews) -> None:
+def _run_call(number: str, from_number: str, business, reviews, campaign=None) -> None:
     """One whole call, on its own thread.
 
     The conversation loop is synchronous and blocking by design, so it gets a
@@ -313,8 +324,19 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
         log(f"DONE     | {result.outcome}  {result.duration:.0f}s  "
             f"{len(result.turns)} turns  -> {path.name}"
             f"{'  + ' + wav.name if wav else ''}")
+        if campaign:
+            dialqueue.record(
+                number, outcome=result.outcome, duration_s=int(result.duration),
+                turns=len(result.turns), hangup_cause=transport.hangup_cause,
+                transcript_path=path.name, booked_slot=result.booked,
+                final_stage=a.last_stage, error=result.error,
+            )
     except Exception as e:
         log(f"CALL FAILED | {type(e).__name__}: {e}")
+        if campaign:
+            # The ledger row already exists, so this only records WHY. It must
+            # never mark the number callable again.
+            dialqueue.record(number, outcome="crashed", error=f"{type(e).__name__}: {e}")
     finally:
         stream = locals().get("stream")
         if stream is not None:
