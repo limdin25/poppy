@@ -142,6 +142,76 @@ class FishStream:
 
     # -- speaking ------------------------------------------------------------
 
+    def stream_tokens(self, tokens):
+        """Feed the model's output straight in, token by token, as it is written.
+
+        This is the difference between "fast" and "real time". Sending a whole
+        sentence means waiting for the model to finish one first, which is about
+        a second of nothing. Fish buffers the tokens itself and starts
+        synthesising as soon as it has enough context, so speech begins while
+        Claude is still writing the rest.
+
+        Their docs are explicit about it: "The WebSocket buffers incoming text
+        and generates audio once it has enough context for natural-sounding
+        speech, so you don't need to batch tokens yourself."
+
+        Yields mu-law chunks. The consumer may abandon it at any point, which is
+        what barge-in does, so the sending side has to survive that.
+        """
+        import msgpack
+
+        if self._failed or self._loop is None or self._ws is None:
+            return
+        while True:
+            try:
+                self._audio.get_nowait()
+            except queue.Empty:
+                break
+
+        done = threading.Event()
+
+        def pump() -> None:
+            """Push tokens in as they arrive, then flush once at the end."""
+            try:
+                for token in tokens:
+                    if done.is_set():
+                        break
+                    asyncio.run_coroutine_threadsafe(
+                        self._ws.send(msgpack.packb({"event": "text", "text": token})),
+                        self._loop,
+                    )
+            except Exception as e:
+                self.on_event("error", f"token stream failed: {e}")
+            finally:
+                # Flush forces out whatever is still buffered, so the last few
+                # words are not left sitting in Fish waiting for more input.
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self._ws.send(msgpack.packb({"event": "flush"})), self._loop
+                    )
+                except Exception:
+                    pass
+
+        threading.Thread(target=pump, daemon=True).start()
+
+        started = time.monotonic()
+        heard_any = False
+        try:
+            while True:
+                wait = config.FISH_QUIET_TAIL_S if heard_any else config.FISH_FIRST_AUDIO_S
+                try:
+                    item = self._audio.get(timeout=wait)
+                except queue.Empty:
+                    return
+                if item is _DONE:
+                    return
+                heard_any = True
+                if time.monotonic() - started > config.MAX_UTTERANCE_MS / 1000.0:
+                    return
+                yield ulaw.encode(item)
+        finally:
+            done.set()
+
     def stream(self, text: str):
         """Yield mu-law chunks for `text` as Fish produces them.
 

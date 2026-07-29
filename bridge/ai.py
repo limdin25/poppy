@@ -141,6 +141,90 @@ class Brain:
             note += "Do not introduce yourself again.\n"
         self.system_prompt += note
 
+    def stream_tokens(self, heard: str, seen=None):
+        """Yield the model's output as raw deltas, the instant each arrives.
+
+        `stream_sentences` waits for a full sentence before handing anything on,
+        which costs about a second of silence per reply. Fish buffers text
+        itself and decides when it has enough to synthesise, so passing tokens
+        straight through means speech starts while the model is still writing.
+
+        `seen` is an optional list the caller can watch to learn what was said
+        without consuming the generator, since the text is needed for the
+        transcript and for spotting the end-of-call marker.
+        """
+        collected: list[str] = [] if seen is None else seen
+        self.history.append({"role": "user", "content": heard})
+        committed = False
+
+        def commit() -> None:
+            nonlocal committed
+            if committed:
+                return
+            committed = True
+            said = "".join(collected).strip()
+            if said:
+                self.history.append({"role": "assistant", "content": said})
+            elif self.history and self.history[-1]["role"] == "user":
+                self.history.pop()
+
+        try:
+            for piece in self._stream_deltas():
+                collected.append(piece)
+                yield piece
+        finally:
+            commit()
+
+    def _stream_deltas(self):
+        """The raw server-sent-event loop, shared by both streaming methods."""
+        body = json.dumps(
+            {
+                "model": config.LLM_MODEL,
+                "max_tokens": config.LLM_MAX_TOKENS,
+                "system": [
+                    {
+                        "type": "text",
+                        "text": self.system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                "messages": self.history,
+                "stream": True,
+            }
+        ).encode()
+        req = urllib.request.Request(
+            self.URL,
+            data=body,
+            headers={
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                for raw_line in resp:
+                    line = raw_line.decode(errors="ignore").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if not payload or payload == "[DONE]":
+                        continue
+                    try:
+                        event = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    if event.get("type") != "content_block_delta":
+                        continue
+                    piece = event.get("delta", {}).get("text", "")
+                    if piece:
+                        yield piece
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="ignore")[:300]
+            raise RuntimeError(f"Claude stream failed {e.code}: {detail}") from None
+
     def stream_sentences(self, heard: str):
         """Yield complete sentences as the model produces them.
 

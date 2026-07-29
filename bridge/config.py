@@ -156,12 +156,14 @@ FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro")
 # The voice itself. NOT optional: with no reference_id Fish generates a brand new
 # random voice on every request, so a call comes out as several different people.
 # "british female", the most-liked generic British female in their library.
-# "British" - female, middle-aged, soft, British. Hugo picked this one by ear.
-# It is tagged narration/ASMR and speaks slowly, so the speed below is doing
-# real work: at 1.0 it runs 10.3 characters a second where conversation is
-# 15 to 19, which on a call reads as dawdling rather than calm.
-FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "7a8edf04bc874e60b35570d1371a7a58")
-FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.35"))
+# "British" - female, middle-aged, tagged conversational, energetic, cheerful,
+# friendly, expressive. Hugo picked it by ear, replacing an earlier one tagged
+# narration and ASMR: those tags are baked into how a voice was trained, not a
+# setting you can turn off, and it read as dawdling on a call.
+# At speed 1.3 this one measures 16.4 characters a second, squarely in the
+# 15 to 19 range of ordinary conversation.
+FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "a4c68282850b4568bc92749fa2c16815")
+FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.3"))
 # Measured: the library voices land around -23 dBFS, a phone line wants ~-17.
 FISH_VOLUME = float(os.environ.get("BRIDGE_FISH_VOLUME", "6"))
 # 100 is their floor and starts sooner; 300 is the default and starts later.

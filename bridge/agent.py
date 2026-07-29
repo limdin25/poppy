@@ -135,6 +135,8 @@ class Agent:
         self.on_event = on_event or (lambda kind, text: None)
         # Replaced with this line's measured quiet level once the call connects.
         self._baseline = -55.0
+        # When the prospect stopped talking, so lag can be measured honestly.
+        self._heard_at = 0.0
         # A live voice stream, if the caller handed one over. When present every
         # reply starts speaking in about a quarter of a second instead of
         # waiting for the whole clip to render.
@@ -204,6 +206,7 @@ class Agent:
         else:
             self.transport.speak(payload)
         started = time.monotonic()
+        announced = False
         # Read the thresholds off the transport, not the global config. What
         # counts as an interruption depends entirely on whether that transport
         # can hear its own voice coming back, and the two answers are far apart.
@@ -219,6 +222,12 @@ class Agent:
             # timing it from the request meant the window was already spent
             # before she made a noise, so the opener was cut off every call.
             began = self.transport.audio_started_at() or started
+            # Report the gap that actually matters: prospect stopped talking, to
+            # first sound out. Logging only when she FINISHES made a six second
+            # reply look like six seconds of lag, which is unmeasurable nonsense.
+            if not announced and self.transport.audio_started_at() and self._heard_at:
+                announced = True
+                self._emit("lag", f"{(began - self._heard_at) * 1000:.0f}ms to first word")
             elapsed_ms = (time.monotonic() - began) * 1000.0
             if elapsed_ms < self.transport.barge_grace_ms:
                 # The echo of our own first syllable lands inside this window.
@@ -273,6 +282,39 @@ class Agent:
                      time.time() - result.started_at)
             )
         return interrupted
+
+    def _say_live(self, heard: str, result: CallResult) -> tuple[bool, bool]:
+        """Claude's tokens straight into Fish, no sentence buffering anywhere.
+
+        The fastest path there is. Waiting for a complete sentence before
+        starting to speak costs about a second per reply, and Fish decides for
+        itself when it has enough text to synthesise naturally, so the model and
+        the voice run at the same time instead of one after the other.
+
+        Returns (saw end marker, was interrupted).
+        """
+        said: list[str] = []
+        tokens = self.brain.stream_tokens(heard, seen=said)
+
+        ack = self._pick_backchannel()
+        if ack is not None:
+            # Plays over the model's first tokens, so it costs nothing.
+            self._emit("ai", ack[0])
+            self._play(*ack)
+
+        chunks = self.voice_stream.stream_tokens(tokens)
+        _, interrupted = self._play("", chunks)
+        self._settle()
+
+        full = "".join(said)
+        words = spoken_words(_strip_marker(full))
+        if words:
+            self._emit("ai", words)
+            result.turns.append(
+                Turn("ai_truncated" if interrupted else "ai", words,
+                     time.time() - result.started_at)
+            )
+        return _has_marker(full), interrupted
 
     def _say_stream(self, sentences, result: CallResult) -> tuple[bool, bool]:
         """Speak sentences as the model writes them.
@@ -405,6 +447,7 @@ class Agent:
         except Exception as e:
             self._emit("error", f"STT failed: {e}")
             return ""
+        self._heard_at = time.monotonic()
         if text:
             self._emit("them", text)
             result.turns.append(Turn("them", text, time.time() - result.started_at))
@@ -456,9 +499,12 @@ class Agent:
                 # detected anywhere and always stripped before speaking. Saying
                 # the literal text "[END]" down the phone would be humiliating.
                 try:
-                    ends, _interrupted = self._say_stream(
-                        self.brain.stream_sentences(heard), result
-                    )
+                    if self.voice_stream is not None:
+                        ends, _interrupted = self._say_live(heard, result)
+                    else:
+                        ends, _interrupted = self._say_stream(
+                            self.brain.stream_sentences(heard), result
+                        )
                 except Exception as e:
                     result.error = str(e)
                     self._emit("error", f"LLM failed: {e}")
