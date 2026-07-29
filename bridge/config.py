@@ -152,12 +152,16 @@ CARTESIA_MODEL = os.environ.get("BRIDGE_CARTESIA_MODEL", "sonic-3.5")
 # they give no uptime or latency guarantee on it ("built for experimentation"),
 # and requests may be used to improve their model. Switch to "s2.1-pro" before
 # running anything that depends on it staying up.
-FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro-free")
+FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro")
 # The voice itself. NOT optional: with no reference_id Fish generates a brand new
 # random voice on every request, so a call comes out as several different people.
 # "british female", the most-liked generic British female in their library.
-FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "32e344f53f114cfcbb7ed086f10f2403")
-FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.15"))
+# "British" - female, middle-aged, soft, British. Hugo picked this one by ear.
+# It is tagged narration/ASMR and speaks slowly, so the speed below is doing
+# real work: at 1.0 it runs 10.3 characters a second where conversation is
+# 15 to 19, which on a call reads as dawdling rather than calm.
+FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "7a8edf04bc874e60b35570d1371a7a58")
+FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.35"))
 # Measured: the library voices land around -23 dBFS, a phone line wants ~-17.
 FISH_VOLUME = float(os.environ.get("BRIDGE_FISH_VOLUME", "6"))
 # 100 is their floor and starts sooner; 300 is the default and starts later.
