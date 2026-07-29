@@ -399,12 +399,25 @@ class FishAudioTTS(TextToSpeech):
 
     def __init__(self, voice_id: str | None = None, telephony: bool = False):
         self.api_key = config.key("FISH_API_KEY", required=True)
-        self.voice_id = voice_id or config.key("FISH_VOICE_ID")
+        self.voice_id = voice_id or config.key("FISH_VOICE_ID") or config.FISH_VOICE
+        if not self.voice_id:
+            # Refusing is deliberate. reference_id defaults to null, and without
+            # it Fish invents a NEW voice on every single request. On a live call
+            # that meant every sentence came out as a different person, which
+            # Hugo heard immediately: "that was a mix of voices, there were 2
+            # other AI voices talking". Silently falling back is not an option.
+            raise RuntimeError(
+                "Fish needs a voice: set FISH_VOICE_ID, or every sentence will "
+                "be spoken by a different randomly generated voice."
+            )
         self.telephony = telephony
 
     def say(self, text: str) -> bytes:
         payload: dict = {
             "text": text,
+            # THE important one. Pins the voice so it is the same person on
+            # every request. See __init__ for what happens without it.
+            "reference_id": self.voice_id,
             "format": "wav",
             "sample_rate": 8000 if self.telephony else 44100,
             # Their own low-latency mode. On a live call the tail matters more
@@ -412,14 +425,23 @@ class FishAudioTTS(TextToSpeech):
             # ElevenLabs in the benchmark.
             "latency": "low",
             "normalize": True,
-            # Fish speaks noticeably slower than the others out of the box:
-            # measured at 13.9 characters a second against ElevenLabs' 19.2, so
-            # the same opener ran seven seconds instead of five. 1.2 brings it
-            # to 18.1, which matches, and the level comes out right too.
-            "prosody": {"speed": config.FISH_SPEED},
+            # Smaller chunks start sooner. 100 is their floor, 300 the default.
+            "chunk_length": config.FISH_CHUNK,
+            "temperature": config.FISH_TEMPERATURE,
+            "top_p": config.FISH_TOP_P,
+            "prosody": {
+                # Fish speaks slower than the others: measured 13.9 characters a
+                # second against ElevenLabs' 19.2, so the same opener ran seven
+                # seconds instead of five.
+                "speed": config.FISH_SPEED,
+                # The library voices come out quiet. The British female measured
+                # -22.9 dBFS, where a phone line wants nearer -17. volume 6 puts
+                # it at -17.8. Too quiet is not a volume problem on a call, it is
+                # a "the prospect cannot hear you" problem.
+                "volume": config.FISH_VOLUME,
+                "normalize_loudness": True,
+            },
         }
-        if self.voice_id:
-            payload["reference_id"] = self.voice_id
         raw = _post(
             self.URL,
             {

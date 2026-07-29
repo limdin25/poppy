@@ -44,6 +44,32 @@ def _():
     assert agent._strip_marker("[end] lower case") == "lower case"
 
 
+@case("Fish refuses to speak without a pinned voice")
+def _():
+    # Without reference_id, Fish invents a new voice per request, so a single
+    # call came out as several different people. Failing loudly beats shipping
+    # a caller that sounds like a relay team.
+    from . import ai
+    import os
+    old = os.environ.get("BRIDGE_FISH_VOICE")
+    os.environ["BRIDGE_FISH_VOICE"] = ""
+    try:
+        import importlib
+        importlib.reload(config)
+        try:
+            ai.FishAudioTTS(voice_id=None)
+            raise AssertionError("built a Fish voice with no reference_id")
+        except RuntimeError as e:
+            assert "voice" in str(e).lower(), e
+    finally:
+        if old is None:
+            os.environ.pop("BRIDGE_FISH_VOICE", None)
+        else:
+            os.environ["BRIDGE_FISH_VOICE"] = old
+        import importlib
+        importlib.reload(config)
+
+
 @case("punctuation we never use is stripped in code, not just asked for")
 def _():
     # A live call produced "that's a good question, a colleague will confirm"

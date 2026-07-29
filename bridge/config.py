@@ -153,7 +153,18 @@ CARTESIA_MODEL = os.environ.get("BRIDGE_CARTESIA_MODEL", "sonic-3.5")
 # and requests may be used to improve their model. Switch to "s2.1-pro" before
 # running anything that depends on it staying up.
 FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro-free")
-FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.2"))
+# The voice itself. NOT optional: with no reference_id Fish generates a brand new
+# random voice on every request, so a call comes out as several different people.
+# "british female", the most-liked generic British female in their library.
+FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "32e344f53f114cfcbb7ed086f10f2403")
+FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.15"))
+# Measured: the library voices land around -23 dBFS, a phone line wants ~-17.
+FISH_VOLUME = float(os.environ.get("BRIDGE_FISH_VOLUME", "6"))
+# 100 is their floor and starts sooner; 300 is the default and starts later.
+FISH_CHUNK = int(os.environ.get("BRIDGE_FISH_CHUNK", "120"))
+# Their defaults. Higher temperature is more expressive and less predictable.
+FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "0.7"))
+FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.7"))
 # Google Chirp 3: HD, en-GB. 1M characters a month free, then $30/M.
 GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
 
