@@ -59,7 +59,18 @@ MAX_WAV_HEADER_BYTES = 4096
 # --- Turn taking -----------------------------------------------------------
 # Silence long enough to count as "they stopped talking". Shorter feels snappy
 # but cuts people off mid-sentence; longer feels sluggish.
-END_OF_TURN_SILENCE_MS = 700
+# Dropped from 700ms. Every millisecond here is dead air before the agent even
+# starts thinking, and dead air is what makes a call feel robotic. 500 still
+# comfortably clears the natural pause inside a sentence.
+END_OF_TURN_SILENCE_MS = 500
+
+# The noises a person makes while thinking. Taken from the Retell agent Hugo
+# already rates ("Yeah", "Right", "Okay", "Gotcha", "Exactly", "No worries",
+# "Mm") at its own frequency of 0.45. One is played the instant the prospect
+# stops talking, while the model is still writing, so the gap is filled with
+# something human instead of silence. Costs no time: it overlaps the thinking.
+BACKCHANNEL_WORDS = ("Mm.", "Right.", "Yeah.", "Okay.", "Gotcha.", "Sure.", "Mm hmm.")
+BACKCHANNEL_CHANCE = 0.45
 # Speech shorter than this is a cough, a click or line noise, not a turn.
 # Measured against SPEECH inside the buffer, never the buffer's own length: the
 # buffer always ends with the silence that closed the turn, so a length test can
@@ -119,16 +130,29 @@ LLM_MAX_TOKENS = 150
 WHISPER_MODEL = os.environ.get("BRIDGE_STT_MODEL", "gpt-4o-mini-transcribe")
 
 ELEVENLABS_VOICE = os.environ.get("BRIDGE_VOICE_ID", "o6wnoeR1UlXDVucYjZmq")
-ELEVENLABS_MODEL = "eleven_flash_v2_5"
+# flash_v2_5 is the FASTEST ElevenLabs model, not the most natural. It buys its
+# latency by flattening prosody, which is exactly the "robotic tonality" Hugo
+# heard. turbo_v2_5 costs roughly 150ms more and carries far more intonation.
+# The real fix is Cartesia sonic-3.5, which is literally what Retell uses.
+ELEVENLABS_MODEL = os.environ.get("BRIDGE_TTS_MODEL", "eleven_turbo_v2_5")
+# Delivery, tuned to match the Retell agent Hugo already likes the sound of
+# (cartesia-Emma, sonic-3.5, speed 0.98, temperature 1.1). Low stability is the
+# important one: high stability reads flat and even, which is exactly what makes
+# a voice sound like it is reading rather than talking.
+VOICE_STABILITY = float(os.environ.get("BRIDGE_VOICE_STABILITY", "0.40"))
+VOICE_SIMILARITY = float(os.environ.get("BRIDGE_VOICE_SIMILARITY", "0.75"))
+VOICE_STYLE = float(os.environ.get("BRIDGE_VOICE_STYLE", "0.35"))
+VOICE_SPEED = float(os.environ.get("BRIDGE_VOICE_SPEED", "0.98"))
 
 # --- Telnyx ----------------------------------------------------------------
 # How long to let it ring. Ofcom requires at least 15 seconds before abandoning
 # an unanswered call, so this floor is a rule, not a preference.
 TELNYX_RING_SECONDS = 30
-# The media websocket is a call BACK to us, so a dial is not usable until it
-# lands. If this times out the usual cause is the stream URL not being reachable
-# from the public internet, not anything wrong with the call.
-TELNYX_ATTACH_TIMEOUT_S = 20.0
+# How long to wait for the media websocket AFTER the call is answered. Telnyx
+# opens it on answer, not on dial, so this is only ever a few seconds. It is
+# deliberately NOT the ring timeout: conflating the two turned "they were slow
+# to pick up" into a fake websocket error on a live call.
+TELNYX_ATTACH_TIMEOUT_S = 15.0
 
 # --- Device ----------------------------------------------------------------
 ADB_SERIAL = os.environ.get("BRIDGE_ADB_SERIAL")  # None = first device found

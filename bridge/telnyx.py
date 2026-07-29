@@ -26,7 +26,7 @@ import urllib.error
 import urllib.request
 
 from . import audio, config, ulaw
-from .transport import Transport
+from .transport import CaptureFailed, Transport
 
 API = "https://api.telnyx.com/v2"
 
@@ -133,6 +133,38 @@ class TelnyxTransport(Transport):
     def is_live(self) -> bool:
         return not self._ended.is_set()
 
+    # -- interruption tuning -------------------------------------------------
+    # We subscribe to inbound_track only, so the audio arriving here is the far
+    # end and nothing else. Our own voice is never in it. That removes the whole
+    # reason the SIM rig needs a long grace window and a 26 dB margin, and those
+    # defaults measured badly on the first live call: they made interrupting
+    # require more than two seconds of continuous talking, which nobody does, so
+    # the agent talked straight over the prospect for 96 seconds.
+    #
+    # What is left to guard against is acoustic echo at THEIR end, a speakerphone
+    # in a van carrying our voice back through their microphone. That is real but
+    # much quieter than someone actually speaking, so a modest margin handles it.
+
+    @property
+    def barge_grace_ms(self) -> float:
+        # Just enough to cover the tail of the previous sentence still playing out.
+        return 250.0
+
+    @property
+    def barge_margin_db(self) -> float:
+        return 14.0
+
+    @property
+    def barge_min_ms(self) -> float:
+        # Long enough to ignore a cough or a line click, short enough that
+        # "sorry, hang on" stops her before she finishes the next word.
+        return 350.0
+
+    @property
+    def echo_settle_ms(self) -> float:
+        # Nothing to settle: there is no echo path back into our own capture.
+        return 60.0
+
     def save_recording(self, path) -> object | None:
         """Write the far end's audio, at the 8 kHz it actually arrived as."""
         if not self._recording:
@@ -175,15 +207,15 @@ class TelnyxTransport(Transport):
         if not self.call_control_id:
             raise RuntimeError(f"Telnyx accepted the dial but returned no call id: {data}")
         self.registry[self.call_control_id] = self
-
-        # The media websocket is a call BACK to us, so nothing can happen until
-        # it lands. Without this wait the agent would start talking into a
-        # transport that has nowhere to send audio.
-        if not self._attached.wait(timeout=config.TELNYX_ATTACH_TIMEOUT_S):
-            raise RuntimeError(
-                "Telnyx never opened the media websocket. Check that "
-                f"{config.key('TELNYX_STREAM_URL')} is reachable from the public internet."
-            )
+        # Deliberately does NOT wait for the media websocket here.
+        #
+        # Telnyx opens that socket when the call is ANSWERED, not when it is
+        # placed. Blocking on it inside dial() therefore turns "they took a
+        # while to pick up" into a hard error, which is exactly what happened on
+        # a live call: a 20 second wait fired while the phone was still ringing
+        # and reported it as an unreachable websocket. Waiting for the far end
+        # is wait_for_audio()'s job, and it already knows the difference between
+        # nobody answering and something being broken.
 
     def wait_for_audio(self, timeout_s: float = config.NO_AUDIO_TIMEOUT_S) -> bool:
         """True once the call is answered and real audio is flowing.
@@ -201,6 +233,15 @@ class TelnyxTransport(Transport):
                 break
         else:
             return False
+
+        # Answered. The media socket opens at that moment, so give it a few
+        # seconds to land. If it never does, THAT is a genuine rig failure and
+        # deserves to be shouted about rather than logged as a no-answer.
+        if not self._attached.wait(timeout=config.TELNYX_ATTACH_TIMEOUT_S):
+            raise CaptureFailed(
+                "the call was answered but Telnyx never opened the media "
+                f"websocket. Check {config.key('TELNYX_STREAM_URL')} is reachable."
+            )
 
         # Answered. Now wait for something other than comfort noise, so the
         # opener does not start playing into the first half second of a

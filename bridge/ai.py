@@ -321,8 +321,22 @@ class ElevenLabsTTS(TextToSpeech):
             f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}"
             f"?output_format={self.output_format}"
         )
+        # Lower stability means more variation between sentences, which is what
+        # stops a voice sounding like it is reading. Retell's own agent runs its
+        # Cartesia voice at temperature 1.1 and speed 0.98 for the same reason;
+        # these are the nearest ElevenLabs equivalents.
         body = json.dumps(
-            {"text": text, "model_id": config.ELEVENLABS_MODEL}
+            {
+                "text": text,
+                "model_id": config.ELEVENLABS_MODEL,
+                "voice_settings": {
+                    "stability": config.VOICE_STABILITY,
+                    "similarity_boost": config.VOICE_SIMILARITY,
+                    "style": config.VOICE_STYLE,
+                    "use_speaker_boost": True,
+                    "speed": config.VOICE_SPEED,
+                },
+            }
         ).encode()
         return _post(
             url,

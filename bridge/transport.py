@@ -73,6 +73,35 @@ class Transport:
         """The line's own quiet level in dBFS, used to seed the VAD."""
         return -55.0
 
+    # -- interruption tuning, per transport ---------------------------------
+    # These defaults exist to survive the SIM rig, where the far end's handset
+    # echoes our own voice back down the line and a hair trigger makes the agent
+    # cut itself off mid-sentence. A transport that cannot hear its own voice
+    # should override them hard, because on that path every one of these is pure
+    # delay: measured on a live Telnyx call, the combination made interrupting
+    # take over two seconds of solid talking, so a real person simply could not
+    # do it and was talked over for the whole call.
+
+    @property
+    def barge_grace_ms(self) -> float:
+        """Ignore everything for this long after starting to speak."""
+        return config.BARGE_IN_GRACE_MS
+
+    @property
+    def barge_margin_db(self) -> float:
+        """How far above the noise floor counts as the prospect, not our echo."""
+        return config.BARGE_IN_MARGIN_DB
+
+    @property
+    def barge_min_ms(self) -> float:
+        """How long they must keep talking before we treat it as an interruption."""
+        return config.BARGE_IN_MS
+
+    @property
+    def echo_settle_ms(self) -> float:
+        """Pause after speaking, to let our own echo pass before listening."""
+        return config.ECHO_SETTLE_MS
+
     def is_live(self) -> bool:
         """False once the far end is definitively gone.
 

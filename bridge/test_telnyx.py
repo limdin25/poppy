@@ -88,8 +88,9 @@ def case(name):
 def make_transport(monkeypatched=True):
     t = telnyx.TelnyxTransport(from_number="+18336480769")
     ws = FakeWS()
-    t._ws = ws
-    t._loop = FakeLoop()
+    # Go through attach(), the same door the real media websocket comes in by,
+    # so the transport ends up in the state a live call actually reaches.
+    t.attach(ws, FakeLoop())
     if monkeypatched:
         telnyx.asyncio.run_coroutine_threadsafe = lambda coro, loop: InlineFuture(coro)
     return t, ws

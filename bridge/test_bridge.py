@@ -44,6 +44,19 @@ def _():
     assert agent._strip_marker("[end] lower case") == "lower case"
 
 
+@case("punctuation we never use is stripped in code, not just asked for")
+def _():
+    # A live call produced "that's a good question, a colleague will confirm"
+    # with a long dash in it, despite the prompt forbidding one in as many words.
+    bad = "Fair enough, that’s a good question—a colleague will confirm…"
+    out = agent.straighten(bad)
+    for ch in ("—", "–", "‘", "’", "“", "”", "…"):
+        assert ch not in out, f"{ch!r} survived: {out!r}"
+    assert out == "Fair enough, that's a good question,a colleague will confirm...", out
+    # and it must run on the model's output path, not only on the opener
+    assert "—" not in agent._strip_marker("Right—yes. [END]")
+
+
 @case("detection and stripping agree, including on '[ END ]'")
 def _():
     # They used to disagree: a literal "[END]" test against a whitespace

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import queue
+import random
 import re
 import threading
 import time
@@ -27,9 +28,33 @@ _MARKER_RE = re.compile(r"\[\s*END\s*\]", re.IGNORECASE)
 CHARS_PER_SECOND = 15.0
 
 
+# Punctuation the model reaches for that we never use. Asking it not to in the
+# prompt is not enough: on a live call it produced "that's a good question, a
+# colleague will confirm" with a long dash in the middle, despite being told
+# plainly not to. A model copies the punctuation it has seen, so this is
+# enforced in code rather than remembered, the same way the SMS copy rule is.
+_PUNCTUATION = {
+    "—": ",",   # em dash
+    "–": ",",   # en dash
+    "‒": ",",   # figure dash
+    "−": "-",   # minus sign
+    "‘": "'", "’": "'",           # curly single quotes
+    "“": '"', "”": '"',           # curly double quotes
+    "…": "...",                        # ellipsis character
+    " ": " ",                          # non-breaking space
+}
+
+
+def straighten(text: str) -> str:
+    """Replace punctuation we never use with the plain equivalent."""
+    for bad, good in _PUNCTUATION.items():
+        text = text.replace(bad, good)
+    return text
+
+
 def _strip_marker(text: str) -> str:
-    """Remove the [END] control marker wherever the model put it."""
-    return re.sub(r"\s+", " ", _MARKER_RE.sub(" ", text)).strip()
+    """Remove the [END] control marker wherever the model put it, and tidy."""
+    return re.sub(r"\s+", " ", straighten(_MARKER_RE.sub(" ", text))).strip()
 
 
 def _has_marker(text: str) -> bool:
@@ -102,6 +127,32 @@ class Agent:
         self.on_event = on_event or (lambda kind, text: None)
         # Replaced with this line's measured quiet level once the call connects.
         self._baseline = -55.0
+        self._backchannel: list[tuple[str, bytes]] = []
+        threading.Thread(target=self._prepare_backchannel, daemon=True).start()
+
+    def _prepare_backchannel(self) -> None:
+        """Generate the little acknowledgements up front, during the ring.
+
+        These are what a person makes while they are thinking: "mm", "right",
+        "yeah". They matter more than they look. The model takes a second or so
+        to answer and the voice another fraction on top, and that gap is dead
+        air, which is the single most robotic thing on a call. Playing one of
+        these the instant the prospect stops talking fills the gap with
+        something a human would actually do, and it costs no extra time because
+        it plays while the model is still writing.
+
+        Generated once, at startup, so using one costs nothing at all later.
+        """
+        for word in config.BACKCHANNEL_WORDS:
+            try:
+                self._backchannel.append((word, self.tts.say(word)))
+            except Exception:
+                return  # not worth failing a call over
+
+    def _pick_backchannel(self) -> tuple[str, bytes] | None:
+        if not self._backchannel or random.random() > config.BACKCHANNEL_CHANCE:
+            return None
+        return random.choice(self._backchannel)
 
     def _emit(self, kind: str, text: str) -> None:
         self.on_event(kind, text)
@@ -123,7 +174,10 @@ class Agent:
 
         self.transport.speak(payload)
         started = time.monotonic()
-        barge = audio.VoiceActivity(margin_db=config.BARGE_IN_MARGIN_DB)
+        # Read the thresholds off the transport, not the global config. What
+        # counts as an interruption depends entirely on whether that transport
+        # can hear its own voice coming back, and the two answers are far apart.
+        barge = audio.VoiceActivity(margin_db=self.transport.barge_margin_db)
         interrupted = False
 
         while self.transport.is_speaking():
@@ -131,14 +185,14 @@ class Agent:
             if chunk is None:
                 continue
             elapsed_ms = (time.monotonic() - started) * 1000.0
-            if elapsed_ms < config.BARGE_IN_GRACE_MS:
+            if elapsed_ms < self.transport.barge_grace_ms:
                 # The echo of our own first syllable lands inside this window.
                 # Reset rather than skip: letting the counter run up during the
                 # grace period just moves the false trigger to the moment it ends.
                 barge.reset()
                 continue
             _, speech_ms, _ = barge.feed(chunk)
-            if config.BARGE_IN_ENABLED and speech_ms >= config.BARGE_IN_MS:
+            if config.BARGE_IN_ENABLED and speech_ms >= self.transport.barge_min_ms:
                 self.transport.stop_speaking()
                 self._emit("bargein", "prospect interrupted")
                 interrupted = True
@@ -156,11 +210,12 @@ class Agent:
         agent transcribes its own voice and answers itself.
         """
         self.transport.drain()
-        time.sleep(config.ECHO_SETTLE_MS / 1000.0)
+        time.sleep(self.transport.echo_settle_ms / 1000.0)
         self.transport.drain()
 
     def _say(self, text: str, result: CallResult) -> bool:
         """Speak one fixed line, such as the opener. Returns True if cut off."""
+        text = straighten(text)
         try:
             payload = self.tts.say(text)
         except Exception as e:
@@ -214,10 +269,18 @@ class Agent:
             finally:
                 audio_q.put(None)
 
+        # Starting the producer FIRST is what makes the acknowledgement free:
+        # the model begins writing immediately, and the "mm" plays over the top
+        # of it rather than before it.
         threading.Thread(target=produce, daemon=True).start()
 
         interrupted = False
         spoken: list[str] = []
+
+        ack = self._pick_backchannel()
+        if ack is not None:
+            self._emit("ai", ack[0])
+            self._play(*ack)
         while True:
             item = audio_q.get()
             if item is None:
