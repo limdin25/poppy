@@ -524,6 +524,32 @@ AMD_PHRASES = (
     "our office is currently closed", "we are currently closed",
     "your call is important to us", "press one for", "press 1 for",
 )
+
+# The CARRIER's own voicemail intro, which is a different animal and needs no
+# length check. A business greeting has to clear AMD_MIN_GREETING_WORDS because
+# a receptionist saying "can I take a message" looks a lot like a machine. These
+# do not: no human alive answers their phone by announcing that the call has
+# been forwarded to voicemail, so the phrase alone is proof.
+#
+# The gap was real. "+17086925510" was carrier voicemail, said "Your call has
+# been forwarded to voicemail", and was filed as COMPLETED, because the phrase
+# was not on the list and the sentence was too short to trip the length rule.
+# That flatters the results table with conversations that never happened.
+AMD_PHRASES_CERTAIN = (
+    "forwarded to voicemail", "the person you are trying to reach",
+    "the person you're trying to reach",
+    "please record your message", "record your message at",
+    "leave a detailed message", "has a voice mailbox", "voicemail box",
+    "subscriber you have dialed", "subscriber you have dialled",
+    "please leave a message after",
+)
+# "is not available" was on that list for about a minute and is the reason this
+# note exists. It is the tail of the carrier line "the person you're trying to
+# reach is not available", and it is ALSO what a receptionist says about her
+# boss: "He is not available right now, can I take a message?". On the certain
+# list, with no length check to save it, that hung up on a human. Tested, it
+# really did. The distinctive half of the carrier line is "the person you're
+# trying to reach", so match on that and never on the tail.
 # A human answering a phone says a handful of words and then stops to listen.
 # A greeting runs on. Used only together with a phrase hit, never alone, since
 # a chatty receptionist reading out opening hours would otherwise be cut off.

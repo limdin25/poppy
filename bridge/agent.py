@@ -715,6 +715,15 @@ class Agent:
         if not heard:
             return False
         text = heard.lower()
+        # Carrier voicemail. Nobody says these, so no length check is needed
+        # and applying one just lets short ones through, which is exactly how
+        # "your call has been forwarded to voicemail" got filed as a completed
+        # conversation.
+        sure = next((p for p in config.AMD_PHRASES_CERTAIN if p in text), None)
+        if sure:
+            result.outcome = "answering_machine"
+            self._emit("amd", f"carrier voicemail ({sure!r}), hanging up")
+            return True
         hit = next((p for p in config.AMD_PHRASES if p in text), None)
         # A phrase AND a greeting long enough that nobody is waiting for a
         # reply. "Can I take a message" from a receptionist is short and is a

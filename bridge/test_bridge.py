@@ -1031,6 +1031,35 @@ def _():
         assert not hit, f"would have hung up on a person: {human!r} -> {outcome}"
 
 
+@case("carrier voicemail is caught even though it is short")
+def _():
+    """Verbatim from +17086925510, which was filed as a COMPLETED conversation.
+
+    Business greetings need the length check, because a receptionist offering
+    to take a message reads like a machine. Carrier intros do not, and applying
+    the length rule to them let this through.
+    """
+    for line in ["Your call has been forwarded to voicemail.",
+                 "The person you're trying to reach is not available.",
+                 "Please record your message at the tone."]:
+        hit, outcome = _amd(line)
+        assert hit and outcome == "answering_machine", f"missed carrier voicemail: {line!r}"
+
+
+@case("the carrier list still cannot fire on a human")
+def _():
+    for human in ["Hello?", "Pipe Doctor Plumbing, this is Sam.",
+                  # BOTH contractions. "is not available" was briefly on the
+                  # certain list, where it needs no length check, and this
+                  # exact line hung up on a receptionist.
+                  "He's not available right now, can I take a message?",
+                  "He is not available right now, can I take a message?",
+                  "She is not available at the moment, want his cell?",
+                  "Yeah he's not around, try his cell."]:
+        hit, _ = _amd(human)
+        assert not hit, f"would have hung up on a person: {human!r}"
+
+
 @case("a machine phrase alone is not enough, it must also run on")
 def _():
     # Short enough that somebody is plainly waiting for a reply.
