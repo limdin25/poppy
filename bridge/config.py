@@ -102,6 +102,11 @@ BARGE_IN_MARGIN_DB = 26.0
 BARGE_IN_GRACE_MS = 1200
 # Set BRIDGE_NO_BARGE=1 to disable interruption entirely, which is the way to
 # isolate whether a problem is echo or something else.
+# When interrupted, finish the word in flight before going quiet. Cutting at the
+# instant of the decision chops a syllable in half and sounds broken; a person
+# finishes the word and then stops. About one word at conversational pace.
+FINISH_WORD_MS = 200
+
 BARGE_IN_ENABLED = os.environ.get("BRIDGE_NO_BARGE", "") != "1"
 # After we stop speaking, let the tail of our own echo pass before we start
 # listening, or the agent transcribes itself and replies to its own words.
@@ -187,8 +192,8 @@ FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro")
 # heard it as rushed. 1.1 sits nearer 14, which reads as unhurried. Pace is
 # not only speed though: the pauses come from [break] cues in the script, and
 # a voice that never pauses sounds hurried at any speed.
-FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "5e34045cc3314c7383e774a6b64367a8")
-FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.0"))
+FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "a4c68282850b4568bc92749fa2c16815")
+FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.1"))
 # Measured: the library voices land around -23 dBFS, a phone line wants ~-17.
 FISH_VOLUME = float(os.environ.get("BRIDGE_FISH_VOLUME", "6"))
 # 100 is their floor and starts sooner; 300 is the default and starts later.

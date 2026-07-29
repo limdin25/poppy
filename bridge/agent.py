@@ -69,6 +69,35 @@ def _has_marker(text: str) -> bool:
     return _MARKER_RE.search(text) is not None
 
 
+def _stop_after_question(tokens):
+    """Stop speaking once a question has been asked.
+
+    A person asks one thing and then shuts up. The model does not: it will ask
+    "how many reviews have you got?" and carry straight on into the pitch, so the
+    prospect starts answering and gets talked over. Hugo, after a live call:
+    "she's talking over me all the time... she has to ask a question and wait,
+    not keep talking after asking a question."
+
+    Telling it not to in the prompt is not enough, because a streamed reply is
+    already on its way to the voice by the time the sentence ends. So the tokens
+    are simply cut off at the question mark, which makes it impossible.
+
+    Anything before the question still plays, so "Fair question. A colleague
+    will explain. So are you the right person?" keeps all three parts and stops
+    at the end.
+    """
+    done = False
+    for token in tokens:
+        if done:
+            continue                       # drain, so history still records it
+        if "?" in token:
+            head, _, _tail = token.partition("?")
+            yield head + "?"
+            done = True
+            continue
+        yield token
+
+
 def _spoken_prefix(text: str, elapsed_ms: float) -> str:
     """Estimate the part of a sentence the prospect heard before interrupting.
 
@@ -240,6 +269,12 @@ class Agent:
                 continue
             _, speech_ms, _ = barge.feed(chunk)
             if config.BARGE_IN_ENABLED and speech_ms >= self.transport.barge_min_ms:
+                # Let the word in flight land before cutting. Stopping the
+                # instant we decide chops a syllable in half, which sounds
+                # broken rather than polite. Hugo: "you don't stop mid-word, you
+                # can stop mid-sentence, but never mid-word." A couple of
+                # hundred milliseconds is about one word at speaking pace.
+                time.sleep(config.FINISH_WORD_MS / 1000.0)
                 self.transport.stop_speaking()
                 self._emit("bargein", "prospect interrupted")
                 interrupted = True
@@ -297,7 +332,7 @@ class Agent:
         Returns (saw end marker, was interrupted).
         """
         said: list[str] = []
-        tokens = self.brain.stream_tokens(heard, seen=said)
+        tokens = _stop_after_question(self.brain.stream_tokens(heard, seen=said))
 
         ack = self._pick_backchannel()
         if ack is not None:
