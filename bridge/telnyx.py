@@ -85,6 +85,11 @@ class TelnyxTransport(Transport):
         self._play_until = 0.0
         self._hangup_cause: str | None = None
         self._recording = bytearray()
+        # True while a stream feeder is running, so is_speaking() stays true
+        # in the gap before the first chunk of a streamed reply arrives.
+        self._streaming = False
+        # When sound actually started reaching the far end (see audio_started_at).
+        self._audio_began = 0.0
 
     # -- called by the server, from the event loop --------------------------
 
@@ -313,16 +318,64 @@ class TelnyxTransport(Transport):
         self.stop_speaking()
         if not payload:
             return
+        self._send_audio(payload)
+        self._play_until = time.monotonic() + len(payload) / ULAW_BYTES_PER_SECOND
+
+    def speak_stream(self, chunks) -> None:
+        """Play audio as it is produced, rather than waiting for the whole clip.
+
+        Returns as soon as the feeder is running, so the barge-in loop upstairs
+        starts watching immediately. `_streaming` keeps is_speaking() true in the
+        gap before the first chunk lands, or the loop would see a silent
+        transport and conclude she had already finished.
+        """
+        self.stop_speaking()
+        if self._ended.is_set():
+            return
+        self._streaming = True
+
+        def feed() -> None:
+            try:
+                for chunk in chunks:
+                    if self._ended.is_set() or not self._streaming:
+                        break            # barge-in, stop pulling from the model
+                    self._send_audio(chunk)
+                    now = time.monotonic()
+                    self._play_until = max(self._play_until, now) + len(chunk) / ULAW_BYTES_PER_SECOND
+            except Exception as e:
+                self.on_event("error", f"voice stream failed: {e}")
+            finally:
+                self._streaming = False
+
+        threading.Thread(target=feed, daemon=True).start()
+
+    def audio_started_at(self) -> float:
+        """When sound actually began leaving for the far end, 0 if not yet.
+
+        The barge-in grace window has to be measured from THIS, not from when we
+        asked to speak. With streaming those are different moments: speak_stream
+        returns instantly and the first chunk arrives about 300ms later, so a
+        grace window started at the request had already expired before she made
+        a sound, and the first noise on the line cut off an opener that had not
+        begun. Measured on a live call: barge-in fired one second after answer,
+        every time.
+        """
+        return self._audio_began
+
+    def _send_audio(self, payload: bytes) -> None:
+        if not self._audio_began:
+            self._audio_began = time.monotonic()
         step = int(ULAW_BYTES_PER_SECOND * SEND_CHUNK_MS / 1000)
         for i in range(0, len(payload), step):
             self._send({
                 "event": "media",
                 "media": {"payload": base64.b64encode(payload[i:i + step]).decode()},
             })
-        self._play_until = time.monotonic() + len(payload) / ULAW_BYTES_PER_SECOND
 
     def is_speaking(self) -> bool:
-        return not self._ended.is_set() and time.monotonic() < self._play_until
+        if self._ended.is_set():
+            return False
+        return self._streaming or time.monotonic() < self._play_until
 
     def stop_speaking(self) -> None:
         """Flush whatever Telnyx still has queued for playback.
@@ -331,7 +384,12 @@ class TelnyxTransport(Transport):
         their side, so simply not sending more would let the AI keep talking
         over the prospect for seconds.
         """
-        if self._play_until:
+        # Order matters: stop the feeder BEFORE the clear, or it keeps pushing
+        # new audio into the queue we just emptied and she talks on regardless.
+        was_active = self._streaming or self._play_until
+        self._streaming = False
+        self._audio_began = 0.0
+        if was_active:
             self._send({"event": "clear"})
         self._play_until = 0.0
 

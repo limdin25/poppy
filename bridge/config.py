@@ -165,6 +165,16 @@ FISH_CHUNK = int(os.environ.get("BRIDGE_FISH_CHUNK", "120"))
 # Their defaults. Higher temperature is more expressive and less predictable.
 FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "0.7"))
 FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.7"))
+# Stream over a websocket held open for the call. Measured on the FREE model:
+# ~510ms to open (paid once, during the ring) then 271-278ms to first audio on
+# every reply, against 477ms and up to 1150ms for the plain HTTP call.
+FISH_STREAMING = os.environ.get("BRIDGE_FISH_STREAMING", "1") != "0"
+# How long to wait for the FIRST chunk of a reply before giving up on it.
+FISH_FIRST_AUDIO_S = 8.0
+# Fish sends no per-flush terminator, so a quiet gap after audio has started is
+# how an utterance ends. Erring long only delays the handover to listening;
+# erring short clips the end of her sentence, which is far worse.
+FISH_QUIET_TAIL_S = 0.9
 # Google Chirp 3: HD, en-GB. 1M characters a month free, then $30/M.
 GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
 

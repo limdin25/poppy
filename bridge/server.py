@@ -25,7 +25,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import agent, ai, config, run as runmod, settings
+from . import agent, ai, config, fish_stream, run as runmod, settings
 from .telnyx import TelnyxTransport
 
 TRANSCRIPTS = Path(__file__).resolve().parent / "transcripts"
@@ -213,6 +213,18 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
             tts=ai.build_tts(telephony=True),
             on_event=show,
         )
+        # Open the voice socket now, while the phone is still ringing. It costs
+        # about half a second to establish and nobody is waiting during a ring;
+        # paying it per reply instead would wipe out the whole benefit.
+        if config.FISH_STREAMING and config.key("FISH_API_KEY"):
+            stream = fish_stream.FishStream(
+                voice_id=saved.get("voice_id") or None, on_event=show)
+            if stream.connect():
+                a.voice_stream = stream
+                log("VOICE    | streaming socket open")
+            else:
+                log(f"VOICE    | streaming unavailable, using plain requests ({stream._failed})")
+
         result = a.call(number)
         path = agent.save_transcript(result, TRANSCRIPTS)
         wav = transport.save_recording(path.with_suffix(".wav"))
@@ -222,6 +234,9 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
     except Exception as e:
         log(f"CALL FAILED | {type(e).__name__}: {e}")
     finally:
+        stream = locals().get("stream")
+        if stream is not None:
+            stream.close()
         if transport.call_control_id:
             CALLS.pop(transport.call_control_id, None)
 

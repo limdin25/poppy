@@ -22,6 +22,14 @@ from .transport import CaptureFailed, Transport
 # "[ END ]" was quietly removed from the speech and never ended the call: the
 # agent agreed to take an annoyed prospect off the list, then stayed on the line.
 _MARKER_RE = re.compile(r"\[\s*END\s*\]", re.IGNORECASE)
+# Emotion cues are for the voice, not for the record. They must survive all the
+# way to Fish, so they are stripped only where text is shown or stored.
+_CUE_RE = re.compile(r"\[[a-z][a-z\s-]{0,20}\]", re.IGNORECASE)
+
+
+def spoken_words(text: str) -> str:
+    """What a human would say was said, with the performance cues removed."""
+    return re.sub(r"\s+", " ", _CUE_RE.sub(" ", text)).strip()
 
 # Rough speaking rate of the TTS voices, used only to estimate how much of a
 # sentence actually reached the prospect before they cut in.
@@ -127,6 +135,10 @@ class Agent:
         self.on_event = on_event or (lambda kind, text: None)
         # Replaced with this line's measured quiet level once the call connects.
         self._baseline = -55.0
+        # A live voice stream, if the caller handed one over. When present every
+        # reply starts speaking in about a quarter of a second instead of
+        # waiting for the whole clip to render.
+        self.voice_stream = None
         self._backchannel: list[tuple[str, bytes]] = []
         # Generate the opener NOW, while the phone is still ringing, instead of
         # after they say hello. It used to be made on answer, so its generation
@@ -184,7 +196,13 @@ class Agent:
         # the reply dies before a syllable is audible.
         self.transport.drain()
 
-        self.transport.speak(payload)
+        # A generator means the voice is still being produced, so hand it over
+        # and let the transport play it as it arrives. Bytes mean it is already
+        # rendered and plays in one go, which is what the SIM rig does.
+        if hasattr(payload, "__next__") or hasattr(payload, "__iter__") and not isinstance(payload, (bytes, bytearray)):
+            self.transport.speak_stream(payload)
+        else:
+            self.transport.speak(payload)
         started = time.monotonic()
         # Read the thresholds off the transport, not the global config. What
         # counts as an interruption depends entirely on whether that transport
@@ -196,7 +214,12 @@ class Agent:
             chunk = self.transport.read(timeout=0.15)
             if chunk is None:
                 continue
-            elapsed_ms = (time.monotonic() - started) * 1000.0
+            # Measure the grace window from when sound actually started leaving
+            # for the far end. With streaming that is ~300ms after we asked, and
+            # timing it from the request meant the window was already spent
+            # before she made a noise, so the opener was cut off every call.
+            began = self.transport.audio_started_at() or started
+            elapsed_ms = (time.monotonic() - began) * 1000.0
             if elapsed_ms < self.transport.barge_grace_ms:
                 # The echo of our own first syllable lands inside this window.
                 # Reset rather than skip: letting the counter run up during the
@@ -242,10 +265,11 @@ class Agent:
         # Recorded after playback, and only what was delivered. Appending before
         # speaking meant a TTS failure or a barge-in still produced a transcript
         # claiming the whole line, disclosure included, had been spoken.
-        if spoken:
-            self._emit("ai", spoken)
+        words = spoken_words(spoken)
+        if words:
+            self._emit("ai", words)
             result.turns.append(
-                Turn("ai_truncated" if interrupted else "ai", spoken,
+                Turn("ai_truncated" if interrupted else "ai", words,
                      time.time() - result.started_at)
             )
         return interrupted
@@ -275,7 +299,12 @@ class Agent:
                     if not clean:
                         continue
                     try:
-                        audio_q.put((clean, self.tts.say(clean)))
+                        if self.voice_stream is not None:
+                            # Not rendered yet: the transport pulls audio out of
+                            # this as Fish produces it.
+                            audio_q.put((clean, self.voice_stream.stream(clean)))
+                        else:
+                            audio_q.put((clean, self.tts.say(clean)))
                     except Exception as e:
                         self._emit("error", f"TTS failed: {e}")
             except Exception as e:
@@ -304,8 +333,10 @@ class Agent:
                 continue  # drain the rest, do not speak over the prospect
             said, interrupted = self._play(text, payload)
             if said:
-                self._emit("ai", said)
-                spoken.append(said)
+                words = spoken_words(said)
+                if words:
+                    self._emit("ai", words)
+                    spoken.append(words)
             if interrupted:
                 stop_producing.set()
 

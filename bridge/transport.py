@@ -59,6 +59,18 @@ class Transport:
         """Start playing audio to the far end. Returns as soon as it is queued."""
         raise NotImplementedError
 
+    def speak_stream(self, chunks) -> None:
+        """Play audio as it is produced. Default: collect it and play once.
+
+        A transport that cannot stream still works, it just waits for the
+        whole clip the way it always did.
+        """
+        self.speak(b"".join(chunks))
+
+    def audio_started_at(self) -> float:
+        """When sound actually began leaving for the far end, 0 if not yet."""
+        return 0.0
+
     def is_speaking(self) -> bool:
         """Is our audio still playing? Drives the barge-in wait."""
         return False
