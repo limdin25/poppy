@@ -27,15 +27,12 @@ from __future__ import annotations
 
 import asyncio
 import queue
-import re
 import threading
 import time
 
 from . import audio, config, ulaw
 
 URL = "wss://api.fish.audio/v1/tts/live"
-# Where a speaker would naturally pause, and so where an early flush is free.
-_PHRASE_END = re.compile(r"[.,!?;:]")
 # Sentinel meaning "this utterance is finished", pushed onto the audio queue.
 _DONE = object()
 
@@ -98,8 +95,13 @@ class FishStream:
                     # Raw samples. See the module docstring on why not WAV.
                     "format": "pcm",
                     "sample_rate": 8000,
-                    "latency": "low",
+                    "latency": config.FISH_LATENCY,
                     "chunk_length": config.FISH_CHUNK,
+                    # Carry voice and prosody across chunk boundaries. It is
+                    # their default, but a long reply that overflows
+                    # chunk_length is still split, and this is what stops the
+                    # second half arriving in a different mood to the first.
+                    "condition_on_previous_chunks": True,
                     "temperature": config.FISH_TEMPERATURE,
                     "top_p": config.FISH_TOP_P,
                     "prosody": {
@@ -174,27 +176,30 @@ class FishStream:
         done = threading.Event()
 
         def pump() -> None:
-            """Push tokens in as they arrive, flushing at the first phrase.
+            """Push tokens in as they arrive, then flush ONCE at the end.
 
-            The docstring above used to claim speech began while Claude was
-            still writing. Measured, that was false. Fish synthesises when its
-            buffer reaches chunk_length or when it is flushed, chunk_length has
-            a floor of 100 characters, and our replies are about 50, so the
-            buffer never filled and every single reply waited for the whole
-            thing to be written before a sound came out.
+            An earlier version flushed at the first comma too, which cut mean
+            time to first audio from 1630ms to 1235ms. It has been taken out
+            again, because measured against a single-shot render of the same
+            line the split costs more than it buys:
 
-            One extra flush, at the first comma or full stop, fixes it: the
-            opening words are already being spoken while the rest is written.
-            Measured over three runs each, mean time to first audio:
+                                one shot   split after 3 words
+                bare              3.89s          4.51s
+                excited           3.81s          4.71s
+                calm              3.99s          4.75s
+                delighted         4.27s          4.43s
 
-                flush at the end only   1630ms
-                flush at first phrase   1235ms
+            Two things there. Every split line runs about 0.6s longer, which is
+            a seam in the middle of a sentence nobody would pause in. And the
+            spread BETWEEN cues collapses from 0.46s to 0.32s, because the cue
+            sits at the start of the reply and only ever coloured the first
+            chunk. Fish's own guidance says to give an emotion enough text to
+            develop, and a three word chunk denies it exactly that.
 
-            min_chunk_length was tested at 50, 10 and 0 and made no difference
-            (1235 / 1261 / 1229), so it is left alone.
+            Hugo, on the split build: "its tonality are not really coming
+            across naturally". Latency is already down from 2.9s to about 1.2s
+            on the other changes, so this 400ms is the right one to give back.
             """
-            buf = ""
-            early_done = False
             try:
                 for token in tokens:
                     if done.is_set():
@@ -203,20 +208,6 @@ class FishStream:
                         self._ws.send(msgpack.packb({"event": "text", "text": token})),
                         self._loop,
                     )
-                    if early_done:
-                        continue
-                    buf += token
-                    # A comma or a stop is somewhere she would draw breath
-                    # anyway, so cutting the synthesis there costs no prosody.
-                    # Two words minimum, or a one word flush leaves a stranded
-                    # "Right." with the rest arriving as a separate breath.
-                    head = _PHRASE_END.split(buf, 1)[0]
-                    if _PHRASE_END.search(buf) and len(head.split()) >= 2:
-                        asyncio.run_coroutine_threadsafe(
-                            self._ws.send(msgpack.packb({"event": "flush"})),
-                            self._loop,
-                        )
-                        early_done = True
             except Exception as e:
                 self.on_event("error", f"token stream failed: {e}")
             finally:

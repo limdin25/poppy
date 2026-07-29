@@ -163,20 +163,25 @@ class TelnyxTransport(Transport):
     # in a van carrying our voice back through their microphone. That is real but
     # much quieter than someone actually speaking, so a modest margin handles it.
 
+    # Read from config rather than hardcoded, so the sliders on the agent page
+    # actually reach a live call. They used to be literals here while the
+    # settings page offered a control for them, which is the same dead-wiring
+    # bug the emotion toggles had: saved in Supabase, read by nobody.
+
     @property
     def barge_grace_ms(self) -> float:
         # Just enough to cover the tail of the previous sentence still playing out.
-        return 250.0
+        return config.TELNYX_BARGE_GRACE_MS
 
     @property
     def barge_margin_db(self) -> float:
-        return 14.0
+        return config.TELNYX_BARGE_MARGIN_DB
 
     @property
     def barge_min_ms(self) -> float:
         # Long enough to ignore a cough or a line click, short enough that
         # "sorry, hang on" stops her before she finishes the next word.
-        return 350.0
+        return config.TELNYX_BARGE_MS
 
     @property
     def echo_settle_ms(self) -> float:

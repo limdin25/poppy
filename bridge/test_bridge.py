@@ -424,6 +424,17 @@ def _():
     assert brain.history == [], brain.history
 
 
+@case("a reply cut off mid-cue is not transcribed as a bare bracket")
+def _():
+    # Seen on a live call: BARGEIN landed between "[" and the cue name, and the
+    # transcript recorded the whole turn as "[". Never spoken, only logged.
+    assert agent.spoken_words("[") == ""
+    assert agent.spoken_words("[curi") == ""
+    assert agent.spoken_words("[warm] Twenty a week? [cur") == "Twenty a week?"
+    # A bracket with words after it is not a truncated cue, so it stays put.
+    assert agent.spoken_words("Twenty a week?") == "Twenty a week?"
+
+
 @case("the AI disclosure is noticed once, and only when it was heard in full")
 def _():
     for line in ("I'm Elsie, an AI assistant at HeyElsie.",

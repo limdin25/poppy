@@ -50,6 +50,7 @@ def apply(cfg: dict) -> list[str]:
     """
     changed: list[str] = []
     mapping = {
+        # The voice
         "voice_id": "FISH_VOICE",
         "model": "FISH_MODEL",
         "speed": "FISH_SPEED",
@@ -57,6 +58,19 @@ def apply(cfg: dict) -> list[str]:
         "temperature": "FISH_TEMPERATURE",
         "top_p": "FISH_TOP_P",
         "chunk_length": "FISH_CHUNK",
+        "latency": "FISH_LATENCY",
+        # The brain
+        "llm_model": "LLM_MODEL",
+        "max_words": "MAX_SPOKEN_WORDS",
+        # Turn taking. These decide whether she talks over people, and they are
+        # the settings most worth an ear rather than an argument.
+        "settled_partial_s": "SETTLED_PARTIAL_S",
+        "unfinished_wait_s": "UNFINISHED_WAIT_S",
+        "wait_for_hello_s": "WAIT_FOR_HELLO_S",
+        "backchannel_chance": "BACKCHANNEL_CHANCE",
+        "barge_in_ms": "TELNYX_BARGE_MS",
+        "barge_margin_db": "TELNYX_BARGE_MARGIN_DB",
+        "finish_word_ms": "FINISH_WORD_MS",
     }
     for src, dest in mapping.items():
         value = cfg.get(src)

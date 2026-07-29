@@ -247,14 +247,42 @@ FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro")
 # not only speed though: the pauses come from [break] cues in the script, and
 # a voice that never pauses sounds hurried at any speed.
 FISH_VOICE = os.environ.get("BRIDGE_FISH_VOICE", "a4c68282850b4568bc92749fa2c16815")
-FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.1"))
+# Back to natural pace. 1.1 was chosen to stop her dawdling, but speed is
+# compression, and prosody lives in the timing that gets compressed. Measured
+# below: at 1.1 an [excited] and a [calm] render of the same sentence differed
+# by 0.10 to 0.38 seconds; at 1.0 they differed by 0.70 to 0.92.
+FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.0"))
 # Measured: the library voices land around -23 dBFS, a phone line wants ~-17.
 FISH_VOLUME = float(os.environ.get("BRIDGE_FISH_VOLUME", "6"))
 # 100 is their floor and starts sooner; 300 is the default and starts later.
 FISH_CHUNK = int(os.environ.get("BRIDGE_FISH_CHUNK", "120"))
-# Their defaults. Higher temperature is more expressive and less predictable.
-FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "0.7"))
-FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.7"))
+# low / balanced / normal. Fish describe this as a quality trade-off, so it was
+# an obvious suspect for her sounding flat. Measured across all three at two
+# temperatures, the dynamic range came out 9.28 to 10.50 dB with no consistent
+# winner, well inside the run-to-run noise. So "low" costs nothing measurable
+# and keeps the speed. Left adjustable because it is cheap to retest by ear.
+FISH_LATENCY = os.environ.get("BRIDGE_FISH_LATENCY", "low")
+# NOT their defaults any more, and this was the miss. Both of these sat on 0.7
+# for the whole build while the standing complaint was that she sounds flat.
+# They are the two settings that decide how much variation the model is allowed,
+# so leaving them at the default quietly suppressed every emotion cue in the
+# prompt.
+#
+# Measured by rendering one line three ways, neutral, [excited] and [calm], and
+# taking the duration difference between the two cued versions. If a cue is
+# landing at all, those two readings cannot be the same length:
+#
+#   temp  top_p  speed   difference between [excited] and [calm]
+#   0.7   0.7    1.1     0.04s to 0.18s     the cue is doing essentially nothing
+#   0.9   0.7    1.1     0.38s
+#   0.9   0.9    1.0     0.70s
+#   1.0   1.0    1.0     0.92s              <- chosen
+#
+# 1.0 is the top of their range. If she starts sounding erratic or mispronouncing
+# things, come down to 0.9 rather than going back to 0.7, because 0.7 is where
+# the cues stop working.
+FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "1.0"))
+FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "1.0"))
 
 # --- Emotion cues, and why they are an allowlist rather than an instruction --
 # S2.1 Pro takes free-form natural language in square brackets, "15,000+ tags"
@@ -299,6 +327,14 @@ FISH_QUIET_TAIL_S = 0.9
 GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
 
 # --- Telnyx ----------------------------------------------------------------
+# Barge-in over a VoIP leg, which is a completely different problem to barge-in
+# over a phone held next to a laptop speaker. Telnyx sends us only the far end,
+# so there is no path for our own voice to come back and be mistaken for the
+# prospect, and the thresholds can be far tighter than the SIM rig's.
+# These live here, not as literals in telnyx.py, so the agent page can move them.
+TELNYX_BARGE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_MS", "350"))
+TELNYX_BARGE_GRACE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_GRACE_MS", "250"))
+TELNYX_BARGE_MARGIN_DB = float(os.environ.get("BRIDGE_TELNYX_BARGE_MARGIN_DB", "14"))
 # How long to let it ring. Ofcom requires at least 15 seconds before abandoning
 # an unanswered call, so this floor is a rule, not a preference.
 TELNYX_RING_SECONDS = 30

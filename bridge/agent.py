@@ -25,6 +25,13 @@ _MARKER_RE = re.compile(r"\[\s*END\s*\]", re.IGNORECASE)
 # Emotion cues are for the voice, not for the record. They must survive all the
 # way to Fish, so they are stripped only where text is shown or stored.
 _CUE_RE = re.compile(r"\[[a-z][a-z\s-]{0,20}\]", re.IGNORECASE)
+# An interruption can cut a reply off in the middle of a cue, leaving a dangling
+# "[" or "[curi" with no closing bracket. It never reaches the voice, because
+# clean_cues holds an unclosed bracket back and drops it, but the transcript is
+# built from the raw tokens and so recorded a line as literally "[" on a live
+# call. Cosmetic, and misleading in exactly the place we go to read what
+# happened.
+_PART_CUE_RE = re.compile(r"\[[a-z\s-]*$", re.IGNORECASE)
 # "an AI assistant", "I'm an A.I." and so on. Word boundaries keep it off every
 # ordinary word that happens to contain those two letters.
 _DISCLOSED_RE = re.compile(r"\bA\.?\s?I\.?\b|artificial intelligence", re.IGNORECASE)
@@ -32,7 +39,7 @@ _DISCLOSED_RE = re.compile(r"\bA\.?\s?I\.?\b|artificial intelligence", re.IGNORE
 
 def spoken_words(text: str) -> str:
     """What a human would say was said, with the performance cues removed."""
-    return re.sub(r"\s+", " ", _CUE_RE.sub(" ", text)).strip()
+    return re.sub(r"\s+", " ", _PART_CUE_RE.sub(" ", _CUE_RE.sub(" ", text))).strip()
 
 # Rough speaking rate of the TTS voices, used only to estimate how much of a
 # sentence actually reached the prospect before they cut in.
