@@ -1160,12 +1160,28 @@ def _():
     assert a.announced_themselves("Highland Plumbing"), "missed the distinctive word"
 
 
+@case("only one of the two openers introduces her, so she cannot do it twice")
+def _():
+    """Beach Plumbing heard "Hi there, it's Maria" twice in a row.
+
+    The permission stage brief tells her to give her name. When the opener did
+    it as well, she did it once each. Whichever opener runs, the name must be
+    said by exactly one of them.
+    """
+    a = agent.Agent.__new__(agent.Agent)
+    a.opener = "[warm] Hi, is that Kuhn Plumbing?"
+    a.opener_warm = "[warm] Hi there."
+    for text in (a.opener, a.opener_warm):
+        assert "maria" not in text.lower(), \
+            f"opener introduces her, and so does the permission stage: {text!r}"
+
+
 @case("both openers are eligible for pre-rendered audio")
 def _():
     """Otherwise the warm one is re-rendered on answer, as dead air."""
     a = agent.Agent.__new__(agent.Agent)
     a.opener = "[warm] Hi, is that Kuhn Plumbing?"
-    a.opener_warm = "[warm] Hi there, it's Maria."
+    a.opener_warm = "[warm] Hi there."
     a._opener_audio = b"COLD"
     a._opener_warm_audio = b"WARM"
     for text, want in ((a.opener, b"COLD"), (a.opener_warm, b"WARM")):

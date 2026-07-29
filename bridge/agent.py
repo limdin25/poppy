@@ -543,7 +543,13 @@ class Agent:
         self.tts = tts or ai.build_tts()
         self.brain = ai.Brain(system_prompt)
         self.opener = opener
-        self.opener_warm = "[warm] Hi there, it's Maria."
+        # NO NAME HERE, deliberately. The permission stage's job is to give her
+        # name, and when the opener did it too she said "Hi there, it's Maria"
+        # twice in a row to Beach Plumbing. Leaving the name to one owner means
+        # the brief stays correct whichever opener gets used: the cold one asks
+        # who they are, this one just acknowledges, and the introduction always
+        # happens exactly once, in the turn after.
+        self.opener_warm = "[warm] Hi there."
         # The distinctive words of their name, for spotting it coming back at
         # us in their greeting. Four letters and up, and the generic trade
         # words dropped, so "Plumbing" cannot match every plumber who says
