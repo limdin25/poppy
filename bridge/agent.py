@@ -128,7 +128,19 @@ class Agent:
         # Replaced with this line's measured quiet level once the call connects.
         self._baseline = -55.0
         self._backchannel: list[tuple[str, bytes]] = []
+        # Generate the opener NOW, while the phone is still ringing, instead of
+        # after they say hello. It used to be made on answer, so its generation
+        # time landed as dead air at the very start of every call, which is the
+        # worst possible place for it. Nobody is waiting during the ring.
+        self._opener_audio: bytes | None = None
+        threading.Thread(target=self._prepare_opener, daemon=True).start()
         threading.Thread(target=self._prepare_backchannel, daemon=True).start()
+
+    def _prepare_opener(self) -> None:
+        try:
+            self._opener_audio = self.tts.say(straighten(self.opener))
+        except Exception as e:
+            self._emit("error", f"opener TTS failed, will retry on answer: {e}")
 
     def _prepare_backchannel(self) -> None:
         """Generate the little acknowledgements up front, during the ring.
@@ -216,11 +228,13 @@ class Agent:
     def _say(self, text: str, result: CallResult) -> bool:
         """Speak one fixed line, such as the opener. Returns True if cut off."""
         text = straighten(text)
-        try:
-            payload = self.tts.say(text)
-        except Exception as e:
-            self._emit("error", f"TTS failed: {e}")
-            return False
+        payload = self._opener_audio if text == straighten(self.opener) else None
+        if payload is None:
+            try:
+                payload = self.tts.say(text)
+            except Exception as e:
+                self._emit("error", f"TTS failed: {e}")
+                return False
 
         spoken, interrupted = self._play(text, payload)
         self._settle()

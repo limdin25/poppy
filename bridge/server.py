@@ -25,7 +25,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import agent, ai, config, run as runmod
+from . import agent, ai, config, run as runmod, settings
 from .telnyx import TelnyxTransport
 
 TRANSCRIPTS = Path(__file__).resolve().parent / "transcripts"
@@ -192,12 +192,19 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
     def show(kind: str, text: str) -> None:
         log(f"{kind.upper():<8} | {text}")
 
+    # Read the live settings first, so anything saved at /admin/crm/agent/fish
+    # applies to THIS call. Fails soft: no Supabase means the built-in defaults.
+    saved = settings.fish_config()
+    changed = settings.apply(saved)
+    if changed:
+        log("SETTINGS | " + ", ".join(changed))
+
     transport = TelnyxTransport(from_number=from_number, registry=CALLS, on_event=show)
     try:
         a = agent.Agent(
             transport=transport,
-            system_prompt=runmod.SYSTEM_PROMPT,
-            opener=runmod.build_opener(business, reviews),
+            system_prompt=(saved.get("system_prompt") or "").strip() or runmod.SYSTEM_PROMPT,
+            opener=(saved.get("opener") or "").strip() or runmod.build_opener(business, reviews),
             # telephony=True means every provider is asked for mu-law at 8 kHz,
             # which is what the network carries and what Telnyx wants, so there
             # is no transcoding on the call path whichever one is in use.

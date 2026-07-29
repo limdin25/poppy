@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useSearchParams } from 'react-router-dom';
-import { Bot, Phone, MessageSquare, Mail, MessageCircle } from 'lucide-react';
+import { AudioLines, Bot, Phone, MessageSquare, Mail, MessageCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 
@@ -15,6 +15,7 @@ interface NavItem { to: string; label: string; description: string; icon: Lucide
 const NAV: NavItem[] = [
   { to: 'personality', label: 'AI Personality', description: 'Prompt, greeting, model, guardrails', icon: Bot },
   { to: 'calling', label: 'Call behaviour', description: 'Voice, timing, interruptions, ambience', icon: Phone },
+  { to: 'fish', label: 'Fish agent', description: 'Outbound caller voice, emotion, script', icon: AudioLines },
 ];
 
 export const CRM_CHANNELS = [

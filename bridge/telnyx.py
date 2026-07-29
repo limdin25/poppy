@@ -277,8 +277,11 @@ class TelnyxTransport(Transport):
                 return
 
     def baseline_level(self) -> float:
+        # Six chunks, not twelve. This runs between them answering and the
+        # opener starting, so every chunk read here is silence they are sitting
+        # through. Six is about 130ms and plenty to measure a line level.
         levels = []
-        while len(levels) < 12:
+        while len(levels) < 6:
             chunk = self.read(timeout=0.1)
             if chunk is None:
                 break

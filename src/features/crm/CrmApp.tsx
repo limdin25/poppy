@@ -22,6 +22,7 @@ const DialerProPage = lazy(() => import('./dialer-pro/DialerProPage'))
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage'))
 const CrmAgentLayout = lazy(() => import('./agent/CrmAgentLayout'))
 const CrmAgentPersonalityPage = lazy(() => import('./agent/CrmAgentPersonalityPage'))
+const CrmFishAgentPage = lazy(() => import('./agent/CrmFishAgentPage'))
 const CrmCallBehaviourPage = lazy(() => import('./agent/CrmCallBehaviourPage'))
 
 // CRM-scoped query client — react-query stays contained to this feature.
@@ -58,6 +59,7 @@ export default function CrmApp() {
               <Route index element={<Navigate to="personality" replace />} />
               <Route path="personality" element={<CrmAgentPersonalityPage />} />
               <Route path="calling" element={<CrmCallBehaviourPage />} />
+              <Route path="fish" element={<CrmFishAgentPage />} />
             </Route>
             {/* Old bare warm-up form — now the SMS tab of the full agent UI. */}
             <Route path="ai-warmup" element={<Navigate to="/admin/crm/agent/personality?ch=sms" replace />} />
