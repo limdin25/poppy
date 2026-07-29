@@ -54,6 +54,11 @@ export interface InboxThread {
   /** Inbound messages newer than our last real reply. Shown as the unread
    *  count badge on the row. */
   inboundSinceReply: number;
+  /** Which campaign this lead belongs to, via wk_sms_reply_campaign_batch
+   *  (the same wk_dialer_queue link the AI reply resolver uses). Null when
+   *  the contact was never queued to a campaign — most hand-added contacts. */
+  campaignId: string | null;
+  campaignName: string | null;
 }
 
 interface MessageRow {
@@ -162,6 +167,24 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
       }
     }
 
+    // Which campaign each thread belongs to, so the sidebar can show a label
+    // and be filtered by it. wk_sms_reply_campaign_batch (migration
+    // 20260729000002) mirrors the SAME wk_dialer_queue link the AI reply
+    // resolver uses (api/crm/ai-reply.ts), so the tag on a thread always
+    // matches which prompt actually answers it — display and behaviour read
+    // from the one place, not two rules that can drift apart.
+    const campaignByContact = new Map<string, { id: string; name: string }>();
+    if (neededIds.length > 0) {
+      for (let i = 0; i < neededIds.length; i += 200) {
+        const chunk = neededIds.slice(i, i + 200);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data } = await (supabase.rpc as any)('wk_sms_reply_campaign_batch', { p_contacts: chunk });
+        for (const row of (data ?? []) as Array<{ contact_id: string; campaign_id: string; campaign_name: string }>) {
+          campaignByContact.set(row.contact_id, { id: row.campaign_id, name: row.campaign_name });
+        }
+      }
+    }
+
     // Per-contact channel counts (walk all 500 once).
     const counts = new Map<string, Record<ChannelKind, number>>();
     // Newest inbound / newest outbound per contact — the two timestamps the
@@ -194,6 +217,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
       if (seen.has(m.contact_id)) continue;
       seen.add(m.contact_id);
       const c = contactById.get(m.contact_id);
+      const campaign = campaignByContact.get(m.contact_id);
       out.push({
         contactId: m.contact_id,
         contactName: c?.name || c?.phone || 'Unknown',
@@ -208,6 +232,8 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         lastInboundAt: lastIn.get(m.contact_id) ?? null,
         lastOutboundAt: lastOut.get(m.contact_id) ?? null,
         inboundSinceReply: sinceReply.get(m.contact_id) ?? 0,
+        campaignId: campaign?.id ?? null,
+        campaignName: campaign?.name ?? null,
       });
     }
     setThreads(out);

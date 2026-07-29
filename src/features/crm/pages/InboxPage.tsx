@@ -20,6 +20,8 @@ import {
   PinOff,
   Archive,
   ArchiveRestore,
+  Megaphone,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { MOCK_SMS, MOCK_ACTIVITIES } from '../data/mockCalls';
@@ -133,6 +135,7 @@ export default function InboxPage() {
   const [replyChannel, setReplyChannel] = useState<ChannelKindUI | null>(null);
   const [sending, setSending] = useState(false);
   const [replyAttachmentUrl, setReplyAttachmentUrl] = useState<string | null>(null);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [playingCallId, setPlayingCallId] = useState<string | null>(null);
   const [signedUrls] = useState(() => new Map<string, string>());
   const [transcriptCallId, setTranscriptCallId] = useState<string | null>(null);
@@ -150,6 +153,9 @@ export default function InboxPage() {
   // onChange + no state, so typing did nothing. Now filters sidebarRows
   // by name / phone / last message body (case-insensitive).
   const [searchQuery, setSearchQuery] = useState('');
+  // Hugo, 2026-07-29: "I should be able to see the inbox per campaign."
+  // 'all' (default) shows every thread; otherwise restricts to one campaign's.
+  const [campaignFilter, setCampaignFilter] = useState<string>('all');
 
   const renameContact = async (id: string, name: string) => {
     patchContact(id, { name });
@@ -247,6 +253,10 @@ export default function InboxPage() {
       callStatus?: CallRecord['status'];
       isHot: boolean;
       tags: string[];
+      /** Which campaign this thread belongs to (message rows only — see
+       *  useInboxThreads). Undefined on call rows, not looked up there. */
+      campaignId?: string | null;
+      campaignName?: string | null;
     };
 
     const isCallFilter = filter === 'calls' || filter === 'voicemail' || filter === 'missed';
@@ -326,6 +336,8 @@ export default function InboxPage() {
           inboundSinceReply: t.inboundSinceReply,
           isHot: !!c?.isHot,
           tags: c?.tags ?? [],
+          campaignId: t.campaignId,
+          campaignName: t.campaignName,
         });
       }
       // 'sms' / 'whatsapp' / 'email' restrict to threads on that channel.
@@ -333,6 +345,12 @@ export default function InboxPage() {
       if (filter === 'sms' || filter === 'whatsapp' || filter === 'email') {
         rows = rows.filter((r) => r.lastChannel === filter || r.channelCounts[filter] > 0);
       }
+    }
+
+    // Campaign filter — 'all' shows everything, otherwise restrict to threads
+    // tagged with the picked campaign id.
+    if (campaignFilter !== 'all') {
+      rows = rows.filter((r) => r.campaignId === campaignFilter);
     }
 
     // PR 89: free-text search across name, phone, last message body.
@@ -344,7 +362,19 @@ export default function InboxPage() {
       });
     }
     return rows;
-  }, [inboxThreads, calls, contacts, filter, searchQuery]);
+  }, [inboxThreads, calls, contacts, filter, campaignFilter, searchQuery]);
+
+  // Every distinct campaign present in the current thread list, for the
+  // filter dropdown. Recomputed from inboxThreads (not sidebarRows, which is
+  // already campaign-filtered) so a picked campaign never removes itself
+  // from its own dropdown.
+  const campaignOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const t of inboxThreads) {
+      if (t.campaignId && t.campaignName) byId.set(t.campaignId, t.campaignName);
+    }
+    return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [inboxThreads]);
 
   // Video + "waiting on you" decoration.
   //
@@ -779,6 +809,27 @@ export default function InboxPage() {
               );
             })}
           </div>
+          {/* Campaign filter — Hugo, 2026-07-29: "I should be able to see the
+              inbox per campaign." A dropdown rather than more pills: the
+              FILTERS row is already ten wide, and campaign names run longer
+              than "unread" or "sms". Only shows once a thread actually has a
+              campaign tag, so it stays invisible until it's useful. */}
+          {campaignOptions.length > 0 && (
+            <div className="mt-1.5 flex items-center gap-1">
+              <Megaphone style={{ width: 11, height: 11 }} className="text-[#9CA3AF] flex-shrink-0" />
+              <select
+                data-testid="inbox-campaign-filter"
+                value={campaignFilter}
+                onChange={(e) => setCampaignFilter(e.target.value)}
+                className="text-[11px] bg-[#F3F3EE] border-none rounded-full px-2 py-0.5 text-[#374151] font-medium max-w-full truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
+              >
+                <option value="all">All campaigns</option>
+                {campaignOptions.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto divide-y divide-[#E5E7EB]">
           {/* PR 52 war-room: sidebarRows is the union of (a) thread
@@ -851,6 +902,16 @@ export default function InboxPage() {
                     <ContactIdentity owner={r.owner} website={r.website} layout="inline" size="sm" />
                     <AgentChip agentId={r.ownerAgentId} size="xs" />
                     <CalcChip calcAt={r.vsl?.calcAt} count={r.vsl?.calcCount} />
+                    {r.campaignName && (
+                      <span
+                        data-testid={`inbox-campaign-${r.id}`}
+                        title={`Campaign: ${r.campaignName}`}
+                        className="inline-flex items-center gap-0.5 text-[9.5px] font-medium text-[#6B7280] truncate max-w-[120px]"
+                      >
+                        <Megaphone style={{ width: 8, height: 8 }} className="flex-shrink-0" />
+                        {r.campaignName}
+                      </span>
+                    )}
                     <div className={cn(
                       'text-[11px] truncate flex items-center gap-1',
                       r.unread ? 'text-[#1A1A1A] font-semibold' : 'text-[#6B7280]'
@@ -1331,12 +1392,58 @@ export default function InboxPage() {
               />
             )}
           </div>
-          {replyAttachmentUrl && (
-            <div className="flex items-center gap-1 text-[11px] text-[#3C5A87] bg-[#EEF2F8] px-2 py-1 rounded-lg">
+          {/* Attach an image/file to the reply. UK numbers can't MMS, so
+              wk-sms-send appends the link to the body text instead (see its
+              own comment on attachment_url) — this button just has to get a
+              public URL onto replyAttachmentUrl, same as ContactSmsModal's
+              composer, the only other place this already existed. */}
+          {replyAttachmentUrl ? (
+            <div className="flex items-center gap-1 text-[11px] text-[#3C5A87] bg-[#EEF2F8] px-2 py-1 rounded-lg w-fit">
               <Paperclip className="w-3 h-3" />
-              <span className="truncate max-w-[300px]">{replyAttachmentUrl.split('/').pop()}</span>
+              <a href={replyAttachmentUrl} target="_blank" rel="noopener noreferrer" className="truncate max-w-[300px] hover:underline">
+                {replyAttachmentUrl.split('/').pop()}
+              </a>
               <button onClick={() => setReplyAttachmentUrl(null)} className="ml-1 text-[#9CA3AF] hover:text-[#EF4444]">&times;</button>
             </div>
+          ) : (
+            replyChannel && (
+              <label className="inline-flex items-center gap-1 w-fit px-2 py-1 text-[11px] text-[#6B7280] hover:text-[#3C5A87] hover:bg-[#EEF2F8] border border-[#E5E7EB] rounded-lg cursor-pointer transition-colors">
+                {attachmentUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+                {attachmentUploading ? 'Uploading…' : 'Attach image'}
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
+                  className="hidden"
+                  data-testid="inbox-reply-attach-input"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 10 * 1024 * 1024) {
+                      pushToast('File too large (max 10MB)', 'error');
+                      e.target.value = '';
+                      return;
+                    }
+                    setAttachmentUploading(true);
+                    try {
+                      const path = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                      const { error: upErr } = await supabase.storage
+                        .from('crm-attachments')
+                        .upload(path, file, { upsert: true });
+                      if (upErr) throw upErr;
+                      const { data: urlData } = supabase.storage
+                        .from('crm-attachments')
+                        .getPublicUrl(path);
+                      setReplyAttachmentUrl(urlData.publicUrl);
+                    } catch (err) {
+                      pushToast(`Upload failed: ${err instanceof Error ? err.message : 'unknown'}`, 'error');
+                    } finally {
+                      setAttachmentUploading(false);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            )
           )}
           <div className="flex gap-2">
             <input
