@@ -307,14 +307,19 @@ class ElevenLabsTTS(TextToSpeech):
     calling, so production should use CartesiaTTS below.
     """
 
-    def __init__(self, voice_id: str | None = None):
+    def __init__(self, voice_id: str | None = None, output_format: str = "mp3_44100_128"):
         self.api_key = config.key("ELEVENLABS_API_KEY", required=True)
         self.voice_id = voice_id or config.ELEVENLABS_VOICE
+        # `ulaw_8000` returns raw G.711 mu-law at 8 kHz, which is exactly what
+        # the phone network carries and exactly what Telnyx wants on the wire.
+        # Asking for it here means there is no transcoding step anywhere in the
+        # call path, and so nothing in it to go wrong or add latency.
+        self.output_format = output_format
 
     def say(self, text: str) -> bytes:
         url = (
             f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}"
-            f"?output_format=mp3_44100_128"
+            f"?output_format={self.output_format}"
         )
         body = json.dumps(
             {"text": text, "model_id": config.ELEVENLABS_MODEL}

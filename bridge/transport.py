@@ -32,7 +32,17 @@ class CaptureFailed(RuntimeError):
 
 
 class Transport:
-    """Interface every call transport implements."""
+    """Interface every call transport implements.
+
+    Everything above this layer talks only to these methods, with no isinstance
+    checks anywhere. That is load-bearing rather than tidiness: the conversation
+    loop used to ask `isinstance(transport, SimTransport)` before running the
+    barge-in wait, so any other transport would have skipped it silently and
+    started listening while the AI was still mid-sentence.
+    """
+
+    def prepare(self) -> None:
+        """Anything the device needs before dialling. Default: nothing."""
 
     def dial(self, number: str) -> None:
         raise NotImplementedError
@@ -45,11 +55,33 @@ class Transport:
         """Next chunk of far-end audio, 16 kHz mono 16-bit. None if nothing yet."""
         raise NotImplementedError
 
-    def speak(self, mp3_or_wav: bytes) -> None:
+    def speak(self, payload: bytes) -> None:
+        """Start playing audio to the far end. Returns as soon as it is queued."""
         raise NotImplementedError
+
+    def is_speaking(self) -> bool:
+        """Is our audio still playing? Drives the barge-in wait."""
+        return False
 
     def stop_speaking(self) -> None:
         raise NotImplementedError
+
+    def drain(self) -> None:
+        """Throw away buffered far-end audio. Default: nothing is buffered."""
+
+    def baseline_level(self) -> float:
+        """The line's own quiet level in dBFS, used to seed the VAD."""
+        return -55.0
+
+    def is_live(self) -> bool:
+        """False once the far end is definitively gone.
+
+        Transports that get told about a hangup should say so, rather than
+        leaving the conversation loop to infer it from silence. Inferring costs
+        real seconds on every call: the loop has to wait out two quiet rounds
+        before giving up, which is roughly nine seconds of nobody being there.
+        """
+        return True
 
     def hangup(self) -> None:
         raise NotImplementedError
@@ -325,6 +357,9 @@ class SimTransport(Transport):
                 return
 
     # -- talking back -------------------------------------------------------
+
+    def prepare(self) -> None:
+        self.set_volume(config.SPEAKER_VOLUME)
 
     @staticmethod
     def _osa(script: str) -> str:

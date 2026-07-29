@@ -121,6 +121,15 @@ WHISPER_MODEL = os.environ.get("BRIDGE_STT_MODEL", "gpt-4o-mini-transcribe")
 ELEVENLABS_VOICE = os.environ.get("BRIDGE_VOICE_ID", "o6wnoeR1UlXDVucYjZmq")
 ELEVENLABS_MODEL = "eleven_flash_v2_5"
 
+# --- Telnyx ----------------------------------------------------------------
+# How long to let it ring. Ofcom requires at least 15 seconds before abandoning
+# an unanswered call, so this floor is a rule, not a preference.
+TELNYX_RING_SECONDS = 30
+# The media websocket is a call BACK to us, so a dial is not usable until it
+# lands. If this times out the usual cause is the stream URL not being reachable
+# from the public internet, not anything wrong with the call.
+TELNYX_ATTACH_TIMEOUT_S = 20.0
+
 # --- Device ----------------------------------------------------------------
 ADB_SERIAL = os.environ.get("BRIDGE_ADB_SERIAL")  # None = first device found
 # The handset's own automatic gain control amplifies a quiet input and clips it,

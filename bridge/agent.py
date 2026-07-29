@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import ai, audio, config
-from .transport import CaptureFailed, SimTransport, Transport
+from .transport import CaptureFailed, Transport
 
 # One pattern, used both to detect the end-of-call marker and to strip it. They
 # used to be separate, a literal "[END]" test and a whitespace-tolerant regex, so
@@ -115,20 +115,18 @@ class Agent:
         every call cut its own opener off, taking the AI disclosure with it, while
         the transcript recorded the line as delivered in full.
         """
-        sim = isinstance(self.transport, SimTransport)
-        if sim:
-            # Whatever arrived while this audio was being generated is stale. Left
-            # in the queue it is replayed at memory speed the instant we start
-            # listening, and a second of backlog looks exactly like a sustained
-            # interruption, so the reply dies before a syllable is audible.
-            self.transport.drain()
+        # Whatever arrived while this audio was being generated is stale. Left in
+        # the queue it is replayed at memory speed the instant we start listening,
+        # and a second of backlog looks exactly like a sustained interruption, so
+        # the reply dies before a syllable is audible.
+        self.transport.drain()
 
         self.transport.speak(payload)
         started = time.monotonic()
         barge = audio.VoiceActivity(margin_db=config.BARGE_IN_MARGIN_DB)
         interrupted = False
 
-        while sim and self.transport.is_speaking():
+        while self.transport.is_speaking():
             chunk = self.transport.read(timeout=0.15)
             if chunk is None:
                 continue
@@ -157,10 +155,9 @@ class Agent:
         tail of the echo is still in flight down the line. Without the pause the
         agent transcribes its own voice and answers itself.
         """
-        if isinstance(self.transport, SimTransport):
-            self.transport.drain()
-            time.sleep(config.ECHO_SETTLE_MS / 1000.0)
-            self.transport.drain()
+        self.transport.drain()
+        time.sleep(config.ECHO_SETTLE_MS / 1000.0)
+        self.transport.drain()
 
     def _say(self, text: str, result: CallResult) -> bool:
         """Speak one fixed line, such as the opener. Returns True if cut off."""
@@ -257,6 +254,10 @@ class Agent:
         while True:
             if time.time() - result.started_at > config.MAX_CALL_SECONDS:
                 return ""
+            # If the transport knows the call is over, stop waiting to be told
+            # by silence. Inferring it costs about nine seconds a call.
+            if not self.transport.is_live():
+                return ""
             chunk = self.transport.read(timeout=0.4)
             if chunk is None:
                 # Unconditional. This used to be gated on "we have not heard
@@ -304,8 +305,7 @@ class Agent:
     def call(self, number: str) -> CallResult:
         result = CallResult(number=number, started_at=time.time())
         try:
-            if isinstance(self.transport, SimTransport):
-                self.transport.set_volume(config.SPEAKER_VOLUME)
+            self.transport.prepare()
 
             self._emit("dial", number)
             self.transport.dial(number)
@@ -321,8 +321,7 @@ class Agent:
             # Measure this line's own quiet level rather than judging it against
             # a hardcoded guess. A van hands-free and a quiet kitchen are 20 dB
             # apart and the same fixed threshold cannot serve both.
-            if isinstance(self.transport, SimTransport):
-                self._baseline = self.transport.baseline_level()
+            self._baseline = self.transport.baseline_level()
 
             cut_off = self._say(self.opener, result)
             # The model has to know what it already said, or it introduces itself
@@ -333,6 +332,9 @@ class Agent:
 
             quiet_rounds = 0
             while time.time() - result.started_at < config.MAX_CALL_SECONDS:
+                if not self.transport.is_live():
+                    result.outcome = "far_end_hungup"
+                    break
                 heard = self._listen(result)
                 if not heard:
                     quiet_rounds += 1
