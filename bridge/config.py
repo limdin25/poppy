@@ -153,6 +153,7 @@ CARTESIA_MODEL = os.environ.get("BRIDGE_CARTESIA_MODEL", "sonic-3.5")
 # and requests may be used to improve their model. Switch to "s2.1-pro" before
 # running anything that depends on it staying up.
 FISH_MODEL = os.environ.get("BRIDGE_FISH_MODEL", "s2.1-pro-free")
+FISH_SPEED = float(os.environ.get("BRIDGE_FISH_SPEED", "1.2"))
 # Google Chirp 3: HD, en-GB. 1M characters a month free, then $30/M.
 GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
 
