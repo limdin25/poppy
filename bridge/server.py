@@ -277,6 +277,15 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
                         try:
                             if _tr.is_speaking():
                                 _p.reset()
+                                _p.quiet_until = time.monotonic() + config.ECHO_SETTLE_MS / 1000.0
+                                return
+                            # And for a beat AFTER she stops. Her echo arrives
+                            # late, so gating only on is_speaking() still let
+                            # the tail of her own sentence be read as the
+                            # prospect's intonation: "fell" fired one second
+                            # after she was cut off, on a live call, with the
+                            # prospect silent throughout.
+                            if time.monotonic() < getattr(_p, "quiet_until", 0.0):
                                 return
                             _p.feed(raw)
                         except Exception as e:

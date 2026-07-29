@@ -29,7 +29,15 @@ _MARKER_RE = re.compile(r"\[\s*END\s*\]", re.IGNORECASE)
 # where she was. Whitespace-tolerant for the same reason [END] is, because
 # "[ NEXT ]" being stripped from the speech but not recognised would leave her
 # silently stuck on one stage for the whole call.
-_NEXT_RE = re.compile(r"\[\s*NEXT\s*\]", re.IGNORECASE)
+# Which way she wants the conversation to go: [GO: yes], [GO: busy], [GO: no].
+# She picks the road, stages.py owns the map. An exit that does not belong to
+# the stage she is on is ignored, so she cannot invent a path.
+_GO_RE = re.compile(r"\[\s*GO\s*:\s*([a-z_]{1,16})\s*\]", re.IGNORECASE)
+# The slot they agreed to, written by the model as [BOOK: Thursday 2pm]. Kept
+# deliberately loose about what goes after the colon, because a person says
+# "Thursday about two" and "tomorrow morning" and both are better recorded as
+# said than forced into a format that loses what they meant.
+_BOOK_RE = re.compile(r"\[\s*BOOK\s*:\s*([^\]]{1,60})\]", re.IGNORECASE)
 # Emotion cues are for the voice, not for the record. They must survive all the
 # way to Fish, so they are stripped only where text is shown or stored.
 # Commas allowed: the model writes compound cues like "[warm, professional]" of
@@ -154,7 +162,7 @@ def _strip_marker(text: str) -> str:
     Both of them, always. Saying the literal text "[NEXT]" down the phone would
     be as humiliating as saying "[END]".
     """
-    clean = _NEXT_RE.sub(" ", _MARKER_RE.sub(" ", text))
+    clean = _BOOK_RE.sub(" ", _GO_RE.sub(" ", _MARKER_RE.sub(" ", text)))
     return re.sub(r"\s+", " ", straighten(clean)).strip()
 
 
@@ -162,9 +170,16 @@ def _has_marker(text: str) -> bool:
     return _MARKER_RE.search(text) is not None
 
 
-def _wants_next(text: str) -> bool:
-    """Did the model ask to move on? It asks; stages.py decides."""
-    return _NEXT_RE.search(text) is not None
+def chosen_exit(text: str) -> str | None:
+    """Which way she asked to go. She asks; stages.py decides if it exists."""
+    m = _GO_RE.search(text or "")
+    return m.group(1).strip().lower() if m else None
+
+
+def booked_slot(text: str) -> str | None:
+    """The day and time they agreed, if the model recorded one."""
+    m = _BOOK_RE.search(text or "")
+    return " ".join(m.group(1).split()) if m else None
 
 
 # Words that mean the thought is still going, even though the sound stopped.
@@ -479,6 +494,10 @@ class CallResult:
     turns: list[Turn] = field(default_factory=list)
     outcome: str = "unknown"
     error: str | None = None
+    # The onboarding slot they agreed, in their own words. The entire point of
+    # the call, so it goes on the result rather than being left in the text for
+    # somebody to find later.
+    booked: str | None = None
 
     @property
     def duration(self) -> float:
@@ -490,6 +509,7 @@ class CallResult:
             "answered": self.answered,
             "duration_s": round(self.duration, 1),
             "outcome": self.outcome,
+            "booked": self.booked,
             "error": self.error,
             "turns": [{"who": t.who, "text": t.text, "at": round(t.at, 1)} for t in self.turns],
         }
@@ -811,8 +831,11 @@ class Agent:
         # not leave until the first token is pulled.
         ack = self._pick_backchannel(heard)
         raw = self.brain.stream_tokens(heard, seen=written)
-        if ack is not None:
-            raw = _drop_leading_ack(raw)
+        # ALWAYS, not only when a backchannel played. The prompt bans a bare
+        # "Right"/"Okay" opener outright, and it kept coming back on turns where
+        # no acknowledgement had played, because the stripper was gated on one
+        # having played. "Right. You're talking to me now" on a live call.
+        raw = _drop_leading_ack(raw)
         tokens = clean_cues(_clip_reply(raw, spoken))
 
         if ack is not None:
@@ -826,6 +849,10 @@ class Agent:
         self._settle()
 
         full = "".join(written)
+        slot = booked_slot(full)
+        if slot and not result.booked:
+            result.booked = slot
+            self._emit("booked", slot)
         # `spoken` is what was handed to the voice, which on an interruption is
         # NOT what came out of the phone. Fish is sent the whole reply in one go
         # and streams the audio afterwards, so a barge-in two seconds in means
@@ -848,11 +875,13 @@ class Agent:
         # saying again.
         if words and not interrupted and _DISCLOSED_RE.search(words):
             self.brain.note_disclosed()
-        elif words and not interrupted:
-            # A real turn went by without it. Observed twice on live calls, she
-            # compressed the disclosure down to "Elsie, from HeyElsie" and it
-            # disappeared. Required by Anthropic's acceptable use policy, so it
-            # is chased rather than hoped for.
+        elif words and not interrupted and config.REQUIRE_DISCLOSURE:
+            # Only when a campaign actually requires proactive disclosure. This
+            # used to run unconditionally, which meant the code appended "say
+            # you are an AI in your VERY NEXT reply" and overrode a prompt that
+            # had been changed to do the opposite. She announced it unprompted
+            # on every call while the prompt said not to, and the prompt looked
+            # like the thing that was broken.
             self.brain.chase_disclosure()
         # Tell the transcriber what she just said. Their docs: biggest impact on
         # short replies ("yes", "about twenty", a name), which on a sales call
@@ -867,7 +896,7 @@ class Agent:
                 Turn("ai_truncated" if interrupted else "ai", words,
                      time.time() - result.started_at)
             )
-        return _has_marker(full), interrupted, _wants_next(full)
+        return _has_marker(full), interrupted, chosen_exit(full)
 
     def _say_stream(self, sentences, result: CallResult) -> tuple[bool, bool]:
         """Speak sentences as the model writes them.
@@ -1152,7 +1181,7 @@ class Agent:
             # THE GATE. This number lives here, in code, and the model cannot
             # change it. It may ask to move on with [NEXT] and it advances only
             # when this agrees. See bridge/stages.py.
-            stage = 0
+            stage = stages.START
             tries = 0
             self._set_stage(stage, tries)
             while time.time() - result.started_at < config.MAX_CALL_SECONDS:
@@ -1180,6 +1209,13 @@ class Agent:
                     # on from where she was stopped, which is what the prompt
                     # tells her to do with this marker.
                     self._emit("resume", "cut off, then silence, so carrying on")
+                    # Restart the clock. Otherwise the gap is measured from
+                    # their last turn, which was before she spoke AND before
+                    # she was cut off, and the log shows a lag nobody waited
+                    # through: 11643ms on a live call for what was really two
+                    # seconds. A misleading number is worse than none, because
+                    # it sends the next hour of tuning after a phantom.
+                    self._heard_at = time.monotonic()
                     heard = config.WENT_QUIET
                     was_cut = False
                 if not heard:
@@ -1195,36 +1231,61 @@ class Agent:
                 # the literal text "[END]" down the phone would be humiliating.
                 try:
                     if self.voice_stream is not None:
-                        ends, was_cut, move_on = self._say_live(heard, result)
+                        ends, was_cut, went = self._say_live(heard, result)
                     else:
                         ends, was_cut = self._say_stream(
                             self.brain.stream_sentences(heard), result
                         )
-                        move_on = False
+                        went = None
                     listen_for = config.RESUME_AFTER_CUT_S if was_cut else None
 
-                    # Advance only on her asking AND only one stage at a time.
-                    # A reply with no marker leaves her exactly where she was,
-                    # which is the whole point: she cannot skip a stage because
-                    # there is nothing here to skip with.
-                    if move_on and stage < len(stages.STAGES) - 1:
-                        stage += 1
-                        tries = 0
-                        self._emit("stage",
-                                   f"{stage + 1}/{len(stages.STAGES)} "
-                                   f"{stages.STAGES[stage].name}")
-                    elif not move_on:
+                    # She picks the exit; the map decides where it leads. An
+                    # exit she invented, or one belonging to another stage,
+                    # leaves her exactly where she was.
+                    nxt, finished = stages.route(stage, went)
+                    if finished:
+                        result.outcome = "completed"
+                        ends = True
+                    elif nxt != stage:
+                        stage, tries = nxt, 0
+                        self._emit("stage", stages.STAGES[stage].name)
+                    else:
                         tries += 1
                         if tries >= config.STAGE_MAX_TRIES:
-                            # Asking the same thing forever is worse than moving
-                            # on. A person would take the hint.
-                            if stage < len(stages.STAGES) - 1:
-                                stage += 1
+                            # Cannot get an answer. This does NOT continue down
+                            # the road: somebody who will not answer the same
+                            # question twice is telling you something, and the
+                            # old code marched on to the close regardless.
+                            nxt, finished = stages.give_up(stage)
+                            if finished or not nxt:
+                                result.outcome = "no_answer_given"
+                                ends = True
+                            else:
+                                stage, tries = nxt, 0
                                 self._emit("stage",
-                                           f"{stage + 1}/{len(stages.STAGES)} "
                                            f"{stages.STAGES[stage].name} "
-                                           f"(gave up asking)")
-                            tries = 0
+                                           f"(could not get an answer)")
+                                # And SPEAK it. The stages she is sent to when
+                                # she cannot get an answer are the ones where
+                                # SHE does the talking: leave it with them, take
+                                # the no, arrange a callback. Waiting for input
+                                # there means both sides sit in silence until
+                                # the call dies, which is exactly what happened:
+                                # she gave up on getting a time, moved to
+                                # "leaving it with them", and then said nothing
+                                # for seventeen seconds.
+                                self._set_stage(stage, tries)
+                                try:
+                                    ends, was_cut, went = self._say_live(
+                                        config.WENT_QUIET, result)
+                                    nxt2, fin2 = stages.route(stage, went)
+                                    if fin2:
+                                        result.outcome = "completed"
+                                        ends = True
+                                    elif nxt2 != stage:
+                                        stage = nxt2
+                                except Exception as e:
+                                    self._emit("error", f"closing line failed: {e}")
                     self._set_stage(stage, tries)
                 except Exception as e:
                     result.error = str(e)

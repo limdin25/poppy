@@ -153,6 +153,47 @@ def _():
     assert not t.is_speaking()
 
 
+@case("comfort noise is quiet, and never runs before answer or after hangup")
+def _():
+    import time as _t
+    from . import audio as _audio, telnyx as _telnyx
+    t, ws = make_transport()
+
+    # Quiet enough that it can never be mistaken for the prospect talking, even
+    # after echoing off their handset. It sits well below the interrupt margin.
+    frame = t._comfort_frame()
+    level = _audio.rms_dbfs(ulaw.decode(frame))
+    # Room tone, not hiss: a room is weighted low. Measured across the band,
+    # 0-300 Hz sits 23 dB above 3-4 kHz. Checked here as a rough energy split so
+    # the filter cannot be removed without the test noticing.
+    prev = ulaw.decode(t._comfort_frame())
+    vals = [int.from_bytes(prev[i:i+2], "little", signed=True)
+            for i in range(0, len(prev), 2)]
+    steps = [abs(b - a) for a, b in zip(vals, vals[1:])]
+    spread = max(abs(v) for v in vals)
+    assert sum(steps) / len(steps) < spread, (
+        "samples jump as much as the signal swings, which is hiss not room tone"
+    )
+    assert abs(level - _telnyx.COMFORT_NOISE_DBFS) < 3, level
+    assert level < -config.TELNYX_BARGE_MARGIN_DB - 15, (
+        f"{level:.0f} dBFS is close enough to the interrupt threshold to trip it"
+    )
+
+    # Not while it is still ringing.
+    _t.sleep(0.3)
+    assert not ws.events("media"), "sent noise into a phone that was still ringing"
+
+    # And it stops dead on hangup. This is the one that matters: audio after
+    # hangup is audio into somebody else's call.
+    t.mark_answered()
+    _t.sleep(0.5)
+    assert ws.events("media"), "no comfort noise once the call was answered"
+    t.mark_ended("done")
+    sent = len(ws.events("media"))
+    _t.sleep(0.5)
+    assert len(ws.events("media")) == sent, "kept sending after hangup"
+
+
 @case("speaking after the call ended sends nothing")
 def _():
     t, ws = make_transport()

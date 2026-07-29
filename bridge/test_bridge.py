@@ -563,6 +563,60 @@ def _():
     )
 
 
+@case("the disclosure is never FORCED, but the prompt still answers it straight")
+def _():
+    from . import run
+    # Hugo, twice: "don't disclose AI until they ask", "I'm just not gonna
+    # disclose it so soon". Not hiding it, not leading with it.
+    #
+    # The bug this locks out: the PROMPT was changed to stop volunteering it,
+    # while chase_disclosure() carried on appending "say you are an AI in your
+    # VERY NEXT reply, using the words 'an AI assistant at HeyElsie'". Code beat
+    # prompt, she announced it unprompted on every call, and the prompt looked
+    # like the broken thing.
+    assert not config.REQUIRE_DISCLOSURE, (
+        "on by default means the code overrides the prompt again"
+    )
+    # Off must never mean denying it. The prompt has to answer straight away.
+    p = run.SYSTEM_PROMPT
+    assert "BEING AN AI" in p
+    assert "Never deny it" in p
+    assert "is this a robot" in p
+    # And the old always-disclose rule must be gone, or the two contradict.
+    assert "first substantive turn must say you are an AI" not in p
+
+
+@case("the word cap leaves room for the question that ends a turn")
+def _():
+    # The cap cuts at the next full stop PAST the limit. Her explanation plus
+    # its closing question runs about 30 words, so a 24 cap cut at the full stop
+    # BEFORE the question and deleted it: the call then died in silence with the
+    # prospect waiting for her to finish. Both "cutting halfway" and "no
+    # reaction", from one number.
+    # Not pinned to a number: the cap moved 24 -> 34 -> 28 as the stage briefs
+    # changed. What must hold is that a turn shaped the way the briefs ask for
+    # one, a single sentence and then a question, keeps its question. Losing it
+    # is what killed a call in silence with the prospect waiting for her to
+    # finish.
+    spoken = []
+    reply = ("So I'd answer every call that comes in, book the jobs straight "
+             "into your system, and nothing gets missed. How does that sound?")
+    out = "".join(agent._clip_reply([reply], spoken))
+    assert out.rstrip().endswith("?"), out
+    assert "How does that sound" in out, out
+
+    # And a forty word list, which is what she used to produce, IS cut. The cap
+    # cannot prevent a monologue, only chop one, so this is a backstop and the
+    # real fix lives in the stage briefs.
+    spoken = []
+    monologue = ("I'd answer all your incoming calls, I don't miss any, don't "
+                 "take holidays, work nights and weekends if you need me, I'd "
+                 "book jobs straight into your system, send people reminders "
+                 "so they don't forget, chase up quotes, confirm appointments.")
+    out = "".join(agent._clip_reply([monologue], spoken))
+    assert len(out.split()) <= config.MAX_SPOKEN_WORDS * 2, len(out.split())
+
+
 @case("the AI disclosure is noticed once, and only when it was heard in full")
 def _():
     for line in ("I'm Elsie, an AI assistant at HeyElsie.",
@@ -666,16 +720,94 @@ def _():
 
 # -- the stage gate ---------------------------------------------------------
 
-@case("[NEXT] is recognised but never spoken")
+@case("she picks the road, the map decides where it goes")
 def _():
     from . import stages
-    assert agent._wants_next("Great, I'll do that. [NEXT]")
-    assert agent._wants_next("Sure thing. [ next ]"), "whitespace tolerant, like [END]"
-    assert not agent._wants_next("No marker here.")
-    # Saying the literal "[NEXT]" down the phone would be as bad as "[END]".
-    assert agent._strip_marker("Right you are. [NEXT]") == "Right you are."
-    assert "NEXT" not in agent._strip_marker("Ok. [ NEXT ] [END]")
-    assert len(stages.STAGES) >= 3
+    # A line could not express "they said no", so the give-up escape became the
+    # main road and calls reached the close having skipped the middle:
+    # "4/4 the onboarding call (gave up asking)".
+    assert stages.route("permission", "yes") == ("explain", False)
+    assert stages.route("permission", "busy") == ("callback", False)
+    assert stages.route("permission", "no") == ("decline", False)
+    # An exit she invented, or one belonging to another stage, changes nothing.
+    assert stages.route("permission", "booked") == ("permission", False)
+    assert stages.route("permission", "nonsense") == ("permission", False)
+    assert stages.route("permission", None) == ("permission", False)
+    # Booking a slot ends the call.
+    assert stages.route("book", "booked")[1] is True
+
+
+@case("giving up never marches on down the road")
+def _():
+    from . import stages
+    # Somebody who will not answer the same question twice is telling you
+    # something. The old give-up went to the NEXT stage, which is how a call
+    # arrived at "book a time" having skipped everything.
+    nxt, done = stages.give_up("permission")
+    assert nxt == "callback", nxt
+    assert stages.give_up("money")[0] == "book"
+    assert stages.give_up("value")[0] == "decline"
+    # Every terminal stage really terminates, or a call could loop forever.
+    for key in ("decline", "soft_close", "callback"):
+        assert stages.give_up(key)[1] is True, key
+
+
+@case("every exit in the map points somewhere real")
+def _():
+    from . import stages
+    keys = set(stages.STAGES)
+    assert stages.START in keys
+    for s in stages.STAGES.values():
+        assert s.exits, f"{s.key} has no way out"
+        for e in s.exits:
+            assert e.goto == "" or e.goto in keys, f"{s.key} -> {e.goto}"
+        assert s.fallback == "" or s.fallback in keys, s.key
+    # And every stage is reachable from the start, or it is dead code.
+    seen, todo = {stages.START}, [stages.START]
+    while todo:
+        for e in stages.STAGES[todo.pop()].exits:
+            if e.goto and e.goto not in seen:
+                seen.add(e.goto); todo.append(e.goto)
+        for k in list(seen):
+            fb = stages.STAGES[k].fallback
+            if fb and fb not in seen:
+                seen.add(fb); todo.append(fb)
+    assert seen == keys, f"unreachable: {keys - seen}"
+
+
+@case("the marker is recognised but never spoken")
+def _():
+    assert agent.chosen_exit("[GO: yes] Great, so what I do is...") == "yes"
+    assert agent.chosen_exit("[GO: BUSY] No worries.") == "busy"
+    assert agent.chosen_exit("No marker here.") is None
+    assert agent._strip_marker("[GO: yes] Right you are.") == "Right you are."
+    assert "GO" not in agent._strip_marker("[GO: booked] Thursday. [BOOK: Thu 2pm] [END]")
+
+
+@case("the stage brief is swapped, never accumulated")
+def _():
+    from . import stages
+    brain = ai.Brain("BASE PROMPT.")
+    brain.set_stage(stages.brief("permission"))
+    assert "ASKING TO EXPLAIN" in brain.system_prompt
+    brain.set_stage(stages.brief("money"))
+    assert "THE WAGE" in brain.system_prompt
+    assert "ASKING TO EXPLAIN" not in brain.system_prompt, "two stages contradict"
+    grown = len(brain.system_prompt)
+    for k in list(stages.STAGES) * 4:
+        brain.set_stage(stages.brief(k))
+    assert len(brain.system_prompt) < grown * 2, len(brain.system_prompt)
+
+
+@case("a permanent note survives a stage change")
+def _():
+    from . import stages
+    brain = ai.Brain("BASE.")
+    brain.note_disclosed()
+    brain.note_opening("Hi, is that Smith Plumbing?", truncated=False)
+    brain.set_stage(stages.brief("money"))
+    assert "ALREADY TOLD THEM YOU ARE AN AI" in brain.system_prompt
+    assert "ALREADY SAID THIS" in brain.system_prompt
 
 
 @case("setting the stage reaches the brain, and is not fatal when it cannot")
@@ -689,65 +821,21 @@ def _():
     class Broken:
         def set_stage(self, brief): raise RuntimeError("no")
 
-    # It really has to call through. A copy-paste error made _set_stage call
-    # ITSELF, which surfaced on a live call as "maximum recursion depth
-    # exceeded" once a turn, with the gate silently dead for the whole call and
-    # only the non-fatal guard keeping it up.
+    # A copy-paste error once made _set_stage call ITSELF, which showed up on a
+    # live call as "maximum recursion depth exceeded" once a turn, with the gate
+    # silently dead and only the non-fatal wrapper keeping the call up.
     a = agent.Agent.__new__(agent.Agent)
     a.on_event = lambda k, t: None
     a.brain = Spy()
-    a._set_stage(1, 0)
+    a._set_stage("money", 0)
     assert len(a.brain.briefs) == 1, "the brief never reached the brain"
-    assert "STAGE 2 OF" in a.brain.briefs[0]
+    assert "THE WAGE" in a.brain.briefs[0]
 
-    # And a brain that cannot take it must not end the call.
     errors = []
     a.brain = Broken()
     a.on_event = lambda k, t: errors.append((k, t))
-    a._set_stage(0, 0)
+    a._set_stage(stages.START, 0)
     assert errors and errors[0][0] == "error", errors
-    assert len(stages.STAGES) == 5
-
-
-@case("the stage brief is swapped, never accumulated")
-def _():
-    from . import stages
-    brain = ai.Brain("BASE PROMPT.")
-    brain.set_stage(stages.brief(0))
-    assert "STAGE 1 OF" in brain.system_prompt
-    brain.set_stage(stages.brief(1))
-    assert "STAGE 2 OF" in brain.system_prompt
-    assert "STAGE 1 OF" not in brain.system_prompt, "two stages at once contradict"
-    # A long call must not grow the prompt without bound.
-    grown = len(brain.system_prompt)
-    for i in range(30):
-        brain.set_stage(stages.brief(i % len(stages.STAGES)))
-    assert len(brain.system_prompt) < grown * 2, len(brain.system_prompt)
-
-
-@case("a permanent note survives a stage change")
-def _():
-    from . import stages
-    # These append to the prompt, and a naive set_stage would wipe them: she
-    # would forget she had already disclosed, and say it again.
-    brain = ai.Brain("BASE.")
-    brain.note_disclosed()
-    brain.note_opening("Hi, is that Smith Plumbing?", truncated=False)
-    brain.set_stage(stages.brief(2))
-    assert "ALREADY TOLD THEM YOU ARE AN AI" in brain.system_prompt
-    assert "ALREADY SAID THIS" in brain.system_prompt
-
-
-@case("the last stage cannot advance, and the gate has an escape")
-def _():
-    from . import stages
-    last = stages.brief(len(stages.STAGES) - 1)
-    assert "[NEXT]" not in last, "nothing to advance to from the last stage"
-    assert "[END]" in last, "the last stage has to be able to finish the call"
-    # A gate with no escape is worse than the jumping it fixes.
-    assert 1 <= config.STAGE_MAX_TRIES <= 5, config.STAGE_MAX_TRIES
-    # And being stuck must change what she is told, or she repeats herself.
-    assert stages.brief(0, 0) != stages.brief(0, 2)
 
 
 # -- prosody ----------------------------------------------------------------

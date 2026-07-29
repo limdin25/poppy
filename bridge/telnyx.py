@@ -34,6 +34,37 @@ API = "https://api.telnyx.com/v2"
 # duration arithmetic rather than a guess. That is how is_speaking() works
 # without waiting for Telnyx to tell us anything.
 ULAW_BYTES_PER_SECOND = 8000
+# COMFORT NOISE. Hugo, on the silence between her turns: "it's like there was
+# music going on and now there's a pause button."
+#
+# He is right, and this is a known problem with digital voice rather than
+# anything we invented. A real phone line is never silent: there is always line
+# hiss and room tone under the conversation, and the human ear uses it to know
+# the call is still connected. When we send nothing at all the far end gets
+# TRUE digital silence, which sounds like the line dropped, and every gap
+# between her turns lands like a machine stopping rather than a person pausing.
+#
+# Telephony has solved this for decades. G.711 has no built-in comfort noise
+# generator (that is a G.729 feature), so on a mu-law leg it has to be sent.
+# Very quiet, around -50 dBFS, which is far below the barge-in margin so it can
+# never be mistaken for the prospect speaking, even after it echoes off their
+# handset.
+# Hugo: "put office sound in the background". Flat white noise is hiss, not a
+# room. A room is weighted LOW: air handling, traffic through a window, the
+# building itself, all under a few hundred hertz, with the level wandering
+# slowly rather than sitting still. So the noise is low-passed into room tone
+# and given a slow drift, which is the difference between "somebody is in an
+# office" and "the line is faulty".
+#
+# This is SYNTHESISED room tone, not a recording of an office. It will not give
+# you keyboards or a colleague laughing. If a real ambience recording is wanted,
+# an 8 kHz mu-law loop dropped in here would replace it directly.
+COMFORT_NOISE_DBFS = -48.0
+COMFORT_CHUNK_MS = 200
+# How much of the previous sample carries into the next one. Higher is duller
+# and more distant. 0.92 puts most of the energy under about 300 Hz, which is
+# where room rumble actually lives.
+COMFORT_SMOOTHING = 0.92
 # How much audio to put in one websocket frame. Telnyx accepts 20ms to 30s.
 SEND_CHUNK_MS = 200
 
@@ -93,6 +124,9 @@ class TelnyxTransport(Transport):
         # Optional tap on the raw inbound mu-law, before any decoding.
         # Used to fork audio to the live transcriber.
         self.listener = None
+        # Keeps the line sounding alive between her turns. See COMFORT_NOISE.
+        self._comfort_stop = threading.Event()
+        self._comfort: threading.Thread | None = None
 
     # -- called by the server, from the event loop --------------------------
 
@@ -101,6 +135,73 @@ class TelnyxTransport(Transport):
         self._ws = ws
         self._loop = loop
         self._attached.set()
+
+    # -- comfort noise -------------------------------------------------------
+
+    def _comfort_frame(self) -> bytes:
+        """A chunk of room tone, as mu-law.
+
+        Generated fresh each time rather than looped: a repeating 200ms of the
+        same noise is audible as a tick once you have noticed it, and once you
+        notice it you cannot stop hearing it.
+
+        Low-passed, because a room is not hiss. The filter state carries across
+        frames so there is no click at the joins, and the level drifts slowly so
+        it breathes instead of sitting flat.
+        """
+        import math
+        import random
+        n = 8000 * COMFORT_CHUNK_MS // 1000
+        base = (10 ** (COMFORT_NOISE_DBFS / 20.0)) * 32767.0
+        # A slow wander of a couple of dB, so it is never quite static.
+        self._comfort_phase = getattr(self, "_comfort_phase", 0.0) + 0.13
+        drift = 10 ** ((1.5 * math.sin(self._comfort_phase)) / 20.0)
+        amp = base * drift
+        # The filter has to remember where it was, or every frame starts from
+        # zero and the seam is a click 5 times a second.
+        prev = getattr(self, "_comfort_prev", 0.0)
+        a = COMFORT_SMOOTHING
+        # A one-pole low pass loses energy, so put it back to keep the measured
+        # level on target rather than 20 dB under it.
+        gain = amp * math.sqrt((1 + a) / (1 - a))
+        pcm = bytearray()
+        for _ in range(n):
+            prev = a * prev + (1 - a) * random.gauss(0.0, 1.0)
+            v = int(prev * gain)
+            pcm += max(-32768, min(32767, v)).to_bytes(2, "little", signed=True)
+        self._comfort_prev = prev
+        return ulaw.encode(bytes(pcm))
+
+    def _start_comfort_noise(self) -> None:
+        if self._comfort is not None:
+            return
+
+        def run() -> None:
+            # Real time, or the far end's jitter buffer fills up and the noise
+            # arrives in bursts long after it was sent.
+            step = COMFORT_CHUNK_MS / 1000.0
+            while not self._comfort_stop.is_set() and not self._ended.is_set():
+                # Re-checked immediately before the send, not just at the top of
+                # the loop: a call can end mid-wait, and audio arriving after
+                # hangup is exactly what the tests refuse to allow.
+                if (self._ended.is_set() or not self._answered.is_set()
+                        or self.is_speaking()):
+                    self._comfort_stop.wait(step)
+                    continue
+                if True:
+                    # Straight out, NOT through _send_audio: that stamps
+                    # _audio_began, which is how the barge-in grace window and
+                    # the "how much did they hear" estimate are timed. Comfort
+                    # noise must be invisible to both.
+                    self._send({
+                        "event": "media",
+                        "media": {"payload": base64.b64encode(
+                            self._comfort_frame()).decode()},
+                    })
+                self._comfort_stop.wait(step)
+
+        self._comfort = threading.Thread(target=run, daemon=True)
+        self._comfort.start()
 
     def feed(self, payload_b64: str) -> None:
         """One inbound media frame, straight off the websocket."""
@@ -138,11 +239,16 @@ class TelnyxTransport(Transport):
 
     def mark_answered(self) -> None:
         self._answered.set()
+        # Only once somebody has actually picked up. Started on attach it ran
+        # while the phone was still ringing, and the end-to-end tests caught it
+        # sending into a call that had already hung up.
+        self._start_comfort_noise()
 
     def mark_ended(self, cause: str = "") -> None:
         self._hangup_cause = cause or self._hangup_cause
         self._ended.set()
         self._play_until = 0.0
+        self._comfort_stop.set()
 
     @property
     def ended(self) -> bool:

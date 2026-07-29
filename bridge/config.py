@@ -148,6 +148,20 @@ MAX_CALL_SECONDS = 420
 # same question five times running is how a person gets hung up on.
 STAGE_MAX_TRIES = int(os.environ.get("BRIDGE_STAGE_MAX_TRIES", "3"))
 
+# Whether the code chases her when a turn goes by without her saying she is an
+# AI. It used to be forced: chase_disclosure() appended an instruction naming
+# the exact words, which OVERRODE the prompt and made her announce it unprompted
+# on every call. Hugo, twice: "don't disclose AI until they ask."
+#
+# Off does NOT mean she denies it. The prompt still requires her to say yes
+# immediately, plainly and cheerfully the moment anybody asks, in any wording.
+# What is off is volunteering it.
+#
+# Turn it back on for any market that requires proactive disclosure. California
+# SB-1001 requires it for bots used to sell, and other states are similar, so
+# this is a per-campaign decision rather than a preference.
+REQUIRE_DISCLOSURE = os.environ.get("BRIDGE_REQUIRE_DISCLOSURE", "") == "1"
+
 # --- Models ----------------------------------------------------------------
 # Re-measured on the REAL prompt with a real mid-call history, which is the only
 # test that means anything. The earlier bench used a single cold turn and got
@@ -180,7 +194,17 @@ LLM_MAX_TOKENS = 150
 # book jobs in, text people back. No missed calls, no holidays..." which is
 # word for word the "Bad" example in her own prompt. 24 makes the cap land
 # before the third clause.
-MAX_SPOKEN_WORDS = int(os.environ.get("BRIDGE_MAX_WORDS", "24"))
+# Raised 24 -> 34. The cap cuts at the next full stop PAST the limit, and her
+# explanation plus its closing question runs about 30 words, so 24 was landing
+# the cut on the full stop BEFORE the question and deleting it. On a live call
+# she listed what she does, the "How does that sound?" was cut off, and the call
+# died in silence with the prospect waiting for her to finish. That is both the
+# "cutting halfway" and the "no reaction" Hugo reported, from one number.
+# 34 was still letting 42 word turns through, because the cut lands at the next
+# full stop PAST the limit and a list has no full stops in it. Lowered to 28,
+# but the real fix is upstream: the stage briefs no longer ask her to read a
+# list, because a cap can only ever chop a monologue, not prevent one.
+MAX_SPOKEN_WORDS = int(os.environ.get("BRIDGE_MAX_WORDS", "28"))
 
 # Measured on a 2.7s utterance, best of 2, warm:
 #   gpt-4o-mini-transcribe  637 ms   <- chosen
