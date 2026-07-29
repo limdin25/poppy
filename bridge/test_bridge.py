@@ -362,6 +362,30 @@ def _():
     assert _drain(agent.clean_cues(["Right. [sighing] And you?"])) == "Right. And you?"
 
 
+@case("intensity modifiers survive, but cannot smuggle a laugh back in")
+def _():
+    # Fish document "[slightly sad]" and "[very excited]" as a first-class
+    # feature, and it is the finest control there is over how much emotion a
+    # line carries. The allowlist is exact-match, so without explicit support
+    # every one of them would be silently dropped.
+    assert _drain(agent.clean_cues(["[very warm] Hi."])) == "[very warm] Hi."
+    assert _drain(agent.clean_cues(["[slightly amused] Go on."])) == "[slightly amused] Go on."
+    # The BASE still has to be allowed, or the laugh returns by the side door.
+    for bad in ("[very chuckling]", "[extremely laughing]", "[slightly sighing]"):
+        assert "[" not in _drain(agent.clean_cues([f"{bad} Ha."])), bad
+    # And an emotion that is simply not on the list stays off it.
+    assert "[" not in _drain(agent.clean_cues(["[furious] What?"]))
+
+
+@case("two agreeing cues may stack, and emphasis works mid-sentence")
+def _():
+    assert _drain(agent.clean_cues(["[warm][amused] Nice one."])) == "[warm][amused] Nice one."
+    # [emphasis] is a tone marker: their docs put it immediately before the
+    # word being stressed, not at the start of the sentence.
+    out = _drain(agent.clean_cues(["That's [emphasis] three quid a day."]))
+    assert out == "That's [emphasis] three quid a day.", out
+
+
 @case("an unclosed bracket is dropped rather than read out loud")
 def _():
     assert "[" not in _drain(agent.clean_cues(["[chuck"]))

@@ -277,6 +277,35 @@ def _drop_leading_ack(tokens):
             yield head
 
 
+# Fish documents intensity modifiers as a first-class feature: "[slightly sad]",
+# "[very excited]", "[extremely angry]". They are the finest control available
+# over how much emotion a line carries, which is exactly what "needs a little
+# more" asks for. The allowlist is exact-match, so without this every one of
+# them would be silently dropped and the prompt would be asking for something
+# the code throws away.
+_INTENSITY = {"slightly", "a bit", "mildly", "quite", "fairly", "rather",
+              "really", "very", "extremely", "genuinely"}
+
+
+def _allowed_cue(raw: str) -> str | None:
+    """The cue to send to Fish, or None to drop it.
+
+    Safe on its own, or a safe one with an intensity word in front. The BASE
+    still has to be on the allowlist, so "[very chuckling]" is refused exactly
+    like "[chuckling]" is and the laugh cannot come back in through the side
+    door.
+    """
+    if not config.CUES_ENABLED:
+        return None
+    cue = " ".join(raw.strip().lower().split())
+    if cue in config.SAFE_CUES:
+        return cue
+    for word in _INTENSITY:
+        if cue.startswith(word + " ") and cue[len(word) + 1:] in config.SAFE_CUES:
+            return cue
+    return None
+
+
 def clean_cues(tokens):
     """Drop any bracketed cue that is not on the verified-safe list.
 
@@ -308,8 +337,8 @@ def clean_cues(tokens):
             if end < 0:
                 held = text[start:]        # incomplete, wait for the rest
                 break
-            cue = text[start + 1:end].strip().lower()
-            if config.CUES_ENABLED and cue in config.SAFE_CUES:
+            cue = _allowed_cue(text[start + 1:end])
+            if cue:
                 out.append(f"[{cue}]")
             else:
                 # A space, not nothing. The model writes cues with no spaces
