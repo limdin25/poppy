@@ -105,7 +105,17 @@ BARGE_IN_GRACE_MS = 1200
 # When interrupted, finish the word in flight before going quiet. Cutting at the
 # instant of the decision chops a syllable in half and sounds broken; a person
 # finishes the word and then stops. About one word at conversational pace.
-FINISH_WORD_MS = 200
+# Raised from 200 after Hugo: "she cuts the word. Never cut the word. Cut the
+# sentence, but not the word." The arithmetic says he is right: at 14 characters
+# a second an average word plus its space is about six characters, so a whole
+# word runs ~430ms and 200ms only ever finished a third of one. A cut lands at a
+# random point in a word, so on average half a word remains, and 350ms covers
+# nearly all of them.
+# The cost is honest: she now overlaps the prospect by this much AFTER deciding
+# to stop, on top of the time it took to decide. If she starts feeling like she
+# ploughs on, lower the interruption threshold rather than this, because this is
+# the setting that stops her sounding broken.
+FINISH_WORD_MS = 350
 
 BARGE_IN_ENABLED = os.environ.get("BRIDGE_NO_BARGE", "") != "1"
 # After we stop speaking, let the tail of our own echo pass before we start
@@ -205,6 +215,21 @@ SETTLED_PARTIAL_S = 1.1
 # them apart. 1.1s still beats AssemblyAI's ~2s while being much harder to fool.
 # If double-replies appear again, raise it rather than trying to be clever.
 SETTLED_PARTIAL_MIN_WORDS = 4
+# The wait above exists ONLY because silence cannot tell a finished sentence
+# from a thinking pause. When the prosody reader can tell, this shorter pause is
+# used instead. On a turn it cannot read, the full wait above stands, so the
+# worst case is the behaviour we had before.
+#
+# Was 0.35s on its first live call and that call was a mess. Prosody hears the
+# end of a SENTENCE, and a turn can hold two: "I have a problem." falls away
+# exactly like a finished thought, so she answered it while the prospect was
+# still saying "there's something leaking". She then got barged out mid-word
+# and the whole call turned into three-word fragments. 0.6 still saves half a
+# second on the old wait while leaving room for a second sentence to start.
+SETTLED_PARTIAL_FAST_S = float(os.environ.get("BRIDGE_SETTLED_FAST_S", "0.6"))
+# Set BRIDGE_PROSODY=0 to turn the whole thing off and go back to silence alone,
+# which is the way to tell a prosody misread from any other problem.
+PROSODY_ENABLED = os.environ.get("BRIDGE_PROSODY", "") != "0"
 # How long to let the person who answered say "hello" before speaking. Talking
 # over their greeting is the most obviously machine thing a caller can do, and it
 # also guarantees the opener is half-heard and has to be repeated. Long enough
@@ -276,13 +301,23 @@ FISH_LATENCY = os.environ.get("BRIDGE_FISH_LATENCY", "low")
 #   0.7   0.7    1.1     0.04s to 0.18s     the cue is doing essentially nothing
 #   0.9   0.7    1.1     0.38s
 #   0.9   0.9    1.0     0.70s
-#   1.0   1.0    1.0     0.92s              <- chosen
+#   1.0   1.0    1.0     0.92s
 #
-# 1.0 is the top of their range. If she starts sounding erratic or mispronouncing
-# things, come down to 0.9 rather than going back to 0.7, because 0.7 is where
-# the cues stop working.
-FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "1.0"))
-FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "1.0"))
+# 1.0 was shipped and Hugo's verdict was "she no longer sounds natural". Maximum
+# temperature bought range at the cost of steadiness, which the first test never
+# looked at. Rendering ONE line five times and measuring how much its length
+# varies says it plainly:
+#
+#   temp  top_p  speed   wobble   cue spread
+#   1.0   1.0    1.0     0.37s    0.84s      range, but it will not sit still
+#   0.9   0.9    1.0     0.04s    0.79s      <- chosen. 94% of the range, 1/9th
+#                                               of the wobble
+#   0.7   0.7    1.1     0.07s    0.04s      steady and completely flat
+#
+# So 0.9 is not a compromise, it is strictly better than 1.0 here. Do not go
+# back to 0.7: that is where the emotion cues stop doing anything at all.
+FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "0.9"))
+FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.9"))
 
 # --- Emotion cues, and why they are an allowlist rather than an instruction --
 # S2.1 Pro takes free-form natural language in square brackets, "15,000+ tags"

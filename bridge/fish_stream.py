@@ -176,7 +176,7 @@ class FishStream:
         done = threading.Event()
 
         def pump() -> None:
-            """Push tokens in as they arrive, then flush ONCE at the end.
+            """Push tokens in as they arrive, flushing at the first SENTENCE.
 
             An earlier version flushed at the first comma too, which cut mean
             time to first audio from 1630ms to 1235ms. It has been taken out
@@ -197,9 +197,22 @@ class FishStream:
             develop, and a three word chunk denies it exactly that.
 
             Hugo, on the split build: "its tonality are not really coming
-            across naturally". Latency is already down from 2.9s to about 1.2s
-            on the other changes, so this 400ms is the right one to give back.
+            across naturally".
+
+            A FULL STOP is a different proposition, and this is the version that
+            works. The first sentence is enough text for an emotion to develop,
+            which is Fish's own guidance, and the seam lands where a speaker
+            pauses anyway. Measured on a two-sentence reply, with the text fed in
+            at the rate Claude actually writes it:
+
+                flush at the end only        2110ms to first audio, 6.84s spoken
+                flush at the first sentence   592ms to first audio, 7.20s spoken
+
+            A second and a half sooner, for 0.36s of pause at a full stop. The
+            comma version bought a third of that and cost twice as much.
             """
+            buf = ""
+            flushed = False
             try:
                 for token in tokens:
                     if done.is_set():
@@ -208,6 +221,20 @@ class FishStream:
                         self._ws.send(msgpack.packb({"event": "text", "text": token})),
                         self._loop,
                     )
+                    if flushed:
+                        continue
+                    buf += token
+                    # A sentence, not a clause. Needs real words in front of it
+                    # so "Mr." or an opening cue cannot trigger it, and a
+                    # question mark counts because she stops dead after one.
+                    if any(c in token for c in ".!?"):
+                        head = buf.split(".")[0].split("?")[0].split("!")[0]
+                        if len(head.split()) >= 3:
+                            asyncio.run_coroutine_threadsafe(
+                                self._ws.send(msgpack.packb({"event": "flush"})),
+                                self._loop,
+                            )
+                            flushed = True
             except Exception as e:
                 self.on_event("error", f"token stream failed: {e}")
             finally:

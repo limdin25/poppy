@@ -25,6 +25,7 @@ def tone(ms: float, dbfs: float, rate: int = config.AI_RATE) -> bytes:
 
 
 CASES: list[tuple[str, callable]] = []
+SKIPPED: list[str] = []
 
 
 def case(name):
@@ -345,6 +346,18 @@ def _():
     assert _drain(agent.clean_cues(["[chuck", "ling] Go on?"])) == " Go on?"
 
 
+@case("dropping a cue leaves a space, it does not fuse the words either side")
+def _():
+    # Live calls produced "Quick question,how many jobs" and "right now,this is
+    # what I do", both from a cue written with no spaces around it.
+    assert _drain(agent.clean_cues(["right now,[pause]this is what I do"])) \
+        == "right now, this is what I do"
+    assert _drain(agent.clean_cues(["Quick question,[thinking]how many jobs?"])) \
+        == "Quick question, how many jobs?"
+    # And it must not introduce a double space where one already existed.
+    assert _drain(agent.clean_cues(["Right. [sighing] And you?"])) == "Right. And you?"
+
+
 @case("an unclosed bracket is dropped rather than read out loud")
 def _():
     assert "[" not in _drain(agent.clean_cues(["[chuck"]))
@@ -435,6 +448,66 @@ def _():
     assert agent.spoken_words("Twenty a week?") == "Twenty a week?"
 
 
+@case("a spaced hyphen is a long dash in disguise, and a hyphenated word is not")
+def _():
+    # Live call: "I don't know the figure - the team handles that". A plain
+    # hyphen is legitimate inside a word, so only the spaced form is a dash.
+    assert agent.straighten("the figure - the team handles it") \
+        == "the figure, the team handles it"
+    assert agent.straighten("a well-known plumber") == "a well-known plumber"
+    assert agent.straighten("ninety-seven a month") == "ninety-seven a month"
+
+
+@case("dropping a cue never leaves a space stranded before punctuation")
+def _():
+    # Live call: "you're talking to me now , this is what I do".
+    out = _drain(agent.clean_cues(["talking to me now[pause], this is it"]))
+    assert agent.straighten(out) == "talking to me now, this is it", out
+
+
+@case("a cut-off reply is recorded as the part they HEARD, not the part sent")
+def _():
+    # The bug Hugo caught on a live call. A 21 word introduction was cut after
+    # about 3.2 seconds, recorded in full, and the model then believed it had
+    # already said why it was ringing and jumped to "have you got a minute?"
+    # about something the prospect had never heard.
+    line = ("I'm Maria. I'm an AI receptionist, and I'm ringing round looking "
+            "for work answering your phone. Have you got a minute?")
+    heard = agent._spoken_prefix(line, 3200)
+    assert len(heard) < len(line) / 2, heard
+    assert heard.startswith("I'm Maria."), heard
+    assert "minute" not in heard, "the ask was never heard, so it is not said"
+    # Never cuts mid-word: the estimate lands on a space boundary.
+    assert not line[len(heard):len(heard) + 1].strip() or heard in line
+
+    # Speaking for longer than the line takes means they heard all of it.
+    assert agent._spoken_prefix(line, 60000) == line
+
+
+@case("the speaking-rate estimate follows the speed setting, not a constant")
+def _():
+    before = config.FISH_SPEED
+    try:
+        config.FISH_SPEED = 1.0
+        slow = agent.chars_per_second()
+        config.FISH_SPEED = 2.0
+        assert agent.chars_per_second() == slow * 2, "a faster voice says more per second"
+    finally:
+        config.FISH_SPEED = before
+
+
+@case("the word-finish window is long enough to actually finish a word")
+def _():
+    # At ~14 characters a second an average word plus its space is about six
+    # characters, so a whole word is ~430ms and half a word ~215ms. 200ms only
+    # ever finished a third of one, which is what Hugo heard as broken speech.
+    half_word_ms = (6 / agent.BASE_CHARS_PER_SECOND) * 1000 / 2
+    assert config.FINISH_WORD_MS >= half_word_ms, (
+        f"{config.FINISH_WORD_MS}ms cannot finish the average half word "
+        f"({half_word_ms:.0f}ms)"
+    )
+
+
 @case("the AI disclosure is noticed once, and only when it was heard in full")
 def _():
     for line in ("I'm Elsie, an AI assistant at HeyElsie.",
@@ -456,6 +529,139 @@ def _():
     assert brain.system_prompt == once, "told twice, the prompt grows every turn"
 
 
+# -- prosody ----------------------------------------------------------------
+# These need numpy, which the bridge host has and a bare dev machine may not.
+# Skipped rather than failed there, because a missing optional dependency is not
+# a regression and silently reporting "ok" would be worse than either.
+try:
+    import numpy as _np           # noqa: F401
+    HAVE_NUMPY = True
+except ImportError:               # pragma: no cover - depends on the machine
+    HAVE_NUMPY = False
+
+
+def prosody_case(name):
+    """Register a prosody test, or note that it was skipped."""
+    def wrap(fn):
+        if HAVE_NUMPY:
+            return case(name)(fn)
+        SKIPPED.append(name)
+        return fn
+    return wrap
+
+
+
+def _glide(start, end, ms, db_start=-20.0, db_end=-20.0):
+    """A pitch sweep with an optional fade, through real mu-law companding."""
+    import numpy as np
+    from . import ulaw
+    n = int(8000 * ms / 1000)
+    hz = np.linspace(start, end, n)
+    phase = 2 * np.pi * np.cumsum(hz) / 8000
+    amp = 10 ** (np.linspace(db_start, db_end, n) / 20.0) * 32767
+    x = ((np.sin(phase) + 0.5 * np.sin(2 * phase)) / 1.5 * amp).astype("<i2")
+    return ulaw.encode(x.tobytes())
+
+
+@prosody_case("pitch is tracked through mu-law within 5 percent")
+def _():
+    import numpy as np
+    from . import prosody, ulaw
+    for hz in (85, 150, 260, 330):
+        n = 8000 * 300 // 1000
+        t = np.arange(n) / 8000
+        x = ((np.sin(2*np.pi*hz*t) + 0.5*np.sin(4*np.pi*hz*t)) / 1.5
+             * 0.1 * 32767).astype("<i2")
+        p = prosody.Prosody()
+        p.feed(ulaw.encode(x.tobytes()))
+        found = sorted(f[1] for f in p._frames)
+        assert found, f"no voiced frames at {hz} Hz"
+        med = found[len(found) // 2]
+        assert abs(med - hz) / hz < 0.05, f"{hz} Hz read as {med:.0f}"
+
+
+@prosody_case("a statement that falls away is finished, a level pause is not")
+def _():
+    from . import prosody
+    def verdict(audio):
+        p = prosody.Prosody()
+        p.feed(audio)
+        return p.verdict()[0]
+    assert verdict(_glide(180, 120, 600, -20, -28)) == "fell"
+    assert verdict(_glide(150, 230, 600)) == "rose"
+    assert verdict(_glide(165, 160, 600)) == "held"
+    # A fall with no fade is somebody drawing breath mid-thought, not an ending.
+    assert verdict(_glide(180, 120, 600, -20, -20)) == "held"
+
+
+@prosody_case("silence and a too-short snippet never claim a verdict")
+def _():
+    from . import prosody
+    p = prosody.Prosody()
+    assert p.verdict()[0] == "unsure"
+    p.feed(b"\xff" * 4000)                     # mu-law silence
+    assert p.verdict()[0] == "unsure"
+    p2 = prosody.Prosody()
+    p2.feed(_glide(180, 120, 60))              # far too short to fit a contour
+    assert p2.verdict()[0] == "unsure"
+
+
+@prosody_case("the contour is measured on the audio clock, not the wall clock")
+def _():
+    from . import prosody
+    # Fed in one burst, as a jitter buffer catching up would. On the wall clock
+    # every frame lands at the same instant, the time deltas collapse, and the
+    # fitted slope explodes: measured at -1757 st/s for a contour that really
+    # falls at about 12.
+    p = prosody.Prosody()
+    p.feed(_glide(180, 120, 600, -20, -28))
+    _, why = p.verdict()
+    st = float(why.split("pitch ")[1].split(" st/s")[0])
+    assert -40 < st < 0, f"slope {st} st/s is not a real speech rate"
+
+
+@prosody_case("an octave-jumping contour is refused, not read as a question")
+def _():
+    from . import prosody
+    # The live failure: "PROSODY | rose: pitch +70.1 st/s". Real speech moves a
+    # handful of semitones a second, so 70 was the tracker jumping octaves. Any
+    # rise over 3.0 counted as a question, so she answered early on nonsense,
+    # started talking over the prospect, and got cut off mid-word for it.
+    p = prosody.Prosody()
+    p._clock = 1.0
+    p._last_voiced_wall = __import__("time").monotonic()
+    # Alternating octaves, which is exactly what the artefact looks like.
+    for i in range(20):
+        p._frames.append((i * 0.02, 150.0 if i % 2 else 300.0, -20.0))
+    p._last_voiced_at = p._frames[-1][0]
+    verdict, why = p.verdict()
+    assert verdict == "unsure", f"believed a broken contour: {verdict} ({why})"
+
+
+@prosody_case("an impossibly steep slope is never trusted")
+def _():
+    from . import prosody
+    assert prosody.MAX_ST_PER_S <= 30, "a real voice does not move 30 semitones a second"
+    p = prosody.Prosody()
+    p._last_voiced_wall = __import__("time").monotonic()
+    # A smooth but absurdly fast rise: no octave jumps, so only the ceiling
+    # catches it.
+    for i in range(20):
+        p._frames.append((i * 0.002, 120.0 * (1.06 ** i), -20.0))
+    p._last_voiced_at = p._frames[-1][0]
+    assert p.verdict()[0] == "unsure", p.verdict()
+
+
+@prosody_case("resetting clears the contour, so one turn cannot answer the next")
+def _():
+    from . import prosody
+    p = prosody.Prosody()
+    p.feed(_glide(180, 120, 600, -20, -28))
+    assert p.verdict()[0] == "fell"
+    p.reset()
+    assert p.verdict()[0] == "unsure"
+
+
 def main() -> int:
     failed = 0
     for name, fn in CASES:
@@ -469,6 +675,9 @@ def main() -> int:
             failed += 1
             print(f"  ERR  {name}\n         {type(e).__name__}: {e}")
     print(f"\n{len(CASES) - failed}/{len(CASES)} passed")
+    if SKIPPED:
+        print(f"{len(SKIPPED)} prosody tests SKIPPED, numpy is not installed here. "
+              f"They run on the bridge host.")
     return 1 if failed else 0
 
 

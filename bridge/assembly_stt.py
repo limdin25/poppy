@@ -226,7 +226,8 @@ class AssemblyStream:
 
     # -- text out ------------------------------------------------------------
 
-    def settled_partial(self, stable_for_s: float) -> str | None:
+    def settled_partial(self, stable_for_s: float,
+                        min_words: int | None = None) -> str | None:
         """A partial that has stopped growing, i.e. they have paused.
 
         This is what makes the agent quick. AssemblyAI is deliberately patient
@@ -246,8 +247,12 @@ class AssemblyStream:
             return None
         if time.monotonic() - self._partial_at < stable_for_s:
             return None
-        # A fragment is not a turn. See SETTLED_PARTIAL_MIN_WORDS.
-        if len(text.split()) < config.SETTLED_PARTIAL_MIN_WORDS:
+        # A fragment is not a turn. See SETTLED_PARTIAL_MIN_WORDS. The caller
+        # can ask for a higher bar: the prosody fast path does, because acting
+        # on a shorter wait needs a stronger reason to believe the turn is over.
+        if min_words is None:
+            min_words = config.SETTLED_PARTIAL_MIN_WORDS
+        if len(text.split()) < min_words:
             return None
         return text
 

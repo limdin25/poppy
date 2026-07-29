@@ -6,6 +6,7 @@ up. Transport-agnostic: hand it a SimTransport today or a VoIP transport later.
 from __future__ import annotations
 
 import json
+import math
 import queue
 import random
 import re
@@ -24,7 +25,11 @@ from .transport import CaptureFailed, Transport
 _MARKER_RE = re.compile(r"\[\s*END\s*\]", re.IGNORECASE)
 # Emotion cues are for the voice, not for the record. They must survive all the
 # way to Fish, so they are stripped only where text is shown or stored.
-_CUE_RE = re.compile(r"\[[a-z][a-z\s-]{0,20}\]", re.IGNORECASE)
+# Commas allowed: the model writes compound cues like "[warm, professional]" of
+# its own accord. clean_cues already refuses to send those to the voice, since
+# they are not on the allowlist, but a narrower pattern here left them sitting in
+# the saved transcript as if they had been spoken.
+_CUE_RE = re.compile(r"\[[a-z][a-z\s,-]{0,30}\]", re.IGNORECASE)
 # An interruption can cut a reply off in the middle of a cue, leaving a dangling
 # "[" or "[curi" with no closing bracket. It never reaches the voice, because
 # clean_cues holds an unclosed bracket back and drops it, but the transcript is
@@ -41,9 +46,49 @@ def spoken_words(text: str) -> str:
     """What a human would say was said, with the performance cues removed."""
     return re.sub(r"\s+", " ", _PART_CUE_RE.sub(" ", _CUE_RE.sub(" ", text))).strip()
 
-# Rough speaking rate of the TTS voices, used only to estimate how much of a
-# sentence actually reached the prospect before they cut in.
-CHARS_PER_SECOND = 15.0
+# Speaking rate of the voice, used to estimate how much of a sentence actually
+# reached the prospect before they cut in. Measured on Fish at prosody speed
+# 1.0: "Right. And are you asking customers for them now?" is 48 characters and
+# runs 3.10s at speed 1.1, so 15.5 chars a second there and 14.1 at 1.0.
+# Derived from the live speed rather than hardcoded, because that setting is on
+# the agent page and somebody moving it would silently skew every estimate.
+BASE_CHARS_PER_SECOND = 14.0
+
+
+def chars_per_second() -> float:
+    return BASE_CHARS_PER_SECOND * max(0.5, float(config.FISH_SPEED))
+
+
+def _finish_word_ms(text: str, elapsed_ms: float) -> float:
+    """How much longer she needs to finish the word she is in the middle of.
+
+    A fixed delay cannot do this job, which is why raising it from 200ms to
+    350ms did not fix it and Hugo still heard chopped words. The cut lands at a
+    random point, so adding a constant just moves the chop to a different random
+    point. Sometimes that is mid-word again.
+
+    This works out where in the sentence she actually is, from how long she has
+    been speaking, and waits precisely until the next space. Cutting there is
+    the difference between "can I just ask how ma-" and "can I just ask how".
+
+    Falls back to the fixed setting when there is no text to measure against,
+    for instance a barge-in during a backchannel, and is capped by it times
+    three so a bad estimate can never hold the line open.
+    """
+    if not text:
+        return float(config.FINISH_WORD_MS)
+    cps = chars_per_second()
+    pos = (elapsed_ms / 1000.0) * cps
+    if pos >= len(text):
+        return 0.0                      # already past the end, nothing to finish
+    # ceil, not int. Truncating looks BACKWARDS at a space already spoken and
+    # returns a negative wait, and time.sleep() raises ValueError on a negative
+    # number, which would end the call rather than the sentence. Rounding up
+    # asks the right question: where does the word I am inside of end?
+    nxt = text.find(" ", math.ceil(pos))
+    if nxt < 0:
+        nxt = len(text)
+    return max(0.0, min((nxt - pos) / cps * 1000.0, config.FINISH_WORD_MS * 3.0))
 
 
 # Punctuation the model reaches for that we never use. Asking it not to in the
@@ -63,11 +108,23 @@ _PUNCTUATION = {
 }
 
 
+# A spaced hyphen is a long dash wearing a disguise. The model produced
+# "I don't know the figure - the team handles that" on a live call, which slips
+# past the table above because a plain hyphen is legitimate inside a word.
+# Only the spaced form is a dash.
+_SPACED_HYPHEN = re.compile(r"\s+-\s+")
+# A cue dropped from just before a comma left "you're talking to me now , this
+# is what I do". Putting a space where a cue was is right in general and wrong
+# next to punctuation, so it is taken back out.
+_SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.!?;:])")
+
+
 def straighten(text: str) -> str:
     """Replace punctuation we never use with the plain equivalent."""
     for bad, good in _PUNCTUATION.items():
         text = text.replace(bad, good)
-    return text
+    text = _SPACED_HYPHEN.sub(", ", text)
+    return _SPACE_BEFORE_PUNCT.sub(r"\1", text)
 
 
 def _strip_marker(text: str) -> str:
@@ -249,6 +306,13 @@ def clean_cues(tokens):
             cue = text[start + 1:end].strip().lower()
             if config.CUES_ENABLED and cue in config.SAFE_CUES:
                 out.append(f"[{cue}]")
+            else:
+                # A space, not nothing. The model writes cues with no spaces
+                # around them often enough ("right now,[pause]this is what I
+                # do"), and deleting one outright fused the words either side
+                # into "now,this". Seen twice on live calls. The collapse below
+                # tidies up the doubles this creates.
+                out.append(" ")
             text = text[end + 1:]
         # Last stop before the voice, so the punctuation rule is enforced here
         # too. The streamed path never passed through straighten(), which only
@@ -267,7 +331,7 @@ def _spoken_prefix(text: str, elapsed_ms: float) -> str:
     a worse lie: the transcript then claims the AI disclosure was given when it
     was cut off after half a word.
     """
-    chars = int((elapsed_ms / 1000.0) * CHARS_PER_SECOND)
+    chars = int((elapsed_ms / 1000.0) * chars_per_second())
     if chars >= len(text):
         return text
     cut = text[:chars]
@@ -335,6 +399,9 @@ class Agent:
         # A live transcription socket, if the caller handed one over. When
         # present it replaces the VAD, the end-of-turn wait and batch Whisper.
         self.ears = None
+        # A pitch and loudness reader on the far end, if the caller handed one
+        # over. Optional on purpose: without it everything behaves as before.
+        self.prosody = None
         self._backchannel: list[tuple[str, bytes]] = []
         # Generate the opener NOW, while the phone is still ringing, instead of
         # after they say hello. It used to be made on answer, so its generation
@@ -400,8 +467,17 @@ class Agent:
     def _emit(self, kind: str, text: str) -> None:
         self.on_event(kind, text)
 
-    def _play(self, text: str, payload: bytes) -> tuple[str, bool]:
-        """Play one piece of speech. Returns (what they actually heard, cut off?).
+    def _play(self, text: str, payload: bytes, so_far=None) -> tuple[str, bool, float]:
+        """Play one piece of speech.
+
+        Returns (what they actually heard, cut off?, milliseconds of speech).
+
+        That third value is not a statistic, it is the only evidence anywhere of
+        how much of a streamed reply reached the prospect. The streamed path
+        cannot pass its text in, because the text does not exist yet when
+        playback starts, so it has to reconstruct the heard portion afterwards
+        from this. Discarding it is what let a cut-off introduction be recorded,
+        and believed by the model, as delivered in full.
 
         Both the opener and the streamed replies go through here, and that is the
         point. They used to be two copies, and only one of them was ever hardened
@@ -429,6 +505,10 @@ class Agent:
         # can hear its own voice coming back, and the two answers are far apart.
         barge = audio.VoiceActivity(margin_db=self.transport.barge_margin_db)
         interrupted = False
+        # When sound actually started leaving for the far end, which is a few
+        # hundred milliseconds after we asked. Timing from the request instead
+        # inflates every estimate by the synthesis delay.
+        speaking_from = 0.0
 
         while self.transport.is_speaking():
             chunk = self.transport.read(timeout=0.15)
@@ -439,6 +519,7 @@ class Agent:
             # timing it from the request meant the window was already spent
             # before she made a noise, so the opener was cut off every call.
             began = self.transport.audio_started_at() or started
+            speaking_from = began
             # Report the gap that actually matters: prospect stopped talking, to
             # first sound out. Logging only when she FINISHES made a six second
             # reply look like six seconds of lag, which is unmeasurable nonsense.
@@ -459,15 +540,22 @@ class Agent:
                 # broken rather than polite. Hugo: "you don't stop mid-word, you
                 # can stop mid-sentence, but never mid-word." A couple of
                 # hundred milliseconds is about one word at speaking pace.
-                time.sleep(config.FINISH_WORD_MS / 1000.0)
+                # Wait exactly long enough to land on the next word boundary.
+                # `so_far` lets the streamed path hand over the text it has
+                # produced up to now, because on that path the sentence does not
+                # exist yet when playback begins.
+                current = text or (so_far() if so_far else "")
+                time.sleep(_finish_word_ms(current, elapsed_ms) / 1000.0)
                 self.transport.stop_speaking()
                 self._emit("bargein", "prospect interrupted")
                 interrupted = True
                 break
 
+        # Measured from the first sound out, not from when we asked to speak.
+        speak_ms = ((time.monotonic() - speaking_from) * 1000.0) if speaking_from else 0.0
         if not interrupted:
-            return text, False
-        return _spoken_prefix(text, (time.monotonic() - started) * 1000.0), True
+            return text, False, speak_ms
+        return _spoken_prefix(text, speak_ms), True, speak_ms
 
     def _settle(self) -> None:
         """Let our own echo pass before listening.
@@ -491,7 +579,7 @@ class Agent:
                 self._emit("error", f"TTS failed: {e}")
                 return False
 
-        spoken, interrupted = self._play(text, payload)
+        spoken, interrupted, _ = self._play(text, payload)
         self._settle()
 
         # Recorded after playback, and only what was delivered. Appending before
@@ -538,11 +626,24 @@ class Agent:
             self._play(*ack)
 
         chunks = self.voice_stream.stream_tokens(tokens)
-        _, interrupted = self._play("", chunks)
+        _, interrupted, speak_ms = self._play(
+            "", chunks, so_far=lambda: spoken_words("".join(spoken)))
         self._settle()
 
         full = "".join(written)
-        words = spoken_words(_strip_marker("".join(spoken)))
+        # `spoken` is what was handed to the voice, which on an interruption is
+        # NOT what came out of the phone. Fish is sent the whole reply in one go
+        # and streams the audio afterwards, so a barge-in two seconds in means
+        # they heard about two seconds of it and nothing more.
+        #
+        # Left uncorrected this was the bug Hugo caught: a 21 word introduction
+        # was cut after roughly nine words, recorded in full, and the model,
+        # believing it had already said why it was ringing, went straight to
+        # "have you got a minute?" about something the prospect had never heard.
+        heard = spoken_words(_strip_marker("".join(spoken)))
+        if interrupted:
+            heard = _spoken_prefix(heard, speak_ms)
+        words = heard
         # Correct the model's own record to what actually left the phone. Left
         # uncorrected it believes it delivered the half of the reply that was
         # cut off, so it never says it, and the call quietly loses the thread.
@@ -628,7 +729,7 @@ class Agent:
             text, payload = item
             if interrupted:
                 continue  # drain the rest, do not speak over the prospect
-            said, interrupted = self._play(text, payload)
+            said, interrupted, _ = self._play(text, payload)
             if said:
                 words = spoken_words(said)
                 if words:
@@ -657,6 +758,7 @@ class Agent:
         Audio is pumped over by the transport's reader, not from here.
         """
         deadline = time.time() + config.AAI_TURN_TIMEOUT_S
+        said_why = False
         while time.time() < deadline:
             if time.time() - result.started_at > config.MAX_CALL_SECONDS:
                 return ""
@@ -669,7 +771,31 @@ class Agent:
                 # AssemblyAI to say so costs about two seconds. Acting on the
                 # pause is what a person does: you answer when someone stops,
                 # not when you have proof they finished.
-                early = self.ears.settled_partial(config.SETTLED_PARTIAL_S)
+                # How long to let a pause run before treating it as the end of
+                # a turn. The long wait exists only because silence alone cannot
+                # tell a finished sentence from somebody thinking. When the
+                # prosody reader CAN tell, because the pitch fell away or rose
+                # into a question, there is nothing left to wait for.
+                wait = config.SETTLED_PARTIAL_S
+                floor = config.SETTLED_PARTIAL_MIN_WORDS
+                if self.prosody is not None and config.PROSODY_ENABLED:
+                    landed, why = self.prosody.finished()
+                    if landed:
+                        # Prosody hears the end of a SENTENCE, which is not the
+                        # same as the end of a TURN. "I have a problem." falls
+                        # away exactly like a finished thought, and then they
+                        # carry straight on with "there's something leaking".
+                        # That happened on a live call and she answered the
+                        # first half, so the fast path is deliberately not as
+                        # fast as the signal alone would allow, and it asks for
+                        # more words before it will act.
+                        wait = config.SETTLED_PARTIAL_FAST_S
+                        floor = config.SETTLED_PARTIAL_MIN_WORDS + 2
+                        if not said_why:
+                            said_why = True
+                            self._emit("prosody", f"{why}, answering after "
+                                                  f"{wait * 1000:.0f}ms")
+                early = self.ears.settled_partial(wait, min_words=floor)
                 if early and not sounds_unfinished(early):
                     self.ears.accept(early)   # so its final is not answered twice
                     text = early
@@ -685,6 +811,12 @@ class Agent:
                 if more:
                     text = f"{text} {more}".strip()
             self._heard_at = time.monotonic()
+            # Forget this sentence's contour. Left in place, the fall at the end
+            # of THIS turn would still be sitting there when the next one is
+            # judged, and every following turn would be answered early on stale
+            # evidence.
+            if self.prosody is not None:
+                self.prosody.reset()
             self._emit("them", text)
             result.turns.append(Turn("them", text, time.time() - result.started_at))
             return text

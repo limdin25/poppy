@@ -46,6 +46,8 @@ export interface FishConfig {
   max_words: number;
   // Turn taking. These decide whether she talks over people.
   settled_partial_s: number;
+  settled_partial_fast_s: number;
+  prosody_enabled: boolean;
   unfinished_wait_s: number;
   wait_for_hello_s: number;
   backchannel_chance: number;
@@ -83,6 +85,8 @@ const DEFAULTS: FishConfig = {
   llm_model: 'claude-haiku-4-5-20251001',
   max_words: 28,
   settled_partial_s: 1.1,
+  settled_partial_fast_s: 0.35,
+  prosody_enabled: true,
   unfinished_wait_s: 1.6,
   wait_for_hello_s: 2.5,
   backchannel_chance: 0.45,
@@ -422,6 +426,19 @@ export default function CrmFishAgentPage() {
 
         <Field label="Pause before she answers" hint="How long a transcript must stop changing before she treats you as finished. The transcription service takes about 2 seconds to declare a turn over on its own, so acting on the pause is the single biggest speed win there is. Too short and she cuts into your thinking pauses, which is what a live call at 0.45s did.">
           <Slider value={cfg.settled_partial_s} onChange={(n) => set('settled_partial_s', n)} min={0.3} max={2.5} step={0.05} suffix="s" />
+        </Field>
+
+        <Field label="Hear when they have finished (prosody)" hint="English marks the end of a sentence in the voice before the silence arrives: a statement falls away, a question rises, a thinking pause holds level and stays loud. When she can hear that the sentence landed, she uses the short pause below instead of the long one above. When she cannot tell, the long one stands, so the worst case is the old behaviour. Costs 0.7% of a processor core, measured.">
+          <label className="flex items-center gap-2 text-[13px] text-[#1A1A1A]">
+            <input type="checkbox" className="accent-[#3C5A87] w-4 h-4"
+                   checked={cfg.prosody_enabled}
+                   onChange={(e) => set('prosody_enabled', e.target.checked)} />
+            Read pitch and loudness to spot a finished sentence
+          </label>
+        </Field>
+
+        <Field label="Pause when she HEARD it finish" hint="Used instead of the wait above when the pitch fell away or rose into a question. There is nothing left to wait for at that point, because the person has audibly stopped. Turn prosody off to go back to the long wait on every turn.">
+          <Slider value={cfg.settled_partial_fast_s} onChange={(n) => set('settled_partial_fast_s', n)} min={0.15} max={1.2} step={0.05} suffix="s" />
         </Field>
 
         <Field label="Wait on an unfinished thought" hint="When you stop on an obvious dangling word (&quot;we've got about twenty, but&quot;) she holds on this long for the rest instead of answering half a sentence.">

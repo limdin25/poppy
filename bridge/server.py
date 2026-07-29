@@ -25,7 +25,8 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import agent, ai, assembly_stt, config, fish_stream, run as runmod, settings
+from . import (agent, ai, assembly_stt, config, fish_stream, prosody,
+               run as runmod, settings)
 from .telnyx import TelnyxTransport
 
 TRANSCRIPTS = Path(__file__).resolve().parent / "transcripts"
@@ -253,6 +254,27 @@ def _run_call(number: str, from_number: str, business, reviews) -> None:
                 a.ears = ears
                 transport.listener = ears.feed
                 log("EARS     | live transcription open")
+                # The same far-end audio, read a second way. AssemblyAI reports
+                # the WORDS; this reports whether the sentence landed, from the
+                # pitch falling away or rising into a question. Costs 0.7% of a
+                # core, measured, and lets a finished sentence be answered in
+                # 0.35s instead of the 1.1s that silence alone demands.
+                if config.PROSODY_ENABLED:
+                    ear_feed = ears.feed
+                    reader = prosody.Prosody()
+                    a.prosody = reader
+
+                    def both(raw: bytes, _t=ear_feed, _p=reader) -> None:
+                        _t(raw)
+                        try:
+                            _p.feed(raw)
+                        except Exception as e:
+                            # Never let the contour reader break transcription.
+                            # It is an optimisation; the words are the product.
+                            log(f"PROSODY  | reader stopped: {e}")
+
+                    transport.listener = both
+                    log("PROSODY  | pitch and loudness reader on")
             else:
                 log(f"EARS     | streaming unavailable, using batch ({ears._failed})")
 

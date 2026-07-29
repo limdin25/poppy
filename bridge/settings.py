@@ -65,6 +65,7 @@ def apply(cfg: dict) -> list[str]:
         # Turn taking. These decide whether she talks over people, and they are
         # the settings most worth an ear rather than an argument.
         "settled_partial_s": "SETTLED_PARTIAL_S",
+        "settled_partial_fast_s": "SETTLED_PARTIAL_FAST_S",
         "unfinished_wait_s": "UNFINISHED_WAIT_S",
         "wait_for_hello_s": "WAIT_FOR_HELLO_S",
         "backchannel_chance": "BACKCHANNEL_CHANCE",
@@ -88,6 +89,9 @@ def apply(cfg: dict) -> list[str]:
     # effect whatsoever on a call, which is the exact failure this module's
     # docstring warns about. They are separate from the mapping above because
     # neither is a plain scalar copied onto config.
+    if isinstance(cfg.get("prosody_enabled"), bool):
+        config.PROSODY_ENABLED = cfg["prosody_enabled"]
+        changed.append(f"prosody_enabled={cfg['prosody_enabled']}")
     if isinstance(cfg.get("emotions_enabled"), bool):
         config.CUES_ENABLED = cfg["emotions_enabled"]
         changed.append(f"emotions_enabled={cfg['emotions_enabled']}")
