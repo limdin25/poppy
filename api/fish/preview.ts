@@ -9,52 +9,57 @@
 // wrong thing to judge: a voice can sound lovely in a browser and be thin and
 // quiet on a call, which is precisely the trap the library voices fall into
 // (they arrive around -23 dBFS where a line wants about -17).
+//
+// Node handler style (IncomingMessage/ServerResponse), matching api/vsl/page.ts.
+// The Web-API style did not deploy in this project.
 
-export const config = { runtime: 'nodejs' };
+import type { IncomingMessage, ServerResponse } from 'http';
 
 const FISH_URL = 'https://api.fish.audio/v1/tts';
 
-interface Body {
-  text?: string;
-  voice_id?: string;
-  model?: string;
-  speed?: number;
-  volume?: number;
-  temperature?: number;
-  top_p?: number;
-  chunk_length?: number;
-  telephony?: boolean;
+function json(res: ServerResponse, status: number, body: unknown): void {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
-  }
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (c) => { data += c; });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
+
   const key = process.env.FISH_API_KEY;
-  if (!key) {
-    return Response.json({ error: 'FISH_API_KEY is not set on the server.' }, { status: 500 });
-  }
+  if (!key) return json(res, 500, { error: 'FISH_API_KEY is not set on the server.' });
 
-  let body: Body;
+  let body: Record<string, unknown>;
   try {
-    body = (await req.json()) as Body;
+    body = JSON.parse((await readBody(req)) || '{}');
   } catch {
-    return Response.json({ error: 'Bad JSON.' }, { status: 400 });
+    return json(res, 400, { error: 'Bad JSON.' });
   }
 
-  const text = (body.text ?? '').trim();
-  if (!text) return Response.json({ error: 'Nothing to say.' }, { status: 400 });
-  if (text.length > 600) return Response.json({ error: 'Keep the preview under 600 characters.' }, { status: 400 });
+  const text = String(body.text ?? '').trim();
+  if (!text) return json(res, 400, { error: 'Nothing to say.' });
+  if (text.length > 600) return json(res, 400, { error: 'Keep the preview under 600 characters.' });
 
   // Refused rather than defaulted. With no reference_id Fish generates a brand
   // new random voice per request, so a preview would not represent anything.
-  const voice = (body.voice_id ?? '').trim();
+  const voice = String(body.voice_id ?? '').trim();
   if (!voice) {
-    return Response.json(
-      { error: 'Set a voice ID first. Without one Fish invents a different voice every time.' },
-      { status: 400 },
-    );
+    return json(res, 400, {
+      error: 'Set a voice ID first. Without one Fish invents a different voice every time.',
+    });
   }
+
+  const num = (v: unknown, fallback: number) =>
+    (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
   const telephony = body.telephony !== false;
   const payload = {
@@ -64,41 +69,42 @@ export default async function handler(req: Request): Promise<Response> {
     sample_rate: telephony ? 8000 : 44100,
     latency: 'low',
     normalize: true,
-    chunk_length: body.chunk_length ?? 120,
-    temperature: body.temperature ?? 0.7,
-    top_p: body.top_p ?? 0.7,
+    chunk_length: num(body.chunk_length, 120),
+    temperature: num(body.temperature, 0.7),
+    top_p: num(body.top_p, 0.7),
     prosody: {
-      speed: body.speed ?? 1.15,
-      volume: body.volume ?? 6,
+      speed: num(body.speed, 1.15),
+      volume: num(body.volume, 6),
       normalize_loudness: true,
     },
   };
 
   const started = Date.now();
-  const upstream = await fetch(FISH_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      model: body.model ?? 's2.1-pro-free',
-    },
-    body: JSON.stringify(payload),
-  });
+  let upstream: globalThis.Response;
+  try {
+    upstream = await fetch(FISH_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        model: String(body.model ?? 's2.1-pro-free'),
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    return json(res, 502, { error: `Could not reach Fish: ${(e as Error).message}` });
+  }
 
   if (!upstream.ok) {
     const detail = (await upstream.text()).slice(0, 300);
-    return Response.json({ error: `Fish returned ${upstream.status}: ${detail}` }, { status: 502 });
+    return json(res, 502, { error: `Fish returned ${upstream.status}: ${detail}` });
   }
 
-  const audio = await upstream.arrayBuffer();
-  return new Response(audio, {
-    status: 200,
-    headers: {
-      'Content-Type': 'audio/wav',
-      'Cache-Control': 'no-store',
-      // Surfaced in the UI so the tuning shows its own cost.
-      'X-Fish-Ms': String(Date.now() - started),
-      'X-Fish-Bytes': String(audio.byteLength),
-    },
-  });
+  const audio = Buffer.from(await upstream.arrayBuffer());
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'audio/wav');
+  res.setHeader('Cache-Control', 'no-store');
+  // Surfaced in the UI so the tuning shows its own cost.
+  res.setHeader('X-Fish-Ms', String(Date.now() - started));
+  res.end(audio);
 }
