@@ -426,8 +426,18 @@ FISH_LATENCY = os.environ.get("BRIDGE_FISH_LATENCY", "low")
 #
 # So 0.9 is not a compromise, it is strictly better than 1.0 here. Do not go
 # back to 0.7: that is where the emotion cues stop doing anything at all.
-FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "0.9"))
-FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.9"))
+# Lowered 0.9 -> 0.7 on 2026-07-31, and CEILINGED. The saved settings row had
+# pushed these to 0.95, which is the sampling regime where S2.1 invents random
+# noises and slips into other languages mid-sentence, both heard by Hugo on
+# live calls. Fish's own stable default is 0.7. The character of the voice
+# lives in the reference, the cues and the prosody settings, not up here in
+# the sampling tail, so this trims the glitches without touching the vibe.
+# The MAX values are enforced in settings.apply(), so a hot value saved on
+# the settings page is clamped on its way onto a call rather than trusted.
+FISH_TEMPERATURE = float(os.environ.get("BRIDGE_FISH_TEMPERATURE", "0.7"))
+FISH_TOP_P = float(os.environ.get("BRIDGE_FISH_TOP_P", "0.7"))
+FISH_TEMPERATURE_MAX = float(os.environ.get("BRIDGE_FISH_TEMPERATURE_MAX", "0.8"))
+FISH_TOP_P_MAX = float(os.environ.get("BRIDGE_FISH_TOP_P_MAX", "0.9"))
 
 # --- Emotion cues: block the NOISES, allow the feelings ---------------------
 # Hugo: "she has access to all emotions she wants to use, that might be

@@ -166,6 +166,10 @@ class FishStream:
                     "sample_rate": 8000,
                     "latency": config.FISH_LATENCY,
                     "chunk_length": config.FISH_CHUNK,
+                    # Text normalization, same as the HTTP path has always
+                    # sent. Numbers and prices read raw are a stability risk,
+                    # and the two paths should speak "149" the same way.
+                    "normalize": True,
                     # Carry voice and prosody across chunk boundaries. It is
                     # their default, but a long reply that overflows
                     # chunk_length is still split, and this is what stops the

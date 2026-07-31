@@ -1781,6 +1781,58 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("only the target language's characters ever reach the voice")
+def _():
+    # Fish performs whatever it is given: one CJK or Cyrillic character in the
+    # text is a language-switch trigger, an emoji is an invitation to improvise
+    # a noise. The model is not supposed to produce them, and "not supposed to"
+    # has never once held, so the constraint lives at the last gate. Accented
+    # Latin folds to plain ASCII rather than vanishing: a dropped letter would
+    # garble the word instead of just flattening the accent.
+    assert agent.straighten("你好 there").strip() == "there"
+    assert "👍" not in agent.straighten("Great 👍 stuff")
+    assert agent.straighten("a café visit") == "a cafe visit"
+    assert agent.straighten("Привет, hello") .strip(" ,") == "hello"
+    assert agent.straighten("£149 a month") == "GBP 149 a month"
+    # And the existing rules still hold through the fold.
+    assert agent.straighten("wait — no") == "wait, no"
+
+
+@case("the sampling ceiling holds even against the settings page")
+def _():
+    # The saved fish_config had temperature 0.95 / top_p 0.95, which is the
+    # regime where S2.1 invents noises and slips language. The ceiling is
+    # enforced where the settings land, so a hot value saved in Supabase is
+    # clamped on its way onto a call rather than trusted.
+    from . import settings
+    old_t, old_p = config.FISH_TEMPERATURE, config.FISH_TOP_P
+    try:
+        changed = settings.apply({"temperature": 0.95, "top_p": 0.98})
+        assert config.FISH_TEMPERATURE <= config.FISH_TEMPERATURE_MAX
+        assert config.FISH_TOP_P <= config.FISH_TOP_P_MAX
+        assert any("clamped" in c for c in changed), changed
+        # A sane saved value passes through untouched.
+        settings.apply({"temperature": 0.6, "top_p": 0.7})
+        assert config.FISH_TEMPERATURE == 0.6
+        assert config.FISH_TOP_P == 0.7
+    finally:
+        config.FISH_TEMPERATURE, config.FISH_TOP_P = old_t, old_p
+    # And the shipped defaults respect their own ceiling.
+    assert float(__import__("os").environ.get("BRIDGE_FISH_TEMPERATURE", "0.7")) \
+        <= config.FISH_TEMPERATURE_MAX
+
+
+@case("the Fish socket asks for text normalization, same as the HTTP path")
+def _():
+    # Numbers, dates and prices read raw are a stability risk the HTTP path
+    # already guards with normalize=true. The websocket start request never
+    # sent it, so the two paths spoke "149" differently.
+    from pathlib import Path
+    from . import fish_stream
+    src = Path(fish_stream.__file__.replace(".pyc", ".py")).read_text()
+    assert '"normalize": True' in src
+
+
 @case("a held contour waits out the pause instead of guessing the end")
 def _():
     # "No more guessing the end of a sentence." The prosody reader saying

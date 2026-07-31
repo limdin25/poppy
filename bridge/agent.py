@@ -13,6 +13,7 @@ import random
 import re
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -227,10 +228,27 @@ _SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.!?;:])")
 _MISSING_SPACE = re.compile(r"([,;:])(?=[A-Za-z])|([.!?])(?=[A-Z])")
 
 
+# Currency that ASCII folding would silently delete rather than read. "£149"
+# with the pound sign dropped becomes "149", which is a different price.
+_CURRENCY = {"£": "GBP ", "€": "EUR "}
+
+
 def straighten(text: str) -> str:
-    """Replace punctuation we never use with the plain equivalent."""
+    """Replace punctuation we never use, then fold everything to ASCII.
+
+    The fold is the language firewall. Fish performs whatever characters it is
+    given: one CJK or Cyrillic glyph in the text invites a language switch,
+    an emoji invites an improvised noise. The model is told to write plain
+    American English, and told-in-the-prompt has never once held here, so the
+    constraint is enforced at the last gate instead. NFKD first, so accented
+    Latin flattens to its base letter ("café" -> "cafe") rather than
+    vanishing and garbling the word.
+    """
     for bad, good in _PUNCTUATION.items():
         text = text.replace(bad, good)
+    for bad, good in _CURRENCY.items():
+        text = text.replace(bad, good)
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     text = _SPACED_HYPHEN.sub(", ", text)
     text = _SPACE_BEFORE_PUNCT.sub(r"\1", text)
     return _MISSING_SPACE.sub(lambda m: (m.group(1) or m.group(2)) + " ", text)

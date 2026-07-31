@@ -73,14 +73,24 @@ def apply(cfg: dict) -> list[str]:
         "barge_margin_db": "TELNYX_BARGE_MARGIN_DB",
         "finish_word_ms": "FINISH_WORD_MS",
     }
+    # The sampling ceilings. A saved temperature of 0.95 is where the voice
+    # starts inventing noises and slipping language, and the settings page
+    # will happily save one, so the clamp lives here where the value lands.
+    ceilings = {"FISH_TEMPERATURE": config.FISH_TEMPERATURE_MAX,
+                "FISH_TOP_P": config.FISH_TOP_P_MAX}
     for src, dest in mapping.items():
         value = cfg.get(src)
         if value in (None, ""):
             continue
         try:
             current = getattr(config, dest)
-            setattr(config, dest, type(current)(value))
-            changed.append(f"{src}={value}")
+            value = type(current)(value)
+            if dest in ceilings and value > ceilings[dest]:
+                changed.append(f"{src}={value} clamped to {ceilings[dest]}")
+                value = ceilings[dest]
+            else:
+                changed.append(f"{src}={value}")
+            setattr(config, dest, value)
         except (TypeError, ValueError):
             continue
 
