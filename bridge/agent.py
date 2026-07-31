@@ -1169,7 +1169,7 @@ class Agent:
                 # produced up to now, because on that path the sentence does not
                 # exist yet when playback begins.
                 current = spoken_words(text or (so_far() if so_far else ""))
-                if not self._confirm_barge(elapsed_ms, current):
+                if not self._confirm_barge(elapsed_ms, current, since=began):
                     # Noise, echo or a murmur, not a person taking the floor.
                     # Reset rather than hold: real speech re-accumulates in a
                     # few hundred ms and by then the transcriber has words to
@@ -1246,7 +1246,8 @@ class Agent:
         # the order she said it, not a bag of words that happen to appear.
         return theirs in mine_raw
 
-    def _confirm_barge(self, elapsed_ms: float, current: str) -> bool:
+    def _confirm_barge(self, elapsed_ms: float, current: str,
+                       since: float = 0.0) -> bool:
         """Stage two of the interrupt decision: is this a person taking the floor?
 
         Stage one is the VAD's sustained-speech trigger, and on its own it is a
@@ -1274,12 +1275,17 @@ class Agent:
         """
         if self.ears is None:
             return True
-        fn = (getattr(self.ears, "recent_speech", None)
-              or getattr(self.ears, "partial_text", None))
-        if fn is None:
-            return True
         try:
-            partial = (fn() or "").strip()
+            fn = getattr(self.ears, "recent_speech", None)
+            if fn is not None:
+                # `since` is her own start: anything older is the turn she is
+                # answering, not an interruption of it.
+                partial = (fn(since=since) or "").strip()
+            else:
+                fn = getattr(self.ears, "partial_text", None)
+                if fn is None:
+                    return True
+                partial = (fn() or "").strip()
         except Exception:
             return True        # a broken reader must not lock out interruptions
         if not partial:

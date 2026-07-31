@@ -270,20 +270,31 @@ class AssemblyStream:
         """
         return self._partial.strip()
 
-    def recent_speech(self, within_s: float = 1.5) -> str:
-        """What they are saying now, OR just finished saying.
+    def recent_speech(self, since: float = 0.0, within_s: float = 1.5) -> str:
+        """What they are saying now, OR just finished saying since `since`.
 
         The barge confirm's question is "is a person talking", and the
         partial alone cannot answer it: a short interruption is finalized
         fast, the partial empties, and the cut that should have happened got
         vetoed. She powered through a live prospect's words exactly this way.
+
+        `since` is what stops the cure being worse than the disease. Without
+        it this returned the final of the turn she was REPLYING TO, so the
+        confirm saw a speaker the instant her audio began and chopped every
+        reply after a word or two: "So I", "So", "So righ" on a live call.
+        Speech that finished before she opened her mouth is not an
+        interruption of the answer it caused.
         """
         text = self._partial.strip()
         if text:
             return text
-        if self._last_final and time.monotonic() - self._last_final_at <= within_s:
-            return self._last_final.strip()
-        return ""
+        if not self._last_final:
+            return ""
+        if self._last_final_at < since:
+            return ""
+        if time.monotonic() - self._last_final_at > within_s:
+            return ""
+        return self._last_final.strip()
 
     def settled_partial(self, stable_for_s: float,
                         min_words: int | None = None) -> str | None:

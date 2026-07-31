@@ -2347,6 +2347,31 @@ def _():
     assert a._answerphone(r3)
 
 
+@case("the turn she is answering is not an interruption of her answer")
+def _():
+    # THE [CUT] STORM, live 12:23 to 12:26: every reply chopped after one or
+    # two words, "So I", "So", "So righ", over and over, which reads on the
+    # phone as her fighting for the microphone. recent_speech() returned the
+    # FINAL of the very turn she was replying to, so the barge confirm saw
+    # "a human is talking" the instant her audio began and cut her at 250ms.
+    # Speech that finished BEFORE she started is not an interruption of what
+    # it caused.
+    import time as _t
+    from . import assembly_stt
+    s = assembly_stt.AssemblyStream.__new__(assembly_stt.AssemblyStream)
+    s._partial = ""
+    s._last_final = "yes hugo speaking"
+    began = _t.monotonic()
+    s._last_final_at = began - 0.3          # he finished, THEN she started
+    assert s.recent_speech(since=began) == ""
+    s._last_final_at = began + 0.1          # he cut in while she was talking
+    assert s.recent_speech(since=began) == "yes hugo speaking"
+    # A live partial is happening NOW whatever the clock says.
+    s._partial = "hang on"
+    s._last_final_at = began - 5.0
+    assert s.recent_speech(since=began) == "hang on"
+
+
 @case("a finalized burst still counts as the prospect speaking")
 def _():
     # "Totally oblivious when the user takes the floor." The mechanism: a
@@ -2384,7 +2409,7 @@ def _():
     class FakeEars:
         def __init__(self):
             self.speech = ""
-        def recent_speech(self):
+        def recent_speech(self, since=0.0):
             return self.speech
 
     a = agent.Agent.__new__(agent.Agent)
@@ -2441,6 +2466,34 @@ def _():
     # And a rig with no live transcriber keeps the one-stage behaviour.
     a.ears = None
     assert a._confirm_barge(early, current)
+
+
+@case("she never asks who is calling, because she is the one who called")
+def _():
+    # Live, 12:25: Hugo asked "Maria, is she there?" and she answered
+    # "Sorry, who's asking?" That is a RECEPTIONIST TAKING a call, and she
+    # placed this one. The model loses the frame under a confusing input,
+    # the same way it lost it into stage-direction narration, so the fix is
+    # the same: code, not a prompt line it can drift away from.
+    for line in ["Sorry, who's asking?", "Who is calling, please?",
+                 "Can I ask who's calling?"]:
+        out, notes = copy_guard.swap(line)
+        low = out.lower()
+        assert "who's asking" not in low and "who is calling" not in low, out
+        assert "who's calling" not in low, out
+        assert "maria" in low and "?" not in out, out
+        assert notes, notes
+
+
+@case("no hey: she opens with hi")
+def _():
+    # Hugo, 2026-07-31: "i dont like the hey". It came from the prompt's own
+    # American-register list, so both the list and the output are fixed.
+    out, notes = copy_guard.swap("Hey Hugo, it's Maria.")
+    assert out == "Hi Hugo, it's Maria.", out
+    out, _ = copy_guard.swap("hey, it's Maria")
+    assert out == "hi, it's Maria", out
+    assert notes
 
 
 @case("the call-centre acknowledgements are stripped from a reply's opening")

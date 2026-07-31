@@ -184,6 +184,26 @@ SWAPS: tuple[tuple[str, str], ...] = (
     ("ha ha", ""),
     ("hehehe", ""),
     ("hehe", ""),
+    # THE FRAME. She placed this call, and under a confusing input the model
+    # answers as if she had received one: "Sorry, who's asking?" to a live
+    # prospect on 2026-07-31, which is a receptionist taking a call, not
+    # somebody who dialled it. The question mark is inside the pattern so the
+    # replacement lands as a statement rather than a rising fragment, and the
+    # longer forms come first so they win.
+    ("can i ask who's calling?", "it's Maria, I called you a minute ago."),
+    ("can i ask who's calling", "it's Maria, I called you a minute ago"),
+    ("who's asking?", "it's Maria, I called you a minute ago."),
+    ("who is asking?", "it's Maria, I called you a minute ago."),
+    ("who's calling?", "it's Maria, I called you a minute ago."),
+    ("who is calling, please?", "it's Maria, I called you a minute ago."),
+    ("who is calling?", "it's Maria, I called you a minute ago."),
+    ("who's asking", "it's Maria, I called you a minute ago"),
+    ("who is asking", "it's Maria, I called you a minute ago"),
+    ("who's calling", "it's Maria, I called you a minute ago"),
+    ("who is calling", "it's Maria, I called you a minute ago"),
+    # Hugo, 2026-07-31: "i dont like the hey". It came out of the prompt's
+    # own American-register list, which is fixed too.
+    ("hey", "hi"),
     # Profanity. Never yet seen in a transcript, and the day the model writes
     # one must not be the day a prospect hears it. Deletions, not euphemisms:
     # "that's fucking great" reads fine as "that's great".
