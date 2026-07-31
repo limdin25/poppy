@@ -772,6 +772,72 @@ async function stageSeedance(state: BenchState): Promise<void> {
   });
 }
 
+// The tuned rebuttal to "the mouth opens too big": the same take with the
+// voice at natural speed (1.2 is the phone-call setting; video mouths track
+// audio pace) and a direction that explicitly forbids over-articulation.
+async function stagePolish(state: BenchState): Promise<void> {
+  const naturalKey = 'voice:s15-natural';
+  const existing = state.artifacts[naturalKey];
+  if (!existing || !existsSync(existing)) {
+    await paidCall(state, naturalKey, EST_USD.voice_take, async () => {
+      const res = await fetch('https://api.fish.audio/v1/tts', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env('FISH_API_KEY')}`,
+          'Content-Type': 'application/json',
+          model: 's2.1-pro',
+        },
+        // Bench-only natural-pace take; the product's 1.2 stays canon for
+        // calls and is asserted by the provider tests.
+        body: JSON.stringify({
+          text: SCRIPTS.s15,
+          reference_id: MARIA_REFERENCE_ID,
+          format: 'wav',
+          sample_rate: 44100,
+          normalize: true,
+          latency: 'low',
+          prosody: { speed: 1.0, normalize_loudness: true },
+        }),
+      });
+      if (!res.ok) throw new Error(`Fish natural take failed: ${res.status}`);
+      const wav = Buffer.from(await res.arrayBuffer());
+      const outPath = join(OUT_DIR, 'voices/s15-natural.wav');
+      mkdirSync(dirname(outPath), { recursive: true });
+      writeFileSync(outPath, wav);
+      state.artifacts[naturalKey] = outPath;
+      saveState(state);
+      console.log(`[ok] ${naturalKey} (${wavDurationSeconds(wav.byteLength, 44100).toFixed(1)}s)`);
+      return 'inline-done';
+    });
+  }
+  if (!state.uploads['voice-natural']) {
+    state.uploads['voice-natural'] = await uploadToBucket(state.artifacts[naturalKey]!, 'voice-s15-natural.wav', 'audio/wav');
+    saveState(state);
+  }
+  const voice = await freshUpload(state, 'voice-natural');
+  const composite = await freshUpload(state, 'composite');
+  const wav = readFileSync(state.artifacts[naturalKey]!);
+  const seconds = Math.ceil(wavDurationSeconds(wav.byteLength, 44100));
+  await falRun({
+    state,
+    key: 'talking:kling-pro-tuned',
+    contender: 'kling-avatar-2-pro-tuned',
+    modelPath: 'fal-ai/kling-video/ai-avatar/v2/pro',
+    submitRequest: {
+      ...buildKlingAvatarSubmit({
+        apiKey: env('FAL_KEY'),
+        imageUrl: composite.signedUrl,
+        audioUrl: voice.signedUrl,
+        prompt:
+          'She speaks softly and naturally to the camera, subtle small mouth movements, lips barely part between words, no exaggerated articulation, gentle slow head movement, she keeps the serum bottle steady near her shoulder with the label facing the camera, calm relaxed energy like a casual selfie video.',
+      }),
+      url: 'https://queue.fal.run/fal-ai/kling-video/ai-avatar/v2/pro',
+    },
+    estUsd: seconds * EST_USD.kling_pro_second,
+    outFile: 'talking/kling-pro-tuned.mp4',
+  });
+}
+
 function stageReport(state: BenchState): void {
   console.log('\n=== BENCH REPORT ===');
   console.log(`Estimated spend: $${state.spend.reduce((s, e) => s + e.estUsd, 0).toFixed(2)} of $${budgetUsd()}`);
@@ -797,6 +863,7 @@ try {
   else if (stage === 'upload') await stageUpload(state);
   else if (stage === 'talking') await stageTalking(state);
   else if (stage === 'seedance') await stageSeedance(state);
+  else if (stage === 'polish') await stagePolish(state);
   else if (stage === 'report') stageReport(state);
   else {
     console.log('Usage: node bench/dist/run-bench.mjs <verify|fixtures|voices|composites|upload|talking|seedance|report>');
