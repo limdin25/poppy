@@ -199,8 +199,14 @@ def _():
         "samples jump as much as the signal swings, which is hiss not room tone"
     )
     assert abs(level - _telnyx.COMFORT_NOISE_DBFS) < 3, level
-    assert level < -config.TELNYX_BARGE_MARGIN_DB - 15, (
-        f"{level:.0f} dBFS is close enough to the interrupt threshold to trip it"
+    # Below any speech by a wide margin. The old bound demanded 15 dB under
+    # the barge margin, written when the floor sat at -48; the floor is now
+    # MATCHED to the voice model's own -36 reference noise (Hugo, three
+    # times: the room must not cut out), and that is still safe for the
+    # interrupt: the far end's echo path loses 20+ dB, and the baseline is
+    # measured with the tone already running, so the margin rides above it.
+    assert level < -30.0, (
+        f"{level:.0f} dBFS is loud enough to read as speech on the far end"
     )
 
     # Not while it is still ringing.

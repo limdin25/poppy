@@ -633,6 +633,14 @@ def _allowed_cue(raw: str) -> str | None:
     # caricature and not a person".
     if cue.startswith("extremely "):
         cue = "very " + base
+    # The laugh-prone pair renders as its calmer siblings. Three laugh
+    # reports now, and the last one arrived "out of the blue... sounds even
+    # scary" at the close of a call, which is exactly where the prompt sends
+    # her to [delighted] and [excited]. On an expressive voice those ARE the
+    # giggle; [happy] and [confident] carry the same warmth without it.
+    remap = {"delighted": "happy", "excited": "confident"}
+    if base in remap:
+        cue = cue[:len(cue) - len(base)] + remap[base]
     return cue
 
 

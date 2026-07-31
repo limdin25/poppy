@@ -1781,6 +1781,26 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("the laugh-prone cues are remapped before the voice ever sees them")
+def _():
+    # The laugh is back for the third time, now at the END of calls, "sounds
+    # even scary". The prompt sends her to [delighted] and [excited] exactly
+    # at the close, and on an expressive voice those perform as a giggle or
+    # worse. The noise cues were banned twice already; the high-arousal pair
+    # is the remaining door, and they render as their calmer siblings.
+    old = config.CUES_ENABLED
+    config.CUES_ENABLED = True
+    try:
+        assert agent._allowed_cue("delighted") == "happy"
+        assert agent._allowed_cue("very delighted") == "very happy"
+        assert agent._allowed_cue("excited") == "confident"
+        assert agent._allowed_cue("quite excited") == "quite confident"
+        # The cap and the remap compose.
+        assert agent._allowed_cue("extremely excited") == "very confident"
+    finally:
+        config.CUES_ENABLED = old
+
+
 @case("no hum-murmurs: every backchannel is a real word")
 def _():
     # The linguistic hallucinations concentrate where the voice model gets
@@ -1900,9 +1920,12 @@ def _():
     # it was mixed in but fully masked; -42 keeps it present without becoming
     # hiss. One constant feeds both the between-turns frames and the
     # under-voice mixing, so there is never a level seam.
+    # Measured 2026-07-31 on the live voice: its baked-in reference noise
+    # floor is -36.2 dBFS, and a synthetic floor 6 dB under that IS the dead
+    # air Hugo kept reporting; the room has to match the voice's own room.
     from . import telnyx
-    assert telnyx.COMFORT_NOISE_DBFS >= -43.0, telnyx.COMFORT_NOISE_DBFS
-    assert telnyx.COMFORT_NOISE_DBFS <= -38.0, telnyx.COMFORT_NOISE_DBFS
+    assert telnyx.COMFORT_NOISE_DBFS >= -38.0, telnyx.COMFORT_NOISE_DBFS
+    assert telnyx.COMFORT_NOISE_DBFS <= -33.0, telnyx.COMFORT_NOISE_DBFS
 
 
 @case("a struggle trip carries a thinking pause, a flow trip does not")
@@ -1962,7 +1985,7 @@ def _():
         out = "".join(agent.clean_cues(iter(
             ["[very warm] Hi. [genuinely delighted] Great."]),
             mood={"energy": "low"}))
-        assert "[warm]" in out and "[delighted]" in out, out
+        assert "[warm]" in out and "[happy]" in out, out
         assert "very" not in out and "genuinely" not in out, out
         out = "".join(agent.clean_cues(iter(["[very warm] Hi."]),
                                        mood={"energy": "high"}))
@@ -2183,7 +2206,6 @@ def _():
     old = config.CUES_ENABLED
     config.CUES_ENABLED = True
     try:
-        assert agent._allowed_cue("extremely excited") == "very excited"
         assert agent._allowed_cue("extremely warm") == "very warm"
         assert agent._allowed_cue("very warm") == "very warm"
         assert agent._allowed_cue("quite amused") == "quite amused"

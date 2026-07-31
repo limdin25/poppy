@@ -70,7 +70,15 @@ _add(Stage(
     "Say hello, give your name, say you are calling because you are LOOKING "
     "FOR A JOB, and ask if they mind you explaining. That is the whole turn. "
     "Do not say what you do, do not mention money. Your own words, different "
-    "every call: there is no line to deliver here.",
+    "every call: there is no line to deliver here.\n"
+    "HOW IT LANDS matters more than the words. The ask is an odd thing to "
+    "say and rushing past it is what sounds scripted, so give it a beat: a "
+    "[break] just before the ask itself, then say it plainly, then the "
+    "permission question and stop. \"Hey, it's Maria. [break] So this is a "
+    "bit of an odd one, I'm actually calling to ask for a job. Mind if I "
+    "explain?\" is the SHAPE, not a line to copy: short opener, breath, the "
+    "odd truth said straight, one question. Never pile the name, the reason "
+    "and the question into one breathless sentence.",
     (
         Exit("yes", "they said go on, or asked what you mean, or asked anything "
                     "at all about you. Any engagement counts", "explain"),
