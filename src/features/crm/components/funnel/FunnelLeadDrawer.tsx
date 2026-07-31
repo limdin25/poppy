@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  X, Pencil, Send, Copy, Check, ExternalLink, Bell, Play, ArrowRight,
+  X, Pencil, Send, Copy, Check, ExternalLink, Bell, Play, ArrowRight, Phone,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../../store/SmsV2Store';
@@ -33,9 +33,10 @@ import StageSelector from '../shared/StageSelector';
 import EditContactModal from '../contacts/EditContactModal';
 import ContactSmsModal from '../contacts/ContactSmsModal';
 import {
-  EVENT_LABELS, FULL_TIMELINE, boardKey, columnEnteredAt, stateMeta,
+  EVENT_LABELS, FULL_TIMELINE, boardKey, columnEnteredAt, stateMeta, canCloseCall,
   type VslPage,
 } from '../../lib/funnelStages';
+import { useDialerProModal } from '../../layout/DialerProModalContext';
 import {
   buildSentLog, countdownLabel, insideQuietHoursLondon, londonStamp,
 } from '../../lib/followUpTimeline';
@@ -141,6 +142,7 @@ export default function FunnelLeadDrawer({
 }: FunnelLeadDrawerProps) {
   const { contact, state } = useContactForPage(page.contact_id);
   const { upsertContact, patchContact, pushToast } = useSmsV2();
+  const { openDialerPro } = useDialerProModal();
   const persist = useContactPersistence();
   const [rows, setRows] = useState<EventRow[] | null>(null);
   const [editing, setEditing] = useState<Contact | null>(null);
@@ -385,6 +387,18 @@ export default function FunnelLeadDrawer({
 
           {/* ── actions ── */}
           <div className="flex flex-wrap gap-1.5 mb-4">
+            {/* First, and green, when they have watched: on this lead the call
+                is the job. Same button as the board card (canCloseCall). */}
+            {canCloseCall(page) && (
+              <button
+                onClick={() => openDialerPro(page.contact_id, { scriptKey: 'vsl_close' })}
+                data-testid="funnel-drawer-close-call"
+                title="Call them now with the close script (they watched the video)"
+                className={`${btn} text-white bg-[#16A34A] hover:bg-[#15803d]`}
+              >
+                <Phone className="w-3.5 h-3.5" /> Call to close
+              </button>
+            )}
             <button
               onClick={() => contact && setEditing(contact)}
               disabled={!canAct}

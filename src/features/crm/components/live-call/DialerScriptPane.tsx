@@ -18,14 +18,30 @@
 //
 // So editing never bakes one lead's numbers into the saved script, and every
 // agent dialling any lead sees that lead's own personalised script.
+//
+// TWO SCRIPTS, picked by `scriptKey`:
+//   'cold_call' (default) — one-call-script.html / wk_sales_script. Every
+//                           normal dial. Nothing passes the prop, so this path
+//                           behaves exactly as it did before the second script
+//                           existed.
+//   'vsl_close'           — vsl-close-script.html / wk_vsl_close_script. Only
+//                           when the dialer is opened from the video funnel
+//                           (?script=vsl_close) for a lead who already watched
+//                           their video.
+// Separate bundled files AND separate tables, so editing one can never touch
+// the other.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileText, Pencil, Printer, Save, X } from 'lucide-react';
 import scriptHtml from '@/core/content/one-call-script.html?raw';
+import vslCloseHtml from '@/core/content/vsl-close-script.html?raw';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useSalesScript } from '../../hooks/useSalesScript';
+import { useVslCloseScript } from '../../hooks/useVslCloseScript';
 import { interpolateScript, highlightTokens, stripHighlights } from '../../lib/interpolateScript';
 import type { Contact } from '../../types';
+
+export type ScriptKey = 'cold_call' | 'vsl_close';
 
 // Reuse the script's own print rules (hide topbar/rails/controls, page full
 // width) but apply them always, so the dialer shows only the centre column.
@@ -36,16 +52,31 @@ const LEAN_STYLE = `<style id="__dialer_lean__">
 #page[contenteditable="true"]{outline:2px solid #3C5A87;outline-offset:4px;border-radius:8px}
 </style>`;
 
-const LEAN_HTML = scriptHtml.replace('</head>', `${LEAN_STYLE}</head>`);
+const LEAN_HTML: Record<ScriptKey, string> = {
+  cold_call: scriptHtml.replace('</head>', `${LEAN_STYLE}</head>`),
+  vsl_close: vslCloseHtml.replace('</head>', `${LEAN_STYLE}</head>`),
+};
+
+const PANE_TITLE: Record<ScriptKey, string> = {
+  cold_call: 'Sales script',
+  vsl_close: 'Close script · they watched the video',
+};
 
 interface Props {
   /** The lead being dialled — its custom_fields fill the script's tokens. */
   contact?: Contact | null;
+  /** Which script to show. Omitted everywhere except the video funnel's
+   *  "Call to close" deep link, so every existing caller keeps the cold script. */
+  scriptKey?: ScriptKey;
 }
 
-export default function DialerScriptPane({ contact }: Props) {
+export default function DialerScriptPane({ contact, scriptKey = 'cold_call' }: Props) {
   const { isAdmin } = useAuth();
-  const { savedHtml, loading, saving, error, save } = useSalesScript();
+  // Both hooks run unconditionally (Rules of Hooks) and we use the one this
+  // pane is showing. The unused one is a single cheap singleton read.
+  const cold = useSalesScript();
+  const vslClose = useVslCloseScript();
+  const { savedHtml, loading, saving, error, save } = scriptKey === 'vsl_close' ? vslClose : cold;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [docReady, setDocReady] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -55,6 +86,20 @@ export default function DialerScriptPane({ contact }: Props) {
   const pageEl = useCallback((): HTMLElement | null => {
     return iframeRef.current?.contentDocument?.getElementById('page') ?? null;
   }, []);
+
+  // Swapping scripts swaps the iframe's srcDoc, so anything captured from the
+  // OLD document is now the wrong script's HTML. Drop it and let the effects
+  // below re-capture from the new one, or the close script would render the
+  // cold script's body.
+  const templateKeyRef = useRef<ScriptKey>(scriptKey);
+  useEffect(() => {
+    if (templateKeyRef.current === scriptKey) return;
+    templateKeyRef.current = scriptKey;
+    lastSavedRef.current = undefined;
+    setDocReady(false);
+    setTemplate(null);
+    setEditing(false);
+  }, [scriptKey]);
 
   // Establish / refresh the TEMPLATE. Runs once the iframe is ready and the
   // saved script has settled. When nothing is saved we capture the script's
@@ -111,7 +156,7 @@ export default function DialerScriptPane({ contact }: Props) {
     <div className="flex flex-col h-full bg-white">
       <div className="px-4 py-2.5 border-b border-[#E5E7EB] flex items-center gap-2">
         <FileText className="w-3.5 h-3.5 text-[#3C5A87]" />
-        <span className="text-[12px] font-semibold text-[#1A1A1A]">Sales script</span>
+        <span className="text-[12px] font-semibold text-[#1A1A1A]">{PANE_TITLE[scriptKey]}</span>
         {error && <span className="text-[10px] text-[#EF4444] truncate">⚠ {error}</span>}
         <div className="ml-auto flex items-center gap-1.5">
           {isAdmin && !editing && (
@@ -141,8 +186,8 @@ export default function DialerScriptPane({ contact }: Props) {
 
       <iframe
         ref={iframeRef}
-        title="Sales script"
-        srcDoc={LEAN_HTML}
+        title={PANE_TITLE[scriptKey]}
+        srcDoc={LEAN_HTML[scriptKey]}
         onLoad={() => setDocReady(true)}
         className="flex-1 w-full border-0"
       />

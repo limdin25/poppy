@@ -103,6 +103,23 @@ export function stateMeta(key: string): { label: string; color: string } {
 }
 
 /**
+ * Has this lead seen enough of the pitch to be worth the follow-up close call?
+ *
+ * NOT just the 'watched' column. Clicked / Checkout / Paid are all PAST watched
+ * (state is forward-only, so a lead who clicked the CTA is no longer in
+ * 'watched'), and they are the hottest leads on the board — leaving them
+ * without the button is exactly backwards.
+ *
+ * 'playing' is deliberately excluded: they are mid-video right now. Ringing
+ * them means interrupting the pitch to ask what they thought of it.
+ */
+const CLOSE_CALL_STAGES = new Set(['watched', 'cta_clicked', 'checkout_started', 'paid']);
+
+export function canCloseCall(p: StageShape): boolean {
+  return CLOSE_CALL_STAGES.has(boardKey(p));
+}
+
+/**
  * "A human must watch this and text it."
  *
  * NOT `render_status === 'ready'`: render_status never resets after sending, so

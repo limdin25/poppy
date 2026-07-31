@@ -16,7 +16,7 @@ test.describe('Dialer Pro — tabs, script, keypad', () => {
     // The sales script pane renders the script content in its iframe.
     await expect(page.getByText('Sales script', { exact: true })).toBeVisible({ timeout: 20000 })
     const frame = page.frameLocator('iframe[title="Sales script"]')
-    await expect(frame.locator('body')).toContainText(/One-Call Close/i, { timeout: 15000 })
+    await expect(frame.locator('body')).toContainText(/The 2-Minute Audit/i, { timeout: 15000 })
     // Admin sees Edit + Print on the script header; the script's own
     // "Open all objections" toolbar is hidden in the lean dialer view.
     await expect(page.getByRole('button', { name: /^Edit$/ })).toBeVisible()

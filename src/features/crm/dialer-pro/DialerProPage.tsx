@@ -22,7 +22,8 @@ import { useSpendLimit } from '@/features/crm/caller-pad/hooks/useSpendLimit';
 import { useKillSwitch } from '@/features/crm/caller-pad/hooks/useKillSwitch';
 import type { Campaign } from '@/features/crm/caller-pad/types';
 
-import DialerScriptPane from '@/features/crm/components/live-call/DialerScriptPane';
+import DialerScriptPane, { type ScriptKey } from '@/features/crm/components/live-call/DialerScriptPane';
+import { scriptForCall } from '@/features/crm/lib/scriptForCall';
 import DialerRightTabs from '@/features/crm/components/live-call/DialerRightTabs';
 import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaCompact';
 import CallTimeline from '@/features/crm/components/live-call/CallTimeline';
@@ -56,9 +57,14 @@ function formatDuration(sec: number): string {
 export default function DialerProPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const autoCallContactId = searchParams.get('call');
+  // Captured once: onAutoCallConsumed clears the query string, which would
+  // otherwise swap the script back to cold mid-call.
+  const [scriptKey] = useState<ScriptKey>(() =>
+    searchParams.get('script') === 'vsl_close' ? 'vsl_close' : 'cold_call');
   return (
     <DialerProContent
       autoCallContactId={autoCallContactId}
+      scriptKey={scriptKey}
       onAutoCallConsumed={() => setSearchParams({}, { replace: true })}
     />
   );
@@ -67,10 +73,13 @@ export default function DialerProPage() {
 interface DialerProContentProps {
   autoCallContactId?: string | null;
   pipelineColumnId?: string | null;
+  /** Which script the middle column reads. Defaults to the cold-call script,
+   *  so every caller that does not pass it is unchanged. */
+  scriptKey?: ScriptKey;
   onAutoCallConsumed?: () => void;
 }
 
-export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCallConsumed }: DialerProContentProps) {
+export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKey = 'cold_call', onAutoCallConsumed }: DialerProContentProps) {
   const { user, isAdmin } = useAuth();
   const impId = useImpersonatedAgentId();
   const userId = user?.id ?? null;
@@ -317,6 +326,19 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
     ?? queue[0]?.contactId
     ?? null;
   const [contact, setContact] = useState<Contact | null>(null);
+
+  // The close script belongs to the ONE lead the video funnel opened this room
+  // for. "Next call" / "Dial next" then pull the next lead off the normal cold
+  // queue, and without this the agent would still be looking at "I saw you'd
+  // watched it" while a cold plumber picks up. Captured in a ref because
+  // clearAutoCall nulls autoCallContactId as soon as the dial fires.
+  const closeCallContactIdRef = useRef<string | null>(autoCallContactId ?? null);
+  const paneScriptKey = scriptForCall({
+    openedWith: scriptKey,
+    openedForContactId: closeCallContactIdRef.current,
+    currentLeadContactId: state.currentLead?.contactId ?? null,
+  });
+
   // The lead on the phone, through the same batched hook every other surface
   // uses, with a list of one.
   const funnelIds = useMemo(() => (contact?.id ? [contact.id] : []), [contact?.id]);
@@ -750,7 +772,12 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, onAutoCa
 
           {/* COL 2 — Sales script: editable (admin), lean, read live. */}
           <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
-            <DialerScriptPane contact={contact} />
+            {/* key= forces a clean remount on a script switch. Without it the
+                pane's srcDoc changes while its captured template/docReady state
+                is still the old script's, and the onLoad it depends on may
+                already have fired — leaving the previous script (or a blank
+                pane) on screen at the exact moment it matters. */}
+            <DialerScriptPane key={paneScriptKey} contact={contact} scriptKey={paneScriptKey} />
           </ResizablePanel>
 
           <ResizableHandle withHandle />

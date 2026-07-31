@@ -1,14 +1,16 @@
 import { createContext, useCallback, useContext, useState } from 'react';
+import type { ScriptKey } from '@/features/crm/components/live-call/DialerScriptPane';
 
 interface DialerProModalState {
   isOpen: boolean;
   isMinimized: boolean;
   contactId: string | null;
   pipelineColumnId: string | null;
+  scriptKey: ScriptKey;
 }
 
 interface DialerProModalApi {
-  openDialerPro: (contactId: string, opts?: { pipelineColumnId?: string }) => void;
+  openDialerPro: (contactId: string, opts?: { pipelineColumnId?: string; scriptKey?: ScriptKey }) => void;
   /** Drop the pending auto-call once it has been dialled — see below. */
   clearAutoCall: () => void;
   closeDialerPro: () => void;
@@ -18,6 +20,9 @@ interface DialerProModalApi {
   isMinimized: boolean;
   contactId: string | null;
   pipelineColumnId: string | null;
+  /** Which script the call room shows. Only the video funnel passes anything
+   *  but the default, so every other Call button is unchanged. */
+  scriptKey: ScriptKey;
 }
 
 const Ctx = createContext<DialerProModalApi | null>(null);
@@ -28,15 +33,17 @@ export function DialerProModalProvider({ children }: { children: React.ReactNode
     isMinimized: false,
     contactId: null,
     pipelineColumnId: null,
+    scriptKey: 'cold_call',
   });
 
   const openDialerPro = useCallback(
-    (contactId: string, opts?: { pipelineColumnId?: string }) => {
+    (contactId: string, opts?: { pipelineColumnId?: string; scriptKey?: ScriptKey }) => {
       setState({
         isOpen: true,
         isMinimized: false,
         contactId,
         pipelineColumnId: opts?.pipelineColumnId ?? null,
+        scriptKey: opts?.scriptKey ?? 'cold_call',
       });
     },
     [],
@@ -51,7 +58,7 @@ export function DialerProModalProvider({ children }: { children: React.ReactNode
   }, []);
 
   const closeDialerPro = useCallback(() => {
-    setState({ isOpen: false, isMinimized: false, contactId: null, pipelineColumnId: null });
+    setState({ isOpen: false, isMinimized: false, contactId: null, pipelineColumnId: null, scriptKey: 'cold_call' });
   }, []);
 
   const minimizeDialerPro = useCallback(() => {
@@ -74,6 +81,7 @@ export function DialerProModalProvider({ children }: { children: React.ReactNode
         isMinimized: state.isMinimized,
         contactId: state.contactId,
         pipelineColumnId: state.pipelineColumnId,
+        scriptKey: state.scriptKey,
       }}
     >
       {children}

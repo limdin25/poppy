@@ -156,3 +156,31 @@ describe('the module stays unit-testable', () => {
     expect(stateMeta('nonsense').color).toBe('#9CA3AF')
   })
 })
+
+describe('canCloseCall — who gets the "Call to close" button', () => {
+  it('offers the call to everyone who has actually watched, not just the Watched column', async () => {
+    const { canCloseCall } = await load()
+    // state is FORWARD-ONLY: a lead who clicked the CTA has left 'watched'.
+    // Gating on the single column would hide the button from the hottest
+    // leads on the board, which is exactly backwards.
+    for (const state of ['watched', 'cta_clicked', 'checkout_started', 'paid']) {
+      expect(canCloseCall({ state, render_status: null })).toBe(true)
+    }
+  })
+
+  it('withholds it from anyone who has not seen the pitch yet', async () => {
+    const { canCloseCall } = await load()
+    for (const state of ['created', 'sent', 'opened']) {
+      expect(canCloseCall({ state, render_status: null })).toBe(false)
+    }
+    expect(canCloseCall({ state: 'created', render_status: 'ready' })).toBe(false)
+    expect(canCloseCall({ state: 'created', render_status: 'rendering' })).toBe(false)
+  })
+
+  it('withholds it mid-video — ringing them interrupts the pitch', async () => {
+    const { canCloseCall, boardKey } = await load()
+    const playing = { state: 'opened', render_status: null, play_at: '2026-07-31T10:00:00Z' }
+    expect(boardKey(playing)).toBe('playing')
+    expect(canCloseCall(playing)).toBe(false)
+  })
+})

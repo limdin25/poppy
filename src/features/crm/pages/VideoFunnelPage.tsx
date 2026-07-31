@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Clapperboard, Copy, Check, ExternalLink, Settings2, X, Loader2, Send, Eye, History, Film,
+  Clapperboard, Copy, Check, ExternalLink, Settings2, X, Loader2, Send, Eye, History, Film, Phone,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { VSL_SEQUENCE } from '../../../../api/lib/vsl-sequence';
@@ -20,8 +20,9 @@ import { formatDateTime } from '../data/helpers';
 // Stage rules live in lib/funnelStages so the inbox badges can share them —
 // two copies of the rendering/render_ready carve-out WILL drift.
 import {
-  STATES, STAGE_STAMPS, boardKey, ago, renderErrorText, canRetryRender, type VslPage,
+  STATES, STAGE_STAMPS, boardKey, ago, renderErrorText, canRetryRender, canCloseCall, type VslPage,
 } from '../lib/funnelStages';
+import { useDialerProModal } from '../layout/DialerProModalContext';
 
 /** Preview marker. The board's own "open page" links must not burn the lead's
  *  first touch — without this, Hugo checking pages would consume the very
@@ -62,6 +63,11 @@ export default function VideoFunnelPage() {
     [contacts, columns],
   );
   const isAdmin = agent?.isAdmin ?? false;
+  // Same call room every other Call button in the CRM opens, but pointed at the
+  // close script — this lead has already watched the pitch, so the cold opener
+  // would be wrong. Opens over the board rather than navigating, so the agent
+  // keeps their place in the funnel.
+  const { openDialerPro } = useDialerProModal();
   const { scopeId: impId, resolved: scopeResolved } = useVideoScope();
   const [pages, setPages] = useState<VslPage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -482,6 +488,24 @@ export default function VideoFunnelPage() {
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <Film className="w-3.5 h-3.5" />}
                           {p.render_status === 'failed' ? 'Try the video again' : 'Make their video'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* The close call. Only once they have actually watched —
+                        see canCloseCall. Full-width and named, not an icon in
+                        the row below: on a lead who watched the video this is
+                        the action, not one of five. */}
+                    {canCloseCall(p) && (
+                      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => openDialerPro(p.contact_id, { scriptKey: 'vsl_close' })}
+                          data-testid={`funnel-close-call-${p.id}`}
+                          title="Call them now with the close script (they watched the video)"
+                          className="w-full flex items-center justify-center gap-1.5 text-[11.5px] font-bold text-white bg-[#16A34A] hover:bg-[#15803d] rounded-[8px] py-1.5"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          Call to close
                         </button>
                       </div>
                     )}
