@@ -6,6 +6,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { json, readJsonBody, requireUser, serviceRpc } from '../_lib/http';
 import { buildTtsRequest, wavDurationSeconds } from '../../src/core/providers/fish';
+import { voiceTakePath } from '../../src/core/storagePaths';
 
 async function userRpc(req: IncomingMessage, fn: string, args: Record<string, unknown>): Promise<Response> {
   const base = process.env.SUPABASE_URL!;
@@ -92,7 +93,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   const wav = Buffer.from(await upstream.arrayBuffer());
   const durationSec = wavDurationSeconds(wav.byteLength, request.body.sample_rate);
-  const path = `${user.userId}/${projectId}/voice-${jobId}.wav`;
+  const path = voiceTakePath(user.userId, projectId, jobId);
 
   const upload = await fetch(`${base}/storage/v1/object/ugc-renders/${path}`, {
     method: 'POST',

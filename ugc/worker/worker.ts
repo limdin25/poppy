@@ -28,6 +28,8 @@ import {
   buildSilenceDetectArgs,
   parseSilences,
 } from './stitch';
+import { adVideoPath, bucketForSource, chunkAudioPath, compositePath } from '../src/core/storagePaths';
+import { purgeDue, shouldPurgeAsset, shouldPurgeBenchObject, shouldPurgeChunk } from '../src/core/purge';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -251,7 +253,7 @@ async function runComposite(job: JobRow): Promise<void> {
     throw new Error(`gemini ${response.status}: ${text.slice(0, 300)}`);
   }
   const image = extractGeminiImage((await response.json()) as never);
-  const path = `${job.user_id}/${job.project_id}/composite-${job.id}.png`;
+  const path = compositePath(job.user_id, job.project_id, job.id);
   await uploadRender(path, Buffer.from(image.base64, 'base64'), image.mime);
   const assetId = await insertAsset({
     project_id: job.project_id,
@@ -304,7 +306,7 @@ async function runLipsync(job: JobRow): Promise<void> {
       for (const chunk of chunks) {
         const chunkWav = join(dir, `chunk-${chunk.seq}.wav`);
         await runFfmpeg(buildAudioSplitArgs(wavPath, chunk, chunkWav));
-        const chunkPath = `${job.user_id}/${job.project_id}/chunks/${job.id}-${chunk.seq}.wav`;
+        const chunkPath = chunkAudioPath(job.user_id, job.project_id, job.id, chunk.seq);
         await uploadRender(chunkPath, readFileSync(chunkWav), 'audio/wav');
         await rest('/ugc_job_chunks', {
           method: 'POST',
@@ -349,7 +351,7 @@ async function runLipsync(job: JobRow): Promise<void> {
     videoBuffer = Buffer.from(await (await fetch(url)).arrayBuffer());
   }
 
-  const path = `${job.user_id}/${job.project_id}/ad-${job.id}.mp4`;
+  const path = adVideoPath(job.user_id, job.project_id, job.id);
   await uploadRender(path, videoBuffer, 'video/mp4');
   const assetId = await insertAsset({
     project_id: job.project_id,
@@ -424,6 +426,99 @@ async function staleScan(): Promise<void> {
   }
 }
 
+// ------------------------------------------------------------------- purge
+
+async function deleteObject(bucket: string, path: string): Promise<boolean> {
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+    method: 'DELETE',
+    headers: sbHeaders,
+  });
+  if (!r.ok && r.status !== 404) {
+    console.error(`purge: delete ${bucket}/${path} failed: ${r.status}`);
+    return false;
+  }
+  return true;
+}
+
+// The 03:00 pass: rejected/superseded assets past 7 days, chunk audio for
+// jobs finished over a day ago, bench leftovers past 30 days. Approved
+// assets and finished ads are untouchable by construction (core/purge.ts).
+async function purgePass(): Promise<void> {
+  const now = Date.now();
+  const setting = (await getSetting('ugc_purge')) as { at?: string } | null;
+  if (!purgeDue(new Date().getHours(), setting?.at ? Date.parse(setting.at) : null, now)) return;
+  console.log('purge: starting the daily pass');
+
+  const cutoff = new Date(now - 7 * 24 * 3600_000).toISOString();
+  const assetsRes = await rest(
+    `/ugc_assets?approval_status=in.(rejected,superseded)&purged_at=is.null&created_at=lt.${cutoff}` +
+      `&select=id,kind,approval_status,purged_at,created_at,storage_path,source&limit=200`,
+  );
+  const assets = (await assetsRes.json()) as Array<{
+    id: string;
+    kind: string;
+    approval_status: string;
+    purged_at: string | null;
+    created_at: string;
+    storage_path: string;
+    source: 'upload' | 'generated';
+  }>;
+  let purged = 0;
+  for (const asset of assets) {
+    if (!shouldPurgeAsset(asset, now)) continue;
+    if (!(await deleteObject(bucketForSource(asset.source), asset.storage_path))) continue;
+    await rest(`/ugc_assets?id=eq.${asset.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ purged_at: new Date().toISOString() }),
+    });
+    purged++;
+  }
+
+  const chunkRes = await rest(
+    `/ugc_job_chunks?audio_path=not.is.null&select=id,audio_path,ugc_jobs!inner(finished_at)&limit=500`,
+  );
+  const chunks = (await chunkRes.json()) as Array<{
+    id: string;
+    audio_path: string;
+    ugc_jobs: { finished_at: string | null };
+  }>;
+  let chunksPurged = 0;
+  for (const chunk of chunks) {
+    if (!shouldPurgeChunk(chunk.ugc_jobs.finished_at, now)) continue;
+    if (!(await deleteObject('ugc-renders', chunk.audio_path))) continue;
+    await rest(`/ugc_job_chunks?id=eq.${chunk.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ audio_path: null }),
+    });
+    chunksPurged++;
+  }
+
+  const listRes = await fetch(`${SUPABASE_URL}/storage/v1/object/list/ugc-renders`, {
+    method: 'POST',
+    headers: { ...sbHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefix: 'bench/', limit: 1000 }),
+  });
+  let benchPurged = 0;
+  if (listRes.ok) {
+    const objects = (await listRes.json()) as Array<{ name: string; created_at: string }>;
+    for (const obj of objects) {
+      if (!obj.created_at || !shouldPurgeBenchObject(obj.created_at, now)) continue;
+      if (await deleteObject('ugc-renders', `bench/${obj.name}`)) benchPurged++;
+    }
+  }
+
+  await rest(`/ugc_settings?key=eq.ugc_purge`, {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates' },
+    body: JSON.stringify({
+      key: 'ugc_purge',
+      value: { at: new Date().toISOString(), assets: purged, chunks: chunksPurged, bench: benchPurged },
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  console.log(`purge: done (${purged} assets, ${chunksPurged} chunk files, ${benchPurged} bench objects)`);
+}
+
 async function main(): Promise<void> {
   console.log(`ugc-worker ${WORKER_ID} starting against ${SUPABASE_URL}`);
   const inFlight = new Set<Promise<void>>();
@@ -440,6 +535,7 @@ async function main(): Promise<void> {
         }),
       });
       await staleScan();
+      await purgePass();
 
       while (inFlight.size < MAX_IN_FLIGHT) {
         const claimed = await rpc('ugc_claim_next_job', { p_worker_id: WORKER_ID });
