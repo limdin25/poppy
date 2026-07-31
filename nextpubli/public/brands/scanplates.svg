@@ -1,0 +1,12 @@
+<svg width="160" height="40" viewBox="0 0 160 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Scanning frame corners -->
+  <path d="M2 10 L2 3 L9 3" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M26 3 L33 3 L33 10" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M33 28 L33 35 L26 35" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M9 35 L2 35 L2 28" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Apple -->
+  <path d="M17.5 10 C17.5 10 19 7 21 8" stroke="#1A1A1A" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <path d="M14 13 C10 13 8 17 8 21 C8 27 12 31 15 31 C16.5 31 17 30 17.5 30 C18 30 18.5 31 20 31 C23 31 27 27 27 21 C27 17 25 13 21 13 C19.5 13 18.5 14 17.5 14 C16.5 14 15.5 13 14 13Z" fill="#1A1A1A"/>
+  <!-- Text -->
+  <text x="42" y="27" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="900" fill="#1A1A1A">ScanPlates</text>
+</svg>

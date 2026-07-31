@@ -1,0 +1,1 @@
+export { AdminBrands } from "./AdminBrands";

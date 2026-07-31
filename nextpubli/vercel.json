@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/instagram/refresh-tokens",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/instagram/publish",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/unipile/sync-cron",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/inbox/process-takeovers",
+      "schedule": "*/1 * * * *"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+export { AdminHotmart } from "./AdminHotmart";
