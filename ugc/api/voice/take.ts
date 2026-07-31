@@ -97,7 +97,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const upload = await fetch(`${base}/storage/v1/object/ugc-renders/${path}`, {
     method: 'POST',
     headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'audio/wav' },
-    body: wav,
+    body: new Uint8Array(wav),
   });
   if (!upload.ok) {
     await serviceRpc('ugc_refund_job', { p_job_id: jobId });

@@ -1,0 +1,21 @@
+# systemd unit for the UGC render worker on margarita-server.
+# Install: copy worker/dist/worker.mjs to /root/ugc-worker/worker.mjs,
+# write /etc/ugc-worker.env (see ugc/ENV.md, VPS section), then
+#   cp ugc-worker.service /etc/systemd/system/ && systemctl daemon-reload
+#   systemctl enable --now ugc-worker
+
+[Unit]
+Description=UGC Factory render worker
+After=network-online.target
+
+[Service]
+WorkingDirectory=/root/ugc-worker
+ExecStart=/usr/bin/node /root/ugc-worker/worker.mjs
+EnvironmentFile=/etc/ugc-worker.env
+Restart=always
+RestartSec=10
+# Never starve the production scrapers or the VSL renderer.
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
