@@ -2475,14 +2475,63 @@ def _():
     # placed this one. The model loses the frame under a confusing input,
     # the same way it lost it into stage-direction narration, so the fix is
     # the same: code, not a prompt line it can drift away from.
+    #
+    # And the replacement tells no stories: the first version said "I called
+    # you a minute ago", which she then used as an OPENER, where it claims a
+    # phantom earlier call. Name and company, nothing that needs a history.
     for line in ["Sorry, who's asking?", "Who is calling, please?",
                  "Can I ask who's calling?"]:
         out, notes = copy_guard.swap(line)
         low = out.lower()
         assert "who's asking" not in low and "who is calling" not in low, out
         assert "who's calling" not in low, out
-        assert "maria" in low and "?" not in out, out
+        assert "maria" in low and "heyelsie" in low and "?" not in out, out
+        assert "called you" not in low and "minute ago" not in low, out
         assert notes, notes
+
+
+@case("a yes does not slam into the dial tone")
+def _():
+    # "Well so she just hung up now." The goal landing used to break the
+    # loop straight into hangup. Now the close holds the line open for a
+    # courtesy window: speech in it earns one more turn (capped, so a
+    # chatterbox cannot hold her hostage), silence lets the goodbye stand.
+    def build(hears):
+        a = agent.Agent.__new__(agent.Agent)
+        a.ears = object()
+        a._emit = lambda *rest: None
+        seq = list(hears)
+        a._listen_streaming = lambda result, timeout=None: seq.pop(0) if seq else ""
+        a.said = []
+        a._say_live = lambda heard, result: (a.said.append(heard), (False, False, None))[1]
+        return a
+
+    # Silence in the window: goodbye stands, nothing more is said.
+    a = build([""])
+    a._courtesy_window(None)
+    assert a.said == [], a.said
+    # They speak: one more turn, then silence ends it.
+    a = build(["wait, actually, how do I pay?", ""])
+    a._courtesy_window(None)
+    assert a.said == ["wait, actually, how do I pay?"], a.said
+    # A talker gets at most two extra turns, never the whole evening.
+    a = build(["one", "two", "three", "four"])
+    a._courtesy_window(None)
+    assert len(a.said) == 2, a.said
+    # And the window is long enough to count as courtesy.
+    assert config.CLOSING_WINDOW_S >= 5.0, config.CLOSING_WINDOW_S
+
+
+@case("the money brief lands grounded, not bubbly")
+def _():
+    # The emotional arc, at the layer that exists: the stage briefs steer
+    # the cues. Warm and bright opens the call; money is where trust is
+    # built, and staying bubbly there sounds like a sales pitch.
+    from . import stages
+    money = stages.STAGES["money"].do.lower()
+    assert "confident" in money or "grounded" in money, money
+    opener = stages.STAGES["permission"].do.lower()
+    assert "warm" in opener, opener
 
 
 @case("no hey: she opens with hi")

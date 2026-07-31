@@ -91,6 +91,12 @@ BACKCHANNEL_CHANCE = 0.45
 # CHANCE is per reply; MIN_GAP is replies that must pass between trips, so it
 # can never happen twice in a row; SLOW_S is the brain latency past which a
 # trip at the start of the reply reads as genuine thinking rather than a tic.
+# How long the line stays open for them AFTER the close has landed, before
+# the goodbye becomes a hangup. "Well so she just hung up now": a met goal
+# used to slam straight into the dial tone. Speech inside this window earns
+# one more turn; silence lets the goodbye stand.
+CLOSING_WINDOW_S = float(os.environ.get("BRIDGE_CLOSING_WINDOW_S", "6"))
+
 # How much longer the settled-partial wait runs when the prosody reader says
 # "held": level pitch, energy up, somebody mid-thought. Guessing the end of a
 # sentence there is answering half of it. At 2x the normal wait the fast path

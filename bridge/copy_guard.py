@@ -190,17 +190,17 @@ SWAPS: tuple[tuple[str, str], ...] = (
     # somebody who dialled it. The question mark is inside the pattern so the
     # replacement lands as a statement rather than a rising fragment, and the
     # longer forms come first so they win.
-    ("can i ask who's calling?", "it's Maria, I called you a minute ago."),
-    ("can i ask who's calling", "it's Maria, I called you a minute ago"),
-    ("who's asking?", "it's Maria, I called you a minute ago."),
-    ("who is asking?", "it's Maria, I called you a minute ago."),
-    ("who's calling?", "it's Maria, I called you a minute ago."),
-    ("who is calling, please?", "it's Maria, I called you a minute ago."),
-    ("who is calling?", "it's Maria, I called you a minute ago."),
-    ("who's asking", "it's Maria, I called you a minute ago"),
-    ("who is asking", "it's Maria, I called you a minute ago"),
-    ("who's calling", "it's Maria, I called you a minute ago"),
-    ("who is calling", "it's Maria, I called you a minute ago"),
+    ("can i ask who's calling?", "it's Maria, from HeyElsie."),
+    ("can i ask who's calling", "it's Maria, from HeyElsie"),
+    ("who's asking?", "it's Maria, from HeyElsie."),
+    ("who is asking?", "it's Maria, from HeyElsie."),
+    ("who's calling?", "it's Maria, from HeyElsie."),
+    ("who is calling, please?", "it's Maria, from HeyElsie."),
+    ("who is calling?", "it's Maria, from HeyElsie."),
+    ("who's asking", "it's Maria, from HeyElsie"),
+    ("who is asking", "it's Maria, from HeyElsie"),
+    ("who's calling", "it's Maria, from HeyElsie"),
+    ("who is calling", "it's Maria, from HeyElsie"),
     # Hugo, 2026-07-31: "i dont like the hey". It came out of the prompt's
     # own American-register list, which is fixed too.
     ("hey", "hi"),

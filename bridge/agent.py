@@ -1374,6 +1374,28 @@ class Agent:
             )
         return interrupted
 
+    def _courtesy_window(self, result: CallResult) -> None:
+        """The open ear between the close landing and the line dropping.
+
+        "Well so she just hung up now": a met goal used to break the loop
+        straight into hangup, which is a slammed door after a handshake. So
+        once the goodbye is said, the line stays open for CLOSING_WINDOW_S,
+        and anything they say in it earns one more reply. Capped at two
+        extra turns: courtesy is a window, not a second call.
+        """
+        for _ in range(2):
+            heard = (self._listen_streaming(result, config.CLOSING_WINDOW_S)
+                     if self.ears is not None else "")
+            if not heard:
+                return
+            try:
+                ends, _cut, _went = self._say_live(heard, result)
+            except Exception as e:
+                self._emit("error", f"courtesy reply failed: {e}")
+                return
+            if ends:
+                return
+
     def _giveup_line(self, result: CallResult):
         """Speak the stage she was sent to after failing to get an answer,
         but LISTEN FIRST when her own last line was a question.
@@ -2004,6 +2026,9 @@ class Agent:
                     break
                 if ends:
                     result.outcome = "completed"
+                    # The close has landed. Hold the door before walking out.
+                    if self.transport.is_live():
+                        self._courtesy_window(result)
                     break
             else:
                 result.outcome = "max_duration"

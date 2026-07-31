@@ -70,7 +70,8 @@ _add(Stage(
     "Say hello, give your name, say you are calling because you are LOOKING "
     "FOR A JOB, and ask if they mind you explaining. That is the whole turn. "
     "Do not say what you do, do not mention money. Your own words, different "
-    "every call: there is no line to deliver here.\n"
+    "every call: there is no line to deliver here. TONE: warm and bright, "
+    "[very warm], this is the moment to be liked.\n"
     "HOW IT LANDS matters more than the words. The ask is an odd thing to "
     "say and rushing past it is what sounds scripted, so give it a beat: a "
     "[break] just before the ask itself, then say it plainly, then the "
@@ -137,7 +138,10 @@ _add(Stage(
     "silence after that question is the question working: whoever speaks "
     "first loses, and it is never you. However long they take, you do not "
     "add, soften, re-ask or explain. Do not defend the value unless they "
-    "push back, that is a different stage.",
+    "push back, that is a different stage. TONE: grounded and steady here, "
+    "[confident] or [calm], never bubbly: money talk delivered bright reads "
+    "as a sales pitch, delivered steady it reads as a professional stating "
+    "a fact, and this is where the trust is built.",
     (
         Exit("ok", "they said yes, or fine, or reacted positively at all",
              "book"),
