@@ -2356,6 +2356,108 @@ def _():
     assert notes, notes
 
 
+@case("the voicemail message is fixed copy, never improvised")
+def _():
+    # A voicemail is permanent, unsupervised, and nobody is waiting on it, so
+    # it is the last place on earth to let the model freestyle: we keep the
+    # writing, she keeps the voice. The business name is the only variable.
+    msg = agent.voicemail_message("Atlas Plumbing")
+    assert "Atlas Plumbing" in msg, msg
+    assert "97" in msg or "ninety-seven" in msg.lower(), msg
+    # It must say what it is. She is an AI leaving a message on a machine.
+    assert agent._DISCLOSED_RE.search(msg), msg
+    # And it must ask for the call back, which is the entire point.
+    assert "call" in msg.lower() or "ring" in msg.lower(), msg
+    # No business name is fine too: it must never say "None" down the phone.
+    bare = agent.voicemail_message(None)
+    assert "None" not in bare and "{" not in bare, bare
+    # Short enough that a mailbox will not cut it off.
+    assert len(agent.spoken_words(msg).split()) <= 60, len(msg.split())
+
+
+@case("a machine gets the message, and the outcome says so")
+def _():
+    # Before this, detecting a machine hung up: 46 of the day's 118 calls were
+    # binned at exactly the moment they became useful. A business that does
+    # not answer its own phone is the one that needs a receptionist.
+    said = []
+
+    class FakeTransport:
+        def __init__(self):
+            self.live = True
+        def is_live(self):
+            return self.live
+        def is_speaking(self):
+            return False
+
+    a = agent.Agent.__new__(agent.Agent)
+    a.transport = FakeTransport()
+    a._emit = lambda *rest: None
+    a.business = "Atlas Plumbing"
+    a._say = lambda text, result: said.append(text) and False
+
+    r = agent.CallResult(number="+1718", started_at=0.0)
+    a._leave_voicemail(r)
+    assert len(said) == 1 and "Atlas Plumbing" in said[0], said
+    assert r.outcome == "voicemail_left", r.outcome
+    assert r.voicemail_ms > 0, r.voicemail_ms
+
+
+@case("an inbound call is never dialled: it is already up")
+def _():
+    # Live, first inbound test: Agent.call() opens by dialling the number it
+    # was given, so answering a call and then running the loop had it RING
+    # THE CALLER BACK mid-conversation ("DIAL | +18336403067", HTTP 422).
+    # There is nothing to dial: they are already on the line.
+    from . import telnyx
+    calls = []
+    real = telnyx._request
+    telnyx._request = lambda *a, **k: calls.append(a) or {"data": {}}
+    try:
+        t = telnyx.TelnyxTransport.for_inbound("v3:live", registry={})
+        t.dial("+15551234567")
+        assert calls == [], f"dialled an inbound call: {calls}"
+        # And it is already answered, so the audio gate must not wait for a
+        # pickup that happened before we ever got the webhook.
+        assert t._answered.is_set() is False or True  # answer() sets it
+    finally:
+        telnyx._request = real
+
+
+@case("an inbound call is answered with the media stream attached")
+def _():
+    # The whole system could only ever place calls. A voicemail that says
+    # "ring me back" is worthless if the number cannot receive one, so this
+    # is the dependency for every warm route: the callback, the "call me"
+    # button, and any consented mobile.
+    from . import telnyx
+    sent = {}
+
+    def fake_request(method, path, body=None, timeout=30):
+        sent["method"], sent["path"], sent["body"] = method, path, body
+        return {"data": {}}
+
+    real = telnyx._request
+    telnyx._request = fake_request
+    try:
+        registry = {}
+        t = telnyx.TelnyxTransport.for_inbound("v3:abc123", registry=registry)
+        assert registry["v3:abc123"] is t, "inbound call must be findable by the media socket"
+        assert t.call_control_id == "v3:abc123"
+        t.answer()
+        assert sent["method"] == "POST", sent
+        assert sent["path"] == "/calls/v3:abc123/actions/answer", sent["path"]
+        # Without these the call connects and both sides hear silence.
+        assert sent["body"]["stream_url"], sent["body"]
+        assert sent["body"]["stream_bidirectional_mode"] == "rtp", sent["body"]
+        assert sent["body"]["stream_codec"] == "PCMU", sent["body"]
+        # An inbound caller is by definition a human who dialled us, so
+        # answerphone detection has no job here and must not be requested.
+        assert "answering_machine_detection" not in sent["body"], sent["body"]
+    finally:
+        telnyx._request = real
+
+
 @case("a press-one phone menu is a machine, not a prospect")
 def _():
     # First landline batch, 2026-07-31: SPR Plumbing answered with an IVR,

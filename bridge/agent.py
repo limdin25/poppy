@@ -774,6 +774,47 @@ class Turn:
     at: float
 
 
+# THE VOICEMAIL. Fixed copy, rendered in her voice, never written by the model.
+#
+# A voicemail is permanent, unsupervised and heard once, which makes it the
+# worst possible place for an improvised turn: there is nobody to correct a
+# wrong number, no way to take it back, and no latency pressure that would
+# justify the risk. So we keep the writing and she keeps the voice.
+#
+# The copy does one job. It does not pitch a feature list, it points at the
+# thing that just happened: they did not answer their own phone, and a
+# customer ringing a minute earlier would have got exactly this. That is the
+# entire product, demonstrated by their own missed call, which is why this
+# message can be short and still land.
+#
+# Length is a hard constraint, not a preference: mailboxes cut you off, and a
+# message that runs past its welcome gets deleted at the beep. Kept under
+# about fifty words, which is roughly twenty seconds in her voice.
+_VOICEMAIL = (
+    "Hi, this is Maria, I'm an A.I. receptionist. "
+    "I just rang {who} and nobody picked up, which is what a customer would "
+    "have got too. I answer every call, take the message and book the work "
+    "in, for ninety-seven dollars a month. "
+    "Call this number back and hear what your customers would hear."
+)
+
+
+# A menu is a machine with no mailbox behind it: "press 1 for sales" is not
+# an invitation to speak, so a message left into it goes nowhere. Detected
+# separately from the mailbox phrases for exactly that reason.
+_IVR_RE = re.compile(
+    r"\bpress (1|2|3|4|5|one|two|three|the star|pound|zero)\b"
+    r"|\bdial (1|2|3|one|two)\b|\bmain menu\b|\byour party'?s extension\b",
+    re.IGNORECASE,
+)
+
+
+def voicemail_message(business: str | None) -> str:
+    """The message she leaves, with the business name if we have one."""
+    who = (business or "").strip() or "your office"
+    return straighten(_VOICEMAIL.format(who=who))
+
+
 @dataclass
 class CallResult:
     number: str
@@ -783,6 +824,9 @@ class CallResult:
     turns: list[Turn] = field(default_factory=list)
     outcome: str = "unknown"
     error: str | None = None
+    # How long the voicemail she left ran for, 0 if she left none. The ledger
+    # reads it: a message that came out at 200ms did not really get left.
+    voicemail_ms: int = 0
     # The onboarding slot they agreed, in their own words. The entire point of
     # the call, so it goes on the result rather than being left in the text for
     # somebody to find later.
@@ -1051,7 +1095,9 @@ class Agent:
                                       "sound like a person, staying on")
             else:
                 result.outcome = "answering_machine"
-                self._emit("amd", "Telnyx says answerphone, hanging up")
+                self._emit("amd", "Telnyx says answerphone, leaving a message")
+                if config.VOICEMAIL_ENABLED:
+                    self._leave_voicemail(result)
                 return True
         if not heard:
             return False
@@ -1063,7 +1109,12 @@ class Agent:
         sure = next((p for p in config.AMD_PHRASES_CERTAIN if p in text), None)
         if sure:
             result.outcome = "answering_machine"
-            self._emit("amd", f"carrier voicemail ({sure!r}), hanging up")
+            self._emit("amd", f"carrier voicemail ({sure!r}), leaving a message")
+            # An IVR menu is a machine but NOT a mailbox: talking at "press 1
+            # to reach sales" leaves the message nowhere. Only a greeting that
+            # actually invites one gets spoken to.
+            if config.VOICEMAIL_ENABLED and not _IVR_RE.search(text):
+                self._leave_voicemail(result)
             return True
         hit = next((p for p in config.AMD_PHRASES if p in text), None)
         # A phrase AND a greeting long enough that nobody is waiting for a
@@ -1072,9 +1123,44 @@ class Agent:
         # neither. Requiring both is what keeps a human out of this branch.
         if hit and len(text.split()) >= config.AMD_MIN_GREETING_WORDS:
             result.outcome = "answering_machine"
-            self._emit("amd", f"answerphone from the greeting ({hit!r}), hanging up")
+            self._emit("amd", f"answerphone from the greeting ({hit!r}), leaving a message")
+            if config.VOICEMAIL_ENABLED and not _IVR_RE.search(text):
+                self._leave_voicemail(result)
             return True
         return False
+
+    def _leave_voicemail(self, result: CallResult) -> None:
+        """Say the message to the machine instead of hanging up on it.
+
+        Detecting an answerphone used to end the call, and on 2026-07-31 that
+        binned 46 of 118 calls at exactly the moment they became useful. A
+        business that does not answer its own phone is not a failed lead, it
+        is the lead: it has just demonstrated the problem being sold against,
+        and there is a mailbox sitting open to say so into.
+
+        Fixed copy (see _VOICEMAIL), because a permanent unsupervised
+        recording is the last place to let the model improvise.
+        """
+        # Defensive to the point of paranoia, deliberately. The message is a
+        # bonus on a call that is already over: the machine has been detected
+        # and the outcome is already recorded, so ANY failure here must cost
+        # the voicemail and nothing else. Never the call, never the ledger.
+        text = voicemail_message(getattr(self, "business", None))
+        try:
+            if not self.transport.is_live():
+                return
+            self._say(text, result)
+        except Exception as e:
+            self._emit("error", f"voicemail failed: {e}")
+            return
+        # Estimated from the copy, not the wall clock. speak_stream returns as
+        # soon as the feeder is running, so timing _say would measure how fast
+        # we handed the audio over rather than how long the message ran, and
+        # the copy is fixed so the estimate is exact enough to spot a message
+        # that came out truncated.
+        result.voicemail_ms = int(len(text) / chars_per_second() * 1000)
+        result.outcome = "voicemail_left"
+        self._emit("voicemail", f"left {result.voicemail_ms}ms with the machine")
 
     def _sounds_human(self, result: CallResult) -> bool:
         """Has the far end produced a turn no answerphone would?
@@ -1862,7 +1948,13 @@ class Agent:
         try:
             self.transport.prepare()
 
-            self._emit("dial", number)
+            if getattr(self.transport, "inbound", False):
+                # Say what actually happened. The log is the first thing read
+                # when a call goes wrong, and "DIAL" on a call somebody made
+                # to us sent me looking for an outbound bug that did not exist.
+                self._emit("answering", f"{number} is on the line")
+            else:
+                self._emit("dial", number)
             self.transport.dial(number)
 
             if not self.transport.wait_for_audio(config.NO_AUDIO_TIMEOUT_S):
@@ -1884,7 +1976,13 @@ class Agent:
             # should not talk first". So wait a beat for their greeting, and only
             # open into silence if none comes.
             greeting = ""
-            if self.ears is not None:
+            # ON AN INBOUND CALL SHE SPEAKS FIRST, always. The wait below is
+            # for a call WE placed, where whoever picks up says "hello" and
+            # talking over that is what sounds like a machine. Inbound is the
+            # mirror image: they rang us, they are holding a silent line, and
+            # the polite thing is to answer it.
+            inbound = bool(getattr(self.transport, "inbound", False))
+            if self.ears is not None and not inbound:
                 deadline = time.time() + config.WAIT_FOR_HELLO_S
                 hard = time.time() + config.WAIT_FOR_HELLO_MAX_S
                 while time.time() < deadline:

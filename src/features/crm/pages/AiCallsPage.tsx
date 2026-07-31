@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import {
   Bot, PhoneOff, Voicemail, PhoneMissed, CheckCircle2, CalendarCheck,
-  Clock, Loader2, Search,
+  Clock, Loader2, Search, PhoneIncoming,
 } from 'lucide-react';
 
 type Turn = { who?: string; text?: string; at?: number };
@@ -39,6 +39,12 @@ type AiCall = {
   error: string | null;
   recording_path: string | null;
   transcript: Turn[] | null;
+  // The voicemail play, and the only two numbers that decide whether it
+  // works: the message landed, and they rang back because of it.
+  voicemail_left_at: string | null;
+  voicemail_ms: number | null;
+  called_back_at: string | null;
+  called_back_count: number | null;
 };
 
 // How each ending should read at a glance. The wording matters: "answerphone"
@@ -47,6 +53,7 @@ type AiCall = {
 const OUTCOMES: Record<string, { label: string; icon: typeof Bot; tone: string }> = {
   completed: { label: 'Ran to the end', icon: CheckCircle2, tone: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
   answering_machine: { label: 'Answerphone', icon: Voicemail, tone: 'text-amber-700 bg-amber-50 border-amber-200' },
+  voicemail_left: { label: 'Message left', icon: Voicemail, tone: 'text-sky-700 bg-sky-50 border-sky-200' },
   far_end_hungup: { label: 'They hung up', icon: PhoneOff, tone: 'text-rose-700 bg-rose-50 border-rose-200' },
   no_answer: { label: 'No answer', icon: PhoneMissed, tone: 'text-slate-600 bg-slate-50 border-slate-200' },
   went_quiet: { label: 'Silence / hold music', icon: Clock, tone: 'text-slate-600 bg-slate-50 border-slate-200' },
@@ -87,7 +94,8 @@ export default function AiCallsPage() {
     (async () => {
       const { data, error } = await (supabase.from('wk_ai_called' as any) as any)
         .select('e164,campaign,business,claimed_at,finished_at,outcome,duration_s,turns,'
-          + 'final_stage,booked_slot,hangup_cause,error,recording_path,transcript')
+          + 'final_stage,booked_slot,hangup_cause,error,recording_path,transcript,'
+          + 'voicemail_left_at,voicemail_ms,called_back_at,called_back_count')
         .order('claimed_at', { ascending: false })
         .limit(500);
       if (!alive) return;
@@ -131,15 +139,42 @@ export default function AiCallsPage() {
   const talked = calls.filter((c) => c.outcome !== 'answering_machine'
     && c.outcome !== 'no_answer' && (c.turns ?? 0) >= 2).length;
 
+  // THE EXPERIMENT, in three numbers. Messages delivered is the denominator,
+  // callbacks the numerator, and the rate between them is the only thing that
+  // says whether leaving voicemails beats trying to persuade whoever picks up.
+  // Bookings sit alongside because a callback that books is the real win.
+  const voicemails = calls.filter((c) => c.voicemail_left_at).length;
+  const callbacks = calls.filter((c) => c.called_back_at).length;
+  const callbackRate = voicemails ? Math.round((callbacks / voicemails) * 100) : 0;
+  const booked = calls.filter((c) => c.booked_slot).length;
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center gap-3 mb-1">
         <Bot className="h-6 w-6 text-slate-700" />
         <h1 className="text-2xl font-black tracking-tight text-slate-900">AI calls</h1>
       </div>
-      <p className="text-sm text-slate-500 mb-5">
-        Every outbound call Maria has made. Press play to listen, or open one to read it.
+      <p className="text-sm text-slate-500 mb-4">
+        Every call Maria has made. Press play to listen, or open one to read it.
       </p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+        {[
+          { label: 'Calls', value: calls.length, tone: 'text-slate-900' },
+          { label: 'Messages left', value: voicemails, tone: 'text-sky-700' },
+          {
+            label: 'Called back',
+            value: voicemails ? `${callbacks} (${callbackRate}%)` : callbacks,
+            tone: callbacks ? 'text-emerald-700' : 'text-slate-400',
+          },
+          { label: 'Booked', value: booked, tone: booked ? 'text-emerald-700' : 'text-slate-400' },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <div className={`text-xl font-black tracking-tight ${s.tone}`}>{s.value}</div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">{s.label}</div>
+          </div>
+        ))}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="relative flex-1 min-w-[200px]">
@@ -196,7 +231,31 @@ export default function AiCallsPage() {
                       {c.turns ? ` · ${c.turns} turns` : ''}
                       {c.final_stage ? ` · got to "${c.final_stage}"` : ''}
                     </span>
+                    {(c.voicemail_left_at || c.called_back_at) && (
+                      <span className="block text-xs mt-0.5">
+                        {c.voicemail_left_at && (
+                          <span className="text-sky-700">
+                            Message delivered {when(c.voicemail_left_at)}
+                          </span>
+                        )}
+                        {c.voicemail_left_at && c.called_back_at ? ' · ' : ''}
+                        {c.called_back_at && (
+                          <span className="font-semibold text-emerald-700">
+                            Rang back {when(c.called_back_at)}
+                            {(c.called_back_count ?? 0) > 1 ? ` (${c.called_back_count}x)` : ''}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </span>
+                  {/* A callback outranks everything else on the row: it is the
+                      only unprompted signal of interest the system produces. */}
+                  {c.called_back_at && (
+                    <span className="shrink-0 hidden sm:flex items-center gap-1 text-xs font-semibold
+                                     text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1">
+                      <PhoneIncoming className="h-3 w-3" /> Called back
+                    </span>
+                  )}
                   {c.booked_slot && (
                     <span className="shrink-0 hidden sm:flex items-center gap-1 text-xs font-semibold
                                      text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1">

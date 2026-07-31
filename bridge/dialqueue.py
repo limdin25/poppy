@@ -191,6 +191,63 @@ def record(e164: str, *, outcome: str, duration_s: int | None = None,
         print(f"QUEUE    | could not record {e164}: {e}", flush=True)
 
 
+def record_voicemail(e164: str, ms: int) -> None:
+    """Stamp that the message was actually DELIVERED into their mailbox.
+
+    Separate from record() because it answers a different question. The
+    outcome column says what kind of call it was; this says the message
+    landed, and it is the denominator of the only metric the voicemail play
+    has: how many of the businesses we left a message with rang us back.
+
+    Written straight to the row through PostgREST rather than through an RPC,
+    because it is one column on a row that already exists and inventing a
+    function for it would be ceremony.
+    """
+    url = config.key("SUPABASE_URL")
+    key = config.key("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        return
+    body = json.dumps({
+        "voicemail_left_at": _now_iso(),
+        "voicemail_ms": int(ms),
+    }).encode()
+    req = urllib.request.Request(
+        f"{url.rstrip('/')}/rest/v1/wk_ai_called?e164=eq.{urllib.parse.quote(e164)}",
+        data=body, method="PATCH",
+        headers={
+            "apikey": key, "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json", "Prefer": "return=minimal",
+        },
+    )
+    try:
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception as e:
+        print(f"QUEUE    | could not record voicemail for {e164}: {e}", flush=True)
+
+
+def record_callback(e164: str) -> dict | None:
+    """They rang US. The numerator, and the only clean signal of interest.
+
+    Nobody rings a stranger back by accident, so this is worth more than any
+    outcome on any outbound call. Returns the matched row's business and
+    campaign when the number is one we have called, and None when it is a
+    stranger, which is how the log line knows whether to shout.
+    """
+    try:
+        rows = _rpc("wk_ai_record_callback", {"p_e164": e164})
+    except QueueError as e:
+        print(f"QUEUE    | could not record callback from {e164}: {e}", flush=True)
+        return None
+    if isinstance(rows, list) and rows:
+        return rows[0]
+    return None
+
+
+def _now_iso() -> str:
+    import datetime
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
 RECORDING_BUCKET = "call-recordings"
 
 

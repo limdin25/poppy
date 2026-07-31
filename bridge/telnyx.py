@@ -173,6 +173,9 @@ class TelnyxTransport(Transport):
     def __init__(self, from_number: str, registry: dict | None = None, on_event=None):
         self.from_number = from_number
         self.call_control_id: str | None = None
+        # True when the far end dialled US. Changes who is expected to speak
+        # first and switches off answerphone detection.
+        self.inbound = False
         # Where the media websocket will come looking for us. Telnyx identifies
         # the stream only by call_control_id, which does not exist until the
         # dial returns, so registration happens there and not here.
@@ -208,6 +211,55 @@ class TelnyxTransport(Transport):
         # the under-the-voice mixing, so the floor is continuous across every
         # speaking/listening boundary.
         self._tone = RoomTone()
+
+    # -- inbound -------------------------------------------------------------
+
+    @classmethod
+    def for_inbound(cls, call_control_id: str, registry: dict | None = None,
+                    on_event=None) -> "TelnyxTransport":
+        """A transport for a call somebody made TO US.
+
+        The outbound path invents the call and learns its id from the dial
+        response. Inbound is the mirror image: the id arrives first, on the
+        call.initiated webhook, and the call already exists. So the transport
+        is built around that id and registered immediately, because the media
+        websocket can arrive before answer() has even returned.
+
+        This is the dependency for every warm route we have. A voicemail
+        asking somebody to ring back, a "call me" button, or any consented
+        mobile are all worthless while the number cannot take a call, and
+        until 2026-07-31 it could not: inbound webhooks were logged as "no
+        live call for it" and dropped.
+        """
+        t = cls(from_number="", registry=registry, on_event=on_event)
+        t.call_control_id = call_control_id
+        t.inbound = True
+        t.registry[call_control_id] = t
+        return t
+
+    def answer(self) -> None:
+        """Pick up, with the media stream attached in the same breath.
+
+        The streaming parameters have to ride on the answer itself. Answering
+        first and asking for media afterwards leaves a window where the caller
+        is connected to silence, and on a demo call the first second is the
+        entire product.
+        """
+        _request("POST", f"/calls/{self.call_control_id}/actions/answer", {
+            "stream_url": config.key("TELNYX_STREAM_URL", required=True),
+            "stream_track": "inbound_track",
+            "stream_codec": "PCMU",
+            "stream_bidirectional_mode": "rtp",
+            "stream_bidirectional_codec": "PCMU",
+            "stream_bidirectional_sampling_rate": 8000,
+            "send_silence_when_idle": True,
+            # No answering_machine_detection: somebody who dialled us is a
+            # person, and running AMD on them risks hanging up on a live
+            # prospect for no benefit at all.
+        })
+        # Telnyx does not send call.answered for a call we answered ourselves,
+        # so the wait_for_audio gate is opened here instead.
+        self.mark_answered()
 
     # -- called by the server, from the event loop --------------------------
 
@@ -410,6 +462,13 @@ class TelnyxTransport(Transport):
     # -- the Transport interface --------------------------------------------
 
     def dial(self, number: str) -> None:
+        # An inbound call is already up: they dialled US. Agent.call() opens
+        # by dialling whatever number it was handed, so without this the
+        # first thing an answered inbound call did was try to RING THE CALLER
+        # BACK, which Telnyx refused with a 422 and which ended the call two
+        # seconds after it connected. Seen on the first live inbound test.
+        if self.inbound:
+            return
         body = {
             "connection_id": config.key("TELNYX_CONNECTION_ID", required=True),
             "to": number,
@@ -471,6 +530,15 @@ class TelnyxTransport(Transport):
         `send_silence_when_idle` means frames arrive either way, so the audio
         gate stays as a second condition rather than the only one.
         """
+        # INBOUND IS ALREADY UP. answer() has run, so there is no pickup to
+        # wait for and no ringback to sit through: the caller is on the line
+        # right now, waiting for somebody to say hello. Running the outbound
+        # audio-onset gate here made her sit silent for FORTY-FIVE SECONDS on
+        # the first live inbound call before greeting, because that gate waits
+        # for the far end to make a noise and a caller is waiting for US.
+        if self.inbound:
+            return not self._ended.is_set()
+
         deadline = time.time() + timeout_s
         while time.time() < deadline:
             if self._ended.is_set():

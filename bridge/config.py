@@ -117,6 +117,12 @@ CUE_BUDGET = int(os.environ.get("BRIDGE_CUE_BUDGET", "2"))
 # artifact class the sampling ceiling exists to kill.
 BREATH_CHANCE = float(os.environ.get("BRIDGE_BREATH_CHANCE", "0.5"))
 
+# Leave the message instead of hanging up on the machine. The 118 calls of
+# 2026-07-31 binned 46 answerphones at exactly the moment they became useful:
+# a business that does not answer its own phone has just demonstrated the
+# problem being sold against, and there is an open mailbox to say so into.
+VOICEMAIL_ENABLED = os.environ.get("BRIDGE_VOICEMAIL", "1") != "0"
+
 DISFLUENCY_ENABLED = os.environ.get("BRIDGE_DISFLUENCY", "1") != "0"
 # Raised 0.16 -> 0.30 on 2026-07-31 evening: "bake this into the baseline
 # behavior, not a special effect". Held well under the directive's 2-5% of

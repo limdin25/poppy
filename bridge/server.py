@@ -122,7 +122,27 @@ async def webhook(request: web.Request) -> web.Response:
     call = CALLS.get(ccid)
     log(f"webhook {event} {ccid[:12]}{'' if call else '  (no live call for it)'}")
 
-    if event == "call.answered" and call:
+    if event == "call.initiated" and not call and _is_incoming(payload):
+        # Somebody rang US. Until 2026-07-31 this line was logged as "no live
+        # call for it" and dropped on the floor, which made every warm route
+        # impossible: a voicemail asking them to ring back, a "call me"
+        # button, a consented mobile. All of them end here.
+        caller = payload.get("from", "")
+        # Match them against everyone we have ever rung, BEFORE answering, so
+        # the log says who it is while the phone is still ringing. This is the
+        # number the whole voicemail play is measured on: nobody rings a
+        # stranger back by accident.
+        known = dialqueue.record_callback(caller) if caller else None
+        if known:
+            vm = "after a voicemail" if known.get("had_voicemail") else "with no voicemail"
+            log(f"CALLBACK | {caller} is {known.get('business')} "
+                f"({known.get('campaign')}), {vm}")
+        else:
+            log(f"INBOUND  | {caller} ringing in, not one of ours")
+        threading.Thread(
+            target=_run_inbound, args=(ccid, caller), daemon=True,
+        ).start()
+    elif event == "call.answered" and call:
         call.mark_answered()
     elif event == "call.hangup" and call:
         call.mark_ended(payload.get("hangup_cause", ""))
@@ -133,6 +153,17 @@ async def webhook(request: web.Request) -> web.Response:
         log(f"AMD      | {result} on {ccid[:12]}")
         call.mark_machine(result)
     return web.json_response({"ok": True})
+
+
+def _is_incoming(payload: dict) -> bool:
+    """Did they ring us, or did we ring them?
+
+    Telnyx sends call.initiated for BOTH, and answering our own outbound call
+    would be a loop, so the direction is the whole guard. It reports the
+    direction from ITS point of view, so a call arriving at our number is
+    "incoming", and the older API wording "inbound" is accepted too.
+    """
+    return str(payload.get("direction", "")).lower() in ("incoming", "inbound")
 
 
 async def find_call(ccid: str, timeout: float = 5.0) -> TelnyxTransport | None:
@@ -361,6 +392,11 @@ def _run_call(number: str, from_number: str, business, reviews, campaign=None) -
                 transcript_path=path.name, booked_slot=result.booked,
                 final_stage=a.last_stage, error=result.error,
             )
+            # Stamp the delivery separately: the outcome says what kind of
+            # call it was, this says the message actually landed, and it is
+            # the denominator of the callback rate.
+            if result.voicemail_ms:
+                dialqueue.record_voicemail(number, result.voicemail_ms)
             # Now the heavy part, so Hugo can play the call back in the CRM
             # instead of me reading it to him off the VPS over ssh.
             # Re-read the turns from the file just written rather than
@@ -389,6 +425,107 @@ def _run_call(number: str, from_number: str, business, reviews, campaign=None) -
             ears.close()
         if transport.call_control_id:
             CALLS.pop(transport.call_control_id, None)
+
+
+# What she is when somebody rings US. Deliberately NOT the sales brief: a
+# person who dials this number has already chosen to hear her, and the fastest
+# way to lose them is to be pitched at. She answers the way a good receptionist
+# answers, because being that receptionist IS the demonstration, and the pitch
+# only happens if they ask for it.
+INBOUND_PROMPT = """You are Maria, the AI receptionist at HeyElsie. Somebody \
+has just RUNG YOU. You did not call them.
+
+They are almost certainly a business owner who heard your voicemail, or who \
+was given this number to hear what an AI receptionist sounds like. Either way \
+they came to you, which means you never pitch first and you never rush.
+
+HOW YOU ANSWER. Warm, quick, and useful, exactly like the best receptionist \
+they have ever rung. "Good afternoon, HeyElsie, Maria speaking. How can I \
+help?" is the shape. Then LISTEN and deal with whatever they actually say.
+
+WHAT IS TRUE, and you may say all of it.
+- You are an AI receptionist. Say so plainly the moment anybody asks, and \
+never pretend to be a person.
+- You answer every call, you do not miss any, you take messages, book jobs \
+in and text people back. You do not take holidays or sick days.
+- You cost ninety-seven dollars a month. A person doing this job in the \
+States costs somewhere around two and a half to three and a half thousand \
+dollars a month.
+- They are hearing you do the job right now. This call IS the demonstration, \
+and you may point that out once, lightly, if it helps.
+- Somebody from the team sets you up on their line. That takes a short call.
+
+WHAT YOU DO NOT KNOW. Anything about their business they have not told you \
+on this call: how many calls they miss, who works there, what they charge. \
+Never guess and never invent a statistic or a customer story.
+
+IF THEY WANT IT, book them a short call with somebody from the team and \
+write [BOOK: their day and time]. If they are only curious, answer their \
+questions properly and let them go warmly. A good conversation they remember \
+beats a booking you squeezed.
+
+Plain spoken American English, contractions, one idea per turn, eight to \
+twelve words is normal. Ask one question then stop. Never a long dash."""
+
+
+def _run_inbound(ccid: str, caller: str) -> None:
+    """Answer a call somebody made to us, and be the receptionist.
+
+    Mirrors _run_call, minus the dialling: the call already exists and the far
+    end is already on the line, so the transport is built around the id from
+    the webhook and answered immediately.
+    """
+    def show(kind: str, text: str) -> None:
+        log(f"{kind.upper():<8} | {text}")
+
+    saved = settings.fish_config()
+    settings.apply(saved)
+    transport = TelnyxTransport.for_inbound(ccid, registry=CALLS, on_event=show)
+    stream = ears = None
+    try:
+        transport.answer()
+        a = agent.Agent(
+            transport=transport,
+            system_prompt=INBOUND_PROMPT,
+            # SHE speaks first here, because she is the one who picked up.
+            opener="[very warm] Good afternoon, HeyElsie, Maria speaking. How can I help?",
+            tts=ai.build_tts(telephony=True),
+            on_event=show,
+        )
+        if config.AAI_STREAMING and config.key("ASSEMBLYAI_API_KEY"):
+            ears = assembly_stt.AssemblyStream(
+                keyterms=["HeyElsie", "receptionist"], on_event=show)
+            if ears.connect():
+                a.ears = ears
+                transport.listener = ears.feed
+                if config.PROSODY_ENABLED:
+                    ear_feed = ears.feed
+                    pros = prosody.Prosody()
+
+                    def both(raw: bytes) -> None:
+                        ear_feed(raw)
+                        pros.feed(raw)
+                    transport.listener = both
+                    a.prosody = pros
+        stream = fish_stream.FishStream(on_event=show)
+        if stream.connect():
+            a.voice_stream = stream
+        # No dial: the number is whoever rang in, and the loop is otherwise
+        # identical to an outbound call from the moment of answer.
+        result = a.call(caller or "inbound")
+        path = agent.save_transcript(result, TRANSCRIPTS)
+        wav = transport.save_recording(path.with_suffix(".wav"))
+        log(f"DONE     | INBOUND {result.outcome}  {result.duration:.0f}s  "
+            f"{len(result.turns)} turns  -> {path.name}"
+            f"{'  + ' + wav.name if wav else ''}")
+    except Exception as e:
+        log(f"ERROR    | inbound call failed: {type(e).__name__}: {e}")
+    finally:
+        if stream is not None:
+            stream.close()
+        if ears is not None:
+            ears.close()
+        CALLS.pop(ccid, None)
 
 
 def build_app() -> web.Application:
