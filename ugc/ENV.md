@@ -44,6 +44,10 @@ serverless): they belong to the VPS worker only.
 | Var | Where set | Purpose |
 |---|---|---|
 | FAL_KEY | shell | One key reaches every bake-off contender |
+| GEMINI_API_KEY | shell | Nano Banana fixture + composite images |
+| FISH_API_KEY | shell | The fixture voiceover takes |
+| ARK_API_KEY | shell | BytePlus ModelArk (Seedance price verification, optional) |
 | SUPABASE_URL | shell | Where `ugc_benchmark_runs` rows land |
 | SUPABASE_SERVICE_ROLE_KEY | shell | Writes benchmark rows + uploads outputs |
-| BENCH_BUDGET_USD | shell (default 90) | The hard cap; the harness refuses submissions past it |
+| BENCH_BUDGET_USD | shell (REQUIRED, no default) | The hard cap; the harness refuses submissions past it |
+| BENCH_FORCE_RESUBMIT | shell (never set casually) | Set to the EXACT spend key to unlock one crashed-mid-call entry after checking the provider dashboard; the estimate is counted against the budget again |
