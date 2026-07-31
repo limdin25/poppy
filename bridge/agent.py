@@ -1254,6 +1254,29 @@ class Agent:
             )
         return interrupted
 
+    def _giveup_line(self, result: CallResult):
+        """Speak the stage she was sent to after failing to get an answer,
+        but LISTEN FIRST when her own last line was a question.
+
+        The immediate speak exists for a reason: the give-up stages are the
+        ones where she does the talking, and waiting silently there once ran
+        seventeen seconds of dead air. But on a live call the try that burned
+        the stage was itself a question, "tomorrow morning, or Thursday
+        afternoon?", and the immediate speak had her asking again three
+        seconds later with nothing heard in between. A question in the air
+        buys the prospect one full listen; a real answer is what gets replied
+        to, and only their silence hands the turn back to her.
+        """
+        handoff = config.WENT_QUIET
+        if self._last_spoken.rstrip().endswith("?") or self._question_pending:
+            self._emit("waiting",
+                       "gave up the stage with a question in the air, listening first")
+            got = (self._listen_streaming(result)
+                   if self.ears is not None else self._listen(result))
+            if got:
+                handoff = got
+        return self._say_live(handoff, result)
+
     def _say_live(self, heard: str, result: CallResult) -> tuple[bool, bool]:
         """Claude's tokens straight into Fish, no sentence buffering anywhere.
 
@@ -1828,8 +1851,7 @@ class Agent:
                                 # for seventeen seconds.
                                 self._set_stage(stage, tries)
                                 try:
-                                    ends, was_cut, went = self._say_live(
-                                        config.WENT_QUIET, result)
+                                    ends, was_cut, went = self._giveup_line(result)
                                     nxt2, fin2 = stages.route(stage, went)
                                     if fin2:
                                         result.outcome = "completed"

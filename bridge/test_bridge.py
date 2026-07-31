@@ -1781,6 +1781,44 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("giving up a stage does not talk over a question she just asked")
+def _():
+    # Heard live, 2026-07-31 10:01: "tomorrow morning, or Thursday
+    # afternoon?" at 82.0s and a SECOND ask at 85.5s with nothing heard
+    # between, because burning the last stage try triggers an immediate
+    # give-up line. The immediate speak exists (silence once ran seventeen
+    # seconds after a give-up), but a question in the air buys the prospect
+    # one full listen first, and a real answer is what gets replied to.
+    def build(last, pending, hears):
+        a = agent.Agent.__new__(agent.Agent)
+        a._last_spoken = last
+        a._question_pending = pending
+        a.ears = object()
+        a._emit = lambda *rest: None
+        a._listen_streaming = lambda result, timeout=None: hears
+        calls = []
+        a._say_live = lambda heard, result: calls.append(heard) or (False, False, None)
+        return a, calls
+
+    # She asked, they answer during the grace listen: the answer is replied to.
+    a, calls = build("Tomorrow morning or Thursday afternoon?", False, "tomorrow morning")
+    a._giveup_line(None)
+    assert calls == ["tomorrow morning"], calls
+    # She asked, they stay silent: the give-up line goes ahead.
+    a, calls = build("Tomorrow morning or Thursday afternoon?", False, "")
+    a._giveup_line(None)
+    assert calls == [agent.config.WENT_QUIET], calls
+    # The question mark was clipped off but the question was asked: same deal.
+    a, calls = build("Tomorrow morning or Thursday", True, "Thursday works")
+    a._giveup_line(None)
+    assert calls == ["Thursday works"], calls
+    # No question in the air: she speaks straight away, no listen first.
+    a, calls = build("Right, leave it with me.", False, "SHOULD NOT LISTEN")
+    a._listen_streaming = lambda result, timeout=None: (_ for _ in ()).throw(AssertionError("listened"))
+    a._giveup_line(None)
+    assert calls == [agent.config.WENT_QUIET], calls
+
+
 @case("only the target language's characters ever reach the voice")
 def _():
     # Fish performs whatever it is given: one CJK or Cyrillic character in the
