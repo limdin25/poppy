@@ -142,18 +142,21 @@ def _():
     assert len(frames) == 5, f"expected 5 x 200ms frames, got {len(frames)}"
 
 
-@case("the room tone rides UNDER the voice, so the floor never drops")
+@case("the voice goes out untouched by default, and the mixer still works")
 def _():
-    # Digital silence inside a spoken payload (the gap between two sentences
-    # of one reply) must leave carrying the room tone, not nothing: true zero
-    # for 300ms sounds like the line dropping.
+    # The under-voice mixing is OFF by default: the voice model carries its
+    # own reference room while speaking, and adding ours on top doubled the
+    # noise, which Hugo heard as "background noise is too high". Continuity
+    # comes from MATCHING the between-turns floor to the voice's measured
+    # floor instead. The mixer stays available for a voice whose own room is
+    # too quiet to hear (BRIDGE_MIX_ROOM_TONE=1).
     t, ws = make_transport()
     quiet = ulaw.encode(b"\x00\x00" * 1600)               # 200ms of pure silence
     t.speak(quiet)
-    out = ulaw.decode(ws.audio_bytes())
-    lvl = audio.rms_dbfs(out)
-    assert lvl > -60.0, f"a silent frame went out truly dead at {lvl:.1f} dBFS"
-    assert lvl < telnyx.COMFORT_NOISE_DBFS + 6.0, f"floor too loud: {lvl:.1f} dBFS"
+    assert ws.audio_bytes() == quiet, "audio was altered with mixing off"
+    mixed = ulaw.decode(telnyx.mix_room_tone(telnyx.RoomTone(), quiet))
+    lvl = audio.rms_dbfs(mixed)
+    assert -60.0 < lvl < telnyx.COMFORT_NOISE_DBFS + 6.0, f"mixer broken: {lvl:.1f} dBFS"
 
 
 @case("playback duration is derived from the byte count, so is_speaking is honest")

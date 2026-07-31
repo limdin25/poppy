@@ -76,10 +76,10 @@ END_OF_TURN_SILENCE_MS = 250
 # Real words only, no hum-murmurs, and PROBED CLEAN ON THE LIVE VOICE before
 # they may be spoken. A murmur is the least text a voice model can be handed,
 # and the reference bleeds straight through it: one voice rendered "Mm." as a
-# MEOW, the next rendered "Sure." in Russian and "Yeah." in Chinese. On voice
-# 690813f2... only these two came back 4/4 clean from the transcription
-# probe. When the voice changes, re-run the probe before widening this list.
-BACKCHANNEL_WORDS = ("Right.", "Okay.")
+# MEOW, another rendered "Sure." in Russian and "Yeah." in Chinese. On the
+# live voice 9335631... all five probed 3/3 clean on 2026-07-31. When the
+# voice changes, re-run the probe before trusting this list.
+BACKCHANNEL_WORDS = ("Right.", "Yeah.", "Okay.", "Gotcha.", "Sure.")
 BACKCHANNEL_CHANCE = 0.45
 
 # Simulated disfluency. A voice that glides through every sentence is one of

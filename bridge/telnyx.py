@@ -67,10 +67,17 @@ ULAW_BYTES_PER_SECOND = 8000
 # live voice, take the quietest 200ms window, and match it. The room between
 # her turns has to be the same room her voice was recorded in: quieter reads
 # as the line dying whenever she stops, louder reads as hiss barging in.
-# History: -36.2 measured on voice d875... (2026-07-31), -48.8 on voice
-# 690813f2... which is the live one. Override with BRIDGE_COMFORT_DBFS when
+# History: -36.2 on voice d875..., -48.8 on 690813f2..., -52.8 on
+# 9335631... which is the live one. Override with BRIDGE_COMFORT_DBFS when
 # the voice changes, then move the default.
-COMFORT_NOISE_DBFS = float(os.environ.get("BRIDGE_COMFORT_DBFS", "-48"))
+COMFORT_NOISE_DBFS = float(os.environ.get("BRIDGE_COMFORT_DBFS", "-52"))
+# The under-voice mixing is OFF by default since 2026-07-31: the voice model
+# carries its OWN reference room while speaking, and adding ours on top
+# doubled the noise during speech, which Hugo heard as "background noise is
+# too high". With the between-turns floor MATCHED to the voice's measured
+# floor, the room is continuous without any mixing. The machinery stays for
+# a voice whose own floor is too quiet to hear: BRIDGE_MIX_ROOM_TONE=1.
+MIX_ROOM_TONE = os.environ.get("BRIDGE_MIX_ROOM_TONE", "0") == "1"
 COMFORT_CHUNK_MS = 200
 # How much of the previous sample carries into the next one. Higher is duller
 # and more distant. 0.92 puts most of the energy under about 300 Hz, which is
@@ -599,9 +606,10 @@ class TelnyxTransport(Transport):
     def _send_audio(self, payload: bytes) -> None:
         if not self._audio_began:
             self._audio_began = time.monotonic()
-        # The floor travels inside the voice. See mix_room_tone for why it
-        # cannot be sent as its own frames while she is speaking.
-        payload = mix_room_tone(self._tone, payload)
+        # Only when explicitly enabled: on a voice that carries its own
+        # reference room, adding ours on top doubles the noise under speech.
+        if MIX_ROOM_TONE:
+            payload = mix_room_tone(self._tone, payload)
         step = int(ULAW_BYTES_PER_SECOND * SEND_CHUNK_MS / 1000)
         for i in range(0, len(payload), step):
             self._send({
