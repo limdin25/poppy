@@ -584,8 +584,19 @@ class FishAudioTTS(TextToSpeech):
             )
         self.telephony = telephony
 
-    def say(self, text: str) -> bytes:
-        payload: dict = {
+    def _payload(self, text: str) -> dict:
+        # STABILITY FLOOR FOR SHORT CLIPS. These HTTP renders carry no
+        # conditioning context at all, and the less text the model is handed
+        # the harder it leans on its reference, which on a community voice
+        # means the reference's LANGUAGE: a one-word backchannel came back in
+        # Chinese-adjacent noises on a live call. A word or two needs
+        # stability, not expressiveness; a full sentence keeps the configured
+        # sampling untouched.
+        temperature, top_p = config.FISH_TEMPERATURE, config.FISH_TOP_P
+        if len(text.strip()) < 24:
+            temperature = min(temperature, 0.5)
+            top_p = min(top_p, 0.6)
+        return {
             "text": text,
             # THE important one. Pins the voice so it is the same person on
             # every request. See __init__ for what happens without it.
@@ -599,8 +610,8 @@ class FishAudioTTS(TextToSpeech):
             "normalize": True,
             # Smaller chunks start sooner. 100 is their floor, 300 the default.
             "chunk_length": config.FISH_CHUNK,
-            "temperature": config.FISH_TEMPERATURE,
-            "top_p": config.FISH_TOP_P,
+            "temperature": temperature,
+            "top_p": top_p,
             "prosody": {
                 # Fish speaks slower than the others: measured 13.9 characters a
                 # second against ElevenLabs' 19.2, so the same opener ran seven
@@ -614,6 +625,13 @@ class FishAudioTTS(TextToSpeech):
                 "normalize_loudness": True,
             },
         }
+
+    def say(self, text: str) -> bytes:
+        from .fish_stream import speakable
+        if not speakable(text):
+            # No words means nothing to say, and a wordless request is pure
+            # reference-language fuel. Silence is the correct rendering.
+            return b""
         raw = _post(
             self.URL,
             {
@@ -621,7 +639,7 @@ class FishAudioTTS(TextToSpeech):
                 "Content-Type": "application/json",
                 "model": config.FISH_MODEL,
             },
-            json.dumps(payload).encode(),
+            json.dumps(self._payload(text)).encode(),
         )
         if not self.telephony:
             return raw

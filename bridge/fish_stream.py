@@ -35,6 +35,17 @@ import re
 from . import audio, config, ulaw
 
 _CUE = re.compile(r"\[[^\]]*\]")
+
+
+def speakable(text: str) -> bool:
+    """Is there anything here a voice could actually say?
+
+    "...", a stray "?", or a bare cue tag handed to the model is pure
+    reference-language fuel: with no words to say, it says what its reference
+    audio says, which on a community voice meant Chinese and a meow on live
+    calls. Silence is the correct rendering of no words.
+    """
+    return bool(re.search(r"[A-Za-z0-9]", _CUE.sub(" ", text or "")))
 # A full stop after one of these is an abbreviation, not the end of a thought.
 _ABBREV = frozenset({
     "mr", "mrs", "ms", "dr", "st", "ave", "rd", "inc", "ltd", "co", "corp",
@@ -387,6 +398,8 @@ class FishStream:
         import msgpack
 
         if self._failed or self._loop is None or self._ws is None:
+            return
+        if not speakable(text):
             return
         # Drop anything left over from a previous utterance, so a barge-in does
         # not leak the tail of the abandoned reply into the next one.

@@ -1781,6 +1781,51 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("no hum-murmurs: every backchannel is a real word")
+def _():
+    # The linguistic hallucinations concentrate where the voice model gets
+    # the least text to hold onto, and a bare "Mm." is the least text there
+    # is: on a reference-heavy community voice it came back as a MEOW on a
+    # live call. Real words only; the voice model cannot turn "Gotcha." into
+    # a cat.
+    for word in config.BACKCHANNEL_WORDS:
+        bare = word.strip(". ").lower()
+        assert bare not in {"mm", "mm hmm", "mhm", "hmm", "mmm"}, word
+        assert any(c in "aeiouy" for c in bare) and len(bare) >= 4, word
+
+
+@case("a short fixed clip is rendered with stable sampling")
+def _():
+    # Backchannels and the opener are rendered over HTTP with no conditioning
+    # context at all, which is exactly where the reference language bleeds
+    # through. A one-word clip needs stability, not expressiveness: the
+    # sampling floor drops for anything under two dozen characters, and a
+    # full sentence keeps the configured values.
+    from . import ai
+    t = ai.FishAudioTTS.__new__(ai.FishAudioTTS)
+    t.voice_id = "v"
+    t.telephony = True
+    short = t._payload("Gotcha.")
+    long = t._payload("So I answer your phones while you're out on a job today.")
+    assert short["temperature"] <= 0.5, short["temperature"]
+    assert short["top_p"] <= 0.6, short["top_p"]
+    assert long["temperature"] == config.FISH_TEMPERATURE, long["temperature"]
+    assert long["top_p"] == config.FISH_TOP_P, long["top_p"]
+
+
+@case("a piece with no letters in it is never synthesised")
+def _():
+    # "..." or a stray "?" handed to the voice is pure reference-language
+    # fuel: there is nothing to say, so the model says what its reference
+    # says. Silence is the correct rendering of no words.
+    from . import fish_stream
+    assert not fish_stream.speakable("...")
+    assert not fish_stream.speakable("?  !")
+    assert not fish_stream.speakable("[break]")
+    assert fish_stream.speakable("Yeah.")
+    assert fish_stream.speakable("2pm works.")
+
+
 @case("a markdown separator is never read down the phone")
 def _():
     # Spoken verbatim on a live call: "Let me ring them fresh. --- Hi, is
