@@ -174,6 +174,16 @@ SWAPS: tuple[tuple[str, str], ...] = (
     # Catches "ring you back" too: this runs first and leaves nothing for a
     # longer form to match.
     ("ring you", "call you"),
+    # Laughter written as words. The cue allowlist stopped [chuckling], and
+    # Fish performs "Haha" in the text just as loudly, so the laugh's last
+    # door is closed here. Longer forms first, so "hahaha" is not left as
+    # "ha" by the shorter pattern eating its middle.
+    ("hahaha", ""),
+    ("ha ha ha", ""),
+    ("haha", ""),
+    ("ha ha", ""),
+    ("hehehe", ""),
+    ("hehe", ""),
 )
 
 

@@ -83,6 +83,12 @@ BACKCHANNEL_CHANCE = 0.45
 # CHANCE is per reply; MIN_GAP is replies that must pass between trips, so it
 # can never happen twice in a row; SLOW_S is the brain latency past which a
 # trip at the start of the reply reads as genuine thinking rather than a tic.
+# How many EMOTION cues one reply may carry to the voice. Mechanics ([break],
+# [emphasis]) are exempt. Enforced in clean_cues; the prompt's "about one turn
+# in two" guidance kept producing a feeling per sentence, which is the
+# caricature, so the ceiling lives here.
+CUE_BUDGET = int(os.environ.get("BRIDGE_CUE_BUDGET", "2"))
+
 DISFLUENCY_ENABLED = os.environ.get("BRIDGE_DISFLUENCY", "1") != "0"
 DISFLUENCY_CHANCE = float(os.environ.get("BRIDGE_DISFLUENCY_CHANCE", "0.16"))
 DISFLUENCY_MIN_GAP = int(os.environ.get("BRIDGE_DISFLUENCY_MIN_GAP", "2"))

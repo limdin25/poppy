@@ -19,11 +19,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import math
 import queue
+import random
 import threading
 import time
 import urllib.error
 import urllib.request
+from array import array
 
 from . import audio, config, ulaw
 from .transport import CaptureFailed, Transport
@@ -67,6 +70,60 @@ COMFORT_CHUNK_MS = 200
 COMFORT_SMOOTHING = 0.92
 # How much audio to put in one websocket frame. Telnyx accepts 20ms to 30s.
 SEND_CHUNK_MS = 200
+
+
+class RoomTone:
+    """The synthesised room tone generator, stateful so the joins are seamless.
+
+    One instance per call, shared between the between-turns comfort frames and
+    the under-the-voice mixing, so the filter state and the slow drift carry
+    across every boundary and there is never a click or a level jump where one
+    source hands over to the other.
+    """
+
+    def __init__(self) -> None:
+        self._prev = 0.0
+        self._phase = 0.0
+
+    def samples(self, n: int) -> list[int]:
+        base = (10 ** (COMFORT_NOISE_DBFS / 20.0)) * 32767.0
+        # A slow wander of a couple of dB, so it is never quite static.
+        self._phase += 0.13 * (n / 1600.0)
+        drift = 10 ** ((1.5 * math.sin(self._phase)) / 20.0)
+        a = COMFORT_SMOOTHING
+        # A one-pole low pass loses energy, so put it back to keep the measured
+        # level on target rather than 20 dB under it.
+        gain = base * drift * math.sqrt((1 + a) / (1 - a))
+        prev = self._prev
+        out = []
+        for _ in range(n):
+            prev = a * prev + (1 - a) * random.gauss(0.0, 1.0)
+            v = int(prev * gain)
+            out.append(-32768 if v < -32768 else (32767 if v > 32767 else v))
+        self._prev = prev
+        return out
+
+
+def mix_room_tone(tone: RoomTone, payload: bytes) -> bytes:
+    """The room tone mixed UNDER a mu-law voice payload.
+
+    Telnyx plays our frames strictly in sequence, one stream, so the tone
+    cannot be sent alongside the voice: a comfort frame sent mid-reply would
+    queue AFTER the speech and delay it. The only way the ambient floor
+    survives her talking is to be part of the voice audio itself. Without
+    this, the room went dead the instant she spoke and came back when she
+    stopped, which is the exact "pause button" tell Hugo reported twice.
+
+    At -48 dBFS under a -18 dBFS voice the ear cannot hear the addition on
+    the speech itself; what it hears is the silence between her sentences no
+    longer being the silence of a dead line.
+    """
+    pcm = array("h")
+    pcm.frombytes(ulaw.decode(payload))
+    for i, nz in enumerate(tone.samples(len(pcm))):
+        v = pcm[i] + nz
+        pcm[i] = -32768 if v < -32768 else (32767 if v > 32767 else v)
+    return ulaw.encode(pcm.tobytes())
 
 
 def _request(method: str, path: str, body: dict | None = None, timeout: int = 30) -> dict:
@@ -132,6 +189,10 @@ class TelnyxTransport(Transport):
         # Keeps the line sounding alive between her turns. See COMFORT_NOISE.
         self._comfort_stop = threading.Event()
         self._comfort: threading.Thread | None = None
+        # ONE generator for the whole call, shared by the comfort frames and
+        # the under-the-voice mixing, so the floor is continuous across every
+        # speaking/listening boundary.
+        self._tone = RoomTone()
 
     # -- called by the server, from the event loop --------------------------
 
@@ -150,32 +211,13 @@ class TelnyxTransport(Transport):
         same noise is audible as a tick once you have noticed it, and once you
         notice it you cannot stop hearing it.
 
-        Low-passed, because a room is not hiss. The filter state carries across
-        frames so there is no click at the joins, and the level drifts slowly so
-        it breathes instead of sitting flat.
+        Low-passed, because a room is not hiss. The generator's filter state
+        carries across frames, and across the under-the-voice mixing too, so
+        there is no click at any join and the level drifts slowly enough to
+        breathe instead of sitting flat.
         """
-        import math
-        import random
-        n = 8000 * COMFORT_CHUNK_MS // 1000
-        base = (10 ** (COMFORT_NOISE_DBFS / 20.0)) * 32767.0
-        # A slow wander of a couple of dB, so it is never quite static.
-        self._comfort_phase = getattr(self, "_comfort_phase", 0.0) + 0.13
-        drift = 10 ** ((1.5 * math.sin(self._comfort_phase)) / 20.0)
-        amp = base * drift
-        # The filter has to remember where it was, or every frame starts from
-        # zero and the seam is a click 5 times a second.
-        prev = getattr(self, "_comfort_prev", 0.0)
-        a = COMFORT_SMOOTHING
-        # A one-pole low pass loses energy, so put it back to keep the measured
-        # level on target rather than 20 dB under it.
-        gain = amp * math.sqrt((1 + a) / (1 - a))
-        pcm = bytearray()
-        for _ in range(n):
-            prev = a * prev + (1 - a) * random.gauss(0.0, 1.0)
-            v = int(prev * gain)
-            pcm += max(-32768, min(32767, v)).to_bytes(2, "little", signed=True)
-        self._comfort_prev = prev
-        return ulaw.encode(bytes(pcm))
+        pcm = array("h", self._tone.samples(8000 * COMFORT_CHUNK_MS // 1000))
+        return ulaw.encode(pcm.tobytes())
 
     def _start_comfort_noise(self) -> None:
         if self._comfort is not None:
@@ -191,7 +233,10 @@ class TelnyxTransport(Transport):
                 # hangup is exactly what the tests refuse to allow.
                 if (self._ended.is_set() or not self._answered.is_set()
                         or self.is_speaking()):
-                    self._comfort_stop.wait(step)
+                    # A short poll, not a full frame's worth. Waiting 200ms here
+                    # left up to 200ms of true dead air after every reply, which
+                    # is long enough to hear as a drop-out.
+                    self._comfort_stop.wait(0.05)
                     continue
                 if True:
                     # Straight out, NOT through _send_audio: that stamps
@@ -546,6 +591,9 @@ class TelnyxTransport(Transport):
     def _send_audio(self, payload: bytes) -> None:
         if not self._audio_began:
             self._audio_began = time.monotonic()
+        # The floor travels inside the voice. See mix_room_tone for why it
+        # cannot be sent as its own frames while she is speaking.
+        payload = mix_room_tone(self._tone, payload)
         step = int(ULAW_BYTES_PER_SECOND * SEND_CHUNK_MS / 1000)
         for i in range(0, len(payload), step):
             self._send({

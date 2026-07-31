@@ -1781,6 +1781,68 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("a booking hallucinated against silence is never recorded")
+def _():
+    # Hugo, 2026-07-31: "hallucinating intent, booking appointments without
+    # any confirmation". The mechanism is real: [BOOK: ...] is read from
+    # everything the model WRITES, and the resume path hands the model
+    # "(they said nothing)" as a turn, so a hallucinated [BOOK] in a reply to
+    # pure silence became a recorded appointment. A booking is only a booking
+    # when it answers a person actually speaking.
+    assert not agent.booking_allowed(config.WENT_QUIET)
+    assert not agent.booking_allowed("")
+    assert not agent.booking_allowed(None)
+    assert not agent.booking_allowed("  " + config.WENT_QUIET + "  ")
+    assert agent.booking_allowed("tomorrow morning works for me")
+
+
+@case("the intensity ladder is capped: extremely collapses to very")
+def _():
+    # "The agent is laughing out of the blue and overplaying the hand."
+    # [extremely excited] is the manic top of the ladder and reads as an
+    # outburst; [very excited] is as far as a person on a work call goes.
+    old = config.CUES_ENABLED
+    config.CUES_ENABLED = True
+    try:
+        assert agent._allowed_cue("extremely excited") == "very excited"
+        assert agent._allowed_cue("extremely warm") == "very warm"
+        assert agent._allowed_cue("very warm") == "very warm"
+        assert agent._allowed_cue("quite amused") == "quite amused"
+        # The cap is not a side door: the base still has to be allowed.
+        assert agent._allowed_cue("extremely chuckling") is None
+    finally:
+        config.CUES_ENABLED = old
+
+
+@case("two emotion cues a reply is the budget, pauses do not count")
+def _():
+    # One cue in two turns is the measured guidance; a cue on every sentence
+    # is the caricature. The budget is enforced where the cues reach the
+    # voice, and [break]/[long-break]/[emphasis] are mechanics, not emotions,
+    # so they neither spend the budget nor get dropped by it.
+    old = config.CUES_ENABLED
+    config.CUES_ENABLED = True
+    try:
+        out = "".join(agent.clean_cues(iter([
+            "[warm] Hi. [amused] Really. [break] [excited] Yes. [delighted] Great."
+        ])))
+        assert "[warm]" in out and "[amused]" in out, out
+        assert "[excited]" not in out and "[delighted]" not in out, out
+        assert "[break]" in out, out
+    finally:
+        config.CUES_ENABLED = old
+
+
+@case("laughter written as words never reaches the voice")
+def _():
+    # The cue allowlist stopped [chuckling], so the laugh's remaining door is
+    # the text itself: Fish performs "Haha" as a real laugh.
+    out, notes = copy_guard.swap("Haha, that's fair. Hahaha. Ha ha, very good.")
+    low = out.lower()
+    assert "haha" not in low and "ha ha" not in low, out
+    assert notes, notes
+
+
 @case("a barge in the early window needs words, not just noise")
 def _():
     # Stage two of the interrupt decision. The lowered early-yield threshold

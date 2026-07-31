@@ -122,14 +122,38 @@ def _():
 
 # -- talking back -----------------------------------------------------------
 
-@case("speak sends the exact audio, chunked, and nothing else")
+@case("speak sends the audio chunked, level intact, with the floor under it")
 def _():
+    # This used to assert the EXACT bytes went out. That contract changed on
+    # purpose, 2026-07-31: Telnyx plays our frames sequentially, so the room
+    # tone cannot be sent alongside the voice, it has to be MIXED INTO it, or
+    # the ambient floor drops dead the instant she starts talking and comes
+    # back when she stops, which is the exact tell Hugo reported. The voice
+    # must come through untouched to the ear: -48 dB under -18 dB moves the
+    # measured level by under 0.05 dB.
     t, ws = make_transport()
     payload = ulaw.encode(tone(1000, -18.0, rate=8000))   # 8000 bytes = 1 second
     t.speak(payload)
-    assert ws.audio_bytes() == payload, "audio was altered on the way out"
+    sent = ws.audio_bytes()
+    assert len(sent) == len(payload), "duration was altered on the way out"
+    lvl = audio.rms_dbfs(ulaw.decode(sent))
+    assert abs(lvl - (-18.0)) < 1.0, f"voice level became {lvl:.1f} dBFS"
     frames = ws.events("media")
     assert len(frames) == 5, f"expected 5 x 200ms frames, got {len(frames)}"
+
+
+@case("the room tone rides UNDER the voice, so the floor never drops")
+def _():
+    # Digital silence inside a spoken payload (the gap between two sentences
+    # of one reply) must leave carrying the room tone, not nothing: true zero
+    # for 300ms sounds like the line dropping.
+    t, ws = make_transport()
+    quiet = ulaw.encode(b"\x00\x00" * 1600)               # 200ms of pure silence
+    t.speak(quiet)
+    out = ulaw.decode(ws.audio_bytes())
+    lvl = audio.rms_dbfs(out)
+    assert lvl > -60.0, f"a silent frame went out truly dead at {lvl:.1f} dBFS"
+    assert lvl < telnyx.COMFORT_NOISE_DBFS + 6.0, f"floor too loud: {lvl:.1f} dBFS"
 
 
 @case("playback duration is derived from the byte count, so is_speaking is honest")

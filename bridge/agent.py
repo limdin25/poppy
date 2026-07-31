@@ -244,6 +244,20 @@ def booked_slot(text: str) -> str | None:
     return " ".join(m.group(1).split()) if m else None
 
 
+def booking_allowed(heard) -> bool:
+    """May a [BOOK] in this reply be recorded as a real appointment?
+
+    Only when it answers a person actually speaking. The marker is read from
+    everything the model WRITES, and the resume path hands the model
+    "(they said nothing)" as a turn, so a hallucinated [BOOK] in a reply to
+    pure silence became a recorded appointment with nobody's agreement in it.
+    A booking is a state change, and silence never authorises a state change.
+    """
+    if not heard or not str(heard).strip():
+        return False
+    return str(heard).strip() != config.WENT_QUIET
+
+
 # Words that mean the thought is still going, even though the sound stopped.
 # Somebody saying "we've got about twenty, but" has not finished, and answering
 # there talks over the important half of the sentence.
@@ -513,6 +527,11 @@ def _drop_leading_ack(tokens, acked: bool = False):
 _INTENSITY = {"slightly", "a bit", "mildly", "quite", "fairly", "rather",
               "really", "very", "extremely", "genuinely"}
 
+# Delivery mechanics rather than feelings. Exempt from the per-reply emotion
+# budget: dropping a [break] because the reply had already emoted twice would
+# delete a pause that was doing timing work, not emotional work.
+_MECHANIC_CUES = frozenset({"break", "long-break", "emphasis"})
+
 
 def _allowed_cue(raw: str) -> str | None:
     """The cue to send to Fish, or None to drop it.
@@ -534,7 +553,15 @@ def _allowed_cue(raw: str) -> str | None:
     # exactly like "[chuckling]" and the laugh has no side door.
     if cue in config.NOISES or base in config.NOISES:
         return None
-    return cue if base in config.SAFE_CUES else None
+    if base not in config.SAFE_CUES:
+        return None
+    # The intensity ladder is capped at "very". [extremely excited] performs
+    # as an outburst, and nobody on a work call is extremely anything. Hugo,
+    # 2026-07-31: "overplaying the hand, which makes it feel like a
+    # caricature and not a person".
+    if cue.startswith("extremely "):
+        cue = "very " + base
+    return cue
 
 
 def clean_cues(tokens):
@@ -553,7 +580,14 @@ def clean_cues(tokens):
     bracket is held back until the closing one arrives. Anything still held when
     the stream ends is dropped rather than spoken: a stray "[chuck" down the
     phone is worse than a missing cue nobody would have noticed.
+
+    AND THE BUDGET. Two emotion cues per reply, in code, because "about one
+    turn in two" in the prompt still produced replies wearing a different
+    feeling on every sentence, which is the caricature Hugo reported. The
+    mechanics ([break], [long-break], [emphasis]) are not emotions: they
+    neither spend the budget nor get dropped by it.
     """
+    spent = 0
     held = ""
     for token in tokens:
         text, held = held + token, ""
@@ -569,7 +603,11 @@ def clean_cues(tokens):
                 held = text[start:]        # incomplete, wait for the rest
                 break
             cue = _allowed_cue(text[start + 1:end])
+            if cue and cue not in _MECHANIC_CUES and spent >= config.CUE_BUDGET:
+                cue = None                 # the reply has emoted enough
             if cue:
+                if cue not in _MECHANIC_CUES:
+                    spent += 1
                 out.append(f"[{cue}]")
             else:
                 # A space, not nothing. The model writes cues with no spaces
@@ -1234,9 +1272,11 @@ class Agent:
 
         full = "".join(written)
         slot = booked_slot(full)
-        if slot and not result.booked:
+        if slot and not result.booked and booking_allowed(heard):
             result.booked = slot
             self._emit("booked", slot)
+        elif slot and not result.booked:
+            self._emit("guard", f"[BOOK: {slot}] refused, it answered silence")
         # `spoken` is what was handed to the voice, which on an interruption is
         # NOT what came out of the phone. Fish is sent the whole reply in one go
         # and streams the audio afterwards, so a barge-in two seconds in means
