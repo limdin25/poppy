@@ -391,7 +391,7 @@ export default function FunnelLeadDrawer({
                 is the job. Same button as the board card (canCloseCall). */}
             {canCloseCall(page) && (
               <button
-                onClick={() => openDialerPro(page.contact_id, { scriptKey: 'vsl_close' })}
+                onClick={() => openDialerPro(page.contact_id, { scriptKey: 'vsl_close', autoDial: false })}
                 data-testid="funnel-drawer-close-call"
                 title="Call them now with the close script (they watched the video)"
                 className={`${btn} text-white bg-[#16A34A] hover:bg-[#15803d]`}

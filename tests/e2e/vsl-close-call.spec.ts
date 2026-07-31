@@ -9,11 +9,15 @@ import { test, expect } from './helpers/auth'
  * watched it, what did you think?"), and that script "cannot affect the other
  * scripts" — the cold-call one Pedro and Marr read on every dial.
  *
- * NOTE ON WHY THE BUTTON IS NEVER CLICKED HERE. openDialerPro auto-dials the
- * moment the softphone is ready, exactly like every other Call button in the
- * CRM. Clicking it in an automated test rings a real plumber. So the button is
- * asserted where it appears, and the script it opens is asserted through the
- * ?script= route, which renders the same pane without dialling anybody.
+ * CLICKING THE BUTTON IS SAFE, AND ONE TEST BELOW PROVES WHY. Hugo 2026-07-31:
+ * "wait for it to open and then give the option for the agent to call, don't
+ * call just straight away." The funnel passes autoDial:false, so the button
+ * stages the lead behind a Call button and rings nobody. The test that clicks
+ * it asserts exactly that, and would catch a regression to auto-dialling by
+ * failing rather than by ringing a real plumber.
+ *
+ * The remaining script assertions still go through the ?script= route, which
+ * renders the same pane with no lead staged at all.
  */
 
 const MARR = { id: '7b677273-f330-43c7-b21a-6242d6f8881a', name: 'Marr Roland Servidor' }
@@ -28,6 +32,14 @@ async function boardAsMarr(page: import('@playwright/test').Page) {
   await page.waitForTimeout(4000) // let any late fetch land
 }
 
+// SELECTOR NOTE, learned the hard way 2026-07-31: the funnel CARD itself is
+// role="button" (it opens the drawer), and its accessible name is all of its
+// text, which now includes "Call to close". So
+// getByRole('button', {name: /Call to close/i}) resolves to the CARD, and
+// clicking it opens the drawer instead of the call room. Always target the
+// button by its data-testid.
+const CLOSE_BTN = '[data-testid^="funnel-close-call-"]'
+
 test('a lead who watched the video gets a Call to close button', async ({ authedPage: page }) => {
   await boardAsMarr(page)
 
@@ -35,7 +47,7 @@ test('a lead who watched the video gets a Call to close button', async ({ authed
   await expect(watched).toContainText('Watched')
   // Same lead the playing/watched split is pinned on — he reached 96%.
   await expect(watched).toContainText('HeatGen')
-  await expect(watched.getByRole('button', { name: /Call to close/i }).first()).toBeVisible()
+  await expect(watched.locator(CLOSE_BTN).first()).toBeVisible()
 })
 
 test('leads who have not seen the pitch do NOT get the button', async ({ authedPage: page }) => {
@@ -46,10 +58,27 @@ test('leads who have not seen the pitch do NOT get the button', async ({ authedP
   for (const col of ['created', 'sent', 'opened', 'playing']) {
     const cards = page.getByTestId(`funnel-col-${col}`).locator('[data-testid^="funnel-card-"]')
     if ((await cards.count()) === 0) continue
-    await expect(
-      page.getByTestId(`funnel-col-${col}`).getByRole('button', { name: /Call to close/i }),
-    ).toHaveCount(0)
+    await expect(page.getByTestId(`funnel-col-${col}`).locator(CLOSE_BTN)).toHaveCount(0)
   }
+})
+
+test('pressing Call to close opens the room and rings NOBODY', async ({ authedPage: page }) => {
+  // Hugo 2026-07-31: "wait for it to open and then give the option for the
+  // agent to call, don't call just straight away." This is the one test that
+  // may click the button, precisely BECAUSE it must not dial.
+  const dialled: string[] = []
+  page.on('request', (r) => { if (r.url().includes('wk-calls-create')) dialled.push(r.url()) })
+
+  await boardAsMarr(page)
+  await page.locator(CLOSE_BTN).first().click()
+
+  // The room is up, on the close script, with the lead parked behind a Call button.
+  await expect(page.getByTestId('dialer-call-staged')).toBeVisible({ timeout: 25_000 })
+  await expect(page.getByTestId('dialer-call-staged')).toContainText(/^\s*Call \S/)
+  await expect(page.getByText('Close script · they watched the video')).toBeVisible()
+
+  await page.waitForTimeout(3000)
+  expect(dialled, `it dialled without being asked: ${dialled.join(', ')}`).toHaveLength(0)
 })
 
 test('the close script replaces the cold opener, and only when asked for', async ({ authedPage: page }) => {
@@ -71,7 +100,7 @@ test('the close script replaces the cold opener, and only when asked for', async
   expect(spoken, `spoken lines still contain the rejected opener:\n${spoken}`)
     .not.toMatch(/you alright/i)
   // And the first spoken line is the plain identify, nothing before it.
-  expect(spoken).toMatch(/^\s*You:\s*"Hi, is that /)
+  expect(spoken).toMatch(/^\s*YOU:\s*"Hi, is that /i)
   // The cold-call script's own title must not be in here.
   await expect(closeFrame.locator('body')).not.toContainText(/The 2-Minute Audit/i)
 

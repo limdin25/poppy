@@ -499,7 +499,7 @@ export default function VideoFunnelPage() {
                     {canCloseCall(p) && (
                       <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => openDialerPro(p.contact_id, { scriptKey: 'vsl_close' })}
+                          onClick={() => openDialerPro(p.contact_id, { scriptKey: 'vsl_close', autoDial: false })}
                           data-testid={`funnel-close-call-${p.id}`}
                           title="Call them now with the close script (they watched the video)"
                           className="w-full flex items-center justify-center gap-1.5 text-[11.5px] font-bold text-white bg-[#16A34A] hover:bg-[#15803d] rounded-[8px] py-1.5"

@@ -5,22 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>They watched the video · Close script</title>
 <!--
-  The SECOND sales script. Read only when the dialer is opened from the video
-  funnel's "Call to close" button (?script=vsl_close), for a lead who has
-  already watched their video.
+  The SECOND sales script, read only when the dialer is opened from the video
+  funnel's "Call to close" button for a lead who has already watched their
+  video.
 
-  Deliberately LINEAR, unlike one-call-script.html: that call is a cold open
-  with branches to earn 30 seconds, this one is four beats to a yes. There is
-  no chooser engine and no build() here, the content is the markup, so the
-  dialer's template capture (page.innerHTML) reads it straight.
+  THE STYLESHEET BELOW IS ONE-CALL-SCRIPT.HTML'S, COPIED VERBATIM (bar two em
+  dashes in its comments, swapped for commas to satisfy the punctuation guard).
+  Hugo, 2026-07-31, on the first version: "you made it all grey background now,
+  why did you change the design?" He was right. The words are this call's, the
+  look is the one he already signed off, down to the green keep-reading chips
+  and the amber objection toggles. Do not restyle this file. If the cold
+  script's design changes, copy it across again.
 
-  It shares the cold script's class names on purpose so an agent switching
-  between the two is not looking at a different product.
+  Deliberately LINEAR: no chooser engine, no build(). The content IS the markup
+  inside #page, so the dialer's template capture reads it straight, and the
+  objection panels are plain <details> that work without a line of JavaScript.
 
-  PRICE IS NOT QUOTED HERE ON PURPOSE. api/lib/review-plans.ts is the one
-  pricing canon and the video the lead just watched already showed them the
-  numbers. Restating tiers in this file would be a second copy that silently
-  goes stale the day a tier moves.
+  PRICE IS NOT QUOTED HERE ON PURPOSE. api/lib/review-plans.ts is the pricing
+  canon and the video they just watched already showed them the numbers.
 -->
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -30,9 +32,10 @@ body{
   color:#1a1a1a;
   font-family:Georgia,'Times New Roman',serif;
   line-height:1.65;
-  padding:0 0 60px;
+  padding:0 0 140px;
 }
 
+/* Top bar */
 .topbar{
   position:sticky;top:0;z-index:20;
   background:#fff;border-bottom:1px solid #d5d5d3;
@@ -46,13 +49,7 @@ body{
   color:#888;margin-left:auto;
 }
 
-.workspace{
-  display:flex;
-  justify-content:center;
-  max-width:1520px;
-  margin:0 auto;
-  padding:26px 20px 40px;
-}
+/* The page */
 .page{
   background:#fff;
   flex:0 1 760px;
@@ -63,13 +60,110 @@ body{
   border-radius:2px;
 }
 
-.doc-head{border-bottom:2px solid #1a1a1a;padding-bottom:14px;margin-bottom:28px}
+/* 3-column workspace: objections | script | calculator */
+.workspace{
+  display:flex;
+  gap:22px;
+  align-items:flex-start;
+  justify-content:center;
+  max-width:1520px;
+  margin:0 auto;
+  padding:26px 20px 40px;
+}
+.rail{
+  flex:0 0 300px;
+  width:300px;
+  position:sticky;
+  top:58px;
+  max-height:calc(100vh - 78px);
+  overflow-y:auto;
+  background:#fff;
+  border:1px solid #e4e4e1;
+  border-radius:10px;
+  padding:16px 18px;
+  box-shadow:0 1px 3px rgba(0,0,0,.05);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+.rail h3{
+  font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#9a9a9a;
+  font-weight:800;margin-bottom:6px;
+}
+.rail .rail-sub{font-size:11.5px;color:#b0b0b0;margin-bottom:12px;line-height:1.4}
+
+/* Left rail, whisper safety-net box */
+.whisper{
+  background:#fff8ec;border:1px solid #f0dfb0;border-radius:9px;
+  padding:12px 14px;margin-bottom:16px;
+}
+.whisper-head{
+  font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#b58a2e;
+  font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:6px;
+}
+.whisper-sub{font-size:11px;color:#b9a06a;margin-bottom:8px;line-height:1.35}
+.whisper ul{list-style:none;margin:0;padding:0}
+.whisper li{
+  font-size:12.5px;color:#5a4a20;line-height:1.45;
+  padding:7px 0;border-top:1px solid #f3e8cf;
+}
+.whisper li:first-child{border-top:none}
+.whisper li em{color:#a08a52;font-style:normal;font-size:11px}
+
+/* Left rail, general objections / FAQ */
+.faq-item{border-top:1px solid #f0f0ee}
+.faq-item:first-of-type{border-top:none}
+.faq-item>summary{
+  cursor:pointer;list-style:none;padding:9px 0;
+  font-weight:600;font-size:13px;color:#1a1a1a;line-height:1.35;
+  display:flex;gap:8px;align-items:flex-start;
+}
+.faq-item>summary::-webkit-details-marker{display:none}
+.faq-item>summary::before{content:'+';color:#7bbd88;font-weight:800;flex-shrink:0;font-size:14px;line-height:1.2}
+.faq-item[open]>summary::before{content:'-'}
+.faq-item>summary:hover{color:#2f6db0}
+.faq-a{font-size:12.5px;color:#5f5f5f;line-height:1.55;padding:0 0 11px 17px}
+
+/* Right rail, calculator */
+.calc-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+.calc-row label{font-size:12.5px;color:#444}
+.calc-row input{
+  width:78px;padding:6px 8px;border:1px solid #cfcfcc;border-radius:6px;
+  font-size:14px;text-align:right;font-family:inherit;color:#1a1a1a;
+  font-variant-numeric:tabular-nums;
+}
+.calc-row input:focus{outline:none;border-color:#7bbd88}
+.calc-out{
+  background:#f4f9f5;border:1px solid #d8ebdd;border-radius:9px;
+  padding:13px 15px;margin-top:13px;
+}
+.calc-out.roi{background:#f6f8fb;border-color:#dde6f0}
+.calc-out .big{font-size:30px;font-weight:800;color:#2e7d43;line-height:1.05;font-variant-numeric:tabular-nums}
+.calc-out .cap{font-size:11px;color:#7a9a80;margin-bottom:8px}
+.calc-line{display:flex;justify-content:space-between;font-size:12.5px;color:#555;margin:6px 0}
+.calc-line b{color:#1a1a1a;font-variant-numeric:tabular-nums}
+.calc-line.gap{border-top:1px dashed #cfe0d4;padding-top:7px;margin-top:8px}
+.calc-line.gap b{color:#c0392b}
+.calc-sub{font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:#aaa;font-weight:800;margin:18px 0 9px}
+.calc-note{font-size:12px;color:#456;line-height:1.45;margin-top:2px}
+
+@media(max-width:1160px){
+  .workspace{flex-direction:column;align-items:center;gap:16px}
+  .rail{position:static;width:100%;max-width:760px;max-height:none;flex:none}
+  .page{order:0}
+  .rail-right{order:1}
+  .rail-left{order:2}
+}
+
+.doc-head{
+  border-bottom:2px solid #1a1a1a;
+  padding-bottom:14px;margin-bottom:28px;
+}
 .doc-head h1{font-size:23px;font-weight:700;letter-spacing:-.3px}
 .doc-head .sub{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   font-size:12px;color:#777;margin-top:6px;line-height:1.5;
 }
 
+/* Stage divider */
 .stage-div{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
@@ -78,54 +172,155 @@ body{
 }
 .stage-div:first-child{margin-top:0}
 
+/* A spoken block */
+.block{margin-bottom:8px}
 .line{font-size:19px;line-height:1.7;margin-bottom:10px}
 .line .who{font-weight:700}
 .line .who.you{color:#2f6db0}
 
-.them{
-  font-size:18px;color:#555;margin:4px 0 16px;font-style:italic;
-  border-left:2px solid #e3d9c4;padding-left:14px;
+/* Live Google-search link (competitor demo), filled per lead in the dialer */
+.gsearch{
+  display:inline-flex;align-items:center;gap:5px;
+  margin-top:8px;font-size:14px;font-weight:600;
+  color:#fff;background:#2f6db0;text-decoration:none;
+  padding:6px 12px;border-radius:8px;
 }
-.them .who{font-weight:700;font-style:normal;color:#a88a4a}
+.gsearch:hover{background:#255a93}
 
+/* Unfilled placeholder slot, brown so it's obvious it's a fill-in the dialer
+   replaces per lead (shown in Edit mode + on leads missing that field). */
+.ph{color:#8a4b1f;font-weight:700;background:#f6ecdf;border-radius:4px;padding:0 3px}
+
+/* Stage direction (coaching note) */
 .dir{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-style:normal;
   font-size:13.5px;line-height:1.55;color:#8a8a8a;
   border-left:2px solid #e0e0e0;
   padding:2px 0 2px 14px;margin:2px 0 16px;
 }
 
-/* Unfilled placeholder slot, filled per lead by interpolateScript. */
-.ph{color:#8a4b1f;font-weight:700;background:#f6ecdf;border-radius:4px;padding:0 3px}
+/* Prospect answer (locked, after choosing) */
+.them{
+  font-size:18px;color:#555;margin:4px 0 22px;font-style:italic;
+  border-left:2px solid #e3d9c4;padding-left:14px;
+}
+.them .who{font-weight:700;font-style:normal;color:#a88a4a}
 
-/* Objection quick-reference */
-.obj-panel{
-  margin:11px 0 4px;padding:14px 18px;
-  background:#fcfbf7;border:1px solid #eee5cf;border-left:3px solid #e0c078;border-radius:8px;
-}
-.obj-q{
+/* The response chooser */
+.chooser{margin:6px 0 8px}
+.chooser-label{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  font-size:13px;font-weight:700;color:#8a6a20;margin-bottom:3px;
+  font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:#999;margin-bottom:10px;
 }
-.obj-say{font-size:16.5px;line-height:1.6;margin-bottom:4px}
-.obj-say .who{font-weight:700;color:#2f6db0}
-.obj-panel + .obj-panel{margin-top:9px}
-.obj-more{
+.opts{display:flex;flex-wrap:wrap;gap:9px}
+.opt{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  font-size:12.5px;color:#999;margin-top:10px;
+  font-size:14.5px;line-height:1.35;
+  background:#f3f8f4;color:#1a1a1a;
+  border:1.5px solid #c3ddc8;border-radius:7px;
+  padding:9px 15px;cursor:pointer;
+  text-align:left;transition:all .12s;
+  display:inline-flex;align-items:center;gap:9px;
+}
+.opt:hover{background:#dff0e3;border-color:#7bbd88}
+.opt .num{
+  font-size:11px;font-weight:700;color:#4a9159;
+  border:1px solid currentColor;border-radius:4px;
+  width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;
+  opacity:.7;flex-shrink:0;
+}
+.opt.obj{background:#fdf6ea;border-color:#ecd3a0}
+.opt.obj:hover{background:#f9ebd2;border-color:#dcb765}
+.opt.obj .num{color:#b58a2e}
+.opt .tag{
+  font-size:9.5px;font-weight:700;letter-spacing:.5px;color:#b58a2e;
+  opacity:.85;text-transform:uppercase;
 }
 
-.end-won{
+/* End markers */
+.end-won,.end-lost{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   margin-top:28px;padding:22px 24px;border-radius:8px;text-align:center;
-  background:#eef8f0;border:2px solid #7bbd88;
 }
+.end-won{background:#eef8f0;border:2px solid #7bbd88}
 .end-won .big{font-size:20px;font-weight:800;letter-spacing:1px;margin-bottom:6px;color:#2e7d43}
 .end-won .small{font-size:13.5px;color:#4a6b52;line-height:1.5}
+.end-lost{border:1.5px dashed #d8b8b8;color:#a88;font-size:14px}
 
+/* Response row under each line */
+.responses{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 24px}
+
+/* "keep reading" chip, the straight-line answer */
+.continue{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:12.5px;color:#3d8a4f;
+  background:#eef8f0;border:1px solid #cfe6d4;border-radius:6px;padding:5px 11px;
+}
+
+/* Branch / objection toggles */
+details.branch{display:inline-block}
+details.branch>summary{
+  list-style:none;cursor:pointer;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:12.5px;color:#1a1a1a;
+  background:#f3f8f4;border:1px solid #c3ddc8;border-radius:6px;padding:5px 11px;
+  display:inline-flex;align-items:center;gap:7px;user-select:none;transition:background .12s;
+}
+details.branch>summary:hover{background:#e3f0e6}
+details.branch>summary::-webkit-details-marker{display:none}
+details.branch>summary::before{content:'▸';color:#4a9159;font-size:10px}
+details.branch[open]>summary::before{content:'▾'}
+details.branch.obj>summary{background:#fdf6ea;border-color:#ecd3a0}
+details.branch.obj>summary:hover{background:#f7ebd2}
+details.branch.obj>summary::before{color:#b58a2e}
+details.branch>summary .tag{
+  font-size:9px;font-weight:700;letter-spacing:.5px;color:#b58a2e;text-transform:uppercase;
+}
+
+/* Expanded panel */
+.obj-panel{
+  margin:11px 0 4px 4px;padding:14px 18px;
+  background:#fcfbf7;border:1px solid #eee5cf;border-left:3px solid #e0c078;border-radius:8px;
+}
+.obj-panel .obj-panel{background:#fbf9f2}
+.obj-say{font-size:16.5px;line-height:1.6;margin-bottom:6px}
+.obj-say .who{font-weight:700;color:#2f6db0}
+.obj-panel .dir{margin:2px 0 12px}
+.obj-responses{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.resume{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:12px;color:#777;
+  background:#f4f4f2;border:1px solid #e4e4e0;border-radius:6px;padding:5px 10px;
+}
+.resume.win{color:#2e7d43;background:#eef8f0;border-color:#cfe6d4}
+.resume.lost{color:#b08a8a;background:#faf3f3;border-color:#ecd9d9}
+
+/* Bottom controls */
+.controls{
+  position:fixed;bottom:0;left:0;right:0;z-index:20;
+  background:#fff;border-top:1px solid #d5d5d3;
+  display:flex;gap:8px;align-items:center;
+  padding:11px 20px;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+.ctrl{
+  background:#fff;border:1.5px solid #ccc;color:#444;
+  padding:8px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;
+  transition:all .12s;
+}
+.ctrl:hover{border-color:#1a1a1a;color:#1a1a1a}
+.ctrl.danger:hover{border-color:#c00;color:#c00}
+.ctrl.primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a;margin-left:auto}
+.ctrl.primary:hover{background:#000}
+.hint{margin-left:auto;font-size:11.5px;color:#bbb}
+.controls .hint + .ctrl.primary{margin-left:8px}
+
+/* Print: clean document, no UI */
 @media print{
   body{background:#fff;padding:0}
-  .topbar{display:none !important}
+  .topbar,.controls,.chooser,.rail{display:none !important}
   .workspace{display:block;padding:0;max-width:100%}
   .page{box-shadow:none;margin:0;max-width:100%;padding:20px 30px;flex:none}
   .dir{color:#666}
@@ -135,8 +330,7 @@ body{
   .page{padding:32px 22px 48px;margin:14px 8px}
   .line{font-size:17px}
 }
-</style>
-</head>
+</style></head>
 <body>
 
 <div class="topbar">
@@ -145,98 +339,133 @@ body{
 </div>
 
 <div class="workspace">
+  <div class="page" id="page">
 
     <div class="doc-head">
       <h1>They watched the video</h1>
       <div class="sub">
         Warm call, and a short one. They have already had the pitch, so do not
-        pitch it again. Four beats: say who you are, say why you are ringing,
-        ask if they have any questions, ask for the yes. Do not go round the
-        houses.
+        pitch it again. Read the <b>blue</b> lines aloud, top to bottom. Four
+        beats: who is that, why you are ringing, any questions, ask for the yes.
+        Grey lines are notes for you only. If they push back, open the amber
+        button on that line, then carry on down.
       </div>
     </div>
 
-    <div class="stage-div">1 · Who is that</div>
+    <div class="stage-div">Who is that</div>
 
-    <div class="line"><span class="who you">You:</span> "Hi, is that [owner_first]?"</div>
+    <div class="line"><span class="who you">YOU:</span> "Hi, is that [owner_first]?"</div>
     <div class="dir">
       Just that. No "you alright", no "quick one", nothing clever. You are ringing
       someone who asked to hear from you by watching your video, so ring like it.
-      No owner name on the card? Then: "Hi, is that [business_name]?"
+      No owner name on the card and it reads the business name instead, which is
+      still right.
+    </div>
+    <div class="responses">
+      <span class="continue">&#10003; "Yeah, speaking", keep reading &#8595;</span>
+      <details class="branch obj">
+        <summary>Someone else answers <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Oh sorry, is the owner about? It's about the video I sent over about their Google reviews, they've had a look at it."</div>
+          <div class="dir">Do not pitch whoever answered. Get the owner, or get the best time to ring back.</div>
+        </div>
+      </details>
     </div>
 
-    <div class="stage-div">2 · Why you are ringing</div>
+    <div class="stage-div">Why you are ringing</div>
 
-    <div class="line"><span class="who you">You:</span> "It's Elsie here. I'm just calling you back about that video I sent you over, the one about your Google reviews. I could see you'd watched it, so I thought I'd give you a ring."</div>
+    <div class="line"><span class="who you">YOU:</span> "It's Elsie here. I'm just calling you back about that video I sent you over, the one about your Google reviews. I could see you'd watched it, so I thought I'd give you a ring."</div>
     <div class="dir">
       Then <b>stop</b>. Do not add a pitch onto the end of it. Let it land.
     </div>
+    <div class="responses">
+      <span class="continue">&#10003; They say "oh yeah" / "right", keep reading &#8595;</span>
+      <details class="branch obj">
+        <summary>"I didn't really watch it" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "No bother. The short of it: you're sat behind [competitors_ahead] other [trade_plural] in [town], and the thing between you and them is reviews. That's what we fix. Worth a go?"</div>
+          <div class="dir">One line only, then straight to the close. Do not replay the video at them.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Who is this? What video?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Elsie, we sent you a short video about where [business_name] shows up on Google and how the reviews stack up against the others near you. It went to this number."</div>
+          <div class="dir">Say it plainly and move on. They watched it, the page says so.</div>
+        </div>
+      </details>
+    </div>
 
-    <div class="stage-div">3 · Any questions</div>
+    <div class="stage-div">Any questions</div>
 
-    <div class="line"><span class="who you">You:</span> "So I was just wondering, have you got any questions about it?"</div>
+    <div class="line"><span class="who you">YOU:</span> "So I was just wondering, have you got any questions about it?"</div>
     <div class="dir">
       Say it and go quiet. If they ask something, answer it straight and short,
       then go to the close. If they say no, no questions, go to the close now.
       Do not fill the gap, do not start explaining the video back to them.
     </div>
-
-    <div class="stage-div">4 · Close</div>
-
-    <div class="line"><span class="who you">You:</span> "So is that something you'd like to get started with then, and get you some reviews coming in?"</div>
-    <div class="dir">
-      Ask it, then say nothing at all until they answer. First one to speak loses.
+    <div class="responses">
+      <span class="continue">&#10003; "No, not really", keep reading &#8595;</span>
+      <details class="branch obj">
+        <summary>"How much is it again?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Same as it says on the video, and it's a pound to start today. You'll see it working before you're paying properly for it."</div>
+          <div class="dir">Do not read the monthly tiers out. The video already did that.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"I already ask for reviews myself" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Everyone does on a good week and forgets on a busy one. This asks every customer, every time, without you touching it."</div>
+          <div class="dir">Then close. Do not get into a debate about their system.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>Anything else they ask <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Good question, let me check that properly and come straight back to you."</div>
+          <div class="dir">The approved answers are in the Objections tab on the right. Never invent one, and never promise a position on Google.</div>
+        </div>
+      </details>
     </div>
 
-    <div class="them"><span class="who">Them:</span> "Yeah, go on then"</div>
-    <div class="line"><span class="who you">You:</span> "Perfect. I'm texting you the link now. Tap Subscribe, pop your details in, and I'll get you sorted while we're on the phone."</div>
+    <div class="stage-div">Close</div>
+
+    <div class="line"><span class="who you">YOU:</span> "So is that something you'd like to get started with then, and get you some reviews coming in?"</div>
+    <div class="dir">Ask it, then say nothing at all until they answer. First one to speak loses.</div>
+    <div class="responses">
+      <span class="resume win">"Yeah, go on then" &nbsp;&#10003; that's the close</span>
+      <details class="branch obj">
+        <summary>"I need to think about it" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Course. What is it you want to think about, the money or whether it'll work?"</div>
+          <div class="dir">Whatever they name, answer it in one line and ask for the yes again.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"I'll have a look and get back to you" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "You'll get busy and it'll be next month. It takes a minute while I'm here. Shall we just do it?"</div>
+          <div class="dir">One push, said warmly. If it is still no, take the outcome and leave it.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Not right now" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "No problem at all. I'll leave it with you, the link's on your phone whenever you want it."</div>
+          <div class="dir">Leave it. They have given you their time twice already. Set the outcome in the dropdown (Interested, Nurturing) and they come back round in the follow-ups.</div>
+        </div>
+      </details>
+    </div>
+
+    <div class="line"><span class="who you">YOU:</span> "Perfect. I'm texting you the link now. Tap Subscribe, pop your details in, and I'll get you sorted while we're on the phone."</div>
     <div class="dir">
       Hit <b>Send subscribe link</b> on the left and stay on the line while they
       do it. A yes that fills the form in beats ten that get a link afterwards.
     </div>
 
-    <div class="them"><span class="who">Them:</span> "Not right now"</div>
-    <div class="dir">
-      Leave it. They have given you their time twice already. Set the outcome in
-      the dropdown (Interested, Nurturing) and they come back round in the
-      follow-ups.
-    </div>
-
-    <div class="stage-div">If they push back</div>
-
-    <div class="dir">
-      Answer in one line and go straight back to the close. Every extra sentence
-      is a new thing for them to object to. The full approved list is in the
-      Objections tab on the right.
-    </div>
-
-    <div class="obj-panel">
-      <div class="obj-q">"I need to think about it"</div>
-      <div class="obj-say"><span class="who">You:</span> "Course. What is it you want to think about, the money or whether it'll work?"</div>
-    </div>
-
-    <div class="obj-panel">
-      <div class="obj-q">"How much is it again?"</div>
-      <div class="obj-say"><span class="who">You:</span> "Same as it says on the video, and it's a pound to start today. You'll see it working before you're paying properly for it."</div>
-    </div>
-
-    <div class="obj-panel">
-      <div class="obj-q">"I already ask for reviews myself"</div>
-      <div class="obj-say"><span class="who">You:</span> "Everyone does on a good week and forgets on a busy one. This asks every customer, every time, without you touching it."</div>
-    </div>
-
-    <div class="obj-panel">
-      <div class="obj-q">"I'll have a look and get back to you"</div>
-      <div class="obj-say"><span class="who">You:</span> "You'll get busy and it'll be next month. It takes a minute while I'm here. Shall we just do it?"</div>
-    </div>
-
-    <div class="obj-panel">
-      <div class="obj-q">"I didn't really watch it" / "I skipped through it"</div>
-      <div class="obj-say"><span class="who">You:</span> "No bother. You're sat behind [competitors_ahead] other [trade_plural] in [town], and the thing between you and them is reviews. That's what this fixes. Worth a go?"</div>
-    </div>
-
     <div class="end-won">
-      <div class="big">SIGNED UP</div>
+      <div class="big">&#10003; SIGNED UP</div>
       <div class="small">
         Set them to Booked in the dropdown, then ask for their customer list.
         That is what gets their first reviews landing within days.

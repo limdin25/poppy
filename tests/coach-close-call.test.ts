@@ -101,10 +101,15 @@ describe('CLOSE CALLS GET CLOSE COACHING', () => {
   it('the coach quotes the words actually on the agent screen', () => {
     // Drift guard. The coach constants and the HTML are edited in different
     // files, so this is the only thing keeping them saying the same sentences.
-    const spoken = [...CLOSE_HTML.matchAll(/You:<\/span>\s*"([^"]+)"/g)].map((m) => m[1])
-    expect(spoken.length).toBeGreaterThanOrEqual(5)
-    const mustMatch = spoken.filter((l) => !l.includes('[')) // skip token-bearing lines
-    expect(mustMatch.length).toBeGreaterThanOrEqual(4)
+    // Case-insensitive: the markup says "YOU:" (matching the cold script's
+    // design) but the copy could reasonably be either.
+    const spoken = [...CLOSE_HTML.matchAll(/YOU:<\/span>\s*"([^"]+)"/gi)].map((m) => m[1])
+    expect(spoken.length, 'no spoken lines found - has the markup changed?')
+      .toBeGreaterThanOrEqual(8)
+    // Token-bearing lines are personalised per lead, so the coach carries its
+    // own wording for those. The rest must match word for word.
+    const mustMatch = spoken.filter((l) => !l.includes('['))
+    expect(mustMatch.length).toBeGreaterThanOrEqual(5)
     for (const line of mustMatch) {
       expect(COACH, `coach is missing a line the agent can see: ${line}`).toContain(line)
     }
@@ -138,5 +143,49 @@ describe('CLOSE CALLS GET CLOSE COACHING', () => {
     expect(start).toBeGreaterThan(-1)
     expect(end).toBeGreaterThan(start)
     expect(COACH.slice(start, end)).not.toMatch(BANNED_PUNCTUATION)
+  })
+})
+
+describe('the close call does NOT dial on its own', () => {
+  const PAGE = read('src/features/crm/dialer-pro/DialerProPage.tsx')
+  const CTX = read('src/features/crm/layout/DialerProModalContext.tsx')
+  const BOARD = read('src/features/crm/pages/VideoFunnelPage.tsx')
+  const DRAWER = read('src/features/crm/components/funnel/FunnelLeadDrawer.tsx')
+
+  it('both funnel buttons open the room without dialling', () => {
+    // Hugo 2026-07-31: "wait for it to open and then give the option for the
+    // agent to call, don't call just straight away."
+    for (const src of [BOARD, DRAWER]) {
+      expect(src).toMatch(/scriptKey: 'vsl_close', autoDial: false/)
+    }
+  })
+
+  it('every OTHER Call button in the CRM still dials at once', () => {
+    // The default is what the five pre-existing callers rely on.
+    expect(CTX).toMatch(/autoDial: opts\?\.autoDial \?\? true/)
+    expect(PAGE).toMatch(/autoDial = true/)
+    for (const p of [
+      'src/features/crm/pages/InboxPage.tsx',
+      'src/features/crm/pages/ContactsPage.tsx',
+      'src/features/crm/pages/ContactDetailPage.tsx',
+      'src/features/crm/pages/PipelinesPage.tsx',
+      'src/features/crm/components/followups/FollowupBanner.tsx',
+    ]) {
+      expect(read(p), `${p} must not pass autoDial`).not.toMatch(/autoDial/)
+    }
+  })
+
+  it('the staged lead is parked behind a Call button, not the power dialer', () => {
+    // "Start dialer" begins a SESSION which, with Speed on, auto-advances into
+    // the cold queue the moment this call wraps. A close call is one call.
+    expect(PAGE).toMatch(/if \(!autoDial\) \{ setStagedLead\(queueLead\); return; \}/)
+    expect(PAGE).toMatch(/data-testid="dialer-call-staged"/)
+    expect(PAGE).toMatch(/Call \{stagedLead\.name\}/)
+    // Pressing it clears the staging first, so it cannot double-fire.
+    expect(PAGE).toMatch(/const l = stagedLead; setStagedLead\(null\); void machine\.dialLead\(l\)/)
+  })
+
+  it('the room shows the staged lead before any queue refresh lands', () => {
+    expect(PAGE).toMatch(/\?\? stagedLead\?\.contactId/)
   })
 })

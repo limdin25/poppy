@@ -76,10 +76,14 @@ interface DialerProContentProps {
   /** Which script the middle column reads. Defaults to the cold-call script,
    *  so every caller that does not pass it is unchanged. */
   scriptKey?: ScriptKey;
+  /** Dial the moment the room is ready. TRUE by default, which is what every
+   *  existing Call button in the CRM has always done. The video funnel passes
+   *  false so the agent reads the script first and presses Call themselves. */
+  autoDial?: boolean;
   onAutoCallConsumed?: () => void;
 }
 
-export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKey = 'cold_call', onAutoCallConsumed }: DialerProContentProps) {
+export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKey = 'cold_call', autoDial = true, onAutoCallConsumed }: DialerProContentProps) {
   const { user, isAdmin } = useAuth();
   const impId = useImpersonatedAgentId();
   const userId = user?.id ?? null;
@@ -204,9 +208,20 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
 
   // Auto-dial: when ?call=<contactId> is in the URL, look up the contact
   // and start calling them as soon as the device is ready.
+  //
+  // UNLESS autoDial is false. Hugo 2026-07-31, on the video funnel's Call to
+  // close button: "wait for it to open and then give the option for the agent
+  // to call, don't call just straight away." So on that path we do everything
+  // except the dial: resolve the contact, put them top of the queue, fill the
+  // room with their details and script, and park them on a Call button.
   const autoCallFired = useRef(false);
+  /** Resolved, queued, and waiting for the agent to press Call. */
+  const [stagedLead, setStagedLead] = useState<QueueLead | null>(null);
   useEffect(() => {
-    if (!autoCallContactId || !deviceReady || !camp || autoCallFired.current) return;
+    if (!autoCallContactId || !camp || autoCallFired.current) return;
+    // Staging needs no phone device: the agent is going to press Call later,
+    // and startDialer already reconnects a sleeping device on demand.
+    if (autoDial && !deviceReady) return;
     if (state.phase !== 'idle' && state.phase !== 'paused') return;
     autoCallFired.current = true;
     onAutoCallConsumed?.();
@@ -273,9 +288,10 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
         };
         refreshQueue();
       }
+      if (!autoDial) { setStagedLead(queueLead); return; }
       void machine.dialLead(queueLead);
     })();
-  }, [autoCallContactId, deviceReady, camp, state.phase, queue, machine, onToast, refreshQueue, onAutoCallConsumed]);
+  }, [autoCallContactId, autoDial, deviceReady, camp, state.phase, queue, machine, onToast, refreshQueue, onAutoCallConsumed]);
 
   // Redial straight from the call history — mirrors the ?call= auto-dial path:
   // ensure the contact has a pending queue row, then hand it to the machine.
@@ -338,6 +354,10 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
   // is always populated and ready to send.
   const activeContactId = state.currentLead?.contactId
     ?? (autoCallContactId && !autoCallFired.current ? autoCallContactId : null)
+    // A staged lead outranks queue[0]: the agent opened the room for THIS
+    // person and is about to read their script, so the room must be theirs
+    // even before the queue refresh lands.
+    ?? stagedLead?.contactId
     ?? queue[0]?.contactId
     ?? null;
   const [contact, setContact] = useState<Contact | null>(null);
@@ -913,6 +933,23 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                     className="flex items-center justify-center gap-2 border border-[#FECACA] text-[#B91C1C] text-[14px] font-semibold py-3 px-4 rounded-xl hover:bg-[#FEF2F2]">
                     <Square className="w-4 h-4" />
                   </button>
+                </div>
+              ) : stagedLead ? (
+                /* Opened from the video funnel: ONE named lead, waiting on the
+                   agent. Deliberately not "Start dialer" — that begins a power
+                   session which, with Speed on, auto-advances into the cold
+                   queue the moment this call wraps. */
+                <div className="space-y-2">
+                  <button
+                    onClick={() => { const l = stagedLead; setStagedLead(null); void machine.dialLead(l); }}
+                    disabled={spend.isLimitReached || ks.allDialers || reconnecting}
+                    data-testid="dialer-call-staged"
+                    className="w-full flex items-center justify-center gap-2 bg-[#16A34A] hover:bg-[#15803d] text-white text-[14px] font-semibold py-3 rounded-xl transition-colors shadow-[0_4px_12px_rgba(22,163,74,0.35)] disabled:opacity-50 disabled:cursor-not-allowed">
+                    <Phone className="w-4 h-4" /> Call {stagedLead.name}
+                  </button>
+                  <p className="text-center text-[11px] text-[#6B7280]">
+                    Read the script first. Nothing rings until you press this.
+                  </p>
                 </div>
               ) : (
                 <button onClick={() => void startDialer()} disabled={spend.isLimitReached || ks.allDialers || !camp || queue.length === 0 || reconnecting}

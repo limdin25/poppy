@@ -234,6 +234,7 @@ Warm call, and a short one. Four beats. Do not pitch it again.
 ## 1. Who is that
 "Hi, is that {{first_name}}?"
 Just that. No "you alright", no "quick one".
+If someone else answers: "Oh sorry, is the owner about? It's about the video I sent over about their Google reviews, they've had a look at it."
 
 ## 2. Why you are ringing
 "It's Elsie here. I'm just calling you back about that video I sent you over, the one about your Google reviews. I could see you'd watched it, so I thought I'd give you a ring."
@@ -242,6 +243,7 @@ Then STOP. Do not add a pitch onto the end of it.
 ## 3. Any questions
 "So I was just wondering, have you got any questions about it?"
 Say it and go quiet. Answer straight and short, then go to the close.
+Anything you do not have an approved answer for: "Good question, let me check that properly and come straight back to you."
 
 ## 4. Close
 "So is that something you'd like to get started with then, and get you some reviews coming in?"
@@ -253,6 +255,7 @@ On a yes: "Perfect. I'm texting you the link now. Tap Subscribe, pop your detail
 "How much is it again?" - "Same as it says on the video, and it's a pound to start today. You'll see it working before you're paying properly for it."
 "I already ask for reviews myself" - "Everyone does on a good week and forgets on a busy one. This asks every customer, every time, without you touching it."
 "I'll have a look and get back to you" - "You'll get busy and it'll be next month. It takes a minute while I'm here. Shall we just do it?"
+"Not right now" - "No problem at all. I'll leave it with you, the link's on your phone whenever you want it." Then stop, take the outcome, do not push again.
 "I didn't really watch it" - "No bother. You're sat behind the other firms in town, and the thing between you and them is reviews. That's what this fixes. Worth a go?"`;
 
 /** Replaces wk_ai_settings.coach_script_prompt (the cold-call 7-stage guide)
