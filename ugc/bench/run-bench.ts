@@ -722,6 +722,26 @@ async function stageTalking(state: BenchState): Promise<void> {
     estUsd: seconds * EST_USD.omnihuman_second,
     outFile: 'talking/omnihuman-s15.mp4',
   });
+
+  // The same take through Avatar 2.0 Pro (same inputs, higher tier; slug
+  // probe-verified 2026-07-31). Same builder, different model path.
+  await falRun({
+    state,
+    key: 'talking:kling-pro',
+    contender: 'kling-avatar-2-pro',
+    modelPath: 'fal-ai/kling-video/ai-avatar/v2/pro',
+    submitRequest: {
+      ...buildKlingAvatarSubmit({
+        apiKey,
+        imageUrl: composite.signedUrl,
+        audioUrl: voice.signedUrl,
+        prompt: BEHAVIOR_PROMPT,
+      }),
+      url: 'https://queue.fal.run/fal-ai/kling-video/ai-avatar/v2/pro',
+    },
+    estUsd: seconds * EST_USD.kling_pro_second,
+    outFile: 'talking/kling-pro-s15.mp4',
+  });
 }
 
 function stageReport(state: BenchState): void {
