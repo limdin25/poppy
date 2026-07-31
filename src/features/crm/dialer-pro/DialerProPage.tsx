@@ -146,11 +146,26 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
   const spend = useSpendLimit();
   const ks = useKillSwitch();
 
+  // Which lead the video funnel opened this room to close. Declared before the
+  // machine because dialLead asks about it at dial time. Captured in a ref
+  // because clearAutoCall nulls the prop the moment the dial fires.
+  const closeCallContactIdRef = useRef<string | null>(autoCallContactId ?? null);
+
   // State machine
   const machine = useDialerMachine({
     userId,
     campaignId: camp?.id ?? null,
     pipelineId: camp?.pipelineId ?? null,
+    // Same pure rule the on-screen pane uses, asked about the lead being
+    // dialled. That is what keeps the coach and the screen from disagreeing.
+    scriptKeyForLead: useCallback(
+      (contactId: string) => scriptForCall({
+        openedWith: scriptKey,
+        openedForContactId: closeCallContactIdRef.current,
+        currentLeadContactId: contactId,
+      }),
+      [scriptKey],
+    ),
     onToast,
   });
   const { state, deviceReady, reconnecting, reconnectDevice } = machine;
@@ -329,10 +344,8 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
 
   // The close script belongs to the ONE lead the video funnel opened this room
   // for. "Next call" / "Dial next" then pull the next lead off the normal cold
-  // queue, and without this the agent would still be looking at "I saw you'd
-  // watched it" while a cold plumber picks up. Captured in a ref because
-  // clearAutoCall nulls autoCallContactId as soon as the dial fires.
-  const closeCallContactIdRef = useRef<string | null>(autoCallContactId ?? null);
+  // queue, and without this the agent would still be looking at "I could see
+  // you'd watched it" while a cold plumber picks up.
   const paneScriptKey = scriptForCall({
     openedWith: scriptKey,
     openedForContactId: closeCallContactIdRef.current,

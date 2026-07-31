@@ -14,10 +14,16 @@ interface UseDialerMachineOpts {
   userId: string | null;
   campaignId: string | null;
   pipelineId: string | null;
+  /** Asked about the lead ABOUT to be dialled: is this the video-funnel close
+   *  call, or a normal cold dial? The answer is persisted onto the call row so
+   *  the live coach (which is driven by Twilio and cannot see the browser)
+   *  coaches the same script the agent has on screen. Omitted everywhere else,
+   *  so every other dial path is unchanged. */
+  scriptKeyForLead?: (contactId: string) => 'cold_call' | 'vsl_close';
   onToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, onToast }: UseDialerMachineOpts) {
+export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, scriptKeyForLead, onToast }: UseDialerMachineOpts) {
   const [state, dispatch] = useReducer(reducer, INITIAL);
   const phaseRef = useRef(state.phase);
   phaseRef.current = state.phase;
@@ -227,7 +233,16 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
       // Create call record server-side
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.functions as any).invoke('wk-calls-create', {
-        body: { contact_id: lead.contactId, to_phone: lead.phone, campaign_id: campaignId },
+        body: {
+          contact_id: lead.contactId,
+          to_phone: lead.phone,
+          campaign_id: campaignId,
+          // Spread, not a plain field: on a cold dial the request body stays
+          // byte-identical to what it has always been.
+          ...(scriptKeyForLead?.(lead.contactId) === 'vsl_close'
+            ? { script_key: 'vsl_close' }
+            : {}),
+        },
       });
       if (error || !data) {
         const msg = (error?.message as string | undefined) ?? 'unknown error';
@@ -314,7 +329,7 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
         dispatch({ type: 'CALL_ENDED', reason: 'failed', error: msg });
       }
     },
-    [userId, campaignId, onToast, updateQueueStatus]
+    [userId, campaignId, scriptKeyForLead, onToast, updateQueueStatus]
   );
 
   // Pick next lead from queue

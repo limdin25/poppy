@@ -118,6 +118,11 @@ export function interpolateScript(templateHtml: string, contact?: ScriptContact 
   if (textTokens['[owner_first]'] == null) {
     html = html.split('[owner_first], from [business_name]').join('[business_name]');
     html = html.split(', cheers [owner_first]').join(', cheers');
+    // The VSL close script's opener is a bare "Hi, is that [owner_first]?" —
+    // it does not contain the phrase above, so without this line an unnamed
+    // lead (most locksmiths, no Companies House match) puts a raw bracket in
+    // the FIRST words out of the agent's mouth.
+    html = html.split('Hi, is that [owner_first]?').join('Hi, is that [business_name]?');
   }
 
   for (const [token, value] of Object.entries(textTokens)) {

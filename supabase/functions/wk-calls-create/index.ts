@@ -31,6 +31,10 @@ interface Body {
   contact_id?: string;
   to_phone?: string;
   campaign_id?: string;
+  /** 'vsl_close' when the dialer was opened from the video funnel to close a
+   *  lead who watched their video. Anything else, including absent, is a
+   *  normal cold call. Mapped to a literal below, never passed through. */
+  script_key?: string;
 }
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -71,6 +75,10 @@ serve(async (req: Request) => {
     const phone = (body.to_phone ?? '').trim();
     const contactId = body.contact_id ?? null;
     const campaignId = body.campaign_id ?? null;
+    // Mapped to a literal, never passed through: this value picks which coaching
+    // the live coach gives, so a client must not be able to put arbitrary text
+    // (or a future key it invented) into it. Unknown = cold call.
+    const scriptKey = body.script_key === 'vsl_close' ? 'vsl_close' : null;
     if (!phone) {
       return jsonResponse(400, { error: 'to_phone required' });
     }
@@ -241,6 +249,7 @@ serve(async (req: Request) => {
         to_e164: phone,
         started_at: new Date().toISOString(),
         ai_coach_enabled: aiCoachEnabled,
+        script_key: scriptKey,
       })
       .select('id')
       .single();

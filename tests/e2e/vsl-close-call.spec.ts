@@ -59,8 +59,19 @@ test('the close script replaces the cold opener, and only when asked for', async
 
   const closeFrame = page.frameLocator('iframe[title="Close script · they watched the video"]')
   await expect(closeFrame.locator('body')).toContainText(/They watched the video/i, { timeout: 15_000 })
-  await expect(closeFrame.locator('body')).toContainText(/I saw you'd watched it/i)
-  await expect(closeFrame.locator('body')).toContainText(/is that something you want to move forward with/i)
+  // The four beats Hugo dictated, in order.
+  await expect(closeFrame.locator('body')).toContainText(/calling you back about that video I sent you over/i)
+  await expect(closeFrame.locator('body')).toContainText(/I could see you'd watched it/i)
+  await expect(closeFrame.locator('body')).toContainText(/have you got any questions about it/i)
+  await expect(closeFrame.locator('body')).toContainText(/something you'd like to get started with/i)
+  // The opener Hugo rejected ("hey you alright, doesn't sound normal"). Scoped to
+  // the SPOKEN lines: the coaching note quotes the phrase to say don't say it, so
+  // a whole-body check fails on its own instruction.
+  const spoken = (await closeFrame.locator('.line').allTextContents()).join(' | ')
+  expect(spoken, `spoken lines still contain the rejected opener:\n${spoken}`)
+    .not.toMatch(/you alright/i)
+  // And the first spoken line is the plain identify, nothing before it.
+  expect(spoken).toMatch(/^\s*You:\s*"Hi, is that /)
   // The cold-call script's own title must not be in here.
   await expect(closeFrame.locator('body')).not.toContainText(/The 2-Minute Audit/i)
 
@@ -71,5 +82,5 @@ test('the close script replaces the cold opener, and only when asked for', async
   await expect(page.getByText('Sales script', { exact: true })).toBeVisible({ timeout: 20_000 })
   const coldFrame = page.frameLocator('iframe[title="Sales script"]')
   await expect(coldFrame.locator('body')).toContainText(/The 2-Minute Audit/i, { timeout: 15_000 })
-  await expect(coldFrame.locator('body')).not.toContainText(/I saw you'd watched it/i)
+  await expect(coldFrame.locator('body')).not.toContainText(/I could see you'd watched it/i)
 })

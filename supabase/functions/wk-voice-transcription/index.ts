@@ -200,6 +200,98 @@ export function detectStageFromAgent(
 // don't want to block returning 200 to Twilio (which may retry or get noisy).
 // ----------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// THE CLOSE CALL (wk_calls.script_key = 'vsl_close')
+//
+// A lead who was sent a personalised video about their own Google reviews and
+// WATCHED it, rung back off the video funnel's "Call to close" button. They
+// have already had the pitch. Coaching them the cold-call guide contradicts the
+// script on the agent's screen and insults the lead.
+//
+// These are module constants, not DB rows, ON PURPOSE: the words have to stay
+// in lockstep with src/core/content/vsl-close-script.html, and a test
+// (tests/coach-close-call.test.ts) fails the build when they drift. A DB row
+// could not be drift-tested.
+//
+// EVERY reference to these is gated on isCloseCall, so a cold dial (script_key
+// NULL, which is every existing row and every normal dial) runs the exact same
+// code it ran before this existed.
+// ---------------------------------------------------------------------------
+
+const CLOSE_STAGE_ORDER = [
+  'Who is that',
+  'Why you are ringing',
+  'Any questions',
+  'Close',
+];
+
+/** The words on the agent's screen, as markdown, for the AGENT'S CALL SCRIPT
+ *  layer. `## N. Stage` headings so parseScriptAnchors finds the sections. */
+const CLOSE_AGENT_SCRIPT_MD = `# They watched the video
+
+Warm call, and a short one. Four beats. Do not pitch it again.
+
+## 1. Who is that
+"Hi, is that {{first_name}}?"
+Just that. No "you alright", no "quick one".
+
+## 2. Why you are ringing
+"It's Elsie here. I'm just calling you back about that video I sent you over, the one about your Google reviews. I could see you'd watched it, so I thought I'd give you a ring."
+Then STOP. Do not add a pitch onto the end of it.
+
+## 3. Any questions
+"So I was just wondering, have you got any questions about it?"
+Say it and go quiet. Answer straight and short, then go to the close.
+
+## 4. Close
+"So is that something you'd like to get started with then, and get you some reviews coming in?"
+Then say nothing until they answer.
+On a yes: "Perfect. I'm texting you the link now. Tap Subscribe, pop your details in, and I'll get you sorted while we're on the phone."
+
+## Objections, one line then back to the close
+"I need to think about it" - "Course. What is it you want to think about, the money or whether it'll work?"
+"How much is it again?" - "Same as it says on the video, and it's a pound to start today. You'll see it working before you're paying properly for it."
+"I already ask for reviews myself" - "Everyone does on a good week and forgets on a busy one. This asks every customer, every time, without you touching it."
+"I'll have a look and get back to you" - "You'll get busy and it'll be next month. It takes a minute while I'm here. Shall we just do it?"
+"I didn't really watch it" - "No bother. You're sat behind the other firms in town, and the thing between you and them is reviews. That's what this fixes. Worth a go?"`;
+
+/** Replaces wk_ai_settings.coach_script_prompt (the cold-call 7-stage guide)
+ *  for this call only. */
+const CLOSE_SCRIPT_PROMPT = [
+  'This call is a FOLLOW UP, not a cold call. The person on the phone was sent a personalised video about their own Google reviews and has already watched it. They have heard the pitch. Your job is to help the agent get a yes in four short beats, not to sell it again.',
+  '',
+  'THE FOUR BEATS, forward-only order',
+  '1. Who is that',
+  '2. Why you are ringing',
+  '3. Any questions',
+  '4. Close',
+  'That is the whole call. There is no qualify stage, no permission to pitch, no pitch and no pricing walkthrough, because all of that already happened in the video.',
+  '',
+  'NEVER SAY, these are cold-call lines and this is not a cold call:',
+  '- "quick one"',
+  '- "you alright"',
+  '- "I was looking at you on Google, you have only got a handful of reviews"',
+  '- "is now a good time"',
+  '- anything that introduces the company as if they have never heard of it.',
+  'They watched the video. Opening cold insults them and loses the call.',
+  '',
+  'DO NOT RE-PITCH. Never explain the service back to them, never narrate what was in the video, never re-quote the offer unprompted. If they ask a direct question, answer it in ONE line and go straight back to the close.',
+  '',
+  'SILENCE. After the agent asks "have you got any questions about it?" or the closing question, the caller thinking is NOT a cue for a card. The silence is the script. Emit STAY_ON_SCRIPT.',
+  '',
+  'OBJECTIONS. One line, then the close. Every extra sentence is a new thing for them to object to. Use the approved answer from the AGENT\'S CALL SCRIPT or the KNOWLEDGE BASE, never invent a new argument.',
+  '',
+  'KNOWLEDGE POLICY. Company specific facts (price, what is included, how it works) come from the KNOWLEDGE BASE only. If the answer is not there, say "I will check that and come back to you". Never invent figures. Never promise a ranking.',
+].join('\n');
+
+/** One extra block on the user message so the model cannot mistake the call
+ *  type even if it skims the system layers. */
+const CLOSE_CALL_CONTEXT = [
+  '=== THIS CALL IS A FOLLOW UP, NOT A COLD CALL ===',
+  'This lead was sent a personalised video about their own Google reviews and has already watched it. They have heard the pitch.',
+  'Do not coach the cold opener. Do not coach a pitch. Four beats: who is that, why you are ringing, any questions, ask for the yes.',
+].join('\n');
+
 // Hugo 2026-04-29: replaced the single mega-prompt with three independently
 // editable layers (style / script / knowledge base). The model receives them
 // as separate system messages so each can evolve in isolation. See
@@ -215,7 +307,7 @@ interface CoachLayers {
   // → contact's first name, `{{agent_first_name}}` → agent's first
   // name. Empty string when no script is found at all.
   agentScriptBody: string;
-  agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'none';
+  agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'none';
 }
 
 interface CoachOptions {
@@ -231,6 +323,15 @@ interface CoachOptions {
   // message so the model refuses to regress (no firing OPEN mid-call
   // once we've already moved past it). Null on a fresh call.
   currentStage: string | null;
+  // Real facts about the lead being called (owner name, review count, rating,
+  // rank, competitors) so the coach fills the script with actual values
+  // instead of emitting placeholders like [X] / [Name]. Empty when unknown.
+  leadFacts: string;
+  /** Close calls only. Replaces the hardcoded cold stage list in STAGE LOCK.
+   *  Undefined on every normal dial, which renders the original literal. */
+  stageOrder?: string[];
+  /** 'vsl_close' adds one block to the user message. Undefined = cold call. */
+  callKind?: 'vsl_close';
   onChunk: (accumulated: string, isFirst: boolean) => void;
   isAborted: () => boolean;
 }
@@ -247,6 +348,9 @@ async function generateCoachSuggestion(
     speaker,
     priorCards,
     currentStage,
+    leadFacts,
+    stageOrder,
+    callKind,
     onChunk,
     isAborted,
   } = opts;
@@ -293,6 +397,7 @@ async function generateCoachSuggestion(
     '- "Risk-free" — no job or purchase is risk-free.',
     '- "Can\'t lose" — same reason.',
     '- "Definitely" when talking about results, savings or timescales ("definitely be done by", "definitely save you X") — soften to "typically" or "usually".',
+    '- "Free trial" / "free to try" / "nothing today" / "no charge today" / "you don\'t pay a penny" — do NOT say any of these unless the offer is genuinely £0 today. If an entry charge is taken (the sign-up takes £1 today), say that plainly: it starts at a pound, then the monthly price after the trial. Never tell the caller a charge is free when a charge is taken.',
     'If a banned phrase shows up in your draft, REWRITE the line before emitting it. We describe what the business DOES and how it has PERFORMED for other customers — we never promise outcomes.',
     '',
     'REQUIRED SAFETY PHRASES — bake these into price / timescale / outcome talk:',
@@ -522,17 +627,42 @@ async function generateCoachSuggestion(
   // happened and refuses to regress.
   const stageLockBlock =
     currentStage && currentStage.trim().length > 0
-      ? [
+      ? (stageOrder && stageOrder.length > 0
+          ? [
+              '=== STAGE LOCK ===',
+              `Your last SCRIPT card on this call was at: "${currentStage}".`,
+              `You are PAST this stage. Do NOT fire any earlier SCRIPT stage on this call. Stage order: ${stageOrder.join(' → ')}.`,
+              'Only fire SCRIPT cards that are at the same stage or LATER. If the caller diverges or asks something off-script, fire [SUGGESTION] or [EXPLAIN] — never roll back to an earlier SCRIPT stage.',
+            ].join('\n')
+          : [
           '=== STAGE LOCK ===',
           `Your last SCRIPT card on this call was at: "${currentStage}".`,
           'You are PAST this stage. Do NOT fire any earlier SCRIPT stage on this call (no SCRIPT — Open if you already fired Qualify; no SCRIPT — Qualify if you already fired Permission to pitch; etc.). Stage order: Open → Qualify → Permission to pitch → Pitch → Pricing → SMS close → Follow-up lock.',
           'Only fire SCRIPT cards that are at the same stage or LATER. If the caller diverges or asks something off-script, fire [SUGGESTION] or [EXPLAIN] — never roll back to an earlier SCRIPT stage.',
-        ].join('\n')
+        ].join('\n'))
       : '=== STAGE LOCK ===\n(no prior SCRIPT card yet — you may fire any stage that fits the caller\'s utterance)';
+
+  // THIS LEAD block — the real name/reviews/rank so the coach substitutes
+  // them into the script line instead of reading a placeholder like "[X]
+  // reviews" or "[Name]" aloud (Hugo 2026-07-22).
+  const leadBlock = leadFacts
+    ? [
+        '=== THIS LEAD — use these REAL values, NEVER read a placeholder like [X], [Name], [reviews] aloud ===',
+        leadFacts,
+        'When the script references their name, business, review count, rating, rank, or competitors, put the real value above into the line. If a value is missing, phrase around it — never say a bracketed token.',
+      ].join('\n')
+    : '=== THIS LEAD ===\n(no lead facts loaded — do NOT invent a name or numbers; keep the line generic and avoid brackets.)';
+
+  // Empty array on a cold call, so the assembled cold user message is
+  // byte-identical to what it has always been.
+  const closeCallBlock = callKind === 'vsl_close' ? [CLOSE_CALL_CONTEXT, ''] : [];
 
   const userMsg = [
     'Recent conversation (most recent line at bottom):',
     recentTranscript || '(no prior context yet)',
+    '',
+    ...closeCallBlock,
+    leadBlock,
     '',
     stageLockBlock,
     '',
@@ -713,6 +843,15 @@ function postProcessCoachText(raw: string): CoachOutput | null {
   if (/^stay[_\s-]?on[_\s-]?script$/i.test(stripped)) {
     return null;
   }
+  // Hugo 2026-07-22: the marker LEAKED as a card ("SUGGESTION · STAY_ON_SCRIPT")
+  // when the model wrapped it in a classifier prefix, e.g. "[SUGGESTION]
+  // STAY_ON_SCRIPT" — the strip above keeps the brackets so the anchored regex
+  // missed it. Bracket-tolerant catch: drop every [..] group and all non-letters
+  // and compare. Legit lines ("Stay on script and confirm the mobile") survive.
+  const bareMarker = text.replace(/\[[^\]]*\]/g, ' ').replace(/[^a-z]/gi, '').toLowerCase();
+  if (bareMarker === 'stayonscript') {
+    return null;
+  }
 
   // v10 (PR 6 2026-04-26): parse the kind prefix BEFORE generic bracket
   // stripping. If absent, fall back to suggestion (the legacy default).
@@ -790,7 +929,7 @@ serve(async (req: Request) => {
     // call script and substitute the contact's first name into it (PR 8).
     const { data: call } = await supa
       .from('wk_calls')
-      .select('id, ai_coach_enabled, agent_id, contact_id, current_stage, campaign_id')
+      .select('id, ai_coach_enabled, agent_id, contact_id, current_stage, campaign_id, script_key')
       .eq('twilio_call_sid', callSid)
       .maybeSingle();
 
@@ -956,12 +1095,13 @@ serve(async (req: Request) => {
               p_call_id: call.id,
               p_gen_id: generationId,
               p_force: isFinal,
-              // v9 (PR D 2026-04-30): debounce raised 250 → 700ms. Coach
-              // was generating too many cards per turn; ~3× fewer
-              // OpenAI calls per utterance, and combined with the new
-              // SILENCE RULE the model returns STAY_ON_SCRIPT for most
-              // of those generations anyway.
-              p_min_age_ms: 700,
+              // v9 (PR D 2026-04-30): debounce raised 250 → 700ms to cut
+              // OpenAI call volume. Hugo 2026-07-22: coach felt slow —
+              // lowered 700 → 400ms so a caller utterance triggers the
+              // coach line ~300ms sooner. Final chunks still force-
+              // supersede, and the SILENCE RULE keeps most generations
+              // returning STAY_ON_SCRIPT, so the extra fires stay cheap.
+              p_min_age_ms: 400,
             }
           );
           if (lockErr) {
@@ -1003,6 +1143,10 @@ serve(async (req: Request) => {
           //    row's call_script_id). Cascade lookup happens after the
           //    parallel fetch — null fields fall through to workspace.
           const campaignId = (call.campaign_id as string | null) ?? null;
+          // The agent's on-screen script choice, persisted by wk-calls-create.
+          // NULL on every existing row and every cold dial, so the whole close
+          // branch below is dead code on a normal call.
+          const isCloseCall = (call.script_key as string | null) === 'vsl_close';
           const [
             recentRes,
             priorCardsRes,
@@ -1045,7 +1189,7 @@ serve(async (req: Request) => {
             call.contact_id
               ? supa
                   .from('wk_contacts')
-                  .select('name, pipeline_column_id')
+                  .select('name, pipeline_column_id, custom_fields')
                   .eq('id', call.contact_id)
                   .maybeSingle()
               : Promise.resolve({ data: null, error: null }),
@@ -1201,9 +1345,18 @@ serve(async (req: Request) => {
           // script + style + script prompt. Resolution chain:
           //   own > column profile > campaign profile > workspace default profile
           const contactData = (contactRes.data ?? null) as
-            | { name?: string | null; pipeline_column_id?: string | null }
+            | { name?: string | null; pipeline_column_id?: string | null; custom_fields?: Record<string, string> | null }
             | null;
           const pipelineColumnId = contactData?.pipeline_column_id ?? null;
+          // Close-call overrides. Both empty on every cold dial.
+          // coach_style_prompt is deliberately NOT overridden: it holds the
+          // voice AND the UK compliance bans (never guarantee a ranking, never
+          // call a paid start free), every word of which is still true on a
+          // close call. Forking it would mean maintaining those bans twice.
+          const closeScript = isCloseCall ? CLOSE_SCRIPT_PROMPT : '';
+          const closeScriptRow = isCloseCall
+            ? { name: 'VSL close', body_md: CLOSE_AGENT_SCRIPT_MD }
+            : undefined;
           let columnScriptRow:
             | { name: string; body_md: string }
             | undefined;
@@ -1322,12 +1475,20 @@ serve(async (req: Request) => {
           // blocks above have declared and filled columnStyle/columnScript
           // and (possibly) campStyle/campScript.
           const dbStyle = columnStyle.length > 0 ? columnStyle : campStyle.length > 0 ? campStyle : wsStyle;
-          const dbScript = columnScript.length > 0 ? columnScript : campScript.length > 0 ? campScript : wsScript;
+          // The close term sits ABOVE the whole cold cascade, and is '' on a
+          // cold dial so the rest resolves exactly as it always did.
+          const dbScript = closeScript.length > 0
+            ? closeScript
+            : columnScript.length > 0 ? columnScript : campScript.length > 0 ? campScript : wsScript;
 
-          // Resolution chain: own > column > campaign > default
+          // Resolution chain: vsl_close > own > column > campaign > default.
+          // Above `own` on purpose: an agent's personal script is their COLD
+          // script, and a close call is not a variant of one.
           const resolvedAgentScript =
-            ownScriptRow ?? columnScriptRow ?? campaignScriptRow ?? defaultScriptRow ?? null;
-          const agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'none' = ownScriptRow
+            closeScriptRow ?? ownScriptRow ?? columnScriptRow ?? campaignScriptRow ?? defaultScriptRow ?? null;
+          const agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'none' = closeScriptRow
+            ? 'vsl_close'
+            : ownScriptRow
             ? 'own'
             : columnScriptRow
               ? 'column'
@@ -1342,7 +1503,32 @@ serve(async (req: Request) => {
           ).trim();
           const agentFirstName = agentName.split(/\s+/)[0] || 'the agent';
           const contactName = (contactData?.name ?? '').trim();
-          const contactFirstName = contactName.split(/\s+/)[0] || 'the caller';
+
+          // Lead data — for plumber leads wk_contacts.name is the BUSINESS
+          // name; the PERSON's name lives in custom_fields.owner_name. Greet
+          // by the owner's first name, and give the coach the real review
+          // count / rating / rank so it fills the script instead of emitting
+          // placeholders like [X] / [Name] (Hugo 2026-07-22).
+          const cf = (contactData?.custom_fields ?? {}) as Record<string, string>;
+          const ownerName = (cf.owner_name ?? '').trim();
+          const businessName = (cf.business_name ?? '').trim() || contactName;
+          const contactFirstName =
+            ownerName.split(/\s+/)[0] || contactName.split(/\s+/)[0] || 'the caller';
+          const leadFactLines: string[] = [];
+          if (ownerName) leadFactLines.push(`Owner's name (greet them by this): ${ownerName}`);
+          if (businessName) leadFactLines.push(`Business name: ${businessName}`);
+          if ((cf.reviews ?? '').trim()) leadFactLines.push(`Google reviews they have right now: ${(cf.reviews ?? '').trim()}`);
+          if ((cf.rating ?? '').trim()) leadFactLines.push(`Google star rating: ${(cf.rating ?? '').trim()}`);
+          if ((cf.rank ?? '').trim()) {
+            const ahead = (cf.plumbers_ahead ?? '').trim();
+            leadFactLines.push(`Local Google rank: #${(cf.rank ?? '').trim()}${ahead ? ` (${ahead} businesses ahead of them)` : ''}`);
+          }
+          if ((cf.town ?? '').trim()) leadFactLines.push(`Town / area: ${(cf.town ?? '').trim()}`);
+          {
+            const comps = [cf.competitor_1, cf.competitor_2].map((c) => (c ?? '').trim()).filter(Boolean);
+            if (comps.length) leadFactLines.push(`Competitors ranking above them: ${comps.join(', ')}`);
+          }
+          const leadFacts = leadFactLines.join('\n');
 
           // PR 87: accept both {x} and {{x}} so single-brace templates
           // don't leak the literal placeholder into the LLM prompt.
@@ -1382,7 +1568,7 @@ serve(async (req: Request) => {
           };
           log(
             'layers loaded',
-            `style=${layers.stylePrompt.length}c script=${layers.scriptPrompt.length}c facts=${layers.facts.length}(ws=${wsFacts.length}+cam=${campFacts.length}) agentScript=${agentScriptBody.length}c(${agentScriptSource}) campaign=${campaignId ?? 'none'} caller=${contactFirstName}`
+            `style=${layers.stylePrompt.length}c script=${layers.scriptPrompt.length}c facts=${layers.facts.length}(ws=${wsFacts.length}+cam=${campFacts.length}) agentScript=${agentScriptBody.length}c(${agentScriptSource}) close=${isCloseCall} campaign=${campaignId ?? 'none'} caller=${contactFirstName}`
           );
 
           // 8. Build the user message + run streaming.
@@ -1399,6 +1585,10 @@ serve(async (req: Request) => {
             speaker,
             priorCards,
             currentStage: (call.current_stage as string | null) ?? null,
+            leadFacts,
+            // Both undefined on a cold dial.
+            stageOrder: isCloseCall ? CLOSE_STAGE_ORDER : undefined,
+            callKind: isCloseCall ? 'vsl_close' : undefined,
             onChunk: (accumulated) => {
               if (firstToken) {
                 log('first token');

@@ -69,6 +69,32 @@ describe('the close script cannot touch the cold-call script', () => {
   it('the close script carries no long dashes, curly quotes or ellipsis characters', () => {
     // Standing rule, and this file is read aloud AND its lines get pasted into
     // texts, where one long dash drops an SMS segment from 160 chars to 70.
-    expect(read(CLOSE_HTML)).not.toMatch(/[–—‘’“”…]/)
+    expect(read(CLOSE_HTML)).not.toMatch(/[\u2013\u2014\u2018\u2019\u201C\u201D\u2026]/)
+  })
+})
+
+describe('the close script never puts a raw bracket in the agent mouth', () => {
+  it('an unnamed lead gets the business name in the opener, not [owner_first]', async () => {
+    // Marr's list is full of leads with no owner name (locksmiths especially).
+    // The opener is the FIRST thing said, so a brown [owner_first] chip there is
+    // the worst possible place for one. interpolateScript collapses it.
+    const { interpolateScript } = await import('../src/features/crm/lib/interpolateScript')
+    const out = interpolateScript(read(CLOSE_HTML), {
+      name: 'Dennison Electrical Services',
+      customFields: {},
+    })
+    const opener = out.slice(out.indexOf('Hi, is that'), out.indexOf('Hi, is that') + 140)
+    expect(opener, `opener for an unnamed lead: ${opener}`).not.toContain('owner_first')
+    expect(opener).toContain('Dennison Electrical Services')
+  })
+
+  it('a named lead is greeted by their first name only', async () => {
+    const { interpolateScript } = await import('../src/features/crm/lib/interpolateScript')
+    const out = interpolateScript(read(CLOSE_HTML), {
+      name: 'Acme Plumbing Ltd',
+      customFields: { owner_name: 'John Robert Smith' },
+    })
+    const opener = out.slice(out.indexOf('Hi, is that'), out.indexOf('Hi, is that') + 60)
+    expect(opener).toContain('Hi, is that John?')
   })
 })
