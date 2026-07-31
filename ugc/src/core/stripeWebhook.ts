@@ -3,7 +3,7 @@
 // repo already uses): anything not stamped app='ugc' is ignored with a 200 so
 // Stripe never retries someone else's event at us.
 
-import { PACK_CREDITS } from './pricing';
+import { PACK_CREDITS } from './pricing.js';
 
 export type WebhookDecision =
   | { action: 'ignore'; why: string }
