@@ -264,6 +264,29 @@ class Prosody:
         verdict, why = self.verdict()
         return verdict in ("fell", "rose"), f"{verdict}: {why}"
 
+    def energy(self) -> str:
+        """How animated the far end is: "low", "mid" or "high".
+
+        Read from the pitch SPREAD of the recent voiced tail, not the level:
+        a phone line's loudness says more about the handset than the human,
+        but a monotone is a monotone at any volume. Used for gentle mirroring,
+        where the only action ever taken is softening, so "mid" is the safe
+        answer whenever there is not enough evidence to say otherwise.
+        """
+        if not self._frames or time.monotonic() - self._last_voiced_wall > STALE_S:
+            return "mid"
+        tail = [f for f in self._frames if f[0] >= self._last_voiced_at - 1.5]
+        if len(tail) < MIN_VOICED:
+            return "mid"
+        ref = tail[0][1]
+        sts = [_semitones(f[1], ref) for f in tail]
+        spread = max(sts) - min(sts)
+        if spread < 2.0:
+            return "low"
+        if spread > 6.0:
+            return "high"
+        return "mid"
+
     def reset(self) -> None:
         """Forget the contour. Called once we have answered, so the next turn is
         judged on its own audio and not on the tail of the previous one."""

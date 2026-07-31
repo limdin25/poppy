@@ -63,6 +63,14 @@ _NEVER = frozenset({"ai", "um", "uh", "erm", "mm", "right", "okay",
 # Long enough for the syllable shape; anything shorter is said twice in full.
 _SYLLABLE_MIN = 7
 
+# Words that open the closing question on these calls. A sentence boundary
+# followed by one of these is the pivot of the reply, and the beat before it
+# is where a speaker actually breathes.
+_QUESTION_OPENERS = frozenset({
+    "what", "how", "would", "could", "does", "do", "which",
+    "when", "where", "who", "shall",
+})
+
 
 def _trip(word: str) -> str | None:
     """The tripped form of one word, or None if this word is off limits."""
@@ -109,12 +117,23 @@ class Disfluencer:
                 and word.lower().strip("'") not in self.business_words)
 
     def feed(self, tokens):
-        """Yield the stream with at most one trip added. Generator per reply."""
+        """Yield the stream with at most one trip and one breath added.
+
+        Generator per reply. The trip is the stutter at the start of a
+        thought; the breath is a [break] before the closing question, the one
+        pivot these replies actually have, which Fish renders as a natural
+        intake rather than a synthesised noise.
+        """
         t0 = time.monotonic()
         self.last_trip_chars = 0
         want = self._since >= config.DISFLUENCY_MIN_GAP
+        want_breath = False
         decided_chance = False
         injected = False
+        breathed = False
+        slow = False
+        sentences_ended = 0
+        saw_alpha = False
         # Where a trip may land: True at the reply's start and after .!?
         at_site = True
         depth = 0            # inside a [cue]
@@ -129,16 +148,31 @@ class Disfluencer:
         before_word = ""
 
         def flush_word(w: str) -> str:
-            nonlocal injected, at_site
+            nonlocal injected, breathed, at_site
             at_site = False
-            if injected or not w:
+            if not w:
                 return w
             if before_word == ".":
                 return w                   # an abbreviation fragment
+            # The breath first: a site word opening a question after at least
+            # one finished sentence is the pivot, and one shaping event per
+            # moment is plenty, so a breath here forgoes the trip.
+            if (want_breath and not breathed and sentences_ended >= 1
+                    and w.lower() in _QUESTION_OPENERS):
+                breathed = True
+                self.on_event("disfluency", f"[break] before {w!r}")
+                return f"[break] {w}"
+            if injected or not want:
+                return w
             tripped = _trip(w) if self._eligible(w) else None
             if tripped is None:
                 return w
             injected = True
+            # A slow brain hesitates BEFORE it trips: the pause plus the
+            # restart is what a person assembling a hard thought sounds like,
+            # where a bare trip is just the ordinary stumble of speech.
+            if slow:
+                tripped = f"[break] {tripped}"
             self.last_trip_chars = len(tripped) - len(w)
             self.on_event("disfluency", f"{w} -> {tripped}")
             return tripped
@@ -154,7 +188,8 @@ class Disfluencer:
                     slow = time.monotonic() - t0 >= config.DISFLUENCY_SLOW_S
                     chance = 0.85 if slow else config.DISFLUENCY_CHANCE
                     want = want and self.rng.random() < chance
-                if not want or injected:
+                    want_breath = self.rng.random() < config.BREATH_CHANCE
+                if (not want or injected) and (not want_breath or breathed):
                     if word:
                         yield word
                         word = ""
@@ -176,6 +211,8 @@ class Disfluencer:
                             depth -= 1
                         prev = ch
                         continue
+                    if ch.isalpha():
+                        saw_alpha = True
                     if at_site and (ch.isalpha() or ch == "'"):
                         if not word:
                             before_word = prev
@@ -186,6 +223,8 @@ class Disfluencer:
                         out.append(flush_word(word))
                         word = ""
                     if ch in ".!?":
+                        if saw_alpha:
+                            sentences_ended += 1
                         at_site = True
                     elif at_site and not ch.isspace():
                         # A digit, a bracket, a quote: whatever it is, the word
@@ -199,7 +238,7 @@ class Disfluencer:
                 if piece:
                     yield piece
             if word:
-                yield flush_word(word) if want and not injected else word
+                yield flush_word(word)
                 word = ""
         finally:
             # In the finally so a barge-in abandoning the generator still

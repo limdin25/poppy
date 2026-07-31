@@ -1781,6 +1781,119 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("a struggle trip carries a thinking pause, a flow trip does not")
+def _():
+    # "A model struggling with a complex thought should sound different than
+    # one just pausing for breath." The struggle case is a slow first token,
+    # and its trip now arrives behind a real [break], which Fish renders as
+    # the pause a person makes when the thought is actually being assembled.
+    import random as _random
+    from . import disfluency
+    old_c, old_s = config.DISFLUENCY_CHANCE, config.DISFLUENCY_SLOW_S
+    config.DISFLUENCY_CHANCE = 1.0
+    try:
+        config.DISFLUENCY_SLOW_S = 0.0     # every reply counts as slow
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        slow = "".join(d.feed(iter(["Takes the calls you'd miss."])))
+        assert "[break]" in slow and "Takes, takes" in slow, slow
+        config.DISFLUENCY_SLOW_S = 9999.0  # nothing counts as slow
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        flow = "".join(d.feed(iter(["Takes the calls you'd miss."])))
+        assert "[break]" not in flow and "Takes, takes" in flow, flow
+    finally:
+        config.DISFLUENCY_CHANCE, config.DISFLUENCY_SLOW_S = old_c, old_s
+
+
+@case("a sharp mood flip loses its intensifier for one beat")
+def _():
+    # Emotional inertia. [warm] one reply and [very sympathetic] the next is
+    # a switch being flipped; a person's energy fades across the boundary. On
+    # a valence flip the FIRST cue of the new reply is rendered at base
+    # strength, and everything after it may go full strength again.
+    old = config.CUES_ENABLED
+    config.CUES_ENABLED = True
+    try:
+        mood = {"prev": "up"}
+        out = "".join(agent.clean_cues(iter(
+            ["[very sympathetic] Oh no. [really worried] That's rough."]), mood=mood))
+        assert "[sympathetic]" in out, out
+        assert "[really worried]" in out, out
+        assert mood.get("last") == "down", mood
+        # Same valence: no softening, the strength survives.
+        mood = {"prev": "up"}
+        out = "".join(agent.clean_cues(iter(["[very warm] Lovely."]), mood=mood))
+        assert "[very warm]" in out, out
+    finally:
+        config.CUES_ENABLED = old
+
+
+@case("a flat quiet prospect pulls her intensity down, never up")
+def _():
+    # Mirroring, gently. Matching a flat man's energy means dropping the
+    # intensifiers, and matching an energetic one means changing NOTHING,
+    # because amplifying toward them is the parody case.
+    old = config.CUES_ENABLED
+    config.CUES_ENABLED = True
+    try:
+        out = "".join(agent.clean_cues(iter(
+            ["[very warm] Hi. [genuinely delighted] Great."]),
+            mood={"energy": "low"}))
+        assert "[warm]" in out and "[delighted]" in out, out
+        assert "very" not in out and "genuinely" not in out, out
+        out = "".join(agent.clean_cues(iter(["[very warm] Hi."]),
+                                       mood={"energy": "high"}))
+        assert "[very warm]" in out, out
+    finally:
+        config.CUES_ENABLED = old
+
+
+@case("the energy reader calls a flat line flat and a lively one lively")
+def _():
+    # Pure arithmetic over the stored frames, so it runs without numpy.
+    from . import prosody as pr
+    import time as _t
+    p = pr.Prosody.__new__(pr.Prosody)
+    p._last_voiced_wall = _t.monotonic()
+    # Monotone and quiet-steady: 150 Hz barely moving.
+    p._frames = [(i * 0.02, 150.0 + (i % 2) * 0.5, -30.0) for i in range(40)]
+    p._last_voiced_at = p._frames[-1][0]
+    assert p.energy() == "low", p.energy()
+    # Swinging over an octave: somebody animated.
+    p._frames = [(i * 0.02, 150.0 * (2 ** ((i % 8) / 8.0)), -22.0) for i in range(40)]
+    p._last_voiced_at = p._frames[-1][0]
+    assert p.energy() == "high", p.energy()
+
+
+@case("a breath lands before the closing question, once, and not always")
+def _():
+    # "A quick breath before a pivotal word." On these calls the pivot IS the
+    # closing question, and the breath is a [break] Fish renders as a real
+    # intake, never a synthesised noise (we just spent a morning killing
+    # those). Coin-gated so it never becomes a pattern.
+    import random as _random
+    from . import disfluency
+    old_c, old_b = config.DISFLUENCY_CHANCE, config.BREATH_CHANCE
+    config.DISFLUENCY_CHANCE = 0.0         # isolate the breath from the trip
+    config.BREATH_CHANCE = 1.0
+    try:
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        out = "".join(d.feed(iter(
+            ["I answer phones while you work. How does that sound?"])))
+        assert "[break] How does that sound?" in out, out
+        assert out.count("[break]") == 1, out
+        # A one-sentence reply has no pivot to breathe before.
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        out = "".join(d.feed(iter(["How does that sound?"])))
+        assert "[break]" not in out, out
+        # And with the coin against it, nothing changes at all.
+        config.BREATH_CHANCE = 0.0
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        line = "I answer phones while you work. How does that sound?"
+        assert "".join(d.feed(iter([line]))) == line
+    finally:
+        config.DISFLUENCY_CHANCE, config.BREATH_CHANCE = old_c, old_b
+
+
 @case("giving up a stage does not talk over a question she just asked")
 def _():
     # Heard live, 2026-07-31 10:01: "tomorrow morning, or Thursday

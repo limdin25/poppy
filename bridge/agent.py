@@ -569,6 +569,37 @@ _INTENSITY = {"slightly", "a bit", "mildly", "quite", "fairly", "rather",
 # delete a pause that was doing timing work, not emotional work.
 _MECHANIC_CUES = frozenset({"break", "long-break", "emphasis"})
 
+# Which way a feeling points, for the inertia rule. Neutral colours (calm,
+# curious, sincere...) are deliberately absent: moving through neutral is not
+# a flip, and a map that called everything a flip would soften every reply.
+# Drawn from SAFE_CUES: a valence entry for a cue the allowlist refuses is
+# dead code, which is how the first draft of this map shipped with "concerned"
+# and "serious" that could never fire.
+_VALENCE_UP = frozenset({
+    "warm", "amused", "excited", "delighted", "playful", "proud", "hopeful",
+    "satisfied", "confident", "grateful", "happy", "friendly", "optimistic",
+})
+_VALENCE_DOWN = frozenset({
+    "sympathetic", "empathetic", "sad", "worried", "nervous", "regretful",
+    "uncertain", "disappointed", "nostalgic", "unhappy", "upset", "resigned",
+})
+
+
+def cue_valence(base: str) -> str | None:
+    if base in _VALENCE_UP:
+        return "up"
+    if base in _VALENCE_DOWN:
+        return "down"
+    return None
+
+
+def _bare(cue: str) -> str:
+    """The cue without its intensity word: "very warm" -> "warm"."""
+    for word in _INTENSITY:
+        if cue.startswith(word + " "):
+            return cue[len(word) + 1:]
+    return cue
+
 
 def _allowed_cue(raw: str) -> str | None:
     """The cue to send to Fish, or None to drop it.
@@ -601,7 +632,7 @@ def _allowed_cue(raw: str) -> str | None:
     return cue
 
 
-def clean_cues(tokens):
+def clean_cues(tokens, mood: dict | None = None):
     """Drop any bracketed cue that is not on the verified-safe list.
 
     Fish takes free-form natural language in brackets, so the prompt listing six
@@ -623,7 +654,21 @@ def clean_cues(tokens):
     feeling on every sentence, which is the caricature Hugo reported. The
     mechanics ([break], [long-break], [emphasis]) are not emotions: they
     neither spend the budget nor get dropped by it.
+
+    AND THE MOOD, when the caller passes one. Two rules, both of which only
+    ever SOFTEN, never amplify, because amplifying toward anything is the
+    parody case:
+      - inertia: mood["prev"] is the valence of the last reply's feeling, and
+        a sharp flip (up to down or back) renders the FIRST cue of this reply
+        at base strength, so the old energy ghosts for a beat instead of the
+        mood snapping like a switch
+      - mirroring: mood["energy"] == "low" is a flat, quiet prospect, and
+        matching them means every intensifier this reply comes off
+    mood["last"] is written back with this reply's final valence, so the next
+    reply's inertia has something to compare against.
     """
+    mood = mood if mood is not None else {}
+    first_emotion = True
     spent = 0
     held = ""
     for token in tokens:
@@ -644,6 +689,16 @@ def clean_cues(tokens):
                 cue = None                 # the reply has emoted enough
             if cue:
                 if cue not in _MECHANIC_CUES:
+                    base = _bare(cue)
+                    valence = cue_valence(base)
+                    if mood.get("energy") == "low":
+                        cue = base
+                    elif (first_emotion and valence and mood.get("prev")
+                          and valence != mood["prev"]):
+                        cue = base
+                    first_emotion = False
+                    if valence:
+                        mood["last"] = valence
                     spent += 1
                 out.append(f"[{cue}]")
             else:
@@ -784,6 +839,11 @@ class Agent:
         # captured just before the prosody reader is reset. The backchannel
         # gate reads it: "Right." answers a landed statement and nothing else.
         self._last_contour: str | None = None
+        # How animated their last turn was, for the gentle mirroring, and the
+        # valence of HER last reply's feeling, for the inertia rule. Both feed
+        # clean_cues through the mood dict.
+        self._last_energy: str | None = None
+        self._cue_valence: str | None = None
         # Set when the reply she just gave asked a question the prospect
         # actually heard, even if the barge-in cut the "?" itself off. The
         # waiting rule reads this so a clipped question still gets waited on
@@ -1312,7 +1372,11 @@ class Agent:
         # reached the voice. See bridge/copy_guard.py for why both rules had to
         # stop being suggestions.
         raw = copy_guard.guard(raw, on_event=self._emit)
-        tokens = clean_cues(_clip_reply(raw, spoken))
+        # Inertia and mirroring ride in through the mood: her last reply's
+        # valence and their last turn's energy, both of which can only ever
+        # soften a cue. mood["last"] comes back with this reply's valence.
+        mood = {"prev": self._cue_valence, "energy": self._last_energy}
+        tokens = clean_cues(_clip_reply(raw, spoken), mood=mood)
         # The occasional trip, downstream of _clip_reply ON PURPOSE: `spoken`
         # feeds the transcript and the model's own memory, and a model shown
         # its own stutter starts imitating it. The voice performs the trip;
@@ -1329,6 +1393,12 @@ class Agent:
         _, interrupted, speak_ms = self._play(
             "", chunks, so_far=lambda: spoken_words("".join(spoken)))
         self._settle()
+
+        # The feeling this reply actually carried, for the next reply's
+        # inertia. A reply with no emotional colour leaves the old reading in
+        # place: silence about a mood is not a change of mood.
+        if mood.get("last"):
+            self._cue_valence = mood["last"]
 
         full = "".join(written)
         slot = booked_slot(full)
@@ -1517,8 +1587,9 @@ class Agent:
         """
         # Cleared on the way in: the contour belongs to ONE turn, and a "fell"
         # left over from two turns ago must not authorise a "Right." after a
-        # stretch of silence.
+        # stretch of silence. The energy reading goes with it.
         self._last_contour = None
+        self._last_energy = None
         deadline = time.time() + (config.AAI_TURN_TIMEOUT_S if timeout is None else timeout)
         said_why = False
         while time.time() < deadline:
@@ -1593,6 +1664,7 @@ class Agent:
             # it asks, the reader has been wiped.
             if self.prosody is not None:
                 self._last_contour, _ = self.prosody.verdict()
+                self._last_energy = self.prosody.energy()
                 self.prosody.reset()
             self._emit("them", text)
             result.turns.append(Turn("them", text, time.time() - result.started_at))

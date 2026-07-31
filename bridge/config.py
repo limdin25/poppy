@@ -96,6 +96,12 @@ HELD_PATIENCE = float(os.environ.get("BRIDGE_HELD_PATIENCE", "2.0"))
 # caricature, so the ceiling lives here.
 CUE_BUDGET = int(os.environ.get("BRIDGE_CUE_BUDGET", "2"))
 
+# The beat before the closing question of a multi-sentence reply, rendered as
+# a [break] (Fish performs a natural intake there). Coin-gated so it stays a
+# habit rather than a pattern. NEVER a synthesised breath noise: those are the
+# artifact class the sampling ceiling exists to kill.
+BREATH_CHANCE = float(os.environ.get("BRIDGE_BREATH_CHANCE", "0.5"))
+
 DISFLUENCY_ENABLED = os.environ.get("BRIDGE_DISFLUENCY", "1") != "0"
 DISFLUENCY_CHANCE = float(os.environ.get("BRIDGE_DISFLUENCY_CHANCE", "0.16"))
 DISFLUENCY_MIN_GAP = int(os.environ.get("BRIDGE_DISFLUENCY_MIN_GAP", "2"))
