@@ -60,6 +60,25 @@ _PART_CUE_RE = re.compile(r"\[[a-z\s-]*$", re.IGNORECASE)
 # "an AI assistant", "I'm an A.I." and so on. Word boundaries keep it off every
 # ordinary word that happens to contain those two letters.
 _DISCLOSED_RE = re.compile(r"\bA\.?\s?I\.?\b|artificial intelligence", re.IGNORECASE)
+# The words that make an ending sound finished. If her closing line carries
+# none of these, the deterministic close adds one, because a call that just
+# stops ("she didn't even say anything") reads as a fault, not a farewell.
+_FAREWELL_RE = re.compile(
+    r"\b(bye|goodbye|speak soon|talk soon|speak then|talk then|take care"
+    r"|speak to you|talk to you)\b", re.IGNORECASE)
+_FAREWELLS = (
+    "Thanks for your time. Speak soon, bye now.",
+    "Great talking to you. Bye now.",
+    "Thanks, speak soon. Bye.",
+)
+# The whole of what they said is a pleasantry: answered with the fast fixed
+# goodbye rather than a model round-trip. Anchored and bounded so "thank you,
+# but one question" never matches.
+_PLEASANTRY_RE = re.compile(
+    r"^(all right[,.! ]*|okay[,.! ]*)?(thanks|thank you|cheers|bye|goodbye"
+    r"|bye bye|take care|you too)[,.! ]*(thanks|thank you|bye|bye bye"
+    r"|take care)?[,.! ]*$", re.IGNORECASE)
+
 # An agreement murmured along under somebody talking: "yeah", "right",
 # "uh huh". Not an interruption, the opposite of one, and stopping for it is
 # how she "snaps shut" mid-thought. Distinct from _STANDALONE_REPLY, which is
@@ -1374,19 +1393,36 @@ class Agent:
             )
         return interrupted
 
-    def _courtesy_window(self, result: CallResult) -> None:
-        """The open ear between the close landing and the line dropping.
+    def _deterministic_close(self, result: CallResult) -> None:
+        """A farewell always, dead air never, then the line drops.
 
-        "Well so she just hung up now": a met goal used to break the loop
-        straight into hangup, which is a slammed door after a handshake. So
-        once the goodbye is said, the line stays open for CLOSING_WINDOW_S,
-        and anything they say in it earns one more reply. Capped at two
-        extra turns: courtesy is a window, not a second call.
+        Two failures taught the shape. First the met goal broke straight
+        into hangup ("she just hung up now"). Then the fix listened
+        SILENTLY for six seconds, and the other edge showed: "she didn't
+        even say anything... letting calls hang in dead air". A close is a
+        ritual with words on both sides, so:
+
+          - if her last line carried no farewell, she says one, always
+          - a pleasantry in the short window ("thank you", "bye") gets the
+            fast fixed goodbye, not a model round-trip and its lag
+          - real content still earns one more turn, capped
+          - silence lets the farewell stand and the line drop
         """
+        try:
+            if not _FAREWELL_RE.search(self._last_spoken or ""):
+                self._say(random.choice(_FAREWELLS), result)
+        except Exception as e:
+            self._emit("error", f"farewell failed: {e}")
         for _ in range(2):
             heard = (self._listen_streaming(result, config.CLOSING_WINDOW_S)
                      if self.ears is not None else "")
             if not heard:
+                return
+            if _PLEASANTRY_RE.match(heard.strip().lower()):
+                try:
+                    self._say("Thank you. Bye now.", result)
+                except Exception as e:
+                    self._emit("error", f"goodbye failed: {e}")
                 return
             try:
                 ends, _cut, _went = self._say_live(heard, result)
@@ -2026,9 +2062,9 @@ class Agent:
                     break
                 if ends:
                     result.outcome = "completed"
-                    # The close has landed. Hold the door before walking out.
+                    # The close has landed: farewell, short window, drop.
                     if self.transport.is_live():
-                        self._courtesy_window(result)
+                        self._deterministic_close(result)
                     break
             else:
                 result.outcome = "max_duration"

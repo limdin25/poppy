@@ -2490,36 +2490,61 @@ def _():
         assert notes, notes
 
 
-@case("a yes does not slam into the dial tone")
+@case("the close is deterministic: a farewell always, dead air never")
 def _():
-    # "Well so she just hung up now." The goal landing used to break the
-    # loop straight into hangup. Now the close holds the line open for a
-    # courtesy window: speech in it earns one more turn (capped, so a
-    # chatterbox cannot hold her hostage), silence lets the goodbye stand.
-    def build(hears):
+    # Two reports, one mechanism. "She just hung up now": the met goal broke
+    # straight into hangup. Then the first fix listened SILENTLY for six
+    # seconds, and Hugo heard the other failure: "she didn't even say
+    # anything... letting calls hang in dead air". So the close is now
+    # deterministic: if her last line carried no farewell, she says one; a
+    # pleasantry in the short window gets a fast fixed goodbye, not a model
+    # round-trip; real content gets one more turn; silence gets the drop.
+    def build(hears, last_spoken):
         a = agent.Agent.__new__(agent.Agent)
         a.ears = object()
         a._emit = lambda *rest: None
+        a._last_spoken = last_spoken
         seq = list(hears)
         a._listen_streaming = lambda result, timeout=None: seq.pop(0) if seq else ""
-        a.said = []
-        a._say_live = lambda heard, result: (a.said.append(heard), (False, False, None))[1]
+        a.model_turns = []
+        a.fixed_lines = []
+        a._say_live = lambda heard, result: (a.model_turns.append(heard), (False, False, None))[1]
+        a._say = lambda text, result: a.fixed_lines.append(text) and False
         return a
 
-    # Silence in the window: goodbye stands, nothing more is said.
-    a = build([""])
-    a._courtesy_window(None)
-    assert a.said == [], a.said
-    # They speak: one more turn, then silence ends it.
-    a = build(["wait, actually, how do I pay?", ""])
-    a._courtesy_window(None)
-    assert a.said == ["wait, actually, how do I pay?"], a.said
-    # A talker gets at most two extra turns, never the whole evening.
-    a = build(["one", "two", "three", "four"])
-    a._courtesy_window(None)
-    assert len(a.said) == 2, a.said
-    # And the window is long enough to count as courtesy.
-    assert config.CLOSING_WINDOW_S >= 5.0, config.CLOSING_WINDOW_S
+    # No farewell in her close: one is always said before anything else.
+    a = build([""], "Someone will call you then and get it sorted.")
+    a._deterministic_close(None)
+    assert len(a.fixed_lines) == 1, a.fixed_lines
+    assert any(w in a.fixed_lines[0].lower() for w in ("bye", "speak soon")), a.fixed_lines
+    # A farewell already delivered is not doubled.
+    a = build([""], "Thanks Hugo, speak soon. Bye now.")
+    a._deterministic_close(None)
+    assert a.fixed_lines == [], a.fixed_lines
+    # "Thank you" in the window: the fast fixed goodbye, never a model turn.
+    a = build(["All right, thank you."], "Speak soon, bye now.")
+    a._deterministic_close(None)
+    assert a.model_turns == [], a.model_turns
+    assert len(a.fixed_lines) == 1 and "bye" in a.fixed_lines[0].lower(), a.fixed_lines
+    # Real content still earns one more model turn.
+    a = build(["wait, how do I pay?", ""], "Speak soon, bye now.")
+    a._deterministic_close(None)
+    assert a.model_turns == ["wait, how do I pay?"], a.model_turns
+    # And the window is short: a close, not a seance.
+    assert 2.0 <= config.CLOSING_WINDOW_S <= 4.0, config.CLOSING_WINDOW_S
+
+
+@case("the pitch gates need engagement, and the booking assumes the yes")
+def _():
+    # "The gates are leaking, opening way too early." The explain exit fired
+    # on "they reacted at all", so a grunt advanced the pitch. And the book
+    # stage now carries the drive: she is confirming details, not asking
+    # permission to exist.
+    from . import stages
+    keen = next(e for e in stages.STAGES["explain"].exits if e.key == "keen")
+    assert "grunt" in keen.when.lower() or "engag" in keen.when.lower(), keen.when
+    book = stages.STAGES["book"].do.lower()
+    assert "confirming" in book, book
 
 
 @case("the money brief lands grounded, not bubbly")

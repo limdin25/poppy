@@ -103,8 +103,10 @@ _add(Stage(
     "of one voice is a speech, not a conversation. They stop listening and you "
     "have nothing left to say next.",
     (
-        Exit("keen", "they reacted at all, well or neutrally, or asked how it "
-                     "works", "money"),
+        Exit("keen", "they actually engaged: answered your question, asked one "
+                     "back, or said something with content in it. A bare grunt "
+                     "or a lone \"okay\" is NOT engagement, stay and draw them "
+                     "out", "money"),
         Exit("objection", "they pushed back: they already have somebody, they "
                           "do not need it, they do not like the idea",
              "objection"),
@@ -178,7 +180,10 @@ _add(Stage(
     "YOU up on THEIR line, never the other way round. You are NOT sending a link and you are NOT sending "
     "anything: you are booking a time. Offer two specific slots rather than "
     "asking when works for them, because an open question gets a shrug. When "
-    "they pick, say it back and write [BOOK: their day and time] at the end.",
+    "they pick, say it back and write [BOOK: their day and time] at the end. "
+    "TONE: [confident], assume the yes. You are confirming details with "
+    "somebody who has already agreed, not requesting an appointment, and the "
+    "difference is audible.",
     (
         Exit("booked", "they gave you a day AND a time", ""),
         Exit("later", "they want to think about it, or check something first",
