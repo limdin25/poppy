@@ -1781,7 +1781,23 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
-@case("the reply is voiced sentence by sentence, cue carried, no seam")
+@case("the price question routes: yes books, no gets the objection handled")
+def _():
+    # Hugo's close, 2026-07-31: price (under five dollars a day, ninety-seven
+    # a month), the interest question, then the pause: whoever speaks first
+    # loses. A yes goes to booking. A no gets the objection HANDLED, never a
+    # straight surrender to decline: doubts are where the sale actually is.
+    from . import stages
+    nxt, finished = stages.route("money", "ok")
+    assert nxt == "book" and not finished, (nxt, finished)
+    nxt, _f = stages.route("money", "pricey")
+    assert nxt == "value", nxt
+    nxt, _f = stages.route("money", "no")
+    assert nxt == "objection", nxt
+    # And the stage brief itself carries the discipline and the number.
+    do = stages.STAGES["money"].do.lower()
+    assert "ninety-seven" in do, do
+    assert "speaks first" in do, do
 def _():
     # THE MEASURED FIX for "she's throwing random words into the sentence".
     # 24 streamed replies across two voices put nearly every insertion at

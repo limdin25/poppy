@@ -132,19 +132,24 @@ _add(Stage(
 _add(Stage(
     "money", "the wage",
     "Say what you cost, lightly and as a WAGE rather than a price: under five "
-    "dollars a day. One line, then ask how that sounds, then STOP. Do not "
-    "explain why it is good value unless they push back, that is a different "
-    "stage and doing it here makes the turn twice as long as it should be.",
+    "dollars a day, ninety-seven dollars a month. One line, then ask whether "
+    "that is something they would be interested in, then STOP TALKING. The "
+    "silence after that question is the question working: whoever speaks "
+    "first loses, and it is never you. However long they take, you do not "
+    "add, soften, re-ask or explain. Do not defend the value unless they "
+    "push back, that is a different stage.",
     (
-        Exit("ok", "they are fine with it, or just reacted at all", "book"),
-        Exit("pricey", "ANY hesitation about the money at all: too much, can't "
-                       "afford it, that's a lot, hmm. This is the common one",
+        Exit("ok", "they said yes, or fine, or reacted positively at all",
+             "book"),
+        Exit("pricey", "hesitation about the MONEY: too much, can't afford "
+                       "it, that's a lot, hmm. This is the common one",
              "value"),
-        Exit("no", "they explicitly ended it: not interested, take me off, "
-                   "goodbye. Money doubts are NOT this, they are pricey",
-             "decline"),
+        Exit("no", "they said no, or pushed back for any reason that is not "
+                   "the price. A no here is an objection to hear, not the end "
+                   "of the call", "objection"),
     ),
-    "They have not said anything about the money. Ask if that seems fair.",
+    "They have STILL not answered. Ask, in a handful of words, whether that "
+    "works for them. Nothing else.",
     "book",
 ))
 
