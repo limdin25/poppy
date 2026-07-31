@@ -62,7 +62,11 @@ ULAW_BYTES_PER_SECOND = 8000
 # This is SYNTHESISED room tone, not a recording of an office. It will not give
 # you keyboards or a colleague laughing. If a real ambience recording is wanted,
 # an 8 kHz mu-law loop dropped in here would replace it directly.
-COMFORT_NOISE_DBFS = -48.0
+# Raised -48 -> -42 on 2026-07-31. Hugo, on the new voice: the noise is part
+# of her sound and must CARRY ON while she talks. At -48 it was mixed under
+# the voice but fully masked; -42 keeps it audible through speech without
+# turning into hiss between turns.
+COMFORT_NOISE_DBFS = -42.0
 COMFORT_CHUNK_MS = 200
 # How much of the previous sample carries into the next one. Higher is duller
 # and more distant. 0.92 puts most of the energy under about 300 Hz, which is

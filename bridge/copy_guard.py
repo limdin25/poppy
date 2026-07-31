@@ -184,6 +184,15 @@ SWAPS: tuple[tuple[str, str], ...] = (
     ("ha ha", ""),
     ("hehehe", ""),
     ("hehe", ""),
+    # Profanity. Never yet seen in a transcript, and the day the model writes
+    # one must not be the day a prospect hears it. Deletions, not euphemisms:
+    # "that's fucking great" reads fine as "that's great".
+    ("fucking", ""),
+    ("fucked", ""),
+    ("fuck", ""),
+    ("bullshit", ""),
+    ("goddamn", ""),
+    ("bitch", ""),
 )
 
 

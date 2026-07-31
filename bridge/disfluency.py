@@ -62,6 +62,15 @@ _NEVER = frozenset({"ai", "um", "uh", "erm", "mm", "right", "okay",
                     "ok", "yeah", "yes", "no", "so"})
 # Long enough for the syllable shape; anything shorter is said twice in full.
 _SYLLABLE_MIN = 7
+# Syllable onsets that sound like the start of a swear when said alone.
+# "fu-further" IS the f word to anybody on a phone line, whatever the intent,
+# and Hugo heard one on a live call. These words trip as a whole-word double
+# instead, which cannot be misheard. A single stray vowel ("a-assessment")
+# is on the list too: it reads as a glitch rather than a stutter.
+_UGLY_ONSETS = frozenset({
+    "fu", "fuc", "shi", "cu", "cun", "coc", "di", "dic", "pi", "pis",
+    "ti", "tit", "a", "ar", "arse", "bo", "bolo", "wa", "wan",
+})
 
 # Words that open the closing question on these calls. A sentence boundary
 # followed by one of these is the pivot of the reply, and the beat before it
@@ -82,7 +91,8 @@ def _trip(word: str) -> str | None:
         return None
     if len(word) >= _SYLLABLE_MIN and word[0].islower():
         m = _SYLLABLE.match(word.lower())
-        if m and len(m.group(0)) < len(word) - 2:
+        if (m and len(m.group(0)) < len(word) - 2
+                and m.group(0) not in _UGLY_ONSETS):
             return f"{m.group(0)}-{word}"
     # Second copy lowercased: "They'd, they'd just" is how it is written down,
     # and the capital belongs to the sentence, not the repeat. Except the

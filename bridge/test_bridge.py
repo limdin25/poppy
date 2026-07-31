@@ -1781,6 +1781,45 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("a syllable trip never sounds like the start of a swear")
+def _():
+    # "fu-further" and "shi-shipping" are what the syllable form makes of two
+    # perfectly ordinary words, and down a phone line a bare "fu-" IS the f
+    # word as far as the listener is concerned. Hugo heard one. Those onsets
+    # fall back to the whole-word double, which cannot be misheard.
+    from . import disfluency
+    for word, banned in [("further", "fu-"), ("shipping", "shi-"),
+                         ("customer", "cu-"), ("assessment", "a-")]:
+        out = disfluency._trip(word)
+        assert banned not in out, (word, out)
+        assert out == f"{word}, {word}", (word, out)
+    # An innocent onset keeps the syllable form.
+    assert disfluency._trip("specifically") == "spe-specifically"
+
+
+@case("a swear in the model's text dies before the voice")
+def _():
+    # Never seen in a transcript yet, and the day it appears must not be the
+    # day it reaches a prospect.
+    out, notes = copy_guard.swap("That's fucking great, no bullshit.")
+    low = out.lower()
+    assert "fucking" not in low and "bullshit" not in low, out
+    assert "great" in low, out
+    assert notes, notes
+
+
+@case("the room tone is loud enough to survive her speaking over it")
+def _():
+    # Hugo, on the new voice: the noise is part of her sound and "we have to
+    # leave this noise there" while she talks. At -48 dBFS under -18 speech
+    # it was mixed in but fully masked; -42 keeps it present without becoming
+    # hiss. One constant feeds both the between-turns frames and the
+    # under-voice mixing, so there is never a level seam.
+    from . import telnyx
+    assert telnyx.COMFORT_NOISE_DBFS >= -43.0, telnyx.COMFORT_NOISE_DBFS
+    assert telnyx.COMFORT_NOISE_DBFS <= -38.0, telnyx.COMFORT_NOISE_DBFS
+
+
 @case("a struggle trip carries a thinking pause, a flow trip does not")
 def _():
     # "A model struggling with a complex thought should sound different than
