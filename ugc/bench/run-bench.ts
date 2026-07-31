@@ -744,6 +744,34 @@ async function stageTalking(state: BenchState): Promise<void> {
   });
 }
 
+// Seedance 2.0 cannot mouth an uploaded voiceover (schema verified: no audio
+// input, generate_audio invents its own). This run is a MOTION-REALISM demo:
+// same scene photo, the script quoted in the prompt, Seedance's own voice.
+async function stageSeedance(state: BenchState): Promise<void> {
+  const composite = await freshUpload(state, 'composite');
+  await falRun({
+    state,
+    key: 'talking:seedance-2',
+    contender: 'seedance-2.0-i2v-1080p',
+    modelPath: 'bytedance/seedance-2.0/image-to-video',
+    submitRequest: {
+      url: 'https://queue.fal.run/bytedance/seedance-2.0/image-to-video',
+      headers: { Authorization: `Key ${env('FAL_KEY')}`, 'Content-Type': 'application/json' },
+      body: {
+        image_url: composite.signedUrl,
+        prompt:
+          'The woman speaks casually to the camera like talking to a friend, natural head movement, she glances at the serum bottle and tilts it so the label stays visible, relaxed energy. She says: "Okay so I have to tell you about this. My skin was so dull last month, and this little serum honestly turned it around in two weeks."',
+        resolution: '1080p',
+        duration: '8',
+        aspect_ratio: '9:16',
+        generate_audio: true,
+      },
+    },
+    estUsd: EST_USD.seedance_video_480p * 2.5,
+    outFile: 'talking/seedance-s8.mp4',
+  });
+}
+
 function stageReport(state: BenchState): void {
   console.log('\n=== BENCH REPORT ===');
   console.log(`Estimated spend: $${state.spend.reduce((s, e) => s + e.estUsd, 0).toFixed(2)} of $${budgetUsd()}`);
@@ -768,9 +796,10 @@ try {
   else if (stage === 'composites') await stageComposites(state);
   else if (stage === 'upload') await stageUpload(state);
   else if (stage === 'talking') await stageTalking(state);
+  else if (stage === 'seedance') await stageSeedance(state);
   else if (stage === 'report') stageReport(state);
   else {
-    console.log('Usage: node bench/dist/run-bench.mjs <verify|fixtures|voices|composites|upload|talking|report>');
+    console.log('Usage: node bench/dist/run-bench.mjs <verify|fixtures|voices|composites|upload|talking|seedance|report>');
     process.exit(2);
   }
 } catch (e) {
