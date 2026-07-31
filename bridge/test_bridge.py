@@ -2356,6 +2356,26 @@ def _():
     assert notes, notes
 
 
+@case("a press-one phone menu is a machine, not a prospect")
+def _():
+    # First landline batch, 2026-07-31: SPR Plumbing answered with an IVR,
+    # "Press 1 to go to SPR Plumbing, press 2 to leave a voicemail", and she
+    # pitched at it for 49 seconds and filed the call as "completed". A menu
+    # is not a person and nobody in conversation says "press 1".
+    a = agent.Agent.__new__(agent.Agent)
+    a.transport = None
+    a._emit = lambda *rest: None
+    for greeting in ["Press 1 to go to SPR Plumbing.",
+                     "For English, press 1.",
+                     "Press 2 if you want to leave a voicemail."]:
+        r = agent.CallResult(number="+1", started_at=0.0)
+        assert a._answerphone(r, greeting), greeting
+        assert r.outcome == "answering_machine", r.outcome
+    # A human mentioning pressure or a keypad is not a menu.
+    r = agent.CallResult(number="+1", started_at=0.0)
+    assert not a._answerphone(r, "no pressure, press on with it")
+
+
 @case("a machine verdict never hangs up on somebody who said hello")
 def _():
     # Live false positive, 2026-07-31 12:23: Hugo answered "Hello?", Telnyx

@@ -636,6 +636,17 @@ AMD_PHRASES_CERTAIN = (
     "leave a detailed message", "has a voice mailbox", "voicemail box",
     "subscriber you have dialed", "subscriber you have dialled",
     "please leave a message after",
+    # IVR menus. Found on the first landline batch: SPR Plumbing answered
+    # with "Press 1 to go to SPR Plumbing, press 2 if you want to leave a
+    # voicemail", and she pitched at the menu for 49 seconds and filed it as
+    # completed. A menu is a machine. "press 1" and friends are safe on the
+    # CERTAIN list because the digit is what makes them unambiguous: a human
+    # says "no pressure", never "press two".
+    "press 1", "press 2", "press 3", "press 4", "press 5",
+    "press one", "press two", "press three",
+    "press the star", "press pound", "press zero",
+    "at the tone", "after the tone", "after the beep",
+    "main menu", "listen carefully as our options",
 )
 # "is not available" was on that list for about a minute and is the reason this
 # note exists. It is the tail of the carrier line "the person you're trying to
