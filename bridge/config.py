@@ -83,6 +83,13 @@ BACKCHANNEL_CHANCE = 0.45
 # CHANCE is per reply; MIN_GAP is replies that must pass between trips, so it
 # can never happen twice in a row; SLOW_S is the brain latency past which a
 # trip at the start of the reply reads as genuine thinking rather than a tic.
+# How much longer the settled-partial wait runs when the prosody reader says
+# "held": level pitch, energy up, somebody mid-thought. Guessing the end of a
+# sentence there is answering half of it. At 2x the normal wait the fast path
+# is effectively deferred to AssemblyAI's own end-of-turn decision, which is
+# the patient, right-rather-than-fast reading.
+HELD_PATIENCE = float(os.environ.get("BRIDGE_HELD_PATIENCE", "2.0"))
+
 # How many EMOTION cues one reply may carry to the voice. Mechanics ([break],
 # [emphasis]) are exempt. Enforced in clean_cues; the prompt's "about one turn
 # in two" guidance kept producing a feeling per sentence, which is the

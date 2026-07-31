@@ -31,11 +31,24 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
+import re
 import threading
 import time
 import urllib.parse
 
 from . import config
+
+
+def _norm(text: str) -> list[str]:
+    """A sentence as bare lowercase words, for comparing a partial to a final.
+
+    Partials arrive unformatted; finals arrive with format_turns commas,
+    capitals and a full stop. Comparing the raw strings meant "so about twenty
+    a week", answered early, came back as "So, about twenty a week." and the
+    comma broke the prefix match: the whole sentence was answered a second
+    time. Formatting is not new speech.
+    """
+    return re.sub(r"[^\w\s']", " ", (text or "").lower()).split()
 
 BASE = "wss://streaming.assemblyai.com/v3/ws"
 
@@ -302,12 +315,14 @@ class AssemblyStream:
         text = (final or "").strip()
         if not text or not self._last_seen:
             return text
-        seen = self._last_seen.strip()
-        if text == seen:
+        # Word-wise and punctuation-blind, or the final's formatting defeats
+        # the whole guard. See _norm.
+        words = _norm(text)
+        seen = _norm(self._last_seen)
+        if words == seen:
             return ""
-        if text.lower().startswith(seen.lower()):
-            rest = text[len(seen):].strip(" ,.;:")
-            return text if len(rest.split()) >= MEANINGFUL_TAIL_WORDS else ""
+        if words[:len(seen)] == seen:
+            return text if len(words) - len(seen) >= MEANINGFUL_TAIL_WORDS else ""
         return text
 
     def accept(self, text: str) -> None:

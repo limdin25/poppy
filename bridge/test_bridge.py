@@ -1781,6 +1781,58 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("a held contour waits out the pause instead of guessing the end")
+def _():
+    # "No more guessing the end of a sentence." The prosody reader saying
+    # "held" means level pitch with the energy still up: somebody mid-thought.
+    # Acting on a settled partial there is answering half a sentence, so the
+    # stability window stretches until AssemblyAI's own final would arrive
+    # anyway. A landed contour keeps the fast path, with the higher word bar
+    # it always had.
+    fast_w, fast_f = agent.settle_plan("fell")
+    assert fast_w == config.SETTLED_PARTIAL_FAST_S
+    assert fast_f == config.SETTLED_PARTIAL_MIN_WORDS + 2
+    held_w, held_f = agent.settle_plan("held")
+    assert held_w >= config.SETTLED_PARTIAL_S * 2, held_w
+    plain_w, _ = agent.settle_plan("unsure")
+    assert plain_w == config.SETTLED_PARTIAL_S
+    assert agent.settle_plan(None)[0] == config.SETTLED_PARTIAL_S
+
+
+@case("the answered-prefix test survives the final's punctuation")
+def _():
+    # Partials arrive unformatted; finals arrive with format_turns commas and
+    # capitals. The old equality-and-prefix test compared raw strings, so
+    # "so about twenty a week" answered early came back as "So, about twenty
+    # a week." and the comma broke the prefix match: the whole sentence went
+    # through again and she answered the same thing twice. Ignoring input and
+    # repeating herself, both from one string compare.
+    from . import assembly_stt
+    s = assembly_stt.AssemblyStream.__new__(assembly_stt.AssemblyStream)
+    s._last_seen = "so about twenty a week"
+    # Formatting only: nothing new was said, nothing goes through.
+    assert s._only_the_new_part("So, about twenty a week.") == ""
+    # A short tail merely finishes the thought: dropped, not re-answered.
+    assert s._only_the_new_part("So, about twenty a week, maybe more.") == ""
+    # A real continuation goes through WHOLE, context intact.
+    grown = "So, about twenty a week, but honestly the evenings are the worst part."
+    assert s._only_the_new_part(grown) == grown
+    # And with nothing answered early, a final passes straight through.
+    s._last_seen = ""
+    assert s._only_the_new_part("Hello?") == "Hello?"
+
+
+@case("the telemarketer filler openers are stripped too")
+def _():
+    for line, want in [
+        ("Fantastic. So what's your setup?", "So what's your setup?"),
+        ("No problem, I'll be quick.", "I'll be quick."),
+        ("Awesome. When works better for you?", "When works better for you?"),
+        ("Wonderful! What happens to those calls?", "What happens to those calls?"),
+    ]:
+        assert agent._strip_ack(line) == want, agent._strip_ack(line)
+
+
 @case("a booking hallucinated against silence is never recorded")
 def _():
     # Hugo, 2026-07-31: "hallucinating intent, booking appointments without

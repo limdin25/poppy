@@ -99,6 +99,24 @@ def chars_per_second() -> float:
     return BASE_CHARS_PER_SECOND * max(0.5, float(config.FISH_SPEED))
 
 
+def settle_plan(contour: str | None) -> tuple[float, int]:
+    """(stability wait, minimum words) for acting on a settled partial.
+
+    The one decision that separates quick from rude. A landed contour (fell or
+    rose) is the voice itself saying the sentence is over, so the short wait is
+    safe and only the word floor rises. A HELD contour is the opposite
+    evidence: level pitch with the energy still up is somebody mid-thought,
+    and acting on their pause is answering half a sentence, so the window
+    stretches until AssemblyAI's own patient end-of-turn call would land
+    anyway. No reading at all keeps the middle road it always had.
+    """
+    if contour in ("fell", "rose"):
+        return config.SETTLED_PARTIAL_FAST_S, config.SETTLED_PARTIAL_MIN_WORDS + 2
+    if contour == "held":
+        return config.SETTLED_PARTIAL_S * config.HELD_PATIENCE, config.SETTLED_PARTIAL_MIN_WORDS
+    return config.SETTLED_PARTIAL_S, config.SETTLED_PARTIAL_MIN_WORDS
+
+
 def barge_threshold_ms(elapsed_ms: float, base_ms: float) -> float:
     """How much sustained speech counts as an interruption, right now.
 
@@ -417,6 +435,7 @@ _ACK_OPENER = re.compile(
     r"\s*"
     r"(right|okay|ok|yeah|yep|yes|sure|gotcha|got it|mm+|mm hmm|no worries|"
     r"understood|i understand|i see|i hear you|makes sense|"
+    r"fantastic|awesome|wonderful|amazing|lovely|no problem|not a problem|"
     r"fair enough|absolutely|of course|certainly|great|perfect|brilliant|"
     r"that[' ’]?s a (?:good|great|fair) question|"
     r"in short|to sum up|to summari[sz]e|furthermore|moreover|additionally|"
@@ -1481,22 +1500,25 @@ class Agent:
                 wait = config.SETTLED_PARTIAL_S
                 floor = config.SETTLED_PARTIAL_MIN_WORDS
                 if self.prosody is not None and config.PROSODY_ENABLED:
-                    landed, why = self.prosody.finished()
-                    if landed:
-                        # Prosody hears the end of a SENTENCE, which is not the
-                        # same as the end of a TURN. "I have a problem." falls
-                        # away exactly like a finished thought, and then they
-                        # carry straight on with "there's something leaking".
-                        # That happened on a live call and she answered the
-                        # first half, so the fast path is deliberately not as
-                        # fast as the signal alone would allow, and it asks for
-                        # more words before it will act.
-                        wait = config.SETTLED_PARTIAL_FAST_S
-                        floor = config.SETTLED_PARTIAL_MIN_WORDS + 2
-                        if not said_why:
-                            said_why = True
-                            self._emit("prosody", f"{why}, answering after "
-                                                  f"{wait * 1000:.0f}ms")
+                    # Prosody hears the end of a SENTENCE, which is not the
+                    # same as the end of a TURN. "I have a problem." falls
+                    # away exactly like a finished thought, and then they
+                    # carry straight on with "there's something leaking".
+                    # That happened on a live call and she answered the
+                    # first half, so the fast path is deliberately not as
+                    # fast as the signal alone would allow, and it asks for
+                    # more words before it will act. And a HELD reading goes
+                    # the other way entirely: see settle_plan.
+                    verdict, why = self.prosody.verdict()
+                    wait, floor = settle_plan(verdict)
+                    if not said_why and verdict in ("fell", "rose"):
+                        said_why = True
+                        self._emit("prosody", f"{verdict}: {why}, answering "
+                                              f"after {wait * 1000:.0f}ms")
+                    elif not said_why and verdict == "held":
+                        said_why = True
+                        self._emit("prosody", f"held: {why}, waiting out "
+                                              f"the pause")
                 early = self.ears.settled_partial(wait, min_words=floor)
                 if early and not sounds_unfinished(early):
                     self.ears.accept(early)   # so its final is not answered twice
