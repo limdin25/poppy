@@ -43,7 +43,9 @@ export async function uploadPhoto(page: Page, nodeId: string): Promise<void> {
 // view, and a mouse drag cannot reach an off-screen handle.
 export async function dragConnect(page: Page, sourceId: string, targetId: string): Promise<void> {
   await page.locator('.react-flow__controls-fitview').click();
-  await page.waitForTimeout(400);
+  // The fit animation must fully settle or the handle coordinates are stale;
+  // under parallel worker load 400ms was flaky.
+  await page.waitForTimeout(800);
   const from = page.getByTestId(TID.handleOut(sourceId));
   const to = page.getByTestId(TID.handleIn(targetId));
   const fb = (await from.boundingBox())!;
