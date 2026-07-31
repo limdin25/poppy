@@ -114,9 +114,22 @@ def _outcomes(campaign: str, e164s: list[str]) -> dict[str, dict]:
 
 
 def run_batch(base: str, secret: str, campaign: str, size: int, apply: bool) -> dict:
-    leads = dialqueue.claim(campaign, size) if apply else _preview(campaign, size)
+    leads = dialqueue.claim(campaign, size) if apply else dialqueue.preview(campaign, size)
     if not leads:
-        log("nothing left to claim, the queue is empty")
+        # An empty batch has two completely different causes and the runner used
+        # to print the same sentence for both. On 2026-07-31 the honest answer
+        # was "it is 04:43 in New York", and the old message would have said the
+        # campaign was finished.
+        stand = dialqueue.callable_now(campaign)
+        asleep = stand.get("asleep") or 0
+        blind = stand.get("no_timezone") or 0
+        if asleep or blind:
+            when = stand.get("next_open") or "?"
+            log(f"nobody is callable yet: {asleep} asleep, {blind} with no timezone. "
+                f"The calling window is 09:00-19:00 where THEY live, Mon-Sat. "
+                f"Next one wakes at {when}.")
+        else:
+            log("nothing left to claim, the queue is empty")
         return {"dialled": 0, "leads": []}
 
     log(f"batch of {len(leads)}:")
@@ -190,23 +203,6 @@ def run_batch(base: str, secret: str, campaign: str, size: int, apply: bool) -> 
     log(f"   totals: {tally}")
     return {"dialled": len(started), "leads": started, "tally": tally, "outcomes": done}
 
-
-def _preview(campaign: str, size: int) -> list[dialqueue.Lead]:
-    """Who WOULD be claimed, without claiming. Dry runs only."""
-    url = config.key("SUPABASE_URL")
-    key = config.key("SUPABASE_SERVICE_ROLE_KEY")
-    if not url or not key:
-        raise dialqueue.QueueError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set")
-    import urllib.parse
-    q = (f"{url.rstrip('/')}/rest/v1/wk_ai_call_leads"
-         f"?select=id,e164,business,reviews_count,state,timezone,website"
-         f"&campaign=eq.{urllib.parse.quote(campaign)}&status=eq.queued"
-         f"&order=priority.asc,created_at.asc&limit={int(size)}")
-    req = urllib.request.Request(q, headers={"apikey": key, "Authorization": f"Bearer {key}"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        rows = json.loads(resp.read().decode())
-    return [dialqueue.Lead(r["id"], r["e164"], r.get("business"), r.get("reviews_count"),
-                           r.get("state"), r.get("timezone"), r.get("website")) for r in rows]
 
 
 def main(argv: list[str] | None = None) -> int:

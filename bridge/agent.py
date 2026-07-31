@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import ai, audio, config, copy_guard, stages
+from . import ai, audio, config, copy_guard, disfluency, stages
 from .transport import CaptureFailed, Transport
 
 # One pattern, used both to detect the end-of-call marker and to strip it. They
@@ -85,6 +85,52 @@ BASE_CHARS_PER_SECOND = 14.0
 
 def chars_per_second() -> float:
     return BASE_CHARS_PER_SECOND * max(0.5, float(config.FISH_SPEED))
+
+
+def barge_threshold_ms(elapsed_ms: float, base_ms: float) -> float:
+    """How much sustained speech counts as an interruption, right now.
+
+    The race. When both sides start in the same breath, the human wins, and
+    quickly: for the first BARGE_EARLY_WINDOW_MS of her turn the threshold is
+    halved, so a prospect who was already talking when her audio began stops
+    her in about 350ms. Past the window the full threshold is back, and a
+    cough or an "mm" mid-reply still cannot stop her. The barge grace window
+    runs before this ever applies, so her own first-syllable echo cannot ride
+    the lowered bar.
+    """
+    if elapsed_ms < config.BARGE_EARLY_WINDOW_MS:
+        return base_ms * config.BARGE_EARLY_FACTOR
+    return base_ms
+
+
+def question_was_asked(voice_text: str, delivered: str) -> bool:
+    """Did the prospect actually hear the question this reply ended with?
+
+    The waiting rule ("silence after a question is a person thinking, not a
+    stalemate") used to test whether the DELIVERED text ends with a question
+    mark. But a barge-in cuts at a moment the prospect chooses, and on a live
+    call it landed one word before the mark: "...to get you set up?" was heard
+    as "...to get you set", the wait rule saw no question, and the resume
+    shortcut fired a follow-up while the man was still deciding his answer.
+    That is the "interrogation" feel in one mechanism.
+
+    So the test is on the reply she was SAYING, not the fragment that
+    survived: if the reply ends with a question and the cut landed at least
+    80% of the way through that question sentence, the question was asked in
+    any sense a human would recognise, and silence now means somebody
+    thinking. A cut much earlier means they never heard the question, and
+    resuming to finish it beats waiting for an answer to half a sentence.
+    """
+    text = voice_text.rstrip()
+    if not text.endswith("?"):
+        return False
+    # Start of the final sentence: the character after the previous ender.
+    q_start = max(text.rfind(c, 0, len(text) - 1) for c in ".!?") + 1
+    q_len = len(text) - q_start
+    if q_len <= 0:
+        return False
+    heard_of_q = len(delivered.rstrip()) - q_start
+    return heard_of_q >= 0.8 * q_len
 
 
 def _finish_word_ms(text: str, elapsed_ms: float) -> float:
@@ -195,6 +241,13 @@ _UNFINISHED_TAIL = {
     "to", "of", "for", "with", "at", "in", "on", "is", "was", "we", "i", "it",
     "they", "you", "my", "our", "their", "like", "just", "well", "erm", "um",
     "uh", "actually", "basically", "obviously", "yeah",
+    # Contractions. The tokenizer keeps apostrophes, so "you're" is its own
+    # token and "you" above never matches it. Hugo said "When, when you're"
+    # and she answered over the second half of his sentence, because nobody
+    # ends a sentence on "you're". Only forms that cannot close a thought:
+    # "it's" and "that's" are left out, "that's it" ends plenty of sentences.
+    "you're", "we're", "they're", "i'm", "i've", "you've", "we've", "i'll",
+    "you'll", "we'll", "i'd", "you'd", "we'd", "gonna",
 }
 
 
@@ -639,6 +692,19 @@ class Agent:
         # A pitch and loudness reader on the far end, if the caller handed one
         # over. Optional on purpose: without it everything behaves as before.
         self.prosody = None
+        # What their last turn's contour did ("fell", "rose", "held", "unsure"),
+        # captured just before the prosody reader is reset. The backchannel
+        # gate reads it: "Right." answers a landed statement and nothing else.
+        self._last_contour: str | None = None
+        # Set when the reply she just gave asked a question the prospect
+        # actually heard, even if the barge-in cut the "?" itself off. The
+        # waiting rule reads this so a clipped question still gets waited on
+        # instead of chased with a follow-up.
+        self._question_pending = False
+        # The occasional trip at the start of a thought. One instance per call:
+        # the never-twice-in-a-row rule counts replies across turns.
+        self._disfluencer = disfluency.Disfluencer(
+            business_words=self.business_words, on_event=self.on_event)
         # The last stage she reached, for the campaign ledger. Set by
         # _set_stage; None means the call never got as far as starting one.
         self.last_stage: str | None = None
@@ -704,11 +770,21 @@ class Agent:
         So: only after a statement, never after a question, and never after a
         one-word reply where an acknowledgement is longer than the thing it is
         acknowledging.
+
+        And when the prosody reader is on, the text rules are not enough on
+        their own: "use organic back channels, but only when the prosody
+        actually calls for it, not just as a way to mask latency". A "Right."
+        answers a statement that LANDED, which is exactly what the fell
+        contour is. A rise is a question whether or not the transcript kept
+        the mark, and a held or unreadable contour is somebody mid-thought,
+        where the only right noise is none.
         """
         if not self._backchannel:
             return None
         text = heard.strip()
-        if not text or text.endswith("?"):
+        # The resume path feeds "(they said nothing)" through here, and it
+        # passes every text rule below. You do not say "Right." to silence.
+        if not text or text == config.WENT_QUIET or text.endswith("?"):
             return None
         if len(text.split()) < 3:
             return None
@@ -716,6 +792,13 @@ class Agent:
         first = text.lower().split()[0]
         if first in {"who", "what", "why", "when", "where", "how", "is", "are",
                      "do", "does", "did", "can", "could", "would", "will"}:
+            return None
+        # A rise is a question, whatever the words look like.
+        if self._last_contour == "rose":
+            return None
+        # With a reader attached, only a landed statement invites the noise.
+        if (self.prosody is not None and config.PROSODY_ENABLED
+                and self._last_contour != "fell"):
             return None
         if random.random() > config.BACKCHANNEL_CHANCE:
             return None
@@ -881,7 +964,8 @@ class Agent:
                 barge.reset()
                 continue
             _, speech_ms, _ = barge.feed(chunk)
-            if config.BARGE_IN_ENABLED and speech_ms >= self.transport.barge_min_ms:
+            if config.BARGE_IN_ENABLED and speech_ms >= barge_threshold_ms(
+                    elapsed_ms, self.transport.barge_min_ms):
                 # Let the word in flight land before cutting. Stopping the
                 # instant we decide chops a syllable in half, which sounds
                 # broken rather than polite. Hugo: "you don't stop mid-word, you
@@ -994,6 +1078,9 @@ class Agent:
         # speaking meant a TTS failure or a barge-in still produced a transcript
         # claiming the whole line, disclosure included, had been spoken.
         words = spoken_words(spoken)
+        # The opener is usually a question ("Hi, is that Hugo's Plumbing?"),
+        # and a cut can land one word before its mark exactly like a reply.
+        self._question_pending = question_was_asked(spoken_words(text), words)
         # WHICH CUES ACTUALLY WENT TO THE VOICE, and where in the line.
         #
         # spoken_words() strips them, and it feeds BOTH the log and the saved
@@ -1058,6 +1145,12 @@ class Agent:
         # stop being suggestions.
         raw = copy_guard.guard(raw, on_event=self._emit)
         tokens = clean_cues(_clip_reply(raw, spoken))
+        # The occasional trip, downstream of _clip_reply ON PURPOSE: `spoken`
+        # feeds the transcript and the model's own memory, and a model shown
+        # its own stutter starts imitating it. The voice performs the trip;
+        # the record keeps the clean line, the same deal the cues get.
+        if config.DISFLUENCY_ENABLED:
+            tokens = self._disfluencer.feed(tokens)
 
         if ack is not None:
             # Plays over the model's first tokens, so it costs nothing.
@@ -1083,10 +1176,16 @@ class Agent:
         # was cut after roughly nine words, recorded in full, and the model,
         # believing it had already said why it was ringing, went straight to
         # "have you got a minute?" about something the prospect had never heard.
-        heard = spoken_words(_strip_marker("".join(spoken)))
+        full_voice = spoken_words(_strip_marker("".join(spoken)))
+        heard = full_voice
         if interrupted:
             heard = _spoken_prefix(heard, speak_ms)
         words = heard
+        # Whether a question was ASKED, judged against the reply she was
+        # saying rather than the fragment that survived the cut. The waiting
+        # rule in call() reads this: a question clipped one word before its
+        # mark still deserves a silence that means "they are thinking".
+        self._question_pending = question_was_asked(full_voice, words)
         # Correct the model's own record to what actually left the phone. Left
         # uncorrected it believes it delivered the half of the reply that was
         # cut off, so it never says it, and the call quietly loses the thread.
@@ -1132,6 +1231,10 @@ class Agent:
         audio_q: queue.Queue = queue.Queue()
         saw_end = threading.Event()
         stop_producing = threading.Event()
+        # This path plays whole sentences, so a question either played in full
+        # (and _last_spoken ends with its mark) or was dropped entirely. The
+        # flag must not carry over from a previous _say_live turn.
+        self._question_pending = False
 
         # Mutable so the closure can flip it; only the first sentence of a turn
         # can carry a leading acknowledgement.
@@ -1236,6 +1339,10 @@ class Agent:
 
         Audio is pumped over by the transport's reader, not from here.
         """
+        # Cleared on the way in: the contour belongs to ONE turn, and a "fell"
+        # left over from two turns ago must not authorise a "Right." after a
+        # stretch of silence.
+        self._last_contour = None
         deadline = time.time() + (config.AAI_TURN_TIMEOUT_S if timeout is None else timeout)
         said_why = False
         while time.time() < deadline:
@@ -1302,8 +1409,11 @@ class Agent:
             # Forget this sentence's contour. Left in place, the fall at the end
             # of THIS turn would still be sitting there when the next one is
             # judged, and every following turn would be answered early on stale
-            # evidence.
+            # evidence. What it DID is kept first: the backchannel gate needs
+            # to know whether this turn landed as a statement, and by the time
+            # it asks, the reader has been wiped.
             if self.prosody is not None:
+                self._last_contour, _ = self.prosody.verdict()
                 self.prosody.reset()
             self._emit("them", text)
             result.turns.append(Turn("them", text, time.time() - result.started_at))
@@ -1471,11 +1581,17 @@ class Agent:
                 if heard and self._answerphone(result, heard):
                     break
                 if (not heard and was_cut
-                        and self._last_spoken.rstrip().endswith("?")):
+                        and (self._last_spoken.rstrip().endswith("?")
+                             or self._question_pending)):
                     # She asked something and was cut short. Silence after a
                     # question is a person thinking, not a stalemate, so the
                     # resume shortcut must not fire here: it would mean asking
                     # again before they had a chance to answer once.
+                    # _question_pending covers the cut that lands one word
+                    # BEFORE the mark: the delivered text has no "?" but the
+                    # question was asked in every sense that matters, and on a
+                    # live call the old test missed it and she chased a
+                    # thinking man with a follow-up.
                     self._emit("waiting", "asked a question, so waiting properly")
                     was_cut = False
                     listen_for = None

@@ -87,6 +87,50 @@ def claim(campaign: str, limit: int) -> list[Lead]:
     ]
 
 
+def _to_leads(rows) -> list[Lead]:
+    return [
+        Lead(
+            lead_id=r.get("lead_id", ""),
+            e164=r.get("e164", ""),
+            business=r.get("business"),
+            reviews_count=r.get("reviews_count"),
+            state=r.get("state"),
+            timezone=r.get("timezone"),
+            website=r.get("website"),
+        )
+        for r in rows
+        if r.get("e164")
+    ]
+
+
+def preview(campaign: str, limit: int) -> list[Lead]:
+    """Who WOULD be claimed, claiming nothing.
+
+    Goes through the database rather than querying wk_ai_call_leads directly,
+    because the calling-hours window lives in wk_ai_in_window and a preview that
+    does not apply it lists ten leads the real run is forbidden to ring. The
+    dry run has to agree with the thing it is a dry run of.
+    """
+    return _to_leads(
+        _rpc("wk_ai_preview_calls", {"p_campaign": campaign, "p_limit": int(limit)}) or []
+    )
+
+
+def callable_now(campaign: str) -> dict:
+    """Split the queue into callable, asleep, and missing a timezone.
+
+    "The queue is empty" and "it is four in the morning where they live" are
+    completely different situations that looked identical to whoever was
+    watching the runner. Best effort: this is a progress line, and it must never
+    be the reason a batch does not go out.
+    """
+    try:
+        rows = _rpc("wk_ai_callable_now", {"p_campaign": campaign}) or []
+    except QueueError:
+        return {}
+    return rows[0] if rows else {}
+
+
 def release(e164: str) -> bool:
     """Undo a claim for a call that PROVABLY never happened. Returns True if freed.
 

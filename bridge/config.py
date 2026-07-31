@@ -75,6 +75,18 @@ END_OF_TURN_SILENCE_MS = 250
 # something human instead of silence. Costs no time: it overlaps the thinking.
 BACKCHANNEL_WORDS = ("Mm.", "Right.", "Yeah.", "Okay.", "Gotcha.", "Sure.", "Mm hmm.")
 BACKCHANNEL_CHANCE = 0.45
+
+# Simulated disfluency. A voice that glides through every sentence is one of
+# the tells; a person trips on the start of a thought now and then. Injected in
+# code (bridge/disfluency.py) rather than asked of the model, because a model
+# told to stutter does it every other line, which is the broken-record failure.
+# CHANCE is per reply; MIN_GAP is replies that must pass between trips, so it
+# can never happen twice in a row; SLOW_S is the brain latency past which a
+# trip at the start of the reply reads as genuine thinking rather than a tic.
+DISFLUENCY_ENABLED = os.environ.get("BRIDGE_DISFLUENCY", "1") != "0"
+DISFLUENCY_CHANCE = float(os.environ.get("BRIDGE_DISFLUENCY_CHANCE", "0.16"))
+DISFLUENCY_MIN_GAP = int(os.environ.get("BRIDGE_DISFLUENCY_MIN_GAP", "2"))
+DISFLUENCY_SLOW_S = float(os.environ.get("BRIDGE_DISFLUENCY_SLOW_S", "2.0"))
 # Speech shorter than this is a cough, a click or line noise, not a turn.
 # Measured against SPEECH inside the buffer, never the buffer's own length: the
 # buffer always ends with the silence that closed the turn, so a length test can
@@ -486,6 +498,15 @@ GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
 # stopped three words into a sentence is worse than half a second of overlap.
 TELNYX_BARGE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_MS", "700"))
 TELNYX_BARGE_GRACE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_GRACE_MS", "250"))
+# The race. When both sides start talking in the same breath, the human wins,
+# and quickly. For the first stretch of her turn the interrupt threshold drops,
+# so a prospect who was already mid-sentence when she opened her mouth stops
+# her in about 350ms instead of demanding the full 700ms of proof. Past the
+# window the normal threshold is back and a cough cannot stop her. Hugo,
+# 2026-07-30: "she speaks over me". The grace window above still runs first,
+# so her own first-syllable echo cannot ride the lowered bar.
+BARGE_EARLY_WINDOW_MS = float(os.environ.get("BRIDGE_BARGE_EARLY_WINDOW_MS", "1200"))
+BARGE_EARLY_FACTOR = float(os.environ.get("BRIDGE_BARGE_EARLY_FACTOR", "0.5"))
 # Raised from 14, which was chosen on the belief that our own voice could not
 # come back on a VoIP leg. A live call disproved that outright: her sentence
 # returned as a transcribed turn, so it was plainly loud enough to trip a 14 dB

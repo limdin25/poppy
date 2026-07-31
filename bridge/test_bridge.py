@@ -1611,6 +1611,196 @@ def _():
     assert "texts people back" not in "".join(spoken), spoken
 
 
+# -- the conversational rhythm, 2026-07-30 ----------------------------------
+# Hugo, listening to a live call: "she speaks over me", "you're cutting off the
+# human before they've actually finished", "the user doesn't answer a question
+# immediately, don't just fire off another one". Each test below is one of
+# those moments, pinned.
+
+
+@case("both start talking at once: she yields fast, not at full threshold")
+def _():
+    # The race. If the prospect is already talking when her audio starts, she
+    # should stop in a few hundred ms, not insist on the full 700ms of proof.
+    # Past the early window, the normal threshold is back, so a cough mid-reply
+    # still does not stop her.
+    base = 700.0
+    early = agent.barge_threshold_ms(400.0, base)
+    late = agent.barge_threshold_ms(2000.0, base)
+    assert early < base * 0.6, early
+    assert late == base, late
+
+
+@case("a question clipped just before its mark still counts as asked")
+def _():
+    # Hugo's live call, 17:04: her "...to get you set up?" was cut a word from
+    # the end, so the delivered text had no "?", the waiting branch never fired,
+    # and the resume shortcut asked a FOLLOW-UP while he was still thinking.
+    full = "Would you be up for a quick call with someone from my team to get you set up?"
+    nearly = full[:-6]                    # "...to get you se"
+    assert agent.question_was_asked(full, nearly)
+    # Cut long before the question began: they never heard it, so resuming and
+    # finishing the question is right, and waiting in silence is wrong.
+    early_cut = full[:20]
+    assert not agent.question_was_asked(full, early_cut)
+    # No question in the reply at all.
+    assert not agent.question_was_asked("I answer phones and book jobs in.", "I answer")
+
+
+@case("backchannels are gated by prosody when the reader is on")
+def _():
+    # "Use organic back channels, but only when the prosody actually calls for
+    # it." A landed statement (fell) invites a "Right."; a question (rose), a
+    # mid-thought pause (held) and an unreadable contour do not.
+    a = agent.Agent.__new__(agent.Agent)
+    a._backchannel = [("Right.", b"x")]
+    a.prosody = object()                  # a reader is attached
+    old_chance = config.BACKCHANNEL_CHANCE
+    old_pros = config.PROSODY_ENABLED
+    config.BACKCHANNEL_CHANCE = 1.0
+    config.PROSODY_ENABLED = True
+    try:
+        heard = "we miss a fair few calls when we're out on jobs"
+        a._last_contour = "fell"
+        assert a._pick_backchannel(heard) is not None
+        for contour in ("rose", "held", "unsure", None):
+            a._last_contour = contour
+            assert a._pick_backchannel(heard) is None, contour
+        # No prosody reader attached: the text rules stand alone, as before.
+        a.prosody = None
+        a._last_contour = None
+        assert a._pick_backchannel(heard) is not None
+    finally:
+        config.BACKCHANNEL_CHANCE = old_chance
+        config.PROSODY_ENABLED = old_pros
+
+
+@case("silence is never acknowledged")
+def _():
+    # The resume path feeds WENT_QUIET through the reply pipeline, and
+    # "(they said nothing)" is three words that pass every text check, so she
+    # could say "Right." in answer to nothing at all.
+    a = agent.Agent.__new__(agent.Agent)
+    a._backchannel = [("Right.", b"x")]
+    a.prosody = None
+    a._last_contour = None
+    old = config.BACKCHANNEL_CHANCE
+    config.BACKCHANNEL_CHANCE = 1.0
+    try:
+        assert a._pick_backchannel(config.WENT_QUIET) is None
+    finally:
+        config.BACKCHANNEL_CHANCE = old
+
+
+@case("the Fish socket carries prosody across chunk boundaries")
+def _():
+    # "If you aren't passing continuation flags between chunks, your prosody
+    # resets every few seconds and the melody dies." The flag is Fish's own
+    # condition_on_previous_chunks, and this locks it into the start request.
+    from pathlib import Path
+    from . import fish_stream
+    src = Path(fish_stream.__file__.replace(".pyc", ".py")).read_text()
+    assert '"condition_on_previous_chunks": True' in src
+
+
+@case("the US register leaks are swapped, not just prompted away")
+def _():
+    # Both leaked onto live calls while the prompt banned them: "at the minute"
+    # on 2026-07-30 to Hugo, "brilliant" repeatedly before that. The same
+    # move as the rest of copy_guard: stop asking the model to police itself.
+    out, notes = copy_guard.swap("Brilliant, how are you covering the phone at the minute?")
+    assert "at the minute" not in out.lower(), out
+    assert "brilliant" not in out.lower(), out
+    assert notes, notes
+
+
+# -- simulated disfluency ----------------------------------------------------
+# "Real humans don't always glide through a sentence. They trip, they restart
+# a word." Injected in code, tied to where a person actually trips: the start
+# of a thought. Never left to the model, which cannot be trusted to do it
+# rarely.
+
+
+def _stutter(text: str, chance: float = 1.0, replies: int = 1) -> list[str]:
+    """Run text through a fresh injector, forcing the coin flip."""
+    import random as _random
+    from . import disfluency
+    d = disfluency.Disfluencer(rng=_random.Random(7))
+    old = config.DISFLUENCY_CHANCE
+    config.DISFLUENCY_CHANCE = chance
+    try:
+        outs = []
+        for _ in range(replies):
+            outs.append("".join(d.feed(iter([text]))))
+        return outs
+    finally:
+        config.DISFLUENCY_CHANCE = old
+
+
+@case("a stutter lands at the start of a thought, once, and reads human")
+def _():
+    out = _stutter("I answer phones while you're on a job. Takes the calls you'd miss.")[0]
+    # One trip, not a broken record: the whole reply gains at most one repeat.
+    assert out.count("I, I") <= 1, out
+    assert "I, I answer" in out or "Takes, takes" in out, out
+
+
+@case("a long word trips on its first syllable, not the whole word")
+def _():
+    out = _stutter("specifically the evening calls are the problem.")[0]
+    assert "spe-specifically" in out, out
+
+
+@case("the disfluency never touches a cue, the disclosure, or a name")
+def _():
+    # Cues are performance instructions and must reach Fish intact.
+    out = _stutter("[very warm] Listen, I never miss a call.")[0]
+    assert "[very warm]" in out, out
+    # The word AI is a compliance record, never a toy.
+    out = _stutter("AI receptionist, that's what I am.")[0]
+    assert "AI, AI" not in out and "AI-AI" not in out, out
+
+
+@case("the stutter is rare and never twice in a row")
+def _():
+    # Chance forced to 1.0, so only the minimum gap keeps it apart: reply two
+    # must come out clean however the coin lands.
+    outs = _stutter("I answer phones. I book jobs in.", chance=1.0, replies=2)
+    trip = lambda s: (", " in s and any(
+        f"{w}, {w.lower()}" in s for w in s.replace(",", "").split())) or "-" in s
+    assert not trip(outs[1]), outs[1]
+    # And at the configured rate it stays an occasional thing, not a tic.
+    import random as _random
+    from . import disfluency
+    d = disfluency.Disfluencer(rng=_random.Random(11))
+    hits = 0
+    for _ in range(100):
+        out = "".join(d.feed(iter(["I answer phones while you work."])))
+        if out != "I answer phones while you work.":
+            hits += 1
+    assert 2 <= hits <= 30, hits
+
+
+@case("the transcript records the clean line, the voice gets the trip")
+def _():
+    # The injector sits AFTER _clip_reply on purpose: `spoken` feeds the
+    # transcript and the model's own memory, and a model shown its own stutter
+    # starts imitating it, which is the broken-record failure.
+    from . import disfluency
+    import random as _random
+    spoken: list[str] = []
+    line = "I answer phones while you're on a job."
+    old = config.DISFLUENCY_CHANCE
+    config.DISFLUENCY_CHANCE = 1.0
+    try:
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        voice = "".join(d.feed(agent._clip_reply(iter([line]), spoken)))
+    finally:
+        config.DISFLUENCY_CHANCE = old
+    assert "".join(spoken) == line, spoken
+    assert voice != line, voice
+
+
 def main() -> int:
     failed = 0
     for name, fn in CASES:

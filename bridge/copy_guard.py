@@ -155,7 +155,25 @@ SWAPS: tuple[tuple[str, str], ...] = (
     ("approximately", "about"),
     ("touch base", "catch up"),
     ("circle back", "come back to you"),
-    ("reach out to", "ring"),
+    # Was "ring", which is itself the register the block below removes.
+    ("reach out to", "call"),
+    # The British register, on calls to US trades. The prompt bans every one of
+    # these in as many words and they leaked anyway: "at the minute" reached
+    # Hugo on a live call on 2026-07-30, "brilliant" repeatedly before that.
+    # "It is the fastest way to sound like a foreign call centre, which is
+    # exactly what they are braced for." Same rule as the rest of this file:
+    # stop asking the model to police itself. If a UK campaign ever runs, this
+    # block becomes per-campaign config; today every call is American.
+    ("brilliant", "great"),
+    ("at the minute", "right now"),
+    ("hiya", "hey"),
+    ("quid", "bucks"),
+    ("fortnight", "two weeks"),
+    ("straight away", "right away"),
+    ("give you a ring", "give you a call"),
+    # Catches "ring you back" too: this runs first and leaves nothing for a
+    # longer form to match.
+    ("ring you", "call you"),
 )
 
 
