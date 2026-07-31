@@ -1781,6 +1781,46 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("a markdown separator is never read down the phone")
+def _():
+    # Spoken verbatim on a live call: "Let me ring them fresh. --- Hi, is
+    # that Hugo's Plumbing?". The model writes separators when it loses the
+    # plot, and Fish reads what it is given.
+    out = agent.straighten("Right. --- Hi, is that Hugo's Plumbing?")
+    assert "---" not in out and "--" not in out, out
+
+
+@case("stage-direction narration dies at the guard")
+def _():
+    # The fourth-wall break, heard live 2026-07-31 10:52: "I need to start
+    # this call from the beginning. Let me ring them fresh." The model talks
+    # ABOUT the call, or about the prospect in the third person, when a
+    # garbled input convinces it the conversation state is broken. Nothing in
+    # the prompt or stages teaches it this, so nothing in the prompt can
+    # unteach it: from the first narration marker, the rest of the reply is
+    # swallowed.
+    line = ("I need to start this call from the beginning. Let me ring them "
+            "fresh. Hi, is that Hugo's Plumbing?")
+    out, notes = copy_guard.strip_narration(line)
+    assert "ring them" not in out and "Hugo's Plumbing" not in out, out
+    assert "beginning" not in out, out
+    assert notes, notes
+    # Ordinary speech, including second-person promises, is untouched.
+    for ok in [
+        "I'll call you back tomorrow if that's easier.",
+        "Let me put it another way, I'd answer while you're on the tools.",
+        "So what we'd do is get you set up with somebody from my team.",
+    ]:
+        out, notes = copy_guard.strip_narration(ok)
+        assert out == ok, out
+        assert not notes, notes
+    # And it holds on the streaming path, whatever the chunk sizes.
+    for size in (3, 7, 20):
+        bits = [line[i:i + size] for i in range(0, len(line), size)]
+        streamed = "".join(copy_guard.guard(iter(bits)))
+        assert "Hugo's Plumbing" not in streamed, streamed
+
+
 @case("a syllable trip never sounds like the start of a swear")
 def _():
     # "fu-further" and "shi-shipping" are what the syllable form makes of two

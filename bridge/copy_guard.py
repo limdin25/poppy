@@ -395,6 +395,71 @@ def trim_list(text: str, on_event=None) -> str:
     return _ListCutter(on_event).feed(text)
 
 
+# --- 3. Stage-direction narration -------------------------------------------
+
+# The fourth-wall break, heard live on 2026-07-31: "I need to start this call
+# from the beginning. Let me ring them fresh. --- Hi, is that Hugo's
+# Plumbing?", spoken in full to a live prospect after a garbled input
+# convinced the model the conversation state was broken. Nothing in the
+# prompt or the stage briefs contains that language: the model invents it, so
+# no prompt edit can remove it, and the guard lives here instead.
+#
+# The tell is register, not vocabulary: she talks ABOUT the call ("this
+# call", "from the beginning"), or about the prospect in the THIRD person
+# ("ring them fresh") when the prospect is the only other party on the line.
+# Second-person speech ("I'll call you back") is untouched. From the first
+# marker the REST OF THE REPLY is swallowed: a model narrating has lost the
+# plot for the whole turn, and half a narration is not better than none.
+# "let me try" is deliberately absent: "let me try that again" is a
+# legitimate recovery line to a confused prospect.
+_NARRATION = re.compile(
+    r"\b(start (this|the) call|from the beginning|from the top"
+    r"|let me (ring|call|dial|redial|restart|start)"
+    r"|(ring|call|dial) (them|him|her)\b"
+    r"|start (over|again|afresh|fresh))\b",
+    re.IGNORECASE,
+)
+# Long enough to hold the longest marker across a chunk boundary.
+_NARRATION_TAIL = 24
+
+
+def strip_narration(text: str) -> tuple[str, list[str]]:
+    """Cut a reply at its first stage-direction marker. (text, what happened)."""
+    m = _NARRATION.search(text)
+    if not m:
+        return text, []
+    return (text[:m.start()].rstrip(),
+            [f"narration cut: {text[m.start():m.start() + 40]!r}..."])
+
+
+class _NarrationCutter:
+    """The streaming form: holds back a short tail so a marker split across
+    chunks is still seen, and swallows everything once one is."""
+
+    def __init__(self, on_event=None):
+        self.on_event = on_event or (lambda kind, text: None)
+        self.dead = False
+        self.tail = ""
+
+    def feed(self, piece: str) -> str:
+        if self.dead:
+            return ""
+        text = self.tail + piece
+        m = _NARRATION.search(text)
+        if m:
+            self.dead = True
+            self.tail = ""
+            self.on_event(
+                "guard", f"narration cut: {text[m.start():m.start() + 40]!r}...")
+            return text[:m.start()].rstrip()
+        self.tail = text[-_NARRATION_TAIL:]
+        return text[:-_NARRATION_TAIL] if len(text) > _NARRATION_TAIL else ""
+
+    def flush(self) -> str:
+        out, self.tail = ("" if self.dead else self.tail), ""
+        return out
+
+
 # --- The layer itself -------------------------------------------------------
 
 
@@ -409,6 +474,7 @@ def guard(tokens, on_event=None):
     """
     emit = on_event or (lambda kind, text: None)
     cutter = _ListCutter(emit)
+    narr = _NarrationCutter(emit)
     buf = ""
     for token in tokens:
         buf += token
@@ -418,13 +484,16 @@ def guard(tokens, on_event=None):
         ready, changed = swap(ready)
         for note in changed:
             emit("guard", note)
-        piece = cutter.feed(ready)
+        piece = narr.feed(cutter.feed(ready))
         if piece:
             yield piece
     if buf:
         ready, changed = swap(buf)
         for note in changed:
             emit("guard", note)
-        piece = cutter.feed(ready)
+        piece = narr.feed(cutter.feed(ready))
         if piece:
             yield piece
+    last = narr.flush()
+    if last:
+        yield last

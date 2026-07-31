@@ -249,6 +249,10 @@ def straighten(text: str) -> str:
     for bad, good in _CURRENCY.items():
         text = text.replace(bad, good)
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    # A run of hyphens is a separator, and a separator is page furniture, not
+    # speech. "Let me ring them fresh. --- Hi, is that Hugo's Plumbing?" went
+    # out verbatim on a live call, separator included.
+    text = re.sub(r"\s*-{2,}\s*", " ", text)
     text = _SPACED_HYPHEN.sub(", ", text)
     text = _SPACE_BEFORE_PUNCT.sub(r"\1", text)
     return _MISSING_SPACE.sub(lambda m: (m.group(1) or m.group(2)) + " ", text)
@@ -1506,7 +1510,8 @@ class Agent:
                     # whenever the Fish socket fails to open, and a guarantee
                     # that only holds on the fast path is not a guarantee.
                     guarded, notes = copy_guard.swap(_strip_marker(sentence))
-                    for note in notes:
+                    guarded, notes2 = copy_guard.strip_narration(guarded)
+                    for note in notes + notes2:
                         self._emit("guard", note)
                     guarded = copy_guard.trim_list(guarded, self._emit)
                     clean = "".join(clean_cues([guarded])).strip()
