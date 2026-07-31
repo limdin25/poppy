@@ -118,9 +118,18 @@ CUE_BUDGET = int(os.environ.get("BRIDGE_CUE_BUDGET", "2"))
 BREATH_CHANCE = float(os.environ.get("BRIDGE_BREATH_CHANCE", "0.5"))
 
 DISFLUENCY_ENABLED = os.environ.get("BRIDGE_DISFLUENCY", "1") != "0"
-DISFLUENCY_CHANCE = float(os.environ.get("BRIDGE_DISFLUENCY_CHANCE", "0.16"))
-DISFLUENCY_MIN_GAP = int(os.environ.get("BRIDGE_DISFLUENCY_MIN_GAP", "2"))
+# Raised 0.16 -> 0.30 on 2026-07-31 evening: "bake this into the baseline
+# behavior, not a special effect". Held well under the directive's 2-5% of
+# words, which down an 8 kHz line is an impediment rather than soul.
+DISFLUENCY_CHANCE = float(os.environ.get("BRIDGE_DISFLUENCY_CHANCE", "0.30"))
+DISFLUENCY_MIN_GAP = int(os.environ.get("BRIDGE_DISFLUENCY_MIN_GAP", "1"))
 DISFLUENCY_SLOW_S = float(os.environ.get("BRIDGE_DISFLUENCY_SLOW_S", "2.0"))
+# The ripple at an emotional gear change: a cue CHANGE mid-reply arms one
+# extra trip on the first eligible word of the new mood, "the speaker
+# adjusting their emotional gear in real time". Two trips a reply is the
+# ceiling whatever fires.
+DISFLUENCY_TRANSITION_CHANCE = float(
+    os.environ.get("BRIDGE_DISFLUENCY_TRANSITION_CHANCE", "0.6"))
 # Speech shorter than this is a cough, a click or line noise, not a turn.
 # Measured against SPEECH inside the buffer, never the buffer's own length: the
 # buffer always ends with the silence that closed the turn, so a length test can

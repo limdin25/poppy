@@ -1997,6 +1997,50 @@ def _():
     assert telnyx.COMFORT_NOISE_DBFS <= -35.0, telnyx.COMFORT_NOISE_DBFS
 
 
+@case("a mood shift ripples: the first words after a gear change can trip")
+def _():
+    # "When the sentiment shifts... that transition is the prime spot for a
+    # micro trip. It signals the speaker adjusting their emotional gear in
+    # real time." Implemented where it can be: a cue CHANGE mid-reply arms a
+    # transition trip on the next eligible word, independent of the baseline
+    # coin, capped at two trips per reply total.
+    import random as _random
+    from . import disfluency
+    old_c, old_t = config.DISFLUENCY_CHANCE, config.DISFLUENCY_TRANSITION_CHANCE
+    config.DISFLUENCY_CHANCE = 0.0          # isolate the transition ripple
+    config.DISFLUENCY_TRANSITION_CHANCE = 1.0
+    try:
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        out = "".join(d.feed(iter(
+            ["[confident] Under five bucks a day. [empathetic] Look, I know "
+             "money matters."])))
+        assert "Look, look" in out, out
+        # One cue, no change, no ripple.
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        line = "[confident] Under five bucks a day. It just works."
+        assert "".join(d.feed(iter([line]))) == line
+        # Baseline and transition together never exceed two trips a reply.
+        config.DISFLUENCY_CHANCE = 1.0
+        d = disfluency.Disfluencer(rng=_random.Random(7))
+        out = "".join(d.feed(iter(
+            ["[warm] Morning to you. [empathetic] Listen, I get it. "
+             "[confident] Numbers help though. Prices matter here."])))
+        doubles = sum(1 for w in set(out.replace(",", "").split())
+                      if f"{w}, {w.lower()}" in out or f"{w}, {w}" in out)
+        assert doubles <= 2, out
+    finally:
+        config.DISFLUENCY_CHANCE, config.DISFLUENCY_TRANSITION_CHANCE = old_c, old_t
+
+
+@case("the friction is baseline rhythm now, not a special effect")
+def _():
+    # "Bake this into the baseline behavior." Raised from the launch-day
+    # 0.16, held under the directive's 2-5% of words because that rate down
+    # an 8 kHz line is an impediment, not soul. Env-tunable either way.
+    assert 0.25 <= config.DISFLUENCY_CHANCE <= 0.5, config.DISFLUENCY_CHANCE
+    assert config.DISFLUENCY_MIN_GAP == 1, config.DISFLUENCY_MIN_GAP
+
+
 @case("a struggle trip never adds a pause on top of a slow brain")
 def _():
     # Reversed on 2026-07-31 afternoon, with a reason: the [break] prefix

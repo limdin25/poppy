@@ -139,7 +139,14 @@ class Disfluencer:
         want = self._since >= config.DISFLUENCY_MIN_GAP
         want_breath = False
         decided_chance = False
-        injected = False
+        trips = 0
+        baseline_used = False
+        # Armed when a mid-reply cue CHANGE passes: the first eligible word
+        # of the new mood may trip, independent of the baseline coin. The
+        # gear-change ripple.
+        transition_armed = False
+        prev_cue = None
+        cue_buf = ""
         breathed = False
         slow = False
         sentences_ended = 0
@@ -158,7 +165,7 @@ class Disfluencer:
         before_word = ""
 
         def flush_word(w: str) -> str:
-            nonlocal injected, breathed, at_site
+            nonlocal trips, baseline_used, transition_armed, breathed, at_site
             at_site = False
             if not w:
                 return w
@@ -172,19 +179,26 @@ class Disfluencer:
                 breathed = True
                 self.on_event("disfluency", f"[break] before {w!r}")
                 return f"[break] {w}"
-            if injected or not want:
+            if trips >= 2:
+                return w                   # two a reply is the ceiling
+            use_transition = transition_armed
+            if not use_transition and (baseline_used or not want):
                 return w
             tripped = _trip(w) if self._eligible(w) else None
             if tripped is None:
                 return w
-            injected = True
+            if use_transition:
+                transition_armed = False
+            else:
+                baseline_used = True
+            trips += 1
             # DELIBERATELY no [break] here, even on a slow brain. The first
             # build prefixed one, and it fired exactly when the first token
             # was already late, stacking silence onto the worst-case lag:
             # Hugo heard "she starts having some delay again". A slow brain
             # raises the ODDS of the trip instead (see the chance above);
             # the stutter itself is the thinking made audible.
-            self.last_trip_chars = len(tripped) - len(w)
+            self.last_trip_chars += len(tripped) - len(w)
             self.on_event("disfluency", f"{w} -> {tripped}")
             return tripped
 
@@ -200,7 +214,13 @@ class Disfluencer:
                     chance = 0.85 if slow else config.DISFLUENCY_CHANCE
                     want = want and self.rng.random() < chance
                     want_breath = self.rng.random() < config.BREATH_CHANCE
-                if (not want or injected) and (not want_breath or breathed):
+                # The char loop stays on while a transition could still arm,
+                # which with the default chance is any reply that has not
+                # already spent both trips.
+                done_tripping = trips >= 2 or (
+                    (baseline_used or not want) and not transition_armed
+                    and config.DISFLUENCY_TRANSITION_CHANCE <= 0)
+                if done_tripping and (not want_breath or breathed):
                     if word:
                         yield word
                         word = ""
@@ -213,6 +233,7 @@ class Disfluencer:
                             out.append(flush_word(word))
                             word = ""
                         depth += 1
+                        cue_buf = ""
                         out.append(ch)
                         prev = ch
                         continue
@@ -220,6 +241,22 @@ class Disfluencer:
                         out.append(ch)
                         if ch == "]":
                             depth -= 1
+                            cue = " ".join(cue_buf.lower().split())
+                            if cue and cue not in ("break", "long-break",
+                                                   "emphasis"):
+                                # The gear change: a DIFFERENT mood arriving
+                                # mid-reply arms one ripple trip on the first
+                                # eligible word of the new mood.
+                                if (prev_cue is not None and cue != prev_cue
+                                        and self.rng.random()
+                                        < config.DISFLUENCY_TRANSITION_CHANCE):
+                                    transition_armed = True
+                                prev_cue = cue
+                            # The word after a cue is the start of a coloured
+                            # thought, which makes it a site.
+                            at_site = True
+                        else:
+                            cue_buf += ch
                         prev = ch
                         continue
                     if ch.isalpha():
@@ -256,4 +293,4 @@ class Disfluencer:
             # counts the reply. Without this, a trip that was cut off midway
             # never started the gap clock, and the very next reply could trip
             # again: twice in a row, the exact thing the gap rule forbids.
-            self._since = 0 if injected else self._since + 1
+            self._since = 0 if trips else self._since + 1
