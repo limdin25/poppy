@@ -67,11 +67,16 @@ def _add(s: Stage) -> Stage:
 
 _add(Stage(
     "permission", "asking to explain",
-    "Say hello, give your name, say you are calling because you are LOOKING "
-    "FOR A JOB, and ask if they mind you explaining. That is the whole turn. "
-    "Do not say what you do, do not mention money. Your own words, different "
-    "every call: there is no line to deliver here. TONE: warm and bright, "
-    "[very warm], this is the moment to be liked.\n"
+    "Say hello, give your name, say you are calling ABOUT THE RECEPTIONIST "
+    "JOB THEY ARE ADVERTISING, and ask if they mind you explaining. That is "
+    "the whole turn. Do not say what you do, do not mention money. Your own "
+    "words, different every call: there is no line to deliver here. TONE: "
+    "warm and bright, [very warm], this is the moment to be liked.\n"
+    "NAME THE AD IN THE FIRST BREATH. They posted it, so this is not a cold "
+    "call to them, it is a reply to something they did, and saying so is what "
+    "buys the next thirty seconds. A generic 'I'm looking for work' opener "
+    "was measured against 93 businesses with no vacancy and three of them "
+    "answered 'we're not hiring' before the product was ever named.\n"
     "HOW IT LANDS matters more than the words. The ask is an odd thing to "
     "say and rushing past it is what sounds scripted, so give it a beat: a "
     "[break] just before the ask itself, then say it plainly, then the "

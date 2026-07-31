@@ -21,7 +21,12 @@
 //      (47 reviews, a different company 200 miles away) as candidate[0], and
 //      the old code took candidate[0] blindly.
 
-const DETAILS_FIELDS = 'id,displayName,websiteUri,userRatingCount,rating,businessStatus';
+// Phone and address were added 2026-07-31 for the hiring-intent import, which
+// starts from a company NAME off a job ad and has no number at all until this
+// call returns one. Purely additive: every existing caller ignores the two new
+// keys, and the field mask is what Google bills on, so nothing else changes.
+const DETAILS_FIELDS = 'id,displayName,websiteUri,userRatingCount,rating,'
+  + 'businessStatus,nationalPhoneNumber,formattedAddress';
 
 /** Pull the exact Google place id out of a scraped Maps URL, or null. */
 export function placeIdFromMapsLink(link) {
@@ -50,6 +55,8 @@ export async function placeDetails(placeId, key, referer) {
       reviews: typeof j.userRatingCount === 'number' ? j.userRatingCount : null,
       rating: typeof j.rating === 'number' ? String(j.rating) : null,
       status: j.businessStatus ?? null,
+      phone: j.nationalPhoneNumber ?? null,
+      address: j.formattedAddress ?? null,
     };
   } catch {
     return null;
