@@ -178,11 +178,12 @@ class Disfluencer:
             if tripped is None:
                 return w
             injected = True
-            # A slow brain hesitates BEFORE it trips: the pause plus the
-            # restart is what a person assembling a hard thought sounds like,
-            # where a bare trip is just the ordinary stumble of speech.
-            if slow:
-                tripped = f"[break] {tripped}"
+            # DELIBERATELY no [break] here, even on a slow brain. The first
+            # build prefixed one, and it fired exactly when the first token
+            # was already late, stacking silence onto the worst-case lag:
+            # Hugo heard "she starts having some delay again". A slow brain
+            # raises the ODDS of the trip instead (see the chance above);
+            # the stutter itself is the thinking made audible.
             self.last_trip_chars = len(tripped) - len(w)
             self.on_event("disfluency", f"{w} -> {tripped}")
             return tripped

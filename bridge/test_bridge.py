@@ -1975,25 +1975,24 @@ def _():
     assert telnyx.COMFORT_NOISE_DBFS <= -35.0, telnyx.COMFORT_NOISE_DBFS
 
 
-@case("a struggle trip carries a thinking pause, a flow trip does not")
+@case("a struggle trip never adds a pause on top of a slow brain")
 def _():
-    # "A model struggling with a complex thought should sound different than
-    # one just pausing for breath." The struggle case is a slow first token,
-    # and its trip now arrives behind a real [break], which Fish renders as
-    # the pause a person makes when the thought is actually being assembled.
+    # Reversed on 2026-07-31 afternoon, with a reason: the [break] prefix
+    # fired exactly when the first token was already LATE, stacking extra
+    # silence onto the worst-case lag, and Hugo heard it as "she starts
+    # having some delay again". A slow brain raises the trip's ODDS (the
+    # stutter itself signals thinking); the pause belongs only where the
+    # pace is healthy, which is the pivot breath.
     import random as _random
     from . import disfluency
     old_c, old_s = config.DISFLUENCY_CHANCE, config.DISFLUENCY_SLOW_S
     config.DISFLUENCY_CHANCE = 1.0
     try:
-        config.DISFLUENCY_SLOW_S = 0.0     # every reply counts as slow
-        d = disfluency.Disfluencer(rng=_random.Random(7))
-        slow = "".join(d.feed(iter(["Takes the calls you'd miss."])))
-        assert "[break]" in slow and "Takes, takes" in slow, slow
-        config.DISFLUENCY_SLOW_S = 9999.0  # nothing counts as slow
-        d = disfluency.Disfluencer(rng=_random.Random(7))
-        flow = "".join(d.feed(iter(["Takes the calls you'd miss."])))
-        assert "[break]" not in flow and "Takes, takes" in flow, flow
+        for slow_s in (0.0, 9999.0):
+            config.DISFLUENCY_SLOW_S = slow_s
+            d = disfluency.Disfluencer(rng=_random.Random(7))
+            out = "".join(d.feed(iter(["Takes the calls you'd miss."])))
+            assert "[break]" not in out and "Takes, takes" in out, (slow_s, out)
     finally:
         config.DISFLUENCY_CHANCE, config.DISFLUENCY_SLOW_S = old_c, old_s
 

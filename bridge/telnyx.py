@@ -68,9 +68,9 @@ ULAW_BYTES_PER_SECOND = 8000
 # her turns has to be the same room her voice was recorded in: quieter reads
 # as the line dying whenever she stops, louder reads as hiss barging in.
 # History: -36.2 on voice d875..., -48.8 on 690813f2..., -52.8 on
-# 9335631... which is the live one. Override with BRIDGE_COMFORT_DBFS when
-# the voice changes, then move the default.
-COMFORT_NOISE_DBFS = float(os.environ.get("BRIDGE_COMFORT_DBFS", "-52"))
+# 9335631..., -45.1 on 5a03c684... which is the live one. Override with
+# BRIDGE_COMFORT_DBFS when the voice changes, then move the default.
+COMFORT_NOISE_DBFS = float(os.environ.get("BRIDGE_COMFORT_DBFS", "-45"))
 # The under-voice mixing is OFF by default since 2026-07-31: the voice model
 # carries its OWN reference room while speaking, and adding ours on top
 # doubled the noise during speech, which Hugo heard as "background noise is
