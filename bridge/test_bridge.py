@@ -1781,6 +1781,51 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("the reply is voiced sentence by sentence, cue carried, no seam")
+def _():
+    # THE MEASURED FIX for "she's throwing random words into the sentence".
+    # 24 streamed replies across two voices put nearly every insertion at
+    # the first-sentence flush seam, where Fish CONTINUES its own audio and
+    # improvises a connector ("Why?", "Hi,", "uh") on re-entry. A sentence
+    # rendered as its own complete utterance measures clean, so the reply is
+    # now a chain of complete renders, and the emotion cue is carried onto
+    # any sentence that lacks one, which is what the seam's cue re-send used
+    # to do.
+    from . import fish_stream
+
+    class FakeFS:
+        def __init__(self):
+            self.rendered = []
+        def stream(self, text):
+            self.rendered.append(text)
+            yield b"x"
+
+    fs = FakeFS()
+    pieces = ["[very warm] Hey, it is M", "aria. I am actually cal",
+              "ling to ask for a job. Mind if I explain?"]
+    chunks = list(fish_stream.sentence_stream(fs, iter(pieces)))
+    assert chunks == [b"x", b"x", b"x"], chunks
+    assert fs.rendered[0] == "[very warm] Hey, it is Maria.", fs.rendered
+    assert fs.rendered[1] == "[very warm] I am actually calling to ask for a job.", fs.rendered
+    assert fs.rendered[2] == "[very warm] Mind if I explain?", fs.rendered
+
+    # A sentence carrying its own cue keeps it and becomes the new carry;
+    # a too-short lead sentence rides with the next one (the same 3-word
+    # floor the flush has always had), which is fine: fewer renders means
+    # fewer boundaries.
+    fs = FakeFS()
+    list(fish_stream.sentence_stream(fs, iter(
+        ["[warm] Hi. [curious] What happens to your calls? Tell me straight."])))
+    assert fs.rendered[0] == "[warm] Hi. [curious] What happens to your calls?", fs.rendered
+    assert fs.rendered[1] == "[curious] Tell me straight.", fs.rendered
+
+    # A trailing fragment with no full stop still gets voiced.
+    fs = FakeFS()
+    list(fish_stream.sentence_stream(fs, iter(
+        ["Sounds good to me mate. And one more thing"])))
+    assert fs.rendered == ["Sounds good to me mate.", "And one more thing"], fs.rendered
+
+
 @case("the laugh-prone cues are remapped before the voice ever sees them")
 def _():
     # The laugh is back for the third time, now at the END of calls, "sounds

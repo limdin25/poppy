@@ -37,6 +37,57 @@ from . import audio, config, ulaw
 _CUE = re.compile(r"\[[^\]]*\]")
 
 
+def sentence_stream(fs, pieces, on_event=None):
+    """The reply as a chain of COMPLETE renders, one flush seam nowhere.
+
+    THE MEASURED FIX for "she's throwing random words into the sentence"
+    (2026-07-31). 24 streamed replies across two voices put nearly every
+    insertion at the first-sentence flush seam: stream_tokens flushes the
+    first sentence and Fish then CONTINUES its own audio for the rest, and
+    on re-entry it improvises a connector, "Why?", "Hi,", "uh", once a name
+    ("Aya"). The same sentences rendered as their own complete utterances
+    measured clean, so that is what the reply is now: each sentence (at the
+    same 3-word _flush_point boundaries the flush always used) becomes its
+    own render, chained into one chunk stream so the transport and the
+    barge-in machinery see a single reply.
+
+    First-audio latency is unchanged: the first render still starts at the
+    exact moment the first sentence is complete, which is when the old flush
+    fired. Fish renders faster than the phone plays, so later sentences are
+    ready while earlier ones are still being spoken.
+
+    The emotion cue is carried onto any sentence that lacks one, which is
+    the job the seam's cue re-send used to do: a cue only ever colours its
+    own render.
+    """
+    emit = on_event or (lambda kind, text: None)
+    carry = ""
+    buf = ""
+    scan = 0
+
+    def render(sentence):
+        nonlocal carry
+        sentence = sentence.strip()
+        if not sentence:
+            return
+        cues = _CUE.findall(sentence)
+        if cues:
+            carry = cues[-1]
+        elif carry:
+            sentence = f"{carry} {sentence}"
+        yield from fs.stream(sentence)
+
+    for piece in pieces:
+        buf += piece
+        while True:
+            cut, scan = _flush_point(buf, scan)
+            if cut is None:
+                break
+            sentence, buf, scan = buf[:cut], buf[cut:], 0
+            yield from render(sentence)
+    yield from render(buf)
+
+
 def speakable(text: str) -> bool:
     """Is there anything here a voice could actually say?
 

@@ -1401,7 +1401,11 @@ class Agent:
             self._emit("ai", ack[0])
             self._play(*ack)
 
-        chunks = self.voice_stream.stream_tokens(tokens)
+        # Sentence-by-sentence complete renders, never one continuation
+        # stream: the flush seam was where the voice invented words. See
+        # fish_stream.sentence_stream.
+        from .fish_stream import sentence_stream
+        chunks = sentence_stream(self.voice_stream, tokens, on_event=self._emit)
         _, interrupted, speak_ms = self._play(
             "", chunks, so_far=lambda: spoken_words("".join(spoken)))
         self._settle()
