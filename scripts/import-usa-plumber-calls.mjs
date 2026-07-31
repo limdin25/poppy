@@ -216,10 +216,37 @@ async function main() {
     if (!moved) break;
   }
 
+  // ---- Gate 5b: drop everyone we have already rung -------------------------
+  // The ledger blocks a second DIAL, which is the guard that matters, but it
+  // does nothing about the PAID screen: re-running this script would happily
+  // buy a line-status lookup for all 100 numbers called an hour ago and then
+  // upload leads that can never be claimed. Same money, no leads.
+  const alreadyCalled = new Set();
+  {
+    let from = 0;
+    for (;;) {
+      const res = await fetch(`${SB}/rest/v1/wk_ai_called?select=e164`, {
+        headers: {
+          apikey: SK,
+          Authorization: `Bearer ${SK}`,
+          Range: `${from}-${from + 999}`,
+        },
+      });
+      if (!res.ok) break;
+      const rows = await res.json();
+      for (const r of rows) alreadyCalled.add(r.e164);
+      if (rows.length < 1000) break;
+      from += 1000;
+    }
+  }
+  const fresh = ordered.filter((l) => !alreadyCalled.has(l.e164));
+  log(`Gate 5b never rung   : ${fresh.length} kept  `
+    + `(${ordered.length - fresh.length} already in the ledger)`);
+
   // Screen a little over the target so drops do not leave us short, but never
   // upload more than the cap.
-  const headroom = Math.min(ordered.length, Math.ceil(LIMIT * 1.3));
-  const candidates = ordered.slice(0, headroom);
+  const headroom = Math.min(fresh.length, Math.ceil(LIMIT * 1.3));
+  const candidates = fresh.slice(0, headroom);
   log(`\nOrdered ${ordered.length} candidate(s) across ${byState.size} state(s); `
     + `screening the top ${candidates.length} to fill ${LIMIT}.`);
 
