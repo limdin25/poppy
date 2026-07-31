@@ -152,7 +152,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   async uploadTo(nodeId, file) {
     const { doc } = get();
     if (!doc) return;
-    const ref = await backend().uploadAsset(doc.projectId, file, file.name);
+    // Which foundation slot does this node feed? refImage2 is the product by
+    // scaffold convention; everything else uploads as the influencer photo.
+    const feeds = doc.edges.find((e) => e.source === nodeId)?.targetHandle;
+    const role = feeds === 'refImage2' || nodeId === 'product' ? 'product' : 'influencer';
+    const ref = await backend().uploadAsset(doc.projectId, file, file.name, role);
     get().mutateDoc((d) => ({
       ...d,
       nodes: d.nodes.map((n) =>

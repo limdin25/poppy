@@ -49,9 +49,11 @@ export interface UgcBackend {
   createProject(title: string): Promise<ProjectSummary>;
   getGraph(projectId: string): Promise<GraphDoc | null>;
   putGraph(doc: GraphDoc, ifUpdatedAt: string): Promise<PutGraphResult>;
-  uploadAsset(projectId: string, file: Blob, name: string): Promise<AssetRef>;
+  // role tells the server which foundation photo this is (the enqueue gate
+  // checks asset kinds); the store derives it from the node's wiring.
+  uploadAsset(projectId: string, file: Blob, name: string, role?: 'influencer' | 'product'): Promise<AssetRef>;
   listVoices(): Promise<VoiceInfo[]>;
-  cloneVoice(sample: Blob, name: string): Promise<VoiceInfo>;
+  cloneVoice(sample: Blob, name: string, projectId?: string): Promise<VoiceInfo>;
   submitJob(args: SubmitJobArgs): Promise<{ jobId: string }>;
   getJob(jobId: string): Promise<JobInfo>;
   getCredits(): Promise<{ balance: number }>;

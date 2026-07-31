@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Play, Square } from 'lucide-react';
 import { backend } from '../../core/persistence';
 import type { VoiceInfo } from '../../core/persistence/backend';
+import { useCanvasStore } from '../canvas/state/store';
 import { TID } from '../../testids';
 
 interface Props {
@@ -42,11 +43,13 @@ export function VoicePicker({ selectedVoiceId, onSelect }: Props) {
     setPlaying(voice.id);
   };
 
+  const projectId = useCanvasStore((s) => s.doc?.projectId);
+
   const startClone = async () => {
     if (!cloneFile || !cloneName.trim() || cloning) return;
     setCloning(true);
     try {
-      const voice = await backend().cloneVoice(cloneFile, cloneName.trim());
+      const voice = await backend().cloneVoice(cloneFile, cloneName.trim(), projectId);
       await refresh();
       onSelect(voice.id);
       setTab('choose');
