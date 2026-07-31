@@ -1,0 +1,55 @@
+/* The one place colour values live. tokens.ts mirrors these for SVG-drawn
+   canvas parts (edges, handles) that cannot read CSS variables. Change both. */
+
+:root {
+  --ugc-page: #fafaf8;
+  --ugc-canvas: #ffffff;
+  --ugc-grid: #e9e9e4;
+  --ugc-surface: #ffffff;
+  --ugc-hairline: #e8e8e3;
+
+  --ugc-ink: #1a1a1a;
+  --ugc-ink-muted: #6b7280;
+  --ugc-ink-subtle: #9ca3af;
+
+  /* One accent, reserved for live activity: running progress, animated edges,
+     focus rings. Primary actions are ink-black pills, not blue. */
+  --ugc-live: #1a73e8;
+  --ugc-done: #188038;
+  --ugc-failed: #b42318;
+  --ugc-gated: #b45309;
+
+  /* Stage band washes (Input / Generation / Output). */
+  --ugc-band-input: rgba(26, 115, 232, 0.05);
+  --ugc-band-generation: rgba(124, 96, 232, 0.05);
+  --ugc-band-output: rgba(24, 128, 56, 0.05);
+
+  --ugc-edge: #c9c9c2;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ugc-page);
+  color: var(--ugc-ink);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
