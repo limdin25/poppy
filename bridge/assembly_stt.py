@@ -93,6 +93,13 @@ class AssemblyStream:
         # its final version arrives.
         self._partial_at = 0.0
         self._last_seen = ""
+        # The last FINISHED utterance and when it landed. recent_speech()
+        # reads these: a short sharp interruption is finalized within a
+        # second, so "is somebody talking" must not depend on the partial
+        # alone, or the burst that should have taken the floor reads as
+        # silence at exactly the moment it matters.
+        self._last_final = ""
+        self._last_final_at = 0.0
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -158,6 +165,12 @@ class AssemblyStream:
                     text = (msg.get("transcript") or "").strip()
                     if msg.get("end_of_turn"):
                         self._partial = ""
+                        if text:
+                            # The RAW final, before dedup: evidence somebody
+                            # spoke, for recent_speech(), even when the text
+                            # itself was already answered early.
+                            self._last_final = text
+                            self._last_final_at = time.monotonic()
                         text = self._only_the_new_part(text)
                         if text:
                             self._turns.put(text)
@@ -256,6 +269,21 @@ class AssemblyStream:
         at the same 15.7 seconds.
         """
         return self._partial.strip()
+
+    def recent_speech(self, within_s: float = 1.5) -> str:
+        """What they are saying now, OR just finished saying.
+
+        The barge confirm's question is "is a person talking", and the
+        partial alone cannot answer it: a short interruption is finalized
+        fast, the partial empties, and the cut that should have happened got
+        vetoed. She powered through a live prospect's words exactly this way.
+        """
+        text = self._partial.strip()
+        if text:
+            return text
+        if self._last_final and time.monotonic() - self._last_final_at <= within_s:
+            return self._last_final.strip()
+        return ""
 
     def settled_partial(self, stable_for_s: float,
                         min_words: int | None = None) -> str | None:

@@ -123,14 +123,15 @@ def barge_threshold_ms(elapsed_ms: float, base_ms: float) -> float:
 
     The race. When both sides start in the same breath, the human wins, and
     quickly: for the first BARGE_EARLY_WINDOW_MS of her turn the threshold is
-    halved, so a prospect who was already talking when her audio began stops
-    her in about 350ms. Past the window the full threshold is back, and a
-    cough or an "mm" mid-reply still cannot stop her. The barge grace window
-    runs before this ever applies, so her own first-syllable echo cannot ride
-    the lowered bar.
+    halved (floored at 250ms), so a prospect already talking when her audio
+    began stops her almost immediately. Past the window the base threshold is
+    back. Noise immunity does not live here any more: every cut also has to
+    pass _confirm_barge, which is what let the base drop from 700ms of proof
+    to 450. The barge grace window runs before this ever applies, so her own
+    first-syllable echo cannot ride the lowered bar.
     """
     if elapsed_ms < config.BARGE_EARLY_WINDOW_MS:
-        return base_ms * config.BARGE_EARLY_FACTOR
+        return max(250.0, base_ms * config.BARGE_EARLY_FACTOR)
     return base_ms
 
 
@@ -953,12 +954,14 @@ class Agent:
         if first in {"who", "what", "why", "when", "where", "how", "is", "are",
                      "do", "does", "did", "can", "could", "would", "will"}:
             return None
-        # A rise is a question, whatever the words look like.
-        if self._last_contour == "rose":
-            return None
-        # With a reader attached, only a landed statement invites the noise.
-        if (self.prosody is not None and config.PROSODY_ENABLED
-                and self._last_contour != "fell"):
+        # The contour blocks only the actively WRONG moments: a rise is their
+        # question, a held is mid-thought, and acknowledging either is noise.
+        # An unreadable contour falls back to the text rules. The first build
+        # demanded a clean "fell" before any cue could fire, and a clean fell
+        # is rare on a phone line, so the cues starved and Hugo heard "weird
+        # gaps where the agent just hangs... it's not breathing with the
+        # conversation".
+        if self._last_contour in ("rose", "held"):
             return None
         if random.random() > config.BACKCHANNEL_CHANCE:
             return None
@@ -1211,10 +1214,16 @@ class Agent:
         """Stage two of the interrupt decision: is this a person taking the floor?
 
         Stage one is the VAD's sustained-speech trigger, and on its own it is a
-        kill switch: any noise loud enough for long enough snaps her shut. That
-        was tolerable at the full 700ms threshold and is not at the early-yield
-        350ms one, so inside the early window the trigger has to be CONFIRMED
-        by the live transcriber actually hearing words.
+        kill switch: any noise loud enough for long enough snaps her shut. So
+        every cut is CONFIRMED by the live transcriber having heard words,
+        which is what lets stage one be FAST (450ms base, 250 in the early
+        window) instead of demanding 700ms of proof: the noise-immunity now
+        lives here, not in a long threshold.
+
+        The evidence is recent_speech(), never the partial alone: a short
+        sharp interruption is finalized within a second, the partial empties,
+        and the veto landed exactly when it mattered. She powered straight
+        through a live prospect that way, "totally oblivious".
 
         Three things fail the confirmation, each a real way the kill switch
         fired wrongly:
@@ -1224,16 +1233,13 @@ class Agent:
           - a bare agreement murmur ("yeah", "uh huh"): somebody agreeing
             along under her, which is an invitation to keep going, not to stop
 
-        Past the early window, or on a rig with no live transcriber, the
-        sustained-speech evidence stands on its own exactly as it always did,
-        so a real interruption can never be locked out for long: the VAD keeps
-        accumulating and crosses the full threshold regardless.
+        On a rig with no live transcriber the sustained-speech evidence stands
+        on its own, exactly as it always did.
         """
-        if elapsed_ms >= config.BARGE_EARLY_WINDOW_MS:
-            return True
         if self.ears is None:
             return True
-        fn = getattr(self.ears, "partial_text", None)
+        fn = (getattr(self.ears, "recent_speech", None)
+              or getattr(self.ears, "partial_text", None))
         if fn is None:
             return True
         try:

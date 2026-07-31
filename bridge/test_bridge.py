@@ -1647,11 +1647,16 @@ def _():
     assert not agent.question_was_asked("I answer phones and book jobs in.", "I answer")
 
 
-@case("backchannels are gated by prosody when the reader is on")
+@case("backchannels block only the actively wrong moments")
 def _():
-    # "Use organic back channels, but only when the prosody actually calls for
-    # it." A landed statement (fell) invites a "Right."; a question (rose), a
-    # mid-thought pause (held) and an unreadable contour do not.
+    # Two corrections from Hugo, in order. First: "only when the prosody
+    # actually calls for it", so the gate demanded a perfect "fell" contour.
+    # Result, his next report: "weird gaps where the agent just hangs...
+    # implement active listening cues to bridge the gaps". The strict gate
+    # starved the cues to nothing, because a clean fell reading is rare on a
+    # phone line. So the gate now blocks only what is actively WRONG, a rise
+    # (their question) or a held mid-thought, and an unreadable contour falls
+    # back to the text rules instead of silence.
     a = agent.Agent.__new__(agent.Agent)
     a._backchannel = [("Right.", b"x")]
     a.prosody = object()                  # a reader is attached
@@ -1661,9 +1666,10 @@ def _():
     config.PROSODY_ENABLED = True
     try:
         heard = "we miss a fair few calls when we're out on jobs"
-        a._last_contour = "fell"
-        assert a._pick_backchannel(heard) is not None
-        for contour in ("rose", "held", "unsure", None):
+        for contour in ("fell", "unsure", None):
+            a._last_contour = contour
+            assert a._pick_backchannel(heard) is not None, contour
+        for contour in ("rose", "held"):
             a._last_contour = contour
             assert a._pick_backchannel(heard) is None, contour
         # No prosody reader attached: the text rules stand alone, as before.
@@ -2306,6 +2312,62 @@ def _():
     assert notes, notes
 
 
+@case("a finalized burst still counts as the prospect speaking")
+def _():
+    # "Totally oblivious when the user takes the floor." The mechanism: a
+    # short sharp interruption gets FINALIZED by the transcriber within a
+    # second, so at confirm time the live partial is already empty, the cut
+    # was vetoed, and she powered on while his words sat in the turn queue.
+    # recent_speech() is the fix: the partial, or a final still warm.
+    import time as _t
+    from . import assembly_stt
+    s = assembly_stt.AssemblyStream.__new__(assembly_stt.AssemblyStream)
+    s._partial = "hang on a sec"
+    s._last_final = ""
+    s._last_final_at = 0.0
+    assert s.recent_speech() == "hang on a sec"
+    s._partial = ""
+    s._last_final = "hang on"
+    s._last_final_at = _t.monotonic() - 0.5
+    assert s.recent_speech() == "hang on"
+    s._last_final_at = _t.monotonic() - 5.0
+    assert s.recent_speech() == ""
+
+
+@case("the barge trigger is fast, and the confirm guards it everywhere")
+def _():
+    # 700ms of proof was the price of a one-stage trigger. With the ASR
+    # confirm now guarding EVERY cut, the base drops to 450ms and the early
+    # window to 250, which is "kill the stream when a human speaks" without
+    # handing the floor to a door slam.
+    assert config.TELNYX_BARGE_MS <= 500, config.TELNYX_BARGE_MS
+    base = config.TELNYX_BARGE_MS
+    assert agent.barge_threshold_ms(2000.0, base) == base
+    assert agent.barge_threshold_ms(400.0, base) >= 250.0
+    assert agent.barge_threshold_ms(400.0, base) < base
+
+    class FakeEars:
+        def __init__(self):
+            self.speech = ""
+        def recent_speech(self):
+            return self.speech
+
+    a = agent.Agent.__new__(agent.Agent)
+    a.ears = FakeEars()
+    late = config.BARGE_EARLY_WINDOW_MS + 500
+    current = "So I answer phones while you're on a job"
+    # Past the early window the confirm STILL vetoes pure noise now.
+    a.ears.speech = ""
+    assert not a._confirm_barge(late, current)
+    a.ears.speech = "hang on, let me stop you there"
+    assert a._confirm_barge(late, current)
+    # Echo and murmurs still never take the floor, at any time.
+    a.ears.speech = "answer phones while you're on a job"
+    assert not a._confirm_barge(late, current)
+    a.ears.speech = "yeah yeah"
+    assert not a._confirm_barge(late, current)
+
+
 @case("a barge in the early window needs words, not just noise")
 def _():
     # Stage two of the interrupt decision. The lowered early-yield threshold
@@ -2334,10 +2396,12 @@ def _():
     assert not a._confirm_barge(early, current)
     a.ears.partial = "answer phones while you're on a job"
     assert not a._confirm_barge(early, current)    # her own voice coming back
-    # Past the early window the sustained-speech evidence stands on its own,
-    # exactly as before this existed: a real interruption can never be locked
-    # out for long.
+    # The confirm now guards EVERY cut, not just the early window: that is
+    # what paid for dropping the base trigger from 700ms to 450. Words still
+    # open the floor at any time.
     a.ears.partial = ""
+    assert not a._confirm_barge(late, current)
+    a.ears.partial = "hang on, hang on"
     assert a._confirm_barge(late, current)
     # And a rig with no live transcriber keeps the one-stage behaviour.
     a.ears = None

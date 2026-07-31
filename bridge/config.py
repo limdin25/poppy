@@ -77,9 +77,11 @@ END_OF_TURN_SILENCE_MS = 250
 # they may be spoken. A murmur is the least text a voice model can be handed,
 # and the reference bleeds straight through it: one voice rendered "Mm." as a
 # MEOW, another rendered "Sure." in Russian and "Yeah." in Chinese. On the
-# live voice 9335631... all five probed 3/3 clean on 2026-07-31. When the
-# voice changes, re-run the probe before trusting this list.
-BACKCHANNEL_WORDS = ("Right.", "Yeah.", "Okay.", "Gotcha.", "Sure.")
+# live voice 5a03c684... all seven probed clean on 2026-07-31 ("I see." and
+# "Got it." joined for the active-listening pass). When the voice changes,
+# re-run the probe before trusting this list.
+BACKCHANNEL_WORDS = ("Right.", "Yeah.", "Okay.", "Gotcha.", "Sure.",
+                     "I see.", "Got it.")
 BACKCHANNEL_CHANCE = 0.45
 
 # Simulated disfluency. A voice that glides through every sentence is one of
@@ -531,7 +533,11 @@ GOOGLE_VOICE = os.environ.get("BRIDGE_GOOGLE_VOICE", "en-GB-Chirp3-HD-Achernar")
 # 700, which is about two words. Below that she is reacting to agreement and
 # throat-clearing rather than to somebody actually taking the floor, and being
 # stopped three words into a sentence is worse than half a second of overlap.
-TELNYX_BARGE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_MS", "700"))
+# Dropped 700 -> 450 on 2026-07-31 evening: the 700 existed to keep noise and
+# agreement murmurs from stopping her, and that job moved to _confirm_barge
+# (ASR words, non-echo, non-murmur), which now guards EVERY cut. Hugo, on the
+# one-stage build: "totally oblivious when the user takes the floor".
+TELNYX_BARGE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_MS", "450"))
 TELNYX_BARGE_GRACE_MS = float(os.environ.get("BRIDGE_TELNYX_BARGE_GRACE_MS", "250"))
 # The race. When both sides start talking in the same breath, the human wins,
 # and quickly. For the first stretch of her turn the interrupt threshold drops,
