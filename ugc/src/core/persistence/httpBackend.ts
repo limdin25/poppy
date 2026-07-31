@@ -91,28 +91,26 @@ export class HttpBackend implements UgcBackend {
 
   async putGraph(doc: GraphDoc, ifUpdatedAt: string): Promise<PutGraphResult> {
     const updatedAt = new Date().toISOString();
-    const { data, error } = await this.sb
-      .from('ugc_projects')
-      .update({ graph: { ...doc, updatedAt }, updated_at: updatedAt })
-      .eq('id', doc.projectId)
-      .eq('updated_at', ifUpdatedAt)
-      .select('updated_at');
-    if (error) throw new Error(error.message);
-    if (data.length) return { updatedAt };
-
-    // No row matched: either a real conflict, or the very first save (the
-    // scaffold's local timestamp never matches the row's). First save wins
-    // only while the stored graph is still empty.
-    const { data: current, error: readError } = await this.sb
-      .from('ugc_projects')
-      .select('graph')
-      .eq('id', doc.projectId)
-      .single();
-    if (readError) throw new Error(readError.message);
-    if (current.graph) return { conflict: true };
+    const payload = { graph: { ...doc, updatedAt }, updated_at: updatedAt };
+    // An empty baseline must never reach the timestamp comparison: Postgres
+    // rejects '' as a timestamptz and the first save of every new project
+    // would die (found live 2026-07-31, the endless "Loading" canvas).
+    if (ifUpdatedAt) {
+      const { data, error } = await this.sb
+        .from('ugc_projects')
+        .update(payload)
+        .eq('id', doc.projectId)
+        .eq('updated_at', ifUpdatedAt)
+        .select('updated_at');
+      if (error) throw new Error(error.message);
+      if (data.length) return { updatedAt };
+    }
+    // No baseline or a stale one: the write wins only while the stored graph
+    // is still empty (the scaffold's very first save); anything else is a
+    // real conflict.
     const { data: forced, error: forceError } = await this.sb
       .from('ugc_projects')
-      .update({ graph: { ...doc, updatedAt }, updated_at: updatedAt })
+      .update(payload)
       .eq('id', doc.projectId)
       .is('graph', null)
       .select('updated_at');

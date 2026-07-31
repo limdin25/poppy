@@ -191,6 +191,10 @@ export function InspectorPanel() {
             </p>
             {section.output.category === 'audio' ? (
               section.output.assetRef.url && <audio controls src={section.output.assetRef.url} className="w-full" />
+            ) : section.output.category === 'video' ? (
+              section.output.assetRef.url && (
+                <video controls playsInline preload="metadata" src={section.output.assetRef.url} className="w-full rounded-lg bg-black" />
+              )
             ) : (
               section.output.assetRef.url && (
                 <img src={section.output.assetRef.url} alt="" className="w-full rounded-lg" />

@@ -126,7 +126,16 @@ export function StageNode({ id, selected }: NodeProps) {
       </div>
 
       <div className="px-3 py-2">
-        {preview && node.output?.category !== 'audio' ? (
+        {preview && node.output?.category === 'video' ? (
+          <video
+            src={preview}
+            controls
+            playsInline
+            preload="metadata"
+            className="h-40 w-full rounded-lg bg-black object-contain"
+            data-testid={TID.panelOutput + '-thumb-' + id}
+          />
+        ) : preview && node.output?.category !== 'audio' ? (
           <img src={preview} alt="" className="h-24 w-full rounded-lg object-cover" data-testid={TID.panelOutput + '-thumb-' + id} />
         ) : node.output?.category === 'audio' ? (
           <div className="flex h-10 items-center justify-center rounded-lg bg-page text-[11px] text-ink-muted">

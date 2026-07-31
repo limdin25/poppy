@@ -72,20 +72,26 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   toast: null,
 
   async load(projectId) {
-    const existing = await backend().getGraph(projectId);
-    if (existing) {
-      const { doc } = validateDoc(existing);
-      set({ doc, savedUpdatedAt: existing.updatedAt, selection: null, runStates: {}, runDetails: {} });
-    } else {
-      const fresh = buildDefaultFlow(projectId, new Date().toISOString());
-      const saved = await backend().putGraph(fresh, '');
-      set({
-        doc: fresh,
-        savedUpdatedAt: 'conflict' in saved ? fresh.updatedAt : saved.updatedAt,
-        selection: null,
-        runStates: {},
-        runDetails: {},
-      });
+    try {
+      const existing = await backend().getGraph(projectId);
+      if (existing) {
+        const { doc } = validateDoc(existing);
+        set({ doc, savedUpdatedAt: existing.updatedAt, selection: null, runStates: {}, runDetails: {} });
+      } else {
+        const fresh = buildDefaultFlow(projectId, new Date().toISOString());
+        const saved = await backend().putGraph(fresh, '');
+        set({
+          doc: fresh,
+          savedUpdatedAt: 'conflict' in saved ? fresh.updatedAt : saved.updatedAt,
+          selection: null,
+          runStates: {},
+          runDetails: {},
+        });
+      }
+    } catch (e) {
+      // Never strand the user on an endless "Loading": say what broke.
+      get().showToast(`Could not open this ad: ${(e as Error).message}`);
+      return;
     }
     void get().refreshCredits();
   },
