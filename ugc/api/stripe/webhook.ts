@@ -5,8 +5,8 @@
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import Stripe from 'stripe';
-import { json, readRawBody, serviceRpc } from '../_lib/http';
-import { decideWebhook } from '../../src/core/stripeWebhook';
+import { json, readRawBody, serviceRpc } from '../_lib/http.js';
+import { decideWebhook } from '../../src/core/stripeWebhook.js';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });

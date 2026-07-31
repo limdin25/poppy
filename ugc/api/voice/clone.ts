@@ -4,8 +4,8 @@
 // same enqueue RPC as everything else.
 
 import type { IncomingMessage, ServerResponse } from 'http';
-import { json, readJsonBody, requireUser, serviceRpc } from '../_lib/http';
-import { buildCloneRequest } from '../../src/core/providers/fish';
+import { json, readJsonBody, requireUser, serviceRpc } from '../_lib/http.js';
+import { buildCloneRequest } from '../../src/core/providers/fish.js';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });

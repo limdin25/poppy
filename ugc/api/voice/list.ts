@@ -3,7 +3,7 @@
 // zero marginal cost per listen.
 
 import type { IncomingMessage, ServerResponse } from 'http';
-import { json, requireUser } from '../_lib/http';
+import { json, requireUser } from '../_lib/http.js';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });

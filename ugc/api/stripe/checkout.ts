@@ -4,7 +4,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import Stripe from 'stripe';
-import { json, requireUser } from '../_lib/http';
+import { json, requireUser } from '../_lib/http.js';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });

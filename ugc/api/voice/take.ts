@@ -4,9 +4,9 @@
 // debit, the job fails and the refund RPC compensates immediately.
 
 import type { IncomingMessage, ServerResponse } from 'http';
-import { json, readJsonBody, requireUser, serviceRpc } from '../_lib/http';
-import { buildTtsRequest, wavDurationSeconds } from '../../src/core/providers/fish';
-import { voiceTakePath } from '../../src/core/storagePaths';
+import { json, readJsonBody, requireUser, serviceRpc } from '../_lib/http.js';
+import { buildTtsRequest, wavDurationSeconds } from '../../src/core/providers/fish.js';
+import { voiceTakePath } from '../../src/core/storagePaths.js';
 
 async function userRpc(req: IncomingMessage, fn: string, args: Record<string, unknown>): Promise<Response> {
   const base = process.env.SUPABASE_URL!;
