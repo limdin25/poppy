@@ -2312,6 +2312,41 @@ def _():
     assert notes, notes
 
 
+@case("a machine verdict never hangs up on somebody who said hello")
+def _():
+    # Live false positive, 2026-07-31 12:23: Hugo answered "Hello?", Telnyx
+    # AMD said machine, and she hung up on a human 11 seconds in. The
+    # asymmetry is stark: obeying a wrong machine verdict burns a real lead
+    # and sounds broken; doubting a right one costs a minute of API. So the
+    # verdict now needs corroboration: a short conversational turn with no
+    # voicemail phrasing in it overrides Telnyx.
+    class FakeTransport:
+        def is_machine(self):
+            return True
+
+    a = agent.Agent.__new__(agent.Agent)
+    a.transport = FakeTransport()
+    a._emit = lambda *rest: None
+    a._amd_overridden = False
+
+    r = agent.CallResult(number="+1", started_at=0.0)
+    r.turns.append(agent.Turn("them", "Hello?", 1.0))
+    assert not a._answerphone(r), "hung up on a human hello"
+
+    # No human evidence at all: the verdict stands.
+    a._amd_overridden = False
+    r2 = agent.CallResult(number="+1", started_at=0.0)
+    assert a._answerphone(r2)
+
+    # A greeting that smells like voicemail does not count as evidence.
+    a._amd_overridden = False
+    r3 = agent.CallResult(number="+1", started_at=0.0)
+    r3.turns.append(agent.Turn(
+        "them", "Hello, and thank you for calling DRC Plumbing, we are sorry "
+                "we missed your call, please leave your name and number", 1.0))
+    assert a._answerphone(r3)
+
+
 @case("a finalized burst still counts as the prospect speaking")
 def _():
     # "Totally oblivious when the user takes the floor." The mechanism: a

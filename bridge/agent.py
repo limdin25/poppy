@@ -866,6 +866,9 @@ class Agent:
         # the never-twice-in-a-row rule counts replies across turns.
         self._disfluencer = disfluency.Disfluencer(
             business_words=self.business_words, on_event=self.on_event)
+        # Whether a Telnyx machine verdict has already been overruled by human
+        # evidence, so the override logs once instead of every turn.
+        self._amd_overridden = False
         # The last stage she reached, for the campaign ledger. Set by
         # _set_stage; None means the call never got as far as starting one.
         self.last_stage: str | None = None
@@ -1014,11 +1017,23 @@ class Agent:
         costs pennies, the other costs the lead and sounds like a broken
         robocall. So "not_sure" is not a machine, and a phrase hit on its own
         is not either.
+
+        And Telnyx's own "machine" verdict is corroborated, not obeyed, since
+        2026-07-31: it classified a live human who had answered a plain
+        "Hello?" as an answerphone and she hung up on him 11 seconds in. A
+        short conversational turn with no voicemail phrasing in it overrides
+        the verdict, once, with a log line.
         """
         if getattr(self.transport, "is_machine", None) and self.transport.is_machine():
-            result.outcome = "answering_machine"
-            self._emit("amd", "Telnyx says answerphone, hanging up")
-            return True
+            if self._sounds_human(result):
+                if not self._amd_overridden:
+                    self._amd_overridden = True
+                    self._emit("amd", "Telnyx says answerphone, but they "
+                                      "sound like a person, staying on")
+            else:
+                result.outcome = "answering_machine"
+                self._emit("amd", "Telnyx says answerphone, hanging up")
+                return True
         if not heard:
             return False
         text = heard.lower()
@@ -1039,6 +1054,27 @@ class Agent:
         if hit and len(text.split()) >= config.AMD_MIN_GREETING_WORDS:
             result.outcome = "answering_machine"
             self._emit("amd", f"answerphone from the greeting ({hit!r}), hanging up")
+            return True
+        return False
+
+    def _sounds_human(self, result: CallResult) -> bool:
+        """Has the far end produced a turn no answerphone would?
+
+        Voicemail greetings are long, or carry the give-away phrases. A human
+        picking up says something SHORT that carries neither: "Hello?", "Yes,
+        who is this?", "Hugo's Plumbing". One of those is enough to overrule
+        a classifier that cannot hear the difference.
+        """
+        for t in result.turns:
+            if t.who != "them":
+                continue
+            text = t.text.lower()
+            if len(text.split()) > 8:
+                continue
+            if any(p in text for p in config.AMD_PHRASES_CERTAIN):
+                continue
+            if any(p in text for p in config.AMD_PHRASES):
+                continue
             return True
         return False
 
