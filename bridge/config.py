@@ -73,12 +73,13 @@ END_OF_TURN_SILENCE_MS = 250
 # "Mm") at its own frequency of 0.45. One is played the instant the prospect
 # stops talking, while the model is still writing, so the gap is filled with
 # something human instead of silence. Costs no time: it overlaps the thinking.
-# Real words only, no hum-murmurs. "Mm." and "Mm hmm." were dropped on
-# 2026-07-31: a murmur is the least text a voice model can be handed, and on
-# a reference-heavy community voice the reference bled straight through, a
-# live call rendered one as a MEOW. A word with real vowels gives the model
-# something to say in English.
-BACKCHANNEL_WORDS = ("Right.", "Yeah.", "Okay.", "Gotcha.", "Sure.")
+# Real words only, no hum-murmurs, and PROBED CLEAN ON THE LIVE VOICE before
+# they may be spoken. A murmur is the least text a voice model can be handed,
+# and the reference bleeds straight through it: one voice rendered "Mm." as a
+# MEOW, the next rendered "Sure." in Russian and "Yeah." in Chinese. On voice
+# 690813f2... only these two came back 4/4 clean from the transcription
+# probe. When the voice changes, re-run the probe before widening this list.
+BACKCHANNEL_WORDS = ("Right.", "Okay.")
 BACKCHANNEL_CHANCE = 0.45
 
 # Simulated disfluency. A voice that glides through every sentence is one of

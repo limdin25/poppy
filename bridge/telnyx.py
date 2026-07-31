@@ -20,6 +20,7 @@ import asyncio
 import base64
 import json
 import math
+import os
 import queue
 import random
 import threading
@@ -62,13 +63,14 @@ ULAW_BYTES_PER_SECOND = 8000
 # This is SYNTHESISED room tone, not a recording of an office. It will not give
 # you keyboards or a colleague laughing. If a real ambience recording is wanted,
 # an 8 kHz mu-law loop dropped in here would replace it directly.
-# -48 -> -42 -> -36 across 2026-07-31, and the last step is MEASURED, not
-# taste: the live voice model carries its own reference room noise at a
-# -36.2 dBFS floor (rendered a long sentence, took the quietest 200ms
-# window), so any synthetic floor quieter than that IS the dead air Hugo
-# kept reporting the moment she stops speaking. The room between her turns
-# has to be the same room her voice was recorded in.
-COMFORT_NOISE_DBFS = -36.0
+# MEASURED PER VOICE, never tuned by ear: render a long sentence with the
+# live voice, take the quietest 200ms window, and match it. The room between
+# her turns has to be the same room her voice was recorded in: quieter reads
+# as the line dying whenever she stops, louder reads as hiss barging in.
+# History: -36.2 measured on voice d875... (2026-07-31), -48.8 on voice
+# 690813f2... which is the live one. Override with BRIDGE_COMFORT_DBFS when
+# the voice changes, then move the default.
+COMFORT_NOISE_DBFS = float(os.environ.get("BRIDGE_COMFORT_DBFS", "-48"))
 COMFORT_CHUNK_MS = 200
 # How much of the previous sample carries into the next one. Higher is duller
 # and more distant. 0.92 puts most of the energy under about 300 Hz, which is

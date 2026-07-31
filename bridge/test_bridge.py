@@ -1920,12 +1920,14 @@ def _():
     # it was mixed in but fully masked; -42 keeps it present without becoming
     # hiss. One constant feeds both the between-turns frames and the
     # under-voice mixing, so there is never a level seam.
-    # Measured 2026-07-31 on the live voice: its baked-in reference noise
-    # floor is -36.2 dBFS, and a synthetic floor 6 dB under that IS the dead
-    # air Hugo kept reporting; the room has to match the voice's own room.
+    # MEASURED PER VOICE: the constant must match the live voice's own
+    # baked-in noise floor (quietest 200ms window of a long render), because
+    # quieter reads as the line dying when she stops and louder reads as
+    # hiss. Voice 690813f2... measured -48.8. This test only pins the sane
+    # band; the real check is the measurement written next to the constant.
     from . import telnyx
-    assert telnyx.COMFORT_NOISE_DBFS >= -38.0, telnyx.COMFORT_NOISE_DBFS
-    assert telnyx.COMFORT_NOISE_DBFS <= -33.0, telnyx.COMFORT_NOISE_DBFS
+    assert telnyx.COMFORT_NOISE_DBFS >= -52.0, telnyx.COMFORT_NOISE_DBFS
+    assert telnyx.COMFORT_NOISE_DBFS <= -35.0, telnyx.COMFORT_NOISE_DBFS
 
 
 @case("a struggle trip carries a thinking pause, a flow trip does not")
