@@ -59,6 +59,18 @@ _PART_CUE_RE = re.compile(r"\[[a-z\s-]*$", re.IGNORECASE)
 # "an AI assistant", "I'm an A.I." and so on. Word boundaries keep it off every
 # ordinary word that happens to contain those two letters.
 _DISCLOSED_RE = re.compile(r"\bA\.?\s?I\.?\b|artificial intelligence", re.IGNORECASE)
+# An agreement murmured along under somebody talking: "yeah", "right",
+# "uh huh". Not an interruption, the opposite of one, and stopping for it is
+# how she "snaps shut" mid-thought. Distinct from _STANDALONE_REPLY, which is
+# about words that ANSWER a question once she has stopped; "what" and "sorry"
+# belong there and are real interruptions here.
+# Checked word by word, so "uh huh" and "mm hmm" are covered by their parts:
+# a two-entry phrase in this set would never match anything.
+_AGREEMENT_MURMURS = frozenset({
+    "yeah", "yes", "yep", "yup", "right", "okay", "ok", "sure",
+    "mm", "mhm", "hmm", "uh", "huh", "gotcha", "true", "fair",
+})
+
 # Words that are a complete reply on their own. These are never mistaken for
 # her own echo, however well they match what she just said, because discarding
 # one means ignoring the answer she asked for.
@@ -390,6 +402,7 @@ _ACK_OPENER = re.compile(
     r"^((?:\s*\[[a-z][a-z\s,-]{0,30}\]\s*)+)?"
     r"\s*"
     r"(right|okay|ok|yeah|yep|yes|sure|gotcha|got it|mm+|mm hmm|no worries|"
+    r"understood|i understand|i see|i hear you|makes sense|"
     r"fair enough|absolutely|of course|certainly|great|perfect|brilliant|"
     r"that[' ’]?s a (?:good|great|fair) question|"
     r"in short|to sum up|to summari[sz]e|furthermore|moreover|additionally|"
@@ -966,16 +979,23 @@ class Agent:
             _, speech_ms, _ = barge.feed(chunk)
             if config.BARGE_IN_ENABLED and speech_ms >= barge_threshold_ms(
                     elapsed_ms, self.transport.barge_min_ms):
+                # `so_far` lets the streamed path hand over the text it has
+                # produced up to now, because on that path the sentence does not
+                # exist yet when playback begins.
+                current = spoken_words(text or (so_far() if so_far else ""))
+                if not self._confirm_barge(elapsed_ms, current):
+                    # Noise, echo or a murmur, not a person taking the floor.
+                    # Reset rather than hold: real speech re-accumulates in a
+                    # few hundred ms and by then the transcriber has words to
+                    # confirm it with.
+                    barge.reset()
+                    continue
                 # Let the word in flight land before cutting. Stopping the
                 # instant we decide chops a syllable in half, which sounds
                 # broken rather than polite. Hugo: "you don't stop mid-word, you
                 # can stop mid-sentence, but never mid-word." A couple of
                 # hundred milliseconds is about one word at speaking pace.
                 # Wait exactly long enough to land on the next word boundary.
-                # `so_far` lets the streamed path hand over the text it has
-                # produced up to now, because on that path the sentence does not
-                # exist yet when playback begins.
-                current = text or (so_far() if so_far else "")
                 time.sleep(_finish_word_ms(current, elapsed_ms) / 1000.0)
                 self.transport.stop_speaking()
                 self._emit("bargein", "prospect interrupted")
@@ -1039,6 +1059,56 @@ class Agent:
         # Contiguous, not scattered. Echo is a fragment of what she said, in
         # the order she said it, not a bag of words that happen to appear.
         return theirs in mine_raw
+
+    def _confirm_barge(self, elapsed_ms: float, current: str) -> bool:
+        """Stage two of the interrupt decision: is this a person taking the floor?
+
+        Stage one is the VAD's sustained-speech trigger, and on its own it is a
+        kill switch: any noise loud enough for long enough snaps her shut. That
+        was tolerable at the full 700ms threshold and is not at the early-yield
+        350ms one, so inside the early window the trigger has to be CONFIRMED
+        by the live transcriber actually hearing words.
+
+        Three things fail the confirmation, each a real way the kill switch
+        fired wrongly:
+          - no words at all: a door slam, a cough, a clatter of tools
+          - her own current sentence coming back off their handset, which
+            _own_echo cannot see because it compares against the PREVIOUS turn
+          - a bare agreement murmur ("yeah", "uh huh"): somebody agreeing
+            along under her, which is an invitation to keep going, not to stop
+
+        Past the early window, or on a rig with no live transcriber, the
+        sustained-speech evidence stands on its own exactly as it always did,
+        so a real interruption can never be locked out for long: the VAD keeps
+        accumulating and crosses the full threshold regardless.
+        """
+        if elapsed_ms >= config.BARGE_EARLY_WINDOW_MS:
+            return True
+        if self.ears is None:
+            return True
+        fn = getattr(self.ears, "partial_text", None)
+        if fn is None:
+            return True
+        try:
+            partial = (fn() or "").strip()
+        except Exception:
+            return True        # a broken reader must not lock out interruptions
+        if not partial:
+            return False
+        words = re.sub(r"[^\w\s']", " ", partial.lower()).split()
+        if not words:
+            return False
+        if len(words) <= 2 and all(w in _AGREEMENT_MURMURS for w in words):
+            return False
+        mine = " ".join(re.sub(r"[^\w\s']", " ", (current or "").lower()).split())
+        theirs = " ".join(words)
+        if mine:
+            if len(words) >= 4 and difflib.SequenceMatcher(
+                    None, theirs, mine).ratio() >= config.ECHO_SIMILARITY:
+                return False
+            if len(words) <= 3 and theirs in mine:
+                return False
+        return True
 
     def _settle(self) -> None:
         """Let our own echo pass before listening.
@@ -1179,6 +1249,12 @@ class Agent:
         full_voice = spoken_words(_strip_marker("".join(spoken)))
         heard = full_voice
         if interrupted:
+            # The trip added audio the char-per-second estimate knows nothing
+            # about. Uncorrected, a barge on a tripped turn credited the
+            # prospect with roughly a word they never heard.
+            if config.DISFLUENCY_ENABLED:
+                speak_ms = max(0.0, speak_ms - (
+                    self._disfluencer.last_trip_chars / chars_per_second() * 1000.0))
             heard = _spoken_prefix(heard, speak_ms)
         words = heard
         # Whether a question was ASKED, judged against the reply she was

@@ -131,6 +131,42 @@ automatically.
 - Hard 7-minute call cap so a stuck call cannot run up a bill.
 - "Take me off your list" ends the call immediately.
 
+## The naturalness stack (2026-07-30)
+
+Hugo's hard requirements for human-sounding calls, each enforced in code with a
+test lock, never left to the prompt. "If there isn't a test case for it, it
+doesn't exist."
+
+| Requirement | Where it lives | Test lock |
+|---|---|---|
+| Simulated disfluency: the trip at the start of a thought, tied to cognitive load | `disfluency.py`, wired into `_say_live` downstream of `_clip_reply`; slow first token raises the odds | "a stutter lands at the start of a thought", "the stutter is rare and never twice in a row", "a dotted A.I. disclosure never trips", "a time or price never trips" |
+| Ambient floor / comfort noise: the line never goes digitally dead | `telnyx.py` `_comfort_frame`: synthesised room tone at -48 dBFS, low-passed with slow drift, starts on answer, fully ducks while she speaks | telnyx comfort tests in `test_telnyx.py` |
+| Deterministic filtering before TTS, no gambling on the model | `copy_guard.py`: banned-register swaps (incl. the US-register block), the list-run cutter; `_ACK_OPENER` strips leading "I understand"/"Understood"/"I see" | "banned register is swapped", "the US register leaks are swapped", "the call-centre acknowledgements are stripped" |
+| Look-ahead / semantic chunking so prosody has a melody | Fish websocket buffers text itself; first-sentence flush (measured 2110ms -> 592ms to first audio); `condition_on_previous_chunks: True`; last cue re-sent over the flush seam | "the Fish socket carries prosody across chunk boundaries" |
+| Two-stage barge-in: VAD trigger, then ASR confirmation | `barge_threshold_ms` (early-yield window) + `Agent._confirm_barge`: inside the early window a cut needs real words that are not her own echo and not an agreement murmur | "both start talking at once", "a barge in the early window needs words, not just noise" |
+| Wait after a question, even one clipped mid-mark | `question_was_asked` + the waiting branch in `call()` | "a question clipped just before its mark still counts as asked" |
+| Backchannels only when prosody invites them | `_pick_backchannel` reads `_last_contour` (captured before the prosody reset): "fell" invites, "rose"/"held"/"unsure" do not | "backchannels are gated by prosody", "silence is never acknowledged" |
+| Interruption keeps the thread | `_spoken_prefix` + `brain.amend_last` + the resume path; the trip's added audio is subtracted before the estimate | "a barged turn with a trip does not over-credit the transcript" |
+| Emotion as a spectrum | The cue system: intensity modifiers ("[very warm]", "[slightly amused]") are first-class, `[emphasis]` mid-line, `[break]`/`[long-break]` for pauses | cue allowlist tests |
+
+### Deliberate divergences, and why
+
+- **No three-emotion stacks.** Measured: a different emotion on every line is
+  the documented cause of a voice sounding unnatural. Two layered where they
+  genuinely agree is the ceiling, and the intensity modifiers are the gradient.
+- **No noise cues.** [chuckling] measured +0.93s: that is a laugh, not a
+  delivery, and Hugo reported it twice. Breaths-as-sound-effects are the same
+  trap. Thinking is covered by the slow-brain disfluency trip and [break].
+- **No signal-subtraction echo cancellation.** Our inbound track carries ONLY
+  the far end (`stream_track: inbound_track`), so the classic AEC premise, your
+  own output leaking into your own mic, does not exist here. The echo that does
+  exist arrives acoustically off THEIR handset with unpredictable delay, and is
+  handled by recognition instead: `_own_echo` on completed turns, the 22 dB
+  barge margin, and `_confirm_barge` against the current sentence.
+- **No on-prem silicon.** Rented Haiku + Fish measured to a ~1.2s reply gap.
+  Streaming STT, the early flush and the warm sockets already claimed the
+  available wins; the remaining floor is the models themselves.
+
 ## Not built yet
 
 - CSV lead loading, the dial queue, retry logic

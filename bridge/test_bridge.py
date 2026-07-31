@@ -1781,6 +1781,114 @@ def _():
     assert 2 <= hits <= 30, hits
 
 
+@case("a barge in the early window needs words, not just noise")
+def _():
+    # Stage two of the interrupt decision. The lowered early-yield threshold
+    # made her quick to stop, and quick is only safe if the trigger is a
+    # person actually talking: a door slam has no words, her own echo has her
+    # words, and a "yeah" is somebody agreeing along, not taking the floor.
+    class FakeEars:
+        def __init__(self):
+            self.partial = ""
+        def partial_text(self):
+            return self.partial
+
+    a = agent.Agent.__new__(agent.Agent)
+    a.ears = FakeEars()
+    early = config.BARGE_EARLY_WINDOW_MS / 2
+    late = config.BARGE_EARLY_WINDOW_MS + 100
+    current = "So I answer phones while you're on a job"
+
+    a.ears.partial = ""                    # a slam, a cough, a clatter
+    assert not a._confirm_barge(early, current)
+    a.ears.partial = "hang on a second, before you go on"
+    assert a._confirm_barge(early, current)        # real words take the floor
+    a.ears.partial = "yeah"                # agreeing along
+    assert not a._confirm_barge(early, current)
+    a.ears.partial = "uh huh"
+    assert not a._confirm_barge(early, current)
+    a.ears.partial = "answer phones while you're on a job"
+    assert not a._confirm_barge(early, current)    # her own voice coming back
+    # Past the early window the sustained-speech evidence stands on its own,
+    # exactly as before this existed: a real interruption can never be locked
+    # out for long.
+    a.ears.partial = ""
+    assert a._confirm_barge(late, current)
+    # And a rig with no live transcriber keeps the one-stage behaviour.
+    a.ears = None
+    assert a._confirm_barge(early, current)
+
+
+@case("the call-centre acknowledgements are stripped from a reply's opening")
+def _():
+    # "If you're relying on the LLM to not say brilliant, or I understand,
+    # you're just gambling." Leading position only, the trailing punctuation
+    # gate keeps real sentences safe.
+    for line, want in [
+        ("I understand, so how does that sound?", "So how does that sound?"),
+        ("Understood. And when works better?", "And when works better?"),
+        ("I see. What's your setup right now?", "What's your setup right now?"),
+        ("Makes sense. What happens to those calls?", "What happens to those calls?"),
+    ]:
+        assert agent._strip_ack(line) == want, agent._strip_ack(line)
+    # No punctuation after the phrase: it is a real clause, leave it alone.
+    keep = "I understand you're busy so I'll be quick."
+    assert agent._strip_ack(keep) == keep
+
+
+@case("a dotted A.I. disclosure never trips")
+def _():
+    # Found by the adversarial review and reproduced: 'Yeah. A.I. assistant'
+    # came out as 'Yeah. A.I, I. assistant'. The word assembler sees dots as
+    # sentence enders, so the I of A.I. looked like a sentence-opening pronoun,
+    # and the one allowed single-letter trip mangled the compliance line while
+    # the transcript recorded it clean.
+    for line in [
+        "Yeah. A.I. assistant, that's what I am.",
+        "Right. A.I. is what I do all day.",
+        "So, I'm an A.I. that answers your phone.",
+    ]:
+        out = _stutter(line)[0]
+        assert "A.I." in out and "I, I." not in out and "A.I," not in out, out
+
+
+@case("a time or price never trips")
+def _():
+    # Also reproduced: 'Okay. 2pm tomorrow' came out as 'Okay. 2pm, pm
+    # tomorrow', because a digit at a trip site never cleared it and the 'pm'
+    # looked like a sentence-opening word. The booking readback is the money
+    # line of the whole call.
+    for line, bad in [
+        ("Okay. 2pm tomorrow, does that work?", "pm, pm"),
+        ("2pm works. See you then.", "pm, pm"),
+        ("It's $149 a month, under five bucks a day.", "a, a"),
+    ]:
+        out = _stutter(line)[0]
+        assert bad not in out, out
+
+
+@case("a barged turn with a trip does not over-credit the transcript")
+def _():
+    # The trip adds audio the char-per-second estimate knows nothing about, so
+    # a barge on a tripped turn credited the prospect with a word they never
+    # heard. The injector reports what it added; the estimate subtracts it.
+    import random as _random
+    from . import disfluency
+    d = disfluency.Disfluencer(rng=_random.Random(7))
+    old = config.DISFLUENCY_CHANCE
+    config.DISFLUENCY_CHANCE = 1.0
+    try:
+        out = "".join(d.feed(iter(["Takes the calls you'd miss."])))
+    finally:
+        config.DISFLUENCY_CHANCE = old
+    added = len(out) - len("Takes the calls you'd miss.")
+    assert added > 0, out
+    assert d.last_trip_chars == added, (d.last_trip_chars, added)
+    # And a clean reply reports zero, so nothing is subtracted.
+    out2 = "".join(d.feed(iter(["Sounds good."])))
+    assert d.last_trip_chars == 0, d.last_trip_chars
+
+
 @case("the transcript records the clean line, the voice gets the trip")
 def _():
     # The injector sits AFTER _clip_reply on purpose: `spoken` feeds the

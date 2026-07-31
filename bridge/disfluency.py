@@ -45,15 +45,20 @@ import time
 
 from . import config
 
-# A word, as the injector sees one: letters and apostrophes. Digits
-# deliberately excluded, so "500" and "2pm" can never trip.
+# A word, as the injector sees one: letters and apostrophes. Digits are
+# excluded here, and the site-clearing rule in feed() is what actually protects
+# a mixed token: this regex alone let "2pm" trip as "pm, pm", because the
+# letters after the digit looked like a word starting a sentence.
 _WORD = re.compile(r"[A-Za-z']+$")
 # The first syllable of a long word: leading consonants and the first vowel
 # run. "specifically" -> "spe", "problem" -> "pro", "evening" -> "e".
 _SYLLABLE = re.compile(r"^[bcdfghjklmnpqrstvwxz]{0,3}[aeiouy]+")
 # Words that must never be doubled. "AI" is the disclosure; a doubled filler
-# word is the exact noise _drop_leading_ack exists to remove.
-_NEVER = frozenset({"ai", "a.i", "um", "uh", "erm", "mm", "right", "okay",
+# word is the exact noise _drop_leading_ack exists to remove. The dotted form
+# "A.I." is not here because a dot can never enter the word buffer: it is
+# handled structurally instead, a word abutting a preceding dot is an
+# abbreviation fragment and is never eligible (see feed()).
+_NEVER = frozenset({"ai", "um", "uh", "erm", "mm", "right", "okay",
                     "ok", "yeah", "yes", "no", "so"})
 # Long enough for the syllable shape; anything shorter is said twice in full.
 _SYLLABLE_MIN = 7
@@ -93,6 +98,11 @@ class Disfluencer:
         # Start eligible: the gap rule is "never twice in a row", not "never
         # early in the call".
         self._since = config.DISFLUENCY_MIN_GAP
+        # How many characters the last reply gained from its trip. The barge-in
+        # arithmetic reads this: injected audio the char-per-second estimate
+        # does not know about would otherwise credit the prospect with a word
+        # they never heard.
+        self.last_trip_chars = 0
 
     def _eligible(self, word: str) -> bool:
         return (_trip(word) is not None
@@ -101,6 +111,7 @@ class Disfluencer:
     def feed(self, tokens):
         """Yield the stream with at most one trip added. Generator per reply."""
         t0 = time.monotonic()
+        self.last_trip_chars = 0
         want = self._since >= config.DISFLUENCY_MIN_GAP
         decided_chance = False
         injected = False
@@ -108,16 +119,27 @@ class Disfluencer:
         at_site = True
         depth = 0            # inside a [cue]
         word = ""            # the word being assembled at a site
+        # The character that came immediately before the word being assembled.
+        # "A.I." is seen by this loop as the words "A" and "I" with dots
+        # between them, and the dot re-arms the site, so without this the I of
+        # the disclosure was the first eligible trip on exactly the lines that
+        # open with a protected word ("Yeah. A.I. ..."). A word abutting a dot
+        # is an abbreviation fragment, never a word.
+        prev = ""
+        before_word = ""
 
         def flush_word(w: str) -> str:
             nonlocal injected, at_site
             at_site = False
             if injected or not w:
                 return w
+            if before_word == ".":
+                return w                   # an abbreviation fragment
             tripped = _trip(w) if self._eligible(w) else None
             if tripped is None:
                 return w
             injected = True
+            self.last_trip_chars = len(tripped) - len(w)
             self.on_event("disfluency", f"{w} -> {tripped}")
             return tripped
 
@@ -146,21 +168,33 @@ class Disfluencer:
                             word = ""
                         depth += 1
                         out.append(ch)
+                        prev = ch
                         continue
                     if depth:
                         out.append(ch)
                         if ch == "]":
                             depth -= 1
+                        prev = ch
                         continue
                     if at_site and (ch.isalpha() or ch == "'"):
+                        if not word:
+                            before_word = prev
                         word += ch
+                        prev = ch
                         continue
                     if word:
                         out.append(flush_word(word))
                         word = ""
                     if ch in ".!?":
                         at_site = True
+                    elif at_site and not ch.isspace():
+                        # A digit, a bracket, a quote: whatever it is, the word
+                        # that follows it is not the start of a spoken thought.
+                        # Without this, "Okay. 2pm tomorrow" tripped as
+                        # "2pm, pm tomorrow", garbling the booking readback.
+                        at_site = False
                     out.append(ch)
+                    prev = ch
                 piece = "".join(out)
                 if piece:
                     yield piece
