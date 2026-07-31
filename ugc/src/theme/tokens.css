@@ -45,6 +45,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+@keyframes ugc-edge-flow {
+  from {
+    stroke-dashoffset: 12;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
