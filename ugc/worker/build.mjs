@@ -8,7 +8,7 @@ await build({
   entryPoints: ['worker/worker.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node22',
+  target: 'node20',
   format: 'esm',
   outfile: 'worker/dist/worker.mjs',
   banner: { js: '// built by worker/build.mjs; do not edit by hand' },
