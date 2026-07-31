@@ -25,8 +25,11 @@ export interface SpendEntry {
   ts: string;
 }
 
+// A measured real bill (settled balance delta) beats the ceiling estimate;
+// entries not yet measured keep their estimate. The guard therefore tracks
+// truth where truth exists and stays pessimistic where it does not.
 export function spentUsd(entries: SpendEntry[]): number {
-  return entries.reduce((sum, e) => sum + e.estUsd, 0);
+  return entries.reduce((sum, e) => sum + (Number.isFinite(e.realUsd) ? (e.realUsd as number) : e.estUsd), 0);
 }
 
 // Throws BEFORE a submission would take the ledger past the budget. The cap

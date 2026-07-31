@@ -23,6 +23,15 @@ describe('bench budget guard', () => {
     expect(() => assertWithinBudget(prior, 1.5, 10)).toThrow(/Budget guard/);
   });
 
+  it('a measured real bill replaces the ceiling estimate in the sum', () => {
+    const prior: SpendEntry[] = [
+      { key: 'a', estUsd: 3, realUsd: 0.5, ts: '2026-07-31T00:00:00Z' },
+      { key: 'b', estUsd: 3, ts: '2026-07-31T00:00:00Z' },
+    ];
+    expect(spentUsd(prior)).toBeCloseTo(3.5);
+    expect(() => assertWithinBudget(prior, 6, 10)).not.toThrow();
+  });
+
   it('rejects nonsense inputs instead of failing open', () => {
     expect(() => assertWithinBudget([], 1, 0)).toThrow();
     expect(() => assertWithinBudget([], 1, -5)).toThrow();
