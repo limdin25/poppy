@@ -65,7 +65,7 @@ export function SectorGrid({
           })}
       </div>
       <p className="mt-3 text-xs text-foreground-secondary">
-        Selecione de {min} a {max} setores ({selected.length} selecionados)
+        Select {min} to {max} sectors ({selected.length} selected)
       </p>
     </div>
   );

@@ -48,7 +48,7 @@ function NotificationRow({ notification: n }: { notification: AppNotification })
         </p>
         {n.type === "account_connected" && (
           <Link
-            href="/admin/campanha"
+            href="/admin/campaign"
             className="mt-2 inline-flex items-center text-sm font-medium text-accent hover:underline"
           >
             {copy.addToCampaign}

@@ -5,11 +5,11 @@ import { DashboardMetrics } from "./DashboardMetrics";
 describe("DashboardMetrics", () => {
   it("renders heading", () => {
     render(<DashboardMetrics profileMetrics={[]} />);
-    expect(screen.getByText("Métricas do Perfil")).toBeInTheDocument();
+    expect(screen.getByText("Profile Metrics")).toBeInTheDocument();
   });
 
   it("shows connect prompt when no metrics", () => {
     render(<DashboardMetrics profileMetrics={[]} />);
-    expect(screen.getByText(/Conecte seu Instagram/)).toBeInTheDocument();
+    expect(screen.getByText(/Connect your Instagram/)).toBeInTheDocument();
   });
 });

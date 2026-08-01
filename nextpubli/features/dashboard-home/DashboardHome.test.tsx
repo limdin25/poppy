@@ -18,7 +18,7 @@ const mockInstagram: InstagramData = {
 };
 
 const mockCampaignStatus: MyCampaignStatus = {
-  campaign: { id: "camp-1", name: "Campanha Principal" },
+  campaign: { id: "camp-1", name: "Main Campaign" },
   added_at: "2026-06-05T13:00:00Z", // 10:00 em São Paulo
   next_post: {
     id: "post-1",
@@ -40,7 +40,7 @@ const baseProps = {
 describe("DashboardHome", () => {
   it("renders welcome message with name", () => {
     render(<DashboardHome {...baseProps} />);
-    expect(screen.getByText(/Olá, Ana/)).toBeInTheDocument();
+    expect(screen.getByText(/Hello, Ana/)).toBeInTheDocument();
   });
 
   it("shows Instagram username when connected", () => {
@@ -50,7 +50,7 @@ describe("DashboardHome", () => {
 
   it("shows connect button when not connected", () => {
     render(<DashboardHome {...baseProps} instagram={null} />);
-    expect(screen.getByText("Conectar meu Instagram")).toBeInTheDocument();
+    expect(screen.getByText("Connect my Instagram")).toBeInTheDocument();
   });
 
   it("shows the influencer's share link with a copy button", () => {
@@ -58,17 +58,17 @@ describe("DashboardHome", () => {
     expect(
       screen.getByText("https://www.scanplates.com/?sck=ana4k2p9"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copiar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
   });
 
   it("shows the campaign card with name, joined date and next post in São Paulo time", () => {
     render(<DashboardHome {...baseProps} campaignStatus={mockCampaignStatus} />);
-    expect(screen.getByText("Campanha Principal")).toBeInTheDocument();
+    expect(screen.getByText("Main Campaign")).toBeInTheDocument();
     expect(
-      screen.getByText(/Você está na campanha desde 05\/06\/2026, 10:00/),
+      screen.getByText(/You have been in the campaign since 05\/06\/2026, 10:00/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Próxima publicação: Story em 12\/06\/2026, 17:00/),
+      screen.getByText(/Next post: Story on 12\/06\/2026, 17:00/),
     ).toBeInTheDocument();
   });
 
@@ -80,7 +80,7 @@ describe("DashboardHome", () => {
       />,
     );
     expect(
-      screen.getByText("Nenhuma publicação agendada no momento."),
+      screen.getByText("No posts scheduled at the moment."),
     ).toBeInTheDocument();
   });
 
@@ -88,19 +88,25 @@ describe("DashboardHome", () => {
     render(<DashboardHome {...baseProps} campaignStatus={null} />);
     expect(
       screen.getByText(
-        "Sua conta ainda não está na campanha. Você entra automaticamente assim que o administrador adicionar sua conta.",
+        "Your account is not in the campaign yet. You will join automatically as soon as the administrator adds your account.",
       ),
     ).toBeInTheDocument();
   });
 
   it("nudges the influencer when their link is missing from the bio", () => {
     render(<DashboardHome {...baseProps} bioLinkMissing />);
-    expect(screen.getByText("Falta seu link na bio!")).toBeInTheDocument();
-    expect(screen.getByText(/campo "Site" do seu perfil/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Your link is missing from your bio!"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/"Website" field on your Instagram profile/),
+    ).toBeInTheDocument();
   });
 
   it("hides the bio nudge when the link is already there", () => {
     render(<DashboardHome {...baseProps} bioLinkMissing={false} />);
-    expect(screen.queryByText("Falta seu link na bio!")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Your link is missing from your bio!"),
+    ).not.toBeInTheDocument();
   });
 });

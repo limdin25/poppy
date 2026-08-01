@@ -1,15 +1,15 @@
 export const authCopy = {
   login: {
-    title: "Bem-vindo de volta",
-    subtitle: "Entre na sua conta NextPubli",
-    noAccount: "Não tem conta?",
-    createAccount: "Cadastre-se",
+    title: "Welcome back",
+    subtitle: "Sign in to your NextPubli account",
+    noAccount: "Don't have an account?",
+    createAccount: "Sign up",
   },
   signup: {
-    title: "Crie sua conta",
-    subtitle: "Essas marcas estão esperando por você...",
-    hasAccount: "Já tem conta?",
-    loginLink: "Entrar",
-    terms: "Sou um influenciador e aceito os termos de uso",
+    title: "Create your account",
+    subtitle: "These brands are waiting for you...",
+    hasAccount: "Already have an account?",
+    loginLink: "Sign in",
+    terms: "I am a creator and I accept the terms of use",
   },
 } as const;

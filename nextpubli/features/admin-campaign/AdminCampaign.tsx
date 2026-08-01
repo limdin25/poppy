@@ -196,7 +196,7 @@ function ItemModal({
                 name="caption"
                 rows={3}
                 defaultValue={item?.caption ?? ""}
-                placeholder="Escreva a legenda do post..."
+                placeholder="Write the post caption..."
                 className="resize-none rounded-lg border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
             </div>
@@ -255,7 +255,7 @@ function ItemModal({
                 min="0"
                 step="0.1"
                 defaultValue={item?.instagram_options?.reel_cover_seconds ?? ""}
-                placeholder="ex: 2.5"
+                placeholder="e.g. 2.5"
                 className="rounded-lg border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
             </div>
@@ -406,7 +406,7 @@ function AddAccountsModal({
                   : copy.addModal.selectAll}
               </button>
               <span className="text-foreground-secondary">
-                {selected.length} selecionada(s)
+                {selected.length} selected
               </span>
             </div>
 
@@ -555,7 +555,7 @@ function SettingsModal({
               defaultValue={campaign.brand_id ?? ""}
               className="rounded-lg border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none"
             >
-              <option value="">—</option>
+              <option value="">-</option>
               {brands.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -597,7 +597,7 @@ export function AdminCampaign({
   const [isPending, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Snapshot of "now" for upcoming/past labels — stable across re-renders.
+  // Snapshot of "now" for upcoming/past labels, stable across re-renders.
   const [now] = useState(() => Date.now());
 
   const filteredItems = useMemo(() => {
@@ -634,7 +634,7 @@ export function AdminCampaign({
     });
   };
 
-  const brandName = (id: string | null) => brands.find((b) => b.id === id)?.name ?? "—";
+  const brandName = (id: string | null) => brands.find((b) => b.id === id)?.name ?? "-";
 
   return (
     <div className="space-y-6 p-6">
@@ -671,7 +671,7 @@ export function AdminCampaign({
         </div>
       )}
 
-      {/* Cronograma */}
+      {/* Schedule */}
       <section className="rounded-xl border border-border p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-lg font-semibold">
@@ -763,7 +763,7 @@ export function AdminCampaign({
                       {brandName(item.brand_id ?? campaign.brand_id)}
                     </td>
                     <td className="max-w-xs truncate px-4 py-3 text-foreground-secondary">
-                      {item.caption || "—"}
+                      {item.caption || "-"}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -805,7 +805,7 @@ export function AdminCampaign({
         </div>
       </section>
 
-      {/* Contas */}
+      {/* Accounts */}
       <section className="rounded-xl border border-border p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-lg font-semibold">
@@ -876,7 +876,7 @@ export function AdminCampaign({
                         @{m.ig_username}
                       </a>
                     ) : (
-                      <span className="text-foreground-secondary">—</span>
+                      <span className="text-foreground-secondary">-</span>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-foreground-secondary">

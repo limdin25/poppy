@@ -69,14 +69,14 @@ export async function notifyAccountConnected(params: {
   name: string;
 }): Promise<void> {
   const { profileId, igUsername, name } = params;
-  const handle = igUsername ? `@${igUsername}` : name || "Conta sem nome";
+  const handle = igUsername ? `@${igUsername}` : name || "Unnamed account";
 
   try {
     await createNotification({
       type: "account_connected",
       profile_id: profileId,
-      title: `Nova conta conectada: ${handle}`,
-      body: `${name || handle} conectou o Instagram e ainda não está na campanha.`,
+      title: `New account connected: ${handle}`,
+      body: `${name || handle} connected their Instagram and is not in the campaign yet.`,
     });
   } catch (err) {
     console.error("[notifications] failed to create in-app notification:", err);
@@ -85,19 +85,19 @@ export async function notifyAccountConnected(params: {
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://nextpubli.com";
     const connectedAt = formatSaoPaulo(new Date().toISOString());
-    const subject = `Nova conta conectada: ${handle}`;
+    const subject = `New account connected: ${handle}`;
     const html = `
       <div style="font-family: sans-serif; max-width: 480px;">
-        <h2 style="color: #E1306C;">Nova conta conectada</h2>
-        <p><strong>${name || handle}</strong> (${handle}) conectou o Instagram em ${connectedAt}.</p>
-        <p>A conta ainda <strong>não está na campanha</strong>.</p>
+        <h2 style="color: #E1306C;">New account connected</h2>
+        <p><strong>${name || handle}</strong> (${handle}) connected their Instagram on ${connectedAt}.</p>
+        <p>The account is <strong>not in the campaign yet</strong>.</p>
         <p>
-          <a href="${appUrl}/admin/campanha"
+          <a href="${appUrl}/admin/campaign"
              style="display:inline-block;background:#E1306C;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;">
-            Adicionar à campanha
+            Add to campaign
           </a>
         </p>
-        <p style="color:#6B7280;font-size:12px;">NextPubli — notificação automática.</p>
+        <p style="color:#6B7280;font-size:12px;">NextPubli, automated notification.</p>
       </div>`;
 
     const emails = await getAdminEmails();

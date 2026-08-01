@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     .single<{ is_admin: boolean }>();
 
   if (!profile?.is_admin)
-    return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
   const admin = createAdminClient();
 
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
 
   if (!conversationId || !body) {
     return NextResponse.json(
-      { error: "conversationId e body são obrigatórios" },
+      { error: "conversationId and body are required" },
       { status: 400 },
     );
   }
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     .single();
 
   if (!convo)
-    return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
+    return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
 
   const conv = convo as {
     id: string;
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
 
   if (!accountId) {
     return NextResponse.json(
-      { error: "Nenhum WhatsApp conectado. Conecte em Configurações." },
+      { error: "No WhatsApp connected. Connect one in Settings." },
       { status: 400 },
     );
   }
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
   } else {
     const profileId = conv.profile_id;
     if (!profileId) {
-      return NextResponse.json({ error: "Sem contato na conversa" }, { status: 400 });
+      return NextResponse.json({ error: "No contact on this conversation" }, { status: 400 });
     }
 
     const { data: contactProfile } = await admin
@@ -136,7 +136,7 @@ export async function POST(req: Request) {
 
     if (!recipientPhone) {
       return NextResponse.json(
-        { error: "Contato sem número de WhatsApp" },
+        { error: "Contact has no WhatsApp number" },
         { status: 400 },
       );
     }

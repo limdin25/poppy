@@ -52,29 +52,29 @@ function StatCard({
 export function AdminOverview({ stats, alerts }: AdminOverviewProps) {
   return (
     <div className="space-y-6 p-6">
-      <h1 className="text-2xl font-bold">Visão Geral</h1>
+      <h1 className="text-2xl font-bold">Overview</h1>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           icon={Users}
-          label="Total de influenciadores"
+          label="Total creators"
           value={stats.totalInfluencers}
-          sub={`${stats.connectedInfluencers} conectados · ${stats.pendingInfluencers} pendentes`}
+          sub={`${stats.connectedInfluencers} connected, ${stats.pendingInfluencers} pending`}
         />
         <StatCard
           icon={FileText}
-          label="Posts publicados"
+          label="Published posts"
           value={stats.postsToday}
-          sub={`${stats.postsThisWeek} esta semana`}
+          sub={`${stats.postsThisWeek} this week`}
         />
-        <StatCard icon={ShoppingCart} label="Vendas Hotmart" value={stats.totalSales} />
+        <StatCard icon={ShoppingCart} label="Hotmart sales" value={stats.totalSales} />
       </div>
 
       {alerts.length > 0 && (
         <div className="rounded-xl border border-warning/30 p-6">
           <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
             <AlertTriangle size={20} className="text-warning" />
-            Alertas
+            Alerts
           </h2>
           <div className="space-y-2">
             {alerts.map((alert) => (

@@ -38,7 +38,7 @@ describe("createMediaUploadUrl", () => {
 
   it("rejects unsupported file types", async () => {
     const r = await createMediaUploadUrl("virus.exe", "application/x-msdownload");
-    expect(r).toEqual({ error: expect.stringContaining("não suportado") });
+    expect(r).toEqual({ error: expect.stringContaining("Unsupported format") });
     expect(createSignedUploadUrl).not.toHaveBeenCalled();
   });
 

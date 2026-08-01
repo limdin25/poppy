@@ -30,7 +30,7 @@ export function PasswordLoginForm() {
             name="email"
             type="email"
             required
-            placeholder="seu@email.com"
+            placeholder="you@email.com"
             className="w-full rounded-lg border border-border py-2.5 pl-10 pr-4 focus:border-accent focus:outline-none"
           />
         </div>
@@ -38,7 +38,7 @@ export function PasswordLoginForm() {
 
       <div className="flex flex-col gap-1">
         <label htmlFor="pw-password" className="text-sm font-medium text-foreground">
-          Senha
+          Password
         </label>
         <div className="relative">
           <Lock
@@ -68,7 +68,7 @@ export function PasswordLoginForm() {
         disabled={pending}
         className="w-full rounded-lg bg-accent px-6 py-3 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
       >
-        {pending ? "Entrando..." : "Entrar"}
+        {pending ? "Signing in..." : "Sign in"}
       </button>
     </form>
   );

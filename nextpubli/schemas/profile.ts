@@ -3,47 +3,47 @@ import { z } from "zod/v4";
 export const genderEnum = z.enum(["male", "female", "non_binary", "undisclosed"]);
 
 export const signupSchema = z.object({
-  first_name: z.string().min(1, "Nome é obrigatório"),
-  last_name: z.string().min(1, "Sobrenome é obrigatório"),
-  email: z.email("Email inválido"),
+  first_name: z.string().min(1, "First name is required"),
+  last_name: z.string().min(1, "Last name is required"),
+  email: z.email("Invalid email"),
   password: z
     .string()
-    .min(8, "Mínimo 8 caracteres")
-    .regex(/[A-Z]/, "Precisa de uma letra maiúscula")
-    .regex(/[a-z]/, "Precisa de uma letra minúscula")
-    .regex(/[0-9]/, "Precisa de um número")
-    .regex(/[^A-Za-z0-9]/, "Precisa de um caractere especial"),
+    .min(8, "At least 8 characters")
+    .regex(/[A-Z]/, "Needs an uppercase letter")
+    .regex(/[a-z]/, "Needs a lowercase letter")
+    .regex(/[0-9]/, "Needs a number")
+    .regex(/[^A-Za-z0-9]/, "Needs a special character"),
   accept_terms: z.literal(true, {
-    error: "Você precisa aceitar os termos",
+    error: "You must accept the terms",
   }),
 });
 
 export const personalProfileSchema = z.object({
-  date_of_birth: z.string().min(1, "Data de nascimento é obrigatória"),
+  date_of_birth: z.string().min(1, "Date of birth is required"),
   gender: genderEnum,
-  address_street: z.string().min(1, "Rua é obrigatória"),
-  address_city: z.string().min(1, "Cidade é obrigatória"),
-  address_postal_code: z.string().min(1, "CEP é obrigatório"),
+  address_street: z.string().min(1, "Street is required"),
+  address_city: z.string().min(1, "City is required"),
+  address_postal_code: z.string().min(1, "Postal code is required"),
   address_country: z.string().default("BR"),
-  phone: z.string().min(1, "Celular é obrigatório"),
+  phone: z.string().min(1, "Mobile number is required"),
 });
 
 export const hotmartLinkSchema = z.object({
-  hotmart_url: z.url("URL inválida"),
+  hotmart_url: z.url("Invalid URL"),
 });
 
 // Captured once, right after the first Instagram login (Instagram gives us no email).
 export const contactSchema = z.object({
-  email: z.email("Email inválido"),
-  whatsapp: z.string().trim().min(10, "Informe um WhatsApp válido com DDD"),
+  email: z.email("Invalid email"),
+  whatsapp: z.string().trim().min(10, "Enter a valid WhatsApp number with area code"),
 });
 
-// Collected on /cadastro BEFORE the influencer is sent to Instagram.
+// Collected on /signup BEFORE the influencer is sent to Instagram.
 export const igSignupSchema = z.object({
-  first_name: z.string().trim().min(1, "Nome é obrigatório"),
-  last_name: z.string().trim().min(1, "Sobrenome é obrigatório"),
-  email: z.email("Email inválido"),
-  whatsapp: z.string().trim().min(10, "Informe um WhatsApp válido com DDD"),
+  first_name: z.string().trim().min(1, "First name is required"),
+  last_name: z.string().trim().min(1, "Last name is required"),
+  email: z.email("Invalid email"),
+  whatsapp: z.string().trim().min(10, "Enter a valid WhatsApp number with area code"),
 });
 
 export type SignupInput = z.infer<typeof signupSchema>;

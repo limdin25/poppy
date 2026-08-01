@@ -12,4 +12,4 @@ Monthly calendar view of scheduled and published posts for the influencer.
 
 ## Route
 
-`/(influencer)/calendario`
+`/(influencer)/calendar`

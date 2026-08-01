@@ -1,69 +1,70 @@
 // Shared Terms of Use body — used by both the signup popup (IgSignupButton) and the
-// standalone /termos page. The heading is added by each caller.
+// standalone /terms page. The heading is added by each caller.
 export function TermsContent() {
   return (
     <div className="space-y-5 text-sm leading-relaxed text-foreground-secondary">
-      <p className="text-xs">Versão simplificada — última atualização: junho de 2026.</p>
+      <p className="text-xs">Simplified version, last updated June 2026.</p>
 
       <section>
         <h3 className="text-base font-semibold text-foreground">
-          1. O que é a NextPubli
+          1. What NextPubli is
         </h3>
         <p className="mt-1">
-          A NextPubli conecta influenciadores a marcas parceiras. Ao criar sua conta com o
-          Instagram, você passa a fazer parte da nossa rede e pode ganhar comissões
-          divulgando produtos das marcas.
+          NextPubli connects creators with partner brands. When you create your account
+          with Instagram, you join our network and can earn commissions by promoting the
+          brands&apos; products.
         </p>
       </section>
 
       <section>
         <h3 className="text-base font-semibold text-foreground">
-          2. Publicação no seu Instagram
+          2. Publishing on your Instagram
         </h3>
         <p className="mt-1">
-          Ao aceitar estes termos, você{" "}
+          By accepting these terms, you{" "}
           <strong>
-            autoriza a NextPubli a publicar conteúdo na sua conta do Instagram em seu nome
+            authorise NextPubli to publish content on your Instagram account on your
+            behalf
           </strong>
-          , incluindo <strong>stories, posts no feed, reels e carrosséis</strong>. As
-          publicações são feitas em nome das marcas parceiras às quais você está
-          associado. Você pode revisar e desconectar sua conta a qualquer momento.
+          , including <strong>stories, feed posts, reels and carousels</strong>. Posts
+          are made on behalf of the partner brands you are associated with. You can
+          review and disconnect your account at any time.
         </p>
       </section>
 
       <section>
-        <h3 className="text-base font-semibold text-foreground">3. Comissões</h3>
+        <h3 className="text-base font-semibold text-foreground">3. Commissions</h3>
         <p className="mt-1">
-          Você ganha comissão recorrente por cada venda gerada pelo seu link de afiliado,
-          conforme as condições de cada marca. Os pagamentos são feitos pela chave de
-          recebimento que você cadastrar.
+          You earn a recurring commission for every sale generated through your affiliate
+          link, according to each brand&apos;s conditions. Payments are made to the
+          payout details you register.
         </p>
       </section>
 
       <section>
         <h3 className="text-base font-semibold text-foreground">
-          4. Sua conta e seus dados
+          4. Your account and your data
         </h3>
         <p className="mt-1">
-          Para entrar, usamos sua conta profissional do Instagram. Também pedimos um email
-          e WhatsApp para falar com você sobre campanhas e pagamentos. Seus dados são
-          usados apenas para operar a plataforma.
+          To sign in, we use your professional Instagram account. We also ask for an
+          email and WhatsApp number so we can contact you about campaigns and payments.
+          Your data is used only to operate the platform.
         </p>
       </section>
 
       <section>
-        <h3 className="text-base font-semibold text-foreground">5. Cancelamento</h3>
+        <h3 className="text-base font-semibold text-foreground">5. Cancellation</h3>
         <p className="mt-1">
-          Você pode desconectar seu Instagram e encerrar sua conta quando quiser. A partir
-          daí, não publicaremos mais nada em seu nome.
+          You can disconnect your Instagram and close your account whenever you want.
+          From then on, we will not publish anything else on your behalf.
         </p>
       </section>
 
       <section>
-        <h3 className="text-base font-semibold text-foreground">6. Observações</h3>
+        <h3 className="text-base font-semibold text-foreground">6. Notes</h3>
         <p className="mt-1">
-          A NextPubli não é afiliada, patrocinada ou endossada pelo Instagram ou pela
-          Meta. Estes termos podem ser atualizados; avisaremos sobre mudanças importantes.
+          NextPubli is not affiliated with, sponsored by or endorsed by Instagram or
+          Meta. These terms may be updated; we will let you know about important changes.
         </p>
       </section>
     </div>

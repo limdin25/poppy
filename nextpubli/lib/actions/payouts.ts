@@ -33,7 +33,7 @@ export async function requestPayout(): Promise<
     .single<{ pix_key: string | null; pix_key_type: string | null }>();
 
   if (!profile?.pix_key) {
-    return { error: "Cadastre sua chave PIX antes de solicitar o pagamento." };
+    return { error: "Add your PIX key before requesting a payout." };
   }
 
   const { data: salesData } = await admin
@@ -45,7 +45,7 @@ export async function requestPayout(): Promise<
 
   const { saleIds } = availableBalance((salesData as SaleRow[] | null) ?? []);
   if (saleIds.length === 0) {
-    return { error: "Nenhum valor disponível para saque ainda." };
+    return { error: "No balance available to withdraw yet." };
   }
 
   // Create the payout row first so we have an id to claim sales with.
@@ -63,7 +63,7 @@ export async function requestPayout(): Promise<
     .single();
 
   if (error || !payout) {
-    return { error: "Não foi possível solicitar o pagamento. Tente novamente." };
+    return { error: "Could not request the payout. Please try again." };
   }
   const payoutId = (payout as { id: string }).id;
 
@@ -80,7 +80,7 @@ export async function requestPayout(): Promise<
   if (claimedRows.length === 0) {
     // Lost the race (another request already claimed these) — roll back the empty payout.
     await admin.from("payouts").delete().eq("id", payoutId);
-    return { error: "Você já tem uma solicitação de pagamento em andamento." };
+    return { error: "You already have a payout request in progress." };
   }
 
   // Set the payout total from what we actually claimed (never the pre-read estimate).
@@ -92,7 +92,7 @@ export async function requestPayout(): Promise<
     .update({ commission_amount: amount, sales_count: claimedRows.length })
     .eq("id", payoutId);
 
-  revalidatePath("/vendas");
+  revalidatePath("/sales");
   revalidatePath("/dashboard");
   return { success: true, amount };
 }

@@ -9,67 +9,67 @@ vi.mock("@/lib/actions/notifications", () => ({
 }));
 
 describe("AdminNotifications", () => {
-  it("renders a notification with title, body and São Paulo timestamp", () => {
+  it("renders a notification with title, body and Sao Paulo timestamp", () => {
     render(<AdminNotifications notifications={mockNotifications} />);
-    expect(screen.getByText("Nova conta conectada: @ana.silva")).toBeInTheDocument();
+    expect(screen.getByText("New account connected: @ana.silva")).toBeInTheDocument();
     expect(
-      screen.getByText("Ana Silva conectou o Instagram e ainda não está na campanha."),
+      screen.getByText("Ana Silva connected Instagram and is not in the campaign yet."),
     ).toBeInTheDocument();
-    // created_at 2026-06-12T20:00:00.000Z → 17:00 in São Paulo
+    // created_at 2026-06-12T20:00:00.000Z is 17:00 in Sao Paulo
     expect(screen.getByText("12/06/2026, 17:00")).toBeInTheDocument();
   });
 
-  it("marks unread notifications with a 'Não lida' badge", () => {
+  it("marks unread notifications with an 'Unread' badge", () => {
     render(<AdminNotifications notifications={mockNotifications} />);
     // mock has 2 unread rows (n1, n3)
-    expect(screen.getAllByText("Não lida")).toHaveLength(2);
+    expect(screen.getAllByText("Unread")).toHaveLength(2);
   });
 
-  it("filter 'Não lidas' hides read notifications", () => {
+  it("filter 'Unread only' hides read notifications", () => {
     render(<AdminNotifications notifications={mockNotifications} />);
-    expect(screen.getByText("Aviso do sistema")).toBeInTheDocument();
+    expect(screen.getByText("System notice")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Filtrar notificações" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter notifications" }), {
       target: { value: "unread" },
     });
 
-    expect(screen.queryByText("Aviso do sistema")).not.toBeInTheDocument();
-    expect(screen.getByText("Nova conta conectada: @ana.silva")).toBeInTheDocument();
-    expect(screen.getByText("Relatório semanal disponível")).toBeInTheDocument();
+    expect(screen.queryByText("System notice")).not.toBeInTheDocument();
+    expect(screen.getByText("New account connected: @ana.silva")).toBeInTheDocument();
+    expect(screen.getByText("Weekly report available")).toBeInTheDocument();
   });
 
-  it("shows 'Marcar todas como lidas' when there are unread notifications", () => {
+  it("shows 'Mark all as read' when there are unread notifications", () => {
     render(<AdminNotifications notifications={mockNotifications} />);
     expect(
-      screen.getByRole("button", { name: "Marcar todas como lidas" }),
+      screen.getByRole("button", { name: "Mark all as read" }),
     ).toBeInTheDocument();
   });
 
-  it("hides 'Marcar todas como lidas' when everything is read", () => {
+  it("hides 'Mark all as read' when everything is read", () => {
     const allRead = mockNotifications.map((n) => ({
       ...n,
       read_at: "2026-06-12T21:00:00.000Z",
     }));
     render(<AdminNotifications notifications={allRead} />);
     expect(
-      screen.queryByRole("button", { name: "Marcar todas como lidas" }),
+      screen.queryByRole("button", { name: "Mark all as read" }),
     ).not.toBeInTheDocument();
   });
 
-  it("shows a per-row 'Marcar como lida' button for unread rows", () => {
+  it("shows a per-row 'Mark as read' button for unread rows", () => {
     render(<AdminNotifications notifications={mockNotifications} />);
-    expect(screen.getAllByRole("button", { name: "Marcar como lida" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Mark as read" })).toHaveLength(2);
   });
 
-  it("links account_connected notifications to /admin/campanha", () => {
+  it("links account_connected notifications to /admin/campaign", () => {
     render(<AdminNotifications notifications={mockNotifications} />);
-    const links = screen.getAllByRole("link", { name: "Adicionar à campanha" });
+    const links = screen.getAllByRole("link", { name: "Add to campaign" });
     expect(links).toHaveLength(1);
-    expect(links[0]).toHaveAttribute("href", "/admin/campanha");
+    expect(links[0]).toHaveAttribute("href", "/admin/campaign");
   });
 
   it("shows the empty state when there are no notifications", () => {
     render(<AdminNotifications notifications={[]} />);
-    expect(screen.getByText("Nenhuma notificação.")).toBeInTheDocument();
+    expect(screen.getByText("No notifications.")).toBeInTheDocument();
   });
 });

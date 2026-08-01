@@ -4,7 +4,7 @@
 // refund window has closed, so we never pay on a sale that later gets refunded. A sale
 // clears when it's confirmed, not already in a payout, AND either Hotmart has sent the
 // PURCHASE_COMPLETE event (authoritative "no more refunds") or 21 days have passed since
-// the sale — matching the "21 dias após a venda confirmada" we already promise influencers.
+// the sale, matching the "21 days after the confirmed sale" we already promise influencers.
 
 export const PAYOUT_HOLD_DAYS = 21;
 
@@ -41,7 +41,7 @@ export function availableBalance(
 
 /**
  * Commissions not yet cleared, grouped by the date they unlock (sold_at + 21 days).
- * Lets the influencer see "R$ X libera em DD/MM" for each pending batch. (A sale may
+ * Lets the influencer see "R$ X releases on DD/MM" for each pending batch. (A sale may
  * clear earlier if Hotmart sends PURCHASE_COMPLETE; this shows the guaranteed date.)
  */
 export function pendingReleases(

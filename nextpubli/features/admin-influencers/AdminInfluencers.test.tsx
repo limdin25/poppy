@@ -62,7 +62,7 @@ function rowOf(name: string): HTMLElement {
 describe("AdminInfluencers", () => {
   it("renders heading", () => {
     renderList();
-    expect(screen.getByText("Influenciadores")).toBeInTheDocument();
+    expect(screen.getByText("Creators")).toBeInTheDocument();
   });
 
   it("shows influencer name", () => {
@@ -72,38 +72,38 @@ describe("AdminInfluencers", () => {
 
   it("shows empty state", () => {
     renderList({ influencers: [] });
-    expect(screen.getByText("Nenhum influenciador encontrado.")).toBeInTheDocument();
+    expect(screen.getByText("No creators found.")).toBeInTheDocument();
   });
 
-  it("shows 'Na campanha' badge for campaign members", () => {
+  it("shows 'In campaign' badge for campaign members", () => {
     renderList();
-    expect(within(rowOf("Ana Silva")).getByText("Na campanha")).toBeInTheDocument();
+    expect(within(rowOf("Ana Silva")).getByText("In campaign")).toBeInTheDocument();
   });
 
-  it("shows 'Fora da campanha' badge and an Adicionar button for non-members", async () => {
+  it("shows 'Not in campaign' badge and an Add button for non-members", async () => {
     const user = userEvent.setup();
     renderList();
     const row = rowOf("Bruno Costa");
-    expect(within(row).getByText("Fora da campanha")).toBeInTheDocument();
+    expect(within(row).getByText("Not in campaign")).toBeInTheDocument();
 
-    await user.click(within(row).getByRole("button", { name: "Adicionar" }));
+    await user.click(within(row).getByRole("button", { name: "Add" }));
     expect(addMembersToCampaign).toHaveBeenCalledWith("camp-1", ["user-2"], false);
   });
 
   it("filters the list by campaign membership", async () => {
     const user = userEvent.setup();
     renderList();
-    const filter = screen.getByLabelText("Filtrar por campanha");
+    const filter = screen.getByLabelText("Filter by campaign");
 
-    await user.selectOptions(filter, "Na campanha");
+    await user.selectOptions(filter, "In campaign");
     expect(screen.getByText("Ana Silva")).toBeInTheDocument();
     expect(screen.queryByText("Bruno Costa")).not.toBeInTheDocument();
 
-    await user.selectOptions(filter, "Fora da campanha");
+    await user.selectOptions(filter, "Not in campaign");
     expect(screen.queryByText("Ana Silva")).not.toBeInTheDocument();
     expect(screen.getByText("Bruno Costa")).toBeInTheDocument();
 
-    await user.selectOptions(filter, "Todas");
+    await user.selectOptions(filter, "All");
     expect(screen.getByText("Ana Silva")).toBeInTheDocument();
     expect(screen.getByText("Bruno Costa")).toBeInTheDocument();
   });
@@ -125,7 +125,7 @@ describe("AdminInfluencers", () => {
     expect(within(rowOf("Bruno Costa")).getAllByText("-").length).toBeGreaterThan(0);
   });
 
-  it("shows bio-link status: ok badge, or 'Falta' + WhatsApp nudge", () => {
+  it("shows bio-link status: ok badge, or 'Missing' + WhatsApp nudge", () => {
     renderList({
       influencers: [
         MOCK_ROWS[0], // bioStatus ok
@@ -145,11 +145,11 @@ describe("AdminInfluencers", () => {
       ],
     });
 
-    expect(within(rowOf("Ana Silva")).getByText("Na bio ✓")).toBeInTheDocument();
+    expect(within(rowOf("Ana Silva")).getByText("In bio ✓")).toBeInTheDocument();
 
     const caioRow = rowOf("Caio Lima");
-    expect(within(caioRow).getByText("Falta")).toBeInTheDocument();
-    const nudge = within(caioRow).getByRole("link", { name: "Cobrar" });
+    expect(within(caioRow).getByText("Missing")).toBeInTheDocument();
+    const nudge = within(caioRow).getByRole("link", { name: "Nudge" });
     expect(nudge.getAttribute("href")).toContain("wa.me/5511999998888");
     expect(decodeURIComponent(nudge.getAttribute("href") ?? "")).toContain(
       "sck=caio1234",
@@ -165,6 +165,6 @@ describe("AdminInfluencers", () => {
         },
       ],
     });
-    expect(screen.getByText("Suspensa")).toBeInTheDocument();
+    expect(screen.getByText("Suspended")).toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@ export async function POST() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -17,14 +17,14 @@ export async function POST() {
     .single<{ is_admin: boolean }>();
 
   if (!profile?.is_admin)
-    return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://nextpubli.com";
 
   try {
     const { url } = await createHostedLink({
-      successUrl: `${appUrl}/admin/mensagens?whatsapp=connected`,
-      failureUrl: `${appUrl}/admin/mensagens?whatsapp=failed`,
+      successUrl: `${appUrl}/admin/messages?whatsapp=connected`,
+      failureUrl: `${appUrl}/admin/messages?whatsapp=failed`,
       notifyUrl: `${appUrl}/api/webhooks/unipile`,
       label: `NextPubli-${user.id.slice(0, 8)}`,
     });
@@ -44,13 +44,13 @@ export async function POST() {
       await (admin.from("channels") as any).insert({
         type: "whatsapp",
         status: "disconnected",
-        label: "Aguardando scan...",
+        label: "Waiting for scan...",
       });
     }
 
     return NextResponse.json({ url });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Erro ao conectar";
+    const message = err instanceof Error ? err.message : "Connection error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

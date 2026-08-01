@@ -8,7 +8,7 @@ async function requireAdmin() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Não autorizado");
+  if (!user) throw new Error("Not authorized");
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -17,16 +17,16 @@ async function requireAdmin() {
     .single();
 
   if (!(profile as { is_admin: boolean } | null)?.is_admin) {
-    throw new Error("Não autorizado");
+    throw new Error("Not authorized");
   }
 }
 
 function errorResponse(err: unknown) {
-  if (err instanceof Error && err.message === "Não autorizado") {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  if (err instanceof Error && err.message === "Not authorized") {
+    return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
   console.error("[posting-settings]", err);
-  return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+  return NextResponse.json({ error: "Internal error" }, { status: 500 });
 }
 
 export async function GET() {

@@ -34,7 +34,7 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <label htmlFor="first_name" className="text-sm font-medium text-foreground">
-            Nome
+            First name
           </label>
           <input
             id="first_name"
@@ -47,7 +47,7 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="last_name" className="text-sm font-medium text-foreground">
-            Sobrenome
+            Last name
           </label>
           <input
             id="last_name"
@@ -70,7 +70,7 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
           type="email"
           required
           defaultValue={defaults?.email}
-          placeholder="seu@email.com"
+          placeholder="you@email.com"
           className={inputClass}
         />
       </div>
@@ -130,7 +130,7 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
               <button
                 type="button"
                 onClick={() => setTermsOpen(false)}
-                aria-label="Fechar"
+                aria-label="Close"
                 className="rounded-lg p-1 text-foreground-secondary hover:bg-background-secondary"
               >
                 <X size={20} />
@@ -142,7 +142,7 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
               onClick={() => setTermsOpen(false)}
               className="mt-6 w-full rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent/90"
             >
-              Entendi
+              Got it
             </button>
           </div>
         </div>

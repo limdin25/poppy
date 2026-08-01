@@ -4,10 +4,10 @@ import { EmailLoginForm, PasswordLoginForm } from "@/features/email-login";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string; modo?: string }>;
+  searchParams: Promise<{ erro?: string; mode?: string }>;
 }) {
-  const { erro, modo } = await searchParams;
-  const passwordMode = modo === "senha";
+  const { erro, mode } = await searchParams;
+  const passwordMode = mode === "password";
 
   return (
     <div className="w-full max-w-md space-y-8">
@@ -24,11 +24,11 @@ export default async function LoginPage({
             NextPubli
           </span>
         </Link>
-        <h1 className="text-3xl font-bold text-foreground">Bem-vindo de volta</h1>
+        <h1 className="text-3xl font-bold text-foreground">Welcome back</h1>
         <p className="mt-2 text-foreground-secondary">
           {passwordMode
-            ? "Entre com seu email e senha."
-            : "Digite seu email e enviamos um link de acesso — sem senha."}
+            ? "Sign in with your email and password."
+            : "Enter your email and we'll send you a sign-in link, no password needed."}
         </p>
       </div>
 
@@ -42,21 +42,21 @@ export default async function LoginPage({
         <p>
           {passwordMode ? (
             <Link href="/login" className="font-medium text-accent hover:underline">
-              Entrar com link por email
+              Sign in with an email link
             </Link>
           ) : (
             <Link
-              href="/login?modo=senha"
+              href="/login?mode=password"
               className="font-medium text-accent hover:underline"
             >
-              Entrar com senha
+              Sign in with password
             </Link>
           )}
         </p>
         <p>
-          Ainda não tem conta?{" "}
-          <Link href="/cadastro" className="font-medium text-accent hover:underline">
-            Cadastre-se
+          Don&apos;t have an account yet?{" "}
+          <Link href="/signup" className="font-medium text-accent hover:underline">
+            Sign up
           </Link>
         </p>
       </div>

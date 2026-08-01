@@ -9,12 +9,12 @@ Login and signup forms for influencer authentication via Supabase Auth.
 - `LoginForm.tsx` — login form component
 - `SignupForm.tsx` — signup form component
 - `AuthForm.test.tsx` — Vitest tests
-- `copy.ts` — PT-BR strings
+- `copy.ts` — UI strings (English)
 - `index.ts` — public exports
 
 ## Route
 
-`/(auth)/login` and `/(auth)/cadastro`
+`/(auth)/login` and `/(auth)/signup`
 
 ## Dependencies
 

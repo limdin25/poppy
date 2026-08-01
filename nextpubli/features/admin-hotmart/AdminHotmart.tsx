@@ -34,7 +34,7 @@ export function AdminHotmart({
               <ShoppingCart size={20} className="text-accent" />
             </div>
             <div>
-              <p className="text-sm text-foreground-secondary">Total de vendas</p>
+              <p className="text-sm text-foreground-secondary">Total sales</p>
               <p className="text-2xl font-bold">{sales.length}</p>
             </div>
           </div>
@@ -45,7 +45,7 @@ export function AdminHotmart({
               <DollarSign size={20} className="text-accent" />
             </div>
             <div>
-              <p className="text-sm text-foreground-secondary">Receita total</p>
+              <p className="text-sm text-foreground-secondary">Total revenue</p>
               <p className="text-2xl font-bold">
                 R$ {totalRevenue.toFixed(2).replace(".", ",")}
               </p>
@@ -58,7 +58,7 @@ export function AdminHotmart({
               <TrendingUp size={20} className="text-accent" />
             </div>
             <div>
-              <p className="text-sm text-foreground-secondary">Comissão total</p>
+              <p className="text-sm text-foreground-secondary">Total commission</p>
               <p className="text-2xl font-bold">
                 R$ {totalCommission.toFixed(2).replace(".", ",")}
               </p>
@@ -68,22 +68,22 @@ export function AdminHotmart({
       </div>
 
       <section className="rounded-xl border border-border p-6">
-        <h2 className="mb-4 text-lg font-semibold">Vendas por influenciador</h2>
+        <h2 className="mb-4 text-lg font-semibold">Sales by creator</h2>
         {byInfluencer.length === 0 ? (
-          <p className="text-foreground-secondary">Nenhuma venda registrada.</p>
+          <p className="text-foreground-secondary">No sales recorded.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
                   <th className="px-4 py-2 text-left font-medium text-foreground-secondary">
-                    Influenciador
+                    Creator
                   </th>
                   <th className="px-4 py-2 text-left font-medium text-foreground-secondary">
-                    Vendas
+                    Sales
                   </th>
                   <th className="px-4 py-2 text-left font-medium text-foreground-secondary">
-                    Comissão
+                    Commission
                   </th>
                 </tr>
               </thead>
@@ -107,9 +107,9 @@ export function AdminHotmart({
       </section>
 
       <section className="rounded-xl border border-border p-6">
-        <h2 className="mb-4 text-lg font-semibold">Últimas vendas</h2>
+        <h2 className="mb-4 text-lg font-semibold">Recent sales</h2>
         {sales.length === 0 ? (
-          <p className="text-foreground-secondary">Nenhuma venda ainda.</p>
+          <p className="text-foreground-secondary">No sales yet.</p>
         ) : (
           <div className="space-y-2">
             {sales.map((sale) => (
@@ -122,7 +122,7 @@ export function AdminHotmart({
                     R$ {sale.sale_amount.toFixed(2).replace(".", ",")}
                   </span>
                   <span className="ml-2 text-foreground-secondary">
-                    {new Date(sale.sold_at).toLocaleDateString("pt-BR")}
+                    {new Date(sale.sold_at).toLocaleDateString("en-GB")}
                   </span>
                 </div>
                 <span
@@ -135,10 +135,10 @@ export function AdminHotmart({
                   }`}
                 >
                   {sale.status === "confirmed"
-                    ? "Confirmada"
+                    ? "Confirmed"
                     : sale.status === "refunded"
-                      ? "Reembolsada"
-                      : "Cancelada"}
+                      ? "Refunded"
+                      : "Cancelled"}
                 </span>
               </div>
             ))}

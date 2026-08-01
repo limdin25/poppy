@@ -79,7 +79,7 @@ function MetricCard({
         >
           {change >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
           {change >= 0 ? "+" : ""}
-          {change}% vs período anterior
+          {change}% vs previous period
         </div>
       )}
     </div>
@@ -107,7 +107,7 @@ function HorizontalBar({
             />
           </div>
           <span className="w-12 text-right text-xs font-medium">
-            {item.value.toLocaleString("pt-BR")}
+            {item.value.toLocaleString("en-GB")}
           </span>
         </div>
       ))}
@@ -142,10 +142,10 @@ function AgeGenderChart({ data }: { data: ProfileMetrics["ageGender"] }) {
       ))}
       <div className="flex justify-center gap-6 pt-2 text-xs text-foreground-secondary">
         <span className="flex items-center gap-1">
-          <span className="h-2.5 w-2.5 rounded-full bg-blue-400" /> Masculino
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-400" /> Male
         </span>
         <span className="flex items-center gap-1">
-          <span className="h-2.5 w-2.5 rounded-full bg-accent" /> Feminino
+          <span className="h-2.5 w-2.5 rounded-full bg-accent" /> Female
         </span>
       </div>
     </div>
@@ -165,9 +165,9 @@ export function DashboardMetrics({
     <div className="space-y-6 p-4 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Métricas do Perfil</h1>
+          <h1 className="text-2xl font-bold">Profile Metrics</h1>
           <p className="mt-1 text-sm text-foreground-secondary">
-            Dados do Instagram em tempo real
+            Real-time Instagram data
           </p>
         </div>
         {profileMetrics.length > 0 && (
@@ -193,7 +193,7 @@ export function DashboardMetrics({
                 <Zap size={22} className="text-accent" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold">Taxa de Engajamento</p>
+                <p className="text-sm font-semibold">Engagement Rate</p>
                 <p className="text-3xl font-bold text-accent">
                   {metrics.engagement.toFixed(1)}%
                 </p>
@@ -223,35 +223,35 @@ export function DashboardMetrics({
               />
             </div>
             <p className="mt-1.5 text-xs text-foreground-secondary">
-              Média acima de 3% é considerada excelente para o Instagram
+              An average above 3% is considered excellent on Instagram
             </p>
           </div>
 
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
             <MetricCard
               icon={Heart}
-              label="Curtidas"
-              value={metrics.likes.toLocaleString("pt-BR")}
+              label="Likes"
+              value={metrics.likes.toLocaleString("en-GB")}
               color="accent"
             />
             <MetricCard
               icon={MessageCircle}
-              label="Comentários"
-              value={metrics.comments.toLocaleString("pt-BR")}
+              label="Comments"
+              value={metrics.comments.toLocaleString("en-GB")}
               color="purple"
             />
             {metrics.reach > 0 && (
               <MetricCard
                 icon={Eye}
-                label="Interações totais"
-                value={metrics.reach.toLocaleString("pt-BR")}
+                label="Total interactions"
+                value={metrics.reach.toLocaleString("en-GB")}
                 color="blue"
               />
             )}
             {metrics.newFollowers > 0 && (
               <MetricCard
                 icon={UserPlus}
-                label="Novos seguidores"
+                label="New followers"
                 value={`+${metrics.newFollowers}`}
                 change={metrics.followersChange || undefined}
                 color="green"
@@ -260,8 +260,8 @@ export function DashboardMetrics({
             {metrics.profileVisits > 0 && (
               <MetricCard
                 icon={Users}
-                label="Visitas ao perfil"
-                value={metrics.profileVisits.toLocaleString("pt-BR")}
+                label="Profile visits"
+                value={metrics.profileVisits.toLocaleString("en-GB")}
                 color="orange"
               />
             )}
@@ -272,7 +272,7 @@ export function DashboardMetrics({
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 size={18} className="text-[#7C3AED]" />
                 <h3 className="text-sm font-semibold">
-                  Performance por tipo de conteúdo
+                  Performance by content type
                 </h3>
               </div>
               <div className="space-y-3">
@@ -292,7 +292,7 @@ export function DashboardMetrics({
                       <div className="flex items-center justify-between text-sm">
                         <span className="font-medium">{item.type}</span>
                         <div className="flex gap-3 text-xs text-foreground-secondary">
-                          <span>{item.reach.toLocaleString("pt-BR")} interações</span>
+                          <span>{item.reach.toLocaleString("en-GB")} interactions</span>
                           <span className="font-semibold text-accent">
                             {item.engagement.toFixed(1)}%
                           </span>
@@ -316,7 +316,7 @@ export function DashboardMetrics({
           {metrics.topCities.length > 0 && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-xl border border-border p-4 sm:p-5">
-                <h3 className="mb-3 text-sm font-semibold">Principais cidades</h3>
+                <h3 className="mb-3 text-sm font-semibold">Top cities</h3>
                 <HorizontalBar
                   data={metrics.topCities.map((c) => ({ label: c.name, value: c.count }))}
                   maxValue={Math.max(...metrics.topCities.map((c) => c.count), 1)}
@@ -324,7 +324,7 @@ export function DashboardMetrics({
               </div>
               {metrics.topCountries.length > 0 && (
                 <div className="rounded-xl border border-border p-4 sm:p-5">
-                  <h3 className="mb-3 text-sm font-semibold">Principais países</h3>
+                  <h3 className="mb-3 text-sm font-semibold">Top countries</h3>
                   <HorizontalBar
                     data={metrics.topCountries.map((c) => ({
                       label: c.name,
@@ -336,7 +336,7 @@ export function DashboardMetrics({
               )}
               {metrics.ageGender.length > 0 && (
                 <div className="rounded-xl border border-border p-4 sm:p-5 sm:col-span-2 lg:col-span-1">
-                  <h3 className="mb-3 text-sm font-semibold">Idade e gênero</h3>
+                  <h3 className="mb-3 text-sm font-semibold">Age and gender</h3>
                   <AgeGenderChart data={metrics.ageGender} />
                 </div>
               )}
@@ -349,24 +349,24 @@ export function DashboardMetrics({
             <Eye size={28} className="text-success" />
           </div>
           <p className="mt-4 text-lg font-semibold">
-            Instagram conectado{igUsername ? ` — @${igUsername}` : ""}
+            Instagram connected{igUsername ? ` (@${igUsername})` : ""}
           </p>
           <p className="mt-2 text-sm text-foreground-secondary">
-            As métricas detalhadas do seu perfil aparecerão aqui em breve. Estamos
-            coletando os dados da sua conta.
+            Detailed metrics for your profile will appear here soon. We are collecting
+            your account data.
           </p>
         </div>
       ) : (
         <div className="rounded-xl border-2 border-dashed border-border p-12 text-center">
           <Eye size={32} className="mx-auto text-foreground-secondary/40" />
           <p className="mt-3 font-medium text-foreground-secondary">
-            Conecte seu Instagram para ver as métricas do perfil
+            Connect your Instagram to see your profile metrics
           </p>
           <a
             href={connectUrl}
             className="mt-4 inline-block rounded-full bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-6 py-2.5 text-sm font-medium text-white"
           >
-            Conectar Instagram
+            Connect Instagram
           </a>
         </div>
       )}

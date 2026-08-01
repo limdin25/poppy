@@ -5,14 +5,14 @@ import { IgLoginButton } from "./IgLoginButton";
 describe("IgLoginButton", () => {
   it("links to the Instagram login start route", () => {
     render(<IgLoginButton />);
-    const link = screen.getByRole("link", { name: /entrar com instagram/i });
+    const link = screen.getByRole("link", { name: /sign in with instagram/i });
     expect(link).toHaveAttribute("href", "/api/auth/instagram/start");
   });
 
   it("renders a custom label", () => {
-    render(<IgLoginButton label="Criar conta com Instagram" />);
+    render(<IgLoginButton label="Sign up with Instagram" />);
     expect(
-      screen.getByRole("link", { name: /criar conta com instagram/i }),
+      screen.getByRole("link", { name: /sign up with instagram/i }),
     ).toBeInTheDocument();
   });
 });

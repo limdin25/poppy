@@ -1,6 +1,6 @@
 # email-signup
 
-Email-only signup for `/cadastro`, used while Instagram is hidden
+Email-only signup for `/signup`, used while Instagram is hidden
 (`NEXT_PUBLIC_INSTAGRAM_ENABLED` unset/false — see `lib/flags.ts`).
 
 ## Flow
@@ -14,8 +14,8 @@ Email-only signup for `/cadastro`, used while Instagram is hidden
    the WhatsApp typed in step 1 is copied from auth metadata into the profile
    and the user lands on `/onboarding` (or `/dashboard` if already complete).
 
-The confirmation email template (PT-BR, with `{{ .Token }}`) lives in Supabase
-Auth settings — subject "Seu código para criar sua conta NextPubli".
+The confirmation email template (with `{{ .Token }}`) lives in Supabase Auth
+settings, subject "Your code to create your NextPubli account".
 
 ## Public exports
 

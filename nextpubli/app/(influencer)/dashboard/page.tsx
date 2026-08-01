@@ -97,7 +97,7 @@ export default async function DashboardPage() {
     profile ??
     ({
       id: user.id,
-      first_name: user.user_metadata?.first_name ?? "Influenciador",
+      first_name: user.user_metadata?.first_name ?? "Creator",
       last_name: user.user_metadata?.last_name ?? "",
       email: user.email ?? "",
       is_admin: false,

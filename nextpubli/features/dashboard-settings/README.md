@@ -12,4 +12,4 @@ Settings page for influencer profile, address, Instagram connection, and account
 
 ## Route
 
-`/(influencer)/configuracoes`
+`/(influencer)/settings`

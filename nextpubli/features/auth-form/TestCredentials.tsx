@@ -14,7 +14,7 @@ const testAccounts = [
     dot: "bg-purple-400",
   },
   {
-    role: "Influenciador",
+    role: "Creator",
     email: "influencer@nextpubli.com",
     password: "test123456",
     bg: "bg-pink-50",
@@ -42,7 +42,7 @@ export function TestCredentials() {
   return (
     <div className="rounded-xl border border-border p-4">
       <p className="mb-3 text-center text-xs font-medium tracking-wide text-foreground-secondary uppercase">
-        Acesso rápido
+        Quick access
       </p>
       <div className="flex gap-2">
         {testAccounts.map((account) => (

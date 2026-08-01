@@ -43,13 +43,13 @@ describe("verifyLoginCode (6-digit email code)", () => {
     mockSingle.mockResolvedValue({ data: { is_admin: false } });
   });
 
-  it("returns a PT-BR error when the code is missing", async () => {
+  it("returns an error when the code is missing", async () => {
     const result = await verifyLoginCode(form({ email: "a@b.com", code: "" }));
-    expect(result?.error).toContain("código");
+    expect(result?.error).toContain("code");
     expect(mockVerifyOtp).not.toHaveBeenCalled();
   });
 
-  it("returns a PT-BR error when the email is missing", async () => {
+  it("returns an error when the email is missing", async () => {
     const result = await verifyLoginCode(form({ email: "", code: "12345678" }));
     expect(result?.error).toBeTruthy();
     expect(mockVerifyOtp).not.toHaveBeenCalled();
@@ -84,14 +84,14 @@ describe("verifyLoginCode (6-digit email code)", () => {
     ).rejects.toThrow("NEXT_REDIRECT:/admin");
   });
 
-  it("returns a PT-BR error when the code is wrong or expired", async () => {
+  it("returns an error when the code is wrong or expired", async () => {
     mockVerifyOtp.mockResolvedValue({
       data: { user: null },
       error: { message: "Token has expired or is invalid" },
     });
 
     const result = await verifyLoginCode(form({ email: "a@b.com", code: "000000" }));
-    expect(result?.error).toContain("Código inválido ou expirado");
+    expect(result?.error).toContain("Invalid or expired code");
   });
 });
 
@@ -101,14 +101,14 @@ describe("signIn (password login)", () => {
     mockSingle.mockResolvedValue({ data: { is_admin: true } });
   });
 
-  it("returns a PT-BR error on wrong credentials (never raw English)", async () => {
+  it("returns a friendly error on wrong credentials (never the raw provider message)", async () => {
     mockSignInWithPassword.mockResolvedValue({
       data: {},
       error: { message: "Invalid login credentials" },
     });
 
     const result = await signIn(form({ email: "a@b.com", password: "x" }));
-    expect(result?.error).toBe("Email ou senha incorretos.");
+    expect(result?.error).toBe("Incorrect email or password.");
   });
 
   it("redirects admins to /admin on success", async () => {

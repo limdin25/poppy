@@ -83,7 +83,7 @@ describe("publish cron — Outstand resume safety", () => {
       profile_id: "user-1",
       media_type: "story_image",
       media_url: "https://cdn.example.com/s.jpg",
-      caption: "Oi",
+      caption: "Hi",
       status: "pending",
       provider: "outstand",
       outstand_post_id: "out-99", // a previous run already created it
@@ -106,7 +106,7 @@ describe("publish cron — Outstand resume safety", () => {
       profile_id: "user-1",
       media_type: "reel",
       media_url: "https://cdn.example.com/r.mp4",
-      caption: "Oi",
+      caption: "Hi",
       status: "pending",
       provider: "outstand",
       outstand_post_id: "out-77",
@@ -132,7 +132,7 @@ describe("publish cron — Outstand resume safety", () => {
       profile_id: "user-suspended",
       media_type: "feed",
       media_url: "https://cdn.example.com/f.jpg",
-      caption: "Oi",
+      caption: "Hi",
       status: "pending",
       provider: "outstand",
       outstand_post_id: null,
@@ -142,7 +142,7 @@ describe("publish cron — Outstand resume safety", () => {
     await GET(cronRequest());
 
     expect(createPost).not.toHaveBeenCalled();
-    expect(markPostFailed).toHaveBeenCalledWith("post-3", "Conta suspensa");
+    expect(markPostFailed).toHaveBeenCalledWith("post-3", "Account suspended");
   });
 });
 
@@ -170,13 +170,13 @@ describe("publish cron — Instagram options mapping", () => {
       profile_id: "user-1",
       media_type: "reel",
       media_url: "https://cdn.example.com/r.mp4",
-      caption: "Legenda",
+      caption: "Test caption",
       status: "pending",
       provider: "outstand",
       outstand_post_id: null,
       instagram_options: {
         collaborators: ["scanplates"],
-        first_comment: "Garanta o seu!",
+        first_comment: "Get yours!",
         reel_cover_seconds: 2.5,
       },
     });
@@ -186,8 +186,8 @@ describe("publish cron — Instagram options mapping", () => {
     expect(createPost).toHaveBeenCalledWith(
       "key-1",
       expect.objectContaining({
-        content: "Legenda",
-        firstComment: "Garanta o seu!",
+        content: "Test caption",
+        firstComment: "Get yours!",
         instagram: { collaborators: ["scanplates"], reelThumbOffset: 2500 },
       }),
     );
@@ -204,7 +204,7 @@ describe("publish cron — Instagram options mapping", () => {
       status: "pending",
       provider: "outstand",
       outstand_post_id: null,
-      instagram_options: { first_comment: "não deveria ir" },
+      instagram_options: { first_comment: "should not be sent" },
     });
 
     await GET(cronRequest());

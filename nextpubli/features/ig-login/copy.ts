@@ -1,8 +1,8 @@
 export const igLoginCopy = {
-  defaultLabel: "Entrar com Instagram",
-  signupLabel: "Criar conta com Instagram",
-  termsPrefix: "Li e aceito os ",
-  termsLinkLabel: "Termos de Uso",
+  defaultLabel: "Sign in with Instagram",
+  signupLabel: "Sign up with Instagram",
+  termsPrefix: "I have read and accept the ",
+  termsLinkLabel: "Terms of Use",
   termsSuffix:
-    " e autorizo a NextPubli a publicar conteúdo (stories, feed e reels) na minha conta do Instagram em meu nome.",
+    " and authorise NextPubli to publish content (stories, feed and reels) on my Instagram account on my behalf.",
 } as const;

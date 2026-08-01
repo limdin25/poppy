@@ -16,6 +16,6 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.redirect(
-    `${origin}/login?erro=${encodeURIComponent("Link inválido ou expirado. Tente novamente.")}`,
+    `${origin}/login?erro=${encodeURIComponent("Invalid or expired link. Please try again.")}`,
   );
 }

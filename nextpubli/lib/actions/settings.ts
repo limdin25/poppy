@@ -10,7 +10,7 @@ export async function saveSettings(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { error: "Não autenticado" };
+  if (!user) return { error: "Not authenticated" };
 
   const firstName = formData.get("first_name") as string;
   const lastName = formData.get("last_name") as string;
@@ -42,7 +42,7 @@ export async function saveSettings(formData: FormData) {
 
   if (error) return { error: error.message };
 
-  revalidatePath("/configuracoes");
+  revalidatePath("/settings");
   revalidatePath("/dashboard");
   return { success: true };
 }
@@ -53,7 +53,7 @@ export async function savePixKey(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { error: "Não autenticado" };
+  if (!user) return { error: "Not authenticated" };
 
   const pixKeyType = (formData.get("pix_key_type") as PixKeyType) || null;
   const pixKey = (formData.get("pix_key") as string) || null;
@@ -65,7 +65,7 @@ export async function savePixKey(formData: FormData) {
 
   if (error) return { error: error.message };
 
-  revalidatePath("/vendas");
-  revalidatePath("/configuracoes");
+  revalidatePath("/sales");
+  revalidatePath("/settings");
   return { success: true };
 }

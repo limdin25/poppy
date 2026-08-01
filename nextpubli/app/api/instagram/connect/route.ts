@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
 
   const redirectUri = process.env.INSTAGRAM_REDIRECT_URI!;

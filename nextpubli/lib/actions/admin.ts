@@ -13,7 +13,7 @@ async function requireAdmin() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Não autenticado");
+  if (!user) throw new Error("Not authenticated");
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -21,7 +21,7 @@ async function requireAdmin() {
     .eq("id", user.id)
     .single<{ is_admin: boolean }>();
 
-  if (!profile?.is_admin) throw new Error("Acesso negado");
+  if (!profile?.is_admin) throw new Error("Access denied");
   return user.id;
 }
 
@@ -71,7 +71,7 @@ export async function deleteInfluencer(profileId: string) {
   const { error: authErr } = await admin.auth.admin.deleteUser(profileId);
   if (authErr) throw authErr;
 
-  revalidatePath("/admin/influenciadores");
+  revalidatePath("/admin/influencers");
   revalidatePath("/admin");
 }
 
@@ -91,9 +91,9 @@ export async function setInfluencerSuspended(profileId: string, suspended: boole
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/admin/influenciadores/${profileId}`);
-  revalidatePath("/admin/influenciadores");
-  revalidatePath("/admin/agendador");
+  revalidatePath(`/admin/influencers/${profileId}`);
+  revalidatePath("/admin/influencers");
+  revalidatePath("/admin/scheduler");
   return { success: true };
 }
 
@@ -107,7 +107,7 @@ export async function disconnectInfluencerInstagram(connectionId: string) {
     .eq("id", connectionId);
 
   if (error) throw error;
-  revalidatePath("/admin/influenciadores");
+  revalidatePath("/admin/influencers");
 }
 
 export async function createBrand(formData: FormData) {
@@ -138,7 +138,7 @@ export async function createBrand(formData: FormData) {
   });
 
   if (error) throw error;
-  revalidatePath("/admin/marcas");
+  revalidatePath("/admin/brands");
 }
 
 export async function updateBrand(brandId: string, formData: FormData) {
@@ -171,7 +171,7 @@ export async function updateBrand(brandId: string, formData: FormData) {
     .eq("id", brandId);
 
   if (error) throw error;
-  revalidatePath("/admin/marcas");
+  revalidatePath("/admin/brands");
 }
 
 export async function deleteBrand(brandId: string) {
@@ -193,7 +193,7 @@ export async function deleteBrand(brandId: string) {
   const { error } = await admin.from("brands").delete().eq("id", brandId);
   if (error) throw error;
 
-  revalidatePath("/admin/marcas");
+  revalidatePath("/admin/brands");
 }
 
 export async function schedulePost(formData: FormData) {
@@ -243,7 +243,7 @@ export async function schedulePost(formData: FormData) {
   const { error } = await (admin.from("scheduled_posts") as any).insert(rows);
   if (error) throw error;
 
-  revalidatePath("/admin/agendador");
+  revalidatePath("/admin/scheduler");
   revalidatePath("/admin");
 }
 
@@ -254,7 +254,7 @@ export async function deletePost(postId: string) {
   const { error } = await admin.from("scheduled_posts").delete().eq("id", postId);
   if (error) throw error;
 
-  revalidatePath("/admin/agendador");
+  revalidatePath("/admin/scheduler");
 }
 
 /** Admin manually creates an influencer account (the trigger mints their referral tag). */
@@ -268,7 +268,7 @@ export async function createInfluencer(
   const whatsapp = ((formData.get("whatsapp") as string) || "").trim() || null;
 
   if (!firstName || !email.includes("@")) {
-    return { error: "Nome e um email válido são obrigatórios." };
+    return { error: "Name and a valid email are required." };
   }
 
   const admin = createAdminClient();
@@ -290,7 +290,7 @@ export async function createInfluencer(
     await (admin.from("profiles") as any).update({ whatsapp }).eq("id", data.user.id);
   }
 
-  revalidatePath("/admin/influenciadores");
+  revalidatePath("/admin/influencers");
   return { success: true };
 }
 
@@ -341,8 +341,8 @@ export async function updateInfluencerProfile(profileId: string, formData: FormD
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/admin/influenciadores/${profileId}`);
-  revalidatePath("/admin/influenciadores");
+  revalidatePath(`/admin/influencers/${profileId}`);
+  revalidatePath("/admin/influencers");
   return { success: true };
 }
 
@@ -357,8 +357,8 @@ export async function markPayoutPaid(payoutId: string) {
     .eq("status", "requested")
     .select("id");
   if (error) return { error: error.message };
-  if (!data || data.length === 0) return { error: "Pagamento já processado." };
-  revalidatePath("/admin/pagamentos");
+  if (!data || data.length === 0) return { error: "Payout already processed." };
+  revalidatePath("/admin/payments");
   return { success: true };
 }
 
@@ -375,13 +375,13 @@ export async function cancelPayout(payoutId: string) {
     .eq("status", "requested")
     .select("id");
   if (error) return { error: error.message };
-  if (!data || data.length === 0) return { error: "Pagamento já processado." };
+  if (!data || data.length === 0) return { error: "Payout already processed." };
   // Only now release its sales back to the available pool.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin.from("hotmart_sales") as any)
     .update({ payout_id: null })
     .eq("payout_id", payoutId);
-  revalidatePath("/admin/pagamentos");
+  revalidatePath("/admin/payments");
   return { success: true };
 }
 
@@ -396,7 +396,7 @@ export async function updateInfluencerAuth(profileId: string, formData: FormData
   if (email) updates.email = email;
   if (password) updates.password = password;
 
-  if (Object.keys(updates).length === 0) return { error: "Nenhuma alteração" };
+  if (Object.keys(updates).length === 0) return { error: "No changes" };
 
   const { error } = await admin.auth.admin.updateUserById(profileId, updates);
   if (error) return { error: error.message };
@@ -406,8 +406,8 @@ export async function updateInfluencerAuth(profileId: string, formData: FormData
     await (admin.from("profiles") as any).update({ email }).eq("id", profileId);
   }
 
-  revalidatePath(`/admin/influenciadores/${profileId}`);
-  revalidatePath("/admin/influenciadores");
+  revalidatePath(`/admin/influencers/${profileId}`);
+  revalidatePath("/admin/influencers");
   return { success: true };
 }
 
@@ -416,7 +416,7 @@ export async function uploadBrandLogo(formData: FormData) {
   const admin = createAdminClient();
 
   const file = formData.get("file") as File;
-  if (!file || file.size === 0) return { error: "Nenhum arquivo enviado" };
+  if (!file || file.size === 0) return { error: "No file uploaded" };
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
   const fileName = `brand-logos/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;

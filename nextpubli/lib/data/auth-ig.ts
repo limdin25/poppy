@@ -22,7 +22,7 @@ export interface IgAccount {
   igUserId?: string | null;
 }
 
-// Collected on /cadastro before the influencer is sent to Instagram.
+// Collected on /signup before the influencer is sent to Instagram.
 export interface IgSignupData {
   firstName: string;
   lastName: string;
@@ -45,7 +45,7 @@ async function authEmailFor(
 ): Promise<string> {
   const { data, error } = await admin.auth.admin.getUserById(userId);
   if (error || !data?.user?.email) {
-    throw new Error("Não foi possível obter o email da conta");
+    throw new Error("Could not get the account email");
   }
   return data.user.email;
 }
@@ -71,7 +71,7 @@ async function findConnectionByIg(
       .order("created_at", { ascending: false })
       .limit(1);
     if (error) {
-      throw new Error(`Falha ao buscar conexão do Instagram: ${error.message}`);
+      throw new Error(`Failed to look up the Instagram connection: ${error.message}`);
     }
     const rows = data as { profile_id: string }[] | null;
     if (rows && rows.length > 0) return rows[0];
@@ -84,7 +84,7 @@ async function findConnectionByIg(
     .order("created_at", { ascending: false })
     .limit(1);
   if (error) {
-    throw new Error(`Falha ao buscar conexão do Instagram: ${error.message}`);
+    throw new Error(`Failed to look up the Instagram connection: ${error.message}`);
   }
   const rows = data as { profile_id: string }[] | null;
   return rows && rows.length > 0 ? rows[0] : null;
@@ -96,7 +96,7 @@ async function findConnectionByIg(
  * Outstand connection are all set up here. Returns the auth email so the caller can
  * mint a session for it.
  *
- * `signup` present = the person filled in the /cadastro form (name + email + WhatsApp).
+ * `signup` present = the person filled in the /signup form (name + email + WhatsApp).
  * That is an explicit "create a new influencer" intent, so we ALWAYS create a fresh
  * account — even when the same Instagram handle is already linked to another profile.
  * Otherwise their new contact details would be silently dropped and the admin would
@@ -134,7 +134,7 @@ export async function findOrCreateInfluencerByOutstand(
   //    Signup: use the real email as the auth email straight away, so they can also log
   //    in via an email magic link later (not just Instagram). Login-via-IG with no form
   //    data: fall back to a synthetic internal-only email; contact details are captured
-  //    afterwards on /bem-vindo.
+  //    afterwards on /welcome.
   const authEmail = signup?.email ?? syntheticIgEmail(account.socialAccountId);
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email: authEmail,
@@ -147,7 +147,7 @@ export async function findOrCreateInfluencerByOutstand(
     },
   });
   if (createErr || !created?.user) {
-    throw new Error(createErr?.message ?? "Falha ao criar conta");
+    throw new Error(createErr?.message ?? "Failed to create account");
   }
   const userId = created.user.id;
 
@@ -165,12 +165,12 @@ export async function findOrCreateInfluencerByOutstand(
     await admin.auth.admin.deleteUser(userId).catch(() => {});
     throw err instanceof Error
       ? err
-      : new Error("Falha ao vincular a conta do Instagram");
+      : new Error("Failed to link the Instagram account");
   }
 
   // 4. Signup flow: we already have their WhatsApp + real email (the trigger set the
   //    email from the auth user), so store the WhatsApp and clear needs_contact (no
-  //    /bem-vindo step). Best-effort — a failure just falls back to the contact screen.
+  //    /welcome step). Best-effort — a failure just falls back to the contact screen.
   if (signup) {
     await // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin.from("profiles") as any)

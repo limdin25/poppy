@@ -4,33 +4,33 @@ import { INSTAGRAM_ENABLED } from "@/lib/flags";
 
 const BENEFITS = INSTAGRAM_ENABLED
   ? [
-      "A gente publica por você — stories, feed e reels",
-      "Comissão recorrente a cada venda pelo seu link",
-      "Conecte seu Instagram em menos de 1 minuto",
+      "We post for you: stories, feed and reels",
+      "Recurring commission on every sale through your link",
+      "Connect your Instagram in under 1 minute",
     ]
   : [
-      "Seu link exclusivo em menos de 1 minuto",
-      "Comissão recorrente a cada venda pelo seu link",
-      "Acompanhe cliques, vendas e ganhos em tempo real",
+      "Your exclusive link in under 1 minute",
+      "Recurring commission on every sale through your link",
+      "Track clicks, sales and earnings in real time",
     ];
 
 const HEADLINE = INSTAGRAM_ENABLED ? (
   <>
-    Seu Instagram
+    Your Instagram
     <br />
-    vale dinheiro.
+    is worth money.
   </>
 ) : (
   <>
-    Sua audiência
+    Your audience
     <br />
-    vale dinheiro.
+    is worth money.
   </>
 );
 
 const SUBTITLE = INSTAGRAM_ENABLED
-  ? "Você cuida do conteúdo, a gente cuida do resto. Transforme seus seguidores em renda recorrente."
-  : "Indique produtos que você ama e receba comissão por cada venda. Simples assim.";
+  ? "You handle the content, we handle the rest. Turn your followers into recurring income."
+  : "Recommend products you love and earn commission on every sale. It's that simple.";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (

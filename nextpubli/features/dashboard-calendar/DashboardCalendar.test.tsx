@@ -5,13 +5,13 @@ import { DashboardCalendar } from "./DashboardCalendar";
 describe("DashboardCalendar", () => {
   it("renders calendar heading", () => {
     render(<DashboardCalendar posts={[]} />);
-    expect(screen.getByText("Calendário")).toBeInTheDocument();
+    expect(screen.getByText("Calendar")).toBeInTheDocument();
   });
 
   it("renders legend items", () => {
     render(<DashboardCalendar posts={[]} />);
-    expect(screen.getByText("Publicado")).toBeInTheDocument();
-    expect(screen.getByText("Agendado")).toBeInTheDocument();
-    expect(screen.getByText("Falhou")).toBeInTheDocument();
+    expect(screen.getByText("Published")).toBeInTheDocument();
+    expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 });

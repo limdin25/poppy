@@ -60,7 +60,7 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
         }
         onClose();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro ao salvar");
+        setError(err instanceof Error ? err.message : "Error saving");
       }
     });
   };
@@ -69,7 +69,7 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-lg rounded-xl border border-border bg-background p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">{brand ? "Editar marca" : "Nova marca"}</h2>
+          <h2 className="text-lg font-bold">{brand ? "Edit brand" : "New brand"}</h2>
           <button onClick={onClose} className="rounded p-1 hover:bg-background-secondary">
             <X size={20} />
           </button>
@@ -77,7 +77,7 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Nome</label>
+            <label className="text-sm font-medium">Name</label>
             <input
               name="name"
               required
@@ -87,7 +87,7 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Descrição</label>
+            <label className="text-sm font-medium">Description</label>
             <textarea
               name="description"
               rows={2}
@@ -134,7 +134,7 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
                 <Upload size={20} className="text-foreground-secondary" />
               )}
               <span className="text-sm text-foreground-secondary">
-                {logoPreview ? "Trocar logo" : "Enviar logo"}
+                {logoPreview ? "Change logo" : "Upload logo"}
               </span>
             </div>
             <input
@@ -147,11 +147,11 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Setores (separados por vírgula)</label>
+            <label className="text-sm font-medium">Sectors (comma separated)</label>
             <input
               name="target_sectors"
               defaultValue={brand?.target_sectors.join(", ") ?? ""}
-              placeholder="Fitness, Beleza, Saúde"
+              placeholder="Fitness, Beauty, Health"
               className="rounded-lg border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
             />
           </div>
@@ -164,7 +164,7 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
               defaultChecked={brand?.is_active ?? true}
               className="rounded border-border"
             />
-            <span className="text-sm">Marca ativa</span>
+            <span className="text-sm">Active brand</span>
           </label>
 
           {error && <p className="text-sm text-error">{error}</p>}
@@ -175,14 +175,14 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
               onClick={onClose}
               className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-background-secondary"
             >
-              Cancelar
+              Cancel
             </button>
             <button
               type="submit"
               disabled={isPending}
               className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
             >
-              {isPending ? "Salvando..." : brand ? "Salvar" : "Criar"}
+              {isPending ? "Saving..." : brand ? "Save" : "Create"}
             </button>
           </div>
         </form>
@@ -207,7 +207,7 @@ export function AdminBrands({ brands }: AdminBrandsProps) {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Marcas</h1>
+        <h1 className="text-2xl font-bold">Brands</h1>
         <button
           onClick={() => {
             setEditBrand(undefined);
@@ -216,7 +216,7 @@ export function AdminBrands({ brands }: AdminBrandsProps) {
           className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent/90"
         >
           <Plus size={16} />
-          Nova marca
+          New brand
         </button>
       </div>
 
@@ -249,7 +249,7 @@ export function AdminBrands({ brands }: AdminBrandsProps) {
                       : "bg-foreground-secondary/10 text-foreground-secondary"
                   }`}
                 >
-                  {row.brand.is_active ? "Ativa" : "Futura"}
+                  {row.brand.is_active ? "Active" : "Upcoming"}
                 </span>
               </div>
             </div>
@@ -257,11 +257,11 @@ export function AdminBrands({ brands }: AdminBrandsProps) {
             <div className="mt-4 flex items-center gap-4 text-sm text-foreground-secondary">
               <span className="flex items-center gap-1">
                 <Users size={14} />
-                {row.influencerCount} influenciadores
+                {row.influencerCount} creators
               </span>
               <span className="flex items-center gap-1">
                 <Tag size={14} />
-                {row.brand.target_sectors.length} setores
+                {row.brand.target_sectors.length} sectors
               </span>
             </div>
 
@@ -285,7 +285,7 @@ export function AdminBrands({ brands }: AdminBrandsProps) {
                 className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-background-secondary transition-colors"
               >
                 <Pencil size={14} />
-                Editar
+                Edit
               </button>
               {confirmDelete === row.brand.id ? (
                 <div className="flex items-center gap-2">
@@ -294,13 +294,13 @@ export function AdminBrands({ brands }: AdminBrandsProps) {
                     disabled={isPending}
                     className="rounded-lg bg-error px-3 py-1.5 text-sm font-medium text-white hover:bg-error/90 disabled:opacity-50"
                   >
-                    {isPending ? "Excluindo..." : "Confirmar"}
+                    {isPending ? "Deleting..." : "Confirm"}
                   </button>
                   <button
                     onClick={() => setConfirmDelete(null)}
                     className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-background-secondary"
                   >
-                    Cancelar
+                    Cancel
                   </button>
                 </div>
               ) : (
@@ -309,7 +309,7 @@ export function AdminBrands({ brands }: AdminBrandsProps) {
                   className="flex items-center gap-1.5 rounded-lg border border-error/30 px-3 py-1.5 text-sm text-error hover:bg-error/10 transition-colors"
                 >
                   <Trash2 size={14} />
-                  Excluir
+                  Delete
                 </button>
               )}
             </div>
@@ -319,7 +319,7 @@ export function AdminBrands({ brands }: AdminBrandsProps) {
 
       {brands.length === 0 && (
         <div className="rounded-xl border border-border p-8 text-center text-foreground-secondary">
-          Nenhuma marca cadastrada ainda.
+          No brands added yet.
         </div>
       )}
 

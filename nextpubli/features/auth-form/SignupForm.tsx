@@ -5,20 +5,20 @@ import { useActionState, useState, useCallback } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 const PASSWORD_RULES = [
-  { label: "8 caracteres", test: (p: string) => p.length >= 8 },
-  { label: "1 minúscula", test: (p: string) => /[a-z]/.test(p) },
-  { label: "1 maiúscula", test: (p: string) => /[A-Z]/.test(p) },
-  { label: "1 número", test: (p: string) => /\d/.test(p) },
-  { label: "1 especial", test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+  { label: "8 characters", test: (p: string) => p.length >= 8 },
+  { label: "1 lowercase", test: (p: string) => /[a-z]/.test(p) },
+  { label: "1 uppercase", test: (p: string) => /[A-Z]/.test(p) },
+  { label: "1 number", test: (p: string) => /\d/.test(p) },
+  { label: "1 special", test: (p: string) => /[^A-Za-z0-9]/.test(p) },
 ];
 
 function getStrength(password: string) {
   const passed = PASSWORD_RULES.filter((r) => r.test(password)).length;
   if (passed <= 1) return { level: 0, label: "", color: "" };
-  if (passed <= 2) return { level: 1, label: "Fraca", color: "text-error" };
-  if (passed <= 3) return { level: 2, label: "Média", color: "text-warning" };
-  if (passed <= 4) return { level: 3, label: "Boa", color: "text-success" };
-  return { level: 4, label: "Forte", color: "text-success" };
+  if (passed <= 2) return { level: 1, label: "Weak", color: "text-error" };
+  if (passed <= 3) return { level: 2, label: "Medium", color: "text-warning" };
+  if (passed <= 4) return { level: 3, label: "Good", color: "text-success" };
+  return { level: 4, label: "Strong", color: "text-success" };
 }
 
 const STRENGTH_COLORS = [
@@ -57,7 +57,7 @@ export function SignupForm() {
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="first_name" className="text-sm font-medium text-foreground">
-            Nome
+            First name
           </label>
           <input
             id="first_name"
@@ -70,7 +70,7 @@ export function SignupForm() {
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="last_name" className="text-sm font-medium text-foreground">
-            Sobrenome
+            Last name
           </label>
           <input
             id="last_name"
@@ -92,14 +92,14 @@ export function SignupForm() {
           name="email"
           type="email"
           required
-          placeholder="voce@email.com"
+          placeholder="you@email.com"
           className="rounded-xl border border-border bg-background px-4 py-3 text-foreground placeholder:text-foreground-secondary/50 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="signup-password" className="text-sm font-medium text-foreground">
-          Senha
+          Password
         </label>
         <div className="relative">
           <input
@@ -160,9 +160,9 @@ export function SignupForm() {
           className="mt-0.5 h-5 w-5 shrink-0 rounded border-border accent-accent"
         />
         <span className="text-sm text-foreground-secondary">
-          Sou um influenciador e aceito os{" "}
+          I am a creator and I accept the{" "}
           <a href="#" className="font-medium text-accent hover:underline">
-            termos de uso da plataforma
+            platform terms of use
           </a>
         </span>
       </label>
@@ -172,7 +172,7 @@ export function SignupForm() {
         disabled={pending || !termsAccepted}
         className="rounded-xl bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-6 py-3.5 font-medium text-white transition-all hover:shadow-lg hover:shadow-accent/25 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {pending ? "Cadastrando..." : "Cadastrar"}
+        {pending ? "Signing up..." : "Sign up"}
       </button>
     </form>
   );

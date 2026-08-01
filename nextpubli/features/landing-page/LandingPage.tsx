@@ -41,7 +41,7 @@ function Navbar() {
             {landingCopy.nav.forInfluencers}
           </a>
           <Link
-            href="/para-marcas"
+            href="/for-brands"
             className="text-sm text-foreground-secondary transition-colors hover:text-foreground"
           >
             {landingCopy.nav.forBrands}
@@ -56,7 +56,7 @@ function Navbar() {
             {landingCopy.nav.login}
           </Link>
           <Link
-            href="/cadastro"
+            href="/signup"
             className="rounded-full bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-accent/25 transition-all hover:shadow-xl hover:shadow-accent/30"
           >
             {landingCopy.nav.cta}
@@ -98,14 +98,14 @@ function Navbar() {
             <a href="#influencers" className="text-sm font-medium text-accent">
               {landingCopy.nav.forInfluencers}
             </a>
-            <Link href="/para-marcas" className="text-sm text-foreground-secondary">
+            <Link href="/for-brands" className="text-sm text-foreground-secondary">
               {landingCopy.nav.forBrands}
             </Link>
             <Link href="/login" className="text-sm text-foreground-secondary">
               {landingCopy.nav.login}
             </Link>
             <Link
-              href="/cadastro"
+              href="/signup"
               className="rounded-full bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-5 py-3 text-center text-sm font-medium text-white"
             >
               {landingCopy.nav.cta}
@@ -146,7 +146,7 @@ function Hero() {
                 >
                   <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.73a8.19 8.19 0 004.76 1.52v-3.4a4.85 4.85 0 01-1-.16z" />
                 </svg>
-                TikTok Partners (Em breve)
+                TikTok Partners (Coming soon)
               </div>
             </div>
 
@@ -163,7 +163,7 @@ function Hero() {
 
             <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:gap-4">
               <Link
-                href="/cadastro"
+                href="/signup"
                 className="rounded-full bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-6 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-accent/25 transition-all hover:shadow-xl hover:shadow-accent/30 sm:px-8 sm:py-4 sm:text-base"
               >
                 {landingCopy.hero.cta}
@@ -190,7 +190,7 @@ function Hero() {
                     d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                Ver como funciona
+                See how it works
               </a>
             </div>
           </div>
@@ -404,7 +404,7 @@ function Requirements() {
           {landingCopy.requirements.title}
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-center text-lg text-foreground-secondary">
-          Procuramos criadores autênticos que querem crescer junto com marcas parceiras
+          We look for authentic creators who want to grow alongside partner brands
         </p>
 
         <div className="mt-14 grid gap-6 md:grid-cols-3">
@@ -415,13 +415,13 @@ function Requirements() {
               </svg>
             </div>
             <div className="text-3xl font-bold bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] bg-clip-text text-transparent">
-              1.000+
+              1,000+
             </div>
             <div className="mt-1 text-sm text-foreground-secondary">
-              seguidores no Instagram
+              Instagram followers
             </div>
             <div className="mt-3 text-xs text-foreground-secondary">
-              Conta profissional ou de criador
+              Professional or creator account
             </div>
           </div>
 
@@ -445,10 +445,10 @@ function Requirements() {
               1%+
             </div>
             <div className="mt-1 text-sm text-foreground-secondary">
-              taxa de engajamento
+              engagement rate
             </div>
             <div className="mt-3 text-xs text-foreground-secondary">
-              Engajamento orgânico e autêntico
+              Organic and authentic engagement
             </div>
           </div>
 
@@ -472,10 +472,10 @@ function Requirements() {
               Pro
             </div>
             <div className="mt-1 text-sm text-foreground-secondary">
-              comunicação profissional
+              professional communication
             </div>
             <div className="mt-3 text-xs text-foreground-secondary">
-              Responsável e alinhado com marcas
+              Responsible and aligned with brands
             </div>
           </div>
         </div>
@@ -510,7 +510,7 @@ function Testimonials() {
     <section className="py-20 md:py-28">
       <div className="mx-auto max-w-7xl px-6">
         <h2 className="text-center text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-          Quem já ganha com a NextPubli
+          Creators already earning with NextPubli
         </h2>
 
         <div className="mt-14 grid gap-6 md:grid-cols-3">
@@ -657,11 +657,11 @@ function VideoSection() {
     <section className="bg-background-secondary py-20 md:py-28">
       <div className="mx-auto max-w-4xl px-6 text-center">
         <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-          Veja como é fácil começar
+          See how easy it is to get started
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-lg text-foreground-secondary">
-          Em menos de 2 minutos você conecta seu Instagram e começa a receber publicações
-          de marcas parceiras.
+          In under 2 minutes you connect your Instagram and start receiving posts from
+          partner brands.
         </p>
         <div className="relative mx-auto mt-12 aspect-video max-w-3xl overflow-hidden rounded-2xl border border-border bg-foreground shadow-2xl">
           <div className="absolute inset-0 flex items-center justify-center">
@@ -781,18 +781,18 @@ function FinalCta() {
                 >
                   <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.73a8.19 8.19 0 004.76 1.52v-3.4a4.85 4.85 0 01-1-.16z" />
                 </svg>
-                TikTok Partners (Em breve)
+                TikTok Partners (Coming soon)
               </div>
             </div>
 
             <Link
-              href="/cadastro"
+              href="/signup"
               className="mt-6 inline-block rounded-full bg-white px-8 py-3 text-sm font-semibold text-accent shadow-lg transition-all hover:shadow-xl sm:mt-8 sm:px-10 sm:py-4 sm:text-base"
             >
               {landingCopy.finalCta.cta}
             </Link>
             <p className="mt-4 text-sm text-white/60">
-              Grátis para sempre. Sem cartão de crédito.
+              Free forever. No credit card required.
             </p>
           </div>
         </div>
@@ -871,11 +871,11 @@ function Footer() {
             </ul>
 
             <h4 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wider text-white/70">
-              Contato
+              Contact
             </h4>
             <div className="space-y-1 text-sm text-white/50">
-              <p>Marcas: {landingCopy.footer.emails.brands}</p>
-              <p>Criadores: {landingCopy.footer.emails.creators}</p>
+              <p>Brands: {landingCopy.footer.emails.brands}</p>
+              <p>Creators: {landingCopy.footer.emails.creators}</p>
             </div>
           </div>
         </div>

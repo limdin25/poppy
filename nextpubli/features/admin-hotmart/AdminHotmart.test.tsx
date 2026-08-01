@@ -27,6 +27,6 @@ describe("AdminHotmart", () => {
     render(
       <AdminHotmart sales={[]} byInfluencer={[]} totalRevenue={0} totalCommission={0} />,
     );
-    expect(screen.getByText("Nenhuma venda registrada.")).toBeInTheDocument();
+    expect(screen.getByText("No sales recorded.")).toBeInTheDocument();
   });
 });

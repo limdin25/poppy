@@ -81,7 +81,7 @@ describe("utcIsoToSpLocal", () => {
 });
 
 describe("formatSaoPaulo", () => {
-  it("renders a UTC timestamp as pt-BR date/time in São Paulo", () => {
+  it("renders a UTC timestamp as en-GB date/time in São Paulo", () => {
     expect(formatSaoPaulo("2026-06-12T20:00:00Z")).toBe("12/06/2026, 17:00");
   });
 });

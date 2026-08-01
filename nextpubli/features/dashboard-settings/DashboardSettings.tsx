@@ -8,7 +8,7 @@ import type { Profile, Sector, PixKeyType } from "@/types/database";
 const COUNTRIES = [
   {
     code: "BR",
-    name: "Brasil",
+    name: "Brazil",
     dial: "+55",
     postalLabel: "CEP",
     postalPlaceholder: "00000-000",
@@ -17,19 +17,19 @@ const COUNTRIES = [
     code: "PT",
     name: "Portugal",
     dial: "+351",
-    postalLabel: "Código Postal",
+    postalLabel: "Postal Code",
     postalPlaceholder: "0000-000",
   },
   {
     code: "US",
-    name: "Estados Unidos",
+    name: "United States",
     dial: "+1",
     postalLabel: "ZIP Code",
     postalPlaceholder: "00000",
   },
   {
     code: "GB",
-    name: "Reino Unido",
+    name: "United Kingdom",
     dial: "+44",
     postalLabel: "Postcode",
     postalPlaceholder: "AA0 0AA",
@@ -38,42 +38,42 @@ const COUNTRIES = [
     code: "AO",
     name: "Angola",
     dial: "+244",
-    postalLabel: "Código Postal",
+    postalLabel: "Postal Code",
     postalPlaceholder: "000000",
   },
   {
     code: "MZ",
-    name: "Moçambique",
+    name: "Mozambique",
     dial: "+258",
-    postalLabel: "Código Postal",
+    postalLabel: "Postal Code",
     postalPlaceholder: "0000",
   },
   {
     code: "FR",
-    name: "França",
+    name: "France",
     dial: "+33",
-    postalLabel: "Code Postal",
+    postalLabel: "Postal Code",
     postalPlaceholder: "00000",
   },
   {
     code: "ES",
-    name: "Espanha",
+    name: "Spain",
     dial: "+34",
-    postalLabel: "Código Postal",
+    postalLabel: "Postal Code",
     postalPlaceholder: "00000",
   },
   {
     code: "DE",
-    name: "Alemanha",
+    name: "Germany",
     dial: "+49",
-    postalLabel: "PLZ",
+    postalLabel: "Postal Code",
     postalPlaceholder: "00000",
   },
   {
     code: "IT",
-    name: "Itália",
+    name: "Italy",
     dial: "+39",
-    postalLabel: "CAP",
+    postalLabel: "Postal Code",
     postalPlaceholder: "00000",
   },
 ];
@@ -138,14 +138,14 @@ export function DashboardSettings({
   return (
     <form onSubmit={handleSave} className="max-w-2xl space-y-4 p-4 sm:p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Configurações</h1>
+        <h1 className="text-2xl font-bold">Settings</h1>
         <button
           type="submit"
           disabled={isPending}
           className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-5 py-2.5 text-sm font-medium text-white transition-all hover:shadow-lg hover:shadow-accent/25 disabled:opacity-50"
         >
           {saved && <Check size={16} />}
-          {isPending ? "Salvando..." : saved ? "Salvo" : "Salvar alterações"}
+          {isPending ? "Saving..." : saved ? "Saved" : "Save changes"}
         </button>
       </div>
 
@@ -155,11 +155,11 @@ export function DashboardSettings({
 
       <section className="rounded-xl border border-border p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground-secondary">
-          Dados pessoais
+          Personal details
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Nome</label>
+            <label className="text-sm font-medium">First name</label>
             <input
               name="first_name"
               type="text"
@@ -168,7 +168,7 @@ export function DashboardSettings({
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Sobrenome</label>
+            <label className="text-sm font-medium">Last name</label>
             <input
               name="last_name"
               type="text"
@@ -213,11 +213,11 @@ export function DashboardSettings({
 
       <section className="rounded-xl border border-border p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground-secondary">
-          Endereço
+          Address
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1 sm:col-span-2">
-            <label className="text-sm font-medium">País</label>
+            <label className="text-sm font-medium">Country</label>
             <select
               name="address_country"
               value={country}
@@ -232,7 +232,7 @@ export function DashboardSettings({
             </select>
           </div>
           <div className="flex flex-col gap-1 sm:col-span-2">
-            <label className="text-sm font-medium">Rua</label>
+            <label className="text-sm font-medium">Street</label>
             <input
               name="address_street"
               type="text"
@@ -241,7 +241,7 @@ export function DashboardSettings({
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Cidade</label>
+            <label className="text-sm font-medium">City</label>
             <input
               name="address_city"
               type="text"
@@ -266,16 +266,16 @@ export function DashboardSettings({
         <div className="flex items-center gap-2 mb-3">
           <Wallet size={16} className="text-accent" />
           <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground-secondary">
-            Pagamento PIX
+            PIX Payment
           </h2>
         </div>
         <p className="mb-3 text-xs text-foreground-secondary">
-          Informe sua chave PIX para receber comissões. O pagamento é liberado 21 dias
-          após a venda confirmada (período de garantia contra reembolsos).
+          Enter your PIX key to receive commissions. Payment is released 21 days after
+          the sale is confirmed (guarantee period against refunds).
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Tipo de chave</label>
+            <label className="text-sm font-medium">Key type</label>
             <select
               name="pix_key_type"
               value={pixKeyType}
@@ -285,12 +285,12 @@ export function DashboardSettings({
               <option value="cpf">CPF</option>
               <option value="cnpj">CNPJ</option>
               <option value="email">Email</option>
-              <option value="phone">Telefone</option>
-              <option value="random">Chave aleatória</option>
+              <option value="phone">Phone</option>
+              <option value="random">Random key</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Chave PIX</label>
+            <label className="text-sm font-medium">PIX key</label>
             <input
               name="pix_key"
               type="text"
@@ -301,7 +301,7 @@ export function DashboardSettings({
                   : pixKeyType === "cnpj"
                     ? "00.000.000/0000-00"
                     : pixKeyType === "email"
-                      ? "seu@email.com"
+                      ? "you@email.com"
                       : pixKeyType === "phone"
                         ? "+55 11 99999-9999"
                         : "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
@@ -325,7 +325,7 @@ export function DashboardSettings({
             />
           </svg>
           <span className="text-xs text-foreground-secondary">
-            Prazo de pagamento: 21 dias após a venda confirmada
+            Payment timeline: 21 days after the sale is confirmed
           </span>
         </div>
       </section>
@@ -333,7 +333,7 @@ export function DashboardSettings({
       {instagramEnabled && (
         <section className="rounded-xl border border-border p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground-secondary">
-            Conexão Instagram
+            Instagram Connection
           </h2>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F56040] via-[#E1306C] to-[#C13584]">
@@ -341,10 +341,10 @@ export function DashboardSettings({
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">
-                {instagramConnected ? instagramUsername : "Não conectado"}
+                {instagramConnected ? instagramUsername : "Not connected"}
               </p>
               <p className="text-xs text-foreground-secondary">
-                {instagramConnected ? "Conta conectada" : "Conecte para começar"}
+                {instagramConnected ? "Account connected" : "Connect to get started"}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -353,14 +353,14 @@ export function DashboardSettings({
                   type="button"
                   className="rounded-lg border border-error/30 px-3 py-2 text-sm font-medium text-error hover:bg-error/10 transition-colors"
                 >
-                  Desconectar
+                  Disconnect
                 </button>
               )}
               <a
                 href={connectUrl}
                 className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-background-secondary"
               >
-                {instagramConnected ? "Reconectar" : "Conectar"}
+                {instagramConnected ? "Reconnect" : "Connect"}
               </a>
             </div>
           </div>
@@ -373,14 +373,16 @@ export function DashboardSettings({
             <Trash2 size={16} className="text-error" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-medium text-error">Excluir conta</h2>
-            <p className="text-xs text-foreground-secondary">Permanente e irreversível</p>
+            <h2 className="text-sm font-medium text-error">Delete account</h2>
+            <p className="text-xs text-foreground-secondary">
+              Permanent and irreversible
+            </p>
           </div>
           <button
             type="button"
             className="shrink-0 rounded-lg border border-error px-3 py-1.5 text-sm font-medium text-error hover:bg-error/10"
           >
-            Excluir
+            Delete
           </button>
         </div>
       </section>

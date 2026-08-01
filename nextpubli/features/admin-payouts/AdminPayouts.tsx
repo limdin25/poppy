@@ -12,7 +12,7 @@ function brl(n: number): string {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("pt-BR");
+  return new Date(iso).toLocaleDateString("en-GB");
 }
 
 function StatCard({
@@ -48,7 +48,7 @@ function PendingRow({ p }: { p: Pending }) {
       <td className="py-3 pr-4 font-medium">{p.name}</td>
       <td className="py-3 pr-4 text-foreground-secondary">
         {p.pix_key_type ? `${p.pix_key_type.toUpperCase()}: ` : ""}
-        {p.pix_key ?? "—"}
+        {p.pix_key ?? "-"}
       </td>
       <td className="py-3 pr-4 font-semibold">{brl(p.commission_amount)}</td>
       <td className="py-3 pr-4 text-foreground-secondary">{p.sales_count}</td>
@@ -61,7 +61,7 @@ function PendingRow({ p }: { p: Pending }) {
             onClick={() => run(() => markPayoutPaid(p.id))}
             className="inline-flex items-center gap-1 rounded-lg bg-success px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-success/90 disabled:opacity-50"
           >
-            <Check size={14} /> Marcar como pago
+            <Check size={14} /> Mark as paid
           </button>
           <button
             type="button"
@@ -69,7 +69,7 @@ function PendingRow({ p }: { p: Pending }) {
             onClick={() => run(() => cancelPayout(p.id))}
             className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground-secondary transition-colors hover:bg-background-secondary disabled:opacity-50"
           >
-            <X size={14} /> Cancelar
+            <X size={14} /> Cancel
           </button>
         </div>
       </td>
@@ -97,34 +97,34 @@ export function AdminPayouts({
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-2xl font-bold">Pagamentos</h1>
+        <h1 className="text-2xl font-bold">Payouts</h1>
         <p className="mt-1 text-sm text-foreground-secondary">
-          Solicitações de saque dos influenciadores (PIX)
+          Creator withdrawal requests (PIX)
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <StatCard icon={Wallet} label="Total pendente" value={brl(totalPending)} />
-        <StatCard icon={Clock} label="Solicitações" value={pending.length} />
-        <StatCard icon={Check} label="Pago no mês" value={brl(paidThisMonth)} />
+        <StatCard icon={Wallet} label="Total pending" value={brl(totalPending)} />
+        <StatCard icon={Clock} label="Requests" value={pending.length} />
+        <StatCard icon={Check} label="Paid this month" value={brl(paidThisMonth)} />
       </div>
 
       <section className="rounded-xl border border-border p-4 sm:p-5">
-        <h2 className="mb-4 text-base font-semibold">Pendentes</h2>
+        <h2 className="mb-4 text-base font-semibold">Pending</h2>
         {pending.length === 0 ? (
           <p className="text-sm text-foreground-secondary">
-            Nenhum pagamento pendente no momento.
+            No pending payouts right now.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-foreground-secondary">
-                  <th className="pb-2 pr-4 font-medium">Influenciador</th>
-                  <th className="pb-2 pr-4 font-medium">Chave PIX</th>
-                  <th className="pb-2 pr-4 font-medium">Valor</th>
-                  <th className="pb-2 pr-4 font-medium">Vendas</th>
-                  <th className="pb-2 pr-4 font-medium">Solicitado</th>
+                  <th className="pb-2 pr-4 font-medium">Creator</th>
+                  <th className="pb-2 pr-4 font-medium">PIX key</th>
+                  <th className="pb-2 pr-4 font-medium">Amount</th>
+                  <th className="pb-2 pr-4 font-medium">Sales</th>
+                  <th className="pb-2 pr-4 font-medium">Requested</th>
                   <th className="pb-2" />
                 </tr>
               </thead>
@@ -139,9 +139,9 @@ export function AdminPayouts({
       </section>
 
       <section className="rounded-xl border border-border p-4 sm:p-5">
-        <h2 className="mb-4 text-base font-semibold">Histórico</h2>
+        <h2 className="mb-4 text-base font-semibold">History</h2>
         {history.length === 0 ? (
-          <p className="text-sm text-foreground-secondary">Nenhum pagamento ainda.</p>
+          <p className="text-sm text-foreground-secondary">No payouts yet.</p>
         ) : (
           <div className="space-y-2">
             {history.map((p) => (
@@ -161,7 +161,7 @@ export function AdminPayouts({
                         : "bg-foreground-secondary/10 text-foreground-secondary"
                     }`}
                   >
-                    {p.status === "paid" ? "Pago" : "Cancelado"}
+                    {p.status === "paid" ? "Paid" : "Cancelled"}
                   </span>
                 </span>
               </div>

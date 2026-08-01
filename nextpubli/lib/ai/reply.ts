@@ -47,7 +47,7 @@ export async function generateAIReply(conversationId: string): Promise<string | 
 
   let messages = history;
   if (messages[0]?.role === "assistant") {
-    messages = [{ role: "user", content: "(mensagem anterior)" }, ...messages];
+    messages = [{ role: "user", content: "(previous message)" }, ...messages];
   }
 
   const body = {
@@ -89,11 +89,11 @@ export async function rewriteAIReply(conversationId: string): Promise<string | n
 
   const systemPrompt =
     buildSystemPrompt(settings.system_prompt) +
-    "\n\nESCREVA uma resposta DIFERENTE da anterior. Varie a abordagem e vocabulário.";
+    "\n\nWRITE a reply that is DIFFERENT from the previous one. Vary the approach and vocabulary.";
 
   let messages = history;
   if (messages[0]?.role === "assistant") {
-    messages = [{ role: "user", content: "(mensagem anterior)" }, ...messages];
+    messages = [{ role: "user", content: "(previous message)" }, ...messages];
   }
 
   const body = {
@@ -121,16 +121,16 @@ export async function rewriteAIReply(conversationId: string): Promise<string | n
 
 function buildSystemPrompt(customPrompt: string): string {
   let prompt =
-    "Você é um assistente de atendimento via WhatsApp para a NextPubli, uma plataforma brasileira de micro-influenciadores.\n" +
-    "Regras:\n" +
-    "- Responda em português do Brasil, usando 'você'\n" +
-    "- Seja breve, casual e direto — isso é WhatsApp, não email\n" +
-    "- NUNCA use formatação markdown (sem **, ##, etc). Texto puro apenas.\n" +
-    "- NUNCA use placeholders como [Nome] ou [Seu Nome]\n" +
-    "- Mantenha as respostas curtas (1-3 frases)";
+    "You are a WhatsApp support assistant for NextPubli, a micro-influencer platform.\n" +
+    "Rules:\n" +
+    "- Reply in English\n" +
+    "- Be brief, casual and direct. This is WhatsApp, not email\n" +
+    "- NEVER use markdown formatting (no **, ##, etc). Plain text only.\n" +
+    "- NEVER use placeholders like [Name] or [Your Name]\n" +
+    "- Keep replies short (1-3 sentences)";
 
   if (customPrompt?.trim()) {
-    prompt += `\n\n## Instruções personalizadas do admin\n${customPrompt.trim()}`;
+    prompt += `\n\n## Custom admin instructions\n${customPrompt.trim()}`;
   }
 
   return prompt;

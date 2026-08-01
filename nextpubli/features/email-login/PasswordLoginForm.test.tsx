@@ -11,7 +11,7 @@ describe("PasswordLoginForm", () => {
   it("renders email + password fields and a submit button", () => {
     render(<PasswordLoginForm />);
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
-    expect(screen.getByLabelText("Senha")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^entrar$/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
   });
 });

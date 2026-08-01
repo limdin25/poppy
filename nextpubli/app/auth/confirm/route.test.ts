@@ -47,7 +47,7 @@ describe("GET /auth/confirm (interstitial — must NOT consume the token)", () =
     expect(html).toContain('value="abc123"');
     expect(html).toContain('name="type"');
     expect(html).toContain('value="magiclink"');
-    expect(html).toContain("Entrar no NextPubli");
+    expect(html).toContain("Sign in to NextPubli");
   });
 
   it("escapes HTML in query params to prevent injection", async () => {
@@ -57,17 +57,17 @@ describe("GET /auth/confirm (interstitial — must NOT consume the token)", () =
   });
 
   it("carries a safe relative `next` into the form", async () => {
-    const res = await GET(makeGet("?token_hash=abc&type=magiclink&next=/configuracoes"));
+    const res = await GET(makeGet("?token_hash=abc&type=magiclink&next=/settings"));
     const html = await res.text();
-    expect(html).toContain('value="/configuracoes"');
+    expect(html).toContain('value="/settings"');
   });
 
-  it("redirects to login with the PT-BR error when token is missing", async () => {
+  it("redirects to login with the error when token is missing", async () => {
     const res = await GET(makeGet(""));
 
     expect(res.headers.get("location")).toContain("/login?erro=");
     expect(decodeURIComponent(res.headers.get("location")!)).toContain(
-      "Link inválido ou expirado",
+      "Invalid or expired link",
     );
   });
 });
@@ -113,10 +113,10 @@ describe("POST /auth/confirm (actual verification)", () => {
     });
 
     const res = await POST(
-      makePost({ token_hash: "abc123", type: "magiclink", next: "/configuracoes" }),
+      makePost({ token_hash: "abc123", type: "magiclink", next: "/settings" }),
     );
 
-    expect(res.headers.get("location")).toBe("http://localhost:3000/configuracoes");
+    expect(res.headers.get("location")).toBe("http://localhost:3000/settings");
   });
 
   it("ignores an absolute/external `next` to prevent open redirects", async () => {
@@ -132,7 +132,7 @@ describe("POST /auth/confirm (actual verification)", () => {
     expect(res.headers.get("location")).toBe("http://localhost:3000/dashboard");
   });
 
-  it("redirects to login with the PT-BR error when verification fails", async () => {
+  it("redirects to login with the error when verification fails", async () => {
     mockVerifyOtp.mockResolvedValue({
       data: { user: null },
       error: { message: "expired" },
@@ -141,7 +141,7 @@ describe("POST /auth/confirm (actual verification)", () => {
     const res = await POST(makePost({ token_hash: "stale", type: "magiclink" }));
 
     expect(decodeURIComponent(res.headers.get("location")!)).toContain(
-      "Link inválido ou expirado",
+      "Invalid or expired link",
     );
   });
 

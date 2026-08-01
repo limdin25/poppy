@@ -6,9 +6,9 @@ export const SCHEDULING_TIMEZONES = [
   { value: "America/Sao_Paulo", label: "Brasília (GMT-3)" },
   { value: "America/Manaus", label: "Manaus (GMT-4)" },
   { value: "America/Rio_Branco", label: "Acre (GMT-5)" },
-  { value: "Europe/Lisbon", label: "Lisboa" },
-  { value: "Europe/London", label: "Londres" },
-  { value: "America/New_York", label: "Nova York" },
+  { value: "Europe/Lisbon", label: "Lisbon" },
+  { value: "Europe/London", label: "London" },
+  { value: "America/New_York", label: "New York" },
   { value: "UTC", label: "UTC" },
 ] as const;
 
@@ -81,9 +81,9 @@ export function utcIsoToSpLocal(iso: string): string {
   return utcIsoToLocal(iso, DEFAULT_TIMEZONE);
 }
 
-/** UTC ISO → "12/06/2026, 17:00" (pt-BR, São Paulo) for display. */
+/** UTC ISO → "12/06/2026, 17:00" (en-GB, São Paulo) for display. */
 export function formatSaoPaulo(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat("en-GB", {
     timeZone: "America/Sao_Paulo",
     day: "2-digit",
     month: "2-digit",

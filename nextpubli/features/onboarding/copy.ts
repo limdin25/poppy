@@ -1,24 +1,24 @@
 export const onboardingCopy = {
   step2: {
-    title: "Adicione sua rede principal",
+    title: "Add your main network",
     transparency:
-      "100% transparente: ao conectar, acessamos APENAS estatísticas e permissão de publicação. Sem acesso a senha.",
-    connectButton: "Conectar meu Instagram",
-    skip: "Pular esta etapa (pode conectar depois)",
-    error: "Falha ao conectar Instagram.",
-    connected: "Instagram conectado com sucesso!",
+      "100% transparent: when you connect, we access ONLY your statistics and publishing permission. No access to your password.",
+    connectButton: "Connect my Instagram",
+    skip: "Skip this step (you can connect later)",
+    error: "Failed to connect Instagram.",
+    connected: "Instagram connected successfully!",
   },
   step3: {
-    title: "Em quais setores você quer encontrar colaborações?",
+    title: "Which sectors do you want to find collaborations in?",
   },
   step4: {
-    title: "Tópicos da sua rede",
+    title: "Your content topics",
     subtitle:
-      "Para garantir o melhor match entre você e as marcas, precisamos categorizar seu conteúdo.",
+      "To guarantee the best match between you and the brands, we need to categorise your content.",
   },
   step6: {
-    title: "Tudo pronto!",
-    subtitle: "Seu dashboard está liberado. Bem-vindo à NextPubli!",
-    button: "Ir para o Dashboard",
+    title: "All set!",
+    subtitle: "Your dashboard is ready. Welcome to NextPubli!",
+    button: "Go to Dashboard",
   },
 } as const;

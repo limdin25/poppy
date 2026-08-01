@@ -44,7 +44,7 @@ export async function GET(request: Request) {
   const clearSignupCookie = () =>
     cookieStore.delete({ name: SIGNUP_COOKIE, ...clearAttrs });
 
-  // A filled-in /cadastro form (signup data present) is an explicit "create a new
+  // A filled-in /signup form (signup data present) is an explicit "create a new
   // influencer" intent and ALWAYS wins — even when someone is already logged in (e.g. an
   // admin testing, or a returning visitor with a stale session). Only treat the round-trip
   // as "connect Instagram to my existing account" when there is a session AND no signup
@@ -53,24 +53,24 @@ export async function GET(request: Request) {
   const signup = readSignupData(cookieStore.get(SIGNUP_COOKIE)?.value);
   const isConnect = Boolean(user) && !signup;
 
-  // Connect errors → onboarding. A signup (form data) → back to /cadastro to retry.
+  // Connect errors → onboarding. A signup (form data) → back to /signup to retry.
   // A bare "Sign in with Instagram" (no data) → login page.
   const errBase = isConnect
     ? `${origin}/onboarding`
     : signup
-      ? `${origin}/cadastro`
+      ? `${origin}/signup`
       : `${origin}/login`;
   const errKey = isConnect ? "ig_error" : "erro";
   const fail = (msg: string) => {
     if (!isConnect) {
-      // Keep the signup-data cookie so /cadastro can prefill the form on retry.
+      // Keep the signup-data cookie so /signup can prefill the form on retry.
       clearStateCookie();
     }
     return NextResponse.redirect(`${errBase}?${errKey}=${encodeURIComponent(msg)}`);
   };
 
   if (error) {
-    return fail("Conexão com o Instagram cancelada");
+    return fail("Instagram connection cancelled");
   }
 
   // The tenant_id we passed to Outstand when starting the OAuth:
@@ -82,18 +82,18 @@ export async function GET(request: Request) {
     // own org id, so comparing against it would reject every signup.
     const returnedState = searchParams.get("tenant_id");
     if (!expectedState || (returnedState && returnedState !== expectedState)) {
-      return fail("Sua sessão de login expirou. Tente novamente.");
+      return fail("Your login session expired. Please try again.");
     }
   }
   const tenantId = isConnect ? user?.id : expectedState;
   if (!tenantId) {
-    return fail("Sua sessão de login expirou. Tente novamente.");
+    return fail("Your login session expired. Please try again.");
   }
 
   try {
     const settings = await getPostingSettingsAdmin();
     if (!settings?.outstand_api_key) {
-      return fail("Integração do Instagram indisponível no momento");
+      return fail("Instagram integration is unavailable right now");
     }
 
     // Outstand auto-connects the account against tenant_id and redirects back without a
@@ -101,7 +101,7 @@ export async function GET(request: Request) {
     const account = await getSocialAccountByTenant(settings.outstand_api_key, tenantId);
     if (!account) {
       return fail(
-        "Login do Instagram não concluído. Tente novamente e conclua a autorização.",
+        "Instagram login was not completed. Please try again and finish the authorization.",
       );
     }
 
@@ -147,7 +147,7 @@ export async function GET(request: Request) {
     });
     const tokenHash = link?.properties?.hashed_token;
     if (linkErr || !tokenHash) {
-      throw new Error(linkErr?.message ?? "Falha ao iniciar a sessão");
+      throw new Error(linkErr?.message ?? "Failed to start the session");
     }
     const { error: otpErr } = await supabase.auth.verifyOtp({
       type: "magiclink",
@@ -158,13 +158,13 @@ export async function GET(request: Request) {
     clearStateCookie();
     clearSignupCookie();
     // Sign-up (data already collected) → onboarding. Returning influencer → dashboard.
-    // New influencer via the login button (no data) → /bem-vindo to capture contact.
-    const dest = !isNew ? "/dashboard" : signup ? "/onboarding" : "/bem-vindo";
+    // New influencer via the login button (no data) → /welcome to capture contact.
+    const dest = !isNew ? "/dashboard" : signup ? "/onboarding" : "/welcome";
     return NextResponse.redirect(`${origin}${dest}`);
   } catch (err) {
     // Log the real cause for debugging; the user gets actionable PT-BR, never
     // a raw English database/API message.
     console.error("[outstand/callback]", err);
-    return fail("Não foi possível entrar com o Instagram. Tente novamente.");
+    return fail("Could not sign in with Instagram. Please try again.");
   }
 }

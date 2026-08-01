@@ -141,7 +141,7 @@ export function OnboardingWizard({
               )}
 
               <div className="space-y-3">
-                <p className="text-sm font-medium text-foreground">Selecione uma rede</p>
+                <p className="text-sm font-medium text-foreground">Select a network</p>
                 <div className="flex items-center gap-3 rounded-xl border-2 border-accent bg-accent/5 px-4 py-3">
                   <svg
                     className="h-5 w-5 text-accent"
@@ -180,8 +180,8 @@ export function OnboardingWizard({
                 rel="noopener noreferrer"
                 className="block text-center text-xs text-foreground-secondary"
               >
-                Sua conta precisa ser Profissional (Criador/Empresa).{" "}
-                <span className="font-medium text-accent underline">Ativar agora</span>
+                Your account needs to be Professional (Creator/Business).{" "}
+                <span className="font-medium text-accent underline">Activate now</span>
               </a>
 
               <div className="flex items-center justify-between">
@@ -220,17 +220,17 @@ export function OnboardingWizard({
             <div className="mt-8 space-y-6">
               <div>
                 <h2 className="text-2xl font-bold text-foreground">
-                  Prazer em te conhecer, {userName}!
+                  Nice to meet you, {userName}!
                 </h2>
                 <p className="mt-1 text-sm text-foreground-secondary">
-                  Conta mais sobre você
+                  Tell us more about yourself
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-foreground">
-                    Data de nascimento
+                    Date of birth
                   </label>
                   <input
                     type="date"
@@ -243,28 +243,28 @@ export function OnboardingWizard({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-foreground">Gênero</label>
+                  <label className="text-sm font-medium text-foreground">Gender</label>
                   <select
                     value={profile.gender}
                     onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
                     className="rounded-xl border border-border bg-background px-4 py-3 text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                   >
-                    <option value="">Selecione</option>
-                    <option value="male">Homem</option>
-                    <option value="female">Mulher</option>
-                    <option value="non_binary">Não-binário</option>
-                    <option value="undisclosed">Prefiro não dizer</option>
+                    <option value="">Select</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="non_binary">Non-binary</option>
+                    <option value="undisclosed">Prefer not to say</option>
                   </select>
                   <p className="text-xs text-foreground-secondary">
-                    Saber seu gênero nos permite oferecer campanhas personalizadas
+                    Knowing your gender lets us offer you personalised campaigns
                   </p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-foreground">Endereço</label>
+                  <label className="text-sm font-medium text-foreground">Address</label>
                   <input
                     type="text"
-                    placeholder="Rua"
+                    placeholder="Street"
                     value={profile.address_street}
                     onChange={(e) =>
                       setProfile({ ...profile, address_street: e.target.value })
@@ -275,7 +275,7 @@ export function OnboardingWizard({
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-foreground">Cidade</label>
+                    <label className="text-sm font-medium text-foreground">City</label>
                     <input
                       type="text"
                       value={profile.address_city}
@@ -286,7 +286,7 @@ export function OnboardingWizard({
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-foreground">CEP</label>
+                    <label className="text-sm font-medium text-foreground">Postcode</label>
                     <input
                       type="text"
                       value={profile.address_postal_code}
@@ -300,7 +300,8 @@ export function OnboardingWizard({
               </div>
 
               <p className="text-xs text-foreground-secondary">
-                Por que pedimos endereço: para receber produtos das colaborações.
+                Why we ask for your address: so you can receive products from
+                collaborations.
               </p>
             </div>
           )}
@@ -338,7 +339,7 @@ export function OnboardingWizard({
                   className="flex items-center gap-1 text-sm font-medium text-foreground-secondary hover:text-foreground"
                 >
                   <ChevronLeft size={16} />
-                  Voltar
+                  Back
                 </button>
               )}
               <button
@@ -346,7 +347,7 @@ export function OnboardingWizard({
                 disabled={!canAdvance() || isPending}
                 className="rounded-xl bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-8 py-3 font-medium text-white transition-all hover:shadow-lg hover:shadow-accent/25 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isPending ? "Salvando..." : step === 5 ? "Finalizar" : "Próximo"}
+                {isPending ? "Saving..." : step === 5 ? "Finish" : "Next"}
               </button>
             </div>
           )}

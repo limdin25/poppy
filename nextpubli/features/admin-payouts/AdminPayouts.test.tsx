@@ -29,11 +29,11 @@ describe("AdminPayouts", () => {
     render(<AdminPayouts pending={pending} history={[]} />);
     expect(screen.getByText("Ana Silva")).toBeInTheDocument();
     expect(screen.getByText("ana@email.com", { exact: false })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Marcar como pago/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Mark as paid/ })).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no requests", () => {
     render(<AdminPayouts pending={[]} history={[]} />);
-    expect(screen.getByText(/Nenhum pagamento pendente/)).toBeInTheDocument();
+    expect(screen.getByText(/No pending payouts/)).toBeInTheDocument();
   });
 });

@@ -7,7 +7,7 @@ export async function GET(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -16,13 +16,13 @@ export async function GET(req: Request) {
     .single<{ is_admin: boolean }>();
 
   if (!profile?.is_admin)
-    return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const conversationId = searchParams.get("conversationId");
 
   if (!conversationId) {
-    return NextResponse.json({ error: "conversationId é obrigatório" }, { status: 400 });
+    return NextResponse.json({ error: "conversationId is required" }, { status: 400 });
   }
 
   const messages = await getMessages(conversationId);

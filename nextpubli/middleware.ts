@@ -6,7 +6,7 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isAdminRoute = path.startsWith("/admin");
-  const isContactRoute = path.startsWith("/bem-vindo");
+  const isContactRoute = path.startsWith("/welcome");
 
   if (!user) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -20,12 +20,12 @@ export async function middleware(request: NextRequest) {
 
   // Suspended influencers are locked out of the whole app (admins are immune).
   if (profile?.suspended_at && !profile.is_admin) {
-    return NextResponse.redirect(new URL("/suspenso", request.url));
+    return NextResponse.redirect(new URL("/suspended", request.url));
   }
 
   // New Instagram accounts must give us a real email + WhatsApp before anything else.
   if (profile?.needs_contact && !isContactRoute) {
-    return NextResponse.redirect(new URL("/bem-vindo", request.url));
+    return NextResponse.redirect(new URL("/welcome", request.url));
   }
   if (!profile?.needs_contact && isContactRoute) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
@@ -42,11 +42,11 @@ export const config = {
   matcher: [
     "/admin/:path*",
     "/dashboard/:path*",
-    "/vendas/:path*",
-    "/calendario/:path*",
-    "/metricas/:path*",
-    "/configuracoes/:path*",
+    "/sales/:path*",
+    "/calendar/:path*",
+    "/metrics/:path*",
+    "/settings/:path*",
     "/onboarding/:path*",
-    "/bem-vindo/:path*",
+    "/welcome/:path*",
   ],
 };

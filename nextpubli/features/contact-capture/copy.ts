@@ -1,11 +1,11 @@
 export const contactCaptureCopy = {
-  title: "Quase lá!",
-  subtitle: "Como falamos com você e enviamos suas comissões?",
+  title: "Almost there!",
+  subtitle: "How do we contact you and send your commissions?",
   emailLabel: "Email",
-  emailPlaceholder: "seu@email.com",
+  emailPlaceholder: "you@email.com",
   whatsappLabel: "WhatsApp",
   whatsappPlaceholder: "(11) 99999-9999",
-  whatsappHint: "Usamos para avisar sobre campanhas e pagamentos.",
-  submit: "Continuar",
-  submitting: "Salvando...",
+  whatsappHint: "We use it to let you know about campaigns and payments.",
+  submit: "Continue",
+  submitting: "Saving...",
 } as const;

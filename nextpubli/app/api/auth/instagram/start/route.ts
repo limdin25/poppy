@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   const authUrl = await outstandAuthUrl(origin, state);
   if (!authUrl) {
     return NextResponse.redirect(
-      `${origin}/login?erro=${encodeURIComponent("Login com Instagram indisponível no momento")}`,
+      `${origin}/login?erro=${encodeURIComponent("Instagram login is unavailable right now")}`,
     );
   }
   const res = NextResponse.redirect(authUrl);
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 // POST — sign-up: collect name + email + WhatsApp FIRST, stash it, then go to Instagram.
 export async function POST(request: Request) {
   const { origin } = new URL(request.url);
-  if (!INSTAGRAM_ENABLED) return NextResponse.redirect(`${origin}/cadastro`, 303);
+  if (!INSTAGRAM_ENABLED) return NextResponse.redirect(`${origin}/signup`, 303);
   const form = await request.formData();
 
   const parsed = igSignupSchema.safeParse({
@@ -55,19 +55,19 @@ export async function POST(request: Request) {
     whatsapp: form.get("whatsapp"),
   });
   const back = (msg: string) =>
-    NextResponse.redirect(`${origin}/cadastro?erro=${encodeURIComponent(msg)}`, 303);
+    NextResponse.redirect(`${origin}/signup?erro=${encodeURIComponent(msg)}`, 303);
 
   if (form.get("terms") !== "on") {
-    return back("Você precisa aceitar os Termos de Uso");
+    return back("You must accept the Terms of Use");
   }
   if (!parsed.success) {
-    return back(parsed.error.issues[0]?.message ?? "Preencha todos os campos");
+    return back(parsed.error.issues[0]?.message ?? "Please fill in all fields");
   }
 
   const state = crypto.randomUUID();
   const authUrl = await outstandAuthUrl(origin, state);
   if (!authUrl) {
-    return back("Cadastro com Instagram indisponível no momento");
+    return back("Instagram sign up is unavailable right now");
   }
 
   const res = NextResponse.redirect(authUrl, 303);

@@ -7,12 +7,12 @@ import { CopyLinkButton } from "./CopyLinkButton";
 
 const TIERS = [
   {
-    name: "Iniciante",
+    name: "Starter",
     threshold: 0,
     products: [{ alt: "ScanPlates", logo: "/brands/scanplates.svg" }],
   },
   {
-    name: "Crescimento",
+    name: "Growth",
     threshold: 10,
     products: [
       { alt: "Florê", logo: "/brands/flore.svg" },
@@ -21,7 +21,7 @@ const TIERS = [
     ],
   },
   {
-    name: "Profissional",
+    name: "Professional",
     threshold: 50,
     products: [
       { alt: "Pet Lar", logo: "/brands/petlar.svg" },
@@ -80,7 +80,7 @@ const MEDIA_TYPE_LABELS: Record<PostMediaType, string> = {
   story_image: "Story",
   story_video: "Story",
   reel: "Reel",
-  carousel: "Carrossel",
+  carousel: "Carousel",
 };
 
 function CampaignStatusCard({ status }: { status: MyCampaignStatus | null }) {
@@ -91,10 +91,10 @@ function CampaignStatusCard({ status }: { status: MyCampaignStatus | null }) {
           <Megaphone className="h-5 w-5 text-warning" />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-foreground">Campanha</h2>
+          <h2 className="text-sm font-semibold text-foreground">Campaign</h2>
           <p className="mt-1 text-sm text-foreground-secondary">
-            Sua conta ainda não está na campanha. Você entra automaticamente assim que o
-            administrador adicionar sua conta.
+            Your account is not in the campaign yet. You will join automatically as soon
+            as the administrator adds your account.
           </p>
         </div>
       </div>
@@ -109,16 +109,16 @@ function CampaignStatusCard({ status }: { status: MyCampaignStatus | null }) {
       <div className="min-w-0 flex-1">
         <h2 className="text-sm font-semibold text-foreground">{status.campaign.name}</h2>
         <p className="mt-1 text-sm text-foreground-secondary">
-          {`Você está na campanha desde ${formatSaoPaulo(status.added_at)}`}
+          {`You have been in the campaign since ${formatSaoPaulo(status.added_at)}`}
         </p>
         {status.next_post ? (
           <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
             <CalendarClock className="h-4 w-4 shrink-0 text-success" />
-            {`Próxima publicação: ${MEDIA_TYPE_LABELS[status.next_post.media_type]} em ${formatSaoPaulo(status.next_post.scheduled_at)}`}
+            {`Next post: ${MEDIA_TYPE_LABELS[status.next_post.media_type]} on ${formatSaoPaulo(status.next_post.scheduled_at)}`}
           </p>
         ) : (
           <p className="mt-2 text-sm text-foreground-secondary">
-            Nenhuma publicação agendada no momento.
+            No posts scheduled at the moment.
           </p>
         )}
       </div>
@@ -173,19 +173,19 @@ function InstagramCard({ ig }: { ig: InstagramData }) {
           <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4">
             <div className="text-center">
               <div className="text-lg font-bold text-foreground">
-                {ig.followersCount.toLocaleString("pt-BR")}
+                {ig.followersCount.toLocaleString("en-GB")}
               </div>
-              <div className="text-xs text-foreground-secondary">Seguidores</div>
+              <div className="text-xs text-foreground-secondary">Followers</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-foreground">
-                {ig.followsCount.toLocaleString("pt-BR")}
+                {ig.followsCount.toLocaleString("en-GB")}
               </div>
-              <div className="text-xs text-foreground-secondary">Seguindo</div>
+              <div className="text-xs text-foreground-secondary">Following</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-foreground">
-                {ig.mediaCount.toLocaleString("pt-BR")}
+                {ig.mediaCount.toLocaleString("en-GB")}
               </div>
               <div className="text-xs text-foreground-secondary">Posts</div>
             </div>
@@ -211,16 +211,16 @@ function ConnectAccountCard({ connectUrl }: { connectUrl: string }) {
         </svg>
       </div>
       <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-medium text-foreground">Adicione mais perfis</h3>
+        <h3 className="text-sm font-medium text-foreground">Add more profiles</h3>
         <p className="text-xs text-foreground-secondary">
-          Quanto mais perfis, mais você ganha
+          The more profiles, the more you earn
         </p>
       </div>
       <a
         href={connectUrl}
         className="shrink-0 rounded-full bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-4 py-2 text-xs font-medium text-white transition-all hover:shadow-lg hover:shadow-accent/25"
       >
-        Adicionar
+        Add
       </a>
     </div>
   );
@@ -240,15 +240,15 @@ function ConnectFirstCard({ connectUrl }: { connectUrl: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
         </svg>
       </div>
-      <h3 className="font-medium text-foreground">Conectar Instagram</h3>
+      <h3 className="font-medium text-foreground">Connect Instagram</h3>
       <p className="mt-1 text-sm text-foreground-secondary">
-        Conecte para receber publicações de marcas
+        Connect to receive posts from brands
       </p>
       <a
         href={connectUrl}
         className="mt-4 rounded-full bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-5 py-2 text-sm font-medium text-white transition-all hover:shadow-lg hover:shadow-accent/25"
       >
-        Conectar meu Instagram
+        Connect my Instagram
       </a>
     </div>
   );
@@ -271,11 +271,11 @@ function BioLinkReminderCard({ shareLink }: { shareLink: string | null }) {
     <div className="rounded-2xl border border-warning/40 bg-warning/5 p-5">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <TriangleAlert size={16} className="shrink-0 text-warning" />
-        <span>Falta seu link na bio!</span>
+        <span>Your link is missing from your bio!</span>
       </h2>
       <p className="mt-1 text-sm text-foreground-secondary">
-        Suas vendas só contam quando as pessoas clicam no seu link. Copie e cole no campo
-        &quot;Site&quot; do seu perfil do Instagram (Editar perfil → Site).
+        Your sales only count when people click your link. Copy and paste it into the
+        &quot;Website&quot; field on your Instagram profile (Edit profile, then Website).
       </p>
       {shareLink && (
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/40 bg-white p-2 pl-3">
@@ -305,13 +305,14 @@ function TrackingLinkCard({
   return (
     <div className="overflow-hidden rounded-2xl border border-border">
       <div className="bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-5 py-3">
-        <h2 className="text-sm font-semibold text-white">Seu link de divulgação</h2>
+        <h2 className="text-sm font-semibold text-white">Your share link</h2>
       </div>
 
       <div className="space-y-4 p-5">
         <p className="text-sm text-foreground-secondary">
-          Compartilhe este link nos seus stories e posts. Cada venda te dá comissão — o
-          valor fica disponível para saque 21 dias após a venda confirmada.
+          Share this link in your stories and posts. Every sale earns you commission.
+          The amount becomes available for withdrawal 21 days after the sale is
+          confirmed.
         </p>
 
         {shareLink ? (
@@ -323,15 +324,15 @@ function TrackingLinkCard({
           </div>
         ) : (
           <p className="rounded-lg border border-dashed border-border p-3 text-sm text-foreground-secondary">
-            Seu link estará disponível em instantes.
+            Your link will be ready in a moment.
           </p>
         )}
 
         {referralTag && (
           <div className="space-y-2">
             <p className="text-sm text-foreground-secondary">
-              Ou compartilhe seu código — quem preferir pode digitá-lo direto no site na
-              hora da compra:
+              Or share your code. Anyone who prefers can type it straight into the site
+              at checkout:
             </p>
             <div className="flex items-center gap-2 rounded-lg border border-border bg-background-secondary p-2 pl-3">
               <span className="min-w-0 flex-1 truncate text-base font-bold tracking-wide text-foreground">
@@ -343,10 +344,10 @@ function TrackingLinkCard({
         )}
 
         <div className="grid grid-cols-3 gap-3 border-t border-border pt-4">
-          <LinkStat label="Cliques" value={clicks.toLocaleString("pt-BR")} />
-          <LinkStat label="Vendas" value={sales.toLocaleString("pt-BR")} />
+          <LinkStat label="Clicks" value={clicks.toLocaleString("en-GB")} />
+          <LinkStat label="Sales" value={sales.toLocaleString("en-GB")} />
           <LinkStat
-            label="Ganhos"
+            label="Earnings"
             value={`R$ ${earnings.toFixed(2).replace(".", ",")}`}
           />
         </div>
@@ -368,17 +369,17 @@ function TiersSection({ sales }: { sales: number }) {
     <div className="rounded-2xl border border-border p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground-secondary">
-          Seus produtos
+          Your products
         </h2>
         <span className="rounded-full bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-3 py-1 text-xs font-bold text-white">
-          {currentSales} vendas
+          {currentSales} sales
         </span>
       </div>
 
       <div className="mt-3">
         <div className="flex items-center justify-between text-xs text-foreground-secondary">
           <span>
-            {nextLocked ? `Próximo nível: ${nextLocked.name}` : "Todos desbloqueados!"}
+            {nextLocked ? `Next tier: ${nextLocked.name}` : "All unlocked!"}
           </span>
           <span className="font-medium">
             {currentSales}/{nextThreshold}
@@ -392,8 +393,8 @@ function TiersSection({ sales }: { sales: number }) {
         </div>
         {remaining > 0 && (
           <p className="mt-2 text-xs text-foreground-secondary">
-            Faltam <span className="font-bold text-accent">{remaining} vendas</span> para
-            desbloquear {nextLocked?.name}
+            Only <span className="font-bold text-accent">{remaining} more sales</span> to
+            unlock {nextLocked?.name}
           </p>
         )}
       </div>
@@ -445,13 +446,13 @@ function TiersSection({ sales }: { sales: number }) {
                 </span>
                 {tier.name === "VIP" && (
                   <span className="rounded-full bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-2 py-0.5 text-[10px] font-bold text-white">
-                    EXCLUSIVO
+                    EXCLUSIVE
                   </span>
                 )}
                 <span
                   className={`ml-auto text-xs ${isUnlocked ? "font-semibold text-success" : "text-foreground-secondary"}`}
                 >
-                  {isUnlocked ? "Desbloqueado" : `${tier.threshold} vendas`}
+                  {isUnlocked ? "Unlocked" : `${tier.threshold} sales`}
                 </span>
               </div>
 
@@ -499,7 +500,7 @@ export function DashboardHome({
   return (
     <div className="space-y-5 p-6">
       <h1 className="text-2xl font-bold">
-        Olá, {profile.first_name}! Bem-vindo à NextPubli
+        Hello, {profile.first_name}! Welcome to NextPubli
       </h1>
 
       {instagramEnabled && bioLinkMissing && (

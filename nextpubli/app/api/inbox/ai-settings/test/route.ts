@@ -6,7 +6,7 @@ export async function POST(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     .single<{ is_admin: boolean }>();
 
   if (!profile?.is_admin)
-    return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
   const { apiKey, model } = (await req.json()) as {
     apiKey: string;
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   };
 
   if (!apiKey) {
-    return NextResponse.json({ error: "Chave API obrigatória" }, { status: 400 });
+    return NextResponse.json({ error: "API key required" }, { status: 400 });
   }
 
   try {
@@ -39,9 +39,9 @@ export async function POST(req: Request) {
         messages: [
           {
             role: "system",
-            content: "Responda em português, em uma frase curta.",
+            content: "Reply in English, in one short sentence.",
           },
-          { role: "user", content: "Olá, este é um teste de conexão." },
+          { role: "user", content: "Hello, this is a connection test." },
         ],
       }),
     });
@@ -49,20 +49,20 @@ export async function POST(req: Request) {
     if (!res.ok) {
       const text = await res.text();
       return NextResponse.json(
-        { error: `OpenAI retornou ${res.status}: ${text.slice(0, 200)}` },
+        { error: `OpenAI returned ${res.status}: ${text.slice(0, 200)}` },
         { status: 502 },
       );
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const json: any = await res.json();
-    const reply = json.choices?.[0]?.message?.content || "Sem resposta";
+    const reply = json.choices?.[0]?.message?.content || "No reply";
 
     return NextResponse.json({ ok: true, reply });
   } catch (err) {
     return NextResponse.json(
       {
-        error: err instanceof Error ? err.message : "Erro ao conectar",
+        error: err instanceof Error ? err.message : "Connection error",
       },
       { status: 500 },
     );

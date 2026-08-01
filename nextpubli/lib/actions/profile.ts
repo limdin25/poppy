@@ -19,7 +19,7 @@ export async function saveContactInfo(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos" };
+    return { error: parsed.error.issues[0]?.message ?? "Invalid data" };
   }
 
   const supabase = await createClient();
@@ -41,7 +41,7 @@ export async function saveContactInfo(
     .eq("id", user.id);
 
   if (error) {
-    return { error: "Não foi possível salvar. Tente novamente." };
+    return { error: "Could not save. Please try again." };
   }
 
   // Use the real email as the auth email too, so they can log in via an email
@@ -57,7 +57,7 @@ export async function saveContactInfo(
 }
 
 /**
- * Save the influencer's own Hotmart affiliate link (step 3 of "Comece a ganhar"
+ * Save the influencer's own Hotmart affiliate link (step 3 of "Start earning"
  * on the dashboard). Persists hotmart_url on their profile.
  */
 export async function saveHotmartUrl(formData: FormData): Promise<void> {

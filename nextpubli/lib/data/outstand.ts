@@ -175,7 +175,7 @@ export async function saveOutstandConnection(
   const { error } = await (admin.from("outstand_connections") as any).upsert(row, {
     onConflict: "profile_id",
   });
-  if (error) throw new Error(`Falha ao salvar conexão do Instagram: ${error.message}`);
+  if (error) throw new Error(`Failed to save the Instagram connection: ${error.message}`);
 
   return { isNew: !existing };
 }

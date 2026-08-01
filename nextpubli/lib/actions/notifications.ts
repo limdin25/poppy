@@ -9,7 +9,7 @@ async function requireAdmin() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Não autenticado");
+  if (!user) throw new Error("Not authenticated");
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -17,12 +17,12 @@ async function requireAdmin() {
     .eq("id", user.id)
     .single<{ is_admin: boolean }>();
 
-  if (!profile?.is_admin) throw new Error("Acesso negado");
+  if (!profile?.is_admin) throw new Error("Access denied");
   return user.id;
 }
 
 function revalidateNotificationPages() {
-  revalidatePath("/admin/notificacoes");
+  revalidatePath("/admin/notifications");
   revalidatePath("/admin", "layout");
 }
 

@@ -11,7 +11,7 @@ export async function sendLoginLink(
 ): Promise<{ sent?: boolean; email?: string; error?: string }> {
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   if (!email || !email.includes("@")) {
-    return { error: "Informe um email válido" };
+    return { error: "Enter a valid email" };
   }
 
   const h = await headers();
@@ -29,7 +29,7 @@ export async function sendLoginLink(
 
   if (error) {
     return {
-      error: "Não foi possível enviar o link. Verifique o email e tente novamente.",
+      error: "Could not send the link. Check the email and try again.",
     };
   }
   return { sent: true, email };
@@ -45,12 +45,12 @@ export async function verifyLoginCode(
   const code = (formData.get("code") as string)?.trim().replace(/\s+/g, "");
 
   if (!email || !email.includes("@")) {
-    return { error: "Informe um email válido" };
+    return { error: "Enter a valid email" };
   }
   // GoTrue is the authority on the exact code — we only sanity-check the shape.
   // Lenient range so a future mailer_otp_length change can't lock anyone out.
   if (!code || !/^\d{6,10}$/.test(code)) {
-    return { error: "Informe o código de 8 dígitos do email" };
+    return { error: "Enter the 8-digit code from the email" };
   }
 
   const supabase = await createClient();
@@ -63,7 +63,7 @@ export async function verifyLoginCode(
   if (error) {
     return {
       error:
-        "Código inválido ou expirado. Use o código do email mais recente ou peça um novo.",
+        "Invalid or expired code. Use the code from the most recent email or request a new one.",
     };
   }
 
@@ -80,7 +80,7 @@ export async function verifyLoginCode(
   redirect(isAdmin ? "/admin" : "/dashboard");
 }
 
-// Email signup, step 1: validate the /cadastro form and email an OTP code.
+// Email signup, step 1: validate the /signup form and email an OTP code.
 // shouldCreateUser:true makes GoTrue create the auth user on the spot; the
 // handle_new_user trigger then builds the profile (referral_tag included) from
 // the metadata we pass here. WhatsApp rides along in the metadata because the
@@ -94,16 +94,16 @@ export async function sendSignupCode(
   const whatsapp = (formData.get("whatsapp") as string)?.trim();
 
   if (!firstName || !lastName) {
-    return { error: "Informe seu nome e sobrenome" };
+    return { error: "Enter your first and last name" };
   }
   if (!email || !email.includes("@")) {
-    return { error: "Informe um email válido" };
+    return { error: "Enter a valid email" };
   }
   if ((whatsapp ?? "").replace(/\D/g, "").length < 12) {
-    return { error: "Informe um WhatsApp válido com DDD" };
+    return { error: "Enter a valid WhatsApp number with area code" };
   }
   if (!formData.get("terms")) {
-    return { error: "Aceite os termos para continuar" };
+    return { error: "Accept the terms to continue" };
   }
 
   const supabase = await createClient();
@@ -118,8 +118,8 @@ export async function sendSignupCode(
   if (error) {
     return {
       error: /rate|second|frequency/i.test(error.message)
-        ? "Aguarde um minuto antes de pedir um novo código."
-        : "Não foi possível enviar o código. Verifique o email e tente novamente.",
+        ? "Wait a minute before requesting a new code."
+        : "Could not send the code. Check the email and try again.",
     };
   }
   return { sent: true, email };
@@ -134,10 +134,10 @@ export async function verifySignupCode(
   const code = (formData.get("code") as string)?.trim().replace(/\s+/g, "");
 
   if (!email || !email.includes("@")) {
-    return { error: "Informe um email válido" };
+    return { error: "Enter a valid email" };
   }
   if (!code || !/^\d{6,10}$/.test(code)) {
-    return { error: "Informe o código de 8 dígitos do email" };
+    return { error: "Enter the 8-digit code from the email" };
   }
 
   const supabase = await createClient();
@@ -150,7 +150,7 @@ export async function verifySignupCode(
   if (error || !data.user) {
     return {
       error:
-        "Código inválido ou expirado. Use o código do email mais recente ou peça um novo.",
+        "Invalid or expired code. Use the code from the most recent email or request a new one.",
     };
   }
 
@@ -211,7 +211,7 @@ export async function signIn(formData: FormData) {
   });
 
   if (error) {
-    return { error: "Email ou senha incorretos." };
+    return { error: "Incorrect email or password." };
   }
 
   const { data: profile } = await supabase

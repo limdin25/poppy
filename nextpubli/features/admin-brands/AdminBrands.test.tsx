@@ -8,7 +8,7 @@ const MOCK_BRAND_ROWS = [{ brand: BRANDS[0], influencerCount: 8 }];
 describe("AdminBrands", () => {
   it("renders heading", () => {
     render(<AdminBrands brands={MOCK_BRAND_ROWS} />);
-    expect(screen.getByText("Marcas")).toBeInTheDocument();
+    expect(screen.getByText("Brands")).toBeInTheDocument();
   });
 
   it("shows brand name", () => {
@@ -18,11 +18,11 @@ describe("AdminBrands", () => {
 
   it("shows add button", () => {
     render(<AdminBrands brands={MOCK_BRAND_ROWS} />);
-    expect(screen.getByText("Nova marca")).toBeInTheDocument();
+    expect(screen.getByText("New brand")).toBeInTheDocument();
   });
 
   it("shows empty state", () => {
     render(<AdminBrands brands={[]} />);
-    expect(screen.getByText("Nenhuma marca cadastrada ainda.")).toBeInTheDocument();
+    expect(screen.getByText("No brands added yet.")).toBeInTheDocument();
   });
 });

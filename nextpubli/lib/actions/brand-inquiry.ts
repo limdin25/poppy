@@ -10,7 +10,7 @@ export async function submitBrandInquiry(formData: FormData) {
   const message = (formData.get("message") as string) || null;
 
   if (!name || !email || !brandName) {
-    return { error: "Preencha todos os campos obrigatórios" };
+    return { error: "Fill in all required fields" };
   }
 
   const admin = createAdminClient();
@@ -23,16 +23,16 @@ export async function submitBrandInquiry(formData: FormData) {
     .single<{ id: string }>();
 
   if (!adminProfile) {
-    return { error: "Erro interno. Tente novamente." };
+    return { error: "Internal error. Please try again." };
   }
 
   const content = [
-    `[LEAD MARCA]`,
-    `Nome: ${name}`,
+    `[BRAND LEAD]`,
+    `Name: ${name}`,
     `Email: ${email}`,
-    `Marca: ${brandName}`,
+    `Brand: ${brandName}`,
     instagram ? `Instagram: ${instagram}` : null,
-    message ? `Mensagem: ${message}` : null,
+    message ? `Message: ${message}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -48,7 +48,7 @@ export async function submitBrandInquiry(formData: FormData) {
     sent_by: email,
   });
 
-  if (error) return { error: "Erro ao enviar. Tente novamente." };
+  if (error) return { error: "Failed to send. Please try again." };
 
   return { success: true };
 }

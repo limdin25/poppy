@@ -102,7 +102,7 @@ export function EmailSignupForm() {
         <span className="text-sm text-foreground-secondary">
           {emailSignupCopy.termsPrefix}
           <Link
-            href="/termos"
+            href="/terms"
             target="_blank"
             className="font-medium text-accent hover:underline"
           >

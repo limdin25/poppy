@@ -71,7 +71,7 @@ describe("AdminPostingSettings", () => {
 
     render(<AdminPostingSettings settings={null} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Salvar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -84,10 +84,10 @@ describe("AdminPostingSettings", () => {
   it("shows success feedback after save", async () => {
     render(<AdminPostingSettings settings={null} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Salvar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Salvo!/)).toBeInTheDocument();
+      expect(screen.getByText(/Saved!/)).toBeInTheDocument();
     });
   });
 });

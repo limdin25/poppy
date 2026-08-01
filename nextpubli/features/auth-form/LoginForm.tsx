@@ -29,13 +29,13 @@ export function LoginForm() {
           name="email"
           type="email"
           required
-          placeholder="voce@email.com"
+          placeholder="you@email.com"
           className="rounded-xl border border-border bg-background px-4 py-3 text-foreground placeholder:text-foreground-secondary/50 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         />
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="password" className="text-sm font-medium text-foreground">
-          Senha
+          Password
         </label>
         <div className="relative">
           <input
@@ -59,7 +59,7 @@ export function LoginForm() {
         disabled={pending}
         className="rounded-xl bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] px-6 py-3.5 font-medium text-white transition-all hover:shadow-lg hover:shadow-accent/25 disabled:opacity-50"
       >
-        {pending ? "Entrando..." : "Entrar"}
+        {pending ? "Signing in..." : "Sign in"}
       </button>
     </form>
   );

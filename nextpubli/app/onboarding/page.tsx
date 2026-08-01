@@ -22,7 +22,7 @@ export default async function OnboardingPage() {
     getPostingSettingsAdmin(),
   ]);
 
-  const userName = user.user_metadata?.first_name || "Influenciador";
+  const userName = user.user_metadata?.first_name || "Creator";
   const connectUrl =
     postingSettings?.active_provider === "outstand"
       ? "/api/outstand/connect"

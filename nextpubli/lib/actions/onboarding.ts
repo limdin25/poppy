@@ -10,7 +10,7 @@ export async function saveOnboarding(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { error: "Não autenticado" };
+  if (!user) return { error: "Not authenticated" };
 
   const step = parseInt(formData.get("step") as string, 10);
 
@@ -76,5 +76,5 @@ export async function saveOnboarding(formData: FormData) {
     return { success: true };
   }
 
-  return { error: "Etapa inválida" };
+  return { error: "Invalid step" };
 }

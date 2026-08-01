@@ -7,14 +7,14 @@ describe("EmailLoginForm", () => {
     render(<EmailLoginForm />);
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /receber link de acesso/i }),
+      screen.getByRole("button", { name: /get login link/i }),
     ).toBeInTheDocument();
   });
 
   it("offers a path for people who already have a 6-digit code", () => {
     render(<EmailLoginForm />);
     expect(
-      screen.getByRole("button", { name: /já recebeu um código/i }),
+      screen.getByRole("button", { name: /already got a code/i }),
     ).toBeInTheDocument();
   });
 });

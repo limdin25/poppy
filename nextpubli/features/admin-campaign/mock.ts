@@ -3,8 +3,8 @@ import type { CampaignMemberRow, ConnectedAccountRow } from "@/lib/data/campaign
 
 export const mockCampaign: Campaign = {
   id: "camp-1",
-  name: "Campanha Principal",
-  description: "Campanha padrão — adicione as novas contas conectadas aqui.",
+  name: "Main Campaign",
+  description: "Default campaign. Add newly connected accounts here.",
   brand_id: "brand-1",
   is_default: true,
   is_active: true,
@@ -19,8 +19,8 @@ export const mockItems: CampaignItem[] = [
     brand_id: "brand-1",
     media_type: "story_image",
     media_url: "https://cdn.example.com/story.jpg",
-    caption: "Story de quinta-feira",
-    scheduled_at: "2099-06-11T20:00:00Z", // 17:00 em São Paulo
+    caption: "Thursday story",
+    scheduled_at: "2099-06-11T20:00:00Z", // 17:00 in Sao Paulo
     instagram_options: null,
     created_at: "2026-06-01T00:00:00Z",
     updated_at: "2026-06-01T00:00:00Z",
@@ -31,7 +31,7 @@ export const mockItems: CampaignItem[] = [
     brand_id: "brand-1",
     media_type: "reel",
     media_url: "https://cdn.example.com/reel.mp4",
-    caption: "Reel de lançamento",
+    caption: "Launch reel",
     scheduled_at: "2099-06-15T21:00:00Z",
     instagram_options: null,
     created_at: "2026-06-01T00:00:00Z",
@@ -63,5 +63,5 @@ export const mockCandidates: ConnectedAccountRow[] = [
 
 export const mockBrands = [
   { id: "brand-1", name: "ScanPlates" },
-  { id: "brand-2", name: "Outra Marca" },
+  { id: "brand-2", name: "Another Brand" },
 ];

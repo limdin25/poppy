@@ -5,8 +5,8 @@ import { IgSignupForm } from "./IgSignupForm";
 describe("IgSignupForm", () => {
   it("collects name, surname, email and WhatsApp, and posts to the Instagram start route", () => {
     const { container } = render(<IgSignupForm />);
-    expect(screen.getByLabelText("Nome")).toBeInTheDocument();
-    expect(screen.getByLabelText("Sobrenome")).toBeInTheDocument();
+    expect(screen.getByLabelText("First name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Last name")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByText("WhatsApp")).toBeInTheDocument();
     expect(container.querySelector('input[type="tel"]')).toBeTruthy();
@@ -19,13 +19,13 @@ describe("IgSignupForm", () => {
   it("keeps the submit disabled until the terms are accepted", () => {
     render(<IgSignupForm />);
     expect(
-      screen.getByRole("button", { name: /criar conta com instagram/i }),
+      screen.getByRole("button", { name: /sign up with instagram/i }),
     ).toBeDisabled();
   });
 
   it("opens the Terms in a popup", () => {
     render(<IgSignupForm />);
-    fireEvent.click(screen.getByRole("button", { name: /termos de uso/i }));
+    fireEvent.click(screen.getByRole("button", { name: /terms of use/i }));
     expect(screen.getByRole("dialog")).toHaveTextContent(/stories/i);
   });
 });

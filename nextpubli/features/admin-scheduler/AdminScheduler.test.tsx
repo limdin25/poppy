@@ -25,7 +25,7 @@ const MOCK_BRANDS = [{ id: "brand-1", name: "ScanPlates" }];
 describe("AdminScheduler", () => {
   it("renders heading", () => {
     render(<AdminScheduler influencers={MOCK_INFLUENCERS} brands={MOCK_BRANDS} />);
-    expect(screen.getByText("Agendador")).toBeInTheDocument();
+    expect(screen.getByText("Scheduler")).toBeInTheDocument();
   });
 
   it("shows influencer checkboxes with their Instagram handles", () => {
@@ -38,24 +38,26 @@ describe("AdminScheduler", () => {
   it("explains the empty state when nobody has Instagram connected", () => {
     render(<AdminScheduler influencers={[]} brands={MOCK_BRANDS} />);
     expect(
-      screen.getByText(/nenhum influenciador com instagram conectado/i),
+      screen.getByText(/no creators with instagram connected/i),
     ).toBeInTheDocument();
   });
 
   it("shows schedule button", () => {
     render(<AdminScheduler influencers={MOCK_INFLUENCERS} brands={MOCK_BRANDS} />);
-    expect(screen.getByText("Agendar post")).toBeInTheDocument();
+    expect(screen.getByText("Schedule post")).toBeInTheDocument();
   });
 
   it("offers the upload dropzone", () => {
     render(<AdminScheduler influencers={MOCK_INFLUENCERS} brands={MOCK_BRANDS} />);
-    expect(screen.getByText(/arraste mídia ou clique para enviar/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/drag media here or click to upload/i),
+    ).toBeInTheDocument();
   });
 
   it("shows collaborators + first comment for feed posts", () => {
     render(<AdminScheduler influencers={MOCK_INFLUENCERS} brands={MOCK_BRANDS} />);
-    expect(screen.getByText(/colaboradores/i)).toBeInTheDocument();
-    expect(screen.getByText(/primeiro comentário/i)).toBeInTheDocument();
+    expect(screen.getByText(/collaborators/i)).toBeInTheDocument();
+    expect(screen.getByText(/first comment/i)).toBeInTheDocument();
   });
 
   it("for stories: hides caption/options and explains the official API limits", async () => {
@@ -64,10 +66,10 @@ describe("AdminScheduler", () => {
 
     await user.selectOptions(screen.getAllByRole("combobox")[1], "story_image");
 
-    expect(screen.queryByPlaceholderText(/legenda/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/colaboradores/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/caption/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/collaborators/i)).not.toBeInTheDocument();
     expect(
-      screen.getByText(/stickers, enquetes e música não são permitidos/i),
+      screen.getByText(/stickers, polls and music are not allowed/i),
     ).toBeInTheDocument();
   });
 
@@ -75,9 +77,9 @@ describe("AdminScheduler", () => {
     const user = userEvent.setup();
     render(<AdminScheduler influencers={MOCK_INFLUENCERS} brands={MOCK_BRANDS} />);
 
-    expect(screen.queryByText(/capa do reel/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reel cover/i)).not.toBeInTheDocument();
     await user.selectOptions(screen.getAllByRole("combobox")[1], "reel");
-    expect(screen.getByText(/capa do reel/i)).toBeInTheDocument();
+    expect(screen.getByText(/reel cover/i)).toBeInTheDocument();
   });
 
   it("offers a timezone picker, defaulting to the app default", () => {
@@ -88,9 +90,10 @@ describe("AdminScheduler", () => {
         defaultTimezone="Europe/London"
       />,
     );
-    const tz = screen.getByLabelText("Fuso horário") as HTMLSelectElement;
+    const tz = screen.getByLabelText("Timezone") as HTMLSelectElement;
     expect(tz.value).toBe("Europe/London");
-    expect(screen.getByText("Brasília (GMT-3)")).toBeInTheDocument();
+    // Label comes from lib/timezone; accept the accented and plain spellings.
+    expect(screen.getByText(/Bras[ií]lia \(GMT-3\)/)).toBeInTheDocument();
   });
 
   it("requires media before scheduling", async () => {
@@ -98,12 +101,14 @@ describe("AdminScheduler", () => {
     render(<AdminScheduler influencers={MOCK_INFLUENCERS} brands={MOCK_BRANDS} />);
 
     await user.click(screen.getByText("Ana Silva"));
-    await user.type(screen.getByPlaceholderText(/legenda/i), "Olá!");
+    await user.type(screen.getByPlaceholderText(/caption/i), "Hello!");
     const dateInput = document.querySelector('input[type="datetime-local"]');
     expect(dateInput).not.toBeNull();
     await user.type(dateInput as HTMLInputElement, "2099-06-12T17:00");
 
-    await user.click(screen.getByText("Agendar post"));
-    expect(await screen.findByText(/não pode ser publicado sem mídia/i)).toBeVisible();
+    await user.click(screen.getByText("Schedule post"));
+    expect(
+      await screen.findByText(/cannot be published without media/i),
+    ).toBeVisible();
   });
 });

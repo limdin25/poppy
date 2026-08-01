@@ -1,240 +1,240 @@
 export const landingCopy = {
   nav: {
-    forInfluencers: "Para Influenciadores",
-    forBrands: "Para Marcas",
-    login: "Entrar",
-    cta: "Começar agora",
+    forInfluencers: "For Creators",
+    forBrands: "For Brands",
+    login: "Log in",
+    cta: "Get started",
   },
   hero: {
-    title: "Monetize seu talento e ganhe com",
-    titleHighlight: "grandes marcas",
+    title: "Monetize your talent and earn with",
+    titleHighlight: "top brands",
     subtitle:
-      "Conecte seu Instagram, receba conteúdo pronto de marcas parceiras e ganhe até 50% de comissão em cada venda. Tudo automático, sem criar nada.",
-    cta: "Começar agora",
+      "Connect your Instagram, receive ready-made content from partner brands and earn up to 50% commission on every sale. All automatic, no need to create anything.",
+    cta: "Get started",
   },
   stats: {
     items: [
       {
-        value: "2.500+",
+        value: "2,500+",
         description:
-          "Influenciadores ativos monetizando seu Instagram com marcas parceiras",
+          "Active creators monetizing their Instagram with partner brands",
       },
       {
         value: "R$ 4M+",
-        description: "Pagos em comissões para criadores desde 2024",
+        description: "Paid out in commissions to creators since 2024",
       },
       {
         value: "85+",
-        description: "Marcas parceiras de todos os setores do mercado brasileiro",
+        description: "Partner brands from every sector of the Brazilian market",
       },
     ],
   },
   valueProps: {
-    title: "Por que entrar na NextPubli?",
+    title: "Why join NextPubli?",
     items: [
       {
-        title: "Variedade de marcas parceiras",
+        title: "A wide range of partner brands",
         description:
-          "Trabalhe com grandes marcas brasileiras de diversos setores: moda, beleza, food, tech e mais.",
+          "Work with top Brazilian brands across fashion, beauty, food, tech and more.",
         icon: "brands" as const,
       },
       {
-        title: "Publicação 100% automática",
+        title: "100% automatic publishing",
         description:
-          "Nós publicamos o conteúdo direto no seu feed e stories. Você não precisa criar nada.",
+          "We publish the content straight to your feed and stories. You don't need to create anything.",
         icon: "auto" as const,
       },
       {
-        title: "Pagamentos garantidos",
+        title: "Guaranteed payments",
         description:
-          "Ganhe até 50% de comissão em cada venda. Pagamento direto via Hotmart, sem burocracia.",
+          "Earn up to 50% commission on every sale. Paid directly via Hotmart, no red tape.",
         icon: "payment" as const,
       },
       {
-        title: "Suporte dedicado via WhatsApp",
+        title: "Dedicated WhatsApp support",
         description:
-          "Time de suporte pronto para te ajudar a maximizar seus ganhos todos os dias.",
+          "A support team ready to help you maximise your earnings every single day.",
         icon: "support" as const,
       },
     ],
   },
   collabTypes: {
-    title: "Como você ganha com a NextPubli",
+    title: "How you earn with NextPubli",
     items: [
       {
-        text: "Receba publicações automáticas de marcas parceiras no seu feed e stories do Instagram",
+        text: "Receive automatic posts from partner brands on your Instagram feed and stories",
         icon: "instagram" as const,
       },
       {
-        text: "Ganhe até 50% de comissão recorrente em cada venda feita pelo seu link de afiliado",
+        text: "Earn up to 50% recurring commission on every sale made through your affiliate link",
         icon: "money" as const,
       },
       {
-        text: "Cresça seu perfil enquanto marcas investem em conteúdo de qualidade para você",
+        text: "Grow your profile while brands invest in quality content for you",
         icon: "growth" as const,
       },
       {
-        text: "Construa parcerias de longo prazo com marcas que valorizam micro-influenciadores autênticos",
+        text: "Build long-term partnerships with brands that value authentic micro-influencers",
         icon: "handshake" as const,
       },
     ],
   },
   requirements: {
-    title: "O que buscamos",
+    title: "What we look for",
     skills: {
-      title: "Perfil autêntico",
+      title: "An authentic profile",
       items: [
-        "Conta profissional ou de criador no Instagram",
-        "Engajamento orgânico e autêntico",
-        "Comunicação profissional e responsável",
+        "A professional or creator account on Instagram",
+        "Organic and authentic engagement",
+        "Professional and responsible communication",
       ],
     },
     audience: [
-      { value: "1.000+", label: "seguidores no Instagram" },
-      { value: "1%+", label: "taxa de engajamento" },
+      { value: "1,000+", label: "Instagram followers" },
+      { value: "1%+", label: "engagement rate" },
     ],
     categories: [
-      { name: "Beleza & Cuidados", emoji: "💄" },
-      { name: "Moda", emoji: "👗" },
-      { name: "Comida & Bebidas", emoji: "🥗" },
-      { name: "Fitness & Esporte", emoji: "🏃" },
-      { name: "Maternidade", emoji: "👪" },
-      { name: "Saúde & Bem-estar", emoji: "💊" },
-      { name: "Carros & Motos", emoji: "🚗" },
-      { name: "Coaching & Mentoria", emoji: "🎯" },
-      { name: "Relacionamentos", emoji: "💑" },
-      { name: "Educação & Cursos", emoji: "📚" },
-      { name: "Tecnologia", emoji: "📱" },
-      { name: "Viagens & Turismo", emoji: "✈️" },
+      { name: "Beauty & Personal Care", emoji: "💄" },
+      { name: "Fashion", emoji: "👗" },
+      { name: "Food & Drink", emoji: "🥗" },
+      { name: "Fitness & Sports", emoji: "🏃" },
+      { name: "Parenting", emoji: "👪" },
+      { name: "Health & Wellness", emoji: "💊" },
+      { name: "Cars & Motorbikes", emoji: "🚗" },
+      { name: "Coaching & Mentoring", emoji: "🎯" },
+      { name: "Relationships", emoji: "💑" },
+      { name: "Education & Courses", emoji: "📚" },
+      { name: "Technology", emoji: "📱" },
+      { name: "Travel & Tourism", emoji: "✈️" },
     ],
   },
   testimonials: [
     {
       name: "Camila Rodrigues",
       handle: "@camilarodrigues",
-      joinDate: "Março 2024",
-      partnerships: "89+ parcerias com marcas",
-      earned: "R$ 34.637 ganhos via NextPubli",
+      joinDate: "March 2024",
+      partnerships: "89+ brand partnerships",
+      earned: "R$ 34,637 earned via NextPubli",
       quote:
-        "A NextPubli transformou meu Instagram em uma fonte de renda real. Eu não preciso criar conteúdo. As marcas publicam direto no meu perfil e eu ganho comissão em cada venda. É incrível!",
-      badge: "Top Criadora",
-      badgeDetail: "50+ campanhas entregues",
+        "NextPubli turned my Instagram into a real source of income. I don't have to create content. Brands post straight to my profile and I earn commission on every sale. It's amazing!",
+      badge: "Top Creator",
+      badgeDetail: "50+ campaigns delivered",
     },
     {
       name: "Lucas Mendes",
       handle: "@lucasmendesfit",
-      joinDate: "Julho 2024",
-      partnerships: "42+ parcerias com marcas",
-      earned: "R$ 15.941 ganhos via NextPubli",
+      joinDate: "July 2024",
+      partnerships: "42+ brand partnerships",
+      earned: "R$ 15,941 earned via NextPubli",
       quote:
-        "Sou personal trainer e uso meu Instagram para compartilhar treinos. Com a NextPubli, marcas de fitness publicam no meu perfil e eu ganho sem fazer nada a mais. Sensacional!",
-      badge: "Especialista Fitness",
-      badgeDetail: "30+ campanhas de fitness",
+        "I'm a personal trainer and I use my Instagram to share workouts. With NextPubli, fitness brands post on my profile and I earn without doing anything extra. Fantastic!",
+      badge: "Fitness Specialist",
+      badgeDetail: "30+ fitness campaigns",
     },
     {
       name: "Ana Beatriz Silva",
       handle: "@anabeatrizsilva",
-      joinDate: "Janeiro 2025",
-      partnerships: "125+ parcerias com marcas",
-      earned: "R$ 51.217 ganhos via NextPubli",
+      joinDate: "January 2025",
+      partnerships: "125+ brand partnerships",
+      earned: "R$ 51,217 earned via NextPubli",
       quote:
-        "A NextPubli foi essencial para monetizar meu perfil de beleza. Trabalho com marcas incríveis e ganho comissão em todas as vendas. Recomendo para qualquer influenciador!",
+        "NextPubli was essential to monetize my beauty profile. I work with amazing brands and earn commission on every sale. I recommend it to any creator!",
       badge: "Top Rated",
-      badgeDetail: "100+ campanhas 5 estrelas",
+      badgeDetail: "100+ five-star campaigns",
     },
   ],
   howItWorks: {
-    title: "Como funciona",
+    title: "How it works",
     steps: [
       {
         number: "01",
-        title: "Crie seu perfil",
+        title: "Create your profile",
         description:
-          "Cadastre-se grátis e preencha seu perfil com suas informações e nichos de atuação.",
+          "Sign up for free and fill in your profile with your details and niches.",
       },
       {
         number: "02",
-        title: "Conecte seu Instagram",
+        title: "Connect your Instagram",
         description:
-          "Conecte sua conta profissional do Instagram em menos de 2 minutos. Seguro e simples.",
+          "Connect your professional Instagram account in under 2 minutes. Safe and simple.",
       },
       {
         number: "03",
-        title: "Receba publicações das marcas",
+        title: "Receive posts from brands",
         description:
-          "Marcas parceiras enviam conteúdo que nós publicamos direto no seu feed e stories.",
+          "Partner brands send content that we publish straight to your feed and stories.",
       },
       {
         number: "04",
-        title: "Ganhe comissão em cada venda",
+        title: "Earn commission on every sale",
         description:
-          "Cada venda pelo seu link de afiliado gera até 50% de comissão. Acompanhe tudo em tempo real.",
+          "Every sale through your affiliate link earns you up to 50% commission. Track everything in real time.",
       },
     ],
   },
   faq: {
-    title: "Perguntas Frequentes",
+    title: "Frequently Asked Questions",
     items: [
       {
-        question: "Quais são os requisitos para entrar na NextPubli?",
+        question: "What are the requirements to join NextPubli?",
         answer:
-          "Você precisa ter uma conta profissional ou de criador no Instagram com pelo menos 1.000 seguidores e taxa de engajamento acima de 1%. Seu conteúdo deve ser autêntico e alinhado com as marcas parceiras. Não aceitamos contas com seguidores comprados ou engajamento artificial.",
+          "You need a professional or creator account on Instagram with at least 1,000 followers and an engagement rate above 1%. Your content must be authentic and aligned with our partner brands. We don't accept accounts with bought followers or artificial engagement.",
       },
       {
-        question: "Em quais países a NextPubli está disponível?",
+        question: "Which countries is NextPubli available in?",
         answer:
-          "Atualmente operamos no Brasil, Portugal, Angola e Moçambique. Estamos expandindo para novos mercados lusófonos em breve. Se você está em outro país, cadastre-se na lista de espera.",
+          "We currently operate in Brazil, Portugal, Angola and Mozambique. We are expanding to new Portuguese-speaking markets soon. If you are in another country, join the waiting list.",
       },
       {
-        question: "Quanto tempo leva para receber minha primeira parceria?",
+        question: "How long does it take to get my first partnership?",
         answer:
-          "Após conectar seu Instagram, marcas podem selecionar seu perfil em 3 a 7 dias úteis. Quanto mais completo seu perfil e maior seu engajamento, mais rápido você recebe sua primeira campanha.",
+          "After you connect your Instagram, brands can select your profile within 3 to 7 working days. The more complete your profile and the higher your engagement, the faster you get your first campaign.",
       },
       {
-        question: "Como recebo meus pagamentos?",
+        question: "How do I get paid?",
         answer:
-          "Você ganha até 50% de comissão em cada venda feita pelo seu link de afiliado Hotmart. Os pagamentos são processados automaticamente pelo Hotmart direto na sua conta bancária, conforme os prazos da plataforma.",
+          "You earn up to 50% commission on every sale made through your Hotmart affiliate link. Payments are processed automatically by Hotmart straight into your bank account, following the platform's payout schedule.",
       },
       {
-        question: "Que tipo de conteúdo é publicado no meu perfil?",
+        question: "What kind of content is posted on my profile?",
         answer:
-          "As marcas parceiras criam conteúdo profissional (fotos, vídeos e stories) alinhado com seu nicho. Você pode revisar o conteúdo antes da publicação. Nós publicamos automaticamente nos horários de melhor engajamento do seu público.",
+          "Partner brands create professional content (photos, videos and stories) aligned with your niche. You can review the content before it goes live. We publish automatically at the times your audience engages the most.",
       },
       {
-        question: "Posso escolher com quais marcas trabalho?",
+        question: "Can I choose which brands I work with?",
         answer:
-          "Sim! Você tem total controle sobre quais marcas podem publicar no seu perfil. Se uma marca não combina com seu estilo ou valores, basta recusar a parceria. Seu perfil, suas regras.",
+          "Yes! You have full control over which brands can post on your profile. If a brand doesn't match your style or values, just decline the partnership. Your profile, your rules.",
       },
     ],
   },
   finalCta: {
-    title: "Comece a ganhar com a NextPubli hoje!",
+    title: "Start earning with NextPubli today!",
     subtitle:
-      "Monetize seu Instagram e construa parcerias com grandes marcas. Cadastro grátis, sem taxa, sem complicação.",
-    cta: "Começar agora",
+      "Monetize your Instagram and build partnerships with top brands. Free to sign up, no fees, no hassle.",
+    cta: "Get started",
   },
   footer: {
     description:
-      "NextPubli é a plataforma que conecta micro-influenciadores a grandes marcas brasileiras. Publicação automática, comissão garantida e suporte dedicado.",
+      "NextPubli is the platform that connects micro-influencers with top Brazilian brands. Automatic publishing, guaranteed commission and dedicated support.",
     address: "NextPubli Ltda. | Rua Augusta, 1234, Sala 56, São Paulo, SP, 01304-001",
     columns: {
       platform: {
-        title: "Plataforma",
-        links: ["Para Influenciadores", "Para Marcas", "Como Funciona", "Comissões"],
+        title: "Platform",
+        links: ["For Creators", "For Brands", "How It Works", "Commissions"],
       },
       resources: {
-        title: "Recursos",
-        links: ["Blog", "Guias", "Central de Ajuda", "FAQ"],
+        title: "Resources",
+        links: ["Blog", "Guides", "Help Center", "FAQ"],
       },
     },
     emails: {
-      brands: "marcas@nextpubli.com",
-      creators: "criadores@nextpubli.com",
+      brands: "brands@heypubli.com",
+      creators: "creators@heypubli.com",
     },
     legal: {
-      terms: "Termos de Uso",
-      privacy: "Política de Privacidade",
+      terms: "Terms of Use",
+      privacy: "Privacy Policy",
     },
-    copyright: "© 2026 NextPubli. Todos os direitos reservados.",
+    copyright: "© 2026 NextPubli. All rights reserved.",
   },
 } as const;

@@ -24,37 +24,37 @@ import {
   PanelLeft,
 } from "lucide-react";
 
-// Métricas is Instagram-only data — hidden while Instagram is off (lib/flags.ts).
+// Metrics is Instagram-only data, hidden while Instagram is off (lib/flags.ts).
 const influencerMain = [
-  { label: "Início", href: "/dashboard", icon: Home },
+  { label: "Home", href: "/dashboard", icon: Home },
   ...(INSTAGRAM_ENABLED
-    ? [{ label: "Métricas", href: "/metricas", icon: BarChart3 }]
+    ? [{ label: "Metrics", href: "/metrics", icon: BarChart3 }]
     : []),
-  { label: "Calendário", href: "/calendario", icon: Calendar },
-  { label: "Vendas", href: "/vendas", icon: DollarSign },
+  { label: "Calendar", href: "/calendar", icon: Calendar },
+  { label: "Sales", href: "/sales", icon: DollarSign },
 ];
 
 const influencerBottom = [
-  { label: "Configurações", href: "/configuracoes", icon: Settings },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 const adminMain = [
-  { label: "Visão Geral", href: "/admin", icon: LayoutDashboard },
-  { label: "Notificações", href: "/admin/notificacoes", icon: Bell },
-  { label: "Campanha", href: "/admin/campanha", icon: Megaphone },
-  { label: "Influenciadores", href: "/admin/influenciadores", icon: Users },
-  { label: "Agendador", href: "/admin/agendador", icon: Clock },
-  { label: "Mensagens", href: "/admin/mensagens", icon: MessageSquare },
-  { label: "Marcas", href: "/admin/marcas", icon: Tag },
+  { label: "Overview", href: "/admin", icon: LayoutDashboard },
+  { label: "Notifications", href: "/admin/notifications", icon: Bell },
+  { label: "Campaign", href: "/admin/campaign", icon: Megaphone },
+  { label: "Influencers", href: "/admin/influencers", icon: Users },
+  { label: "Scheduler", href: "/admin/scheduler", icon: Clock },
+  { label: "Messages", href: "/admin/messages", icon: MessageSquare },
+  { label: "Brands", href: "/admin/brands", icon: Tag },
   { label: "Hotmart", href: "/admin/hotmart", icon: ShoppingCart },
-  { label: "Pagamentos", href: "/admin/pagamentos", icon: Wallet },
+  { label: "Payments", href: "/admin/payments", icon: Wallet },
 ];
 
 const adminBottom = [
-  { label: "Configurações", href: "/admin/configuracoes", icon: Settings },
+  { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
-const NOTIFICATIONS_HREF = "/admin/notificacoes";
+const NOTIFICATIONS_HREF = "/admin/notifications";
 
 interface SidebarNavProps {
   variant: "influencer" | "admin";
@@ -89,7 +89,7 @@ export function SidebarNav({ variant, notificationCount = 0 }: SidebarNavProps) 
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="rounded-lg p-2 text-foreground-secondary transition-colors hover:bg-background-secondary hover:text-foreground"
-          title={collapsed ? "Expandir menu" : "Recolher menu"}
+          title={collapsed ? "Expand menu" : "Collapse menu"}
         >
           {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
         </button>
@@ -156,11 +156,11 @@ export function SidebarNav({ variant, notificationCount = 0 }: SidebarNavProps) 
         <form action="/api/auth/signout" method="POST">
           <button
             type="submit"
-            title={collapsed ? "Sair" : undefined}
+            title={collapsed ? "Sign out" : undefined}
             className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-foreground-secondary transition-all duration-150 active:scale-[0.97] hover:bg-red-50 hover:text-error ${collapsed ? "justify-center" : ""}`}
           >
             <LogOut size={18} />
-            {!collapsed && "Sair"}
+            {!collapsed && "Sign out"}
           </button>
         </form>
       </div>

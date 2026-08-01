@@ -17,9 +17,9 @@ const baseProps = {
 const PROPS_WITH_BALANCE = { ...baseProps, availableBalance: 120, pixKey: "x@y.com" };
 
 describe("DashboardAnalytics", () => {
-  it("renders vendas heading", () => {
+  it("renders sales heading", () => {
     render(<DashboardAnalytics {...baseProps} />);
-    expect(screen.getByText("Vendas")).toBeInTheDocument();
+    expect(screen.getByText("Sales")).toBeInTheDocument();
   });
 
   it("displays total sales and commission", () => {
@@ -32,7 +32,7 @@ describe("DashboardAnalytics", () => {
     render(<DashboardAnalytics {...PROPS_WITH_BALANCE} />);
     expect(screen.getByText("R$ 120,00")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Solicitar pagamento" }),
+      screen.getByRole("button", { name: "Request payment" }),
     ).toBeInTheDocument();
   });
 
@@ -44,6 +44,6 @@ describe("DashboardAnalytics", () => {
       />,
     );
     expect(screen.getByText("24/06/2026")).toBeInTheDocument();
-    expect(screen.getByText(/A liberar/)).toBeInTheDocument();
+    expect(screen.getByText(/Pending release/)).toBeInTheDocument();
   });
 });

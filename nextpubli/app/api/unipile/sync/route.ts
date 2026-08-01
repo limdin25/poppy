@@ -20,7 +20,7 @@ export async function POST() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -29,7 +29,7 @@ export async function POST() {
     .single<{ is_admin: boolean }>();
 
   if (!profile?.is_admin)
-    return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
   const admin = createAdminClient();
   const cutoff = Date.now() - MAX_AGE_MS;
@@ -45,7 +45,7 @@ export async function POST() {
     (channels as Array<{ id: string; unipile_account_id: string }> | null) ?? [];
 
   if (connectedChannels.length === 0) {
-    return NextResponse.json({ synced: 0, message: "Nenhum WhatsApp conectado" });
+    return NextResponse.json({ synced: 0, message: "No WhatsApp connected" });
   }
 
   let totalInserted = 0;
@@ -144,7 +144,7 @@ export async function POST() {
         },
       });
 
-      const preview = (m.text ?? "").slice(0, 100) || (hasAttachments ? "📎 Anexo" : "");
+      const preview = (m.text ?? "").slice(0, 100) || (hasAttachments ? "📎 Attachment" : "");
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (admin.from("conversations") as any)

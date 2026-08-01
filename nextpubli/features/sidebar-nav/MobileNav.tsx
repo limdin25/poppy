@@ -24,31 +24,31 @@ import {
   X,
 } from "lucide-react";
 
-// Métricas is Instagram-only data — hidden while Instagram is off (lib/flags.ts).
+// Metrics is Instagram-only data, hidden while Instagram is off (lib/flags.ts).
 const influencerItems = [
-  { label: "Início", href: "/dashboard", icon: Home },
+  { label: "Home", href: "/dashboard", icon: Home },
   ...(INSTAGRAM_ENABLED
-    ? [{ label: "Métricas", href: "/metricas", icon: BarChart3 }]
+    ? [{ label: "Metrics", href: "/metrics", icon: BarChart3 }]
     : []),
-  { label: "Calendário", href: "/calendario", icon: Calendar },
-  { label: "Vendas", href: "/vendas", icon: DollarSign },
-  { label: "Configurações", href: "/configuracoes", icon: Settings },
+  { label: "Calendar", href: "/calendar", icon: Calendar },
+  { label: "Sales", href: "/sales", icon: DollarSign },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 const adminItems = [
-  { label: "Visão Geral", href: "/admin", icon: LayoutDashboard },
-  { label: "Notificações", href: "/admin/notificacoes", icon: Bell },
-  { label: "Campanha", href: "/admin/campanha", icon: Megaphone },
-  { label: "Influenciadores", href: "/admin/influenciadores", icon: Users },
-  { label: "Agendador", href: "/admin/agendador", icon: Clock },
-  { label: "Mensagens", href: "/admin/mensagens", icon: MessageSquare },
-  { label: "Marcas", href: "/admin/marcas", icon: Tag },
+  { label: "Overview", href: "/admin", icon: LayoutDashboard },
+  { label: "Notifications", href: "/admin/notifications", icon: Bell },
+  { label: "Campaign", href: "/admin/campaign", icon: Megaphone },
+  { label: "Influencers", href: "/admin/influencers", icon: Users },
+  { label: "Scheduler", href: "/admin/scheduler", icon: Clock },
+  { label: "Messages", href: "/admin/messages", icon: MessageSquare },
+  { label: "Brands", href: "/admin/brands", icon: Tag },
   { label: "Hotmart", href: "/admin/hotmart", icon: ShoppingCart },
-  { label: "Pagamentos", href: "/admin/pagamentos", icon: Wallet },
-  { label: "Configurações", href: "/admin/configuracoes", icon: Settings },
+  { label: "Payments", href: "/admin/payments", icon: Wallet },
+  { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
-const NOTIFICATIONS_HREF = "/admin/notificacoes";
+const NOTIFICATIONS_HREF = "/admin/notifications";
 
 interface MobileNavProps {
   variant: "influencer" | "admin";
@@ -150,7 +150,7 @@ export function MobileNav({ variant, notificationCount = 0 }: MobileNavProps) {
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-foreground-secondary transition-all duration-150 active:scale-[0.97] hover:bg-red-50 hover:text-error"
                 >
                   <LogOut size={18} />
-                  Sair
+                  Sign out
                 </button>
               </form>
             </div>

@@ -46,7 +46,7 @@ function PendingReleasesCard({ pending }: { pending: PendingRelease[] }) {
     <div className="rounded-xl border border-border p-5">
       <div className="flex items-center justify-between">
         <p className="text-sm text-foreground-secondary">
-          A liberar (período de garantia)
+          Pending release (guarantee period)
         </p>
         <p className="text-lg font-bold text-warning">{brl(total)}</p>
       </div>
@@ -54,9 +54,9 @@ function PendingReleasesCard({ pending }: { pending: PendingRelease[] }) {
         {pending.map((p) => (
           <div key={p.availableOn} className="flex items-center justify-between text-sm">
             <span className="text-foreground-secondary">
-              Libera em{" "}
-              <strong className="text-foreground">{fmtDay(p.availableOn)}</strong> ·{" "}
-              {p.count} venda{p.count > 1 ? "s" : ""}
+              Releases on{" "}
+              <strong className="text-foreground">{fmtDay(p.availableOn)}</strong> -{" "}
+              {p.count} sale{p.count > 1 ? "s" : ""}
             </span>
             <span className="font-medium">{brl(p.amount)}</span>
           </div>
@@ -76,7 +76,7 @@ function AvailableBalanceCard({ amount, hasPix }: { amount: number; hasPix: bool
     startTransition(async () => {
       const r = await requestPayout();
       if ("success" in r) {
-        setResult({ ok: true, msg: `Pagamento de ${brl(r.amount)} solicitado! 🎉` });
+        setResult({ ok: true, msg: `Payment of ${brl(r.amount)} requested! 🎉` });
       } else {
         setResult({ ok: false, msg: r.error });
       }
@@ -87,15 +87,17 @@ function AvailableBalanceCard({ amount, hasPix }: { amount: number; hasPix: bool
     <div className="overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between gap-4 p-5">
         <div className="min-w-0">
-          <p className="text-sm text-foreground-secondary">Saldo disponível para saque</p>
+          <p className="text-sm text-foreground-secondary">
+            Balance available for withdrawal
+          </p>
           <p className="text-2xl font-bold text-success">{brl(amount)}</p>
           {!hasPix ? (
             <p className="mt-1 text-xs text-foreground-secondary">
-              Cadastre sua chave PIX abaixo para poder sacar.
+              Add your PIX key below so you can withdraw.
             </p>
           ) : amount <= 0 ? (
             <p className="mt-1 text-xs text-foreground-secondary">
-              Suas comissões ficam disponíveis 21 dias após a venda confirmada.
+              Your commissions become available 21 days after the sale is confirmed.
             </p>
           ) : null}
         </div>
@@ -105,7 +107,7 @@ function AvailableBalanceCard({ amount, hasPix }: { amount: number; hasPix: bool
           disabled={!canRequest}
           className="shrink-0 rounded-lg bg-success px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-success/90 disabled:opacity-50"
         >
-          {isPending ? "Solicitando..." : "Solicitar pagamento"}
+          {isPending ? "Requesting..." : "Request payment"}
         </button>
       </div>
       {result && (
@@ -149,7 +151,7 @@ function StatCard({
 
 const PIX_PLACEHOLDERS: Record<string, string> = {
   cpf: "000.000.000-00",
-  email: "seu@email.com",
+  email: "you@email.com",
   phone: "+55 11 99999-9999",
   random: "xxxxxxxx-xxxx-xxxx-xxxx",
 };
@@ -183,40 +185,40 @@ function PixCard({
         </div>
         <div>
           <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">
-            Pagamento PIX
+            PIX Payment
           </h2>
         </div>
       </div>
 
       <div className="p-5 space-y-5">
         <p className="text-sm text-foreground-secondary">
-          Informe sua chave PIX para receber comissões. O pagamento é liberado 21 dias
-          após a venda confirmada (período de garantia contra reembolsos).
+          Enter your PIX key to receive commissions. Payment is released 21 days after
+          the sale is confirmed (guarantee period against refunds).
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-semibold">Tipo de chave</label>
+              <label className="text-sm font-semibold">Key type</label>
               <select
                 name="pix_key_type"
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
                 className="rounded-xl border border-border bg-background-secondary px-4 py-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               >
-                <option value="">Selecione</option>
+                <option value="">Select</option>
                 <option value="cpf">CPF</option>
                 <option value="email">Email</option>
-                <option value="phone">Telefone</option>
-                <option value="random">Chave aleatória</option>
+                <option value="phone">Phone</option>
+                <option value="random">Random key</option>
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-semibold">Chave PIX</label>
+              <label className="text-sm font-semibold">PIX key</label>
               <input
                 name="pix_key"
                 defaultValue={pixKey ?? ""}
-                placeholder={PIX_PLACEHOLDERS[selectedType] ?? "Sua chave PIX"}
+                placeholder={PIX_PLACEHOLDERS[selectedType] ?? "Your PIX key"}
                 className="rounded-xl border border-border bg-background-secondary px-4 py-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               />
             </div>
@@ -226,8 +228,8 @@ function PixCard({
             <div className="flex items-center gap-2 text-xs text-foreground-secondary">
               <Clock size={14} className="text-warning" />
               <span>
-                Prazo de pagamento: <strong className="text-foreground">21 dias</strong>{" "}
-                após a venda confirmada
+                Payment timeline: <strong className="text-foreground">21 days</strong>{" "}
+                after the sale is confirmed
               </span>
             </div>
             <button
@@ -235,7 +237,7 @@ function PixCard({
               disabled={isPending}
               className="shrink-0 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50 transition-colors"
             >
-              {isPending ? "Salvando..." : saved ? "Salvo!" : "Salvar"}
+              {isPending ? "Saving..." : saved ? "Saved!" : "Save"}
             </button>
           </div>
         </form>
@@ -260,33 +262,32 @@ export function DashboardAnalytics({
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-2xl font-bold">Vendas</h1>
+        <h1 className="text-2xl font-bold">Sales</h1>
         <p className="mt-1 text-sm text-foreground-secondary">
-          Acompanhe suas vendas e comissões
+          Track your sales and commissions
         </p>
       </div>
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={ShoppingCart} label="Total de vendas" value={totalSales} />
+        <StatCard icon={ShoppingCart} label="Total sales" value={totalSales} />
         <StatCard
           icon={DollarSign}
-          label="Comissão acumulada"
+          label="Total commission"
           value={formattedCommission}
         />
         <StatCard
           icon={MousePointerClick}
-          label="Cliques no link"
+          label="Link clicks"
           value={affiliateClicks}
         />
-        <StatCard icon={Clock} label="Último post" value={lastPublishedAt ?? "Nenhum"} />
+        <StatCard icon={Clock} label="Last post" value={lastPublishedAt ?? "None"} />
       </div>
 
       <div className="rounded-xl border border-border p-4 sm:p-5">
-        <h2 className="mb-4 text-base font-semibold">Vendas por mês</h2>
+        <h2 className="mb-4 text-base font-semibold">Sales by month</h2>
         {monthlySales.length === 0 ? (
           <p className="text-foreground-secondary text-sm">
-            Nenhuma venda registrada ainda. Seus dados aparecerão aqui quando começar a
-            vender.
+            No sales recorded yet. Your data will appear here once you start selling.
           </p>
         ) : (
           <div className="space-y-2">
@@ -294,7 +295,7 @@ export function DashboardAnalytics({
               <div key={m.month} className="flex items-center justify-between text-sm">
                 <span>{m.month}</span>
                 <span className="font-medium">
-                  {m.sales} vendas · R$ {m.commission.toFixed(2).replace(".", ",")}
+                  {m.sales} sales - R$ {m.commission.toFixed(2).replace(".", ",")}
                 </span>
               </div>
             ))}

@@ -27,7 +27,7 @@ export const maxDuration = 300;
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
 
   const supabase = createAdminClient();
@@ -63,8 +63,8 @@ export async function GET(request: Request) {
       (post as ScheduledPost & { provider?: string }).provider ?? "heypubli";
 
     if (suspendedIds.has(post.profile_id)) {
-      await markPostFailed(post.id, "Conta suspensa");
-      results.push({ id: post.id, status: "failed: conta suspensa" });
+      await markPostFailed(post.id, "Account suspended");
+      results.push({ id: post.id, status: "failed: account suspended" });
       continue;
     }
 
@@ -103,7 +103,7 @@ async function publishViaMeta(
     .single();
 
   if (!connection) {
-    throw new Error("Instagram não conectado");
+    throw new Error("Instagram not connected");
   }
 
   const containerParams = buildContainerParams(
@@ -129,7 +129,7 @@ async function publishViaMeta(
 
 async function publishViaOutstand(post: ScheduledPost, apiKey: string | null) {
   if (!apiKey) {
-    throw new Error("Outstand API key não configurada");
+    throw new Error("Outstand API key not configured");
   }
 
   // A previous run may have created the Outstand post but died before recording the
@@ -149,7 +149,7 @@ async function publishViaOutstand(post: ScheduledPost, apiKey: string | null) {
 
   const connection = await getOutstandConnection(post.profile_id);
   if (!connection) {
-    throw new Error("Outstand não conectado");
+    throw new Error("Outstand not connected");
   }
 
   const mediaIds = await uploadMediaToOutstand(apiKey, post.media_url, post.media_type);
@@ -196,7 +196,7 @@ async function uploadMediaToOutstand(
   const { id: mediaId, upload_url } = await getUploadUrl(apiKey, filename, contentType);
 
   const mediaResponse = await fetch(mediaUrl);
-  if (!mediaResponse.ok) throw new Error("Falha ao baixar mídia");
+  if (!mediaResponse.ok) throw new Error("Failed to download media");
   const buffer = await mediaResponse.arrayBuffer();
 
   const uploadRes = await fetch(upload_url, {
@@ -204,7 +204,7 @@ async function uploadMediaToOutstand(
     headers: { "Content-Type": contentType },
     body: buffer,
   });
-  if (!uploadRes.ok) throw new Error("Falha no upload da mídia");
+  if (!uploadRes.ok) throw new Error("Media upload failed");
 
   await confirmUpload(apiKey, mediaId);
 

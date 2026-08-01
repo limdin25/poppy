@@ -55,10 +55,10 @@ describe("markPayoutPaid", () => {
     expect(await markPayoutPaid("po1")).toEqual({ success: true });
   });
 
-  it("reports 'já processado' when no row matched (already paid/cancelled)", async () => {
+  it("reports 'already processed' when no row matched (already paid/cancelled)", async () => {
     adminCfg = { payouts: { update: { data: [] } } };
     expect(await markPayoutPaid("po1")).toEqual({
-      error: expect.stringMatching(/já processado/),
+      error: expect.stringMatching(/already processed/),
     });
   });
 });
@@ -81,7 +81,7 @@ describe("cancelPayout", () => {
   it("does NOT release sales when the payout wasn't 'requested' (e.g. already paid)", async () => {
     adminCfg = { payouts: { update: { data: [] } } };
     expect(await cancelPayout("po1")).toEqual({
-      error: expect.stringMatching(/já processado/),
+      error: expect.stringMatching(/already processed/),
     });
     // critical: a paid payout's sales must NOT be freed (would enable double-pay)
     expect(calls).not.toContainEqual({ table: "hotmart_sales", op: "update" });

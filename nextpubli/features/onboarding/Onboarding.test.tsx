@@ -21,14 +21,14 @@ describe("SectorGrid", () => {
   const sectors = [
     {
       id: "1",
-      name: "Saúde & Bem-estar",
+      name: "Health & Wellness",
       slug: "saude-bem-estar",
       is_active: true,
       sort_order: 1,
     },
     {
       id: "2",
-      name: "Esporte & Fitness",
+      name: "Sport & Fitness",
       slug: "esporte-fitness",
       is_active: true,
       sort_order: 2,
@@ -37,13 +37,13 @@ describe("SectorGrid", () => {
 
   it("renders all sectors", () => {
     render(<SectorGrid sectors={sectors} selected={[]} onToggle={() => {}} />);
-    expect(screen.getByText("Saúde & Bem-estar")).toBeInTheDocument();
-    expect(screen.getByText("Esporte & Fitness")).toBeInTheDocument();
+    expect(screen.getByText("Health & Wellness")).toBeInTheDocument();
+    expect(screen.getByText("Sport & Fitness")).toBeInTheDocument();
   });
 
   it("shows selected state", () => {
     render(<SectorGrid sectors={sectors} selected={["1"]} onToggle={() => {}} />);
-    const btn = screen.getByText("Saúde & Bem-estar").closest("button");
+    const btn = screen.getByText("Health & Wellness").closest("button");
     expect(btn).toHaveAttribute("data-selected", "true");
   });
 });

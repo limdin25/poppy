@@ -113,7 +113,7 @@ describe("createCampaignItem", () => {
         scheduled_at: "2099-06-12T17:00",
       }),
     );
-    expect(r).toEqual({ error: expect.stringMatching(/mídia/i) });
+    expect(r).toEqual({ error: expect.stringMatching(/media/i) });
     expect(ops).toHaveLength(0);
   });
 

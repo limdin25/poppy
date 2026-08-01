@@ -24,7 +24,7 @@ async function requireAdmin() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Não autenticado");
+  if (!user) throw new Error("Not authenticated");
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -32,14 +32,14 @@ async function requireAdmin() {
     .eq("id", user.id)
     .single<{ is_admin: boolean }>();
 
-  if (!profile?.is_admin) throw new Error("Acesso negado");
+  if (!profile?.is_admin) throw new Error("Access denied");
   return user.id;
 }
 
 function revalidateCampaignPages() {
-  revalidatePath("/admin/campanha");
-  revalidatePath("/admin/influenciadores");
-  revalidatePath("/admin/agendador");
+  revalidatePath("/admin/campaign");
+  revalidatePath("/admin/influencers");
+  revalidatePath("/admin/scheduler");
   revalidatePath("/admin");
 }
 
@@ -60,9 +60,9 @@ function readItemFields(formData: FormData): ItemFields | { error: string } {
   const brandId = ((formData.get("brand_id") as string) || "").trim() || null;
 
   const validTypes = ["feed", "story_image", "story_video", "reel", "carousel"];
-  if (!validTypes.includes(mediaType)) return { error: "Tipo de post inválido." };
-  if (!mediaUrl) return { error: "Envie a mídia ou informe a URL." };
-  if (!scheduledLocal) return { error: "Informe data e hora." };
+  if (!validTypes.includes(mediaType)) return { error: "Invalid post type." };
+  if (!mediaUrl) return { error: "Upload the media or enter the URL." };
+  if (!scheduledLocal) return { error: "Enter a date and time." };
 
   // Wall time in the timezone picked in the modal (defaults to the app default).
   const tzRaw = ((formData.get("timezone") as string) || "").trim();
@@ -82,16 +82,16 @@ function readItemFields(formData: FormData): ItemFields | { error: string } {
 export async function createCampaignItem(formData: FormData): Promise<ActionResult> {
   await requireAdmin();
   const campaignId = (formData.get("campaign_id") as string) || "";
-  if (!campaignId) return { error: "Campanha inválida." };
+  if (!campaignId) return { error: "Invalid campaign." };
 
   const fields = readItemFields(formData);
   if ("error" in fields) return fields;
 
   const campaign = await getCampaignById(campaignId);
-  if (!campaign) return { error: "Campanha não encontrada." };
+  if (!campaign) return { error: "Campaign not found." };
 
   const brandId = fields.brandId ?? campaign.brand_id;
-  if (!brandId) return { error: "Selecione uma marca para o post." };
+  if (!brandId) return { error: "Select a brand for the post." };
 
   const admin = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,7 +130,7 @@ export async function createCampaignItem(formData: FormData): Promise<ActionResu
         { onConflict: "campaign_item_id,profile_id", ignoreDuplicates: true },
       );
       if (postsErr) {
-        return { error: `Item criado, mas falhou ao agendar: ${postsErr.message}` };
+        return { error: `Item created, but scheduling failed: ${postsErr.message}` };
       }
       postsCreated = rows.length;
     }
@@ -148,16 +148,16 @@ export async function updateCampaignItem(
   await requireAdmin();
 
   const existing = await getCampaignItemById(itemId);
-  if (!existing) return { error: "Item não encontrado." };
+  if (!existing) return { error: "Item not found." };
 
   const fields = readItemFields(formData);
   if ("error" in fields) return fields;
 
   const campaign = await getCampaignById(existing.campaign_id);
-  if (!campaign) return { error: "Campanha não encontrada." };
+  if (!campaign) return { error: "Campaign not found." };
 
   const brandId = fields.brandId ?? existing.brand_id ?? campaign.brand_id;
-  if (!brandId) return { error: "Selecione uma marca para o post." };
+  if (!brandId) return { error: "Select a brand for the post." };
 
   const admin = createAdminClient();
   const patch = {
@@ -181,7 +181,7 @@ export async function updateCampaignItem(
     .eq("campaign_item_id", itemId)
     .eq("status", "pending");
   if (postsErr)
-    return { error: `Item salvo, mas falhou ao reagendar: ${postsErr.message}` };
+    return { error: `Item saved, but rescheduling failed: ${postsErr.message}` };
 
   // If the item moved into the future, members that never got it (it was in the
   // past when they joined) get their post now. Suspended accounts are skipped.
@@ -240,12 +240,12 @@ export async function addMembersToCampaign(
 ): Promise<ActionResult> {
   const adminId = await requireAdmin();
   const requestedIds = profileIds.map((p) => p.trim()).filter(Boolean);
-  if (requestedIds.length === 0) return { error: "Selecione pelo menos uma conta." };
+  if (requestedIds.length === 0) return { error: "Select at least one account." };
   const ids = await filterActiveProfileIds(requestedIds);
-  if (ids.length === 0) return { error: "Essas contas estão suspensas." };
+  if (ids.length === 0) return { error: "Those accounts are suspended." };
 
   const campaign = await getCampaignById(campaignId);
-  if (!campaign) return { error: "Campanha não encontrada." };
+  if (!campaign) return { error: "Campaign not found." };
 
   const admin = createAdminClient();
   const memberRows = ids.map((profileId) => ({
@@ -283,7 +283,7 @@ export async function addMembersToCampaign(
       { onConflict: "campaign_item_id,profile_id", ignoreDuplicates: true },
     );
     if (postsErr) {
-      return { error: `Contas adicionadas, mas falhou ao agendar: ${postsErr.message}` };
+      return { error: `Accounts added, but scheduling failed: ${postsErr.message}` };
     }
   }
 
@@ -296,7 +296,7 @@ export async function addMembersToCampaign(
     .is("read_at", null);
 
   revalidateCampaignPages();
-  revalidatePath("/admin/notificacoes");
+  revalidatePath("/admin/notifications");
   return { success: true, postsCreated: rows.length };
 }
 
@@ -336,7 +336,7 @@ export async function updateCampaign(
   const name = ((formData.get("name") as string) || "").trim();
   const description = ((formData.get("description") as string) || "").trim() || null;
   const brandId = ((formData.get("brand_id") as string) || "").trim() || null;
-  if (!name) return { error: "Informe o nome da campanha." };
+  if (!name) return { error: "Enter the campaign name." };
 
   const admin = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

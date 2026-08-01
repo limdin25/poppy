@@ -34,7 +34,7 @@ describe("MediaUpload", () => {
 
   it("renders the dropzone CTA", () => {
     render(<MediaUpload onUploaded={() => {}} />);
-    expect(screen.getByText(/arraste mídia ou clique para enviar/i)).toBeInTheDocument();
+    expect(screen.getByText(/drag media here or click to upload/i)).toBeInTheDocument();
   });
 
   it("uploads a picked file and reports the public URL", async () => {
@@ -53,23 +53,23 @@ describe("MediaUpload", () => {
     expect(screen.getByText(/praia\.jpg/)).toBeInTheDocument();
   });
 
-  it("rejects an oversized image with a PT-BR error (no upload)", async () => {
+  it("rejects an oversized image with an error (no upload)", async () => {
     render(<MediaUpload onUploaded={() => {}} />);
 
     const big = new File(["x"], "big.jpg", { type: "image/jpeg" });
     Object.defineProperty(big, "size", { value: 9 * 1024 * 1024 });
     pickFile(big);
 
-    expect(await screen.findByText(/muito grande/i)).toBeInTheDocument();
+    expect(await screen.findByText(/too large/i)).toBeInTheDocument();
     expect(createMediaUploadUrl).not.toHaveBeenCalled();
   });
 
   it("shows the server error when the signed URL is refused", async () => {
-    createMediaUploadUrl.mockResolvedValue({ error: "Formato não suportado." });
+    createMediaUploadUrl.mockResolvedValue({ error: "Unsupported format." });
     render(<MediaUpload onUploaded={() => {}} />);
 
     pickFile(new File(["x"], "a.jpg", { type: "image/jpeg" }));
 
-    expect(await screen.findByText(/formato não suportado/i)).toBeInTheDocument();
+    expect(await screen.findByText(/unsupported format/i)).toBeInTheDocument();
   });
 });

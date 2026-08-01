@@ -22,7 +22,7 @@ export function CopyLinkButton({ url }: { url: string }) {
       onClick={copy}
       className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
     >
-      {copied ? "Copiado!" : "Copiar"}
+      {copied ? "Copied!" : "Copy"}
     </button>
   );
 }

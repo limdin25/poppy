@@ -15,15 +15,15 @@ const MOCK_ALERTS = [
   {
     id: "1",
     type: "warning" as const,
-    message: "3 influenciadores sem Instagram conectado",
+    message: "3 creators without Instagram connected",
   },
-  { id: "2", type: "error" as const, message: "Token expirado: @maria_fit" },
+  { id: "2", type: "error" as const, message: "Token expired: @maria_fit" },
 ];
 
 describe("AdminOverview", () => {
   it("renders overview heading", () => {
     render(<AdminOverview stats={MOCK_STATS} alerts={[]} />);
-    expect(screen.getByText("Visão Geral")).toBeInTheDocument();
+    expect(screen.getByText("Overview")).toBeInTheDocument();
   });
 
   it("shows influencer count", () => {
@@ -33,9 +33,9 @@ describe("AdminOverview", () => {
 
   it("shows alerts when present", () => {
     render(<AdminOverview stats={MOCK_STATS} alerts={MOCK_ALERTS} />);
-    expect(screen.getByText("Alertas")).toBeInTheDocument();
+    expect(screen.getByText("Alerts")).toBeInTheDocument();
     expect(
-      screen.getByText("3 influenciadores sem Instagram conectado"),
+      screen.getByText("3 creators without Instagram connected"),
     ).toBeInTheDocument();
   });
 });

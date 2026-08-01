@@ -11,7 +11,7 @@ import {
   subMonths,
   getDay,
 } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { enGB } from "date-fns/locale";
 import {
   ChevronLeft,
   ChevronRight,
@@ -37,17 +37,17 @@ const STATUS_COLORS = {
 } as const;
 
 const STATUS_LABELS = {
-  published: "Publicado",
-  pending: "Agendado",
-  failed: "Falhou",
+  published: "Published",
+  pending: "Scheduled",
+  failed: "Failed",
 } as const;
 
 const MEDIA_LABELS: Record<string, string> = {
   feed: "Feed",
   story_image: "Story",
-  story_video: "Story (vídeo)",
+  story_video: "Story (video)",
   reel: "Reel",
-  carousel: "Carrossel",
+  carousel: "Carousel",
 };
 
 function PostIcon({ type }: { type: string }) {
@@ -73,7 +73,7 @@ export function DashboardCalendar({ posts }: DashboardCalendarProps) {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Calendário</h1>
+        <h1 className="text-2xl font-bold">Calendar</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
@@ -82,7 +82,7 @@ export function DashboardCalendar({ posts }: DashboardCalendarProps) {
             <ChevronLeft size={16} />
           </button>
           <span className="min-w-[150px] text-center font-medium capitalize">
-            {format(currentMonth, "MMMM yyyy", { locale: ptBR })}
+            {format(currentMonth, "MMMM yyyy", { locale: enGB })}
           </span>
           <button
             onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
@@ -96,20 +96,20 @@ export function DashboardCalendar({ posts }: DashboardCalendarProps) {
       <div className="flex gap-4 text-sm">
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded-full bg-success" />
-          <span>Publicado</span>
+          <span>Published</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded-full bg-warning" />
-          <span>Agendado</span>
+          <span>Scheduled</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded-full bg-error" />
-          <span>Falhou</span>
+          <span>Failed</span>
         </div>
       </div>
 
       <div className="grid grid-cols-7 gap-px rounded-xl border border-border bg-border overflow-hidden">
-        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => (
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <div
             key={d}
             className="bg-background-secondary p-2 text-center text-xs font-medium text-foreground-secondary"
@@ -163,9 +163,8 @@ export function DashboardCalendar({ posts }: DashboardCalendarProps) {
         <div className="rounded-2xl border border-border bg-background p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">
-              {format(selectedDay, "d 'de' MMMM", { locale: ptBR })} ·{" "}
-              {selectedPosts.length}{" "}
-              {selectedPosts.length === 1 ? "publicação" : "publicações"}
+              {format(selectedDay, "d MMMM", { locale: enGB })} -{" "}
+              {selectedPosts.length} {selectedPosts.length === 1 ? "post" : "posts"}
             </h2>
             <button
               onClick={() => setSelectedDay(null)}
@@ -216,25 +215,25 @@ export function DashboardCalendar({ posts }: DashboardCalendarProps) {
                         {post.reach != null && (
                           <span className="flex items-center gap-1 text-xs text-foreground-secondary">
                             <Eye size={13} />
-                            {post.reach.toLocaleString("pt-BR")}
+                            {post.reach.toLocaleString("en-GB")}
                           </span>
                         )}
                         {post.likes != null && (
                           <span className="flex items-center gap-1 text-xs text-foreground-secondary">
                             <Heart size={13} />
-                            {post.likes.toLocaleString("pt-BR")}
+                            {post.likes.toLocaleString("en-GB")}
                           </span>
                         )}
                         {post.comments != null && (
                           <span className="flex items-center gap-1 text-xs text-foreground-secondary">
                             <MessageCircle size={13} />
-                            {post.comments.toLocaleString("pt-BR")}
+                            {post.comments.toLocaleString("en-GB")}
                           </span>
                         )}
                         {post.shares != null && (
                           <span className="flex items-center gap-1 text-xs text-foreground-secondary">
                             <Share2 size={13} />
-                            {post.shares.toLocaleString("pt-BR")}
+                            {post.shares.toLocaleString("en-GB")}
                           </span>
                         )}
                       </div>

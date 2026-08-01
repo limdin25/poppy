@@ -21,10 +21,10 @@ export function EmailLoginForm() {
     return (
       <div className="space-y-6">
         <div className="rounded-lg border border-success/30 bg-success/10 px-4 py-4 text-sm">
-          <p className="font-medium text-foreground">Link enviado! 📩</p>
+          <p className="font-medium text-foreground">Link sent! 📩</p>
           <p className="mt-1 text-foreground-secondary">
-            Enviamos um link e um código de 8 dígitos para <strong>{state.email}</strong>.
-            Clique no link do email — ou digite o código aqui embaixo.
+            We sent a link and an 8-digit code to <strong>{state.email}</strong>.
+            Click the link in the email, or type the code below.
           </p>
         </div>
         <CodeLoginForm email={state.email} />
@@ -41,7 +41,7 @@ export function EmailLoginForm() {
           onClick={() => setShowCodeEntry(false)}
           className="text-sm font-medium text-accent hover:underline"
         >
-          ← Voltar e receber um novo link
+          ← Back to get a new link
         </button>
       </div>
     );
@@ -64,7 +64,7 @@ export function EmailLoginForm() {
               name="email"
               type="email"
               required
-              placeholder="seu@email.com"
+              placeholder="you@email.com"
               className="w-full rounded-lg border border-border py-2.5 pl-10 pr-4 focus:border-accent focus:outline-none"
             />
           </div>
@@ -81,7 +81,7 @@ export function EmailLoginForm() {
           disabled={pending}
           className="w-full rounded-lg bg-accent px-6 py-3 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
         >
-          {pending ? "Enviando..." : "Receber link de acesso"}
+          {pending ? "Sending..." : "Get login link"}
         </button>
       </form>
 
@@ -90,7 +90,7 @@ export function EmailLoginForm() {
         onClick={() => setShowCodeEntry(true)}
         className="text-sm font-medium text-accent hover:underline"
       >
-        Já recebeu um código? Digite aqui
+        Already got a code? Enter it here
       </button>
     </div>
   );

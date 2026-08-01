@@ -10,7 +10,7 @@ describe("AdminImpersonate", () => {
         <div>Dashboard content</div>
       </AdminImpersonate>,
     );
-    expect(screen.getByText("Voltar ao Admin")).toBeInTheDocument();
+    expect(screen.getByText("Back to Admin")).toBeInTheDocument();
     expect(screen.getByText("Ana Silva")).toBeInTheDocument();
   });
 

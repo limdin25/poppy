@@ -42,7 +42,7 @@ export default async function AdminPage() {
     alerts.push({
       id: "pending-ig",
       type: "warning",
-      message: `${pendingCount} influenciador(es) sem Instagram conectado`,
+      message: `${pendingCount} creator(s) without Instagram connected`,
     });
   }
 
@@ -50,7 +50,7 @@ export default async function AdminPage() {
     alerts.push({
       id: `expiring-${conn.id}`,
       type: "error",
-      message: `Token expirando: @${conn.ig_username}`,
+      message: `Token expiring: @${conn.ig_username}`,
     });
   }
 

@@ -14,14 +14,14 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
 
   const settings = await getPostingSettingsAdmin();
   if (!settings?.outstand_api_key || !settings?.outstand_social_network_id) {
     const { origin } = new URL(request.url);
     return NextResponse.redirect(
-      `${origin}/onboarding?ig_error=${encodeURIComponent("Outstand não configurado")}`,
+      `${origin}/onboarding?ig_error=${encodeURIComponent("Outstand not configured")}`,
     );
   }
 

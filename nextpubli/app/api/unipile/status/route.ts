@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     .single<{ is_admin: boolean }>();
 
   if (!profile?.is_admin)
-    return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const accountId = searchParams.get("accountId");
@@ -58,7 +58,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ status, connected, phone: toE164(phone ?? "") });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro" },
+      { error: err instanceof Error ? err.message : "Error" },
       { status: 500 },
     );
   }

@@ -82,7 +82,7 @@ describe("requestPayout", () => {
       hotmart_sales: { select: { data: [] } },
     };
     expect(await requestPayout()).toEqual({
-      error: expect.stringMatching(/Nenhum valor/),
+      error: expect.stringMatching(/No balance available/),
     });
   });
 
@@ -115,7 +115,7 @@ describe("requestPayout", () => {
       payouts: { insert: { data: { id: "po1" }, error: null }, delete: {} },
     };
     const r = await requestPayout();
-    expect(r).toEqual({ error: expect.stringMatching(/já tem uma solicitação/) });
+    expect(r).toEqual({ error: expect.stringMatching(/already have a payout request/) });
     expect(calls).toContainEqual({ table: "payouts", op: "delete" });
   });
 });

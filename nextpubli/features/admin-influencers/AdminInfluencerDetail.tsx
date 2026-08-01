@@ -123,7 +123,7 @@ export function AdminInfluencerDetail({
   const handleDelete = () => {
     startTransition(async () => {
       await deleteInfluencer(profile.id);
-      router.push("/admin/influenciadores");
+      router.push("/admin/influencers");
     });
   };
 
@@ -143,11 +143,11 @@ export function AdminInfluencerDetail({
       const result = await setInfluencerSuspended(profile.id, !isSuspended);
       setConfirmSuspend(false);
       if (result && "error" in result) {
-        setFeedback({ type: "error", msg: result.error ?? "Erro" });
+        setFeedback({ type: "error", msg: result.error ?? "Error" });
       } else {
         setFeedback({
           type: "success",
-          msg: isSuspended ? "Conta reativada" : "Conta suspensa",
+          msg: isSuspended ? "Account reactivated" : "Account suspended",
         });
         router.refresh();
       }
@@ -164,7 +164,7 @@ export function AdminInfluencerDetail({
       if (result.error) {
         setFeedback({ type: "error", msg: result.error });
       } else {
-        setFeedback({ type: "success", msg: "Perfil atualizado" });
+        setFeedback({ type: "success", msg: "Profile updated" });
         setEditMode(false);
         router.refresh();
       }
@@ -181,7 +181,7 @@ export function AdminInfluencerDetail({
       if (result.error) {
         setFeedback({ type: "error", msg: result.error });
       } else {
-        setFeedback({ type: "success", msg: "Email/senha atualizados" });
+        setFeedback({ type: "success", msg: "Email/password updated" });
         setEditAuth(false);
         router.refresh();
       }
@@ -192,7 +192,7 @@ export function AdminInfluencerDetail({
     <div className="space-y-6 p-6">
       <div className="flex items-center gap-4">
         <Link
-          href="/admin/influenciadores"
+          href="/admin/influencers"
           className="rounded-lg border border-border p-2 hover:bg-background-secondary transition-colors"
         >
           <ArrowLeft size={18} />
@@ -202,7 +202,7 @@ export function AdminInfluencerDetail({
             {profile.first_name} {profile.last_name}
             {isSuspended && (
               <span className="ml-3 inline-flex rounded-full bg-error/10 px-3 py-1 align-middle text-xs font-medium text-error">
-                Suspensa
+                Suspended
               </span>
             )}
           </h1>
@@ -245,7 +245,7 @@ export function AdminInfluencerDetail({
               <ShoppingCart size={20} className="text-accent" />
             </div>
             <div>
-              <p className="text-xs text-foreground-secondary">Vendas</p>
+              <p className="text-xs text-foreground-secondary">Sales</p>
               <p className="text-xl font-bold">{totalSalesCount}</p>
             </div>
           </div>
@@ -256,7 +256,7 @@ export function AdminInfluencerDetail({
               <DollarSign size={20} className="text-success" />
             </div>
             <div>
-              <p className="text-xs text-foreground-secondary">Comissão total</p>
+              <p className="text-xs text-foreground-secondary">Total commission</p>
               <p className="text-xl font-bold">
                 R$ {totalCommission.toFixed(2).replace(".", ",")}
               </p>
@@ -269,7 +269,7 @@ export function AdminInfluencerDetail({
               <Calendar size={20} className="text-accent" />
             </div>
             <div>
-              <p className="text-xs text-foreground-secondary">Posts publicados</p>
+              <p className="text-xs text-foreground-secondary">Published posts</p>
               <p className="text-xl font-bold">{publishedPosts}</p>
             </div>
           </div>
@@ -280,7 +280,7 @@ export function AdminInfluencerDetail({
               <Eye size={20} className="text-warning" />
             </div>
             <div>
-              <p className="text-xs text-foreground-secondary">Posts pendentes</p>
+              <p className="text-xs text-foreground-secondary">Pending posts</p>
               <p className="text-xl font-bold">{pendingPosts}</p>
             </div>
           </div>
@@ -295,7 +295,7 @@ export function AdminInfluencerDetail({
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold flex items-center gap-2">
               <Lock size={16} />
-              Alterar email / senha
+              Change email / password
             </h2>
             <button
               type="button"
@@ -307,13 +307,13 @@ export function AdminInfluencerDetail({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <EditField
-              label="Novo email"
+              label="New email"
               name="email"
               defaultValue={profile.email}
               type="email"
             />
             <EditField
-              label="Nova senha (deixe vazio para manter)"
+              label="New password (leave blank to keep)"
               name="password"
               defaultValue=""
               type="password"
@@ -326,14 +326,14 @@ export function AdminInfluencerDetail({
               onClick={() => setEditAuth(false)}
               className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-background-secondary"
             >
-              Cancelar
+              Cancel
             </button>
             <button
               type="submit"
               disabled={isPending}
               className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
             >
-              {isPending ? "Salvando..." : "Salvar credenciais"}
+              {isPending ? "Saving..." : "Save credentials"}
             </button>
           </div>
         </form>
@@ -343,7 +343,7 @@ export function AdminInfluencerDetail({
           className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-background-secondary transition-colors"
         >
           <Lock size={14} />
-          Alterar email / senha
+          Change email / password
         </button>
       )}
 
@@ -353,7 +353,7 @@ export function AdminInfluencerDetail({
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold flex items-center gap-2">
                 <Pencil size={16} />
-                Editar perfil
+                Edit profile
               </h2>
               <button
                 type="button"
@@ -366,12 +366,12 @@ export function AdminInfluencerDetail({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <EditField
-                label="Nome"
+                label="First name"
                 name="first_name"
                 defaultValue={profile.first_name}
               />
               <EditField
-                label="Sobrenome"
+                label="Last name"
                 name="last_name"
                 defaultValue={profile.last_name}
               />
@@ -382,55 +382,55 @@ export function AdminInfluencerDetail({
                 placeholder="+55 11 99999-9999"
               />
               <EditField
-                label="Celular"
+                label="Mobile"
                 name="phone"
                 defaultValue={profile.phone ?? ""}
                 placeholder="+55 11 99999-9999"
               />
               <EditField
-                label="Data de nascimento"
+                label="Date of birth"
                 name="date_of_birth"
                 defaultValue={profile.date_of_birth ?? ""}
                 type="date"
               />
               <EditField
-                label="Rua"
+                label="Street"
                 name="address_street"
                 defaultValue={profile.address_street ?? ""}
               />
               <EditField
-                label="Cidade"
+                label="City"
                 name="address_city"
                 defaultValue={profile.address_city ?? ""}
               />
               <EditField
-                label="CEP"
+                label="Postcode"
                 name="address_postal_code"
                 defaultValue={profile.address_postal_code ?? ""}
               />
             </div>
 
-            <h3 className="text-sm font-semibold pt-2">Pagamento</h3>
+            <h3 className="text-sm font-semibold pt-2">Payment</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-foreground-secondary">
-                  Tipo PIX
+                  PIX key type
                 </label>
                 <select
                   name="pix_key_type"
                   defaultValue={profile.pix_key_type ?? ""}
                   className="rounded-lg border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                 >
-                  <option value="">Nenhum</option>
+                  <option value="">None</option>
                   <option value="cpf">CPF</option>
                   <option value="cnpj">CNPJ</option>
                   <option value="email">Email</option>
-                  <option value="phone">Telefone</option>
-                  <option value="random">Aleatória</option>
+                  <option value="phone">Phone</option>
+                  <option value="random">Random</option>
                 </select>
               </div>
               <EditField
-                label="Chave PIX"
+                label="PIX key"
                 name="pix_key"
                 defaultValue={profile.pix_key ?? ""}
               />
@@ -440,12 +440,12 @@ export function AdminInfluencerDetail({
                 defaultValue={profile.hotmart_url ?? ""}
               />
               <EditField
-                label="Código afiliado"
+                label="Affiliate code"
                 name="hotmart_affiliate_code"
                 defaultValue={profile.hotmart_affiliate_code ?? ""}
               />
               <EditField
-                label="Comissão (%) — vazio = padrão 20%"
+                label="Commission (%), empty = default 20%"
                 name="commission_rate_pct"
                 defaultValue={
                   profile.commission_rate != null
@@ -461,14 +461,14 @@ export function AdminInfluencerDetail({
                 onClick={() => setEditMode(false)}
                 className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-background-secondary"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 type="submit"
                 disabled={isPending}
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
               >
-                {isPending ? "Salvando..." : "Salvar alterações"}
+                {isPending ? "Saving..." : "Save changes"}
               </button>
             </div>
           </section>
@@ -477,44 +477,44 @@ export function AdminInfluencerDetail({
         <div className="grid gap-6 lg:grid-cols-2">
           <section className="rounded-xl border border-border p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold">Dados pessoais</h2>
+              <h2 className="text-base font-semibold">Personal details</h2>
               <button
                 onClick={() => setEditMode(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-background-secondary transition-colors"
               >
                 <Pencil size={12} />
-                Editar
+                Edit
               </button>
             </div>
             <div className="divide-y divide-border">
               <InfoRow
                 icon={User}
-                label="Nome"
+                label="Name"
                 value={`${profile.first_name} ${profile.last_name}`}
               />
               <InfoRow icon={Mail} label="Email" value={profile.email} />
               <InfoRow icon={Phone} label="WhatsApp" value={profile.whatsapp} />
-              <InfoRow icon={Calendar} label="Nascimento" value={profile.date_of_birth} />
-              <InfoRow icon={Globe} label="Fuso horário" value={profile.timezone} />
+              <InfoRow icon={Calendar} label="Date of birth" value={profile.date_of_birth} />
+              <InfoRow icon={Globe} label="Timezone" value={profile.timezone} />
             </div>
           </section>
 
           <section className="rounded-xl border border-border p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold">Endereço</h2>
+              <h2 className="text-base font-semibold">Address</h2>
               <button
                 onClick={() => setEditMode(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-background-secondary transition-colors"
               >
                 <Pencil size={12} />
-                Editar
+                Edit
               </button>
             </div>
             <div className="divide-y divide-border">
-              <InfoRow icon={MapPin} label="Rua" value={profile.address_street} />
-              <InfoRow icon={MapPin} label="Cidade" value={profile.address_city} />
-              <InfoRow icon={MapPin} label="CEP" value={profile.address_postal_code} />
-              <InfoRow icon={Globe} label="País" value={profile.address_country} />
+              <InfoRow icon={MapPin} label="Street" value={profile.address_street} />
+              <InfoRow icon={MapPin} label="City" value={profile.address_city} />
+              <InfoRow icon={MapPin} label="Postcode" value={profile.address_postal_code} />
+              <InfoRow icon={Globe} label="Country" value={profile.address_country} />
             </div>
           </section>
 
@@ -528,11 +528,11 @@ export function AdminInfluencerDetail({
                 <div>
                   <p className="font-medium">@{outstand.ig_username}</p>
                   <p className="text-xs text-foreground-secondary">
-                    Conectado via Outstand (API oficial)
+                    Connected via Outstand (official API)
                   </p>
                 </div>
                 <span className="ml-auto rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
-                  Conectado
+                  Connected
                 </span>
               </div>
             )}
@@ -545,27 +545,27 @@ export function AdminInfluencerDetail({
                   <div>
                     <p className="font-medium">@{instagram.ig_username}</p>
                     <p className="text-xs text-foreground-secondary">
-                      {instagram.followers_count?.toLocaleString("pt-BR") ?? "?"}{" "}
-                      seguidores
+                      {instagram.followers_count?.toLocaleString("en-GB") ?? "?"}{" "}
+                      followers
                     </p>
                   </div>
                   <span className="ml-auto rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
-                    Conectado
+                    Connected
                   </span>
                 </div>
                 <div className="divide-y divide-border text-sm">
                   <div className="flex justify-between py-2">
-                    <span className="text-foreground-secondary">Token expira</span>
+                    <span className="text-foreground-secondary">Token expires</span>
                     <span>
-                      {new Date(instagram.token_expires_at).toLocaleDateString("pt-BR")}
+                      {new Date(instagram.token_expires_at).toLocaleDateString("en-GB")}
                     </span>
                   </div>
                   <div className="flex justify-between py-2">
-                    <span className="text-foreground-secondary">Último refresh</span>
+                    <span className="text-foreground-secondary">Last refresh</span>
                     <span>
                       {instagram.token_refreshed_at
                         ? new Date(instagram.token_refreshed_at).toLocaleDateString(
-                            "pt-BR",
+                            "en-GB",
                           )
                         : "-"}
                     </span>
@@ -579,13 +579,13 @@ export function AdminInfluencerDetail({
                         disabled={isPending}
                         className="rounded-lg bg-error px-3 py-1.5 text-sm font-medium text-white hover:bg-error/90 disabled:opacity-50"
                       >
-                        {isPending ? "Desconectando..." : "Confirmar"}
+                        {isPending ? "Disconnecting..." : "Confirm"}
                       </button>
                       <button
                         onClick={() => setConfirmDisconnect(false)}
                         className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-background-secondary"
                       >
-                        Cancelar
+                        Cancel
                       </button>
                     </div>
                   ) : (
@@ -594,7 +594,7 @@ export function AdminInfluencerDetail({
                       className="flex items-center gap-1.5 rounded-lg border border-error/30 px-3 py-1.5 text-sm text-error hover:bg-error/10 transition-colors"
                     >
                       <Unplug size={14} />
-                      Desconectar Instagram
+                      Disconnect Instagram
                     </button>
                   )}
                 </div>
@@ -602,29 +602,29 @@ export function AdminInfluencerDetail({
             ) : !outstand?.is_connected ? (
               <div className="flex items-center gap-3 rounded-lg bg-error/5 px-4 py-3">
                 <AtSign size={18} className="text-error" />
-                <span className="text-sm text-error">Instagram não conectado</span>
+                <span className="text-sm text-error">Instagram not connected</span>
               </div>
             ) : null}
           </section>
 
           <section className="rounded-xl border border-border p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold">Pagamento</h2>
+              <h2 className="text-base font-semibold">Payment</h2>
               <button
                 onClick={() => setEditMode(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-background-secondary transition-colors"
               >
                 <Pencil size={12} />
-                Editar
+                Edit
               </button>
             </div>
             <div className="divide-y divide-border">
               <InfoRow
                 icon={Wallet}
-                label="Tipo PIX"
+                label="PIX key type"
                 value={profile.pix_key_type?.toUpperCase() ?? null}
               />
-              <InfoRow icon={Wallet} label="Chave PIX" value={profile.pix_key} />
+              <InfoRow icon={Wallet} label="PIX key" value={profile.pix_key} />
               <InfoRow
                 icon={DollarSign}
                 label="Hotmart URL"
@@ -632,7 +632,7 @@ export function AdminInfluencerDetail({
               />
               <InfoRow
                 icon={DollarSign}
-                label="Código afiliado"
+                label="Affiliate code"
                 value={profile.hotmart_affiliate_code}
               />
             </div>
@@ -642,7 +642,7 @@ export function AdminInfluencerDetail({
 
       {sectors.length > 0 && (
         <section className="rounded-xl border border-border p-5">
-          <h2 className="mb-3 text-base font-semibold">Nichos</h2>
+          <h2 className="mb-3 text-base font-semibold">Niches</h2>
           <div className="flex flex-wrap gap-2">
             {sectors.map((s) => (
               <span
@@ -658,22 +658,22 @@ export function AdminInfluencerDetail({
 
       {sales.length > 0 && (
         <section className="rounded-xl border border-border p-5">
-          <h2 className="mb-4 text-base font-semibold">Histórico de vendas</h2>
+          <h2 className="mb-4 text-base font-semibold">Sales history</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-background-secondary">
                   <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Data
+                    Date
                   </th>
                   <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Produto
+                    Product
                   </th>
                   <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Valor
+                    Amount
                   </th>
                   <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Comissão
+                    Commission
                   </th>
                   <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
                     Status
@@ -684,7 +684,7 @@ export function AdminInfluencerDetail({
                 {sales.map((sale) => (
                   <tr key={sale.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5">
-                      {new Date(sale.sold_at).toLocaleDateString("pt-BR")}
+                      {new Date(sale.sold_at).toLocaleDateString("en-GB")}
                     </td>
                     <td className="px-4 py-2.5">{sale.product_name}</td>
                     <td className="px-4 py-2.5">
@@ -704,10 +704,10 @@ export function AdminInfluencerDetail({
                         }`}
                       >
                         {sale.status === "confirmed"
-                          ? "Confirmada"
+                          ? "Confirmed"
                           : sale.status === "refunded"
-                            ? "Reembolsada"
-                            : "Cancelada"}
+                            ? "Refunded"
+                            : "Cancelled"}
                       </span>
                     </td>
                   </tr>
@@ -720,16 +720,16 @@ export function AdminInfluencerDetail({
 
       {posts.length > 0 && (
         <section className="rounded-xl border border-border p-5">
-          <h2 className="mb-4 text-base font-semibold">Posts recentes</h2>
+          <h2 className="mb-4 text-base font-semibold">Recent posts</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-background-secondary">
                   <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Data
+                    Date
                   </th>
                   <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Tipo
+                    Type
                   </th>
                   <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
                     Caption
@@ -743,7 +743,7 @@ export function AdminInfluencerDetail({
                 {posts.slice(0, 10).map((post) => (
                   <tr key={post.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5">
-                      {new Date(post.scheduled_at).toLocaleDateString("pt-BR")}
+                      {new Date(post.scheduled_at).toLocaleDateString("en-GB")}
                     </td>
                     <td className="px-4 py-2.5 capitalize">{post.media_type}</td>
                     <td className="px-4 py-2.5 max-w-xs truncate">{post.caption}</td>
@@ -758,10 +758,10 @@ export function AdminInfluencerDetail({
                         }`}
                       >
                         {post.status === "published"
-                          ? "Publicado"
+                          ? "Published"
                           : post.status === "pending"
-                            ? "Pendente"
-                            : "Falhou"}
+                            ? "Pending"
+                            : "Failed"}
                       </span>
                     </td>
                   </tr>
@@ -779,12 +779,12 @@ export function AdminInfluencerDetail({
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-medium text-warning">
-              {isSuspended ? "Reativar conta" : "Suspender conta"}
+              {isSuspended ? "Reactivate account" : "Suspend account"}
             </h2>
             <p className="text-xs text-foreground-secondary">
               {isSuspended
-                ? "A conta volta a acessar a plataforma e a receber agendamentos"
-                : "Bloqueia o acesso e os agendamentos sem apagar nada — dá para reativar depois"}
+                ? "The account regains access to the platform and scheduled posts"
+                : "Blocks access and scheduling without deleting anything, can be reactivated later"}
             </p>
           </div>
           {confirmSuspend ? (
@@ -795,16 +795,16 @@ export function AdminInfluencerDetail({
                 className="rounded-lg bg-warning px-4 py-2 text-sm font-medium text-white hover:bg-warning/90 disabled:opacity-50"
               >
                 {isPending
-                  ? "Salvando..."
+                  ? "Saving..."
                   : isSuspended
-                    ? "Confirmar reativação"
-                    : "Confirmar suspensão"}
+                    ? "Confirm reactivation"
+                    : "Confirm suspension"}
               </button>
               <button
                 onClick={() => setConfirmSuspend(false)}
                 className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-background-secondary"
               >
-                Cancelar
+                Cancel
               </button>
             </div>
           ) : (
@@ -812,7 +812,7 @@ export function AdminInfluencerDetail({
               onClick={() => setConfirmSuspend(true)}
               className="shrink-0 rounded-lg border border-warning px-3 py-1.5 text-sm font-medium text-warning hover:bg-warning/10"
             >
-              {isSuspended ? "Reativar" : "Suspender"}
+              {isSuspended ? "Reactivate" : "Suspend"}
             </button>
           )}
         </div>
@@ -824,9 +824,9 @@ export function AdminInfluencerDetail({
             <Trash2 size={16} className="text-error" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-medium text-error">Excluir conta</h2>
+            <h2 className="text-sm font-medium text-error">Delete account</h2>
             <p className="text-xs text-foreground-secondary">
-              Remove o perfil, dados, posts e conexão Instagram permanentemente
+              Permanently removes the profile, data, posts and Instagram connection
             </p>
           </div>
           {confirmDelete ? (
@@ -836,13 +836,13 @@ export function AdminInfluencerDetail({
                 disabled={isPending}
                 className="rounded-lg bg-error px-4 py-2 text-sm font-medium text-white hover:bg-error/90 disabled:opacity-50"
               >
-                {isPending ? "Excluindo..." : "Confirmar exclusão"}
+                {isPending ? "Deleting..." : "Confirm deletion"}
               </button>
               <button
                 onClick={() => setConfirmDelete(false)}
                 className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-background-secondary"
               >
-                Cancelar
+                Cancel
               </button>
             </div>
           ) : (
@@ -850,7 +850,7 @@ export function AdminInfluencerDetail({
               onClick={() => setConfirmDelete(true)}
               className="shrink-0 rounded-lg border border-error px-3 py-1.5 text-sm font-medium text-error hover:bg-error/10"
             >
-              Excluir
+              Delete
             </button>
           )}
         </div>

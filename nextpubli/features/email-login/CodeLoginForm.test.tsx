@@ -11,9 +11,9 @@ describe("CodeLoginForm", () => {
   it("renders email + 6-digit code fields and a submit button", () => {
     render(<CodeLoginForm />);
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
-    expect(screen.getByLabelText(/código de 8 dígitos/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/8-digit code/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /entrar com código/i }),
+      screen.getByRole("button", { name: /sign in with code/i }),
     ).toBeInTheDocument();
   });
 

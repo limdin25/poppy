@@ -12,4 +12,4 @@ Admin post scheduler — select influencers, upload media, write caption, choose
 
 ## Route
 
-`/(admin)/admin/agendador`
+`/(admin)/admin/scheduler`

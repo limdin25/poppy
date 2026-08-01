@@ -56,10 +56,10 @@ async function rest(path: string, init: RequestInit): Promise<Response> {
 }
 
 async function loginWithPassword(page: Page, email: string, password: string) {
-  await page.goto("/login?modo=senha");
+  await page.goto("/login?mode=password");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Senha").fill(password);
-  await page.getByRole("button", { name: /^entrar$/i }).click();
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: /^sign in$/i }).click();
 }
 
 test.describe("admin password login", () => {
@@ -69,15 +69,15 @@ test.describe("admin password login", () => {
   });
 });
 
-test.describe("agendador — only connected influencers", () => {
-  const connectedEmail = "e2e-agendador-conn@nextpubli-e2e.test";
-  const unconnectedEmail = "e2e-agendador-noconn@nextpubli-e2e.test";
+test.describe("scheduler: only connected influencers", () => {
+  const connectedEmail = "e2e-scheduler-conn@nextpubli-e2e.test";
+  const unconnectedEmail = "e2e-scheduler-noconn@nextpubli-e2e.test";
   let connectedId: string;
   let unconnectedId: string;
 
   test.beforeAll(async () => {
-    connectedId = await createUser(connectedEmail, "E2e-Senha-Forte-123");
-    unconnectedId = await createUser(unconnectedEmail, "E2e-Senha-Forte-123");
+    connectedId = await createUser(connectedEmail, "E2e-Strong-Pass-123");
+    unconnectedId = await createUser(unconnectedEmail, "E2e-Strong-Pass-123");
     // Give names so we can tell them apart in the UI.
     await rest(`/profiles?id=eq.${connectedId}`, {
       method: "PATCH",
@@ -113,7 +113,7 @@ test.describe("agendador — only connected influencers", () => {
     await loginWithPassword(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await expect(page).toHaveURL(/\/admin/, { timeout: 20000 });
 
-    await page.goto("/admin/agendador");
+    await page.goto("/admin/scheduler");
     await expect(page.getByText("E2eConn Conectada")).toBeVisible();
     await expect(page.getByText("@e2e.conn")).toBeVisible();
     await expect(page.getByText("E2eSem Instagram")).toHaveCount(0);
@@ -121,8 +121,8 @@ test.describe("agendador — only connected influencers", () => {
 });
 
 test.describe("suspended influencer lockout", () => {
-  const email = "e2e-suspensa@nextpubli-e2e.test";
-  const password = "E2e-Senha-Forte-123";
+  const email = "e2e-suspended@nextpubli-e2e.test";
+  const password = "E2e-Strong-Pass-123";
   let userId: string;
 
   test.beforeAll(async () => {
@@ -135,18 +135,18 @@ test.describe("suspended influencer lockout", () => {
 
   test.afterAll(async () => deleteUser(userId));
 
-  test("logging in lands on the 'Conta suspensa' page, not the dashboard", async ({
+  test("logging in lands on the 'Account suspended' page, not the dashboard", async ({
     page,
   }) => {
     await loginWithPassword(page, email, password);
     // Server-action redirects keep the action URL in the bar; the content is
-    // what matters — and a direct hit on /dashboard must bounce to /suspenso.
-    await expect(page.getByRole("heading", { name: "Conta suspensa" })).toBeVisible({
+    // what matters, and a direct hit on /dashboard must bounce to /suspended.
+    await expect(page.getByRole("heading", { name: "Account suspended" })).toBeVisible({
       timeout: 20000,
     });
 
     await page.goto("/dashboard");
-    await expect(page).toHaveURL(/\/suspenso/);
-    await expect(page.getByRole("heading", { name: "Conta suspensa" })).toBeVisible();
+    await expect(page).toHaveURL(/\/suspended/);
+    await expect(page.getByRole("heading", { name: "Account suspended" })).toBeVisible();
   });
 });

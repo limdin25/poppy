@@ -15,7 +15,7 @@ describe("DashboardSettings", () => {
         instagramUsername="@anasilva"
       />,
     );
-    expect(screen.getByText("Configurações")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
   it("shows personal data section", () => {
@@ -28,6 +28,6 @@ describe("DashboardSettings", () => {
         instagramUsername="@anasilva"
       />,
     );
-    expect(screen.getByText("Dados pessoais")).toBeInTheDocument();
+    expect(screen.getByText("Personal details")).toBeInTheDocument();
   });
 });

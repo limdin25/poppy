@@ -10,7 +10,7 @@ describe("ContactCaptureForm", () => {
     // react-international-phone renders a country selector + a tel input.
     expect(container.querySelector('input[type="tel"]')).toBeTruthy();
     expect(container.querySelector('input[name="whatsapp"]')).toBeTruthy();
-    expect(screen.getByRole("button", { name: /continuar/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /continue/i })).toBeInTheDocument();
   });
 
   it("defaults the country code to Brazil (+55)", () => {

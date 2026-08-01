@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Settings } from "lucide-react";
 import { SCHEDULING_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/timezone";
 
-// The Outstand API key is a server-side secret — it is NEVER sent to the browser.
+// The Outstand API key is a server-side secret, it is NEVER sent to the browser.
 // We only receive whether one is configured (hasApiKey) so the UI can hint it.
 interface AdminPostingSettingsProps {
   settings: {
@@ -47,11 +47,11 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
         }),
       });
 
-      if (!res.ok) throw new Error("Erro ao salvar");
+      if (!res.ok) throw new Error("Could not save");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao salvar");
+      setError(err instanceof Error ? err.message : "Could not save");
     } finally {
       setSaving(false);
     }
@@ -63,13 +63,13 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
         <div className="rounded-lg bg-accent/10 p-2">
           <Settings size={20} className="text-accent" />
         </div>
-        <h1 className="text-2xl font-bold">Configurações de Publicação</h1>
+        <h1 className="text-2xl font-bold">Publishing Settings</h1>
       </div>
 
       <section className="rounded-xl border border-border p-6">
-        <h2 className="mb-4 text-lg font-semibold">Provedor de Publicação</h2>
+        <h2 className="mb-4 text-lg font-semibold">Publishing Provider</h2>
         <p className="mb-4 text-sm text-foreground-secondary">
-          Escolha qual sistema será usado para publicar posts no Instagram.
+          Choose which system will be used to publish posts to Instagram.
         </p>
 
         <div className="space-y-3">
@@ -83,9 +83,9 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
               className="text-accent"
             />
             <div>
-              <span className="font-medium">NextPubli (Meta direto)</span>
+              <span className="font-medium">NextPubli (direct Meta)</span>
               <p className="text-xs text-foreground-secondary">
-                Publica diretamente via Meta Graph API
+                Publishes directly via the Meta Graph API
               </p>
             </div>
           </label>
@@ -102,7 +102,7 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
             <div>
               <span className="font-medium">Outstand.so</span>
               <p className="text-xs text-foreground-secondary">
-                Publica via Outstand API (intermediário)
+                Publishes via the Outstand API (intermediary)
               </p>
             </div>
           </label>
@@ -111,7 +111,7 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
 
       {provider === "outstand" && (
         <section className="rounded-xl border border-border p-6">
-          <h2 className="mb-4 text-lg font-semibold">Configuração Outstand</h2>
+          <h2 className="mb-4 text-lg font-semibold">Outstand Configuration</h2>
 
           <div className="space-y-4">
             <div className="flex flex-col gap-1">
@@ -128,7 +128,7 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={
                   settings?.hasApiKey
-                    ? "•••••••• (configurada — deixe em branco para manter)"
+                    ? "•••••••• (configured, leave blank to keep it)"
                     : "sk_live_..."
                 }
                 className="rounded-lg border border-border px-4 py-2.5 focus:border-accent focus:outline-none"
@@ -151,7 +151,7 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
                 className="rounded-lg border border-border px-4 py-2.5 focus:border-accent focus:outline-none"
               />
               <p className="text-xs text-foreground-secondary">
-                ID retornado ao registrar suas credenciais Meta no Outstand
+                ID returned when you register your Meta credentials with Outstand
               </p>
             </div>
           </div>
@@ -159,13 +159,13 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
       )}
 
       <section className="rounded-xl border border-border p-6">
-        <h2 className="mb-4 text-lg font-semibold">Fuso horário padrão</h2>
+        <h2 className="mb-4 text-lg font-semibold">Default timezone</h2>
         <p className="mb-4 text-sm text-foreground-secondary">
-          O agendador e a campanha usam este fuso por padrão — dá para trocar na hora de
-          agendar cada post.
+          The scheduler and the campaign use this timezone by default. You can change it
+          when scheduling each post.
         </p>
         <select
-          aria-label="Fuso horário padrão"
+          aria-label="Default timezone"
           value={timezone}
           onChange={(e) => setTimezone(e.target.value)}
           className="rounded-lg border border-border px-4 py-2.5 focus:border-accent focus:outline-none"
@@ -187,7 +187,7 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
         disabled={saving}
         className="rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
       >
-        {saving ? "Salvando..." : saved ? "Salvo!" : "Salvar Configurações"}
+        {saving ? "Saving..." : saved ? "Saved!" : "Save Settings"}
       </button>
     </div>
   );

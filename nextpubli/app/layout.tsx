@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NextPubli | Plataforma de Influenciadores",
+  title: "NextPubli | Creator Platform",
   description:
-    "Plataforma profissional de gestão de micro-influenciadores para marcas brasileiras.",
+    "Professional micro-influencer management platform for Brazilian brands.",
 };
 
 export default function RootLayout({
@@ -25,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="pt-BR"
+      lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>

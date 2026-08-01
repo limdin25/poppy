@@ -5,8 +5,8 @@ import { CheckCircle, Loader2, Upload } from "lucide-react";
 import { createMediaUploadUrl } from "@/lib/actions/media";
 import { createClient } from "@/lib/supabase/client";
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // Instagram: imagens até 8MB
-const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // Instagram: vídeos até 100MB
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // Instagram: images up to 8MB
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // Instagram: videos up to 100MB
 
 // Drag & drop / click-to-pick post media. The file goes from the browser
 // straight to Supabase Storage via a one-time signed URL (no server limits),
@@ -26,7 +26,7 @@ export function MediaUpload({ onUploaded }: { onUploaded: (url: string) => void 
     const max = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
     if (file.size > max) {
       setError(
-        `Arquivo muito grande. O Instagram aceita ${isVideo ? "vídeos até 100MB" : "imagens até 8MB"}.`,
+        `File too large. Instagram accepts ${isVideo ? "videos up to 100MB" : "images up to 8MB"}.`,
       );
       return;
     }
@@ -44,7 +44,7 @@ export function MediaUpload({ onUploaded }: { onUploaded: (url: string) => void 
         .from("media")
         .uploadToSignedUrl(r.path, r.token, file);
       if (upErr) {
-        setError(`Falha no upload: ${upErr.message}`);
+        setError(`Upload failed: ${upErr.message}`);
         return;
       }
 
@@ -89,17 +89,17 @@ export function MediaUpload({ onUploaded }: { onUploaded: (url: string) => void 
       >
         {uploading ? (
           <span className="inline-flex items-center gap-2 text-sm text-foreground-secondary">
-            <Loader2 size={18} className="animate-spin" /> Enviando...
+            <Loader2 size={18} className="animate-spin" /> Uploading...
           </span>
         ) : fileName ? (
           <span className="inline-flex items-center gap-2 text-sm text-success">
-            <CheckCircle size={18} /> {fileName} enviado!
+            <CheckCircle size={18} /> {fileName} uploaded!
           </span>
         ) : (
           <span className="flex flex-col items-center gap-1 text-sm text-foreground-secondary">
             <Upload size={20} />
-            Arraste mídia ou clique para enviar
-            <span className="text-xs">JPG/PNG até 8MB · MP4/MOV até 100MB</span>
+            Drag media here or click to upload
+            <span className="text-xs">JPG/PNG up to 8MB, MP4/MOV up to 100MB</span>
           </span>
         )}
       </button>

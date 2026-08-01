@@ -12,8 +12,8 @@ vi.mock("@/lib/actions/auth", () => ({
 describe("EmailSignupForm", () => {
   it("renders name, surname, email and WhatsApp fields", () => {
     render(<EmailSignupForm />);
-    expect(screen.getByLabelText("Nome")).toBeInTheDocument();
-    expect(screen.getByLabelText("Sobrenome")).toBeInTheDocument();
+    expect(screen.getByLabelText("First name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Last name")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByText("WhatsApp")).toBeInTheDocument();
   });
@@ -25,7 +25,7 @@ describe("EmailSignupForm", () => {
 
   it("keeps the submit button disabled until terms are accepted", async () => {
     render(<EmailSignupForm />);
-    const button = screen.getByRole("button", { name: /criar minha conta/i });
+    const button = screen.getByRole("button", { name: /create my account/i });
     expect(button).toBeDisabled();
     // Terms alone are not enough — WhatsApp must have >= 12 digits too.
     await userEvent.click(screen.getByRole("checkbox"));
@@ -34,9 +34,9 @@ describe("EmailSignupForm", () => {
 
   it("links to the terms page", () => {
     render(<EmailSignupForm />);
-    expect(screen.getByRole("link", { name: /termos de uso/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /terms of use/i })).toHaveAttribute(
       "href",
-      "/termos",
+      "/terms",
     );
   });
 });
@@ -44,9 +44,9 @@ describe("EmailSignupForm", () => {
 describe("SignupCodeForm", () => {
   it("renders the 8-digit code input bound to the signup email", () => {
     render(<SignupCodeForm email="maria@example.com" />);
-    expect(screen.getByLabelText("Código de 8 dígitos")).toBeInTheDocument();
+    expect(screen.getByLabelText("8-digit code")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /confirmar e criar conta/i }),
+      screen.getByRole("button", { name: /confirm and create account/i }),
     ).toBeInTheDocument();
   });
 });

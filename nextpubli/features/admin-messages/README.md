@@ -12,4 +12,4 @@ Admin messaging center with WhatsApp and Email tabs, message history, and compos
 
 ## Route
 
-`/(admin)/admin/mensagens`
+`/(admin)/admin/messages`

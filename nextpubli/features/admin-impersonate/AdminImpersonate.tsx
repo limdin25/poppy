@@ -19,14 +19,14 @@ export function AdminImpersonate({
     <div>
       <div className="sticky top-0 z-50 flex items-center gap-3 border-b border-warning bg-warning/10 px-6 py-3">
         <Link
-          href="/admin/influenciadores"
+          href="/admin/influencers"
           className="flex items-center gap-2 rounded-lg border border-warning px-3 py-1.5 text-sm font-medium text-warning hover:bg-warning/20"
         >
           <ArrowLeft size={14} />
-          Voltar ao Admin
+          Back to Admin
         </Link>
         <span className="text-sm">
-          <span className="font-medium">{adminName}</span> está logado como{" "}
+          <span className="font-medium">{adminName}</span> is logged in as{" "}
           <span className="font-semibold">
             {impersonatedProfile.first_name} {impersonatedProfile.last_name}
           </span>

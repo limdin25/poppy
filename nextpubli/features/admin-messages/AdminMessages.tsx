@@ -32,10 +32,10 @@ interface AdminMessagesProps {
 }
 
 function timeAgo(dateStr: string | null) {
-  if (!dateStr) return "—";
+  if (!dateStr) return "-";
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "agora";
+  if (mins < 1) return "now";
   if (mins < 60) return `${mins}m`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h`;
@@ -49,28 +49,28 @@ function displayName(convo: Conversation): string {
     const p = convo.profile;
     const name = `${p.first_name} ${p.last_name}`.trim();
     if (name) return name;
-    return p.email || convo.subject || "Sem nome";
+    return p.email || convo.subject || "No name";
   }
-  return convo.subject || "Sem nome";
+  return convo.subject || "No name";
 }
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   const today = new Date();
   if (d.toDateString() === today.toDateString()) {
-    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   }
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
   if (d.toDateString() === yesterday.toDateString()) {
     return (
-      "Ontem " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      "Yesterday " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     );
   }
   return (
-    d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+    d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" }) +
     " " +
-    d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
   );
 }
 
@@ -103,7 +103,7 @@ function ConnectWhatsAppModal({
   }, []);
 
   // Once the wizard tab is open, poll until a WhatsApp channel turns up
-  // connected (the QR page lives in another tab — auth pages don't iframe).
+  // connected (the QR page lives in another tab, auth pages don't iframe).
   useEffect(() => {
     if (!opened || connected) return;
     const interval = setInterval(async () => {
@@ -137,7 +137,7 @@ function ConnectWhatsAppModal({
         </button>
         <div className="mb-4 flex items-center gap-2">
           <Smartphone className="h-5 w-5 text-[#E1306C]" />
-          <h2 className="text-lg font-semibold">Conectar WhatsApp</h2>
+          <h2 className="text-lg font-semibold">Connect WhatsApp</h2>
         </div>
         {loading ? (
           <div className="flex h-[200px] items-center justify-center">
@@ -145,17 +145,17 @@ function ConnectWhatsAppModal({
           </div>
         ) : connected ? (
           <div className="py-10 text-center">
-            <p className="text-lg font-semibold text-success">WhatsApp conectado! ✅</p>
+            <p className="text-lg font-semibold text-success">WhatsApp connected! ✅</p>
           </div>
         ) : url ? (
           <div className="space-y-4 py-2">
             <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground-secondary">
-              <li>Clique no botão abaixo — o QR code abre em uma nova aba.</li>
+              <li>Click the button below, the QR code opens in a new tab.</li>
               <li>
-                No celular, abra o WhatsApp → Configurações → Dispositivos conectados →
-                Conectar dispositivo.
+                On your phone, open WhatsApp → Settings → Linked Devices →
+                Link a Device.
               </li>
-              <li>Escaneie o QR code. Depois volte para esta aba.</li>
+              <li>Scan the QR code, then come back to this tab.</li>
             </ol>
             <a
               href={url}
@@ -164,17 +164,17 @@ function ConnectWhatsAppModal({
               onClick={() => setOpened(true)}
               className="block w-full rounded-lg bg-accent px-6 py-3 text-center text-sm font-medium text-white hover:bg-accent/90"
             >
-              Abrir QR code em nova aba
+              Open QR code in a new tab
             </a>
             {opened && (
               <p className="flex items-center justify-center gap-2 text-sm text-foreground-secondary">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Aguardando o scan... esta janela atualiza sozinha.
+                Waiting for the scan... this window updates on its own.
               </p>
             )}
           </div>
         ) : (
-          <p className="py-12 text-center text-gray-500">Erro ao gerar link de conexão</p>
+          <p className="py-12 text-center text-gray-500">Could not generate the connection link</p>
         )}
       </div>
     </div>
@@ -225,7 +225,7 @@ function MessageBubble({
         )}
         {isAi && (
           <p className="mb-0.5 flex items-center gap-1 text-xs font-medium text-purple-600">
-            <Bot className="h-3 w-3" /> IA
+            <Bot className="h-3 w-3" /> AI
           </p>
         )}
 
@@ -243,7 +243,7 @@ function MessageBubble({
             <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
               <img
                 src={msg.media_url}
-                alt="Imagem"
+                alt="Image"
                 className="mb-2 max-h-[300px] rounded-lg object-contain"
               />
             </a>
@@ -273,7 +273,7 @@ function MessageBubble({
               }`}
             >
               <FileText className="h-4 w-4" />
-              <span>Arquivo</span>
+              <span>File</span>
               <Download className="h-4 w-4 ml-auto" />
             </a>
           )}
@@ -294,14 +294,14 @@ function MessageBubble({
                   disabled={saving}
                   className="rounded bg-green-500 px-3 py-1 text-xs text-white"
                 >
-                  {saving ? "..." : "Enviar"}
+                  {saving ? "..." : "Send"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditMode(false)}
                   className="rounded bg-gray-200 px-3 py-1 text-xs"
                 >
-                  Cancelar
+                  Cancel
                 </button>
               </div>
             </div>
@@ -336,34 +336,34 @@ function MessageBubble({
         {/* Draft actions */}
         {isDraft && !editMode && (
           <div className="mt-2 flex items-center gap-2">
-            <span className="text-xs font-medium text-amber-600">Rascunho IA</span>
+            <span className="text-xs font-medium text-amber-600">AI draft</span>
             <button
               type="button"
               onClick={() => onApprove(msg.id)}
               className="flex items-center gap-1 rounded bg-green-500 px-2 py-1 text-xs text-white hover:bg-green-600"
             >
-              <Check className="h-3 w-3" /> Aprovar
+              <Check className="h-3 w-3" /> Approve
             </button>
             <button
               type="button"
               onClick={() => onRewrite(msg.id)}
               className="flex items-center gap-1 rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600"
             >
-              <RefreshCw className="h-3 w-3" /> Reescrever
+              <RefreshCw className="h-3 w-3" /> Rewrite
             </button>
             <button
               type="button"
               onClick={() => setEditMode(true)}
               className="flex items-center gap-1 rounded bg-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-300"
             >
-              <Pencil className="h-3 w-3" /> Editar
+              <Pencil className="h-3 w-3" /> Edit
             </button>
             <button
               type="button"
               onClick={() => onDiscard(msg.id)}
               className="flex items-center gap-1 rounded bg-red-100 px-2 py-1 text-xs text-red-600 hover:bg-red-200"
             >
-              <Trash2 className="h-3 w-3" /> Descartar
+              <Trash2 className="h-3 w-3" /> Discard
             </button>
           </div>
         )}
@@ -481,7 +481,7 @@ function ThreadView({
         </div>
         <div className="flex-1">
           <p className="font-semibold text-[#1A1A1A]">{displayName(conversation)}</p>
-          {conversation.is_group && <p className="text-xs text-[#6B7280]">Grupo</p>}
+          {conversation.is_group && <p className="text-xs text-[#6B7280]">Group</p>}
         </div>
         <button
           type="button"
@@ -490,10 +490,10 @@ function ThreadView({
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
             localAi ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-500"
           }`}
-          title={localAi ? "IA ativada" : "IA desativada"}
+          title={localAi ? "AI enabled" : "AI disabled"}
         >
           <Bot className="h-3.5 w-3.5" />
-          {localAi ? "IA ON" : "IA OFF"}
+          {localAi ? "AI ON" : "AI OFF"}
         </button>
       </div>
 
@@ -501,7 +501,7 @@ function ThreadView({
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
           <p className="py-12 text-center text-sm text-[#6B7280]">
-            Nenhuma mensagem ainda
+            No messages yet
           </p>
         ) : (
           messages.map((msg) => (
@@ -563,7 +563,7 @@ function ThreadView({
               handleSend();
             }
           }}
-          placeholder="Digite uma mensagem..."
+          placeholder="Type a message..."
           className="flex-1 rounded-full border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2 text-sm focus:border-[#E1306C] focus:outline-none"
         />
         <button
@@ -652,11 +652,11 @@ export function AdminMessages({ conversations: initial, channels }: AdminMessage
         {/* Sidebar header */}
         <div className="border-b border-[#E5E7EB] px-4 py-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-[#1A1A1A]">Mensagens</h2>
+            <h2 className="text-lg font-bold text-[#1A1A1A]">Messages</h2>
             <div className="flex items-center gap-2">
               {connected ? (
                 <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs text-green-600">
-                  <Wifi className="h-3 w-3" /> Conectado
+                  <Wifi className="h-3 w-3" /> Connected
                 </span>
               ) : (
                 <button
@@ -664,13 +664,13 @@ export function AdminMessages({ conversations: initial, channels }: AdminMessage
                   onClick={() => setShowConnect(true)}
                   className="flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-xs text-red-500 hover:bg-red-100"
                 >
-                  <WifiOff className="h-3 w-3" /> Conectar
+                  <WifiOff className="h-3 w-3" /> Connect
                 </button>
               )}
               <a
                 href="/admin/ai-settings"
                 className="rounded-full p-1.5 text-[#6B7280] hover:bg-gray-100"
-                title="Configurações de IA"
+                title="AI settings"
               >
                 <Settings className="h-4 w-4" />
               </a>
@@ -678,7 +678,7 @@ export function AdminMessages({ conversations: initial, channels }: AdminMessage
                 type="button"
                 onClick={() => setShowConnect(true)}
                 className="rounded-full p-1.5 text-[#6B7280] hover:bg-gray-100"
-                title="Adicionar WhatsApp"
+                title="Add WhatsApp"
               >
                 <Plus className="h-4 w-4" />
               </button>
@@ -690,7 +690,7 @@ export function AdminMessages({ conversations: initial, channels }: AdminMessage
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar conversas..."
+              placeholder="Search conversations..."
               className="w-full rounded-full bg-[#F9FAFB] py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#E1306C]"
             />
           </div>
@@ -701,7 +701,7 @@ export function AdminMessages({ conversations: initial, channels }: AdminMessage
           {filteredConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-[#6B7280]">
               <MessageSquare className="mb-3 h-10 w-10" />
-              <p className="text-sm">Nenhuma conversa</p>
+              <p className="text-sm">No conversations</p>
             </div>
           ) : (
             filteredConversations.map((convo) => (
@@ -735,7 +735,7 @@ export function AdminMessages({ conversations: initial, channels }: AdminMessage
                     </span>
                   </div>
                   <p className="truncate text-xs text-[#6B7280]">
-                    {convo.last_message_preview || "—"}
+                    {convo.last_message_preview || "-"}
                   </p>
                 </div>
                 {convo.unread_count > 0 && (
@@ -761,8 +761,8 @@ export function AdminMessages({ conversations: initial, channels }: AdminMessage
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-[#6B7280]">
             <MessageSquare className="mb-4 h-16 w-16" />
-            <p className="text-lg font-medium">Selecione uma conversa</p>
-            <p className="text-sm">Escolha uma conversa na lista para visualizar</p>
+            <p className="text-lg font-medium">Select a conversation</p>
+            <p className="text-sm">Pick a conversation from the list to view it</p>
           </div>
         )}
       </div>

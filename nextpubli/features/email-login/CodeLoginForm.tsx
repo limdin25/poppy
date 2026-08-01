@@ -31,7 +31,7 @@ export function CodeLoginForm({ email }: { email?: string }) {
             type="email"
             required
             defaultValue={email}
-            placeholder="seu@email.com"
+            placeholder="you@email.com"
             className="w-full rounded-lg border border-border py-2.5 pl-10 pr-4 focus:border-accent focus:outline-none"
           />
         </div>
@@ -39,7 +39,7 @@ export function CodeLoginForm({ email }: { email?: string }) {
 
       <div className="flex flex-col gap-1">
         <label htmlFor="code" className="text-sm font-medium text-foreground">
-          Código de 8 dígitos
+          8-digit code
         </label>
         <div className="relative">
           <KeyRound
@@ -60,7 +60,7 @@ export function CodeLoginForm({ email }: { email?: string }) {
           />
         </div>
         <p className="text-xs text-foreground-secondary">
-          O código está no email do link de acesso. Use sempre o email mais recente.
+          The code is in the login link email. Always use the most recent email.
         </p>
       </div>
 
@@ -75,7 +75,7 @@ export function CodeLoginForm({ email }: { email?: string }) {
         disabled={pending}
         className="w-full rounded-lg bg-accent px-6 py-3 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
       >
-        {pending ? "Verificando..." : "Entrar com código"}
+        {pending ? "Verifying..." : "Sign in with code"}
       </button>
     </form>
   );

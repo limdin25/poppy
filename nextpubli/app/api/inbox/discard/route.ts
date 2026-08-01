@@ -7,7 +7,7 @@ export async function POST(req: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -16,11 +16,11 @@ export async function POST(req: Request) {
     .single<{ is_admin: boolean }>();
 
   if (!profile?.is_admin)
-    return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
   const { messageId } = (await req.json()) as { messageId: string };
   if (!messageId)
-    return NextResponse.json({ error: "messageId obrigatório" }, { status: 400 });
+    return NextResponse.json({ error: "messageId is required" }, { status: 400 });
 
   const admin = createAdminClient();
 
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     .single();
 
   if (!msg || (msg as { status: string }).status !== "draft") {
-    return NextResponse.json({ error: "Rascunho não encontrado" }, { status: 404 });
+    return NextResponse.json({ error: "Draft not found" }, { status: 404 });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

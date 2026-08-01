@@ -58,10 +58,10 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
       });
       const data = await res.json();
       setTestResult(
-        res.ok ? `Funcionando! Resposta: "${data.reply}"` : `Erro: ${data.error}`,
+        res.ok ? `Working! Reply: "${data.reply}"` : `Error: ${data.error}`,
       );
     } catch {
-      setTestResult("Erro ao testar conexão");
+      setTestResult("Error testing connection");
     } finally {
       setTesting(false);
     }
@@ -71,12 +71,12 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
     <div className="mx-auto max-w-2xl space-y-8 p-6">
       <div className="flex items-center gap-3">
         <Bot className="h-7 w-7 text-[#E1306C]" />
-        <h1 className="text-2xl font-bold text-[#1A1A1A]">Configurações de IA</h1>
+        <h1 className="text-2xl font-bold text-[#1A1A1A]">AI Settings</h1>
       </div>
 
       {/* OpenAI API Key */}
       <section className="rounded-xl border border-[#E5E7EB] bg-white p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-[#1A1A1A]">Chave da API OpenAI</h2>
+        <h2 className="text-lg font-semibold text-[#1A1A1A]">OpenAI API Key</h2>
         <div className="flex items-center gap-2">
           <input
             type={showKey ? "text" : "password"}
@@ -99,12 +99,12 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
             className="flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
           >
             <Zap className="h-4 w-4" />
-            {testing ? "Testando..." : "Testar"}
+            {testing ? "Testing..." : "Test"}
           </button>
         </div>
         {testResult && (
           <p
-            className={`text-sm ${testResult.startsWith("Erro") ? "text-red-500" : "text-green-600"}`}
+            className={`text-sm ${testResult.startsWith("Error") ? "text-red-500" : "text-green-600"}`}
           >
             {testResult}
           </p>
@@ -113,33 +113,33 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
 
       {/* System Prompt */}
       <section className="rounded-xl border border-[#E5E7EB] bg-white p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-[#1A1A1A]">Prompt do Sistema</h2>
+        <h2 className="text-lg font-semibold text-[#1A1A1A]">System Prompt</h2>
         <p className="text-sm text-[#6B7280]">
-          Instruções personalizadas para a IA. Descreva como ela deve se comportar ao
-          responder mensagens.
+          Custom instructions for the AI. Describe how it should behave when replying
+          to messages.
         </p>
         <textarea
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
           rows={6}
-          placeholder="Ex: Você é a recepcionista virtual da NextPubli. Seja simpática, responda em português..."
+          placeholder="E.g. You are NextPubli's virtual receptionist. Be friendly and reply in Portuguese..."
           className="w-full rounded-lg border border-[#E5E7EB] px-4 py-3 text-sm focus:border-[#E1306C] focus:outline-none resize-none"
         />
       </section>
 
       {/* Model & Tokens */}
       <section className="rounded-xl border border-[#E5E7EB] bg-white p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-[#1A1A1A]">Modelo</h2>
+        <h2 className="text-lg font-semibold text-[#1A1A1A]">Model</h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1 block text-sm text-[#6B7280]">Modelo OpenAI</label>
+            <label className="mb-1 block text-sm text-[#6B7280]">OpenAI model</label>
             <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
               className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2 text-sm focus:border-[#E1306C] focus:outline-none"
             >
-              <option value="gpt-4o-mini">GPT-4o Mini (rápido)</option>
-              <option value="gpt-4o">GPT-4o (avançado)</option>
+              <option value="gpt-4o-mini">GPT-4o Mini (fast)</option>
+              <option value="gpt-4o">GPT-4o (advanced)</option>
               <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
               <option value="gpt-4.1">GPT-4.1</option>
             </select>
@@ -160,7 +160,7 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
 
       {/* Auto-Reply Settings */}
       <section className="rounded-xl border border-[#E5E7EB] bg-white p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-[#1A1A1A]">Resposta Automática</h2>
+        <h2 className="text-lg font-semibold text-[#1A1A1A]">Auto-Reply</h2>
 
         <label className="flex items-center gap-3 cursor-pointer">
           <input
@@ -171,11 +171,11 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
           />
           <div>
             <span className="text-sm font-medium text-[#1A1A1A]">
-              Ativar resposta automática via IA
+              Enable AI auto-reply
             </span>
             <p className="text-xs text-[#6B7280]">
-              A IA responderá automaticamente quando não houver resposta do admin dentro
-              do prazo
+              The AI replies automatically when the admin has not responded within the
+              time limit
             </p>
           </div>
         </label>
@@ -188,17 +188,17 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
             className="h-5 w-5 rounded border-gray-300 text-[#E1306C] focus:ring-[#E1306C]"
           />
           <div>
-            <span className="text-sm font-medium text-[#1A1A1A]">Modo rascunho</span>
+            <span className="text-sm font-medium text-[#1A1A1A]">Draft mode</span>
             <p className="text-xs text-[#6B7280]">
-              Quando ativado, as respostas da IA ficam como rascunho para aprovação antes
-              de enviar. Desativado = envio automático.
+              When enabled, AI replies are saved as drafts for approval before sending.
+              Disabled = sent automatically.
             </p>
           </div>
         </label>
 
         <div>
           <label className="mb-1 block text-sm text-[#6B7280]">
-            Tempo de espera antes da IA responder (segundos)
+            Wait time before the AI replies (seconds)
           </label>
           <input
             type="number"
@@ -209,7 +209,7 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
             className="w-32 rounded-lg border border-[#E5E7EB] px-3 py-2 text-sm focus:border-[#E1306C] focus:outline-none"
           />
           <p className="mt-1 text-xs text-[#6B7280]">
-            A IA espera esse tempo para dar chance ao admin de responder primeiro.
+            The AI waits this long to give the admin a chance to reply first.
           </p>
         </div>
       </section>
@@ -222,7 +222,7 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#E1306C] px-6 py-3 text-sm font-semibold text-white hover:bg-[#C13584] disabled:opacity-50"
       >
         <Save className="h-4 w-4" />
-        {saving ? "Salvando..." : saved ? "Salvo!" : "Salvar Configurações"}
+        {saving ? "Saving..." : saved ? "Saved!" : "Save Settings"}
       </button>
     </div>
   );

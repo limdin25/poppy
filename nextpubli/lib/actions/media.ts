@@ -18,7 +18,7 @@ async function requireAdmin() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Não autenticado");
+  if (!user) throw new Error("Not authenticated");
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -26,7 +26,7 @@ async function requireAdmin() {
     .eq("id", user.id)
     .single<{ is_admin: boolean }>();
 
-  if (!profile?.is_admin) throw new Error("Acesso negado");
+  if (!profile?.is_admin) throw new Error("Access denied");
 }
 
 /**
@@ -44,7 +44,7 @@ export async function createMediaUploadUrl(
   if (!ext) {
     return {
       error:
-        "Formato não suportado. Use imagem JPG/PNG ou vídeo MP4/MOV (exigência do Instagram).",
+        "Unsupported format. Use a JPG/PNG image or an MP4/MOV video (Instagram requirement).",
     };
   }
 
@@ -58,7 +58,7 @@ export async function createMediaUploadUrl(
 
   const admin = createAdminClient();
   const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
-  if (error || !data) return { error: error?.message ?? "Falha ao criar upload" };
+  if (error || !data) return { error: error?.message ?? "Failed to create upload" };
 
   const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
   return { path, token: data.token, publicUrl: pub.publicUrl };

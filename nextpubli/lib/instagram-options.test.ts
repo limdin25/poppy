@@ -17,14 +17,14 @@ describe("readInstagramOptions", () => {
 
   it("parses collaborators: strips @, trims, dedupes, caps at 3", () => {
     const r = readInstagramOptions(
-      fd({ collaborators: "@marca, perfil2 , @marca, @c, @d" }),
+      fd({ collaborators: "@brand, profile2 , @brand, @c, @d" }),
     );
-    expect(r).toEqual({ collaborators: ["marca", "perfil2", "c"] });
+    expect(r).toEqual({ collaborators: ["brand", "profile2", "c"] });
   });
 
   it("keeps the first comment text", () => {
-    const r = readInstagramOptions(fd({ first_comment: "  Link na bio!  " }));
-    expect(r).toEqual({ first_comment: "Link na bio!" });
+    const r = readInstagramOptions(fd({ first_comment: "  Link in bio!  " }));
+    expect(r).toEqual({ first_comment: "Link in bio!" });
   });
 
   it("parses reel cover seconds as a non-negative number", () => {
