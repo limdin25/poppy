@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isThreadUnread, sortInboxRows } from '../src/features/crm/lib/inboxOrder';
+import { isThreadUnread, sortInboxRows, inboxSections } from '../src/features/crm/lib/inboxOrder';
 
 // Hugo, 2026-07-28, looking at Maria's inbox after the 100-lead blast:
 // "make sure unread is always on the top, even if we have blasted messages".
@@ -96,5 +96,72 @@ describe('sortInboxRows', () => {
   it('handles a null lastMessageAt without reordering by NaN', () => {
     const out = sortInboxRows([row('null-ts', { lastMessageAt: null }), row('dated')]);
     expect(out.map((r) => r.id)).toEqual(['dated', 'null-ts']);
+  });
+});
+
+// Hugo, 2026-08-02: the bands were invisible, so the order read as random.
+// inboxSections regroups the SORTED list under labels without moving a row.
+describe('inboxSections', () => {
+  const row = (id: string, over: Partial<Parameters<typeof sortInboxRows>[0][number]> = {}) => ({
+    id,
+    unread: false,
+    pinnedAt: null as string | null,
+    lastMessageAt: '2026-08-02T09:00:00Z',
+    ...over,
+  });
+
+  it('groups a mixed list into pinned, unread, rest, in that order', () => {
+    const sorted = sortInboxRows([
+      row('quiet'),
+      row('pinned', { pinnedAt: '2026-08-01T00:00:00Z' }),
+      row('reply', { unread: true }),
+    ]);
+    const sections = inboxSections(sorted);
+    expect(sections.map((s) => s.key)).toEqual(['pinned', 'unread', 'rest']);
+    expect(sections.map((s) => s.rows.map((r) => r.id))).toEqual([['pinned'], ['reply'], ['quiet']]);
+  });
+
+  it('omits empty bands, an all-quiet list is one headerless section', () => {
+    const sections = inboxSections([row('a'), row('b')]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].key).toBe('rest');
+  });
+
+  it('concatenating the sections reproduces the input order exactly', () => {
+    const sorted = sortInboxRows([
+      row('u1', { unread: true, lastMessageAt: '2026-08-02T10:00:00Z' }),
+      row('u2', { unread: true, lastMessageAt: '2026-08-02T08:00:00Z' }),
+      row('p1', { pinnedAt: '2026-08-01T00:00:00Z' }),
+      row('r1'),
+    ]);
+    const flat = inboxSections(sorted).flatMap((s) => s.rows.map((r) => r.id));
+    expect(flat).toEqual(sorted.map((r) => r.id));
+  });
+
+  it('a pinned row that is also unread stays in the pinned band (never counted twice)', () => {
+    const sections = inboxSections(sortInboxRows([
+      row('both', { pinnedAt: '2026-08-01T00:00:00Z', unread: true }),
+      row('plain'),
+    ]));
+    expect(sections.map((s) => s.key)).toEqual(['pinned', 'rest']);
+    expect(sections[0].rows.map((r) => r.id)).toEqual(['both']);
+  });
+
+  it('an all-rest list (e.g. unpinned call rows) is a single headerless section', () => {
+    const sections = inboxSections([row('call1'), row('call2'), row('call3')]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].rows).toHaveLength(3);
+  });
+
+  it('a pinned CALL row still forms a pinned band, pin state is per contact', () => {
+    // Pins live in wk_inbox_state keyed by contact, so a contact pinned in the
+    // message view is pinned under the Calls filter too. Call rows are never
+    // unread (stamps hardcoded null) but they absolutely can be pinned.
+    const sections = inboxSections(sortInboxRows([
+      row('call-pinned', { pinnedAt: '2026-08-01T00:00:00Z' }),
+      row('call-plain'),
+    ]));
+    expect(sections.map((s) => s.key)).toEqual(['pinned', 'rest']);
+    expect(sections[0].rows.map((r) => r.id)).toEqual(['call-pinned']);
   });
 });

@@ -20,7 +20,7 @@
 //     IN ('assigned','in_progress')) — the same predicate used by
 //     the wk_contacts RLS policy.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useViewAs } from '@/features/crm/lib/ViewAsContext';
@@ -85,8 +85,15 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
   // "See as: <agent>" — when an admin impersonates an agent, scope the inbox to
   // that agent's participation instead of the whole workspace.
   const { viewAsId } = useViewAs();
+  // Stale-load guard (2026-08-02). Loads overlap freely here: realtime events,
+  // the 30s poll, focus, and the isAdmin flip all call load(), and a SLOW
+  // pre-admin load (scoped to the user's own 2 leads) can resolve AFTER the
+  // fresh admin load (the whole workspace), flapping the list 74 -> 2 -> 74 on
+  // screen and detaching rows mid-click. Only the newest load may write state.
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     // PR 119: resolve current user + admin status before querying so
     // we can scope the inbox per-user. RLS on wk_sms_messages is open
     // to any CRM role (PR 52); ownership filtering is the app's job.
@@ -126,6 +133,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
 
       // Participated in nothing → empty inbox. Skip the round-trip.
       if (allowedSet.size === 0) {
+        if (seq !== loadSeqRef.current) return; // superseded by a newer load
         setThreads([]);
         setLoading(false);
         return;
@@ -236,6 +244,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         campaignName: campaign?.name ?? null,
       });
     }
+    if (seq !== loadSeqRef.current) return; // superseded by a newer load
     setThreads(out);
     setLoading(false);
   }, [isAdmin, viewAsId]);

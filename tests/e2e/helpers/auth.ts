@@ -34,6 +34,17 @@ export const test = base.extend<{ authedPage: Page }>({
   // Auth comes from the saved storageState (see auth.setup.ts) — no per-test login.
   // The fixture just lands on the app shell so each test starts from a known place.
   authedPage: async ({ page }, use) => {
+    // Vite's dev error overlay (a <vite-error-overlay> web component) pops
+    // whenever ANY dev-only transform fails (api/analytics/*.ts do, they are
+    // Vercel functions vite was never meant to serve) and it swallows every
+    // click under it: "element is visible ... <vite-error-overlay> intercepts
+    // pointer events". Production has no overlay, so suppressing it in e2e
+    // removes a dev-only artifact, not a real symptom.
+    await page.addInitScript(() => {
+      const style = document.createElement('style')
+      style.textContent = 'vite-error-overlay { display: none !important; pointer-events: none !important; }'
+      document.addEventListener('DOMContentLoaded', () => document.head.appendChild(style))
+    })
     await page.goto('/dashboard')
     // Desktop sidebar or mobile bottom nav — assert whichever Inbox link is visible.
     await expect(page.locator('a[href*="inbox"]:visible').first()).toBeVisible({ timeout: 15_000 })

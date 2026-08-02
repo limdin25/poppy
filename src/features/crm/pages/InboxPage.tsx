@@ -22,6 +22,9 @@ import {
   ArchiveRestore,
   Megaphone,
   Loader2,
+  Check,
+  CheckCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { MOCK_SMS, MOCK_ACTIVITIES } from '../data/mockCalls';
@@ -51,7 +54,9 @@ import { CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 import { usePendingDrafts } from '../hooks/usePendingDrafts';
 import { useInboxState } from '../hooks/useInboxState';
-import { isThreadUnread, sortInboxRows } from '../lib/inboxOrder';
+import { useAiReplyStatus } from '../hooks/useAiReplyStatus';
+import { useAuth } from '../lib/useCrmAuth';
+import { isThreadUnread, sortInboxRows, inboxSections } from '../lib/inboxOrder';
 
 const ACTIVITY_KINDS_FOR_THREAD = new Set(['note', 'outcome_applied', 'stage_moved', 'tag_added', 'task_created']);
 
@@ -85,11 +90,27 @@ type Filter =
   | 'missed'
   | 'archived';
 
-/** Pill order in the sidebar. Unread and Drafts sit next to All because they
- *  are the two "someone is waiting on you" views. Archived is last. */
-const FILTERS: Filter[] = [
-  'all', 'unread', 'drafts', 'sms', 'whatsapp', 'email', 'calls', 'voicemail', 'missed', 'archived',
-];
+/** Hugo 2026-08-02: ten pills in one wrapped row read as noise. Split into
+ *  two single-line rows with a fixed meaning each: WHAT STATE a thread is in
+ *  (someone waiting on you / put away), then WHERE it happened (channel or
+ *  call). Same single-select behaviour, same testids, purely visual grouping.
+ *  Each row scrolls sideways instead of wrapping (the WhatsApp chip pattern).
+ *  The 280px pane fits about 255px of pills, so display labels are short;
+ *  the Filter values and testids stay the long canonical names. */
+const STATE_FILTERS: Filter[] = ['all', 'unread', 'drafts', 'archived'];
+const SOURCE_FILTERS: Filter[] = ['sms', 'whatsapp', 'email', 'calls', 'voicemail', 'missed'];
+const FILTER_LABEL: Record<Filter, string> = {
+  all: 'all',
+  unread: 'unread',
+  drafts: 'drafts',
+  archived: 'archived',
+  sms: 'sms',
+  whatsapp: 'WA',
+  email: 'email',
+  calls: 'calls',
+  voicemail: 'vmail',
+  missed: 'missed',
+};
 
 type ChannelKindUI = 'sms' | 'whatsapp' | 'email';
 
@@ -393,8 +414,12 @@ export default function InboxPage() {
     [inboxThreads, calls],
   );
   const funnelByContact = useContactFunnelStatus(allRowIds);
-  const { contactIds: pendingDraftIds, refetch: refetchDrafts } = usePendingDrafts();
+  const { contactIds: pendingDraftIds, draftByContact, refetch: refetchDrafts } = usePendingDrafts();
   const { flags: inboxFlags, markRead, togglePin, toggleArchive } = useInboxState();
+  // Hugo 2026-08-02: "show if the AI of the inbox is on and off". Workspace
+  // stance from wk_ai_reply_settings; admins get a link to change it.
+  const aiStatus = useAiReplyStatus();
+  const { isAdmin } = useAuth();
 
   // One pass: decorate, drop what this filter hides, then order.
   //
@@ -407,6 +432,9 @@ export default function InboxPage() {
         ...r,
         vsl: funnelByContact.get(r.id) ?? null,
         draftPending: pendingDraftIds.has(r.id),
+        // Preview only. Deliberately NOT the row's timestamp and NOT counted
+        // as outbound, both of those were real bugs (see useInboxThreads).
+        draftBody: draftByContact.get(r.id) ?? null,
         pinnedAt: f?.pinnedAt ?? null,
         archivedAt: f?.archivedAt ?? null,
         unread: isThreadUnread(r, f?.lastReadAt),
@@ -426,7 +454,11 @@ export default function InboxPage() {
       : scoped;
 
     return sortInboxRows(byFilter);
-  }, [sidebarRows, funnelByContact, pendingDraftIds, inboxFlags, filter]);
+  }, [sidebarRows, funnelByContact, pendingDraftIds, draftByContact, inboxFlags, filter]);
+
+  // The same order, regrouped into labelled bands (pinned / needs a reply /
+  // everything else). Headers render only when the list actually mixes bands.
+  const sections = useMemo(() => inboxSections(decoratedRows), [decoratedRows]);
 
   // Badge counts on the pills. Both are computed off the whole non-archived
   // list, not the current view, so switching filters never changes them.
@@ -754,7 +786,7 @@ export default function InboxPage() {
     <>
     <div className="h-full flex">
       {/* Pane 1 — list */}
-      <aside className="w-[280px] bg-white border-r border-[#E5E7EB] flex flex-col">
+      <aside data-testid="inbox-list" className="w-[280px] bg-white border-r border-[#E5E7EB] flex flex-col">
         <div className="px-3 py-2.5 border-b border-[#E5E7EB] space-y-2">
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
@@ -768,9 +800,11 @@ export default function InboxPage() {
           </div>
           {/* PR 78: channel filter pills — agent can scope the inbox to
               SMS / WhatsApp / Email at a glance. Industry-standard
-              pattern (HubSpot Conversations, Front, Intercom). */}
-          <div className="flex gap-1 flex-wrap">
-            {FILTERS.map((f) => {
+              pattern (HubSpot Conversations, Front, Intercom).
+              Hugo 2026-08-02: split into a STATE row and a SOURCE row so ten
+              pills stop reading as one wall. Same single-select `filter`. */}
+          {(() => {
+            const pill = (f: Filter) => {
               const count = f === 'unread' ? unreadTotal : f === 'drafts' ? draftTotal : 0;
               return (
                 <button
@@ -793,7 +827,7 @@ export default function InboxPage() {
                   )}
                   {f === 'archived' && <Archive style={{ width: 9, height: 9 }} />}
                   {f === 'drafts' && <Bot style={{ width: 9, height: 9 }} />}
-                  {f}
+                  {FILTER_LABEL[f]}
                   {count > 0 && (
                     <span
                       data-testid={`inbox-filter-count-${f}`}
@@ -807,7 +841,63 @@ export default function InboxPage() {
                   )}
                 </button>
               );
-            })}
+            };
+            // One line each, sideways scroll on overflow (WhatsApp chips);
+            // wrapping made the two-row grouping unreadable at 280px.
+            const rowCls = 'flex gap-1 flex-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+            return (
+              <>
+                <div className={rowCls}>{STATE_FILTERS.map(pill)}</div>
+                <div className={rowCls}>{SOURCE_FILTERS.map(pill)}</div>
+              </>
+            );
+          })()}
+          {/* Is the AI answering this inbox? Workspace stance; campaigns can
+              only ever be stricter (server-side AND rule). Fail-quiet: the
+              pill simply doesn't render if the settings read fails. The row
+              keeps its height even before the async load, so the header
+              never jumps when the pill pops in (that shift made pill clicks
+              flaky in e2e and would nudge a human's finger the same way). */}
+          <div className="h-[20px] flex items-center gap-1.5">
+            {aiStatus.loaded && (
+            <>
+              <span
+                data-testid="inbox-ai-status"
+                title={
+                  !aiStatus.enabled
+                    ? 'The AI reply engine is switched off. Incoming texts wait for a human.'
+                    : aiStatus.mode === 'auto'
+                      ? 'The AI answers incoming texts by itself (campaigns set to draft still wait for approval).'
+                      : 'The AI writes a draft for every incoming text and waits for your approval. Nothing sends on its own.'
+                }
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full border',
+                  !aiStatus.enabled
+                    ? 'bg-[#F3F3EE] border-[#E5E7EB] text-[#6B7280]'
+                    : aiStatus.mode === 'auto'
+                      ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+                      : 'bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]'
+                )}
+              >
+                <Bot style={{ width: 10, height: 10 }} />
+                {!aiStatus.enabled
+                  ? 'AI replies off'
+                  : aiStatus.mode === 'auto'
+                    ? 'AI replies on its own'
+                    : 'AI drafts, you approve'}
+              </span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  data-testid="inbox-ai-status-change"
+                  onClick={() => navigateTo('/admin/crm/agent/personality?ch=sms')}
+                  className="text-[10px] text-[#3C5A87] font-medium hover:underline underline-offset-2"
+                >
+                  change
+                </button>
+              )}
+            </>
+            )}
           </div>
           {/* Campaign filter — Hugo, 2026-07-29: "I should be able to see the
               inbox per campaign." A dropdown rather than more pills: the
@@ -835,8 +925,29 @@ export default function InboxPage() {
           {/* PR 52 war-room: sidebarRows is the union of (a) thread
               rows ordered newest-first by latest wk_sms_messages,
               and (b) contacts with no messages yet. Newest message
-              ALWAYS sits at the top — Hugo's spec. */}
-          {decoratedRows.map((r) => {
+              ALWAYS sits at the top, Hugo's spec.
+              Hugo 2026-08-02: the pinned/unread/rest bands now carry a small
+              sticky label each, but ONLY when the list actually mixes bands,
+              so a plain list stays a plain list. */}
+          {/* ONE flat array under ONE parent, headers interleaved. Never wrap
+              the rows in per-section Fragments: a keyed Fragment is a parent,
+              and a row crossing bands (markRead flips unread off) would
+              unmount + remount, destroying an in-progress rename and focus. */}
+          {sections.flatMap((sec) => [
+            ...(sections.length > 1
+              ? [
+                  <div
+                    key={`hdr-${sec.key}`}
+                    data-testid={`inbox-section-${sec.key}`}
+                    className="sticky top-0 z-[1] px-3 py-1 bg-[#FAFAF7]/95 backdrop-blur-sm text-[9.5px] font-bold uppercase tracking-wider text-[#9CA3AF] flex items-center gap-1"
+                  >
+                    {sec.key === 'pinned' && <Pin style={{ width: 9, height: 9 }} />}
+                    {sec.key === 'pinned' ? 'Pinned' : sec.key === 'unread' ? 'Needs a reply' : 'Everything else'}
+                    <span className="tabular-nums">{sec.rows.length}</span>
+                  </div>,
+                ]
+              : []),
+            ...sec.rows.map((r) => {
             const initials = (r.name || r.phone)
               .split(' ')
               .map((n) => n[0])
@@ -961,6 +1072,16 @@ export default function InboxPage() {
                           )}
                           <span className="truncate">{r.lastMessageBody?.slice(0, 40) ?? '—'}</span>
                         </>
+                      ) : r.draftPending && r.draftBody ? (
+                        /* WhatsApp's "Draft:" convention. The amber "AI reply"
+                           badge to the left already labels it, so the preview
+                           is JUST the draft text (a second "AI draft:" prefix
+                           squeezed the actual words out of a 150px column).
+                           Timestamp and unread state stay driven by real
+                           messages, never by drafts. */
+                        <span className="truncate text-[#B45309]">
+                          {r.draftBody.slice(0, 48)}
+                        </span>
                       ) : (
                         <>
                           {r.lastChannel && <ChannelGlyph channel={r.lastChannel} size={10} />}
@@ -1035,7 +1156,8 @@ export default function InboxPage() {
                 </div>
               </div>
             );
-          })}
+          }),
+          ])}
           {decoratedRows.length === 0
             && !((filter === 'calls' || filter === 'voicemail' || filter === 'missed') ? callsLoading : threadsLoading)
             && (
@@ -1178,8 +1300,46 @@ export default function InboxPage() {
                       {(m.attachmentUrl as string).split('/').pop() ?? 'Attachment'}
                     </a>
                   )}
-                  <div className="text-[10px] text-[#9CA3AF] mt-0.5 tabular-nums">
+                  <div className="text-[10px] text-[#9CA3AF] mt-0.5 tabular-nums flex items-center gap-1">
                     {formatTimeOnly(m.sentAt)}
+                    {/* Hugo 2026-08-02: "make sure everything is sent". One
+                        honest tick per outbound message. The status webhook
+                        rarely writes back (believe Twilio, not the CRM row),
+                        so most messages show a single grey "sent" tick;
+                        double tick only on a confirmed delivered/read, red
+                        only on a real failure. */}
+                    {m.direction === 'outbound' && !isDraft && (() => {
+                      const st = (m.status ?? '').toLowerCase();
+                      if (st === 'failed' || st === 'undelivered') {
+                        return (
+                          <span
+                            data-testid={`msg-status-${m.id}`}
+                            title={`This message did not go through (${st})`}
+                            className="inline-flex items-center gap-0.5 text-[#DC2626] font-semibold"
+                          >
+                            <AlertTriangle style={{ width: 10, height: 10 }} /> failed
+                          </span>
+                        );
+                      }
+                      if (st === 'delivered' || st === 'read') {
+                        return (
+                          <CheckCheck
+                            data-testid={`msg-status-${m.id}`}
+                            style={{ width: 12, height: 12 }}
+                            className="text-[#3C5A87]"
+                            aria-label={st === 'read' ? 'Read' : 'Delivered'}
+                          />
+                        );
+                      }
+                      return (
+                        <Check
+                          data-testid={`msg-status-${m.id}`}
+                          style={{ width: 12, height: 12 }}
+                          className="text-[#9CA3AF]"
+                          aria-label="Sent"
+                        />
+                      );
+                    })()}
                   </div>
                   {isDraft && (
                     <div className="flex gap-1.5 mt-1.5">

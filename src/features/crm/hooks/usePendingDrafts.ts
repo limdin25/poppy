@@ -11,27 +11,47 @@
 //
 // The whole pending set is tiny and RLS already scopes it, so no `.in()` filter.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 
-export function usePendingDrafts(): { contactIds: Set<string>; refetch: () => void } {
+export function usePendingDrafts(): {
+  contactIds: Set<string>;
+  /** Newest pending draft body per contact, so the inbox row can show
+   *  "AI draft: ..." as its preview (Hugo 2026-08-02: drafts must be
+   *  visible without opening the DRAFTS filter). */
+  draftByContact: Map<string, string>;
+  refetch: () => void;
+} {
   const [contactIds, setContactIds] = useState<Set<string>>(new Set());
+  const [draftByContact, setDraftByContact] = useState<Map<string, string>>(new Map());
+  // Stale-load guard, same shape as useInboxThreads (2026-08-02): realtime +
+  // poll + focus can overlap, and an older result must never overwrite a
+  // newer one.
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase.from('wk_sms_messages' as any) as any)
-      .select('contact_id')
+      .select('contact_id, body, created_at')
       .eq('status', 'draft')
+      .order('created_at', { ascending: false })
       .limit(500);
     if (error) {
       console.warn('[usePendingDrafts] load failed:', error.message);
       return;
     }
+    if (seq !== loadSeqRef.current) return; // superseded by a newer load
     const next = new Set<string>();
-    for (const r of (data ?? []) as Array<{ contact_id: string | null }>) {
-      if (r.contact_id) next.add(r.contact_id);
+    const bodies = new Map<string, string>();
+    for (const r of (data ?? []) as Array<{ contact_id: string | null; body: string | null }>) {
+      if (!r.contact_id) continue;
+      next.add(r.contact_id);
+      // Rows arrive newest-first; the first body we meet per contact wins.
+      if (!bodies.has(r.contact_id)) bodies.set(r.contact_id, r.body ?? '');
     }
     setContactIds(next);
+    setDraftByContact(bodies);
   }, []);
 
   useEffect(() => {
@@ -67,5 +87,5 @@ export function usePendingDrafts(): { contactIds: Set<string>; refetch: () => vo
     };
   }, [load]);
 
-  return { contactIds, refetch: () => void load() };
+  return { contactIds, draftByContact, refetch: () => void load() };
 }

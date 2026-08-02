@@ -58,3 +58,34 @@ export function sortInboxRows<T extends OrderableRow>(rows: T[]): T[] {
     return ts(b.lastMessageAt) - ts(a.lastMessageAt);
   });
 }
+
+export type InboxSectionKey = 'pinned' | 'unread' | 'rest';
+
+export interface InboxSection<T> {
+  key: InboxSectionKey;
+  rows: T[];
+}
+
+/**
+ * Split an ALREADY-SORTED list (sortInboxRows order) into its bands so the UI
+ * can put a label above each one. Hugo 2026-08-02: the bands were invisible,
+ * so the order read as random pollution; a labelled "Needs a reply" section
+ * makes the same order self-explaining.
+ *
+ * Pure regrouping, no re-sort: concatenating the sections' rows reproduces the
+ * input exactly. Empty bands are omitted, so a list that is all one band comes
+ * back as a single section, which the UI renders without any header. Call rows
+ * are never unread (their inbound/outbound stamps are hardcoded null), but
+ * they CAN be pinned, pin state is per CONTACT (wk_inbox_state), so a contact
+ * pinned in the message view is pinned under the Calls filter too and gets a
+ * Pinned header there. That is one fact in one place, not a bug.
+ */
+export function inboxSections<T extends OrderableRow>(sorted: T[]): InboxSection<T>[] {
+  const buckets: Record<InboxSectionKey, T[]> = { pinned: [], unread: [], rest: [] };
+  for (const r of sorted) {
+    buckets[r.pinnedAt ? 'pinned' : r.unread ? 'unread' : 'rest'].push(r);
+  }
+  return (['pinned', 'unread', 'rest'] as const)
+    .filter((k) => buckets[k].length > 0)
+    .map((k) => ({ key: k, rows: buckets[k] }));
+}

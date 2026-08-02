@@ -34,6 +34,12 @@ async function gotoInbox(page: import('@playwright/test').Page) {
   await settle(page)
 }
 
+// One worker, in order, for this file: every test mutates the SAME account's
+// wk_inbox_state (pin/archive), so two tests in parallel fight over the same
+// rows, e.g. archive clears the pin the pin-test just set (seen 2026-08-02).
+// 'default' (not 'serial') so one failure does not skip the rest.
+test.describe.configure({ mode: 'default' })
+
 test.describe('CRM inbox — unread / pin / archive', () => {
   test.skip(process.env.E2E_OWNER_READY !== '1', 'needs an admin account (E2E_OWNER_READY=1)')
 
@@ -63,11 +69,17 @@ test.describe('CRM inbox — unread / pin / archive', () => {
     await page.getByTestId('inbox-filter-drafts').click()
     await settle(page)
 
-    const n = await rows(page).count()
-    if (n === 0) {
-      await expect(page.locator('aside').first()).toContainText(/No AI replies waiting/i)
-      return
+    if (await rows(page).count() === 0) {
+      // Zero rows means EITHER genuinely no drafts (the empty message shows,
+      // in the inbox list aside by testid, locator('aside').first() used to
+      // grab the icon-only nav rail) OR the load was still in flight when
+      // settle() sampled, live realtime traffic reloads this list constantly.
+      // Accept whichever lands; the loop below re-counts (2026-08-02).
+      await expect(
+        page.getByTestId('inbox-list').getByText(/No AI replies waiting/i).or(rows(page).first()),
+      ).toBeVisible({ timeout: 15_000 })
     }
+    const n = await rows(page).count()
     for (let i = 0; i < n; i++) {
       const id = (await rows(page).nth(i).getAttribute('data-testid'))!.replace('inbox-row-', '')
       await expect(page.getByTestId(`inbox-draft-pending-${id}`)).toBeVisible()
