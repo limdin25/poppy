@@ -383,6 +383,10 @@ verify_jwt = false
 verify_jwt = true
 [functions.wk-sms-incoming]
 verify_jwt = false
+# Twilio delivery-status callback (no JWT on Twilio's POST; the function
+# fail-closed validates the Twilio HMAC signature itself, same as incoming).
+[functions.wk-sms-status]
+verify_jwt = false
 [functions.wk-sms-broadcast]
 verify_jwt = false
 [functions.wk-draft-action]
