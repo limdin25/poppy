@@ -74,8 +74,26 @@ interface SmsSendInvoke {
       status?: string;
       error?: string;
     } | null;
-    error: { message: string } | null;
+    error: { message: string; context?: Response } | null;
   }>;
+}
+
+/** supabase-js hides a non-2xx edge function's JSON body behind
+ *  error.context (a Response); error.message is always the fixed string
+ *  "Edge Function returned a non-2xx status code". Dig the real reason out,
+ *  or the plain-words 24h-window / lead-lock / kill-switch messages the
+ *  functions return can never reach a toast. */
+async function fnErrorText(
+  error: { message?: string; context?: Response } | null,
+  data: { error?: string } | null,
+): Promise<string | null> {
+  if (data?.error) return data.error;
+  if (!error) return null;
+  try {
+    const body = await error.context?.clone().json() as { error?: unknown } | undefined;
+    if (body?.error) return String(body.error);
+  } catch { /* body was not JSON, fall through to the generic message */ }
+  return error.message ?? 'unknown';
 }
 
 type Filter =
@@ -576,7 +594,18 @@ export default function InboxPage() {
   const draftAction = useCallback(async (draftId: string, action: 'send' | 'discard', body?: string) => {
     setDraftBusy(draftId);
     try {
-      await supabase.functions.invoke('wk-draft-action', { body: { draft_id: draftId, action, body } });
+      // 2026-08-02: the result used to be dropped on the floor, so a failed
+      // approval (24h WhatsApp window closed, kill switch, opt-out) showed
+      // NOTHING, the badge just came back with no explanation.
+      const { data, error } = await supabase.functions.invoke('wk-draft-action', {
+        body: { draft_id: draftId, action, body },
+      }) as { data: { ok?: boolean; error?: string } | null; error: { message: string; context?: Response } | null };
+      if (error || data?.error) {
+        pushToast(
+          `Draft ${action} failed: ${(await fnErrorText(error, data)) ?? 'unknown'}`,
+          'error'
+        );
+      }
     } finally {
       setDraftBusy(null);
       // Clear the row's "AI reply" pill straight away rather than waiting on
@@ -584,7 +613,7 @@ export default function InboxPage() {
       // failed action.
       refetchDrafts();
     }
-  }, [refetchDrafts]);
+  }, [refetchDrafts, pushToast]);
 
   // PR 105 (Hugo 2026-04-28): channel must be re-picked every time —
   // no auto-default to last-used channel, no carry-over between contacts.
@@ -718,15 +747,17 @@ export default function InboxPage() {
     try {
       // PR 79 (Hugo 2026-04-27): inbox reply routes by selected channel.
       // sms      → wk-sms-send  (Twilio)
-      // whatsapp → unipile-send (Unipile)
+      // whatsapp → wk-sms-send with channel:'whatsapp' (2026-08-02: the
+      //            Twilio WhatsApp sender replaced Unipile here, that key is
+      //            dead and the receptionist inbox keeps its own path)
       // email    → wk-email-send (Resend)
       const fn = supabase.functions as unknown as SmsSendInvoke;
       const trimmedBody = reply.trim();
       let resp: Awaited<ReturnType<SmsSendInvoke['invoke']>>;
       const attach = replyAttachmentUrl || undefined;
       if (replyChannel === 'whatsapp') {
-        resp = await fn.invoke('unipile-send', {
-          body: { contact_id: activeContact.id, body: trimmedBody, attachment_url: attach },
+        resp = await fn.invoke('wk-sms-send', {
+          body: { contact_id: activeContact.id, body: trimmedBody, attachment_url: attach, channel: 'whatsapp' },
         });
       } else if (replyChannel === 'email') {
         resp = await fn.invoke('wk-email-send', {
@@ -749,7 +780,7 @@ export default function InboxPage() {
         'SMS';
       if (error || data?.error) {
         pushToast(
-          `${channelLabel} send failed: ${error?.message ?? data?.error ?? 'unknown'}`,
+          `${channelLabel} send failed: ${(await fnErrorText(error, data)) ?? 'unknown'}`,
           'error'
         );
       } else {

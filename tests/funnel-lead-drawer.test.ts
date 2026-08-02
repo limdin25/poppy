@@ -69,7 +69,9 @@ describe('the drawer', () => {
 
   it('offers all three channels, with text as the default', () => {
     expect(drawer).toMatch(/useState<Channel>\('sms'\)/)
-    expect(drawer).toMatch(/invoke\('unipile-send'/)   // WhatsApp
+    // WhatsApp rides wk-sms-send with a channel param since 2026-08-02
+    // (Twilio WhatsApp sender; unipile-send is dead, key expired).
+    expect(drawer).toMatch(/channel: 'whatsapp'/)
     expect(drawer).toMatch(/invoke\('wk-email-send'/)  // Email
     // A channel the lead has no address for is disabled, not left to fail on send.
     expect(drawer).toMatch(/c === 'email' \? !!contact\?\.email : !!contact\?\.phone/)

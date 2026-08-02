@@ -40,7 +40,20 @@ interface SendBody {
   campaign_id?: string;
   /** Public URL to a file in crm-attachments bucket. Sent as Twilio MMS MediaUrl. */
   attachment_url?: string;
+  /** 2026-08-02: 'whatsapp' sends through Twilio's WhatsApp channel from the
+   *  ONE Meta-registered sender (see WHATSAPP_SENDER_E164 below). Same door
+   *  as SMS, the two numbers just get a whatsapp: prefix. Anything else (or
+   *  absent) is plain SMS, exactly as before. */
+  channel?: 'sms' | 'whatsapp';
 }
+
+// The one number registered with Meta as a WhatsApp Business sender (Twilio
+// Console -> Messaging -> Senders -> WhatsApp senders, status ONLINE,
+// registered 2026-08-02). Every WhatsApp send MUST leave from a registered
+// sender or Twilio rejects it with 63007, so per-agent SMS lines don't apply
+// here. Env-overridable for when more senders get registered; the number
+// itself is public config, not a secret.
+const WHATSAPP_SENDER_E164 = Deno.env.get('WHATSAPP_SENDER_E164') || '+447460035763';
 
 const json = (status: number, payload: Record<string, unknown>) =>
   new Response(JSON.stringify(payload), {
@@ -103,6 +116,20 @@ serve(async (req: Request) => {
     const toE164 = normalizeE164((contact.phone as string | null) ?? '');
     if (!toE164) return json(400, { error: 'Contact has no phone number' });
 
+    // A recorded opt-out (they texted STOP, wk-sms-incoming tagged them)
+    // blocks every manual send on every channel. On SMS the carrier is a
+    // partial backstop; on WhatsApp there is none, and enough Report/Block
+    // taps rate-limits then bans the ONE registered sender for everyone.
+    const { data: dnt } = await supa
+      .from('wk_contact_tags')
+      .select('tag')
+      .eq('contact_id', contactId)
+      .eq('tag', 'do-not-text')
+      .maybeSingle();
+    if (dnt) {
+      return json(409, { error: 'This lead opted out (texted STOP). Sending is blocked.' });
+    }
+
     // One-agent-per-lead lock (2026-07-28): once ANY agent has texted or
     // called this contact, no OTHER agent may text it. Admin sends never
     // check or set the lock, so Hugo can always follow up on any lead.
@@ -124,20 +151,27 @@ serve(async (req: Request) => {
       }
     }
 
+    const isWhatsApp = payload.channel === 'whatsapp';
+
     // Resolve sender number. Precedence (same order as the send_sms job
     // handler in wk-jobs-worker — the two paths must route alike):
+    //   0. channel 'whatsapp' → ALWAYS the registered WhatsApp sender.
+    //      The per-agent / per-campaign SMS lines are not WhatsApp-capable,
+    //      so none of the SMS resolution below applies.
     //   1. explicit from_e164 (caller pinned)
     //   2. campaign_id → first wk_campaign_numbers row whose wk_numbers
     //      row is sms_enabled
     //   3. workspace default — first sms_enabled wk_numbers row
-    let fromE164 = (payload.from_e164 ?? '').trim();
+    let fromE164 = isWhatsApp ? WHATSAPP_SENDER_E164 : (payload.from_e164 ?? '').trim();
 
     // Security: an explicit from_e164 must be a CRM-owned, SMS-enabled
     // number. Without this, a logged-in agent could pin a client's
     // receptionist caller-ID (e.g. a UK Retell line, sms_enabled=false)
     // and send SMS spoofing it. The campaign/default paths below only ever
     // pick sms_enabled wk_numbers rows, so they are already safe.
-    if (fromE164) {
+    // Skipped for WhatsApp: the from is OUR constant above, never caller
+    // input, and the registered sender need not be sms_enabled in wk_numbers.
+    if (fromE164 && !isWhatsApp) {
       const { data: ownedNumber } = await supa
         .from('wk_numbers')
         .select('e164')
@@ -208,6 +242,31 @@ serve(async (req: Request) => {
       return json(503, { error: 'No SMS-enabled number configured (wk_numbers)' });
     }
 
+    // WhatsApp 24h-window pre-check. Twilio ACCEPTS an out-of-window
+    // free-form message (201, queued) and only fails it asynchronously with
+    // 63016, so waiting for the create call to error is waiting forever.
+    // Refuse HERE, synchronously, when the lead has no inbound WhatsApp in
+    // the last 24 hours. (Business-initiated sends need an approved
+    // template; none exist yet.)
+    if (isWhatsApp) {
+      const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const { data: lastIn } = await supa
+        .from('wk_sms_messages')
+        .select('id')
+        .eq('contact_id', contactId)
+        .eq('direction', 'inbound')
+        .eq('channel', 'whatsapp')
+        .gte('created_at', dayAgo)
+        .limit(1)
+        .maybeSingle();
+      if (!lastIn) {
+        return json(400, {
+          error:
+            'WhatsApp only allows free replies within 24 hours of the lead\'s last WhatsApp message, and this lead has none in that window. The message would be silently dropped. They need to message first, or an approved template is required.',
+        });
+      }
+    }
+
     // C2: honour the global kill switch + daily SMS cap before spending.
     const { data: gate } = await supa.rpc('wk_outbound_sms_allowed');
     if (gate && (gate as { allowed?: boolean }).allowed === false) {
@@ -227,10 +286,16 @@ serve(async (req: Request) => {
     if (payload.attachment_url) {
       smsBody = `${body}\n\n${payload.attachment_url}`;
     }
+    // WhatsApp rides the same Messages API with a whatsapp: prefix on both
+    // numbers. The DB rows keep BARE e164 (matching how wk-sms-incoming
+    // stores them after stripping the prefix), only the wire call differs.
     const form = new URLSearchParams({
-      To: toE164,
-      From: fromE164,
+      To: isWhatsApp ? `whatsapp:${toE164}` : toE164,
+      From: isWhatsApp ? `whatsapp:${fromE164}` : fromE164,
       Body: smsBody,
+      // Delivery fate comes back through wk-sms-status and updates the row,
+      // so 'queued' stops being a forever-state and the inbox ticks are real.
+      StatusCallback: `${SUPABASE_URL}/functions/v1/wk-sms-status`,
     });
     const twResp = await fetch(url, {
       method: 'POST',
@@ -243,6 +308,14 @@ serve(async (req: Request) => {
     if (!twResp.ok) {
       const errText = await twResp.text();
       console.error('[wk-sms-send] twilio error', twResp.status, errText);
+      // 63016 = free-form message outside the 24h customer service window.
+      // Say so in plain words, "Twilio 400" teaches the agent nothing.
+      if (errText.includes('63016')) {
+        return json(502, {
+          error:
+            'WhatsApp rejected this: more than 24 hours since the lead last messaged. They must text first, or the message needs an approved template.',
+        });
+      }
       return json(502, { error: `Twilio ${twResp.status}: ${errText}` });
     }
     const twJson = await twResp.json() as {
@@ -260,7 +333,7 @@ serve(async (req: Request) => {
         // PR 96: was implicit (DB default 'sms'); now explicit so the
         // row carries its channel like every other send path and the
         // inbox channel-glyph rendering is correct.
-        channel: 'sms',
+        channel: isWhatsApp ? 'whatsapp' : 'sms',
         body,
         twilio_sid: twJson.sid ?? null,
         external_id: twJson.sid ?? null,

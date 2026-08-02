@@ -180,6 +180,13 @@ serve(async (req: Request) => {
 
     const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+    // WhatsApp arrives on this same webhook with a `whatsapp:` prefix on
+    // From/To (the Twilio WhatsApp sender's callback points here). Detect
+    // BEFORE phoneVariants strips it, or the channel identity is lost and
+    // every WhatsApp message masquerades as an SMS in the inbox.
+    const isWhatsApp = rawFrom.startsWith('whatsapp:');
+    const channel = isWhatsApp ? 'whatsapp' : 'sms';
+
     const { e164: fromE164, variants: fromVariants } = phoneVariants(rawFrom);
     const { e164: toE164 } = phoneVariants(rawTo);
 
@@ -215,7 +222,7 @@ serve(async (req: Request) => {
           owner_agent_id: null,
           pipeline_column_id: null,
           custom_fields: {
-            source: 'inbound_sms',
+            source: isWhatsApp ? 'inbound_whatsapp' : 'inbound_sms',
             first_message_sid: messageSid,
           },
           is_hot: false,
@@ -253,6 +260,7 @@ serve(async (req: Request) => {
         .insert({
           contact_id: contactId,
           direction: 'inbound',
+          channel,
           body,
           twilio_sid: messageSid,
           from_e164: fromE164,
@@ -421,7 +429,10 @@ serve(async (req: Request) => {
                 kind: 'ai_reply',
                 status: 'pending',
                 scheduled_for: new Date(Date.now() + delay * 1000).toISOString(),
-                payload: { contact_id: contactId, to_e164: toE164 || null, from_e164: fromE164 },
+                // channel rides along so the reply goes back on the SAME
+                // channel the lead used (a WhatsApp thread must not be
+                // answered by a paid SMS to the same person).
+                payload: { contact_id: contactId, to_e164: toE164 || null, from_e164: fromE164, channel },
               });
             }
           }

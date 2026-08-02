@@ -248,8 +248,10 @@ export default function MidCallSmsSender({
           body: { contact_id: contactId, body: trimBody, campaign_id: camp },
         });
       } else if (channel === 'whatsapp') {
-        resp = await fn.invoke('unipile-send', {
-          body: { contact_id: contactId, body: trimBody, campaign_id: camp },
+        // 2026-08-02: Twilio WhatsApp sender via wk-sms-send (channel param),
+        // same as InboxPage. unipile-send is dead (key expired).
+        resp = await fn.invoke('wk-sms-send', {
+          body: { contact_id: contactId, body: trimBody, campaign_id: camp, channel: 'whatsapp' },
         });
       } else {
         resp = await fn.invoke('wk-email-send', {

@@ -8,17 +8,32 @@ import {
 export const config = { runtime: 'edge' };
 
 // Inline Twilio send (edge-safe: btoa, no Buffer) so this route doesn't pull
-// in the whole Twilio client module.
-async function sendSMS(from: string, to: string, body: string): Promise<{ sid?: string; status?: string }> {
+// in the whole Twilio client module. channel 'whatsapp' is the same Messages
+// API with whatsapp: prefixed numbers; the DB always stores bare e164.
+async function sendSMS(
+  from: string,
+  to: string,
+  body: string,
+  channel: 'sms' | 'whatsapp' = 'sms',
+): Promise<{ sid?: string; status?: string }> {
   const sid = process.env.TWILIO_ACCOUNT_SID!;
   const token = process.env.TWILIO_AUTH_TOKEN!;
+  const wa = channel === 'whatsapp';
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${btoa(`${sid}:${token}`)}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ From: from, To: to, Body: body }).toString(),
+    body: new URLSearchParams({
+      From: wa ? `whatsapp:${from}` : from,
+      To: wa ? `whatsapp:${to}` : to,
+      Body: body,
+      // Delivery fate flows back via the wk-sms-status edge function, so a
+      // silently-dead send (e.g. WhatsApp 63016) marks its row instead of
+      // sitting at 'queued' forever.
+      StatusCallback: `${process.env.SUPABASE_URL}/functions/v1/wk-sms-status`,
+    }).toString(),
   });
   if (!res.ok) throw new Error(`Twilio ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return res.json() as Promise<{ sid?: string; status?: string }>;
@@ -60,10 +75,13 @@ export default async function handler(req: Request): Promise<Response> {
     return json(401, { error: 'Unauthorized' });
   }
 
-  let payload: { contact_id?: string; to_e164?: string; from_e164?: string };
+  let payload: { contact_id?: string; to_e164?: string; from_e164?: string; channel?: string };
   try { payload = await req.json(); } catch { return json(400, { error: 'Invalid JSON' }); }
   const contactId = (payload.contact_id || '').trim();
   const replyFrom = (payload.to_e164 || '').trim(); // the CRM number the lead texted
+  // Reply on the channel the lead used (wk-sms-incoming stamps it on the
+  // job). Anything that is not exactly 'whatsapp' is SMS, the safe default.
+  const replyChannel: 'sms' | 'whatsapp' = payload.channel === 'whatsapp' ? 'whatsapp' : 'sms';
   if (!contactId) return json(400, { error: 'contact_id required' });
 
   // Settings.
@@ -78,6 +96,16 @@ export default async function handler(req: Request): Promise<Response> {
     .eq('id', contactId).maybeSingle();
   if (!c) return json(200, { skipped: 'no_contact' });
   if (c.ai_enabled === false) return json(200, { skipped: 'contact_disabled' });
+
+  // A recorded opt-out ends the conversation for the AI too. Without this, a
+  // lead who texted STOP and then anything else got re-engaged by the bot.
+  const { data: dntTag } = await supabase
+    .from('wk_contact_tags')
+    .select('tag')
+    .eq('contact_id', contactId)
+    .eq('tag', 'do-not-text')
+    .maybeSingle();
+  if (dntTag) return json(200, { skipped: 'do_not_text' });
   if ((c.ai_reply_count ?? 0) >= (s.max_replies_per_contact ?? 5)) return json(200, { skipped: 'max_replies' });
   if (!withinHours(s.hours_start, s.hours_end, s.days, s.timezone)) return json(200, { skipped: 'out_of_hours' });
 
@@ -285,12 +313,12 @@ export default async function handler(req: Request): Promise<Response> {
     // Insert the row BEFORE calling Twilio so a worker retry after a lost
     // response can't regenerate a different reply and double-send the lead.
     const { data: pending } = await supabase.from('wk_sms_messages').insert({
-      contact_id: contactId, direction: 'outbound', channel: 'sms', body: reply,
+      contact_id: contactId, direction: 'outbound', channel: replyChannel, body: reply,
       from_e164: fromNumber, to_e164: toPhone, status: 'sending', ai_generated: true,
     }).select('id').single();
     let sent: { sid?: string; status?: string };
     try {
-      sent = await sendSMS(fromNumber, toPhone, reply);
+      sent = await sendSMS(fromNumber, toPhone, reply, replyChannel);
     } catch (e) {
       // Send failed, so mark the row and return 200 (NOT 500) so the worker
       // doesn't retry, regenerate and double-send. A dropped AI reply beats a
@@ -306,7 +334,7 @@ export default async function handler(req: Request): Promise<Response> {
     }
   } else {
     await supabase.from('wk_sms_messages').insert({
-      contact_id: contactId, direction: 'outbound', channel: 'sms', body: reply,
+      contact_id: contactId, direction: 'outbound', channel: replyChannel, body: reply,
       from_e164: fromNumber || '', to_e164: toPhone, status: 'draft', ai_generated: true,
     });
   }

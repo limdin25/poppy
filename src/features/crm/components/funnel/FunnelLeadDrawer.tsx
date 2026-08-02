@@ -255,7 +255,9 @@ export default function FunnelLeadDrawer({
         const payload = { contact_id: id, body: body.trim() };
         const resp =
           channel === 'sms' ? await fn.invoke('wk-sms-send', { body: payload })
-          : channel === 'whatsapp' ? await fn.invoke('unipile-send', { body: payload })
+          // 2026-08-02: Twilio WhatsApp sender via wk-sms-send (channel
+          // param), same as InboxPage. unipile-send is dead (key expired).
+          : channel === 'whatsapp' ? await fn.invoke('wk-sms-send', { body: { ...payload, channel: 'whatsapp' } })
           : await fn.invoke('wk-email-send', { body: { ...payload, subject: subject.trim() } });
         const err = resp.error || (resp.data as { error?: string } | null)?.error;
         if (err) {

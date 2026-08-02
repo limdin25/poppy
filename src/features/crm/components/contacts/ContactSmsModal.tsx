@@ -293,8 +293,11 @@ export default function ContactSmsModal({
           body: { contact_id: contact.id, body: trimBody, attachment_url: attachmentUrl || undefined },
         });
       } else if (channel === 'whatsapp') {
-        resp = await fn.invoke('unipile-send', {
-          body: { contact_id: contact.id, body: trimBody, attachment_url: attachmentUrl || undefined },
+        // 2026-08-02: Twilio WhatsApp sender via wk-sms-send (channel param),
+        // same as InboxPage. unipile-send is dead (key expired) and split the
+        // thread across two senders.
+        resp = await fn.invoke('wk-sms-send', {
+          body: { contact_id: contact.id, body: trimBody, attachment_url: attachmentUrl || undefined, channel: 'whatsapp' },
         });
       } else {
         resp = await fn.invoke('wk-email-send', {

@@ -382,6 +382,11 @@ async function handleAiReply(payload: Record<string, unknown>): Promise<void> {
       contact_id: payload.contact_id,
       to_e164: payload.to_e164,
       from_e164: payload.from_e164,
+      // 2026-08-02: the reply must go back on the channel the lead used.
+      // Dropping this key here silently turned every WhatsApp thread's AI
+      // reply into a paid SMS. Old queued jobs without it default to 'sms'
+      // on the route side, which is correct for them.
+      channel: payload.channel,
     }),
   });
   if (!res.ok) {
