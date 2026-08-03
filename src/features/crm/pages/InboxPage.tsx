@@ -55,6 +55,7 @@ import { supabase } from '@/integrations/supabase/browser';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact, CallRecord, ActivityEvent } from '../types';
 import ContactIdentity from '../components/shared/ContactIdentity';
+import InboundMedia from '../components/InboundMedia';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
 import { CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
@@ -613,6 +614,9 @@ export default function InboxPage() {
       channel: m.channel,
       subject: m.subject,
       attachmentUrl: m.attachmentUrl,
+      // Only the count travels. The bytes are fetched per item through
+      // /api/crm/media, because the Twilio URLs need our credentials.
+      mediaCount: m.mediaUrls.length,
       status: m.status,
       aiGenerated: m.aiGenerated,
     })), [crmMessages]);
@@ -1389,6 +1393,7 @@ export default function InboxPage() {
                 channel?: ChannelKindUI;
                 subject?: string | null;
                 attachmentUrl?: string | null;
+                mediaCount: number;
                 status?: string;
                 aiGenerated?: boolean;
               };
@@ -1423,6 +1428,16 @@ export default function InboxPage() {
                     </div>
                   )}
                   {m.body}
+                  {/* What the LEAD sent us. Kept apart from attachmentUrl below,
+                      which is the brochure WE attach. Before 2026-08-03 an
+                      image-only message drew a bubble with nothing in it. */}
+                  {m.mediaCount > 0 && (
+                    <InboundMedia
+                      messageId={m.id}
+                      count={m.mediaCount}
+                      tone={m.direction === 'outbound' || isDraft ? 'dark' : 'light'}
+                    />
+                  )}
                   {'attachmentUrl' in m && m.attachmentUrl && (
                     <a
                       href={m.attachmentUrl as string}

@@ -24,6 +24,19 @@ export interface CrmMessage {
   subject: string | null;
   /** Brochure / PDF attachment URL (null when no attachment). */
   attachmentUrl: string | null;
+  /**
+   * Media the LEAD sent us, one entry per MediaUrlN on the Twilio webhook.
+   *
+   * Written by wk-sms-incoming since the CRM was built and read by nothing
+   * until 2026-08-03, when a HeyPubli lead answered "what's the handle?" with a
+   * screenshot and Hugo saw an empty bubble. Separate from attachmentUrl, which
+   * is the outbound brochure we attach ourselves.
+   *
+   * These are api.twilio.com URLs and they 401 without the account
+   * credentials, so they are never put in an <img src> directly. They go
+   * through /api/crm/media, which holds the credentials.
+   */
+  mediaUrls: string[];
   aiGenerated: boolean;
 }
 
@@ -38,6 +51,7 @@ interface MessageRow {
   channel: ChannelKind | null;
   subject: string | null;
   attachment_url: string | null;
+  media_urls: string[] | null;
   ai_generated: boolean | null;
 }
 
@@ -53,6 +67,7 @@ function rowToMessage(r: MessageRow): CrmMessage {
     channel: (r.channel ?? 'sms') as ChannelKind,
     subject: r.subject ?? null,
     attachmentUrl: r.attachment_url ?? null,
+    mediaUrls: Array.isArray(r.media_urls) ? r.media_urls.filter(Boolean) : [],
     aiGenerated: r.ai_generated ?? false,
   };
 }
@@ -74,7 +89,7 @@ export function useContactMessages(contactId: string): {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data } = await (supabase.from('wk_sms_messages' as any) as any)
-      .select('id, contact_id, direction, body, created_at, twilio_sid, status, channel, subject, attachment_url, ai_generated')
+      .select('id, contact_id, direction, body, created_at, twilio_sid, status, channel, subject, attachment_url, media_urls, ai_generated')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: true })
       .limit(500);

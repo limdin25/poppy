@@ -66,6 +66,7 @@ interface MessageRow {
   contact_id: string;
   direction: 'inbound' | 'outbound';
   body: string;
+  media_urls: string[] | null;
   created_at: string;
   channel: ChannelKind | null;
   status: string | null;
@@ -172,7 +173,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
     // much larger message volumes this should move to a SECURITY DEFINER RPC.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const msgsRes = await (supabase.from('wk_sms_messages' as any) as any)
-      .select('id, contact_id, direction, body, created_at, channel, status')
+      .select('id, contact_id, direction, body, created_at, channel, status, media_urls')
       .order('created_at', { ascending: false })
       .limit(1000);
     let msgs = (msgsRes.data ?? []) as MessageRow[];
@@ -257,7 +258,11 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         contactPhone: c?.phone ?? '',
         contactOwner: c?.custom_fields?.owner_name ?? '',
         contactWebsite: c?.custom_fields?.website ?? '',
-        lastMessageBody: m.body,
+        // An image with no caption used to leave the row's preview blank, which
+        // read as an empty or broken thread. Say what actually arrived.
+        lastMessageBody: m.body?.trim()
+          ? m.body
+          : (m.media_urls?.length ? (m.media_urls.length > 1 ? `${m.media_urls.length} photos` : 'Photo') : m.body),
         lastMessageAt: m.created_at,
         lastDirection: m.direction,
         lastChannel: (m.channel ?? 'sms') as ChannelKind,
