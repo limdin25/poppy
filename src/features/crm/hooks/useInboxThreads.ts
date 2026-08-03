@@ -129,6 +129,31 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
       for (const r of (assignedRes.data ?? []) as Array<{ contact_id: string }>) if (r.contact_id) ids.add(r.contact_id);
       for (const r of (textedRes.data ?? []) as Array<{ contact_id: string }>) if (r.contact_id) ids.add(r.contact_id);
       for (const r of (calledRes.data ?? []) as Array<{ contact_id: string | null }>) if (r.contact_id) ids.add(r.contact_id);
+
+      // Their line, their leads (Hugo 2026-08-03): any thread whose messages
+      // travelled over a number ASSIGNED to this agent is theirs, whoever
+      // created the contact. Without this, a lead who WhatsApps or texts the
+      // agent's own number cold was invisible to that agent and sat
+      // admin-only. DB twin: the 4th arm of wk_agent_participates
+      // (migration 20260803000001); keep the two in agreement.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: numRows } = await (supabase.from('wk_number_agents' as any) as any)
+        .select('wk_numbers(e164)')
+        .eq('agent_id', scopeId);
+      const myNums = (((numRows ?? []) as Array<{ wk_numbers: { e164: string } | null }>)
+        .map((r) => r.wk_numbers?.e164)
+        .filter(Boolean)) as string[];
+      if (myNums.length > 0) {
+        const inList = `(${myNums.map((n) => `"${n}"`).join(',')})`;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: lineRows } = await (supabase.from('wk_sms_messages' as any) as any)
+          .select('contact_id')
+          .or(`to_e164.in.${inList},from_e164.in.${inList}`);
+        for (const r of (lineRows ?? []) as Array<{ contact_id: string | null }>) {
+          if (r.contact_id) ids.add(r.contact_id);
+        }
+      }
+
       allowedSet = ids;
 
       // Participated in nothing → empty inbox. Skip the round-trip.
