@@ -16,9 +16,23 @@ describe("SidebarNav", () => {
     expect(screen.queryByText("Metrics")).not.toBeInTheDocument();
   });
 
+  // An admin opening the site with a session already running lands on the creator
+  // dashboard, and the sign-in redirect to /admin only fires on a fresh login. Without
+  // this link there is no way across.
+  it("gives an admin a way back to the admin area from their creator view", () => {
+    render(<SidebarNav variant="influencer" isAdmin />);
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
+  });
+
+  it("shows no Admin link to an ordinary creator", () => {
+    render(<SidebarNav variant="influencer" />);
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
+  });
+
   it("renders all admin menu items", () => {
     render(<SidebarNav variant="admin" />);
     expect(screen.getByText("Overview")).toBeInTheDocument();
+    expect(screen.getByText("Signups")).toBeInTheDocument();
     expect(screen.getByText("Influencers")).toBeInTheDocument();
     expect(screen.getByText("Campaign")).toBeInTheDocument();
     expect(screen.getByText("Notifications")).toBeInTheDocument();

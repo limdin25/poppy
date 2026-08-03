@@ -14,6 +14,7 @@ import {
   Settings,
   Users,
   UserPlus,
+  Shield,
   Clock,
   MessageSquare,
   Tag,
@@ -58,16 +59,30 @@ const adminBottom = [
 
 const NOTIFICATIONS_HREF = "/admin/notifications";
 
+/** The way back to /admin for an admin who is looking at their own creator view. */
+const ADMIN_SWITCH = { label: "Admin", href: "/admin", icon: Shield };
+
 interface SidebarNavProps {
   variant: "influencer" | "admin";
   notificationCount?: number;
+  /** Adds the Admin switch to the creator menu. Ignored on the admin menu. */
+  isAdmin?: boolean;
 }
 
-export function SidebarNav({ variant, notificationCount = 0 }: SidebarNavProps) {
+export function SidebarNav({
+  variant,
+  notificationCount = 0,
+  isAdmin = false,
+}: SidebarNavProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const mainItems = variant === "admin" ? adminMain : influencerMain;
-  const bottomItems = variant === "admin" ? adminBottom : influencerBottom;
+  const bottomItems =
+    variant === "admin"
+      ? adminBottom
+      : isAdmin
+        ? [ADMIN_SWITCH, ...influencerBottom]
+        : influencerBottom;
 
   return (
     <nav

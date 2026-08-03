@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/types/database";
 
-export async function getCurrentProfile() {
+export async function getCurrentProfile(): Promise<Profile | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -10,7 +10,7 @@ export async function getCurrentProfile() {
 
   const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
 
-  return data;
+  return (data as Profile | null) ?? null;
 }
 
 export async function getProfileById(id: string): Promise<Profile | null> {

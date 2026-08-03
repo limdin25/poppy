@@ -14,6 +14,7 @@ import {
   Settings,
   Users,
   UserPlus,
+  Shield,
   Clock,
   MessageSquare,
   Tag,
@@ -52,15 +53,29 @@ const adminItems = [
 
 const NOTIFICATIONS_HREF = "/admin/notifications";
 
+/** The way back to /admin for an admin who is looking at their own creator view. */
+const ADMIN_SWITCH = { label: "Admin", href: "/admin", icon: Shield };
+
 interface MobileNavProps {
   variant: "influencer" | "admin";
   notificationCount?: number;
+  /** Adds the Admin switch to the creator menu. Ignored on the admin menu. */
+  isAdmin?: boolean;
 }
 
-export function MobileNav({ variant, notificationCount = 0 }: MobileNavProps) {
+export function MobileNav({
+  variant,
+  notificationCount = 0,
+  isAdmin = false,
+}: MobileNavProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const items = variant === "admin" ? adminItems : influencerItems;
+  const items =
+    variant === "admin"
+      ? adminItems
+      : isAdmin
+        ? [...influencerItems, ADMIN_SWITCH]
+        : influencerItems;
 
   return (
     <>
