@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { landingCopy } from "./copy";
-import { seedanceDemos } from "./seedanceDemos";
+import { DemoWall } from "./DemoWall";
 import { EarningsCalculator } from "./EarningsCalculator";
 
 const HERO_IMAGES_COL1 = [
@@ -283,7 +283,9 @@ function Stats() {
   );
 }
 
-/* ─── How It Works (4 steps) ─── */
+/* How It Works. Three steps, icon above the words, big number, and a soft cyan thread
+   running behind the icons so the eye reads 01 -> 02 -> 03 without being told to. The
+   cyan belongs to the icon set, which is why it appears here and nowhere else. */
 function HowItWorks() {
   return (
     <section id="how-it-works" className="bg-background-secondary py-20 md:py-28">
@@ -295,23 +297,51 @@ function HowItWorks() {
           {landingCopy.howItWorks.subtitle}
         </p>
 
-        <div className="relative mt-10 grid gap-8 md:mt-16 md:gap-0 md:grid-cols-4">
-          <div className="absolute top-12 right-0 left-0 hidden h-0.5 bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] md:block" />
+        <div className="relative mt-12 grid gap-12 md:mt-20 md:grid-cols-3 md:gap-8 lg:gap-16">
+          {/* The thread sits at the icons' centre line and stops short of the outer
+              edges so it reads as a link between them, not a rule across the page. */}
+          <div
+            aria-hidden
+            className="absolute top-11 right-[16%] left-[16%] hidden h-px md:block"
+            style={{
+              backgroundImage:
+                "linear-gradient(to right, transparent, #67E8F9 12%, #22D3EE 50%, #67E8F9 88%, transparent)",
+            }}
+          />
 
           {landingCopy.howItWorks.steps.map((step) => (
             <div
               key={step.number}
-              className="relative flex flex-col items-center px-4 text-center"
+              className="relative flex flex-col items-center px-2 text-center"
             >
-              <div className="relative z-10 mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#F56040] via-[#E1306C] to-[#C13584] text-sm font-bold text-white shadow-lg shadow-accent/25 sm:mb-5 sm:h-14 sm:w-14 sm:text-lg">
+              <div className="relative z-10 h-[88px] w-[88px] shrink-0 rounded-[22px] bg-background-secondary p-1">
+                <Image
+                  src={step.icon}
+                  alt=""
+                  width={512}
+                  height={512}
+                  className="h-full w-full rounded-[20px]"
+                />
+              </div>
+
+              <div className="mt-5 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
                 {step.number}
               </div>
-              <h3 className="mb-1.5 text-base font-bold text-foreground sm:mb-2 sm:text-lg">
+
+              <h3 className="mt-1.5 text-lg font-bold text-foreground sm:text-xl">
                 {step.title}
               </h3>
-              <p className="text-xs leading-relaxed text-foreground-secondary sm:text-sm">
-                {step.description}
-              </p>
+
+              <div className="mt-2 space-y-0.5">
+                {step.lines.map((line) => (
+                  <p
+                    key={line}
+                    className="text-sm leading-relaxed text-foreground-secondary sm:text-base"
+                  >
+                    {line}
+                  </p>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -505,64 +535,6 @@ function Requirements() {
             >
               <span className="text-lg">{cat.emoji}</span>
               <span className="font-medium text-foreground">{cat.name}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─── Video Section ─── */
-function VideoSection() {
-  // X's widget script scans for blockquote.twitter-tweet when it loads. It is loaded
-  // once, lazily; if it arrived before these blockquotes mounted, poke it again.
-  useEffect(() => {
-    const w = window as unknown as {
-      twttr?: { widgets?: { load?: () => void } };
-    };
-    if (w.twttr?.widgets?.load) {
-      w.twttr.widgets.load();
-      return;
-    }
-    if (document.getElementById("x-widgets-js")) return;
-    const script = document.createElement("script");
-    script.id = "x-widgets-js";
-    script.src = "https://platform.twitter.com/widgets.js";
-    script.async = true;
-    document.body.appendChild(script);
-  }, []);
-
-  return (
-    <section id="demos" className="bg-background-secondary py-20 md:py-28">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="text-center">
-          <span className="inline-flex items-center rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground-secondary shadow-sm">
-            Made with Seedance 2.5
-          </span>
-          <h2 className="mt-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-            This is the content we post for you
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-foreground-secondary">
-            Real posts, live on X right now, each one generated from a single text
-            prompt. This is the quality bar, judge it yourself.
-          </p>
-        </div>
-
-        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {seedanceDemos.map((demo) => (
-            <div
-              key={demo.url}
-              className="flex flex-col overflow-hidden rounded-2xl border border-border bg-white"
-            >
-              <div className="flex-1 px-3 pt-1 [&_iframe]:!max-w-full">
-                <blockquote className="twitter-tweet" data-media-max-width="560">
-                  <a href={demo.url}>{demo.handle} on X</a>
-                </blockquote>
-              </div>
-              <p className="border-t border-border px-4 py-3 text-xs leading-relaxed text-foreground-secondary">
-                {demo.note}
-              </p>
             </div>
           ))}
         </div>
@@ -849,7 +821,7 @@ export function LandingPage() {
       <ValueProps />
       <Requirements />
       <EarningsCalculator />
-      <VideoSection />
+      <DemoWall />
       <FAQ />
       <FinalCta />
       <Footer />

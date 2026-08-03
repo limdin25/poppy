@@ -5,11 +5,15 @@ export const landingCopy = {
     login: "Log in",
     cta: "Get started",
   },
+  // The highlight promises POSTING, not income. "Earning while you sleep" was the old
+  // line and it is the single most flagged phrase in this ad category: a passive-income
+  // claim in the hero undoes every disclaimer further down the page. What we say here is
+  // something we actually control and can prove.
   hero: {
     title: "Your Instagram could be",
-    titleHighlight: "earning while you sleep",
+    titleHighlight: "posting twice a day, without you",
     subtitle:
-      "Connect your account and we post ultra realistic AI video on your behalf, twice a day, every day. Every sale through your link pays you 40% commission. The longer it runs, the bigger it gets.",
+      "Connect your account and we post ultra realistic AI video on your behalf, twice a day, every day. You keep 40% of every sale made through your link. You create nothing, you approve everything.",
     cta: "Get started",
   },
   // Product facts, not invented totals. Every line here is something the platform
@@ -113,60 +117,85 @@ export const landingCopy = {
       { name: "Travel & Tourism", emoji: "✈️" },
     ],
   },
-  // The calculator replaced the static worked examples. The maths lives in earnings.ts
-  // and every number on screen comes from the visitor's own sliders, so it is their
-  // discovery, not our promise.
+  // Two taps, then a widening band. The visitor answers only what they already know
+  // (their own follower count) and never touches an assumption: every rate lives in
+  // earnings.ts where a test pins it. The output is a RANGE, because a point estimate is
+  // a prediction we would have to defend and a range is an honest statement about how
+  // much Instagram reach swings. Lines are short on purpose, a lot of this audience
+  // reads English as a second language on a phone.
   calculator: {
-    title: "Run your own numbers",
+    title: "What could your account do?",
     subtitle:
-      "The product is a $108 a year subscription and you keep 40% of every one, that is $43.20 a sale. We post 2 AI videos a day on your account, about 60 a month. Set the two sliders to your account and see what the machine can do.",
-    viewsLabel: "Average views per video",
-    conversionLabel: "Viewers who buy through your link",
-    conversionHint: "1 in {n} viewers",
-    outputs: {
-      sales: "Subscriptions a month",
-      monthly: "Your commission a month",
-      year: "Your first year",
-    },
-    chartTitle: "How it stacks over 12 months",
+      "Two questions. No maths. We post 2 AI videos a day, about 60 a month, and you keep 40% of every $108 subscription sold through your link.",
+    audienceQuestion: "How big is your Instagram?",
+    audienceHint: "Followers. A rough answer is fine.",
+    accountsQuestion: "How many accounts could you connect?",
+    accountsHint: "Many people have more than one.",
+    accountsUnit: { one: "account", many: "accounts" },
+    resultLabel: "By month 12",
+    estimateBadge: "Estimate",
+    perMonth: "a month",
+    rangeJoin: "to",
+    monthOne: "Month 1 starts near {low} to {high}. It builds from there.",
+    clampNote:
+      "We cap what we show here. We will not put a bigger number on screen than we can stand behind.",
+    chartTitle: "Your first 12 months",
+    chartFootnote: "The band is the range. It widens because reach is unpredictable.",
     snowball:
-      "And that chart holds your reach completely flat. In reality 60 posts a month compound: more posts grow reach, more reach grows engagement, and engagement is what converts. The longer you are in the system, the faster it stacks. Slide the views up and watch what growth does.",
+      "This is the snowball. Posting 2 a day builds reach fastest in the first months, then it keeps climbing more slowly. The longer your account stays connected, the more it can carry.",
     facts: [
       { value: "$108", label: "yearly subscription" },
       { value: "40%", label: "your cut, $43.20 a sale" },
       { value: "2x a day", label: "AI videos posted for you" },
     ],
-    disclaimer:
-      "A calculator, not a promise. Every number above comes from the sliders you set. Real results depend on your content, your engagement and your audience.",
+    // Not fine print. This block is the most load-bearing copy on the page, so it is
+    // sized to be read and sits directly under the number it qualifies.
+    disclaimerTitle: "Please read this",
+    disclaimerLead: "Estimate only. This is not a promise of income.",
+    disclaimerPoints: [
+      "We are new. We do not have enough payout history yet to say what a typical creator earns.",
+      "This estimate assumes 1 sale for every 10,000 views.",
+      "Many creators will earn little or nothing.",
+      "Instagram views go up and down a lot. Some months are much bigger. Some months are much smaller, or zero.",
+      "Your account must stay connected. If posting stops, earnings stop.",
+    ],
+  },
+  demos: {
+    badge: "100% AI generated",
+    title: "This is the content we post for you",
+    subtitle:
+      "Not one of these people exists. Not one of these clips was filmed. This is the quality bar, judge it yourself.",
+    footnote: "Tap the speaker on any clip to turn the sound on.",
+    unmuteLabel: "Turn sound on",
+    muteLabel: "Turn sound off",
   },
   howItWorks: {
     title: "How it works",
     subtitle:
       "The deal is blunt. You bring the Instagram account. We bring the ultra realistic AI content and the monetization strategy. We do the heavy lifting, you provide the platform.",
+    // Three steps, two short lines each. A large share of this audience reads English
+    // as a second language on a phone, so no line may need a second pass.
     steps: [
       {
         number: "01",
-        title: "Create your profile",
-        description:
-          "Sign up free in two minutes. You will never need to create content, ever.",
+        title: "Create your free account",
+        lines: ["Sign up in two minutes.", "You never create content again."],
+        icon: "/steps/step1.webp",
       },
       {
         number: "02",
         title: "Connect your Instagram",
-        description:
-          "You bring the account. Old, quiet, small, it does not matter. That is your whole job.",
+        lines: ["Link any account: old, quiet, big or small.", "That is your only job."],
+        icon: "/steps/step2.webp",
       },
       {
         number: "03",
-        title: "We post AI videos twice a day",
-        description:
-          "Ultra realistic AI content plus the monetization strategy, done for you. Two posts a day, every day, without you touching a thing.",
-      },
-      {
-        number: "04",
-        title: "The snowball starts",
-        description:
-          "Every post builds reach on the last one. The more time passes, the more the reach grows and the more the earnings compound.",
+        title: "We post and you earn",
+        lines: [
+          "Ultra realistic AI videos twice a day.",
+          "Reach and money grow on autopilot.",
+        ],
+        icon: "/steps/step3.webp",
       },
     ],
   },
