@@ -500,7 +500,7 @@ export function DashboardHome({
   return (
     <div className="space-y-5 p-6">
       <h1 className="text-2xl font-bold">
-        Hello, {profile.first_name}! Welcome to NextPubli
+        Hello, {profile.first_name}! Welcome to HeyPubli
       </h1>
 
       {instagramEnabled && bioLinkMissing && (

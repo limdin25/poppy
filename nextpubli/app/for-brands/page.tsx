@@ -37,7 +37,7 @@ export default function ForBrandsPage() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <Link href="/" className="text-xl font-bold tracking-tight">
             <span className="bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] bg-clip-text text-transparent">
-              NextPubli
+              HeyPubli
             </span>
           </Link>
           <div className="flex items-center gap-4">
@@ -217,7 +217,7 @@ export default function ForBrandsPage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <span className="bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] bg-clip-text text-lg font-bold text-transparent">
-              NextPubli
+              HeyPubli
             </span>
             <div className="flex items-center gap-6">
               <span className="text-sm text-white/40">

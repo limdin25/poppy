@@ -89,7 +89,7 @@ export function MobileNav({
               WebkitTextFillColor: "transparent",
             }}
           >
-            NextPubli
+            HeyPubli
           </span>
         </Link>
         <button
@@ -120,7 +120,7 @@ export function MobileNav({
                     WebkitTextFillColor: "transparent",
                   }}
                 >
-                  NextPubli
+                  HeyPubli
                 </span>
               </Link>
               <button

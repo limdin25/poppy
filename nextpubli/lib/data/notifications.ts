@@ -83,7 +83,7 @@ export async function notifyAccountConnected(params: {
   }
 
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://nextpubli.com";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://heypubli.com";
     const connectedAt = formatSaoPaulo(new Date().toISOString());
     const subject = `New account connected: ${handle}`;
     const html = `
@@ -97,7 +97,7 @@ export async function notifyAccountConnected(params: {
             Add to campaign
           </a>
         </p>
-        <p style="color:#6B7280;font-size:12px;">NextPubli, automated notification.</p>
+        <p style="color:#6B7280;font-size:12px;">HeyPubli, automated notification.</p>
       </div>`;
 
     const emails = await getAdminEmails();

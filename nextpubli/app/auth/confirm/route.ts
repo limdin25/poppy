@@ -46,19 +46,19 @@ export async function GET(request: Request) {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex" />
-<title>Sign in - NextPubli</title>
+<title>Sign in - HeyPubli</title>
 </head>
 <body style="margin:0; padding:0; background-color:#F9FAFB; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;">
     <div style="max-width:420px; width:100%; background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px; padding:40px 32px; text-align:center;">
-      <div style="font-size:24px; font-weight:700; background:linear-gradient(135deg,#F56040,#E1306C,#C13584); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:16px;">NextPubli</div>
+      <div style="font-size:24px; font-weight:700; background:linear-gradient(135deg,#F56040,#E1306C,#C13584); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:16px;">HeyPubli</div>
       <h1 style="margin:0 0 8px 0; font-size:20px; color:#1A1A1A;">Almost there!</h1>
       <p style="margin:0 0 28px 0; font-size:14px; line-height:1.6; color:#6B7280;">Click the button below to confirm your access.</p>
       <form method="post" action="/auth/confirm">
         <input type="hidden" name="token_hash" value="${escapeHtml(tokenHash)}" />
         <input type="hidden" name="type" value="${escapeHtml(type)}" />
         <input type="hidden" name="next" value="${escapeHtml(next)}" />
-        <button type="submit" style="display:inline-block; width:100%; padding:14px 32px; font-size:16px; font-weight:600; color:#FFFFFF; background:linear-gradient(90deg,#F56040,#E1306C,#C13584); border:none; border-radius:10px; cursor:pointer;">Sign in to NextPubli</button>
+        <button type="submit" style="display:inline-block; width:100%; padding:14px 32px; font-size:16px; font-weight:600; color:#FFFFFF; background:linear-gradient(90deg,#F56040,#E1306C,#C13584); border:none; border-radius:10px; cursor:pointer;">Sign in to HeyPubli</button>
       </form>
       <p style="margin:24px 0 0 0; font-size:13px; line-height:1.6; color:#9CA3AF;">Link expired? <a href="/login" style="color:#E1306C;">Request a new one</a>, or enter the 8-digit code from the email on the login screen.</p>
     </div>

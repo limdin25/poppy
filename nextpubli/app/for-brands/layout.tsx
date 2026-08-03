@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "NextPubli | For Brands",
+  title: "HeyPubli | For Brands",
   description:
     "Reach authentic micro-influencers in Brazil. Automatic publishing, performance-based commission.",
 };

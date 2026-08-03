@@ -1,6 +1,6 @@
 // Helpers for the Hotmart purchase webhook (PIX model).
 //
-// In the PIX model NextPubli is the single seller/affiliate. Each influencer's share
+// In the PIX model HeyPubli is the single seller/affiliate. Each influencer's share
 // link carries their referral_tag as Hotmart's `sck` (source) parameter; Hotmart echoes
 // it back on the purchase webhook. We pull that tag out to attribute the sale, and we
 // compute the influencer's commission ourselves (Hotmart's own affiliate-commission

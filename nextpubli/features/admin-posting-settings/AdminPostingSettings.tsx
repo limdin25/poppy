@@ -83,7 +83,7 @@ export function AdminPostingSettings({ settings }: AdminPostingSettingsProps) {
               className="text-accent"
             />
             <div>
-              <span className="font-medium">NextPubli (direct Meta)</span>
+              <span className="font-medium">HeyPubli (direct Meta)</span>
               <p className="text-xs text-foreground-secondary">
                 Publishes directly via the Meta Graph API
               </p>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { landingCopy } from "./copy";
 import { seedanceDemos } from "./seedanceDemos";
+import { EarningsCalculator } from "./EarningsCalculator";
 
 const HERO_IMAGES_COL1 = [
   "https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=400&h=500&fit=crop",
@@ -33,7 +34,7 @@ function Navbar() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         <Link href="/" className="text-xl font-bold tracking-tight">
           <span className="bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] bg-clip-text text-transparent">
-            NextPubli
+            HeyPubli
           </span>
         </Link>
 
@@ -290,6 +291,9 @@ function HowItWorks() {
         <h2 className="text-center text-3xl font-bold tracking-tight text-foreground md:text-4xl">
           {landingCopy.howItWorks.title}
         </h2>
+        <p className="mx-auto mt-4 max-w-2xl text-center text-lg text-foreground-secondary">
+          {landingCopy.howItWorks.subtitle}
+        </p>
 
         <div className="relative mt-10 grid gap-8 md:mt-16 md:gap-0 md:grid-cols-4">
           <div className="absolute top-12 right-0 left-0 hidden h-0.5 bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] md:block" />
@@ -417,7 +421,7 @@ function Requirements() {
           {landingCopy.requirements.title}
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-center text-lg text-foreground-secondary">
-          We look for authentic creators who want to grow alongside partner brands
+          {landingCopy.requirements.subtitle}
         </p>
 
         <div className="mt-14 grid gap-6 md:grid-cols-3">
@@ -428,13 +432,13 @@ function Requirements() {
               </svg>
             </div>
             <div className="text-3xl font-bold bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] bg-clip-text text-transparent">
-              1,000+
+              Any size
             </div>
             <div className="mt-1 text-sm text-foreground-secondary">
-              Instagram followers
+              follower count
             </div>
             <div className="mt-3 text-xs text-foreground-secondary">
-              Professional or creator account
+              Followers is a dead metric. A small account with real engagement wins
             </div>
           </div>
 
@@ -461,7 +465,7 @@ function Requirements() {
               engagement rate
             </div>
             <div className="mt-3 text-xs text-foreground-secondary">
-              Organic and authentic engagement
+              Real engagement is what converts into sales
             </div>
           </div>
 
@@ -504,51 +508,6 @@ function Requirements() {
             </div>
           ))}
         </div>
-      </div>
-    </section>
-  );
-}
-
-/* Potential: honest worked examples of the 40% promise. Replaces the old fabricated
-   testimonials (invented people, invented earnings) which were an ad-review liability. */
-function Potential() {
-  const { title, subtitle, disclaimer, scenarios } = landingCopy.potential;
-  return (
-    <section className="py-20 md:py-28">
-      <div className="mx-auto max-w-7xl px-6">
-        <h2 className="text-center text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-          {title}
-        </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-center text-lg text-foreground-secondary">
-          {subtitle}
-        </p>
-
-        <div className="mt-14 grid gap-6 md:grid-cols-3">
-          {scenarios.map((sc) => (
-            <div
-              key={sc.label}
-              className="flex flex-col rounded-2xl border border-border bg-white p-6 transition-shadow hover:shadow-lg"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">{sc.label}</span>
-                <span className="rounded-full bg-background-secondary px-2.5 py-1 text-[11px] font-medium text-foreground-secondary">
-                  {sc.followers}
-                </span>
-              </div>
-              <div className="mt-6 bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] bg-clip-text text-4xl font-bold tracking-tight text-transparent">
-                {sc.result}
-              </div>
-              <p className="mt-1 text-sm font-medium text-foreground">{sc.assumption}</p>
-              <p className="mt-3 text-sm leading-relaxed text-foreground-secondary">
-                {sc.detail}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-foreground-secondary">
-          {disclaimer}
-        </p>
       </div>
     </section>
   );
@@ -743,22 +702,42 @@ function Footer() {
           <div className="md:col-span-2">
             <span className="text-xl font-bold">
               <span className="bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] bg-clip-text text-transparent">
-                NextPubli
+                HeyPubli
               </span>
             </span>
 
             <div className="mt-4 flex items-center gap-3">
               <div className="flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs text-white/70">
-                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
+                <svg
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
                 </svg>
-                Meta Partner
+                Powered by Seedance 2.5
               </div>
               <div className="flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs text-white/70">
-                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.73a8.19 8.19 0 004.76 1.52v-3.4a4.85 4.85 0 01-1-.16z" />
+                <svg
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
-                TikTok Partner
+                100% automatic posting
               </div>
             </div>
 
@@ -833,7 +812,7 @@ function Footer() {
 
           <div className="flex items-center gap-4">
             <a
-              href="https://instagram.com/nextpubli"
+              href="https://instagram.com/heypubli"
               target="_blank"
               rel="noopener noreferrer"
               className="text-white/40 transition-colors hover:text-white"
@@ -843,7 +822,7 @@ function Footer() {
               </svg>
             </a>
             <a
-              href="https://tiktok.com/@nextpubli"
+              href="https://tiktok.com/@heypubli"
               target="_blank"
               rel="noopener noreferrer"
               className="text-white/40 transition-colors hover:text-white"
@@ -869,7 +848,7 @@ export function LandingPage() {
       <HowItWorks />
       <ValueProps />
       <Requirements />
-      <Potential />
+      <EarningsCalculator />
       <VideoSection />
       <FAQ />
       <FinalCta />

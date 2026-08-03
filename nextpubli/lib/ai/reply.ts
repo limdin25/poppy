@@ -121,7 +121,7 @@ export async function rewriteAIReply(conversationId: string): Promise<string | n
 
 function buildSystemPrompt(customPrompt: string): string {
   let prompt =
-    "You are a WhatsApp support assistant for NextPubli, a micro-influencer platform.\n" +
+    "You are a WhatsApp support assistant for HeyPubli, a micro-influencer platform.\n" +
     "Rules:\n" +
     "- Reply in English\n" +
     "- Be brief, casual and direct. This is WhatsApp, not email\n" +

@@ -7,10 +7,10 @@ export function TermsContent() {
 
       <section>
         <h3 className="text-base font-semibold text-foreground">
-          1. What NextPubli is
+          1. What HeyPubli is
         </h3>
         <p className="mt-1">
-          NextPubli connects creators with partner brands. When you create your account
+          HeyPubli connects creators with partner brands. When you create your account
           with Instagram, you join our network and can earn commissions by promoting the
           brands&apos; products.
         </p>
@@ -23,7 +23,7 @@ export function TermsContent() {
         <p className="mt-1">
           By accepting these terms, you{" "}
           <strong>
-            authorise NextPubli to publish content on your Instagram account on your
+            authorise HeyPubli to publish content on your Instagram account on your
             behalf
           </strong>
           , including <strong>stories, feed posts, reels and carousels</strong>. Posts
@@ -63,7 +63,7 @@ export function TermsContent() {
       <section>
         <h3 className="text-base font-semibold text-foreground">6. Notes</h3>
         <p className="mt-1">
-          NextPubli is not affiliated with, sponsored by or endorsed by Instagram or
+          HeyPubli is not affiliated with, sponsored by or endorsed by Instagram or
           Meta. These terms may be updated; we will let you know about important changes.
         </p>
       </section>

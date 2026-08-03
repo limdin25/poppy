@@ -47,7 +47,7 @@ describe("GET /auth/confirm (interstitial — must NOT consume the token)", () =
     expect(html).toContain('value="abc123"');
     expect(html).toContain('name="type"');
     expect(html).toContain('value="magiclink"');
-    expect(html).toContain("Sign in to NextPubli");
+    expect(html).toContain("Sign in to HeyPubli");
   });
 
   it("escapes HTML in query params to prevent injection", async () => {

@@ -6,7 +6,7 @@ export const emailSignupCopy = {
   email: "Email",
   emailPlaceholder: "you@email.com",
   whatsapp: "WhatsApp",
-  termsPrefix: "I have read and accept the NextPubli ",
+  termsPrefix: "I have read and accept the HeyPubli ",
   termsLinkLabel: "Terms of Use",
   termsSuffix: ".",
   submit: "Create my account",

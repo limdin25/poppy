@@ -21,7 +21,7 @@ export default async function LoginPage({
               WebkitTextFillColor: "transparent",
             }}
           >
-            NextPubli
+            HeyPubli
           </span>
         </Link>
         <h1 className="text-3xl font-bold text-foreground">Welcome back</h1>

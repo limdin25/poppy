@@ -3,7 +3,7 @@ export const copy = {
   providerLabel: "Publishing Provider",
   providerDescription:
     "Choose which system will be used to publish posts to Instagram.",
-  heypubliLabel: "NextPubli (direct Meta)",
+  heypubliLabel: "HeyPubli (direct Meta)",
   heypubliDescription: "Publishes directly via the Meta Graph API",
   outstandLabel: "Outstand.so",
   outstandDescription: "Publishes via the Outstand API (intermediary)",

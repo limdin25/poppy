@@ -122,7 +122,7 @@ export function AdminAiSettings({ settings, channel }: AdminAiSettingsProps) {
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
           rows={6}
-          placeholder="E.g. You are NextPubli's virtual receptionist. Be friendly and reply in Portuguese..."
+          placeholder="E.g. You are HeyPubli's virtual receptionist. Be friendly and reply in Portuguese..."
           className="w-full rounded-lg border border-[#E5E7EB] px-4 py-3 text-sm focus:border-[#E1306C] focus:outline-none resize-none"
         />
       </section>

@@ -38,10 +38,10 @@ const EMAIL_BODIES: Record<string, (firstName: string) => { subject: string; htm
   email_nudge_signup: (first) => ({
     subject: "Your spot is still open",
     html: `<p>Hi ${first || "there"},</p>
-<p>You asked about putting your Instagram to work with NextPubli. Your spot is still open, and it takes about two minutes to finish:</p>
+<p>You asked about putting your Instagram to work with HeyPubli. Your spot is still open, and it takes about two minutes to finish:</p>
 <p><a href="https://heypubli.com/signup">Finish your signup</a></p>
 <p>We post the content, you earn 40% commission on every sale. If you have questions, just reply to this email.</p>
-<p>NextPubli</p>`,
+<p>HeyPubli</p>`,
   }),
 };
 

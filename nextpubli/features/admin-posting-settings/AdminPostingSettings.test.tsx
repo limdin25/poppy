@@ -14,14 +14,14 @@ describe("AdminPostingSettings", () => {
   it("renders provider radio buttons", () => {
     render(<AdminPostingSettings settings={null} />);
 
-    expect(screen.getByLabelText(/NextPubli/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/HeyPubli/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Outstand/)).toBeInTheDocument();
   });
 
   it("defaults to heypubli provider", () => {
     render(<AdminPostingSettings settings={null} />);
 
-    const radio = screen.getByLabelText(/NextPubli/) as HTMLInputElement;
+    const radio = screen.getByLabelText(/HeyPubli/) as HTMLInputElement;
     expect(radio.checked).toBe(true);
   });
 

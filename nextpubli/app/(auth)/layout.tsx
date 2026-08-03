@@ -45,7 +45,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               WebkitTextFillColor: "transparent",
             }}
           >
-            NextPubli
+            HeyPubli
           </span>
         </Link>
 

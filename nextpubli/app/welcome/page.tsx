@@ -14,7 +14,7 @@ export default function WelcomePage() {
               WebkitTextFillColor: "transparent",
             }}
           >
-            NextPubli
+            HeyPubli
           </span>
         </Link>
         <ContactCaptureForm />

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { TermsContent } from "@/features/ig-login";
 
 export const metadata = {
-  title: "Terms of Use | NextPubli",
+  title: "Terms of Use | HeyPubli",
 };
 
 export default function TermsPage() {

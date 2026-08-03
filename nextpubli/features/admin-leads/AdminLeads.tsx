@@ -127,7 +127,7 @@ function contactLinks(lead: SignupLead) {
   return {
     wa: digits
       ? `https://wa.me/${digits}?text=${encodeURIComponent(
-          `Hi ${lead.first_name}, you started signing up at NextPubli but did not finish connecting your Instagram. Want a hand?`,
+          `Hi ${lead.first_name}, you started signing up at HeyPubli but did not finish connecting your Instagram. Want a hand?`,
         )}`
       : null,
     mail: `mailto:${lead.email}`,

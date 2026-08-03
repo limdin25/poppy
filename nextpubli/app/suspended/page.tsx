@@ -9,10 +9,10 @@ export default function SuspendedPage() {
         <ShieldAlert size={40} className="mx-auto mb-4 text-error" />
         <h1 className="text-2xl font-bold text-foreground">Account suspended</h1>
         <p className="mt-3 text-sm leading-relaxed text-foreground-secondary">
-          Your account has been suspended by the NextPubli team. If you think this is a
+          Your account has been suspended by the HeyPubli team. If you think this is a
           mistake, contact us at{" "}
-          <a href="mailto:hello@nextpubli.com" className="font-medium text-accent">
-            hello@nextpubli.com
+          <a href="mailto:hello@heypubli.com" className="font-medium text-accent">
+            hello@heypubli.com
           </a>
           .
         </p>

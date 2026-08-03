@@ -46,7 +46,7 @@ export default async function SignupPage({
               WebkitTextFillColor: "transparent",
             }}
           >
-            NextPubli
+            HeyPubli
           </span>
         </Link>
         {/* The sidebar pitch is hidden below lg, so on a phone this one line is the only

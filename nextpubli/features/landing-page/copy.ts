@@ -9,7 +9,7 @@ export const landingCopy = {
     title: "Your Instagram could be",
     titleHighlight: "earning while you sleep",
     subtitle:
-      "Connect your account and we post ultra realistic AI video on your behalf. Every sale made through your link pays you 40% commission. You create nothing, you approve everything.",
+      "Connect your account and we post ultra realistic AI video on your behalf, twice a day, every day. Every sale through your link pays you 40% commission. The longer it runs, the bigger it gets.",
     cta: "Get started",
   },
   // Product facts, not invented totals. Every line here is something the platform
@@ -21,36 +21,36 @@ export const landingCopy = {
         description: "Commission on every sale made through your affiliate link",
       },
       {
-        value: "100%",
+        value: "2x a day",
         description:
-          "Automatic posting. Content goes to your feed and stories without you lifting a finger",
+          "AI videos posted to your account every single day, 100% automatically",
       },
       {
-        value: "1 prompt",
+        value: "60+",
         description:
-          "Is all it takes. The AI video below was generated from a single text prompt",
+          "Posts a month, each one building reach on the last. Consistency is the snowball",
       },
     ],
   },
   valueProps: {
-    title: "Why join NextPubli?",
+    title: "Why join HeyPubli?",
     items: [
       {
         title: "An account gathering dust is money on the table",
         description:
-          "Old account, quiet account, side account. If it has followers, it can work. We bring the content, you bring the audience.",
+          "Old account, quiet account, side account. If real people ever engaged with it, it can work. We bring the content, you bring the platform.",
         icon: "brands" as const,
       },
       {
-        title: "100% automatic publishing",
+        title: "Two AI videos a day, 100% automatic",
         description:
-          "We publish the content straight to your feed and stories. You don't need to create anything.",
+          "We publish straight to your feed and stories, twice a day, every day. You approve, we do everything else.",
         icon: "auto" as const,
       },
       {
         title: "40% commission, clean and simple",
         description:
-          "Every sale made through your affiliate link pays you 40%. No tiers to decode, no fine print.",
+          "The product is a $108 a year subscription. Every sale through your link pays you 40%, that is $43.20 each. No tiers, no fine print.",
         icon: "payment" as const,
       },
       {
@@ -62,28 +62,30 @@ export const landingCopy = {
     ],
   },
   collabTypes: {
-    title: "How you earn with NextPubli",
+    title: "How you earn with HeyPubli",
     items: [
       {
-        text: "Receive automatic posts of viral AI content on your Instagram feed and stories",
+        text: "Two ultra realistic AI videos posted to your feed and stories every single day",
         icon: "instagram" as const,
       },
       {
-        text: "Earn 40% recurring commission on every sale made through your affiliate link",
+        text: "Earn 40% commission, $43.20 on every $108 subscription sold through your link",
         icon: "money" as const,
       },
       {
-        text: "Grow your profile while brands invest in quality content for you",
+        text: "Engagement compounds: every post builds reach for the next one",
         icon: "growth" as const,
       },
       {
-        text: "Build long-term partnerships with brands that value authentic micro-influencers",
+        text: "The longer you stay in the system, the bigger the snowball gets",
         icon: "handshake" as const,
       },
     ],
   },
   requirements: {
     title: "What we look for",
+    subtitle:
+      "Forget follower counts. Followers is a dead metric. We care about real engagement, because engagement is what converts into sales.",
     skills: {
       title: "An authentic profile",
       items: [
@@ -93,7 +95,7 @@ export const landingCopy = {
       ],
     },
     audience: [
-      { value: "1,000+", label: "Instagram followers" },
+      { value: "Any size", label: "follower count" },
       { value: "1%+", label: "engagement rate" },
     ],
     categories: [
@@ -111,66 +113,60 @@ export const landingCopy = {
       { name: "Travel & Tourism", emoji: "✈️" },
     ],
   },
-  // Honest arithmetic instead of invented people. Every card is a worked example of the
-  // one number we actually promise (40%), clearly labelled illustrative. Nothing here can
-  // be caught out later, and nothing here reads as a fabricated earnings claim to an ad
-  // reviewer.
-  potential: {
-    title: "What 40% can look like",
+  // The calculator replaced the static worked examples. The maths lives in earnings.ts
+  // and every number on screen comes from the visitor's own sliders, so it is their
+  // discovery, not our promise.
+  calculator: {
+    title: "Run your own numbers",
     subtitle:
-      "Three worked examples of the same simple sum: sales through your link, times the product price, times 40%.",
-    disclaimer:
-      "Illustrative maths, not earnings claims. Real results depend on your audience, the products and how often content goes out.",
-    scenarios: [
-      {
-        label: "The quiet account",
-        followers: "1,000 followers",
-        assumption: "5 sales of a $50 product in a month",
-        result: "$100",
-        detail: "5 sales x $50 x 40%. An account doing nothing today, doing something.",
-      },
-      {
-        label: "The steady account",
-        followers: "10,000 followers",
-        assumption: "25 sales of a $50 product in a month",
-        result: "$500",
-        detail: "25 sales x $50 x 40%. Content going out daily without you touching it.",
-      },
-      {
-        label: "The engine",
-        followers: "50,000 followers",
-        assumption: "100 sales of a $50 product in a month",
-        result: "$2,000",
-        detail: "100 sales x $50 x 40%. This is where consistent posting compounds.",
-      },
+      "The product is a $108 a year subscription and you keep 40% of every one, that is $43.20 a sale. We post 2 AI videos a day on your account, about 60 a month. Set the two sliders to your account and see what the machine can do.",
+    viewsLabel: "Average views per video",
+    conversionLabel: "Viewers who buy through your link",
+    conversionHint: "1 in {n} viewers",
+    outputs: {
+      sales: "Subscriptions a month",
+      monthly: "Your commission a month",
+      year: "Your first year",
+    },
+    chartTitle: "How it stacks over 12 months",
+    snowball:
+      "And that chart holds your reach completely flat. In reality 60 posts a month compound: more posts grow reach, more reach grows engagement, and engagement is what converts. The longer you are in the system, the faster it stacks. Slide the views up and watch what growth does.",
+    facts: [
+      { value: "$108", label: "yearly subscription" },
+      { value: "40%", label: "your cut, $43.20 a sale" },
+      { value: "2x a day", label: "AI videos posted for you" },
     ],
+    disclaimer:
+      "A calculator, not a promise. Every number above comes from the sliders you set. Real results depend on your content, your engagement and your audience.",
   },
   howItWorks: {
     title: "How it works",
+    subtitle:
+      "The deal is blunt. You bring the Instagram account. We bring the ultra realistic AI content and the monetization strategy. We do the heavy lifting, you provide the platform.",
     steps: [
       {
         number: "01",
         title: "Create your profile",
         description:
-          "Sign up for free and fill in your profile with your details and niches.",
+          "Sign up free in two minutes. You will never need to create content, ever.",
       },
       {
         number: "02",
         title: "Connect your Instagram",
         description:
-          "Connect your professional Instagram account in under 2 minutes. Safe and simple.",
+          "You bring the account. Old, quiet, small, it does not matter. That is your whole job.",
       },
       {
         number: "03",
-        title: "We post viral AI content for you",
+        title: "We post AI videos twice a day",
         description:
-          "Ultra realistic AI video goes straight to your feed and stories. You approve, we publish.",
+          "Ultra realistic AI content plus the monetization strategy, done for you. Two posts a day, every day, without you touching a thing.",
       },
       {
         number: "04",
-        title: "Earn commission on every sale",
+        title: "The snowball starts",
         description:
-          "Every sale through your affiliate link earns you 40% commission. Track everything in real time.",
+          "Every post builds reach on the last one. The more time passes, the more the reach grows and the more the earnings compound.",
       },
     ],
   },
@@ -178,47 +174,47 @@ export const landingCopy = {
     title: "Frequently Asked Questions",
     items: [
       {
-        question: "What are the requirements to join NextPubli?",
+        question: "What are the requirements to join HeyPubli?",
         answer:
-          "You need a professional or creator account on Instagram with at least 1,000 followers and an engagement rate above 1%. Your content must be authentic and aligned with our partner brands. We don't accept accounts with bought followers or artificial engagement.",
+          "A professional or creator account on Instagram with real engagement. We do not care how many followers you have, follower count is a dead metric. We care that real people interact with your account, because engagement is what converts. We don't accept accounts with bought followers or artificial engagement.",
       },
       {
-        question: "Which countries is NextPubli available in?",
+        question: "Which countries is HeyPubli available in?",
         answer:
-          "NextPubli is open worldwide. Commission products and payouts vary by region, and we tell you exactly what applies to you during onboarding.",
+          "HeyPubli is open worldwide. Commission products and payouts vary by region, and we tell you exactly what applies to you during onboarding.",
       },
       {
-        question: "How long does it take to get my first partnership?",
+        question: "How fast do earnings start?",
         answer:
-          "After you connect your Instagram, brands can select your profile within 3 to 7 working days. The more complete your profile and the higher your engagement, the faster you get your first campaign.",
+          "We start posting as soon as your account is connected, two AI videos a day. Earnings follow engagement, and engagement builds with consistency: the first weeks plant the reach, then the effect compounds the longer the system runs. This is a snowball, not a lottery ticket.",
       },
       {
         question: "How do I get paid?",
         answer:
-          "You earn 40% commission on every sale made through your affiliate link. Payouts are processed automatically to the account you register, following the payment platform's payout schedule.",
+          "You earn 40% of every $108 yearly subscription sold through your affiliate link, that is $43.20 a sale. Payouts are processed automatically to the account you register, following the payment platform's payout schedule.",
       },
       {
         question: "What kind of content is posted on my profile?",
         answer:
-          "Partner brands create professional content (photos, videos and stories) aligned with your niche. You can review the content before it goes live. We publish automatically at the times your audience engages the most.",
+          "Ultra realistic AI video aligned with your niche, posted twice a day to your feed and stories. You can review the content before it goes live. We publish automatically at the times your audience engages the most.",
       },
       {
-        question: "Can I choose which brands I work with?",
+        question: "Do I keep control of my profile?",
         answer:
-          "Yes! You have full control over which brands can post on your profile. If a brand doesn't match your style or values, just decline the partnership. Your profile, your rules.",
+          "Yes. You approve the content style and you can decline anything that does not fit your profile. Your profile, your rules.",
       },
     ],
   },
   finalCta: {
-    title: "Start earning with NextPubli today!",
+    title: "Start earning with HeyPubli today!",
     subtitle:
-      "Monetize your Instagram and build partnerships with top brands. Free to sign up, no fees, no hassle.",
+      "Two AI videos a day, 40% commission on every sale, and a snowball that grows the longer you leave it running. Free to sign up, no fees, no hassle.",
     cta: "Get started",
   },
   footer: {
     description:
-      "NextPubli is the platform that puts your Instagram to work: ultra realistic AI content posted for you, 40% commission on every sale, and a community that shows you exactly how it is done.",
-    address: "NextPubli Ltda. | Rua Augusta, 1234, Sala 56, São Paulo, SP, 01304-001",
+      "HeyPubli is the platform that puts your Instagram to work: ultra realistic AI content posted twice a day, 40% commission on every sale, and a system that compounds the longer you run it.",
+    address: "HeyPubli Ltda. | Rua Augusta, 1234, Sala 56, São Paulo, SP, 01304-001",
     columns: {
       platform: {
         title: "Platform",
@@ -237,6 +233,6 @@ export const landingCopy = {
       terms: "Terms of Use",
       privacy: "Privacy Policy",
     },
-    copyright: "© 2026 NextPubli. All rights reserved.",
+    copyright: "© 2026 HeyPubli. All rights reserved.",
   },
 } as const;

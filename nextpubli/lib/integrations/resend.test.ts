@@ -6,7 +6,7 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("RESEND_API_KEY", "re_test_key");
-  vi.stubEnv("RESEND_FROM", "NextPubli <no-reply@nextpubli.com>");
+  vi.stubEnv("RESEND_FROM", "HeyPubli <no-reply@heypubli.com>");
   fetchMock.mockReset();
 });
 
@@ -35,7 +35,7 @@ describe("sendEmail", () => {
     );
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.to).toEqual(["hugo@example.com"]);
-    expect(body.from).toBe("NextPubli <no-reply@nextpubli.com>");
+    expect(body.from).toBe("HeyPubli <no-reply@heypubli.com>");
     expect(body.subject).toBe("Nova conta conectada");
   });
 

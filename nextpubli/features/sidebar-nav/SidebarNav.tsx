@@ -99,7 +99,7 @@ export function SidebarNav({
                 WebkitTextFillColor: "transparent",
               }}
             >
-              NextPubli
+              HeyPubli
             </span>
           </Link>
         )}

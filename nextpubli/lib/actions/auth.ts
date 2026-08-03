@@ -15,7 +15,7 @@ export async function sendLoginLink(
   }
 
   const h = await headers();
-  const host = h.get("host") ?? "www.nextpubli.com";
+  const host = h.get("host") ?? "heypubli.com";
   const proto = host.includes("localhost") ? "http" : "https";
 
   const supabase = await createClient();
