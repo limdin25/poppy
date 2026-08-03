@@ -140,6 +140,7 @@ export const landingCopy = {
     clampNote:
       "We cap what we show here. We will not put a bigger number on screen than we can stand behind.",
     chartTitle: "Your first 12 months",
+    chartAxisNote: "top of range",
     chartFootnote: "The band is the range. It widens because reach is unpredictable.",
     snowball:
       "This is the snowball. Posting 2 a day builds reach fastest in the first months, then it keeps climbing more slowly. The longer your account stays connected, the more it can carry.",

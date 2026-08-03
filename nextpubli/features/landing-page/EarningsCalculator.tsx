@@ -78,6 +78,18 @@ function SnowballChart({
 
   return (
     <div className="relative">
+      {/* The curve is the same shape for every band, because growth is multiplicative.
+          Without this label a bigger selection would redraw an identical picture and the
+          tap would feel like it did nothing, so the scale is stated instead of implied. */}
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[10px] font-medium text-foreground-secondary tabular-nums sm:text-xs">
+          {usd(max)}
+        </span>
+        <span className="text-[10px] text-foreground-secondary sm:text-xs">
+          {landingCopy.calculator.chartAxisNote}
+        </span>
+      </div>
+
       <svg
         viewBox="0 0 100 100"
         preserveAspectRatio="none"

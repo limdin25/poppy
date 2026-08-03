@@ -58,9 +58,20 @@ describe("EarningsCalculator", () => {
   it("shows the default band as a range, not a single number", () => {
     render(<EarningsCalculator />);
     // Default is the 1,000 to 10,000 band, one account: about $90 to $280 by month 12.
-    expect(screen.getByText("$90")).toBeInTheDocument();
-    expect(screen.getByText("$280")).toBeInTheDocument();
+    expect(money()).toEqual([90, 280]);
     expect(screen.getByText(/^to$/)).toBeInTheDocument();
+  });
+
+  it("labels the chart scale, so a bigger band is visibly a bigger chart", () => {
+    render(<EarningsCalculator />);
+    expect(screen.getByText(/top of range/i)).toBeInTheDocument();
+    const axisBefore = screen.getByText(/top of range/i).previousElementSibling;
+    expect(axisBefore?.textContent).toBe("$280");
+
+    fireEvent.click(screen.getByRole("button", { name: "10,000 to 50,000" }));
+    expect(
+      screen.getByText(/top of range/i).previousElementSibling?.textContent,
+    ).not.toBe("$280");
   });
 
   it("shows month 1 beside month 12 so it reads as a trajectory", () => {
