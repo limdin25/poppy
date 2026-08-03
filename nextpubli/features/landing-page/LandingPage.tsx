@@ -772,19 +772,21 @@ function Footer() {
         <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 sm:flex-row">
           <p className="text-xs text-white/30">{landingCopy.footer.copyright}</p>
 
+          {/* These were both href="#". A dead privacy link is not cosmetic: Meta
+              requires a reachable privacy policy URL before a lead form can publish. */}
           <div className="flex items-center gap-6">
-            <a
-              href="#"
+            <Link
+              href="/terms"
               className="text-xs text-white/30 transition-colors hover:text-white/60"
             >
               {landingCopy.footer.legal.terms}
-            </a>
-            <a
-              href="#"
+            </Link>
+            <Link
+              href="/privacy"
               className="text-xs text-white/30 transition-colors hover:text-white/60"
             >
               {landingCopy.footer.legal.privacy}
-            </a>
+            </Link>
           </div>
 
           <div className="flex items-center gap-4">
