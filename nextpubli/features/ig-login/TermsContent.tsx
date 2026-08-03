@@ -14,6 +14,14 @@ export function TermsContent() {
           with Instagram, you join our network and can earn commissions by promoting the
           brands&apos; products.
         </p>
+        {/* These terms are a contract, so they have to name the party you are contracting
+            with rather than only the trading name. */}
+        <p className="mt-2">
+          HeyPubli is a trading name of <strong>ULINC UNICO GROUP LTD</strong>, a company
+          registered in England and Wales under company number 11197856, whose registered
+          office is 483 Green Lanes, London, England, N13 4BS. In these terms, &quot;we&quot;
+          and &quot;us&quot; mean that company.
+        </p>
       </section>
 
       <section>
