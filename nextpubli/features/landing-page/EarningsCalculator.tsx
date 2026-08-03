@@ -147,7 +147,7 @@ export function EarningsCalculator() {
                 return (
                   <div
                     key={i}
-                    className="flex flex-1 flex-col items-center gap-1.5"
+                    className="flex h-full flex-1 flex-col items-center justify-end gap-1.5"
                   >
                     <div
                       className="w-full rounded-t-md bg-gradient-to-t from-[#F56040] via-[#E1306C] to-[#C13584] opacity-90"
