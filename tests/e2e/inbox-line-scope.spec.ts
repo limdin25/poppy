@@ -25,9 +25,12 @@ test.describe('line participation', () => {
     await page.goto('/admin/crm/inbox')
     await expect(page.getByTestId('inbox-filter-whatsapp')).toBeVisible({ timeout: 20_000 })
     await page.getByTestId('inbox-filter-whatsapp').click()
+    // waitFor, not isVisible: isVisible() returns IMMEDIATELY (no auto-wait),
+    // so it always said false while the list was still loading.
     const everyoneHasIt = await page
       .getByTestId(`inbox-row-${WA_THREAD_CONTACT}`)
-      .isVisible({ timeout: 15_000 })
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .then(() => true)
       .catch(() => false)
     test.skip(!everyoneHasIt, 'WhatsApp test thread not present in this dataset [data-dependent]')
 
