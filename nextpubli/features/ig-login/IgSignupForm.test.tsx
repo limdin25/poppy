@@ -140,13 +140,49 @@ describe("IgSignupForm", () => {
     expect(value("whatsapp")?.replace(/\D/g, "")).toBe("5511999998888");
   });
 
-  it("keeps the Instagram button disabled until the terms are accepted", () => {
+  // Listens on `document`, which is OUTSIDE React's root container, so it runs after
+  // React's onSubmit and can see whether that handler cancelled the navigation. A
+  // listener on the form itself runs first and always reports "submitted".
+  function watchSubmit() {
+    const seen = { fired: false, prevented: false };
+    const onSubmit = (e: Event) => {
+      seen.fired = true;
+      seen.prevented = e.defaultPrevented;
+      e.preventDefault();
+    };
+    document.addEventListener("submit", onSubmit);
+    return { seen, stop: () => document.removeEventListener("submit", onSubmit) };
+  }
+
+  // A greyed-out button answers a phone tap with nothing at all, so the button always
+  // takes the tap and the form refuses the submit instead.
+  it("refuses to submit without the terms, and says which box is missing", () => {
     render(<IgSignupForm />);
     completeForm();
     const connect = screen.getByRole("button", { name: /connect instagram/i });
-    expect(connect).toBeDisabled();
-    fireEvent.click(screen.getByRole("checkbox"));
     expect(connect).toBeEnabled();
+
+    const { seen, stop } = watchSubmit();
+    fireEvent.click(connect);
+    stop();
+
+    expect(seen.prevented).toBe(true);
+    expect(screen.getByRole("alert")).toHaveTextContent(/tick the box/i);
+    expect(screen.getByRole("checkbox")).toHaveFocus();
+  });
+
+  it("lets the submit through once the terms are accepted", () => {
+    render(<IgSignupForm />);
+    completeForm();
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    const { seen, stop } = watchSubmit();
+    fireEvent.click(screen.getByRole("button", { name: /connect instagram/i }));
+    stop();
+
+    expect(seen.fired).toBe(true);
+    expect(seen.prevented).toBe(false);
+    expect(screen.queryByText(/tick the box/i)).not.toBeInTheDocument();
   });
 
   it("opens the Terms in a popup", () => {

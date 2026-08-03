@@ -48,10 +48,12 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
   const [whatsapp, setWhatsapp] = useState(defaults?.whatsapp ?? "");
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [termsError, setTermsError] = useState(false);
 
   const firstNameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const stepRef = useRef<HTMLDivElement>(null);
+  const termsRef = useRef<HTMLInputElement>(null);
   // Skip the focus grab on first paint, or the page loads with the keyboard already up.
   const mounted = useRef(false);
 
@@ -95,6 +97,20 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
     setStep((s) => Math.max(s - 1, 1));
   };
 
+  // The Connect button is never disabled, so the terms gate is enforced here: refuse the
+  // submit, say what is missing, and put the cursor on the box they have to tick.
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (accepted) return;
+    e.preventDefault();
+    setTermsError(true);
+    termsRef.current?.focus();
+  };
+
+  const acceptTerms = (next: boolean) => {
+    setAccepted(next);
+    if (next) setTermsError(false);
+  };
+
   // Enter is "next", not "submit". Otherwise the browser posts a half-empty form from
   // step one and the server bounces it straight back with an error.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
@@ -113,7 +129,12 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
     <form
       method="POST"
       action="/api/auth/instagram/start"
+      // Steps are display:none when inactive, and the browser refuses to submit while an
+      // off-screen field fails its own native check, with no visible message anywhere.
+      // Every rule that matters is enforced in validate() instead.
+      noValidate
       onKeyDown={handleKeyDown}
+      onSubmit={handleSubmit}
       // A fixed height across the three form screens keeps the heading, the field and
       // the Continue button on the same line of the page instead of jumping about as
       // one-line and two-line questions swap in.
@@ -256,12 +277,14 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
       {onConnect && (
         <ConnectInstagramStep
           accepted={accepted}
-          onAcceptedChange={setAccepted}
+          onAcceptedChange={acceptTerms}
           summary={[`${firstName} ${lastName}`.trim(), email].filter(Boolean).join(" · ")}
           onEdit={() => {
             setError(null);
             setStep(1);
           }}
+          termsError={termsError}
+          termsRef={termsRef}
         />
       )}
     </form>

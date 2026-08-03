@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Camera, Sparkles, Wallet, X } from "lucide-react";
+import { useState, type RefObject } from "react";
+import { Sparkles, Wallet, X } from "lucide-react";
 import { igLoginCopy, connectInstagramCopy } from "./copy";
 import { TermsContent } from "./TermsContent";
+import { InstagramGlyph } from "./InstagramGlyph";
 
 const IG_GRADIENT = "linear-gradient(135deg, #F56040, #E1306C, #C13584)";
 
-// One icon per journey line. lucide dropped its brand icons, so the Instagram step
-// uses Camera rather than a non-existent Instagram glyph.
-const JOURNEY_ICONS = [Camera, Sparkles, Wallet] as const;
+// One small icon per journey line, sitting inline with the title. The gradient circle
+// carries the step NUMBER, because "three steps" is the thing being communicated.
+const JOURNEY_ICONS = [InstagramGlyph, Sparkles, Wallet] as const;
 
 interface ConnectInstagramStepProps {
   accepted: boolean;
@@ -17,6 +18,9 @@ interface ConnectInstagramStepProps {
   /** What they typed on steps 1 to 3, echoed back so a typo is fixable before Instagram. */
   summary: string;
   onEdit: () => void;
+  /** Set when someone pressed Connect without ticking the box. */
+  termsError: boolean;
+  termsRef: RefObject<HTMLInputElement | null>;
 }
 
 // The final screen of the signup wizard: it explains the whole deal in three lines
@@ -27,6 +31,8 @@ export function ConnectInstagramStep({
   onAcceptedChange,
   summary,
   onEdit,
+  termsError,
+  termsRef,
 }: ConnectInstagramStepProps) {
   const [termsOpen, setTermsOpen] = useState(false);
 
@@ -65,7 +71,7 @@ export function ConnectInstagramStep({
 
       <ol className="relative space-y-6">
         {connectInstagramCopy.journey.map((item, i) => {
-          const Icon = JOURNEY_ICONS[i] ?? Camera;
+          const Icon = JOURNEY_ICONS[i] ?? Sparkles;
           const isLast = i === connectInstagramCopy.journey.length - 1;
           return (
             <li key={item.title} className="relative flex gap-4">
@@ -78,15 +84,15 @@ export function ConnectInstagramStep({
               )}
               <span
                 aria-hidden="true"
-                className="relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-sm"
+                className="relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[1.0625rem] font-black text-white shadow-sm"
                 style={{ background: IG_GRADIENT }}
               >
-                <Icon size={19} strokeWidth={2.2} />
+                {i + 1}
               </span>
-              <div className="pt-0.5">
-                <h2 className="text-[0.9375rem] font-bold leading-snug text-foreground">
-                  <span className="mr-1.5 font-mono text-xs font-medium text-foreground-secondary">
-                    {i + 1}
+              <div className="pt-1">
+                <h2 className="flex items-center gap-1.5 text-[0.9375rem] font-bold leading-snug text-foreground">
+                  <span className="shrink-0 text-accent">
+                    <Icon size={15} />
                   </span>
                   {item.title}
                 </h2>
@@ -121,11 +127,17 @@ export function ConnectInstagramStep({
       {/* z-20 beats the z-10 on the journey nodes, or those gradient circles paint
           straight through the bar. */}
       <div className="sticky bottom-0 z-20 -mx-6 space-y-3 border-t border-border bg-background px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4 sm:static sm:mx-0 sm:border-0 sm:px-0 sm:pb-0 sm:pt-0">
-        <label className="flex cursor-pointer items-start gap-3">
+        <label
+          className={`flex cursor-pointer items-start gap-3 rounded-lg transition ${
+            termsError ? "bg-error/10 p-2.5 -m-2.5" : ""
+          }`}
+        >
           <input
+            ref={termsRef}
             type="checkbox"
             name="terms"
             checked={accepted}
+            aria-invalid={termsError}
             onChange={(e) => onAcceptedChange(e.target.checked)}
             className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
           />
@@ -142,20 +154,28 @@ export function ConnectInstagramStep({
           </span>
         </label>
 
+        {/* Never disabled. A greyed-out button on a phone answers a tap with nothing at
+            all, so it takes the tap and says what is missing instead. */}
         <button
           type="submit"
-          disabled={!accepted}
-          className="flex w-full items-center justify-center gap-2.5 rounded-lg px-6 py-3.5 text-base font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-2.5 rounded-lg px-6 py-3.5 text-base font-bold text-white transition hover:opacity-90"
           style={{ background: IG_GRADIENT }}
         >
-          <Camera size={19} />
+          <InstagramGlyph size={19} />
           {igLoginCopy.signupLabel}
         </button>
 
-        <p className="text-center text-xs leading-relaxed text-foreground-secondary">
-          {accepted
-            ? connectInstagramCopy.reassurance
-            : connectInstagramCopy.termsGateHint}
+        <p
+          className={`text-center text-xs leading-relaxed ${
+            termsError ? "font-medium text-error" : "text-foreground-secondary"
+          }`}
+          {...(termsError ? { role: "alert" as const } : {})}
+        >
+          {termsError
+            ? connectInstagramCopy.termsBlocked
+            : accepted
+              ? connectInstagramCopy.reassurance
+              : connectInstagramCopy.termsGateHint}
         </p>
       </div>
 

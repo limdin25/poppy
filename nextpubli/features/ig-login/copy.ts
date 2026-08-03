@@ -71,6 +71,7 @@ export const connectInstagramCopy = {
   proNoteHref:
     "https://www.instagram.com/accounts/convert_to_professional_account/",
   termsGateHint: "Accept the Terms of Use to continue",
+  termsBlocked: "Please tick the box above to accept the Terms of Use",
   dialogCloseLabel: "Got it",
   // The one real fear at this button is "what lands on my feed tomorrow", so answer it
   // in the same breath as asking for the account.

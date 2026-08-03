@@ -55,7 +55,7 @@ test("signup is three questions then the Instagram connect screen, gated by term
     page.getByRole("heading", { name: /now connect your instagram/i }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: /^1\s*connect your account/i }),
+    page.getByRole("heading", { name: /^connect your account$/i }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: /we post viral content that sells/i }),
@@ -64,17 +64,23 @@ test("signup is three questions then the Instagram connect screen, gated by term
     page.getByRole("heading", { name: /you earn cash and affiliate commission/i }),
   ).toBeVisible();
 
-  const submit = page.getByRole("button", { name: /connect instagram/i });
-  await expect(submit).toBeDisabled();
-
   // Terms open in a popup (not a navigation).
   await page.getByRole("button", { name: /terms of use/i }).click();
   await expect(page.getByRole("dialog")).toContainText(/stories/i);
   await page.getByRole("button", { name: /got it/i }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  await page.getByRole("checkbox").check();
+  // The button is never greyed out. Pressing it without the terms keeps you on the page
+  // and points at the box.
+  const submit = page.getByRole("button", { name: /connect instagram/i });
   await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(page).toHaveURL(/\/signup$/);
+  await expect(page.getByText(/tick the box/i)).toBeVisible();
+  await expect(page.getByRole("checkbox")).toBeFocused();
+
+  await page.getByRole("checkbox").check();
+  await expect(page.getByText(/tick the box/i)).toHaveCount(0);
 
   // Every answer is still in the form, so the POST body is complete even though the
   // three question screens are off screen.
