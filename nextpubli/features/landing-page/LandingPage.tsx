@@ -315,12 +315,15 @@ function HowItWorks() {
               className="relative flex flex-col items-center px-2 text-center"
             >
               {/* The icons carry their own transparent rounded corners, so no wrapper
-                  background is needed. A padded wrapper produced a visible halo. */}
+                  background is needed. A padded wrapper produced a visible halo.
+                  Eager, not lazy: lazy loading waits on an IntersectionObserver, which a
+                  hidden or backgrounded tab never fires, and these are 13KB each. */}
               <Image
                 src={step.icon}
                 alt=""
                 width={512}
                 height={512}
+                loading="eager"
                 className="relative z-10 h-[88px] w-[88px] shrink-0"
               />
 
