@@ -56,6 +56,7 @@ import { usePendingDrafts } from '../hooks/usePendingDrafts';
 import { useInboxState } from '../hooks/useInboxState';
 import { useAiReplyStatus } from '../hooks/useAiReplyStatus';
 import { useAuth } from '../lib/useCrmAuth';
+import { useViewAs } from '../lib/ViewAsContext';
 import { isThreadUnread, sortInboxRows, inboxSections } from '../lib/inboxOrder';
 
 const ACTIVITY_KINDS_FOR_THREAD = new Set(['note', 'outcome_applied', 'stage_moved', 'tag_added', 'task_created']);
@@ -126,8 +127,15 @@ const FILTER_LABEL: Record<Filter, string> = {
   whatsapp: 'WA',
   email: 'email',
   calls: 'calls',
-  voicemail: 'vmail',
+  voicemail: 'VM',
   missed: 'missed',
+};
+
+/** What the empty list should call the current filter, in a human sentence. */
+const EMPTY_CHANNEL_LABEL: Partial<Record<Filter, string>> = {
+  sms: 'SMS',
+  whatsapp: 'WhatsApp',
+  email: 'email',
 };
 
 type ChannelKindUI = 'sms' | 'whatsapp' | 'email';
@@ -438,6 +446,9 @@ export default function InboxPage() {
   // stance from wk_ai_reply_settings; admins get a link to change it.
   const aiStatus = useAiReplyStatus();
   const { isAdmin } = useAuth();
+  // For the empty state only: an admin impersonating an agent needs to be
+  // TOLD the view is scoped, or an empty filter reads as a bug.
+  const { viewAsId, viewAsName } = useViewAs();
 
   // One pass: decorate, drop what this filter hides, then order.
   //
@@ -829,41 +840,40 @@ export default function InboxPage() {
               className="w-full pl-7 pr-2 py-1.5 text-[12px] bg-[#F3F3EE] border-0 rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30"
             />
           </div>
-          {/* PR 78: channel filter pills — agent can scope the inbox to
-              SMS / WhatsApp / Email at a glance. Industry-standard
-              pattern (HubSpot Conversations, Front, Intercom).
-              Hugo 2026-08-02: split into a STATE row and a SOURCE row so ten
-              pills stop reading as one wall. Same single-select `filter`. */}
+          {/* Filter header, reorganised 2026-08-03 (Hugo: "ugly and
+              unorganised"). Four fixed one-line rows, nothing ever wraps:
+                1. state pills   (ALL / UNREAD / DRAFTS / archive icon)
+                2. channel pills (SMS / WA / EMAIL / CALLS / VM / MISSED)
+                3. AI status pill (left) + campaign select (right)
+              Same single-select `filter`, same testids. Compact px-1.5 pills
+              so each row genuinely fits the 280px pane (a previous "two short
+              rows" attempt measured 398px and wrapped into four lines). */}
           {(() => {
             const pill = (f: Filter) => {
               const count = f === 'unread' ? unreadTotal : f === 'drafts' ? draftTotal : 0;
+              const iconOnly = f === 'archived';
               return (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
                   data-testid={`inbox-filter-${f}`}
+                  title={iconOnly ? 'Archived' : undefined}
+                  aria-label={iconOnly ? 'Archived conversations' : undefined}
                   className={cn(
-                    'inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors uppercase tracking-wide',
+                    'inline-flex flex-shrink-0 items-center gap-1 px-1.5 py-[3px] text-[10px] font-semibold rounded-full transition-colors uppercase tracking-wide',
                     filter === f
                       ? 'bg-[#3C5A87] text-white'
                       : 'bg-[#F3F3EE] text-[#6B7280] hover:bg-black/[0.05]'
                   )}
                 >
-                  {(f === 'sms' || f === 'whatsapp' || f === 'email') && (
-                    <ChannelGlyph
-                      channel={f}
-                      size={9}
-                      className={filter === f ? 'text-white' : ''}
-                    />
-                  )}
-                  {f === 'archived' && <Archive style={{ width: 9, height: 9 }} />}
+                  {f === 'archived' && <Archive style={{ width: 10, height: 10 }} />}
                   {f === 'drafts' && <Bot style={{ width: 9, height: 9 }} />}
-                  {FILTER_LABEL[f]}
+                  {!iconOnly && FILTER_LABEL[f]}
                   {count > 0 && (
                     <span
                       data-testid={`inbox-filter-count-${f}`}
                       className={cn(
-                        'ml-0.5 min-w-[14px] px-1 rounded-full text-[9px] font-bold tabular-nums',
+                        'min-w-[14px] px-1 rounded-full text-[9px] font-bold tabular-nums text-center',
                         filter === f ? 'bg-white/25 text-white' : 'bg-[#3C5A87] text-white'
                       )}
                     >
@@ -873,8 +883,7 @@ export default function InboxPage() {
                 </button>
               );
             };
-            // One line each, sideways scroll on overflow (WhatsApp chips);
-            // wrapping made the two-row grouping unreadable at 280px.
+            // Sideways scroll is a safety net only; both rows fit at 280px.
             const rowCls = 'flex gap-1 flex-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
             return (
               <>
@@ -883,74 +892,68 @@ export default function InboxPage() {
               </>
             );
           })()}
-          {/* Is the AI answering this inbox? Workspace stance; campaigns can
-              only ever be stricter (server-side AND rule). Fail-quiet: the
-              pill simply doesn't render if the settings read fails. The row
-              keeps its height even before the async load, so the header
-              never jumps when the pill pops in (that shift made pill clicks
-              flaky in e2e and would nudge a human's finger the same way). */}
-          <div className="h-[20px] flex items-center gap-1.5">
-            {aiStatus.loaded && (
-            <>
-              <span
-                data-testid="inbox-ai-status"
-                title={
-                  !aiStatus.enabled
-                    ? 'The AI reply engine is switched off. Incoming texts wait for a human.'
-                    : aiStatus.mode === 'auto'
-                      ? 'The AI answers incoming texts by itself (campaigns set to draft still wait for approval).'
-                      : 'The AI writes a draft for every incoming text and waits for your approval. Nothing sends on its own.'
-                }
-                className={cn(
-                  'inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full border',
-                  !aiStatus.enabled
-                    ? 'bg-[#F3F3EE] border-[#E5E7EB] text-[#6B7280]'
-                    : aiStatus.mode === 'auto'
-                      ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
-                      : 'bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]'
-                )}
-              >
-                <Bot style={{ width: 10, height: 10 }} />
-                {!aiStatus.enabled
-                  ? 'AI replies off'
-                  : aiStatus.mode === 'auto'
-                    ? 'AI replies on its own'
-                    : 'AI drafts, you approve'}
-              </span>
-              {isAdmin && (
-                <button
-                  type="button"
-                  data-testid="inbox-ai-status-change"
-                  onClick={() => navigateTo('/admin/crm/agent/personality?ch=sms')}
-                  className="text-[10px] text-[#3C5A87] font-medium hover:underline underline-offset-2"
-                >
-                  change
-                </button>
+          {/* One quiet status row: is the AI answering this inbox (left), and
+              the campaign scope (right, only once campaigns exist). Fixed
+              height so the async pill never shifts the rows above/below. */}
+          <div className="h-[24px] flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {aiStatus.loaded && (
+                <>
+                  <span
+                    data-testid="inbox-ai-status"
+                    title={
+                      !aiStatus.enabled
+                        ? 'The AI reply engine is switched off. Incoming texts wait for a human.'
+                        : aiStatus.mode === 'auto'
+                          ? 'The AI answers incoming texts by itself (campaigns set to draft still wait for approval).'
+                          : 'The AI writes a draft for every incoming text and waits for your approval. Nothing sends on its own.'
+                    }
+                    className={cn(
+                      'inline-flex flex-shrink-0 items-center gap-1 px-1.5 py-[3px] text-[9.5px] font-bold uppercase tracking-wide rounded-full border',
+                      !aiStatus.enabled
+                        ? 'bg-[#F3F3EE] border-[#E5E7EB] text-[#6B7280]'
+                        : aiStatus.mode === 'auto'
+                          ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+                          : 'bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]'
+                    )}
+                  >
+                    <Bot style={{ width: 10, height: 10 }} />
+                    {!aiStatus.enabled
+                      ? 'AI off'
+                      : aiStatus.mode === 'auto'
+                        ? 'AI auto-replies'
+                        : 'AI drafts, you approve'}
+                  </span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      data-testid="inbox-ai-status-change"
+                      onClick={() => navigateTo('/admin/crm/agent/personality?ch=sms')}
+                      className="flex-shrink-0 text-[10px] text-[#3C5A87] font-medium hover:underline underline-offset-2"
+                    >
+                      change
+                    </button>
+                  )}
+                </>
               )}
-            </>
+            </div>
+            {campaignOptions.length > 0 && (
+              <div className="flex items-center gap-1 min-w-0">
+                <Megaphone style={{ width: 11, height: 11 }} className="text-[#9CA3AF] flex-shrink-0" />
+                <select
+                  data-testid="inbox-campaign-filter"
+                  value={campaignFilter}
+                  onChange={(e) => setCampaignFilter(e.target.value)}
+                  className="text-[10.5px] bg-[#F3F3EE] border-none rounded-full px-1.5 py-[3px] text-[#374151] font-medium max-w-[120px] truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
+                >
+                  <option value="all">All campaigns</option>
+                  {campaignOptions.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
-          {/* Campaign filter — Hugo, 2026-07-29: "I should be able to see the
-              inbox per campaign." A dropdown rather than more pills: the
-              FILTERS row is already ten wide, and campaign names run longer
-              than "unread" or "sms". Only shows once a thread actually has a
-              campaign tag, so it stays invisible until it's useful. */}
-          {campaignOptions.length > 0 && (
-            <div className="mt-1.5 flex items-center gap-1">
-              <Megaphone style={{ width: 11, height: 11 }} className="text-[#9CA3AF] flex-shrink-0" />
-              <select
-                data-testid="inbox-campaign-filter"
-                value={campaignFilter}
-                onChange={(e) => setCampaignFilter(e.target.value)}
-                className="text-[11px] bg-[#F3F3EE] border-none rounded-full px-2 py-0.5 text-[#374151] font-medium max-w-full truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
-              >
-                <option value="all">All campaigns</option>
-                {campaignOptions.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
         <div className="flex-1 overflow-y-auto divide-y divide-[#E5E7EB]">
           {/* PR 52 war-room: sidebarRows is the union of (a) thread
@@ -1200,7 +1203,17 @@ export default function InboxPage() {
                 : filter === 'drafts' ? 'No AI replies waiting for approval.'
                 : filter === 'archived' ? 'Nothing archived.'
                 : searchQuery.trim() ? 'No matches.'
+                : EMPTY_CHANNEL_LABEL[filter] ? `No ${EMPTY_CHANNEL_LABEL[filter]} conversations here yet.`
                 : 'No conversations yet.'}
+              {/* Hugo 2026-08-03: he filtered WA while impersonating Maria and
+                  got a bare "No conversations yet", which read as broken. The
+                  view WAS the reason: say so instead of shrugging. */}
+              {isAdmin && viewAsId && (
+                <div data-testid="inbox-empty-viewas-hint" className="mt-2 text-[11.5px] text-[#B45309]">
+                  You are seeing only {viewAsName || 'this agent'}&apos;s leads.
+                  Set &quot;See as&quot; (top bar) back to Everyone for the whole workspace.
+                </div>
+              )}
             </div>
           )}
         </div>

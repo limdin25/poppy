@@ -43,6 +43,18 @@ test.describe.configure({ mode: 'default' })
 test.describe('CRM inbox — unread / pin / archive', () => {
   test.skip(process.env.E2E_OWNER_READY !== '1', 'needs an admin account (E2E_OWNER_READY=1)')
 
+  test('both filter rows fit the 280px pane on one line, no hidden overflow', async ({ authedPage: page }) => {
+    // Hugo 2026-08-03: "filters are ugly and unorganised". The fix promised
+    // one line per row; a row that silently scrolls sideways is a wrap by
+    // another name. scrollWidth > clientWidth = pills do not fit = fail.
+    await gotoInbox(page)
+    for (const anchor of ['inbox-filter-all', 'inbox-filter-sms'] as const) {
+      const row = page.getByTestId(anchor).locator('..')
+      const m = await row.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }))
+      expect(m.sw, `${anchor} row overflows: ${m.sw}px content in ${m.cw}px`).toBeLessThanOrEqual(m.cw + 1)
+    }
+  })
+
   test('the new filter pills exist and switch without crashing', async ({ authedPage: page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(String(e)))
