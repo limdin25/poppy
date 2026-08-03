@@ -1,0 +1,37 @@
+import { test, expect } from './helpers/auth'
+
+/**
+ * WhatsApp Business management on Templates > WhatsApp (Hugo 2026-08-03).
+ *
+ * Admin-only panel backed by wk-whatsapp-admin: Meta message templates
+ * (create + submit for approval, live status) and the sender's business
+ * profile pulled straight from Twilio. Read-only assertions: the panel
+ * loads real data, the submitted instagram_url_request template is listed,
+ * and the profile form is populated from the live sender.
+ */
+
+test.describe('whatsapp business admin panel', () => {
+  test.skip(process.env.E2E_OWNER_READY !== '1', 'needs an admin account (E2E_OWNER_READY=1)')
+
+  test('admin sees Meta templates and the live sender profile', async ({ authedPage: page }) => {
+    await page.goto('/admin/crm/templates')
+    await page.getByRole('button', { name: 'WhatsApp', exact: true }).click()
+
+    await expect(page.getByTestId('wa-business-panel')).toBeVisible({ timeout: 20_000 })
+
+    // Profile really came from Twilio: the display name field is populated
+    // (the sender was registered as "HeyPubli"; assert non-empty, not the
+    // exact brand, so a rename does not break the test).
+    await expect(page.getByTestId('wa-profile-name')).toHaveValue(/.+/, { timeout: 20_000 })
+
+    // The Meta template submitted on 2026-08-03 shows with a status chip.
+    // Data-dependent: skip rather than fail if it is ever deleted.
+    const row = page.getByTestId('wa-meta-template-instagram_url_request')
+    const present = await row
+      .waitFor({ state: 'visible', timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false)
+    test.skip(!present, 'instagram_url_request template not in this dataset [data-dependent]')
+    await expect(row).toContainText('Instagram', { ignoreCase: true })
+  })
+})

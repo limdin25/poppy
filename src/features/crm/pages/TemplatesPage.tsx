@@ -6,6 +6,7 @@ import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import TemplateList from '../components/templates/TemplateList';
 import AgreementTemplateList from '../components/templates/AgreementTemplateList';
 import VideoTemplateList from '../components/templates/VideoTemplateList';
+import WhatsAppBusinessPanel from '../components/templates/WhatsAppBusinessPanel';
 
 const TABS = [
   { id: 'sms', label: 'SMS', icon: MessageSquare },
@@ -82,7 +83,12 @@ export default function TemplatesPage() {
             <TemplateList filterChannel="sms" isAdmin={isAdminOrWorkspaceAdmin} />
           )}
           {activeTab === 'whatsapp' && (
-            <TemplateList filterChannel="whatsapp" isAdmin={isAdminOrWorkspaceAdmin} />
+            <>
+              {/* The Meta sender is shared workspace infrastructure, so only
+                  admins manage its profile + approved templates. */}
+              {isAdminOrWorkspaceAdmin && <WhatsAppBusinessPanel />}
+              <TemplateList filterChannel="whatsapp" isAdmin={isAdminOrWorkspaceAdmin} />
+            </>
           )}
           {activeTab === 'email' && (
             <TemplateList filterChannel="email" isAdmin={isAdminOrWorkspaceAdmin} />

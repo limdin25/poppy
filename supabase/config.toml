@@ -422,3 +422,8 @@ verify_jwt = false
 
 [functions.wk-schedule-send]
 verify_jwt = false
+
+# Admin management of the WhatsApp Business sender (profile + Meta templates).
+# JWT-verified at the edge, then admin_users check inside.
+[functions.wk-whatsapp-admin]
+verify_jwt = true
