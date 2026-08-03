@@ -68,7 +68,9 @@ describe('the [number] hole', () => {
     // for a callback without ever telling it which number it was texting from,
     // so the model wrote a placeholder and the agent nearly sent it.
     expect(route).toMatch(/replyFrom/);
-    expect(route).toMatch(/systemPrompt \+=[\s\S]{0,200}\$\{replyFrom\}/);
+    // Widened 2026-08-03: the HeyPubli-number clause sits ahead of this one in
+    // the same append. The guard is unchanged, only the distance is.
+    expect(route).toMatch(/systemPrompt \+=[\s\S]{0,600}\$\{replyFrom\}/);
   });
 
   it('tells the model to leave the callback out when there is no number', () => {

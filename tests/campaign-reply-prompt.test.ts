@@ -195,7 +195,10 @@ describe('the generator actually reads the merged config', () => {
   });
 
   it('feeds the merged prompt, model and mode to the LLM, not the global row', () => {
-    expect(route).toMatch(/let systemPrompt = cfg\.system_prompt/);
+    // The HeyPubli number prompt (2026-08-03) sits in front of the global row in
+    // the same expression, so cfg is now the fallback rather than the only
+    // source. What must never appear is a read straight off `s`.
+    expect(route).toMatch(/let systemPrompt = numberPrompt \|\| cfg\.system_prompt/);
     expect(route).toMatch(/callLLM\(cfg\.model/);
     expect(route).toMatch(/const draft = cfg\.mode === 'draft'/);
     expect(route).not.toMatch(/let systemPrompt = s\.system_prompt/);
@@ -223,7 +226,9 @@ describe('the generator actually reads the merged config', () => {
     // The VSL block is the reviews pitch written out longhand, complete with the
     // £1 close. Appending it to Pedro's website prompt reintroduces the exact
     // bug this feature exists to stop.
-    expect(route).toMatch(/cfg\.source === 'campaign'\s*\?\s*\{ data: null \}/);
+    // The HeyPubli number skips it too: a creator has no video page, and one
+    // who was texted one in an earlier life must not be sold a Google ranking.
+    expect(route).toMatch(/cfg\.source === 'campaign' \|\| heypubli\s*\?\s*\{ data: null \}/);
   });
 });
 
@@ -232,7 +237,9 @@ describe('regression guards on the reply route', () => {
     // tests/ai-reply-reviews.test.ts pins this too. The [number] placeholder
     // reached a live draft on 2026-07-27.
     expect(route).toMatch(/replyFrom/);
-    expect(route).toMatch(/systemPrompt \+=[\s\S]{0,200}\$\{replyFrom\}/);
+    // Widened for the HeyPubli-number clause, which sits ahead of this one in
+    // the same append (that line has no phone, so it forbids the ask instead).
+    expect(route).toMatch(/systemPrompt \+=[\s\S]{0,600}\$\{replyFrom\}/);
   });
 
   it('still greets the OWNER, not the first word of the company name', () => {
@@ -273,7 +280,10 @@ describe('a failed campaign lookup never silently uses the global pitch', () => 
   }
 
   it('logs every one of them with console.error, not console.log', () => {
-    expect((route.match(/console\.error\('\[ai-reply\]/g) ?? []).length).toBe(3);
+    // Four since 2026-08-03: the three campaign reads plus the HeyPubli number
+    // prompt read, which fails the same way for the same reason. A silent
+    // fallback there drafts the reviews pitch at a creator.
+    expect((route.match(/console\.error\('\[ai-reply\]/g) ?? []).length).toBe(4);
   });
 
   it('fails BEFORE anything is generated, drafted or sent', () => {

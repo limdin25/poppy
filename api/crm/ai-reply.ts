@@ -259,16 +259,65 @@ export default async function handler(req: Request): Promise<Response> {
     return json(200, { skipped: 'killswitch' });
   }
 
-  let systemPrompt = cfg.system_prompt || '';
+  // THE NUMBER DECIDES THE OFFER. Hugo 2026-08-03: "we are talking about this
+  // number only, this number is for HeyPubli, period."
+  //
+  // +447460035763 is the shared WhatsApp sender that HeyPubli's Meta lead form
+  // points click-to-WhatsApp at (wk-partner-api is deliberately the one door to
+  // the WhatsApp brain: one number, one blast radius, one control room). A lead
+  // who messages first has no wk_dialer_queue row, so no campaign, so before
+  // this they fell through to the global row and were drafted the Google-reviews
+  // pitch. Branching on the LEAD was the first attempt and it was guesswork.
+  // Branching on the NUMBER is a fact: whatever line they texted is the offer
+  // they were shown.
+  //
+  // Everything else is untouched. Other numbers keep the global prompt and the
+  // reviews funnel exactly as they were.
+  //
+  // Only the PROMPT is per-number. Every rail (hours, caps, handoff keywords,
+  // delay, human takeover) stays on the 'default' row on purpose, the same rule
+  // the per-campaign override follows: splitting the rails multiplies the ways a
+  // lead gets texted at midnight. The other columns on a number row are ignored.
+  const heypubliNumber =
+    !!replyFrom && replyFrom === (process.env.WHATSAPP_SENDER_E164 || '+447460035763');
+  let numberPrompt = '';
+  if (heypubliNumber && cfg.source !== 'campaign') {
+    const { data: numRow, error: numErr } = await supabase
+      .from('wk_ai_reply_settings')
+      .select('system_prompt')
+      .eq('id', replyFrom)
+      .maybeSingle();
+    // Same rule as the campaign reads above: an error is "we do not know which
+    // offer", not "use the other one". Falling through here would draft the
+    // reviews pitch at a creator, which is the whole bug.
+    if (numErr) {
+      console.error('[ai-reply] number prompt read FAILED, no reply drafted', {
+        contact_id: contactId, number: replyFrom, error: numErr.message,
+      });
+      return json(503, { error: 'number_prompt_failed', detail: numErr.message });
+    }
+    numberPrompt = (numRow as { system_prompt?: string } | null)?.system_prompt || '';
+  }
+  const heypubli = !!numberPrompt;
+
+  // A campaign prompt still wins over the number, unchanged. That is somebody
+  // typing a prompt for one campaign by hand, which is a deliberate instruction.
+  let systemPrompt = numberPrompt || cfg.system_prompt || '';
   if (firstName) systemPrompt += `\n\nThe lead's first name is ${firstName}.`;
 
   // The callback number, spelled out. Without this the prompt asked for a
   // call-back while never saying which line it was texting from, and the model
   // filled the hole with the literal text "[number]", which reached a draft in
   // Hugo's inbox on 2026-07-27.
-  systemPrompt += replyFrom
-    ? `\n\nYou are texting from ${replyFrom}. If you ask them to ring you, use exactly that number and no other.`
-    : '\n\nYou do not know which number this text came from, so never invent a number. Say "just reply here" or "give us a ring on the number this text came from" instead.';
+  //
+  // HeyPubli has no phone line at all: that sender is a WhatsApp number nobody
+  // answers as HeyPubli, so there the hole is closed by forbidding the ask
+  // rather than by filling it in.
+  systemPrompt += heypubli
+    ? '\n\nThis conversation stays in this thread. Never ask them to ring you and never give out a phone number, ours or anyone else\'s. If they want to speak to a person, say somebody will come back to them right here.'
+    : replyFrom
+      ? `\n\nYou are texting from ${replyFrom}. If you ask them to ring you, use exactly that number and no other.`
+      : '\n\nYou do not know which number this text came from, so never invent a number. Say "just reply here" or "give us a ring on the number this text came from" instead.';
 
   // VSL context: if this lead has a video page, tell the model exactly where
   // they are in the funnel so the reply pushes toward the £1 close (their
@@ -276,9 +325,13 @@ export default async function handler(req: Request): Promise<Response> {
   //
   // Skipped when the campaign brought its own prompt. This block is the reviews
   // funnel written out longhand, and bolting it onto a campaign prompt is the
-  // exact bug this feature exists to stop: the website campaign would go back to
+  // exact bug that feature exists to stop: the website campaign would go back to
   // pitching reviews at £1 halfway through its own reply.
-  const { data: vsl } = cfg.source === 'campaign'
+  //
+  // Skipped on the HeyPubli number for the same reason, and it is not a
+  // theoretical skip: a creator who was texted a video page in some earlier life
+  // would otherwise be sold a Google ranking mid-conversation.
+  const { data: vsl } = cfg.source === 'campaign' || heypubli
     ? { data: null }
     : await supabase
       .from('wk_vsl_pages')
@@ -350,7 +403,9 @@ export default async function handler(req: Request): Promise<Response> {
     mode: cfg.mode,
     status,
     campaign_id: cfg.campaign_id,
-    prompt_source: cfg.source,
+    // 'number' is reported in place of 'global' so a wrong-offer draft is one
+    // log line to diagnose instead of a guess about which pitch fired.
+    prompt_source: heypubli ? 'number' : cfg.source,
   });
 }
 
