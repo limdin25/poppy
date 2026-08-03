@@ -4,6 +4,7 @@ import { getAuthUrl } from "@/lib/integrations/outstand";
 import { STATE_COOKIE, SIGNUP_COOKIE, authCookieOptions } from "@/lib/ig-auth-cookies";
 import { igSignupSchema } from "@/schemas";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
+import { recordSignupLead } from "@/lib/data/signup-leads";
 
 async function outstandAuthUrl(origin: string, state: string): Promise<string | null> {
   const settings = await getPostingSettingsAdmin();
@@ -63,6 +64,12 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return back(parsed.error.issues[0]?.message ?? "Please fill in all fields");
   }
+
+  // Written down before the redirect, and again if they come back and retry. The client
+  // already recorded them when they finished the questions; this moves them on to
+  // "sent_to_instagram" so the admin list can tell "never pressed the button" apart from
+  // "pressed it and did not come back". Never allowed to block the signup.
+  await recordSignupLead({ ...parsed.data, stage: "sent_to_instagram" });
 
   const state = crypto.randomUUID();
   const authUrl = await outstandAuthUrl(origin, state);

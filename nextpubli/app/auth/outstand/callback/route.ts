@@ -6,6 +6,7 @@ import { getSocialAccountByTenant } from "@/lib/integrations/outstand";
 import { saveOutstandConnection, getPostingSettingsAdmin } from "@/lib/data/outstand";
 import { findOrCreateInfluencerByOutstand, type IgSignupData } from "@/lib/data/auth-ig";
 import { notifyAccountConnected } from "@/lib/data/notifications";
+import { markSignupLeadConnected } from "@/lib/data/signup-leads";
 import { STATE_COOKIE, SIGNUP_COOKIE, authCookieClearAttrs } from "@/lib/ig-auth-cookies";
 
 function readSignupData(raw: string | undefined): IgSignupData | undefined {
@@ -130,7 +131,7 @@ export async function GET(request: Request) {
     }
 
     // --- Sign-up / login-with-Instagram flow ---
-    const { email, isNew } = await findOrCreateInfluencerByOutstand(
+    const { userId, email, isNew } = await findOrCreateInfluencerByOutstand(
       {
         socialAccountId: account.id,
         username: account.username,
@@ -138,6 +139,13 @@ export async function GET(request: Request) {
       },
       signup,
     );
+
+    // Close the loop on the signup lead. Matched on the email the PERSON typed, not
+    // `email` above: for an Instagram signup that one is the synthetic
+    // ig_xxx@instagram.heypubli.com auth address and would never match a lead.
+    if (signup?.email) {
+      await markSignupLeadConnected(signup.email, userId);
+    }
 
     // Mint a Supabase session without a password: admin magic link → verify it here.
     const admin = createAdminClient();

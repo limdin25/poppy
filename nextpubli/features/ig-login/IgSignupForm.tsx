@@ -82,6 +82,29 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
     return null;
   };
 
+  // The answers are written down the moment the three questions are finished, BEFORE
+  // Instagram gets involved, so somebody who closes the tab on the connect screen is still
+  // a lead we can see and chase. keepalive lets it finish even if the tab is closing, and
+  // it is deliberately silent: this is bookkeeping running behind a live signup and must
+  // never show the person an error.
+  const captureLead = (values: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    whatsapp: string;
+  }) => {
+    try {
+      void fetch("/api/signup/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+        keepalive: true,
+      }).catch(() => {});
+    } catch {
+      // never surfaced
+    }
+  };
+
   const advance = () => {
     const problem = validate(step);
     if (problem) {
@@ -89,6 +112,15 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
       return;
     }
     setError(null);
+    // Answering the last question is what makes them a lead worth keeping.
+    if (step === FORM_STEPS) {
+      captureLead({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: email.trim(),
+        whatsapp: whatsapp.trim(),
+      });
+    }
     setStep((s) => Math.min(s + 1, CONNECT_STEP));
   };
 
