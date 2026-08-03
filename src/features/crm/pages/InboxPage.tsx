@@ -37,6 +37,13 @@ import FollowupPromptModal from '../components/followups/FollowupPromptModal';
 import { useSmsV2 } from '../store/SmsV2Store';
 import { useContactTimeline, type FunnelEvent, type SiteEvent } from '../hooks/useContactTimeline';
 import { useContactMessages } from '../hooks/useContactMessages';
+import {
+  callWaAdmin,
+  isApproved,
+  renderTemplate,
+  waWindowOpen,
+  type MetaTemplate,
+} from '../lib/waAdmin';
 import { useInboxThreads } from '../hooks/useInboxThreads';
 import { useContactPersistence } from '../hooks/useContactPersistence';
 import { signCallRecording, useCalls } from '../hooks/useCalls';
@@ -195,6 +202,14 @@ export default function InboxPage() {
   const { items: templates } = useSmsTemplates();
   const { firstName: agentFirstName } = useCurrentAgent();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
+  // Hugo 2026-08-03: Meta-approved WhatsApp templates. The ONLY message that
+  // reaches a lead who has not written in the last 24 hours (WhatsApp's rule,
+  // enforced by Twilio). Loaded lazily the first time WhatsApp is picked.
+  const [metaTemplates, setMetaTemplates] = useState<MetaTemplate[]>([]);
+  const [metaTemplatesLoaded, setMetaTemplatesLoaded] = useState(false);
+  const [metaTplSid, setMetaTplSid] = useState<string>('');
+  const [metaVars, setMetaVars] = useState<Record<string, string>>({});
 
   // PR 89 (Hugo 2026-04-27): inbox search bar \u2014 was rendered with no
   // onChange + no state, so typing did nothing. Now filters sidebarRows
@@ -743,10 +758,64 @@ export default function InboxPage() {
   // Reset template selection when channel changes (different template list).
   useEffect(() => {
     setSelectedTemplateId('');
+    setMetaTplSid('');
+    setMetaVars({});
   }, [replyChannel, activeContactId]);
 
+  // Load the approved Meta templates once, the first time WhatsApp is picked.
+  // Fail quiet: no approved template just means the picker stays hidden, and
+  // free-form replies inside the window are unaffected.
+  useEffect(() => {
+    if (replyChannel !== 'whatsapp' || metaTemplatesLoaded) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await callWaAdmin<{ templates: MetaTemplate[] }>({ action: 'template_list' });
+        if (!cancelled) setMetaTemplates((res.templates ?? []).filter(isApproved));
+      } catch {
+        if (!cancelled) setMetaTemplates([]);
+      } finally {
+        if (!cancelled) setMetaTemplatesLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [replyChannel, metaTemplatesLoaded]);
+
+  // Is the free-reply window open on this thread? Outside it WhatsApp drops
+  // anything but an approved template, so the composer says so up front
+  // instead of letting the send fail.
+  const waOpen = useMemo(() => waWindowOpen(crmMessages), [crmMessages]);
+
+  const activeMetaTemplate = metaTemplates.find((t) => t.sid === metaTplSid) ?? null;
+
+  /** Pick (or clear) an approved template, pre-filling {{1}} with the human's
+   *  first name. contact.name is the COMPANY in this CRM; the person is
+   *  custom_fields.owner_name, so prefer that. */
+  const chooseMetaTemplate = (sid: string) => {
+    setMetaTplSid(sid);
+    const tpl = metaTemplates.find((t) => t.sid === sid);
+    // A template carries fixed wording and nothing else: no attachment can
+    // ride with it (wk-sms-send refuses one). Drop any staged file here, or
+    // it sits in the composer looking attached and is silently dropped.
+    if (tpl) setReplyAttachmentUrl(null);
+    if (!tpl) { setMetaVars({}); return; }
+    const person =
+      (activeContact?.customFields?.owner_name ?? '').trim() ||
+      (activeContact?.name ?? '').trim();
+    const first = person.split(/\s+/)[0] ?? '';
+    const vars: Record<string, string> = {};
+    for (const n of new Set([...tpl.body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) => m[1]))) {
+      vars[n] = n === '1' ? first : '';
+    }
+    setMetaVars(vars);
+  };
+
   const send = async () => {
-    if (!reply.trim() || !activeContact || sending) return;
+    if (!activeContact || sending) return;
+    // A template send carries no typed text: the wording is the one Meta
+    // approved, only the blanks travel.
+    const sendingTemplate = replyChannel === 'whatsapp' && !!activeMetaTemplate;
+    if (!sendingTemplate && !reply.trim()) return;
     if (!replyChannel) {
       pushToast('Pick a channel first — SMS, WhatsApp or Email.', 'error');
       return;
@@ -767,7 +836,18 @@ export default function InboxPage() {
       const trimmedBody = reply.trim();
       let resp: Awaited<ReturnType<SmsSendInvoke['invoke']>>;
       const attach = replyAttachmentUrl || undefined;
-      if (replyChannel === 'whatsapp') {
+      if (sendingTemplate) {
+        // Meta template: the server checks it is still approved, fills the
+        // blanks from Twilio's own copy and stores the finished wording.
+        resp = await fn.invoke('wk-sms-send', {
+          body: {
+            contact_id: activeContact.id,
+            channel: 'whatsapp',
+            content_sid: activeMetaTemplate!.sid,
+            content_variables: metaVars,
+          },
+        });
+      } else if (replyChannel === 'whatsapp') {
         resp = await fn.invoke('wk-sms-send', {
           body: { contact_id: activeContact.id, body: trimmedBody, attachment_url: attach, channel: 'whatsapp' },
         });
@@ -796,8 +876,10 @@ export default function InboxPage() {
           'error'
         );
       } else {
-        pushToast(`${channelLabel} sent`, 'success');
+        pushToast(sendingTemplate ? 'Template sent' : `${channelLabel} sent`, 'success');
         setReply('');
+        setMetaTplSid('');
+        setMetaVars({});
         if (replyChannel === 'email') setReplySubject('');
         setReplyAttachmentUrl(null);
         // PR 105: force re-pick of channel after every successful send.
@@ -1604,12 +1686,89 @@ export default function InboxPage() {
               />
             )}
           </div>
+          {/* WhatsApp only: the 24 hour rule and the way through it.
+              Outside the window a free-form message is accepted by Twilio and
+              killed later (63016), so saying it here beats a failed send. */}
+          {replyChannel === 'whatsapp' && (
+            <div className="flex flex-col gap-1.5" data-testid="inbox-wa-template-zone">
+              {!waOpen && (
+                <div
+                  data-testid="inbox-wa-window-closed"
+                  className="text-[11px] text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-lg px-2.5 py-1.5"
+                >
+                  This lead has not messaged in 24 hours, so WhatsApp will not deliver a normal
+                  reply.{' '}
+                  {metaTemplates.length > 0
+                    ? 'Send an approved template instead.'
+                    : 'You need a Meta approved template (Templates, WhatsApp tab).'}
+                </div>
+              )}
+              {metaTemplates.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={metaTplSid}
+                    onChange={(e) => chooseMetaTemplate(e.target.value)}
+                    disabled={sending}
+                    data-testid="inbox-wa-meta-template"
+                    className="px-2 py-1 text-[11px] bg-white border border-[#E5E7EB] rounded-[8px] disabled:opacity-60 max-w-[280px]"
+                    title="Approved templates can be sent at any time"
+                  >
+                    <option value="">Approved template (works outside 24h)</option>
+                    {metaTemplates.map((t) => (
+                      <option key={t.sid} value={t.sid}>{t.name}</option>
+                    ))}
+                  </select>
+                  {activeMetaTemplate && (
+                    <button
+                      type="button"
+                      onClick={() => chooseMetaTemplate('')}
+                      className="text-[11px] text-[#6B7280] hover:text-[#1A1A1A]"
+                    >
+                      Back to typing
+                    </button>
+                  )}
+                </div>
+              )}
+              {activeMetaTemplate && (
+                <div className="border border-[#E5E7EB] rounded-[10px] p-2.5 bg-[#F9FAFB] flex flex-col gap-2">
+                  {Object.keys(metaVars).length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {Object.keys(metaVars).sort((a, b) => Number(a) - Number(b)).map((n) => (
+                        <label key={n} className="flex items-center gap-1 text-[11px] text-[#6B7280]">
+                          {`{{${n}}}`}
+                          <input
+                            value={metaVars[n]}
+                            onChange={(e) => setMetaVars((v) => ({ ...v, [n]: e.target.value }))}
+                            data-testid={`inbox-wa-var-${n}`}
+                            className="px-2 py-1 text-[12px] bg-white border border-[#E5E7EB] rounded-[6px] w-[120px]"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <div
+                    data-testid="inbox-wa-template-preview"
+                    className="text-[13px] text-[#1A1A1A] whitespace-pre-wrap bg-white border border-[#E5E7EB] rounded-[8px] px-3 py-2"
+                  >
+                    {renderTemplate(activeMetaTemplate.body, metaVars)}
+                  </div>
+                  <div className="text-[10px] text-[#9CA3AF]">
+                    Fixed wording approved by Meta. Costs about 4p to send, unlike a normal reply.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Attach an image/file to the reply. UK numbers can't MMS, so
               wk-sms-send appends the link to the body text instead (see its
               own comment on attachment_url) — this button just has to get a
               public URL onto replyAttachmentUrl, same as ContactSmsModal's
               composer, the only other place this already existed. */}
-          {replyAttachmentUrl ? (
+          {/* Hidden entirely in template mode: a template is fixed wording
+              with no room for a file, so offering the paperclip would only
+              stage something that gets dropped. */}
+          {activeMetaTemplate ? null : replyAttachmentUrl ? (
             <div className="flex items-center gap-1 text-[11px] text-[#3C5A87] bg-[#EEF2F8] px-2 py-1 rounded-lg w-fit">
               <Paperclip className="w-3 h-3" />
               <a href={replyAttachmentUrl} target="_blank" rel="noopener noreferrer" className="truncate max-w-[300px] hover:underline">
@@ -1658,28 +1817,38 @@ export default function InboxPage() {
             )
           )}
           <div className="flex gap-2">
-            <input
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              placeholder={
-                replyChannel === null
-                  ? 'Pick a channel above to start typing…'
-                  : replyChannel === 'whatsapp'
-                    ? 'Type a WhatsApp reply…'
-                    : replyChannel === 'email'
-                      ? 'Type the email body…'
-                      : 'Type a reply…'
-              }
-              disabled={sending}
-              data-testid="inbox-reply-body"
-              className="flex-1 px-3 py-2 text-[13px] bg-[#F3F3EE] border-0 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#3C5A87]/30 disabled:opacity-60"
-            />
+            {/* With a template chosen there is nothing to type: the preview
+                above IS the message. */}
+            {activeMetaTemplate ? (
+              <div className="flex-1 px-3 py-2 text-[12px] text-[#6B7280] bg-[#F3F3EE] rounded-[10px]">
+                Sending the template shown above.
+              </div>
+            ) : (
+              <input
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                placeholder={
+                  replyChannel === null
+                    ? 'Pick a channel above to start typing'
+                    : replyChannel === 'whatsapp'
+                      ? 'Type a WhatsApp reply'
+                      : replyChannel === 'email'
+                        ? 'Type the email body'
+                        : 'Type a reply'
+                }
+                disabled={sending}
+                data-testid="inbox-reply-body"
+                className="flex-1 px-3 py-2 text-[13px] bg-[#F3F3EE] border-0 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#3C5A87]/30 disabled:opacity-60"
+              />
+            )}
             <button
               type="submit"
               disabled={
-                !reply.trim() ||
                 sending ||
                 !replyChannel ||
+                (activeMetaTemplate
+                  ? Object.values(metaVars).some((v) => !v.trim())
+                  : !reply.trim()) ||
                 (replyChannel === 'email' && !replySubject.trim())
               }
               data-testid="inbox-reply-send"
@@ -1687,7 +1856,7 @@ export default function InboxPage() {
               className="flex items-center gap-1.5 bg-[#3C5A87] text-white text-[13px] font-semibold px-4 rounded-[10px] hover:bg-[#3C5A87]/90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Send className="w-3.5 h-3.5" />
-              {sending ? 'Sending…' : 'Send'}
+              {sending ? 'Sending' : activeMetaTemplate ? 'Send template' : 'Send'}
             </button>
           </div>
         </form>

@@ -13,11 +13,24 @@ import { test, expect } from './helpers/auth'
 test.describe('whatsapp business admin panel', () => {
   test.skip(process.env.E2E_OWNER_READY !== '1', 'needs an admin account (E2E_OWNER_READY=1)')
 
-  test('admin sees Meta templates and the live sender profile', async ({ authedPage: page }) => {
+  test('templates, profile and quick replies are three SEPARATE cards', async ({ authedPage: page }) => {
     await page.goto('/admin/crm/templates')
     await page.getByRole('button', { name: 'WhatsApp', exact: true }).click()
 
-    await expect(page.getByTestId('wa-business-panel')).toBeVisible({ timeout: 20_000 })
+    // Hugo's complaint: one box with two Save buttons read as one form.
+    const templatesCard = page.getByTestId('wa-meta-templates-card')
+    const profileCard = page.getByTestId('wa-profile-card')
+    await expect(templatesCard).toBeVisible({ timeout: 20_000 })
+    await expect(profileCard).toBeVisible()
+    await expect(page.getByTestId('wa-quick-replies-card')).toBeVisible()
+    // Genuinely separate elements, not one nesting the other.
+    expect(await profileCard.evaluate(
+      (el, other) => el.contains(other as Node),
+      await templatesCard.elementHandle(),
+    )).toBe(false)
+    // The profile's Save lives inside the profile card only.
+    await expect(profileCard.getByTestId('wa-profile-save')).toBeVisible()
+    await expect(templatesCard.getByTestId('wa-profile-save')).toHaveCount(0)
 
     // Profile really came from Twilio: the display name field is populated
     // (the sender was registered as "HeyPubli"; assert non-empty, not the

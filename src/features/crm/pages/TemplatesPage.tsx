@@ -6,7 +6,8 @@ import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import TemplateList from '../components/templates/TemplateList';
 import AgreementTemplateList from '../components/templates/AgreementTemplateList';
 import VideoTemplateList from '../components/templates/VideoTemplateList';
-import WhatsAppBusinessPanel from '../components/templates/WhatsAppBusinessPanel';
+import WhatsAppMetaTemplates from '../components/templates/WhatsAppMetaTemplates';
+import WhatsAppProfileCard from '../components/templates/WhatsAppProfileCard';
 
 const TABS = [
   { id: 'sms', label: 'SMS', icon: MessageSquare },
@@ -19,6 +20,8 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
+
+const CARD = 'bg-white border border-[#E5E7EB] rounded-2xl p-5';
 
 export default function TemplatesPage() {
   const [activeTab, setActiveTab] = useState<TabId>('sms');
@@ -77,27 +80,46 @@ export default function TemplatesPage() {
         })}
       </div>
 
+      {/* One card per thing (Hugo 2026-08-03). The WhatsApp tab holds three
+          unrelated things with their own Save buttons; sharing a single box
+          made it look like saving the profile also saved the templates. */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto bg-white border border-[#E5E7EB] rounded-2xl p-5">
+        <div className="max-w-3xl mx-auto space-y-4">
           {activeTab === 'sms' && (
-            <TemplateList filterChannel="sms" isAdmin={isAdminOrWorkspaceAdmin} />
+            <section className={CARD}>
+              <TemplateList filterChannel="sms" isAdmin={isAdminOrWorkspaceAdmin} />
+            </section>
           )}
           {activeTab === 'whatsapp' && (
             <>
               {/* The Meta sender is shared workspace infrastructure, so only
-                  admins manage its profile + approved templates. */}
-              {isAdminOrWorkspaceAdmin && <WhatsAppBusinessPanel />}
-              <TemplateList filterChannel="whatsapp" isAdmin={isAdminOrWorkspaceAdmin} />
+                  admins manage its templates + profile. */}
+              {isAdminOrWorkspaceAdmin && <WhatsAppMetaTemplates />}
+              {isAdminOrWorkspaceAdmin && <WhatsAppProfileCard />}
+              <section className={CARD} data-testid="wa-quick-replies-card">
+                <h2 className="text-[15px] font-bold text-[#1A1A1A] mb-1">Quick replies</h2>
+                <p className="text-[11px] text-[#6B7280] leading-snug mb-3">
+                  Your own saved wording, for replying inside the 24 hour window. These are
+                  never seen by Meta and need no approval.
+                </p>
+                <TemplateList filterChannel="whatsapp" isAdmin={isAdminOrWorkspaceAdmin} />
+              </section>
             </>
           )}
           {activeTab === 'email' && (
-            <TemplateList filterChannel="email" isAdmin={isAdminOrWorkspaceAdmin} />
+            <section className={CARD}>
+              <TemplateList filterChannel="email" isAdmin={isAdminOrWorkspaceAdmin} />
+            </section>
           )}
           {activeTab === 'video' && (
-            <VideoTemplateList isAdmin={isAdminOrWorkspaceAdmin} />
+            <section className={CARD}>
+              <VideoTemplateList isAdmin={isAdminOrWorkspaceAdmin} />
+            </section>
           )}
           {activeTab === 'agreements' && (
-            <AgreementTemplateList isAdmin={isAdminOrWorkspaceAdmin} />
+            <section className={CARD}>
+              <AgreementTemplateList isAdmin={isAdminOrWorkspaceAdmin} />
+            </section>
           )}
         </div>
       </div>

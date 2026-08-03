@@ -45,6 +45,15 @@ interface SendBody {
    *  as SMS, the two numbers just get a whatsapp: prefix. Anything else (or
    *  absent) is plain SMS, exactly as before. */
   channel?: 'sms' | 'whatsapp';
+  /** 2026-08-03: send a Meta-APPROVED WhatsApp template (Twilio Content sid,
+   *  HX...). This is the ONLY thing that may open a conversation more than
+   *  24 hours after the lead's last message, so a template send deliberately
+   *  skips the 24h window check. It costs money per message (unlike a free
+   *  in-window reply), and Twilio kills an unapproved template send
+   *  ASYNCHRONOUSLY, so approval is verified here before spending. */
+  content_sid?: string;
+  /** Values for the template's {{1}}, {{2}} ... blanks, keyed by number. */
+  content_variables?: Record<string, string>;
 }
 
 // The one number registered with Meta as a WhatsApp Business sender (Twilio
@@ -77,6 +86,36 @@ function normalizeE164(raw: string): string {
 const countryClass = (e164: string): string =>
   e164.startsWith('+44') ? 'gb' : e164.startsWith('+1') ? 'na' : 'other';
 
+const TEMPLATE_VAR_RE = /\{\{\s*(\d+)\s*\}\}/g;
+
+/** Fill a template's {{1}}, {{2}} ... so the CRM stores what the lead
+ *  actually received, not the placeholder text. */
+function renderTemplate(body: string, vars: Record<string, string>): string {
+  return body.replace(TEMPLATE_VAR_RE, (_m, n: string) => vars[n] ?? '');
+}
+
+/** GET from Twilio, keeping the STATUS. "Twilio was rude to us" (429, 500,
+ *  bad creds, network) and "Twilio says that template does not exist" (404)
+ *  are different facts, and telling an agent their approved template is
+ *  missing because of a rate limit sends them off to rebuild it for nothing. */
+async function twilioGet(
+  url: string,
+): Promise<{ status: number; data: Record<string, unknown> | null }> {
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: 'Basic ' + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`) },
+    });
+    if (!res.ok) return { status: res.status, data: null };
+    try {
+      return { status: res.status, data: await res.json() };
+    } catch {
+      return { status: 0, data: null };
+    }
+  } catch {
+    return { status: 0, data: null };
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -100,8 +139,12 @@ serve(async (req: Request) => {
 
     const contactId = (payload.contact_id ?? '').trim();
     const body = (payload.body ?? '').trim();
+    const contentSid = (payload.content_sid ?? '').trim();
+    // A template send carries no free text: the wording is fixed by the
+    // version Meta approved, only the blanks travel.
+    const isTemplate = contentSid.length > 0;
     if (!contactId) return json(400, { error: 'contact_id required' });
-    if (!body) return json(400, { error: 'body required' });
+    if (!body && !isTemplate) return json(400, { error: 'body required' });
     if (body.length > 1600) return json(400, { error: 'body too long (max 1600 chars)' });
 
     // Resolve contact's phone.
@@ -246,9 +289,9 @@ serve(async (req: Request) => {
     // free-form message (201, queued) and only fails it asynchronously with
     // 63016, so waiting for the create call to error is waiting forever.
     // Refuse HERE, synchronously, when the lead has no inbound WhatsApp in
-    // the last 24 hours. (Business-initiated sends need an approved
-    // template; none exist yet.)
-    if (isWhatsApp) {
+    // the last 24 hours. An approved template is the ONE exception, which is
+    // exactly what it is for, so a template send skips this check.
+    if (isWhatsApp && !isTemplate) {
       const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
       const { data: lastIn } = await supa
         .from('wk_sms_messages')
@@ -277,6 +320,66 @@ serve(async (req: Request) => {
       return json(503, { error: 'Twilio creds not set on edge function secrets' });
     }
 
+    // Approved-template send: verify with Twilio BEFORE spending, because an
+    // unapproved template fails the same asynchronous way 63016 does (201
+    // queued, killed later), which reads as success in the UI. Two GETs cost
+    // a moment; a silently dropped message costs a lead.
+    const templateVars = payload.content_variables ?? {};
+    let renderedTemplate = '';
+    if (isTemplate) {
+      if (!isWhatsApp) {
+        return json(400, { error: 'Approved templates are a WhatsApp feature. Send SMS as normal text.' });
+      }
+      if (!/^HX[0-9a-f]{32}$/i.test(contentSid)) {
+        return json(400, { error: 'content_sid must be a Twilio Content sid (HX...)' });
+      }
+      if (payload.attachment_url) {
+        return json(400, { error: 'A template cannot carry an attachment. Send the file once the lead replies.' });
+      }
+      const approval = await twilioGet(
+        `https://content.twilio.com/v1/Content/${contentSid}/ApprovalRequests`,
+      );
+      if (approval.status === 404) {
+        return json(400, { error: 'That template no longer exists on the WhatsApp sender.' });
+      }
+      if (!approval.data) {
+        return json(502, {
+          error: 'Could not check that template with Twilio just now. Nothing was sent, try again in a moment.',
+        });
+      }
+      const waStatus = String(
+        ((approval.data.whatsapp ?? {}) as Record<string, unknown>).status ?? '',
+      ).toLowerCase();
+      if (waStatus !== 'approved') {
+        return json(400, {
+          error: waStatus
+            ? `That template is "${waStatus}" with Meta, not approved yet. Only an approved template can open a conversation.`
+            : 'That template has not been sent to Meta for approval yet.',
+        });
+      }
+      const content = await twilioGet(`https://content.twilio.com/v1/Content/${contentSid}`);
+      if (!content.data) {
+        return json(502, {
+          error: 'Could not read that template from Twilio just now. Nothing was sent, try again in a moment.',
+        });
+      }
+      const types = (content.data.types ?? {}) as Record<string, { body?: string }>;
+      const templateBody = String(types['twilio/text']?.body ?? '');
+      if (!templateBody) {
+        return json(502, { error: 'Could not read that template\'s wording from Twilio.' });
+      }
+      const needed = [...new Set(
+        [...templateBody.matchAll(TEMPLATE_VAR_RE)].map((m) => m[1]),
+      )];
+      const missing = needed.filter((n) => !(templateVars[n] ?? '').trim());
+      if (missing.length) {
+        return json(400, {
+          error: `Fill in every blank first (missing ${missing.map((n) => `{{${n}}}`).join(', ')}).`,
+        });
+      }
+      renderedTemplate = renderTemplate(templateBody, templateVars);
+    }
+
     // POST to Twilio Messages.create.
     // MMS (MediaUrl) only works in US/Canada. UK numbers get the
     // attachment as a clickable link appended to the body instead.
@@ -292,11 +395,18 @@ serve(async (req: Request) => {
     const form = new URLSearchParams({
       To: isWhatsApp ? `whatsapp:${toE164}` : toE164,
       From: isWhatsApp ? `whatsapp:${fromE164}` : fromE164,
-      Body: smsBody,
       // Delivery fate comes back through wk-sms-status and updates the row,
       // so 'queued' stops being a forever-state and the inbox ticks are real.
       StatusCallback: `${SUPABASE_URL}/functions/v1/wk-sms-status`,
     });
+    if (isTemplate) {
+      // ContentSid REPLACES Body: the approved wording lives at Meta, we only
+      // send its id and the blanks.
+      form.set('ContentSid', contentSid);
+      form.set('ContentVariables', JSON.stringify(templateVars));
+    } else {
+      form.set('Body', smsBody);
+    }
     const twResp = await fetch(url, {
       method: 'POST',
       headers: {
@@ -334,7 +444,9 @@ serve(async (req: Request) => {
         // row carries its channel like every other send path and the
         // inbox channel-glyph rendering is correct.
         channel: isWhatsApp ? 'whatsapp' : 'sms',
-        body,
+        // A template's row stores the FILLED-IN wording, so the thread shows
+        // what the lead read, not "Hi {{1}}".
+        body: isTemplate ? renderedTemplate : body,
         twilio_sid: twJson.sid ?? null,
         external_id: twJson.sid ?? null,
         from_e164: fromE164,

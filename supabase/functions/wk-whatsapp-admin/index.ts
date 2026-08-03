@@ -1,5 +1,5 @@
-// wk-whatsapp-admin — admin-only management of the ONE Meta-registered
-// WhatsApp Business sender (Hugo 2026-08-03).
+// wk-whatsapp-admin: management of the ONE Meta-registered WhatsApp Business
+// sender (Hugo 2026-08-03). Admin-only, except reading the template list.
 //
 // Two Twilio surfaces behind one function:
 //   - Senders API v2 (messaging.twilio.com/v2/Channels/Senders/{sid}):
@@ -83,7 +83,14 @@ const twilioError = (data: Record<string, unknown>): string =>
 
 // House rule: no long dashes, curly quotes or ellipsis characters in any
 // outbound copy. Rejected here so a template can never carry them to Meta.
-const BANNED_PUNCTUATION = /[–—‘’“”…]/;
+// Built from CODE POINTS so this guard does not itself contain the characters
+// it forbids: 2013 en dash, 2014 em dash, 2018/2019 curly single quotes,
+// 201C/201D curly doubles, 2026 ellipsis.
+const BANNED_PUNCTUATION = new RegExp(
+  `[${[0x2013, 0x2014, 0x2018, 0x2019, 0x201c, 0x201d, 0x2026]
+    .map((c) => String.fromCharCode(c))
+    .join('')}]`,
+);
 
 const VAR_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
 
@@ -304,13 +311,23 @@ serve(async (req: Request) => {
     const { data: userResp, error: userErr } = await supa.auth.getUser(jwt);
     if (userErr || !userResp?.user) return json(401, { error: 'Invalid token' });
 
-    // Admin only: the WhatsApp sender is shared workspace infrastructure.
+    // Changing the sender is admin-only: it is shared workspace
+    // infrastructure, one bad template or profile edit hits every agent.
+    // READING the template list is not, because an agent has to pick an
+    // approved template to send one (wk-sms-send does the send).
     const { data: adminRow } = await supa
       .from('admin_users')
       .select('email')
       .eq('email', userResp.user.email ?? '')
       .maybeSingle();
-    if (!adminRow) return json(403, { error: 'Admins only.' });
+    const { data: senderProfile } = await supa
+      .from('profiles')
+      .select('workspace_role')
+      .eq('id', userResp.user.id)
+      .maybeSingle();
+    const role = (senderProfile as { workspace_role?: string } | null)?.workspace_role ?? '';
+    const isAdmin = !!adminRow || role === 'admin';
+    if (!isAdmin && role !== 'agent') return json(403, { error: 'Staff only.' });
 
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
       return json(500, { error: 'Twilio credentials are not configured.' });
@@ -323,7 +340,13 @@ serve(async (req: Request) => {
       return json(400, { error: 'Invalid JSON' });
     }
 
-    switch (String(payload.action ?? '')) {
+    const action = String(payload.action ?? '');
+    // Everything except reading the template list changes shared state.
+    if (action !== 'template_list' && !isAdmin) {
+      return json(403, { error: 'Admins only.' });
+    }
+
+    switch (action) {
       case 'profile_get': return await profileGet();
       case 'profile_update': return await profileUpdate(payload);
       case 'template_list': return await templateList();

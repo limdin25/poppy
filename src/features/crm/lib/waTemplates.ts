@@ -1,11 +1,19 @@
 // Pure helpers for Meta WhatsApp template authoring (Hugo 2026-08-03).
 // The server-side twin (authoritative) lives in
-// supabase/functions/wk-whatsapp-admin/index.ts — keep the rules aligned.
+// supabase/functions/wk-whatsapp-admin/index.ts, keep the rules aligned.
 
 const VAR_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
 
 // House rule: no long dashes, curly quotes or ellipsis characters anywhere.
-const BANNED_PUNCTUATION = /[–—‘’“”…]/;
+// Built from CODE POINTS so this guard does not itself contain the characters
+// it forbids, which would make a repo-wide grep for them useless.
+//   2013 en dash, 2014 em dash, 2018/2019 curly single, 201C/201D curly double,
+//   2026 ellipsis.
+export const BANNED_CODEPOINTS = [0x2013, 0x2014, 0x2018, 0x2019, 0x201c, 0x201d, 0x2026];
+const BANNED_PUNCTUATION = new RegExp(
+  `[${BANNED_CODEPOINTS.map((c) => String.fromCharCode(c)).join('')}]`,
+);
+const CURLY_APOSTROPHE = String.fromCharCode(0x2019);
 
 /** Ordered unique variable tokens found in a template body ({{1}} -> "1"). */
 export function extractTemplateVars(body: string): string[] {
@@ -20,7 +28,8 @@ export function extractTemplateVars(body: string): string[] {
 export function slugTemplateName(raw: string): string {
   return raw
     .toLowerCase()
-    .replace(/['’]/g, '')
+    .split(CURLY_APOSTROPHE).join('')
+    .replace(/'/g, '')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 512);

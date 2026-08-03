@@ -39,8 +39,12 @@ describe('template validation (client twin of the edge fn)', () => {
   })
 
   it('refuses long dashes and curly quotes (house rule, machine-checked)', () => {
-    expect(templateProblem('t_1', 'Hi {{1}} — welcome')).toMatch(/straight punctuation/i)
-    expect(templateProblem('t_1', 'Hi {{1}}, you’re in')).toMatch(/straight punctuation/i)
+    // Fixtures built from code points so this file stays clean under a
+    // repo-wide grep for the very characters it is testing.
+    const ch = (c: number) => String.fromCharCode(c)
+    expect(templateProblem('t_1', `Hi {{1}} ${ch(0x2014)} welcome`)).toMatch(/straight punctuation/i)
+    expect(templateProblem('t_1', `Hi {{1}}, you${ch(0x2019)}re in`)).toMatch(/straight punctuation/i)
+    expect(templateProblem('t_1', `Hi {{1}}, wait${ch(0x2026)} ok`)).toMatch(/straight punctuation/i)
   })
 
   it('refuses bad names and oversize bodies', () => {
@@ -85,15 +89,121 @@ describe('wk-whatsapp-admin edge fn wiring', () => {
   })
 })
 
-describe('the Templates page mounts the panel for admins only', () => {
-  it('WhatsApp tab renders WhatsAppBusinessPanel behind the admin flag', () => {
-    const page = stripComments(read('src/features/crm/pages/TemplatesPage.tsx'))
-    expect(page).toMatch(/isAdminOrWorkspaceAdmin && <WhatsAppBusinessPanel \/>/)
+describe('the Templates page keeps each thing in its OWN card', () => {
+  // Hugo 2026-08-03: profile + templates shared one box with two Save
+  // buttons, so it read as one form ("looks like if I save the profile is
+  // gonna save the template"). Three separate cards now.
+  const page = stripComments(read('src/features/crm/pages/TemplatesPage.tsx'))
+
+  it('mounts the two admin cards separately, not one merged panel', () => {
+    expect(page).toMatch(/isAdminOrWorkspaceAdmin && <WhatsAppMetaTemplates \/>/)
+    expect(page).toMatch(/isAdminOrWorkspaceAdmin && <WhatsAppProfileCard \/>/)
+    expect(page).not.toMatch(/WhatsAppBusinessPanel/)
   })
 
-  it('the panel calls wk-whatsapp-admin and surfaces edge-fn error bodies', () => {
-    const panel = stripComments(read('src/features/crm/components/templates/WhatsAppBusinessPanel.tsx'))
-    expect(panel).toMatch(/functions\.invoke\('wk-whatsapp-admin'/)
-    expect(panel).toMatch(/error\.context\?\.clone\(\)\.json\(\)/)
+  it('each card is its own bordered box, stacked with spacing', () => {
+    expect(page).toMatch(/const CARD = 'bg-white border/)
+    expect(page).toMatch(/max-w-3xl mx-auto space-y-4/)
+    for (const testid of ['wa-meta-templates-card', 'wa-profile-card', 'wa-quick-replies-card']) {
+      const src = testid === 'wa-quick-replies-card'
+        ? page
+        : read(`src/features/crm/components/templates/${testid === 'wa-profile-card' ? 'WhatsAppProfileCard' : 'WhatsAppMetaTemplates'}.tsx`)
+      expect(src).toContain(testid)
+    }
+  })
+
+  it('the cards call wk-whatsapp-admin through one shared door that unwraps error bodies', () => {
+    const lib = stripComments(read('src/features/crm/lib/waAdmin.ts'))
+    expect(lib).toMatch(/functions\.invoke\('wk-whatsapp-admin'/)
+    expect(lib).toMatch(/error\.context\?\.clone\(\)\.json\(\)/)
+    for (const f of ['WhatsAppMetaTemplates', 'WhatsAppProfileCard']) {
+      const src = stripComments(read(`src/features/crm/components/templates/${f}.tsx`))
+      expect(src).toMatch(/callWaAdmin/)
+    }
+  })
+})
+
+describe('sending an approved template (wk-sms-send)', () => {
+  const send = stripComments(read('supabase/functions/wk-sms-send/index.ts'))
+
+  it('a template send SKIPS the 24h window, which is the entire point of it', () => {
+    expect(send).toMatch(/if \(isWhatsApp && !isTemplate\) \{/)
+  })
+
+  it('verifies Meta approval BEFORE spending (an unapproved send dies async, like 63016)', () => {
+    expect(send).toMatch(/ApprovalRequests/)
+    expect(send).toMatch(/waStatus !== 'approved'/)
+  })
+
+  it('ContentSid REPLACES Body, and the variables ride along as JSON', () => {
+    expect(send).toMatch(/form\.set\('ContentSid', contentSid\)/)
+    expect(send).toMatch(/form\.set\('ContentVariables', JSON\.stringify\(templateVars\)\)/)
+    // Body only on the non-template branch, else Twilio 400s.
+    expect(send).toMatch(/\} else \{\s*form\.set\('Body', smsBody\);/)
+  })
+
+  it('refuses a half-filled template rather than sending "Hi {{1}}"', () => {
+    expect(send).toMatch(/Fill in every blank first/)
+  })
+
+  it('stores the FILLED wording so the thread shows what the lead read', () => {
+    expect(send).toMatch(/body: isTemplate \? renderedTemplate : body/)
+  })
+
+  it('still honours every other gate: opt-out, lead lock, kill switch', () => {
+    expect(send).toMatch(/\.eq\('tag', 'do-not-text'\)/)
+    expect(send).toMatch(/wk_contact_locked_agent/)
+    expect(send).toMatch(/wk_outbound_sms_allowed/)
+  })
+
+  it('agents (not just admins) may LIST templates, since they send them', () => {
+    const admin = stripComments(read('supabase/functions/wk-whatsapp-admin/index.ts'))
+    expect(admin).toMatch(/action !== 'template_list' && !isAdmin/)
+  })
+})
+
+describe('the inbox composer offers the template when the window is shut', () => {
+  const inbox = stripComments(read('src/features/crm/pages/InboxPage.tsx'))
+
+  it('sends content_sid + content_variables, never a body, for a template', () => {
+    expect(inbox).toMatch(/content_sid: activeMetaTemplate!\.sid/)
+    expect(inbox).toMatch(/content_variables: metaVars/)
+  })
+
+  it('warns before the send fails, instead of after', () => {
+    expect(inbox).toMatch(/inbox-wa-window-closed/)
+    expect(inbox).toMatch(/has not messaged in 24 hours/)
+  })
+
+  it('only offers APPROVED templates', () => {
+    expect(inbox).toMatch(/\.filter\(isApproved\)/)
+  })
+
+  it('prefills the person, not the company (contact.name is the business)', () => {
+    expect(inbox).toMatch(/customFields\?\.owner_name/)
+  })
+
+  // Review-caught (three lenses independently): the attach control stayed
+  // live in template mode, but the template branch sends no attachment_url,
+  // so a staged file was dropped while the toast said "Template sent".
+  it('cannot stage a file against a template: the paperclip is hidden and any staged file cleared', () => {
+    expect(inbox).toMatch(/if \(tpl\) setReplyAttachmentUrl\(null\)/)
+    expect(inbox).toMatch(/activeMetaTemplate \? null : replyAttachmentUrl \?/)
+  })
+})
+
+describe('a Twilio hiccup is not reported as a missing template', () => {
+  const send = stripComments(read('supabase/functions/wk-sms-send/index.ts'))
+
+  it('twilioGet keeps the status, so 404 and 429 are told apart', () => {
+    expect(send).toMatch(/Promise<\{ status: number; data: Record<string, unknown> \| null \}>/)
+    expect(send).toMatch(/approval\.status === 404/)
+  })
+
+  it('an unreachable Twilio says "try again", never "that template does not exist"', () => {
+    expect(send).toMatch(/Could not check that template with Twilio just now/)
+    expect(send).toMatch(/Could not read that template from Twilio just now/)
+    // Both must promise nothing was sent, because nothing was.
+    expect((send.match(/Nothing was sent, try again in a moment/g) ?? []).length).toBe(2)
   })
 })
