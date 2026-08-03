@@ -39,6 +39,45 @@ const money = () =>
     .filter((t) => /^\$[\d,]+$/.test(t))
     .map((t) => Number(t.replace(/[$,]/g, "")));
 
+describe("EarningsCalculator without any animation at all", () => {
+  /* A hidden document computes no intersections and runs no frames, so a page opened in
+     a background tab gets neither the observer nor a single rAF tick. The figures must
+     still be right: this shipped once rendering "$0 to $0 a month". */
+  it("still shows the real figures when nothing ever fires", () => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+
+    render(<EarningsCalculator />);
+    expect(money()).toEqual([90, 280]);
+    expect(screen.queryByText("$0")).toBeNull();
+  });
+
+  it("still draws the chart when nothing ever fires", () => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+
+    const { container } = render(<EarningsCalculator />);
+    const paths = container.querySelectorAll("svg path");
+    expect(paths.length).toBeGreaterThan(0);
+    paths.forEach((p) => expect(p.getAttribute("d")).toBeTruthy());
+  });
+});
+
 describe("EarningsCalculator", () => {
   it("asks only two questions and never exposes a rate to edit", () => {
     const { container } = render(<EarningsCalculator />);

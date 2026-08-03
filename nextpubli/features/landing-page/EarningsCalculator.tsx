@@ -14,19 +14,26 @@ const MONTHS = 12;
 const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 
 /** Counts a number up when it changes, so a new answer feels given rather than
- *  recalculated. Respects prefers-reduced-motion by landing on the value immediately. */
+ *  recalculated.
+ *
+ *  The animation is decoration and the number is not, so this NEVER gates the value:
+ *  `shown` is null unless a frame loop is actually mid-flight, and the real figure is
+ *  returned the rest of the time. An earlier version returned 0 until an observer fired,
+ *  which meant a page opened in a background tab rendered "$0 to $0 a month", because a
+ *  hidden document computes no intersections and fires no frames. */
 function useCountUp(target: number, play: boolean) {
-  const [shown, setShown] = useState(play ? target : 0);
+  const [shown, setShown] = useState<number | null>(null);
   const fromRef = useRef(0);
 
   useEffect(() => {
-    if (!play) return;
+    if (!play) {
+      fromRef.current = target;
+      return;
+    }
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-    // Reduced motion is a zero-length animation rather than a separate branch, so the
-    // value still lands from inside the frame callback instead of synchronously here.
     const from = fromRef.current;
     const start = performance.now();
     const duration = reduce ? 0 : 700;
@@ -34,12 +41,13 @@ function useCountUp(target: number, play: boolean) {
 
     const tick = (now: number) => {
       const t = duration === 0 ? 1 : Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setShown(from + (target - from) * eased);
       if (t < 1) {
+        const eased = 1 - Math.pow(1 - t, 3);
+        setShown(from + (target - from) * eased);
         frame = requestAnimationFrame(tick);
       } else {
         fromRef.current = target;
+        setShown(null); // hand the figure back to the plain, always-correct value
       }
     };
 
@@ -47,22 +55,14 @@ function useCountUp(target: number, play: boolean) {
     return () => cancelAnimationFrame(frame);
   }, [target, play]);
 
-  return play ? shown : 0;
+  return shown ?? target;
 }
 
 /* The snowball chart. A filled band between the low and high estimate for each month,
    drawn with two plain SVG paths on a 0..100 viewBox so it scales to any card width.
    The band widening to the right is the honest part: it is not decoration, it is the
    range genuinely growing as the numbers get less certain. */
-function SnowballChart({
-  lows,
-  highs,
-  play,
-}: {
-  lows: number[];
-  highs: number[];
-  play: boolean;
-}) {
+function SnowballChart({ lows, highs }: { lows: number[]; highs: number[] }) {
   const max = Math.max(...highs, 1);
   const x = (i: number) => (i / (MONTHS - 1)) * 100;
   const y = (v: number) => 100 - (v / max) * 92;
@@ -107,31 +107,19 @@ function SnowballChart({
             <stop offset="50%" stopColor="#E1306C" />
             <stop offset="100%" stopColor="#C13584" />
           </linearGradient>
-          <clipPath id="snowball-reveal">
-            <rect x="0" y="0" width={play ? 100 : 0} height="100">
-              <animate
-                attributeName="width"
-                from="0"
-                to="100"
-                dur="0.9s"
-                fill="freeze"
-                begin={play ? "0s" : "indefinite"}
-              />
-            </rect>
-          </clipPath>
         </defs>
 
-        <g clipPath="url(#snowball-reveal)">
-          <path d={band} fill="url(#snowball-band)" />
-          <path
-            d={`M${mid}`}
-            fill="none"
-            stroke="url(#snowball-line)"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        </g>
+        {/* Drawn unconditionally. The chart is the answer, so it never waits on a
+            trigger that a hidden tab or an old browser might never deliver. */}
+        <path d={band} fill="url(#snowball-band)" />
+        <path
+          d={`M${mid}`}
+          fill="none"
+          stroke="url(#snowball-line)"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
 
       <div className="mt-2 flex justify-between text-[10px] text-foreground-secondary sm:text-xs">
@@ -332,7 +320,7 @@ export function EarningsCalculator() {
                 {copy.chartTitle}
               </span>
               <div className="mt-4">
-                <SnowballChart lows={lows} highs={highs} play={play} />
+                <SnowballChart lows={lows} highs={highs} />
               </div>
               <p className="mt-2 text-xs text-foreground-secondary">
                 {copy.chartFootnote}
