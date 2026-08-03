@@ -175,49 +175,35 @@ export const landingCopy = {
     title: "How it works",
     subtitle:
       "The deal is blunt. You bring the Instagram account. We bring the ultra realistic AI content and the monetization strategy. We do the heavy lifting, you provide the platform.",
-    // Four steps, three short lines each. Two steps carry the money on purpose: 03 says
-    // whose link is in the post, 04 says what the link pays and how it reaches you.
-    // Every line stays short because a large share of this audience reads English as a
-    // second language, on a phone.
+    // Four steps, one flowing paragraph each. It was three separate centred lines per
+    // step, which read as three unrelated fragments rather than a description.
+    //
+    // The niche question lives in ONBOARDING, which runs after Instagram is connected,
+    // so it belongs in step 03 and not in step 01. Keep it there: a step that promises
+    // something happening two steps later is just wrong.
     steps: [
       {
         number: "01",
         title: "Create your free account",
-        lines: [
-          "Sign up in two minutes. No card, nothing to pay.",
-          "Tell us your niche so the videos suit your audience.",
-          "You never create content again.",
-        ],
+        body: "Sign up with your name, email and mobile. It takes about two minutes, there is no card and nothing to pay.",
         icon: "/steps/step1.webp",
       },
       {
         number: "02",
         title: "Connect your Instagram",
-        lines: [
-          "Link any account: old, quiet, big or small.",
-          "It takes one tap and you stay in control.",
-          "Disconnect any time. That is your only job.",
-        ],
+        body: "Link any Instagram account, old or quiet, big or small. One tap, you stay in control, and you can disconnect whenever you want.",
         icon: "/steps/step2.webp",
       },
       {
         number: "03",
         title: "We post with your link",
-        lines: [
-          "Two ultra realistic AI videos a day, every day.",
-          "Every post carries your own affiliate link.",
-          "You approve the style, we do the heavy lifting.",
-        ],
+        body: "You tell us your niche, then two ultra realistic AI videos go out every day, each one carrying your own affiliate link. You approve the style and we do the rest.",
         icon: "/steps/step3.webp",
       },
       {
         number: "04",
         title: "You keep 40%",
-        lines: [
-          "Every sale through your link pays you 40%.",
-          "That is $43.20 on every $108 subscription.",
-          "Paid to the account you register.",
-        ],
+        body: "Every sale made through your link pays you 40%, which is $43.20 on every $108 subscription, paid to the account you register.",
         icon: "/steps/step4.webp",
       },
     ],

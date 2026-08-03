@@ -337,16 +337,11 @@ function HowItWorks() {
                 {step.title}
               </h3>
 
-              <div className="mt-2 space-y-0.5">
-                {step.lines.map((line) => (
-                  <p
-                    key={line}
-                    className="text-sm leading-relaxed text-foreground-secondary sm:text-base"
-                  >
-                    {line}
-                  </p>
-                ))}
-              </div>
+              {/* One paragraph, not a stack of centred fragments. Capped so the four
+                  columns stay the same optical width instead of one running wide. */}
+              <p className="mt-2 max-w-[34ch] text-sm leading-relaxed text-foreground-secondary sm:text-base">
+                {step.body}
+              </p>
             </div>
           ))}
         </div>
