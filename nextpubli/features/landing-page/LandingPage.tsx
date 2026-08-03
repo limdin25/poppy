@@ -314,15 +314,15 @@ function HowItWorks() {
               key={step.number}
               className="relative flex flex-col items-center px-2 text-center"
             >
-              <div className="relative z-10 h-[88px] w-[88px] shrink-0 rounded-[22px] bg-background-secondary p-1">
-                <Image
-                  src={step.icon}
-                  alt=""
-                  width={512}
-                  height={512}
-                  className="h-full w-full rounded-[20px]"
-                />
-              </div>
+              {/* The icons carry their own transparent rounded corners, so no wrapper
+                  background is needed. A padded wrapper produced a visible halo. */}
+              <Image
+                src={step.icon}
+                alt=""
+                width={512}
+                height={512}
+                className="relative z-10 h-[88px] w-[88px] shrink-0"
+              />
 
               <div className="mt-5 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
                 {step.number}
