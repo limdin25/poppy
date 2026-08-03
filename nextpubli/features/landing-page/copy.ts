@@ -252,7 +252,12 @@ export const landingCopy = {
   footer: {
     description:
       "HeyPubli is the platform that puts your Instagram to work: ultra realistic AI content posted twice a day, 40% commission on every sale, and a system that compounds the longer you run it.",
-    address: "HeyPubli Ltda. | Rua Augusta, 1234, Sala 56, São Paulo, SP, 01304-001",
+    // Statutory trading disclosure. A UK company must show its registered name, company
+    // number, place of registration and registered office on its website. The address
+    // here used to be a Brazilian one inherited from the original site, which was both
+    // wrong and a compliance failure. Do not shorten it.
+    address:
+      "ULINC UNICO GROUP LTD, trading as HeyPubli. Registered in England and Wales, company number 11197856. Registered office: 483 Green Lanes, London, England, N13 4BS.",
     columns: {
       platform: {
         title: "Platform",

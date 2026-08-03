@@ -13,10 +13,16 @@ export function PrivacyContent() {
       <section>
         <h2 className="text-base font-semibold text-foreground">1. Who we are</h2>
         <p className="mt-1">
-          HeyPubli is a creator platform operated by Ulinc Group. We post AI generated
-          video content to creators&apos; Instagram accounts and pay commission on sales
-          made through their affiliate links. If you have any question about your data,
-          write to{" "}
+          HeyPubli is a creator platform operated by{" "}
+          <strong>ULINC UNICO GROUP LTD</strong>, a company registered in England and
+          Wales under company number <strong>11197856</strong>, trading as HeyPubli. Our
+          registered office is 483 Green Lanes, London, England, N13 4BS. We are the data
+          controller for the information described below.
+        </p>
+        <p className="mt-2">
+          We post AI generated video content to creators&apos; Instagram accounts and pay
+          commission on sales made through their affiliate links. If you have any question
+          about your data, write to{" "}
           <a href="mailto:hello@heypubli.com" className="font-medium text-accent">
             hello@heypubli.com
           </a>
