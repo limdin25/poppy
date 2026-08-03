@@ -9,7 +9,7 @@ import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useViewAs } from '@/features/crm/lib/ViewAsContext';
 
-interface AgentOpt { id: string; name: string }
+interface AgentOpt { id: string; name: string; email: string }
 
 export default function ViewAsSelector() {
   const { isAdmin, loading } = useAuth();
@@ -24,12 +24,19 @@ export default function ViewAsSelector() {
     void (async () => {
       const { data } = await supabase
         .from('profiles')
-        .select('id, name, workspace_role')
+        .select('id, name, email, workspace_role')
         .in('workspace_role', ['agent', 'admin'])
         .order('name');
       setAgents(
-        ((data ?? []) as Array<{ id: string; name: string | null }>)
-          .map((p) => ({ id: p.id, name: (p.name || '').trim() || 'Unnamed agent' })),
+        // Email shown under the name: the workspace has THREE profiles called
+        // "Hugo" (2026-08-03), and Hugo picked the wrong one, then spent ten
+        // minutes wondering where his WhatsApp thread went.
+        ((data ?? []) as Array<{ id: string; name: string | null; email: string | null }>)
+          .map((p) => ({
+            id: p.id,
+            name: (p.name || '').trim() || 'Unnamed agent',
+            email: (p.email || '').trim(),
+          })),
       );
     })();
   }, [open, agents.length]);
@@ -92,10 +99,15 @@ export default function ViewAsSelector() {
               <button
                 key={a.id}
                 onClick={() => pick(a.id, a.name)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[13px] hover:bg-[#F3F3EE] text-left"
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-[13px] hover:bg-[#F3F3EE] text-left"
               >
-                <span className="flex-1 truncate">{a.name}</span>
-                {viewAsId === a.id && <Check className="w-4 h-4 text-[#3C5A87]" />}
+                <span className="flex-1 min-w-0">
+                  <span className="block truncate">{a.name}</span>
+                  {a.email && (
+                    <span className="block truncate text-[10.5px] text-[#9CA3AF]">{a.email}</span>
+                  )}
+                </span>
+                {viewAsId === a.id && <Check className="w-4 h-4 flex-shrink-0 text-[#3C5A87]" />}
               </button>
             ))
           )}

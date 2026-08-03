@@ -447,8 +447,9 @@ export default function InboxPage() {
   const aiStatus = useAiReplyStatus();
   const { isAdmin } = useAuth();
   // For the empty state only: an admin impersonating an agent needs to be
-  // TOLD the view is scoped, or an empty filter reads as a bug.
-  const { viewAsId, viewAsName } = useViewAs();
+  // TOLD the view is scoped, or an empty filter reads as a bug, and given a
+  // one-click way OUT (hunting for the top-bar control cost Hugo ten minutes).
+  const { viewAsId, viewAsName, setViewAs } = useViewAs();
 
   // One pass: decorate, drop what this filter hides, then order.
   //
@@ -1207,11 +1208,18 @@ export default function InboxPage() {
                 : 'No conversations yet.'}
               {/* Hugo 2026-08-03: he filtered WA while impersonating Maria and
                   got a bare "No conversations yet", which read as broken. The
-                  view WAS the reason: say so instead of shrugging. */}
+                  view WAS the reason: say so, and undo it in one click. */}
               {isAdmin && viewAsId && (
                 <div data-testid="inbox-empty-viewas-hint" className="mt-2 text-[11.5px] text-[#B45309]">
-                  You are seeing only {viewAsName || 'this agent'}&apos;s leads.
-                  Set &quot;See as&quot; (top bar) back to Everyone for the whole workspace.
+                  <div>You are seeing only {viewAsName || 'this agent'}&apos;s leads.</div>
+                  <button
+                    type="button"
+                    data-testid="inbox-empty-viewas-reset"
+                    onClick={() => setViewAs(null, null)}
+                    className="mt-1.5 px-2.5 py-1 text-[11px] font-semibold rounded-[8px] bg-[#3C5A87] text-white hover:bg-[#3C5A87]/90"
+                  >
+                    Show everyone&apos;s leads
+                  </button>
                 </div>
               )}
             </div>
