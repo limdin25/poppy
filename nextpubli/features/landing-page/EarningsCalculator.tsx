@@ -207,7 +207,9 @@ export function EarningsCalculator() {
           ))}
         </div>
 
-        <div className="mt-10 grid gap-6 lg:grid-cols-5">
+        {/* items-start, or the short question card stretches to the height of the tall
+            result card and leaves a large empty box beside it. */}
+        <div className="mt-10 grid items-start gap-6 lg:grid-cols-5">
           {/* Two questions. Both are things the visitor already knows about themselves,
               so nothing here needs working out. */}
           <div className="rounded-2xl border border-border bg-white p-6 sm:p-7 lg:col-span-2">

@@ -13,6 +13,7 @@ import { demoVideos } from "./demoVideos";
 export function DemoWall() {
   const copy = landingCopy.demos;
   const [soundOn, setSoundOn] = useState<number | null>(null);
+  const [playing, setPlaying] = useState<Record<number, boolean>>({});
   const refs = useRef<Array<HTMLVideoElement | null>>([]);
 
   useEffect(() => {
@@ -37,6 +38,19 @@ export function DemoWall() {
 
     nodes.forEach((node) => observer.observe(node));
     return () => observer.disconnect();
+  }, []);
+
+  /* Autoplay is a convenience, never the only way in. A hidden tab computes no
+     intersections and a browser can refuse autoplay outright, and in either case the
+     clip would otherwise sit on its poster with no control to press. */
+  const togglePlay = useCallback((index: number) => {
+    const video = refs.current[index];
+    if (!video) return;
+    if (video.paused) {
+      void video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
   }, []);
 
   const toggleSound = useCallback((index: number) => {
@@ -86,8 +100,30 @@ export function DemoWall() {
                   loop
                   playsInline
                   aria-label={demo.note}
-                  className="aspect-[9/16] w-full object-cover"
+                  onClick={() => togglePlay(i)}
+                  onPlay={() => setPlaying((p) => ({ ...p, [i]: true }))}
+                  onPause={() => setPlaying((p) => ({ ...p, [i]: false }))}
+                  className="aspect-[9/16] w-full cursor-pointer object-cover"
                 />
+
+                {!playing[i] && (
+                  <button
+                    type="button"
+                    onClick={() => togglePlay(i)}
+                    aria-label={copy.playLabel}
+                    className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors hover:bg-black/20"
+                  >
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-lg">
+                      <svg
+                        className="ml-0.5 h-5 w-5 text-foreground"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </span>
+                  </button>
+                )}
 
                 <button
                   type="button"

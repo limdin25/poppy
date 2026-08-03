@@ -47,6 +47,21 @@ describe("DemoWall", () => {
     expect(videos.filter((v) => !v.muted)).toHaveLength(1);
   });
 
+  it("offers a play control on every clip, so autoplay is never the only way in", () => {
+    render(<DemoWall />);
+    // No IntersectionObserver callback and no autoplay: the poster must still be
+    // playable by hand or the wall is four dead images.
+    expect(screen.getAllByRole("button", { name: /play this clip/i })).toHaveLength(
+      demoVideos.length,
+    );
+  });
+
+  it("plays the clip when its play control is pressed", () => {
+    render(<DemoWall />);
+    fireEvent.click(screen.getAllByRole("button", { name: /play this clip/i })[2]);
+    expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalled();
+  });
+
   it("tapping the same clip again mutes it", () => {
     const { container } = render(<DemoWall />);
     fireEvent.click(screen.getAllByRole("button", { name: /turn sound on/i })[0]);

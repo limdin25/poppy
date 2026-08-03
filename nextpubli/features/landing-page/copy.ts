@@ -169,6 +169,7 @@ export const landingCopy = {
     footnote: "Tap the speaker on any clip to turn the sound on.",
     unmuteLabel: "Turn sound on",
     muteLabel: "Turn sound off",
+    playLabel: "Play this clip",
   },
   howItWorks: {
     title: "How it works",
