@@ -297,12 +297,14 @@ function HowItWorks() {
           {landingCopy.howItWorks.subtitle}
         </p>
 
-        <div className="relative mt-12 grid gap-12 md:mt-20 md:grid-cols-3 md:gap-8 lg:gap-16">
-          {/* The thread sits at the icons' centre line and stops short of the outer
-              edges so it reads as a link between them, not a rule across the page. */}
+        <div className="relative mt-12 grid gap-12 sm:grid-cols-2 sm:gap-10 md:mt-20 md:grid-cols-4 md:gap-6 lg:gap-10">
+          {/* The thread runs from the centre of the first icon to the centre of the last,
+              so it reads as a link between them rather than a rule across the page. Four
+              columns means each is 25% wide, putting those centres at 12.5% in from each
+              edge. It is hidden below md, where the steps stack. */}
           <div
             aria-hidden
-            className="absolute top-11 right-[16%] left-[16%] hidden h-px md:block"
+            className="absolute top-11 right-[12.5%] left-[12.5%] hidden h-px md:block"
             style={{
               backgroundImage:
                 "linear-gradient(to right, transparent, #67E8F9 12%, #22D3EE 50%, #67E8F9 88%, transparent)",
