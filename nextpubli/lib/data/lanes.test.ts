@@ -1,10 +1,47 @@
 import { describe, it, expect } from "vitest";
 import {
   decideLane,
+  timezoneForPhone,
   whatsappMarketingAllowed,
   withinSendingHours,
   NURTURE_PLAN,
 } from "./lanes";
+
+describe("timezoneForPhone", () => {
+  it("reads the country from the dialling code", () => {
+    expect(timezoneForPhone("+447863992555")).toBe("Europe/London");
+    expect(timezoneForPhone("+5511987654321")).toBe("America/Sao_Paulo");
+    expect(timezoneForPhone("+12125551234")).toBe("America/New_York");
+    expect(timezoneForPhone("+61412345678")).toBe("Australia/Sydney");
+  });
+
+  it("prefers the longest matching code, so +353 is not read as +3", () => {
+    expect(timezoneForPhone("+353871234567")).toBe("Europe/Dublin");
+    expect(timezoneForPhone("+34612345678")).toBe("Europe/Madrid");
+    expect(timezoneForPhone("+2348012345678")).toBe("Africa/Lagos");
+    expect(timezoneForPhone("+27821234567")).toBe("Africa/Johannesburg");
+  });
+
+  it("falls back to UTC rather than guessing confidently wrong", () => {
+    expect(timezoneForPhone(null)).toBe("UTC");
+    expect(timezoneForPhone("")).toBe("UTC");
+    expect(timezoneForPhone("+9991234567")).toBe("UTC");
+  });
+
+  it("tolerates a number stored without its plus", () => {
+    expect(timezoneForPhone("447863992555")).toBe("Europe/London");
+  });
+
+  /* The bug this replaced: one hardcoded timezone for a worldwide list. At 09:00 in Sao
+     Paulo it is noon in London and 04:00 in California, so the old gate opened the day
+     in the middle of somebody's night. */
+  it("keeps a UK and a US number out of the middle of their night", () => {
+    // 08:00 UTC: 08:00 London (in hours), 00:00 in California (must not send).
+    const morningUtc = new Date("2026-08-03T08:00:00Z");
+    expect(withinSendingHours(morningUtc, timezoneForPhone("+447863992555"))).toBe(true);
+    expect(withinSendingHours(morningUtc, timezoneForPhone("+13105551234"))).toBe(false);
+  });
+});
 
 describe("decideLane", () => {
   it("inserts a brand new lead in whatever lane it arrived through", () => {

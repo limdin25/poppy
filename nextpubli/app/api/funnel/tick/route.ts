@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   NURTURE_PLAN,
+  timezoneForPhone,
   whatsappMarketingAllowed,
   withinSendingHours,
 } from "@/lib/data/lanes";
@@ -184,13 +185,16 @@ async function runNurture(
       continue;
     }
 
-    // Business hours in the lead's timezone (default Sao Paulo).
-    if (!withinSendingHours(new Date(), "America/Sao_Paulo")) {
+    const phone = lead.whatsapp_e164 ?? lead.whatsapp;
+
+    // Business hours where the lead actually is, guessed from their dialling code. This
+    // was hardcoded to Sao Paulo for every lead, which on a worldwide list means 23:00 in
+    // the UK and 04:00 on the US west coast.
+    if (!withinSendingHours(new Date(), timezoneForPhone(phone))) {
       report.deferred++;
       continue; // nurture_next_at stays put; the next in-hours tick picks it up.
     }
 
-    const phone = lead.whatsapp_e164 ?? lead.whatsapp;
     const waAllowed =
       settings.whatsapp_enabled &&
       Boolean(phone) &&

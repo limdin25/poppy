@@ -117,6 +117,62 @@ export const NURTURE_PLAN: NurtureStep[] = [
   { step: 3, afterHours: 168, channel: "whatsapp", templateKey: "heypubli_nudge_connect", skipAtOrPast: "connected" },
 ];
 
+/* A representative timezone per country calling code. Not exact, because big countries
+   span several zones, but this is only ever used to keep a marketing message out of the
+   middle of somebody's night, and for that being an hour or two out does not matter.
+
+   This exists because the tick used to pass a hardcoded America/Sao_Paulo for every lead
+   on earth while its comment claimed it used the lead's timezone. On a worldwide list
+   that texts a UK lead at 23:00 and a US west coast lead at 04:00. */
+const DIAL_CODE_TIMEZONES: ReadonlyArray<readonly [string, string]> = [
+  ["+44", "Europe/London"],
+  ["+353", "Europe/Dublin"],
+  ["+351", "Europe/Lisbon"],
+  ["+34", "Europe/Madrid"],
+  ["+33", "Europe/Paris"],
+  ["+49", "Europe/Berlin"],
+  ["+39", "Europe/Rome"],
+  ["+31", "Europe/Amsterdam"],
+  ["+48", "Europe/Warsaw"],
+  ["+90", "Europe/Istanbul"],
+  ["+55", "America/Sao_Paulo"],
+  ["+52", "America/Mexico_City"],
+  ["+54", "America/Argentina/Buenos_Aires"],
+  ["+56", "America/Santiago"],
+  ["+57", "America/Bogota"],
+  ["+51", "America/Lima"],
+  ["+1", "America/New_York"],
+  ["+27", "Africa/Johannesburg"],
+  ["+234", "Africa/Lagos"],
+  ["+254", "Africa/Nairobi"],
+  ["+20", "Africa/Cairo"],
+  ["+91", "Asia/Kolkata"],
+  ["+92", "Asia/Karachi"],
+  ["+62", "Asia/Jakarta"],
+  ["+63", "Asia/Manila"],
+  ["+60", "Asia/Kuala_Lumpur"],
+  ["+66", "Asia/Bangkok"],
+  ["+84", "Asia/Ho_Chi_Minh"],
+  ["+65", "Asia/Singapore"],
+  ["+971", "Asia/Dubai"],
+  ["+61", "Australia/Sydney"],
+  ["+64", "Pacific/Auckland"],
+];
+
+// Longest prefix first, so +353 is never swallowed by +3 style partial matches.
+const DIAL_CODES_BY_LENGTH = [...DIAL_CODE_TIMEZONES].sort(
+  (a, b) => b[0].length - a[0].length,
+);
+
+/** Best guess at where a number sleeps. Unknown country falls back to UTC, which is a
+ *  neutral middle rather than a guess that is confidently wrong. */
+export function timezoneForPhone(e164: string | null | undefined): string {
+  if (!e164) return "UTC";
+  const normalised = e164.startsWith("+") ? e164 : `+${e164.replace(/\D/g, "")}`;
+  const hit = DIAL_CODES_BY_LENGTH.find(([code]) => normalised.startsWith(code));
+  return hit ? hit[1] : "UTC";
+}
+
 /**
  * 09:00 to 20:00 in the lead's timezone. A 3am WhatsApp is a block-button generator, and
  * blocks are exactly what the quality rating measures.
