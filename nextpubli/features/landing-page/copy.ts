@@ -6,26 +6,29 @@ export const landingCopy = {
     cta: "Get started",
   },
   hero: {
-    title: "Monetize your talent and earn with",
-    titleHighlight: "top brands",
+    title: "Your Instagram could be",
+    titleHighlight: "earning while you sleep",
     subtitle:
-      "Connect your Instagram, receive ready-made content from partner brands and earn up to 50% commission on every sale. All automatic, no need to create anything.",
+      "Connect your account and we post ultra realistic AI video on your behalf. Every sale made through your link pays you 40% commission. You create nothing, you approve everything.",
     cta: "Get started",
   },
+  // Product facts, not invented totals. Every line here is something the platform
+  // actually does, so there is nothing a recruit can later catch us out on.
   stats: {
     items: [
       {
-        value: "2,500+",
+        value: "40%",
+        description: "Commission on every sale made through your affiliate link",
+      },
+      {
+        value: "100%",
         description:
-          "Active creators monetizing their Instagram with partner brands",
+          "Automatic posting. Content goes to your feed and stories without you lifting a finger",
       },
       {
-        value: "R$ 4M+",
-        description: "Paid out in commissions to creators since 2024",
-      },
-      {
-        value: "85+",
-        description: "Partner brands from every sector of the Brazilian market",
+        value: "1 prompt",
+        description:
+          "Is all it takes. The AI video below was generated from a single text prompt",
       },
     ],
   },
@@ -33,9 +36,9 @@ export const landingCopy = {
     title: "Why join NextPubli?",
     items: [
       {
-        title: "A wide range of partner brands",
+        title: "An account gathering dust is money on the table",
         description:
-          "Work with top Brazilian brands across fashion, beauty, food, tech and more.",
+          "Old account, quiet account, side account. If it has followers, it can work. We bring the content, you bring the audience.",
         icon: "brands" as const,
       },
       {
@@ -45,9 +48,9 @@ export const landingCopy = {
         icon: "auto" as const,
       },
       {
-        title: "Guaranteed payments",
+        title: "40% commission, clean and simple",
         description:
-          "Earn up to 50% commission on every sale. Paid directly via Hotmart, no red tape.",
+          "Every sale made through your affiliate link pays you 40%. No tiers to decode, no fine print.",
         icon: "payment" as const,
       },
       {
@@ -62,11 +65,11 @@ export const landingCopy = {
     title: "How you earn with NextPubli",
     items: [
       {
-        text: "Receive automatic posts from partner brands on your Instagram feed and stories",
+        text: "Receive automatic posts of viral AI content on your Instagram feed and stories",
         icon: "instagram" as const,
       },
       {
-        text: "Earn up to 50% recurring commission on every sale made through your affiliate link",
+        text: "Earn 40% recurring commission on every sale made through your affiliate link",
         icon: "money" as const,
       },
       {
@@ -108,41 +111,40 @@ export const landingCopy = {
       { name: "Travel & Tourism", emoji: "✈️" },
     ],
   },
-  testimonials: [
-    {
-      name: "Camila Rodrigues",
-      handle: "@camilarodrigues",
-      joinDate: "March 2024",
-      partnerships: "89+ brand partnerships",
-      earned: "R$ 34,637 earned via NextPubli",
-      quote:
-        "NextPubli turned my Instagram into a real source of income. I don't have to create content. Brands post straight to my profile and I earn commission on every sale. It's amazing!",
-      badge: "Top Creator",
-      badgeDetail: "50+ campaigns delivered",
-    },
-    {
-      name: "Lucas Mendes",
-      handle: "@lucasmendesfit",
-      joinDate: "July 2024",
-      partnerships: "42+ brand partnerships",
-      earned: "R$ 15,941 earned via NextPubli",
-      quote:
-        "I'm a personal trainer and I use my Instagram to share workouts. With NextPubli, fitness brands post on my profile and I earn without doing anything extra. Fantastic!",
-      badge: "Fitness Specialist",
-      badgeDetail: "30+ fitness campaigns",
-    },
-    {
-      name: "Ana Beatriz Silva",
-      handle: "@anabeatrizsilva",
-      joinDate: "January 2025",
-      partnerships: "125+ brand partnerships",
-      earned: "R$ 51,217 earned via NextPubli",
-      quote:
-        "NextPubli was essential to monetize my beauty profile. I work with amazing brands and earn commission on every sale. I recommend it to any creator!",
-      badge: "Top Rated",
-      badgeDetail: "100+ five-star campaigns",
-    },
-  ],
+  // Honest arithmetic instead of invented people. Every card is a worked example of the
+  // one number we actually promise (40%), clearly labelled illustrative. Nothing here can
+  // be caught out later, and nothing here reads as a fabricated earnings claim to an ad
+  // reviewer.
+  potential: {
+    title: "What 40% can look like",
+    subtitle:
+      "Three worked examples of the same simple sum: sales through your link, times the product price, times 40%.",
+    disclaimer:
+      "Illustrative maths, not earnings claims. Real results depend on your audience, the products and how often content goes out.",
+    scenarios: [
+      {
+        label: "The quiet account",
+        followers: "1,000 followers",
+        assumption: "5 sales of a $50 product in a month",
+        result: "$100",
+        detail: "5 sales x $50 x 40%. An account doing nothing today, doing something.",
+      },
+      {
+        label: "The steady account",
+        followers: "10,000 followers",
+        assumption: "25 sales of a $50 product in a month",
+        result: "$500",
+        detail: "25 sales x $50 x 40%. Content going out daily without you touching it.",
+      },
+      {
+        label: "The engine",
+        followers: "50,000 followers",
+        assumption: "100 sales of a $50 product in a month",
+        result: "$2,000",
+        detail: "100 sales x $50 x 40%. This is where consistent posting compounds.",
+      },
+    ],
+  },
   howItWorks: {
     title: "How it works",
     steps: [
@@ -160,15 +162,15 @@ export const landingCopy = {
       },
       {
         number: "03",
-        title: "Receive posts from brands",
+        title: "We post viral AI content for you",
         description:
-          "Partner brands send content that we publish straight to your feed and stories.",
+          "Ultra realistic AI video goes straight to your feed and stories. You approve, we publish.",
       },
       {
         number: "04",
         title: "Earn commission on every sale",
         description:
-          "Every sale through your affiliate link earns you up to 50% commission. Track everything in real time.",
+          "Every sale through your affiliate link earns you 40% commission. Track everything in real time.",
       },
     ],
   },
@@ -183,7 +185,7 @@ export const landingCopy = {
       {
         question: "Which countries is NextPubli available in?",
         answer:
-          "We currently operate in Brazil, Portugal, Angola and Mozambique. We are expanding to new Portuguese-speaking markets soon. If you are in another country, join the waiting list.",
+          "NextPubli is open worldwide. Commission products and payouts vary by region, and we tell you exactly what applies to you during onboarding.",
       },
       {
         question: "How long does it take to get my first partnership?",
@@ -193,7 +195,7 @@ export const landingCopy = {
       {
         question: "How do I get paid?",
         answer:
-          "You earn up to 50% commission on every sale made through your Hotmart affiliate link. Payments are processed automatically by Hotmart straight into your bank account, following the platform's payout schedule.",
+          "You earn 40% commission on every sale made through your affiliate link. Payouts are processed automatically to the account you register, following the payment platform's payout schedule.",
       },
       {
         question: "What kind of content is posted on my profile?",
@@ -215,7 +217,7 @@ export const landingCopy = {
   },
   footer: {
     description:
-      "NextPubli is the platform that connects micro-influencers with top Brazilian brands. Automatic publishing, guaranteed commission and dedicated support.",
+      "NextPubli is the platform that puts your Instagram to work: ultra realistic AI content posted for you, 40% commission on every sale, and a community that shows you exactly how it is done.",
     address: "NextPubli Ltda. | Rua Augusta, 1234, Sala 56, São Paulo, SP, 01304-001",
     columns: {
       platform: {

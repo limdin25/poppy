@@ -12,6 +12,7 @@ import {
   getCampaignItemById,
   getCampaignItems,
   getCampaignMembers,
+  jitterMinutes,
 } from "@/lib/data/campaigns";
 import { readInstagramOptions } from "@/lib/instagram-options";
 import { DEFAULT_TIMEZONE, isSchedulingTimezone, localToUtcIso } from "@/lib/timezone";
@@ -175,13 +176,31 @@ export async function updateCampaignItem(
   if (error) return { error: error.message };
 
   // Mirror onto pending derived posts (published/failed history is never rewritten).
+  // scheduled_at is NOT in the blanket patch: each pending row gets its own per-creator
+  // jitter re-applied, or one edit would put every creator back on the identical second,
+  // which is the coordinated-posting signal the jitter exists to remove.
+  const { scheduled_at: newBase, ...sharedPatch } = patch;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error: postsErr } = await (admin.from("scheduled_posts") as any)
-    .update(patch)
+    .update(sharedPatch)
     .eq("campaign_item_id", itemId)
     .eq("status", "pending");
   if (postsErr)
     return { error: `Item saved, but rescheduling failed: ${postsErr.message}` };
+  const { data: pendingRows } = await admin
+    .from("scheduled_posts")
+    .select("id, profile_id")
+    .eq("campaign_item_id", itemId)
+    .eq("status", "pending");
+  for (const row of (pendingRows ?? []) as { id: string; profile_id: string }[]) {
+    const jittered = new Date(
+      new Date(newBase).getTime() + jitterMinutes(row.profile_id, itemId) * 60 * 1000,
+    ).toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("scheduled_posts") as any)
+      .update({ scheduled_at: jittered })
+      .eq("id", row.id);
+  }
 
   // If the item moved into the future, members that never got it (it was in the
   // past when they joined) get their post now. Suspended accounts are skipped.

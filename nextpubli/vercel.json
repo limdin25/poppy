@@ -15,6 +15,10 @@
     {
       "path": "/api/inbox/process-takeovers",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/funnel/tick",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

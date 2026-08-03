@@ -236,10 +236,11 @@ describe("updateCampaignItem", () => {
     const postsUpdate = ops.find(
       (o) => o.table === "scheduled_posts" && o.op === "update",
     );
-    expect(postsUpdate?.payload).toMatchObject({
-      media_type: "reel",
-      scheduled_at: "2099-07-01T13:00:00.000Z",
-    });
+    expect(postsUpdate?.payload).toMatchObject({ media_type: "reel" });
+    // scheduled_at is deliberately NOT in the blanket mirror: each pending row gets its
+    // own per-creator jitter re-applied, or one edit would put every creator back on the
+    // identical second (the coordinated-posting signal the jitter exists to remove).
+    expect(postsUpdate?.payload).not.toHaveProperty("scheduled_at");
   });
 });
 

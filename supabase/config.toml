@@ -427,3 +427,9 @@ verify_jwt = false
 # JWT-verified at the edge, then admin_users check inside.
 [functions.wk-whatsapp-admin]
 verify_jwt = true
+
+# heypubli's funnel door onto the shared WhatsApp sender. No JWT (the caller is
+# a Vercel cron in another project); self-auths on the PARTNER_API_KEY secret,
+# same pattern as wk-jobs-worker.
+[functions.wk-partner-api]
+verify_jwt = false

@@ -401,6 +401,51 @@ serve(async (req: Request) => {
         }
       }
 
+      // 3e. heypubli funnel fan-out. Same pre-gate philosophy as the site demo
+      //     above: one cheap check (is this contact stamped as a heypubli lead?)
+      //     and only then a relay to heypubli, so Elsie's own traffic costs
+      //     nothing extra. heypubli uses the reply to stop its nurture drip
+      //     (an engaged lead gets a human/AI conversation, not template nudges)
+      //     and to record opt-outs on its side too. Never fatal.
+      const HEYPUBLI_URL = Deno.env.get('HEYPUBLI_URL') ?? '';
+      const HEYPUBLI_WEBHOOK_SECRET = Deno.env.get('HEYPUBLI_WEBHOOK_SECRET') ?? '';
+      if (!msgErr && channel === 'whatsapp' && HEYPUBLI_URL && HEYPUBLI_WEBHOOK_SECRET) {
+        try {
+          const { data: cRow } = await supa
+            .from('wk_contacts')
+            .select('custom_fields, phone')
+            .eq('id', contactId)
+            .maybeSingle();
+          const cf = (cRow?.custom_fields ?? {}) as Record<string, unknown>;
+          if (cf.product === 'heypubli') {
+            const relay = JSON.stringify({
+              type: 'inbound_whatsapp',
+              phone: cRow?.phone ?? fromE164,
+              body,
+              opt_out: optOut,
+              twilio_sid: messageSid,
+            });
+            const keyData = new TextEncoder().encode(HEYPUBLI_WEBHOOK_SECRET);
+            const key = await crypto.subtle.importKey(
+              'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+            );
+            const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(relay));
+            const hex = Array.from(new Uint8Array(sig))
+              .map((b) => b.toString(16).padStart(2, '0')).join('');
+            await fetch(`${HEYPUBLI_URL}/api/webhooks/whatsapp-inbound`, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-funnel-signature': `sha256=${hex}`,
+              },
+              body: relay,
+            });
+          }
+        } catch (e) {
+          console.error('[wk-sms-incoming] heypubli fan-out threw (non-fatal)', e);
+        }
+      }
+
       // 4. Maybe enqueue an AI warm-up reply. Light guard here (global enabled,
       //    contact enabled, under the per-contact cap); the generator re-checks
       //    the full guards (hours, human-replied-since, booking) at run time.

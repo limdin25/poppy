@@ -34,20 +34,44 @@ export interface CampaignPostInsert {
   shares: null;
 }
 
+/**
+ * A deterministic per-creator delay of 0 to 90 minutes. Without it every creator in a
+ * campaign posts the identical media at the identical second, which is the loudest
+ * coordinated-behaviour signal we emit, and the account that pays for it is Outstand's
+ * (publishing rides their Meta app access). Deterministic (a stable hash of creator +
+ * item) so re-running buildPostsForItem is idempotent and the upsert still no-ops.
+ */
+export function jitterMinutes(profileId: string, itemId: string): number {
+  const s = `${profileId}:${itemId}`;
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) % 91;
+}
+
 function toPostRow(
   item: CampaignItem,
   brandId: string,
   profileId: string,
   scheduledAt: string,
   provider: PostingProvider,
+  jitter = true,
 ): CampaignPostInsert {
+  // A start-now post is a single member joining, not a fan-out; it fires unjittered so
+  // "posts immediately" stays true.
+  const jittered = jitter
+    ? new Date(
+        new Date(scheduledAt).getTime() + jitterMinutes(profileId, item.id) * 60 * 1000,
+      ).toISOString()
+    : new Date(scheduledAt).toISOString();
   return {
     profile_id: profileId,
     brand_id: brandId,
     media_type: item.media_type,
     media_url: item.media_url,
     caption: item.caption,
-    scheduled_at: scheduledAt,
+    scheduled_at: jittered,
     status: "pending",
     provider,
     instagram_options: item.instagram_options ?? null,
@@ -95,7 +119,7 @@ export function buildPostsForMember(params: {
     const scheduledAt = fireNow
       ? now.toISOString()
       : new Date(item.scheduled_at).toISOString();
-    rows.push(toPostRow(item, brandId, profileId, scheduledAt, provider));
+    rows.push(toPostRow(item, brandId, profileId, scheduledAt, provider, !fireNow));
   }
   return rows;
 }

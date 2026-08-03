@@ -1,0 +1,101 @@
+// heypubli's entire coupling to the WhatsApp brain. The brain (Twilio sender, templates,
+// 24h-window logic, kill switches, message history) lives in the HeyElsie Supabase
+// project and is reached through ONE bearer-authed edge function, wk-partner-api.
+//
+// Why it is not ported here: a Twilio WhatsApp sender can only point its inbound webhook
+// at one URL, and it points at HeyElsie. Re-pointing it takes HeyElsie's inbox dark the
+// same second. One number, one blast radius, one control room.
+
+export interface PartnerSendInput {
+  /** E.164, the lead's number. */
+  to: string;
+  /** The lead's first name, for template variable {{1}}. */
+  firstName: string;
+  /** Twilio Content SID (HX...) for a template send, or omit for free-form. */
+  contentSid?: string;
+  /** Free-form body (only lands inside an open 24h window). */
+  body?: string;
+  /** Our idempotency key, stored as external_id on the message row. */
+  externalId: string;
+}
+
+export type PartnerSendBlocked =
+  | "do_not_text"
+  | "daily_cap"
+  | "window_closed"
+  | "template_unapproved"
+  | "kill_switch"
+  | "bad_number";
+
+export interface PartnerSendResult {
+  ok: boolean;
+  queued?: boolean;
+  wk_contact_id?: string;
+  wk_message_id?: string;
+  twilio_sid?: string;
+  blocked?: PartnerSendBlocked;
+  error?: string;
+}
+
+function baseUrl(): string | null {
+  return process.env.WK_CRM_BASE_URL ?? null;
+}
+
+async function call(action: string, payload: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+  const base = baseUrl();
+  const key = process.env.WK_PARTNER_API_KEY;
+  if (!base || !key) return null;
+  try {
+    const res = await fetch(`${base}/functions/v1/wk-partner-api`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!res.ok && !json.blocked) {
+      return { ok: false, error: json.error ?? `HTTP ${res.status}` };
+    }
+    return json;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network" };
+  }
+}
+
+/** Send a WhatsApp message (template or free-form) through the HeyElsie brain. */
+export async function sendPartnerWhatsApp(
+  input: PartnerSendInput,
+): Promise<PartnerSendResult> {
+  const result = await call("send", {
+    to: input.to,
+    first_name: input.firstName,
+    content_sid: input.contentSid,
+    body: input.body,
+    external_id: input.externalId,
+    product: "heypubli",
+  });
+  if (!result) return { ok: false, error: "not configured" };
+  return result as unknown as PartnerSendResult;
+}
+
+/** Delivery status of an earlier send, polled by the funnel tick. */
+export async function getPartnerMessageStatus(
+  externalId: string,
+): Promise<{ ok: boolean; status?: string; error_code?: string | null }> {
+  const result = await call("message_status", { external_id: externalId });
+  if (!result) return { ok: false };
+  return result as unknown as { ok: boolean; status?: string; error_code?: string | null };
+}
+
+/**
+ * How many WhatsApp messages left the shared sender in the last 24 hours, both
+ * businesses combined. The Meta tier (250/24h to start) is per NUMBER, so heypubli's cap
+ * has to count HeyElsie's sends too.
+ */
+export async function getSharedSenderLoad(): Promise<{ ok: boolean; sent24h?: number }> {
+  const result = await call("sender_load", {});
+  if (!result) return { ok: false };
+  return result as unknown as { ok: boolean; sent24h?: number };
+}

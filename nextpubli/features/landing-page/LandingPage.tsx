@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { landingCopy } from "./copy";
+import { seedanceDemos } from "./seedanceDemos";
 
 const HERO_IMAGES_COL1 = [
   "https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=400&h=500&fit=crop",
@@ -130,23 +131,35 @@ function Hero() {
             <div className="mb-4 md:mb-6 inline-flex items-center gap-2">
               <div className="flex items-center gap-1.5 rounded-full border border-border bg-white px-2.5 py-1.5 text-[10px] font-medium text-foreground-secondary shadow-sm sm:px-3 sm:py-2 sm:text-xs sm:gap-2">
                 <svg
-                  className="h-3 w-3 sm:h-4 sm:w-4 shrink-0"
+                  className="h-3 w-3 sm:h-4 sm:w-4 shrink-0 text-accent"
                   viewBox="0 0 24 24"
-                  fill="#0081FB"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
                 >
-                  <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
                 </svg>
-                Meta Business Partner
+                Powered by Seedance 2.5
               </div>
               <div className="flex items-center gap-1.5 rounded-full border border-border bg-white px-2.5 py-1.5 text-[10px] font-medium text-foreground-secondary shadow-sm sm:px-3 sm:py-2 sm:text-xs sm:gap-2">
                 <svg
-                  className="h-3 w-3 sm:h-4 sm:w-4 shrink-0"
+                  className="h-3 w-3 sm:h-4 sm:w-4 shrink-0 text-success"
                   viewBox="0 0 24 24"
-                  fill="currentColor"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
                 >
-                  <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.73a8.19 8.19 0 004.76 1.52v-3.4a4.85 4.85 0 01-1-.16z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
-                TikTok Partners (Coming soon)
+                100% automatic posting
               </div>
             </div>
 
@@ -496,156 +509,46 @@ function Requirements() {
   );
 }
 
-/* ─── Testimonials — IG post cards ─── */
-const TESTIMONIAL_IMAGES = [
-  "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&h=600&fit=crop",
-  "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=600&h=600&fit=crop",
-  "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600&h=600&fit=crop",
-];
-
-function Testimonials() {
-  const testimonials = landingCopy.testimonials;
-
+/* Potential: honest worked examples of the 40% promise. Replaces the old fabricated
+   testimonials (invented people, invented earnings) which were an ad-review liability. */
+function Potential() {
+  const { title, subtitle, disclaimer, scenarios } = landingCopy.potential;
   return (
     <section className="py-20 md:py-28">
       <div className="mx-auto max-w-7xl px-6">
         <h2 className="text-center text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-          Creators already earning with NextPubli
+          {title}
         </h2>
+        <p className="mx-auto mt-4 max-w-2xl text-center text-lg text-foreground-secondary">
+          {subtitle}
+        </p>
 
         <div className="mt-14 grid gap-6 md:grid-cols-3">
-          {testimonials.map((t, i) => (
+          {scenarios.map((sc) => (
             <div
-              key={t.name}
-              className="overflow-hidden rounded-2xl border border-border bg-white transition-shadow hover:shadow-lg"
+              key={sc.label}
+              className="flex flex-col rounded-2xl border border-border bg-white p-6 transition-shadow hover:shadow-lg"
             >
-              <div className="flex items-center gap-3 px-4 py-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#F56040] via-[#E1306C] to-[#C13584] p-[2px]">
-                  <div className="flex h-full w-full items-center justify-center rounded-full bg-white text-xs font-bold text-foreground">
-                    {t.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-foreground truncate">
-                    {t.handle}
-                  </div>
-                  <div className="text-[11px] text-foreground-secondary">
-                    {t.joinDate}
-                  </div>
-                </div>
-                <svg
-                  className="h-5 w-5 shrink-0 text-foreground-secondary"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"
-                  />
-                </svg>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-foreground">{sc.label}</span>
+                <span className="rounded-full bg-background-secondary px-2.5 py-1 text-[11px] font-medium text-foreground-secondary">
+                  {sc.followers}
+                </span>
               </div>
-
-              <div className="relative aspect-square bg-background-secondary">
-                <Image
-                  src={TESTIMONIAL_IMAGES[i]}
-                  alt={t.name}
-                  fill
-                  className="object-cover"
-                  sizes="400px"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                <div className="absolute bottom-4 left-4 right-4">
-                  <div className="flex flex-wrap gap-1.5">
-                    <span className="rounded-full bg-accent/90 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
-                      {t.partnerships}
-                    </span>
-                    <span className="rounded-full bg-success/90 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
-                      {t.earned}
-                    </span>
-                  </div>
-                </div>
+              <div className="mt-6 bg-gradient-to-r from-[#F56040] via-[#E1306C] to-[#C13584] bg-clip-text text-4xl font-bold tracking-tight text-transparent">
+                {sc.result}
               </div>
-
-              <div className="px-4 pt-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <svg
-                      className="h-6 w-6 text-foreground transition-colors hover:text-error cursor-pointer"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
-                      />
-                    </svg>
-                    <svg
-                      className="h-6 w-6 text-foreground"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z"
-                      />
-                    </svg>
-                    <svg
-                      className="h-6 w-6 text-foreground"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
-                      />
-                    </svg>
-                  </div>
-                  <svg
-                    className="h-6 w-6 text-foreground"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
-                    />
-                  </svg>
-                </div>
-
-                <p className="mt-2 text-sm font-semibold text-foreground">
-                  {t.badge} · {t.badgeDetail}
-                </p>
-              </div>
-
-              <div className="px-4 pb-4 pt-1">
-                <p className="text-sm leading-relaxed text-foreground">
-                  <span className="font-semibold">{t.handle}</span>{" "}
-                  <span className="text-foreground-secondary">
-                    &ldquo;{t.quote}&rdquo;
-                  </span>
-                </p>
-              </div>
+              <p className="mt-1 text-sm font-medium text-foreground">{sc.assumption}</p>
+              <p className="mt-3 text-sm leading-relaxed text-foreground-secondary">
+                {sc.detail}
+              </p>
             </div>
           ))}
         </div>
+
+        <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-foreground-secondary">
+          {disclaimer}
+        </p>
       </div>
     </section>
   );
@@ -653,32 +556,56 @@ function Testimonials() {
 
 /* ─── Video Section ─── */
 function VideoSection() {
+  // X's widget script scans for blockquote.twitter-tweet when it loads. It is loaded
+  // once, lazily; if it arrived before these blockquotes mounted, poke it again.
+  useEffect(() => {
+    const w = window as unknown as {
+      twttr?: { widgets?: { load?: () => void } };
+    };
+    if (w.twttr?.widgets?.load) {
+      w.twttr.widgets.load();
+      return;
+    }
+    if (document.getElementById("x-widgets-js")) return;
+    const script = document.createElement("script");
+    script.id = "x-widgets-js";
+    script.src = "https://platform.twitter.com/widgets.js";
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
+
   return (
-    <section className="bg-background-secondary py-20 md:py-28">
-      <div className="mx-auto max-w-4xl px-6 text-center">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-          See how easy it is to get started
-        </h2>
-        <p className="mx-auto mt-4 max-w-xl text-lg text-foreground-secondary">
-          In under 2 minutes you connect your Instagram and start receiving posts from
-          partner brands.
-        </p>
-        <div className="relative mx-auto mt-12 aspect-video max-w-3xl overflow-hidden rounded-2xl border border-border bg-foreground shadow-2xl">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-transform hover:scale-110">
-              <svg
-                className="h-10 w-10 text-white ml-1"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path d="M8 5v14l11-7z" />
-              </svg>
+    <section id="demos" className="bg-background-secondary py-20 md:py-28">
+      <div className="mx-auto max-w-7xl px-6">
+        <div className="text-center">
+          <span className="inline-flex items-center rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground-secondary shadow-sm">
+            Made with Seedance 2.5
+          </span>
+          <h2 className="mt-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+            This is the content we post for you
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-foreground-secondary">
+            Real posts, live on X right now, each one generated from a single text
+            prompt. This is the quality bar, judge it yourself.
+          </p>
+        </div>
+
+        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {seedanceDemos.map((demo) => (
+            <div
+              key={demo.url}
+              className="flex flex-col overflow-hidden rounded-2xl border border-border bg-white"
+            >
+              <div className="flex-1 px-3 pt-1 [&_iframe]:!max-w-full">
+                <blockquote className="twitter-tweet" data-media-max-width="560">
+                  <a href={demo.url}>{demo.handle} on X</a>
+                </blockquote>
+              </div>
+              <p className="border-t border-border px-4 py-3 text-xs leading-relaxed text-foreground-secondary">
+                {demo.note}
+              </p>
             </div>
-          </div>
-          <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 backdrop-blur-sm">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-error" />
-            <span className="text-xs font-medium text-white">2:14</span>
-          </div>
+          ))}
         </div>
       </div>
     </section>
@@ -767,11 +694,17 @@ function FinalCta() {
                 <svg
                   className="h-3 w-3 sm:h-4 sm:w-4 shrink-0"
                   viewBox="0 0 24 24"
-                  fill="currentColor"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
                 >
-                  <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
                 </svg>
-                Meta Business Partner
+                Powered by Seedance 2.5
               </div>
               <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1.5 text-[10px] font-medium text-white backdrop-blur-sm sm:px-4 sm:py-2 sm:text-xs sm:gap-2">
                 <svg
@@ -936,7 +869,7 @@ export function LandingPage() {
       <HowItWorks />
       <ValueProps />
       <Requirements />
-      <Testimonials />
+      <Potential />
       <VideoSection />
       <FAQ />
       <FinalCta />

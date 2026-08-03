@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPostsForMember, buildPostsForItem } from "./campaigns";
+import { buildPostsForMember, buildPostsForItem, jitterMinutes } from "./campaigns";
 import type { Campaign, CampaignItem } from "@/types/database";
 
 const NOW = new Date("2026-06-10T12:00:00Z");
@@ -40,6 +40,16 @@ const futureReel = item({
   scheduled_at: "2026-06-15T18:00:00Z",
 });
 
+
+// Posts carry a deterministic 0-90 minute per-creator jitter (see jitterMinutes), so a
+// scheduled time is asserted as a window from its base, not an exact second.
+function withinJitter(actual: string | null | undefined, baseIso: string) {
+  const base = new Date(baseIso).getTime();
+  const t = new Date(actual ?? "").getTime();
+  expect(t).toBeGreaterThanOrEqual(base);
+  expect(t).toBeLessThanOrEqual(base + 90 * 60 * 1000);
+}
+
 describe("buildPostsForMember", () => {
   it("schedule mode: materializes only future items at their own times", () => {
     const rows = buildPostsForMember({
@@ -51,8 +61,8 @@ describe("buildPostsForMember", () => {
       now: NOW,
     });
     expect(rows.map((r) => r.campaign_item_id)).toEqual(["item-thu", "item-reel"]);
-    expect(rows[0].scheduled_at).toBe("2026-06-12T17:00:00.000Z");
-    expect(rows[1].scheduled_at).toBe("2026-06-15T18:00:00.000Z");
+    withinJitter(rows[0].scheduled_at, "2026-06-12T17:00:00.000Z");
+    withinJitter(rows[1].scheduled_at, "2026-06-15T18:00:00.000Z");
   });
 
   it("start-now: the campaign's first item is scheduled immediately, not duplicated", () => {
@@ -67,9 +77,9 @@ describe("buildPostsForMember", () => {
     // first item (Thursday story) fires now; reel keeps its own time
     expect(rows).toHaveLength(2);
     const first = rows.find((r) => r.campaign_item_id === "item-thu");
-    expect(first?.scheduled_at).toBe(NOW.toISOString());
+    withinJitter(first?.scheduled_at, NOW.toISOString());
     const reel = rows.find((r) => r.campaign_item_id === "item-reel");
-    expect(reel?.scheduled_at).toBe("2026-06-15T18:00:00.000Z");
+    withinJitter(reel?.scheduled_at, "2026-06-15T18:00:00.000Z");
   });
 
   it("start-now: a first item already in the past still fires now", () => {
@@ -83,7 +93,7 @@ describe("buildPostsForMember", () => {
     });
     expect(rows).toHaveLength(2);
     const first = rows.find((r) => r.campaign_item_id === "item-past");
-    expect(first?.scheduled_at).toBe(NOW.toISOString());
+    withinJitter(first?.scheduled_at, NOW.toISOString());
   });
 
   it("falls back to the campaign brand and skips items with no brand at all", () => {
@@ -135,7 +145,7 @@ describe("buildPostsForItem", () => {
     });
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.profile_id).sort()).toEqual(["user-1", "user-2"]);
-    expect(rows[0].scheduled_at).toBe("2026-06-15T18:00:00.000Z");
+    withinJitter(rows[0].scheduled_at, "2026-06-15T18:00:00.000Z");
   });
 
   it("returns nothing for an item whose time already passed", () => {
@@ -158,5 +168,27 @@ describe("buildPostsForItem", () => {
       now: NOW,
     });
     expect(rows).toEqual([]);
+  });
+});
+
+describe("jitterMinutes", () => {
+  it("is deterministic: same creator + item always lands on the same minute", () => {
+    expect(jitterMinutes("profile-a", "item-1")).toBe(jitterMinutes("profile-a", "item-1"));
+  });
+
+  it("stays inside the 0 to 90 minute window", () => {
+    for (let i = 0; i < 50; i++) {
+      const j = jitterMinutes(`profile-${i}`, "item-1");
+      expect(j).toBeGreaterThanOrEqual(0);
+      expect(j).toBeLessThanOrEqual(90);
+    }
+  });
+
+  it("spreads creators out instead of stacking them on one second", () => {
+    const values = new Set(
+      Array.from({ length: 30 }, (_, i) => jitterMinutes(`profile-${i}`, "item-1")),
+    );
+    // 30 creators over 91 slots: collisions happen, a single slot must not.
+    expect(values.size).toBeGreaterThan(10);
   });
 });

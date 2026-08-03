@@ -2,11 +2,17 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SignupLead, SignupLeadStage } from "@/types/database";
 
-// How far along the signup a lead is. Order matters: this array IS the ranking.
+// How far along the funnel a lead is. Order matters: this array IS the ranking.
+// captured/contacted/engaged arrive with the Facebook funnel (migration 021); invited is
+// stamped when the Skool invite is confirmed.
 export const LEAD_STAGES: SignupLeadStage[] = [
+  "captured",
+  "contacted",
+  "engaged",
   "started",
   "sent_to_instagram",
   "connected",
+  "invited",
 ];
 
 /**
@@ -26,9 +32,20 @@ export function advanceStage(
 /** The timestamp column a stage stamps, or null for the stage that is just the insert. */
 export function stageStampColumn(
   stage: SignupLeadStage,
-): "sent_to_instagram_at" | "connected_at" | null {
+):
+  | "captured_at"
+  | "contacted_at"
+  | "engaged_at"
+  | "sent_to_instagram_at"
+  | "connected_at"
+  | "invited_at"
+  | null {
+  if (stage === "captured") return "captured_at";
+  if (stage === "contacted") return "contacted_at";
+  if (stage === "engaged") return "engaged_at";
   if (stage === "sent_to_instagram") return "sent_to_instagram_at";
   if (stage === "connected") return "connected_at";
+  if (stage === "invited") return "invited_at";
   return null;
 }
 
@@ -59,12 +76,22 @@ export async function recordSignupLead(input: RecordLeadInput): Promise<boolean>
 
     const { data: existing } = await admin
       .from("signup_leads")
-      .select("id, status, attempts, sent_to_instagram_at, connected_at")
+      .select(
+        "id, status, attempts, captured_at, contacted_at, engaged_at, sent_to_instagram_at, connected_at, invited_at",
+      )
       .eq("email_normalized", email.toLowerCase())
       .maybeSingle<
         Pick<
           SignupLead,
-          "id" | "status" | "attempts" | "sent_to_instagram_at" | "connected_at"
+          | "id"
+          | "status"
+          | "attempts"
+          | "captured_at"
+          | "contacted_at"
+          | "engaged_at"
+          | "sent_to_instagram_at"
+          | "connected_at"
+          | "invited_at"
         >
       >();
 
@@ -100,6 +127,9 @@ export async function recordSignupLead(input: RecordLeadInput): Promise<boolean>
       whatsapp: input.whatsapp,
       status: input.stage,
       last_seen_at: nowIso,
+      // A row born here came through the public signup wizard, which makes it lane
+      // organic (the DB default) and puts it in Hugo's approval queue for the community.
+      approval_state: "pending",
     };
     if (stamp) row[stamp] = nowIso;
     if (input.profileId) row.profile_id = input.profileId;

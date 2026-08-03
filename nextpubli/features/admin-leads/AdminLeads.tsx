@@ -1,25 +1,94 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search, Mail, MessageSquare, Download, Inbox } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Search, Mail, MessageSquare, Download, Inbox, Check, X } from "lucide-react";
 import { formatSaoPaulo } from "@/lib/timezone";
-import type { SignupLead, SignupLeadStage } from "@/types/database";
+import { approveOrganicLead, rejectOrganicLead } from "@/lib/actions/leads";
+import type { SignupLane, SignupLead, SignupLeadStage } from "@/types/database";
 import { adminLeadsCopy } from "./copy";
 
 type StageFilter = "All" | SignupLeadStage;
+type LaneFilter = "All" | SignupLane;
 
 const STAGE_FILTERS: StageFilter[] = [
   "All",
+  "captured",
+  "contacted",
+  "engaged",
   "started",
   "sent_to_instagram",
   "connected",
+  "invited",
 ];
 
+const LANE_FILTERS: LaneFilter[] = ["All", "partner", "customer", "organic"];
+
 const STAGE_STYLE: Record<SignupLeadStage, string> = {
+  captured: "bg-background-secondary text-foreground-secondary",
+  contacted: "bg-warning/10 text-warning",
+  engaged: "bg-accent/10 text-accent",
   started: "bg-warning/10 text-warning",
   sent_to_instagram: "bg-accent/10 text-accent",
   connected: "bg-success/10 text-success",
+  invited: "bg-success/10 text-success",
 };
+
+const LANE_STYLE: Record<SignupLane, string> = {
+  partner: "bg-accent/10 text-accent",
+  customer: "bg-success/10 text-success",
+  organic: "bg-background-secondary text-foreground-secondary",
+};
+
+/** A self-serve signup waiting on Hugo's yes or no. */
+function ApprovalButtons({ lead }: { lead: SignupLead }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  if (lead.lane !== "organic" || lead.approval_state === "rejected") return null;
+  if (lead.approval_state === "approved") {
+    return (
+      <span className="text-xs font-medium text-success">
+        {adminLeadsCopy.approval.approved}
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex gap-1.5">
+        <button
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              try {
+                await approveOrganicLead(lead.id);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Failed");
+              }
+            })
+          }
+          className="inline-flex items-center gap-1 rounded-lg bg-success px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-success/90 disabled:opacity-50"
+        >
+          <Check size={13} /> {adminLeadsCopy.approval.approve}
+        </button>
+        <button
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              try {
+                await rejectOrganicLead(lead.id);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Failed");
+              }
+            })
+          }
+          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground-secondary transition hover:bg-background-secondary disabled:opacity-50"
+        >
+          <X size={13} /> {adminLeadsCopy.approval.reject}
+        </button>
+      </div>
+      {error && <span className="text-xs text-error">{error}</span>}
+    </div>
+  );
+}
 
 function StatCard({
   label,
@@ -105,6 +174,7 @@ function toCsv(leads: SignupLead[]): string {
 export function AdminLeads({ leads }: { leads: SignupLead[] }) {
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState<StageFilter>("All");
+  const [lane, setLane] = useState<LaneFilter>("All");
 
   const stats = useMemo(
     () => ({
@@ -120,13 +190,14 @@ export function AdminLeads({ leads }: { leads: SignupLead[] }) {
     const q = search.trim().toLowerCase();
     return leads.filter((l) => {
       const matchesStage = stage === "All" || l.status === stage;
-      if (!matchesStage) return false;
+      const matchesLane = lane === "All" || l.lane === lane;
+      if (!matchesStage || !matchesLane) return false;
       if (!q) return true;
       return `${l.first_name} ${l.last_name} ${l.email} ${l.whatsapp}`
         .toLowerCase()
         .includes(q);
     });
-  }, [leads, search, stage]);
+  }, [leads, search, stage, lane]);
 
   const download = () => {
     const blob = new Blob([toCsv(filtered)], { type: "text/csv;charset=utf-8" });
@@ -197,6 +268,18 @@ export function AdminLeads({ leads }: { leads: SignupLead[] }) {
           />
         </div>
         <select
+          aria-label="Filter by lane"
+          value={lane}
+          onChange={(e) => setLane(e.target.value as LaneFilter)}
+          className="rounded-lg border border-border bg-white px-3 py-2.5 text-sm focus:border-accent focus:outline-none"
+        >
+          {LANE_FILTERS.map((l) => (
+            <option key={l} value={l}>
+              {l === "All" ? "All lanes" : adminLeadsCopy.lanes[l]}
+            </option>
+          ))}
+        </select>
+        <select
           aria-label="Filter by stage"
           value={stage}
           onChange={(e) => setStage(e.target.value as StageFilter)}
@@ -237,6 +320,7 @@ export function AdminLeads({ leads }: { leads: SignupLead[] }) {
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   {adminLeadsCopy.columns.when}
                 </th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -248,9 +332,17 @@ export function AdminLeads({ leads }: { leads: SignupLead[] }) {
                       <p className="font-medium text-foreground">
                         {`${lead.first_name} ${lead.last_name}`.trim() || "-"}
                       </p>
-                      <p className="text-xs text-foreground-secondary">
-                        {adminLeadsCopy.attempts(lead.attempts)}
-                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span
+                          title={adminLeadsCopy.laneHint[lead.lane]}
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${LANE_STYLE[lead.lane]}`}
+                        >
+                          {adminLeadsCopy.lanes[lead.lane]}
+                        </span>
+                        <span className="text-xs text-foreground-secondary">
+                          {adminLeadsCopy.attempts(lead.attempts)}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
@@ -290,6 +382,9 @@ export function AdminLeads({ leads }: { leads: SignupLead[] }) {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-foreground-secondary">
                       {formatSaoPaulo(lead.first_seen_at)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <ApprovalButtons lead={lead} />
                     </td>
                   </tr>
                 );
