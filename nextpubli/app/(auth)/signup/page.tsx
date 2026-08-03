@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import { EmailSignupForm } from "@/features/email-signup";
-import { IgSignupForm } from "@/features/ig-login";
+import { IgSignupForm, signupMobilePitch } from "@/features/ig-login";
 import { SIGNUP_COOKIE } from "@/lib/ig-auth-cookies";
 
 // If a previous signup attempt failed mid-Instagram, the typed form data is
@@ -34,7 +34,10 @@ export default async function SignupPage({
   return (
     <div className="w-full max-w-md space-y-8">
       <div>
-        <Link href="/" className="lg:hidden mb-6 inline-block">
+        <Link
+          href="/"
+          className={`lg:hidden inline-block ${INSTAGRAM_ENABLED ? "" : "mb-6"}`}
+        >
           <span
             className="text-2xl font-bold"
             style={{
@@ -46,12 +49,23 @@ export default async function SignupPage({
             NextPubli
           </span>
         </Link>
-        <h1 className="text-3xl font-bold text-foreground">Create your account</h1>
-        <p className="mt-2 text-foreground-secondary">
-          {INSTAGRAM_ENABLED
-            ? "Start earning with your Instagram"
-            : "Start earning by recommending products you love"}
-        </p>
+        {/* The sidebar pitch is hidden below lg, so on a phone this one line is the only
+            reason a cold creator has to start filling the form in. */}
+        {INSTAGRAM_ENABLED && (
+          <p className="mb-6 mt-1.5 text-sm text-foreground-secondary lg:hidden">
+            {signupMobilePitch}
+          </p>
+        )}
+        {/* The Instagram wizard carries its own per-step heading, so a fixed page
+            heading would only fight it. The email flow still needs one. */}
+        {!INSTAGRAM_ENABLED && (
+          <>
+            <h1 className="text-3xl font-bold text-foreground">Create your account</h1>
+            <p className="mt-2 text-foreground-secondary">
+              Start earning by recommending products you love
+            </p>
+          </>
+        )}
       </div>
 
       {erro && (
@@ -59,21 +73,6 @@ export default async function SignupPage({
       )}
 
       {INSTAGRAM_ENABLED ? <IgSignupForm defaults={defaults} /> : <EmailSignupForm />}
-
-      {INSTAGRAM_ENABLED && (
-        <p className="text-xs text-foreground-secondary">
-          Use an Instagram Professional account (Creator or Business).{" "}
-          <a
-            href="https://www.instagram.com/accounts/convert_to_professional_account/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-accent hover:underline"
-          >
-            Switch now
-          </a>
-          , it&apos;s free.
-        </p>
-      )}
 
       <p className="text-sm text-foreground-secondary">
         Already have an account?{" "}

@@ -1,4 +1,4 @@
-// Shared Terms of Use body — used by both the signup popup (IgSignupButton) and the
+// Shared Terms of Use body, used by both the signup popup (IgSignupButton) and the
 // standalone /terms page. The heading is added by each caller.
 export function TermsContent() {
   return (
@@ -47,7 +47,7 @@ export function TermsContent() {
         </h3>
         <p className="mt-1">
           To sign in, we use your professional Instagram account. We also ask for an
-          email and WhatsApp number so we can contact you about campaigns and payments.
+          email and mobile number so we can contact you about campaigns and payments.
           Your data is used only to operate the platform.
         </p>
       </section>
