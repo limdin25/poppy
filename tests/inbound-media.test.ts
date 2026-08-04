@@ -48,7 +48,11 @@ describe('the media proxy refuses what it should', () => {
     // media_urls holds a URL that arrived on a webhook. Fetching it with our own
     // credentials attached, unpinned, would let a forgery name an internal
     // address and have us read it out loud.
-    expect(route).toMatch(/ALLOWED_HOST = 'api\.twilio\.com'/);
+    // The literal moved to api/lib/twilio-media.ts on 2026-08-04, when the AI
+    // reply route started fetching the same media to show the model. One
+    // definition, so relaxing it in one place cannot leave the other pinned.
+    expect(read('api/lib/twilio-media.ts')).toMatch(/TWILIO_MEDIA_HOST = 'api\.twilio\.com'/);
+    expect(route).toMatch(/ALLOWED_HOST = TWILIO_MEDIA_HOST/);
     expect(route).toMatch(/parsed\.hostname !== ALLOWED_HOST/);
     expect(route).toMatch(/parsed\.protocol !== 'https:'/);
   });

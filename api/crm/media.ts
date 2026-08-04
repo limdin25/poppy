@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { TWILIO_MEDIA_HOST } from '../lib/twilio-media.js';
 
 export const config = { runtime: 'edge' };
 
@@ -31,7 +32,11 @@ const supabase = createClient(
 // treating it as a fetchable address makes this route an SSRF hole unless the
 // host is pinned: a forged webhook could otherwise name an internal address and
 // have us fetch it with our own credentials attached.
-const ALLOWED_HOST = 'api.twilio.com';
+//
+// The constant is shared with api/lib/twilio-media.ts, which the AI reply route
+// uses to show the same picture to the model. One definition, so relaxing it in
+// one place cannot quietly leave the other pinned.
+const ALLOWED_HOST = TWILIO_MEDIA_HOST;
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'GET') return json(405, { error: 'Method not allowed' });

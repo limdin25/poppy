@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { callLLM } from '../lib/llm.js';
+import { callLLM, type LLMBlock, type LLMMessage } from '../lib/llm.js';
+import { fetchTwilioMedia, isSupportedImageType } from '../lib/twilio-media.js';
 import {
   mergeReplySettings,
   type CampaignReplyOverride,
@@ -51,7 +52,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const HISTORY = 10;
+// How far back the model can see. Hugo 2026-08-03: "the memory is
+// non-existent, it's asking for handles that were already typed out in the
+// chat." Ten messages is five exchanges, and a conversation that has been
+// through a handle, a niche question and a couple of nudges is past that
+// before it gets anywhere. Cheap to raise: this is text, and the whole thread
+// is re-sent every time anyway.
+const HISTORY = 40;
+
+// Only the newest few pictures are decoded and sent. A lead who sends eight
+// screenshots would otherwise put megabytes of base64 into every subsequent
+// turn of the conversation, forever.
+const MAX_IMAGES = 3;
 
 function withinHours(hoursStart: number, hoursEnd: number, days: string[], tz: string): boolean {
   const now = new Date();
@@ -119,11 +131,14 @@ export default async function handler(req: Request): Promise<Response> {
   // already asked for a human.
   const { data: msgs } = await supabase
     .from('wk_sms_messages')
-    .select('direction, body, ai_generated, created_by, created_at')
+    .select('direction, body, ai_generated, created_by, created_at, media_urls, status')
     .eq('contact_id', contactId)
     .order('created_at', { ascending: false })
     .limit(HISTORY);
-  const history = (msgs ?? []).reverse() as Array<{ direction: string; body: string; ai_generated: boolean; created_by: string | null; created_at: string }>;
+  const history = (msgs ?? []).reverse() as Array<{
+    direction: string; body: string; ai_generated: boolean; created_by: string | null;
+    created_at: string; media_urls: string[] | null; status: string | null;
+  }>;
   if (!history.length) return json(200, { skipped: 'no_history' });
 
   // Auto-off: a human (agent) replied after the last inbound, so stand down.
@@ -245,10 +260,64 @@ export default async function handler(req: Request): Promise<Response> {
     (c.custom_fields as Record<string, unknown> | null)?.owner_name ?? '',
   ).trim();
   const firstName = (ownerName || (c.name || '')).trim().split(/\s+/)[0] || '';
-  const llmMessages = history.map((m) => ({
-    role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
-    content: m.body || '',
-  })).filter((m) => m.content);
+  // Build the turns the model sees.
+  //
+  // Two bugs lived in the old one-liner, and they had the same root: it mapped
+  // to `content: m.body || ''` and then dropped anything falsy.
+  //
+  //   1. A picture with no caption has an empty body, so the message vanished
+  //      entirely. A lead answered "what is your Instagram?" with a screenshot
+  //      of their profile and, as far as the model could tell, said nothing at
+  //      all, so it asked again. Twice.
+  //   2. An UNSENT draft was included as an assistant turn, so the model read
+  //      its own rejected wording back as though the lead had received it.
+  //
+  // Fixed here: media rides along as an image block, and drafts are skipped.
+  const imageMessages = history.filter(
+    (m) => m.direction === 'inbound' && (m.media_urls?.length ?? 0) > 0,
+  );
+  // Newest first, so when a lead sends several the model gets the latest ones.
+  const withImages = new Set(imageMessages.slice(-MAX_IMAGES));
+
+  const llmMessages: LLMMessage[] = [];
+  for (const m of history) {
+    // A draft was never sent. Feeding it back as an assistant turn teaches the
+    // model that it already said something the lead never saw.
+    if (m.direction === 'outbound' && m.status === 'draft') continue;
+
+    const body = (m.body || '').trim();
+    const blocks: LLMBlock[] = [];
+
+    if (withImages.has(m)) {
+      for (const url of (m.media_urls ?? []).slice(0, MAX_IMAGES)) {
+        const media = await fetchTwilioMedia(url);
+        if (!media || !isSupportedImageType(media.mediaType)) continue;
+        blocks.push({
+          type: 'image',
+          source: { type: 'base64', media_type: media.mediaType, data: media.base64 },
+        });
+      }
+    }
+
+    if (body) blocks.push({ type: 'text', text: body });
+
+    if (!blocks.length) {
+      // Media we could not decode, and no caption. Say a picture arrived rather
+      // than dropping the turn: silence reads as "the lead ignored you" and
+      // sends the model round the same question again.
+      if ((m.media_urls?.length ?? 0) > 0 && m.direction === 'inbound') {
+        llmMessages.push({ role: 'user', content: '[they sent an image that could not be loaded]' });
+      }
+      continue;
+    }
+
+    llmMessages.push({
+      role: m.direction === 'inbound' ? 'user' : 'assistant',
+      // Keep the plain-string shape when there is no picture, so the common
+      // case looks exactly as it did before.
+      content: blocks.length === 1 && blocks[0].type === 'text' ? blocks[0].text : blocks,
+    });
+  }
 
   // Honour the global kill switch + daily SMS cap (same gate the SMS send
   // functions use). Kill switch = hard stop (skip generation entirely). Daily

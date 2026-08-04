@@ -78,10 +78,36 @@ function normalizeModel(model: string): string {
   return model;
 }
 
+/**
+ * One turn's content. A plain string is the common case; the block form exists
+ * so a lead's photo can be shown to the model.
+ *
+ * Only Anthropic is sent blocks. The OpenAI/xAI branch below flattens them to
+ * text, because those two take a different image shape and nothing in this
+ * codebase sends them pictures. Flattening loses the image but never breaks the
+ * call, which is the right trade for a fallback provider.
+ */
+export type LLMBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+
+export interface LLMMessage {
+  role: 'user' | 'assistant';
+  content: string | LLMBlock[];
+}
+
+function flattenToText(content: string | LLMBlock[]): string {
+  if (typeof content === 'string') return content;
+  return content
+    .map((b) => (b.type === 'text' ? b.text : '[image]'))
+    .join('\n')
+    .trim();
+}
+
 export async function callLLM(
   model: string,
   systemPrompt: string,
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  messages: LLMMessage[],
   maxTokens = 1024,
 ): Promise<string> {
   let resolvedModel = normalizeModel(model);
@@ -100,7 +126,9 @@ export async function callLLM(
     return '';
   }
 
-  let msgs = messages.length > 0 ? messages : [{ role: 'user' as const, content: '(new conversation)' }];
+  let msgs: LLMMessage[] = messages.length > 0
+    ? messages
+    : [{ role: 'user' as const, content: '(new conversation)' }];
   if (msgs[0]?.role === 'assistant') {
     msgs = [{ role: 'user' as const, content: '(prior context)' }, ...msgs];
   }
@@ -137,7 +165,12 @@ export async function callLLM(
     body: JSON.stringify({
       model: resolvedModel,
       max_tokens: maxTokens,
-      messages: [{ role: 'system', content: systemPrompt }, ...msgs],
+      // Flattened: this branch is the fallback provider and takes a different
+      // image shape. See the LLMBlock comment above.
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...msgs.map((m) => ({ role: m.role, content: flattenToText(m.content) })),
+      ],
     }),
   });
   if (!res.ok) {
