@@ -46,6 +46,10 @@ export interface Profile {
   hotmart_url: string | null;
   hotmart_affiliate_code: string | null;
   referral_tag: string | null;
+  /** Their own Skool affiliate link, pasted at step 3 of Getting started. */
+  skool_affiliate_url: string | null;
+  /** When they said their Instagram profile is presentable. Self-declared. */
+  profile_ready_at: string | null;
   registration_method: RegistrationMethod;
   ig_username: string | null;
   auth_provider: "email" | "instagram";

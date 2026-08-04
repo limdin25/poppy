@@ -1,15 +1,15 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardHome } from "@/features/dashboard-home";
+import { GettingStarted } from "@/features/getting-started";
 import { getInstagramProfile } from "@/lib/integrations/instagram";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
-import { getClickCountByProfile, getSalesByProfile } from "@/lib/data";
 import { getMyCampaignStatus } from "@/lib/data/campaigns";
-import { buildReferralLink } from "@/lib/referral";
-import { hasLinkInBio } from "@/lib/bio-check";
+import { isCommunityMember } from "@/lib/data/community";
+import { saveProfileReady } from "@/lib/actions/getting-started";
 import type { InstagramData } from "@/features/dashboard-home";
-import type { Profile, Brand } from "@/types/database";
+import type { Profile } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -136,61 +136,35 @@ export default async function DashboardPage() {
     fallbackProfile.first_name = instagram.name.split(" ")[0];
   }
 
-  const { data: brands } = await supabase
-    .from("brands")
-    .select("*")
-    .eq("is_active", true)
-    .order("created_at", { ascending: true });
-
-  const activeBrands = (brands as Brand[]) ?? [];
-
-  // The influencer's share link: the active brand's base URL + their referral tag.
-  const baseUrl = activeBrands[0]?.share_base_url ?? null;
-  const shareLink =
-    baseUrl && fallbackProfile.referral_tag
-      ? buildReferralLink(baseUrl, fallbackProfile.referral_tag)
-      : null;
-
-  const [clicks, sales, campaignStatus] = await Promise.all([
-    getClickCountByProfile(user.id),
-    getSalesByProfile(user.id),
+  const [campaignStatus, communityJoined] = await Promise.all([
     getMyCampaignStatus(user.id),
+    isCommunityMember(fallbackProfile.email),
   ]);
-  const confirmedSales = sales.filter((s) => s.status === "confirmed");
-  const earnings = confirmedSales.reduce(
-    (sum, s) => sum + Number(s.commission_amount),
-    0,
-  );
 
   const connectUrl =
     postingSettings?.active_provider === "outstand"
       ? "/api/outstand/connect"
       : "/api/instagram/connect";
 
-  // Nudge until their referral link shows up in the IG bio (false only when we
-  // could actually read the bio and the tag wasn't there).
-  const bioLinkMissing =
-    Boolean(instagram?.isConnected) &&
-    Boolean(shareLink) &&
-    hasLinkInBio({
-      tag: fallbackProfile.referral_tag,
-      biography: instagram?.biography ?? null,
-      website: instagram?.website ?? null,
-    }) === false;
-
+  // The two features are composed here rather than importing one from the
+  // other: features never import features (eslint-plugin-boundaries).
   return (
     <DashboardHome
       profile={fallbackProfile}
       instagram={instagram}
       connectUrl={connectUrl}
-      shareLink={shareLink}
-      referralTag={fallbackProfile.referral_tag}
-      clicks={clicks}
-      sales={confirmedSales.length}
-      earnings={earnings}
       campaignStatus={campaignStatus}
-      bioLinkMissing={bioLinkMissing}
       instagramEnabled={INSTAGRAM_ENABLED}
+      rightColumn={
+        <GettingStarted
+          instagramConnected={Boolean(instagram?.isConnected)}
+          communityJoined={communityJoined}
+          connectUrl={connectUrl}
+          skoolAffiliateUrl={fallbackProfile.skool_affiliate_url}
+          profileReady={Boolean(fallbackProfile.profile_ready_at)}
+          onSaveStep3={saveProfileReady}
+        />
+      }
     />
   );
 }

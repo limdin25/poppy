@@ -30,10 +30,6 @@ const mockCampaignStatus: MyCampaignStatus = {
 const baseProps = {
   profile: MOCK_INFLUENCER,
   instagram: mockInstagram,
-  shareLink: "https://www.scanplates.com/?sck=ana4k2p9",
-  clicks: 12,
-  sales: 3,
-  earnings: 36,
   campaignStatus: null,
 };
 
@@ -53,12 +49,22 @@ describe("DashboardHome", () => {
     expect(screen.getByText("Connect my Instagram")).toBeInTheDocument();
   });
 
-  it("shows the influencer's share link with a copy button", () => {
+  // Hugo, 2026-08-04: "the referral URL, it doesn't matter for now, we can hide
+  // it from here." It was the Hotmart share link (a ScanPlates URL with ?sck=),
+  // pointing at a product we no longer sell. The link that matters now is the
+  // creator's own Skool affiliate link, which lives in Getting started.
+  it("no longer shows the Hotmart share link or its tier ladder", () => {
     render(<DashboardHome {...baseProps} />);
-    expect(
-      screen.getByText("https://www.scanplates.com/?sck=ana4k2p9"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    expect(screen.queryByText(/sck=/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Your share link")).not.toBeInTheDocument();
+    expect(screen.queryByText("Your products")).not.toBeInTheDocument();
+    // The fabricated brand ladder went with it.
+    expect(screen.queryByAltText("Nike")).not.toBeInTheDocument();
+  });
+
+  it("renders whatever the page puts in the right column", () => {
+    render(<DashboardHome {...baseProps} rightColumn={<p>Getting started</p>} />);
+    expect(screen.getByText("Getting started")).toBeInTheDocument();
   });
 
   it("shows the campaign card with name, joined date and next post in São Paulo time", () => {
@@ -93,18 +99,11 @@ describe("DashboardHome", () => {
     ).toBeInTheDocument();
   });
 
-  it("nudges the influencer when their link is missing from the bio", () => {
-    render(<DashboardHome {...baseProps} bioLinkMissing />);
-    expect(
-      screen.getByText("Your link is missing from your bio!"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/"Website" field on your Instagram profile/),
-    ).toBeInTheDocument();
-  });
-
-  it("hides the bio nudge when the link is already there", () => {
-    render(<DashboardHome {...baseProps} bioLinkMissing={false} />);
+  // The bio nudge went with the share link: it existed to chase the Hotmart
+  // tag into their Instagram website field. Bio work is step 3 of Getting
+  // started now, and it asks for the Skool affiliate link instead.
+  it("no longer nudges about the old referral tag in the bio", () => {
+    render(<DashboardHome {...baseProps} />);
     expect(
       screen.queryByText("Your link is missing from your bio!"),
     ).not.toBeInTheDocument();
