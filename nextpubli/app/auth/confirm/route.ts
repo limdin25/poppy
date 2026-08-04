@@ -87,22 +87,19 @@ export async function POST(request: Request) {
 
   if (typeof tokenHash === "string" && tokenHash && typeof type === "string" && type) {
     const supabase = await createClient();
-    const { data, error } = await supabase.auth.verifyOtp({
+    const { error } = await supabase.auth.verifyOtp({
       type: type as EmailOtpType,
       token_hash: tokenHash,
     });
 
     if (!error) {
-      // Session cookie is now set. Admins go straight to the admin panel.
-      let destination = next || "/dashboard";
-      if (!next && data.user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("is_admin")
-          .eq("id", data.user.id)
-          .single<{ is_admin: boolean }>();
-        if (profile?.is_admin) destination = "/admin";
-      }
+      // Session cookie is now set. EVERYONE lands on the creator dashboard,
+      // admins included. Hugo, 2026-08-04: "I want to be like a normal user
+      // with the option to admin inside." An admin gets across via the Admin
+      // item in the sidebar (app/(influencer)/layout.tsx), which is shown only
+      // when profiles.is_admin. Sending them straight to /admin meant Hugo
+      // never saw the site his creators see.
+      const destination = next || "/dashboard";
       // 303 → the browser follows with a GET instead of re-POSTing.
       return NextResponse.redirect(`${origin}${destination}`, 303);
     }

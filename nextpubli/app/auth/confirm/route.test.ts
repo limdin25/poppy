@@ -94,7 +94,11 @@ describe("POST /auth/confirm (actual verification)", () => {
     expect(res.headers.get("location")).toBe("http://localhost:3000/dashboard");
   });
 
-  it("sends admins to /admin", async () => {
+  // Hugo, 2026-08-04: "when I enter with hugodesouzax@gmail.com it takes me to
+  // admin directly, but I want to be like a normal user with the option to
+  // admin inside." An admin reaches /admin from the sidebar item, which the
+  // creator layout renders when profiles.is_admin.
+  it("sends admins to the creator dashboard too, not straight to /admin", async () => {
     mockVerifyOtp.mockResolvedValue({
       data: { user: { id: "admin1" } },
       error: null,
@@ -103,7 +107,7 @@ describe("POST /auth/confirm (actual verification)", () => {
 
     const res = await POST(makePost({ token_hash: "abc123", type: "magiclink" }));
 
-    expect(res.headers.get("location")).toBe("http://localhost:3000/admin");
+    expect(res.headers.get("location")).toBe("http://localhost:3000/dashboard");
   });
 
   it("honors a safe relative `next` path", async () => {
