@@ -16,3 +16,7 @@ scraper
 /video
 /out
 /public/clips
+bridge
+# HeyPubli is a separate business on its own Vercel project (heypubli-app).
+# It only ever lived in this repo for convenience. Elsie must not ship it.
+/heypubli
