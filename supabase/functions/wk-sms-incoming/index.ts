@@ -293,6 +293,25 @@ serve(async (req: Request) => {
       //     also blocks at carrier level for toll-free; this keeps our own
       //     lists clean and visible in the CRM.
       const optOut = /^(stop|stopall|unsubscribe|quit|cancel|end)[.!]*$/i.test(body.trim());
+
+      // 3b-ii. A REFUSAL is not the word STOP, and it must still stop the
+      //     machines. Hugo, 2026-08-06, watching a HeyPubli lead answer "Not
+      //     interested" and get pitched anyway 70 minutes later: "they said
+      //     not interested and you still pitched". The keyword list above
+      //     would never have caught it.
+      //
+      //     Deliberately NARROW: unambiguous refusals only, no "not now" and
+      //     no bare "no" (both are common mid-conversation answers to a
+      //     question we asked, like "did you find the email?"). And NOT
+      //     tagged do-not-text: that tag is the STOP contract and it locks a
+      //     human agent out of the thread too. This flag only travels to
+      //     HeyPubli, where it parks the automated nudges.
+      const refused =
+        /\b(not|no|never)\s+(interested|intrested|intersted|interseted)\b/i.test(body) ||
+        /\b(don'?t|do\s+not|dont)\s+(message|msg|text|contact|call)\s+me\b/i.test(body) ||
+        /\b(remove|delete)\s+(me|my\s+number)\b/i.test(body) ||
+        /\bleave\s+me\s+alone\b/i.test(body) ||
+        /\bnot\s+want(ed|ing)?\s+(this|it|any)\b/i.test(body);
       if (optOut) {
         const { error: dntErr } = await supa
           .from('wk_contact_tags')
@@ -423,6 +442,9 @@ serve(async (req: Request) => {
               phone: cRow?.phone ?? fromE164,
               body,
               opt_out: optOut,
+              // A plain-English refusal parks HeyPubli's automation exactly
+              // like a STOP does, without the do-not-text tag a STOP carries.
+              refused,
               twilio_sid: messageSid,
             });
             const keyData = new TextEncoder().encode(HEYPUBLI_WEBHOOK_SECRET);

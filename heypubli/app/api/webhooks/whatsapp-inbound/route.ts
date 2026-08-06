@@ -14,6 +14,10 @@ const relaySchema = z.object({
   phone: z.string().min(8),
   body: z.string().default(""),
   opt_out: z.boolean().default(false),
+  // A plain-English refusal ("not interested", "remove me"). Not the STOP
+  // contract, so no do-not-text tag is set on HeyElsie's side and a human can
+  // still reply in the inbox, but every automation here parks immediately.
+  refused: z.boolean().default(false),
   twilio_sid: z.string().optional(),
 });
 
@@ -45,12 +49,17 @@ export async function POST(request: Request) {
     .maybeSingle<{ id: string; status: string; engaged_at: string | null }>();
   if (!lead) return NextResponse.json({ ok: true, matched: false }, { status: 200 });
 
-  if (event.opt_out) {
+  // A STOP and a "not interested" both end the automated conversation. They
+  // are stored the same way on purpose: whatsapp_opted_out_at is the one flag
+  // the nurture drip AND the onboarding nudge brain both refuse to send past,
+  // so one write closes every automated door. Hugo, 2026-08-06, after a lead
+  // who answered "Not interested" was pitched again 70 minutes later.
+  if (event.opt_out || event.refused) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (admin.from("signup_leads") as any)
       .update({
         nurture_state: "blocked",
-        nurture_stop_reason: "opted out",
+        nurture_stop_reason: event.opt_out ? "opted out" : "said not interested",
         whatsapp_opted_out_at: nowIso,
         last_seen_at: nowIso,
       })
