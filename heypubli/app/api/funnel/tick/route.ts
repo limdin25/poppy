@@ -10,18 +10,21 @@ import { sendSkoolInvite } from "@/lib/integrations/skool";
 import { sendPartnerWhatsApp, getSharedSenderLoad } from "@/lib/integrations/whatsapp";
 import { sendEmail } from "@/lib/integrations/resend";
 import { LEAD_STAGES } from "@/lib/data/signup-leads";
+import { runOnboardingNudges } from "@/lib/data/onboarding-nudges";
 import type { FunnelSettings, SignupLead, SkoolInvite } from "@/types/database";
 
 export const maxDuration = 300;
 
-// The funnel's single heartbeat, every 5 minutes. Two independent phases so a failure in
-// one cannot silence the other:
+// The funnel's single heartbeat, every 5 minutes. Three independent phases so a failure
+// in one cannot silence the others:
 //   1. Skool invite dispatch: queued skool_invites -> Skool's own invite webhook.
-//   2. Nurture: due leads -> WhatsApp template or email, under all the guards.
+//   2. Nurture: due PRE-signup leads -> WhatsApp template or email, under all the guards.
+//   3. Onboarding nudges: signed-up creators stuck mid-funnel -> a step-specific
+//      WhatsApp message (lib/data/onboarding-nudges.ts).
 //
 // Everything here is idempotent: invites claim rows via status transitions and carry an
 // idempotency key end to end; nurture_sends has unique (lead_id, step) so a crashed run
-// cannot double-send.
+// cannot double-send; onboarding nudges carry a unique external_id per attempt.
 
 const MAX_INVITE_ATTEMPTS = 5;
 const INVITE_BATCH = 20;
@@ -340,16 +343,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "no funnel_settings row" }, { status: 500 });
   }
 
-  const [invites, nurture] = await Promise.allSettled([
+  const [invites, nurture, onboarding] = await Promise.allSettled([
     settings.skool_invites_enabled
       ? dispatchSkoolInvites(admin)
       : Promise.resolve({ disabled: true }),
     runNurture(admin, settings),
+    runOnboardingNudges(admin, settings),
   ]);
 
   return NextResponse.json({
     ok: true,
     invites: invites.status === "fulfilled" ? invites.value : { error: String(invites.reason) },
     nurture: nurture.status === "fulfilled" ? nurture.value : { error: String(nurture.reason) },
+    onboarding:
+      onboarding.status === "fulfilled"
+        ? onboarding.value
+        : { error: String(onboarding.reason) },
   });
 }

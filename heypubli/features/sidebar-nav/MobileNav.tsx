@@ -35,7 +35,7 @@ import {
 // route half the users cannot find.
 const influencerItems = [
   { label: "Home", href: "/dashboard", icon: Home },
-  { label: "Setup", href: "/brochure", icon: BookOpen },
+  { label: "Setup", href: "/onboarding", icon: BookOpen },
   ...(INSTAGRAM_ENABLED ? [{ label: "Metrics", href: "/metrics", icon: BarChart3 }] : []),
   { label: "Calendar", href: "/calendar", icon: Calendar },
   { label: "Sales", href: "/sales", icon: DollarSign },

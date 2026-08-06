@@ -21,7 +21,7 @@ describe("SidebarNav", () => {
     const { unmount } = render(<SidebarNav variant="influencer" />);
     expect(screen.getByRole("link", { name: "Setup" })).toHaveAttribute(
       "href",
-      "/brochure",
+      "/onboarding",
     );
     unmount();
 
@@ -29,7 +29,7 @@ describe("SidebarNav", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByRole("link", { name: "Setup" })).toHaveAttribute(
       "href",
-      "/brochure",
+      "/onboarding",
     );
   });
 

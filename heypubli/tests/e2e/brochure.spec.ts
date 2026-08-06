@@ -1,23 +1,32 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Smoke spec for the /brochure route.
+ * Smoke spec for /onboarding, the gated funnel that replaced /brochure
+ * (2026-08-06). /brochure lives on only as a redirect, because the old URL is
+ * in sent messages and bookmarks.
  *
  * The first test is the one that matters most and it is not about layout. This
  * page prints a creator's own email address, and the repo has already deleted
  * seven pages (heypubli.com/v0 to /v6) for being reachable without a login. If
- * middleware.ts ever loses "/brochure/:path*" from its matcher, that test goes
- * red before anything ships.
+ * middleware.ts ever loses "/onboarding/:path*" from its matcher, that test
+ * goes red before anything ships.
  */
-test.describe("/brochure", () => {
+test.describe("/onboarding", () => {
   test("is not reachable without a login", async ({ page }) => {
+    await page.goto("/onboarding");
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test("/brochure is gated too, and never leaks content on its way out", async ({
+    page,
+  }) => {
     await page.goto("/brochure");
     await expect(page).toHaveURL(/\/login/);
   });
 
   test("renders at 360px with no sideways scroll", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
-    await page.goto("/brochure");
+    await page.goto("/onboarding");
     // Logged out, so this is the login page. The assertion still earns its
     // keep: a 360px viewport that scrolls sideways is the single most common
     // way this layout can break, and it is checked on whatever renders.
@@ -36,7 +45,7 @@ test.describe("/brochure", () => {
 const email = process.env.BROCHURE_TEST_EMAIL;
 const password = process.env.BROCHURE_TEST_PASSWORD;
 
-test.describe("/brochure signed in", () => {
+test.describe("/onboarding signed in", () => {
   test.skip(!email || !password, "set BROCHURE_TEST_EMAIL and BROCHURE_TEST_PASSWORD");
 
   test.beforeEach(async ({ page }) => {
@@ -44,43 +53,36 @@ test.describe("/brochure signed in", () => {
     await page.getByLabel(/email/i).fill(email as string);
     await page.getByLabel(/password/i).fill(password as string);
     await page.getByRole("button", { name: /sign in|log in/i }).click();
-    await page.waitForURL(/\/dashboard|\/brochure/);
+    await page.waitForURL(/\/dashboard|\/onboarding/);
   });
 
-  test("shows all four steps and a progress count", async ({ page }) => {
+  test("shows five steps, exactly one of them open", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
-    await page.goto("/brochure");
+    await page.goto("/onboarding");
 
-    for (const id of ["instagram", "community", "affiliate", "bio"]) {
+    const ids = ["instagram", "community", "affiliate", "photo", "bio"];
+    for (const id of ids) {
       await expect(page.getByTestId(`step-${id}`)).toBeVisible();
-      await expect(page.getByTestId(`status-${id}`)).toBeVisible();
     }
-    await expect(page.getByTestId("brochure-progress")).toContainText("of 4 done");
+    await expect(page.getByTestId("funnel-progress")).toContainText("of 5 done");
+
+    const open = page.locator('[data-mode="open"]');
+    await expect(open).toHaveCount(1);
+  });
+
+  test("/brochure walks a signed-in creator to the funnel", async ({ page }) => {
+    await page.goto("/brochure");
+    await expect(page).toHaveURL(/\/onboarding/);
   });
 
   test("never scrolls sideways on a 360px phone", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
-    await page.goto("/brochure");
+    await page.goto("/onboarding");
     await page.getByTestId("step-bio").scrollIntoViewIfNeeded();
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(1);
-  });
-
-  test("refuses a link that is not a Skool link, and says so", async ({ page }) => {
-    await page.goto("/brochure");
-    await page.getByTestId("skool-link-input").fill("https://notskool.com/me");
-    await page.getByTestId("save-skool-link").click();
-    await expect(page.getByTestId("skool-link-message")).toContainText("skool.com");
-  });
-
-  test("gives the creator a bio sentence they can copy", async ({ page }) => {
-    await page.goto("/brochure");
-    const sentence = await page.getByTestId("text-bio-sentence").inputValue();
-    expect(sentence.length).toBeGreaterThan(20);
-    expect(sentence.length).toBeLessThanOrEqual(100);
-    await expect(page.getByTestId("copy-bio-sentence")).toBeVisible();
   });
 });

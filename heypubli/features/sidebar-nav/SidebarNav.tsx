@@ -30,13 +30,13 @@ import {
 } from "lucide-react";
 
 // Metrics is Instagram-only data, hidden while Instagram is off (lib/flags.ts).
-// Setup (/brochure) sits second, right under Home: it is the first thing a new
-// creator needs and the thing they come back to when their affiliate link
+// Setup (/onboarding) sits second, right under Home: it is the first thing a
+// new creator needs and the thing they come back to when their affiliate link
 // changes. It is never hidden by a flag, because the page explains what to do
 // while Instagram is off as well as when it is on.
 const influencerMain = [
   { label: "Home", href: "/dashboard", icon: Home },
-  { label: "Setup", href: "/brochure", icon: BookOpen },
+  { label: "Setup", href: "/onboarding", icon: BookOpen },
   ...(INSTAGRAM_ENABLED ? [{ label: "Metrics", href: "/metrics", icon: BarChart3 }] : []),
   { label: "Calendar", href: "/calendar", icon: Calendar },
   { label: "Sales", href: "/sales", icon: DollarSign },

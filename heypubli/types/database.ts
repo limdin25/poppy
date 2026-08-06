@@ -56,6 +56,8 @@ export interface Profile {
   bio_link_declared_at: string | null;
   /** They said they joined the community. Self-declared because Skool cannot tell us. */
   community_joined_declared_at: string | null;
+  /** They said their profile photo is in place. Self-declared, no API can judge a photo. */
+  photo_declared_at: string | null;
   registration_method: RegistrationMethod;
   ig_username: string | null;
   auth_provider: "email" | "instagram";
@@ -338,7 +340,42 @@ export interface FunnelSettings {
   whatsapp_enabled: boolean;
   skool_invites_enabled: boolean;
   daily_template_cap: number;
+  /** The onboarding nudge brain's kill switch. ON by default (migration 025). */
+  onboarding_nudges_enabled: boolean;
   updated_at: string;
+}
+
+/** One row per (creator, onboarding step): when they first saw it, when it turned done. */
+export interface OnboardingProgress {
+  profile_id: string;
+  step: OnboardingStepId;
+  first_seen_at: string | null;
+  completed_at: string | null;
+  updated_at: string;
+}
+
+export type OnboardingStepId = "instagram" | "community" | "affiliate" | "photo" | "bio";
+
+/** Per-creator nudge bookkeeping: count, last send, and why we stopped for good. */
+export interface OnboardingNudgeState {
+  profile_id: string;
+  nudge_count: number;
+  last_nudged_at: string | null;
+  last_step: string | null;
+  stopped_at: string | null;
+  stop_reason: string | null;
+  updated_at: string;
+}
+
+/** One nudge that actually left the building. */
+export interface OnboardingNudge {
+  id: string;
+  profile_id: string;
+  step: string;
+  kind: "freeform" | "template";
+  variant: string;
+  external_id: string;
+  sent_at: string;
 }
 
 export interface MessageLog {
@@ -673,6 +710,27 @@ export interface Database {
         Row: FunnelSettings;
         Insert: Partial<FunnelSettings> & Pick<FunnelSettings, "id">;
         Update: Partial<Omit<FunnelSettings, "id">>;
+        Relationships: [];
+      };
+      onboarding_progress: {
+        Row: OnboardingProgress;
+        Insert: Partial<Omit<OnboardingProgress, "updated_at">> &
+          Pick<OnboardingProgress, "profile_id" | "step">;
+        Update: Partial<Omit<OnboardingProgress, "profile_id" | "step">>;
+        Relationships: [];
+      };
+      onboarding_nudge_state: {
+        Row: OnboardingNudgeState;
+        Insert: Partial<Omit<OnboardingNudgeState, "updated_at">> &
+          Pick<OnboardingNudgeState, "profile_id">;
+        Update: Partial<Omit<OnboardingNudgeState, "profile_id">>;
+        Relationships: [];
+      };
+      onboarding_nudges: {
+        Row: OnboardingNudge;
+        Insert: Partial<Omit<OnboardingNudge, "id" | "sent_at">> &
+          Pick<OnboardingNudge, "profile_id" | "step" | "kind" | "variant" | "external_id">;
+        Update: Partial<Omit<OnboardingNudge, "id" | "profile_id">>;
         Relationships: [];
       };
     };

@@ -1,80 +1,88 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import type { Gender } from "@/types/database";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { cleanSkoolAffiliateUrl } from "@/lib/skool-link";
+import type { SkoolLinkResult } from "@/lib/actions/onboarding-shared";
 
-export async function saveOnboarding(formData: FormData) {
+/**
+ * The /onboarding funnel's server actions. Same columns the brochure actions
+ * wrote, revalidating the funnel's own path. All of them run under the
+ * creator's own session (RLS-scoped), never the service role: a creator can
+ * only ever tick their own boxes.
+ */
+
+async function requireUser() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  return { supabase, user };
+}
 
-  if (!user) return { error: "Not authenticated" };
+/** Step 2: "I have joined". Their word is the mechanism, Skool never tells us. */
+export async function declareCommunityJoined(): Promise<void> {
+  const { supabase, user } = await requireUser();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("profiles") as any)
+    .update({ community_joined_declared_at: new Date().toISOString() })
+    .eq("id", user.id)
+    .is("community_joined_declared_at", null);
+  if (error) console.error("[onboarding] declareCommunityJoined failed", error);
+  revalidatePath("/onboarding");
+}
 
-  const step = parseInt(formData.get("step") as string, 10);
+/** Step 4: the photo is in place. Self-declared, no API can judge a photo. */
+export async function declarePhotoDone(): Promise<void> {
+  const { supabase, user } = await requireUser();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("profiles") as any)
+    .update({ photo_declared_at: new Date().toISOString() })
+    .eq("id", user.id)
+    .is("photo_declared_at", null);
+  if (error) console.error("[onboarding] declarePhotoDone failed", error);
+  revalidatePath("/onboarding");
+}
 
-  if (step === 3 || step === 4) {
-    const sectorIds = (formData.get("sector_ids") as string).split(",").filter(Boolean);
-    const type = step === 3 ? "preferred" : "content";
+/** Step 5 escape hatch: offered only when we could not read the bio ourselves. */
+export async function declareBioDone(): Promise<void> {
+  const { supabase, user } = await requireUser();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("profiles") as any)
+    .update({ bio_link_declared_at: new Date().toISOString() })
+    .eq("id", user.id)
+    .is("bio_link_declared_at", null);
+  if (error) console.error("[onboarding] declareBioDone failed", error);
+  revalidatePath("/onboarding");
+}
 
-    await supabase
-      .from("influencer_sectors")
-      .delete()
-      .eq("profile_id", user.id)
-      .eq("type", type);
-
-    if (sectorIds.length > 0) {
-      const rows = sectorIds.map((sectorId) => ({
-        profile_id: user.id,
-        sector_id: sectorId,
-        type,
-      }));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from("influencer_sectors") as any).insert(rows);
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from("profiles") as any)
-      .update({ onboarding_step: step + 1 })
-      .eq("id", user.id);
-
-    return { success: true };
+/** Step 3: the pasted affiliate link, validated hard (skool.com only). */
+export async function saveSkoolLink(
+  _prev: SkoolLinkResult,
+  formData: FormData,
+): Promise<SkoolLinkResult> {
+  const raw = String(formData.get("skool_affiliate_url") ?? "");
+  const cleaned = cleanSkoolAffiliateUrl(raw);
+  if (!cleaned) {
+    return {
+      ok: false,
+      message: "That is not a skool.com link. Copy the whole address from Skool.",
+      url: null,
+    };
   }
 
-  if (step === 5) {
-    const dateOfBirth = (formData.get("date_of_birth") as string) || null;
-    const gender = (formData.get("gender") as Gender) || null;
-    const addressStreet = (formData.get("address_street") as string) || null;
-    const addressCity = (formData.get("address_city") as string) || null;
-    const addressPostalCode = (formData.get("address_postal_code") as string) || null;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from("profiles") as any)
-      .update({
-        date_of_birth: dateOfBirth,
-        gender,
-        address_street: addressStreet,
-        address_city: addressCity,
-        address_postal_code: addressPostalCode,
-        onboarding_step: 6,
-        onboarding_complete: true,
-      })
-      .eq("id", user.id);
-
-    if (error) return { error: error.message };
-
-    revalidatePath("/dashboard");
-    return { success: true };
+  const { supabase, user } = await requireUser();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("profiles") as any)
+    .update({ skool_affiliate_url: cleaned })
+    .eq("id", user.id);
+  if (error) {
+    console.error("[onboarding] saveSkoolLink failed", error);
+    return { ok: false, message: "Could not save the link. Try again.", url: null };
   }
 
-  if (step === 2) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from("profiles") as any)
-      .update({ onboarding_step: 3 })
-      .eq("id", user.id);
-    return { success: true };
-  }
-
-  return { error: "Invalid step" };
+  revalidatePath("/onboarding");
+  return { ok: true, message: "Saved.", url: cleaned };
 }

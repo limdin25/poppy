@@ -1,13 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardHome } from "@/features/dashboard-home";
-import { GettingStarted } from "@/features/getting-started";
 import { getInstagramProfile } from "@/lib/integrations/instagram";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { getMyCampaignStatus } from "@/lib/data/campaigns";
-import { isCommunityMember } from "@/lib/data/community";
-import { saveProfileReady } from "@/lib/actions/getting-started";
 import type { InstagramData } from "@/features/dashboard-home";
 import type { Profile } from "@/types/database";
 
@@ -93,6 +90,12 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
+  // The funnel rule: until every setup step is done, the dashboard IS the
+  // funnel. Settings and the other pages stay reachable from the nav; only
+  // Home walks you back to the one thing that needs doing.
+  const p = profile as Profile | null;
+  if (p && !p.is_admin && !p.onboarding_complete) redirect("/onboarding");
+
   const fallbackProfile: Profile =
     profile ??
     ({
@@ -136,18 +139,16 @@ export default async function DashboardPage() {
     fallbackProfile.first_name = instagram.name.split(" ")[0];
   }
 
-  const [campaignStatus, communityJoined] = await Promise.all([
-    getMyCampaignStatus(user.id),
-    isCommunityMember(fallbackProfile.email),
-  ]);
+  const campaignStatus = await getMyCampaignStatus(user.id);
 
   const connectUrl =
     postingSettings?.active_provider === "outstand"
       ? "/api/outstand/connect"
       : "/api/instagram/connect";
 
-  // The two features are composed here rather than importing one from the
-  // other: features never import features (eslint-plugin-boundaries).
+  // No GettingStarted column any more: an unfinished creator never reaches
+  // this page (redirected to /onboarding above), and a finished one does not
+  // need a checklist of things already done.
   return (
     <DashboardHome
       profile={fallbackProfile}
@@ -155,16 +156,6 @@ export default async function DashboardPage() {
       connectUrl={connectUrl}
       campaignStatus={campaignStatus}
       instagramEnabled={INSTAGRAM_ENABLED}
-      rightColumn={
-        <GettingStarted
-          instagramConnected={Boolean(instagram?.isConnected)}
-          communityJoined={communityJoined}
-          connectUrl={connectUrl}
-          skoolAffiliateUrl={fallbackProfile.skool_affiliate_url}
-          profileReady={Boolean(fallbackProfile.profile_ready_at)}
-          onSaveStep3={saveProfileReady}
-        />
-      }
     />
   );
 }
