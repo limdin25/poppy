@@ -1,13 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { isThreadUnread, sortInboxRows, inboxSections } from '../src/features/crm/lib/inboxOrder';
 
-// Hugo, 2026-07-28, looking at Maria's inbox after the 100-lead blast:
-// "make sure unread is always on the top, even if we have blasted messages".
-//
-// The blast wrote 100 outbound rows in a few minutes. Sorted by recency alone,
-// the six people who actually replied sat below all of them. These tests pin
-// the two rules that fix it: what counts as unread, and what order the list is
-// in.
+// Hugo, 2026-08-06: "just make a normal inbox, last communication is always
+// on top... unless I press the filters". This superseded his 2026-07-28
+// unread-on-top rule: the default order is pinned then pure recency, and the
+// UNREAD pill is where repliers-first lives now. These tests pin what counts
+// as unread (unchanged, it drives the badge and the pill) and the new order.
 
 const t = (iso: string) => iso;
 
@@ -58,12 +56,14 @@ describe('sortInboxRows', () => {
     ...over,
   });
 
-  it('puts an unread reply above a newer outbound blast', () => {
+  // The 2026-08-06 rule: a normal inbox. The newest conversation wins even
+  // when an older one is unread; unread is a badge and a pill, not a hoist.
+  it('keeps the newest conversation on top even when an older one is unread', () => {
     const out = sortInboxRows([
       row('blast', { lastMessageAt: '2026-07-28T10:04:00Z' }),
       row('reply', { unread: true, lastMessageAt: '2026-07-28T08:00:00Z' }),
     ]);
-    expect(out.map((r) => r.id)).toEqual(['reply', 'blast']);
+    expect(out.map((r) => r.id)).toEqual(['blast', 'reply']);
   });
 
   it('holds pinned rows above everything, newest pin first', () => {
@@ -76,14 +76,14 @@ describe('sortInboxRows', () => {
     expect(out.map((r) => r.id)).toEqual(['pin-new', 'pin-old', 'unread', 'quiet']);
   });
 
-  it('falls back to newest-first inside each band', () => {
+  it('orders everything unpinned by recency alone, unread mixed in', () => {
     const out = sortInboxRows([
       row('older', { lastMessageAt: '2026-07-26T09:00:00Z' }),
       row('newer', { lastMessageAt: '2026-07-28T09:00:00Z' }),
       row('unread-older', { unread: true, lastMessageAt: '2026-07-20T09:00:00Z' }),
       row('unread-newer', { unread: true, lastMessageAt: '2026-07-27T09:00:00Z' }),
     ]);
-    expect(out.map((r) => r.id)).toEqual(['unread-newer', 'unread-older', 'newer', 'older']);
+    expect(out.map((r) => r.id)).toEqual(['newer', 'unread-newer', 'older', 'unread-older']);
   });
 
   it('does not mutate the array it was given', () => {
@@ -110,15 +110,17 @@ describe('inboxSections', () => {
     ...over,
   });
 
-  it('groups a mixed list into pinned, unread, rest, in that order', () => {
+  // Since 2026-08-06 there are only two possible bands: pinned and the rest.
+  // An unread row is badged where it sits, never pulled into its own section.
+  it('groups a mixed list into pinned and rest only', () => {
     const sorted = sortInboxRows([
-      row('quiet'),
+      row('quiet', { lastMessageAt: '2026-08-02T08:00:00Z' }),
       row('pinned', { pinnedAt: '2026-08-01T00:00:00Z' }),
-      row('reply', { unread: true }),
+      row('reply', { unread: true, lastMessageAt: '2026-08-02T10:00:00Z' }),
     ]);
     const sections = inboxSections(sorted);
-    expect(sections.map((s) => s.key)).toEqual(['pinned', 'unread', 'rest']);
-    expect(sections.map((s) => s.rows.map((r) => r.id))).toEqual([['pinned'], ['reply'], ['quiet']]);
+    expect(sections.map((s) => s.key)).toEqual(['pinned', 'rest']);
+    expect(sections.map((s) => s.rows.map((r) => r.id))).toEqual([['pinned'], ['reply', 'quiet']]);
   });
 
   it('omits empty bands, an all-quiet list is one headerless section', () => {
@@ -132,7 +134,7 @@ describe('inboxSections', () => {
       row('u1', { unread: true, lastMessageAt: '2026-08-02T10:00:00Z' }),
       row('u2', { unread: true, lastMessageAt: '2026-08-02T08:00:00Z' }),
       row('p1', { pinnedAt: '2026-08-01T00:00:00Z' }),
-      row('r1'),
+      row('r1', { lastMessageAt: '2026-08-02T09:00:00Z' }),
     ]);
     const flat = inboxSections(sorted).flatMap((s) => s.rows.map((r) => r.id));
     expect(flat).toEqual(sorted.map((r) => r.id));

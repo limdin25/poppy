@@ -1,14 +1,16 @@
 // Inbox ordering + unread rules. Pure functions so they can be unit tested
 // without a browser or a database.
 //
-// Hugo 2026-07-28: "unread is always on the top, even if we have blasted
-// messages". A 100-lead blast puts 100 outbound rows at the top of a
-// recency-sorted list and buries the six people who actually replied. Recency
-// alone is the wrong sort for a sales inbox.
+// Hugo 2026-08-06: "just make a normal inbox, last communication is always on
+// top... unless I press the filters". This SUPERSEDES the 2026-07-28
+// unread-on-top rule: the default list is pinned, then pure recency, exactly
+// like a phone's messaging app. Unread still gets its badge and its own
+// filter pill; it just no longer jumps the queue. The 2026-07-28 blast
+// problem (100 outbound rows burying six repliers) is what the UNREAD pill is
+// for now.
 //
-// The order is: pinned, then unread, then newest first inside each band.
-// Pinned outranks unread on purpose — a pin is a deliberate "keep this in front
-// of me", and an unread pinned row is still pinned, so nothing gets lost.
+// Pinned stays hoisted in every view: a pin is a deliberate "keep this in
+// front of me", and recency must not wash it away.
 
 export interface UnreadInput {
   /** Newest message FROM the lead. */
@@ -46,9 +48,9 @@ export function isThreadUnread(row: UnreadInput, lastReadAt?: string | null): bo
   return true;
 }
 
-/** Pinned → unread → newest. Returns a new array; never mutates the input. */
+/** Pinned → newest. Returns a new array; never mutates the input. */
 export function sortInboxRows<T extends OrderableRow>(rows: T[]): T[] {
-  const band = (r: T): number => (r.pinnedAt ? 0 : r.unread ? 1 : 2);
+  const band = (r: T): number => (r.pinnedAt ? 0 : 1);
   return [...rows].sort((a, b) => {
     const ba = band(a);
     const bb = band(b);
@@ -68,24 +70,25 @@ export interface InboxSection<T> {
 
 /**
  * Split an ALREADY-SORTED list (sortInboxRows order) into its bands so the UI
- * can put a label above each one. Hugo 2026-08-02: the bands were invisible,
- * so the order read as random pollution; a labelled "Needs a reply" section
- * makes the same order self-explaining.
+ * can put a label above each one. Since 2026-08-06 the default list has only
+ * two possible bands, pinned and everything else: unread rows sit in plain
+ * recency order (badged, not hoisted), so a "Needs a reply" header would lie
+ * about the order. The 'unread' key stays in the type for the UI's labels,
+ * it just never comes back from here any more.
  *
  * Pure regrouping, no re-sort: concatenating the sections' rows reproduces the
  * input exactly. Empty bands are omitted, so a list that is all one band comes
  * back as a single section, which the UI renders without any header. Call rows
- * are never unread (their inbound/outbound stamps are hardcoded null), but
- * they CAN be pinned, pin state is per CONTACT (wk_inbox_state), so a contact
+ * CAN be pinned, pin state is per CONTACT (wk_inbox_state), so a contact
  * pinned in the message view is pinned under the Calls filter too and gets a
  * Pinned header there. That is one fact in one place, not a bug.
  */
 export function inboxSections<T extends OrderableRow>(sorted: T[]): InboxSection<T>[] {
   const buckets: Record<InboxSectionKey, T[]> = { pinned: [], unread: [], rest: [] };
   for (const r of sorted) {
-    buckets[r.pinnedAt ? 'pinned' : r.unread ? 'unread' : 'rest'].push(r);
+    buckets[r.pinnedAt ? 'pinned' : 'rest'].push(r);
   }
-  return (['pinned', 'unread', 'rest'] as const)
+  return (['pinned', 'rest'] as const)
     .filter((k) => buckets[k].length > 0)
     .map((k) => ({ key: k, rows: buckets[k] }));
 }

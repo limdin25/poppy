@@ -469,8 +469,9 @@ export default function InboxPage() {
 
   // One pass: decorate, drop what this filter hides, then order.
   //
-  // Hugo 2026-07-28: pinned first, then unread, then newest. A 100-lead blast
-  // used to bury every reply under 100 outbound rows.
+  // Hugo 2026-08-06: a normal inbox, pinned then pure recency. Unread keeps
+  // its badge and its pill; it no longer jumps the queue (that superseded the
+  // 2026-07-28 unread-on-top rule).
   const decoratedRows = useMemo(() => {
     const decorated = sidebarRows.map((r) => {
       const f = inboxFlags.get(r.id);
