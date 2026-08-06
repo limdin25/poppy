@@ -70,14 +70,18 @@ function sidFor(envKey: string, fallback: string): string {
 
 export const ONB_TEMPLATES: Record<"general", string[]> &
   Record<OnboardingStepId, string[]> & { keys: Record<string, string> } = {
+  // The onb2_* set: same wording signed Lim, not Maria (Hugo, 2026-08-06:
+  // "the name is Lim", matching the sender photo and the Skool account). The
+  // Maria-signed onb_* set is abandoned; these defer safely until Meta
+  // approves them.
   keys: {
-    onb_nudge_general_a: sidFor("WA_TEMPLATE_ONB_GENERAL_A_SID", "HX0edc566bc1c186f573b13384912c63e9"),
-    onb_nudge_general_b: sidFor("WA_TEMPLATE_ONB_GENERAL_B_SID", "HX6db63aaff86b2792213241ffc9f4f0c4"),
-    onb_step_instagram: sidFor("WA_TEMPLATE_ONB_INSTAGRAM_SID", "HXfc4e32efdeb79649dc37fbe3d52cd593"),
-    onb_step_community: sidFor("WA_TEMPLATE_ONB_COMMUNITY_SID", "HX132df69c2a647cf3fb3e50f70b3f8639"),
-    onb_step_affiliate: sidFor("WA_TEMPLATE_ONB_AFFILIATE_SID", "HXf2669717f7d737902b74eeb6d4e1087c"),
-    onb_step_photo: sidFor("WA_TEMPLATE_ONB_PHOTO_SID", "HX5ac27b27d1191061192891fd1315ae06"),
-    onb_step_bio: sidFor("WA_TEMPLATE_ONB_BIO_SID", "HXa7baea84462a213124defa94229585e5"),
+    onb_nudge_general_a: sidFor("WA_TEMPLATE_ONB_GENERAL_A_SID", "HX0eaab2da699f69c0bef331c34a0810e2"),
+    onb_nudge_general_b: sidFor("WA_TEMPLATE_ONB_GENERAL_B_SID", "HXe844a68294df2eff26cefa6d8109532a"),
+    onb_step_instagram: sidFor("WA_TEMPLATE_ONB_INSTAGRAM_SID", "HX918ca089b4cd0d9d40812cf12fe21b84"),
+    onb_step_community: sidFor("WA_TEMPLATE_ONB_COMMUNITY_SID", "HXfe9ef90986e322a0edede1688030b1a5"),
+    onb_step_affiliate: sidFor("WA_TEMPLATE_ONB_AFFILIATE_SID", "HXbfa6b82dac4f96dad6273984f0dc1a2d"),
+    onb_step_photo: sidFor("WA_TEMPLATE_ONB_PHOTO_SID", "HXa52032caee2ff0e6a712cbc7ba2946a9"),
+    onb_step_bio: sidFor("WA_TEMPLATE_ONB_BIO_SID", "HX0b30cae97dc9e3ba199be8afd7c6a942"),
   },
   general: ["onb_nudge_general_a", "onb_nudge_general_b"],
   instagram: ["onb_step_instagram"],
