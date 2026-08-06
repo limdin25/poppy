@@ -22,10 +22,20 @@ describe("timezoneForPhone", () => {
     expect(timezoneForPhone("+27821234567")).toBe("Africa/Johannesburg");
   });
 
-  it("falls back to UTC rather than guessing confidently wrong", () => {
-    expect(timezoneForPhone(null)).toBe("UTC");
-    expect(timezoneForPhone("")).toBe("UTC");
-    expect(timezoneForPhone("+9991234567")).toBe("UTC");
+  // UTC was never "a neutral middle": its 09:00-20:00 window is 15:00-02:00
+  // in Dhaka, and +880 was missing from the list. Unknown must be NULL so the
+  // caller refuses instead of texting somebody at 2am.
+  it("returns null for a country it cannot place, never a confident guess", () => {
+    expect(timezoneForPhone(null)).toBeNull();
+    expect(timezoneForPhone("")).toBeNull();
+    expect(timezoneForPhone("+9991234567")).toBeNull();
+  });
+
+  it("knows the countries this funnel actually recruits from", () => {
+    expect(timezoneForPhone("+8801675426557")).toBe("Asia/Dhaka");
+    expect(timezoneForPhone("+919824840910")).toBe("Asia/Kolkata");
+    expect(timezoneForPhone("+639662874294")).toBe("Asia/Manila");
+    expect(timezoneForPhone("+9771234567")).toBe("Asia/Kathmandu");
   });
 
   it("tolerates a number stored without its plus", () => {
@@ -125,9 +135,11 @@ describe("withinSendingHours", () => {
     );
   });
 
-  it("fails open on daytime UTC when the timezone is garbage", () => {
-    expect(withinSendingHours(new Date("2026-08-03T12:00:00Z"), "Not/AZone")).toBe(true);
-    expect(withinSendingHours(new Date("2026-08-03T03:00:00Z"), "Not/AZone")).toBe(false);
+  // FAILS CLOSED. Both fallbacks used to land on UTC hours, so a lead we could
+  // not place was texted on London time.
+  it("refuses to send when it cannot tell what time it is for them", () => {
+    expect(withinSendingHours(new Date("2026-08-03T12:00:00Z"), "Not/AZone")).toBe(false);
+    expect(withinSendingHours(new Date("2026-08-03T12:00:00Z"), null)).toBe(false);
   });
 });
 

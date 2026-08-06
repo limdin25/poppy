@@ -298,13 +298,25 @@ export async function runOnboardingNudges(
   if (!settings.onboarding_nudges_enabled) return { ...report, disabled: "switch off" };
   if (!settings.whatsapp_enabled) return { ...report, disabled: "whatsapp off" };
 
+  // Creators already stopped for good are excluded IN THE QUERY, not in the
+  // loop. Checking in the loop meant they still consumed one of the 40 slots
+  // every run, so with a full stop-list creator 41 was never reached and the
+  // same 40 rows were re-examined every 5 minutes forever.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profiles } = (await (admin.from("profiles") as any)
+  const { data: stoppedRows } = (await (admin.from("onboarding_nudge_state") as any)
+    .select("profile_id")
+    .not("stopped_at", "is", null)) as { data: { profile_id: string }[] | null };
+  const stoppedIds = (stoppedRows ?? []).map((r) => r.profile_id);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (admin.from("profiles") as any)
     .select("*")
     .eq("onboarding_complete", false)
     .eq("is_admin", false)
     .is("suspended_at", null)
-    .not("whatsapp", "is", null)
+    .not("whatsapp", "is", null);
+  if (stoppedIds.length) query = query.not("id", "in", `(${stoppedIds.join(",")})`);
+  const { data: profiles } = (await query
     .order("created_at", { ascending: true })
     .limit(CANDIDATE_BATCH)) as { data: Profile[] | null };
   if (!profiles?.length) return report;

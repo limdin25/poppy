@@ -125,6 +125,20 @@ export const NURTURE_PLAN: NurtureStep[] = [
    on earth while its comment claimed it used the lead's timezone. On a worldwide list
    that texts a UK lead at 23:00 and a US west coast lead at 04:00. */
 const DIAL_CODE_TIMEZONES: ReadonlyArray<readonly [string, string]> = [
+  // The countries this funnel actually recruits from came first in the outreach
+  // list and last in this one, which is how +880 Bangladesh, our second biggest
+  // audience, ended up being treated as UTC.
+  ["+880", "Asia/Dhaka"],
+  ["+977", "Asia/Kathmandu"],
+  ["+94", "Asia/Colombo"],
+  ["+966", "Asia/Riyadh"],
+  ["+974", "Asia/Qatar"],
+  ["+973", "Asia/Bahrain"],
+  ["+968", "Asia/Muscat"],
+  ["+233", "Africa/Accra"],
+  ["+81", "Asia/Tokyo"],
+  ["+82", "Asia/Seoul"],
+  ["+86", "Asia/Shanghai"],
   ["+44", "Europe/London"],
   ["+353", "Europe/Dublin"],
   ["+351", "Europe/Lisbon"],
@@ -164,20 +178,30 @@ const DIAL_CODES_BY_LENGTH = [...DIAL_CODE_TIMEZONES].sort(
   (a, b) => b[0].length - a[0].length,
 );
 
-/** Best guess at where a number sleeps. Unknown country falls back to UTC, which is a
- *  neutral middle rather than a guess that is confidently wrong. */
-export function timezoneForPhone(e164: string | null | undefined): string {
-  if (!e164) return "UTC";
+/**
+ * Best guess at where a number sleeps, or NULL when we genuinely do not know.
+ *
+ * This used to return "UTC" for an unknown country and call it "a neutral
+ * middle". It is not neutral, it is a confident lie: UTC business hours are
+ * 15:00 to 02:00 in Dhaka, and +880 was not in the list. A null forces the
+ * caller to decide, and withinSendingHours refuses rather than guessing.
+ */
+export function timezoneForPhone(e164: string | null | undefined): string | null {
+  if (!e164) return null;
   const normalised = e164.startsWith("+") ? e164 : `+${e164.replace(/\D/g, "")}`;
   const hit = DIAL_CODES_BY_LENGTH.find(([code]) => normalised.startsWith(code));
-  return hit ? hit[1] : "UTC";
+  return hit ? hit[1] : null;
 }
 
 /**
  * 09:00 to 20:00 in the lead's timezone. A 3am WhatsApp is a block-button generator, and
  * blocks are exactly what the quality rating measures.
  */
-export function withinSendingHours(now: Date, timezone: string): boolean {
+export function withinSendingHours(now: Date, timezone: string | null): boolean {
+  // FAILS CLOSED. Both branches used to fall back to UTC hours, so a country
+  // we could not place was texted on London time. If we cannot work out where
+  // somebody is, we do not start a conversation with them.
+  if (!timezone) return false;
   try {
     const hour = Number(
       new Intl.DateTimeFormat("en-GB", {
@@ -188,9 +212,7 @@ export function withinSendingHours(now: Date, timezone: string): boolean {
     );
     return hour >= 9 && hour < 20;
   } catch {
-    // Unknown timezone string: fail open on daytime UTC.
-    const hour = now.getUTCHours();
-    return hour >= 9 && hour < 20;
+    return false;
   }
 }
 
