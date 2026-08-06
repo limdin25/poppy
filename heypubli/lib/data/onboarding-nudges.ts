@@ -36,16 +36,24 @@ import type { FunnelSettings, OnboardingStepId, Profile } from "@/types/database
 
 // ------------------------------------------------------------------
 // Tunables. Hours, not cron ticks, so the cadence survives cron changes.
+// Hugo, 2026-08-06: "if they didn't do the action for one hour, two hours,
+// ten minutes, whatever, we have to follow back on them." So the FIRST nudge
+// comes fast, while the lead is still warm and the 24h window is still open
+// (free-form, free). Later nudges space out, because by then it is templates
+// on a shared sender and pestering buys blocks, not conversions.
 // ------------------------------------------------------------------
 
-/** How long a creator must sit still before the first nudge. */
-export const FIRST_NUDGE_AFTER_HOURS = 20;
-/** Minimum gap between nudges. 44h, not 48, so sends drift across the day. */
-export const NUDGE_GAP_HOURS = 44;
+/** How long a creator must sit still before the FIRST nudge. Fast on purpose. */
+export const FIRST_NUDGE_AFTER_HOURS = 2;
+/** Gap before the SECOND nudge (22h: next day, drifting across the day), then 44h. */
+export function nudgeGapHours(nudgeCount: number): number {
+  return nudgeCount <= 1 ? 22 : 44;
+}
 /** Lifetime cap per creator. After this we stop for good and mark why. */
 export const MAX_NUDGES = 6;
-/** An inbound reply pauses nudging this long: a conversation is running. */
-export const REPLY_PAUSE_HOURS = 24;
+/** An inbound reply pauses nudging this long: a live conversation beats a robot.
+ *  Short, so a lead who chatted and then stalled still gets the fast follow-up. */
+export const REPLY_PAUSE_HOURS = 3;
 /** Sends per tick, so one run can never flood the shared sender. */
 const SENDS_PER_RUN = 25;
 const CANDIDATE_BATCH = 40;
@@ -177,7 +185,7 @@ const hoursSince = (iso: string | null, now: Date): number =>
 export function shouldNudge(input: ShouldNudgeInput): NudgeVerdict {
   if (input.stoppedAt) return { ok: false, reason: "stopped" };
   if (input.nudgeCount >= MAX_NUDGES) return { ok: false, reason: "exhausted" };
-  if (hoursSince(input.lastNudgedAt, input.now) < NUDGE_GAP_HOURS) {
+  if (hoursSince(input.lastNudgedAt, input.now) < nudgeGapHours(input.nudgeCount)) {
     return { ok: false, reason: "too_soon" };
   }
   if (hoursSince(input.lastActivityAt, input.now) < FIRST_NUDGE_AFTER_HOURS) {

@@ -367,6 +367,15 @@ export interface OnboardingNudgeState {
   updated_at: string;
 }
 
+/** One anonymous event on /watch: view, play, watch_50, watch_90, ended, cta_click, demo_play. */
+export interface WatchEvent {
+  id: string;
+  session_id: string;
+  event: string;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
+
 /** One nudge that actually left the building. */
 export interface OnboardingNudge {
   id: string;
@@ -731,6 +740,13 @@ export interface Database {
         Insert: Partial<Omit<OnboardingNudge, "id" | "sent_at">> &
           Pick<OnboardingNudge, "profile_id" | "step" | "kind" | "variant" | "external_id">;
         Update: Partial<Omit<OnboardingNudge, "id" | "profile_id">>;
+        Relationships: [];
+      };
+      watch_events: {
+        Row: WatchEvent;
+        Insert: Partial<Omit<WatchEvent, "id" | "created_at">> &
+          Pick<WatchEvent, "session_id" | "event">;
+        Update: never;
         Relationships: [];
       };
     };

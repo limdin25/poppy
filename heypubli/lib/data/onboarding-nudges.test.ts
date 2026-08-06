@@ -6,7 +6,7 @@ import {
   FREEFORM_GENERAL,
   FREEFORM_BY_STEP,
   MAX_NUDGES,
-  NUDGE_GAP_HOURS,
+  nudgeGapHours,
   FIRST_NUDGE_AFTER_HOURS,
 } from "./onboarding-nudges";
 import { ONBOARDING_STEPS } from "./onboarding";
@@ -37,9 +37,17 @@ describe("shouldNudge", () => {
     const r = shouldNudge({
       ...base,
       nudgeCount: 1,
-      lastNudgedAt: hoursAgo(NUDGE_GAP_HOURS - 1),
+      lastNudgedAt: hoursAgo(nudgeGapHours(1) - 1),
     });
     expect(r).toEqual({ ok: false, reason: "too_soon" });
+  });
+
+  // Hugo's fast follow-back: the first nudge is HOURS after a stall, not a
+  // day, because a fresh lead's 24h window is open and the message is free.
+  it("fires the first nudge fast and spaces the later ones out", () => {
+    expect(FIRST_NUDGE_AFTER_HOURS).toBeLessThanOrEqual(2);
+    expect(nudgeGapHours(1)).toBeGreaterThanOrEqual(20);
+    expect(nudgeGapHours(2)).toBeGreaterThan(nudgeGapHours(1));
   });
 
   // A live conversation beats a robot. The AI or a human is already talking
