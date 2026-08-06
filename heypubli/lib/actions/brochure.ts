@@ -69,6 +69,30 @@ export async function saveSkoolLink(
 }
 
 /**
+ * Step 2: the creator says they joined the community.
+ *
+ * Not an escape hatch, the only mechanism there is. Skool's Zapier app fires on
+ * "New Paid Member" and on membership questions, and on nothing else, so a free
+ * invited member joining is invisible to us. A real paid membership still ticks
+ * this step on its own; this is the free-invite path. Hugo, 2026-08-06: "let me
+ * know when you have joined".
+ */
+export async function declareCommunityJoined(): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase.from("profiles") as any)
+    .update({ community_joined_declared_at: new Date().toISOString() })
+    .eq("id", user.id);
+
+  revalidatePath("/brochure");
+}
+
+/**
  * Step 4, escape hatch: the creator says the link is in their bio.
  *
  * Only ever offered when we could not read their bio ourselves, and the page

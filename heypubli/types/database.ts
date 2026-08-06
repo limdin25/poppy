@@ -54,6 +54,8 @@ export interface Profile {
   bio_variant_index: number | null;
   /** They said the link is in their bio, offered only when we could not read it ourselves. */
   bio_link_declared_at: string | null;
+  /** They said they joined the community. Self-declared because Skool cannot tell us. */
+  community_joined_declared_at: string | null;
   registration_method: RegistrationMethod;
   ig_username: string | null;
   auth_provider: "email" | "instagram";

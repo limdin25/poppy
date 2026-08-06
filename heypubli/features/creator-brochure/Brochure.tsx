@@ -4,6 +4,7 @@ import { CopyBlock } from "./CopyBlock";
 import { RecheckButton } from "./RecheckButton";
 import { SkoolLinkForm } from "./SkoolLinkForm";
 import { DeclareBioButton } from "./DeclareBioButton";
+import { DeclareCommunityButton } from "./DeclareCommunityButton";
 import { SHOTS } from "./shots";
 import { brochureCopy as t, SKOOL_COMMUNITY_URL } from "./copy";
 import type { BrochureData } from "@/lib/data/brochure";
@@ -215,12 +216,7 @@ export function Brochure({ data }: { data: BrochureData }) {
                   : t.steps.community.status.waiting
             }
           >
-            {community.state === "waiting" && (
-              <RecheckButton
-                testId="recheck-community"
-                label={t.steps.community.recheck}
-              />
-            )}
+            {community.state === "waiting" && <DeclareCommunityButton />}
           </StatusStrip>
         </section>
 

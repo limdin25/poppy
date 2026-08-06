@@ -127,6 +127,36 @@ describe("Brochure", () => {
     expect(words).not.toContain("straight away");
   });
 
+  // Step 2 has to be finishable by the creator saying so, because Skool has no
+  // trigger for a free member joining. Its Zapier app fires on New Paid Member
+  // and on membership questions, and on nothing else. Without this button a
+  // free invited creator sits on step 2 forever having done everything right.
+  it("lets the creator say they joined, because Skool never tells us", () => {
+    render(
+      <Brochure
+        data={{
+          ...brochureMockComplete,
+          community: { state: "waiting", emailUsable: true, selfDeclared: false },
+        }}
+      />,
+    );
+    expect(screen.getByTestId("declare-community")).toBeInTheDocument();
+  });
+
+  it("stops offering it once the step is done", () => {
+    render(<Brochure data={brochureMockComplete} />);
+    expect(screen.queryByTestId("declare-community")).not.toBeInTheDocument();
+  });
+
+  // The old wording promised "this ticks itself the moment Skool tells us you
+  // are in". It never could. A step that cannot complete is worse than a step
+  // that asks for a tap.
+  it("does not promise the step ticks itself", () => {
+    const words = JSON.stringify(brochureCopy.steps.community).toLowerCase();
+    expect(words).not.toContain("ticks itself");
+    expect(words).not.toContain("skool tells us you are in");
+  });
+
   it("uses no punctuation Hugo banned, anywhere in the copy", () => {
     const all = JSON.stringify(brochureCopy);
     for (const ch of ["—", "–", "‘", "’", "“", "”", "…"]) {

@@ -7,7 +7,7 @@ export const brochureMock: BrochureData = {
   connectUrl: "/api/outstand/connect",
   instagramEnabled: true,
   instagram: { state: "todo", username: null, canReadBio: false },
-  community: { state: "waiting", emailUsable: true },
+  community: { state: "waiting", emailUsable: true, selfDeclared: false },
   affiliate: { state: "todo", url: null },
   bio: {
     state: "blocked",
@@ -22,7 +22,7 @@ export const brochureMock: BrochureData = {
 export const brochureMockComplete: BrochureData = {
   ...brochureMock,
   instagram: { state: "done", username: "aisha.makes", canReadBio: true },
-  community: { state: "done", emailUsable: true },
+  community: { state: "done", emailUsable: true, selfDeclared: false },
   affiliate: { state: "done", url: "https://www.skool.com/community?ref=a1b2c3" },
   bio: {
     state: "done",

@@ -38,6 +38,8 @@ export interface BrochureData {
     state: StepState;
     /** A synthetic Instagram address can never match a Skool account. */
     emailUsable: boolean;
+    /** True when they told us, rather than Skool telling us. */
+    selfDeclared: boolean;
   };
 
   affiliate: {
@@ -213,11 +215,11 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
     : INSTAGRAM_ENABLED
       ? "todo"
       : "blocked";
-  const communityState: StepState = communityJoined
-    ? "done"
-    : emailUsable
-      ? "waiting"
-      : "blocked";
+  // A paid membership is the only join Skool can ever tell us about, so for a
+  // free invited creator their own word is not a fallback, it is the mechanism.
+  const communityDeclared = Boolean(profile.community_joined_declared_at);
+  const communityState: StepState =
+    communityJoined || communityDeclared ? "done" : emailUsable ? "waiting" : "blocked";
   const affiliateState: StepState = affiliateUrl ? "done" : "todo";
 
   const doneCount = [instagramState, communityState, affiliateState, bioState].filter(
@@ -234,7 +236,11 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
       username: ig.username,
       canReadBio: ig.textAvailable,
     },
-    community: { state: communityState, emailUsable },
+    community: {
+      state: communityState,
+      emailUsable,
+      selfDeclared: communityDeclared && !communityJoined,
+    },
     affiliate: { state: affiliateState, url: affiliateUrl },
     bio: {
       state: bioState,

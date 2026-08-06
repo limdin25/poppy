@@ -63,11 +63,13 @@ export const brochureCopy = {
       emailWhy:
         "That address is the only thing joining your two accounts. A different one and we cannot see that you joined, and we cannot pay you for anyone you send later.",
       cta: "Open Skool",
-      recheck: "I have joined, check again",
+      declare: "I have joined",
+      declareNote:
+        "Skool does not tell us when somebody joins on a free invite, so this one is on your word. Press it once you are in.",
       status: {
         done: "You are in the community.",
         waiting:
-          "Waiting for you to join. This ticks itself the moment Skool tells us you are in, so there is nobody to email.",
+          "Open your email, join, then press the button below so we know to carry on.",
         blocked:
           "Your account does not have a real email address on it yet. Add one in Settings, then come back to this step.",
       },
