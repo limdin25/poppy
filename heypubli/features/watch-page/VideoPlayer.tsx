@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { trackWatch } from "./track";
+import { trackWatch, captureWatchToken } from "./track";
 import { watchCopy } from "./copy";
 
 /**
@@ -31,6 +31,8 @@ export function VideoPlayer() {
       trackWatch(event, meta);
     };
 
+    // Before the first beacon, so even the view event knows who arrived.
+    captureWatchToken();
     once("view");
     const video = ref.current;
     if (!video) return;

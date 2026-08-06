@@ -11,6 +11,30 @@
  */
 
 const KEY = "hp_watch_session";
+const TOKEN_KEY = "hp_watch_u";
+
+/**
+ * Personal links: /watch?u=<opaque id> ties this visit to the lead we sent the
+ * link to. Captured once on load, remembered for the whole session, attached
+ * to every beacon, so "someone watched" becomes "THIS lead watched". A visit
+ * without ?u= stays anonymous, exactly as before.
+ */
+export function captureWatchToken(): void {
+  try {
+    const u = new URLSearchParams(window.location.search).get("u");
+    if (u && /^[a-z0-9-]{4,64}$/i.test(u)) sessionStorage.setItem(TOKEN_KEY, u);
+  } catch {
+    // Storage blocked: the visit just stays anonymous.
+  }
+}
+
+function watchToken(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export function watchSession(): string {
   try {
@@ -31,7 +55,12 @@ export function watchSession(): string {
 
 export function trackWatch(event: string, meta?: Record<string, unknown>): void {
   try {
-    const payload = JSON.stringify({ session: watchSession(), event, meta });
+    const u = watchToken();
+    const payload = JSON.stringify({
+      session: watchSession(),
+      event,
+      meta: u ? { ...meta, u } : meta,
+    });
     if (navigator.sendBeacon) {
       const blob = new Blob([payload], { type: "application/json" });
       if (navigator.sendBeacon("/api/watch/track", blob)) return;
