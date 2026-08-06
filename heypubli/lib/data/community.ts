@@ -17,10 +17,17 @@ export async function isCommunityMember(email: string | null): Promise<boolean> 
   const normalized = (email ?? "").trim().toLowerCase();
   if (!normalized || normalized.endsWith("@instagram.heypubli.com")) return false;
 
+  // 'free_invited' means we SENT them an invite, not that they opened it. Counting
+  // it as membership made the dashboard tick "Join the community" green before the
+  // creator had done anything at all. Skool has no trigger for a free member
+  // joining (its Zapier app fires only on a NEW PAID MEMBER), so a paid row is the
+  // only join we can ever detect on our own. Everything else has to be the creator
+  // telling us.
   const { data, error } = await createAdminClient()
     .from("skool_members")
     .select("id")
     .eq("email_normalized", normalized)
+    .in("membership", ["paid", "trial"])
     .maybeSingle();
 
   if (error) {

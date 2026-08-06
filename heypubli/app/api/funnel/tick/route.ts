@@ -6,7 +6,7 @@ import {
   whatsappMarketingAllowed,
   withinSendingHours,
 } from "@/lib/data/lanes";
-import { signFunnelBody } from "@/lib/funnel/hmac";
+import { sendSkoolInvite } from "@/lib/integrations/skool";
 import { sendPartnerWhatsApp, getSharedSenderLoad } from "@/lib/integrations/whatsapp";
 import { sendEmail } from "@/lib/integrations/resend";
 import { LEAD_STAGES } from "@/lib/data/signup-leads";
@@ -16,7 +16,7 @@ export const maxDuration = 300;
 
 // The funnel's single heartbeat, every 5 minutes. Two independent phases so a failure in
 // one cannot silence the other:
-//   1. Skool invite dispatch: queued skool_invites -> the Zapier catch hook.
+//   1. Skool invite dispatch: queued skool_invites -> Skool's own invite webhook.
 //   2. Nurture: due leads -> WhatsApp template or email, under all the guards.
 //
 // Everything here is idempotent: invites claim rows via status transitions and carry an
@@ -51,11 +51,9 @@ function stageIndex(stage: SignupLead["status"]): number {
 }
 
 async function dispatchSkoolInvites(admin: ReturnType<typeof createAdminClient>) {
-  const hookUrl = process.env.ZAPIER_SKOOL_HOOK_URL;
-  const hookSecret = process.env.ZAPIER_HOOK_SECRET;
   const report = { claimed: 0, sent: 0, failed: 0, skipped: "" };
-  if (!hookUrl || !hookSecret) {
-    report.skipped = "zapier hook not configured";
+  if (!process.env.SKOOL_INVITE_WEBHOOK_URL) {
+    report.skipped = "skool invite webhook not configured";
     return report;
   }
 
@@ -90,37 +88,36 @@ async function dispatchSkoolInvites(admin: ReturnType<typeof createAdminClient>)
         last_attempt_at: new Date().toISOString(),
       })
       .eq("id", invite.id);
-    const payload = JSON.stringify({
-      idempotency_key: invite.idempotency_key,
-      email: invite.email,
-      first_name: invite.first_name,
-      lane: invite.lane,
-    });
-    try {
-      const res = await fetch(hookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Funnel-Signature": signFunnelBody(payload, hookSecret),
-        },
-        body: payload,
-      });
-      if (res.ok) {
+    const result = await sendSkoolInvite(invite.email);
+    if (result.ok) {
+      const nowIso = new Date().toISOString();
+      // Skool tells us nothing after the 200, so the send IS the confirmation.
+      // There is no callback to wait for any more.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("skool_invites") as any)
+        .update({ status: "confirmed", sent_at: nowIso, confirmed_at: nowIso })
+        .eq("id", invite.id);
+      if (invite.lead_id) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (admin.from("skool_invites") as any)
-          .update({ status: "sent", sent_at: new Date().toISOString() })
-          .eq("id", invite.id);
-        report.sent++;
-      } else {
-        throw new Error(`zapier ${res.status}`);
+        await (admin.from("signup_leads") as any)
+          .update({ status: "invited", invited_at: nowIso, last_seen_at: nowIso })
+          .eq("id", invite.lead_id)
+          .neq("status", "invited");
       }
-    } catch (e) {
+      // Deliberately NOT writing skool_members here. That table means "this
+      // person is in the community", and sending an invite is not joining one.
+      // The old Zapier callback wrote a 'free_invited' row on send, which made
+      // the dashboard tick "Join the community" green before the creator had
+      // even opened the email. Skool has no trigger for a free member joining,
+      // so the only honest signal is the creator telling us.
+      report.sent++;
+    } else {
       const attempts = invite.attempts + 1;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (admin.from("skool_invites") as any)
         .update({
           status: attempts >= MAX_INVITE_ATTEMPTS ? "failed" : "queued",
-          last_error: e instanceof Error ? e.message : "send failed",
+          last_error: result.error ?? "send failed",
         })
         .eq("id", invite.id);
       report.failed++;
