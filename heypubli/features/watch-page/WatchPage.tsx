@@ -1,5 +1,6 @@
 import { VideoPlayer } from "./VideoPlayer";
 import { WhatsAppCta } from "./WhatsAppCta";
+import { HowItWorks } from "./HowItWorks";
 import { WatchEarnings } from "./WatchEarnings";
 import { WatchDemos } from "./WatchDemos";
 import { watchCopy as t } from "./copy";
@@ -45,6 +46,16 @@ export function WatchPage() {
         <div className="mt-7">
           <VideoPlayer />
         </div>
+
+        {/* Hugo's three steps, right under the video, "so they understand". */}
+        <section className="mt-14" aria-labelledby="watch-how-heading">
+          <div id="watch-how-heading">
+            <SectionHeading>{t.how.heading}</SectionHeading>
+          </div>
+          <div className="mt-6">
+            <HowItWorks />
+          </div>
+        </section>
 
         <section className="mt-14" aria-labelledby="watch-earnings-heading">
           <div id="watch-earnings-heading">

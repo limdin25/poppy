@@ -25,6 +25,24 @@ export const watchCopy = {
     aria: "HeyPubli explained in a minute and a half",
   },
 
+  how: {
+    heading: "How it works",
+    steps: [
+      {
+        title: "Connect your Instagram to our app.",
+        sub: "One tap. You never share your password.",
+      },
+      {
+        title: "Get your referral link inside Skool.",
+        sub: "Your invite email takes you there.",
+      },
+      {
+        title: "We post the videos. You make money.",
+        sub: "40 percent of every sale, paid to you directly.",
+      },
+    ],
+  },
+
   earnings: {
     heading: "What you can earn",
     body: [

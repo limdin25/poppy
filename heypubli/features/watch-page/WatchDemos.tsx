@@ -24,10 +24,14 @@ const CLIPS = [
   { src: "/watch/demos/d4.mp4", poster: "/watch/demos/d4.jpg" },
 ];
 
+/** Hugo, 2026-08-06: "the version we want is the fourth version... the model is
+ *  the fourth model." The fourth clip leads; the strip holds all four. */
+const FEATURED = 3;
+
 const tracked = new Set<string>();
 
 export function WatchDemos() {
-  const [selected, setSelected] = useState(0);
+  const [selected, setSelected] = useState(FEATURED);
   const [playing, setPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 

@@ -31,6 +31,10 @@ export function WatchEarnings() {
 
   const point = monthlyEarnings(BASELINE_VIEWS_PER_VIDEO, month, 1);
   const range = earningsRange(point);
+  // Month one starts at ZERO, Hugo's instruction and the plain truth: the
+  // video itself says nothing is owed on day one. "$0 to $120" is the honest
+  // opening line of a snowball.
+  const low = month === 1 ? 0 : range.low;
   const views = monthlyViews(BASELINE_VIEWS_PER_VIDEO, month, 1);
   const sales = monthlySales(BASELINE_VIEWS_PER_VIDEO, month, 1);
 
@@ -85,7 +89,7 @@ export function WatchEarnings() {
         data-testid="earnings-range"
         className="mt-4 text-[34px] font-black leading-none tracking-tight text-[#1A1A1A] sm:text-[42px]"
       >
-        {watchCopy.earnings.range(usd(range.low), usd(range.high))}
+        {watchCopy.earnings.range(usd(low), usd(range.high))}
       </p>
       <p className="mt-2 text-[14px] leading-relaxed text-[#6B7280]">
         {watchCopy.earnings.detail(

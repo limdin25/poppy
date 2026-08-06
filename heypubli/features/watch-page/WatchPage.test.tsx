@@ -43,6 +43,25 @@ describe("WatchPage", () => {
     }
   });
 
+  // "The version we want is the fourth version": d4 leads by default.
+  it("features the fourth clip in the big player before anyone taps", () => {
+    render(<WatchPage />);
+    const poster = screen.getByTestId("demo-main-poster").querySelector("img");
+    expect(poster?.getAttribute("src") ?? "").toContain("d4.jpg");
+  });
+
+  // Hugo's three steps under the video: Instagram, Skool, money.
+  it("explains how it works in three steps with the two logos", () => {
+    render(<WatchPage />);
+    for (const i of [1, 2, 3]) {
+      expect(screen.getByTestId(`how-step-${i}`)).toBeInTheDocument();
+    }
+    expect(screen.getByAltText("Skool")).toBeInTheDocument();
+    expect(screen.getByText(/Connect your Instagram/)).toBeInTheDocument();
+    expect(screen.getByText(/referral link inside Skool/)).toBeInTheDocument();
+    expect(screen.getByText(/You make money/)).toBeInTheDocument();
+  });
+
   it("promotes a tapped thumbnail into the big player", () => {
     render(<WatchPage />);
     fireEvent.click(screen.getByTestId("demo-thumb-3"));
@@ -69,19 +88,20 @@ describe("WatchPage", () => {
 });
 
 describe("WatchEarnings", () => {
-  it("shows a modest range that grows when the month slider moves", () => {
+  // "From month one you can put zero to one twenty": the low end of month one
+  // is literally zero, because nothing is owed on day one.
+  it("opens month one at zero and grows the range from there", () => {
     render(<WatchEarnings />);
     const readRange = () => screen.getByTestId("earnings-range").textContent ?? "";
     const slider = screen.getByTestId("earnings-month");
 
     fireEvent.change(slider, { target: { value: "1" } });
     const month1 = readRange();
+    expect(month1.startsWith("$0 ")).toBe(true);
+
     fireEvent.change(slider, { target: { value: "12" } });
     const month12 = readRange();
-
     const low = (s: string) => Number(s.replace(/[^0-9 ]/g, "").trim().split(/\s+/)[0]);
-    expect(low(month12)).toBeGreaterThan(low(month1));
-    // Modest by construction: month 1 at 300 views a video is well under $200.
-    expect(low(month1)).toBeLessThan(200);
+    expect(low(month12)).toBeGreaterThan(0);
   });
 });
