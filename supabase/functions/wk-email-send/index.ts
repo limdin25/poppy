@@ -200,6 +200,11 @@ serve(async (req: Request) => {
       return json(503, { error: 'RESEND_API_KEY not set on edge function secrets' });
     }
 
+    // No Reply-To override: replies go to the From (hello@heyelsie.com), whose
+    // MX points at Resend inbound → wk-email-webhook → back into the CRM,
+    // threaded to the contact (owned by the sending agent). So a client's reply
+    // lands in that agent's CRM inbox, not a personal mailbox.
+
     // 3. POST to Resend.
     const finalHtml = payload.html ?? body.replace(/\n/g, '<br/>');
     const rsResp = await fetch('https://api.resend.com/emails', {

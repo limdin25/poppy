@@ -35,6 +35,9 @@ export const funnelCopy = {
         "We never see your password. You can disconnect whenever you want from Settings, and nothing goes out before you connect.",
       ],
       cta: "Connect Instagram",
+      errorHeadline: "Instagram did not finish connecting.",
+      errorBody:
+        "The usual reason is the account is a personal one. In the Instagram app go to Settings, then Account type and tools, and switch to a professional account. It is free and takes a minute. Then tap the button again. If it still fails, tell us on WhatsApp and we will do it with you.",
       status: {
         done: (username: string | null) =>
           username ? `Connected as @${username}.` : "Connected.",
@@ -47,12 +50,21 @@ export const funnelCopy = {
     community: {
       number: "2",
       title: "Join the community",
-      summary: "Your invite is waiting in your email.",
+      summary: "Press the button and we email you the invite.",
       body: [
-        "Open your email app and look for an invitation from Lim Din. That is us, it is the account name our community uses on Skool.",
-        "Open the email, tap JOIN NOW, and make your Skool login.",
+        "Press the pink button below and we send your invitation to the community. It arrives in a few minutes.",
+        "The email comes from Lim Din. That is us, it is the account name our community uses on Skool. Open it, tap JOIN NOW, and make your Skool login.",
         "If you cannot see it, search your email for the word skool and check your spam and promotions folders.",
       ],
+      inviteCta: "Send me the invite",
+      inviteAgain: "Send it again",
+      inviteSending: "Sending",
+      inviteSent: (email: string) => `On its way to ${email}. Give it a few minutes.`,
+      inviteNoEmail:
+        "Your account has no real email address on it yet. Add one in Settings, then come back.",
+      inviteCustomer:
+        "Your account is set up as a paying member, so the free invite does not apply. Reply on WhatsApp and we will sort it.",
+      inviteFailed: "That did not go through. Try again, and tell us if it keeps failing.",
       emailRule: (email: string) =>
         `Use this exact email address when you join Skool: ${email}`,
       emailWhy:
@@ -123,6 +135,8 @@ export const funnelCopy = {
       copyFallback: "Press and hold the text to copy it.",
       recheck: "Check my bio again",
       declare: "It is there, tick it off",
+      declareNote:
+        "If your profile has more than one link we can only read the first one, so we may miss yours. If it is in, tick it off and carry on.",
       status: {
         doneChecked: "Found it. Your link is live in your bio.",
         doneDeclared:
@@ -156,5 +170,6 @@ export const funnelCopy = {
     unknown: "Cannot check",
     blocked: "Not yet",
     checking: "Checking",
+    saveFailed: "That did not save. Tap it again, and tell us if it keeps failing.",
   },
 } as const;

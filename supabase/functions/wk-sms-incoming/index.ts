@@ -306,8 +306,15 @@ serve(async (req: Request) => {
       //     tagged do-not-text: that tag is the STOP contract and it locks a
       //     human agent out of the thread too. This flag only travels to
       //     HeyPubli, where it parks the automated nudges.
+      //     Kept in step with the outreach script's list on purpose: two
+      //     refusal lists that disagree means the weaker one guards the
+      //     automation. "please stop messaging me" passed the optOut test
+      //     above (it demands the WHOLE body be "stop") and passed this one
+      //     too, until it was added here.
       const refused =
-        /\b(not|no|never)\s+(interested|intrested|intersted|interseted)\b/i.test(body) ||
+        /\b(not|no|never)\s+(really\s+|very\s+)?(interested|intrested|intersted|interseted)\b/i.test(body) ||
+        /\bno\s+thanks?\b/i.test(body) ||
+        /\b(stop|quit)\s+(messaging|texting|contacting|calling|sending)\b/i.test(body) ||
         /\b(don'?t|do\s+not|dont)\s+(message|msg|text|contact|call)\s+me\b/i.test(body) ||
         /\b(remove|delete)\s+(me|my\s+number)\b/i.test(body) ||
         /\bleave\s+me\s+alone\b/i.test(body) ||
@@ -321,6 +328,23 @@ serve(async (req: Request) => {
           );
         if (dntErr) console.error('[wk-sms-incoming] do-not-text tag failed', dntErr);
         else console.log(`[wk-sms-incoming] contact ${contactId} opted out (STOP) — tagged do-not-text`);
+      }
+
+      // A refusal is recorded HERE too, not only relayed to heypubli. It was
+      // computed and thrown away, so Elsie's own surfaces had no idea the
+      // person had said no. The tag is 'not-interested', deliberately NOT
+      // 'do-not-text': the STOP contract blocks a human agent as well, and a
+      // refusal should only park the robots. It shows in the CRM and is one
+      // query away for any future send path.
+      if (refused && !optOut) {
+        const { error: niErr } = await supa
+          .from('wk_contact_tags')
+          .upsert(
+            { contact_id: contactId, tag: 'not-interested' },
+            { onConflict: 'contact_id,tag', ignoreDuplicates: true },
+          );
+        if (niErr) console.error('[wk-sms-incoming] not-interested tag failed', niErr);
+        else console.log(`[wk-sms-incoming] contact ${contactId} said no — tagged not-interested`);
       }
 
       // 3c. Voicemail-drop callback attribution (VM drop B8): a contact we
@@ -472,9 +496,11 @@ serve(async (req: Request) => {
       //    contact enabled, under the per-contact cap); the generator re-checks
       //    the full guards (hours, human-replied-since, booking) at run time.
       //    Skipped for duplicate inbound (idempotent path above set msgErr),
-      //    for opt-out keywords (never AI-reply to a STOP), and when the site
-      //    demo already answered this message with the link they asked for.
-      if (!msgErr && !optOut && !siteHandled) {
+      //    for opt-out keywords (never AI-reply to a STOP), for a plain
+      //    refusal (the AI would cheerfully pitch someone who just said no,
+      //    which is the exact mistake of 2026-08-06), and when the site demo
+      //    already answered this message with the link they asked for.
+      if (!msgErr && !optOut && !refused && !siteHandled) {
         try {
           const { data: s } = await supa
             .from('wk_ai_reply_settings')

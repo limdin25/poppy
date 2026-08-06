@@ -10,6 +10,8 @@ export const funnelMockFresh: OnboardingData = {
   community: { state: "waiting", emailUsable: true, selfDeclared: false },
   affiliate: { state: "todo", url: null },
   photo: { state: "todo", declaredAt: null },
+  inviteQueued: false,
+  instagramError: false,
   bio: { state: "blocked", sentence: "AI videos, posted for me daily.", needleKind: null, declaredAt: null },
   doneCount: 0,
   stepStates: {

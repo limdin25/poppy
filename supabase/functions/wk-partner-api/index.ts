@@ -42,7 +42,13 @@ function normalizeE164(raw: string): string {
   if (!s) return '';
   if (s.startsWith('+')) return s;
   if (s.startsWith('00')) return '+' + s.slice(2);
-  if (s.startsWith('0')) return '+44' + s.slice(1);
+  // A leading zero is NATIONAL format, and this door serves a funnel that is
+  // mostly India, Bangladesh and the Philippines. It used to assume +44, so
+  // an Indian number typed as 09824840910 became +449824840910: a real and
+  // completely unrelated person in Britain receiving a recruitment pitch.
+  // There is no way to guess the country from the digits, so refuse. Every
+  // real caller already holds a proper E.164 from WhatsApp.
+  if (s.startsWith('0')) return '';
   return '+' + s;
 }
 
@@ -140,10 +146,18 @@ serve(async (req) => {
       });
     }
 
-    // Workspace-wide kill switch + daily cap, the same gate every other send path calls.
-    const { data: allowed } = await supa.rpc('wk_outbound_sms_allowed');
+    // Workspace-wide kill switch + daily cap, the same gate every other send
+    // path calls. It FAILS CLOSED: the error used to be discarded, so an RPC
+    // that errored left `allowed` null, `allowed === false` was false, and the
+    // emergency stop let the message through. The one control whose whole job
+    // is to stop sending must never fail by sending.
+    const { data: allowed, error: allowedErr } = await supa.rpc('wk_outbound_sms_allowed');
+    if (allowedErr) {
+      console.error('[wk-partner-api] kill-switch check failed', allowedErr);
+      return json(503, { error: 'could not check the send kill switch; nothing sent' });
+    }
     const allowedObj = (allowed ?? {}) as { allowed?: boolean; reason?: string };
-    if (allowedObj.allowed === false) {
+    if (allowedObj.allowed !== true) {
       const reason = String(allowedObj.reason ?? '');
       return json(200, {
         ok: false,

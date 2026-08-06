@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { funnelCopy } from "./copy";
 
 /**
@@ -17,12 +17,13 @@ export function DeclareButton({
   note,
   testId,
 }: {
-  action: () => Promise<void>;
+  action: () => Promise<{ ok: boolean }>;
   label: string;
   note?: string;
   testId: string;
 }) {
   const [pending, startTransition] = useTransition();
+  const [failed, setFailed] = useState(false);
 
   return (
     <div className="mt-3">
@@ -30,12 +31,26 @@ export function DeclareButton({
         type="button"
         disabled={pending}
         data-testid={testId}
-        onClick={() => startTransition(() => action())}
+        onClick={() =>
+          startTransition(async () => {
+            const res = await action();
+            setFailed(!res?.ok);
+          })
+        }
         className="inline-flex items-center rounded-full bg-[#1A1A1A] px-5 py-2.5 text-[14px] font-bold text-white disabled:opacity-60"
       >
         {pending ? funnelCopy.labels.checking : label}
       </button>
-      {note && <p className="mt-2 text-[13px] leading-snug text-[#6B7280]">{note}</p>}
+      {/* A failed tick must say so. Silence here is indistinguishable from a
+          saved tick that did not refresh, and the creator taps forever. */}
+      {failed && (
+        <p data-testid={`${testId}-failed`} className="mt-2 text-[13px] font-bold text-[#E1306C]">
+          {funnelCopy.labels.saveFailed}
+        </p>
+      )}
+      {note && !failed && (
+        <p className="mt-2 text-[13px] leading-snug text-[#6B7280]">{note}</p>
+      )}
     </div>
   );
 }

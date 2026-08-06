@@ -22,40 +22,50 @@ async function requireUser() {
   return { supabase, user };
 }
 
-/** Step 2: "I have joined". Their word is the mechanism, Skool never tells us. */
-export async function declareCommunityJoined(): Promise<void> {
+/**
+ * The three self-declared steps. Each RETURNS whether the write landed.
+ *
+ * They used to return void and only console.error, so a failed update left the
+ * button flicking from "Checking" back to its label with the page identical
+ * and the step still not ticked. The creator has no way to tell a saved tick
+ * from a lost one, taps again, and eventually decides the site is broken.
+ */
+export type DeclareResult = { ok: boolean };
+
+async function stampOnce(column: string): Promise<DeclareResult> {
   const { supabase, user } = await requireUser();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase.from("profiles") as any)
-    .update({ community_joined_declared_at: new Date().toISOString() })
+    .update({ [column]: new Date().toISOString() })
     .eq("id", user.id)
-    .is("community_joined_declared_at", null);
-  if (error) console.error("[onboarding] declareCommunityJoined failed", error);
+    .is(column, null);
+  if (error) {
+    console.error(`[onboarding] ${column} failed`, error);
+    return { ok: false };
+  }
   revalidatePath("/onboarding");
+  return { ok: true };
+}
+
+/** Step 2: "I have joined". Their word is the mechanism, Skool never tells us. */
+export async function declareCommunityJoined(): Promise<DeclareResult> {
+  return stampOnce("community_joined_declared_at");
 }
 
 /** Step 4: the photo is in place. Self-declared, no API can judge a photo. */
-export async function declarePhotoDone(): Promise<void> {
-  const { supabase, user } = await requireUser();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase.from("profiles") as any)
-    .update({ photo_declared_at: new Date().toISOString() })
-    .eq("id", user.id)
-    .is("photo_declared_at", null);
-  if (error) console.error("[onboarding] declarePhotoDone failed", error);
-  revalidatePath("/onboarding");
+export async function declarePhotoDone(): Promise<DeclareResult> {
+  return stampOnce("photo_declared_at");
 }
 
-/** Step 5 escape hatch: offered only when we could not read the bio ourselves. */
-export async function declareBioDone(): Promise<void> {
-  const { supabase, user } = await requireUser();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase.from("profiles") as any)
-    .update({ bio_link_declared_at: new Date().toISOString() })
-    .eq("id", user.id)
-    .is("bio_link_declared_at", null);
-  if (error) console.error("[onboarding] declareBioDone failed", error);
-  revalidatePath("/onboarding");
+/**
+ * Step 5's escape hatch. Offered when we could not read the bio, AND when we
+ * read it but did not find the link: Instagram's Links row can hold several
+ * links and the API hands back only the first, so a creator who did exactly
+ * what the page asked can be told "it is not there" forever with nothing but
+ * a Recheck button. Their word is worth more than our one-link read.
+ */
+export async function declareBioDone(): Promise<DeclareResult> {
+  return stampOnce("bio_link_declared_at");
 }
 
 /** Step 3: the pasted affiliate link, validated hard (skool.com only). */

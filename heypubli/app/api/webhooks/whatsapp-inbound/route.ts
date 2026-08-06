@@ -42,11 +42,22 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
-  const { data: lead } = await admin
+  // Match on BOTH phone columns, and take the newest on a tie.
+  //
+  // This used to be .eq("whatsapp_e164", ...).maybeSingle(), while the nurture
+  // engine sends to `whatsapp_e164 ?? whatsapp`. So the set we could MESSAGE
+  // was larger than the set we could MATCH: a lead with only `whatsapp` filled
+  // in could be texted but their "not interested" reply matched nothing, wrote
+  // nothing, and the drip carried on. maybeSingle() also returned null when two
+  // leads shared a number, losing the refusal the same silent way.
+  const { data: leads } = await admin
     .from("signup_leads")
     .select("id, status, engaged_at")
-    .eq("whatsapp_e164", event.phone)
-    .maybeSingle<{ id: string; status: string; engaged_at: string | null }>();
+    .or(`whatsapp_e164.eq.${event.phone},whatsapp.eq.${event.phone}`)
+    .order("first_seen_at", { ascending: false })
+    .limit(1)
+    .returns<{ id: string; status: string; engaged_at: string | null }[]>();
+  const lead = leads?.[0];
   if (!lead) return NextResponse.json({ ok: true, matched: false }, { status: 200 });
 
   // A STOP and a "not interested" both end the automated conversation. They

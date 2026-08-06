@@ -2,6 +2,7 @@ import { Check, Lock } from "lucide-react";
 import { Plate } from "./Plate";
 import { CopyBlock } from "./CopyBlock";
 import { SkoolLinkForm } from "./SkoolLinkForm";
+import { InviteButton } from "./InviteButton";
 import { DeclareButton } from "./DeclareButton";
 import { RecheckButton } from "./RecheckButton";
 import { Confetti } from "./Confetti";
@@ -128,6 +129,23 @@ function StepContent({ id, data }: { id: OnboardingStepId; data: OnboardingData 
     return (
       <>
         <Body paragraphs={t.steps.instagram.body} />
+        {/* When Instagram sends them back with an error the page used to look
+            identical to before they left, so they tapped the same button
+            again, forever. The commonest cause by far is a personal account,
+            which is why the remedy is named here and not only at signup. */}
+        {data.instagramError && (
+          <div
+            data-testid="instagram-error"
+            className="mt-5 rounded-2xl border-l-4 border-[#EF4444] bg-white px-5 py-4"
+          >
+            <p className="text-[16px] font-black leading-snug text-[#1A1A1A]">
+              {t.steps.instagram.errorHeadline}
+            </p>
+            <p className="mt-1.5 text-[15px] leading-relaxed text-[#6B7280]">
+              {t.steps.instagram.errorBody}
+            </p>
+          </div>
+        )}
         <Plate shot={SHOTS.connect} index={1} />
         <Plate shot={SHOTS.allow} index={2} />
         {instagram.state === "todo" && data.instagramEnabled && (
@@ -158,6 +176,9 @@ function StepContent({ id, data }: { id: OnboardingStepId; data: OnboardingData 
     return (
       <>
         <Body paragraphs={t.steps.community.body} />
+        {/* The button that sends the invite. Without it this step described an
+            email nobody had ever posted, and the funnel stopped here. */}
+        <InviteButton alreadyInvited={data.inviteQueued} />
         <Plate shot={SHOTS.findEmail} index={1} />
         {/* Their real address, printed. The one detail that, if they get it
             wrong, quietly costs them money months later. */}
@@ -292,12 +313,17 @@ function StepContent({ id, data }: { id: OnboardingStepId; data: OnboardingData 
         {bio.state === "waiting" && (
           <RecheckButton testId="recheck-bio" label={t.steps.bio.recheck} />
         )}
-        {/* Self-declaring is offered ONLY when we could not look. Never next
-            to a check that came back "not there". */}
-        {bio.state === "unknown" && (
+        {/* Self-declaring is offered when we could not look, AND when we
+            looked and did not find it. Instagram's Links row holds several
+            links but the API hands back only the first, so a creator who did
+            exactly what we asked could sit on "not there yet" forever with
+            nothing but a Recheck button. Their word beats our one-link read;
+            the status line still records which of the two ticked it. */}
+        {(bio.state === "unknown" || bio.state === "waiting") && (
           <DeclareButton
             action={declareBioDone}
             label={t.steps.bio.declare}
+            note={bio.state === "waiting" ? t.steps.bio.declareNote : undefined}
             testId="declare-bio"
           />
         )}

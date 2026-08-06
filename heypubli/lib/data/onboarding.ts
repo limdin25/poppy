@@ -57,6 +57,10 @@ export interface OnboardingData extends BrochureData {
     state: StepState;
     declaredAt: string | null;
   };
+  /** True once a Skool invite has actually been queued for this creator. */
+  inviteQueued: boolean;
+  /** Instagram sent them back with a failure, so step 1 must explain itself. */
+  instagramError: boolean;
   stepStates: Record<OnboardingStepId, StepState>;
   openStep: OnboardingStepId | null;
   doneSteps: number;
@@ -69,8 +73,26 @@ export interface OnboardingData extends BrochureData {
  * brochure's four verified truths and adds the photo step, which is
  * self-declared because no API can judge whether a profile photo is any good.
  */
-export async function getOnboardingData(profile: Profile): Promise<OnboardingData> {
+export async function getOnboardingData(
+  profile: Profile,
+  opts: { instagramError?: boolean } = {},
+): Promise<OnboardingData> {
   const brochure = await getBrochureData(profile);
+
+  // Has an invite ever been queued for them? Step 2 used to describe an email
+  // that nothing had sent, so the page must know the difference between
+  // "waiting for the postman" and "nobody posted anything".
+  let inviteQueued = false;
+  try {
+    const { data } = await createAdminClient()
+      .from("skool_invites")
+      .select("id")
+      .eq("email", profile.email)
+      .limit(1);
+    inviteQueued = Boolean(data?.length);
+  } catch (err) {
+    console.error("[onboarding] invite lookup failed", err);
+  }
 
   const photoState: StepState = profile.photo_declared_at ? "done" : "todo";
 
@@ -87,6 +109,8 @@ export async function getOnboardingData(profile: Profile): Promise<OnboardingDat
   return {
     ...brochure,
     photo: { state: photoState, declaredAt: profile.photo_declared_at ?? null },
+    inviteQueued,
+    instagramError: Boolean(opts.instagramError),
     stepStates,
     ...resolution,
   };

@@ -13,6 +13,8 @@ vi.mock("@/lib/actions/onboarding", () => ({
   declareBioDone: vi.fn(),
 }));
 
+vi.mock("@/lib/actions/invite", () => ({ requestSkoolInvite: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
@@ -111,7 +113,11 @@ describe("Funnel", () => {
     expect(words).toContain("Lim Din");
   });
 
-  it("offers the bio self-declare only when we could not look", () => {
+  // Instagram's Links row holds several links and the API returns only the
+  // first, so "we read your bio and it is not there" can be plain wrong. A
+  // creator who did the work must always have a way through: recheck first,
+  // and their own word as the backstop.
+  it("never leaves the last step with no way forward", () => {
     const openBio = {
       ...funnelMockComplete,
       bio: { ...funnelMockComplete.bio, state: "waiting" as const, declaredAt: null },
@@ -121,8 +127,32 @@ describe("Funnel", () => {
       allDone: false,
     };
     render(<Funnel data={openBio} />);
-    expect(screen.queryByTestId("declare-bio")).not.toBeInTheDocument();
     expect(screen.getByTestId("recheck-bio")).toBeInTheDocument();
+    expect(screen.getByTestId("declare-bio")).toBeInTheDocument();
+  });
+
+  // The step-2 dead end: the page described an invite email that nothing had
+  // ever sent. Every creator must be able to summon it themselves.
+  it("gives step two a button that actually sends the invite", () => {
+    render(
+      <Funnel
+        data={{
+          ...funnelMockFresh,
+          instagram: { state: "done", username: "a", canReadBio: true },
+          stepStates: { ...funnelMockFresh.stepStates, instagram: "done" },
+          openStep: "community",
+          doneSteps: 1,
+        }}
+      />,
+    );
+    expect(screen.getByTestId("request-invite")).toBeInTheDocument();
+  });
+
+  // A failed Instagram connection used to return them to an identical page.
+  it("explains an Instagram failure instead of showing the same screen again", () => {
+    render(<Funnel data={{ ...funnelMockFresh, instagramError: true }} />);
+    expect(screen.getByTestId("instagram-error")).toBeInTheDocument();
+    expect(screen.getByText(/professional account/i)).toBeInTheDocument();
   });
 
   it("uses no punctuation Hugo banned, anywhere in the copy", () => {

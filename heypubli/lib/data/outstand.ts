@@ -69,11 +69,19 @@ export async function getOutstandInstagramData(
 
   const settings = await getPostingSettingsAdmin();
   if (settings?.outstand_api_key) {
-    const metrics = await getInstagramMetrics(
-      settings.outstand_api_key,
-      conn.outstand_social_account_id,
-    );
-    if (metrics) return { ...metrics, statsAvailable: true };
+    // A bare fetch here used to take the whole page down: /onboarding calls
+    // this on EVERY render, so one Outstand blip showed a brand new creator
+    // the raw server-exception screen. A failed read means "we could not
+    // check", which every caller already handles via statsAvailable.
+    try {
+      const metrics = await getInstagramMetrics(
+        settings.outstand_api_key,
+        conn.outstand_social_account_id,
+      );
+      if (metrics) return { ...metrics, statsAvailable: true };
+    } catch (err) {
+      console.error("[outstand] metrics read failed:", err);
+    }
   }
 
   return {
