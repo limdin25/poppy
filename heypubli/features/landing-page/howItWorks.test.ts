@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { landingCopy } from "./copy";
-import { COMMISSION_PER_SALE_USD, SUBSCRIPTION_PRICE_USD } from "./earnings";
+import { COMMISSION_PER_SALE_USD, SUBSCRIPTION_PRICE_USD } from "@/lib/earnings";
 
 const steps = landingCopy.howItWorks.steps;
 

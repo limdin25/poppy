@@ -17,7 +17,7 @@ import {
   monthlySeries,
   monthlyViews,
   reachMultiplier,
-} from "./earnings";
+} from "@/lib/earnings";
 
 /* These are not ordinary unit tests. Every constant below is an earnings claim on a page
    that paid Meta traffic lands on, so each one is pinned to its exact value: a silent

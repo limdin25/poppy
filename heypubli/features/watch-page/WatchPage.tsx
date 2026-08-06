@@ -1,6 +1,7 @@
 import { VideoPlayer } from "./VideoPlayer";
 import { WhatsAppCta } from "./WhatsAppCta";
-import { DemoTracker } from "./DemoTracker";
+import { WatchEarnings } from "./WatchEarnings";
+import { WatchDemos } from "./WatchDemos";
 import { watchCopy as t } from "./copy";
 
 /**
@@ -11,8 +12,10 @@ import { watchCopy as t } from "./copy";
  * videos you have. Then we have the button again."
  *
  * One straight column, mobile first, nothing to click except play and yes.
- * The calculator and the demo wall arrive as slots from the page, because
- * both already live in the landing feature and features never import features.
+ * The earnings block and the demo player are this feature's own (second pass,
+ * same day: one merged month-based earnings section instead of the landing
+ * page's follower-based calculator, and the mock-up demo clips with the
+ * tap-to-promote player).
  */
 
 const PAPER = "#FAF7F2";
@@ -25,13 +28,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function WatchPage({
-  calculator,
-  demos,
-}: {
-  calculator: React.ReactNode;
-  demos: React.ReactNode;
-}) {
+export function WatchPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: PAPER }}>
       <div className="mx-auto w-full max-w-[44rem] px-4 pb-24 pt-8 sm:px-8 sm:pt-14">
@@ -49,15 +46,17 @@ export function WatchPage({
           <VideoPlayer />
         </div>
 
-        <section className="mt-14" aria-labelledby="watch-earnings">
-          <div id="watch-earnings">
+        <section className="mt-14" aria-labelledby="watch-earnings-heading">
+          <div id="watch-earnings-heading">
             <SectionHeading>{t.earnings.heading}</SectionHeading>
           </div>
-          <p className="mt-3 max-w-[62ch] text-[16px] leading-[1.6] text-[#1A1A1A]">
-            {t.earnings.intro}
-          </p>
-          <div className="mt-6" data-testid="watch-calculator">
-            {calculator}
+          {t.earnings.body.map((p) => (
+            <p key={p} className="mt-3 max-w-[62ch] text-[16px] leading-[1.6] text-[#1A1A1A]">
+              {p}
+            </p>
+          ))}
+          <div className="mt-6">
+            <WatchEarnings />
           </div>
         </section>
 
@@ -79,7 +78,7 @@ export function WatchPage({
             {t.demos.intro}
           </p>
           <div className="mt-6" data-testid="watch-demos">
-            <DemoTracker>{demos}</DemoTracker>
+            <WatchDemos />
           </div>
         </section>
 

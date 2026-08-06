@@ -1,11 +1,11 @@
 // Every word on /watch, the page a WhatsApp lead is sent BEFORE onboarding.
-// Hugo's brief, 2026-08-06: "a straight page, easy to digest, responsive, to
-// convert them." Video first, earnings and the calculator under it, the yes
-// button back to WhatsApp, the example videos, the button again.
+// Hugo's brief, 2026-08-06, second pass: one merged earnings block, months not
+// followers ("Instagram doesn't care about followers, they care if your video
+// goes viral"), a proper WhatsApp-green button, and the mock-up demo videos.
 //
 // House rules: plain English, short sentences, no long dash, no curly quote,
-// no ellipsis character. Nothing invented: the earnings section leans on the
-// calculator, which is the one honest earnings surface we have.
+// no ellipsis character. Nothing invented: the estimate is a range on careful
+// assumptions, and it says so.
 
 /** The HeyPubli WhatsApp sender. The lead came FROM this number; the button sends them back to it. */
 export const WA_NUMBER = "447460035763";
@@ -27,20 +27,28 @@ export const watchCopy = {
 
   earnings: {
     heading: "What you can earn",
-    intro:
-      "You earn 40 percent of every sale your page brings in, paid to you directly. Nobody can promise you numbers, so play with the calculator instead. It is set to careful estimates on purpose.",
+    body: [
+      "You earn 40 percent of every sale your page brings in. Skool pays you directly, we are never in the middle of your money.",
+      "Instagram does not care how many followers you have. It cares whether a video takes off. So we do not ask about your followers. We assume a modest 300 views per video and let the snowball grow month by month.",
+    ],
+    monthLabel: (m: number) => `Month ${m}`,
+    range: (low: string, high: string) => `${low} to ${high} a month`,
+    detail: (views: string, sales: string) =>
+      `That month your page does about ${views} views, which is about ${sales} sales.`,
+    honesty:
+      "Careful estimates, not promises. Nothing is owed on day one. One video taking off changes everything, and that is the point of posting twice a day.",
   },
 
   cta: {
     lead: "Happy with what you saw? Press the button and tell us on WhatsApp. A real person answers.",
     button: "Yes, I want to move forward",
-    under: "The button opens WhatsApp with the message already written.",
+    under: "Opens WhatsApp with the message already written.",
   },
 
   demos: {
     heading: "The videos we post for you",
     intro:
-      "Made with AI, edited by us, posted to your page on autopilot. These are real examples, not mock-ups. Tap one to play it.",
+      "They start like a normal reel, then land inside the phone. Made with AI, edited by us, posted to your page twice a day. Tap one to play it.",
   },
 
   closing: {

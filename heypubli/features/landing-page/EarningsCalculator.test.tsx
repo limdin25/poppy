@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EarningsCalculator } from "./EarningsCalculator";
-import { MAX_DISPLAYED_MONTHLY_USD } from "./earnings";
+import { MAX_DISPLAYED_MONTHLY_USD } from "@/lib/earnings";
 
 /** Play the section immediately: jsdom has no IntersectionObserver and the count-up
  *  would otherwise leave every figure at zero. */

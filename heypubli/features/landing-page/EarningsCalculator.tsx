@@ -8,7 +8,7 @@ import {
   MAX_ACCOUNTS,
   earningsRange,
   monthlyEarnings,
-} from "./earnings";
+} from "@/lib/earnings";
 
 const MONTHS = 12;
 const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
