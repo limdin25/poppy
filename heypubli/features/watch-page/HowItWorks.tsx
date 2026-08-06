@@ -4,9 +4,9 @@ import { watchCopy as t } from "./copy";
 /**
  * Hugo's three steps, "so they understand": Instagram logo, Skool logo, money.
  * A server component, three rows, one icon and two lines each. The Skool mark
- * is the real wordmark (cropped from our own screenshot of their email, so the
- * colours are theirs, not a guess); the Instagram glyph is inlined because
- * lucide dropped brand icons; the money is the money emoji Hugo asked for.
+ * is skool.com's own wordmark PNG (185x60, transparent background, pulled from
+ * assets.skool.com); the Instagram glyph is inlined because lucide dropped
+ * brand icons; the money is the money emoji Hugo asked for.
  */
 function InstagramIcon() {
   return (
@@ -32,9 +32,9 @@ const ICONS = [
     key="skool"
     src="/watch/skool-logo.png"
     alt="Skool"
-    width={140}
-    height={50}
-    className="h-8 w-auto"
+    width={185}
+    height={60}
+    className="h-7 w-auto"
   />,
   <span key="money" aria-hidden className="text-[30px] leading-none">
     {"\u{1F4B0}"}
