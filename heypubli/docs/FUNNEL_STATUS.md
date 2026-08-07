@@ -5,6 +5,56 @@ Updated as things happen. Newest first.
 
 ---
 
+## 07 Aug 2026, 21:30 UTC: the first zero-touch creator
+
+**Janice, Nairobi, 11pm her time. Ad tap 19:29, all five steps done 19:53.
+Twenty-four minutes, not one human involved.** The machine answered her two
+questions (the 40 percent rate, then "when do we start" with the signup link),
+she did the rest alone, and when she said "I've done everything" the brain
+checked her real state and told her she was live.
+
+Proof from outside our own database, via Instagram's live API and Skool:
+@crazyclarit.y (signed up as "Crazy Clarity", 1,467 followers, MEDIA_CREATOR),
+bio link LIVE, in the community holding her own ?ref= link, which cannot be
+obtained without joining.
+
+Every piece built today fired in sequence for her: the ad, the sheet import,
+the contact stamp, the triggered reply brain, the public commission answer, the
+signup link, community-first invite, the five-step onboarding, and the
+finished-creator recognition. This funnel had never onboarded anybody without
+hand-holding before tonight.
+
+---
+
+## 07 Aug 2026, midnight: every card says when the next follow-up fires
+
+Hugo: "everyone deserves a follow-up... put a time when you're gonna follow up
+next, with the countdown, and if it's no more follow-up, write it. And that has
+to reflect on the pipelines." Plus, minutes earlier: "you dont need me, solve
+stupid request" (Carl demanding free followers had reached his queue) and
+"number is there" (a privacy-ID thread whose real number sat in the form).
+
+- **The cards**: every creator-lead row shows NEXT IN 2H (the drip's own
+  nurture_next_at via the journey route's new `chase` field for pre-signup
+  leads, nextTouch for account holders), FOLLOW-UP DUE, NO MORE FOLLOW-UPS, or
+  NOTHING SCHEDULED. That last one is deliberately loud: an engaged lead whose
+  drip stopped for conversation has NO timed chase (the 15/90 check-ins were
+  never wired), and that gap now shows instead of hiding.
+- **Pipelines**: heypubli-pipeline-sync moves refused ('blocked') and spent
+  ('exhausted') ladders to "Not interested". Conversation-stopped stays put.
+- **Free-followers demands**: FOLLOWER_BEG outranks the cost rule (the word
+  "free" was routing "how many followers for free" to the cost answer, twice,
+  then to a handover). One canned straight no, repeats get recorded silence,
+  never a human. Carl's handover was converted.
+- **Privacy IDs**: replies to 16-digit threads go to the real number from the
+  form; a shut window there becomes deliberate silence (the template drip
+  already chases that number); adoption never heals a lead onto an unsendable
+  ID. Kaechi's failed claim converted; her real number is on the drip.
+
+Verified live 22:39 UTC: Roye messaged 22:38, coded link u=e38a8d at 22:39
+(the import race fix working), countdown labels rendering, Carl and Kaechi
+quiet-on-purpose, Omar still honestly NEEDS YOU.
+
 ## 07 Aug 2026, later that night: on the funnel's number, the number is the product
 
 Hugo, seeing the inbox still full of unanswered threads two hours after the
