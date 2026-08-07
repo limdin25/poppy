@@ -19,6 +19,22 @@
     {
       "path": "/api/funnel/tick",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/funnel/sheet-sync",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/funnel/reply",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/funnel/monitor",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/video-pipeline",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

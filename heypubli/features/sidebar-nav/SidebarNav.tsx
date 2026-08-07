@@ -44,6 +44,7 @@ const adminMain = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
   { label: "Notifications", href: "/admin/notifications", icon: Bell },
   { label: "Campaign", href: "/admin/campaign", icon: Megaphone },
+  { label: "Videos", href: "/admin/videos", icon: Clapperboard },
   { label: "Signups", href: "/admin/leads", icon: UserPlus },
   { label: "Influencers", href: "/admin/influencers", icon: Users },
   { label: "Scheduler", href: "/admin/scheduler", icon: Clock },

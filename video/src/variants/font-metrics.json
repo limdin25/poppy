@@ -1,0 +1,62 @@
+{
+  "inter-tight": {
+    "capHeightEm": 0.7275,
+    "avgAdvanceEm": 0.5359,
+    "source": "ofl/intertight/InterTight-Italic[wght].ttf",
+    "variable": true
+  },
+  "archivo": {
+    "capHeightEm": 0.686,
+    "avgAdvanceEm": 0.5806,
+    "source": "ofl/archivo/Archivo-Italic[wdth,wght].ttf",
+    "variable": true
+  },
+  "anton": {
+    "capHeightEm": 0.8594,
+    "avgAdvanceEm": 0.4521,
+    "source": "ofl/anton/Anton-Regular.ttf",
+    "variable": false
+  },
+  "bricolage": {
+    "capHeightEm": 0.66,
+    "avgAdvanceEm": 0.5345,
+    "source": "ofl/bricolagegrotesque/BricolageGrotesque[opsz,wdth,wght].ttf",
+    "variable": true
+  },
+  "space-grotesk": {
+    "capHeightEm": 0.7,
+    "avgAdvanceEm": 0.5685,
+    "source": "ofl/spacegrotesk/SpaceGrotesk[wght].ttf",
+    "variable": true
+  },
+  "sora": {
+    "capHeightEm": 0.73,
+    "avgAdvanceEm": 0.6193,
+    "source": "ofl/sora/Sora[wght].ttf",
+    "variable": true
+  },
+  "manrope": {
+    "capHeightEm": 0.72,
+    "avgAdvanceEm": 0.5325,
+    "source": "ofl/manrope/Manrope[wght].ttf",
+    "variable": true
+  },
+  "playfair": {
+    "capHeightEm": 0.708,
+    "avgAdvanceEm": 0.5406,
+    "source": "ofl/playfairdisplay/PlayfairDisplay-Italic[wght].ttf",
+    "variable": true
+  },
+  "instrument-serif": {
+    "capHeightEm": 0.72,
+    "avgAdvanceEm": 0.4248,
+    "source": "ofl/instrumentserif/InstrumentSerif-Italic.ttf",
+    "variable": false
+  },
+  "schibsted": {
+    "capHeightEm": 0.7031,
+    "avgAdvanceEm": 0.5502,
+    "source": "ofl/schibstedgrotesk/SchibstedGrotesk-Italic[wght].ttf",
+    "variable": true
+  }
+}

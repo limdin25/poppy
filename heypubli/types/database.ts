@@ -523,6 +523,56 @@ export interface OutstandConnection {
   created_at: string;
 }
 
+// ---- the creator video pipeline (migration 033) ----------------------------
+
+export type MasterVideoStatus = "preview_rendering" | "pending_approval" | "approved";
+
+export interface MasterVideo {
+  id: string;
+  seq: number;
+  source_id: string;
+  title: string;
+  caption: string;
+  source_url: string | null;
+  preview_url: string | null;
+  status: MasterVideoStatus;
+  approved_at: string | null;
+  recipe_version: number;
+  created_at: string;
+}
+
+export interface CreatorVideoState {
+  profile_id: string;
+  color_family: string;
+  stagger_min: number;
+  next_seq: number;
+  variant_idx: number;
+  enrolled_at: string;
+}
+
+export type CreatorRenderStatus = "queued" | "rendering" | "ready" | "failed";
+
+export interface CreatorVideoRender {
+  id: string;
+  master_id: string;
+  profile_id: string;
+  color_family: string;
+  seed: string;
+  status: CreatorRenderStatus;
+  attempts: number;
+  video_url: string | null;
+  error: string | null;
+  claimed_at: string | null;
+  rendered_at: string | null;
+  created_at: string;
+}
+
+export interface VideoPipelineState {
+  id: string;
+  worker_last_seen: string | null;
+  updated_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -620,6 +670,30 @@ export interface Database {
         Row: OutstandConnection;
         Insert: Omit<OutstandConnection, "id" | "created_at">;
         Update: Partial<Omit<OutstandConnection, "id" | "created_at">>;
+        Relationships: [];
+      };
+      master_videos: {
+        Row: MasterVideo;
+        Insert: Omit<MasterVideo, "id" | "created_at">;
+        Update: Partial<Omit<MasterVideo, "id" | "created_at">>;
+        Relationships: [];
+      };
+      creator_video_state: {
+        Row: CreatorVideoState;
+        Insert: CreatorVideoState;
+        Update: Partial<Omit<CreatorVideoState, "profile_id">>;
+        Relationships: [];
+      };
+      creator_video_renders: {
+        Row: CreatorVideoRender;
+        Insert: Omit<CreatorVideoRender, "id" | "created_at">;
+        Update: Partial<Omit<CreatorVideoRender, "id" | "created_at">>;
+        Relationships: [];
+      };
+      video_pipeline_state: {
+        Row: VideoPipelineState;
+        Insert: VideoPipelineState;
+        Update: Partial<Omit<VideoPipelineState, "id">>;
         Relationships: [];
       };
       campaigns: {
