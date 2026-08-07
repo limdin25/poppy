@@ -517,6 +517,16 @@ export async function runReplyBrain(
       const acted = actionedAfter.get(w.phone);
       return !(acted && w.last_inbound_at && acted >= w.last_inbound_at);
     })
+    // A message younger than the settle window belongs to the webhook trigger,
+    // which is mid-pause on it right now. The cron answering at second 17 is
+    // exactly the instant-robot feel the 20 to 45 second pause exists to avoid
+    // (measured live, 07 Aug 2026). Anything older than the window is fair
+    // game: if the trigger died, the next minute's cron still answers.
+    .filter(
+      (w) =>
+        !w.last_inbound_at ||
+        now.getTime() - Date.parse(w.last_inbound_at) > SETTLE_MIN_MS + SETTLE_SPREAD_MS + 5000,
+    )
     .slice(0, MAX_REPLIES_PER_RUN);
 
   for (const thread of waiting) {
