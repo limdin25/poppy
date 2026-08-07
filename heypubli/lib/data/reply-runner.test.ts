@@ -5,6 +5,7 @@ import {
   shouldAwaitLeadImport,
   splitThread,
   stillOwnsThread,
+  unsendablePhone,
   LEAD_IMPORT_GRACE_MS,
   SETTLE_MIN_MS,
   SETTLE_SPREAD_MS,
@@ -179,6 +180,20 @@ describe("formDetails", () => {
 
   it("refuses a phone too short to be real", () => {
     expect(formDetails(["Phone number: 12345"]).phone).toBeNull();
+  });
+});
+
+// Käçhï, 07 Aug 2026: thread "phone" +1352593476491427, a 16-digit WhatsApp
+// privacy ID; the reply failed while her real number sat in the form message.
+describe("unsendablePhone", () => {
+  it("flags a 16-digit privacy ID", () => {
+    expect(unsendablePhone("+1352593476491427")).toBe(true);
+    expect(unsendablePhone("+2579038539225729")).toBe(true);
+  });
+  it("passes real numbers, including full-length E.164", () => {
+    expect(unsendablePhone("+254704249477")).toBe(false);
+    expect(unsendablePhone("+447460035763")).toBe(false);
+    expect(unsendablePhone("+123456789012345")).toBe(false);
   });
 });
 

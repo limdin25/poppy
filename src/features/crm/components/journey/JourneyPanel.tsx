@@ -23,7 +23,7 @@ import { cn } from '@/core/lib/cn';
 import { snippet } from '@/core/lib/format';
 import { nextTouch, dueLabel, type NextTouch } from '@/core/heypubli/journey';
 import { formatDateTime, formatRelativeTime } from '../../data/helpers';
-import type { ContactJourney, JourneyStatus } from '../../hooks/useHeypubliJourney';
+import type { ContactChase, ContactJourney, JourneyStatus } from '../../hooks/useHeypubliJourney';
 import type { FunnelEvent } from '../../hooks/useContactTimeline';
 
 export interface JourneyMessage {
@@ -44,6 +44,10 @@ export interface JourneyPanelProps {
    *  "no account" from "no answer", and it told Hugo the first when the truth
    *  was the second. */
   journeyStatus: JourneyStatus;
+  /** The drip's next-chase answer for a PRE-SIGNUP lead. Without it the
+   *  no-account branch said "this thread is yours" while an automatic
+   *  follow-up was scheduled, which is a falsehood with a timestamp. */
+  chase?: ContactChase | null;
   /** True when the lead came through the creator funnel at all. */
   isCreatorLead: boolean;
   messages: JourneyMessage[];
@@ -106,6 +110,7 @@ export default function JourneyPanel({
   contactPhone,
   journey,
   journeyStatus,
+  chase = null,
   isCreatorLead,
   messages,
   funnel,
@@ -130,7 +135,7 @@ export default function JourneyPanel({
   const newestOut = [...byTime].reverse().find((m) => m.direction === 'outbound') ?? null;
   const newestIn = [...byTime].reverse().find((m) => m.direction === 'inbound') ?? null;
 
-  const next = nextTouch({
+  let next = nextTouch({
     now,
     hasAccount: Boolean(journey),
     allDone: Boolean(journey?.allDone),
@@ -151,6 +156,33 @@ export default function JourneyPanel({
     // nothing. Flip this the day somebody wires it up.
     checkInsLive: false,
   });
+
+  // A pre-signup lead is the DRIP's to chase, not the nudge ladder's, so the
+  // no-account answer above ("this thread is yours") is overridden by the
+  // drip's own stamp whenever one exists. Same source as the card countdown.
+  if (!journey && chase) {
+    if (chase.kind === 'drip' && chase.at) {
+      next = {
+        kind: 'nudge',
+        label: 'Next follow-up',
+        detail: 'An automatic WhatsApp follow-up goes out if they do not reply first.',
+        dueAt: chase.at,
+        overdue: new Date(chase.at).getTime() <= now.getTime(),
+        nudgeNumber: null,
+        rung: null,
+      };
+    } else if (chase.kind === 'stopped') {
+      next = {
+        kind: 'stopped',
+        label: 'No more follow-ups',
+        detail: chase.reason ?? 'Nothing more will be sent automatically.',
+        dueAt: null,
+        overdue: false,
+        nudgeNumber: null,
+        rung: null,
+      };
+    }
+  }
 
   // --- the journey, oldest first --------------------------------------
   const items: TimelineItem[] = [];

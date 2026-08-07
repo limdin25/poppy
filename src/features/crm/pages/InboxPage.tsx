@@ -68,6 +68,7 @@ import { useAuth } from '../lib/useCrmAuth';
 import { useViewAs } from '../lib/ViewAsContext';
 import { isThreadUnread, sortInboxRows, inboxSections } from '../lib/inboxOrder';
 import { useHeypubliJourney } from '../hooks/useHeypubliJourney';
+import { nextTouch, dueLabel } from '@/core/heypubli/journey';
 import { useHeypubliBrain, describeBrainState } from '../hooks/useHeypubliBrain';
 import JourneyPanel from '../components/journey/JourneyPanel';
 
@@ -496,8 +497,16 @@ export default function InboxPage() {
       .filter((t) => t.contactProduct === 'heypubli' || isHeypubliProduct(cfById.get(t.contactId)))
       .map((t) => ({ id: t.contactId, phone: t.contactPhone }));
   }, [inboxThreads, contacts]);
-  const { byContact: journeyByContact, status: journeyStatus } =
+  const { byContact: journeyByContact, chaseByContact, status: journeyStatus } =
     useHeypubliJourney(journeyContacts);
+  // The countdown on the cards has to move. A 30 second beat is enough for a
+  // label whose finest unit is a minute. Hugo, 07 Aug 2026: "put a time when
+  // you're gonna follow up next... with the countdown."
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   // What the HeyPubli reply brain DID about each creator thread: answered,
   // deliberately silent, refused, handed to a human, or (the alarm) never
   // looked at. Same creator-only list as the journey lookup, same reasons.
@@ -534,10 +543,63 @@ export default function InboxPage() {
                 : null,
           })
         : null;
+      // "Everyone deserves a follow-up." One small answer per card: when the
+      // machine next chases this person if they stay quiet, or the plain
+      // admission that nothing ever will. Creators use the nudge ladder's own
+      // clock (nextTouch); pre-signup leads use the drip's stamp (chase).
+      const j = journeyByContact.get(r.id) ?? null;
+      let followUp: { label: string; tone: 'wait' | 'due' | 'stopped'; title: string } | null = null;
+      if (r.isCreatorLead) {
+        const nowD = new Date(nowTick);
+        if (j) {
+          const next = nextTouch({
+            now: nowD,
+            hasAccount: true,
+            allDone: j.allDone,
+            openStep: j.openStep,
+            suspendedAt: j.suspendedAt,
+            stoppedAt: j.stoppedAt,
+            nudgeCount: j.nudgeCount,
+            lastNudgedAt: j.lastNudgedAt,
+            lastActivityAt: j.lastActivityAt,
+            lastInboundAt: r.lastInboundAt,
+            lastOutboundAt: r.lastOutboundAt,
+            checkInsThisStep: 0,
+            checkInsLive: false,
+          });
+          if (next.kind === 'stopped') {
+            followUp = { label: 'no more follow-ups', tone: 'stopped', title: next.detail };
+          } else if (next.kind === 'nudge' && next.dueAt) {
+            followUp = next.overdue
+              ? { label: 'follow-up due', tone: 'due', title: next.detail }
+              : { label: `next ${dueLabel(next.dueAt, nowD)}`, tone: 'wait', title: `${next.label}. ${next.detail}` };
+          }
+          // 'done' (5/5) and 'reply' (waiting on the brain) say nothing here:
+          // the 5/5 badge and the brain badge already own those stories.
+        } else {
+          const ch = chaseByContact.get(r.id) ?? null;
+          if (ch?.kind === 'drip' && ch.at) {
+            const l = dueLabel(ch.at, nowD);
+            followUp =
+              l === 'due now'
+                ? { label: 'follow-up due', tone: 'due', title: 'The automatic WhatsApp follow-up is due to go out.' }
+                : { label: `next ${l}`, tone: 'wait', title: 'Automatic WhatsApp follow-up if they do not reply.' };
+          } else if (ch?.kind === 'stopped') {
+            followUp = { label: 'no more follow-ups', tone: 'stopped', title: ch.reason ?? 'Nothing more will be sent automatically.' };
+          } else if (ch?.kind === 'none') {
+            followUp = {
+              label: 'nothing scheduled',
+              tone: 'due',
+              title: ch.reason ?? 'No automatic follow-up will fire for this lead. A human chases them or nobody does.',
+            };
+          }
+        }
+      }
       return {
         ...r,
         vsl: funnelByContact.get(r.id) ?? null,
-        journey: journeyByContact.get(r.id) ?? null,
+        journey: j,
+        followUp,
         brainBadge,
         draftPending: pendingDraftIds.has(r.id),
         // Preview only. Deliberately NOT the row's timestamp and NOT counted
@@ -563,7 +625,7 @@ export default function InboxPage() {
       : scoped;
 
     return sortInboxRows(byFilter);
-  }, [sidebarRows, funnelByContact, journeyByContact, brainByContact, brainStatus, pendingDraftIds, draftByContact, inboxFlags, filter]);
+  }, [sidebarRows, funnelByContact, journeyByContact, chaseByContact, nowTick, brainByContact, brainStatus, pendingDraftIds, draftByContact, inboxFlags, filter]);
 
   // The same order, regrouped into labelled bands (pinned / needs a reply /
   // everything else). Headers render only when the list actually mixes bands.
@@ -1370,6 +1432,25 @@ export default function InboxPage() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {/* The next follow-up, or the admission there is none.
+                        Hugo, 07 Aug 2026: "next to their name, above the
+                        archive and the pin and the minutes... with the
+                        countdown. And if it's no more follow-up, you have to
+                        write it." */}
+                    {r.followUp && (
+                      <div
+                        data-testid={`inbox-followup-${r.id}`}
+                        title={r.followUp.title}
+                        className={cn(
+                          'text-[9px] font-semibold uppercase tracking-wide tabular-nums whitespace-nowrap',
+                          r.followUp.tone === 'wait' && 'text-[#B45309]',
+                          r.followUp.tone === 'due' && 'text-[#B91C1C]',
+                          r.followUp.tone === 'stopped' && 'text-[#9CA3AF]',
+                        )}
+                      >
+                        {r.followUp.label}
+                      </div>
+                    )}
                     {r.lastMessageAt && (
                       <div className={cn(
                         'text-[10px] tabular-nums',
@@ -2049,6 +2130,7 @@ export default function InboxPage() {
           contactPhone={activeContact.phone}
           journey={activeJourney}
           journeyStatus={journeyStatus}
+          chase={chaseByContact.get(activeContact.id) ?? null}
           isCreatorLead={activeIsCreatorLead}
           messages={contactSms.map((m) => ({
             id: m.id,

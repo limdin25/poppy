@@ -109,7 +109,7 @@ export function formDetails(said: string[]): { email: string | null; phone: stri
 interface CreatorState {
   lead: Pick<
     SignupLead,
-    "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id"
+    "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164"
   > | null;
   profile: Profile | null;
   stepsDone: OnboardingStepId[];
@@ -127,12 +127,12 @@ async function loadCreatorState(
   // moves on, which answers nobody wrongly.
   const { data: leads, error: leadErr } = await admin
     .from("signup_leads")
-    .select("id, first_name, whatsapp_opted_out_at, profile_id")
+    .select("id, first_name, whatsapp_opted_out_at, profile_id, whatsapp_e164")
     .or(`whatsapp_e164.eq.${phone},whatsapp.eq.${phone}`)
     .order("first_seen_at", { ascending: false })
     .limit(1)
     .returns<
-      Pick<SignupLead, "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id">[]
+      Pick<SignupLead, "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164">[]
     >();
   if (leadErr) throw new Error(`lead read failed: ${leadErr.message}`);
   const lead = leads?.[0] ?? null;
@@ -190,21 +190,23 @@ async function adoptLeadByFormDetails(
   }
   const { data: leads } = await admin
     .from("signup_leads")
-    .select("id, first_name, whatsapp_opted_out_at, profile_id")
+    .select("id, first_name, whatsapp_opted_out_at, profile_id, whatsapp_e164")
     .or(ors.join(","))
     .order("first_seen_at", { ascending: false })
     .limit(1)
     .returns<
-      Pick<SignupLead, "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id">[]
+      Pick<SignupLead, "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164">[]
     >();
   const lead = leads?.[0] ?? null;
   if (!lead) return null;
   // Heal the lead onto the number they actually message from: sends, the
   // inbound relay and the watch code all key off whatsapp_e164 from here on.
+  // NEVER heal onto a WhatsApp privacy ID: that swaps a number that works for
+  // one that can never receive anything.
+  const heal: Record<string, string> = { last_seen_at: new Date().toISOString() };
+  if (!unsendablePhone(phone)) heal.whatsapp_e164 = phone;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin.from("signup_leads") as any)
-    .update({ whatsapp_e164: phone, last_seen_at: new Date().toISOString() })
-    .eq("id", lead.id);
+  await (admin.from("signup_leads") as any).update(heal).eq("id", lead.id);
   return lead;
 }
 
@@ -234,6 +236,14 @@ async function claimSkip(
  *  3-minute neverLooked alarm: deferral writes no claim, so past this we
  *  answer with the bare link rather than trip IGNORED or, worse, stay quiet. */
 export const LEAD_IMPORT_GRACE_MS = 120_000;
+
+/** E.164 tops out at 15 digits. A 16-digit "phone" is a WhatsApp privacy ID
+ *  (Meta LID); Twilio cannot address it and every send to it fails. The form
+ *  message usually names the real number, so a thread like this is answered
+ *  THERE. Hugo, 07 Aug 2026, on Käçhï's REPLY FAILED card: "number is there." */
+export function unsendablePhone(phone: string): boolean {
+  return phone.replace(/\D/g, "").length > 15;
+}
 
 /**
  * Jessica, 07 Aug 2026, 20:01 UTC: her WhatsApp opener beat the sheet import
@@ -478,13 +488,37 @@ export async function processWaitingThread(
     return;
   }
 
+  // Privacy-ID thread with an adopted lead: answer their REAL number instead
+  // of failing into the void.
+  const realTo =
+    unsendablePhone(phone) &&
+    creator.lead?.whatsapp_e164 &&
+    !unsendablePhone(creator.lead.whatsapp_e164)
+      ? creator.lead.whatsapp_e164
+      : phone;
   const res = await sendPartnerWhatsApp({
-    to: phone,
+    to: realTo,
     firstName: ctx.firstName ?? "",
     body: sendText!,
     mediaUrls: sendImages.length ? sendImages.map((p) => `${SITE}${p}`) : undefined,
     externalId: `reply:${split.lastInboundId}`,
   });
+  if (!res.ok && realTo !== phone && res.blocked === "window_closed") {
+    // Their real number has no open session yet, so free-form cannot land
+    // there. The template drip already chases that number; this is deliberate
+    // quiet, not a failure that should page anyone.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("funnel_replies") as any)
+      .update({
+        kind: "silence",
+        status: "done",
+        reason: "privacy number; the template drip is chasing their real number",
+      })
+      .eq("in_reply_to", split.lastInboundId)
+      .eq("kind", "reply");
+    report.silences++;
+    return;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin.from("funnel_replies") as any)
     .update({ status: res.ok ? "sent" : (res.blocked ?? "failed") })
