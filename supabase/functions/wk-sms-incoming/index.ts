@@ -578,22 +578,32 @@ serve(async (req: Request) => {
       //     onboarded) is heypubli's reply brain's call, never decided by
       //     hiding a thread from it.
       const HEYPUBLI_WA_E164 = '+447460035763';
+      // The "HeyPubli" CRM agent (hello@heypubli.com). Hugo works the funnel
+      // through "See as: HeyPubli", which scopes the inbox to contacts OWNED by
+      // this agent. A contact created by its own inbound message has no owner
+      // (line above sets null), so SM Omar Faruk was stamped, answered, chased
+      // by the drip, and still invisible in the one view Hugo actually uses
+      // (07 Aug 2026: "cant see. SM Omar Faruk"). Stamping and owning must
+      // travel together.
+      const HEYPUBLI_AGENT_ID = '79c01385-a4d7-463d-b0b4-1d348c68a737';
       const isLeadFormMsg =
         Boolean(leadForm.firstName || leadForm.email) || /filled\s+(in|out)\s+your\s+form/i.test(body);
       if (!msgErr && channel === 'whatsapp' && (toE164 === HEYPUBLI_WA_E164 || isLeadFormMsg)) {
         try {
           const { data: st } = await supa
             .from('wk_contacts')
-            .select('custom_fields')
+            .select('custom_fields, owner_agent_id')
             .eq('id', contactId)
             .maybeSingle();
           const cf = (st?.custom_fields ?? {}) as Record<string, unknown>;
-          if (cf.product !== 'heypubli') {
-            await supa
-              .from('wk_contacts')
-              .update({ custom_fields: { ...cf, product: 'heypubli' } })
-              .eq('id', contactId);
-            console.log(`[wk-sms-incoming] stamped ${contactId} product=heypubli (lead form message)`);
+          const patch: Record<string, unknown> = {};
+          if (cf.product !== 'heypubli') patch.custom_fields = { ...cf, product: 'heypubli' };
+          if (!st?.owner_agent_id) patch.owner_agent_id = HEYPUBLI_AGENT_ID;
+          if (Object.keys(patch).length > 0) {
+            await supa.from('wk_contacts').update(patch).eq('id', contactId);
+            console.log(
+              `[wk-sms-incoming] heypubli thread ${contactId}: ${Object.keys(patch).join('+')}`,
+            );
           }
         } catch (e) {
           console.error('[wk-sms-incoming] lead-form stamp threw (non-fatal)', e);
