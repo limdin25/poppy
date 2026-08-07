@@ -124,6 +124,7 @@ type Filter =
   | 'all'
   | 'unread'
   | 'drafts'
+  | 'onboarded'
   | 'sms'
   | 'whatsapp'
   | 'email'
@@ -139,12 +140,16 @@ type Filter =
  *  Each row scrolls sideways instead of wrapping (the WhatsApp chip pattern).
  *  The 280px pane fits about 255px of pills, so display labels are short;
  *  the Filter values and testids stay the long canonical names. */
-const STATE_FILTERS: Filter[] = ['all', 'unread', 'drafts', 'archived'];
+// 'onboarded' = creator leads with every HeyPubli step done (the 5/5 badge the
+// rows already wear). Hugo 2026-08-07: "a filter by people who have fully
+// onboarded". Label kept to "5/5" so the state row still fits the 280px pane.
+const STATE_FILTERS: Filter[] = ['all', 'unread', 'drafts', 'onboarded', 'archived'];
 const SOURCE_FILTERS: Filter[] = ['sms', 'whatsapp', 'email', 'calls', 'voicemail', 'missed'];
 const FILTER_LABEL: Record<Filter, string> = {
   all: 'all',
   unread: 'unread',
   drafts: 'drafts',
+  onboarded: '5/5',
   archived: 'archived',
   sms: 'sms',
   whatsapp: 'WA',
@@ -554,6 +559,7 @@ export default function InboxPage() {
     const byFilter =
       filter === 'unread' ? scoped.filter((r) => r.unread)
       : filter === 'drafts' ? scoped.filter((r) => r.draftPending)
+      : filter === 'onboarded' ? scoped.filter((r) => r.journey?.allDone)
       : scoped;
 
     return sortInboxRows(byFilter);
@@ -1004,8 +1010,8 @@ export default function InboxPage() {
                   key={f}
                   onClick={() => setFilter(f)}
                   data-testid={`inbox-filter-${f}`}
-                  title={iconOnly ? 'Archived' : undefined}
-                  aria-label={iconOnly ? 'Archived conversations' : undefined}
+                  title={iconOnly ? 'Archived' : f === 'onboarded' ? 'Fully onboarded creators (all 5 steps done)' : undefined}
+                  aria-label={iconOnly ? 'Archived conversations' : f === 'onboarded' ? 'Fully onboarded creators' : undefined}
                   className={cn(
                     'inline-flex flex-shrink-0 items-center gap-1 px-1.5 py-[3px] text-[10px] font-semibold rounded-full transition-colors uppercase tracking-wide',
                     filter === f
@@ -1436,6 +1442,7 @@ export default function InboxPage() {
                 : filter === 'missed' ? 'No missed calls yet.'
                 : filter === 'unread' ? 'Nothing unread. Every reply has been answered.'
                 : filter === 'drafts' ? 'No AI replies waiting for approval.'
+                : filter === 'onboarded' ? 'No fully onboarded creators here yet.'
                 : filter === 'archived' ? 'Nothing archived.'
                 : searchQuery.trim() ? 'No matches.'
                 : EMPTY_CHANNEL_LABEL[filter] ? `No ${EMPTY_CHANNEL_LABEL[filter]} conversations here yet.`
