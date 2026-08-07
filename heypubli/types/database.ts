@@ -527,6 +527,11 @@ export interface OutstandConnection {
 
 export type MasterVideoStatus = "preview_rendering" | "pending_approval" | "approved";
 
+export interface MasterVideoApprovalSnapshot {
+  at: string;
+  accounts: Array<{ profileId: string; igUsername: string; colorFamily: string }>;
+}
+
 export interface MasterVideo {
   id: string;
   seq: number;
@@ -537,6 +542,7 @@ export interface MasterVideo {
   preview_url: string | null;
   status: MasterVideoStatus;
   approved_at: string | null;
+  approval_snapshot: MasterVideoApprovalSnapshot | null;
   recipe_version: number;
   created_at: string;
 }

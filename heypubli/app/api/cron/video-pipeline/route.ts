@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  captionFor,
   creatorTimeZone,
   enrollmentOffsets,
   pickColorFamily,
@@ -239,7 +240,10 @@ export async function GET(request: NextRequest) {
         brand_id: brand.id,
         media_type: "reel",
         media_url: render.video_url,
-        caption: m.caption ?? "",
+        // Hugo's own caption on the master wins; otherwise every account gets
+        // its own machine-written one (unique per account per video, Hugo,
+        // 08 Aug 2026: "every caption should be unique").
+        caption: (m.caption ?? "").trim() || captionFor(m.seq, s.variant_idx),
         scheduled_at: slot.at.toISOString(),
         status: "pending",
         provider: "outstand",

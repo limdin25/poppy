@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CAPTION_COMBOS,
+  captionFor,
   COLOR_FAMILIES,
   FAMILY_CHIP_HEX,
   enrollmentOffsets,
@@ -113,6 +115,44 @@ describe("nextSlots", () => {
     const after = new Date("2026-08-08T13:30:00Z");
     for (const s of nextSlots(after, "Asia/Kolkata", 0, 6)) {
       expect(s.at.getTime()).toBeGreaterThan(after.getTime());
+    }
+  });
+});
+
+describe("captions", () => {
+  it("hundreds of accounts on one master all get DIFFERENT captions", () => {
+    expect(CAPTION_COMBOS.length).toBeGreaterThanOrEqual(400);
+    for (const seq of [1, 2, 3, 7]) {
+      const seen = new Set<string>();
+      for (let idx = 0; idx < 300; idx++) seen.add(captionFor(seq, idx));
+      expect(seen.size).toBe(300);
+    }
+  });
+
+  it("one account never posts the same caption on consecutive videos", () => {
+    for (let idx = 0; idx < 50; idx++) {
+      for (let seq = 1; seq < 10; seq++) {
+        expect(captionFor(seq, idx)).not.toBe(captionFor(seq + 1, idx));
+      }
+    }
+  });
+
+  it("no caption breaks the standing rules: no long dash, no curly quote, no AI spoiler", () => {
+    const banned = /[–—‘’“”…]/;
+    for (const c of CAPTION_COMBOS) {
+      expect(banned.test(c)).toBe(false);
+      // The reveal lives on the end card; a caption saying it first kills it.
+      expect(/\bAI\b|artificial|generated|robot/i.test(c)).toBe(false);
+      expect(c.length).toBeGreaterThan(0);
+      expect(c.length).toBeLessThan(200);
+    }
+  });
+
+  it("never puts two emoji in one line", () => {
+    const emoji = /[\u{1F000}-\u{1FAFF}]/gu;
+    for (const c of CAPTION_COMBOS) {
+      const firstLine = c.split("\n")[0];
+      expect((firstLine.match(emoji) ?? []).length).toBeLessThanOrEqual(1);
     }
   });
 });

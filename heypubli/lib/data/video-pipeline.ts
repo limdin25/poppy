@@ -49,6 +49,71 @@ export const FAMILY_CHIP_HEX: Record<string, string> = {
   "bone-ink": "#efeae0",
 };
 
+// ---- captions ---------------------------------------------------------------
+// Hugo, 08 Aug 2026: "We need the captions for every video. And every caption
+// should be unique." Unique means UNIQUE PER ACCOUNT PER VIDEO: nine accounts
+// posting one identical caption is exactly the clustering the per-account
+// colors exist to avoid. Captions are assembled from parts (the factory's
+// hooks.ts pattern), deterministic per (master seq, account look number), and
+// none may hint at the AI reveal: that is the end card's job, and telling it
+// early is the one thing VARIANTS.md forbids. Hugo's own caption on a master,
+// when he types one, wins over all of this.
+
+const CAPTION_OPENERS = [
+  "Wait for the end.",
+  "Watch till the end 👀",
+  "The ending is the whole point.",
+  "Stay for the last ten seconds.",
+  "You will want to see how this ends.",
+  "Do not scroll, the end pays off.",
+  "The last part changes everything.",
+  "Keep watching.",
+  "Trust me, watch the whole thing.",
+  "The end of this one got me.",
+  "Hold on till the finish.",
+  "It gets better at the end.",
+] as const;
+
+const CAPTION_CLOSERS = [
+  "",
+  "🔗 in bio.",
+  "Everything is in the bio.",
+  "More in bio.",
+  "Check the bio when you are done.",
+  "The link explains the rest.",
+  "Bio has the rest.",
+  "Answers in bio.",
+] as const;
+
+const CAPTION_MARKS = ["", " 👀", " 🤯", " 😳", " 🔥", " ✨"] as const;
+
+function buildCaptionCombos(): string[] {
+  const out: string[] = [];
+  for (const opener of CAPTION_OPENERS) {
+    // An opener that already carries an emoji never gets a second one.
+    const marks = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(opener) ? [""] : CAPTION_MARKS;
+    for (const mark of marks) {
+      for (const closer of CAPTION_CLOSERS) {
+        out.push(closer ? `${opener}${mark}\n\n${closer}` : `${opener}${mark}`);
+      }
+    }
+  }
+  return out;
+}
+
+export const CAPTION_COMBOS: string[] = buildCaptionCombos();
+
+/**
+ * The caption for one account's copy of one master. 131 is coprime with the
+ * combo count, so within one master every look number up to that count gets a
+ * DIFFERENT caption ("even if it's hundreds", Hugo), and one account never
+ * repeats a caption across consecutive masters either.
+ */
+export function captionFor(masterSeq: number, variantIdx: number): string {
+  const n = CAPTION_COMBOS.length;
+  return CAPTION_COMBOS[(((variantIdx * 131 + masterSeq * 17) % n) + n) % n];
+}
+
 /** The two daily base slots, in the creator's OWN local time. */
 export const SLOT_HOURS = [11, 19] as const;
 

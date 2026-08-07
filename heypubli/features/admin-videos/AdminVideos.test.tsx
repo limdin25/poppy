@@ -23,6 +23,7 @@ const overview: PipelineOverview = {
       preview_url: "https://example.com/v1.mp4",
       status: "pending_approval",
       approved_at: null,
+      approval_snapshot: null,
       recipe_version: 8,
       created_at: "2026-08-07T00:00:00Z",
       rendersReady: 0,
@@ -30,6 +31,16 @@ const overview: PipelineOverview = {
       postsScheduled: 0,
       postsPublished: 0,
       postsFailed: 0,
+      accounts: [
+        {
+          igUsername: "kaorimodel04",
+          colorFamily: "obsidian-citrus",
+          colorHex: "#1a1a17",
+          timeZone: "Asia/Kolkata",
+          scheduledAt: null,
+          state: "waiting" as const,
+        },
+      ],
     },
   ],
   creators: [
@@ -62,9 +73,30 @@ describe("AdminVideos", () => {
   it("an approved master shows no approve button", () => {
     const approved = {
       ...overview,
-      masters: [{ ...overview.masters[0], status: "approved" as const, approved_at: "2026-08-07T22:00:00Z" }],
+      masters: [
+        {
+          ...overview.masters[0],
+          status: "approved" as const,
+          approved_at: "2026-08-07T22:00:00Z",
+          approval_snapshot: {
+            at: "2026-08-07T22:00:00Z",
+            accounts: [
+              { profileId: "p-1", igUsername: "kaorimodel04", colorFamily: "obsidian-citrus" },
+            ],
+          },
+        },
+      ],
     };
     render(<AdminVideos overview={approved} />);
     expect(screen.queryByTestId("approve-1")).toBeNull();
+    expect(screen.getByTestId("approved-tag-1").textContent).toContain("for 1 accounts");
+  });
+
+  it("shows who the approval covers, before and after", () => {
+    render(<AdminVideos overview={overview} />);
+    expect(screen.getByTestId("master-accounts-1").textContent).toContain(
+      "Approving sends this to 1 accounts",
+    );
+    expect(screen.getByTestId("master-accounts-1").textContent).toContain("after you approve");
   });
 });

@@ -29,6 +29,11 @@ create table if not exists master_videos (
   status text not null default 'preview_rendering'
     check (status in ('preview_rendering', 'pending_approval', 'approved', 'failed')),
   approved_at timestamptz,
+  -- The approval receipt, frozen at the moment Hugo clicks: who this went to.
+  -- Hugo, 08 Aug 2026: "a little tag of when I'm approving, which accounts
+  -- I'm approving for even if it's hundreds, and the time where they're
+  -- going out." Times come live from scheduled_posts; the WHO is frozen here.
+  approval_snapshot jsonb,
   recipe_version int not null default 8,
   created_at timestamptz not null default now()
 );

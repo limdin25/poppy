@@ -23,6 +23,18 @@ export interface PipelineCreatorView {
   enrolled: boolean;
 }
 
+/** One account's line under a master: who, their color, and exactly when
+ *  their copy goes (or went) out. */
+export interface MasterAccountRow {
+  igUsername: string;
+  colorFamily: string;
+  colorHex: string;
+  timeZone: string;
+  /** The REAL scheduled instant once the post row exists, else null. */
+  scheduledAt: string | null;
+  state: "scheduled" | "published" | "failed" | "rendering" | "waiting";
+}
+
 export interface PipelineMasterView extends MasterVideo {
   rendersReady: number;
   rendersTotal: number;
@@ -31,6 +43,8 @@ export interface PipelineMasterView extends MasterVideo {
   /** Publishes that FAILED: without this Hugo has no aggregate view of a
    *  broken account and a master silently skipped for it. */
   postsFailed: number;
+  /** Per-account release times, live from scheduled_posts. */
+  accounts: MasterAccountRow[];
 }
 
 export interface PipelineOverview {
@@ -58,9 +72,14 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
       admin.from("video_pipeline_state").select("worker_last_seen").eq("id", "default").single(),
       admin
         .from("scheduled_posts")
-        .select("master_video_id, status")
+        .select("master_video_id, profile_id, scheduled_at, status")
         .not("master_video_id", "is", null) as Promise<{
-        data: Array<{ master_video_id: string; status: string }> | null;
+        data: Array<{
+          master_video_id: string;
+          profile_id: string;
+          scheduled_at: string;
+          status: string;
+        }> | null;
       }>,
     ]);
 
@@ -78,20 +97,54 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
   >[];
   const posts = postsRes.data ?? [];
 
-  const masters: PipelineMasterView[] = ((mastersRes.data ?? []) as MasterVideo[]).map((m) => ({
-    ...m,
-    rendersReady: renders.filter((r) => r.master_id === m.id && r.status === "ready").length,
-    rendersTotal: renders.filter((r) => r.master_id === m.id).length,
-    postsScheduled: posts.filter((p) => p.master_video_id === m.id && p.status === "pending").length,
-    postsPublished: posts.filter((p) => p.master_video_id === m.id && p.status === "published")
-      .length,
-    postsFailed: posts.filter((p) => p.master_video_id === m.id && p.status === "failed").length,
-  }));
-
   const connRows = (connsRes.data ?? []) as Array<{
     profile_id: string;
     ig_username: string | null;
   }>;
+  const usernameBy = new Map(connRows.map((c) => [c.profile_id, c.ig_username ?? "unknown"]));
+  const enrolledOrdered = [...states].sort((a, b) => a.variant_idx - b.variant_idx);
+
+  const masters: PipelineMasterView[] = ((mastersRes.data ?? []) as MasterVideo[]).map((m) => {
+    const mine = posts.filter((p) => p.master_video_id === m.id);
+    const postBy = new Map(mine.map((p) => [p.profile_id, p]));
+    const myRenders = new Map(
+      renders.filter((r) => r.master_id === m.id).map((r) => [r.profile_id, r.status]),
+    );
+    const accounts: MasterAccountRow[] = enrolledOrdered
+      .filter((s) => usernameBy.has(s.profile_id))
+      .map((s) => {
+        const post = postBy.get(s.profile_id);
+        const renderStatus = myRenders.get(s.profile_id);
+        const profile = profileBy.get(s.profile_id);
+        return {
+          igUsername: usernameBy.get(s.profile_id) ?? "unknown",
+          colorFamily: s.color_family,
+          colorHex: FAMILY_CHIP_HEX[s.color_family] ?? "#888888",
+          timeZone: creatorTimeZone(profile?.whatsapp),
+          scheduledAt: post?.scheduled_at ?? null,
+          state: post
+            ? (post.status === "published"
+                ? "published"
+                : post.status === "failed"
+                  ? "failed"
+                  : "scheduled")
+            : renderStatus === "ready"
+              ? "waiting"
+              : renderStatus
+                ? "rendering"
+                : "waiting",
+        };
+      });
+    return {
+      ...m,
+      rendersReady: renders.filter((r) => r.master_id === m.id && r.status === "ready").length,
+      rendersTotal: renders.filter((r) => r.master_id === m.id).length,
+      postsScheduled: mine.filter((p) => p.status === "pending").length,
+      postsPublished: mine.filter((p) => p.status === "published").length,
+      postsFailed: mine.filter((p) => p.status === "failed").length,
+      accounts,
+    };
+  });
   const creators: PipelineCreatorView[] = connRows.map((c) => {
     const s = stateBy.get(c.profile_id);
     const profile = profileBy.get(c.profile_id);

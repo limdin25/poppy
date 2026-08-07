@@ -104,9 +104,42 @@ export async function approveMaster(masterId: string): Promise<ActionResult> {
   if (!m) return { error: "Master not found" };
   if (m.status === "approved") return { success: true };
   if (!m.preview_url) return { error: "Preview is still rendering; approve once you can watch it." };
+
+  // The approval receipt: freeze WHO this approval covers at the moment of
+  // the click (Hugo, 08 Aug 2026: "which accounts I'm approving for even if
+  // it's hundreds"). Release times stay live from scheduled_posts, because a
+  // frozen estimate would drift the moment a render ran long.
+  const { data: conns } = (await admin
+    .from("outstand_connections")
+    .select("profile_id, ig_username")
+    .eq("is_connected", true)) as {
+    data: Array<{ profile_id: string; ig_username: string | null }> | null;
+  };
+  const { data: states } = (await admin
+    .from("creator_video_state")
+    .select("profile_id, color_family, variant_idx")) as {
+    data: Array<{ profile_id: string; color_family: string; variant_idx: number }> | null;
+  };
+  const stateBy = new Map((states ?? []).map((s) => [s.profile_id, s]));
+  const accounts = (conns ?? [])
+    .filter((c) => stateBy.has(c.profile_id))
+    .sort(
+      (a, b) =>
+        (stateBy.get(a.profile_id)?.variant_idx ?? 0) - (stateBy.get(b.profile_id)?.variant_idx ?? 0),
+    )
+    .map((c) => ({
+      profileId: c.profile_id,
+      igUsername: c.ig_username ?? "unknown",
+      colorFamily: stateBy.get(c.profile_id)?.color_family ?? "",
+    }));
+
   const { error } = await admin
     .from("master_videos")
-    .update({ status: "approved", approved_at: new Date().toISOString() })
+    .update({
+      status: "approved",
+      approved_at: new Date().toISOString(),
+      approval_snapshot: { at: new Date().toISOString(), accounts },
+    })
     .eq("id", masterId);
   if (error) return { error: error.message };
   revalidatePath("/admin/videos");
