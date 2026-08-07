@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   formDetails,
   settleDelayMs,
+  shouldAwaitLeadImport,
   splitThread,
   stillOwnsThread,
+  LEAD_IMPORT_GRACE_MS,
   SETTLE_MIN_MS,
   SETTLE_SPREAD_MS,
 } from "./reply-runner";
@@ -177,5 +179,31 @@ describe("formDetails", () => {
 
   it("refuses a phone too short to be real", () => {
     expect(formDetails(["Phone number: 12345"]).phone).toBeNull();
+  });
+});
+
+// Jessica, 07 Aug 2026: her opener beat the sheet import by seconds and the
+// reply went out with the bare, untrackable /watch link.
+describe("shouldAwaitLeadImport", () => {
+  const now = new Date("2026-08-07T20:01:00Z");
+  const details = { email: "ajbellaflor@gmail.com", phone: "+639947567008" };
+
+  it("waits when the form names a lead and the message is fresh", () => {
+    expect(shouldAwaitLeadImport(details, "2026-08-07T20:00:30Z", now)).toBe(true);
+  });
+
+  it("answers codeless once the grace has passed, never stays silent", () => {
+    const stale = new Date(now.getTime() - LEAD_IMPORT_GRACE_MS - 1000).toISOString();
+    expect(shouldAwaitLeadImport(details, stale, now)).toBe(false);
+  });
+
+  it("never waits on a message with no contact details", () => {
+    expect(
+      shouldAwaitLeadImport({ email: null, phone: null }, "2026-08-07T20:00:30Z", now),
+    ).toBe(false);
+  });
+
+  it("the grace stays under the monitor's 3-minute neverLooked alarm", () => {
+    expect(LEAD_IMPORT_GRACE_MS).toBeLessThan(180_000);
   });
 });

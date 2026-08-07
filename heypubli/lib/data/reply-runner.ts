@@ -229,6 +229,31 @@ async function claimSkip(
   });
 }
 
+/** How long a form-fill thread with NO lead row yet may wait for the sheet
+ *  import before we answer without a code. Deliberately under the monitor's
+ *  3-minute neverLooked alarm: deferral writes no claim, so past this we
+ *  answer with the bare link rather than trip IGNORED or, worse, stay quiet. */
+export const LEAD_IMPORT_GRACE_MS = 120_000;
+
+/**
+ * Jessica, 07 Aug 2026, 20:01 UTC: her WhatsApp opener beat the sheet import
+ * by seconds (lead row landed 20:01:16, reply left 20:01:0x), so she got the
+ * bare /watch link and her video views tracked to nobody. Hugo: "why did you
+ * reply without the code that helps you track". A form message carrying
+ * contact details names a lead that IS coming; give the import one cron beat
+ * and answer with the coded link instead. Pure so the tests pin all the ways
+ * out: no details (answer now), fresh (wait), stale (answer codeless).
+ */
+export function shouldAwaitLeadImport(
+  details: { email: string | null; phone: string | null },
+  lastInboundAt: string | null,
+  now: Date,
+): boolean {
+  if (!details.email && !details.phone) return false;
+  if (!lastInboundAt) return false;
+  return now.getTime() - Date.parse(lastInboundAt) < LEAD_IMPORT_GRACE_MS;
+}
+
 /**
  * One waiting thread, decided and acted on. Shared verbatim by the every-minute
  * cron and the webhook trigger; the claim-first unique index on in_reply_to is
@@ -257,6 +282,17 @@ export async function processWaitingThread(
     // No lead on this number, but the form message may name the lead they are.
     const adopted = await adoptLeadByFormDetails(admin, phone, split.said);
     if (adopted) creator = { ...creator, lead: adopted };
+    else if (
+      !creator.profile &&
+      !pitchBlockedForPhone(phone) &&
+      shouldAwaitLeadImport(formDetails(split.said), split.lastInboundAt, now)
+    ) {
+      // The named lead has not been imported yet. Return WITHOUT claiming so
+      // the next pass (the cron, every minute) re-enters once the sheet-sync
+      // lands the row and replies with the coded link. Blocked countries never
+      // wait: their import is refused at the door, the row is not coming.
+      return;
+    }
   }
   if (creator.lead?.whatsapp_opted_out_at) {
     if (!opts.dry) await claimSkip(admin, phone, split.lastInboundId, "opted out earlier, automations stay away");
