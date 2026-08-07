@@ -26,6 +26,28 @@ hand-holding before tonight.
 
 ---
 
+## 08 Aug 2026: the creator video pipeline exists, waiting on Hugo's first approval
+
+Hugo's spec ("the core of the business"): every account gets two videos a day,
+everyone walks the same master sequence from video 1, each account has its own
+color, and NOTHING goes out until he watches and approves it on the app.
+
+Built and deployed end to end, full detail in the project memory
+(project_creator_video_pipeline.md): /admin/videos (upload, preview player,
+caption, APPROVE FOR ALL ACCOUNTS, per-account colors and next release times,
+render-worker pulse); masters 1-4 = the b009 batch, older batches deleted;
+9 accounts enrolled with unique color families, look numbers and time
+staggers; a launchd render worker on Hugo's Mac; the every-15-min cron fills
+each account to two posts per LOCAL day (11:00/19:00 + stagger) through the
+existing Outstand publisher. A 4-reviewer adversarial pass found 21 findings;
+the firing ones are fixed (the day-marching fill loop, the wedgeable worker,
+the manifest clobber, the browser leak, offset reuse after deletion, the
+1000-row cap, failed posts eating slots invisibly). Accepted gaps are listed
+in the memory file: no auto-retry on failed publishes (red FAILED count
+instead), the 60s Outstand poll, captions post-approval, and the Mac being
+the single render host. Outstand has never published a real post; Hugo's
+first approval is the first live test, by design his call.
+
 ## 07 Aug 2026, midnight: every card says when the next follow-up fires
 
 Hugo: "everyone deserves a follow-up... put a time when you're gonna follow up
