@@ -68,6 +68,19 @@ the 39 were backfilled by hand, one fresh +91 straggler (Irfan) was deleted
 with the same FK sweep, and the scoped view was re-verified in the browser:
 banner on, Omar visible, badges rendering, zero NEVER LOOKED AT.
 
+### The coded link must win the race with the import
+
+Jessica, 20:01 UTC: her opener beat her lead row by seconds (import landed
+20:01:16, reply left just before), so she was answered with the bare /watch
+link and her views track to nobody. Hugo: "why did you reply without the code
+that helps you track". Fix deployed 20:10 UTC: a form message with contact
+details but no lead row yet defers the thread, claim untouched, for up to 2
+minutes (under the 3-minute neverLooked alarm) so the next cron beat answers
+with the coded link; past the grace it answers codeless rather than never.
+Jessica herself is fine: lead 201a2d exists, her next reply carries her code
+via adoption, and her drip is deliberately stopped ("was already in
+conversation before import", the one-engine rule).
+
 ### Verified live, 20:15 UTC
 
 Monitor: waiting 5, neverLooked 0, replyFailed 2, undelivered 0, heartbeats
