@@ -5,6 +5,68 @@ Updated as things happen. Newest first.
 
 ---
 
+## 07 Aug 2026, later that night: on the funnel's number, the number is the product
+
+Hugo, seeing the inbox still full of unanswered threads two hours after the
+session above: "No reads can be neglected like this. We are spending money on
+this." The pile turned out to be the earlier session's own blind spot.
+
+### Why threads were still sitting there
+
+The product stamp was CONTENT-matched (a Meta form message) with +91 skipped on
+purpose. So every Indian form-fill arriving after the door closed created a CRM
+thread that nothing would ever look at: not stamped, not relayed, not counted
+by the monitor (whose universe is stamped threads), no badge. Eight arrived in
+one evening because the Meta ad was still delivering to India; the "we are not
+running ads there anymore" premise behind the afternoon delete was wrong. Hugo
+found the mis-set ad location and fixed it himself.
+
+### The once-for-all rule
+
+Audited 7 days of WhatsApp on +447460035763: 100 percent heypubli traffic. So
+wk-sms-incoming now stamps EVERY inbound on that number, whatever the message
+says (the form regex stays as a net for any future second number). Country
+policy is the reply brain's decision, recorded in funnel_replies; it is never
+again made by hiding a thread from the brain. A closed-country lead with no
+account and no lead row gets a recorded silence claim ("closed country, blocked
+on purpose"), nothing sent. Hugo was offered one polite goodbye per Indian
+lead, chose it, then reversed within minutes ("just block and delete the
+indians"); the goodbye code was written and removed in the same session.
+
+### Deleted
+
+84 more +91 CRM threads (tonight's 9 arrivals plus every no-account leftover
+from the morning), verified against BOTH HeyPubli tables first: the only +91
+numbers with a profile or lead row are Marry, Prem, Bhupender, Ashwini (plus
+one lead number with no thread), and exactly those 4 threads remain. Child rows
+were removed via the FK map (15 referencing tables), then the contacts.
+
+### A reply that failed to send is not an answer
+
+Thread +2579038539225729 wore a green "answered" badge while its reply had
+status `failed`: the "phone" is a 16-digit WhatsApp privacy ID (Meta LID) that
+Twilio cannot address, so the person received nothing. Two fixes: the badge
+maps a failed newest reply to a red REPLY FAILED, and the monitor email carries
+a standing "Replies that FAILED to send" list (newest-claim-per-phone, last
+48h, 'undelivered' excluded because that count exists already). Deliberately
+NOT an urgent re-alarm: autoReply.failed already alarms in the window the
+failure happens; the standing list rides the hourly email instead of paging
+every 5 minutes. Both privacy-ID threads (+257..., +179...) are claimed,
+failed, and honestly labelled; they are unreachable and no retry is possible
+(one action per inbound).
+
+### Verified live, 20:15 UTC
+
+Monitor: waiting 5, neverLooked 0, replyFailed 2, undelivered 0, heartbeats
+reply 1 min / tick 2 min. Browser check of the inbox: zero India threads, new
+Bangladeshi arrivals answered (Sanat 17 min, badge ANSWERED), REPLY FAILED
+rendering, and the drip chased SM Omar Faruk with his short coded link at
+20:12 while his handover badge still says NEEDS YOU (the badge reads the reply
+brain only, drip sends do not clear a handover, which is correct: a human
+should still glance).
+
+---
+
 ## 07 Aug 2026, night: India is out, the brain answers in 30 seconds, and silence is now visible
 
 Hugo: "the inbox must be perfect and clean, with intelligence." Built in one
