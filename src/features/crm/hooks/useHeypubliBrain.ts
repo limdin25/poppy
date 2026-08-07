@@ -180,8 +180,20 @@ export function describeBrainState(
   const why = state.reason ?? '';
   switch (state.kind) {
     case 'reply':
-    case 'check_in':
+    case 'check_in': {
+      // A written answer whose SEND failed is not an answer. The +257... thread
+      // (07 Aug 2026, a WhatsApp privacy ID Twilio cannot address) wore a green
+      // "answered" badge while the person had received nothing.
+      const st = state.status || 'sent';
+      if (st !== 'sent' && st !== 'done' && st !== 'pending') {
+        return {
+          label: 'REPLY FAILED',
+          tone: 'alarm',
+          detail: `The brain wrote an answer but the send failed (${st}). They received nothing; reach them another way or not at all.`,
+        };
+      }
       return { label: 'answered', tone: 'ok', detail: why ? `Brain replied: ${why}` : 'Brain replied.' };
+    }
     case 'refusal':
       return { label: 'refused, stopped', tone: 'quiet', detail: 'They said no. Every automation is parked; a human may still write.' };
     case 'silence':

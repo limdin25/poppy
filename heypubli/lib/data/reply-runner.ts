@@ -263,6 +263,23 @@ export async function processWaitingThread(
     return;
   }
 
+  // A closed-country lead with NO account and NO lead row: blocked on purpose,
+  // nothing is ever sent. Hugo, 07 Aug 2026, twice in one evening, the second
+  // time right after fixing the ad location that was still buying these leads:
+  // "just block and delete the indians." The claim is what keeps the thread
+  // wearing "quiet on purpose" in the inbox instead of looking ignored. The
+  // kept creators (a profile or a lead row exists) never reach this branch;
+  // the pitchBlocked guard further down still answers their questions without
+  // recruiting them.
+  if (pitchBlockedForPhone(phone) && !creator.profile && !creator.lead) {
+    if (opts.dry) {
+      report.dry!.push({ phone, action: "silence", reason: "closed country, blocked on purpose" });
+      return;
+    }
+    await claimSkip(admin, phone, split.lastInboundId, "closed country, blocked on purpose");
+    return;
+  }
+
   // Keep the lead's freshness stamp current. The slow nudge ladder pauses around
   // engaged_at; when it only ever held the FIRST reply, a template could land
   // minutes after a live back-and-forth.

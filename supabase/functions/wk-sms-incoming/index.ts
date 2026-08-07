@@ -564,17 +564,23 @@ serve(async (req: Request) => {
         }
       }
 
-      // 3e-0. A WhatsApp message carrying a Meta lead form IS a heypubli funnel
-      //     lead, whatever number it arrives from. Angelica, 07 Aug 2026: form
-      //     said +639381849356, she messaged from +639924711588, so her contact
-      //     was never stamped, the relay never fired, and she sat invisible for
-      //     10 minutes. The form body itself is the proof of who she is.
-      //     +91 is skipped on purpose (mirror of heypubli's
-      //     PITCH_BLOCKED_PREFIXES): Hugo, 07 Aug 2026, stopped recruiting
-      //     leads Skool cannot pay and turned Indian ads off.
+      // 3e-0. EVERY inbound WhatsApp on the funnel's own number is heypubli
+      //     traffic, whatever the message says. Content-matching alone kept
+      //     missing people: Angelica messaged from a different number than her
+      //     form (07 Aug 2026, 10 invisible minutes), Bikramjit wrote "Your
+      //     post on Instagram." with no form words at all, and a +91 skip hid
+      //     eight Indian form-fills the night Hugo decided they get one polite
+      //     goodbye instead of nothing. Audited 07 Aug 2026: seven days of
+      //     WhatsApp on +447460035763 is 100 percent heypubli, so on this line
+      //     the number IS the product. The form regex stays as the net for any
+      //     second number that starts forwarding here before someone updates
+      //     the constant. Country policy (who gets a goodbye, who gets
+      //     onboarded) is heypubli's reply brain's call, never decided by
+      //     hiding a thread from it.
+      const HEYPUBLI_WA_E164 = '+447460035763';
       const isLeadFormMsg =
         Boolean(leadForm.firstName || leadForm.email) || /filled\s+(in|out)\s+your\s+form/i.test(body);
-      if (!msgErr && channel === 'whatsapp' && isLeadFormMsg && !fromE164.startsWith('+91')) {
+      if (!msgErr && channel === 'whatsapp' && (toE164 === HEYPUBLI_WA_E164 || isLeadFormMsg)) {
         try {
           const { data: st } = await supa
             .from('wk_contacts')

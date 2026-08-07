@@ -259,6 +259,33 @@ export async function GET(request: Request) {
     .gte("created_at", twoDaysAgo);
   const undelivered48h = (undeliveredNurture ?? 0) + (undeliveredReplies ?? 0);
 
+  // Standing failures: threads whose LATEST action is a reply that never left.
+  // autoReply.failed alarms in the window it happens; without this list the
+  // thread then wears its failure silently forever (one action per message
+  // means no retry). 'undelivered' is excluded, the count above owns it.
+  const replyFailedStanding: MonitorData["replyFailedStanding"] = [];
+  {
+    const { data: recent, error: rfErr } = await admin
+      .from("funnel_replies")
+      .select("phone, kind, status, created_at")
+      .gte("created_at", twoDaysAgo)
+      .order("created_at", { ascending: false })
+      .limit(2000)
+      .returns<{ phone: string; kind: string; status: string; created_at: string }[]>();
+    if (rfErr) gatherErrors.push("funnel_replies failed check");
+    const seenPhones = new Set<string>();
+    for (const r of recent ?? []) {
+      if (seenPhones.has(r.phone)) continue;
+      seenPhones.add(r.phone);
+      if (
+        (r.kind === "reply" || r.kind === "check_in") &&
+        !["sent", "pending", "done", "undelivered"].includes(r.status)
+      ) {
+        replyFailedStanding.push({ phone: r.phone, status: r.status, at: r.created_at });
+      }
+    }
+  }
+
   // Nobody is chasing these. Two ways a person falls out of every ladder:
   //  1. A lead whose drip finished or never armed while they were still
   //     pre-signup (post-signup people belong to the onboarding nudges).
@@ -393,6 +420,7 @@ export async function GET(request: Request) {
     refusedBlocked: state?.sheet_sync_last_refused_blocked ?? 0,
     nobodyChasing,
     undelivered48h,
+    replyFailedStanding,
     templateDeferredLeads,
     autoReply,
     pausedReason,
@@ -441,6 +469,7 @@ export async function GET(request: Request) {
     neverLooked: neverLooked.length,
     nobodyChasing: nobodyChasing.length,
     undelivered48h,
+    replyFailed: replyFailedStanding.length,
     templateDeferredLeads,
     heartbeats: data.heartbeats,
     paused: pausedReason,

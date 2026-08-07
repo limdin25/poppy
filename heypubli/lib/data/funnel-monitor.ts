@@ -26,6 +26,13 @@ export interface MonitorAutoReply {
   handovers: MonitorHandover[];
 }
 
+/** A thread whose newest brain action is a reply that never left. */
+export interface MonitorReplyFailed {
+  phone: string;
+  status: string;
+  at: string;
+}
+
 export interface MonitorLead {
   first_name: string;
   source: string;
@@ -103,6 +110,13 @@ export interface MonitorData {
   nobodyChasing: MonitorNobodyChasing[];
   /** WhatsApp messages Twilio accepted then failed to deliver, last 48h. */
   undelivered48h: number;
+  /** Threads whose LATEST brain action is a reply whose SEND failed (last 48h).
+   *  The person received nothing and one-action-per-message means no retry, so
+   *  without this list the thread stays broken silently while its inbox badge
+   *  said "answered". Found 07 Aug 2026 on a WhatsApp privacy-ID thread
+   *  (+2579..., 16 digits, unaddressable by Twilio). autoReply.failed alarms
+   *  at the moment of failure; this is the standing list until a human acts. */
+  replyFailedStanding: MonitorReplyFailed[];
   /** Active drip leads whose CURRENT step points at an unapproved template, so
    *  their next message defers 24h, every day, until Meta moves. A silent
    *  daily deferral is indistinguishable from a working ladder; this is the
@@ -371,6 +385,18 @@ export function buildFunnelReport(d: MonitorData): MonitorReport {
   if (d.undelivered48h > 0) {
     parts.push(
       `<p style="color:#b91c1c"><strong>${d.undelivered48h} WhatsApp message(s) in the last 48h were accepted by Twilio and then never delivered.</strong> Those people were NOT reached, whatever the send log says.</p>`,
+    );
+  }
+
+  if (d.replyFailedStanding.length) {
+    parts.push(
+      `<h3 style="margin:14px 0 4px;color:#b91c1c">Replies that FAILED to send (${d.replyFailedStanding.length})</h3>`,
+      `<p style="color:#b91c1c">The brain answered these people and the send itself failed, so they received nothing. One action per message means the machine will not retry; each needs a human, or accepting the number cannot be reached (a 16-digit "phone" is a WhatsApp privacy ID and no message can ever be sent to it).</p>`,
+      "<ul>" +
+        d.replyFailedStanding
+          .map((f) => `<li>${esc(f.phone)}: ${esc(f.status)}, ${esc(f.at.slice(0, 16).replace("T", " "))} UTC</li>`)
+          .join("") +
+        "</ul>",
     );
   }
 

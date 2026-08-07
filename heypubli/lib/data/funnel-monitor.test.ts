@@ -31,6 +31,7 @@ const base = (): MonitorData => ({
   refusedBlocked: 0,
   nobodyChasing: [],
   undelivered48h: 0,
+  replyFailedStanding: [],
   templateDeferredLeads: 0,
   autoReply: { replied: 0, checkIns: 0, refusals: 0, failed: 0, handovers: [] },
   pausedReason: null,
@@ -222,6 +223,25 @@ describe("buildFunnelReport", () => {
     d.refusedBlocked = 27;
     const r = buildFunnelReport(d);
     expect(r.html).toContain("refused at the door");
+  });
+
+  it("lists threads whose latest reply FAILED to send", () => {
+    const d = base();
+    d.replyFailedStanding = [
+      { phone: "+2579038539225729", status: "failed", at: "2026-08-07T18:32:40Z" },
+    ];
+    const r = buildFunnelReport(d);
+    expect(r.html).toContain("FAILED to send (1)");
+    expect(r.html).toContain("+2579038539225729");
+  });
+
+  it("a standing failed reply alone does not re-alarm every run (the moment of failure already did)", () => {
+    const d = base();
+    d.replyFailedStanding = [
+      { phone: "+2579038539225729", status: "failed", at: "2026-08-07T18:32:40Z" },
+    ];
+    const decision = shouldEmailNow(d, d.now);
+    expect(decision.send).toBe(false);
   });
 
   it("never contains a long dash, curly quote or ellipsis character", () => {
