@@ -75,6 +75,85 @@ function phoneVariants(raw: string): { e164: string; digits: string; variants: s
   return { e164, digits, variants };
 }
 
+// Facebook lead-ad form, read out of the lead's very first WhatsApp message.
+//
+// A lead ad composes that first message for them out of the form they filled
+// in, so the person's name arrives in the body and nothing ever read it. Every
+// one of those leads sat in the CRM inbox as its own phone number, because the
+// insert below names a new contact after the number it came from.
+//
+// MIRROR of src/core/heypubli/lead-form.ts (Deno cannot import from src/), the
+// same arrangement uk-places.ts has with the scraper. tests/heypubli-lead-form
+// .test.ts reads both files and fails the build if they drift apart.
+//
+// Two things about the shape, both from real rows:
+//   - the field ORDER varies, so never parse by line number
+//   - the greeting is translated into the lead's own locale (we have Bengali
+//     ones) while the field LABELS stay English, so anchor on the labels
+const MAX_LEAD_NAME = 60;
+const FIRST_NAME_RE = /^[^\S\n]*First\s*name[^\S\n]*:[^\S\n]*(.*)$/im;
+const LEAD_EMAIL_RE = /^[^\S\n]*Email[^\S\n]*:[^\S\n]*(.*)$/im;
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
+
+// What people put in the name box that is not a name. Both of these are real:
+// contact +919495068152 was named "Hi", contact +917989848576 was named
+// "RISHVANTH RAM KOUSHIK| REEL CREATOR| BGMS |". This function is the live
+// path that wrote them, so the rule has to be here and not only in the shared
+// module. Mirror of usableName() in src/core/heypubli/lead-form.ts.
+const GREETING_WORDS = new Set([
+  'hello', 'helo', 'hlo', 'hallo', 'halo', 'namaste', 'salam', 'assalamualaikum',
+  'ok', 'okay', 'okk', 'k', 'yes', 'ya', 'yeah', 'yep', 'no', 'nope', 'na', 'nil', 'none',
+  'sir', 'madam', 'mam', 'maam', 'bro', 'boss',
+  'thanks', 'thankyou', 'ty', 'please', 'plz',
+  'test', 'testing', 'asdf', 'abc', 'xyz', 'nan', 'null', 'undefined',
+  'gm', 'ge', 'goodmorning', 'goodevening', 'goodafternoon', 'goodnight',
+]);
+const GREETING_RE = /^h+[iey]+$/;
+
+function usableName(raw: string): string | null {
+  const cut = raw.split('|')[0].trim().replace(/\s+/g, ' ');
+  if (!cut || cut.length > MAX_LEAD_NAME) return null;
+  if (!/\p{L}/u.test(cut)) return null;
+  const bare = cut.toLowerCase().replace(/[^a-z]/g, '');
+  if (bare && (GREETING_WORDS.has(bare) || GREETING_RE.test(bare))) return null;
+  return cut;
+}
+
+function parseLeadForm(body: string): { firstName: string | null; email: string | null } {
+  const text = String(body ?? '');
+  const rawName = (text.match(FIRST_NAME_RE)?.[1] ?? '').trim();
+  const rawEmail = (text.match(LEAD_EMAIL_RE)?.[1] ?? '').trim().toLowerCase();
+  return {
+    firstName: rawName ? usableName(rawName) : null,
+    email: EMAIL_SHAPE.test(rawEmail) ? rawEmail : null,
+  };
+}
+
+/** Facebook sends "lakshmi" and "LAXMAN". Only re-case a word that is
+ *  entirely one case, so "McDonald" and non-Latin scripts survive untouched. */
+function displayName(raw: string): string {
+  const s = String(raw ?? '').trim().replace(/\s+/g, ' ');
+  if (!s) return '';
+  return s
+    .split(' ')
+    .map((w) => {
+      const oneCase = /[A-Za-z]/.test(w) && (w === w.toLowerCase() || w === w.toUpperCase());
+      return oneCase ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w;
+    })
+    .join(' ');
+}
+
+/** Only the phone-number name this function itself invents may be replaced.
+ *  Hugo's rule: a name a human actually chose is never overwritten. */
+function isPlaceholderName(name: string | null, phone: string | null): boolean {
+  const n = String(name ?? '').trim();
+  if (!n) return true;
+  const bare = n.replace(/^whatsapp:/i, '').replace(/[\s()+-]/g, '');
+  if (/^\d{5,}$/.test(bare)) return true;
+  const p = String(phone ?? '').replace(/^whatsapp:/i, '').replace(/[\s()+-]/g, '');
+  return Boolean(p) && bare === p;
+}
+
 // Voicemail-drop callback attribution (VM drop B8). Canonical decision
 // logic + tests: api/lib/callback-attribution.ts (mirrored here — Deno
 // can't import api/). Same constants + column resolution as the voice
@@ -197,10 +276,15 @@ serve(async (req: Request) => {
       if (u) mediaUrls.push(u);
     }
 
+    // Does this message carry a Facebook lead-ad form? Parsed once, used both
+    // when creating the contact and when filling in an existing placeholder.
+    const leadForm = parseLeadForm(body);
+    const leadName = leadForm.firstName ? displayName(leadForm.firstName) : '';
+
     // 1. Find or create wk_contacts row for this caller.
     const { data: wkContactRow } = await supa
       .from('wk_contacts')
-      .select('id, pipeline_column_id')
+      .select('id, pipeline_column_id, name, phone, email, custom_fields')
       .in('phone', fromVariants)
       .limit(1)
       .maybeSingle();
@@ -217,13 +301,18 @@ serve(async (req: Request) => {
       const { data: inserted, error: insErr } = await supa
         .from('wk_contacts')
         .insert({
-          name: fromE164,
+          // The lead's own name when the form carried one, the number
+          // otherwise. Naming a contact after its phone number is what made
+          // the whole inbox unreadable.
+          name: leadName || fromE164,
           phone: fromE164,
+          email: leadForm.email,
           owner_agent_id: null,
           pipeline_column_id: null,
           custom_fields: {
             source: isWhatsApp ? 'inbound_whatsapp' : 'inbound_sms',
             first_message_sid: messageSid,
+            ...(leadName ? { owner_name: leadName } : {}),
           },
           is_hot: false,
         })
@@ -250,6 +339,30 @@ serve(async (req: Request) => {
         } else {
           console.error('[wk-sms-incoming] wk_contacts insert failed', insErr);
         }
+      }
+    } else if (leadName || leadForm.email) {
+      // The contact already existed (an outbound campaign created it, or an
+      // earlier inbound did) and this message brings the lead's real details.
+      // Fill the GAPS only. A name somebody chose is never overwritten, and
+      // neither is an email we already hold.
+      try {
+        const patch: Record<string, unknown> = {};
+        const cf = (wkContactRow?.custom_fields ?? {}) as Record<string, unknown>;
+        if (leadName && isPlaceholderName(wkContactRow?.name ?? null, wkContactRow?.phone ?? fromE164)) {
+          patch.name = leadName;
+        }
+        if (leadForm.email && !wkContactRow?.email) patch.email = leadForm.email;
+        if (leadName && !String(cf.owner_name ?? '').trim()) {
+          patch.custom_fields = { ...cf, owner_name: leadName };
+        }
+        if (Object.keys(patch).length > 0) {
+          const { error: fillErr } = await supa.from('wk_contacts').update(patch).eq('id', contactId);
+          if (fillErr) console.error('[wk-sms-incoming] lead-form fill failed', fillErr);
+          else console.log(`[wk-sms-incoming] filled ${Object.keys(patch).join('+')} on ${contactId}`);
+        }
+      } catch (e) {
+        // Never fatal. A name is worth less than the message itself.
+        console.error('[wk-sms-incoming] lead-form fill threw (non-fatal)', e);
       }
     }
 
@@ -311,14 +424,21 @@ serve(async (req: Request) => {
       //     automation. "please stop messaging me" passed the optOut test
       //     above (it demands the WHOLE body be "stop") and passed this one
       //     too, until it was added here.
+      //     The gap between the words is NOT \s+. A real lead wrote
+      //     "No..thanks" on 07 Aug and every pattern here missed it, because
+      //     they all demanded whitespace. People punctuate how they like:
+      //     "No, thanks", "no.thanks", "No -- thanks". Anything that is not a
+      //     letter or a digit is a word gap. G is that gap.
+      const G = '[^a-z0-9]*';
+      const re = (s: string) => new RegExp(s, 'i').test(body);
       const refused =
-        /\b(not|no|never)\s+(really\s+|very\s+)?(interested|intrested|intersted|interseted)\b/i.test(body) ||
-        /\bno\s+thanks?\b/i.test(body) ||
-        /\b(stop|quit)\s+(messaging|texting|contacting|calling|sending)\b/i.test(body) ||
-        /\b(don'?t|do\s+not|dont)\s+(message|msg|text|contact|call)\s+me\b/i.test(body) ||
-        /\b(remove|delete)\s+(me|my\s+number)\b/i.test(body) ||
-        /\bleave\s+me\s+alone\b/i.test(body) ||
-        /\bnot\s+want(ed|ing)?\s+(this|it|any)\b/i.test(body);
+        re(`\\b(not|no|never)${G}(really${G}|very${G})?(interested|intrested|intersted|interseted)\\b`) ||
+        re(`\\bno${G}thanks?\\b`) ||
+        re(`\\b(stop|quit)${G}(messaging|texting|contacting|calling|sending)\\b`) ||
+        re(`\\b(don'?t|do${G}not|dont)${G}(message|msg|text|contact|call)${G}me\\b`) ||
+        re(`\\b(remove|delete)${G}(me|my${G}number)\\b`) ||
+        re(`\\bleave${G}me${G}alone\\b`) ||
+        re(`\\bnot${G}want(ed|ing)?${G}(this|it|any)\\b`);
       if (optOut) {
         const { error: dntErr } = await supa
           .from('wk_contact_tags')
@@ -444,12 +564,43 @@ serve(async (req: Request) => {
         }
       }
 
+      // 3e-0. A WhatsApp message carrying a Meta lead form IS a heypubli funnel
+      //     lead, whatever number it arrives from. Angelica, 07 Aug 2026: form
+      //     said +639381849356, she messaged from +639924711588, so her contact
+      //     was never stamped, the relay never fired, and she sat invisible for
+      //     10 minutes. The form body itself is the proof of who she is.
+      //     +91 is skipped on purpose (mirror of heypubli's
+      //     PITCH_BLOCKED_PREFIXES): Hugo, 07 Aug 2026, stopped recruiting
+      //     leads Skool cannot pay and turned Indian ads off.
+      const isLeadFormMsg =
+        Boolean(leadForm.firstName || leadForm.email) || /filled\s+(in|out)\s+your\s+form/i.test(body);
+      if (!msgErr && channel === 'whatsapp' && isLeadFormMsg && !fromE164.startsWith('+91')) {
+        try {
+          const { data: st } = await supa
+            .from('wk_contacts')
+            .select('custom_fields')
+            .eq('id', contactId)
+            .maybeSingle();
+          const cf = (st?.custom_fields ?? {}) as Record<string, unknown>;
+          if (cf.product !== 'heypubli') {
+            await supa
+              .from('wk_contacts')
+              .update({ custom_fields: { ...cf, product: 'heypubli' } })
+              .eq('id', contactId);
+            console.log(`[wk-sms-incoming] stamped ${contactId} product=heypubli (lead form message)`);
+          }
+        } catch (e) {
+          console.error('[wk-sms-incoming] lead-form stamp threw (non-fatal)', e);
+        }
+      }
+
       // 3e. heypubli funnel fan-out. Same pre-gate philosophy as the site demo
       //     above: one cheap check (is this contact stamped as a heypubli lead?)
       //     and only then a relay to heypubli, so Elsie's own traffic costs
       //     nothing extra. heypubli uses the reply to stop its nurture drip
-      //     (an engaged lead gets a human/AI conversation, not template nudges)
-      //     and to record opt-outs on its side too. Never fatal.
+      //     (an engaged lead gets a human/AI conversation, not template nudges),
+      //     to record opt-outs on its side too, and since 07 Aug 2026 to TRIGGER
+      //     its reply brain after a 20 to 45 second settle. Never fatal.
       const HEYPUBLI_URL = Deno.env.get('HEYPUBLI_URL') ?? '';
       const HEYPUBLI_WEBHOOK_SECRET = Deno.env.get('HEYPUBLI_WEBHOOK_SECRET') ?? '';
       if (!msgErr && channel === 'whatsapp' && HEYPUBLI_URL && HEYPUBLI_WEBHOOK_SECRET) {
@@ -478,14 +629,32 @@ serve(async (req: Request) => {
             const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(relay));
             const hex = Array.from(new Uint8Array(sig))
               .map((b) => b.toString(16).padStart(2, '0')).join('');
-            await fetch(`${HEYPUBLI_URL}/api/webhooks/whatsapp-inbound`, {
+            // FIRE AND FORGET. This fetch used to be awaited inside the request
+            // Twilio is waiting on; Twilio times out around 15 seconds and
+            // RETRIES, which means duplicate inbound rows and a second shot at
+            // every automation. EdgeRuntime.waitUntil keeps the isolate alive
+            // after the TwiML is returned, so the relay still completes; the
+            // heypubli side answers 200 fast and does its settle pause after
+            // responding, so nothing here ever waits on a pause.
+            const relayPromise = fetch(`${HEYPUBLI_URL}/api/webhooks/whatsapp-inbound`, {
               method: 'POST',
               headers: {
                 'content-type': 'application/json',
                 'x-funnel-signature': `sha256=${hex}`,
               },
               body: relay,
-            });
+              signal: AbortSignal.timeout(10000),
+            }).then(
+              (res) => {
+                if (!res.ok) console.error(`[wk-sms-incoming] heypubli relay ${res.status}`);
+              },
+              (e) => console.error('[wk-sms-incoming] heypubli relay failed (cron is the net)', e),
+            );
+            const runtime = (globalThis as unknown as {
+              EdgeRuntime?: { waitUntil(p: Promise<unknown>): void };
+            }).EdgeRuntime;
+            if (runtime?.waitUntil) runtime.waitUntil(relayPromise);
+            else await relayPromise;
           }
         } catch (e) {
           console.error('[wk-sms-incoming] heypubli fan-out threw (non-fatal)', e);
@@ -502,6 +671,22 @@ serve(async (req: Request) => {
       //    already answered this message with the link they asked for.
       if (!msgErr && !optOut && !refused && !siteHandled) {
         try {
+          // heypubli contacts have their OWN reply brain (heypubli's /api/funnel/reply,
+          // deterministic + tested). Enqueueing Elsie's AI here as well means two brains
+          // answering one thread: one lead, two different replies. The fan-out above
+          // already read custom_fields for this contact; re-read is cheap and correct.
+          const { data: gateRow } = await supa
+            .from('wk_contacts')
+            .select('custom_fields')
+            .eq('id', contactId)
+            .maybeSingle();
+          const gateCf = (gateRow?.custom_fields ?? {}) as Record<string, unknown>;
+          if (gateCf.product === 'heypubli') {
+            return new Response(TWIML_OK, {
+              status: 200,
+              headers: { 'Content-Type': 'text/xml' },
+            });
+          }
           const { data: s } = await supa
             .from('wk_ai_reply_settings')
             .select('enabled, reply_delay_seconds, max_replies_per_contact')

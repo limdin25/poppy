@@ -240,7 +240,7 @@ export interface OnboardingNudgeReport {
  * user-session client (this runs in a cron, there are no cookies) and no
  * Outstand API call except the one bio double-check right before a bio nudge.
  */
-async function resolveStatesForCron(
+export async function resolveStatesForCron(
   admin: ReturnType<typeof createAdminClient>,
   profile: Profile,
   provider: string,
@@ -347,6 +347,26 @@ export async function runOnboardingNudges(
 
   const stateBy = new Map((states ?? []).map((s) => [s.profile_id, s]));
   const leadBy = new Map((leads ?? []).map((l) => [l.email_normalized, l]));
+
+  // THE OTHER LADDER'S FOOTPRINTS. The same-day check-ins (reply-runner, 15 and
+  // 90 minutes) and this slow ladder both message quiet creators; each one
+  // dedupes itself, but nothing stopped a check-in at minute 90 being followed
+  // by a slow nudge at hour 2. A recent check-in now counts as OUR last nudge,
+  // so the gap rule spaces the two ladders as one voice.
+  const { data: checkinRows } = await admin
+    .from("funnel_replies")
+    .select("profile_id, created_at")
+    .eq("kind", "check_in")
+    .in("profile_id", ids)
+    .order("created_at", { ascending: false })
+    .limit(200)
+    .returns<{ profile_id: string | null; created_at: string }[]>();
+  const lastCheckinBy = new Map<string, string>();
+  for (const r of checkinRows ?? []) {
+    if (r.profile_id && !lastCheckinBy.has(r.profile_id)) {
+      lastCheckinBy.set(r.profile_id, r.created_at);
+    }
+  }
   const progressBy = new Map<string, ProgressRow[]>();
   for (const r of progressRows ?? []) {
     const list = progressBy.get(r.profile_id) ?? [];
@@ -394,10 +414,17 @@ export async function runOnboardingNudges(
       .sort()
       .at(-1) as string;
 
+    const lastCheckin = lastCheckinBy.get(profile.id) ?? null;
+    const lastTouch =
+      [nudgeState.last_nudged_at, lastCheckin]
+        .filter((x): x is string => Boolean(x))
+        .sort()
+        .at(-1) ?? null;
+
     const verdict = shouldNudge({
       now,
       lastActivityAt,
-      lastNudgedAt: nudgeState.last_nudged_at,
+      lastNudgedAt: lastTouch,
       nudgeCount: nudgeState.nudge_count,
       engagedAt: lead?.engaged_at ?? null,
       stoppedAt: nudgeState.stopped_at,

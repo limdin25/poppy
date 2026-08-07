@@ -330,6 +330,46 @@ export interface FunnelSettings {
   daily_template_cap: number;
   /** The onboarding nudge brain's kill switch. ON by default (migration 025). */
   onboarding_nudges_enabled: boolean;
+  /** The reply brain's kill switch. OFF by default (migration 030). */
+  auto_reply_enabled: boolean;
+  updated_at: string;
+}
+
+/** One automated conversation action: a reply, a check-in, or a handover (migration 030). */
+export interface FunnelReply {
+  id: string;
+  phone: string;
+  lead_id: string | null;
+  profile_id: string | null;
+  in_reply_to: string | null;
+  kind: "reply" | "check_in" | "handover" | "refusal" | "silence";
+  key: string | null;
+  step: string | null;
+  body: string | null;
+  images: string[];
+  reason: string | null;
+  status: string;
+  created_at: string;
+}
+
+/** Single-row watermark for the 5 minute funnel email (migrations 028, 029). */
+export interface FunnelMonitorState {
+  id: string;
+  last_run_at: string | null;
+  last_email_at: string | null;
+  paused_reason: string | null;
+  /** Written by sheet-sync on every run; the monitor alerts when it goes stale. */
+  sheet_sync_last_ok_at: string | null;
+  sheet_sync_last_error: string | null;
+  /** The tick's run lock (migration 031): one tick at a time, 4 minute self-expiry. */
+  tick_lock_at: string | null;
+  /** Heartbeats (migration 032): stamped by /api/funnel/reply and /api/funnel/tick on
+   *  every completed run. Read by the monitor and by Elsie's independent dead man's
+   *  switch, because a dead cron system kills the watchdog that shares it. */
+  reply_last_ok_at: string | null;
+  tick_last_ok_at: string | null;
+  /** How many blocked-country rows the last sheet-sync run refused at the door. */
+  sheet_sync_last_refused_blocked: number;
   updated_at: string;
 }
 
@@ -649,6 +689,19 @@ export interface Database {
         Row: FunnelSettings;
         Insert: Partial<FunnelSettings> & Pick<FunnelSettings, "id">;
         Update: Partial<Omit<FunnelSettings, "id">>;
+        Relationships: [];
+      };
+      funnel_monitor_state: {
+        Row: FunnelMonitorState;
+        Insert: Partial<FunnelMonitorState> & Pick<FunnelMonitorState, "id">;
+        Update: Partial<Omit<FunnelMonitorState, "id">>;
+        Relationships: [];
+      };
+      funnel_replies: {
+        Row: FunnelReply;
+        Insert: Partial<Omit<FunnelReply, "id" | "created_at">> &
+          Pick<FunnelReply, "phone" | "kind">;
+        Update: Partial<Omit<FunnelReply, "id" | "created_at">>;
         Relationships: [];
       };
       onboarding_progress: {

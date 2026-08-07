@@ -117,6 +117,15 @@ export const NURTURE_PLAN: NurtureStep[] = [
   { step: 3, afterHours: 168, channel: "whatsapp", templateKey: "heypubli_nudge_connect", skipAtOrPast: "connected" },
 ];
 
+/** Meta template SIDs resolved by KEY through env, so a re-submitted template is a
+ *  config change, not a deploy. Shared by the tick (which sends) and the monitor
+ *  (which counts who is stuck behind an unapproved one). */
+export const NURTURE_TEMPLATE_SIDS: Record<string, string | undefined> = {
+  heypubli_welcome: process.env.WA_TEMPLATE_WELCOME_SID,
+  heypubli_nudge_signup: process.env.WA_TEMPLATE_NUDGE_SIGNUP_SID,
+  heypubli_nudge_connect: process.env.WA_TEMPLATE_NUDGE_CONNECT_SID,
+};
+
 /* A representative timezone per country calling code. Not exact, because big countries
    span several zones, but this is only ever used to keep a marketing message out of the
    middle of somebody's night, and for that being an hour or two out does not matter.
@@ -214,6 +223,45 @@ export function withinSendingHours(now: Date, timezone: string | null): boolean 
   } catch {
     return false;
   }
+}
+
+/**
+ * How recently a lead must have acted for their own action to prove they are
+ * awake. An hour, not a day: WhatsApp stays open long after a person stops
+ * looking at it, and the point is to catch somebody mid-signup, not somebody
+ * who filled a form before dinner.
+ */
+export const FRESH_LEAD_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Whether we may put the FIRST message of a conversation in front of this lead
+ * right now.
+ *
+ * Hugo, 07 Aug 2026, watching form leads arrive at 23:00 Dhaka time: "If the
+ * leads are coming at this time, we can reply them any time. If they come in
+ * the middle of the night, we still reply them because they are awake."
+ *
+ * Quiet hours exist so WE do not open conversations at 3am. They were never
+ * meant to make a lead who acted ninety seconds ago wait until 09:00 for the
+ * welcome, which burns the hottest minutes a lead ever has. So: inside their
+ * daytime, always. Outside it, only when their own last action is fresh,
+ * because the nurture sweep re-arms day-old strays and those owners really are
+ * asleep. A fresh action also outruns an UNKNOWN timezone: the fail-closed
+ * timezone rule guards against waking somebody, and a person who just acted is
+ * awake wherever on earth they are.
+ */
+export function mayContactNow(
+  now: Date,
+  timezone: string | null,
+  leadLastActedAt: string | null | undefined,
+): boolean {
+  if (withinSendingHours(now, timezone)) return true;
+  if (!leadLastActedAt) return false;
+  const age = now.getTime() - Date.parse(leadLastActedAt);
+  // NaN fails both comparisons, so an unreadable stamp fails closed. The small
+  // negative allowance absorbs clock skew between us and the database; a stamp
+  // genuinely from the future is corrupt data and stays blocked.
+  return age <= FRESH_LEAD_WINDOW_MS && age > -FRESH_LEAD_WINDOW_MS;
 }
 
 // ============================================================

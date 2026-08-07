@@ -27,6 +27,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
+import { snippet } from '@/core/lib/format';
 import { MOCK_SMS, MOCK_ACTIVITIES } from '../data/mockCalls';
 import { useDemoMode } from '../lib/useDemoMode';
 import { formatRelativeTime, formatTimeOnly, formatDuration, formatDateTime } from '../data/helpers';
@@ -66,6 +67,20 @@ import { useAiReplyStatus } from '../hooks/useAiReplyStatus';
 import { useAuth } from '../lib/useCrmAuth';
 import { useViewAs } from '../lib/ViewAsContext';
 import { isThreadUnread, sortInboxRows, inboxSections } from '../lib/inboxOrder';
+import { useHeypubliJourney } from '../hooks/useHeypubliJourney';
+import { useHeypubliBrain, describeBrainState } from '../hooks/useHeypubliBrain';
+import JourneyPanel from '../components/journey/JourneyPanel';
+
+/** Did this lead come through the HeyPubli creator funnel?
+ *
+ *  ONE stamp, three readers: wk-partner-api writes custom_fields.product on
+ *  the way out, wk-sms-incoming reads it to fan inbound replies back to
+ *  HeyPubli, and the inbox reads it here. A creator is a person, not a
+ *  business, so the owner + website identity line means nothing for them and
+ *  is dropped. It stays for every other lead, because the SAME inbox serves
+ *  the Reviews product where the website is the entire point. */
+const isHeypubliProduct = (cf?: Record<string, string> | null): boolean =>
+  (cf?.product ?? '') === 'heypubli';
 
 const ACTIVITY_KINDS_FOR_THREAD = new Set(['note', 'outcome_applied', 'stage_moved', 'tag_added', 'task_created']);
 
@@ -303,6 +318,8 @@ export default function InboxPage() {
       email?: string;
       owner: string;
       website: string;
+      /** A HeyPubli creator: an individual, never a business with a website. */
+      isCreatorLead: boolean;
       pipelineColumnId: string | undefined;
       ownerAgentId: string | undefined;
       lastMessageBody: string | null;
@@ -355,6 +372,7 @@ export default function InboxPage() {
           name: c?.name || call.fromE164 || call.toE164 || 'Unknown',
           owner: c?.customFields?.owner_name ?? '',
           website: c?.customFields?.website ?? '',
+          isCreatorLead: isHeypubliProduct(c?.customFields),
           phone: c?.phone ?? call.fromE164 ?? call.toE164 ?? '',
           email: c?.email,
           pipelineColumnId: c?.pipelineColumnId,
@@ -387,6 +405,7 @@ export default function InboxPage() {
           email: c?.email,
           owner: c?.customFields?.owner_name || t.contactOwner,
           website: c?.customFields?.website || t.contactWebsite,
+          isCreatorLead: isHeypubliProduct(c?.customFields) || t.contactProduct === 'heypubli',
           pipelineColumnId: c?.pipelineColumnId,
           ownerAgentId: c?.ownerAgentId,
           lastMessageBody: t.lastMessageBody,
@@ -456,6 +475,29 @@ export default function InboxPage() {
     [inboxThreads, calls],
   );
   const funnelByContact = useContactFunnelStatus(allRowIds);
+  // Where each creator lead is on the HeyPubli onboarding. Fed from the
+  // UNFILTERED threads for the same reason allRowIds is: keying it off the
+  // searched list would fire a cross-project lookup on every keystroke.
+  //
+  // CREATOR LEADS ONLY. This inbox is shared: 125 of its 5,656 contacts are
+  // HeyPubli creators and the rest are plumbers, Reviews customers and
+  // receptionist customers who will never have a HeyPubli account. Sending all
+  // of them was wasted work, it walked straight into the route's cap, and it
+  // is what made the cross-project read worth attacking in the first place.
+  // The stamp is the same custom_fields.product the row badge reads.
+  const journeyContacts = useMemo(() => {
+    const cfById = new Map(contacts.map((c) => [c.id, c.customFields] as const));
+    return inboxThreads
+      .filter((t) => t.contactProduct === 'heypubli' || isHeypubliProduct(cfById.get(t.contactId)))
+      .map((t) => ({ id: t.contactId, phone: t.contactPhone }));
+  }, [inboxThreads, contacts]);
+  const { byContact: journeyByContact, status: journeyStatus } =
+    useHeypubliJourney(journeyContacts);
+  // What the HeyPubli reply brain DID about each creator thread: answered,
+  // deliberately silent, refused, handed to a human, or (the alarm) never
+  // looked at. Same creator-only list as the journey lookup, same reasons.
+  const { byContact: brainByContact, status: brainStatus } =
+    useHeypubliBrain(journeyContacts);
   const { contactIds: pendingDraftIds, draftByContact, refetch: refetchDrafts } = usePendingDrafts();
   const { flags: inboxFlags, markRead, togglePin, toggleArchive } = useInboxState();
   // Hugo 2026-08-02: "show if the AI of the inbox is on and off". Workspace
@@ -473,11 +515,25 @@ export default function InboxPage() {
   // its badge and its pill; it no longer jumps the queue (that superseded the
   // 2026-07-28 unread-on-top rule).
   const decoratedRows = useMemo(() => {
+    const nowMs = Date.now();
     const decorated = sidebarRows.map((r) => {
       const f = inboxFlags.get(r.id);
+      const waitingOnUs = r.kind === 'message' && r.lastDirection === 'inbound';
+      const brainBadge = r.isCreatorLead
+        ? describeBrainState(brainByContact.get(r.id) ?? null, brainStatus, {
+            waitingOnUs,
+            lastInboundAt: r.lastInboundAt,
+            waitingMinutes:
+              waitingOnUs && r.lastInboundAt
+                ? Math.round((nowMs - Date.parse(r.lastInboundAt)) / 60000)
+                : null,
+          })
+        : null;
       return {
         ...r,
         vsl: funnelByContact.get(r.id) ?? null,
+        journey: journeyByContact.get(r.id) ?? null,
+        brainBadge,
         draftPending: pendingDraftIds.has(r.id),
         // Preview only. Deliberately NOT the row's timestamp and NOT counted
         // as outbound, both of those were real bugs (see useInboxThreads).
@@ -501,7 +557,7 @@ export default function InboxPage() {
       : scoped;
 
     return sortInboxRows(byFilter);
-  }, [sidebarRows, funnelByContact, pendingDraftIds, draftByContact, inboxFlags, filter]);
+  }, [sidebarRows, funnelByContact, journeyByContact, brainByContact, brainStatus, pendingDraftIds, draftByContact, inboxFlags, filter]);
 
   // The same order, regrouped into labelled bands (pinned / needs a reply /
   // everything else). Headers render only when the list actually mixes bands.
@@ -592,6 +648,9 @@ export default function InboxPage() {
       createdAt: new Date().toISOString(),
       pipelineColumnId: activeRow.pipelineColumnId,
     } : undefined);
+  const activeIsCreatorLead =
+    isHeypubliProduct(activeContact?.customFields) || Boolean(activeRow?.isCreatorLead);
+  const activeJourney = activeContactId ? journeyByContact.get(activeContactId) ?? null : null;
   const timeline = useContactTimeline(activeContact?.id ?? '', activeContact?.phone);
   // PR 50 (Hugo 2026-04-27): SMS source is wk_sms_messages now.
   // useContactTimeline still loads the legacy sms_messages rows for
@@ -1132,7 +1191,16 @@ export default function InboxPage() {
                         className={r.unread ? 'text-[13px] font-extrabold' : 'text-[13px] font-semibold'}
                       />
                     </div>
-                    <ContactIdentity owner={r.owner} website={r.website} layout="inline" size="sm" />
+                    {/* Owner + website. A HeyPubli creator is a person, not a
+                        business, and will never have a website, so the pair of
+                        red "not available" gap markers fired on every single
+                        one of them and told Hugo nothing. Dropped for creators
+                        alone. It stays for everybody else: the SAME inbox
+                        serves the Reviews product, where the website is the
+                        point of the whole lead. */}
+                    {!r.isCreatorLead && (
+                      <ContactIdentity owner={r.owner} website={r.website} layout="inline" size="sm" />
+                    )}
                     <AgentChip agentId={r.ownerAgentId} size="xs" />
                     <CalcChip calcAt={r.vsl?.calcAt} count={r.vsl?.calcCount} />
                     {r.campaignName && (
@@ -1145,10 +1213,70 @@ export default function InboxPage() {
                         {r.campaignName}
                       </span>
                     )}
-                    <div className={cn(
-                      'text-[11px] truncate flex items-center gap-1',
-                      r.unread ? 'text-[#1A1A1A] font-semibold' : 'text-[#6B7280]'
-                    )}>
+                    {/* BADGES on their own line, PREVIEW on the next.
+                        Hugo 2026-08-07: with both in one row the badges ate the
+                        column and every card read "Hey ...", which is not a
+                        message preview. Two lines is what a phone does. */}
+                    {(r.journey || (r.isCreatorLead && journeyStatus === 'ready') || r.brainBadge || r.draftPending || r.vsl) && (
+                    <div className="flex items-center gap-1 min-w-0">
+                      {/* What the reply brain did with this thread, and why.
+                          FIVE tones, three of which exist so "we deliberately
+                          stopped" (quiet), "handed to you on purpose" (action)
+                          and "nobody ever looked" (alarm) can never be read as
+                          one another again. `unknown` is the lookup failing:
+                          it says "cannot check" out loud rather than showing
+                          nothing, because absence reads as fine. */}
+                      {r.brainBadge && (
+                        <span
+                          data-testid={`inbox-brain-${r.id}`}
+                          title={r.brainBadge.detail}
+                          className={cn(
+                            'flex-shrink-0 inline-flex items-center gap-0.5 text-[9.5px] font-bold uppercase tracking-wide px-1 py-px rounded',
+                            r.brainBadge.tone === 'ok' && 'bg-[#F0FDF4] border border-[#BBF7D0] text-[#166534]',
+                            r.brainBadge.tone === 'quiet' && 'bg-[#F3F4F6] border border-[#D1D5DB] text-[#6B7280]',
+                            r.brainBadge.tone === 'action' && 'bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309]',
+                            r.brainBadge.tone === 'alarm' && 'bg-[#B91C1C] text-white',
+                            r.brainBadge.tone === 'unknown' && 'bg-white border border-dashed border-[#D1D5DB] text-[#9CA3AF]',
+                          )}
+                        >
+                          {r.brainBadge.label}
+                        </span>
+                      )}
+                      {/* How far along the creator onboarding this lead is.
+                          A signed-up creator gets a filled n/5 counter; a lead
+                          with no account yet gets a hollow "lead" chip. The two
+                          are deliberately a different shape as well as a
+                          different word, because "1/5" and "not signed up" are
+                          opposite states and must never be read as the same.
+                          A THIRD state, and the reason for the status check:
+                          when the lookup did not run we know neither, so no
+                          chip is drawn at all. A "lead" chip there would be
+                          the page asserting something it cannot know. */}
+                      {r.journey ? (
+                        <span
+                          data-testid={`inbox-journey-${r.id}`}
+                          title={`Onboarding ${r.journey.doneCount} of ${r.journey.totalSteps}: ${r.journey.steps
+                            .filter((s) => s.done)
+                            .map((s) => s.label)
+                            .join(', ') || 'nothing done yet'}`}
+                          className={cn(
+                            'flex-shrink-0 inline-flex items-center gap-0.5 text-[9.5px] font-bold uppercase tracking-wide px-1 py-px rounded tabular-nums',
+                            r.journey.allDone
+                              ? 'bg-[#166534] text-white'
+                              : 'bg-[#EEF6FF] border border-[#BFDBFE] text-[#3C5A87]',
+                          )}
+                        >
+                          {r.journey.doneCount}/{r.journey.totalSteps}
+                        </span>
+                      ) : r.isCreatorLead && journeyStatus === 'ready' ? (
+                        <span
+                          data-testid={`inbox-journey-lead-${r.id}`}
+                          title="No HeyPubli account yet. They have not signed up."
+                          className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9.5px] font-bold uppercase tracking-wide px-1 py-px rounded border border-dashed border-[#D1D5DB] text-[#9CA3AF]"
+                        >
+                          lead
+                        </span>
+                      ) : null}
                       {/* Waiting on a human — leftmost, so a scan finds it. */}
                       {r.draftPending && (
                         <span
@@ -1181,6 +1309,12 @@ export default function InboxPage() {
                           <Clapperboard style={{ width: 9, height: 9 }} /> {r.vsl.label}
                         </span>
                       )}
+                    </div>
+                    )}
+                    <div className={cn(
+                      'text-[11px] truncate flex items-center gap-1',
+                      r.unread ? 'text-[#1A1A1A] font-semibold' : 'text-[#6B7280]'
+                    )}>
                       {r.kind === 'call' ? (
                         <>
                           {r.callStatus === 'missed' ? (
@@ -1201,16 +1335,29 @@ export default function InboxPage() {
                            squeezed the actual words out of a 150px column).
                            Timestamp and unread state stay driven by real
                            messages, never by drafts. */
-                        <span className="truncate text-[#B45309]">
-                          {r.draftBody.slice(0, 48)}
+                        <span
+                          data-testid={`inbox-preview-${r.id}`}
+                          className="truncate text-[#B45309]"
+                        >
+                          {snippet(r.draftBody, 48)}
                         </span>
                       ) : (
                         <>
                           {r.lastChannel && <ChannelGlyph channel={r.lastChannel} size={10} />}
-                          <span className="truncate">
+                          {/* The message itself, the way every chat list on a
+                              phone shows it. snippet() flattens the newlines a
+                              WhatsApp lead-ad message is full of (its first
+                              line is blank, so the preview used to render as
+                              nothing at all) and truncates with three full
+                              stops, never the ellipsis character. */}
+                          <span
+                            data-testid={`inbox-preview-${r.id}`}
+                            title={r.lastMessageBody ?? undefined}
+                            className="truncate"
+                          >
                             {r.lastMessageBody
-                              ? `${r.lastDirection === 'outbound' ? '↗' : '💬'} ${r.lastMessageBody.slice(0, 36)}`
-                              : '—'}
+                              ? `${r.lastDirection === 'outbound' ? '↗ ' : ''}${snippet(r.lastMessageBody, 40)}`
+                              : 'No messages yet'}
                           </span>
                         </>
                       )}
@@ -1337,12 +1484,17 @@ export default function InboxPage() {
             <div className="text-[14px] font-semibold text-[#1A1A1A]">
               <EditableName value={activeContact.name} onSave={(n) => renameContact(activeContact.id, n)} className="text-[14px] font-semibold" />
             </div>
-            <ContactIdentity
-              owner={activeContact.customFields?.owner_name}
-              website={activeContact.customFields?.website}
-              layout="stack"
-              size="sm"
-            />
+            {/* Same rule as the cards: a creator has no business and no
+                website, so the gap markers are noise on them and information
+                on everybody else. */}
+            {!activeIsCreatorLead && (
+              <ContactIdentity
+                owner={activeContact.customFields?.owner_name}
+                website={activeContact.customFields?.website}
+                layout="stack"
+                size="sm"
+              />
+            )}
             <div className="text-[11px] text-[#6B7280] tabular-nums">
               {activeContact.phone}
             </div>
@@ -1880,36 +2032,26 @@ export default function InboxPage() {
         )}
       </section>
 
-      {/* Pane 3 — timeline (only with a selected conversation) */}
+      {/* Pane 3, the lead's journey (only with a selected conversation).
+          Replaced the old "Contact timeline", which listed activity rows and,
+          for a WhatsApp creator lead, had nothing at all to list. */}
       {activeContact && (
       <aside className="w-[320px] bg-white border-l border-[#E5E7EB] flex flex-col overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-[#E5E7EB]">
-          <div className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
-            Contact timeline
-          </div>
-          <div className="text-[14px] font-semibold text-[#1A1A1A] mt-0.5">
-            {activeContact.name}
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {contactActivity.map((a) => (
-            <div key={a.id} className="flex gap-2.5 text-[12px]">
-              <ActivityIcon kind={a.kind} />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-[#1A1A1A]">{a.title}</div>
-                {a.body && (
-                  <div className="text-[11px] text-[#6B7280] truncate">{a.body}</div>
-                )}
-                <div className="text-[10px] text-[#9CA3AF] mt-0.5">
-                  {formatRelativeTime(a.ts)}
-                </div>
-                {a.kind === 'call_inbound' && (
-                  <div className="mt-0.5 text-[10px] text-[#9CA3AF]">Open the call in the thread to play the recording &amp; read the transcript.</div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+        <JourneyPanel
+          contactName={activeContact.name}
+          contactPhone={activeContact.phone}
+          journey={activeJourney}
+          journeyStatus={journeyStatus}
+          isCreatorLead={activeIsCreatorLead}
+          messages={contactSms.map((m) => ({
+            id: m.id,
+            direction: m.direction,
+            body: m.body,
+            sentAt: m.sentAt,
+            status: 'status' in m ? (m.status as string | undefined) : undefined,
+          }))}
+          funnel={timeline.funnel}
+        />
       </aside>
       )}
     </div>

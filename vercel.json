@@ -60,6 +60,10 @@
       "destination": "/api/report"
     },
     {
+      "source": "/timesheet",
+      "destination": "/api/timesheet"
+    },
+    {
       "source": "/s/:slug([a-z0-9][a-z0-9-]*)/:p1([a-z0-9-]+)/:p2([a-z0-9-]+)",
       "destination": "/api/site-demo/page?slug=:slug&p1=:p1&p2=:p2"
     },
@@ -78,7 +82,7 @@
       "destination": "/api/site-demo/page?slug=:slug"
     },
     {
-      "source": "/:slug((?!api$|assets$|r$|s$|report$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|blueprint$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
+      "source": "/:slug((?!api$|assets$|r$|s$|report$|timesheet$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|blueprint$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
       "has": [
         {
           "type": "host",
@@ -210,6 +214,14 @@
     {
       "path": "/api/cron/site-demo-followups",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/heypubli-pipeline-sync",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/heypubli-deadman",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

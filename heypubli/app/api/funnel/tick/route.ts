@@ -2,16 +2,24 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   NURTURE_PLAN,
+  NURTURE_TEMPLATE_SIDS,
+  mayContactNow,
   timezoneForPhone,
   whatsappMarketingAllowed,
-  withinSendingHours,
 } from "@/lib/data/lanes";
-import { sendSkoolInvite } from "@/lib/integrations/skool";
-import { sendPartnerWhatsApp, getSharedSenderLoad } from "@/lib/integrations/whatsapp";
+import { dispatchQueuedInvites } from "@/lib/data/skool-invite-dispatch";
+import { pitchBlockedForPhone } from "@/lib/data/reply-brain";
+import { LIVE_THREAD_WINDOW_MS } from "@/lib/data/lead-arming";
+import {
+  getContactState,
+  getPartnerMessageStatus,
+  sendPartnerWhatsApp,
+  getSharedSenderLoad,
+} from "@/lib/integrations/whatsapp";
 import { sendEmail } from "@/lib/integrations/resend";
 import { LEAD_STAGES } from "@/lib/data/signup-leads";
 import { runOnboardingNudges } from "@/lib/data/onboarding-nudges";
-import type { FunnelSettings, SignupLead, SkoolInvite } from "@/types/database";
+import type { FunnelSettings, SignupLead } from "@/types/database";
 
 export const maxDuration = 300;
 
@@ -26,17 +34,12 @@ export const maxDuration = 300;
 // idempotency key end to end; nurture_sends has unique (lead_id, step) so a crashed run
 // cannot double-send; onboarding nudges carry a unique external_id per attempt.
 
-const MAX_INVITE_ATTEMPTS = 5;
 const INVITE_BATCH = 20;
 const NURTURE_BATCH = 50;
 
-// Meta template SIDs are resolved by template KEY through env so a re-submitted template
-// is a config change, not a deploy.
-const TEMPLATE_SIDS: Record<string, string | undefined> = {
-  heypubli_welcome: process.env.WA_TEMPLATE_WELCOME_SID,
-  heypubli_nudge_signup: process.env.WA_TEMPLATE_NUDGE_SIGNUP_SID,
-  heypubli_nudge_connect: process.env.WA_TEMPLATE_NUDGE_CONNECT_SID,
-};
+// Meta template SIDs live in lib/data/lanes.ts (NURTURE_TEMPLATE_SIDS), shared
+// with the monitor so "who is stuck behind an approval" is counted off the same map.
+const TEMPLATE_SIDS = NURTURE_TEMPLATE_SIDS;
 
 const EMAIL_BODIES: Record<string, (firstName: string) => { subject: string; html: string }> = {
   email_nudge_signup: (first) => ({
@@ -54,86 +57,24 @@ function stageIndex(stage: SignupLead["status"]): number {
 }
 
 async function dispatchSkoolInvites(admin: ReturnType<typeof createAdminClient>) {
-  const report = { claimed: 0, sent: 0, failed: 0, skipped: "" };
-  if (!process.env.SKOOL_INVITE_WEBHOOK_URL) {
-    report.skipped = "skool invite webhook not configured";
-    return report;
-  }
-
-  // Claim queued rows by flipping status; stale 'sending' rows (a crashed run) fall back
-  // after 30 minutes via the retry below.
-  const { data: rows } = await admin
-    .from("skool_invites")
-    .select("*")
-    .in("status", ["queued"])
-    .lt("attempts", MAX_INVITE_ATTEMPTS)
-    .order("requested_at", { ascending: true })
-    .limit(INVITE_BATCH)
-    .returns<SkoolInvite[]>();
-  const staleCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: stale } = await admin
-    .from("skool_invites")
-    .select("*")
-    .eq("status", "sending")
-    .lt("last_attempt_at", staleCutoff)
-    .lt("attempts", MAX_INVITE_ATTEMPTS)
-    .limit(INVITE_BATCH)
-    .returns<SkoolInvite[]>();
-
-  const batch = [...(rows ?? []), ...(stale ?? [])];
-  for (const invite of batch) {
-    report.claimed++;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin.from("skool_invites") as any)
-      .update({
-        status: "sending",
-        attempts: invite.attempts + 1,
-        last_attempt_at: new Date().toISOString(),
-      })
-      .eq("id", invite.id);
-    const result = await sendSkoolInvite(invite.email);
-    if (result.ok) {
-      const nowIso = new Date().toISOString();
-      // Skool tells us nothing after the 200, so the send IS the confirmation.
-      // There is no callback to wait for any more.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (admin.from("skool_invites") as any)
-        .update({ status: "confirmed", sent_at: nowIso, confirmed_at: nowIso })
-        .eq("id", invite.id);
-      if (invite.lead_id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (admin.from("signup_leads") as any)
-          .update({ status: "invited", invited_at: nowIso, last_seen_at: nowIso })
-          .eq("id", invite.lead_id)
-          .neq("status", "invited");
-      }
-      // Deliberately NOT writing skool_members here. That table means "this
-      // person is in the community", and sending an invite is not joining one.
-      // The old Zapier callback wrote a 'free_invited' row on send, which made
-      // the dashboard tick "Join the community" green before the creator had
-      // even opened the email. Skool has no trigger for a free member joining,
-      // so the only honest signal is the creator telling us.
-      report.sent++;
-    } else {
-      const attempts = invite.attempts + 1;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (admin.from("skool_invites") as any)
-        .update({
-          status: attempts >= MAX_INVITE_ATTEMPTS ? "failed" : "queued",
-          last_error: result.error ?? "send failed",
-        })
-        .eq("id", invite.id);
-      report.failed++;
-    }
-  }
-  return report;
+  // The real work lives in lib/data/skool-invite-dispatch so the button on step
+  // 2 and this cron send an invite the same way. The cron is now the RETRY, not
+  // the only path: a creator who presses the button gets their email at once.
+  return dispatchQueuedInvites(admin, INVITE_BATCH);
 }
 
 async function runNurture(
   admin: ReturnType<typeof createAdminClient>,
   settings: FunnelSettings,
 ) {
-  const report = { due: 0, sent: 0, skippedConverted: 0, blocked: 0, deferred: 0 };
+  const report = {
+    due: 0,
+    sent: 0,
+    skippedConverted: 0,
+    blocked: 0,
+    deferred: 0,
+    stoppedLiveThread: 0,
+  };
   if (!settings.nurture_enabled) return { ...report, disabled: true };
 
   const { data: due } = await admin
@@ -187,10 +128,30 @@ async function runNurture(
 
     const phone = lead.whatsapp_e164 ?? lead.whatsapp;
 
-    // Business hours where the lead actually is, guessed from their dialling code. This
-    // was hardcoded to Sao Paulo for every lead, which on a worldwide list means 23:00 in
-    // the UK and 04:00 on the US west coast.
-    if (!withinSendingHours(new Date(), timezoneForPhone(phone))) {
+    // We do not RECRUIT somebody Skool cannot pay. Hugo, 07 Aug 2026: "stop
+    // pitching them." Every step this loop sends is recruitment, so a blocked
+    // lead is stopped here rather than filtered later.
+    //
+    // This guard exists separately from the one in the reply brain because the
+    // two paths are genuinely separate: that one answers people who WRITE to
+    // us, this one starts the conversation. Fixing only the reply side left the
+    // welcome template still going out, which is exactly what happened for the
+    // first hours after the ads went live.
+    if (pitchBlockedForPhone(phone)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("signup_leads") as any)
+        .update({ nurture_state: "stopped", nurture_stop_reason: "payouts blocked for this country" })
+        .eq("id", lead.id);
+      report.blocked++;
+      continue;
+    }
+
+    // Business hours where the lead actually is, guessed from their dialling code,
+    // EXCEPT when the lead's own action is fresh. Hugo, 07 Aug 2026: "If they come
+    // in the middle of the night, we still reply them because they are awake." A
+    // form submitted at 23:14 is a person holding their phone right now; the sweep
+    // re-arming a three-day-old stray is not, and mayContactNow tells them apart.
+    if (!mayContactNow(new Date(), timezoneForPhone(phone), lead.last_seen_at ?? lead.first_seen_at)) {
       report.deferred++;
       continue; // nurture_next_at stays put; the next in-hours tick picks it up.
     }
@@ -202,6 +163,32 @@ async function runNurture(
       !lead.whatsapp_undeliverable_code;
     const channel = step.channel === "whatsapp" && waAllowed ? "whatsapp" : "email";
 
+    // Last line of defence against templating a LIVE thread. A reply normally stops
+    // the drip via the inbound relay, but the relay only matches contacts stamped
+    // product=heypubli; a lead whose first message beat our first send used to slip
+    // through and get the cold template on top of their own open conversation. This
+    // check runs at the only moment it is too late to fix afterwards: right before
+    // the send.
+    if (channel === "whatsapp") {
+      const thread = await getContactState(phone);
+      if (
+        thread.ok &&
+        thread.last_inbound_at &&
+        Date.now() - Date.parse(thread.last_inbound_at) < LIVE_THREAD_WINDOW_MS
+      ) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (admin.from("signup_leads") as any)
+          .update({
+            engaged_at: lead.engaged_at ?? thread.last_inbound_at,
+            nurture_state: "stopped",
+            nurture_stop_reason: "live conversation",
+          })
+          .eq("id", lead.id);
+        report.stoppedLiveThread++;
+        continue;
+      }
+    }
+
     // Idempotency by construction: one row per (lead, step), ever.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: dupErr } = await (admin.from("nurture_sends") as any).insert({
@@ -212,11 +199,32 @@ async function runNurture(
     });
     if (dupErr) {
       if (dupErr.code !== "23505") console.error("[tick] nurture insert", dupErr);
-      // Row exists: a previous run already handled this step. Advance the pointer.
+      // Row exists: some run already touched this step. Do NOT advance blindly. The
+      // row could be another run's IN-FLIGHT claim, or could have been deleted by a
+      // defer between our insert and now; advancing past a step that never sent is
+      // how a lead loses their welcome. Only a resolved row (sent or failed) moves
+      // the pointer, and the update is guarded on the pointer we read, so two racers
+      // can never double-advance.
+      const { data: dupRow } = await admin
+        .from("nurture_sends")
+        .select("status")
+        .eq("lead_id", lead.id)
+        .eq("step", step.step)
+        .maybeSingle<{ status: string }>();
+      if (!dupRow || !["sent", "failed"].includes(dupRow.status)) continue;
+      const stepAfterDup = NURTURE_PLAN.find((s) => s.step === lead.nurture_step + 1);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (admin.from("signup_leads") as any)
-        .update({ nurture_step: lead.nurture_step + 1 })
-        .eq("id", lead.id);
+        .update({
+          nurture_step: lead.nurture_step + 1,
+          nurture_next_at: stepAfterDup
+            ? new Date(Date.now() + stepAfterDup.afterHours * 3600 * 1000).toISOString()
+            : null,
+          nurture_state: stepAfterDup ? "active" : "exhausted",
+          nurture_stop_reason: stepAfterDup ? null : "sequence complete",
+        })
+        .eq("id", lead.id)
+        .eq("nurture_step", lead.nurture_step);
       continue;
     }
 
@@ -321,8 +329,73 @@ async function runNurture(
         contacted_at:
           lead.status === "captured" && sent ? nowIso : lead.contacted_at,
       })
-      .eq("id", lead.id);
+      .eq("id", lead.id)
+      // Guarded on the pointer we read: a racer that already advanced makes this a
+      // no-op instead of a double-advance that skips a step.
+      .eq("nurture_step", lead.nurture_step);
     if (sent) report.sent++;
+  }
+  return report;
+}
+
+/**
+ * Delivery truth for the newest WhatsApp sends. Twilio accepts a message (201)
+ * and can fail it minutes later; the status callback writes that onto the
+ * Elsie message row, and this sweep copies it back here, where the drip and
+ * the monitor actually decide things. Rows flipped off 'sent' leave the poll
+ * set, so nothing is polled forever.
+ */
+async function sweepDeliveryStatus(admin: ReturnType<typeof createAdminClient>) {
+  const report = { checked: 0, undelivered: 0 };
+  const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const DEAD = new Set(["undelivered", "failed"]);
+
+  const { data: sends } = await admin
+    .from("nurture_sends")
+    .select("lead_id, step")
+    .eq("status", "sent")
+    .eq("channel", "whatsapp")
+    .gte("sent_at", dayAgo)
+    .limit(20)
+    .returns<{ lead_id: string; step: number }[]>();
+  for (const s of sends ?? []) {
+    const res = await getPartnerMessageStatus(`nurture:${s.lead_id}:${s.step}`);
+    report.checked++;
+    if (res.ok && res.status && DEAD.has(res.status)) {
+      report.undelivered++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("nurture_sends") as any)
+        .update({ status: "undelivered", error_code: res.status })
+        .eq("lead_id", s.lead_id)
+        .eq("step", s.step);
+      // The column the drip's channel pick reads before every send. It had
+      // readers and no writers until 07 Aug 2026.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("signup_leads") as any)
+        .update({ whatsapp_undeliverable_code: res.status })
+        .eq("id", s.lead_id);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: replies } = (await (admin.from("funnel_replies") as any)
+    .select("id, in_reply_to")
+    .eq("kind", "reply")
+    .eq("status", "sent")
+    .not("in_reply_to", "is", null)
+    .gte("created_at", dayAgo)
+    .order("created_at", { ascending: false })
+    .limit(20)) as { data: { id: string; in_reply_to: string }[] | null };
+  for (const r of replies ?? []) {
+    const res = await getPartnerMessageStatus(`reply:${r.in_reply_to}`);
+    report.checked++;
+    if (res.ok && res.status && DEAD.has(res.status)) {
+      report.undelivered++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("funnel_replies") as any)
+        .update({ status: "undelivered" })
+        .eq("id", r.id);
+    }
   }
   return report;
 }
@@ -334,30 +407,67 @@ export async function GET(request: Request) {
   }
 
   const admin = createAdminClient();
-  const { data: settings } = await admin
-    .from("funnel_settings")
-    .select("*")
+
+  // ONE tick at a time. Sheet-sync pokes this route the moment it arms a lead, so
+  // overlap with the scheduled run is routine now, and the nurture engine's dedupe
+  // was written for the rare case (its 23505 catch-up can race a concurrent defer).
+  // The claim is a single conditional UPDATE, so exactly one caller wins; a crashed
+  // run self-expires after 4 minutes.
+  const lockCutoff = new Date(Date.now() - 4 * 60 * 1000).toISOString();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: lock } = await (admin.from("funnel_monitor_state") as any)
+    .update({ tick_lock_at: new Date().toISOString() })
     .eq("id", "default")
-    .single<FunnelSettings>();
-  if (!settings) {
-    return NextResponse.json({ error: "no funnel_settings row" }, { status: 500 });
+    .or(`tick_lock_at.is.null,tick_lock_at.lt.${lockCutoff}`)
+    .select("id");
+  if (!lock?.length) {
+    return NextResponse.json({ ok: true, skipped: "another tick is running" });
   }
 
-  const [invites, nurture, onboarding] = await Promise.allSettled([
-    settings.skool_invites_enabled
-      ? dispatchSkoolInvites(admin)
-      : Promise.resolve({ disabled: true }),
-    runNurture(admin, settings),
-    runOnboardingNudges(admin, settings),
-  ]);
+  try {
+    const { data: settings } = await admin
+      .from("funnel_settings")
+      .select("*")
+      .eq("id", "default")
+      .single<FunnelSettings>();
+    if (!settings) {
+      return NextResponse.json({ error: "no funnel_settings row" }, { status: 500 });
+    }
 
-  return NextResponse.json({
-    ok: true,
-    invites: invites.status === "fulfilled" ? invites.value : { error: String(invites.reason) },
-    nurture: nurture.status === "fulfilled" ? nurture.value : { error: String(nurture.reason) },
-    onboarding:
-      onboarding.status === "fulfilled"
-        ? onboarding.value
-        : { error: String(onboarding.reason) },
-  });
+    const [invites, nurture, onboarding] = await Promise.allSettled([
+      settings.skool_invites_enabled
+        ? dispatchSkoolInvites(admin)
+        : Promise.resolve({ disabled: true }),
+      runNurture(admin, settings),
+      runOnboardingNudges(admin, settings),
+    ]);
+
+    // Phase 4: delivery is not sending. A nudge Twilio accepted then failed to
+    // deliver read as "chased" forever, because nothing ever wrote
+    // whatsapp_undeliverable_code (it had readers and no writers). Poll the
+    // newest sends and record the truth; the monitor counts what this finds.
+    const delivery = await sweepDeliveryStatus(admin);
+
+    // Heartbeat: read by the monitor and Elsie's dead man's switch.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("funnel_monitor_state") as any)
+      .update({ tick_last_ok_at: new Date().toISOString() })
+      .eq("id", "default");
+
+    return NextResponse.json({
+      delivery,
+      ok: true,
+      invites: invites.status === "fulfilled" ? invites.value : { error: String(invites.reason) },
+      nurture: nurture.status === "fulfilled" ? nurture.value : { error: String(nurture.reason) },
+      onboarding:
+        onboarding.status === "fulfilled"
+          ? onboarding.value
+          : { error: String(onboarding.reason) },
+    });
+  } finally {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("funnel_monitor_state") as any)
+      .update({ tick_lock_at: null })
+      .eq("id", "default");
+  }
 }
