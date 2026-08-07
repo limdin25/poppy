@@ -18,7 +18,7 @@
 // decided in this file, on purpose: that question already had two answers in
 // two repos and did not need a third.
 
-import { CheckCircle2, Circle, Clock, Instagram, MessageSquare, Clapperboard, UserPlus, Trophy, Ban, Send } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, MessageSquare, Clapperboard, UserPlus, Trophy, Ban, Send } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { snippet } from '@/core/lib/format';
 import { nextTouch, dueLabel, type NextTouch } from '@/core/heypubli/journey';
@@ -50,6 +50,30 @@ export interface JourneyPanelProps {
   /** Video-funnel events, from the tracking that already exists. */
   funnel: FunnelEvent[];
   now?: Date;
+}
+
+/** Inline Instagram glyph (the old feather outline). lucide-react removed its
+ *  brand icons, so Vercel's fresh install lacks `Instagram` even though the
+ *  local node_modules still had it; the 20:42 deploy died on exactly that. */
+function InstagramGlyph({ size = 11 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="flex-shrink-0"
+      aria-hidden="true"
+    >
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+    </svg>
+  );
 }
 
 interface TimelineItem {
@@ -193,7 +217,7 @@ export default function JourneyPanel({
             data-testid="journey-ig-link"
             className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-medium text-[#3C5A87] hover:underline max-w-full"
           >
-            <Instagram style={{ width: 11, height: 11 }} className="flex-shrink-0" />
+            <InstagramGlyph />
             <span className="truncate">instagram.com/{journey.igUsername.replace(/^@/, '')}</span>
           </a>
         )}
