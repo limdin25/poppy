@@ -17,24 +17,6 @@ export {
   getExpiringConnections,
 } from "./instagram";
 export { getPostsByProfile, getPostsToday, getPostsThisWeek } from "./posts";
-export {
-  getSalesByProfile,
-  getAllSales,
-  getSalesStats,
-  getSalesByInfluencer,
-} from "./sales";
-export {
-  getClickCountByProfile,
-  getClickCountsByInfluencer,
-  getClicksTimeline,
-} from "./clicks";
-export {
-  getAvailableBalance,
-  getPayoutSummary,
-  getPayoutsByProfile,
-  getAllPayouts,
-  getPendingPayoutRequests,
-} from "./payouts";
 export { getMessagesByProfile, getAllMessages } from "./messages";
 export {
   getConversations,

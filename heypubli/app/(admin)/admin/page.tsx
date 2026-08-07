@@ -4,29 +4,20 @@ import {
   getAllInstagramConnections,
   getPostsToday,
   getPostsThisWeek,
-  getSalesStats,
   getExpiringConnections,
 } from "@/lib/data";
 import { getAllOutstandConnections } from "@/lib/data/outstand";
 
 export default async function AdminPage() {
-  const [
-    profiles,
-    connections,
-    outstandConnections,
-    postsToday,
-    postsThisWeek,
-    salesStats,
-    expiring,
-  ] = await Promise.all([
-    getAllProfiles(),
-    getAllInstagramConnections(),
-    getAllOutstandConnections(),
-    getPostsToday(),
-    getPostsThisWeek(),
-    getSalesStats(),
-    getExpiringConnections(7),
-  ]);
+  const [profiles, connections, outstandConnections, postsToday, postsThisWeek, expiring] =
+    await Promise.all([
+      getAllProfiles(),
+      getAllInstagramConnections(),
+      getAllOutstandConnections(),
+      getPostsToday(),
+      getPostsThisWeek(),
+      getExpiringConnections(7),
+    ]);
 
   // A connection through either provider (Outstand = official) counts.
   const connectedIds = new Set([
@@ -62,7 +53,6 @@ export default async function AdminPage() {
         pendingInfluencers: pendingCount,
         postsToday,
         postsThisWeek,
-        totalSales: salesStats.totalSales,
       }}
       alerts={alerts}
     />

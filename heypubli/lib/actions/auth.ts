@@ -82,9 +82,9 @@ export async function verifyLoginCode(
 
 // Email signup, step 1: validate the /signup form and email an OTP code.
 // shouldCreateUser:true makes GoTrue create the auth user on the spot; the
-// handle_new_user trigger then builds the profile (referral_tag included) from
-// the metadata we pass here. WhatsApp rides along in the metadata because the
-// trigger doesn't map it — verifySignupCode copies it into the profile.
+// handle_new_user trigger then builds the profile from the metadata we pass
+// here. WhatsApp rides along in the metadata because the trigger doesn't map
+// it: verifySignupCode copies it into the profile.
 export async function sendSignupCode(
   formData: FormData,
 ): Promise<{ sent?: boolean; email?: string; error?: string }> {

@@ -8,7 +8,6 @@ const MOCK_STATS = {
   pendingInfluencers: 7,
   postsToday: 3,
   postsThisWeek: 14,
-  totalSales: 42,
 };
 
 const MOCK_ALERTS = [

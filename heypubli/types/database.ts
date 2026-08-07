@@ -19,9 +19,7 @@ export type AiQueueStatus =
   | "owner_replied"
   | "ai_replied"
   | "expired";
-export type SaleStatus = "confirmed" | "refunded" | "cancelled";
 export type PostingProvider = "heypubli" | "outstand";
-export type PixKeyType = "cpf" | "cnpj" | "email" | "phone" | "random";
 export type RegistrationMethod = "instagram" | "email" | "admin_manual";
 export type CampaignStartMode = "schedule" | "immediate";
 export type NotificationType = "account_connected" | "generic";
@@ -40,12 +38,6 @@ export interface Profile {
   address_country: string;
   phone: string | null;
   timezone: string;
-  pix_key_type: PixKeyType | null;
-  pix_key: string | null;
-  commission_rate: number | null;
-  hotmart_url: string | null;
-  hotmart_affiliate_code: string | null;
-  referral_tag: string | null;
   /** Their own Skool affiliate link, pasted at step 3 of Getting started. */
   skool_affiliate_url: string | null;
   /** When they said their Instagram profile is presentable. Self-declared. */
@@ -104,10 +96,6 @@ export interface Brand {
   name: string;
   logo_url: string | null;
   description: string | null;
-  hotmart_product_id: string | null;
-  hotmart_product_url: string | null;
-  share_base_url: string | null;
-  commission_rate: number;
   target_sectors: string[];
   is_active: boolean;
   created_at: string;
@@ -398,46 +386,6 @@ export interface MessageLog {
   sent_by: string;
 }
 
-export interface HotmartSale {
-  id: string;
-  profile_id: string;
-  transaction_id: string;
-  product_name: string;
-  sale_amount: number;
-  commission_amount: number;
-  status: SaleStatus;
-  sold_at: string;
-  purchase_complete_at: string | null;
-  payout_id: string | null;
-}
-
-export type PayoutStatus = "requested" | "paid" | "cancelled";
-
-export interface Payout {
-  id: string;
-  profile_id: string;
-  commission_amount: number;
-  sales_count: number;
-  status: PayoutStatus;
-  pix_key: string | null;
-  pix_key_type: string | null;
-  requested_at: string;
-  paid_at: string | null;
-  paid_by: string | null;
-}
-
-export interface LinkClick {
-  id: string;
-  profile_id: string | null;
-  referral_tag: string;
-  brand_id: string | null;
-  referer: string | null;
-  user_agent: string | null;
-  ip_hash: string | null;
-  is_bot: boolean;
-  clicked_at: string;
-}
-
 export interface Channel {
   id: string;
   type: ChannelType;
@@ -584,24 +532,6 @@ export interface Database {
         Row: MessageLog;
         Insert: Omit<MessageLog, "id">;
         Update: Partial<Omit<MessageLog, "id">>;
-        Relationships: [];
-      };
-      hotmart_sales: {
-        Row: HotmartSale;
-        Insert: Omit<HotmartSale, "id">;
-        Update: Partial<Omit<HotmartSale, "id">>;
-        Relationships: [];
-      };
-      link_clicks: {
-        Row: LinkClick;
-        Insert: Omit<LinkClick, "id" | "clicked_at">;
-        Update: Partial<Omit<LinkClick, "id" | "clicked_at">>;
-        Relationships: [];
-      };
-      payouts: {
-        Row: Payout;
-        Insert: Omit<Payout, "id" | "requested_at">;
-        Update: Partial<Omit<Payout, "id" | "requested_at">>;
         Relationships: [];
       };
       admin_sessions: {

@@ -2,9 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { contactSchema, hotmartLinkSchema } from "@/schemas";
+import { contactSchema } from "@/schemas";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 
 /**
  * Save the real email + WhatsApp captured right after the first Instagram login.
@@ -54,30 +53,4 @@ export async function saveContactInfo(
     .catch(() => {});
 
   redirect("/onboarding");
-}
-
-/**
- * Save the influencer's own Hotmart affiliate link (step 3 of "Start earning"
- * on the dashboard). Persists hotmart_url on their profile.
- */
-export async function saveHotmartUrl(formData: FormData): Promise<void> {
-  const parsed = hotmartLinkSchema.safeParse({
-    hotmart_url: formData.get("hotmart_url"),
-  });
-
-  if (!parsed.success) return;
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (supabase.from("profiles") as any)
-    .update({ hotmart_url: parsed.data.hotmart_url })
-    .eq("id", user.id);
-
-  revalidatePath("/dashboard");
 }

@@ -35,12 +35,6 @@ export async function deleteInfluencer(profileId: string) {
     .eq("profile_id", profileId);
   if (postsErr) throw postsErr;
 
-  const { error: salesErr } = await admin
-    .from("hotmart_sales")
-    .delete()
-    .eq("profile_id", profileId);
-  if (salesErr) throw salesErr;
-
   const { error: msgsErr } = await admin
     .from("messages_log")
     .delete()
@@ -76,9 +70,9 @@ export async function deleteInfluencer(profileId: string) {
 }
 
 /**
- * Suspends (or reactivates) an influencer without deleting anything: history,
- * connections and payouts stay. Suspended accounts are locked out by the
- * middleware and excluded from scheduling.
+ * Suspends (or reactivates) an influencer without deleting anything: history
+ * and connections stay. Suspended accounts are locked out by the middleware
+ * and excluded from scheduling.
  */
 export async function setInfluencerSuspended(profileId: string, suspended: boolean) {
   await requireAdmin();
@@ -116,8 +110,6 @@ export async function createBrand(formData: FormData) {
 
   const name = formData.get("name") as string;
   const description = (formData.get("description") as string) || null;
-  const hotmartProductId = (formData.get("hotmart_product_id") as string) || null;
-  const hotmartProductUrl = (formData.get("hotmart_product_url") as string) || null;
   const sectorsRaw = (formData.get("target_sectors") as string) || "";
   const targetSectors = sectorsRaw
     .split(",")
@@ -131,8 +123,6 @@ export async function createBrand(formData: FormData) {
     name,
     description,
     logo_url: logoUrl,
-    hotmart_product_id: hotmartProductId,
-    hotmart_product_url: hotmartProductUrl,
     target_sectors: targetSectors,
     is_active: isActive,
   });
@@ -147,8 +137,6 @@ export async function updateBrand(brandId: string, formData: FormData) {
 
   const name = formData.get("name") as string;
   const description = (formData.get("description") as string) || null;
-  const hotmartProductId = (formData.get("hotmart_product_id") as string) || null;
-  const hotmartProductUrl = (formData.get("hotmart_product_url") as string) || null;
   const sectorsRaw = (formData.get("target_sectors") as string) || "";
   const targetSectors = sectorsRaw
     .split(",")
@@ -163,8 +151,6 @@ export async function updateBrand(brandId: string, formData: FormData) {
       name,
       description,
       logo_url: logoUrl,
-      hotmart_product_id: hotmartProductId,
-      hotmart_product_url: hotmartProductUrl,
       target_sectors: targetSectors,
       is_active: isActive,
     })
@@ -257,7 +243,7 @@ export async function deletePost(postId: string) {
   revalidatePath("/admin/scheduler");
 }
 
-/** Admin manually creates an influencer account (the trigger mints their referral tag). */
+/** Admin manually creates an influencer account. */
 export async function createInfluencer(
   formData: FormData,
 ): Promise<{ error: string } | { success: true }> {
@@ -284,7 +270,7 @@ export async function createInfluencer(
   });
   if (error) return { error: error.message };
 
-  // Trigger created the profile + referral tag; attach the WhatsApp if given.
+  // Trigger created the profile; attach the WhatsApp if given.
   if (whatsapp && data.user) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (admin.from("profiles") as any).update({ whatsapp }).eq("id", data.user.id);
@@ -306,19 +292,6 @@ export async function updateInfluencerProfile(profileId: string, formData: FormD
   const addressStreet = (formData.get("address_street") as string) || null;
   const addressCity = (formData.get("address_city") as string) || null;
   const addressPostalCode = (formData.get("address_postal_code") as string) || null;
-  const pixKeyType = (formData.get("pix_key_type") as string) || null;
-  const pixKey = (formData.get("pix_key") as string) || null;
-  const hotmartUrl = (formData.get("hotmart_url") as string) || null;
-  const hotmartAffiliateCode = (formData.get("hotmart_affiliate_code") as string) || null;
-
-  // Commission is entered as a percentage (e.g. "20"); store as a 0–1 rate, or null to
-  // inherit the brand rate. Empty/invalid → null.
-  const commissionPct = ((formData.get("commission_rate_pct") as string) || "").trim();
-  let commissionRate: number | null = null;
-  if (commissionPct !== "") {
-    const pct = Number(commissionPct);
-    if (!Number.isNaN(pct)) commissionRate = Math.max(0, Math.min(1, pct / 100));
-  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin.from("profiles") as any)
@@ -331,11 +304,6 @@ export async function updateInfluencerProfile(profileId: string, formData: FormD
       address_street: addressStreet,
       address_city: addressCity,
       address_postal_code: addressPostalCode,
-      pix_key_type: pixKeyType,
-      pix_key: pixKey,
-      commission_rate: commissionRate,
-      hotmart_url: hotmartUrl,
-      hotmart_affiliate_code: hotmartAffiliateCode,
     })
     .eq("id", profileId);
 
@@ -343,45 +311,6 @@ export async function updateInfluencerProfile(profileId: string, formData: FormD
 
   revalidatePath(`/admin/influencers/${profileId}`);
   revalidatePath("/admin/influencers");
-  return { success: true };
-}
-
-/** Admin confirms a PIX payout was sent. No-op (already paid/cancelled) is reported. */
-export async function markPayoutPaid(payoutId: string) {
-  const adminId = await requireAdmin();
-  const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin.from("payouts") as any)
-    .update({ status: "paid", paid_at: new Date().toISOString(), paid_by: adminId })
-    .eq("id", payoutId)
-    .eq("status", "requested")
-    .select("id");
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) return { error: "Payout already processed." };
-  revalidatePath("/admin/payments");
-  return { success: true };
-}
-
-/** Admin cancels an open request, releasing its sales back to the available pool. */
-export async function cancelPayout(payoutId: string) {
-  await requireAdmin();
-  const admin = createAdminClient();
-  // Cancel FIRST, guarded on status='requested', so a concurrent mark-paid can't
-  // leave a paid payout with its sales released (double-pay).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin.from("payouts") as any)
-    .update({ status: "cancelled" })
-    .eq("id", payoutId)
-    .eq("status", "requested")
-    .select("id");
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) return { error: "Payout already processed." };
-  // Only now release its sales back to the available pool.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin.from("hotmart_sales") as any)
-    .update({ payout_id: null })
-    .eq("payout_id", payoutId);
-  revalidatePath("/admin/payments");
   return { success: true };
 }
 

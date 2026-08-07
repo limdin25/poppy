@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, FileText, ShoppingCart, AlertTriangle } from "lucide-react";
+import { Users, FileText, AlertTriangle } from "lucide-react";
 
 interface OverviewStats {
   totalInfluencers: number;
@@ -8,7 +8,6 @@ interface OverviewStats {
   pendingInfluencers: number;
   postsToday: number;
   postsThisWeek: number;
-  totalSales: number;
 }
 
 interface Alert {
@@ -67,7 +66,6 @@ export function AdminOverview({ stats, alerts }: AdminOverviewProps) {
           value={stats.postsToday}
           sub={`${stats.postsThisWeek} this week`}
         />
-        <StatCard icon={ShoppingCart} label="Hotmart sales" value={stats.totalSales} />
       </div>
 
       {alerts.length > 0 && (

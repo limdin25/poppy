@@ -38,7 +38,6 @@ export async function updateProfile(
     address_street?: string;
     address_city?: string;
     address_postal_code?: string;
-    hotmart_url?: string;
   },
 ) {
   const supabase = await createClient();

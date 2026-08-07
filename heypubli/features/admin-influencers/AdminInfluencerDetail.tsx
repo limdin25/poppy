@@ -8,7 +8,6 @@ import {
   AtSign,
   Ban,
   Calendar,
-  DollarSign,
   Eye,
   Globe,
   Lock,
@@ -17,11 +16,9 @@ import {
   MessageSquare,
   Pencil,
   Phone,
-  ShoppingCart,
   Trash2,
   Unplug,
   User,
-  Wallet,
   X,
 } from "lucide-react";
 import {
@@ -35,7 +32,6 @@ import type {
   Profile,
   InstagramConnection,
   OutstandConnection,
-  HotmartSale,
   ScheduledPost,
 } from "@/types/database";
 
@@ -43,7 +39,6 @@ interface AdminInfluencerDetailProps {
   profile: Profile;
   instagram: InstagramConnection | null;
   outstand: OutstandConnection | null;
-  sales: HotmartSale[];
   posts: ScheduledPost[];
   sectors: string[];
 }
@@ -97,7 +92,6 @@ export function AdminInfluencerDetail({
   profile,
   instagram,
   outstand,
-  sales,
   posts,
   sectors,
 }: AdminInfluencerDetailProps) {
@@ -113,10 +107,6 @@ export function AdminInfluencerDetail({
     msg: string;
   } | null>(null);
 
-  const totalCommission = sales
-    .filter((s) => s.status === "confirmed")
-    .reduce((sum, s) => sum + s.commission_amount, 0);
-  const totalSalesCount = sales.filter((s) => s.status === "confirmed").length;
   const publishedPosts = posts.filter((p) => p.status === "published").length;
   const pendingPosts = posts.filter((p) => p.status === "pending").length;
 
@@ -238,31 +228,7 @@ export function AdminInfluencerDetail({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-accent/10 p-2">
-              <ShoppingCart size={20} className="text-accent" />
-            </div>
-            <div>
-              <p className="text-xs text-foreground-secondary">Sales</p>
-              <p className="text-xl font-bold">{totalSalesCount}</p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-success/10 p-2">
-              <DollarSign size={20} className="text-success" />
-            </div>
-            <div>
-              <p className="text-xs text-foreground-secondary">Total commission</p>
-              <p className="text-xl font-bold">
-                R$ {totalCommission.toFixed(2).replace(".", ",")}
-              </p>
-            </div>
-          </div>
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-border p-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-accent/10 p-2">
@@ -407,51 +373,6 @@ export function AdminInfluencerDetail({
                 label="Postcode"
                 name="address_postal_code"
                 defaultValue={profile.address_postal_code ?? ""}
-              />
-            </div>
-
-            <h3 className="text-sm font-semibold pt-2">Payment</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-foreground-secondary">
-                  PIX key type
-                </label>
-                <select
-                  name="pix_key_type"
-                  defaultValue={profile.pix_key_type ?? ""}
-                  className="rounded-lg border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                >
-                  <option value="">None</option>
-                  <option value="cpf">CPF</option>
-                  <option value="cnpj">CNPJ</option>
-                  <option value="email">Email</option>
-                  <option value="phone">Phone</option>
-                  <option value="random">Random</option>
-                </select>
-              </div>
-              <EditField
-                label="PIX key"
-                name="pix_key"
-                defaultValue={profile.pix_key ?? ""}
-              />
-              <EditField
-                label="Hotmart URL"
-                name="hotmart_url"
-                defaultValue={profile.hotmart_url ?? ""}
-              />
-              <EditField
-                label="Affiliate code"
-                name="hotmart_affiliate_code"
-                defaultValue={profile.hotmart_affiliate_code ?? ""}
-              />
-              <EditField
-                label="Commission (%), empty = default 20%"
-                name="commission_rate_pct"
-                defaultValue={
-                  profile.commission_rate != null
-                    ? String(Math.round(profile.commission_rate * 100))
-                    : ""
-                }
               />
             </div>
 
@@ -606,37 +527,6 @@ export function AdminInfluencerDetail({
               </div>
             ) : null}
           </section>
-
-          <section className="rounded-xl border border-border p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold">Payment</h2>
-              <button
-                onClick={() => setEditMode(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-background-secondary transition-colors"
-              >
-                <Pencil size={12} />
-                Edit
-              </button>
-            </div>
-            <div className="divide-y divide-border">
-              <InfoRow
-                icon={Wallet}
-                label="PIX key type"
-                value={profile.pix_key_type?.toUpperCase() ?? null}
-              />
-              <InfoRow icon={Wallet} label="PIX key" value={profile.pix_key} />
-              <InfoRow
-                icon={DollarSign}
-                label="Hotmart URL"
-                value={profile.hotmart_url}
-              />
-              <InfoRow
-                icon={DollarSign}
-                label="Affiliate code"
-                value={profile.hotmart_affiliate_code}
-              />
-            </div>
-          </section>
         </div>
       )}
 
@@ -652,68 +542,6 @@ export function AdminInfluencerDetail({
                 {s}
               </span>
             ))}
-          </div>
-        </section>
-      )}
-
-      {sales.length > 0 && (
-        <section className="rounded-xl border border-border p-5">
-          <h2 className="mb-4 text-base font-semibold">Sales history</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-background-secondary">
-                  <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Date
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Product
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Amount
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Commission
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-foreground-secondary">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sales.map((sale) => (
-                  <tr key={sale.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2.5">
-                      {new Date(sale.sold_at).toLocaleDateString("en-GB")}
-                    </td>
-                    <td className="px-4 py-2.5">{sale.product_name}</td>
-                    <td className="px-4 py-2.5">
-                      R$ {sale.sale_amount.toFixed(2).replace(".", ",")}
-                    </td>
-                    <td className="px-4 py-2.5 font-medium text-success">
-                      R$ {sale.commission_amount.toFixed(2).replace(".", ",")}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          sale.status === "confirmed"
-                            ? "bg-success/10 text-success"
-                            : sale.status === "refunded"
-                              ? "bg-error/10 text-error"
-                              : "bg-foreground-secondary/10 text-foreground-secondary"
-                        }`}
-                      >
-                        {sale.status === "confirmed"
-                          ? "Confirmed"
-                          : sale.status === "refunded"
-                            ? "Refunded"
-                            : "Cancelled"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </section>
       )}

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AtSign, Trash2, Check, Wallet } from "lucide-react";
+import { AtSign, Trash2, Check } from "lucide-react";
 import { saveSettings } from "@/lib/actions/settings";
-import type { Profile, Sector, PixKeyType } from "@/types/database";
+import { disconnectMyInstagram } from "@/lib/actions/instagram-disconnect";
+import type { Profile, Sector } from "@/types/database";
 
 const COUNTRIES = [
   {
@@ -111,10 +112,11 @@ export function DashboardSettings({
 }: DashboardSettingsProps) {
   const [country, setCountry] = useState(profile.address_country || "BR");
   const [dialCode, setDialCode] = useState("+55");
-  const [pixKeyType, setPixKeyType] = useState<PixKeyType>(profile.pix_key_type || "cpf");
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [disconnecting, startDisconnect] = useTransition();
+  const [disconnectError, setDisconnectError] = useState(false);
 
   const countryInfo = COUNTRIES.find((c) => c.code === country) ?? COUNTRIES[0];
 
@@ -262,74 +264,6 @@ export function DashboardSettings({
         </div>
       </section>
 
-      <section className="rounded-xl border border-border p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Wallet size={16} className="text-accent" />
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground-secondary">
-            PIX Payment
-          </h2>
-        </div>
-        <p className="mb-3 text-xs text-foreground-secondary">
-          Enter your PIX key to receive commissions. Payment is released 21 days after
-          the sale is confirmed (guarantee period against refunds).
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Key type</label>
-            <select
-              name="pix_key_type"
-              value={pixKeyType}
-              onChange={(e) => setPixKeyType(e.target.value as PixKeyType)}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-            >
-              <option value="cpf">CPF</option>
-              <option value="cnpj">CNPJ</option>
-              <option value="email">Email</option>
-              <option value="phone">Phone</option>
-              <option value="random">Random key</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">PIX key</label>
-            <input
-              name="pix_key"
-              type="text"
-              defaultValue={profile.pix_key ?? ""}
-              placeholder={
-                pixKeyType === "cpf"
-                  ? "000.000.000-00"
-                  : pixKeyType === "cnpj"
-                    ? "00.000.000/0000-00"
-                    : pixKeyType === "email"
-                      ? "you@email.com"
-                      : pixKeyType === "phone"
-                        ? "+55 11 99999-9999"
-                        : "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              }
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-            />
-          </div>
-        </div>
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-accent/5 px-3 py-2">
-          <svg
-            className="h-4 w-4 shrink-0 text-accent"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <span className="text-xs text-foreground-secondary">
-            Payment timeline: 21 days after the sale is confirmed
-          </span>
-        </div>
-      </section>
-
       {instagramEnabled && (
         <section className="rounded-xl border border-border p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground-secondary">
@@ -351,9 +285,26 @@ export function DashboardSettings({
               {instagramConnected && (
                 <button
                   type="button"
-                  className="rounded-lg border border-error/30 px-3 py-2 text-sm font-medium text-error hover:bg-error/10 transition-colors"
+                  data-testid="disconnect-instagram"
+                  disabled={disconnecting}
+                  onClick={() => {
+                    // Asked plainly, because this stops the posting they signed
+                    // up for. Until 07 Aug this button had no handler at all
+                    // while the onboarding promised it worked.
+                    if (
+                      !window.confirm(
+                        "Disconnect Instagram? We will stop posting to your account straight away.",
+                      )
+                    )
+                      return;
+                    startDisconnect(async () => {
+                      const res = await disconnectMyInstagram();
+                      if (!res.ok) setDisconnectError(true);
+                    });
+                  }}
+                  className="rounded-lg border border-error/30 px-3 py-2 text-sm font-medium text-error hover:bg-error/10 transition-colors disabled:opacity-50"
                 >
-                  Disconnect
+                  {disconnecting ? "Disconnecting" : "Disconnect"}
                 </button>
               )}
               <a
@@ -364,6 +315,11 @@ export function DashboardSettings({
               </a>
             </div>
           </div>
+          {disconnectError && (
+            <p className="mt-3 text-xs text-error" data-testid="disconnect-error">
+              That did not go through. Try again, and tell us if it keeps failing.
+            </p>
+          )}
         </section>
       )}
 

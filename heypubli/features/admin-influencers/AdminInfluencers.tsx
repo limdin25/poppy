@@ -2,15 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import {
-  Search,
-  ExternalLink,
-  Mail,
-  MessageSquare,
-  Plus,
-  MousePointerClick,
-  X,
-} from "lucide-react";
+import { Search, ExternalLink, Mail, MessageSquare, Plus, X } from "lucide-react";
 import { createInfluencer } from "@/lib/actions/admin";
 import { addMembersToCampaign } from "@/lib/actions/campaigns";
 import { formatSaoPaulo } from "@/lib/timezone";
@@ -19,54 +11,6 @@ import type { Profile } from "@/types/database";
 interface InfluencerRow {
   profile: Profile;
   igUsername: string | null;
-  bioStatus: "ok" | "missing" | "unknown" | null;
-  shareLink: string | null;
-  totalSales: number;
-  commission: number;
-  clicks: number;
-}
-
-// Pill + one-click WhatsApp nudge for influencers missing their bio link.
-function BioLinkCell({ row }: { row: InfluencerRow }) {
-  if (!row.igUsername || row.bioStatus === null) {
-    return <span className="text-foreground-secondary">-</span>;
-  }
-  if (row.bioStatus === "ok") {
-    return (
-      <span className="inline-flex rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
-        In bio ✓
-      </span>
-    );
-  }
-  if (row.bioStatus === "unknown") {
-    return <span className="text-xs text-foreground-secondary">?</span>;
-  }
-
-  const nudge =
-    row.profile.whatsapp && row.shareLink
-      ? `https://wa.me/${row.profile.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-          `Hi ${row.profile.first_name}! You still need to add your link to your Instagram bio so your sales count. Just copy and paste it into the "Website" field of your profile:\n\n${row.shareLink}`,
-        )}`
-      : null;
-
-  return (
-    <div className="flex items-center gap-2">
-      <span className="inline-flex rounded-full bg-error/10 px-2.5 py-0.5 text-xs font-medium text-error">
-        Missing
-      </span>
-      {nudge && (
-        <a
-          href={nudge}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Nudge on WhatsApp"
-          className="rounded-lg border border-success/40 px-2 py-1 text-xs font-medium text-success transition-colors hover:bg-success hover:text-white"
-        >
-          Nudge
-        </a>
-      )}
-    </div>
-  );
 }
 
 interface AdminInfluencersProps {
@@ -271,19 +215,7 @@ export function AdminInfluencers({
                 Instagram
               </th>
               <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
-                Bio link
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                 Campaign
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
-                Sales
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
-                Commission
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
-                Clicks
               </th>
               <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                 Signed up
@@ -323,24 +255,11 @@ export function AdminInfluencers({
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <BioLinkCell row={row} />
-                </td>
-                <td className="px-4 py-3">
                   <CampaignCell
                     profileId={row.profile.id}
                     campaignId={campaignId}
                     isMember={memberIdSet.has(row.profile.id)}
                   />
-                </td>
-                <td className="px-4 py-3">{row.totalSales}</td>
-                <td className="px-4 py-3">
-                  R$ {row.commission.toFixed(2).replace(".", ",")}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="inline-flex items-center gap-1 text-foreground-secondary">
-                    <MousePointerClick size={14} />
-                    {row.clicks}
-                  </span>
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-foreground-secondary">
                   {formatSaoPaulo(row.profile.created_at)}
@@ -383,7 +302,7 @@ export function AdminInfluencers({
             {filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={6}
                   className="px-4 py-8 text-center text-foreground-secondary"
                 >
                   No creators found.

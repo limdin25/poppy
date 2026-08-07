@@ -117,13 +117,7 @@ export default async function DashboardPage() {
       phone: null,
       whatsapp: null,
       timezone: "America/Sao_Paulo",
-      pix_key_type: null,
-      pix_key: null,
-      hotmart_url: null,
-      hotmart_affiliate_code: null,
-      referral_tag: null,
       registration_method: "instagram",
-      commission_rate: null,
       last_accessed_at: null,
     } as Profile);
 

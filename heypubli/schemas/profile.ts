@@ -28,10 +28,6 @@ export const personalProfileSchema = z.object({
   phone: z.string().min(1, "Mobile number is required"),
 });
 
-export const hotmartLinkSchema = z.object({
-  hotmart_url: z.url("Invalid URL"),
-});
-
 // Captured once, right after the first Instagram login (Instagram gives us no email).
 export const contactSchema = z.object({
   email: z.email("Invalid email"),
@@ -48,6 +44,5 @@ export const igSignupSchema = z.object({
 
 export type SignupInput = z.infer<typeof signupSchema>;
 export type PersonalProfileInput = z.infer<typeof personalProfileSchema>;
-export type HotmartLinkInput = z.infer<typeof hotmartLinkSchema>;
 export type ContactInput = z.infer<typeof contactSchema>;
 export type IgSignupInput = z.infer<typeof igSignupSchema>;

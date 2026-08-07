@@ -10,7 +10,6 @@ import {
   Calendar,
   BarChart3,
   Bell,
-  DollarSign,
   Megaphone,
   Settings,
   Users,
@@ -19,8 +18,6 @@ import {
   Clock,
   MessageSquare,
   Tag,
-  ShoppingCart,
-  Wallet,
   Sparkles,
   GraduationCap,
   LayoutDashboard,
@@ -38,7 +35,6 @@ const influencerItems = [
   { label: "Setup", href: "/onboarding", icon: BookOpen },
   ...(INSTAGRAM_ENABLED ? [{ label: "Metrics", href: "/metrics", icon: BarChart3 }] : []),
   { label: "Calendar", href: "/calendar", icon: Calendar },
-  { label: "Sales", href: "/sales", icon: DollarSign },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -51,8 +47,6 @@ const adminItems = [
   { label: "Scheduler", href: "/admin/scheduler", icon: Clock },
   { label: "Messages", href: "/admin/messages", icon: MessageSquare },
   { label: "Brands", href: "/admin/brands", icon: Tag },
-  { label: "Hotmart", href: "/admin/hotmart", icon: ShoppingCart },
-  { label: "Payments", href: "/admin/payments", icon: Wallet },
   { label: "Prompts", href: "/admin/prompts", icon: Sparkles },
   { label: "Tutorials", href: "/admin/tutorials", icon: GraduationCap },
   { label: "Settings", href: "/admin/settings", icon: Settings },

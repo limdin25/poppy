@@ -96,25 +96,6 @@ function BrandForm({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Hotmart Product ID</label>
-              <input
-                name="hotmart_product_id"
-                defaultValue={brand?.hotmart_product_id ?? ""}
-                className="rounded-lg border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium">Hotmart URL</label>
-              <input
-                name="hotmart_product_url"
-                defaultValue={brand?.hotmart_product_url ?? ""}
-                className="rounded-lg border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              />
-            </div>
-          </div>
-
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">Logo</label>
             <input type="hidden" name="logo_url" value={logoPreview ?? ""} />

@@ -9,7 +9,6 @@ describe("SidebarNav", () => {
     expect(screen.getByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Setup")).toBeInTheDocument();
     expect(screen.getByText("Calendar")).toBeInTheDocument();
-    expect(screen.getByText("Sales")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
@@ -61,7 +60,6 @@ describe("SidebarNav", () => {
     expect(screen.getByText("Scheduler")).toBeInTheDocument();
     expect(screen.getByText("Messages")).toBeInTheDocument();
     expect(screen.getByText("Brands")).toBeInTheDocument();
-    expect(screen.getByText("Hotmart")).toBeInTheDocument();
     expect(screen.getByText("Prompts")).toBeInTheDocument();
   });
 

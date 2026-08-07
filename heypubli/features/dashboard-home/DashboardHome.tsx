@@ -15,7 +15,8 @@ import type { PostMediaType, Profile } from "@/types/database";
 // * "Your share link" was the Hotmart referral link (base URL + ?sck=<tag>) and
 //   its bio nudge. The product is the community now, so the link that matters
 //   is the creator's own Skool affiliate link, which they enter at step 3 of
-//   Getting started. The Hotmart plumbing is untouched and still feeds /sales.
+//   Getting started. The Hotmart plumbing (sales, payouts, referral tracking,
+//   /sales) has since been removed entirely.
 //
 // The right column is a slot the page fills, because a feature may not import
 // another feature.
