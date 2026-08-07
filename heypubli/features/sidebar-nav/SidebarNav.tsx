@@ -15,6 +15,7 @@ import {
   Users,
   UserPlus,
   Shield,
+  Clapperboard,
   Clock,
   MessageSquare,
   Tag,
