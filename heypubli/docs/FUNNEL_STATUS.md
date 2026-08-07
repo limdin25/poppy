@@ -55,6 +55,19 @@ every 5 minutes. Both privacy-ID threads (+257..., +179...) are claimed,
 failed, and honestly labelled; they are unreachable and no retry is possible
 (one action per inbound).
 
+### Stamping and owning travel together
+
+Minutes later Hugo: "cant see. SM Omar Faruk", from inside "See as: HeyPubli".
+That view is scoped by wk_contacts.owner_agent_id = the HeyPubli agent, and a
+contact born from its own inbound message has owner NULL, so 39 answered
+funnel threads (Omar, Kizer, Rezaul, Sanat, both Angelicas, both Faridas, both
+Sofias, Epie, the two privacy-ID threads...) existed only in the admin
+Everyone view. Hugo: "all leads from FB must be on HeyPubli." The
+wk-sms-incoming stamp block now claims ownership alongside the product stamp;
+the 39 were backfilled by hand, one fresh +91 straggler (Irfan) was deleted
+with the same FK sweep, and the scoped view was re-verified in the browser:
+banner on, Omar visible, badges rendering, zero NEVER LOOKED AT.
+
 ### Verified live, 20:15 UTC
 
 Monitor: waiting 5, neverLooked 0, replyFailed 2, undelivered 0, heartbeats
