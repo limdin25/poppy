@@ -46,7 +46,7 @@ export function PrivacyContent() {
             or store your Instagram password.
           </li>
           <li>
-            <strong>Your niche and preferences</strong>, so the content we post suits your
+            <strong>Your content preferences</strong>, so what we post suits your
             audience.
           </li>
           <li>

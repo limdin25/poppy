@@ -24,8 +24,10 @@ create table if not exists master_videos (
   source_url text,
   -- What Hugo watches on the approval page.
   preview_url text,
+  -- 'failed' = the ingest of an uploaded clip failed three times; the worker
+  -- marks it and moves on rather than wedging the whole render queue.
   status text not null default 'preview_rendering'
-    check (status in ('preview_rendering', 'pending_approval', 'approved')),
+    check (status in ('preview_rendering', 'pending_approval', 'approved', 'failed')),
   approved_at timestamptz,
   recipe_version int not null default 8,
   created_at timestamptz not null default now()
@@ -83,6 +85,13 @@ insert into video_pipeline_state (id) values ('default')
 alter table scheduled_posts add column if not exists master_video_id uuid
   references master_videos(id) on delete set null;
 
+-- One post per master per account, EVER, enforced where enforcement is real.
+-- Two overlapping cron runs (Vercel retries, a manual curl during the cron
+-- minute) would otherwise both pass the in-memory count and double-post.
+create unique index if not exists idx_sp_master_profile
+  on scheduled_posts (master_video_id, profile_id)
+  where master_video_id is not null;
+
 -- scheduled_posts.brand_id is NOT NULL; pipeline posts need an honest brand.
 insert into brands (name, is_active, commission_rate)
   select 'HeyPubli', true, 0
@@ -102,3 +111,8 @@ alter table master_videos enable row level security;
 alter table creator_video_state enable row level security;
 alter table creator_video_renders enable row level security;
 alter table video_pipeline_state enable row level security;
+
+-- Storage default caps files at 50MB while a long master at crf 18 can pass
+-- 60MB; the render worker's verify allows up to 80.
+update storage.buckets set file_size_limit = 209715200
+  where id in ('creator-videos', 'media');

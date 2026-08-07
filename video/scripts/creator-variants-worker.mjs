@@ -138,6 +138,8 @@ async function uploadToBucket(localPath, remotePath) {
 // ---- the render harness ----------------------------------------------------
 let serveUrl = null;
 let browser = null;
+let rendersSinceRecycle = 0;
+const RECYCLE_EVERY = 25;
 async function ensureHarness(rebundle = false) {
   if (rebundle) serveUrl = null;
   if (!serveUrl) {
@@ -145,7 +147,24 @@ async function ensureHarness(rebundle = false) {
     serveUrl = await bundle({ entryPoint: join(VIDEO_DIR, 'src', 'index.ts') });
     await ensureBrowser();
   }
+  // A long-lived headless chrome leaks (render-variants.mjs documents it and
+  // recycles every 50); this worker runs forever, so it recycles too, and it
+  // THROWS AWAY a browser that just failed a render rather than marching the
+  // whole queue into the same dead instance.
+  if (browser && rendersSinceRecycle >= RECYCLE_EVERY) {
+    await browser.close({ silent: true }).catch(() => {});
+    browser = null;
+    rendersSinceRecycle = 0;
+  }
   if (!browser) browser = await openBrowser('chrome', { chromeMode: 'headless-shell' });
+}
+
+async function discardBrowser() {
+  if (browser) {
+    await browser.close({ silent: true }).catch(() => {});
+    browser = null;
+    rendersSinceRecycle = 0;
+  }
 }
 
 async function renderOne(props, outPath) {
@@ -180,15 +199,70 @@ async function renderOne(props, outPath) {
   });
   const errs = verify(outPath, composition.durationInFrames);
   if (errs.length) throw new Error(`verify failed: ${errs.join('; ')}`);
+  rendersSinceRecycle++;
 }
 
 // ---- master preview: an uploaded clip becomes a renderable source ----------
+/** Run ingest for a clip WITHOUT losing the rest of the manifest: review
+ *  caught that ingest-sources.mjs rewrites sources.json to contain only the
+ *  dropped clips, which would delete v1..v4 (and every earlier master) from
+ *  the schema on the first upload. Snapshot, run, merge back. */
+function ingestMerging() {
+  const manifestPath = join(VIDEO_DIR, 'src', 'variants', 'sources.json');
+  const before = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  execFileSync('node', [join(VIDEO_DIR, 'scripts', 'ingest-sources.mjs')], {
+    cwd: VIDEO_DIR,
+    stdio: 'inherit',
+  });
+  const after = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const byId = new Map(before.map((x) => [x.id, x]));
+  for (const x of after) byId.set(x.id, x);
+  const merged = [...byId.values()];
+  writeFileSync(manifestPath, `${JSON.stringify(merged, null, 2)}\n`);
+  execFileSync('node', [join(VIDEO_DIR, 'scripts', 'make-ambience.mjs')], {
+    cwd: VIDEO_DIR,
+    stdio: 'inherit',
+  });
+}
+
+/** Make sure a source is renderable on THIS machine: the raw clip and its
+ *  encoded twins are gitignored, so a fresh clone (or a tidy-up) loses them.
+ *  Anything with a source_url in storage is re-downloadable; re-ingest it. */
+async function ensureSource(sourceId, sourceUrl) {
+  const manifestPath = join(VIDEO_DIR, 'src', 'variants', 'sources.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const known = manifest.some((x) => x.id === sourceId);
+  const encoded = existsSync(join(VIDEO_DIR, 'public', 'sources', `${sourceId}.mp4`));
+  if (known && encoded) return;
+  if (!sourceUrl) throw new Error(`source ${sourceId} missing locally and has no source_url`);
+  log(`source ${sourceId} missing locally, re-ingesting from storage`);
+  const clipPath = join(VIDEO_DIR, 'sources-in', `${sourceId}.mp4`);
+  const res = await fetch(sourceUrl);
+  if (!res.ok) throw new Error(`source download ${res.status}`);
+  writeFileSync(clipPath, Buffer.from(await res.arrayBuffer()));
+  ingestMerging();
+  await ensureHarness(true);
+}
+
 async function handleNewMasters() {
   const masters = await rest(
     `master_videos?status=eq.preview_rendering&source_url=not.is.null&select=*&order=created_at&limit=1`,
   );
   const m = masters?.[0];
   if (!m) return false;
+
+  const tried = masterAttempts.get(m.id) ?? 0;
+  if (tried >= 3) {
+    await rest(`master_videos?id=eq.${m.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'failed' }),
+      headers: { Prefer: 'return=minimal' },
+    });
+    log(`master seq ${m.seq} failed ${tried} ingests, marked failed and skipped`);
+    masterAttempts.delete(m.id);
+    return false;
+  }
+  masterAttempts.set(m.id, tried + 1);
 
   log(`ingesting master seq ${m.seq} (${m.source_id})`);
   const clipPath = join(VIDEO_DIR, 'sources-in', `${m.source_id}.mp4`);
@@ -199,14 +273,7 @@ async function handleNewMasters() {
   }
   // ingest updates src/variants/sources.json, which SOURCE_IDS and the zod
   // schema derive from, so the bundle must be rebuilt afterwards.
-  execFileSync('node', [join(VIDEO_DIR, 'scripts', 'ingest-sources.mjs')], {
-    cwd: VIDEO_DIR,
-    stdio: 'inherit',
-  });
-  execFileSync('node', [join(VIDEO_DIR, 'scripts', 'make-ambience.mjs')], {
-    cwd: VIDEO_DIR,
-    stdio: 'inherit',
-  });
+  ingestMerging();
   await ensureHarness(true);
 
   const props = {
@@ -249,7 +316,7 @@ async function requeueStale() {
 
 async function claimOne() {
   const rows = await rest(
-    `creator_video_renders?status=eq.queued&select=*,master:master_videos(seq,source_id,status)&order=created_at&limit=1`,
+    `creator_video_renders?status=eq.queued&select=*,master:master_videos(seq,source_id,status,source_url)&order=created_at&limit=1`,
   );
   const r = rows?.[0];
   if (!r) return null;
@@ -282,6 +349,7 @@ async function renderClaimed(r) {
   };
   const out = join(OUT_DIR, `${r.id}.mp4`);
   log(`rendering master ${r.master.seq} for ${r.profile_id} (${r.color_family}, idx ${variantIndex})`);
+  await ensureSource(r.master.source_id, r.master.source_url);
   const t0 = Date.now();
   await renderOne(props, out);
   const url = await uploadToBucket(out, `renders/m${r.master.seq}-${r.profile_id}.mp4`);
@@ -312,6 +380,14 @@ async function heartbeat() {
 
 // ---- main loop -------------------------------------------------------------
 log('creator variants worker up');
+// The heartbeat lives on its own timer: a single loop iteration legitimately
+// holds a multi-minute render or a 20-minute master ingest, and the admin
+// page declares the worker dead at 120s. renderMedia and execFileSync-free
+// awaits keep the event loop breathing, so the interval fires mid-render.
+setInterval(() => { heartbeat().catch(() => {}); }, 30_000);
+// A master that fails ingest three times is marked failed and skipped, or one
+// bad upload would wedge this loop forever and starve every creator render.
+const masterAttempts = new Map();
 for (;;) {
   try {
     await heartbeat();
@@ -324,6 +400,7 @@ for (;;) {
           await renderClaimed(r);
         } catch (e) {
           log(`render failed: ${e.message}`);
+          await discardBrowser();
           await rest(`creator_video_renders?id=eq.${r.id}`, {
             method: 'PATCH',
             body: JSON.stringify({

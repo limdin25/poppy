@@ -4,9 +4,9 @@ import { EmailLoginForm, PasswordLoginForm } from "@/features/email-login";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string; mode?: string }>;
+  searchParams: Promise<{ erro?: string; mode?: string; exists?: string }>;
 }) {
-  const { erro, mode } = await searchParams;
+  const { erro, mode, exists } = await searchParams;
   const passwordMode = mode === "password";
 
   return (
@@ -31,6 +31,19 @@ export default async function LoginPage({
             : "Enter your email and we'll send you a sign-in link, no password needed."}
         </p>
       </div>
+
+      {/* Sent here from a failed Instagram connect where we RECOGNISED the
+          address. Telling this person to try signing up again is what trapped
+          Edelyn on 07 Aug: she already had an account and kept retrying. */}
+      {exists === "1" && !erro && (
+        <div
+          className="rounded-lg bg-background-secondary px-4 py-3 text-sm"
+          data-testid="already-have-account"
+        >
+          You already have an account with us, so there is nothing to sign up
+          for. Enter your email below and we will send you a sign-in link.
+        </div>
+      )}
 
       {erro && (
         <div className="rounded-lg bg-error/10 px-4 py-3 text-sm text-error">{erro}</div>

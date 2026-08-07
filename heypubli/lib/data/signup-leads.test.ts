@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { advanceStage, stageStampColumn, summariseLeads } from "./signup-leads";
+import { LEAD_STAGES, advanceStage, stageStampColumn, summariseLeads } from "./signup-leads";
 import type { SignupLead } from "@/types/database";
 
 function lead(over: Partial<SignupLead> = {}): SignupLead {
@@ -124,5 +124,34 @@ describe("summariseLeads", () => {
     expect(stats.sentToInstagram).toBe(1);
     expect(stats.connected).toBe(1);
     expect(stats.lost).toBe(2);
+  });
+});
+// 07 Aug 2026, the night the drip went live: sheet-sync queues the Skool invite
+// AT IMPORT (community first), so every fresh lead is stamped "invited" within
+// seconds. The ladder still had "invited" at the TOP, from the old flow where
+// the invite came after Instagram connect. Two silent breaks followed:
+//   1. the tick read stageIndex(invited) >= stageIndex(connected) and skipped
+//      the welcome as "converted" for EVERY imported lead, permanently, and
+//   2. advanceStage refused to ever move an invited lead forward, because
+//      nothing outranked the top of the ladder.
+// Thirteen real leads were stopped as "converted" in one evening before the
+// pattern was caught: 8 re-armed leads all skipping at once was the tell.
+describe("the stage ladder matches the community-first flow", () => {
+  it("invited comes before started, because the invite now happens at import", () => {
+    expect(LEAD_STAGES.indexOf("invited")).toBeGreaterThan(-1);
+    expect(LEAD_STAGES.indexOf("invited")).toBeLessThan(LEAD_STAGES.indexOf("started"));
+  });
+
+  it("an invited lead still counts below connected, so the welcome is not skipped", () => {
+    expect(LEAD_STAGES.indexOf("invited")).toBeLessThan(LEAD_STAGES.indexOf("connected"));
+  });
+
+  it("a lead who signs up after their invite moves FORWARD", () => {
+    expect(advanceStage("invited", "started")).toBe("started");
+  });
+
+  it("progress still never goes backwards", () => {
+    expect(advanceStage("connected", "invited")).toBe("connected");
+    expect(advanceStage("started", "captured")).toBe("started");
   });
 });

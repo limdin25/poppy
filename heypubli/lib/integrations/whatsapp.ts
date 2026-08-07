@@ -15,6 +15,9 @@ export interface PartnerSendInput {
   contentSid?: string;
   /** Free-form body (only lands inside an open 24h window). */
   body?: string;
+  /** Public https image/video URLs, free-form only, at most 3. WhatsApp delivers
+   *  media worldwide (unlike MMS, which is US/Canada only). */
+  mediaUrls?: string[];
   /** Our idempotency key, stored as external_id on the message row. */
   externalId: string;
 }
@@ -53,6 +56,10 @@ async function call(action: string, payload: Record<string, unknown>): Promise<R
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({ action, ...payload }),
+      // A hung edge function must never eat a whole cron run: the tick and the
+      // sheet-sync both loop over leads, and one stuck fetch used to strand every
+      // lead behind it in the batch.
+      signal: AbortSignal.timeout(15000),
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok && !json.blocked) {
@@ -73,6 +80,7 @@ export async function sendPartnerWhatsApp(
     first_name: input.firstName,
     content_sid: input.contentSid,
     body: input.body,
+    media_urls: input.mediaUrls,
     external_id: input.externalId,
     product: "heypubli",
   });
@@ -98,4 +106,95 @@ export async function getSharedSenderLoad(): Promise<{ ok: boolean; sent24h?: nu
   const result = await call("sender_load", {});
   if (!result) return { ok: false };
   return result as unknown as { ok: boolean; sent24h?: number };
+}
+
+export interface ContactState {
+  ok: boolean;
+  exists?: boolean;
+  do_not_text?: boolean;
+  last_inbound_at?: string | null;
+  last_outbound_at?: string | null;
+  error?: string;
+}
+
+/**
+ * Has this phone number ever written to us on WhatsApp? The sheet-sync asks this before
+ * arming a nudge, because a form lead who already opened a conversation must be handed
+ * to the inbox, never cold-templated on top of a live thread.
+ */
+export async function getContactState(phone: string): Promise<ContactState> {
+  const result = await call("contact_state", { phone });
+  if (!result) return { ok: false, error: "not configured" };
+  return result as unknown as ContactState;
+}
+
+/**
+ * Find-or-create the CRM contact and stamp it product=heypubli, sending nothing.
+ * Called at import time so the inbound relay can match a reply that arrives BEFORE our
+ * first outbound; without the stamp such a reply never reaches the funnel and the drip
+ * cold-templates a live thread.
+ */
+export async function ensureContact(
+  phone: string,
+  firstName: string,
+): Promise<{ ok: boolean; wk_contact_id?: string; created?: boolean }> {
+  const result = await call("ensure_contact", { phone, first_name: firstName });
+  if (!result) return { ok: false };
+  return result as unknown as { ok: boolean; wk_contact_id?: string; created?: boolean };
+}
+
+export interface WaitingThread {
+  name: string;
+  phone: string;
+  last_inbound_at: string | null;
+  drafts_pending: number;
+  waiting_minutes: number | null;
+}
+
+/** heypubli threads whose LAST message is inbound: the people waiting on us right now. */
+export async function getInboxSummary(): Promise<{ ok: boolean; waiting?: WaitingThread[] }> {
+  const result = await call("inbox_summary", {});
+  if (!result) return { ok: false };
+  return result as unknown as { ok: boolean; waiting?: WaitingThread[] };
+}
+
+export interface ThreadMessage {
+  id: string;
+  direction: "inbound" | "outbound";
+  body: string | null;
+  status: string;
+  created_at: string;
+  /** Pictures/clips attached. A photo with no caption must never read as silence. */
+  media_count?: number;
+}
+
+/** The conversation, oldest first, so the reply brain can read what was said. */
+export async function getThreadMessages(
+  phone: string,
+  limit = 30,
+): Promise<{ ok: boolean; exists?: boolean; do_not_text?: boolean; messages?: ThreadMessage[] }> {
+  const result = await call("thread_messages", { phone, limit });
+  if (!result) return { ok: false };
+  return result as unknown as {
+    ok: boolean;
+    exists?: boolean;
+    do_not_text?: boolean;
+    messages?: ThreadMessage[];
+  };
+}
+
+export interface TemplateStatus {
+  sid: string;
+  name: string;
+  status: string;
+  rejection_reason: string;
+}
+
+/** Live Meta approval status per Content sid, straight from Twilio. */
+export async function getTemplateStatuses(
+  sids: string[],
+): Promise<{ ok: boolean; templates?: TemplateStatus[] }> {
+  const result = await call("template_status", { sids });
+  if (!result) return { ok: false };
+  return result as unknown as { ok: boolean; templates?: TemplateStatus[] };
 }

@@ -6,8 +6,9 @@ import {
   nextSlots,
   pickColorFamily,
   postsInLocalDay,
+  todaySlots,
   STAGGER_STEP_MIN,
-  STAGGER_WRAP,
+  STAGGER_SLOTS,
 } from "./video-pipeline";
 
 describe("colors", () => {
@@ -31,16 +32,49 @@ describe("colors", () => {
 });
 
 describe("stagger", () => {
-  it("no two of the first nine accounts share a minute offset", () => {
-    const offsets = Array.from({ length: STAGGER_WRAP }, (_, i) => enrollmentOffsets(i).staggerMin);
-    expect(new Set(offsets).size).toBe(STAGGER_WRAP);
-    expect(Math.max(...offsets)).toBe((STAGGER_WRAP - 1) * STAGGER_STEP_MIN);
+  it("no two of the first eighteen accounts share a minute offset", () => {
+    const staggers: number[] = [];
+    const variants: number[] = [];
+    for (let i = 0; i < STAGGER_SLOTS; i++) {
+      const o = enrollmentOffsets(staggers, variants);
+      staggers.push(o.staggerMin);
+      variants.push(o.variantIdx);
+    }
+    expect(new Set(staggers).size).toBe(STAGGER_SLOTS);
+    expect(Math.max(...staggers)).toBe((STAGGER_SLOTS - 1) * STAGGER_STEP_MIN);
   });
 
-  it("the look number is the enrolment ordinal, permanent and unique", () => {
-    expect(enrollmentOffsets(0).variantIdx).toBe(0);
-    expect(enrollmentOffsets(7).variantIdx).toBe(7);
-    expect(enrollmentOffsets(20).variantIdx).toBe(20);
+  it("a slot freed by a DELETED account may be reused, but never one held live", () => {
+    // Live accounts hold 0 and 14 (7 was deleted): the next enrollee gets 7.
+    const o = enrollmentOffsets([0, 14], [0, 1, 2]);
+    expect(o.staggerMin).toBe(7);
+  });
+
+  it("the look number is never reused, even after a deletion", () => {
+    // Account with variant 1 was deleted; live variants are 0 and 2. The next
+    // account must take 3, or two accounts share a visual identity.
+    expect(enrollmentOffsets([0, 14], [0, 2]).variantIdx).toBe(3);
+    expect(enrollmentOffsets([], []).variantIdx).toBe(0);
+  });
+});
+
+describe("todaySlots", () => {
+  it("returns only slots landing on the account's current local day", () => {
+    // 06:00 UTC = 11:30 IST: the 11:00 slot is gone, only 19:00 remains today.
+    const slots = todaySlots(new Date("2026-08-08T06:00:00Z"), "Asia/Kolkata", 0);
+    expect(slots.map((s) => s.slot)).toEqual(["evening"]);
+  });
+
+  it("after the last slot has passed it returns NOTHING, never tomorrow", () => {
+    // 15:00 UTC = 20:30 IST: both of today's slots are gone. The review bug:
+    // returning tomorrow's here made every 15-minute run schedule two more.
+    const slots = todaySlots(new Date("2026-08-08T15:00:00Z"), "Asia/Kolkata", 0);
+    expect(slots).toEqual([]);
+  });
+
+  it("early morning returns both of today's slots", () => {
+    const slots = todaySlots(new Date("2026-08-08T00:30:00Z"), "Asia/Kolkata", 21);
+    expect(slots.map((s) => s.slot)).toEqual(["morning", "evening"]);
   });
 });
 
@@ -67,8 +101,10 @@ describe("nextSlots", () => {
 
   it("two accounts in one timezone never share an instant", () => {
     const after = new Date("2026-08-08T00:00:00Z");
-    const a = nextSlots(after, "Asia/Manila", enrollmentOffsets(0).staggerMin, 4);
-    const b = nextSlots(after, "Asia/Manila", enrollmentOffsets(1).staggerMin, 4);
+    const first = enrollmentOffsets([], []);
+    const second = enrollmentOffsets([first.staggerMin], [first.variantIdx]);
+    const a = nextSlots(after, "Asia/Manila", first.staggerMin, 4);
+    const b = nextSlots(after, "Asia/Manila", second.staggerMin, 4);
     const at = new Set(a.map((s) => s.at.getTime()));
     for (const s of b) expect(at.has(s.at.getTime())).toBe(false);
   });

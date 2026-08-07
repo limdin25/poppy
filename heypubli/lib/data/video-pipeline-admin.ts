@@ -28,6 +28,9 @@ export interface PipelineMasterView extends MasterVideo {
   rendersTotal: number;
   postsScheduled: number;
   postsPublished: number;
+  /** Publishes that FAILED: without this Hugo has no aggregate view of a
+   *  broken account and a master silently skipped for it. */
+  postsFailed: number;
 }
 
 export interface PipelineOverview {
@@ -82,6 +85,7 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
     postsScheduled: posts.filter((p) => p.master_video_id === m.id && p.status === "pending").length,
     postsPublished: posts.filter((p) => p.master_video_id === m.id && p.status === "published")
       .length,
+    postsFailed: posts.filter((p) => p.master_video_id === m.id && p.status === "failed").length,
   }));
 
   const connRows = (connsRes.data ?? []) as Array<{

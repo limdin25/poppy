@@ -7,6 +7,7 @@ import { saveOutstandConnection, getPostingSettingsAdmin } from "@/lib/data/outs
 import { findOrCreateInfluencerByOutstand, type IgSignupData } from "@/lib/data/auth-ig";
 import { notifyAccountConnected } from "@/lib/data/notifications";
 import { markSignupLeadConnected } from "@/lib/data/signup-leads";
+import { accountExistsForEmail } from "@/lib/data/existing-account";
 import { STATE_COOKIE, SIGNUP_COOKIE, authCookieClearAttrs } from "@/lib/ig-auth-cookies";
 
 function readSignupData(raw: string | undefined): IgSignupData | undefined {
@@ -170,9 +171,21 @@ export async function GET(request: Request) {
     const dest = !isNew ? "/dashboard" : signup ? "/onboarding" : "/welcome";
     return NextResponse.redirect(`${origin}${dest}`);
   } catch (err) {
-    // Log the real cause for debugging; the user gets actionable PT-BR, never
-    // a raw English database/API message.
+    // Log the real cause for debugging; the user gets something actionable,
+    // never a raw database or API message.
     console.error("[outstand/callback]", err);
+
+    // DO NOT SEND SOMEBODY BACK TO A SIGNUP THEY ALREADY FINISHED.
+    // Edelyn, 07 Aug 2026: signed up 08:33, Instagram linked, and at 09:03 she
+    // was back on this error reading "please try again" and doing exactly that.
+    // She had an account and nothing left but the Skool invite in her inbox.
+    // If we recognise the address, send her to sign in instead of round again.
+    const typed = readSignupData(cookieStore.get(SIGNUP_COOKIE)?.value)?.email;
+    if (await accountExistsForEmail(typed)) {
+      clearStateCookie();
+      clearSignupCookie();
+      return NextResponse.redirect(`${origin}/login?exists=1`);
+    }
     return fail("Could not sign in with Instagram. Please try again.");
   }
 }

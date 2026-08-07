@@ -26,9 +26,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   creatorTimeZone,
   enrollmentOffsets,
-  nextSlots,
   pickColorFamily,
   postsInLocalDay,
+  todaySlots,
 } from "@/lib/data/video-pipeline";
 import type {
   CreatorVideoRender,
@@ -80,8 +80,12 @@ export async function GET(request: NextRequest) {
 
   const unenrolled = (connections ?? []).filter((c) => !stateBy.has(c.profile_id));
   for (const c of unenrolled) {
-    const taken = [...stateBy.values()].map((s) => s.color_family);
-    const { staggerMin, variantIdx } = enrollmentOffsets(stateBy.size);
+    const live = [...stateBy.values()];
+    const taken = live.map((s) => s.color_family);
+    const { staggerMin, variantIdx } = enrollmentOffsets(
+      live.map((s) => s.stagger_min),
+      live.map((s) => s.variant_idx),
+    );
     const row: CreatorVideoState = {
       profile_id: c.profile_id,
       color_family: pickColorFamily(taken),
@@ -108,16 +112,26 @@ export async function GET(request: NextRequest) {
   const approved = (masters ?? []) as MasterVideo[];
   const masterBySeq = new Map(approved.map((m) => [m.seq, m]));
 
-  const { data: renders } = (await db
-    .from("creator_video_renders")
-    .select("id, master_id, profile_id, status, video_url")) as {
-    data: CreatorVideoRender[] | null;
-  };
-  const renderByKey = new Map(
-    (renders ?? []).map((r) => [`${r.master_id}:${r.profile_id}`, r as CreatorVideoRender]),
-  );
+  // PAGED on purpose: PostgREST caps a response at 1000 rows and this table
+  // grows by creators x masters forever; an unpaged read here silently
+  // dropped ready renders in review's projection and stalled scheduling.
+  const renders: CreatorVideoRender[] = [];
+  for (let fromRow = 0; ; fromRow += 1000) {
+    const { data: page } = (await db
+      .from("creator_video_renders")
+      .select("id, master_id, profile_id, status, video_url")
+      .order("created_at")
+      .range(fromRow, fromRow + 999)) as { data: CreatorVideoRender[] | null };
+    renders.push(...(page ?? []));
+    if (!page || page.length < 1000) break;
+  }
+  const renderByKey = new Map(renders.map((r) => [`${r.master_id}:${r.profile_id}`, r]));
 
+  const connectedIds = new Set((connections ?? []).map((c) => c.profile_id));
   for (const s of stateBy.values()) {
+    // A disconnected account renders nothing and schedules nothing; it picks
+    // its sequence back up where it left off if the connection returns.
+    if (!connectedIds.has(s.profile_id)) continue;
     for (let seq = s.next_seq; seq < s.next_seq + RENDER_AHEAD; seq++) {
       const m = masterBySeq.get(seq);
       if (!m) continue;
@@ -169,29 +183,49 @@ export async function GET(request: NextRequest) {
   };
   const profileBy = new Map((profiles ?? []).map((p) => [p.id, p]));
 
-  // Every pipeline post that is still in the future or in today's window,
-  // per creator, in one read.
+  // Every pipeline post around today's window, per creator. Failed posts are
+  // kept OUT of the day count (a failed publish must not eat one of the two
+  // real posts) but their slot instants still block re-use of the same time.
   const since = new Date(now.getTime() - 36 * 3600_000).toISOString();
   const { data: pipelinePosts } = await db.from("scheduled_posts")
-    .select("profile_id, scheduled_at, master_video_id")
+    .select("profile_id, scheduled_at, master_video_id, status")
     .not("master_video_id", "is", null)
     .gte("scheduled_at", since);
   const postsBy = new Map<string, Date[]>();
-  for (const p of (pipelinePosts ?? []) as Array<{ profile_id: string; scheduled_at: string }>) {
-    const list = postsBy.get(p.profile_id) ?? [];
-    list.push(new Date(p.scheduled_at));
-    postsBy.set(p.profile_id, list);
+  const takenInstants = new Map<string, Set<number>>();
+  for (const p of (pipelinePosts ?? []) as Array<{
+    profile_id: string;
+    scheduled_at: string;
+    status: string;
+  }>) {
+    const at = new Date(p.scheduled_at);
+    if (p.status !== "failed") {
+      const list = postsBy.get(p.profile_id) ?? [];
+      list.push(at);
+      postsBy.set(p.profile_id, list);
+    }
+    const taken = takenInstants.get(p.profile_id) ?? new Set<number>();
+    taken.add(at.getTime());
+    takenInstants.set(p.profile_id, taken);
   }
 
   for (const s of stateBy.values()) {
     const profile = profileBy.get(s.profile_id);
     if (!profile || profile.suspended_at) continue;
+    if (!connectedIds.has(s.profile_id)) continue;
     const tz = creatorTimeZone(profile.whatsapp);
     const mine = postsBy.get(s.profile_id) ?? [];
+    const taken = takenInstants.get(s.profile_id) ?? new Set<number>();
 
-    // Keep filling until this creator has two posts in their local day (and
-    // never more than two new ones per run, which bounds a cold start).
-    for (let guard = 0; guard < 2; guard++) {
+    // Fill ONLY today's remaining local slots. Review proved the previous
+    // "keep filling until two exist today" marched the sequence days ahead:
+    // once today's slots were gone, every run scheduled two more on ever
+    // later days while today's count never moved. Today-only is self-limiting
+    // at two per day, and tomorrow's cron fills tomorrow.
+    const open = todaySlots(now, tz, s.stagger_min).filter(
+      (slot) => !taken.has(slot.at.getTime()),
+    );
+    for (const slot of open) {
       if (postsInLocalDay(now, tz, mine) >= 2) break;
       const m = masterBySeq.get(s.next_seq);
       if (!m) break; // sequence exhausted; Hugo uploads more
@@ -200,9 +234,6 @@ export async function GET(request: NextRequest) {
         report.waitingOnRenders++;
         break;
       }
-      const lastMine = mine.length ? new Date(Math.max(...mine.map((d) => d.getTime()))) : now;
-      const [slot] = nextSlots(lastMine > now ? lastMine : now, tz, s.stagger_min, 1);
-      if (!slot) break;
       const { error } = await db.from("scheduled_posts").insert({
         profile_id: s.profile_id,
         brand_id: brand.id,
@@ -216,18 +247,29 @@ export async function GET(request: NextRequest) {
         master_video_id: m.id,
       });
       if (error) {
-        report.errors.push(`schedule m${m.seq} ${s.profile_id}: ${error.message}`);
-        break;
+        // The partial unique index (one post per master per account, ever)
+        // turns the crashed-between-insert-and-advance case into this exact
+        // error: the post EXISTS, only the pointer is stale. Treat it as
+        // already-scheduled and advance, or the account stalls forever.
+        if (!/duplicate|unique/i.test(error.message)) {
+          report.errors.push(`schedule m${m.seq} ${s.profile_id}: ${error.message}`);
+          break;
+        }
+      } else {
+        mine.push(slot.at);
+        postsBy.set(s.profile_id, mine);
+        report.postsScheduled++;
       }
-      mine.push(slot.at);
-      postsBy.set(s.profile_id, mine);
       const nextSeq = s.next_seq + 1;
-      await db
+      const { error: advErr } = await db
         .from("creator_video_state")
         .update({ next_seq: nextSeq })
         .eq("profile_id", s.profile_id);
+      if (advErr) {
+        report.errors.push(`advance ${s.profile_id}: ${advErr.message}`);
+        break;
+      }
       s.next_seq = nextSeq;
-      report.postsScheduled++;
     }
   }
 

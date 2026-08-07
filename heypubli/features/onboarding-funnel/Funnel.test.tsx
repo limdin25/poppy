@@ -77,6 +77,13 @@ describe("Funnel", () => {
   it("celebrates once everything is done, with the finish banner and confetti", () => {
     render(<Funnel data={funnelMockComplete} />);
     expect(screen.getByTestId("funnel-finished")).toBeInTheDocument();
+
+    // A finished creator was left on a green box with nowhere to go. Hugo,
+    // 07 Aug 2026: "when they finish the onboarding there should be a button
+    // that takes them to the dashboard." Five steps of real work and then a
+    // dead end is how somebody closes the tab and never comes back.
+    const toDashboard = screen.getByTestId("funnel-to-dashboard");
+    expect(toDashboard).toHaveAttribute("href", "/dashboard");
     expect(screen.getByTestId("funnel-confetti")).toBeInTheDocument();
     expect(screen.getByTestId("funnel-progress")).toHaveTextContent("5 of 5 done");
   });
@@ -84,6 +91,8 @@ describe("Funnel", () => {
   it("shows no confetti and no finish banner before the end", () => {
     render(<Funnel data={funnelMockMidway} />);
     expect(screen.queryByTestId("funnel-finished")).not.toBeInTheDocument();
+    // No shortcut out before the work is done.
+    expect(screen.queryByTestId("funnel-to-dashboard")).not.toBeInTheDocument();
     expect(screen.queryByTestId("funnel-confetti")).not.toBeInTheDocument();
   });
 
@@ -160,5 +169,17 @@ describe("Funnel", () => {
     for (const code of [0x2014, 0x2013, 0x2018, 0x2019, 0x201c, 0x201d, 0x2026]) {
       expect(all).not.toContain(String.fromCharCode(code));
     }
+  });
+});
+
+// Instagram's professional-account conversion asks "Select a category" and
+// nothing on our page said what to pick, so a creator stalls on a screen we
+// sent them to. Hugo, 07 Aug 2026: "they ask you to choose the category on
+// Instagram, tell them to choose Personal blog."
+describe("the Instagram category screen", () => {
+  it("tells them which category to pick", () => {
+    const all = JSON.stringify(funnelCopy);
+    expect(all).toMatch(/personal blog/i);
+    expect(all).toMatch(/categor/i);
   });
 });

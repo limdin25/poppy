@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatchInvite } from "@/lib/data/skool-invite-dispatch";
 import type { Profile } from "@/types/database";
 
 /**
@@ -98,19 +99,55 @@ export async function requestSkoolInvite(): Promise<InviteResult> {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: invErr } = await (admin.from("skool_invites") as any).insert({
-    lead_id: leadId,
-    profile_id: user.id,
-    email,
-    first_name: profile?.first_name ?? "",
-    lane: "partner",
-    idempotency_key: `invite:${leadId}`,
-  });
+  const { data: inserted, error: invErr } = await (admin.from("skool_invites") as any)
+    .insert({
+      lead_id: leadId,
+      profile_id: user.id,
+      email,
+      first_name: profile?.first_name ?? "",
+      lane: "partner",
+      idempotency_key: `invite:${leadId}`,
+    })
+    .select("id, email, attempts, lead_id")
+    .single();
   // 23505 means it is already queued or already sent. From the creator's side
   // that is a success: an invite is on its way to them.
   if (invErr && invErr.code !== "23505") {
     console.error("[invite] queue failed", invErr);
     return { ok: false, reason: "failed" };
+  }
+
+  // SEND IT NOW, do not wait for the five-minute cron.
+  //
+  // 07 Aug 2026: the first real creator pressed this button 21 seconds after
+  // signing up and then stared at an empty inbox. His row was still queued with
+  // zero attempts two minutes later and only went out because a human ran the
+  // cron by hand. The page tells him "it arrives in a few minutes", which is
+  // exactly when somebody wanders off.
+  //
+  // dispatchInvite never throws, and a failure leaves the row queued for the
+  // cron to retry, so the worst case here is the old behaviour.
+  //
+  // On 23505 the row already exists, which is the "Send it again" button. That
+  // path used to insert, collide, and return ok, so the page said "on its way
+  // to you" while nothing was sent. A creator who never got the first email
+  // could press that button all day and never receive anything.
+  let row = inserted ?? null;
+  if (!row) {
+    const { data: existing } = await admin
+      .from("skool_invites")
+      .select("id, email, attempts, lead_id")
+      .eq("idempotency_key", `invite:${leadId}`)
+      .maybeSingle<{
+        id: string;
+        email: string;
+        attempts: number;
+        lead_id: string | null;
+      }>();
+    row = existing ?? null;
+  }
+  if (row) {
+    await dispatchInvite(admin, row);
   }
 
   revalidatePath("/onboarding");

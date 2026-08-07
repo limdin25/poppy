@@ -36,8 +36,11 @@ export const funnelCopy = {
       ],
       cta: "Connect Instagram",
       errorHeadline: "Instagram did not finish connecting.",
+      // "Select a category" is a screen Instagram shows during the switch to a
+      // professional account, and nothing here used to say what to pick, so a
+      // creator stalls on a page WE sent them to. Personal blog, every time.
       errorBody:
-        "The usual reason is the account is a personal one. In the Instagram app go to Settings, then Account type and tools, and switch to a professional account. It is free and takes a minute. Then tap the button again. If it still fails, tell us on WhatsApp and we will do it with you.",
+        "The usual reason is the account is a personal one. In the Instagram app go to Settings, then Account type and tools, and switch to a professional account. It is free and takes a minute. When Instagram asks you to Select a category, choose Personal blog. Then tap the button again. If it still fails, tell us on WhatsApp and we will do it with you.",
       status: {
         done: (username: string | null) =>
           username ? `Connected as @${username}.` : "Connected.",
@@ -155,6 +158,8 @@ export const funnelCopy = {
   finish: {
     heading: "That is everything",
     body: "All five steps are done. We take it from here and start posting to your account. Everything we teach lives in the community, and this page stays in your menu in case your link ever changes.",
+    // Five steps of real work used to end on a green box with nowhere to go.
+    cta: "Go to my dashboard",
   },
 
   help: {

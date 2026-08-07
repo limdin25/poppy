@@ -4,6 +4,7 @@ import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import { EmailSignupForm } from "@/features/email-signup";
 import { IgSignupForm, signupMobilePitch } from "@/features/ig-login";
 import { SIGNUP_COOKIE } from "@/lib/ig-auth-cookies";
+import { prefillWhatsappFromLink } from "@/lib/data/signup-prefill";
 
 // If a previous signup attempt failed mid-Instagram, the typed form data is
 // still in the (httpOnly) signup cookie, prefill it so nothing is retyped.
@@ -25,11 +26,22 @@ function readSignupDefaults(raw: string | undefined) {
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string }>;
+  searchParams: Promise<{ erro?: string; w?: string }>;
 }) {
-  const { erro } = await searchParams;
+  const { erro, w } = await searchParams;
   const cookieStore = await cookies();
-  const defaults = readSignupDefaults(cookieStore.get(SIGNUP_COOKIE)?.value);
+  const cookieDefaults = readSignupDefaults(cookieStore.get(SIGNUP_COOKIE)?.value);
+
+  // ?w= carries the number they message us from, so the box arrives filled in
+  // rather than asking a creator to retype the number they are reading this
+  // link on. Two of the first three signups typed it wrong without it.
+  // A cookie from a bounced Instagram round trip still wins, since that is
+  // their own earlier input.
+  const prefilled = prefillWhatsappFromLink(w);
+  const defaults =
+    prefilled && !cookieDefaults?.whatsapp
+      ? { ...(cookieDefaults ?? {}), whatsapp: prefilled }
+      : cookieDefaults;
 
   return (
     <div className="w-full max-w-md space-y-8">

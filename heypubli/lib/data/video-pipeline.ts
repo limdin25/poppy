@@ -52,11 +52,13 @@ export const FAMILY_CHIP_HEX: Record<string, string> = {
 /** The two daily base slots, in the creator's OWN local time. */
 export const SLOT_HOURS = [11, 19] as const;
 
-/** Minutes between two accounts' stagger offsets. With step 7 over [0, 63)
- *  nine accounts never share a minute; past nine the offsets wrap but the
- *  variant jitter of real-world cron timing keeps exact collisions rare. */
+/** Minutes between two accounts' stagger offsets. 18 distinct offsets over
+ *  [0, 126) before any reuse; past 18 accounts the least-used offset wins,
+ *  which review showed must never silently collide with a LIVE account when a
+ *  deleted one freed a slot. Offsets are therefore assigned from what is
+ *  actually taken, never from a row count. */
 export const STAGGER_STEP_MIN = 7;
-export const STAGGER_WRAP = 9;
+export const STAGGER_SLOTS = 18;
 
 /** Pick the color for a new account: the first family not held by any active
  *  account, or the least-held one once all 14 are taken. Deterministic given
@@ -76,16 +78,30 @@ export function pickColorFamily(taken: string[]): string {
   return best;
 }
 
-/** The nth enrolled account's permanent offsets: stagger minutes added to
- *  both daily slots, and the variants factory look number. */
-export function enrollmentOffsets(enrolledCount: number): {
-  staggerMin: number;
-  variantIdx: number;
-} {
-  return {
-    staggerMin: (enrolledCount % STAGGER_WRAP) * STAGGER_STEP_MIN,
-    variantIdx: enrolledCount,
-  };
+/** A new account's permanent offsets, computed from what LIVE accounts hold
+ *  (a deleted account's slot may be reused; a live one's may not, and the
+ *  look number is never reused at all so two accounts can never share a
+ *  visual identity). */
+export function enrollmentOffsets(
+  takenStaggers: number[],
+  takenVariants: number[],
+): { staggerMin: number; variantIdx: number } {
+  const counts = new Map<number, number>();
+  for (let i = 0; i < STAGGER_SLOTS; i++) counts.set(i * STAGGER_STEP_MIN, 0);
+  for (const t of takenStaggers) counts.set(t, (counts.get(t) ?? 0) + 1);
+  let staggerMin = 0;
+  let best = Infinity;
+  for (let i = 0; i < STAGGER_SLOTS; i++) {
+    const off = i * STAGGER_STEP_MIN;
+    const c = counts.get(off) ?? 0;
+    if (c < best) {
+      best = c;
+      staggerMin = off;
+    }
+    if (c === 0) break;
+  }
+  const variantIdx = takenVariants.length ? Math.max(...takenVariants) + 1 : 0;
+  return { staggerMin, variantIdx };
 }
 
 /** What time is it right now in this zone, as parts. */
@@ -148,6 +164,23 @@ export function nextSlots(
     }
   }
   return out;
+}
+
+/**
+ * The slots still remaining in the account's CURRENT local day. This is what
+ * the scheduler fills from: review proved that filling "until 2 today" from
+ * slots that may land on FUTURE days marches the sequence weeks ahead (each
+ * 15-minute run adds two more tomorrow-or-later posts while today's count
+ * never moves). Filling only today's remaining slots is self-limiting: at
+ * most two per day, an account enrolled at noon gets one today and the full
+ * two from tomorrow.
+ */
+export function todaySlots(now: Date, timeZone: string, staggerMin: number): PostSlot[] {
+  const today = zoneParts(now, timeZone);
+  return nextSlots(now, timeZone, staggerMin, 2).filter((s) => {
+    const p = zoneParts(s.at, timeZone);
+    return p.y === today.y && p.m === today.m && p.d === today.d;
+  });
 }
 
 /** The zone an account posts in: from their WhatsApp country, else UTC. */

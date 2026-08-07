@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Check, Lock } from "lucide-react";
 import { Plate } from "./Plate";
 import { CopyBlock } from "./CopyBlock";
@@ -460,6 +461,15 @@ export function Funnel({ data }: { data: OnboardingData }) {
               <p className="mt-2 max-w-[52ch] text-[15px] leading-relaxed text-white/90">
                 {t.finish.body}
               </p>
+              {/* Somewhere to go. Without this a creator who has just done five
+                  steps of real work lands on a green box and a dead end. */}
+              <Link
+                href="/dashboard"
+                data-testid="funnel-to-dashboard"
+                className="mt-5 inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[15px] font-black text-[#065F46] transition hover:bg-white/90"
+              >
+                {t.finish.cta}
+              </Link>
             </section>
           </>
         )}

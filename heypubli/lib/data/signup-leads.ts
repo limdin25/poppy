@@ -3,16 +3,25 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { SignupLead, SignupLeadStage } from "@/types/database";
 
 // How far along the funnel a lead is. Order matters: this array IS the ranking.
-// captured/contacted/engaged arrive with the Facebook funnel (migration 021); invited is
-// stamped when the Skool invite is confirmed.
+// captured/contacted/engaged arrive with the Facebook funnel (migration 021).
+//
+// "invited" sits EARLY, not at the top. It used to be last, from the old flow
+// where the Skool invite came after Instagram connect. Then community-first
+// arrived: sheet-sync queues the invite AT IMPORT, so every fresh lead is
+// stamped "invited" within seconds of existing. With "invited" ranked above
+// "connected", the drip read stageIndex(invited) >= stageIndex(connected) and
+// skipped the welcome as "converted" for EVERY imported lead, and advanceStage
+// refused to ever move them forward because nothing outranked the top. Thirteen
+// real leads were silently stopped in the first evening. The ladder must rank
+// what the LEAD has done; the invite is something WE did.
 export const LEAD_STAGES: SignupLeadStage[] = [
   "captured",
   "contacted",
   "engaged",
+  "invited",
   "started",
   "sent_to_instagram",
   "connected",
-  "invited",
 ];
 
 /**

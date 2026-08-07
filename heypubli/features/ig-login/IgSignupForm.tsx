@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { WhatsAppInput } from "@/components/whatsapp-input";
+import { normaliseWhatsapp } from "@/lib/data/whatsapp-number";
 import { signupStepsCopy, signupWizardCopy } from "./copy";
 import { ConnectInstagramStep } from "./ConnectInstagramStep";
 
@@ -75,7 +76,12 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
       return EMAIL_RE.test(email.trim()) ? null : signupWizardCopy.errors.email;
     }
     if (target === 3) {
-      return whatsapp.replace(/\D/g, "").length >= MIN_PHONE_DIGITS
+      // Two of the first three real signups typed a number we could not reach:
+      // one a digit out, one keeping the local leading zero after the country
+      // code. A bare digit count accepts both, so normalise properly and refuse
+      // what is not a usable number.
+      const n = normaliseWhatsapp(whatsapp);
+      return n.ok && n.e164.replace(/\D/g, "").length >= MIN_PHONE_DIGITS
         ? null
         : signupWizardCopy.errors.mobile;
     }
@@ -112,13 +118,21 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
       return;
     }
     setError(null);
+    // Correct the box in place so the creator SEES the number we will actually
+    // use. Silently storing a different string to the one on screen is how a
+    // typo survives all the way to a message sent to a stranger.
+    const tidy = normaliseWhatsapp(whatsapp);
+    if (tidy.ok && tidy.e164 !== whatsapp) setWhatsapp(tidy.e164);
     // Answering the last question is what makes them a lead worth keeping.
     if (step === FORM_STEPS) {
+      // The NORMALISED number, never the raw one. Discipline X typed
+      // +88001306661213 (country code plus the local leading zero) and it was
+      // stored verbatim, so every nudge would have gone nowhere.
       captureLead({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         email: email.trim(),
-        whatsapp: whatsapp.trim(),
+        whatsapp: normaliseWhatsapp(whatsapp).e164 || whatsapp.trim(),
       });
     }
     setStep((s) => Math.min(s + 1, CONNECT_STEP));

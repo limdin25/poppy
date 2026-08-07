@@ -37,6 +37,7 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   preview_rendering: { text: "RENDERING PREVIEW", cls: "bg-amber-100 text-amber-800" },
   pending_approval: { text: "WAITING FOR YOUR APPROVAL", cls: "bg-blue-100 text-blue-800" },
   approved: { text: "APPROVED, IN THE SEQUENCE", cls: "bg-green-100 text-green-800" },
+  failed: { text: "UPLOAD FAILED, TRY ANOTHER FILE", cls: "bg-red-100 text-red-800" },
 };
 
 export function AdminVideos({ overview }: { overview: PipelineOverview }) {
@@ -143,6 +144,8 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
+              // Reset so picking the SAME file after a failure fires again.
+              e.target.value = "";
               if (f) void onUpload(f);
             }}
           />
@@ -208,6 +211,9 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
                   </span>
                   <span>Scheduled: {m.postsScheduled}</span>
                   <span>Published: {m.postsPublished}</span>
+                  {m.postsFailed > 0 && (
+                    <span className="text-red-700 font-semibold">FAILED: {m.postsFailed}</span>
+                  )}
                 </div>
                 <textarea
                   placeholder="Instagram caption (empty is fine, the video says LINK IN BIO itself)"

@@ -178,9 +178,10 @@ export const landingCopy = {
     // Four steps, one flowing paragraph each. It was three separate centred lines per
     // step, which read as three unrelated fragments rather than a description.
     //
-    // The niche question lives in ONBOARDING, which runs after Instagram is connected,
-    // so it belongs in step 03 and not in step 01. Keep it there: a step that promises
-    // something happening two steps later is just wrong.
+    // NEVER promise a niche here. We cannot niche accounts: what goes out is
+    // general AI lifestyle content. The old step 03 said "you tell us your
+    // niche" and the FAQ said content is "aligned with your niche", and both
+    // described a product that does not exist. Pinned by howItWorks.test.ts.
     steps: [
       {
         number: "01",
@@ -197,7 +198,7 @@ export const landingCopy = {
       {
         number: "03",
         title: "We post with your link",
-        body: "You tell us your niche, then two ultra realistic AI videos go out every day, each one carrying your own affiliate link. You approve the style and we do the rest.",
+        body: "Two ultra realistic AI videos go out every day, each one carrying your own affiliate link. You approve the style and we do the rest.",
         icon: "/steps/step3.webp",
       },
       {
@@ -234,7 +235,7 @@ export const landingCopy = {
       {
         question: "What kind of content is posted on my profile?",
         answer:
-          "Ultra realistic AI video aligned with your niche, posted twice a day to your feed and stories. You can review the content before it goes live. We publish automatically at the times your audience engages the most.",
+          "Ultra realistic AI lifestyle video, posted twice a day to your feed and stories. You can review the content before it goes live. We publish automatically at the times your audience engages the most.",
       },
       {
         question: "Do I keep control of my profile?",

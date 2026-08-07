@@ -29,6 +29,7 @@ const overview: PipelineOverview = {
       rendersTotal: 0,
       postsScheduled: 0,
       postsPublished: 0,
+      postsFailed: 0,
     },
   ],
   creators: [

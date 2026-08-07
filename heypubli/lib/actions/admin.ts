@@ -164,6 +164,15 @@ export async function deleteBrand(brandId: string) {
   await requireAdmin();
   const admin = createAdminClient();
 
+  // The HeyPubli brand carries EVERY creator-pipeline post (scheduled and the
+  // published history); deleting it here would cascade all of them away while
+  // each account's sequence pointer stays advanced. Review flagged it; it is
+  // simply not deletable.
+  const { data: guard } = await admin.from("brands").select("name").eq("id", brandId).single();
+  if ((guard as { name?: string } | null)?.name === "HeyPubli") {
+    throw new Error("The HeyPubli brand belongs to the video pipeline and cannot be deleted.");
+  }
+
   const { error: assignErr } = await admin
     .from("brand_assignments")
     .delete()

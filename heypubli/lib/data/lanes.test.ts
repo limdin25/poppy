@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  mayContactNow,
   decideLane,
   timezoneForPhone,
   whatsappMarketingAllowed,
@@ -153,5 +154,50 @@ describe("NURTURE_PLAN", () => {
   it("steps are ordered and unique", () => {
     const steps = NURTURE_PLAN.map((s) => s.step);
     expect(steps).toEqual([...new Set(steps)].sort((a, b) => a - b));
+  });
+});
+
+// Hugo, 07 Aug 2026, watching form leads arrive at 23:00 Dhaka time: "If the
+// leads are coming at this time, we can reply them any time. If they come in
+// the middle of the night, we still reply them because they are awake."
+//
+// Quiet hours exist so WE do not start conversations at 3am. A lead who acted
+// minutes ago is awake by their own evidence, and making them wait until 09:00
+// for the welcome wastes the hottest minutes a lead ever has. The freshness
+// window is what keeps this honest: the nurture sweep re-arms day-old strays,
+// and THOSE must still wait for morning, because their owner is asleep.
+describe("mayContactNow", () => {
+  const night = new Date("2026-08-07T17:30:00Z"); // 23:30 in Dhaka
+  const day = new Date("2026-08-07T07:30:00Z");   // 13:30 in Dhaka
+  const DHAKA = "Asia/Dhaka";
+
+  it("daytime sends are always allowed, freshness never enters into it", () => {
+    expect(mayContactNow(day, DHAKA, null)).toBe(true);
+    expect(mayContactNow(day, DHAKA, "2026-08-01T00:00:00Z")).toBe(true);
+  });
+
+  it("a lead who acted minutes ago may be contacted at any hour", () => {
+    expect(mayContactNow(night, DHAKA, "2026-08-07T17:24:00Z")).toBe(true);
+  });
+
+  it("a stray re-armed by the sweep still waits for their morning", () => {
+    expect(mayContactNow(night, DHAKA, "2026-08-05T09:00:00Z")).toBe(false);
+  });
+
+  it("no known action at night means wait, we cannot prove anyone is awake", () => {
+    expect(mayContactNow(night, DHAKA, null)).toBe(false);
+  });
+
+  it("an unreadable stamp fails closed, exactly like the timezone rule above", () => {
+    expect(mayContactNow(night, DHAKA, "not a date")).toBe(false);
+  });
+
+  it("a fresh action outruns an unknown timezone", () => {
+    // withinSendingHours fails closed on a null timezone because without one we
+    // might wake somebody. A lead who acted six minutes ago is awake wherever
+    // they are, so freshness answers the exact question the timezone was a
+    // proxy for. Stale plus unknown stays blocked, as the next line proves.
+    expect(mayContactNow(night, null, "2026-08-07T17:24:00Z")).toBe(true);
+    expect(mayContactNow(night, null, "2026-08-05T09:00:00Z")).toBe(false);
   });
 });

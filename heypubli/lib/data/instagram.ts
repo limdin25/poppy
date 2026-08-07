@@ -2,16 +2,35 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { InstagramConnection } from "@/types/database";
 
+/**
+ * Is this creator's Instagram connected, and under what handle?
+ *
+ * READS BOTH TABLES, and outstand_connections first, because that is the live
+ * one. instagram_connections is the older Meta path and is EMPTY in production,
+ * always has been. Reading only that table meant Settings told Bhupender and
+ * Edelyn "Not connected" while their accounts were connected and posting was
+ * ready to go, and it is the same wrong-table read that had me report to Hugo
+ * as fact that nobody had ever connected an Instagram.
+ */
 export async function getInstagramConnection(
   profileId: string,
 ): Promise<InstagramConnection | null> {
   const supabase = await createClient();
+
+  const { data: outstand } = await supabase
+    .from("outstand_connections")
+    .select("*")
+    .eq("profile_id", profileId)
+    .eq("is_connected", true)
+    .maybeSingle();
+  if (outstand) return outstand as unknown as InstagramConnection;
+
   const { data } = await supabase
     .from("instagram_connections")
     .select("*")
     .eq("profile_id", profileId)
     .eq("is_connected", true)
-    .single();
+    .maybeSingle();
   return data as InstagramConnection | null;
 }
 

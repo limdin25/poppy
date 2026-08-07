@@ -42,11 +42,15 @@ describe("How it works", () => {
     expect(text).toMatch(/paid to the account/i);
   });
 
-  /* The niche is asked during onboarding, which runs AFTER Instagram is connected.
-     Promising it in step 01 described a flow the product does not have. */
-  it("asks for the niche no earlier than the step that actually collects it", () => {
-    expect(steps[0].body).not.toMatch(/niche/i);
-    expect(steps[1].body).not.toMatch(/niche/i);
-    expect(steps[2].body).toMatch(/niche/i);
+  /* NEVER promise a niche. Hugo, 07 Aug 2026: "we have to remove the niche
+     option from the onboarding because we cannot niche the accounts... the
+     niche is just general AI content. Lifestyle and stuff." The old copy told
+     visitors "you tell us your niche" and the FAQ said content would be
+     "aligned with your niche". Neither is something the product can do, and a
+     lead had already been told it by hand before anyone checked. */
+  it("never promises the visitor a niche, because we cannot niche accounts", () => {
+    for (const step of steps) {
+      expect(step.body).not.toMatch(/niche/i);
+    }
   });
 });
