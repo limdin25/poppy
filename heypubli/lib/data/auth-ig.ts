@@ -28,6 +28,8 @@ export interface IgSignupData {
   lastName: string;
   email: string;
   whatsapp: string;
+  /** The ?u= code from the tracked signup link, when they came through one. */
+  leadCode?: string;
 }
 
 export interface IgUserResult {

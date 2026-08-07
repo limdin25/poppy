@@ -358,8 +358,11 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${hi}here is the 90 second video that shows exactly how it works: heypubli.com/watch?u=${code}\n\nTell me when you have seen it and I will get you set up.`,
   explain_then_video: ({ hi, code }) =>
     `${hi}we post AI videos to your Instagram for you, twice a day. You do not film anything and you do not write anything, we make it and post it.\n\nThe whole thing in 90 seconds: heypubli.com/watch?u=${code}`,
-  signup: ({ hi }) =>
-    `${hi}make your account here, it takes about a minute: heypubli.com/signup\n\nTell me when you are in and I will walk you through the rest.`,
+  // The code ties the SIGNUP to the exact lead, same token as the watch link
+  // (Hugo, 08 Aug 2026: "track the person's exact sign up"). A thread with no
+  // lead still gets the bare link; attribution never blocks an answer.
+  signup: ({ hi, code }) =>
+    `${hi}make your account here, it takes about a minute: heypubli.com/signup${code ? `?u=${code}` : ""}\n\nTell me when you are in and I will walk you through the rest.`,
 
   // --- questions anybody asks, at any stage ---
   cost_free: ({ hi }) =>

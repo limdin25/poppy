@@ -160,6 +160,36 @@ export async function recordSignupLead(input: RecordLeadInput): Promise<boolean>
   }
 }
 
+/**
+ * Link a signup to the EXACT lead the ?u= code names. Hugo, 08 Aug 2026:
+ * "track the person's exact sign up." This is what survives a creator signing
+ * up with a different email than their form: the email matcher below misses,
+ * the code does not. Resolution runs through lead_id_by_code (service-role
+ * only); anything unresolvable is silently nothing, attribution never breaks
+ * a signup.
+ */
+export async function linkSignupLeadByCode(code: string, profileId: string): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: leadId } = await (admin.rpc as any)("lead_id_by_code", { code });
+    if (!leadId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (admin.from("signup_leads") as any)
+      .update({
+        status: "connected",
+        profile_id: profileId,
+        connected_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq("id", leadId)
+      .is("connected_at", null);
+    if (error) console.error("[signup-leads] code link failed", error);
+  } catch (e) {
+    console.error("[signup-leads] code link threw", e);
+  }
+}
+
 /** Called from the Instagram callback once the account really exists. */
 export async function markSignupLeadConnected(
   email: string,

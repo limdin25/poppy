@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     last_name: form.get("last_name"),
     email: form.get("email"),
     whatsapp: form.get("whatsapp"),
+    lead_code: form.get("lead_code"),
   });
   const back = (msg: string) =>
     NextResponse.redirect(`${origin}/signup?erro=${encodeURIComponent(msg)}`, 303);

@@ -403,8 +403,9 @@ export async function processWaitingThread(
       stepsDone: ctx.stepsDone as string[],
       openStep: creator.openStep,
       pitchBlocked: ctx.pitchBlocked,
-      // Their coded link, so the fallback stops sending the anonymous one.
+      // Their coded links, so the fallback stops sending anonymous ones.
       watchLink: ctx.watchCode ? `heypubli.com/watch?u=${ctx.watchCode}` : null,
+      signupLink: ctx.watchCode ? `heypubli.com/signup?u=${ctx.watchCode}` : null,
     });
     if (fallback.ok && fallback.text) llmText = fallback.text;
   }

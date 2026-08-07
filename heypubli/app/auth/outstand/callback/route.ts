@@ -6,7 +6,7 @@ import { getSocialAccountByTenant } from "@/lib/integrations/outstand";
 import { saveOutstandConnection, getPostingSettingsAdmin } from "@/lib/data/outstand";
 import { findOrCreateInfluencerByOutstand, type IgSignupData } from "@/lib/data/auth-ig";
 import { notifyAccountConnected } from "@/lib/data/notifications";
-import { markSignupLeadConnected } from "@/lib/data/signup-leads";
+import { linkSignupLeadByCode, markSignupLeadConnected } from "@/lib/data/signup-leads";
 import { accountExistsForEmail } from "@/lib/data/existing-account";
 import { STATE_COOKIE, SIGNUP_COOKIE, authCookieClearAttrs } from "@/lib/ig-auth-cookies";
 
@@ -20,6 +20,7 @@ function readSignupData(raw: string | undefined): IgSignupData | undefined {
         lastName: d.last_name,
         email: d.email,
         whatsapp: d.whatsapp,
+        leadCode: typeof d.lead_code === "string" ? d.lead_code : undefined,
       };
     }
   } catch {
@@ -141,9 +142,14 @@ export async function GET(request: Request) {
       signup,
     );
 
-    // Close the loop on the signup lead. Matched on the email the PERSON typed, not
-    // `email` above: for an Instagram signup that one is the synthetic
-    // ig_xxx@instagram.heypubli.com auth address and would never match a lead.
+    // Close the loop on the signup lead. The CODE from the link we messaged
+    // them is the exact person (Hugo, 08 Aug 2026: "track the person's exact
+    // sign up"); the typed email is the fallback for people who arrived
+    // without one. Both may run: they usually land on the same row, and when
+    // they do not, the coded row is the lead the funnel was actually chasing.
+    if (signup?.leadCode) {
+      await linkSignupLeadByCode(signup.leadCode, userId);
+    }
     if (signup?.email) {
       await markSignupLeadConnected(signup.email, userId);
     }

@@ -29,6 +29,8 @@ export interface LlmReplyInput {
    * attribution the coded link exists to provide.
    */
   watchLink?: string | null;
+  /** heypubli.com/signup?u=<code>, the tracked signup link for this lead. */
+  signupLink?: string | null;
 }
 
 export interface LlmReplyResult {
@@ -93,6 +95,10 @@ export async function llmReply(input: LlmReplyInput): Promise<LlmReplyResult> {
     !input.pitchBlocked && input.watchLink
       ? `Their personal video link is ${input.watchLink} and if you send the video you must ` +
         "use exactly this link, character for character, and no other link to the video."
+      : "",
+    !input.pitchBlocked && input.signupLink
+      ? `Their personal signup link is ${input.signupLink} and if you send them to sign up ` +
+        "you must use exactly this link, character for character, never the bare one."
       : "",
     input.lastWeSaid ? `The last thing WE sent them: ${input.lastWeSaid}` : "We have not messaged them yet.",
     `They just wrote (oldest first):`,

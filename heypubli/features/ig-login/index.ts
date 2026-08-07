@@ -1,5 +1,5 @@
 export { IgLoginButton } from "./IgLoginButton";
-export { IgSignupForm } from "./IgSignupForm";
+export { IgSignupForm, type IgSignupDefaults } from "./IgSignupForm";
 export { ConnectInstagramStep } from "./ConnectInstagramStep";
 export { TermsContent } from "./TermsContent";
 export {

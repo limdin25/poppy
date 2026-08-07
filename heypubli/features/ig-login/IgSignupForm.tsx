@@ -18,6 +18,8 @@ export interface IgSignupDefaults {
   last_name?: string;
   email?: string;
   whatsapp?: string;
+  /** The tracked-link code (?u=), submitted as a hidden field. */
+  lead_code?: string;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -186,6 +188,11 @@ export function IgSignupForm({ defaults }: { defaults?: IgSignupDefaults } = {})
       // one-line and two-line questions swap in.
       className={`space-y-6 ${onConnect ? "" : "min-h-[26rem]"}`}
     >
+      {/* The tracked-link code (?u=). Ties this exact signup to the lead we
+          messaged; absent for people who typed the address themselves. */}
+      {defaults?.lead_code && (
+        <input type="hidden" name="lead_code" value={defaults.lead_code} />
+      )}
       <div className="flex h-6 items-center justify-between">
         {step > 1 ? (
           <button

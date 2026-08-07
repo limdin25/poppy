@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import { EmailSignupForm } from "@/features/email-signup";
-import { IgSignupForm, signupMobilePitch } from "@/features/ig-login";
+import { IgSignupForm, signupMobilePitch, type IgSignupDefaults } from "@/features/ig-login";
 import { SIGNUP_COOKIE } from "@/lib/ig-auth-cookies";
 import { prefillWhatsappFromLink } from "@/lib/data/signup-prefill";
 
@@ -17,6 +17,7 @@ function readSignupDefaults(raw: string | undefined) {
       last_name: typeof d?.last_name === "string" ? d.last_name : undefined,
       email: typeof d?.email === "string" ? d.email : undefined,
       whatsapp: typeof d?.whatsapp === "string" ? d.whatsapp : undefined,
+      lead_code: typeof d?.lead_code === "string" ? d.lead_code : undefined,
     };
   } catch {
     return undefined;
@@ -26,9 +27,9 @@ function readSignupDefaults(raw: string | undefined) {
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string; w?: string }>;
+  searchParams: Promise<{ erro?: string; w?: string; u?: string }>;
 }) {
-  const { erro, w } = await searchParams;
+  const { erro, w, u } = await searchParams;
   const cookieStore = await cookies();
   const cookieDefaults = readSignupDefaults(cookieStore.get(SIGNUP_COOKIE)?.value);
 
@@ -38,10 +39,16 @@ export default async function SignupPage({
   // A cookie from a bounced Instagram round trip still wins, since that is
   // their own earlier input.
   const prefilled = prefillWhatsappFromLink(w);
-  const defaults =
+  let defaults: IgSignupDefaults | undefined =
     prefilled && !cookieDefaults?.whatsapp
       ? { ...(cookieDefaults ?? {}), whatsapp: prefilled }
       : cookieDefaults;
+  // ?u= ties this signup to the exact lead we messaged (Hugo, 08 Aug 2026:
+  // "track the person's exact sign up"). A code already in the cookie (from a
+  // bounced round trip) wins, it was the original click.
+  if (u && /^[0-9a-f]{4,12}$/i.test(u) && !defaults?.lead_code) {
+    defaults = { ...(defaults ?? {}), lead_code: u.toLowerCase() };
+  }
 
   return (
     <div className="w-full max-w-md space-y-8">

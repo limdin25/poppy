@@ -40,6 +40,13 @@ export const igSignupSchema = z.object({
   last_name: z.string().trim().min(1, "Last name is required"),
   email: z.email("Invalid email"),
   whatsapp: z.string().trim().min(10, "Enter a valid WhatsApp number with area code"),
+  // The tracked signup code (?u= on the link we message out): first characters
+  // of the lead's id, same token the watch page uses. Anything malformed
+  // becomes undefined, because attribution must never block a signup.
+  lead_code: z.preprocess(
+    (v) => (typeof v === "string" && /^[0-9a-f]{4,12}$/i.test(v.trim()) ? v.trim().toLowerCase() : undefined),
+    z.string().optional(),
+  ),
 });
 
 export type SignupInput = z.infer<typeof signupSchema>;
