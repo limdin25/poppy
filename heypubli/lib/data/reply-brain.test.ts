@@ -1065,3 +1065,154 @@ describe("the new Instagram account question", () => {
     if (d.action === "send") expect(d.key).not.toBe("existing_or_new_ig");
   });
 });
+
+// ------------------------------------------------------------------
+// The 08 Aug 2026 inbox audit: 443 real inbound messages replayed through
+// this file. Every case below is a message that reached a real person and
+// got the wrong answer, or no answer at all.
+// ------------------------------------------------------------------
+describe("inbox audit fixes", () => {
+  it("a broken button is NOT a refusal", () => {
+    // "It does not want to move next step" opted a Kenyan lead out forever.
+    // She had watched the video, said she was happy to move forward, and
+    // asked for help three times into total silence.
+    for (const msg of [
+      "It does not want to move next step",
+      "the page does not want to load",
+      "No",
+      "no",
+    ]) {
+      const d = decideReply(ctx({ said: [msg], alreadySent: ["heypubli.com/watch?u=1234"] }));
+      expect(d.action === "human" && d.reason.startsWith("refusal"), msg).toBe(false);
+    }
+  });
+
+  it("still catches a real person refusing", () => {
+    for (const msg of ["I don't want this", "we do not want it", "Not interested", "no thanks", "STOP"]) {
+      const d = decideReply(ctx({ said: [msg] }));
+      expect(d.action, msg).toBe("human");
+      expect(d.reason, msg).toMatch(/refus/);
+    }
+  });
+
+  it("answers 'What next' and its family, apostrophe or not", () => {
+    for (const msg of ["What next", "what next?", "Next process?", "Then?", "what now"]) {
+      const d = decideReply(
+        ctx({ said: [msg], hasAccount: true, stepsDone: ["instagram"] }),
+      );
+      expect(d.action, msg).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.key, msg).toBe("step_community");
+    }
+  });
+
+  it("treats 'I did it' as a step report and answers with the next step", () => {
+    for (const msg of [
+      "Already joined",
+      "I accepted and Allow to manage my Instagram",
+      "done",
+      "I have connected",
+      "it's done",
+    ]) {
+      const d = decideReply(ctx({ said: [msg], hasAccount: true, stepsDone: ["instagram"] }));
+      expect(d.action, msg).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.key, msg).toBe("step_community");
+    }
+  });
+
+  it("answers a bare hello instead of handing it over", () => {
+    const lead = decideReply(ctx({ said: ["Hello, are you available?"] }));
+    expect(lead.action).toBe("send");
+    if (lead.action !== "send") return;
+    expect(lead.key).toBe("greeting_lead");
+
+    const creator = decideReply(
+      ctx({ said: ["Hello 👋"], hasAccount: true, stepsDone: ["instagram", "community"] }),
+    );
+    if (creator.action !== "send") throw new Error("expected send");
+    expect(creator.key).toBe("step_affiliate");
+  });
+
+  it("sends the account link to a lead who watched and asks what is next", () => {
+    // 10 of these piled into the handover queue. They are the hottest
+    // messages in the funnel.
+    for (const msg of ["Next process?", "Tell me", "I have setup everything what's next?"]) {
+      const d = decideReply(
+        ctx({ said: [msg], alreadySent: ["the video: heypubli.com/watch?u=1234"] }),
+      );
+      expect(d.action, msg).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.key, msg).toBe("signup");
+      expect(d.text, msg).toContain("heypubli.com/signup?u=1234");
+    }
+  });
+});
+
+describe("the Ok black hole", () => {
+  const base = {
+    minutesSinceWeWrote: 200,
+    repliedSinceWeWrote: true,
+    checkInsThisStep: 0,
+    openStep: "community" as const,
+    windowOpen: true,
+    firstName: "Prem",
+  };
+
+  it("an ack still starts the check-in clock, from THEIR message", () => {
+    // Five creators said "Ok" mid-onboarding and no engine ever spoke again:
+    // the reply brain chose silence, this ladder said "they answered", and
+    // the slow ladder pauses on their reply.
+    const early = decideCheckIn({ ...base, theirReplyWasAckOnly: true, minutesSinceTheyWrote: 5 });
+    expect(early.action).toBe("wait");
+    const due = decideCheckIn({ ...base, theirReplyWasAckOnly: true, minutesSinceTheyWrote: 40 });
+    expect(due.action).toBe("send");
+    if (due.action !== "send") return;
+    expect(due.reason).toMatch(/after an ok/);
+  });
+
+  it("a real question still belongs to the reply engine, not the chase", () => {
+    const d = decideCheckIn({ ...base, theirReplyWasAckOnly: false, minutesSinceTheyWrote: 300 });
+    expect(d.action).toBe("wait");
+  });
+});
+
+describe("the rest of the 08 Aug audit list", () => {
+  const creator = (msg: string) =>
+    decideReply(ctx({ said: [msg], hasAccount: true, stepsDone: ["instagram"] }));
+
+  it("answers the done-reports it used to miss", () => {
+    for (const m of ["I've done everything", "All done on my side", "did everything"]) {
+      expect(creator(m).action, m).toBe("send");
+    }
+  });
+
+  it("answers the what-is-this family", () => {
+    for (const m of ["Sorry what is HeyPubli?", "I would like to know more about HeyPubli", "What are the requirements?", "how"]) {
+      const d = decideReply(ctx({ said: [m] }));
+      expect(d.action, m).toBe("send");
+    }
+  });
+
+  it("treats a loading page and 'do it for me' as stuck, with the pictures", () => {
+    for (const m of ["It keeps loading for almost 6 min", "Its hard for me to creat an account do it for me", "Show me the procedure"]) {
+      const d = creator(m);
+      expect(d.action, m).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.key, m).toBe("stuck_community");
+      expect(d.images?.length, m).toBeGreaterThan(0);
+    }
+  });
+
+  it("answers the female-or-male question with the niche truth", () => {
+    const d = decideReply(ctx({ said: ["I was just wondering. Do you only do female ai influencers or can you do male"] }));
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("niche_random");
+  });
+
+  it("never answers somebody else's auto-responder", () => {
+    const d = decideReply(ctx({ said: ["Thank you for contacting Nigel! Please let us know how we can help you."] }));
+    expect(d.action).toBe("silence");
+  });
+});

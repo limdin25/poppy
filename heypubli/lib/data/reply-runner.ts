@@ -1,4 +1,5 @@
 import {
+  ACK,
   decideCheckIn,
   decideLeadChase,
   decideReply,
@@ -908,9 +909,18 @@ export async function runReplyBrain(
         .eq("kind", "check_in")
         .eq("step", creator.openStep);
 
+      // An "Ok" and nothing else is a pause, not a conversation. Without
+      // this the ladder waited forever on it and the reply brain had already
+      // chosen silence, so five creators mid-onboarding heard from nobody.
+      const ackOnly =
+        split.said.length > 0 && split.said.every((s) => ACK.test(s)) && !split.saidHasMedia;
       const decision = decideCheckIn({
         minutesSinceWeWrote: (now.getTime() - Date.parse(split.lastOutboundAt)) / 60000,
+        minutesSinceTheyWrote: split.lastInboundAt
+          ? (now.getTime() - Date.parse(split.lastInboundAt)) / 60000
+          : undefined,
         repliedSinceWeWrote: split.repliedSinceWeWrote,
+        theirReplyWasAckOnly: ackOnly,
         checkInsThisStep: spent ?? 0,
         openStep: creator.openStep,
         windowOpen: split.windowOpen,

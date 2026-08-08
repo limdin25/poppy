@@ -1,0 +1,47 @@
+{
+  "_why": "Who is really inside the Skool group, checked by eye and written down.",
+  "_how": "Skool has no API and no free-join trigger, so nothing automatic sees a join. Two things prove it and neither needs Skool to tell us: (1) the creator holds a ?ref= link, which only exists inside the group and which nobody guesses, check-creators detects that on its own; (2) somebody opens the member list and looks. This file is where (2) gets recorded, because otherwise it is known for ten minutes and then lost.",
+  "_read_it": "https://www.skool.com/ai-influencer-flywheel-5612/-/members via Kimi WebBridge with Hugo's session, then pull the a[href^=\"/@\"] names.",
+  "_names_will_not_match": "Do not expect their Skool display name to match the one they gave us. Bhupender signed up to Skool as 'Bhyg G'. Match on the person, not the string.",
+  "_checked_at": "2026-08-07T12:52:00Z",
+  "_group": "ai-influencer-flywheel-5612",
+  "members": {
+    "aryangundal431@gmail.com": {
+      "handle": "bhyg-g-3804",
+      "shown_as": "Bhyg G",
+      "note": "Bhupender. Also holds a ?ref= link, which is proof on its own."
+    },
+    "aniketmukhi6@gmail.com": {
+      "handle": "ankit-dass-1707",
+      "shown_as": "Ankit Dass",
+      "note": "Marry Jain. Also holds a ?ref= link."
+    },
+    "smgamingyt135@gmail.com": {
+      "handle": "discipline-x-8874",
+      "shown_as": "Discipline X",
+      "note": "In the group. Our page has him at 2/5, needs the affiliate link on his page."
+    },
+    "maedelynacabanlig@gmail.com": {
+      "handle": "ma-edelyn-cabanlig-1692",
+      "shown_as": "Ma. Edelyn Cabanlig",
+      "note": "In the group. Sent her own ?ref= link at 11:10 on 07 Aug and it was saved to her profile at 12:52, so she is past step 3. Now on step 4, the profile photo."
+    },
+    "premuphar007@gmail.com": {
+      "handle": "prem-bharti-3375",
+      "shown_as": "Prem Bharti",
+      "note": "His stored link is the @handle?g= shape, NOT a ?ref= link, so this list is the only proof for him."
+    },
+    "nazmakhatun0airbnb@gmail.com": {
+      "handle": "jay-free-2928",
+      "shown_as": "Jay Free",
+      "note": "Nzama Mo. Also holds a ?ref= link, which is proof on its own. Bio link on Instagram is a DIFFERENT ref code from the one saved on our page, flagged as WRONG LINK by check-creators."
+    }
+  },
+  "not_members": {
+    "ashwinikejariwalofficial@gmail.com": "Ashwini Agarwal. Confirmed absent, invite genuinely unopened."
+  },
+  "unaccounted_for": [
+    "mark-noah-3300 (Mark Noah)",
+    "hrs-sza-1417 (Drimit Vask)"
+  ]
+}

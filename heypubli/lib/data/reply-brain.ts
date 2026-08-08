@@ -174,8 +174,14 @@ const REFUSAL = new RegExp(
     // human", never "send them a pitch".
     `\\b(not|never)${G}(really${G}|very${G})?int[a-z]{0,8}ed\\b`,
     `\\bno${G}int[a-z]{0,8}(est|ed)\\b`,
-    `\\bnot${G}want\\b`,
-    `\\bdon'?t${G}want\\b`,
+    // FIRST PERSON ONLY. "It does not want to move next step" is a broken
+    // button, and on 08 Aug 2026 it opted a Kenyan lead out FOREVER: she had
+    // watched the video, said she was happy to move forward, asked for help
+    // three times ("Show me the procedure", "Please") and every engine
+    // ignored her because a bare "not want" anywhere in the sentence counted
+    // as a refusal. Only a PERSON saying they do not want it is a refusal.
+    `\\b(i|we)${G}(do${G})?(n'?t|not)${G}want\\b`,
+    `\\bi${G}don'?t${G}want\\b`,
     `\\bno${G}thanks?\\b`,
     "\\bstop\\b",
     "\\bunsubscribe\\b",
@@ -183,7 +189,10 @@ const REFUSAL = new RegExp(
     `\\bleave${G}me\\b`,
     "\\bnahi\\b",
     "\\bnever\\s*mind\\b",
-    "^\\W*no\\W*$",
+    // A bare "no" is NOT here on purpose, and it used to be. This file's own
+    // rule says "no", "not now" and "Not understand" are ANSWERS to questions
+    // we asked; the pattern contradicted the rule and opted somebody out for
+    // answering us. A real refusal says what it is refusing.
     "^\\W*close\\W*$",
     `\\bclose${G}(my|the)${G}application\\b`,
     `\\bplease${G}close\\b`,
@@ -314,6 +323,8 @@ const NICHE = new RegExp(
     "\\b(content|videos?)\\b[^.?]*\\b(choose|pick|what\\s+kind|what\\s+type)\\b",
     "\\bwhat\\s+(kind|type|sort)\\s+of\\s+(content|videos?)\\b",
     "\\bwill\\s+(it|they|the\\s+videos?)\\s+be\\b[^.?]*\\bcontent\\b",
+    // "Do you only do female ai influencers or can you do male"
+    "\\b(female|male|men|women)\\b[^.?]{0,25}\\b(ai\\s+)?(influencer|model|video|avatar)s?\\b",
   ].join("|"),
   "i",
 );
@@ -336,7 +347,7 @@ const SAFETY = new RegExp(
 );
 
 /** "Ok sir", "thanks", a lone thumbs up. Nothing is being asked. */
-const ACK = /^\W*(ok(ay)?|k+|thanks?|thank\s*you|thx|ty|sure|fine|got\s*it|noted|great|nice|good|yes)?(\s*(ji|sir|ma'?am|bro|boss))?\W*$/i;
+export const ACK = /^\W*(ok(ay)?|k+|thanks?|thank\s*you|thx|ty|sure|fine|got\s*it|noted|great|nice|good|yes)?(\s*(ji|sir|ma'?am|bro|boss))?\W*$/i;
 
 /** They are trying and it is not working. The most valuable signal we get. */
 const STUCK = new RegExp(
@@ -352,6 +363,14 @@ const STUCK = new RegExp(
     "\\bwhere\\s+is\\b",
     "\\bhow\\s+do\\s+i\\b",
     "\\bnothing\\s+happen",
+    // "It keeps loading for almost 6 min" and "Its hard for me to creat an
+    // account do it for me": both are people trying and failing, and both
+    // sat in the handover pile through the 08 Aug audit.
+    "\\b(keeps?|still)\\s+load",
+    "\\bhard\\s+for\\s+me\\b",
+    "\\bdo\\s+it\\s+for\\s+me\\b",
+    "\\bshow\\s+me\\s+(the\\s+)?(procedure|how|steps?)\\b",
+    "\\bguide\\s+me\\b",
     "\\bstill\\s+(not|no|nothing)\\b",
     // "I am not getting any invite yet" is the commonest way somebody tells us
     // they are stuck on step 2, and it matched none of the patterns above, so
@@ -406,7 +425,28 @@ const YES =
   /^\W*(yes|yeah|yep|ya|yaa|ok|okay|sure|done|join|start|interested)\W*$|\b(i\s*a?m\s+)?in?ter+es?t+ed\b|\byes\b|\bhaan?\b|\bwant\s+to\s+join\b/i;
 
 const WHAT =
-  /\b(details?|how\s+(does|do|it)|what\s+is\s+(this|it)|explain|tell\s+me|more\s+info|what\s+work|what\s+kind|what\s+now|what'?s\s+next|next\s+process|next\s+step)\b/i;
+  // "What next" with no apostrophe-s was missing, and Chiquita (2,200
+  // followers, 08 Aug 2026) sat in the NEEDS YOU pile because of the
+  // punctuation. So did "Next process?" and a bare "Then?".
+  /\b(details?|how\s+(does|do|it)|what\s+is\s+(this|it)|explain|tell\s+me|more\s+info|what\s+work|what\s+kind|what\s+now|what\s*'?s?\s+next|next\s+(process|step|one)|so\s+what\s+do\s+i\s+do)\b|^\W*(then|and\s+then|next|how)\s*\?*\W*$|\bwhat\s+is\s+heypubli\b|\bknow\s+more\s+about\b|\bwhat\s+(are\s+the\s+)?requirement/i;
+
+/**
+ * They are telling us they DID a step. The most useful message a creator can
+ * send and the brain used to hand every one of them to a human: Chiquita's
+ * "Already joined", Ali's "I accepted and Allow to manage my Instagram".
+ *
+ * The right answer is never a human, it is the NEXT step, because their real
+ * state is re-read from the database on every pass anyway: if they really did
+ * it, the open step has already moved on; if they only think they did, the
+ * same message tells them what is still outstanding.
+ */
+const DID_IT =
+  /\b(already\s+)?(joined|done\s+it|did\s+it|i\s+did|accepted|allowed|allow\s+to\s+manage|connected|i'?ve\s+connected|signed\s+up|created\s+(my|the|an)\s+account|it'?s?\s+done|finished|completed)\b|^\W*done\W*$|\b(i'?ve\s+|i\s+have\s+)?done\s+(everything|it\s+all|all)\b|\ball\s+done\b|\bdid\s+everything\b/i;
+
+/** A bare hello with nothing else. Answering "yes I am here" plus the next
+ *  step costs nothing; a handover leaves them staring at silence. */
+const GREETING_ONLY =
+  /^\W*(hi+|hey+|hello+|yo|good\s+(morning|afternoon|evening|day)|as?salam[ou]?\s*a?laik[ou]?m?|salam)[\s,!.👋🙏😊]*(there|sir|ma'?am|team)?[\s,!.?👋🙏😊]*$|\bare\s+you\s+(there|available|online|around)\b|^\W*hello\s*\?+\W*$/i;
 
 /**
  * A skool.com link pasted into the chat. We ASK for this ("paste it here and I
@@ -601,6 +641,11 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${hi}your account is still one minute away: heypubli.com/signup${code ? `?u=${code}` : ""}\n\nMake it and tell me when you are in, I will walk you through the rest.`,
   chase_hello: ({ hi }) =>
     `${hi}is everything ok? If anything was unclear, ask me here, I answer everything. When you are ready I will get you set up, it takes a minute.`,
+  // A bare hello. Say we are here, and give them the one thing to do next.
+  greeting_lead: ({ hi, code }) =>
+    `${hi}yes, I am here. We post AI videos to your Instagram for you, twice a day, and it is free.\n\nThe whole thing in 90 seconds: heypubli.com/watch?u=${code}\n\nAsk me anything, I answer everything here.`,
+  greeting_creator: ({ hi }) =>
+    `${hi}yes, I am here. Tell me where you got to and I will help you finish.\n\nYour setup carries on at heypubli.com/onboarding, it opens on the step you stopped at.`,
   chase_second: ({ hi }) =>
     `${hi}me again. If something was not clear, ask me anything here, that is what I am for. I can also walk you through it step by step.`,
   chase_third: ({ hi, code }) =>
@@ -665,12 +710,25 @@ function sent(ctx: ReplyContext, needle: string): boolean {
   return ctx.alreadySent.some((b) => b.includes(needle));
 }
 
+/**
+ * Their business auto-responder, not a person. "Thank you for contacting
+ * Nigel! Please let us know how we can help you." arrives from creators whose
+ * own Instagram or WhatsApp Business greets us back. Pitching a robot is
+ * pointless and answering it starts a machine-to-machine loop.
+ */
+const THEIR_AUTORESPONDER =
+  /thank you for (contacting|reaching out to)\b[^.!?]{0,40}[.!]?\s*(please let us know|we will|we'?ll|our team)/i;
+
 export function decideReply(ctx: ReplyContext): ReplyDecision {
   const said = ctx.said.map((s) => (s || "").trim()).filter(Boolean);
   if (said.length === 0) {
     return { action: "silence", reason: "nothing said since our last message" };
   }
   const text = said.join(" \n ");
+
+  if (THEIR_AUTORESPONDER.test(text)) {
+    return { action: "silence", reason: "their own auto-responder, not a person" };
+  }
 
   // A refusal beats everything else in the same breath. Emre said "Yeah i
   // would be interested" at 21:59 and "Never mind im not interested" at 22:06,
@@ -873,7 +931,17 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
         ...imagesFor(openStep),
       };
     }
-    if (WHAT.test(text) || YES.test(text) || WATCHED.test(text)) {
+    // "What next", "Already joined", "I accepted and Allow to manage my
+    // Instagram", "hello?" all mean the same thing from somebody with an
+    // open step: tell me what to do now. Their real state was re-read from
+    // the database this pass, so the step named here is the true one.
+    if (
+      WHAT.test(text) ||
+      YES.test(text) ||
+      WATCHED.test(text) ||
+      DID_IT.test(text) ||
+      GREETING_ONLY.test(text)
+    ) {
       const key = STEP_KEY[openStep];
       return {
         action: "send",
@@ -922,11 +990,33 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
     }
     return { action: "send", key: "signup", text: render("signup", ctx), reason: "ready for the account" };
   }
+  // They have the video and they are asking for more: "Next process?", "I
+  // have setup everything what's next?", "Tell me". This handed the HOTTEST
+  // messages in the funnel to a human and 10 of them piled up on 08 Aug
+  // 2026. Somebody asking what happens next wants the account, so give it to
+  // them; the link is theirs and coded, and never sent twice.
   if (hasVideo && WHAT.test(text)) {
-    return { action: "human", reason: "has the video and is asking questions, answer properly" };
+    if (hasSignup) {
+      return { action: "human", reason: "has the video and the signup link and is still asking" };
+    }
+    return {
+      action: "send",
+      key: "signup",
+      text: render("signup", ctx),
+      reason: "has the video and asked what is next",
+    };
   }
   if (!ctx.watchCode) {
     return { action: "human", reason: "no video code for this lead" };
+  }
+  // A bare hello. Silence is the one answer that loses them for nothing.
+  if (GREETING_ONLY.test(text)) {
+    return {
+      action: "send",
+      key: hasVideo ? "signup" : "greeting_lead",
+      text: render(hasVideo ? "signup" : "greeting_lead", ctx),
+      reason: "a bare hello deserves an answer, not silence",
+    };
   }
   // The form-fill opener means "I just tapped your ad". It is not a question
   // and it is not chit-chat, it is a button press, so it gets the explainer and
@@ -968,6 +1058,19 @@ export interface CheckInContext {
   minutesSinceWeWrote: number;
   /** Have they written anything since? If so there is nothing to check on. */
   repliedSinceWeWrote: boolean;
+  /**
+   * Their reply was an acknowledgement and nothing more ("Ok", "Okay", a
+   * thumbs up). THE BLACK HOLE, found in the 08 Aug 2026 inbox audit: the
+   * reply brain answers an ack with deliberate silence, this ladder then
+   * refused to chase because "they answered", and the slow ladder holds off
+   * for 3 hours from their reply. So five creators mid-onboarding (Ankit,
+   * Prem, Abdul Latif, Janice, Shahbaz) said "Ok" and NOTHING in the system
+   * spoke to them again. An "Ok" is not a conversation, it is a pause, and
+   * the clock keeps running from it.
+   */
+  theirReplyWasAckOnly?: boolean;
+  /** Minutes since THEIR last message, used when that message was just an ack. */
+  minutesSinceTheyWrote?: number;
   /** Check-ins already spent on the step they are on now. */
   checkInsThisStep: number;
   openStep: OnboardingStepId | null;
@@ -1005,9 +1108,16 @@ export type CheckInDecision =
 export const CHECK_IN_LADDER_MINUTES = [15, 90] as const;
 
 export function decideCheckIn(ctx: CheckInContext): CheckInDecision {
-  if (ctx.repliedSinceWeWrote) {
+  const ackPause = ctx.repliedSinceWeWrote && ctx.theirReplyWasAckOnly;
+  if (ctx.repliedSinceWeWrote && !ackPause) {
     return { action: "wait", reason: "they answered, this is a conversation not a chase" };
   }
+  // After a bare "Ok" the clock runs from THEIR message, not ours: they were
+  // last seen agreeing to do something, and the check-in asks whether it went
+  // ok. Falls back to our own clock if the caller cannot supply theirs.
+  const quietFor = ackPause
+    ? (ctx.minutesSinceTheyWrote ?? ctx.minutesSinceWeWrote)
+    : ctx.minutesSinceWeWrote;
   if (ctx.openStep === null) {
     return { action: "wait", reason: "nothing left for them to do" };
   }
@@ -1020,15 +1130,15 @@ export function decideCheckIn(ctx: CheckInContext): CheckInDecision {
     return { action: "handover", reason: "24h window shut, needs a template" };
   }
   const due = CHECK_IN_LADDER_MINUTES[ctx.checkInsThisStep];
-  if (ctx.minutesSinceWeWrote < due) {
-    return { action: "wait", reason: `${due - Math.round(ctx.minutesSinceWeWrote)} minutes early` };
+  if (quietFor < due) {
+    return { action: "wait", reason: `${due - Math.round(quietFor)} minutes early` };
   }
   const key = ctx.checkInsThisStep === 0 ? "check_in_1" : "check_in_2";
   return {
     action: "send",
     key,
     text: REPLIES[key]({ hi: nameOf(ctx.firstName), code: "", sentence: "", link: "" }),
-    reason: `quiet ${Math.round(ctx.minutesSinceWeWrote)} minutes on ${ctx.openStep}`,
+    reason: `quiet ${Math.round(quietFor)} minutes on ${ctx.openStep}${ackPause ? " after an ok" : ""}`,
   };
 }
 
