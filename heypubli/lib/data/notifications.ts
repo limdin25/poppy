@@ -60,6 +60,23 @@ async function getAdminEmails(): Promise<string[]> {
 }
 
 /**
+ * A creator's handle as a link straight to their Instagram profile.
+ *
+ * Hugo, 08 Aug 2026: "I want the handle to come hyperlinked so I can click and
+ * visit their profile as well." Falls back to plain text when there is no
+ * username, because a link to instagram.com/null is worse than no link.
+ *
+ * The username is escaped: it is attacker-controlled text landing in an email
+ * body, and a handle containing a quote would otherwise break out of the href.
+ */
+export function igLink(igUsername: string | null): string {
+  if (!igUsername) return "no handle yet";
+  const safe = igUsername.replace(/[^A-Za-z0-9._]/g, "");
+  if (!safe) return "no handle yet";
+  return `<a href="https://instagram.com/${safe}" style="color:#E1306C;font-weight:600;text-decoration:none;">@${safe}</a>`;
+}
+
+/**
  * "New account connected" — in-app notification + email to every admin.
  * Best-effort: never throws (must not break the Instagram login/connect flow).
  */
@@ -89,7 +106,7 @@ export async function notifyAccountConnected(params: {
     const html = `
       <div style="font-family: sans-serif; max-width: 480px;">
         <h2 style="color: #E1306C;">New account connected</h2>
-        <p><strong>${name || handle}</strong> (${handle}) connected their Instagram on ${connectedAt}.</p>
+        <p><strong>${name || handle}</strong> (${igLink(igUsername)}) connected their Instagram on ${connectedAt}.</p>
         <p>The account is <strong>not in the campaign yet</strong>.</p>
         <p>
           <a href="${appUrl}/admin/campaign"
