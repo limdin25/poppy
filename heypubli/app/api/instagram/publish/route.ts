@@ -11,6 +11,7 @@ import {
   confirmUpload,
   createPost,
   getPostStatus,
+  OutstandApiError,
 } from "@/lib/integrations/outstand";
 import type { OutstandMedia } from "@/lib/integrations/outstand";
 import {
@@ -83,6 +84,14 @@ export async function GET(request: Request) {
       // and resolves it instead of creating a duplicate.
       if (err instanceof StillProcessingError) {
         results.push({ id: post.id, status: "still processing" });
+        continue;
+      }
+      // Outstand having a bad minute is not this post's fault. A failed row is
+      // never re-selected by this cron, so calling a 500 fatal loses the post
+      // permanently over something that fixes itself. Leave it pending.
+      if (err instanceof OutstandApiError && err.retryable) {
+        console.error("[publish] transient Outstand error, leaving pending:", err.message.slice(0, 200));
+        results.push({ id: post.id, status: `retrying: ${err.status}` });
         continue;
       }
       await markPostFailed(post.id, message);

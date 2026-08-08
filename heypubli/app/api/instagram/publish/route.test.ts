@@ -39,6 +39,20 @@ vi.mock("@/lib/integrations/outstand", () => ({
   confirmUpload: (...a: unknown[]) => confirmUpload(...a),
   createPost: (...a: unknown[]) => createPost(...a),
   getPostStatus: (...a: unknown[]) => getPostStatus(...a),
+  // The REAL class, not a stub: the route branches on `instanceof` and on
+  // `.retryable`, so a fake would let a broken branch pass.
+  OutstandApiError: class OutstandApiError extends Error {
+    constructor(
+      public readonly status: number,
+      body: string,
+    ) {
+      super(`Outstand API error ${status}: ${body}`);
+      this.name = "OutstandApiError";
+    }
+    get retryable(): boolean {
+      return this.status >= 500 || this.status === 429;
+    }
+  },
 }));
 
 vi.mock("@/lib/integrations/instagram", () => ({
@@ -276,4 +290,48 @@ describe("publish cron — slow Outstand processing", () => {
 
     expect(markPostFailed).not.toHaveBeenCalledWith("post-slow", expect.anything());
   }, 90_000);
+});
+
+// Outstand 500s occasionally. A failed row is never re-selected by this cron,
+// so treating a transient server error as fatal loses the post for good.
+describe("publish cron — transient Outstand errors", () => {
+  it("leaves a post pending when Outstand 500s, rather than failing it", async () => {
+    const { OutstandApiError } = await import("@/lib/integrations/outstand");
+    getUploadUrl.mockRejectedValue(new OutstandApiError(500, "<!DOCTYPE html>"));
+    pendingPosts.push({
+      id: "post-500",
+      profile_id: "user-1",
+      media_type: "reel",
+      media_url: "https://cdn.example.com/r.mp4",
+      caption: "boom",
+      status: "pending",
+      provider: "outstand",
+      outstand_post_id: null,
+      instagram_options: null,
+    });
+
+    await GET(cronRequest());
+
+    expect(markPostFailed).not.toHaveBeenCalledWith("post-500", expect.anything());
+  });
+
+  it("still fails a post when WE sent something wrong", async () => {
+    const { OutstandApiError } = await import("@/lib/integrations/outstand");
+    getUploadUrl.mockRejectedValue(new OutstandApiError(400, "bad request"));
+    pendingPosts.push({
+      id: "post-400",
+      profile_id: "user-1",
+      media_type: "reel",
+      media_url: "https://cdn.example.com/r.mp4",
+      caption: "bad",
+      status: "pending",
+      provider: "outstand",
+      outstand_post_id: null,
+      instagram_options: null,
+    });
+
+    await GET(cronRequest());
+
+    expect(markPostFailed).toHaveBeenCalledWith("post-400", expect.stringContaining("400"));
+  });
 });

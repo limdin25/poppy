@@ -7,10 +7,25 @@ function headers(apiKey: string): Record<string, string> {
   };
 }
 
+/** Carries the HTTP status, so callers can tell "Outstand is having a moment"
+ *  from "we sent something wrong". A 500 is worth another go; a 400 never is. */
+export class OutstandApiError extends Error {
+  constructor(
+    public readonly status: number,
+    body: string,
+  ) {
+    super(`Outstand API error ${status}: ${body}`);
+    this.name = "OutstandApiError";
+  }
+  get retryable(): boolean {
+    return this.status >= 500 || this.status === 429;
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Outstand API error ${res.status}: ${text}`);
+    throw new OutstandApiError(res.status, text);
   }
   return res.json() as Promise<T>;
 }
