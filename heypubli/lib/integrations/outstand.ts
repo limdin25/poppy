@@ -363,6 +363,8 @@ export async function getPostStatus(
     id: string;
     status: string;
     platformPostId?: string;
+    /** The live Instagram permalink. The only per-post link we ever get. */
+    platformPostUrl?: string;
     error?: string;
   }>;
 }> {
@@ -378,6 +380,8 @@ export async function getPostStatus(
         id: string;
         status: string;
         platformPostId?: string;
+    /** The live Instagram permalink. The only per-post link we ever get. */
+    platformPostUrl?: string;
         error?: string;
       }>;
     };

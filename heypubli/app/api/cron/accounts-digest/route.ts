@@ -11,8 +11,11 @@
 
 import { NextResponse } from "next/server";
 import { sendAccountsDigest } from "@/lib/data/accounts-digest";
+import { captureCreatorMetrics } from "@/lib/data/creator-stats";
 
-export const maxDuration = 60;
+// Capturing metrics walks every connected account one API call at a time, so
+// this needs longer than the default as the roster grows.
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -21,8 +24,17 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Capture BEFORE the email, so a Resend problem cannot cost us a reading.
+    // A missed reading is permanent: growth is the gap between two of them and
+    // there is no way to ask Instagram what a number was yesterday.
+    let metrics = { captured: 0, skipped: 0 };
+    try {
+      metrics = await captureCreatorMetrics();
+    } catch (err) {
+      console.error("[accounts-digest] metrics capture failed:", err);
+    }
     const result = await sendAccountsDigest();
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, ...result, metrics });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     console.error("[accounts-digest] failed:", message);

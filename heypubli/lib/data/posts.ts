@@ -52,7 +52,14 @@ export async function getPendingPosts() {
   return data ?? [];
 }
 
-export async function markPostPublished(postId: string, igMediaId: string) {
+export async function markPostPublished(
+  postId: string,
+  igMediaId: string,
+  // Outstand hands back the live Instagram permalink on a published post and we
+  // were dropping it. It is the only per-post link we will ever get, since
+  // there is no per-post metrics endpoint.
+  platformPostUrl?: string | null,
+) {
   const supabase = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase.from("scheduled_posts") as any)
@@ -60,6 +67,7 @@ export async function markPostPublished(postId: string, igMediaId: string) {
       status: "published",
       ig_media_id: igMediaId,
       published_at: new Date().toISOString(),
+      ...(platformPostUrl ? { platform_post_url: platformPostUrl } : {}),
     })
     .eq("id", postId);
 

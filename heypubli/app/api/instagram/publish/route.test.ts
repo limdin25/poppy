@@ -89,14 +89,26 @@ describe("publish cron — Outstand resume safety", () => {
       outstand_post_id: "out-99", // a previous run already created it
     });
     getPostStatus.mockResolvedValue({
-      socialAccounts: [{ status: "published", platformPostId: "ig-123" }],
+      socialAccounts: [
+        {
+          status: "published",
+          platformPostId: "ig-123",
+          platformPostUrl: "https://instagram.com/p/XYZ",
+        },
+      ],
     });
 
     const res = await GET(cronRequest());
     const body = await res.json();
 
     expect(createPost).not.toHaveBeenCalled();
-    expect(markPostPublished).toHaveBeenCalledWith("post-1", "ig-123");
+    // The permalink is recorded too: it is the only per-post link Instagram
+    // ever gives us, and the stats page has nothing else to point at.
+    expect(markPostPublished).toHaveBeenCalledWith(
+      "post-1",
+      "ig-123",
+      "https://instagram.com/p/XYZ",
+    );
     expect(body.published).toBe(1);
   });
 

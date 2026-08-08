@@ -151,6 +151,7 @@ async function publishViaOutstand(post: ScheduledPost, apiKey: string | null) {
     await markPostPublished(
       post.id,
       accountStatus?.platformPostId || post.outstand_post_id,
+      accountStatus?.platformPostUrl ?? null,
     );
     return;
   }
@@ -189,7 +190,11 @@ async function publishViaOutstand(post: ScheduledPost, apiKey: string | null) {
     throw new Error(accountStatus.error || "Outstand publish failed");
   }
 
-  await markPostPublished(post.id, accountStatus?.platformPostId || outstandPost.id);
+  await markPostPublished(
+    post.id,
+    accountStatus?.platformPostId || outstandPost.id,
+    accountStatus?.platformPostUrl ?? null,
+  );
 }
 
 /** Push the video to Outstand and return what createPost actually wants: the
