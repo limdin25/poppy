@@ -372,18 +372,21 @@ export function summariseByMaster(posts: FlatPost[], w: WindowKey): MasterTotals
 export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRow[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = createAdminClient() as any;
-  // A week of history is all the page needs; keeping the query bounded stops it
-  // growing into a full-table read as the snapshot count climbs.
-  const since = new Date(now.getTime() - 8 * 24 * H).toISOString();
+
+  // Readings come from the anchor functions (migration 039), NOT from a date
+  // filter on the snapshot tables. Hourly captures mean a date filter still
+  // returns hundreds of rows per subject and grows forever, and a row cap on a
+  // set like that truncates silently into a wrong delta. The anchors return the
+  // handful of readings the arithmetic actually touches: newest, and the newest
+  // at or before each period boundary. The delta code below is unchanged and
+  // gives identical answers, because those anchors are the only rows it ever
+  // looked at.
+  const nowIso = now.toISOString();
 
   const [conns, profiles, snaps, posts, masters, postSnaps] = await Promise.all([
     admin.from("outstand_connections").select("profile_id, ig_username, is_connected, created_at"),
     admin.from("profiles").select("id, first_name"),
-    admin
-      .from("creator_metrics_snapshots")
-      .select("*")
-      .gte("captured_at", since)
-      .order("captured_at", { ascending: false }),
+    admin.rpc("creator_metric_anchors", { p_now: nowIso }),
     admin
       .from("scheduled_posts")
       .select(
@@ -391,11 +394,7 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
       )
       .not("master_video_id", "is", null),
     admin.from("master_videos").select("id, seq, title"),
-    admin
-      .from("post_metrics_snapshots")
-      .select("post_id, captured_at, views, likes")
-      .gte("captured_at", since)
-      .order("captured_at", { ascending: false }),
+    admin.rpc("post_metric_anchors", { p_now: nowIso }),
   ]);
 
   const nameBy = new Map<string, string>(
