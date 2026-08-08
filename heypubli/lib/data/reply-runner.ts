@@ -417,10 +417,10 @@ export async function processWaitingThread(
   // recruiting them.
   if (pitchBlockedForPhone(phone) && !creator.profile && !creator.lead) {
     if (opts.dry) {
-      report.dry!.push({ phone, action: "silence", reason: "closed country, blocked on purpose" });
+      report.dry!.push({ phone, action: "silence", reason: "blocked at the door on purpose, nothing is ever sent" });
       return;
     }
-    await claimSkip(admin, phone, split.lastInboundId, "closed country, blocked on purpose");
+    await claimSkip(admin, phone, split.lastInboundId, "blocked at the door on purpose, nothing is ever sent");
     return;
   }
 

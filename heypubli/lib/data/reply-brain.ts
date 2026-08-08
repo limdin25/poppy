@@ -1391,7 +1391,12 @@ export type LeadChaseDecision =
   | { action: "stop"; reason: string };
 
 export function decideLeadChase(ctx: LeadChaseContext): LeadChaseDecision {
-  if (ctx.repliedSinceWeWrote) {
+  // "The reply engine owns it" is only true while the reply engine still has a
+  // move. It gets ONE action per inbound message, so once it has handed a
+  // question to a human, nobody owns it at all: Lawrence asked whether there
+  // was an app to watch his traffic and sat for five hours (08 Aug 2026). Same
+  // rule as the creator ladder: after the grace, we chase anyway.
+  if (ctx.repliedSinceWeWrote && ctx.minutesSinceTheirMessage < UNANSWERED_GRACE_MINUTES) {
     return { action: "wait", reason: "they wrote last, the reply engine owns it" };
   }
   if (ctx.chaseCount >= LEAD_CHASE_LIFETIME_CAP) {

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   buildFunnelReport,
-  shouldEmailNow,
   shouldPauseNurture,
   type MonitorData,
   type MonitorFailure,
@@ -11,8 +10,6 @@ import {
 import { NURTURE_PLAN, NURTURE_TEMPLATE_SIDS } from "@/lib/data/lanes";
 import { ONB_TEMPLATES } from "@/lib/data/onboarding-nudges";
 import { getInboxSummary, getTemplateStatuses } from "@/lib/integrations/whatsapp";
-import { sendEmail } from "@/lib/integrations/resend";
-import { buildCreatorRoster, renderRoster } from "@/lib/data/creator-roster";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { FunnelMonitorState, FunnelSettings, NurtureSend } from "@/types/database";
 
@@ -27,8 +24,6 @@ export const maxDuration = 120;
 // flips nurture_enabled off and says so loudly, in EVERY email until somebody turns it
 // back on, not just the one that flipped it. The pause reason is persisted before the
 // email is attempted, so a Resend outage cannot swallow the alarm.
-
-const EMAIL_TO = process.env.MONITOR_EMAIL_TO ?? "hugodesouzax@gmail.com";
 
 // The breaker judges a FIXED recent window, independent of the email watermark. Tying
 // it to the watermark meant a stuck watermark re-counted the same old failures forever
@@ -189,19 +184,32 @@ export async function GET(request: Request) {
   // settle pause and cron latency.
   const neverLooked: MonitorData["neverLooked"] = [];
   const candidates = (inbox.waiting ?? []).filter((w) => (w.waiting_minutes ?? 0) >= 3);
+  // WHY each one is waiting, taken from what the brain actually decided about
+  // their newest message. Hugo, 08 Aug 2026: "you have a list of waiting reply
+  // from us, and why is it waiting? Why don't you reply?" A list of names with
+  // no reason reads as neglect even when every single one is deliberate.
+  const whyWaiting = new Map<string, string>();
   if (candidates.length) {
     const phones = candidates.map((w) => w.phone);
     const { data: claims, error: claimsErr } = await admin
       .from("funnel_replies")
-      .select("phone, created_at")
+      .select("phone, created_at, kind, reason, status")
       .in("phone", phones)
       .order("created_at", { ascending: false })
       .limit(1000)
-      .returns<{ phone: string; created_at: string }[]>();
+      .returns<
+        { phone: string; created_at: string; kind: string; reason: string | null; status: string }[]
+      >();
     if (claimsErr) gatherErrors.push("funnel_replies miss check");
     const newestClaim = new Map<string, string>();
     for (const c of claims ?? []) {
-      if (!newestClaim.has(c.phone)) newestClaim.set(c.phone, c.created_at);
+      if (!newestClaim.has(c.phone)) {
+        newestClaim.set(c.phone, c.created_at);
+        whyWaiting.set(
+          c.phone,
+          c.reason || (c.kind === "silence" ? "deliberate silence" : `${c.kind}, no reason given`),
+        );
+      }
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: optRows } = (await (admin.from("signup_leads") as any)
@@ -410,7 +418,10 @@ export async function GET(request: Request) {
     stuckQueued: stuckQueued ?? 0,
     invitesSent: invitesSent ?? 0,
     invitesFailed: invitesFailed ?? 0,
-    waiting: inbox.waiting ?? [],
+    waiting: (inbox.waiting ?? []).map((w) => ({
+      ...w,
+      why: whyWaiting.get(w.phone) ?? "the brain has not looked at this yet",
+    })),
     neverLooked,
     templates: templates.templates ?? [],
     sheetSync,
@@ -428,58 +439,39 @@ export async function GET(request: Request) {
     gatherErrors,
   };
 
-  // THE ROSTER. Reads every connected creator's real Instagram, so the hourly
-  // email can say who genuinely has their own Skool link live and who does
-  // not, with their handle, join time, followers and posts. Hugo, 08 Aug
-  // 2026, after an audit found the summary counts hiding a wrong referral
-  // code and two dead connections: "so we know that you actually checking
-  // correctly... and also make sure the system knows how to check every time."
-  //
-  // Failure here must never lose the rest of the email: a monitor that dies
-  // on a third-party read is worse than a monitor with one section missing.
-  try {
-    const roster = await buildCreatorRoster(admin);
-    data.rosterHtml = renderRoster(roster);
-    data.rosterProblems = roster.filter(
-      (r) => r.verdict === "wrong_code" || r.verdict === "unreadable",
-    ).length;
-  } catch (e) {
-    gatherErrors.push(`creator roster: ${e instanceof Error ? e.message : "unknown"}`);
-  }
+  // The creator roster used to be built here too, which meant reading all 28
+  // real Instagram profiles every FIVE MINUTES and again in the hourly digest:
+  // the same paid calls twice over, to produce two emails that could disagree.
+  // It lives in the digest now, which is the one thing that emails.
 
   const report = buildFunnelReport(data);
 
-  // Hugo, 07 Aug 2026: "make it every hour". The cron stays at 5 minutes because
-  // the circuit breaker above needs it, only the email is throttled. Anything
-  // broken still goes out at once. See shouldEmailNow for why a waiting lead
-  // does not count as urgent.
-  const decision = shouldEmailNow(
-    data,
-    state?.last_email_at ? new Date(state.last_email_at) : null,
-  );
-  const emailed = decision.send
-    ? await sendEmail({ to: EMAIL_TO, subject: report.subject, html: report.html })
-    : false;
-
-  // Advance the watermark ONLY when the email went out, so a Resend outage replays
-  // the window instead of swallowing it. (A rare overlapping run can double-email;
-  // a duplicate email is harmless, a lost window is not.)
+  // THIS ROUTE NO LONGER EMAILS. Hugo, 08 Aug 2026: "sometimes I'm receiving
+  // two or three emails at the same time. It should be just one email, full
+  // report, every hour, that's it." He was getting this every five minutes
+  // (the roster made "urgent" true on nearly every run) plus the hourly
+  // accounts digest.
+  //
+  // The cron stays at five minutes because the circuit breaker above depends on
+  // it. The report is parked here and /api/cron/accounts-digest sends exactly
+  // one email an hour with this inside it, so nothing is lost and nothing is
+  // said twice.
   let watermarkError: string | null = null;
-  if (emailed) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: wmErr } = await (admin.from("funnel_monitor_state") as any).upsert({
-      id: "default",
-      last_run_at: now.toISOString(),
-      last_email_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    });
-    if (wmErr) watermarkError = wmErr.message ?? "watermark write failed";
-  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: wmErr } = await (admin.from("funnel_monitor_state") as any).upsert({
+    id: "default",
+    last_run_at: now.toISOString(),
+    last_report_html: report.html,
+    last_report_subject: report.subject,
+    last_report_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  });
+  if (wmErr) watermarkError = wmErr.message ?? "report write failed";
 
   return NextResponse.json({
     ok: true,
-    emailed,
-    emailReason: decision.reason,
+    emailed: false,
+    emailedBy: "the hourly digest",
     subject: report.subject,
     newLeads: data.newLeads.length,
     sent: nurtureSent.length,

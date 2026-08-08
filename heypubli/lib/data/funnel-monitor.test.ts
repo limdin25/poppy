@@ -218,11 +218,15 @@ describe("buildFunnelReport", () => {
     expect(r.html).toContain("never delivered");
   });
 
-  it("mentions blocked-country rows refused at the door", () => {
+  // Hugo, 08 Aug 2026: "if it's from India just delete everything from India
+  // and that's it, don't talk about India anymore." The door still drops them
+  // and the count still exists; it is simply never printed at him again.
+  it("says NOTHING about blocked-country rows, however many were dropped", () => {
     const d = base();
     d.refusedBlocked = 27;
     const r = buildFunnelReport(d);
-    expect(r.html).toContain("refused at the door");
+    expect(r.html).not.toContain("refused at the door");
+    expect(r.html).not.toContain("27");
   });
 
   it("lists threads whose latest reply FAILED to send", () => {

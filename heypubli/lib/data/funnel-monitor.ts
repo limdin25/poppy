@@ -56,6 +56,8 @@ export interface MonitorWaiting {
   last_inbound_at: string | null;
   drafts_pending: number;
   waiting_minutes: number | null;
+  /** What the brain decided about their newest message, in its own words. */
+  why?: string;
 }
 
 export interface MonitorTemplate {
@@ -103,7 +105,13 @@ export interface MonitorData {
   templates: MonitorTemplate[];
   sheetSync: SheetSyncHealth | null;
   heartbeats: MonitorHeartbeats;
-  /** Blocked-country ad rows refused at the door on the last sheet read. */
+  /**
+   * Blocked-country ad rows dropped at the door on the last sheet read. Still
+   * counted, never printed. Hugo, 08 Aug 2026: "if it's from India just delete
+   * everything from India and that's it, don't talk about India anymore." The
+   * door does exactly that; a line in his inbox about it every hour is noise
+   * about a decision he already made.
+   */
   refusedBlocked: number;
   /** People no engine will ever contact again, with why. A ladder that ends in
    *  silence is only acceptable when this list says so out loud. */
@@ -374,22 +382,18 @@ export function buildFunnelReport(d: MonitorData): MonitorReport {
   if (d.waiting.length) {
     parts.push(
       `<h3 style="margin:14px 0 4px">Waiting on a reply from us (${d.waiting.length})</h3>`,
+      `<p style="color:#6b7280;margin:0 0 6px;font-size:13px">Every one of these says WHY. An unanswered question is chased automatically after an hour, so a reason like "deliberate silence" or "refusal" means nothing more is owed, and anything else means the ladder still has it.</p>`,
     );
     parts.push(
       "<ul>" +
         d.waiting
           .map(
             (w) =>
-              `<li>${esc(w.name)} (${esc(w.phone)}), waiting ${w.waiting_minutes ?? "?"} min${w.drafts_pending ? `, ${w.drafts_pending} draft ready to approve` : ""}</li>`,
+              `<li>${esc(w.name)} (${esc(w.phone)}), waiting ${w.waiting_minutes ?? "?"} min${w.drafts_pending ? `, ${w.drafts_pending} draft ready to approve` : ""}` +
+              `<br><span style="color:#6b7280;font-size:12px">${esc(w.why ?? "no reason recorded")}</span></li>`,
           )
           .join("") +
         "</ul>",
-    );
-  }
-
-  if (d.refusedBlocked > 0) {
-    parts.push(
-      `<p style="background:#fef3c7;padding:8px;border-radius:6px">${d.refusedBlocked} ad row(s) from a blocked country were refused at the door. If ads are really off there, this number should fall to zero as the sheet stops growing.</p>`,
     );
   }
 

@@ -3,7 +3,11 @@
 // hyperlinked. You need to bake that in."
 
 import { describe, expect, it } from "vitest";
-import { buildAccountsDigestHtml, type DigestAccount } from "./accounts-digest";
+import {
+  buildAccountsDigestHtml,
+  type DigestAccount,
+  type NewlyOnboarded,
+} from "./accounts-digest";
 
 const accounts: DigestAccount[] = [
   {
@@ -90,5 +94,25 @@ describe("accounts digest email", () => {
     expect(html).not.toContain('onmouseover="');
     expect(html).not.toContain('"https://instagram.com/evil"');
     expect(html).toContain('href="https://instagram.com/evilonmouseoveralert1"');
+  });
+});
+
+// Hugo, 08 Aug 2026: "the report is not telling me how many new have fully
+// onboarded, we need to know that as well." A running total answers "how are
+// we doing"; only this answers "did anything happen in the last hour".
+describe("what changed since the last report", () => {
+  const fresh: NewlyOnboarded[] = [
+    { firstName: "Hasnain", igUsername: "hasnainmalik9363", at: "2026-08-08T12:31:32.000Z" },
+  ];
+
+  it("names the creators who finished since the last email", () => {
+    const html = buildAccountsDigestHtml(accounts, new Date("2026-08-08T13:00:00Z"), fresh);
+    expect(html).toContain("1 fully onboarded since the last report");
+    expect(html).toContain("Hasnain");
+  });
+
+  it("says so plainly when nobody finished, rather than leaving a gap", () => {
+    const html = buildAccountsDigestHtml(accounts, new Date("2026-08-08T13:00:00Z"), []);
+    expect(html).toContain("Nobody new finished all five steps");
   });
 });

@@ -1038,8 +1038,20 @@ describe("chasing an answered lead with no account", () => {
     for (const m of LEAD_CHASE_RUNG_MINUTES) expect(m).toBeLessThan(24 * 60);
   });
 
+  // The unanswered-question hole on the no-account side. Lawrence asked whether
+  // there was an app to watch his traffic, the brain could not place it and
+  // handed over, and the chase sat out because "the reply engine owns it". The
+  // reply engine had already spent its one action on that message.
+  it("chases a lead whose question nobody picked up, once the grace is spent", () => {
+    const owed = { repliedSinceWeWrote: true, chasesThisSpell: 1, chaseCount: 1 };
+    expect(decideLeadChase(chase({ ...owed, minutesSinceTheirMessage: 20 })).action).toBe("wait");
+    expect(decideLeadChase(chase({ ...owed, minutesSinceTheirMessage: 300 })).action).toBe("send");
+  });
+
   it("never talks over them, stops after four, and only templates reach a shut window", () => {
-    expect(decideLeadChase(chase({ repliedSinceWeWrote: true })).action).toBe("wait");
+    expect(
+      decideLeadChase(chase({ repliedSinceWeWrote: true, minutesSinceTheirMessage: 15 })).action,
+    ).toBe("wait");
     expect(decideLeadChase(chase({ chasesThisSpell: 4 })).action).toBe("stop");
     expect(decideLeadChase(chase({ windowOpen: false })).action).toBe("hand_to_drip");
     expect(decideLeadChase(chase({ chaseCount: 8 })).action).toBe("stop");

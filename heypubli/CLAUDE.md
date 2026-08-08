@@ -109,6 +109,26 @@ Full schema in `docs/DATABASE-SCHEMA.md`. Tables:
 `brands`, `brand_assignments`, `scheduled_posts`, `messages_log`,
 `hotmart_sales`, `admin_sessions`
 
+## Onboarding guide screenshots
+
+Hugo's own phone screenshots for the getting-started steps live in `public/guide/`:
+
+| File | Shows |
+|---|---|
+| `step2-1-find-the-email.jpg` | Finding the invite email |
+| `step2-2-join-now.jpg` | The Join Now button |
+| `step3-1-invite-people.jpg` | Invite People in the community |
+| `step3-2-copy-your-link.jpg` | Copying your own affiliate link |
+| `step4-1-edit-profile.jpg` | Edit Profile |
+| `step4-2-done.jpg` | Finished profile |
+| `payouts-settings.jpg` | Skool Payouts tab, settings gear circled in red, for "where do I get paid" |
+
+No page renders any of them yet. They are staged assets, added 2026-08-06 and 2026-08-07.
+
+`payouts-settings.jpg` shows Hugo's real payout amounts and bank line, and `public/` is served
+with no login. That is deliberate. Hugo, 2026-08-07: "dont blur, its good to show, authority."
+Do not redact it.
+
 ## Hard rules (never violate without asking Hugo)
 
 - Never touch `eslint.config.mjs` zone edges without asking.

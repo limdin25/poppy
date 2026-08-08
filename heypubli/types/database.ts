@@ -374,6 +374,11 @@ export interface FunnelMonitorState {
    *  switch, because a dead cron system kills the watchdog that shares it. */
   reply_last_ok_at: string | null;
   tick_last_ok_at: string | null;
+  /** Migration 039: the monitor no longer emails. It parks its newest report
+   *  here and the hourly digest sends ONE email containing it. */
+  last_report_html: string | null;
+  last_report_subject: string | null;
+  last_report_at: string | null;
   /** How many blocked-country rows the last sheet-sync run refused at the door. */
   sheet_sync_last_refused_blocked: number;
   updated_at: string;

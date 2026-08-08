@@ -75,7 +75,62 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export function buildAccountsDigestHtml(accounts: DigestAccount[], now: Date): string {
+/** Creators who finished all five steps since the last report went out. */
+export interface NewlyOnboarded {
+  firstName: string;
+  igUsername: string | null;
+  at: string;
+}
+
+export async function onboardedSince(sinceIso: string | null): Promise<NewlyOnboarded[]> {
+  // No watermark yet (first ever report): the last hour, so the first email
+  // does not claim every creator we have ever had as new.
+  const since = sinceIso ?? new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = createAdminClient() as any;
+  const { data: rows } = (await admin
+    .from("onboarding_progress")
+    .select("profile_id, completed_at")
+    .eq("step", "bio")
+    .not("completed_at", "is", null)
+    .gte("completed_at", since)) as {
+    data: { profile_id: string; completed_at: string }[] | null;
+  };
+  if (!rows?.length) return [];
+
+  const ids = rows.map((r) => r.profile_id);
+  const [{ data: profiles }, { data: conns }] = (await Promise.all([
+    admin.from("profiles").select("id, first_name, email, onboarding_complete").in("id", ids),
+    admin.from("outstand_connections").select("profile_id, ig_username").in("profile_id", ids),
+  ])) as [
+    {
+      data:
+        | { id: string; first_name: string | null; email: string; onboarding_complete: boolean }[]
+        | null;
+    },
+    { data: { profile_id: string; ig_username: string | null }[] | null },
+  ];
+  const igBy = new Map((conns ?? []).map((c) => [c.profile_id, c.ig_username]));
+  const out: NewlyOnboarded[] = [];
+  for (const r of rows) {
+    const p = (profiles ?? []).find((x) => x.id === r.profile_id);
+    // The bio stamp is the last step, but only `onboarding_complete` proves the
+    // other four are in too, and it is what the 5/5 badge reads.
+    if (!p?.onboarding_complete) continue;
+    out.push({
+      firstName: p.first_name || p.email,
+      igUsername: igBy.get(r.profile_id) ?? null,
+      at: r.completed_at,
+    });
+  }
+  return out.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+export function buildAccountsDigestHtml(
+  accounts: DigestAccount[],
+  now: Date,
+  newlyOnboarded: NewlyOnboarded[] = [],
+): string {
   const connected = accounts.filter((a) => a.isConnected);
   const disconnected = accounts.filter((a) => !a.isConnected);
 
@@ -164,6 +219,22 @@ export function buildAccountsDigestHtml(accounts: DigestAccount[], now: Date): s
       </div>`
     : "";
 
+  // What changed since the last email. Without it an hourly report is a
+  // photograph, and you have to remember last hour's numbers to read it.
+  const fresh = newlyOnboarded.length
+    ? `<div style="background:#ECFDF5;padding:10px;border-radius:6px;margin:10px 0;">
+        <strong style="color:#047857;">${newlyOnboarded.length} fully onboarded since the last report:</strong>
+        <ul style="margin:6px 0;color:#065F46;font-size:13px;">
+          ${newlyOnboarded
+            .map(
+              (n) =>
+                `<li><strong>${esc(n.firstName)}</strong> ${n.igUsername ? igLink(n.igUsername) : ""}, finished ${esc(fmtDate(n.at))}</li>`,
+            )
+            .join("")}
+        </ul>
+      </div>`
+    : `<p style="color:#6B7280;font-size:13px;margin:10px 0;">Nobody new finished all five steps since the last report.</p>`;
+
   return `
     <div style="font-family:sans-serif;max-width:840px;">
       <h2 style="color:#E1306C;margin-bottom:4px;">Creator accounts</h2>
@@ -173,6 +244,7 @@ export function buildAccountsDigestHtml(accounts: DigestAccount[], now: Date): s
         <br><strong style="color:#047857;">${live.length} have their own Skool link AND their sentence live on Instagram</strong>, checked on their real profile just now.
         ${chase.length ? `<br><span style="color:#92400E;">${chase.length} still to chase.</span>` : ""}
       </p>
+      ${fresh}
       ${alarm}
       ${body}
       <p style="color:#6B7280;font-size:12px;margin-top:16px;">
@@ -244,8 +316,26 @@ export async function sendAccountsDigest(now = new Date()): Promise<{
   accounts: number;
   verified: number;
   needsYou: number;
+  newlyOnboarded: number;
 }> {
   const accounts = await getDigestAccounts();
+
+  // The funnel monitor parks its newest report instead of emailing it, so this
+  // is the one email an hour and it carries everything (migration 039).
+  const { data: monitorState } = await createAdminClient()
+    .from("funnel_monitor_state")
+    .select("last_report_html, last_report_subject, last_report_at, last_email_at")
+    .eq("id", "default")
+    .maybeSingle<{
+      last_report_html: string | null;
+      last_report_subject: string | null;
+      last_report_at: string | null;
+      last_email_at: string | null;
+    }>();
+  const monitorHtml = monitorState?.last_report_html ?? null;
+  const monitorSubject = monitorState?.last_report_subject ?? null;
+  const monitorAt = monitorState?.last_report_at ?? null;
+  const lastReportAt = monitorState?.last_email_at ?? null;
 
   // Merge in the live read of every real Instagram profile. This is the whole
   // point of the hourly email: whether their own Skool link is genuinely on
@@ -287,13 +377,31 @@ export async function sendAccountsDigest(now = new Date()): Promise<{
   } catch (err) {
     console.error("[accounts-digest] live Instagram read failed:", err);
   }
-  const html = buildAccountsDigestHtml(accounts, now);
+  // NEW SINCE THE LAST REPORT. Hugo, 08 Aug 2026: "the report is not telling me
+  // how many new have fully onboarded, we need to know that as well." A running
+  // total answers "how are we doing"; only this answers "did anything happen in
+  // the last hour", which is the question an hourly email exists for.
+  const newlyOnboarded = await onboardedSince(lastReportAt);
+
+  const html =
+    buildAccountsDigestHtml(accounts, now, newlyOnboarded) +
+    // ONE email an hour with everything in it, so the funnel monitor's report
+    // rides along here instead of arriving separately every five minutes.
+    (monitorHtml
+      ? `<hr style="margin:26px 0;border:0;border-top:1px solid #e5e7eb">` +
+        `<h2 style="margin:0 0 2px">Funnel report</h2>` +
+        `<p style="color:#6b7280;font-size:12px;margin:0 0 10px">${monitorSubject ?? ""}${
+          monitorAt ? `, as of ${fmtDate(monitorAt)}` : ""
+        }</p>` +
+        monitorHtml
+      : "");
   const connected = accounts.filter((a) => a.isConnected).length;
-  // The subject line carries the number Hugo actually cares about, so the
-  // inbox list alone answers "is anybody's link live yet".
+  // The subject line carries the numbers Hugo actually cares about, so the
+  // inbox list alone answers "is anybody's link live, and did anyone finish".
+  const newBit = newlyOnboarded.length ? `${newlyOnboarded.length} NEW, ` : "";
   const subject = needsYou
-    ? `Creator accounts: ${verified} of ${connected} links live, ${needsYou} NEED YOU`
-    : `Creator accounts: ${verified} of ${connected} links live`;
+    ? `Creators: ${newBit}${verified} of ${connected} links live, ${needsYou} need you`
+    : `Creators: ${newBit}${verified} of ${connected} links live`;
   const emails = await adminEmails();
   // One at a time rather than Promise.all: Resend throws on a 429 and losing
   // the whole digest because the second recipient was rate limited is worse
@@ -307,5 +415,22 @@ export async function sendAccountsDigest(now = new Date()): Promise<{
       console.error("[accounts-digest] failed to email", to, err);
     }
   }
-  return { sent, accounts: accounts.length, verified, needsYou };
+  // The watermark is what "new since the last report" counts from, so it only
+  // moves when an email genuinely went out. A Resend outage replays the window
+  // rather than swallowing an hour of finished creators.
+  if (sent > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (createAdminClient().from("funnel_monitor_state") as any).upsert({
+      id: "default",
+      last_email_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    });
+  }
+  return {
+    sent,
+    accounts: accounts.length,
+    verified,
+    needsYou,
+    newlyOnboarded: newlyOnboarded.length,
+  };
 }
