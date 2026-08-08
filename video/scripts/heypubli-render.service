@@ -1,0 +1,43 @@
+# systemd unit for the HeyPubli creator-variants render worker on
+# margarita-server. This is the Mac launchd job com.heypubli.creator-variants,
+# moved to a box that is actually on 24 hours a day.
+#
+# Install:
+#   write /etc/heypubli-render.env first (chmod 600), then
+#   cp /root/heypubli-videos/video/scripts/heypubli-render.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now heypubli-render
+# Logs:    journalctl -u heypubli-render -f
+# Update:  systemctl stop heypubli-render
+#          git -C /root/heypubli-videos fetch --depth=1 origin reviews
+#          git -C /root/heypubli-videos reset --hard FETCH_HEAD
+#          systemctl start heypubli-render
+# reset --hard, never pull: src/variants/sources.json is a tracked file the
+# worker rewrites at runtime, so the clone is dirty by design. ensureSource()
+# re-downloads anything the reset discards, so this is self-healing.
+
+[Unit]
+Description=HeyPubli creator-variants render worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/heypubli-videos/video
+# System node v20.20.2 — the same interpreter vsl-render-worker has run Remotion
+# 4.0.497 on since July. Do NOT upgrade it in place, other services depend on it.
+ExecStart=/usr/bin/node scripts/creator-variants-worker.mjs
+EnvironmentFile=/etc/heypubli-render.env
+# Load-bearing: the worker spawns bare `node`, `ffmpeg` and `ffprobe`, which die
+# with ENOENT under systemd's minimal PATH, deep inside a master ingest.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=15
+# Renders must never starve the scrapers, the VSL renderer or the UGC worker.
+Nice=10
+# This box has NO SWAP. An unbounded chrome leak with no swap is an OOM-killer
+# event that could take a production scraper with it. 22GB is available, so 12
+# leaves room for a concurrent VSL render.
+MemoryMax=12G
+
+[Install]
+WantedBy=multi-user.target

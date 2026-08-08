@@ -47,6 +47,13 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
   const [title, setTitle] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [captions, setCaptions] = useState<Record<string, string>>({});
+  // Which box is doing the work. Rendering lives on the VPS now, so "alive"
+  // on its own would not tell Hugo whether the server or a stray laptop
+  // answered. Absent on older fixtures, hence the optional chain.
+  const workerNames = (overview.workers ?? [])
+    .filter((w) => w.alive)
+    .map((w) => (w.id === "default" ? "mac" : w.id))
+    .join(" + ");
 
   const onUpload = async (file: File) => {
     setError(null);
@@ -106,7 +113,7 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
             className={`w-2 h-2 rounded-full ${overview.workerAlive ? "bg-green-600" : "bg-red-600"}`}
           />
           {overview.workerAlive
-            ? "Render worker alive"
+            ? `Render worker alive${workerNames ? ` (${workerNames})` : ""}`
             : overview.workerLastSeen
               ? `Render worker QUIET since ${new Date(overview.workerLastSeen).toLocaleTimeString("en-GB")}`
               : "Render worker has never checked in"}

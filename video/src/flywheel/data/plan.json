@@ -1,0 +1,1529 @@
+{
+  "fps": 30,
+  "totalFrames": 1815,
+  "totalSeconds": 60.5,
+  "sourceSeconds": 74.197,
+  "savedSeconds": 13.697,
+  "cuts": [
+    {
+      "srcStart": 0.21999998092651368,
+      "srcEnd": 1.9800000190734863,
+      "kind": "pause",
+      "srcStartFrame": 7,
+      "srcEndFrame": 59,
+      "durationInFrames": 52,
+      "fromFrame": 0,
+      "framing": {
+        "scale": 1,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "srcStart": 1.9800000190734863,
+      "srcEnd": 3.8799999713897706,
+      "kind": "punch",
+      "srcStartFrame": 59,
+      "srcEndFrame": 116,
+      "durationInFrames": 57,
+      "fromFrame": 52,
+      "framing": {
+        "scale": 1.18,
+        "x": 0.01,
+        "y": -0.05
+      }
+    },
+    {
+      "srcStart": 5.099999904632568,
+      "srcEnd": 6.119999980926513,
+      "kind": "pause",
+      "srcStartFrame": 153,
+      "srcEndFrame": 184,
+      "durationInFrames": 31,
+      "fromFrame": 109,
+      "framing": {
+        "scale": 1.06,
+        "x": -0.02,
+        "y": -0.02
+      }
+    },
+    {
+      "srcStart": 6.480000019073486,
+      "srcEnd": 7.619999980926513,
+      "kind": "pause",
+      "srcStartFrame": 194,
+      "srcEndFrame": 229,
+      "durationInFrames": 35,
+      "fromFrame": 140,
+      "framing": {
+        "scale": 1.3,
+        "x": 0.02,
+        "y": -0.08
+      }
+    },
+    {
+      "srcStart": 8.920000076293945,
+      "srcEnd": 10.94000015258789,
+      "kind": "pause",
+      "srcStartFrame": 268,
+      "srcEndFrame": 328,
+      "durationInFrames": 60,
+      "fromFrame": 175,
+      "framing": {
+        "scale": 1.12,
+        "x": -0.03,
+        "y": -0.04
+      }
+    },
+    {
+      "srcStart": 11.640000343322754,
+      "srcEnd": 13.739999771118164,
+      "kind": "pause",
+      "srcStartFrame": 349,
+      "srcEndFrame": 412,
+      "durationInFrames": 63,
+      "fromFrame": 235,
+      "framing": {
+        "scale": 1.24,
+        "x": 0.03,
+        "y": -0.07
+      }
+    },
+    {
+      "srcStart": 13.739999771118164,
+      "srcEnd": 15.999999618530273,
+      "kind": "punch",
+      "srcStartFrame": 412,
+      "srcEndFrame": 480,
+      "durationInFrames": 68,
+      "fromFrame": 298,
+      "framing": {
+        "scale": 1.03,
+        "x": 0,
+        "y": -0.01
+      }
+    },
+    {
+      "srcStart": 17.34000015258789,
+      "srcEnd": 19.459999084472656,
+      "kind": "pause",
+      "srcStartFrame": 520,
+      "srcEndFrame": 584,
+      "durationInFrames": 64,
+      "fromFrame": 366,
+      "framing": {
+        "scale": 1.28,
+        "x": -0.02,
+        "y": -0.06
+      }
+    },
+    {
+      "srcStart": 19.459999084472656,
+      "srcEnd": 21.6,
+      "kind": "punch",
+      "srcStartFrame": 584,
+      "srcEndFrame": 648,
+      "durationInFrames": 64,
+      "fromFrame": 430,
+      "framing": {
+        "scale": 1,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "srcStart": 21.799999237060547,
+      "srcEnd": 24.499999618530275,
+      "kind": "pause",
+      "srcStartFrame": 654,
+      "srcEndFrame": 735,
+      "durationInFrames": 81,
+      "fromFrame": 494,
+      "framing": {
+        "scale": 1.18,
+        "x": 0.01,
+        "y": -0.05
+      }
+    },
+    {
+      "srcStart": 25.020000457763672,
+      "srcEnd": 27.440000152587892,
+      "kind": "pause",
+      "srcStartFrame": 751,
+      "srcEndFrame": 823,
+      "durationInFrames": 72,
+      "fromFrame": 575,
+      "framing": {
+        "scale": 1.06,
+        "x": -0.02,
+        "y": -0.02
+      }
+    },
+    {
+      "srcStart": 28.420000076293945,
+      "srcEnd": 30.819999313354494,
+      "kind": "pause",
+      "srcStartFrame": 853,
+      "srcEndFrame": 925,
+      "durationInFrames": 72,
+      "fromFrame": 647,
+      "framing": {
+        "scale": 1.3,
+        "x": 0.02,
+        "y": -0.08
+      }
+    },
+    {
+      "srcStart": 32.279998779296875,
+      "srcEnd": 33.779998779296875,
+      "kind": "pause",
+      "srcStartFrame": 968,
+      "srcEndFrame": 1013,
+      "durationInFrames": 45,
+      "fromFrame": 719,
+      "framing": {
+        "scale": 1.12,
+        "x": -0.03,
+        "y": -0.04
+      }
+    },
+    {
+      "srcStart": 33.779998779296875,
+      "srcEnd": 35.460000610351564,
+      "kind": "punch",
+      "srcStartFrame": 1013,
+      "srcEndFrame": 1064,
+      "durationInFrames": 51,
+      "fromFrame": 764,
+      "framing": {
+        "scale": 1.24,
+        "x": 0.03,
+        "y": -0.07
+      }
+    },
+    {
+      "srcStart": 36.20000076293945,
+      "srcEnd": 38.380001068115234,
+      "kind": "pause",
+      "srcStartFrame": 1086,
+      "srcEndFrame": 1151,
+      "durationInFrames": 65,
+      "fromFrame": 815,
+      "framing": {
+        "scale": 1.03,
+        "x": 0,
+        "y": -0.01
+      }
+    },
+    {
+      "srcStart": 38.380001068115234,
+      "srcEnd": 40.5,
+      "kind": "punch",
+      "srcStartFrame": 1151,
+      "srcEndFrame": 1215,
+      "durationInFrames": 64,
+      "fromFrame": 880,
+      "framing": {
+        "scale": 1.28,
+        "x": -0.02,
+        "y": -0.06
+      }
+    },
+    {
+      "srcStart": 40.5,
+      "srcEnd": 42.820001220703126,
+      "kind": "punch",
+      "srcStartFrame": 1215,
+      "srcEndFrame": 1285,
+      "durationInFrames": 70,
+      "fromFrame": 944,
+      "framing": {
+        "scale": 1,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "srcStart": 43.63999938964844,
+      "srcEnd": 45.91999816894531,
+      "kind": "pause",
+      "srcStartFrame": 1309,
+      "srcEndFrame": 1378,
+      "durationInFrames": 69,
+      "fromFrame": 1014,
+      "framing": {
+        "scale": 1.18,
+        "x": 0.01,
+        "y": -0.05
+      }
+    },
+    {
+      "srcStart": 45.91999816894531,
+      "srcEnd": 48,
+      "kind": "punch",
+      "srcStartFrame": 1378,
+      "srcEndFrame": 1440,
+      "durationInFrames": 62,
+      "fromFrame": 1083,
+      "framing": {
+        "scale": 1.06,
+        "x": -0.02,
+        "y": -0.02
+      }
+    },
+    {
+      "srcStart": 48,
+      "srcEnd": 50.199998474121095,
+      "kind": "punch",
+      "srcStartFrame": 1440,
+      "srcEndFrame": 1506,
+      "durationInFrames": 66,
+      "fromFrame": 1145,
+      "framing": {
+        "scale": 1.3,
+        "x": 0.02,
+        "y": -0.08
+      }
+    },
+    {
+      "srcStart": 50.84000015258789,
+      "srcEnd": 53.6,
+      "kind": "pause",
+      "srcStartFrame": 1525,
+      "srcEndFrame": 1608,
+      "durationInFrames": 83,
+      "fromFrame": 1211,
+      "framing": {
+        "scale": 1.12,
+        "x": -0.03,
+        "y": -0.04
+      }
+    },
+    {
+      "srcStart": 54.119998931884766,
+      "srcEnd": 56.91999816894531,
+      "kind": "pause",
+      "srcStartFrame": 1624,
+      "srcEndFrame": 1708,
+      "durationInFrames": 84,
+      "fromFrame": 1294,
+      "framing": {
+        "scale": 1.24,
+        "x": 0.03,
+        "y": -0.07
+      }
+    },
+    {
+      "srcStart": 56.91999816894531,
+      "srcEnd": 59.7599983215332,
+      "kind": "punch",
+      "srcStartFrame": 1708,
+      "srcEndFrame": 1793,
+      "durationInFrames": 85,
+      "fromFrame": 1378,
+      "framing": {
+        "scale": 1.03,
+        "x": 0,
+        "y": -0.01
+      }
+    },
+    {
+      "srcStart": 59.7599983215332,
+      "srcEnd": 62.81999969482422,
+      "kind": "punch",
+      "srcStartFrame": 1793,
+      "srcEndFrame": 1885,
+      "durationInFrames": 92,
+      "fromFrame": 1463,
+      "framing": {
+        "scale": 1.28,
+        "x": -0.02,
+        "y": -0.06
+      }
+    },
+    {
+      "srcStart": 62.81999969482422,
+      "srcEnd": 65.55999755859375,
+      "kind": "punch",
+      "srcStartFrame": 1885,
+      "srcEndFrame": 1967,
+      "durationInFrames": 82,
+      "fromFrame": 1555,
+      "framing": {
+        "scale": 1,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "srcStart": 65.55999755859375,
+      "srcEnd": 68.19999847412109,
+      "kind": "punch",
+      "srcStartFrame": 1967,
+      "srcEndFrame": 2046,
+      "durationInFrames": 79,
+      "fromFrame": 1637,
+      "framing": {
+        "scale": 1.18,
+        "x": 0.01,
+        "y": -0.05
+      }
+    },
+    {
+      "srcStart": 68.87999725341797,
+      "srcEnd": 69.6,
+      "kind": "pause",
+      "srcStartFrame": 2066,
+      "srcEndFrame": 2088,
+      "durationInFrames": 22,
+      "fromFrame": 1716,
+      "framing": {
+        "scale": 1.06,
+        "x": -0.02,
+        "y": -0.02
+      }
+    },
+    {
+      "srcStart": 70.31999969482422,
+      "srcEnd": 71.91999969482421,
+      "kind": "pause",
+      "srcStartFrame": 2110,
+      "srcEndFrame": 2158,
+      "durationInFrames": 48,
+      "fromFrame": 1738,
+      "framing": {
+        "scale": 1.3,
+        "x": 0.02,
+        "y": -0.08
+      }
+    },
+    {
+      "srcStart": 72.58000183105469,
+      "srcEnd": 73.53999694824219,
+      "kind": "pause",
+      "srcStartFrame": 2177,
+      "srcEndFrame": 2206,
+      "durationInFrames": 29,
+      "fromFrame": 1786,
+      "framing": {
+        "scale": 1.12,
+        "x": -0.03,
+        "y": -0.04
+      }
+    }
+  ],
+  "words": [
+    {
+      "word": "Every",
+      "start": 0.28666664759318033,
+      "end": 0.806666628519694
+    },
+    {
+      "word": "single",
+      "start": 0.806666628519694,
+      "end": 1.2866666475931803
+    },
+    {
+      "word": "video",
+      "start": 1.2866666475931803,
+      "end": 1.486666695276896
+    },
+    {
+      "word": "on",
+      "start": 1.486666695276896,
+      "end": 1.7466666857401532
+    },
+    {
+      "word": "this",
+      "start": 1.7466666857401532,
+      "end": 1.9066667715708416
+    },
+    {
+      "word": "page",
+      "start": 1.9066667715708416,
+      "end": 2.3466665903727213
+    },
+    {
+      "word": "was",
+      "start": 2.3466665903727213,
+      "end": 2.8266666094462076
+    },
+    {
+      "word": "created",
+      "start": 2.8266666094462076,
+      "end": 3.046666638056437
+    },
+    {
+      "word": "with",
+      "start": 3.046666638056437,
+      "end": 3.2866666475931803
+    },
+    {
+      "word": "AI",
+      "start": 3.2866666475931803,
+      "end": 3.546666638056437
+    },
+    {
+      "word": "including",
+      "start": 3.6333333333333333,
+      "end": 3.893333466847738
+    },
+    {
+      "word": "me",
+      "start": 3.893333466847738,
+      "end": 4.553333314259847
+    },
+    {
+      "word": "but",
+      "start": 4.6800000190734865,
+      "end": 4.839999866485596
+    },
+    {
+      "word": "the",
+      "start": 4.839999866485596,
+      "end": 4.98000020980835
+    },
+    {
+      "word": "world",
+      "start": 4.98000020980835,
+      "end": 5.1800000190734865
+    },
+    {
+      "word": "just",
+      "start": 5.1800000190734865,
+      "end": 5.48000020980835
+    },
+    {
+      "word": "shifted",
+      "start": 5.48000020980835,
+      "end": 5.719999980926514
+    },
+    {
+      "word": "While",
+      "start": 5.833333333333333,
+      "end": 5.879999542236328
+    },
+    {
+      "word": "most",
+      "start": 5.879999542236328,
+      "end": 6.099999809265136
+    },
+    {
+      "word": "people",
+      "start": 6.099999809265136,
+      "end": 6.259999656677246
+    },
+    {
+      "word": "are",
+      "start": 6.259999656677246,
+      "end": 6.420000457763671
+    },
+    {
+      "word": "still",
+      "start": 6.420000457763671,
+      "end": 6.820000076293945
+    },
+    {
+      "word": "treating",
+      "start": 6.820000076293945,
+      "end": 6.820000076293945
+    },
+    {
+      "word": "AI",
+      "start": 6.820000076293945,
+      "end": 7.160000228881835
+    },
+    {
+      "word": "like",
+      "start": 7.160000228881835,
+      "end": 7.3399995803833
+    },
+    {
+      "word": "a",
+      "start": 7.3399995803833,
+      "end": 7.74000015258789
+    },
+    {
+      "word": "toy",
+      "start": 7.74000015258789,
+      "end": 7.74000015258789
+    },
+    {
+      "word": "a",
+      "start": 7.840000343322754,
+      "end": 7.979999732971192
+    },
+    {
+      "word": "small",
+      "start": 7.979999732971192,
+      "end": 8.279999923706054
+    },
+    {
+      "word": "group",
+      "start": 8.279999923706054,
+      "end": 8.399999809265136
+    },
+    {
+      "word": "of",
+      "start": 8.399999809265136,
+      "end": 8.97999973297119
+    },
+    {
+      "word": "insiders",
+      "start": 8.97999973297119,
+      "end": 8.97999973297119
+    },
+    {
+      "word": "is",
+      "start": 8.97999973297119,
+      "end": 9.239999961853027
+    },
+    {
+      "word": "using",
+      "start": 9.239999961853027,
+      "end": 9.399999809265136
+    },
+    {
+      "word": "it",
+      "start": 9.399999809265136,
+      "end": 9.500000190734863
+    },
+    {
+      "word": "to",
+      "start": 9.500000190734863,
+      "end": 9.939999771118165
+    },
+    {
+      "word": "replace",
+      "start": 9.939999771118165,
+      "end": 9.939999771118165
+    },
+    {
+      "word": "entire",
+      "start": 9.939999771118165,
+      "end": 10.319999885559083
+    },
+    {
+      "word": "production",
+      "start": 10.319999885559083,
+      "end": 10.620000076293946
+    },
+    {
+      "word": "teams",
+      "start": 10.620000076293946,
+      "end": 10.979999732971192
+    },
+    {
+      "word": "with",
+      "start": 10.979999732971192,
+      "end": 11.300000381469728
+    },
+    {
+      "word": "a",
+      "start": 11.300000381469728,
+      "end": 11.460000228881837
+    },
+    {
+      "word": "single",
+      "start": 11.460000228881837,
+      "end": 11.720000457763673
+    },
+    {
+      "word": "laptop",
+      "start": 11.720000457763673,
+      "end": 12.099999618530275
+    },
+    {
+      "word": "Creating",
+      "start": 12.206666819254558,
+      "end": 12.366666666666667
+    },
+    {
+      "word": "AI",
+      "start": 12.366666666666667,
+      "end": 12.72666727701823
+    },
+    {
+      "word": "content",
+      "start": 12.72666727701823,
+      "end": 13.026666514078777
+    },
+    {
+      "word": "is",
+      "start": 13.026666514078777,
+      "end": 13.206666819254558
+    },
+    {
+      "word": "the",
+      "start": 13.206666819254558,
+      "end": 13.306667200724284
+    },
+    {
+      "word": "easy",
+      "start": 13.306667200724284,
+      "end": 13.526666514078777
+    },
+    {
+      "word": "part",
+      "start": 13.526666514078777,
+      "end": 13.746665827433269
+    },
+    {
+      "word": "The",
+      "start": 13.886667124430339,
+      "end": 14.126666895548503
+    },
+    {
+      "word": "real",
+      "start": 14.126666895548503,
+      "end": 14.326665751139323
+    },
+    {
+      "word": "game",
+      "start": 14.326665751139323,
+      "end": 14.626666895548505
+    },
+    {
+      "word": "the",
+      "start": 14.88666712443034,
+      "end": 15.006666056315106
+    },
+    {
+      "word": "thing",
+      "start": 15.006666056315106,
+      "end": 15.146667353312177
+    },
+    {
+      "word": "that",
+      "start": 15.146667353312177,
+      "end": 15.306667200724286
+    },
+    {
+      "word": "actually",
+      "start": 15.306667200724286,
+      "end": 15.786666742960614
+    },
+    {
+      "word": "changes",
+      "start": 15.786666742960614,
+      "end": 15.866666666666669
+    },
+    {
+      "word": "your",
+      "start": 15.866666666666669,
+      "end": 16.22666727701823
+    },
+    {
+      "word": "life",
+      "start": 16.22666727701823,
+      "end": 16.366666666666667
+    },
+    {
+      "word": "is",
+      "start": 16.466666666666665,
+      "end": 16.76666704813639
+    },
+    {
+      "word": "having",
+      "start": 16.76666704813639,
+      "end": 16.946667353312172
+    },
+    {
+      "word": "a",
+      "start": 16.946667353312172,
+      "end": 17.24666659037272
+    },
+    {
+      "word": "system",
+      "start": 17.24666659037272,
+      "end": 17.366667429606117
+    },
+    {
+      "word": "that",
+      "start": 17.366667429606117,
+      "end": 17.686667124430336
+    },
+    {
+      "word": "turns",
+      "start": 17.686667124430336,
+      "end": 17.866667429606117
+    },
+    {
+      "word": "that",
+      "start": 17.866667429606117,
+      "end": 18.206667582194008
+    },
+    {
+      "word": "content",
+      "start": 18.206667582194008,
+      "end": 18.506666819254555
+    },
+    {
+      "word": "into",
+      "start": 18.506666819254555,
+      "end": 18.826666514078774
+    },
+    {
+      "word": "money",
+      "start": 18.826666514078774,
+      "end": 19.066666285196938
+    },
+    {
+      "word": "That's",
+      "start": 19.166666666666668,
+      "end": 19.57333386739095
+    },
+    {
+      "word": "why",
+      "start": 19.57333386739095,
+      "end": 19.693332799275716
+    },
+    {
+      "word": "we",
+      "start": 19.693332799275716,
+      "end": 19.93333257039388
+    },
+    {
+      "word": "built",
+      "start": 19.93333257039388,
+      "end": 20.033332951863606
+    },
+    {
+      "word": "Flywheel",
+      "start": 20.033332951863606,
+      "end": 20.493333943684895
+    },
+    {
+      "word": "This",
+      "start": 20.59333241780599,
+      "end": 20.93333257039388
+    },
+    {
+      "word": "isn't",
+      "start": 20.93333257039388,
+      "end": 21.133333333333333
+    },
+    {
+      "word": "theory",
+      "start": 21.133333333333333,
+      "end": 21.473333485921223
+    },
+    {
+      "word": "It's",
+      "start": 21.566666666666666,
+      "end": 21.993333943684895
+    },
+    {
+      "word": "a",
+      "start": 21.993333943684895,
+      "end": 22.153333791097005
+    },
+    {
+      "word": "plug",
+      "start": 22.153333791097005,
+      "end": 22.41333401997884
+    },
+    {
+      "word": "in",
+      "start": 22.41333401997884,
+      "end": 22.61333287556966
+    },
+    {
+      "word": "places",
+      "start": 22.61333287556966,
+      "end": 22.91333401997884
+    },
+    {
+      "word": "to",
+      "start": 22.91333401997884,
+      "end": 23.173334248860677
+    },
+    {
+      "word": "build",
+      "start": 23.173334248860677,
+      "end": 23.333334096272786
+    },
+    {
+      "word": "to",
+      "start": 23.333334096272786,
+      "end": 23.853332646687825
+    },
+    {
+      "word": "scale",
+      "start": 23.853332646687825,
+      "end": 23.853332646687825
+    },
+    {
+      "word": "We",
+      "start": 23.979998779296874,
+      "end": 23.979998779296874
+    },
+    {
+      "word": "give",
+      "start": 23.979998779296874,
+      "end": 23.979998779296874
+    },
+    {
+      "word": "you",
+      "start": 23.979998779296874,
+      "end": 24.119998168945312
+    },
+    {
+      "word": "the",
+      "start": 24.119998168945312,
+      "end": 24.240000915527343
+    },
+    {
+      "word": "tools",
+      "start": 24.240000915527343,
+      "end": 24.519999694824218
+    },
+    {
+      "word": "to",
+      "start": 24.519999694824218,
+      "end": 24.760001373291015
+    },
+    {
+      "word": "connect",
+      "start": 24.760001373291015,
+      "end": 24.940001678466796
+    },
+    {
+      "word": "up",
+      "start": 24.940001678466796,
+      "end": 25.100001525878906
+    },
+    {
+      "word": "to",
+      "start": 25.100001525878906,
+      "end": 25.260001373291015
+    },
+    {
+      "word": "five",
+      "start": 25.260001373291015,
+      "end": 25.479998779296874
+    },
+    {
+      "word": "Instagram",
+      "start": 25.479998779296874,
+      "end": 25.780001831054687
+    },
+    {
+      "word": "accounts",
+      "start": 25.780001831054687,
+      "end": 26.100001525878906
+    },
+    {
+      "word": "in",
+      "start": 26.100001525878906,
+      "end": 26.299998474121093
+    },
+    {
+      "word": "any",
+      "start": 26.299998474121093,
+      "end": 26.499999237060546
+    },
+    {
+      "word": "niche",
+      "start": 26.499999237060546,
+      "end": 26.639998626708984
+    },
+    {
+      "word": "you",
+      "start": 26.639998626708984,
+      "end": 26.88000030517578
+    },
+    {
+      "word": "want",
+      "start": 26.88000030517578,
+      "end": 27.060000610351562
+    },
+    {
+      "word": "Promote",
+      "start": 27.166667429606118,
+      "end": 27.18666788736979
+    },
+    {
+      "word": "your",
+      "start": 27.18666788736979,
+      "end": 27.386664835611978
+    },
+    {
+      "word": "own",
+      "start": 27.386664835611978,
+      "end": 27.626666514078774
+    },
+    {
+      "word": "business",
+      "start": 27.626666514078774,
+      "end": 27.966666666666665
+    },
+    {
+      "word": "your",
+      "start": 28.08666559855143,
+      "end": 29.106666056315103
+    },
+    {
+      "word": "own",
+      "start": 29.106666056315103,
+      "end": 29.3466677347819
+    },
+    {
+      "word": "products",
+      "start": 29.3466677347819,
+      "end": 29.726664988199868
+    },
+    {
+      "word": "or",
+      "start": 29.766665903727212,
+      "end": 30.56666514078776
+    },
+    {
+      "word": "simply",
+      "start": 30.56666514078776,
+      "end": 30.766665903727212
+    },
+    {
+      "word": "use",
+      "start": 30.766665903727212,
+      "end": 30.986667124430337
+    },
+    {
+      "word": "our",
+      "start": 30.986667124430337,
+      "end": 31.206668345133462
+    },
+    {
+      "word": "affiliate",
+      "start": 31.206668345133462,
+      "end": 31.466666666666665
+    },
+    {
+      "word": "offers",
+      "start": 31.466666666666665,
+      "end": 31.786666361490884
+    },
+    {
+      "word": "and",
+      "start": 31.786666361490884,
+      "end": 32.086665598551434
+    },
+    {
+      "word": "let",
+      "start": 32.086665598551434,
+      "end": 32.22666498819987
+    },
+    {
+      "word": "us",
+      "start": 32.22666498819987,
+      "end": 32.426665751139325
+    },
+    {
+      "word": "handle",
+      "start": 32.426665751139325,
+      "end": 32.62666651407878
+    },
+    {
+      "word": "the",
+      "start": 32.62666651407878,
+      "end": 33.3466677347819
+    },
+    {
+      "word": "heavy",
+      "start": 33.3466677347819,
+      "end": 33.48666712443034
+    },
+    {
+      "word": "lifting",
+      "start": 33.48666712443034,
+      "end": 33.686667887369794
+    },
+    {
+      "word": "If",
+      "start": 33.8066660563151,
+      "end": 34.24666849772135
+    },
+    {
+      "word": "you",
+      "start": 34.24666849772135,
+      "end": 34.42666498819987
+    },
+    {
+      "word": "choose",
+      "start": 34.42666498819987,
+      "end": 34.60666529337565
+    },
+    {
+      "word": "to",
+      "start": 34.60666529337565,
+      "end": 34.92666498819987
+    },
+    {
+      "word": "promote",
+      "start": 34.92666498819987,
+      "end": 34.92666498819987
+    },
+    {
+      "word": "our",
+      "start": 34.92666498819987,
+      "end": 35.22666803995768
+    },
+    {
+      "word": "products",
+      "start": 35.22666803995768,
+      "end": 35.42666498819987
+    },
+    {
+      "word": "we",
+      "start": 35.52666727701823,
+      "end": 35.62666575113932
+    },
+    {
+      "word": "generate",
+      "start": 35.62666575113932,
+      "end": 35.826666514078774
+    },
+    {
+      "word": "the",
+      "start": 35.826666514078774,
+      "end": 36.08666483561198
+    },
+    {
+      "word": "content",
+      "start": 36.08666483561198,
+      "end": 36.386667887369796
+    },
+    {
+      "word": "you",
+      "start": 36.646666208903,
+      "end": 36.80666605631511
+    },
+    {
+      "word": "connect",
+      "start": 36.80666605631511,
+      "end": 36.926664988199875
+    },
+    {
+      "word": "the",
+      "start": 36.926664988199875,
+      "end": 37.206667582194015
+    },
+    {
+      "word": "accounts",
+      "start": 37.206667582194015,
+      "end": 37.48666636149089
+    },
+    {
+      "word": "and",
+      "start": 37.526667277018234,
+      "end": 37.866667429606125
+    },
+    {
+      "word": "we",
+      "start": 37.866667429606125,
+      "end": 38.026667277018234
+    },
+    {
+      "word": "give",
+      "start": 38.026667277018234,
+      "end": 38.16666666666667
+    },
+    {
+      "word": "you",
+      "start": 38.16666666666667,
+      "end": 38.28666559855143
+    },
+    {
+      "word": "the",
+      "start": 38.28666559855143,
+      "end": 38.506666819254555
+    },
+    {
+      "word": "distribution",
+      "start": 38.506666819254555,
+      "end": 38.86666742960612
+    },
+    {
+      "word": "system",
+      "start": 38.86666742960612,
+      "end": 39.326666514078774
+    },
+    {
+      "word": "to",
+      "start": 39.326666514078774,
+      "end": 39.8066660563151
+    },
+    {
+      "word": "dominate",
+      "start": 39.8066660563151,
+      "end": 39.8066660563151
+    },
+    {
+      "word": "the",
+      "start": 39.8066660563151,
+      "end": 40.186667124430336
+    },
+    {
+      "word": "feed",
+      "start": 40.186667124430336,
+      "end": 40.26666514078776
+    },
+    {
+      "word": "You",
+      "start": 40.37333348592122,
+      "end": 40.893333943684894
+    },
+    {
+      "word": "set",
+      "start": 40.893333943684894,
+      "end": 41.09333470662435
+    },
+    {
+      "word": "it",
+      "start": 41.09333470662435,
+      "end": 41.19333318074544
+    },
+    {
+      "word": "up",
+      "start": 41.19333318074544,
+      "end": 41.37333348592122
+    },
+    {
+      "word": "once",
+      "start": 41.37333348592122,
+      "end": 41.733334096272785
+    },
+    {
+      "word": "the",
+      "start": 41.85333302815755,
+      "end": 42.17333272298177
+    },
+    {
+      "word": "system",
+      "start": 42.17333272298177,
+      "end": 42.33333257039388
+    },
+    {
+      "word": "does",
+      "start": 42.33333257039388,
+      "end": 42.573334248860675
+    },
+    {
+      "word": "the",
+      "start": 42.573334248860675,
+      "end": 42.733334096272785
+    },
+    {
+      "word": "work",
+      "start": 42.733334096272785,
+      "end": 43.03333333333333
+    },
+    {
+      "word": "You",
+      "start": 43.13333333333333,
+      "end": 43.220001220703125
+    },
+    {
+      "word": "can",
+      "start": 43.220001220703125,
+      "end": 43.400001525878906
+    },
+    {
+      "word": "keep",
+      "start": 43.400001525878906,
+      "end": 43.58000183105469
+    },
+    {
+      "word": "watching",
+      "start": 43.58000183105469,
+      "end": 43.84000015258789
+    },
+    {
+      "word": "other",
+      "start": 43.84000015258789,
+      "end": 44.060001373291016
+    },
+    {
+      "word": "people",
+      "start": 44.060001373291016,
+      "end": 44.2400016784668
+    },
+    {
+      "word": "make",
+      "start": 44.2400016784668,
+      "end": 44.47999954223633
+    },
+    {
+      "word": "money",
+      "start": 44.47999954223633,
+      "end": 44.619998931884766
+    },
+    {
+      "word": "with",
+      "start": 44.619998931884766,
+      "end": 44.91999816894531
+    },
+    {
+      "word": "AI",
+      "start": 44.91999816894531,
+      "end": 45.18000030517578
+    },
+    {
+      "word": "or",
+      "start": 45.18000030517578,
+      "end": 45.58000183105469
+    },
+    {
+      "word": "you",
+      "start": 45.58000183105469,
+      "end": 45.7400016784668
+    },
+    {
+      "word": "can",
+      "start": 45.7400016784668,
+      "end": 45.91999816894531
+    },
+    {
+      "word": "get",
+      "start": 45.91999816894531,
+      "end": 46.119998931884766
+    },
+    {
+      "word": "the",
+      "start": 46.119998931884766,
+      "end": 46.400001525878906
+    },
+    {
+      "word": "exact",
+      "start": 46.400001525878906,
+      "end": 46.65999984741211
+    },
+    {
+      "word": "system",
+      "start": 46.65999984741211,
+      "end": 46.939998626708984
+    },
+    {
+      "word": "they're",
+      "start": 46.939998626708984,
+      "end": 47.15999984741211
+    },
+    {
+      "word": "using",
+      "start": 47.15999984741211,
+      "end": 47.400001525878906
+    },
+    {
+      "word": "and",
+      "start": 47.400001525878906,
+      "end": 48.47999954223633
+    },
+    {
+      "word": "start",
+      "start": 48.47999954223633,
+      "end": 48.7599983215332
+    },
+    {
+      "word": "monetizing",
+      "start": 48.7599983215332,
+      "end": 49.220001220703125
+    },
+    {
+      "word": "today",
+      "start": 49.220001220703125,
+      "end": 49.619998931884766
+    },
+    {
+      "word": "Right",
+      "start": 49.84000015258789,
+      "end": 50.02000045776367
+    },
+    {
+      "word": "now",
+      "start": 50.02000045776367,
+      "end": 50.31999969482422
+    },
+    {
+      "word": "it's",
+      "start": 50.31999969482422,
+      "end": 51.81999969482422
+    },
+    {
+      "word": "just",
+      "start": 51.81999969482422,
+      "end": 52.81999969482422
+    },
+    {
+      "word": "9",
+      "start": 52.81999969482422,
+      "end": 53.459999084472656
+    },
+    {
+      "word": "to",
+      "start": 53.459999084472656,
+      "end": 53.87999725341797
+    },
+    {
+      "word": "get",
+      "start": 53.87999725341797,
+      "end": 54.099998474121094
+    },
+    {
+      "word": "started",
+      "start": 54.099998474121094,
+      "end": 54.41999816894531
+    },
+    {
+      "word": "but",
+      "start": 54.699996948242195,
+      "end": 55.23999786376954
+    },
+    {
+      "word": "that",
+      "start": 55.23999786376954,
+      "end": 55.5999984741211
+    },
+    {
+      "word": "price",
+      "start": 55.5999984741211,
+      "end": 55.819999694824226
+    },
+    {
+      "word": "won't",
+      "start": 55.819999694824226,
+      "end": 56.01999664306641
+    },
+    {
+      "word": "stay",
+      "start": 56.01999664306641,
+      "end": 56.199996948242195
+    },
+    {
+      "word": "there",
+      "start": 56.199996948242195,
+      "end": 56.36000061035157
+    },
+    {
+      "word": "for",
+      "start": 56.36000061035157,
+      "end": 56.55999755859376
+    },
+    {
+      "word": "long",
+      "start": 56.55999755859376,
+      "end": 57.0999984741211
+    },
+    {
+      "word": "Grab",
+      "start": 57.21333058675131,
+      "end": 57.253331502278655
+    },
+    {
+      "word": "your",
+      "start": 57.253331502278655,
+      "end": 57.453336079915374
+    },
+    {
+      "word": "spot",
+      "start": 57.453336079915374,
+      "end": 57.83333333333334
+    },
+    {
+      "word": "Join",
+      "start": 57.93333333333333,
+      "end": 58.04000244140625
+    },
+    {
+      "word": "Flywheel",
+      "start": 58.04000244140625,
+      "end": 58.400003051757814
+    },
+    {
+      "word": "before",
+      "start": 58.400003051757814,
+      "end": 58.760003662109376
+    },
+    {
+      "word": "the",
+      "start": 58.760003662109376,
+      "end": 59.05999908447266
+    },
+    {
+      "word": "window",
+      "start": 59.05999908447266,
+      "end": 59.1
+    },
+    {
+      "word": "closes",
+      "start": 59.1,
+      "end": 59.41999969482422
+    },
+    {
+      "word": "See",
+      "start": 59.546668497721356,
+      "end": 59.72666880289714
+    },
+    {
+      "word": "you",
+      "start": 59.72666880289714,
+      "end": 59.866668192545575
+    },
+    {
+      "word": "inside",
+      "start": 59.866668192545575,
+      "end": 60.166663614908856
+    }
+  ],
+  "segments": [
+    {
+      "text": "Every single video on this page was created with AI, including me, but the world just shifted.",
+      "start": 0.28666664759318033,
+      "end": 5.719999980926514
+    },
+    {
+      "text": "While most people are still treating AI like a toy, a small group of insiders is using it to replace entire production teams with a single laptop.",
+      "start": 5.833333333333333,
+      "end": 12.099999618530275
+    },
+    {
+      "text": "Creating AI content is the easy part. The real game, the thing that actually changes your life, is having a system that turns that content into money.",
+      "start": 12.206666819254558,
+      "end": 19.066666285196938
+    },
+    {
+      "text": "That's why we built Flywheel. This isn't theory.",
+      "start": 19.166666666666668,
+      "end": 21.473333485921223
+    },
+    {
+      "text": "It's a plug in places to build to scale. We give you the tools to connect up to five Instagram accounts in any niche you want.",
+      "start": 21.566666666666666,
+      "end": 27.060000610351562
+    },
+    {
+      "text": "Promote your own business, your own products, or simply use our affiliate offers and let us handle the heavy lifting.",
+      "start": 27.166667429606118,
+      "end": 33.686667887369794
+    },
+    {
+      "text": "If you choose to promote our products, we generate the content, you connect the accounts, and we give you the distribution system to dominate the feed.",
+      "start": 33.8066660563151,
+      "end": 40.26666514078776
+    },
+    {
+      "text": "You set it up once, the system does the work. You can keep watching other people make money with AI or you can get the exact system they're using and start monetizing today.",
+      "start": 40.37333348592122,
+      "end": 49.619998931884766
+    },
+    {
+      "text": "Right now, it's just $9 to get started, but that price won't stay there for long.",
+      "start": 49.84000015258789,
+      "end": 57.0999984741211
+    },
+    {
+      "text": "Grab your spot. Join Flywheel before the window closes. See you inside.",
+      "start": 57.21333058675131,
+      "end": 60.166663614908856
+    }
+  ]
+}

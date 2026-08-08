@@ -62,6 +62,16 @@ export interface PipelineOverview {
   creators: PipelineCreatorView[];
   workerLastSeen: string | null;
   workerAlive: boolean;
+  /** One entry per render host that has ever checked in, freshest first.
+   *  Optional so existing callers and test fixtures still typecheck. */
+  workers?: PipelineWorkerView[];
+}
+
+export interface PipelineWorkerView {
+  /** RENDER_WORKER_ID from the worker: 'vps' on the server, 'default' on the Mac. */
+  id: string;
+  lastSeen: string | null;
+  alive: boolean;
 }
 
 export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
@@ -79,7 +89,9 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
         .select("profile_id, ig_username, is_connected")
         .eq("is_connected", true),
       admin.from("profiles").select("id, first_name, whatsapp"),
-      admin.from("video_pipeline_state").select("worker_last_seen").eq("id", "default").single(),
+      // Every host, not just 'default'. Rendering moved to the VPS, so pinning
+      // this to one id would report the box we no longer run on.
+      admin.from("video_pipeline_state").select("id, worker_last_seen"),
       admin
         .from("scheduled_posts")
         .select("master_video_id, profile_id, scheduled_at, status, caption")
@@ -177,10 +189,23 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
     };
   });
 
-  const workerLastSeen = stateRow.data?.worker_last_seen ?? null;
-  const workerAlive = Boolean(
-    workerLastSeen && now.getTime() - Date.parse(workerLastSeen) < 120_000,
-  );
+  const workerRows = (stateRow.data ?? []) as Array<{
+    id: string;
+    worker_last_seen: string | null;
+  }>;
+  const workers: PipelineWorkerView[] = workerRows
+    .map((w) => ({
+      id: w.id,
+      lastSeen: w.worker_last_seen,
+      alive: Boolean(
+        w.worker_last_seen && now.getTime() - Date.parse(w.worker_last_seen) < 120_000,
+      ),
+    }))
+    .sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? ""));
 
-  return { masters, creators, workerLastSeen, workerAlive };
+  // Green if ANY host is rendering, and report the freshest stamp of the lot.
+  const workerAlive = workers.some((w) => w.alive);
+  const workerLastSeen = workers[0]?.lastSeen ?? null;
+
+  return { masters, creators, workerLastSeen, workerAlive, workers };
 }

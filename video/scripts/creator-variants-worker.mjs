@@ -3,11 +3,17 @@
 // Hugo, 07 Aug 2026: "every account they have their own color... every account
 // gets two videos per day... this has to be automated." The HeyPubli app
 // (heypubli.com) queues one row per master video x creator in
-// creator_video_renders; this worker drains that queue on Hugo's Mac, renders
-// the account's uniquely-colored copy with the variants factory, uploads it to
-// the public creator-videos bucket, and marks the row ready. The scheduling
-// cron over in heypubli/app/api/cron/video-pipeline then turns ready renders
-// into scheduled_posts.
+// creator_video_renders; this worker drains that queue, renders the account's
+// uniquely-colored copy with the variants factory, uploads it to the public
+// creator-videos bucket, and marks the row ready. The scheduling cron over in
+// heypubli/app/api/cron/video-pipeline then turns ready renders into
+// scheduled_posts.
+//
+// It runs on margarita-server as systemd `heypubli-render`, because a pipeline
+// that only advances while Hugo's laptop is awake is not a pipeline. The Mac
+// launchd job (com.heypubli.creator-variants) still works unchanged and is the
+// rollback. Set RENDER_WORKER_ID per host so the heartbeat row and the mp4
+// metadata both say which box did the work.
 //
 // Modeled line-for-line on the two proven scripts:
 //   - render-variants.mjs: the bundle-once + renderMedia harness and the
@@ -15,8 +21,8 @@
 //   - vsl-render-worker.mjs: the poll/claim/heartbeat/stale-requeue shape.
 //
 // Run it from video/:  node scripts/creator-variants-worker.mjs
-// It is installed as a launchd job (com.heypubli.creator-variants) so it
-// survives reboots. Logs: /tmp/creator-variants-worker.log
+// VPS:  systemctl status heypubli-render   /  journalctl -u heypubli-render -f
+// Mac:  launchd com.heypubli.creator-variants, log /tmp/creator-variants-worker.log
 //
 // UNIQUENESS MODEL. The composition derives every visual from
 // (sourceId, variantIndex, recipeVersion); props.seed is recorded, not read.
@@ -28,7 +34,7 @@
 import { bundle } from '@remotion/bundler';
 import { ensureBrowser, openBrowser, renderMedia, selectComposition } from '@remotion/renderer';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, copyFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, copyFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,20 +42,30 @@ const VIDEO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(VIDEO_DIR, 'out', 'creator');
 mkdirSync(OUT_DIR, { recursive: true });
 
-// ---- env: the HeyPubli project, read from the app's own .env.local ---------
-// (same load-the-env-yourself rule as scripts/lib/line-status.mjs: a worker
-// started by launchd has no shell profile, and failing open silently is worse
-// than refusing to start.)
-const envFile = join(VIDEO_DIR, '..', 'heypubli', '.env.local');
-const env = {};
-for (const line of readFileSync(envFile, 'utf8').split('\n')) {
-  const m = line.match(/^([A-Z_0-9]+)="?([^"]*)"?$/);
-  if (m) env[m[1]] = m[2];
+// ---- env: the HeyPubli project ---------------------------------------------
+// Two hosts, two ways in. On the Mac this comes from the app's own .env.local,
+// because a launchd job has no shell profile. On the VPS it comes from systemd
+// EnvironmentFile=/etc/heypubli-render.env, and there is no .env.local there at
+// all, so the read MUST be able to fail without taking the process with it.
+// Real env wins over the file, so the unit file is always authoritative and a
+// stale checkout can never quietly override it.
+for (const f of [join(VIDEO_DIR, '..', 'heypubli', '.env.local'), join(VIDEO_DIR, '..', '.env')]) {
+  try {
+    for (const line of readFileSync(f, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z_0-9]+)="?([^"]*)"?$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    }
+  } catch {
+    /* absent is normal: on the VPS the env arrives from systemd */
+  }
 }
-const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error('missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in heypubli/.env.local');
+  console.error(
+    'missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY ' +
+      '(heypubli/.env.local on the Mac, systemd EnvironmentFile on the VPS)',
+  );
   process.exit(1);
 }
 
@@ -57,8 +73,12 @@ const POLL_MS = 30_000;
 const STALE_MIN = 20;
 const MAX_ATTEMPTS = 3;
 const RECIPE_VERSION = 8;
-const CONCURRENCY = 8;
 const BUCKET = 'creator-videos';
+// Each render box stamps its own heartbeat row and its own mp4 metadata, so
+// "is the VPS actually doing this?" is answerable from the artifact rather than
+// inferred. The Mac keeps 'default', so its launchd plist needs no change.
+const WORKER_ID = process.env.RENDER_WORKER_ID ?? 'default';
+const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY ?? 8);
 
 const headers = {
   apikey: SERVICE_KEY,
@@ -194,7 +214,7 @@ async function renderOne(props, outPath) {
     concurrency: CONCURRENCY,
     offthreadVideoCacheSizeInBytes: 512 * 1024 * 1024,
     metadata: {
-      comment: `seed=${props.seed.toString(16).padStart(8, '0')} src=${props.sourceId} idx=${props.variantIndex} recipe=${props.recipeVersion} fam=${props.colorFamily ?? 'seeded'}`,
+      comment: `seed=${props.seed.toString(16).padStart(8, '0')} src=${props.sourceId} idx=${props.variantIndex} recipe=${props.recipeVersion} fam=${props.colorFamily ?? 'seeded'} worker=${WORKER_ID}`,
     },
   });
   const errs = verify(outPath, composition.durationInFrames);
@@ -364,17 +384,28 @@ async function renderClaimed(r) {
     }),
     headers: { Prefer: 'return=minimal' },
   });
+  // Drop the local copy once the bucket has it. On a box that renders around
+  // the clock this is ~17MB a time with nothing ever clearing it, which fills
+  // even a 360GB disk inside a few months. Only after the row says ready, so a
+  // crash between upload and PATCH still leaves the file to inspect.
+  try {
+    rmSync(out, { force: true });
+  } catch {
+    /* a leftover file is untidy, not a failure worth stopping the queue for */
+  }
   log(`ready in ${Math.round((Date.now() - t0) / 1000)}s -> ${url}`);
 }
 
+// UPSERT, never PATCH. A PATCH against a row that does not exist yet returns
+// 200 with zero rows changed, so a new worker id would look permanently dead
+// and nobody would know why. id is the primary key, so merge-duplicates makes
+// the first heartbeat create the row and every later one update it.
 async function heartbeat() {
-  await rest(`video_pipeline_state?id=eq.default`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      worker_last_seen: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }),
-    headers: { Prefer: 'return=minimal' },
+  const now = new Date().toISOString();
+  await rest('video_pipeline_state', {
+    method: 'POST',
+    body: JSON.stringify({ id: WORKER_ID, worker_last_seen: now, updated_at: now }),
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
   });
 }
 
