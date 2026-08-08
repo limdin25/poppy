@@ -5,6 +5,7 @@ import {
   decideReply,
   extractSkoolLink,
   pitchBlockedForPhone,
+  saysTheyFinishedStep,
   LEAD_CHASE_RUNG_MINUTES,
   type ReplyContext,
 } from "@/lib/data/reply-brain";
@@ -463,6 +464,34 @@ export async function processWaitingThread(
         justSavedLink = true;
         creator = await loadCreatorState(admin, phone, provider);
       }
+    }
+  }
+
+  // SAYING IT IN THE CHAT COUNTS AS PRESSING THE BUTTON. Joining the community
+  // and adding a profile photo are the two steps we can never verify (Skool
+  // fires nothing for a free invited member; Instagram will not date a photo),
+  // so both are completed by the creator's own declaration on /onboarding. Say
+  // the same words here and, until now, nothing happened: Chiquita wrote
+  // "Already joined", got the joining instructions back, and stayed at 1 of 5.
+  // That single gap is where most of this funnel was stuck, because no join
+  // means no referral link and no link means nothing to put in a bio.
+  let justDeclared: OnboardingStepId | null = null;
+  if (
+    creator.profile &&
+    (creator.openStep === "community" || creator.openStep === "photo") &&
+    saysTheyFinishedStep(split.said, creator.openStep)
+  ) {
+    const column =
+      creator.openStep === "community" ? "community_joined_declared_at" : "photo_declared_at";
+    justDeclared = creator.openStep;
+    if (!opts.dry) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: decErr } = await (admin.from("profiles") as any)
+        .update({ [column]: new Date().toISOString() })
+        .eq("id", creator.profile.id)
+        .is(column, null);
+      if (decErr) report.errors.push(`${phone}: ${column} ${decErr.message}`);
+      else creator = await loadCreatorState(admin, phone, provider);
     }
   }
 

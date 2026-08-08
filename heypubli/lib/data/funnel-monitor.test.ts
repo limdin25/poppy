@@ -324,3 +324,47 @@ describe("how often Hugo is emailed", () => {
     expect(ROUTINE_EMAIL_GAP_MS).toBe(60 * 60 * 1000);
   });
 });
+
+// Hugo, 08 Aug 2026, reading the waiting list out loud: "the opt-outs, we don't
+// have to inform me anymore. The auto-responder, that's it. The Uncle, delete."
+// All three are threads the brain deliberately leaves alone forever. Printing
+// them hourly trains you to skim the one list that must never be skimmed.
+describe("the waiting list only shows threads that are owed something", () => {
+  const w = (name: string, why: string) => ({
+    name,
+    phone: `+100000${name.length}`,
+    last_inbound_at: "2026-08-07T13:00:00.000Z",
+    drafts_pending: 0,
+    waiting_minutes: 200,
+    why,
+  });
+
+  it("hides opt-outs, auto-responders, blocked numbers and plain acknowledgements", () => {
+    const d = base();
+    d.waiting = [
+      w("Sajid", "opted out earlier, automations stay away"),
+      w("Nigel", "their own auto-responder, not a person"),
+      w("Uncle", "whatsapp number unsendable, answered by email"),
+      w("Janice", "acknowledgement, nothing outstanding"),
+      w("Blocked", "blocked at the door on purpose, nothing is ever sent"),
+    ];
+    const r = buildFunnelReport(d);
+    for (const hidden of ["Sajid", "Nigel", "Uncle", "Janice", "Blocked"]) {
+      expect(r.html, hidden).not.toContain(hidden);
+    }
+    expect(r.html).toContain("Nobody is waiting on an answer");
+  });
+
+  it("still shows anyone genuinely unanswered, and says why", () => {
+    const d = base();
+    d.waiting = [
+      w("Sajid", "opted out earlier, automations stay away"),
+      w("Chiquita", "creator mid-onboarding said something we cannot place"),
+    ];
+    const r = buildFunnelReport(d);
+    expect(r.html).toContain("Chiquita");
+    expect(r.html).toContain("said something we cannot place");
+    expect(r.html).not.toContain("Sajid");
+    expect(r.subject).toContain("1 waiting");
+  });
+});

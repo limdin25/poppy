@@ -224,6 +224,68 @@ export async function dispatchInvite(
  * abandoned. Kept here so the batch rules and the single-send rules cannot
  * drift apart.
  */
+/**
+ * EVERY ACCOUNT GETS AN INVITE. No exceptions, no button to press.
+ *
+ * 08 Aug 2026: only 8 of 28 creators had their Skool link live on Instagram,
+ * and the wall was step 2. Four of the ten stuck before the link, ROY, Danish,
+ * Tapan and MADHU, had NEVER BEEN SENT AN INVITE AT ALL: invites are queued
+ * when a LEAD arrives (the ad webhook, the sheet), and when a creator presses
+ * the button on /onboarding, but signing up for an account queues nothing. A
+ * creator who came in any other way was told to search their email for an
+ * invite that had never been sent, then chased about it, for days.
+ *
+ * You cannot join a community you were not invited to, you cannot get a
+ * referral link without joining, and you cannot put a link in your bio that
+ * you do not have. One missing email at step 2 costs the whole funnel.
+ *
+ * So this sweep runs on the tick and gives an invite to any account that has
+ * no invite row. It is idempotent, it is free, and it is deliberately a sweep
+ * rather than a line in the signup action: any future signup path that forgets
+ * is caught here within five minutes instead of silently stranding people.
+ */
+export async function backfillMissingInvites(
+  admin: Admin,
+  limit = 20,
+): Promise<{ missing: number; queued: number; blocked: Record<string, number> }> {
+  const report = { missing: 0, queued: 0, blocked: {} as Record<string, number> };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profiles } = (await (admin.from("profiles") as any)
+    .select("id, first_name, email, whatsapp")
+    .eq("is_admin", false)
+    .is("suspended_at", null)
+    .is("community_joined_declared_at", null)
+    .order("created_at", { ascending: false })
+    .limit(200)) as {
+    data: { id: string; first_name: string | null; email: string; whatsapp: string | null }[] | null;
+  };
+  if (!profiles?.length) return report;
+
+  const emails = profiles.map((p) => (p.email ?? "").toLowerCase()).filter(Boolean);
+  const { data: invites } = await admin
+    .from("skool_invites")
+    .select("email")
+    .in("email", emails)
+    .returns<{ email: string }[]>();
+  const invited = new Set((invites ?? []).map((i) => (i.email ?? "").toLowerCase()));
+
+  for (const p of profiles) {
+    const email = (p.email ?? "").toLowerCase();
+    if (!email || invited.has(email)) continue;
+    report.missing++;
+    if (report.queued >= limit) continue;
+    const res = await inviteLeadByEmail(admin, {
+      email,
+      firstName: p.first_name,
+      whatsapp: p.whatsapp,
+    });
+    if (res.ok) report.queued++;
+    else report.blocked[res.reason] = (report.blocked[res.reason] ?? 0) + 1;
+  }
+  return report;
+}
+
 export async function dispatchQueuedInvites(
   admin: Admin,
   batchSize: number,

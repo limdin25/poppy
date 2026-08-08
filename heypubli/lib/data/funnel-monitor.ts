@@ -215,6 +215,32 @@ export function shouldEmailNow(d: MonitorData, lastEmailAt: Date | null): EmailD
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+/**
+ * A thread the CRM calls "unanswered" that nobody owes anything to.
+ *
+ * Hugo, 08 Aug 2026, going down the waiting list: "the opt-outs, we don't have
+ * to inform me anymore. The auto-responder, that's it, you don't have to inform
+ * us anymore. The Uncle, delete." All three are threads the brain deliberately
+ * left alone and always will. Printing them every hour trains you to skim the
+ * one list that must never be skimmed.
+ *
+ * Matched on the reason the brain recorded, so a state that is genuinely open
+ * can never be hidden by accident: anything not on this list still shows.
+ */
+const SETTLED_REASONS = [
+  /opted out/i,
+  /auto-?responder/i,
+  /blocked at the door/i,
+  /unsendable/i,
+  /refusal/i,
+  /acknowledgement, nothing outstanding/i,
+];
+
+export function nothingOwed(why: string | undefined): boolean {
+  if (!why) return false;
+  return SETTLED_REASONS.some((r) => r.test(why));
+}
+
 export function buildFunnelReport(d: MonitorData): MonitorReport {
   const parts: string[] = [];
   const autoActivity =
@@ -227,6 +253,10 @@ export function buildFunnelReport(d: MonitorData): MonitorReport {
       autoActivity >
     0;
 
+  // The subject counts only threads that are genuinely owed an answer, the same
+  // set the list below prints. Counting settled ones made every hour look busy.
+  const owedCount = d.waiting.filter((w) => !nothingOwed(w.why)).length;
+
   let subject: string;
   if (d.pausedReason) {
     subject = `PAUSED: HeyPubli funnel stopped itself (${d.pausedReason})`;
@@ -235,14 +265,14 @@ export function buildFunnelReport(d: MonitorData): MonitorReport {
   } else if (heartbeatAlarms(d.heartbeats).length > 0) {
     subject = `DEAD BEAT: a funnel cron has stopped running`;
   } else if (!busy) {
-    subject = `HeyPubli funnel quiet, ${d.waiting.length} waiting`;
+    subject = `HeyPubli funnel quiet, ${owedCount} waiting`;
   } else {
     const bits = [`${d.newLeads.length} new`, `${d.nurtureSent.length} sent`];
     if (d.autoReply.replied) bits.push(`${d.autoReply.replied} auto-replied`);
     if (d.autoReply.handovers.length) bits.push(`${d.autoReply.handovers.length} for you`);
     if (d.nurtureFailed.length + d.autoReply.failed)
       bits.push(`${d.nurtureFailed.length + d.autoReply.failed} failed`);
-    bits.push(`${d.waiting.length} waiting`);
+    if (owedCount) bits.push(`${owedCount} waiting`);
     subject = `HeyPubli funnel: ${bits.join(", ")}`;
   }
 
@@ -379,14 +409,16 @@ export function buildFunnelReport(d: MonitorData): MonitorReport {
     );
   }
 
-  if (d.waiting.length) {
+  const openWaiting = d.waiting.filter((w) => !nothingOwed(w.why));
+  const settled = d.waiting.length - openWaiting.length;
+  if (openWaiting.length) {
     parts.push(
-      `<h3 style="margin:14px 0 4px">Waiting on a reply from us (${d.waiting.length})</h3>`,
-      `<p style="color:#6b7280;margin:0 0 6px;font-size:13px">Every one of these says WHY. An unanswered question is chased automatically after an hour, so a reason like "deliberate silence" or "refusal" means nothing more is owed, and anything else means the ladder still has it.</p>`,
+      `<h3 style="margin:14px 0 4px">Waiting on a reply from us (${openWaiting.length})</h3>`,
+      `<p style="color:#6b7280;margin:0 0 6px;font-size:13px">Each one says why. Anything still unanswered after an hour is chased automatically.${settled ? ` ${settled} more are closed and hidden: opt-outs, auto-responders, blocked numbers and plain acknowledgements.` : ""}</p>`,
     );
     parts.push(
       "<ul>" +
-        d.waiting
+        openWaiting
           .map(
             (w) =>
               `<li>${esc(w.name)} (${esc(w.phone)}), waiting ${w.waiting_minutes ?? "?"} min${w.drafts_pending ? `, ${w.drafts_pending} draft ready to approve` : ""}` +
@@ -394,6 +426,10 @@ export function buildFunnelReport(d: MonitorData): MonitorReport {
           )
           .join("") +
         "</ul>",
+    );
+  } else if (settled) {
+    parts.push(
+      `<p style="color:#6b7280;font-size:13px">Nobody is waiting on an answer. ${settled} thread(s) show as unanswered in the CRM on purpose: opt-outs, auto-responders, blocked numbers and plain acknowledgements.</p>`,
     );
   }
 

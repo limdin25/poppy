@@ -491,6 +491,54 @@ const WHAT =
 const DID_IT =
   /\b(already\s+)?(joined|done\s+it|did\s+it|i\s+did|accepted|allowed|allow\s+to\s+manage|connected|i'?ve\s+connected|signed\s+up|created\s+(my|the|an)\s+account|it'?s?\s+done|finished|completed)\b|^\W*done\W*$|\b(i'?ve\s+|i\s+have\s+)?done\s+(everything|it\s+all|all)\b|\ball\s+done\b|\bdid\s+everything\b/i;
 
+/**
+ * THEY TOLD US THEY FINISHED A STEP WE CAN ONLY EVER BE TOLD ABOUT.
+ *
+ * Two of the five steps have no evidence we can go and fetch. Skool fires no
+ * event when a FREE invited member joins (only a new PAID one), and Instagram
+ * will not tell us whether a profile photo is new. Both are completed by the
+ * creator pressing a button on /onboarding, and until 08 Aug 2026 that button
+ * was the ONLY way: say the same words in WhatsApp and nothing happened.
+ *
+ * That is where the funnel was losing most of its people. 27 of 29 connected
+ * Instagram and all 29 were invited, but only 18 ever got past "join the
+ * community", and Chiquita is the proof: she wrote "Already joined" and the
+ * machine sent her the joining instructions again, then handed her to a human,
+ * and she sat at 1 of 5 for six hours. You cannot get a referral link without
+ * joining, and you cannot put a link in your bio that you do not have, so one
+ * unrecorded sentence costs the whole funnel.
+ *
+ * Saying it in the chat now counts exactly as much as pressing the button, and
+ * no more: it is still a claim, recorded as a claim, on a step whose truth is
+ * their word by design. It is deliberately NOT accepted for the bio step,
+ * where we can read their real profile and their word is worth nothing.
+ */
+const JOINED_COMMUNITY =
+  /\b(already\s+)?(joined|i'?m\s+in|i\s+am\s+in|accepted\s+(the\s+)?invit)|^\W*(done|did\s+it|done\s+it|finished|completed|yes\s+done)\W*$|\bi\s+have\s+joined\b|\bjoin(ed)?\s+the\s+(community|group|skool)\b/i;
+
+const PHOTO_DONE =
+  /\b(photo|picture|pic|dp|avatar|profile\s+image)\b[^.!?]{0,30}\b(added|set|done|up|uploaded|changed|updated)\b|\b(added|set|uploaded|changed)\b[^.!?]{0,20}\b(photo|picture|pic|dp|avatar)\b|^\W*(done|did\s+it|done\s+it|finished|completed)\W*$/i;
+
+/**
+ * Did they just tell us they finished THIS step? Only ever true for the two
+ * declarable steps. The runner stamps the declaration and reloads their state,
+ * so the reply that follows names the NEXT step instead of repeating this one.
+ */
+export function saysTheyFinishedStep(said: string[], step: OnboardingStepId | null): boolean {
+  const text = said.map((s) => (s || "").trim()).filter(Boolean).join(" \n ");
+  if (!text) return false;
+  if (step === "community") {
+    // "I signed up" and "Instagram connected" are about the steps BEFORE this
+    // one. Treating them as a join would tick a box they never touched.
+    if (/\bsign(ed)?\s*up\b|\bcreated\s+(my|an|the)\s+account\b|\binstagram\b/i.test(text)) {
+      return false;
+    }
+    return JOINED_COMMUNITY.test(text);
+  }
+  if (step === "photo") return PHOTO_DONE.test(text);
+  return false;
+}
+
 /** A bare hello with nothing else. Answering "yes I am here" plus the next
  *  step costs nothing; a handover leaves them staring at silence. */
 const GREETING_ONLY =

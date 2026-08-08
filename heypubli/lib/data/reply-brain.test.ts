@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { decideReply, replyBrainSelfCheck, type ReplyContext } from "./reply-brain";
+import {
+  decideReply,
+  replyBrainSelfCheck,
+  saysTheyFinishedStep,
+  type ReplyContext,
+} from "./reply-brain";
 import { COMMISSION_RATE } from "@/lib/earnings";
 
 // Every case below is a real conversation from 07 Aug 2026, the first day the
@@ -1358,5 +1363,50 @@ describe("a creator whose Instagram is really in trouble", () => {
   it("does not mistake 'still not back' for good news", () => {
     const d = decideReply(ctx({ said: ["my account is still not back"], hasAccount: true, stepsDone: [] }));
     if (d.action === "send") expect(d.key).not.toBe("account_back");
+  });
+});
+
+// THE FUNNEL'S BIGGEST LEAK, 08 Aug 2026. 27 of 29 creators connected Instagram
+// and all 29 were invited, but only 18 got past "join the community", because
+// the two steps we can never verify could ONLY be completed by pressing a
+// button on the page. Chiquita wrote "Already joined", got the joining
+// instructions back, and sat at 1 of 5.
+describe("saying it in the chat counts as pressing the button", () => {
+  it("records a community join however they phrase it", () => {
+    for (const said of [
+      "Already joined",
+      "I have joined",
+      "joined the community",
+      "I'm in",
+      "done",
+      "Accepted the invite",
+    ]) {
+      expect(saysTheyFinishedStep([said], "community"), said).toBe(true);
+    }
+  });
+
+  it("never mistakes an EARLIER step for the community join", () => {
+    for (const said of [
+      "I signed up",
+      "created my account",
+      "My Instagram is connected",
+      "I accepted and allowed Instagram to be managed",
+    ]) {
+      expect(saysTheyFinishedStep([said], "community"), said).toBe(false);
+    }
+  });
+
+  it("records a profile photo the same way", () => {
+    expect(saysTheyFinishedStep(["photo added"], "photo")).toBe(true);
+    expect(saysTheyFinishedStep(["I have set my profile picture"], "photo")).toBe(true);
+    expect(saysTheyFinishedStep(["what next"], "photo")).toBe(false);
+  });
+
+  // The bio is the one step we CAN check, and 08 Aug proved their word is worth
+  // nothing there: a creator ticked it over a completely empty profile.
+  it("REFUSES to take their word for the bio, which we can read ourselves", () => {
+    expect(saysTheyFinishedStep(["done, the link is in my bio"], "bio")).toBe(false);
+    expect(saysTheyFinishedStep(["already joined"], "affiliate")).toBe(false);
+    expect(saysTheyFinishedStep([], "community")).toBe(false);
   });
 });

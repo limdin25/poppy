@@ -7,7 +7,10 @@ import {
   timezoneForPhone,
   whatsappMarketingAllowed,
 } from "@/lib/data/lanes";
-import { dispatchQueuedInvites } from "@/lib/data/skool-invite-dispatch";
+import {
+  backfillMissingInvites,
+  dispatchQueuedInvites,
+} from "@/lib/data/skool-invite-dispatch";
 import { pitchBlockedForPhone } from "@/lib/data/reply-brain";
 import { LIVE_THREAD_WINDOW_MS } from "@/lib/data/lead-arming";
 import {
@@ -60,7 +63,14 @@ async function dispatchSkoolInvites(admin: ReturnType<typeof createAdminClient>)
   // The real work lives in lib/data/skool-invite-dispatch so the button on step
   // 2 and this cron send an invite the same way. The cron is now the RETRY, not
   // the only path: a creator who presses the button gets their email at once.
-  return dispatchQueuedInvites(admin, INVITE_BATCH);
+  //
+  // The backfill runs FIRST, so an account that was never invited at all is
+  // queued and then sent in the same tick. Four creators had been sitting
+  // behind that gap for days (08 Aug 2026); it is the whole reason step 2 is
+  // the wall in this funnel.
+  const backfill = await backfillMissingInvites(admin);
+  const dispatch = await dispatchQueuedInvites(admin, INVITE_BATCH);
+  return { ...dispatch, backfill };
 }
 
 async function runNurture(
