@@ -48,6 +48,19 @@ instead), the 60s Outstand poll, captions post-approval, and the Mac being
 the single render host. Outstand has never published a real post; Hugo's
 first approval is the first live test, by design his call.
 
+Same morning, after he opened the page: "missing the caption so I can approve,
+include 1 to 4 hashtag per video, very ramdon." The captions were only ever
+written at scheduling time, so the screen that decides whether a video goes out
+showed none of them. `composeCaption()` is now the single composer (the
+account's own caption line plus 1 to 4 hashtags from Hugo's 90-tag list, seeded
+per video and account so the count and the tags both move), the cron writes it
+and the page prints it, open on arrival while a master is pending. Once a post
+is scheduled the page reads the frozen text off the post row, so it can never
+show a caption different from the one that goes out. The colour dots are now
+the factory's real canvas anchors split with the family accent, instead of the
+hand-guessed hexes, which had vermilion-cut drawn near-black when it is a light
+stone.
+
 ## 07 Aug 2026, midnight: every card says when the next follow-up fires
 
 Hugo: "everyone deserves a follow-up... put a time when you're gonna follow up
