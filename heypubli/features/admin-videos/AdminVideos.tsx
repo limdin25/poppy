@@ -45,6 +45,9 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState("");
+  // No default. Whichever way it defaulted would be a guess about a real person
+  // that Hugo never made, and half the time it would be wrong.
+  const [gender, setGender] = useState<"female" | "male" | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [captions, setCaptions] = useState<Record<string, string>>({});
   // Which box is doing the work. Rendering lives on the VPS now, so "alive"
@@ -57,6 +60,10 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
 
   const onUpload = async (file: File) => {
     setError(null);
+    if (!gender) {
+      setError("Pick whether the person in the video is a woman or a man first.");
+      return;
+    }
     if (file.size > MAX_VIDEO_BYTES) {
       setError("Videos up to 100MB (Instagram's own limit).");
       return;
@@ -76,7 +83,7 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
         setError(`Upload failed: ${upErr.message}`);
         return;
       }
-      const created = await createMasterFromUpload(r.publicUrl, title);
+      const created = await createMasterFromUpload(r.publicUrl, title, gender);
       if ("error" in created) setError(created.error);
       else window.location.reload();
     } finally {
@@ -144,6 +151,31 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
             className="border border-border rounded-lg px-3 py-2 text-sm w-64"
             data-testid="upload-title"
           />
+          {/* Who is speaking. Asked here, once, because every account's copy
+              gets a different voice and it has to come from the right pool.
+              There is no "not sure" option on purpose: a wrong answer puts a
+              woman's voice on a man in a video that goes out publicly. */}
+          <div
+            className="flex items-center gap-1 border border-border rounded-lg p-1"
+            data-testid="upload-gender"
+          >
+            {(["female", "male"] as const).map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGender(g)}
+                aria-pressed={gender === g}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize ${
+                  gender === g
+                    ? "bg-accent text-white"
+                    : "text-foreground-secondary hover:bg-background-secondary"
+                }`}
+                data-testid={`upload-gender-${g}`}
+              >
+                {g === "female" ? "Woman" : "Man"}
+              </button>
+            ))}
+          </div>
           <input
             ref={fileRef}
             type="file"
@@ -159,7 +191,7 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || !gender}
             className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-50"
             data-testid="upload-button"
           >

@@ -37,6 +37,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, copyFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyVoiceVariation } from './lib/voice-swap.mjs';
 
 const VIDEO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(VIDEO_DIR, 'out', 'creator');
@@ -110,6 +111,11 @@ function seedFor(sourceId, variantIndex, recipeVersion) {
 function log(msg) {
   console.log(`[${new Date().toISOString()}] ${msg}`);
 }
+
+// Per-account voice variation lives in scripts/lib/voice-swap.mjs. It must NOT
+// live in this file: importing this module runs the worker's main loop, so a
+// second render host starts by accident the moment anyone imports a helper
+// from here.
 
 // ---- structural verify, shortened from render-variants.mjs -----------------
 function verify(outPath, expectedFrames) {
@@ -372,6 +378,10 @@ async function renderClaimed(r) {
   await ensureSource(r.master.source_id, r.master.source_url);
   const t0 = Date.now();
   await renderOne(props, out);
+  // After verify, because verify checks the frame count against the
+  // composition and this step must not be able to mask a bad render. The
+  // picture is copied, not re-encoded, so it is untouched either way.
+  log(`  voice: ${applyVoiceVariation(out, r.profile_id)}`);
   const url = await uploadToBucket(out, `renders/m${r.master.seq}-${r.profile_id}.mp4`);
   await rest(`creator_video_renders?id=eq.${r.id}`, {
     method: 'PATCH',

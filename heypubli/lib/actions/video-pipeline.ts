@@ -61,8 +61,15 @@ export async function createVideoUploadUrl(
 export async function createMasterFromUpload(
   publicUrl: string,
   title: string,
+  speakerGender: "female" | "male",
 ): Promise<ActionResult> {
   await requireAdmin();
+  // Refuse rather than default. A default here would be a guess about a real
+  // person, and the whole point of asking at upload is that nothing downstream
+  // ever has to guess.
+  if (speakerGender !== "female" && speakerGender !== "male") {
+    return { error: "Choose whether the person in the video is a woman or a man." };
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = createAdminClient() as any;
   const { data: maxRow } = (await admin
@@ -84,6 +91,7 @@ export async function createMasterFromUpload(
     status: "preview_rendering",
     approved_at: null,
     recipe_version: 8,
+    speaker_gender: speakerGender,
   });
   if (error) return { error: error.message };
   revalidatePath("/admin/videos");

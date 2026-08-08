@@ -217,13 +217,26 @@ export function composeCaption(
 /** The two daily base slots, in the creator's OWN local time. */
 export const SLOT_HOURS = [11, 19] as const;
 
-/** Minutes between two accounts' stagger offsets. 18 distinct offsets over
- *  [0, 126) before any reuse; past 18 accounts the least-used offset wins,
- *  which review showed must never silently collide with a LIVE account when a
- *  deleted one freed a slot. Offsets are therefore assigned from what is
- *  actually taken, never from a row count. */
-export const STAGGER_STEP_MIN = 7;
-export const STAGGER_SLOTS = 18;
+/** Minutes between two accounts' stagger offsets, over the same [0, 126)
+ *  window either side of each slot hour.
+ *
+ *  This was 18 offsets of 7 minutes, and there were already 18 accounts, so
+ *  account 19 was handed a minute a LIVE account already held and the two
+ *  posted simultaneously. Hugo, 08 Aug 2026: "it cannot be, you know, it
+ *  posted the same minute, we have to fix that." VARIANTS.md makes the same
+ *  point in stronger terms: identical posting behaviour across accounts
+ *  clusters harder than any pixel signature, and it is the one signal no
+ *  amount of visual variation can fix.
+ *
+ *  One-minute steps give 126 accounts their own minute. The old 7-minute
+ *  offsets are all multiples of 1, so every existing account keeps exactly the
+ *  time it already posts at and only new enrolments see the finer grid.
+ *
+ *  126 is the new ceiling. Past it, `enrollmentOffsets` reports `exhausted` so
+ *  it is a visible problem rather than a silent collision, and the fix at that
+ *  point is second-level offsets, which needs the column to stop being minutes. */
+export const STAGGER_STEP_MIN = 1;
+export const STAGGER_SLOTS = 126;
 
 /** Pick the color for a new account: the first family not held by any active
  *  account, or the least-held one once all 14 are taken. Deterministic given
@@ -250,7 +263,7 @@ export function pickColorFamily(taken: string[]): string {
 export function enrollmentOffsets(
   takenStaggers: number[],
   takenVariants: number[],
-): { staggerMin: number; variantIdx: number } {
+): { staggerMin: number; variantIdx: number; exhausted: boolean } {
   const counts = new Map<number, number>();
   for (let i = 0; i < STAGGER_SLOTS; i++) counts.set(i * STAGGER_STEP_MIN, 0);
   for (const t of takenStaggers) counts.set(t, (counts.get(t) ?? 0) + 1);
@@ -265,8 +278,12 @@ export function enrollmentOffsets(
     }
     if (c === 0) break;
   }
+  // A free minute exists unless every one of them is already held. Saying so
+  // is the whole point: the old code quietly handed out a duplicate and two
+  // accounts in one timezone started posting together with nothing to show it.
+  const exhausted = best > 0;
   const variantIdx = takenVariants.length ? Math.max(...takenVariants) + 1 : 0;
-  return { staggerMin, variantIdx };
+  return { staggerMin, variantIdx, exhausted };
 }
 
 /** What time is it right now in this zone, as parts. */

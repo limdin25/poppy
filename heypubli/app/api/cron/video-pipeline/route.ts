@@ -26,6 +26,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   composeCaption,
   creatorTimeZone,
+  STAGGER_SLOTS,
   enrollmentOffsets,
   pickColorFamily,
   postsInLocalDay,
@@ -83,10 +84,21 @@ export async function GET(request: NextRequest) {
   for (const c of unenrolled) {
     const live = [...stateBy.values()];
     const taken = live.map((s) => s.color_family);
-    const { staggerMin, variantIdx } = enrollmentOffsets(
+    const { staggerMin, variantIdx, exhausted } = enrollmentOffsets(
       live.map((s) => s.stagger_min),
       live.map((s) => s.variant_idx),
     );
+    // Every posting minute is spoken for, so this account has to share one.
+    // Enrolment still proceeds (refusing to onboard a creator is worse), but it
+    // must never happen unnoticed: two accounts posting the same minute is the
+    // clustering signal no visual variation can undo.
+    if (exhausted) {
+      report.errors.push(
+        `enroll ${c.ig_username}: all ${STAGGER_SLOTS} posting minutes are taken, ` +
+          `so this account shares minute ${staggerMin} with a live one. ` +
+          `Widen the stagger window or move stagger_min to seconds.`,
+      );
+    }
     const row: CreatorVideoState = {
       profile_id: c.profile_id,
       color_family: pickColorFamily(taken),

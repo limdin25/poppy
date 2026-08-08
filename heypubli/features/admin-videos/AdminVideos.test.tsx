@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { AdminVideos } from "./AdminVideos";
 import type { PipelineOverview } from "@/lib/data/video-pipeline-admin";
 
@@ -108,5 +108,26 @@ describe("AdminVideos", () => {
     const caption = screen.getByTestId("account-caption-1-kaorimodel04");
     expect(caption.textContent).toContain("Wait for the end.");
     expect(caption.textContent).toContain("#AIReels");
+  });
+
+  // Hugo, 08 Aug 2026: "put maybe an option on our websites when I upload the
+  // video for rendering, I can choose the gender as well." It decides which
+  // pool the per-account voice comes from, and a wrong answer puts a woman's
+  // voice on a man in a video that goes out publicly.
+  it("asks who is speaking, with neither answer preselected", () => {
+    render(<AdminVideos overview={overview} />);
+    const woman = screen.getByTestId("upload-gender-female");
+    const man = screen.getByTestId("upload-gender-male");
+    expect(woman.getAttribute("aria-pressed")).toBe("false");
+    expect(man.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("will not let you upload until you have answered", () => {
+    render(<AdminVideos overview={overview} />);
+    expect((screen.getByTestId("upload-button") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("upload-gender-male"));
+    expect(screen.getByTestId("upload-gender-male").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("upload-gender-female").getAttribute("aria-pressed")).toBe("false");
+    expect((screen.getByTestId("upload-button") as HTMLButtonElement).disabled).toBe(false);
   });
 });

@@ -57,9 +57,45 @@ describe("stagger", () => {
   });
 
   it("a slot freed by a DELETED account may be reused, but never one held live", () => {
-    // Live accounts hold 0 and 14 (7 was deleted): the next enrollee gets 7.
+    // Live accounts hold 0 and 14: the next enrollee takes a free minute, and
+    // crucially not one of theirs.
     const o = enrollmentOffsets([0, 14], [0, 1, 2]);
-    expect(o.staggerMin).toBe(7);
+    expect([0, 14]).not.toContain(o.staggerMin);
+    expect(o.exhausted).toBe(false);
+  });
+
+  // Hugo, 08 Aug 2026: "it cannot be, you know, it posted the same minute, we
+  // have to fix that." The old grid was 18 offsets of 7 minutes and there were
+  // already 18 accounts, so account 19 shared a minute with a live account in
+  // the same timezone. That is the clustering signal VARIANTS.md calls worse
+  // than any pixel match.
+  it("gives a hundred accounts a hundred different minutes", () => {
+    const staggers: number[] = [];
+    const variants: number[] = [];
+    for (let i = 0; i < 100; i++) {
+      const o = enrollmentOffsets(staggers, variants);
+      expect(o.exhausted).toBe(false);
+      staggers.push(o.staggerMin);
+      variants.push(o.variantIdx);
+    }
+    expect(new Set(staggers).size).toBe(100);
+  });
+
+  it("the eighteen accounts that already exist keep the minutes they hold", () => {
+    // Their offsets were assigned on the 7-minute grid and are persisted. The
+    // finer grid must contain them, or every live account's posting time moves.
+    const legacy = Array.from({ length: 18 }, (_, i) => i * 7);
+    for (const off of legacy) expect(off % STAGGER_STEP_MIN).toBe(0);
+    expect(Math.max(...legacy)).toBeLessThan(STAGGER_SLOTS * STAGGER_STEP_MIN);
+    // And the next account must not be handed one of them.
+    const next = enrollmentOffsets(legacy, Array.from({ length: 18 }, (_, i) => i));
+    expect(legacy).not.toContain(next.staggerMin);
+  });
+
+  it("says so loudly when the offsets run out, instead of colliding in silence", () => {
+    const full = Array.from({ length: STAGGER_SLOTS }, (_, i) => i * STAGGER_STEP_MIN);
+    const o = enrollmentOffsets(full, full);
+    expect(o.exhausted).toBe(true);
   });
 
   it("the look number is never reused, even after a deletion", () => {

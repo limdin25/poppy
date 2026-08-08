@@ -15,7 +15,7 @@
 // changer is web-app only, needs a scraped browser session token, and costs 5x.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -201,6 +201,81 @@ export function wordErrorRate(sourceText, convertedText) {
 
 export function fileMb(p) {
   return statSync(p).size / 1e6;
+}
+
+// ---- the free half: per-account pitch variation ----------------------------
+// Speech-to-speech costs 10 credits a second, which at 2 masters a day across
+// 100 accounts is 75x the monthly allowance. This costs nothing and runs on the
+// render box with no API at all.
+//
+// It does NOT make each account a different person, only the paid swap does
+// that. What it does is give every account its own spectral signature, which
+// is what actually defeats "these 100 uploads are one file". Measured on a real
+// clip, it is also GENTLER than the paid route: every shift tested transcribed
+// back word perfect, including "first paid monthly retainer", which one
+// ElevenLabs voice turned into "first Taze monthly retainer".
+//
+// 25 steps across roughly a semitone either way. Small enough that nobody hears
+// processing, spread enough that 25 accounts all differ.
+export const PITCH_STEPS = 25;
+export const PITCH_SPAN = 0.06;
+
+export function pitchFor(profileId) {
+  const step = hashOf(`pitch|${profileId}`) % PITCH_STEPS;
+  const ratio = 1 - PITCH_SPAN + (2 * PITCH_SPAN * step) / (PITCH_STEPS - 1);
+  return Math.round(ratio * 1000) / 1000;
+}
+
+let rubberbandChecked = null;
+export function hasRubberband() {
+  if (rubberbandChecked !== null) return rubberbandChecked;
+  try {
+    const out = execFileSync('ffmpeg', ['-hide_banner', '-filters'], {
+      encoding: 'utf8',
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    rubberbandChecked = /\brubberband\b/.test(out);
+  } catch {
+    rubberbandChecked = false;
+  }
+  return rubberbandChecked;
+}
+
+/**
+ * Shift the pitch of a finished render in place. Returns a short status string.
+ * Never throws: an unvaried video is worth shipping, a failed render is not.
+ */
+export function applyVoiceVariation(filePath, profileId) {
+  if (!hasRubberband()) return 'skipped: ffmpeg has no rubberband filter';
+  const ratio = pitchFor(profileId);
+  const tmp = `${filePath}.pitch.mp4`;
+  try {
+    const before = durationOf(filePath);
+    execFileSync('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-i', filePath,
+      '-c:v', 'copy',
+      '-filter:a', `rubberband=pitch=${ratio}:pitchq=quality`,
+      '-c:a', 'aac', '-b:a', '192k',
+      tmp,
+    ]);
+    const after = durationOf(tmp);
+    // The filter must not have eaten or stretched the clip: past a tenth of a
+    // second the picture no longer matches the sound.
+    if (!Number.isFinite(after) || Math.abs(after - before) > 0.1) {
+      throw new Error(`duration moved ${before.toFixed(2)}s to ${after.toFixed(2)}s`);
+    }
+    copyFileSync(tmp, filePath);
+    return `pitch ${ratio}`;
+  } catch (e) {
+    return `skipped (${e.message}), original audio shipped`;
+  } finally {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      /* scratch file */
+    }
+  }
 }
 
 export function writeBuffer(p, buf) {
