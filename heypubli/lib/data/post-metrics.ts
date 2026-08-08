@@ -22,9 +22,38 @@ import { getPostAnalytics } from "@/lib/integrations/outstand";
  *  post per hour, which grows with every post we ever publish. */
 const REFRESH_WINDOW_DAYS = 30;
 
-export interface PostMetricDeltas {
-  views24h: number | null;
-  likes24h: number | null;
+/** The periods the dashboard can be read over.
+ *
+ *  Hugo, 08 Aug 2026: "I should have a drop-down to put last 24 hours, last 72
+ *  hours, or maybe even like a calendar where I can choose."
+ *
+ *  Every one is precomputed on the server from the same single pass over the
+ *  readings, so switching period on the page is instant and costs no query.
+ *  A custom calendar range is handled differently, by publish date, because an
+ *  arbitrary window would need its own anchor reading per post. */
+export const WINDOWS = [
+  { key: "h24", label: "Last 24 hours", short: "24h", hours: 24 },
+  { key: "h72", label: "Last 72 hours", short: "72h", hours: 72 },
+  { key: "d7", label: "Last 7 days", short: "7d", hours: 24 * 7 },
+  { key: "d30", label: "Last 30 days", short: "30d", hours: 24 * 30 },
+] as const;
+
+export type WindowKey = (typeof WINDOWS)[number]["key"];
+
+export interface PostDelta {
+  views: number | null;
+  likes: number | null;
+  reach: number | null;
+}
+
+export type PostMetricDeltas = Record<WindowKey, PostDelta>;
+
+/** Every window unmeasured. What a post with no second reading honestly is. */
+export function emptyDeltas(): PostMetricDeltas {
+  return WINDOWS.reduce((acc, w) => {
+    acc[w.key] = { views: null, likes: null, reach: null };
+    return acc;
+  }, {} as PostMetricDeltas);
 }
 
 type Snap = { captured_at: string; [k: string]: unknown };
@@ -33,20 +62,35 @@ type Snap = { captured_at: string; [k: string]: unknown };
  *
  *  Null rather than 0 in every uncertain case. Zero is a claim ("this video did
  *  not move"), and reporting it for a video we have only measured once is a
- *  false claim. */
+ *  false claim.
+ *
+ *  `publishedAt` matters more than it looks. A video posted three days ago has
+ *  no reading from thirty days ago, so asking for its 30-day gain by subtraction
+ *  finds no anchor and yields null. But the truthful answer is not "unknown", it
+ *  is "all of it": the video did not exist before the window, so everything it
+ *  has, it earned inside the window. Without this every period but the shortest
+ *  reads blank on a young account, which is exactly the empty dashboard this
+ *  work set out to fix. */
 export function deltaFor(
   rows: Array<Snap>,
   now: Date,
   hours: number,
   key: string,
+  publishedAt?: string | null,
 ): number | null {
   const sorted = [...rows].sort(
     (a, b) => Date.parse(b.captured_at) - Date.parse(a.captured_at),
   );
-  const latest = sorted[0];
-  if (!latest || typeof latest[key] !== "number") return null;
+  const latest = sorted.find((r) => typeof r[key] === "number");
+  if (!latest) return null;
 
   const cutoff = now.getTime() - hours * 60 * 60 * 1000;
+
+  // Born inside the window: its whole count is this window's gain.
+  if (publishedAt && Date.parse(publishedAt) >= cutoff) {
+    return latest[key] as number;
+  }
+
   const earlier = sorted.find(
     (r) => Date.parse(r.captured_at) <= cutoff && typeof r[key] === "number",
   );
@@ -59,7 +103,7 @@ export function deltaFor(
 }
 
 export function buildPostMetricRows(
-  posts: Array<{ id: string }>,
+  posts: Array<{ id: string; publishedAt?: string | null }>,
   snapshots: Array<{ post_id: string } & Snap>,
   now: Date,
 ): Map<string, PostMetricDeltas> {
@@ -72,10 +116,15 @@ export function buildPostMetricRows(
   const out = new Map<string, PostMetricDeltas>();
   for (const p of posts) {
     const rows = by.get(p.id) ?? [];
-    out.set(p.id, {
-      views24h: deltaFor(rows, now, 24, "views"),
-      likes24h: deltaFor(rows, now, 24, "likes"),
-    });
+    const deltas = emptyDeltas();
+    for (const w of WINDOWS) {
+      deltas[w.key] = {
+        views: deltaFor(rows, now, w.hours, "views", p.publishedAt),
+        likes: deltaFor(rows, now, w.hours, "likes", p.publishedAt),
+        reach: deltaFor(rows, now, w.hours, "reach", p.publishedAt),
+      };
+    }
+    out.set(p.id, deltas);
   }
   return out;
 }

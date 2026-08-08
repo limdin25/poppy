@@ -8,10 +8,15 @@ import { describe, expect, it } from "vitest";
 import {
   buildCreatorStats,
   summarise,
+  flattenPosts,
+  summarisePosts,
+  summariseByMaster,
+  inRange,
   type MetricsSnapshot,
   type StatsInput,
   type StatsPost,
 } from "./creator-stats";
+import { emptyDeltas } from "./post-metrics";
 
 const now = new Date("2026-08-08T20:00:00Z");
 
@@ -34,8 +39,14 @@ function snap(profileId: string, at: string, followers: number, views: number): 
 }
 
 /** A post with no numbers read yet, which is the honest default. */
-function post(over: Partial<StatsPost> & { profileId: string }): StatsPost {
+function post(
+  over: Partial<StatsPost> & { profileId: string } & { d24?: number },
+): StatsPost {
+  const { d24, ...rest } = over;
+  const deltas = emptyDeltas();
+  if (d24 != null) deltas.h24 = { views: d24, likes: null, reach: null };
   return {
+    masterVideoId: null,
     masterSeq: null,
     masterTitle: null,
     publishedAt: null,
@@ -48,9 +59,8 @@ function post(over: Partial<StatsPost> & { profileId: string }): StatsPost {
     saves: null,
     reach: null,
     metricsCapturedAt: null,
-    views24h: null,
-    likes24h: null,
-    ...over,
+    deltas,
+    ...rest,
   };
 }
 
@@ -67,9 +77,9 @@ const input: StatsInput = {
     snap("p2", "2026-08-08T19:00:00Z", 40, 200),
   ],
   posts: [
-    post({ profileId: "p1", masterSeq: 1, masterTitle: "Demo 1", publishedAt: "2026-08-08T09:00:00Z", status: "published", platformPostUrl: "https://instagram.com/p/AAA", views: 248, likes: 6, views24h: 200 }),
-    post({ profileId: "p1", masterSeq: 2, masterTitle: "Demo 2", publishedAt: "2026-08-08T17:00:00Z", status: "published", views: 110 }),
-    post({ profileId: "p2", masterSeq: 1, masterTitle: "Demo 1", publishedAt: null, status: "pending" }),
+    post({ profileId: "p1", masterVideoId: "m1", masterSeq: 1, masterTitle: "Demo 1", publishedAt: "2026-08-08T09:00:00Z", status: "published", platformPostUrl: "https://instagram.com/p/AAA", views: 248, likes: 6, comments: 2, shares: 1, saves: 3, reach: 160, metricsCapturedAt: "2026-08-08T19:00:00Z", d24: 200 }),
+    post({ profileId: "p1", masterVideoId: "m2", masterSeq: 2, masterTitle: "Demo 2", publishedAt: "2026-08-08T17:00:00Z", status: "published", views: 110, likes: 0, reach: 100, metricsCapturedAt: "2026-08-08T19:00:00Z" }),
+    post({ profileId: "p2", masterVideoId: "m1", masterSeq: 1, masterTitle: "Demo 1", publishedAt: null, status: "pending" }),
   ],
 };
 
@@ -153,7 +163,7 @@ describe("creator stats", () => {
     const first = alpha.posts.find((p) => p.masterSeq === 1)!;
     expect(first.views).toBe(248);
     expect(first.likes).toBe(6);
-    expect(first.views24h).toBe(200);
+    expect(first.deltas.h24.views).toBe(200);
   });
 
   it("sums OUR videos separately from the creator's lifetime account views", () => {
@@ -176,5 +186,103 @@ describe("creator stats", () => {
     const rows = buildCreatorStats(input, now);
     expect(summarise(rows).ourViews).toBe(358);
     expect(summarise(rows).ourViews24h).toBe(200);
+  });
+});
+
+describe("flattenPosts", () => {
+  it("carries the creator onto each video, which every cross-creator view needs", () => {
+    const flat = flattenPosts(buildCreatorStats(input, now));
+    expect(flat).toHaveLength(2); // published only
+    expect(flat[0].igUsername).toBe("alpha");
+    expect(flat[0].creatorName).toBe("Ann");
+  });
+
+  it("orders newest first, so the list reads like a feed", () => {
+    const flat = flattenPosts(buildCreatorStats(input, now));
+    expect(flat.map((p) => p.masterSeq)).toEqual([2, 1]);
+  });
+});
+
+describe("inRange", () => {
+  const p = (at: string | null) => ({ publishedAt: at });
+
+  it("keeps everything when no dates are set", () => {
+    expect(inRange(p("2026-08-08T09:00:00Z"), "", "")).toBe(true);
+    expect(inRange(p(null), "", "")).toBe(true);
+  });
+
+  it("includes the whole of the end day, not just its first instant", () => {
+    // Picking 8 Aug to 8 Aug must include a video posted at 17:00 that day.
+    // A naive Date.parse of the end date lands at 00:00 and excludes it all.
+    expect(inRange(p("2026-08-08T17:00:00Z"), "2026-08-08", "2026-08-08")).toBe(true);
+  });
+
+  it("excludes what falls outside", () => {
+    expect(inRange(p("2026-08-07T23:00:00Z"), "2026-08-08", "2026-08-08")).toBe(false);
+    expect(inRange(p("2026-08-09T01:00:00Z"), "2026-08-08", "2026-08-08")).toBe(false);
+  });
+
+  it("drops an unpublished video from any dated range rather than guessing", () => {
+    expect(inRange(p(null), "2026-08-08", "")).toBe(false);
+  });
+});
+
+describe("summarisePosts", () => {
+  const flat = () => flattenPosts(buildCreatorStats(input, now));
+
+  it("totals the numbers on whichever videos are on screen", () => {
+    const t = summarisePosts(flat(), "h24");
+    expect(t.videos).toBe(2);
+    expect(t.views).toBe(358);
+    expect(t.likes).toBe(6);
+    expect(t.reach).toBe(260);
+    expect(t.creators).toBe(1);
+  });
+
+  it("totals the movement for the chosen period, not a fixed one", () => {
+    expect(summarisePosts(flat(), "h24").gainedViews).toBe(200);
+    // Nothing has a 7-day reading in this fixture, so it says so.
+    expect(summarisePosts(flat(), "d7").gainedViews).toBeNull();
+  });
+
+  it("works out engagement as a share of the views it actually reached", () => {
+    // 6 likes + 2 comments + 1 share + 3 saves = 12 interactions on 358 views.
+    expect(summarisePosts(flat(), "h24").engagementRate).toBeCloseTo(12 / 358, 5);
+  });
+
+  it("gives averages per video, which is the comparable number as volume grows", () => {
+    expect(summarisePosts(flat(), "h24").avgViews).toBe(179);
+  });
+
+  it("returns an honest empty rather than zeros for no videos", () => {
+    const t = summarisePosts([], "h24");
+    expect(t.videos).toBe(0);
+    expect(t.views).toBeNull();
+    expect(t.engagementRate).toBeNull();
+    expect(t.avgViews).toBeNull();
+  });
+});
+
+describe("summariseByMaster", () => {
+  it("groups the same master across every creator that posted it", () => {
+    const rows = summariseByMaster(flattenPosts(buildCreatorStats(input, now)), "h24");
+    const m1 = rows.find((r) => r.masterVideoId === "m1")!;
+    expect(m1.seq).toBe(1);
+    expect(m1.title).toBe("Demo 1");
+    // Only the published one counts; p2's copy is still pending.
+    expect(m1.posts).toBe(1);
+    expect(m1.views).toBe(248);
+  });
+
+  it("ranks the best performing master first, which is the point of it", () => {
+    const rows = summariseByMaster(flattenPosts(buildCreatorStats(input, now)), "h24");
+    expect(rows[0].views).toBe(248);
+    expect(rows[0].seq).toBe(1);
+  });
+
+  it("reports average views per posting, so a master on 20 accounts is comparable to one on 2", () => {
+    const rows = summariseByMaster(flattenPosts(buildCreatorStats(input, now)), "h24");
+    expect(rows.find((r) => r.seq === 1)!.avgViews).toBe(248);
+    expect(rows.find((r) => r.seq === 2)!.avgViews).toBe(110);
   });
 });

@@ -26,7 +26,8 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getInstagramMetrics } from "@/lib/integrations/outstand";
-import { buildPostMetricRows } from "@/lib/data/post-metrics";
+import { buildPostMetricRows, emptyDeltas } from "@/lib/data/post-metrics";
+import type { PostMetricDeltas, WindowKey } from "@/lib/data/post-metrics";
 
 export interface MetricsSnapshot {
   profile_id: string;
@@ -54,6 +55,7 @@ export interface StatsAccount {
 
 export interface StatsPost {
   profileId: string;
+  masterVideoId: string | null;
   masterSeq: number | null;
   masterTitle: string | null;
   publishedAt: string | null;
@@ -67,9 +69,15 @@ export interface StatsPost {
   saves: number | null;
   reach: number | null;
   metricsCapturedAt: string | null;
-  /** Movement since the newest reading at least 24h old, null if unmeasurable. */
-  views24h: number | null;
-  likes24h: number | null;
+  /** Movement over each selectable period. See lib/data/post-metrics. */
+  deltas: PostMetricDeltas;
+}
+
+/** A post with its creator attached, which is how every cross-creator view of
+ *  the dashboard wants it. */
+export interface FlatPost extends StatsPost {
+  igUsername: string | null;
+  creatorName: string;
 }
 
 export interface StatsInput {
@@ -153,13 +161,11 @@ export function buildCreatorStats(input: StatsInput, now: Date): CreatorStatsRow
       .slice()
       .sort((x, y) => (y.publishedAt ?? "").localeCompare(x.publishedAt ?? ""));
 
-    // Sum only what has actually been read. A creator with three published
-    // videos and no reading yet is unmeasured, not on zero views, so the sum
-    // stays null until at least one of their videos has a number.
-    const sumRead = (f: (p: StatsPost) => number | null): number | null => {
-      const vals = posts.map(f).filter((v): v is number => v != null);
-      return vals.length ? vals.reduce((n, v) => n + v, 0) : null;
-    };
+    // A creator with three published videos and no reading yet is unmeasured,
+    // not on zero views, so these stay null until one of their videos has a
+    // number. The default period for the creator table is 24 hours; the videos
+    // themselves carry every period and the page picks.
+    const mine = (f: (p: StatsPost) => number | null) => sumRead(posts, f);
 
     return {
       profileId: a.profileId,
@@ -179,9 +185,9 @@ export function buildCreatorStats(input: StatsInput, now: Date): CreatorStatsRow
       followersGained24h: gain(24),
       followersGained7d: gain(24 * 7),
       postsPublished: posts.filter((p) => p.status === "published").length,
-      ourViews: sumRead((p) => p.views),
-      ourLikes: sumRead((p) => p.likes),
-      ourViews24h: sumRead((p) => p.views24h),
+      ourViews: mine((p) => p.views),
+      ourLikes: mine((p) => p.likes),
+      ourViews24h: mine((p) => p.deltas.h24.views),
       posts,
     };
   });
@@ -229,6 +235,138 @@ export function summarise(rows: CreatorStatsRow[]): StatsSummary {
   };
 }
 
+// ---- the video-level views of the dashboard --------------------------------
+
+/** Every published video across the given creators, newest first, each one
+ *  carrying the handle it went out on. */
+export function flattenPosts(rows: CreatorStatsRow[]): FlatPost[] {
+  return rows
+    .flatMap((r) =>
+      r.posts
+        .filter((p) => p.status === "published")
+        .map((p) => ({ ...p, igUsername: r.igUsername, creatorName: r.firstName })),
+    )
+    .sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
+}
+
+/** Does this video fall inside a hand-picked date range?
+ *
+ *  `to` is inclusive of the whole day. Parsing "2026-08-08" gives midnight at
+ *  its start, so a naive comparison silently drops everything posted that day,
+ *  which is the single most confusing thing a date filter can do. */
+export function inRange(
+  post: { publishedAt: string | null },
+  from: string,
+  to: string,
+): boolean {
+  if (!from && !to) return true;
+  if (!post.publishedAt) return false;
+  const t = Date.parse(post.publishedAt);
+  if (from && t < Date.parse(`${from}T00:00:00Z`)) return false;
+  if (to && t > Date.parse(`${to}T23:59:59.999Z`)) return false;
+  return true;
+}
+
+export interface PostTotals {
+  videos: number;
+  creators: number;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saves: number | null;
+  reach: number | null;
+  /** Movement over the chosen period, not a fixed 24 hours. */
+  gainedViews: number | null;
+  gainedLikes: number | null;
+  /** Interactions as a share of views, 0 to 1. Null when nothing is measured. */
+  engagementRate: number | null;
+  avgViews: number | null;
+}
+
+/** Sum only what has actually been read, so an unmeasured set stays null. */
+function sumRead<T>(items: T[], f: (x: T) => number | null): number | null {
+  const vals = items.map(f).filter((v): v is number => v != null);
+  return vals.length ? vals.reduce((n, v) => n + v, 0) : null;
+}
+
+export function summarisePosts(posts: FlatPost[], w: WindowKey): PostTotals {
+  const views = sumRead(posts, (p) => p.views);
+  const likes = sumRead(posts, (p) => p.likes);
+  const comments = sumRead(posts, (p) => p.comments);
+  const shares = sumRead(posts, (p) => p.shares);
+  const saves = sumRead(posts, (p) => p.saves);
+  const interactions =
+    likes == null && comments == null && shares == null && saves == null
+      ? null
+      : (likes ?? 0) + (comments ?? 0) + (shares ?? 0) + (saves ?? 0);
+
+  const measured = posts.filter((p) => p.views != null).length;
+
+  return {
+    videos: posts.length,
+    creators: new Set(posts.map((p) => p.profileId)).size,
+    views,
+    likes,
+    comments,
+    shares,
+    saves,
+    reach: sumRead(posts, (p) => p.reach),
+    gainedViews: sumRead(posts, (p) => p.deltas[w].views),
+    gainedLikes: sumRead(posts, (p) => p.deltas[w].likes),
+    engagementRate: views && interactions != null ? interactions / views : null,
+    avgViews: views != null && measured ? Math.round(views / measured) : null,
+  };
+}
+
+export interface MasterTotals {
+  masterVideoId: string | null;
+  seq: number | null;
+  title: string | null;
+  /** How many creators posted this same master. */
+  posts: number;
+  views: number | null;
+  likes: number | null;
+  reach: number | null;
+  gainedViews: number | null;
+  /** Views per posting, so a master on 20 accounts compares with one on 2. */
+  avgViews: number | null;
+  engagementRate: number | null;
+}
+
+/** The same video across every creator that posted it, best first.
+ *
+ *  This is the row that answers "what should we make more of", which is a
+ *  different question from "who is our best creator" and the one that decides
+ *  what goes into the pipeline tomorrow. */
+export function summariseByMaster(posts: FlatPost[], w: WindowKey): MasterTotals[] {
+  const groups = new Map<string, FlatPost[]>();
+  for (const p of posts) {
+    const key = p.masterVideoId ?? `seq:${p.masterSeq}`;
+    const list = groups.get(key) ?? [];
+    list.push(p);
+    groups.set(key, list);
+  }
+
+  return [...groups.values()]
+    .map((list) => {
+      const t = summarisePosts(list, w);
+      return {
+        masterVideoId: list[0].masterVideoId,
+        seq: list[0].masterSeq,
+        title: list[0].masterTitle,
+        posts: list.length,
+        views: t.views,
+        likes: t.likes,
+        reach: t.reach,
+        gainedViews: t.gainedViews,
+        avgViews: t.avgViews,
+        engagementRate: t.engagementRate,
+      };
+    })
+    .sort((a, b) => (b.views ?? -1) - (a.views ?? -1));
+}
+
 // ---- loading and capture ---------------------------------------------------
 
 export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRow[]> {
@@ -273,8 +411,13 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
     ]),
   );
 
+  // The publish date goes in so a video younger than a period is credited with
+  // its whole count for that period rather than reading blank.
   const deltas = buildPostMetricRows(
-    ((posts.data ?? []) as Array<{ id: string }>).map((p) => ({ id: p.id })),
+    ((posts.data ?? []) as Array<{ id: string; published_at: string | null }>).map((p) => ({
+      id: p.id,
+      publishedAt: p.published_at,
+    })),
     (postSnaps.data ?? []) as Array<{ post_id: string; captured_at: string }>,
     now,
   );
@@ -309,9 +452,9 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
       metrics_captured_at: string | null;
     }>).map((p) => {
       const m = masterBy.get(p.master_video_id);
-      const d = deltas.get(p.id);
       return {
         profileId: p.profile_id,
+        masterVideoId: p.master_video_id,
         masterSeq: m?.seq ?? null,
         masterTitle: m?.title ?? null,
         publishedAt: p.published_at,
@@ -324,8 +467,7 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
         saves: p.saves,
         reach: p.reach,
         metricsCapturedAt: p.metrics_captured_at,
-        views24h: d?.views24h ?? null,
-        likes24h: d?.likes24h ?? null,
+        deltas: deltas.get(p.id) ?? emptyDeltas(),
       };
     }),
   };

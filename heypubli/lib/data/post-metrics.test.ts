@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parsePostAnalytics } from "@/lib/integrations/outstand";
-import { deltaFor, buildPostMetricRows } from "@/lib/data/post-metrics";
+import { deltaFor, buildPostMetricRows, WINDOWS, emptyDeltas } from "@/lib/data/post-metrics";
 
 // The exact payload the live API returned for post Q20aV on 08 Aug 2026.
 const LIVE = {
@@ -107,6 +107,20 @@ describe("deltaFor", () => {
     expect(deltaFor(nulls, now, 24, "views")).toBeNull();
   });
 
+  it("credits the whole count to a window the video was born inside", () => {
+    // Posted 2 hours ago, so its 500 views were all earned in the last 24h,
+    // the last 72h and the last 30 days. Demanding an anchor reading from
+    // before it existed would blank every period but the shortest.
+    const born = "2026-08-09T10:00:00Z";
+    expect(deltaFor(rows, now, 24, "views", born)).toBe(500);
+    expect(deltaFor(rows, now, 24 * 30, "views", born)).toBe(500);
+  });
+
+  it("still subtracts for a video older than the window", () => {
+    const old = "2026-07-01T00:00:00Z";
+    expect(deltaFor(rows, now, 24, "views", old)).toBe(400);
+  });
+
   it("never reports a negative view count from a late-arriving reading", () => {
     // Instagram restates numbers downward sometimes. A video cannot lose views,
     // so a negative delta is a data artefact and is reported as null.
@@ -118,17 +132,52 @@ describe("deltaFor", () => {
   });
 });
 
+describe("time windows", () => {
+  it("offers the periods Hugo asked for, shortest first", () => {
+    expect(WINDOWS.map((w) => w.key)).toEqual(["h24", "h72", "d7", "d30"]);
+    expect(WINDOWS.map((w) => w.hours)).toEqual([24, 72, 168, 720]);
+  });
+});
+
 describe("buildPostMetricRows", () => {
-  it("attaches the delta and the current numbers to each post", () => {
-    const posts = [{ id: "p1" }, { id: "p2" }];
-    const snaps = [
-      { post_id: "p1", captured_at: "2026-08-09T12:00:00Z", views: 500, likes: 20 },
-      { post_id: "p1", captured_at: "2026-08-08T06:00:00Z", views: 100, likes: 5 },
-      { post_id: "p2", captured_at: "2026-08-09T12:00:00Z", views: 7, likes: 0 },
-    ];
-    const out = buildPostMetricRows(posts, snaps, new Date("2026-08-09T12:00:00Z"));
-    expect(out.get("p1")).toEqual({ views24h: 400, likes24h: 15 });
-    // One reading only: unmeasured, not zero.
-    expect(out.get("p2")).toEqual({ views24h: null, likes24h: null });
+  const snaps = [
+    { post_id: "p1", captured_at: "2026-08-09T12:00:00Z", views: 500, likes: 20, reach: 400 },
+    { post_id: "p1", captured_at: "2026-08-08T06:00:00Z", views: 100, likes: 5, reach: 90 },
+    { post_id: "p1", captured_at: "2026-08-02T06:00:00Z", views: 10, likes: 0, reach: 8 },
+    { post_id: "p2", captured_at: "2026-08-09T12:00:00Z", views: 7, likes: 0, reach: 5 },
+  ];
+  const now = new Date("2026-08-09T12:00:00Z");
+  // p1 is an old post with a run of readings; p2 went out an hour ago.
+  const posts = [
+    { id: "p1", publishedAt: "2026-06-01T00:00:00Z" },
+    { id: "p2", publishedAt: "2026-08-09T11:00:00Z" },
+  ];
+
+  it("works out every window from one pass over the readings", () => {
+    const out = buildPostMetricRows(posts, snaps, now);
+    const p1 = out.get("p1")!;
+    expect(p1.h24.views).toBe(400);
+    expect(p1.h24.likes).toBe(15);
+    // A week back reaches the oldest reading, so the gain is the whole run.
+    expect(p1.d7.views).toBe(490);
+  });
+
+  it("leaves a window null when an older post has no reading that far back", () => {
+    const out = buildPostMetricRows(posts, snaps, now);
+    // p1 predates the 30-day window and we hold no reading from then, so its
+    // 30-day gain is genuinely unknown rather than equal to its total.
+    expect(out.get("p1")!.d30.views).toBeNull();
+  });
+
+  it("credits a brand new post's whole count to every window it fits inside", () => {
+    const out = buildPostMetricRows(posts, snaps, now);
+    expect(out.get("p2")!.h24.views).toBe(7);
+    expect(out.get("p2")!.d30.views).toBe(7);
+  });
+
+  it("gives a post with no readings at all a full set of nulls, not zeros", () => {
+    const out = buildPostMetricRows([{ id: "ghost" }], [], now);
+    expect(out.get("ghost")).toEqual(emptyDeltas());
+    expect(out.get("ghost")!.h24.views).toBeNull();
   });
 });
