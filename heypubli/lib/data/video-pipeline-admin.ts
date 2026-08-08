@@ -6,6 +6,7 @@ import {
   composeCaption,
   creatorTimeZone,
   nextSlots,
+  FAMILY_ACCENT_HEX,
   FAMILY_CHIP_HEX,
 } from "@/lib/data/video-pipeline";
 import type { CreatorVideoRender, CreatorVideoState, MasterVideo } from "@/types/database";
@@ -16,6 +17,8 @@ export interface PipelineCreatorView {
   firstName: string;
   colorFamily: string;
   colorHex: string;
+  /** The family's accent, the other half of the chip. */
+  colorAccentHex: string;
   timeZone: string;
   staggerMin: number;
   nextSeq: number;
@@ -30,6 +33,7 @@ export interface MasterAccountRow {
   igUsername: string;
   colorFamily: string;
   colorHex: string;
+  colorAccentHex: string;
   timeZone: string;
   /** The REAL scheduled instant once the post row exists, else null. */
   scheduledAt: string | null;
@@ -127,6 +131,7 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
           igUsername: usernameBy.get(s.profile_id) ?? "unknown",
           colorFamily: s.color_family,
           colorHex: FAMILY_CHIP_HEX[s.color_family] ?? "#888888",
+          colorAccentHex: FAMILY_ACCENT_HEX[s.color_family] ?? "#cccccc",
           timeZone: creatorTimeZone(profile?.whatsapp),
           scheduledAt: post?.scheduled_at ?? null,
           caption: post?.caption?.trim() || composeCaption(m.seq, s.variant_idx, m.caption),
@@ -163,6 +168,7 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
       firstName: profile?.first_name ?? "",
       colorFamily: s?.color_family ?? "(assigned on the next cron beat)",
       colorHex: s ? (FAMILY_CHIP_HEX[s.color_family] ?? "#888888") : "#cccccc",
+      colorAccentHex: s ? (FAMILY_ACCENT_HEX[s.color_family] ?? "#cccccc") : "#e5e5e5",
       timeZone: tz,
       staggerMin: s?.stagger_min ?? 0,
       nextSeq: s?.next_seq ?? 1,

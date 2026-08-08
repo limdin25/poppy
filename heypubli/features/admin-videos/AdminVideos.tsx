@@ -260,7 +260,13 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
 
                 {/* Who gets this video and exactly when. Before approval it is
                     the promise; after, the times are the real schedule. */}
-                <details className="mt-1" data-testid={`master-accounts-${m.seq}`}>
+                {/* Open by default while it still needs approving: the captions
+                    are the thing being approved, so they cannot be behind a click. */}
+                <details
+                  className="mt-1"
+                  open={m.status === "pending_approval"}
+                  data-testid={`master-accounts-${m.seq}`}
+                >
                   <summary className="text-xs font-semibold text-foreground-secondary cursor-pointer select-none">
                     {m.status === "approved"
                       ? `Release times and captions (${m.accounts.length} accounts)`
@@ -275,8 +281,10 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
                       >
                         <div className="flex items-center gap-2 text-[12px] leading-tight">
                           <span
-                            className="w-3 h-3 rounded-full border border-black/10 flex-shrink-0"
-                            style={{ backgroundColor: a.colorHex }}
+                            className="w-3.5 h-3.5 rounded-full border border-black/10 flex-shrink-0"
+                            style={{
+                              background: `linear-gradient(135deg, ${a.colorHex} 50%, ${a.colorAccentHex} 50%)`,
+                            }}
                             title={a.colorFamily}
                           />
                           <span className="font-medium truncate min-w-0 w-36">@{a.igUsername}</span>
@@ -337,7 +345,9 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
             >
               <span
                 className="w-6 h-6 rounded-full border border-black/10 flex-shrink-0"
-                style={{ backgroundColor: c.colorHex }}
+                style={{
+                  background: `linear-gradient(135deg, ${c.colorHex} 50%, ${c.colorAccentHex} 50%)`,
+                }}
                 title={c.colorFamily}
               />
               <div className="min-w-0 flex-1">

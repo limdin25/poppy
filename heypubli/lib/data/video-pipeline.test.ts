@@ -4,6 +4,7 @@ import {
   captionFor,
   composeCaption,
   COLOR_FAMILIES,
+  FAMILY_ACCENT_HEX,
   FAMILY_CHIP_HEX,
   enrollmentOffsets,
   HASHTAGS,
@@ -21,7 +22,12 @@ describe("colors", () => {
   it("mirrors the factory's 14 families, each with a UI chip", () => {
     expect(COLOR_FAMILIES.length).toBe(14);
     expect(new Set(COLOR_FAMILIES).size).toBe(14);
-    for (const f of COLOR_FAMILIES) expect(FAMILY_CHIP_HEX[f]).toMatch(/^#[0-9a-f]{6}$/i);
+    for (const f of COLOR_FAMILIES) {
+      expect(FAMILY_CHIP_HEX[f]).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(FAMILY_ACCENT_HEX[f]).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+    // Fourteen distinct backgrounds, or the chip stops telling accounts apart.
+    expect(new Set(COLOR_FAMILIES.map((f) => FAMILY_CHIP_HEX[f])).size).toBe(14);
   });
 
   it("the first 14 accounts all get different colors", () => {

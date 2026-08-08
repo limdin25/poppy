@@ -30,23 +30,45 @@ export const COLOR_FAMILIES = [
   "bone-ink",
 ] as const;
 
-/** UI chips only: a representative hex per family so the approval page can
- *  show Hugo which color an account owns without loading the video project. */
+/** UI chips only: the family's real canvas colour, which is the background the
+ *  phone mockup sits on, so the dot on /admin/videos is the colour Hugo will
+ *  actually see in that account's videos. Taken from the factory's own
+ *  PALETTE_FAMILIES anchors (gamut-clipped), not eyeballed. */
 export const FAMILY_CHIP_HEX: Record<string, string> = {
-  "obsidian-citrus": "#1a1a17",
-  "champagne-noir": "#181410",
-  "molten-graphite": "#232323",
-  "cyber-mint": "#0f1f1a",
-  "sunset-foil": "#2a130d",
-  "ultraviolet": "#170f2a",
-  "ink-signal": "#101321",
-  "emerald-vault": "#0d2018",
-  "cobalt-glass": "#0e1626",
-  "arctic-steel": "#e8edf2",
-  "blush-studio": "#f4e4e0",
-  "sea-glass": "#dfeee9",
-  "vermilion-cut": "#20100c",
-  "bone-ink": "#efeae0",
+  "obsidian-citrus": "#111a1d",
+  "champagne-noir": "#14110d",
+  "molten-graphite": "#281c18",
+  "cyber-mint": "#0b3533",
+  "sunset-foil": "#511d39",
+  "ultraviolet": "#402168",
+  "ink-signal": "#193763",
+  "emerald-vault": "#0c492f",
+  "cobalt-glass": "#14617a",
+  "arctic-steel": "#dce6ee",
+  "blush-studio": "#f7e1e9",
+  "sea-glass": "#d4efe7",
+  "vermilion-cut": "#f0e9e8",
+  "bone-ink": "#f4f0e7",
+};
+
+/** The family's accent, the colour on the end card pill. Half of each chip, so
+ *  two accounts whose backgrounds are both near-black are still telling apart
+ *  at a glance. */
+export const FAMILY_ACCENT_HEX: Record<string, string> = {
+  "obsidian-citrus": "#adef5b",
+  "champagne-noir": "#e1c792",
+  "molten-graphite": "#faa680",
+  "cyber-mint": "#60f4af",
+  "sunset-foil": "#faa58f",
+  "ultraviolet": "#fa97db",
+  "ink-signal": "#8bcdfa",
+  "emerald-vault": "#eabf3a",
+  "cobalt-glass": "#79e3fb",
+  "arctic-steel": "#95c1fa",
+  "blush-studio": "#faa58f",
+  "sea-glass": "#faa495",
+  "vermilion-cut": "#faa495",
+  "bone-ink": "#f3ae58",
 };
 
 // ---- captions ---------------------------------------------------------------
