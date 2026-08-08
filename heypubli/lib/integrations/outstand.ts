@@ -417,6 +417,69 @@ export async function createPost(
   return json.post;
 }
 
+/** What one published video actually did.
+ *
+ *  THE ENDPOINT IS `/analytics`. A note in this repo previously said Outstand
+ *  had no per-post metrics at all, because `/posts/{id}/metrics` and
+ *  `/posts/{id}/insights` both 404 and those were the only two tried. They are
+ *  the wrong names. `/posts/{id}/analytics` returns 200 with real numbers, and
+ *  did so for all 14 posts we had published when this was written. */
+export interface OutstandPostAnalytics {
+  platformPostId: string | null;
+  /** The live Instagram permalink, also served here, so a post whose url we
+   *  never stored at publish time can still be recovered. */
+  platformPostUrl: string | null;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saves: number | null;
+  reach: number | null;
+}
+
+/** Split out from the fetch so the live payload can be tested without a network.
+ *  Zero is kept as zero: a reel with no views yet has been measured, and
+ *  turning that into null would render as "unmeasured" and hide a flop. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function parsePostAnalytics(json: any): OutstandPostAnalytics | null {
+  const a = json?.metrics_by_account?.[0];
+  if (!a) return null;
+  const m = a.metrics ?? {};
+  const ps = m.platform_specific ?? {};
+  // Instagram spells it "saved" inside platform_specific and "saves" outside.
+  const num = (...vs: unknown[]): number | null => {
+    for (const v of vs) if (typeof v === "number") return v;
+    return null;
+  };
+  return {
+    platformPostId: a.platform_post_id ?? null,
+    platformPostUrl: a.platform_post_url ?? null,
+    views: num(m.views, ps.views),
+    likes: num(m.likes, ps.likes),
+    comments: num(m.comments, ps.comments),
+    shares: num(m.shares, ps.shares),
+    saves: num(m.saves, ps.saved, ps.saves),
+    reach: num(m.reach, ps.reach),
+  };
+}
+
+export async function getPostAnalytics(
+  apiKey: string,
+  postId: string,
+): Promise<OutstandPostAnalytics | null> {
+  const res = await fetch(`${BASE}/posts/${postId}/analytics`, {
+    method: "GET",
+    headers: headers(apiKey),
+  });
+  if (!res.ok) {
+    // A 404 here means the post is gone from Outstand, which is permanent; a
+    // 5xx means try again next hour. Both are "no numbers this time", and the
+    // caller treats a null as skip-and-keep-what-we-had rather than as zero.
+    return null;
+  }
+  return parsePostAnalytics(await res.json());
+}
+
 export async function getPostStatus(
   apiKey: string,
   postId: string,

@@ -12,10 +12,9 @@
 
 import { NextResponse } from "next/server";
 import { sendAccountsDigest } from "@/lib/data/accounts-digest";
-import { captureCreatorMetrics } from "@/lib/data/creator-stats";
 
-// Capturing metrics walks every connected account one API call at a time, so
-// this needs longer than the default as the roster grows.
+// The live Instagram read walks every connected account one API call at a time,
+// so this needs longer than the default as the roster grows.
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
@@ -25,30 +24,14 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Capture BEFORE the email, so a Resend problem cannot cost us a reading.
-    // A missed reading is permanent: growth is the gap between two of them and
-    // there is no way to ask Instagram what a number was yesterday.
-    //
-    // Hourly now, so the daily snapshot is taken ONCE a day (at 07:00 UK) and
-    // the other 23 runs skip it: a growth series with 24 points a day is not
-    // more truthful, it just costs 24 times the API calls.
-    let metrics: { captured: number; skipped: number } = { captured: 0, skipped: 0 };
-    const ukHour = Number(
-      new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Europe/London",
-        hour: "2-digit",
-        hour12: false,
-      }).format(new Date()),
-    );
-    if (ukHour === 7) {
-      try {
-        metrics = await captureCreatorMetrics();
-      } catch (err) {
-        console.error("[accounts-digest] metrics capture failed:", err);
-      }
-    }
+    // The metrics capture used to live here, gated to 07:00 UK so it ran once a
+    // day. It has moved to /api/cron/metrics and now runs every hour, because a
+    // once-a-day sample cannot show what a video did in its first hours and the
+    // "last 24 hours" column had nothing to subtract from. Keeping it out of
+    // this route also means an email failure and a lost reading stay separate
+    // problems: a reading missed is a hole nothing can fill in later.
     const result = await sendAccountsDigest();
-    return NextResponse.json({ ok: true, ...result, metrics });
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     console.error("[accounts-digest] failed:", message);

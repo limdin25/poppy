@@ -6,22 +6,33 @@
 // and "how many followers, people following etc, how many followers gained,
 // everything we should be tracking."
 //
-// ONE THING TO BE HONEST ABOUT ON SCREEN: views are per ACCOUNT, not per video.
-// Outstand has no per-post metrics endpoint (404) and the post payload carries
-// no counts, so "views on this one video" does not exist to be shown. The page
-// says so rather than implying the number means something it does not.
+// TWO DIFFERENT VIEW COUNTS APPEAR HERE AND THEY MUST STAY LABELLED APART:
+// a creator's ACCOUNT views (everything they have ever posted, most of it
+// nothing to do with us) and OUR views (the videos this pipeline made for
+// them). Only the second says whether any of this is working.
+//
+// This page briefly carried a line saying per-video numbers did not exist. They
+// do: /posts/{id}/analytics serves them. Only /metrics and /insights 404.
 
 import { useMemo, useState } from "react";
 import { ArrowUp, ArrowDown, Users, Eye, Heart, Film, ExternalLink } from "lucide-react";
 import type { CreatorStatsRow } from "@/lib/data/creator-stats";
 import { summarise } from "@/lib/data/creator-stats";
 
-type SortKey = "followers" | "views" | "likes" | "reach" | "gained" | "posts";
+type SortKey =
+  | "followers"
+  | "views"
+  | "ourViews"
+  | "likes"
+  | "reach"
+  | "gained"
+  | "posts";
 
 const SORTS: Array<{ key: SortKey; label: string }> = [
   { key: "followers", label: "Followers" },
   { key: "gained", label: "Followers gained" },
-  { key: "views", label: "Views" },
+  { key: "ourViews", label: "Views on our videos" },
+  { key: "views", label: "Account views" },
   { key: "likes", label: "Likes" },
   { key: "reach", label: "Reach" },
   { key: "posts", label: "Posts" },
@@ -86,6 +97,7 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
       switch (sort) {
         case "followers": return r.followers ?? -1;
         case "views": return r.views ?? -1;
+        case "ourViews": return r.ourViews ?? -1;
         case "likes": return r.likes ?? -1;
         case "reach": return r.reach ?? -1;
         case "gained": return r.followersGained24h ?? -Infinity;
@@ -99,6 +111,27 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
   const topByViews = sorted.length
     ? [...visible].sort((a, b) => (b.views ?? -1) - (a.views ?? -1))[0]
     : null;
+
+  // One flat list of every published video across whoever is selected, newest
+  // first, each carrying the handle it went out on.
+  const published = useMemo(
+    () =>
+      visible
+        .flatMap((r) =>
+          r.posts
+            .filter((p) => p.status === "published")
+            .map((p) => ({ ...p, igUsername: r.igUsername })),
+        )
+        .sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "")),
+    [visible],
+  );
+
+  // The single best video, which is a different question from the best account
+  // and the one Hugo actually asked for.
+  const topVideo = useMemo(() => {
+    const read = published.filter((p) => p.views != null);
+    return read.length ? read.reduce((a, b) => ((b.views ?? 0) > (a.views ?? 0) ? b : a)) : null;
+  }, [published]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -136,14 +169,23 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
           value={n(total.followers)}
           sub={<Delta value={total.followersGained24h} />}
         />
-        <Tile icon={<Eye className="w-3.5 h-3.5" />} label="Views" value={n(total.views)} />
+        <Tile
+          icon={<Eye className="w-3.5 h-3.5" />}
+          label="Views on our videos"
+          value={n(total.ourViews)}
+          sub={
+            <span className="text-xs text-foreground-secondary">
+              <Delta value={total.ourViews24h || null} /> in 24h, {n(total.ourLikes)} likes
+            </span>
+          }
+        />
         <Tile
           icon={<Film className="w-3.5 h-3.5" />}
           label="Posts published"
           value={n(total.postsPublished)}
           sub={
             <span className="text-xs text-foreground-secondary">
-              {n(total.likes)} likes, {n(total.reach)} reach
+              {n(total.views)} account views all-time
             </span>
           }
         />
@@ -161,6 +203,39 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
             @{topByViews.igUsername}
           </a>{" "}
           with {n(topByViews.views)} views.
+        </div>
+      )}
+
+      {topVideo && (
+        <div className="text-sm" data-testid="stats-top-video">
+          Most viewed video:{" "}
+          <span className="font-semibold">
+            #{topVideo.masterSeq} {topVideo.masterTitle}
+          </span>{" "}
+          on{" "}
+          <a
+            href={`https://instagram.com/${topVideo.igUsername}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-accent hover:underline"
+          >
+            @{topVideo.igUsername}
+          </a>
+          , {n(topVideo.views)} views
+          {topVideo.platformPostUrl && (
+            <>
+              {" "}
+              <a
+                href={topVideo.platformPostUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                (watch it)
+              </a>
+            </>
+          )}
+          .
         </div>
       )}
 
@@ -211,7 +286,8 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
               <th className="p-3 font-medium">Followers</th>
               <th className="p-3 font-medium">Gained 24h / 7d</th>
               <th className="p-3 font-medium">Following</th>
-              <th className="p-3 font-medium">Views</th>
+              <th className="p-3 font-medium">Views on our videos</th>
+              <th className="p-3 font-medium">Account views</th>
               <th className="p-3 font-medium">Likes</th>
               <th className="p-3 font-medium">Reach</th>
               <th className="p-3 font-medium">Posts</th>
@@ -263,6 +339,14 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
                   <Delta value={r.followersGained7d} />
                 </td>
                 <td className="p-3">{n(r.following)}</td>
+                <td className="p-3 font-semibold">
+                  {n(r.ourViews)}
+                  {r.ourViews24h != null && r.ourViews24h > 0 && (
+                    <div>
+                      <Delta value={r.ourViews24h} />
+                    </div>
+                  )}
+                </td>
                 <td className="p-3">{n(r.views)}</td>
                 <td className="p-3">{n(r.likes)}</td>
                 <td className="p-3">{n(r.reach)}</td>
@@ -271,7 +355,7 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
             ))}
             {!sorted.length && (
               <tr>
-                <td colSpan={8} className="p-6 text-center text-foreground-secondary">
+                <td colSpan={9} className="p-6 text-center text-foreground-secondary">
                   No creators match that filter.
                 </td>
               </tr>
@@ -280,60 +364,94 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
         </table>
       </div>
 
-      {/* Every video that went out */}
+      {/* Every video that went out, with what it actually did */}
       <section className="space-y-2">
         <h2 className="font-semibold">Videos posted</h2>
-        <div className="border border-border rounded-xl divide-y divide-border" data-testid="stats-posts">
-          {sorted.flatMap((r) =>
-            r.posts
-              .filter((p) => p.status === "published")
-              .map((p, i) => (
-                <div
-                  key={`${r.profileId}-${p.masterSeq}-${i}`}
-                  className="p-3 flex items-center gap-3 text-sm flex-wrap"
-                >
-                  <span className="font-medium">#{p.masterSeq}</span>
-                  <span className="text-foreground-secondary truncate max-w-[220px]">
-                    {p.masterTitle}
-                  </span>
-                  <a
-                    href={`https://instagram.com/${r.igUsername}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent hover:underline"
-                  >
-                    @{r.igUsername}
-                  </a>
-                  <span className="text-foreground-secondary text-xs">
-                    {p.publishedAt ? new Date(p.publishedAt).toLocaleString("en-GB") : ""}
-                  </span>
-                  {p.platformPostUrl && (
+        <div className="border border-border rounded-xl overflow-x-auto" data-testid="stats-posts">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead>
+              <tr className="bg-background-secondary text-left text-xs text-foreground-secondary">
+                <th className="p-3 font-medium">Video</th>
+                <th className="p-3 font-medium">Creator</th>
+                <th className="p-3 font-medium">Posted</th>
+                <th className="p-3 font-medium">Views</th>
+                <th className="p-3 font-medium">Last 24h</th>
+                <th className="p-3 font-medium">Likes</th>
+                <th className="p-3 font-medium">Reach</th>
+                <th className="p-3 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {published.map((p, i) => (
+                <tr key={`${p.profileId}-${p.masterSeq}-${i}`} className="border-t border-border">
+                  <td className="p-3">
+                    <span className="font-medium">#{p.masterSeq}</span>{" "}
+                    <span className="text-foreground-secondary">{p.masterTitle}</span>
+                  </td>
+                  <td className="p-3">
                     <a
-                      href={p.platformPostUrl}
+                      href={`https://instagram.com/${p.igUsername}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="ml-auto text-xs inline-flex items-center gap-1 text-accent hover:underline"
+                      className="text-accent hover:underline"
                     >
-                      View post <ExternalLink className="w-3 h-3" />
+                      @{p.igUsername}
                     </a>
-                  )}
-                </div>
-              )),
-          )}
-          {!sorted.some((r) => r.posts.some((p) => p.status === "published")) && (
-            <div className="p-6 text-center text-foreground-secondary text-sm">
-              Nothing published yet for this selection.
-            </div>
-          )}
+                  </td>
+                  <td className="p-3 text-xs text-foreground-secondary whitespace-nowrap">
+                    {p.publishedAt ? new Date(p.publishedAt).toLocaleString("en-GB") : ""}
+                  </td>
+                  <td className="p-3 font-semibold">
+                    {p.metricsCapturedAt ? (
+                      n(p.views)
+                    ) : (
+                      <span className="text-xs font-normal text-foreground-secondary">
+                        not read yet
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <Delta value={p.views24h} />
+                  </td>
+                  <td className="p-3">{p.metricsCapturedAt ? n(p.likes) : "-"}</td>
+                  <td className="p-3">{p.metricsCapturedAt ? n(p.reach) : "-"}</td>
+                  <td className="p-3 text-right">
+                    {p.platformPostUrl ? (
+                      <a
+                        href={p.platformPostUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs inline-flex items-center gap-1 text-accent hover:underline whitespace-nowrap"
+                      >
+                        View post <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <span className="text-xs text-foreground-secondary whitespace-nowrap">
+                        no link
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!published.length && (
+                <tr>
+                  <td colSpan={8} className="p-6 text-center text-foreground-secondary text-sm">
+                    Nothing published yet for this selection.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 
       <p className="text-xs text-foreground-secondary">
-        <Heart className="w-3 h-3 inline" /> Views, likes and reach are whole-account figures from
-        Instagram, not per video. Instagram does not give us a view count for an individual post,
-        so the numbers above move as the account moves. Readings are taken at 07:00 and 20:00, and
-        growth is the difference between two of them, so a brand new account shows nothing until
-        its second reading.
+        <Heart className="w-3 h-3 inline" /> <strong>Views on our videos</strong> is the sum of the
+        videos this pipeline made, read one post at a time. <strong>Account views</strong> is
+        everything that creator has ever posted, most of it nothing to do with us, so the two will
+        never match. Every number is read hourly, and anything &quot;in the last 24h&quot; is the
+        difference between two readings, so a video posted in the last hour has nothing to compare
+        against yet and says so rather than showing a zero.
       </p>
     </div>
   );

@@ -5,19 +5,28 @@
 // creator... most viewed video... all type of filters there", plus "how many
 // followers, people following etc, how many followers gained."
 //
-// WHAT IS AND IS NOT AVAILABLE, because it shapes everything here. Outstand
-// reports metrics per ACCOUNT, never per post: there is no /posts/{id}/metrics
-// (404) and the post payload carries no view count. So "views" is a creator's
-// whole-account figure, NOT the views on one video, and no amount of UI can
-// turn one into the other. What we do know per post is who posted which master,
-// when, and its Instagram permalink.
+// TWO KINDS OF VIEWS LIVE ON THIS PAGE AND THEY ARE NOT THE SAME NUMBER.
 //
-// Growth is likewise not a field anywhere. It is the gap between two readings,
-// which is why creator_metrics_snapshots exists and why history only starts the
-// first time the capture cron runs.
+//   account views  everything that creator has ever posted, theirs and ours,
+//                  straight off /social-accounts/{id}/metrics
+//   our views      the sum of the videos WE published for them, built up from
+//                  per-post readings in lib/data/post-metrics
+//
+// The second one is the one that says whether this pipeline is working, so both
+// are shown side by side and labelled.
+//
+// A note here used to say per-post metrics did not exist. It was wrong, and the
+// page said so on screen for a day. `/posts/{id}/metrics` and `/insights` 404,
+// but `/posts/{id}/analytics` does not, and it serves views, likes, comments,
+// shares, saves and reach per post.
+//
+// Growth is not a field anywhere, for a creator or for a video. It is the gap
+// between two readings, which is why creator_metrics_snapshots and
+// post_metrics_snapshots exist and why history only starts at the first capture.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getInstagramMetrics } from "@/lib/integrations/outstand";
+import { buildPostMetricRows } from "@/lib/data/post-metrics";
 
 export interface MetricsSnapshot {
   profile_id: string;
@@ -50,6 +59,17 @@ export interface StatsPost {
   publishedAt: string | null;
   status: string;
   platformPostUrl: string | null;
+  /** This video's own numbers. Null means never read, which is not zero. */
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saves: number | null;
+  reach: number | null;
+  metricsCapturedAt: string | null;
+  /** Movement since the newest reading at least 24h old, null if unmeasurable. */
+  views24h: number | null;
+  likes24h: number | null;
 }
 
 export interface StatsInput {
@@ -77,6 +97,11 @@ export interface CreatorStatsRow {
   followersGained24h: number | null;
   followersGained7d: number | null;
   postsPublished: number;
+  /** Views on OUR videos only, summed. Null when none of them has been read
+   *  yet, so a creator we have simply not measured is never shown as a zero. */
+  ourViews: number | null;
+  ourLikes: number | null;
+  ourViews24h: number | null;
   posts: StatsPost[];
 }
 
@@ -128,6 +153,14 @@ export function buildCreatorStats(input: StatsInput, now: Date): CreatorStatsRow
       .slice()
       .sort((x, y) => (y.publishedAt ?? "").localeCompare(x.publishedAt ?? ""));
 
+    // Sum only what has actually been read. A creator with three published
+    // videos and no reading yet is unmeasured, not on zero views, so the sum
+    // stays null until at least one of their videos has a number.
+    const sumRead = (f: (p: StatsPost) => number | null): number | null => {
+      const vals = posts.map(f).filter((v): v is number => v != null);
+      return vals.length ? vals.reduce((n, v) => n + v, 0) : null;
+    };
+
     return {
       profileId: a.profileId,
       igUsername: a.igUsername,
@@ -146,6 +179,9 @@ export function buildCreatorStats(input: StatsInput, now: Date): CreatorStatsRow
       followersGained24h: gain(24),
       followersGained7d: gain(24 * 7),
       postsPublished: posts.filter((p) => p.status === "published").length,
+      ourViews: sumRead((p) => p.views),
+      ourLikes: sumRead((p) => p.likes),
+      ourViews24h: sumRead((p) => p.views24h),
       posts,
     };
   });
@@ -165,6 +201,10 @@ export interface StatsSummary {
   reach: number;
   followersGained24h: number;
   postsPublished: number;
+  /** Our videos only, as opposed to `views` which is every account's lifetime. */
+  ourViews: number;
+  ourLikes: number;
+  ourViews24h: number;
 }
 
 export function summarise(rows: CreatorStatsRow[]): StatsSummary {
@@ -183,6 +223,9 @@ export function summarise(rows: CreatorStatsRow[]): StatsSummary {
     reach: add((r) => r.reach),
     followersGained24h: add((r) => r.followersGained24h),
     postsPublished: add((r) => r.postsPublished),
+    ourViews: add((r) => r.ourViews),
+    ourLikes: add((r) => r.ourLikes),
+    ourViews24h: add((r) => r.ourViews24h),
   };
 }
 
@@ -195,7 +238,7 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
   // growing into a full-table read as the snapshot count climbs.
   const since = new Date(now.getTime() - 8 * 24 * H).toISOString();
 
-  const [conns, profiles, snaps, posts, masters] = await Promise.all([
+  const [conns, profiles, snaps, posts, masters, postSnaps] = await Promise.all([
     admin.from("outstand_connections").select("profile_id, ig_username, is_connected, created_at"),
     admin.from("profiles").select("id, first_name"),
     admin
@@ -205,9 +248,16 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
       .order("captured_at", { ascending: false }),
     admin
       .from("scheduled_posts")
-      .select("profile_id, status, published_at, platform_post_url, master_video_id")
+      .select(
+        "id, profile_id, status, published_at, platform_post_url, master_video_id, views, likes, comments, shares, saves, reach, metrics_captured_at",
+      )
       .not("master_video_id", "is", null),
     admin.from("master_videos").select("id, seq, title"),
+    admin
+      .from("post_metrics_snapshots")
+      .select("post_id, captured_at, views, likes")
+      .gte("captured_at", since)
+      .order("captured_at", { ascending: false }),
   ]);
 
   const nameBy = new Map<string, string>(
@@ -221,6 +271,12 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
       m.id,
       m,
     ]),
+  );
+
+  const deltas = buildPostMetricRows(
+    ((posts.data ?? []) as Array<{ id: string }>).map((p) => ({ id: p.id })),
+    (postSnaps.data ?? []) as Array<{ post_id: string; captured_at: string }>,
+    now,
   );
 
   const input: StatsInput = {
@@ -238,13 +294,22 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
     })),
     snapshots: (snaps.data ?? []) as MetricsSnapshot[],
     posts: ((posts.data ?? []) as Array<{
+      id: string;
       profile_id: string;
       status: string;
       published_at: string | null;
       platform_post_url: string | null;
       master_video_id: string;
+      views: number | null;
+      likes: number | null;
+      comments: number | null;
+      shares: number | null;
+      saves: number | null;
+      reach: number | null;
+      metrics_captured_at: string | null;
     }>).map((p) => {
       const m = masterBy.get(p.master_video_id);
+      const d = deltas.get(p.id);
       return {
         profileId: p.profile_id,
         masterSeq: m?.seq ?? null,
@@ -252,6 +317,15 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
         publishedAt: p.published_at,
         status: p.status,
         platformPostUrl: p.platform_post_url,
+        views: p.views,
+        likes: p.likes,
+        comments: p.comments,
+        shares: p.shares,
+        saves: p.saves,
+        reach: p.reach,
+        metricsCapturedAt: p.metrics_captured_at,
+        views24h: d?.views24h ?? null,
+        likes24h: d?.likes24h ?? null,
       };
     }),
   };

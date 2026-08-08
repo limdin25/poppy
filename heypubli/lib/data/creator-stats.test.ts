@@ -5,7 +5,13 @@
 // should be tracking."
 
 import { describe, expect, it } from "vitest";
-import { buildCreatorStats, summarise, type MetricsSnapshot, type StatsInput } from "./creator-stats";
+import {
+  buildCreatorStats,
+  summarise,
+  type MetricsSnapshot,
+  type StatsInput,
+  type StatsPost,
+} from "./creator-stats";
 
 const now = new Date("2026-08-08T20:00:00Z");
 
@@ -27,6 +33,27 @@ function snap(profileId: string, at: string, followers: number, views: number): 
   };
 }
 
+/** A post with no numbers read yet, which is the honest default. */
+function post(over: Partial<StatsPost> & { profileId: string }): StatsPost {
+  return {
+    masterSeq: null,
+    masterTitle: null,
+    publishedAt: null,
+    status: "pending",
+    platformPostUrl: null,
+    views: null,
+    likes: null,
+    comments: null,
+    shares: null,
+    saves: null,
+    reach: null,
+    metricsCapturedAt: null,
+    views24h: null,
+    likes24h: null,
+    ...over,
+  };
+}
+
 const input: StatsInput = {
   accounts: [
     { profileId: "p1", igUsername: "alpha", firstName: "Ann", isConnected: true, connectedAt: "2026-08-01T00:00:00Z" },
@@ -40,9 +67,9 @@ const input: StatsInput = {
     snap("p2", "2026-08-08T19:00:00Z", 40, 200),
   ],
   posts: [
-    { profileId: "p1", masterSeq: 1, masterTitle: "Demo 1", publishedAt: "2026-08-08T09:00:00Z", status: "published", platformPostUrl: "https://instagram.com/p/AAA" },
-    { profileId: "p1", masterSeq: 2, masterTitle: "Demo 2", publishedAt: "2026-08-08T17:00:00Z", status: "published", platformPostUrl: null },
-    { profileId: "p2", masterSeq: 1, masterTitle: "Demo 1", publishedAt: null, status: "pending", platformPostUrl: null },
+    post({ profileId: "p1", masterSeq: 1, masterTitle: "Demo 1", publishedAt: "2026-08-08T09:00:00Z", status: "published", platformPostUrl: "https://instagram.com/p/AAA", views: 248, likes: 6, views24h: 200 }),
+    post({ profileId: "p1", masterSeq: 2, masterTitle: "Demo 2", publishedAt: "2026-08-08T17:00:00Z", status: "published", views: 110 }),
+    post({ profileId: "p2", masterSeq: 1, masterTitle: "Demo 1", publishedAt: null, status: "pending" }),
   ],
 };
 
@@ -118,5 +145,36 @@ describe("creator stats", () => {
     const rows = buildCreatorStats(input, now);
     const alpha = rows.find((r) => r.igUsername === "alpha")!;
     expect(alpha.posts.map((p) => p.masterSeq)).toEqual([2, 1]);
+  });
+
+  it("carries each video's own views and likes, which do exist per post", () => {
+    const rows = buildCreatorStats(input, now);
+    const alpha = rows.find((r) => r.igUsername === "alpha")!;
+    const first = alpha.posts.find((p) => p.masterSeq === 1)!;
+    expect(first.views).toBe(248);
+    expect(first.likes).toBe(6);
+    expect(first.views24h).toBe(200);
+  });
+
+  it("sums OUR videos separately from the creator's lifetime account views", () => {
+    const rows = buildCreatorStats(input, now);
+    const alpha = rows.find((r) => r.igUsername === "alpha")!;
+    // The account has 5,000 views across everything it has ever posted. Our two
+    // videos account for 358 of them. Conflating the two would credit this
+    // pipeline with every view the creator ever earned.
+    expect(alpha.views).toBe(5000);
+    expect(alpha.ourViews).toBe(358);
+  });
+
+  it("leaves our-views null, not zero, for a creator whose videos are unread", () => {
+    const rows = buildCreatorStats(input, now);
+    const beta = rows.find((r) => r.igUsername === "beta")!;
+    expect(beta.ourViews).toBeNull();
+  });
+
+  it("totals our views across a selection", () => {
+    const rows = buildCreatorStats(input, now);
+    expect(summarise(rows).ourViews).toBe(358);
+    expect(summarise(rows).ourViews24h).toBe(200);
   });
 });
