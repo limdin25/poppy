@@ -247,6 +247,16 @@ describe("AdminStats", () => {
     expect(screen.getByTestId("views-chart").textContent).toContain("Nothing recorded yet");
   });
 
+  it("never calls the account figure all-time, because it is a rolling 30 days", () => {
+    // Outstand's metrics response carries a period block spanning exactly 30
+    // days. 859k in a month and 859k ever are different businesses, and this
+    // page claimed the wrong one for a day.
+    const { container } = render(<AdminStats rows={rows} />);
+    expect(container.textContent).not.toContain("all-time");
+    expect(container.textContent).toContain("rolling");
+    expect(screen.getByTestId("stats-top").textContent).toContain("in 30 days");
+  });
+
   it("says a video is unread rather than showing it on zero views", () => {
     const unread = [row({ posts: [post({ views: null, likes: null, reach: null, metricsCapturedAt: null })] })];
     render(<AdminStats rows={unread} />);

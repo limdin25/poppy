@@ -5,9 +5,16 @@
 // very metrified, so the more metrics you can get the better."
 //
 // TWO DIFFERENT VIEW COUNTS APPEAR HERE AND THEY MUST STAY LABELLED APART:
-// a creator's ACCOUNT views (everything they have ever posted, most of it
-// nothing to do with us) and OUR views (the videos this pipeline made for
-// them). Only the second says whether any of this is working, so it leads.
+// a creator's ACCOUNT views (all their content, most of it nothing to do with
+// us) and OUR views (the videos this pipeline made for them). Only the second
+// says whether any of this is working, so it leads.
+//
+// The account figure is a ROLLING 30 DAYS, not a lifetime. Outstand's metrics
+// response carries a `period` block spanning exactly 2,592,000 seconds with the
+// note "Engagement data reflects the specified period". This page called it
+// "all-time" for a day, which overstated nothing but described the wrong thing:
+// 859k in a month and 859k ever are different businesses. Followers and post
+// count in the same payload ARE current values, not period ones.
 //
 // This page briefly carried a line saying per-video numbers did not exist. They
 // do: /posts/{id}/analytics serves them. Only /metrics and /insights 404.
@@ -60,7 +67,7 @@ const SORTS: Array<{ key: SortKey; label: string }> = [
   { key: "ourViews", label: "Views on our videos" },
   { key: "followers", label: "Followers" },
   { key: "gained", label: "Followers gained" },
-  { key: "views", label: "Account views" },
+  { key: "views", label: "Account views (30d)" },
   { key: "likes", label: "Likes" },
   { key: "reach", label: "Reach" },
   { key: "posts", label: "Posts" },
@@ -306,7 +313,7 @@ export function AdminStats({
 
   const exportCreators = () =>
     downloadCsv("heypubli-creators.csv", [
-      ["Creator", "Name", "Connected", "Followers", "Gained 24h", "Gained 7d", "Following", "Our views", "Our likes", "Account views", "Posts"],
+      ["Creator", "Name", "Connected", "Followers", "Gained 24h", "Gained 7d", "Following", "Our views", "Our likes", "Account views 30d", "Posts"],
       ...sorted.map((r) => [
         r.igUsername,
         r.firstName,
@@ -471,7 +478,7 @@ export function AdminStats({
               @{topByViews.igUsername}
             </a>{" "}
             <span className="text-foreground-secondary">
-              ({n(topByViews.views)} views all-time)
+              ({n(topByViews.views)} account views in 30 days)
             </span>
           </div>
         )}
@@ -550,7 +557,7 @@ export function AdminStats({
               <th className="p-3 font-medium">Following</th>
               <th className="p-3 font-medium">Views on our videos</th>
               <th className="p-3 font-medium">Engagement</th>
-              <th className="p-3 font-medium">Account views</th>
+              <th className="p-3 font-medium">Account views (30d)</th>
               <th className="p-3 font-medium">Likes</th>
               <th className="p-3 font-medium">Reach</th>
               <th className="p-3 font-medium">Posts</th>
@@ -966,9 +973,10 @@ export function AdminStats({
 
       <p className="text-xs text-foreground-secondary">
         <Heart className="w-3 h-3 inline" /> <strong>Views on our videos</strong> is the sum of the
-        videos this pipeline made, read one post at a time. <strong>Account views</strong> is
-        everything that creator has ever posted, most of it nothing to do with us, so the two will
-        never match. Every number is read hourly. A period column is the difference between two
+        videos this pipeline made, read one post at a time, counted since each went out.{" "}
+        <strong>Account views (30d)</strong> is all that creator&apos;s content over a rolling
+        thirty days, most of it nothing to do with us, so the two will never match. Instagram gives
+        us no geography for either, so there is no country breakdown to show. Every number is read hourly. A period column is the difference between two
         readings, except for a video posted inside that period, where its whole count is the
         period&apos;s gain because it did not exist before. Picking dates filters by when a video
         went out and shows its totals since. Anything read only once says so rather than showing a

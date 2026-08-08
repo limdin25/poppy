@@ -7,8 +7,12 @@
 //
 // TWO KINDS OF VIEWS LIVE ON THIS PAGE AND THEY ARE NOT THE SAME NUMBER.
 //
-//   account views  everything that creator has ever posted, theirs and ours,
-//                  straight off /social-accounts/{id}/metrics
+//   account views  all that creator's content, theirs and ours, over a ROLLING
+//                  30 DAYS, straight off /social-accounts/{id}/metrics. Not a
+//                  lifetime: the response carries a `period` block spanning
+//                  exactly 2,592,000 seconds, noting "engagement data reflects
+//                  the specified period". followers/following/posts counts in
+//                  the same payload ARE current values rather than period ones.
 //   our views      the sum of the videos WE published for them, built up from
 //                  per-post readings in lib/data/post-metrics
 //
