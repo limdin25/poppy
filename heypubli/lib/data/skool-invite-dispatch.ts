@@ -255,6 +255,7 @@ export async function backfillMissingInvites(
     .select("id, first_name, email, whatsapp")
     .eq("is_admin", false)
     .is("suspended_at", null)
+    .is("dropped_at", null)
     .is("community_joined_declared_at", null)
     .order("created_at", { ascending: false })
     .limit(200)) as {

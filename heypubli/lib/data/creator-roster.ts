@@ -185,6 +185,8 @@ export async function buildCreatorRoster(
     .select("*")
     .eq("is_admin", false)
     .is("suspended_at", null)
+    // Dropped creators cost about six cents a pass to read and never change.
+    .is("dropped_at", null)
     .order("created_at", { ascending: true })
     .limit(300)) as { data: Profile[] | null };
   if (!profiles?.length) return [];

@@ -60,6 +60,11 @@ export interface Profile {
   onboarding_complete: boolean;
   is_admin: boolean;
   suspended_at: string | null;
+  /** They pressed the stop link on a follow-up email. We never email them again. */
+  email_follow_ups_stopped_at: string | null;
+  /** Seven daily emails went unanswered, so we stopped spending on them. Not a suspension: cleared the moment they message us. */
+  dropped_at: string | null;
+  dropped_reason: string | null;
   last_accessed_at: string | null;
   created_at: string;
 }

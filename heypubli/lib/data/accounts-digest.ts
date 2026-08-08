@@ -126,10 +126,45 @@ export async function onboardedSince(sinceIso: string | null): Promise<NewlyOnbo
   return out.sort((a, b) => a.at.localeCompare(b.at));
 }
 
+/** Creators we stopped chasing since the last report: seven daily emails, no answer. */
+export interface DroppedCreator {
+  firstName: string;
+  igUsername: string | null;
+  reason: string;
+}
+
+export async function droppedSince(sinceIso: string | null): Promise<DroppedCreator[]> {
+  const since = sinceIso ?? new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = createAdminClient() as any;
+  const { data: rows } = (await admin
+    .from("profiles")
+    .select("id, first_name, email, dropped_reason")
+    .not("dropped_at", "is", null)
+    .gte("dropped_at", since)) as {
+    data: { id: string; first_name: string | null; email: string; dropped_reason: string | null }[] | null;
+  };
+  if (!rows?.length) return [];
+  const { data: conns } = (await admin
+    .from("outstand_connections")
+    .select("profile_id, ig_username")
+    .in(
+      "profile_id",
+      rows.map((r) => r.id),
+    )) as { data: { profile_id: string; ig_username: string | null }[] | null };
+  const igBy = new Map((conns ?? []).map((c) => [c.profile_id, c.ig_username]));
+  return rows.map((r) => ({
+    firstName: r.first_name || r.email,
+    igUsername: igBy.get(r.id) ?? null,
+    reason: r.dropped_reason ?? "no answer",
+  }));
+}
+
 export function buildAccountsDigestHtml(
   accounts: DigestAccount[],
   now: Date,
   newlyOnboarded: NewlyOnboarded[] = [],
+  dropped: DroppedCreator[] = [],
 ): string {
   const connected = accounts.filter((a) => a.isConnected);
   const disconnected = accounts.filter((a) => !a.isConnected);
@@ -235,6 +270,23 @@ export function buildAccountsDigestHtml(
       </div>`
     : `<p style="color:#6B7280;font-size:13px;margin:10px 0;">Nobody new finished all five steps since the last report.</p>`;
 
+  // Said once, when it happens, and then they are gone from the table. Seven
+  // daily emails on top of four WhatsApp chases is where we stop paying to
+  // watch somebody who is not going to do it.
+  const gone = dropped.length
+    ? `<div style="background:#F3F4F6;padding:10px;border-radius:6px;margin:10px 0;">
+        <strong style="color:#374151;">${dropped.length} dropped, we have stopped chasing them:</strong>
+        <ul style="margin:6px 0;color:#4B5563;font-size:13px;">
+          ${dropped
+            .map(
+              (d) =>
+                `<li><strong>${esc(d.firstName)}</strong> ${d.igUsername ? igLink(d.igUsername) : ""}, ${esc(d.reason)}. If they ever message us it undoes itself.</li>`,
+            )
+            .join("")}
+        </ul>
+      </div>`
+    : "";
+
   return `
     <div style="font-family:sans-serif;max-width:840px;">
       <h2 style="color:#E1306C;margin-bottom:4px;">Creator accounts</h2>
@@ -245,6 +297,7 @@ export function buildAccountsDigestHtml(
         ${chase.length ? `<br><span style="color:#92400E;">${chase.length} still to chase.</span>` : ""}
       </p>
       ${fresh}
+      ${gone}
       ${alarm}
       ${body}
       <p style="color:#6B7280;font-size:12px;margin-top:16px;">
@@ -382,9 +435,10 @@ export async function sendAccountsDigest(now = new Date()): Promise<{
   // total answers "how are we doing"; only this answers "did anything happen in
   // the last hour", which is the question an hourly email exists for.
   const newlyOnboarded = await onboardedSince(lastReportAt);
+  const dropped = await droppedSince(lastReportAt);
 
   const html =
-    buildAccountsDigestHtml(accounts, now, newlyOnboarded) +
+    buildAccountsDigestHtml(accounts, now, newlyOnboarded, dropped) +
     // ONE email an hour with everything in it, so the funnel monitor's report
     // rides along here instead of arriving separately every five minutes.
     (monitorHtml

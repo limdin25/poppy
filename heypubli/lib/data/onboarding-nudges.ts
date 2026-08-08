@@ -331,6 +331,7 @@ export async function runOnboardingNudges(
     .eq("onboarding_complete", false)
     .eq("is_admin", false)
     .is("suspended_at", null)
+    .is("dropped_at", null)
     .not("whatsapp", "is", null);
   if (stoppedIds.length) query = query.not("id", "in", `(${stoppedIds.join(",")})`);
   const { data: profiles } = (await query
@@ -663,6 +664,7 @@ export async function runBioVerification(
     .eq("onboarding_complete", false)
     .eq("is_admin", false)
     .is("suspended_at", null)
+    .is("dropped_at", null)
     .or(`bio_checked_at.is.null,bio_checked_at.lt.${cutoff}`)
     .order("bio_checked_at", { ascending: true, nullsFirst: true })
     .limit(BIO_CHECKS_PER_RUN)) as { data: Profile[] | null };

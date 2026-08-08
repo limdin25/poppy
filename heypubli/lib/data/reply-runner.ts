@@ -379,6 +379,28 @@ export async function processWaitingThread(
   }
 
   let creator = await loadCreatorState(admin, phone, provider);
+
+  // They came back. Dropping somebody after seven unanswered emails is only ever
+  // "we stopped spending on silence", so the first word from them undoes it: the
+  // roster reads them again, the chases resume, and they finish where they left
+  // off. Without this, one message into the void would be the last thing that
+  // ever happened to them.
+  if (creator.profile?.dropped_at && !opts.dry) {
+    // The drop stamps both columns with the same instant. If the stop stamp is
+    // anything else, they pressed the unsubscribe link themselves, and coming
+    // back to say something does not undo asking us to stop emailing.
+    const theirOwnStop = creator.profile.email_follow_ups_stopped_at !== creator.profile.dropped_at;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("profiles") as any)
+      .update({
+        dropped_at: null,
+        dropped_reason: null,
+        ...(theirOwnStop ? {} : { email_follow_ups_stopped_at: null }),
+      })
+      .eq("id", creator.profile.id);
+    creator = await loadCreatorState(admin, phone, provider);
+  }
+
   if (!creator.lead && split.said.length > 0) {
     // No lead on this number, but the form message may name the lead they are.
     const adopted = await adoptLeadByFormDetails(admin, phone, split.said);
@@ -1054,6 +1076,7 @@ export async function runReplyBrain(
     .eq("onboarding_complete", false)
     .eq("is_admin", false)
     .is("suspended_at", null)
+    .is("dropped_at", null)
     .not("whatsapp", "is", null)
     .order("created_at", { ascending: false })
     .limit(40)) as { data: Profile[] | null };

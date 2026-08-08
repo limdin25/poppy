@@ -21,21 +21,27 @@ import type { OnboardingStepId, Profile } from "@/types/database";
  * and an email costs about nothing, so the four paid chases stay the paid
  * ladder's whole budget and this one carries the long tail.
  *
- * WHY IT SLOWS DOWN INSTEAD OF GOING DAILY FOREVER. "Until they do it" is the
- * right instinct and the gap is the only thing I would argue with. An email a
- * day to somebody who has stopped answering is what earns a spam complaint, and
- * heypubli.com is the domain the Skool invite emails leave from: if we burn its
- * reputation the invites stop landing in inboxes, which breaks the exact step
- * most of these people are stuck on. So it is daily for the first week, then
- * weekly, and it genuinely never stops until they finish or press the stop
- * link. That keeps the pressure on without setting fire to the thing underneath
- * it.
+ * IT ENDS, AND THE END IS A RULE. Hugo, 08 Aug 2026: "we put some unsubscribe on
+ * the emails and then we follow up for seven days. And that's it. One time a day
+ * for seven days, and that's it. If they don't, then we disconnect the account.
+ * You have to make that a rule."
+ *
+ * So: seven emails, one a day, an unsubscribe link on every one, then we stop
+ * spending on that person. Two reasons it has to end rather than run forever.
+ * The money: every roster pass pays about six cents to read their Instagram and
+ * every WhatsApp message about four, spent on somebody who has ignored eleven
+ * approaches. The domain: heypubli.com is where the Skool INVITE emails leave
+ * from, and mail nobody opens or wants is what teaches inboxes to bin us, which
+ * would break the exact step most creators are stuck on.
  */
 
-/** Day 1 to 7: one a day. After that: one a week, forever. */
-export function emailGapHours(alreadySent: number): number {
-  return alreadySent < 7 ? 24 : 24 * 7;
+/** One a day, every day, for the whole seven. */
+export function emailGapHours(_alreadySent: number): number {
+  return 24;
 }
+
+/** Seven daily emails. Then we stop. */
+export const EMAILS_BEFORE_DROP = 7;
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://heypubli.com";
 const SENDS_PER_RUN = 20;
@@ -145,14 +151,47 @@ export function buildFollowUpHtml(e: StepEmail, profileId: string): string {
 export interface EmailFollowUpReport {
   candidates: number;
   sent: number;
+  /** Names of the creators we stopped chasing this run. */
+  dropped: string[];
   skipped: Record<string, number>;
   errors: string[];
+}
+
+/**
+ * Stop spending on a creator who never did the work.
+ *
+ * DROPPED IS NOT SUSPENDED, and the difference is deliberate. Suspending locks
+ * somebody out of the app and sends them to a "your account is suspended" page,
+ * and these people have not misbehaved, they just went quiet. Dropped only
+ * stops OUR spending: the Instagram connection is switched off so the roster
+ * stops paying to read them, the chases stop, the emails stop, and they leave
+ * the report. Their login still works, their progress is untouched, and one
+ * inbound message clears the flag (see reply-runner), so a creator who wakes up
+ * in a month walks back in and finishes where they left off.
+ */
+export async function dropAccount(
+  admin: ReturnType<typeof createAdminClient>,
+  profileId: string,
+  reason: string,
+): Promise<void> {
+  const nowIso = new Date().toISOString();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin.from("profiles") as any)
+    .update({ dropped_at: nowIso, dropped_reason: reason, email_follow_ups_stopped_at: nowIso })
+    .eq("id", profileId)
+    .is("dropped_at", null);
+  // The six cents a pass: no connection, no roster read.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin.from("outstand_connections") as any)
+    .update({ is_connected: false })
+    .eq("profile_id", profileId)
+    .eq("is_connected", true);
 }
 
 export async function runEmailFollowUps(
   admin: ReturnType<typeof createAdminClient>,
 ): Promise<EmailFollowUpReport> {
-  const report: EmailFollowUpReport = { candidates: 0, sent: 0, skipped: {}, errors: [] };
+  const report: EmailFollowUpReport = { candidates: 0, sent: 0, dropped: [], skipped: {}, errors: [] };
   const skip = (why: string) => {
     report.skipped[why] = (report.skipped[why] ?? 0) + 1;
   };
@@ -165,6 +204,7 @@ export async function runEmailFollowUps(
     .eq("onboarding_complete", false)
     .eq("is_admin", false)
     .is("suspended_at", null)
+    .is("dropped_at", null)
     .is("email_follow_ups_stopped_at", null)
     .order("created_at", { ascending: false })
     .limit(100)) as { data: Profile[] | null };
@@ -216,6 +256,15 @@ export async function runEmailFollowUps(
         .returns<{ sent_at: string }[]>();
       const alreadySent = sentRows?.length ?? 0;
       const lastAt = sentRows?.[0]?.sent_at ?? null;
+
+      // Seven went out and they are still on the same step. That is the end of
+      // the road: eleven approaches ignored, and every further one costs money.
+      if (alreadySent >= EMAILS_BEFORE_DROP) {
+        await dropAccount(admin, profile.id, `${EMAILS_BEFORE_DROP} daily emails unanswered on ${openStep}`);
+        report.dropped.push(`${profile.first_name} ${profile.last_name}`.trim() || profile.email);
+        continue;
+      }
+
       const gapMs = emailGapHours(alreadySent) * 3600 * 1000;
       if (lastAt && now.getTime() - Date.parse(lastAt) < gapMs) {
         skip("too_soon");
