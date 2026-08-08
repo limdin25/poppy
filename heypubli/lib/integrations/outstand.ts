@@ -284,9 +284,26 @@ export async function confirmUpload(
 
 // --- Posts ---
 
+/** One attachment on a container.
+ *
+ *  Outstand takes the media as OBJECTS carrying a url and a filename, not the
+ *  ids the upload endpoint hands back. Sending `mediaIds: [id]` is accepted
+ *  with a 200 and then SILENTLY DROPPED: the created post comes back with
+ *  `media: []` and Instagram rejects it later with "At least one media file
+ *  (image or video) is required". Three real posts died that way on 08 Aug
+ *  2026, which was the first time this code path had ever run for real.
+ *
+ *  Verified against the live API the same day. `confirmUpload` returns exactly
+ *  these two fields, so the upload flow feeds this directly. A publicly
+ *  reachable url we host ourselves is also accepted. */
+export interface OutstandMedia {
+  url: string;
+  filename: string;
+}
+
 export interface CreatePostParams {
   content: string;
-  mediaIds: string[];
+  media: OutstandMedia[];
   socialAccountIds: string[];
   scheduledAt?: string;
   instagram?: {
@@ -309,7 +326,7 @@ export async function createPost(
   const containers: Array<Record<string, unknown>> = [
     {
       content: params.content,
-      mediaIds: params.mediaIds,
+      media: params.media,
     },
   ];
   if (params.firstComment) containers.push({ content: params.firstComment });

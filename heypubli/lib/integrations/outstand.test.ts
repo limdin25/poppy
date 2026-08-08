@@ -161,7 +161,7 @@ describe("createPost", () => {
 
     const result = await createPost(API_KEY, {
       content: "Hello world",
-      mediaIds: ["media_1"],
+      media: [{ url: "https://media.outstand.so/a/b/r.mp4", filename: "r.mp4" }],
       socialAccountIds: ["acc_1"],
     });
 
@@ -171,7 +171,16 @@ describe("createPost", () => {
     );
     const body = JSON.parse(spy.mock.calls[0][1]!.body as string);
     expect(body.containers[0].content).toBe("Hello world");
-    expect(body.containers[0].mediaIds).toEqual(["media_1"]);
+    // VERIFIED against the live API 08 Aug 2026. It is `media`, an array of
+    // OBJECTS with url + filename. We used to send `mediaIds: [id]` and
+    // Outstand silently ignored it, returning a container with `media: []`,
+    // which Instagram then rejected with "At least one media file (image or
+    // video) is required". Three real posts died that way. This assertion is
+    // the contract, do not relax it.
+    expect(body.containers[0].media).toEqual([
+      { url: "https://media.outstand.so/a/b/r.mp4", filename: "r.mp4" },
+    ]);
+    expect(body.containers[0].mediaIds).toBeUndefined();
     expect(body.accounts).toEqual(["acc_1"]);
     expect(result.id).toBe("post_1");
   });
@@ -184,7 +193,7 @@ describe("createPost", () => {
 
     await createPost(API_KEY, {
       content: "",
-      mediaIds: ["media_1"],
+      media: [{ url: "https://media.outstand.so/a/b/s.jpg", filename: "s.jpg" }],
       socialAccountIds: ["acc_1"],
       instagram: { publishAsStory: true },
     });
@@ -201,12 +210,20 @@ describe("createPost", () => {
 
     await createPost(API_KEY, {
       content: "Carousel caption",
-      mediaIds: ["media_1", "media_2", "media_3"],
+      media: [
+        { url: "https://m/1.jpg", filename: "1.jpg" },
+        { url: "https://m/2.jpg", filename: "2.jpg" },
+        { url: "https://m/3.jpg", filename: "3.jpg" },
+      ],
       socialAccountIds: ["acc_1"],
     });
 
     const body = JSON.parse(spy.mock.calls[0][1]!.body as string);
-    expect(body.containers[0].mediaIds).toEqual(["media_1", "media_2", "media_3"]);
+    expect(body.containers[0].media.map((m: { filename: string }) => m.filename)).toEqual([
+      "1.jpg",
+      "2.jpg",
+      "3.jpg",
+    ]);
   });
 });
 

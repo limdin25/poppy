@@ -12,6 +12,7 @@ import {
   createPost,
   getPostStatus,
 } from "@/lib/integrations/outstand";
+import type { OutstandMedia } from "@/lib/integrations/outstand";
 import {
   getOutstandConnection,
   getPostingSettingsAdmin,
@@ -152,7 +153,7 @@ async function publishViaOutstand(post: ScheduledPost, apiKey: string | null) {
     throw new Error("Outstand not connected");
   }
 
-  const mediaIds = await uploadMediaToOutstand(apiKey, post.media_url, post.media_type);
+  const media = await uploadMediaToOutstand(apiKey, post.media_url, post.media_type);
 
   const isStory = post.media_type === "story_image" || post.media_type === "story_video";
   const options = isStory ? null : post.instagram_options; // stories take media only
@@ -166,7 +167,7 @@ async function publishViaOutstand(post: ScheduledPost, apiKey: string | null) {
 
   const outstandPost = await createPost(apiKey, {
     content: post.caption,
-    mediaIds,
+    media,
     socialAccountIds: [connection.outstand_social_account_id],
     instagram: Object.keys(instagram).length > 0 ? instagram : undefined,
     firstComment: options?.first_comment,
@@ -184,11 +185,14 @@ async function publishViaOutstand(post: ScheduledPost, apiKey: string | null) {
   await markPostPublished(post.id, accountStatus?.platformPostId || outstandPost.id);
 }
 
+/** Push the video to Outstand and return what createPost actually wants: the
+ *  url and filename of the confirmed media, NOT its id. The id is only a handle
+ *  for the upload itself, and passing it to createPost is silently ignored. */
 async function uploadMediaToOutstand(
   apiKey: string,
   mediaUrl: string,
   mediaType: PostMediaType,
-): Promise<string[]> {
+): Promise<OutstandMedia[]> {
   const ext = guessExtension(mediaUrl, mediaType);
   const contentType = guessContentType(mediaType);
   const filename = `post_${Date.now()}.${ext}`;
@@ -206,9 +210,10 @@ async function uploadMediaToOutstand(
   });
   if (!uploadRes.ok) throw new Error("Media upload failed");
 
-  await confirmUpload(apiKey, mediaId);
+  const confirmed = await confirmUpload(apiKey, mediaId, buffer.byteLength);
+  if (!confirmed?.url) throw new Error("Outstand confirmed the upload without returning a url");
 
-  return [mediaId];
+  return [{ url: confirmed.url, filename: confirmed.filename ?? filename }];
 }
 
 async function waitForOutstandPost(apiKey: string, postId: string, maxAttempts = 30) {

@@ -149,7 +149,14 @@ describe("publish cron — Outstand resume safety", () => {
 describe("publish cron — Instagram options mapping", () => {
   function mockSuccessfulPipeline() {
     getUploadUrl.mockResolvedValue({ id: "media-1", upload_url: "https://up" });
-    confirmUpload.mockResolvedValue({ id: "media-1" });
+    // The real confirm response carries url + filename, and createPost needs
+    // BOTH: passing the id alone is silently dropped by Outstand and the post
+    // publishes with no video. A mock that omits them hides that entirely.
+    confirmUpload.mockResolvedValue({
+      id: "media-1",
+      url: "https://media.outstand.so/org/uuid/post_1.mp4",
+      filename: "post_1.mp4",
+    });
     createPost.mockResolvedValue({
       id: "out-1",
       socialAccounts: [{ status: "pending" }],
@@ -189,6 +196,9 @@ describe("publish cron — Instagram options mapping", () => {
         content: "Test caption",
         firstComment: "Get yours!",
         instagram: { collaborators: ["scanplates"], reelThumbOffset: 2500 },
+        media: [
+          { url: "https://media.outstand.so/org/uuid/post_1.mp4", filename: "post_1.mp4" },
+        ],
       }),
     );
   });
