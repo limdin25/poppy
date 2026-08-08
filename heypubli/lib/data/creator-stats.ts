@@ -476,6 +476,41 @@ export async function loadCreatorStats(now = new Date()): Promise<CreatorStatsRo
   );
 }
 
+export interface TimelinePoint {
+  day: string;
+  views: number;
+  likes: number;
+  reach: number;
+  videos: number;
+}
+
+/** Total views across our videos at the end of each day, for the trend line.
+ *
+ *  One row per day whatever the volume (migration 040), so this stays a fixed
+ *  cost as videos and readings pile up. */
+export async function loadViewsTimeline(days = 30): Promise<TimelinePoint[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = createAdminClient() as any;
+  const { data, error } = await admin.rpc("post_metrics_timeline", { p_days: days });
+  if (error) {
+    console.error("[creator-stats] timeline failed:", error.message);
+    return [];
+  }
+  return ((data ?? []) as Array<{
+    day: string;
+    views: number | null;
+    likes: number | null;
+    reach: number | null;
+    videos: number | null;
+  }>).map((r) => ({
+    day: r.day,
+    views: r.views ?? 0,
+    likes: r.likes ?? 0,
+    reach: r.reach ?? 0,
+    videos: r.videos ?? 0,
+  }));
+}
+
 /** Read every connected account's numbers and store one row each.
  *  Best effort per account: one bad account must not lose the whole sweep. */
 export async function captureCreatorMetrics(): Promise<{ captured: number; skipped: number }> {

@@ -31,7 +31,12 @@ import {
   Trophy,
   Activity,
 } from "lucide-react";
-import type { CreatorStatsRow, FlatPost, MasterTotals } from "@/lib/data/creator-stats";
+import type {
+  CreatorStatsRow,
+  FlatPost,
+  MasterTotals,
+  TimelinePoint,
+} from "@/lib/data/creator-stats";
 import {
   summarise,
   summarisePosts,
@@ -40,6 +45,7 @@ import {
   inRange,
 } from "@/lib/data/creator-stats";
 import { WINDOWS, type WindowKey } from "@/lib/data/post-metrics";
+import { ViewsChart } from "./ViewsChart";
 
 type SortKey =
   | "followers"
@@ -158,7 +164,13 @@ function downloadCsv(filename: string, rows: Array<Array<string | number | null>
   URL.revokeObjectURL(url);
 }
 
-export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
+export function AdminStats({
+  rows,
+  timeline = [],
+}: {
+  rows: CreatorStatsRow[];
+  timeline?: TimelinePoint[];
+}) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [masters, setMasters] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortKey>("ourViews");
@@ -246,6 +258,13 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
     return read.length ? read.reduce((a, b) => ((b.views ?? 0) > (a.views ?? 0) ? b : a)) : null;
   }, [posts]);
 
+  // When the newest number on screen was actually read. A dashboard that does
+  // not say how old it is invites people to act on a stale figure.
+  const readAt = useMemo(() => {
+    const stamps = posts.map((p) => p.metricsCapturedAt).filter((s): s is string => Boolean(s));
+    return stamps.length ? stamps.sort().at(-1)! : null;
+  }, [posts]);
+
   const maxPostViews = Math.max(0, ...posts.map((p) => p.views ?? 0));
   const maxMasterViews = Math.max(0, ...masterRows.map((m) => m.views ?? 0));
   const maxCreatorViews = Math.max(0, ...visible.map((r) => r.ourViews ?? 0));
@@ -312,6 +331,11 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
             Every creator, every video, and what each one did. Pick creators or videos to narrow it
             down; picking none shows them all.
           </p>
+          {readAt && (
+            <p className="text-xs text-foreground-secondary mt-1" data-testid="read-at">
+              Numbers read {new Date(readAt).toLocaleString("en-GB")}, refreshed on the hour.
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -422,6 +446,17 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
         />
       </div>
 
+      {/* The trend. Deliberately NOT filtered: it is the whole operation over
+          time, and a chart that silently changed meaning with the filters
+          above it would be read wrong more often than right. */}
+      <div className="space-y-1">
+        <ViewsChart points={timeline} />
+        <p className="text-[11px] text-foreground-secondary">
+          Every video we have ever posted, day by day. This one chart ignores the filters above on
+          purpose, so it always answers the same question.
+        </p>
+      </div>
+
       {/* Highlights */}
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
         {topByViews && topByViews.views != null && (
@@ -505,7 +540,7 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
 
       {/* The creators, each expanding into their own videos */}
       <div className="border border-border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm min-w-[860px]">
+        <table className="w-full text-sm min-w-[1040px]">
           <thead>
             <tr className="bg-background-secondary text-left text-xs text-foreground-secondary">
               <th className="p-3 font-medium w-8" />
@@ -514,10 +549,12 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
               <th className="p-3 font-medium">Gained 24h / 7d</th>
               <th className="p-3 font-medium">Following</th>
               <th className="p-3 font-medium">Views on our videos</th>
+              <th className="p-3 font-medium">Engagement</th>
               <th className="p-3 font-medium">Account views</th>
               <th className="p-3 font-medium">Likes</th>
               <th className="p-3 font-medium">Reach</th>
               <th className="p-3 font-medium">Posts</th>
+              <th className="p-3 font-medium">Joined</th>
             </tr>
           </thead>
           <tbody>
@@ -593,15 +630,29 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
                       {n(r.ourViews)}
                       <Bar value={r.ourViews} max={maxCreatorViews} />
                     </td>
+                    <td className="p-3">
+                      {pct(
+                        r.ourViews && r.ourLikes != null ? r.ourLikes / r.ourViews : null,
+                      )}
+                    </td>
                     <td className="p-3">{n(r.views)}</td>
                     <td className="p-3">{n(r.likes)}</td>
                     <td className="p-3">{n(r.reach)}</td>
                     <td className="p-3">{r.postsPublished}</td>
+                    <td className="p-3 text-xs text-foreground-secondary whitespace-nowrap">
+                      {r.connectedAt
+                        ? new Date(r.connectedAt).toLocaleDateString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "-"}
+                    </td>
                   </tr>,
                   isOpen ? (
                     <tr key={`${r.profileId}-posts`} className="bg-background-secondary/60">
                       <td />
-                      <td colSpan={9} className="p-3">
+                      <td colSpan={11} className="p-3">
                         <div data-testid={`creator-posts-${r.profileId}`} className="space-y-1">
                           {!mine.length && (
                             <div className="text-xs text-foreground-secondary">
@@ -666,7 +717,7 @@ export function AdminStats({ rows }: { rows: CreatorStatsRow[] }) {
             })}
             {!sorted.length && (
               <tr>
-                <td colSpan={10} className="p-6 text-center text-foreground-secondary">
+                <td colSpan={12} className="p-6 text-center text-foreground-secondary">
                   No creators match that filter.
                 </td>
               </tr>

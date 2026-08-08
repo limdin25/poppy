@@ -219,6 +219,34 @@ describe("AdminStats", () => {
     expect(screen.getByTestId("sort-views").getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("says when the numbers were last read, so nobody acts on a stale figure", () => {
+    render(<AdminStats rows={rows} />);
+    expect(screen.getByTestId("read-at").textContent).toContain("refreshed on the hour");
+  });
+
+  it("shows when each creator joined", () => {
+    render(<AdminStats rows={rows} />);
+    expect(screen.getByTestId("stats-row-alpha").textContent).toContain("1 Aug 2026");
+  });
+
+  it("draws the trend when there are enough days for one", () => {
+    render(
+      <AdminStats
+        rows={rows}
+        timeline={[
+          { day: "2026-08-07", views: 100, likes: 1, reach: 90, videos: 3 },
+          { day: "2026-08-08", views: 915, likes: 9, reach: 742, videos: 21 },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("views-chart").querySelector("svg")).toBeTruthy();
+  });
+
+  it("survives having no trend data at all", () => {
+    render(<AdminStats rows={rows} />);
+    expect(screen.getByTestId("views-chart").textContent).toContain("Nothing recorded yet");
+  });
+
   it("says a video is unread rather than showing it on zero views", () => {
     const unread = [row({ posts: [post({ views: null, likes: null, reach: null, metricsCapturedAt: null })] })];
     render(<AdminStats rows={unread} />);
