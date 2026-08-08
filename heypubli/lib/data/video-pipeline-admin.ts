@@ -25,6 +25,8 @@ export interface PipelineCreatorView {
   /** The account's next two release instants, ISO. */
   nextTimes: string[];
   enrolled: boolean;
+  /** When the creator connected their Instagram, ISO. Null on older rows. */
+  connectedAt: string | null;
 }
 
 /** One account's line under a master: who, their color, and exactly when
@@ -86,7 +88,7 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
       admin.from("creator_video_renders").select("master_id, profile_id, status"),
       admin
         .from("outstand_connections")
-        .select("profile_id, ig_username, is_connected")
+        .select("profile_id, ig_username, is_connected, created_at")
         .eq("is_connected", true),
       admin.from("profiles").select("id, first_name, whatsapp"),
       // Every host, not just 'default'. Rendering moved to the VPS, so pinning
@@ -186,6 +188,7 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
       nextSeq: s?.next_seq ?? 1,
       nextTimes: s ? nextSlots(now, tz, s.stagger_min, 2).map((x) => x.at.toISOString()) : [],
       enrolled: Boolean(s),
+      connectedAt: (c as { created_at?: string }).created_at ?? null,
     };
   });
 

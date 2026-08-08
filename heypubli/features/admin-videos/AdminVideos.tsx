@@ -22,6 +22,16 @@ import type { PipelineOverview } from "@/lib/data/video-pipeline-admin";
 
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 
+/** A connection date, short. The year matters here: it tells Hugo at a glance
+ *  whether an account is new this week or has been sitting connected for months. */
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function fmtWhen(iso: string, timeZone: string): string {
   const d = new Date(iso);
   const local = d.toLocaleString("en-GB", {
@@ -326,7 +336,15 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
                             }}
                             title={a.colorFamily}
                           />
-                          <span className="font-medium truncate min-w-0 w-36">@{a.igUsername}</span>
+                          <a
+                            href={`https://instagram.com/${a.igUsername}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium truncate min-w-0 w-36 hover:text-accent hover:underline"
+                            data-testid={`account-link-${m.seq}-${a.igUsername}`}
+                          >
+                            @{a.igUsername}
+                          </a>
                           {a.state === "failed" ? (
                             <span className="text-red-700 font-semibold">FAILED</span>
                           ) : a.scheduledAt ? (
@@ -390,10 +408,26 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
                 title={c.colorFamily}
               />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold truncate">@{c.igUsername}</div>
+                <a
+                  href={`https://instagram.com/${c.igUsername}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-semibold truncate block hover:text-accent hover:underline"
+                  data-testid={`creator-link-${c.igUsername}`}
+                >
+                  @{c.igUsername}
+                </a>
                 <div className="text-[11px] text-foreground-secondary truncate">
                   {c.colorFamily} - next video #{c.nextSeq}
                 </div>
+                {c.connectedAt && (
+                  <div
+                    className="text-[11px] text-foreground-secondary truncate"
+                    data-testid={`creator-connected-${c.igUsername}`}
+                  >
+                    connected {fmtDate(c.connectedAt)}
+                  </div>
+                )}
                 {c.enrolled ? (
                   <div className="text-[11px] text-foreground-secondary flex items-center gap-1 mt-0.5">
                     <Clock className="w-3 h-3 flex-shrink-0" />

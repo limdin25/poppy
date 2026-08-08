@@ -58,6 +58,7 @@ const overview: PipelineOverview = {
       nextSeq: 1,
       nextTimes: ["2026-08-08T05:30:00.000Z"],
       enrolled: true,
+      connectedAt: "2026-08-01T09:15:00.000Z",
     },
   ],
   workerLastSeen: new Date().toISOString(),
@@ -114,6 +115,23 @@ describe("AdminVideos", () => {
   // video for rendering, I can choose the gender as well." It decides which
   // pool the per-account voice comes from, and a wrong answer puts a woman's
   // voice on a man in a video that goes out publicly.
+  // Hugo, 08 Aug 2026: "on all those accounts we should take a hyperlink that
+  // take us to the accounts... you should have the date of connection when the
+  // account was connected."
+  it("links every account to its Instagram and shows when it connected", () => {
+    render(<AdminVideos overview={overview} />);
+    const link = screen.getByTestId("creator-link-kaorimodel04") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("https://instagram.com/kaorimodel04");
+    expect(link.getAttribute("target")).toBe("_blank");
+    // Opening a new tab without this leaks window.opener to instagram.com.
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(screen.getByTestId("creator-connected-kaorimodel04").textContent).toContain("1 Aug 2026");
+    // The same account listed under a master links out too.
+    expect(
+      screen.getByTestId("account-link-1-kaorimodel04").getAttribute("href"),
+    ).toBe("https://instagram.com/kaorimodel04");
+  });
+
   it("asks who is speaking, with neither answer preselected", () => {
     render(<AdminVideos overview={overview} />);
     const woman = screen.getByTestId("upload-gender-female");
