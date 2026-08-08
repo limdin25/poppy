@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   CAPTION_COMBOS,
   captionFor,
+  composeCaption,
   COLOR_FAMILIES,
   FAMILY_CHIP_HEX,
   enrollmentOffsets,
+  HASHTAGS,
+  hashtagsFor,
+  MAX_HASHTAGS,
   nextSlots,
   pickColorFamily,
   postsInLocalDay,
@@ -153,6 +157,73 @@ describe("captions", () => {
     for (const c of CAPTION_COMBOS) {
       const firstLine = c.split("\n")[0];
       expect((firstLine.match(emoji) ?? []).length).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe("hashtags", () => {
+  it("Hugo's list, no duplicates, every tag well formed", () => {
+    expect(new Set(HASHTAGS).size).toBe(HASHTAGS.length);
+    for (const t of HASHTAGS) expect(t).toMatch(/^#[A-Za-z0-9]+$/);
+  });
+
+  it("always between one and four, never the same tag twice", () => {
+    for (let seq = 1; seq <= 40; seq++) {
+      for (let idx = 0; idx < 60; idx++) {
+        const tags = hashtagsFor(seq, idx);
+        expect(tags.length).toBeGreaterThanOrEqual(1);
+        expect(tags.length).toBeLessThanOrEqual(MAX_HASHTAGS);
+        expect(new Set(tags).size).toBe(tags.length);
+        for (const t of tags) expect(HASHTAGS).toContain(t);
+      }
+    }
+  });
+
+  it("the count and the tags both move between accounts and between videos", () => {
+    const perAccount = new Set(
+      Array.from({ length: 30 }, (_, i) => hashtagsFor(3, i).join(" ")),
+    );
+    expect(perAccount.size).toBeGreaterThan(25);
+    const counts = new Set(Array.from({ length: 60 }, (_, i) => hashtagsFor(5, i).length));
+    expect(counts.size).toBeGreaterThan(1);
+    // Same account, consecutive videos: a different tag block each time.
+    for (let seq = 1; seq < 12; seq++) {
+      expect(hashtagsFor(seq, 4).join(" ")).not.toBe(hashtagsFor(seq + 1, 4).join(" "));
+    }
+  });
+
+  it("is stable: the same account and video always draw the same tags", () => {
+    expect(hashtagsFor(7, 2)).toEqual(hashtagsFor(7, 2));
+  });
+});
+
+describe("composeCaption", () => {
+  it("machine caption plus its own tags, and no two accounts post the same text", () => {
+    const seen = new Set<string>();
+    for (let idx = 0; idx < 120; idx++) {
+      const c = composeCaption(2, idx);
+      expect(c).toContain("#");
+      seen.add(c);
+    }
+    expect(seen.size).toBe(120);
+  });
+
+  it("Hugo's typed caption replaces the machine one but still gets tags", () => {
+    const c = composeCaption(2, 0, "Look what this thing did.");
+    expect(c.startsWith("Look what this thing did.")).toBe(true);
+    expect(c).toContain("#");
+  });
+
+  it("a caption Hugo tagged himself is left exactly as he wrote it", () => {
+    const mine = "My words #MyTag";
+    expect(composeCaption(2, 0, mine)).toBe(mine);
+  });
+
+  it("never writes a long dash or a curly quote", () => {
+    for (let seq = 1; seq <= 12; seq++) {
+      for (let idx = 0; idx < 40; idx++) {
+        expect(/[–—‘’“”…]/.test(composeCaption(seq, idx))).toBe(false);
+      }
     }
   });
 });

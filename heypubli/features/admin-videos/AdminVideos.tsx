@@ -216,7 +216,7 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
                   )}
                 </div>
                 <textarea
-                  placeholder="Leave empty and every account gets its own UNIQUE machine-written caption. Type here to use one caption of yours for all instead."
+                  placeholder="Leave empty and every account gets its own UNIQUE caption plus its own 1 to 4 hashtags (read them below). Type here to give every account the same words instead; they still get their own hashtags unless you write a # yourself."
                   defaultValue={m.caption}
                   onChange={(e) => setCaptions((c) => ({ ...c, [m.id]: e.target.value }))}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm h-16"
@@ -263,43 +263,54 @@ export function AdminVideos({ overview }: { overview: PipelineOverview }) {
                 <details className="mt-1" data-testid={`master-accounts-${m.seq}`}>
                   <summary className="text-xs font-semibold text-foreground-secondary cursor-pointer select-none">
                     {m.status === "approved"
-                      ? `Release times (${m.accounts.length} accounts)`
-                      : `Approving sends this to ${m.accounts.length} accounts`}
+                      ? `Release times and captions (${m.accounts.length} accounts)`
+                      : `Approving sends this to ${m.accounts.length} accounts, each with its own caption`}
                   </summary>
-                  <div className="mt-2 max-h-56 overflow-y-auto space-y-1 pr-2">
+                  <div className="mt-2 max-h-72 overflow-y-auto space-y-2 pr-2">
                     {m.accounts.map((a) => (
                       <div
                         key={a.igUsername}
-                        className="flex items-center gap-2 text-[12px] leading-tight"
+                        className="border-b border-border/60 pb-2 last:border-0"
+                        data-testid={`account-row-${m.seq}-${a.igUsername}`}
                       >
-                        <span
-                          className="w-3 h-3 rounded-full border border-black/10 flex-shrink-0"
-                          style={{ backgroundColor: a.colorHex }}
-                          title={a.colorFamily}
-                        />
-                        <span className="font-medium truncate min-w-0 w-36">@{a.igUsername}</span>
-                        {a.state === "failed" ? (
-                          <span className="text-red-700 font-semibold">FAILED</span>
-                        ) : a.scheduledAt ? (
+                        <div className="flex items-center gap-2 text-[12px] leading-tight">
                           <span
-                            className={
-                              a.state === "published"
-                                ? "text-green-700"
-                                : "text-foreground-secondary"
-                            }
-                          >
-                            {a.state === "published" ? "posted " : "goes out "}
-                            {fmtWhen(a.scheduledAt, a.timeZone)}
-                          </span>
-                        ) : (
-                          <span className="text-foreground-secondary">
-                            {m.status !== "approved"
-                              ? "after you approve"
-                              : a.state === "rendering"
-                                ? "rendering their copy"
-                                : "waiting for its turn"}
-                          </span>
-                        )}
+                            className="w-3 h-3 rounded-full border border-black/10 flex-shrink-0"
+                            style={{ backgroundColor: a.colorHex }}
+                            title={a.colorFamily}
+                          />
+                          <span className="font-medium truncate min-w-0 w-36">@{a.igUsername}</span>
+                          {a.state === "failed" ? (
+                            <span className="text-red-700 font-semibold">FAILED</span>
+                          ) : a.scheduledAt ? (
+                            <span
+                              className={
+                                a.state === "published"
+                                  ? "text-green-700"
+                                  : "text-foreground-secondary"
+                              }
+                            >
+                              {a.state === "published" ? "posted " : "goes out "}
+                              {fmtWhen(a.scheduledAt, a.timeZone)}
+                            </span>
+                          ) : (
+                            <span className="text-foreground-secondary">
+                              {m.status !== "approved"
+                                ? "after you approve"
+                                : a.state === "rendering"
+                                  ? "rendering their copy"
+                                  : "waiting for its turn"}
+                            </span>
+                          )}
+                        </div>
+                        {/* The exact words this account posts. Hugo, 08 Aug 2026:
+                            "missing the caption so I can approve." */}
+                        <p
+                          className="mt-1 ml-5 text-[11px] leading-snug text-foreground-secondary whitespace-pre-line bg-background-secondary rounded-md px-2 py-1.5"
+                          data-testid={`account-caption-${m.seq}-${a.igUsername}`}
+                        >
+                          {a.caption}
+                        </p>
                       </div>
                     ))}
                   </div>

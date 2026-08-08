@@ -24,7 +24,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  captionFor,
+  composeCaption,
   creatorTimeZone,
   enrollmentOffsets,
   pickColorFamily,
@@ -241,9 +241,11 @@ export async function GET(request: NextRequest) {
         media_type: "reel",
         media_url: render.video_url,
         // Hugo's own caption on the master wins; otherwise every account gets
-        // its own machine-written one (unique per account per video, Hugo,
-        // 08 Aug 2026: "every caption should be unique").
-        caption: (m.caption ?? "").trim() || captionFor(m.seq, s.variant_idx),
+        // its own machine-written one, and either way its own 1 to 4 hashtags
+        // (unique per account per video, Hugo, 08 Aug 2026: "every caption
+        // should be unique"). This is the same function /admin/videos shows
+        // him before he approves, so what he read is what goes out.
+        caption: composeCaption(m.seq, s.variant_idx, m.caption),
         scheduled_at: slot.at.toISOString(),
         status: "pending",
         provider: "outstand",

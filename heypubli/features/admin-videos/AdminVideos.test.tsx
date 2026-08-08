@@ -39,6 +39,7 @@ const overview: PipelineOverview = {
           timeZone: "Asia/Kolkata",
           scheduledAt: null,
           state: "waiting" as const,
+          caption: "Wait for the end.\n\n#AIReels #Shopify",
         },
       ],
     },
@@ -98,5 +99,12 @@ describe("AdminVideos", () => {
       "Approving sends this to 1 accounts",
     );
     expect(screen.getByTestId("master-accounts-1").textContent).toContain("after you approve");
+  });
+
+  it("shows each account's exact caption and hashtags before approval", () => {
+    render(<AdminVideos overview={overview} />);
+    const caption = screen.getByTestId("account-caption-1-kaorimodel04");
+    expect(caption.textContent).toContain("Wait for the end.");
+    expect(caption.textContent).toContain("#AIReels");
   });
 });

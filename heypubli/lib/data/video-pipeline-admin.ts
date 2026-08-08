@@ -3,6 +3,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  composeCaption,
   creatorTimeZone,
   nextSlots,
   FAMILY_CHIP_HEX,
@@ -33,6 +34,11 @@ export interface MasterAccountRow {
   /** The REAL scheduled instant once the post row exists, else null. */
   scheduledAt: string | null;
   state: "scheduled" | "published" | "failed" | "rendering" | "waiting";
+  /** The exact words this account posts, hashtags and all. Read off the
+   *  scheduled post once one exists (that text is frozen), otherwise composed
+   *  the same way the cron will compose it, so the approval page never shows
+   *  Hugo a caption different from the one that goes out. */
+  caption: string;
 }
 
 export interface PipelineMasterView extends MasterVideo {
@@ -72,13 +78,14 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
       admin.from("video_pipeline_state").select("worker_last_seen").eq("id", "default").single(),
       admin
         .from("scheduled_posts")
-        .select("master_video_id, profile_id, scheduled_at, status")
+        .select("master_video_id, profile_id, scheduled_at, status, caption")
         .not("master_video_id", "is", null) as Promise<{
         data: Array<{
           master_video_id: string;
           profile_id: string;
           scheduled_at: string;
           status: string;
+          caption: string | null;
         }> | null;
       }>,
     ]);
@@ -122,6 +129,7 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
           colorHex: FAMILY_CHIP_HEX[s.color_family] ?? "#888888",
           timeZone: creatorTimeZone(profile?.whatsapp),
           scheduledAt: post?.scheduled_at ?? null,
+          caption: post?.caption?.trim() || composeCaption(m.seq, s.variant_idx, m.caption),
           state: post
             ? (post.status === "published"
                 ? "published"

@@ -114,6 +114,84 @@ export function captionFor(masterSeq: number, variantIdx: number): string {
   return CAPTION_COMBOS[(((variantIdx * 131 + masterSeq * 17) % n) + n) % n];
 }
 
+// ---- hashtags ---------------------------------------------------------------
+// Hugo's own list, 08 Aug 2026: "include 1 to 4 hashtag per video, very random."
+// Given verbatim, duplicates removed, order kept. The draw is seeded from
+// (master, account) so it is reproducible, but the COUNT and the tags both move,
+// which is what stops nine accounts posting one identical tag block.
+
+export const HASHTAGS = [
+  "#AI", "#ArtificialIntelligence", "#ChatGPT", "#OpenAI", "#GenerativeAI",
+  "#GenAI", "#AITools", "#AIAutomation", "#MachineLearning", "#DeepLearning",
+  "#LLM", "#GPT", "#Claude", "#Gemini", "#AIAgents", "#AgenticAI", "#Automation",
+  "#NoCode", "#LowCode", "#Productivity", "#FutureOfWork", "#Innovation",
+  "#Tech", "#Technology", "#Startup", "#SaaS", "#Entrepreneur", "#Business",
+  "#Marketing", "#DigitalMarketing", "#ContentCreation", "#CreatorEconomy",
+  "#PromptEngineering", "#Coding", "#Programming", "#Developer", "#Software",
+  "#DataScience", "#Analytics", "#Future", "#Robotics", "#ComputerVision",
+  "#NLP", "#BuildInPublic", "#IndieHacker", "#SideHustle", "#GrowthHacking",
+  "#SmallBusiness", "#AIForBusiness", "#AIVideo", "#AIFilmmaking",
+  "#AIAnimation", "#AICreator", "#AIFilms", "#AIArt", "#AIVFX", "#AIContent",
+  "#AIReels", "#AIShorts", "#CinematicAI", "#RunwayML", "#Veo3", "#KlingAI",
+  "#PikaLabs", "#LumaAI", "#Midjourney", "#HailuoAI", "#CreativeAI",
+  "#FutureTech", "#UGC", "#UGCCreator", "#UGCCommunity", "#UGCContent",
+  "#ContentCreator", "#VideoCreator", "#DigitalCreator", "#Influencer",
+  "#MicroInfluencer", "#LifestyleCreator", "#BrandCollab", "#BrandPartnership",
+  "#PaidPartnership", "#BusinessOwner", "#SocialMediaMarketing", "#Ecommerce",
+  "#Shopify", "#AmazonFinds", "#ProductDemo", "#ProductReview", "#Unboxing",
+] as const;
+
+export const MAX_HASHTAGS = 4;
+
+/** Deterministic 32-bit mix of two numbers. Not crypto, just a good scatter so
+ *  neighbouring (seq, look) pairs do not draw neighbouring tags. */
+function mix32(a: number, b: number): number {
+  let h = (Math.imul(a, 0x9e3779b1) ^ Math.imul(b + 1, 0x85ebca6b)) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0x297a2d39) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** A repeatable 0..1 stream from a seed. */
+function stream(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+/**
+ * The hashtags for one account's copy of one master: between one and four,
+ * never the same tag twice in a caption, drawn from Hugo's list.
+ */
+export function hashtagsFor(masterSeq: number, variantIdx: number): string[] {
+  const rnd = stream(mix32(masterSeq, variantIdx));
+  const count = 1 + Math.floor(rnd() * MAX_HASHTAGS);
+  const pool = [...HASHTAGS];
+  const out: string[] = [];
+  for (let i = 0; i < count && pool.length; i++) {
+    out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
+  }
+  return out;
+}
+
+/**
+ * The exact text one account posts under one master. Hugo's typed caption wins
+ * over the machine one; it still gets its own tags unless he wrote his own
+ * (a "#" anywhere in what he typed means hands off completely).
+ */
+export function composeCaption(
+  masterSeq: number,
+  variantIdx: number,
+  override?: string | null,
+): string {
+  const typed = (override ?? "").trim();
+  if (typed.includes("#")) return typed;
+  const body = typed || captionFor(masterSeq, variantIdx);
+  return `${body}\n\n${hashtagsFor(masterSeq, variantIdx).join(" ")}`;
+}
+
 /** The two daily base slots, in the creator's OWN local time. */
 export const SLOT_HOURS = [11, 19] as const;
 
