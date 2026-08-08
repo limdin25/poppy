@@ -631,18 +631,26 @@ export default function InboxPage() {
   // everything else). Headers render only when the list actually mixes bands.
   const sections = useMemo(() => inboxSections(decoratedRows), [decoratedRows]);
 
-  // Badge counts on the pills. Both are computed off the whole non-archived
-  // list, not the current view, so switching filters never changes them.
-  const { unreadTotal, draftTotal } = useMemo(() => {
+  // Badge counts on the pills. All computed off the whole non-archived list,
+  // not the current view, so switching filters never changes them.
+  //
+  // 5/5 carries a count for the same reason the others do. Hugo, 08 Aug 2026:
+  // "when I click 5/5 it only shows me five users, it should show all of them
+  // and on top the number of users that is on 5/5." Five rows and the number
+  // five are indistinguishable by eye, so the pill now says how many fully
+  // onboarded creators exist and the list under it is all of them.
+  const { unreadTotal, draftTotal, onboardedTotal } = useMemo(() => {
     let unreadTotal = 0;
     let draftTotal = 0;
+    let onboardedTotal = 0;
     for (const r of sidebarRows) {
       if (inboxFlags.get(r.id)?.archivedAt) continue;
       if (isThreadUnread(r, inboxFlags.get(r.id)?.lastReadAt)) unreadTotal += 1;
       if (pendingDraftIds.has(r.id)) draftTotal += 1;
+      if (journeyByContact.get(r.id)?.allDone) onboardedTotal += 1;
     }
-    return { unreadTotal, draftTotal };
-  }, [sidebarRows, inboxFlags, pendingDraftIds]);
+    return { unreadTotal, draftTotal, onboardedTotal };
+  }, [sidebarRows, inboxFlags, pendingDraftIds, journeyByContact]);
 
   const openThread = useCallback(
     (contactId: string) => {
@@ -1065,7 +1073,11 @@ export default function InboxPage() {
               rows" attempt measured 398px and wrapped into four lines). */}
           {(() => {
             const pill = (f: Filter) => {
-              const count = f === 'unread' ? unreadTotal : f === 'drafts' ? draftTotal : 0;
+              const count =
+                f === 'unread' ? unreadTotal
+                : f === 'drafts' ? draftTotal
+                : f === 'onboarded' ? onboardedTotal
+                : 0;
               const iconOnly = f === 'archived';
               return (
                 <button

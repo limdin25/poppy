@@ -522,9 +522,25 @@ export async function processWaitingThread(
     }
   }
 
+  // What we said to them LAST, by key. The brain refuses to send the same
+  // reply twice in a row: MADHU got the identical "search your email for
+  // skool" three times in fifteen minutes and answered "Stop sending repeated
+  // messages" (08 Aug 2026). Only a real send counts, so a silence or a
+  // handover in between does not make a repeat look like a new answer.
+  const { data: lastReply } = await admin
+    .from("funnel_replies")
+    .select("key")
+    .eq("phone", phone)
+    .eq("kind", "reply")
+    .eq("status", "sent")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ key: string | null }>();
+
   const ctx: ReplyContext = {
     said: split.said,
     alreadySent: split.alreadySent,
+    lastReplyKey: lastReply?.key ?? null,
     stepsDone: creator.stepsDone,
     hasAccount: Boolean(creator.profile),
     firstName: creator.profile?.first_name || creator.lead?.first_name || null,
@@ -555,10 +571,20 @@ export async function processWaitingThread(
   if (decision.action === "silence" && split.saidHasMedia) {
     decision = { action: "human", reason: "sent a picture, look at it" };
   }
+  // Declared here so the loop guard below can close the fallback door too.
 
   // Anti-ping-pong: a lead-side auto-responder answering every reply would
   // otherwise trade messages with us once a minute forever.
-  if (decision.action === "send" && !opts.dry) {
+  //
+  // This used to set `human`, which the fallback below answers with the model,
+  // which writes another reply row, which trips the same count again: a guard
+  // that guaranteed the loop it was named after. On 08 Aug one creator got
+  // seven messages in twelve minutes and then refused us. So past the limit we
+  // genuinely STOP for this inbound. Nobody is abandoned by it: an unanswered
+  // message is picked up by the check-in ladder an hour later
+  // (UNANSWERED_GRACE_MINUTES), which sends the step, once.
+  let loopHold = false;
+  if ((decision.action === "send" || decision.action === "human") && !opts.dry) {
     const { count: recentReplies } = await admin
       .from("funnel_replies")
       .select("id", { count: "exact", head: true })
@@ -566,7 +592,11 @@ export async function processWaitingThread(
       .eq("kind", "reply")
       .gte("created_at", new Date(now.getTime() - 3600 * 1000).toISOString());
     if ((recentReplies ?? 0) >= 6) {
-      decision = { action: "human", reason: "6 automated replies inside an hour, possible loop" };
+      loopHold = true;
+      decision = {
+        action: "silence",
+        reason: "6 automated replies inside an hour, holding so this is not a loop",
+      };
     }
   }
 
@@ -597,6 +627,7 @@ export async function processWaitingThread(
   if (
     decision.action === "human" &&
     !isRefusal &&
+    !loopHold &&
     (split.said.length > 0 || image) &&
     split.windowOpen
   ) {

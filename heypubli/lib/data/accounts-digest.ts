@@ -20,6 +20,7 @@ import { sendEmail } from "@/lib/integrations/resend";
 import { igLink } from "./notifications";
 import {
   buildCreatorRoster,
+  syncConnectionHealth,
   VERDICT_LABEL,
   type BioVerdict,
 } from "./creator-roster";
@@ -253,7 +254,15 @@ export async function sendAccountsDigest(now = new Date()): Promise<{
   let verified = 0;
   let needsYou = 0;
   try {
-    const roster = await buildCreatorRoster(createAdminClient());
+    const admin = createAdminClient();
+    const roster = await buildCreatorRoster(admin);
+    // Act on what the read found before reporting it: an Instagram that has
+    // revoked us cannot be posted to, so the account goes back to "connect
+    // your Instagram" instead of sitting at a 5/5 nothing can deliver.
+    const health = await syncConnectionHealth(admin, roster);
+    if (health.disconnected.length) {
+      console.warn(`[accounts-digest] reopened step 1 for: ${health.disconnected.join(", ")}`);
+    }
     const byHandle = new Map(
       roster.filter((r) => r.igUsername).map((r) => [r.igUsername!.toLowerCase(), r]),
     );
@@ -268,7 +277,12 @@ export async function sendAccountsDigest(now = new Date()): Promise<{
       a.stepsDone = r.stepsDone;
       a.openStep = r.openStep;
       if (r.verdict === "verified") verified++;
-      if (r.verdict === "wrong_code" || r.verdict === "unreadable") needsYou++;
+      if (
+        r.verdict === "wrong_code" ||
+        r.verdict === "unreadable" ||
+        r.verdict === "link_not_clickable"
+      )
+        needsYou++;
     }
   } catch (err) {
     console.error("[accounts-digest] live Instagram read failed:", err);

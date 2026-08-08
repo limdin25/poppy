@@ -32,6 +32,11 @@ export interface ReplyContext {
   said: string[];
   /** Bodies we have already sent them, so no link is ever sent twice. */
   alreadySent: string[];
+  /**
+   * The key of the last reply we sent them, so the same message is never sent
+   * twice in a row. See `escalateInsteadOfRepeating`.
+   */
+  lastReplyKey?: string | null;
   /** Onboarding steps completed. Order does not matter. */
   stepsDone: readonly OnboardingStepId[];
   /** Whether a HeyPubli account exists for this person at all. */
@@ -747,6 +752,24 @@ function render(key: string, ctx: ReplyContext): string {
 }
 
 /**
+ * Render one reply from outside the decision engine, for the sweeps that spot
+ * something on a creator's profile without them writing to us first. The
+ * wording lives in exactly one place, so a reply the brain sends and the same
+ * reply a cron sends can never drift apart.
+ */
+export function renderReply(
+  key: string,
+  vars: {
+    firstName?: string | null;
+    watchCode?: string | null;
+    bioSentence?: string | null;
+    affiliateUrl?: string | null;
+  },
+): string {
+  return render(key, { said: [], alreadySent: [], stepsDone: [], hasAccount: true, ...vars });
+}
+
+/**
  * The pictures that go with a step. ALWAYS, not on request.
  *
  * Hugo, 07 Aug 2026: "always show them." Words about a hidden menu are worse
@@ -775,7 +798,45 @@ function sent(ctx: ReplyContext, needle: string): boolean {
 const THEIR_AUTORESPONDER =
   /thank you for (contacting|reaching out to)\b[^.!?]{0,40}[.!]?\s*(please let us know|we will|we'?ll|our team)/i;
 
+/**
+ * Saying the same thing twice is not persistence, it is what makes a person
+ * leave.
+ *
+ * MADHU, 08 Aug 2026: he wrote that no invite email had arrived, and the brain
+ * answered `stuck_community` at 10:53, again at 10:55 and again at 11:07,
+ * word for word, because each new message matched the same rule. His next
+ * message was "Stop sending repeated messages" and we lost him.
+ *
+ * So a reply that was ALREADY our last word does not get sent again. The step
+ * instructions escalate to the stuck version, which asks for a screenshot and
+ * offers to do the job for them; the stuck version and everything else escalate
+ * to a human, which in the runner means the model looks at the thread (and at
+ * any picture) and writes something new. Repeating is never the answer, because
+ * by definition it did not work the first time.
+ */
+function escalateInsteadOfRepeating(d: ReplyDecision, ctx: ReplyContext): ReplyDecision {
+  const lastKey = ctx.lastReplyKey ?? null;
+  if (!lastKey || d.action !== "send" || d.key !== lastKey) return d;
+
+  const step = (Object.keys(STEP_KEY) as OnboardingStepId[]).find((s) => STEP_KEY[s] === d.key);
+  if (step) {
+    const key = STUCK_KEY[step];
+    return {
+      action: "send",
+      key,
+      text: render(key, ctx),
+      reason: `already sent ${d.key} and it did not land, asking to see their screen`,
+      ...imagesFor(step),
+    };
+  }
+  return { action: "human", reason: `already sent ${d.key} and it did not land, say something new` };
+}
+
 export function decideReply(ctx: ReplyContext): ReplyDecision {
+  return escalateInsteadOfRepeating(decideReplyCore(ctx), ctx);
+}
+
+function decideReplyCore(ctx: ReplyContext): ReplyDecision {
   const said = ctx.said.map((s) => (s || "").trim()).filter(Boolean);
   if (said.length === 0) {
     return { action: "silence", reason: "nothing said since our last message" };
@@ -1194,17 +1255,37 @@ export type CheckInDecision =
  */
 export const CHECK_IN_LADDER_MINUTES = [10, 30, 360, 1380] as const;
 
+/**
+ * How long a message we could not answer is allowed to sit before the machine
+ * answers it anyway. Long enough that a human genuinely could have stepped in,
+ * short enough that nobody is left wondering for an afternoon.
+ */
+export const UNANSWERED_GRACE_MINUTES = 60;
+
 export function decideCheckIn(ctx: CheckInContext): CheckInDecision {
-  const ackPause = ctx.repliedSinceWeWrote && ctx.theirReplyWasAckOnly;
-  if (ctx.repliedSinceWeWrote && !ackPause) {
+  const ackPause = Boolean(ctx.repliedSinceWeWrote && ctx.theirReplyWasAckOnly);
+  // THE SECOND BLACK HOLE, found the same day. When the brain cannot place
+  // what somebody said it hands the thread to a human, and no human comes.
+  // This ladder then refused to touch it, because "they answered", so Chiquita
+  // ("Already joined. What next"), Lawrence and Danish sat unanswered for
+  // three to six hours with nothing scheduled. A message we never replied to
+  // is not a conversation, it is a debt. After the grace period, in which a
+  // human genuinely might answer, the machine sends them the step they are on:
+  // never a guess, always true, and it consumes a rung so it cannot loop.
+  const owed =
+    Boolean(ctx.repliedSinceWeWrote) &&
+    !ackPause &&
+    (ctx.minutesSinceTheyWrote ?? 0) >= UNANSWERED_GRACE_MINUTES;
+  if (ctx.repliedSinceWeWrote && !ackPause && !owed) {
     return { action: "wait", reason: "they answered, this is a conversation not a chase" };
   }
   // After a bare "Ok" the clock runs from THEIR message, not ours: they were
   // last seen agreeing to do something, and the check-in asks whether it went
   // ok. Falls back to our own clock if the caller cannot supply theirs.
-  const quietFor = ackPause
-    ? (ctx.minutesSinceTheyWrote ?? ctx.minutesSinceWeWrote)
-    : ctx.minutesSinceWeWrote;
+  const quietFor =
+    ackPause || owed
+      ? (ctx.minutesSinceTheyWrote ?? ctx.minutesSinceWeWrote)
+      : ctx.minutesSinceWeWrote;
   if (ctx.openStep === null) {
     return { action: "wait", reason: "nothing left for them to do" };
   }
@@ -1224,7 +1305,9 @@ export function decideCheckIn(ctx: CheckInContext): CheckInDecision {
   // Rungs 2 and 4 are the step itself, with its pictures: by then asking "is
   // everything ok" again is noise, and what unsticks somebody is being shown
   // the thing to do one more time.
-  const stepRung = rung === 1 || rung === 3;
+  // A debt is always answered with the step itself. "Is everything ok" is a
+  // terrible reply to somebody who asked a real question an hour ago.
+  const stepRung = owed || rung === 1 || rung === 3;
   const key = stepRung ? STEP_KEY[ctx.openStep] : rung === 0 ? "check_in_1" : "check_in_2";
   const vars: Vars = {
     hi: nameOf(ctx.firstName),

@@ -126,6 +126,51 @@ export interface OutstandIgMetrics {
   };
 }
 
+/**
+ * Why a metrics read failed, which is not a detail: a 401 means THIS creator's
+ * Instagram authorisation is dead (we can no longer read their profile OR post
+ * to it), while a 500 or a timeout means Outstand is having a moment and their
+ * account is probably fine. Treating those two the same is how Ma. Edelyn spent
+ * a day marked "all done" on a connection nothing could post through.
+ */
+export type MetricsFailure = "auth" | "not_found" | "transient";
+
+export interface MetricsResult {
+  metrics: OutstandIgMetrics | null;
+  /** Only set when metrics is null. */
+  failure: MetricsFailure | null;
+  status: number | null;
+}
+
+/** Real Instagram profile + engagement metrics, with the reason on a failure. */
+export async function getInstagramMetricsResult(
+  apiKey: string,
+  accountId: string,
+): Promise<MetricsResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/social-accounts/${accountId}/metrics`, {
+      method: "GET",
+      headers: headers(apiKey),
+    });
+  } catch {
+    return { metrics: null, failure: "transient", status: null };
+  }
+  if (!res.ok) {
+    const failure: MetricsFailure =
+      res.status === 401 || res.status === 403
+        ? "auth"
+        : res.status === 404
+          ? "not_found"
+          : "transient";
+    return { metrics: null, failure, status: res.status };
+  }
+  const metrics = await parseMetrics(res);
+  return metrics
+    ? { metrics, failure: null, status: res.status }
+    : { metrics: null, failure: "transient", status: res.status };
+}
+
 // Real Instagram profile + engagement metrics (available on Outstand's analytics tier).
 export async function getInstagramMetrics(
   apiKey: string,
@@ -136,6 +181,10 @@ export async function getInstagramMetrics(
     headers: headers(apiKey),
   });
   if (!res.ok) return null;
+  return parseMetrics(res);
+}
+
+async function parseMetrics(res: Response): Promise<OutstandIgMetrics | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const json = (await res.json()) as any;
   const d = json?.data;

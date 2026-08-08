@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPostingSettingsAdmin } from "@/lib/data/outstand";
-import { getInstagramMetrics } from "@/lib/integrations/outstand";
+import { getInstagramMetricsResult } from "@/lib/integrations/outstand";
 import { checkBio } from "@/lib/bio-check";
 import { bioSentence } from "@/lib/bio-variants";
 import { skoolLinkNeedle } from "@/lib/skool-link";
@@ -61,6 +61,12 @@ export interface RosterRow {
   onboardingComplete: boolean;
   /** Set when the connection is broken, so the email can shout about it. */
   connectionBroken: boolean;
+  /**
+   * Instagram itself refused us (401/403/404), so this creator's authorisation
+   * is genuinely dead, as opposed to Outstand having a bad minute. Only this
+   * flag is allowed to disconnect an account.
+   */
+  authDead: boolean;
 }
 
 const SKOOL_IN_TEXT = /(?:https?:\/\/)?(?:www\.)?skool\.com\/[^\s"'<>)]+/i;
@@ -200,19 +206,19 @@ export async function buildCreatorRoster(
     let followers: number | null = null;
     let posts: number | null = null;
     let readable = false;
+    let authDead = false;
 
     if (conn && apiKey) {
-      try {
-        const m = await getInstagramMetrics(apiKey, conn.outstand_social_account_id);
-        if (m) {
-          biography = m.biography;
-          website = m.website;
-          followers = m.followersCount;
-          posts = m.postsCount;
-          readable = true;
-        }
-      } catch {
-        readable = false;
+      const r = await getInstagramMetricsResult(apiKey, conn.outstand_social_account_id);
+      if (r.metrics) {
+        biography = r.metrics.biography;
+        website = r.metrics.website;
+        followers = r.metrics.followersCount;
+        posts = r.metrics.postsCount;
+        readable = true;
+      } else {
+        // 401/403/404 is THEIR authorisation, gone. Anything else is Outstand.
+        authDead = r.failure === "auth" || r.failure === "not_found";
       }
     }
 
@@ -252,9 +258,66 @@ export async function buildCreatorRoster(
       openStep: res.openStep,
       onboardingComplete: Boolean(p.onboarding_complete),
       connectionBroken: Boolean(conn) && !readable,
+      authDead,
     });
   }
   return rows;
+}
+
+/**
+ * A dead Instagram authorisation must REOPEN the funnel, not freeze it.
+ *
+ * Ma. Edelyn, 08 Aug 2026: her Instagram authorisation expired, so nothing
+ * could read her profile and nothing could post to it. Because the connection
+ * row still said `is_connected`, the page fell back to "we cannot look, so your
+ * word stands", she pressed the button in good faith, and the machine marked
+ * her 5/5 and told her the videos were coming. They were not: there was no
+ * working connection to post through.
+ *
+ * So when Instagram itself refuses us, we clear `is_connected`. Everything
+ * downstream already knows what to do with that: step 1 reopens, the funnel
+ * says reconnect, the nudge brain chases her, and no declaration can complete
+ * a step over a connection that cannot post.
+ *
+ * THE GUARD. If Outstand's key were revoked, every account would fail at once
+ * and this would disconnect the entire roster in one tick. So it refuses to act
+ * when more than a third of readable-or-not accounts failed in the same pass:
+ * that is our outage, not thirty creators revoking us in the same minute.
+ */
+export async function syncConnectionHealth(
+  admin: ReturnType<typeof createAdminClient>,
+  rows: RosterRow[],
+): Promise<{ disconnected: string[]; skippedAsOutage: number }> {
+  const withConnection = rows.filter((r) => r.igUsername !== null);
+  const dead = withConnection.filter((r) => r.authDead);
+  if (dead.length === 0) return { disconnected: [], skippedAsOutage: 0 };
+  if (withConnection.length >= 3 && dead.length > withConnection.length / 3) {
+    console.warn(
+      `[roster] ${dead.length} of ${withConnection.length} connections refused us at once. ` +
+        `That is an outage on our side, not theirs. Disconnecting nobody.`,
+    );
+    return { disconnected: [], skippedAsOutage: dead.length };
+  }
+
+  const disconnected: string[] = [];
+  for (const r of dead) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (admin.from("outstand_connections") as any)
+      .update({ is_connected: false })
+      .eq("profile_id", r.profileId)
+      .eq("is_connected", true);
+    if (error) {
+      console.error(`[roster] could not disconnect ${r.profileId}: ${error.message}`);
+      continue;
+    }
+    // 5/5 over a connection that cannot post is the lie we are here to stop.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("profiles") as any)
+      .update({ onboarding_complete: false })
+      .eq("id", r.profileId);
+    disconnected.push(r.name);
+  }
+  return { disconnected, skippedAsOutage: 0 };
 }
 
 const esc = (s: unknown): string =>

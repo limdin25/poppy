@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { verdictFor, skoolUrlInProfile, VERDICT_LABEL } from "./creator-roster";
+import {
+  verdictFor,
+  skoolUrlInProfile,
+  syncConnectionHealth,
+  VERDICT_LABEL,
+  type RosterRow,
+} from "./creator-roster";
 
 // Every case below is a REAL profile, read in Hugo's own browser on 08 Aug
 // 2026 during the audit that produced this file.
@@ -103,6 +109,65 @@ describe("what the roster says about a real profile", () => {
   it("no_link_saved: nothing to look for yet", () => {
     const r = verdictFor({ readable: true, savedSkoolUrl: null, sentence, biography: "hi", website: null });
     expect(r.verdict).toBe("no_link_saved");
+  });
+});
+
+// A dead Instagram authorisation has to reopen step 1, or the creator sits at
+// 5/5 on a connection nothing can post through (Ma. Edelyn, 08 Aug 2026). But
+// a revoked API KEY on our side fails every account at once, and disconnecting
+// the whole roster over our own outage would be far worse than doing nothing.
+describe("disconnecting an Instagram that refused us", () => {
+  const row = (name: string, authDead: boolean): RosterRow =>
+    ({
+      profileId: `id-${name}`,
+      name,
+      igUsername: name,
+      authDead,
+      verdict: authDead ? "unreadable" : "verified",
+    }) as unknown as RosterRow;
+
+  const fakeAdmin = () => {
+    const updates: string[] = [];
+    const chain = () => {
+      const c: Record<string, unknown> = {};
+      for (const k of ["update", "eq"]) c[k] = () => c;
+      (c as { then: unknown }).then = (r: (v: { error: null }) => void) => r({ error: null });
+      return c;
+    };
+    return {
+      updates,
+      admin: {
+        from: (t: string) => {
+          updates.push(t);
+          return chain();
+        },
+      } as unknown as Parameters<typeof syncConnectionHealth>[0],
+    };
+  };
+
+  it("disconnects the one account Instagram refused", async () => {
+    const { admin } = fakeAdmin();
+    const res = await syncConnectionHealth(admin, [
+      row("edelyn", true),
+      row("a", false),
+      row("b", false),
+      row("c", false),
+      row("d", false),
+    ]);
+    expect(res.disconnected).toEqual(["edelyn"]);
+    expect(res.skippedAsOutage).toBe(0);
+  });
+
+  it("disconnects NOBODY when most of the roster failed at once", async () => {
+    const { admin } = fakeAdmin();
+    const res = await syncConnectionHealth(admin, [
+      row("a", true),
+      row("b", true),
+      row("c", true),
+      row("d", false),
+    ]);
+    expect(res.disconnected).toEqual([]);
+    expect(res.skippedAsOutage).toBe(3);
   });
 });
 

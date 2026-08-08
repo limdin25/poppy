@@ -878,6 +878,37 @@ describe("the pasted Skool link", () => {
   });
 });
 
+// MADHU got the identical "search your email for skool" three times in
+// fifteen minutes and replied "Stop sending repeated messages" (08 Aug 2026).
+describe("the same reply is never sent twice in a row", () => {
+  const base = { hasAccount: true, stepsDone: ["instagram"] as const, said: ["what now"] };
+
+  it("escalates a repeated step message to asking for their screen", () => {
+    const first = decideReply(ctx({ ...base }));
+    if (first.action !== "send") throw new Error("expected send");
+    expect(first.key).toBe("step_community");
+
+    const again = decideReply(ctx({ ...base, lastReplyKey: "step_community" }));
+    if (again.action !== "send") throw new Error("expected send");
+    expect(again.key).toBe("stuck_community");
+    expect(again.text).toMatch(/screenshot/i);
+  });
+
+  it("escalates a repeated stuck message to a human, who has the model behind them", () => {
+    const d = decideReply(
+      ctx({ ...base, said: ["it is not working"], lastReplyKey: "stuck_community" }),
+    );
+    expect(d.action).toBe("human");
+    expect(d.reason).toMatch(/did not land/);
+  });
+
+  it("leaves a different reply alone", () => {
+    const d = decideReply(ctx({ ...base, lastReplyKey: "cost_free" }));
+    if (d.action !== "send") throw new Error("expected send");
+    expect(d.key).toBe("step_community");
+  });
+});
+
 describe("the live bio read decides what we say, never their word", () => {
   const base = {
     hasAccount: true,
@@ -1216,9 +1247,21 @@ describe("the Ok black hole", () => {
     expect(due.reason).toMatch(/after an ok/);
   });
 
-  it("a real question still belongs to the reply engine, not the chase", () => {
-    const d = decideCheckIn({ ...base, theirReplyWasAckOnly: false, minutesSinceTheyWrote: 300 });
+  it("a real question belongs to the reply engine while a human still might answer", () => {
+    const d = decideCheckIn({ ...base, theirReplyWasAckOnly: false, minutesSinceTheyWrote: 20 });
     expect(d.action).toBe("wait");
+  });
+
+  // The second black hole. The brain hands a question it cannot place to a
+  // human, no human comes, and this ladder used to sit out forever because
+  // "they answered". Chiquita asked "Already joined. What next" and waited six
+  // hours. After the grace, the machine answers with the step they are on.
+  it("answers a question nobody picked up, with the step and not with hello", () => {
+    const d = decideCheckIn({ ...base, theirReplyWasAckOnly: false, minutesSinceTheyWrote: 300 });
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("step_community");
+    expect(d.rung).toBe(1);
   });
 });
 

@@ -6,6 +6,7 @@ import { isCommunityMember } from "@/lib/data/community";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { checkBio, bioVerified } from "@/lib/bio-check";
 import { skoolUrlInProfile } from "@/lib/data/creator-roster";
+import { renderReply } from "@/lib/data/reply-brain";
 import { bioSentence } from "@/lib/bio-variants";
 import { cleanSkoolAffiliateUrl, skoolLinkNeedle } from "@/lib/skool-link";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
@@ -617,6 +618,8 @@ export interface BioVerifyReport {
   congratulated: number;
   /** Links read off a creator's own Instagram bio because we held none. */
   linksCaptured: number;
+  /** Creators told their link is in the Bio box and needs moving to Links. */
+  movedToLinksBox: number;
   errors: string[];
 }
 
@@ -628,6 +631,7 @@ export async function runBioVerification(
     verified: 0,
     congratulated: 0,
     linksCaptured: 0,
+    movedToLinksBox: 0,
     errors: [],
   };
   const provider = (await getPostingSettingsAdmin())?.active_provider ?? "heypubli";
@@ -694,6 +698,28 @@ export async function runBioVerification(
         biography: ig.biography,
         website: ig.website,
       });
+      // THE WRONG BOX. They did the work and put the link where Instagram
+      // never makes it tappable, so every other check just reads "not done"
+      // and chases them for something they believe they have finished. This
+      // is the one state worth an unprompted message: it is a two-tap fix and
+      // the person is already trying. Once each, keyed on the profile.
+      if (!evidence.link && evidence.linkInText) {
+        if (profile.whatsapp && withinSendingHours(now, timezoneForPhone(profile.whatsapp))) {
+          const first = (profile.first_name || "").trim().split(" ")[0];
+          const res = await sendPartnerWhatsApp({
+            to: profile.whatsapp,
+            firstName: first,
+            body: renderReply("bio_link_not_clickable", {
+              firstName: first,
+              affiliateUrl: profile.skool_affiliate_url,
+              bioSentence: bioSentence(profile.bio_variant_index ?? 0),
+            }),
+            externalId: `bionotclickable:${profile.id}`,
+          });
+          if (res.ok) report.movedToLinksBox++;
+        }
+        continue;
+      }
       if (!bioVerified(evidence)) continue;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
