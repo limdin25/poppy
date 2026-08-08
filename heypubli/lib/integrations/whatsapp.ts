@@ -88,6 +88,21 @@ export async function sendPartnerWhatsApp(
   return result as unknown as PartnerSendResult;
 }
 
+/**
+ * The picture a creator sent, as base64, fetched through the CRM because
+ * inbound WhatsApp media lives behind Twilio's own basic auth and only that
+ * side holds the credentials. Still images only; anything else answers
+ * ok:false and the caller hands the thread to a human, as before.
+ */
+export async function getInboundMedia(
+  messageId: string,
+): Promise<{ ok: boolean; mediaType?: string; base64?: string; error?: string }> {
+  const result = await call("message_media", { message_id: messageId });
+  if (!result) return { ok: false, error: "not configured" };
+  const r = result as { ok?: boolean; media_type?: string; base64?: string; error?: string };
+  return { ok: Boolean(r.ok), mediaType: r.media_type, base64: r.base64, error: r.error };
+}
+
 /** Delivery status of an earlier send, polled by the funnel tick. */
 export async function getPartnerMessageStatus(
   externalId: string,

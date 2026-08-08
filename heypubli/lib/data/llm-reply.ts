@@ -40,6 +40,13 @@ export interface LlmReplyInput {
   bioSentence?: string | null;
   affiliateUrl?: string | null;
   bioEvidence?: { checked: boolean; link: boolean | null; sentence: boolean | null };
+  /**
+   * A screenshot they sent, base64. Hugo asked for this twice: a creator who
+   * cannot describe the screen photographs it, and every one of those was a
+   * handover. Now the model looks at the picture and answers about what is
+   * actually on it.
+   */
+  image?: { mediaType: string; base64: string } | null;
 }
 
 export interface LlmReplyResult {
@@ -107,6 +114,20 @@ ANSWERS THAT ARE ALWAYS THE SAME
 const SYSTEM = `You are Lim from HeyPubli, replying on WhatsApp to a creator lead.
 
 ${PLAYBOOK}
+
+LOOKING AT A SCREENSHOT
+When a picture is attached, it is a photo of the creator's own phone and they
+are showing you where they are stuck. Say what to tap, in their words, about
+the screen in front of them. Some things worth knowing:
+- Instagram's category picker during the switch to professional: Personal blog.
+- Instagram Edit profile: the Bio box takes the sentence, the Links row takes
+  the link, and the link must be FIRST in that row for us to read it.
+- The Skool invite email is from sender "Lim Din", not HeyPubli.
+- In Skool, their own link is the three dots top right, Invite people, COPY.
+- If the picture shows an error you do not recognise, or is not a phone screen
+  at all, reply HANDOVER rather than guessing.
+- Never claim their bio is done from a screenshot. We verify that by reading
+  their real profile, not from a photo.
 
 HOW TO REPLY
 Answer the question they actually asked, in their own language, in at most two
@@ -185,7 +206,24 @@ export async function llmReply(input: LlmReplyInput): Promise<LlmReplyResult> {
         model: "claude-sonnet-5",
         max_tokens: 300,
         system: SYSTEM,
-        messages: [{ role: "user", content: user }],
+        messages: [
+          {
+            role: "user",
+            content: input.image
+              ? [
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: input.image.mediaType,
+                      data: input.image.base64,
+                    },
+                  },
+                  { type: "text", text: user },
+                ]
+              : user,
+          },
+        ],
       }),
       signal: AbortSignal.timeout(20000),
     });

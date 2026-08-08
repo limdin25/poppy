@@ -17,6 +17,7 @@ import { checkBio, bioVerified, type BioEvidence } from "@/lib/bio-check";
 import { bioSentence } from "@/lib/bio-variants";
 import { skoolLinkNeedle } from "@/lib/skool-link";
 import {
+  getInboundMedia,
   getInboxSummary,
   getThreadMessages,
   sendPartnerWhatsApp,
@@ -50,6 +51,8 @@ export interface ThreadSplit {
   said: string[];
   /** They sent a picture/clip after our last message. Often the screenshot WE asked for. */
   saidHasMedia: boolean;
+  /** The newest message of theirs that carries a picture, so the brain can look at it. */
+  lastMediaId: string | null;
   /** Every real outbound body, for the never-send-a-link-twice rule. */
   alreadySent: string[];
   /** Newest inbound message id: the idempotency anchor for this reply. */
@@ -77,6 +80,7 @@ export function splitThread(messages: ThreadMessage[], now: Date): ThreadSplit {
   return {
     said: saidMsgs.map((m) => (m.body ?? "").trim()).filter(Boolean),
     saidHasMedia: saidMsgs.some((m) => (m.media_count ?? 0) > 0),
+    lastMediaId: [...saidMsgs].reverse().find((m) => (m.media_count ?? 0) > 0)?.id ?? null,
     alreadySent,
     lastInboundId: lastIn?.id ?? null,
     lastInboundAt: lastIn?.created_at ?? null,
@@ -544,9 +548,11 @@ export async function processWaitingThread(
   const isRefusal = decision.action === "human" && decision.reason.startsWith("refusal");
 
   // A picture with no caption is not silence, it is usually the screenshot WE
-  // asked for. Until the brain has eyes it goes to a human, loudly.
+  // asked for. The brain HAS eyes now (see the vision block below), so this
+  // routes it into the fallback rather than straight to a human; if the model
+  // cannot read the picture it still says HANDOVER and a human gets it.
   if (decision.action === "silence" && split.saidHasMedia) {
-    decision = { action: "human", reason: "sent a picture, needs human eyes" };
+    decision = { action: "human", reason: "sent a picture, look at it" };
   }
 
   // Anti-ping-pong: a lead-side auto-responder answering every reply would
@@ -572,12 +578,25 @@ export async function processWaitingThread(
 
   // The unplaceable-but-text cases get one shot at the fallback brain before a
   // human. Hugo, 07 Aug 2026: "brain understand the business and must handle all."
+  // THE EYES. A screenshot is the commonest message the brain could not
+  // handle, and every one was a handover (Hugo asked for this twice). The
+  // picture is fetched through the CRM, which holds the Twilio credentials
+  // inbound media sits behind, and handed to the model with the same
+  // playbook. A failure anywhere here just leaves image null and the thread
+  // goes to a human exactly as it used to.
+  let image: { mediaType: string; base64: string } | null = null;
+  if (decision.action === "human" && !isRefusal && split.windowOpen && split.lastMediaId) {
+    const media = await getInboundMedia(split.lastMediaId);
+    if (media.ok && media.base64 && media.mediaType) {
+      image = { mediaType: media.mediaType, base64: media.base64 };
+    }
+  }
+
   let llmText: string | null = null;
   if (
     decision.action === "human" &&
     !isRefusal &&
-    split.said.length > 0 &&
-    !split.saidHasMedia &&
+    (split.said.length > 0 || image) &&
     split.windowOpen
   ) {
     const fallback = await llmReply({
@@ -596,6 +615,7 @@ export async function processWaitingThread(
       bioSentence: ctx.bioSentence ?? null,
       affiliateUrl: ctx.affiliateUrl ?? null,
       bioEvidence: ctx.bioEvidence,
+      image,
     });
     if (fallback.ok && fallback.text) llmText = fallback.text;
   }

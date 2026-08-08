@@ -11,9 +11,14 @@
 // wk-jobs-worker's CRM_JOBS_KEY. verify_jwt = false in config.toml.
 //
 // Actions (POST {action, ...}):
-//   send           { to, first_name, content_sid?, body?, external_id, product }
-//   message_status { external_id }
-//   sender_load    {}
+//   send            { to, first_name, content_sid?, body?, external_id, product }
+//   message_status  { external_id }
+//   sender_load     {}
+//   contact_state   { phone }    has this person ever written to us / been written to?
+//   ensure_contact  { phone, first_name } find-or-create + heypubli stamp, NO send
+//   inbox_summary   {}           heypubli threads whose LAST message is inbound + drafts
+//   thread_messages { phone, limit? } the conversation, oldest first, for the reply brain
+//   template_status { sids: [] } live Meta approval status per Content sid
 //
 // Every refusal is a named `blocked` string, never a bare 400, so the caller's nurture
 // engine can branch on it: do_not_text | daily_cap | window_closed | template_unapproved
@@ -88,14 +93,48 @@ serve(async (req) => {
 
   // ------------------------------------------------------------
   if (action === 'sender_load') {
+    // Count what META counts: business-INITIATED conversations. A reply to
+    // somebody who wrote to us inside the last 24 hours is free and unlimited
+    // on WhatsApp; only a message that OPENS a conversation spends the tier.
+    //
+    // The first version counted every outbound row. On 07 Aug 2026 that read
+    // 251 while the true initiated count was ~110, so the drip believed the
+    // 150 cap was blown and deferred every fresh lead's welcome by 24 hours,
+    // all evening, while most of the "spend" was replies Meta never charges.
+    //
+    // No schema records template-ness, so the discriminator is Meta's own
+    // definition, computed from rows we already have: an outbound with no
+    // inbound from that same number in the 24 hours before it.
     const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-    const { count } = await supa
+    const twoDaysAgo = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const { data: outs } = await supa
       .from('wk_sms_messages')
-      .select('id', { count: 'exact', head: true })
+      .select('to_e164, created_at')
       .eq('direction', 'outbound')
       .eq('channel', 'whatsapp')
       .gte('created_at', dayAgo);
-    return json(200, { ok: true, sent24h: count ?? 0 });
+    const { data: ins } = await supa
+      .from('wk_sms_messages')
+      .select('from_e164, created_at')
+      .eq('direction', 'inbound')
+      .eq('channel', 'whatsapp')
+      .gte('created_at', twoDaysAgo);
+    const inboundByPeer = new Map<string, string[]>();
+    for (const m of ins ?? []) {
+      const arr = inboundByPeer.get(m.from_e164) ?? [];
+      arr.push(m.created_at);
+      inboundByPeer.set(m.from_e164, arr);
+    }
+    let initiated = 0;
+    for (const o of outs ?? []) {
+      const t = Date.parse(o.created_at);
+      const windowOpen = (inboundByPeer.get(o.to_e164) ?? []).some((inAt) => {
+        const ti = Date.parse(inAt);
+        return ti < t && t - ti < 24 * 3600 * 1000;
+      });
+      if (!windowOpen) initiated++;
+    }
+    return json(200, { ok: true, sent24h: initiated, totalOutbound24h: outs?.length ?? 0 });
   }
 
   // ------------------------------------------------------------
@@ -113,6 +152,270 @@ serve(async (req) => {
   }
 
   // ------------------------------------------------------------
+  // Has this phone number ever talked to us? Exists so the sheet-sync can tell a
+  // form lead who ALREADY opened a WhatsApp conversation apart from one who went
+  // quiet: the first must never get a cold template on top of a live thread.
+  if (action === 'contact_state') {
+    const phone = normalizeE164(String(payload.phone ?? ''));
+    if (!phone || phone.length < 8) return json(200, { ok: false, error: 'bad phone' });
+    const { data: contact } = await supa
+      .from('wk_contacts')
+      .select('id')
+      .eq('phone', phone)
+      .maybeSingle();
+    if (!contact) {
+      return json(200, { ok: true, exists: false, do_not_text: false, last_inbound_at: null, last_outbound_at: null });
+    }
+    const { data: dntTag } = await supa
+      .from('wk_contact_tags')
+      .select('id')
+      .eq('contact_id', contact.id)
+      .eq('tag', 'do-not-text')
+      .maybeSingle();
+    const lastOf = async (direction: string) => {
+      let q = supa
+        .from('wk_sms_messages')
+        .select('created_at, status')
+        .eq('contact_id', contact.id)
+        .eq('channel', 'whatsapp')
+        .eq('direction', direction)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (direction === 'outbound') q = q.neq('status', 'draft');
+      const { data } = await q.maybeSingle();
+      return data?.created_at ?? null;
+    };
+    return json(200, {
+      ok: true,
+      exists: true,
+      wk_contact_id: contact.id,
+      do_not_text: Boolean(dntTag),
+      last_inbound_at: await lastOf('inbound'),
+      last_outbound_at: await lastOf('outbound'),
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Find-or-create the contact and stamp it product=heypubli WITHOUT sending anything.
+  // The stamp is load-bearing: wk-sms-incoming only relays an inbound to heypubli's
+  // funnel when the contact carries it, and until 07 Aug 2026 the stamp was only ever
+  // written on the first OUTBOUND send. So a fresh form lead who replied during their
+  // 10 minute grace was invisible to the relay, the drip never heard about the reply,
+  // and the cold template landed on top of a live conversation. Stamping at import
+  // time closes that hole.
+  if (action === 'ensure_contact') {
+    const phone = normalizeE164(String(payload.phone ?? ''));
+    const firstName = String(payload.first_name ?? '').trim();
+    if (!phone || phone.length < 8) return json(200, { ok: false, error: 'bad phone' });
+    const { data: existing } = await supa
+      .from('wk_contacts')
+      .select('id, custom_fields')
+      .eq('phone', phone)
+      .maybeSingle();
+    if (existing) {
+      const cf = (existing.custom_fields ?? {}) as Record<string, unknown>;
+      if (cf.product !== 'heypubli') {
+        await supa
+          .from('wk_contacts')
+          .update({ custom_fields: { ...cf, product: 'heypubli' } })
+          .eq('id', existing.id);
+      }
+      return json(200, { ok: true, wk_contact_id: existing.id, created: false });
+    }
+    const { data: created, error: createErr } = await supa
+      .from('wk_contacts')
+      .insert({
+        name: firstName || phone,
+        phone,
+        custom_fields: { product: 'heypubli', owner_name: firstName, source: 'heypubli_funnel' },
+      })
+      .select('id')
+      .maybeSingle();
+    if (createErr) {
+      const { data: raced } = await supa
+        .from('wk_contacts')
+        .select('id')
+        .eq('phone', phone)
+        .maybeSingle();
+      if (!raced) return json(502, { error: 'could not create contact' });
+      return json(200, { ok: true, wk_contact_id: raced.id, created: false });
+    }
+    return json(200, { ok: true, wk_contact_id: created?.id ?? null, created: true });
+  }
+
+  // ------------------------------------------------------------
+  // Threads that are waiting on US: heypubli contacts whose last real message is
+  // inbound, plus AI drafts nobody has approved. Feeds the 5 minute funnel email.
+  if (action === 'inbox_summary') {
+    const since = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+    // NEWEST first at the database, then re-sorted ascending in memory: with an
+    // ascending LIMIT, a busy 72h window silently dropped the newest inbound, which
+    // is exactly the message that most needs answering.
+    const { data: msgsDesc, error: msgsErr } = await supa
+      .from('wk_sms_messages')
+      .select('contact_id, direction, status, created_at')
+      .eq('channel', 'whatsapp')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(5000);
+    if (msgsErr) return json(502, { error: 'could not read messages' });
+    const msgs = (msgsDesc ?? []).reverse();
+    type Acc = { lastIn: string | null; lastOut: string | null; drafts: number };
+    const byContact = new Map<string, Acc>();
+    for (const m of msgs ?? []) {
+      const acc = byContact.get(m.contact_id) ?? { lastIn: null, lastOut: null, drafts: 0 };
+      if (m.direction === 'inbound') acc.lastIn = m.created_at;
+      else if (m.status === 'draft') acc.drafts++;
+      else acc.lastOut = m.created_at;
+      byContact.set(m.contact_id, acc);
+    }
+    const waitingIds = [...byContact.entries()]
+      .filter(([, a]) => a.lastIn && (!a.lastOut || a.lastIn > a.lastOut))
+      .map(([id]) => id);
+    if (!waitingIds.length) return json(200, { ok: true, waiting: [] });
+    const { data: contacts } = await supa
+      .from('wk_contacts')
+      .select('id, name, phone, custom_fields')
+      .in('id', waitingIds);
+    const waiting = (contacts ?? [])
+      .filter((c) => ((c.custom_fields ?? {}) as Record<string, unknown>).product === 'heypubli')
+      .map((c) => {
+        const a = byContact.get(c.id)!;
+        return {
+          name: c.name,
+          phone: c.phone,
+          last_inbound_at: a.lastIn,
+          drafts_pending: a.drafts,
+          waiting_minutes: a.lastIn ? Math.round((Date.now() - Date.parse(a.lastIn)) / 60000) : null,
+        };
+      })
+      .sort((x, y) => (y.waiting_minutes ?? 0) - (x.waiting_minutes ?? 0));
+    return json(200, { ok: true, waiting });
+  }
+
+  // ------------------------------------------------------------
+  // The conversation itself, oldest first, so heypubli's reply brain can read what
+  // was said after our last message. Drafts are the OTHER brain's unsent suggestions
+  // (wk_ai_reply mode=draft); they are returned with their status so the caller can
+  // ignore them, they were never sent to the lead.
+  if (action === 'thread_messages') {
+    const phone = normalizeE164(String(payload.phone ?? ''));
+    if (!phone || phone.length < 8) return json(200, { ok: false, error: 'bad phone' });
+    const limit = Math.min(Math.max(Number(payload.limit ?? 30), 1), 50);
+    const { data: contact } = await supa
+      .from('wk_contacts')
+      .select('id')
+      .eq('phone', phone)
+      .maybeSingle();
+    if (!contact) return json(200, { ok: true, exists: false, messages: [] });
+    const { data: dntTag } = await supa
+      .from('wk_contact_tags')
+      .select('id')
+      .eq('contact_id', contact.id)
+      .eq('tag', 'do-not-text')
+      .maybeSingle();
+    // Drafts are excluded in the QUERY, not after: they are the other brain's unsent
+    // suggestions, and on a drafty thread they were eating most of the 30 slots, which
+    // silently truncated the caller's never-send-a-link-twice memory.
+    const { data: msgs, error: msgsErr } = await supa
+      .from('wk_sms_messages')
+      .select('id, direction, body, status, created_at, media_urls')
+      .eq('contact_id', contact.id)
+      .eq('channel', 'whatsapp')
+      .neq('status', 'draft')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (msgsErr) return json(502, { error: 'could not read messages' });
+    return json(200, {
+      ok: true,
+      exists: true,
+      wk_contact_id: contact.id,
+      do_not_text: Boolean(dntTag),
+      messages: (msgs ?? []).reverse().map((m) => ({
+        id: m.id,
+        direction: m.direction,
+        body: m.body,
+        status: m.status,
+        created_at: m.created_at,
+        // A picture with no caption must never read as "said nothing".
+        media_count: Array.isArray(m.media_urls) ? m.media_urls.length : 0,
+      })),
+    });
+  }
+
+  // ------------------------------------------------------------
+  // GIVING THE BRAIN EYES. A creator who cannot describe the screen sends a
+  // photo of it, and until now that was always a handover: heypubli could see
+  // media_count but never the picture, because inbound media lives behind
+  // Twilio's own basic auth and only this function holds those credentials.
+  //
+  // So it fetches the image HERE and hands back base64. Deliberately not a
+  // signed URL: Twilio media URLs are permanent and unauthenticated once
+  // guessed, and a creator's screenshot can carry their email, their phone,
+  // and whatever else was on their screen.
+  if (action === 'message_media') {
+    const messageId = String(payload.message_id ?? '');
+    if (!messageId) return json(200, { ok: false, error: 'message_id required' });
+    const { data: msg } = await supa
+      .from('wk_sms_messages')
+      .select('id, direction, media_urls')
+      .eq('id', messageId)
+      .maybeSingle();
+    if (!msg) return json(200, { ok: false, error: 'not found' });
+    // INBOUND ONLY. Our own outbound media is on a public CDN and asking for
+    // it here would just be a way to make this function fetch arbitrary URLs.
+    if (msg.direction !== 'inbound') return json(200, { ok: false, error: 'not inbound' });
+    const urls: string[] = Array.isArray(msg.media_urls) ? msg.media_urls.map(String) : [];
+    const first = urls.find((u) => u.startsWith('https://api.twilio.com/'));
+    if (!first) return json(200, { ok: false, error: 'no twilio media' });
+    try {
+      const res = await fetch(first, {
+        headers: { Authorization: `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}` },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) return json(200, { ok: false, error: `twilio ${res.status}` });
+      const type = res.headers.get('content-type') ?? 'image/jpeg';
+      // Only still images. A video or a voice note is not something the vision
+      // model can read, and a 20MB clip would blow the response either way.
+      if (!/^image\/(jpeg|png|webp|gif)$/.test(type)) {
+        return json(200, { ok: false, error: `unsupported ${type}` });
+      }
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.length > 4_500_000) return json(200, { ok: false, error: 'too large' });
+      let binary = '';
+      for (let i = 0; i < buf.length; i += 8192) {
+        binary += String.fromCharCode(...buf.subarray(i, i + 8192));
+      }
+      return json(200, { ok: true, media_type: type, base64: btoa(binary) });
+    } catch (e) {
+      return json(200, { ok: false, error: e instanceof Error ? e.message : 'fetch failed' });
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Live Meta approval per template. The funnel email watches the pending ones so
+  // nobody has to keep asking Twilio by hand whether Meta moved.
+  if (action === 'template_status') {
+    const sids = (Array.isArray(payload.sids) ? payload.sids.map(String) : [])
+      .filter((s) => /^HX[0-9a-f]{32}$/i.test(s))
+      .slice(0, 30);
+    if (!sids.length) return json(400, { error: 'sids required' });
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return json(503, { error: 'Twilio creds not set' });
+    const templates = [];
+    for (const sid of sids) {
+      const approval = await twilioGet(`https://content.twilio.com/v1/Content/${sid}/ApprovalRequests`);
+      const wa = (approval.data?.whatsapp ?? {}) as Record<string, unknown>;
+      templates.push({
+        sid,
+        name: String(wa.name ?? ''),
+        status: approval.status === 404 ? 'gone' : String(wa.status ?? 'unknown'),
+        rejection_reason: String(wa.rejection_reason ?? ''),
+      });
+    }
+    return json(200, { ok: true, templates });
+  }
+
+  // ------------------------------------------------------------
   if (action === 'send') {
     const toE164 = normalizeE164(String(payload.to ?? ''));
     const firstName = String(payload.first_name ?? '').trim();
@@ -120,10 +423,35 @@ serve(async (req) => {
     const freeBody = String(payload.body ?? '');
     const externalId = String(payload.external_id ?? '');
     const isTemplate = contentSid.length > 0;
+    // A picture of the menu beats a sentence about the menu. Hugo, 07 Aug 2026:
+    // "we should have the screenshot for how to get to the URL."
+    //
+    // WhatsApp media is NOT the same restriction as SMS media. MMS MediaUrl only
+    // works to US and Canada, which is why wk-sms-send appends a link instead;
+    // on the whatsapp: channel Twilio delivers the image itself, worldwide. The
+    // URL has to be publicly reachable by Twilio, so a signed Supabase URL is no
+    // good, it must live in a public bucket.
+    // One picture or several clips. Twilio takes MediaUrl repeated, up to 10 on
+    // WhatsApp; three is the practical limit for a lead on mobile data.
+    const mediaList: string[] = (
+      Array.isArray(payload.media_urls)
+        ? payload.media_urls.map(String)
+        : [String(payload.media_url ?? '')]
+    )
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if (mediaList.some((u) => !/^https:\/\//.test(u))) {
+      return json(400, { error: 'media must be https' });
+    }
+    if (mediaList.length > 3) return json(400, { error: 'at most 3 media items' });
+    const mediaUrl = mediaList[0] ?? '';
 
     if (!toE164 || toE164.length < 8) return json(200, { ok: false, blocked: 'bad_number' });
     if (!externalId) return json(400, { error: 'external_id required' });
     if (!isTemplate && !freeBody.trim()) return json(400, { error: 'body or content_sid required' });
+    // A template's wording lives at Meta and its media is part of the approved
+    // template, so an extra MediaUrl here would be silently ignored at best.
+    if (mediaUrl && isTemplate) return json(400, { error: 'media_url cannot be used with a template' });
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
       return json(503, { error: 'Twilio creds not set' });
     }
@@ -280,6 +608,8 @@ serve(async (req) => {
       form.set('ContentVariables', JSON.stringify(templateVars));
     } else {
       form.set('Body', freeBody);
+      // append, not set: repeated MediaUrl is how Twilio takes more than one.
+      for (const u of mediaList) form.append('MediaUrl', u);
     }
     const twResp = await fetch(url, {
       method: 'POST',
@@ -299,7 +629,15 @@ serve(async (req) => {
     }
     const twJson = (await twResp.json()) as { sid?: string; status?: string };
 
-    const { data: inserted } = await supa
+    // The message is ALREADY GONE by this point. If the row fails to write we
+    // have texted somebody and have no record of it: the CRM shows them as
+    // unanswered, and anything that reads "what have we already sent" is wrong.
+    //
+    // 07 Aug 2026: this happened once and said nothing. Ankur was sent an
+    // answer at 09:56, read it, and the inbox still listed him as waiting,
+    // because the insert returned null and the error was thrown away. Never
+    // again silently: it is logged and handed back in the response.
+    const { data: inserted, error: insertErr } = await supa
       .from('wk_sms_messages')
       .insert({
         contact_id: contactId,
@@ -311,9 +649,29 @@ serve(async (req) => {
         status: twJson.status ?? 'queued',
         channel: 'whatsapp',
         external_id: externalId,
+        // Same column the inbound webhook writes, so a picture we sent renders
+        // in the CRM thread exactly like one a lead sent us.
+        //
+        // EMPTY ARRAY, NOT NULL. The column is NOT NULL, and writing null here
+        // broke every text-only send for eleven minutes on 07 Aug 2026: the
+        // messages reached the leads and none of them was recorded. It was
+        // invisible until the insert error started being logged, which is the
+        // whole reason that logging exists.
+        media_urls: mediaList,
       })
       .select('id')
       .maybeSingle();
+    if (insertErr || !inserted?.id) {
+      console.error(
+        '[wk-partner-api] SENT BUT NOT RECORDED',
+        JSON.stringify({
+          to: toE164,
+          twilio_sid: twJson.sid,
+          external_id: externalId,
+          error: insertErr,
+        }),
+      );
+    }
     await supa
       .from('wk_contacts')
       .update({ last_contact_at: new Date().toISOString() })
@@ -325,6 +683,9 @@ serve(async (req) => {
       wk_contact_id: contactId,
       wk_message_id: inserted?.id ?? null,
       twilio_sid: twJson.sid ?? null,
+      // Present ONLY when the text went out but the row did not. The caller
+      // must not retry on this: retrying texts the person a second time.
+      unrecorded: insertErr ? (insertErr.message ?? 'insert failed') : undefined,
     });
   }
 

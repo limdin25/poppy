@@ -222,3 +222,52 @@ describe("shouldAwaitLeadImport", () => {
     expect(LEAD_IMPORT_GRACE_MS).toBeLessThan(180_000);
   });
 });
+
+// Hugo asked for this twice: a creator who cannot describe the screen sends a
+// photo of it, and every one of those was a handover. splitThread has to hand
+// the runner the id of the newest picture so it can be fetched and looked at.
+describe("the newest screenshot", () => {
+  const msg = (over: Partial<ThreadMessage>): ThreadMessage => ({
+    id: "m",
+    direction: "inbound",
+    body: "",
+    status: "received",
+    created_at: "2026-08-08T10:00:00Z",
+    ...over,
+  });
+
+  it("points at the LAST picture they sent since our message", () => {
+    const s = splitThread(
+      [
+        msg({ id: "out1", direction: "outbound", body: "send me a screenshot", created_at: "2026-08-08T09:00:00Z" }),
+        msg({ id: "old", media_count: 1, created_at: "2026-08-08T09:10:00Z" }),
+        msg({ id: "new", media_count: 1, created_at: "2026-08-08T09:20:00Z" }),
+      ],
+      new Date("2026-08-08T09:30:00Z"),
+    );
+    expect(s.saidHasMedia).toBe(true);
+    expect(s.lastMediaId).toBe("new");
+  });
+
+  it("is null when they only sent words, so nothing is fetched", () => {
+    const s = splitThread(
+      [
+        msg({ id: "out1", direction: "outbound", body: "hi", created_at: "2026-08-08T09:00:00Z" }),
+        msg({ id: "a", body: "stuck", created_at: "2026-08-08T09:10:00Z" }),
+      ],
+      new Date("2026-08-08T09:30:00Z"),
+    );
+    expect(s.lastMediaId).toBeNull();
+  });
+
+  it("ignores a picture sent BEFORE our last message, which we already answered", () => {
+    const s = splitThread(
+      [
+        msg({ id: "old", media_count: 1, created_at: "2026-08-08T09:00:00Z" }),
+        msg({ id: "out1", direction: "outbound", body: "here is what to tap", created_at: "2026-08-08T09:05:00Z" }),
+      ],
+      new Date("2026-08-08T09:30:00Z"),
+    );
+    expect(s.lastMediaId).toBeNull();
+  });
+});
