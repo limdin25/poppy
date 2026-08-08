@@ -394,20 +394,38 @@ There is **no per-video cost**. No API, no service, no per-file fee. It renders
 on hardware already paid for, so a thousand videos costs a thousand videos' worth
 of machine time and well under a pound of electricity.
 
-**Measured, not estimated.** Two real batches on Hugo's Mac (M4 Pro, concurrency
-8): b001 was 16 files in 26 minutes, b002 was 4 files in 5 minutes 52 seconds.
-That is **88 to 97 seconds per variant**, or about 17 frames of finished video
-per second. Call it **90 seconds**.
+**Measured, not estimated.** Two real batches on Hugo's Mac (concurrency 8):
+b001 was 16 files in 26 minutes, b002 was 4 files in 5 minutes 52 seconds. That
+is **88 to 97 seconds per variant**, or about 15 frames of finished video per
+second.
 
-| batch | Mac | VPS (2 to 3x slower) |
+**But that is a clean-machine number and the machine is never clean.** The Mac
+is a base **Apple M4, 10 cores, 16GB** (an earlier version of this file said M4
+Pro; it is not), and it is Hugo's daily driver. Real production figures from the
+creator worker's log on 08 Aug, 13 consecutive renders while Cursor, Chrome and
+a scraper were also running: **137 seconds average for a 30-second master, 236
+for a 60-second one**, which is 8.8 frames per second. **The Mac loses about
+1.7x to its own desktop**, and 90 seconds has never once been achieved in
+production.
+
+The VPS figure in the table below used to read "2 to 3x slower" and that was an
+estimate that nobody had ever checked. Measured 08 Aug on margarita-server
+(8-core EPYC 9354P), same script, same 30-second master: **128 seconds including
+a full webpack bundle**, against the Mac's 137-second production average for the
+same master. Per unit of work the VPS is 1.5 to 2x slower, but it is 97% idle
+where the Mac is saturated, so **in practice the two render at the same rate and
+only one of them is awake at four in the morning.**
+
+| batch | Mac, in practice | VPS, measured |
 |---|---|---|
-| 16 | 25 min | ~1 h |
-| 100 | 2.5 h | 5 to 7 h |
-| 1000 | **25 h** | 50 to 75 h, not practical |
+| 16 | 37 min | 34 min |
+| 100 | 3.8 h | 3.6 h |
+| 1000 | 38 h | 36 h |
 
-So a thousand files is a day and a bit on the Mac, running unattended. Resumable,
-so it can be stopped and restarted around whatever else the machine is doing.
-Storage is about 17MB per file, so 1000 files is roughly 17GB.
+Resumable, so it can be stopped and restarted around whatever else the machine
+is doing. Storage is about 17MB per file, so 1000 files is roughly 17GB, and the
+creator worker deletes its local copy after upload because a box that renders
+around the clock would otherwise fill its disk in a few months.
 
 An earlier version of this file said 45 seconds. That was wrong: it was a guess
 extrapolated from the VSL pipeline rather than a measurement, and the real

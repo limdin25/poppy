@@ -37,16 +37,27 @@ Built and deployed end to end, full detail in the project memory
 caption, APPROVE FOR ALL ACCOUNTS, per-account colors and next release times,
 render-worker pulse); masters 1-4 = the b009 batch, older batches deleted;
 9 accounts enrolled with unique color families, look numbers and time
-staggers; a launchd render worker on Hugo's Mac; the every-15-min cron fills
+staggers; a systemd render worker on the VPS (see below); the every-15-min cron fills
 each account to two posts per LOCAL day (11:00/19:00 + stagger) through the
 existing Outstand publisher. A 4-reviewer adversarial pass found 21 findings;
 the firing ones are fixed (the day-marching fill loop, the wedgeable worker,
 the manifest clobber, the browser leak, offset reuse after deletion, the
 1000-row cap, failed posts eating slots invisibly). Accepted gaps are listed
 in the memory file: no auto-retry on failed publishes (red FAILED count
-instead), the 60s Outstand poll, captions post-approval, and the Mac being
-the single render host. Outstand has never published a real post; Hugo's
-first approval is the first live test, by design his call.
+instead), the 60s Outstand poll, and captions post-approval. Outstand has
+never published a real post; Hugo's first approval is the first live test,
+by design his call.
+
+**Rendering moved to the VPS on 08 Aug 2026** and the Mac worker is stopped
+and `launchctl disable`d. It is systemd `heypubli-render` on margarita-server,
+clone at `/root/heypubli-videos` from the PRIVATE repo `hrds100/poppy-private`
+(read-only deploy key), env in `/etc/heypubli-render.env`. Update with
+`fetch && reset --hard`, never `pull`: `src/variants/sources.json` is tracked
+but rewritten at runtime. Each host stamps `RENDER_WORKER_ID` into its
+heartbeat row and into the mp4 metadata, so `/admin/videos` names the live box
+and `ffprobe` on any finished video proves which machine made it. Rollback is
+`systemctl disable --now heypubli-render` plus `launchctl enable` + `bootstrap`
+on the Mac; abandoned rows are re-queued by `requeueStale()` within 20 minutes.
 
 Same morning, after he opened the page: "missing the caption so I can approve,
 include 1 to 4 hashtag per video, very ramdon." The captions were only ever
