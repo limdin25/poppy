@@ -228,3 +228,40 @@ describe("publish cron — Instagram options mapping", () => {
     );
   });
 });
+
+// A reel routinely needs longer than the 60s poll. On 08 Aug 2026 post lQ7nn
+// was marked failed here while Instagram already had it live, and because the
+// cron only selects PENDING rows it would have stayed failed forever.
+describe("publish cron — slow Outstand processing", () => {
+  it("leaves a still-processing post pending instead of marking it failed", async () => {
+    getUploadUrl.mockResolvedValue({ id: "media-1", upload_url: "https://up" });
+    confirmUpload.mockResolvedValue({
+      id: "media-1",
+      url: "https://media.outstand.so/org/uuid/post_1.mp4",
+      filename: "post_1.mp4",
+    });
+    createPost.mockResolvedValue({ id: "out-slow", socialAccounts: [{ status: "pending" }] });
+    // Never reaches published or failed, which is what the timeout path is.
+    getPostStatus.mockResolvedValue({ socialAccounts: [{ status: "pending" }] });
+    global.fetch = vi.fn(async (_i: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") return new Response(null, { status: 200 });
+      return new Response(new ArrayBuffer(8), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    pendingPosts.push({
+      id: "post-slow",
+      profile_id: "user-1",
+      media_type: "reel",
+      media_url: "https://cdn.example.com/r.mp4",
+      caption: "Slow one",
+      status: "pending",
+      provider: "outstand",
+      outstand_post_id: null,
+      instagram_options: null,
+    });
+
+    await GET(cronRequest());
+
+    expect(markPostFailed).not.toHaveBeenCalledWith("post-slow", expect.anything());
+  }, 90_000);
+});

@@ -78,6 +78,13 @@ export async function GET(request: Request) {
       results.push({ id: post.id, status: "published" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "unknown";
+      // Still processing is not a failure. The row keeps its outstand_post_id
+      // and stays PENDING, so the next run takes the "already created" branch
+      // and resolves it instead of creating a duplicate.
+      if (err instanceof StillProcessingError) {
+        results.push({ id: post.id, status: "still processing" });
+        continue;
+      }
       await markPostFailed(post.id, message);
       results.push({ id: post.id, status: `failed: ${message}` });
     }
@@ -216,6 +223,15 @@ async function uploadMediaToOutstand(
   return [{ url: confirmed.url, filename: confirmed.filename ?? filename }];
 }
 
+/** Thrown when Outstand is still working. NOT a failure: the post exists and
+ *  will very likely go live, we just ran out of patience waiting for it. */
+export class StillProcessingError extends Error {
+  constructor() {
+    super("Outstand still processing, will be resolved on the next run");
+    this.name = "StillProcessingError";
+  }
+}
+
 async function waitForOutstandPost(apiKey: string, postId: string, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
     const status = await getPostStatus(apiKey, postId);
@@ -226,7 +242,12 @@ async function waitForOutstandPost(apiKey: string, postId: string, maxAttempts =
 
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error("Outstand post processing timeout");
+  // A reel routinely takes longer than the 60 seconds this polls for. Marking
+  // it FAILED here was wrong twice over: the post was already live on Instagram
+  // (verified 08 Aug 2026, post lQ7nn published at 09:14 while our row said
+  // failed), and the cron only ever picks up PENDING rows, so a row marked
+  // failed is never reconciled and shows a phantom FAILED count forever.
+  throw new StillProcessingError();
 }
 
 function guessExtension(url: string, mediaType: PostMediaType): string {
