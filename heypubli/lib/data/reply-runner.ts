@@ -591,6 +591,11 @@ export async function processWaitingThread(
       // Their coded links, so the fallback stops sending anonymous ones.
       watchLink: ctx.watchCode ? `heypubli.com/watch?u=${ctx.watchCode}` : null,
       signupLink: ctx.watchCode ? `heypubli.com/signup?u=${ctx.watchCode}` : null,
+      // Their real state, so the fallback answers with the same facts the
+      // deterministic layer would have used instead of a generic pointer.
+      bioSentence: ctx.bioSentence ?? null,
+      affiliateUrl: ctx.affiliateUrl ?? null,
+      bioEvidence: ctx.bioEvidence,
     });
     if (fallback.ok && fallback.text) llmText = fallback.text;
   }
@@ -664,6 +669,40 @@ export async function processWaitingThread(
     }
     report.refusals++;
     return;
+  }
+  // A creator whose Instagram is suspended cannot do ANY step, so the nudge
+  // ladder is stopped rather than left to nag them daily about a profile
+  // photo they cannot add. The reason is written down, so the monitor email
+  // lists them under "nobody is chasing these" with the truth, instead of
+  // them vanishing. It is cleared the moment they say the account is back.
+  if (
+    creator.profile &&
+    decision.action === "send" &&
+    decision.key === "account_back"
+  ) {
+    // The suspension is over: un-pause them and let the ladders take over
+    // again from this moment, rather than firing four rungs of backlog.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("onboarding_nudge_state") as any).upsert({
+      profile_id: creator.profile.id,
+      stopped_at: null,
+      stop_reason: null,
+      last_nudged_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    });
+  }
+  if (
+    creator.profile &&
+    decision.action === "send" &&
+    decision.key === "account_in_trouble"
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("onboarding_nudge_state") as any).upsert({
+      profile_id: creator.profile.id,
+      stopped_at: now.toISOString(),
+      stop_reason: "their Instagram is suspended, waiting for them to tell us it is back",
+      updated_at: now.toISOString(),
+    });
   }
   if (kind === "handover") {
     report.handedOver++;
@@ -925,6 +964,8 @@ export async function runReplyBrain(
         openStep: creator.openStep,
         windowOpen: split.windowOpen,
         firstName: profile.first_name || creator.lead?.first_name || null,
+        bioSentence: bioSentence(profile.bio_variant_index ?? 0),
+        affiliateUrl: profile.skool_affiliate_url,
       });
       if (decision.action !== "send") continue;
 
@@ -939,13 +980,18 @@ export async function runReplyBrain(
         continue;
       }
 
+      // The claim key carries the RUNG, not just the wording. Rungs 2 and 4
+      // both repeat the step message, so keying on the wording alone would
+      // make the unique index swallow rung 4 as a duplicate and the ladder
+      // would silently stop three quarters of the way through.
+      const claimKey = `r${decision.rung}:${decision.key}`;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: claimErr } = await (admin.from("funnel_replies") as any).insert({
         phone,
         lead_id: creator.lead?.id ?? null,
         profile_id: profile.id,
         kind: "check_in",
-        key: decision.key,
+        key: claimKey,
         step: creator.openStep,
         body: decision.text,
         reason: decision.reason,
@@ -959,7 +1005,10 @@ export async function runReplyBrain(
         to: phone,
         firstName: profile.first_name || "",
         body: decision.text,
-        externalId: `checkin:${profile.id}:${creator.openStep}:${decision.key}`,
+        mediaUrls: decision.images?.length
+          ? decision.images.map((p) => `${SITE}${p}`)
+          : undefined,
+        externalId: `checkin:${profile.id}:${creator.openStep}:${claimKey}`,
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (admin.from("funnel_replies") as any)
@@ -967,7 +1016,7 @@ export async function runReplyBrain(
         .eq("profile_id", profile.id)
         .eq("kind", "check_in")
         .eq("step", creator.openStep)
-        .eq("key", decision.key);
+        .eq("key", claimKey);
       if (res.ok) report.checkIns++;
       else report.errors.push(`${phone}: checkin send ${res.blocked ?? res.error}`);
     } catch (e) {

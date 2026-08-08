@@ -321,6 +321,9 @@ describe("rules that are enforced, not remembered", () => {
       "bio_missing_sentence",
       "step_bio",
       "stuck_bio",
+      // Tells a creator with a suspended Instagram exactly how to appeal,
+      // which is three sentences of real instructions and worth every one.
+      "account_in_trouble",
     ]);
     const tooLong = replyBrainSelfCheck().filter(
       (r) => r.length > (CARRIES_THEIR_CONTENT.has(r.key) ? 560 : 320),
@@ -334,7 +337,7 @@ describe("rules that are enforced, not remembered", () => {
 // everything okay? Then take longer. Just checking again, I saw you stopped,
 // please let me know, I'm here to help."
 // ------------------------------------------------------------------
-import { decideCheckIn, STEP_IMAGES, STEP_IMAGE_SETS, type CheckInContext } from "./reply-brain";
+import { decideCheckIn, CHECK_IN_LADDER_MINUTES, STEP_IMAGES, STEP_IMAGE_SETS, type CheckInContext } from "./reply-brain";
 
 const chk = (over: Partial<CheckInContext> = {}): CheckInContext => ({
   minutesSinceWeWrote: 20,
@@ -347,32 +350,51 @@ const chk = (over: Partial<CheckInContext> = {}): CheckInContext => ({
 });
 
 describe("checking back on somebody who went quiet", () => {
-  it("says nothing while they are still reading, then asks after a quarter of an hour", () => {
-    expect(decideCheckIn(chk({ minutesSinceWeWrote: 9 })).action).toBe("wait");
-    const d = decideCheckIn(chk({ minutesSinceWeWrote: 16 }));
+  it("says nothing while they are still reading, then asks after ten minutes", () => {
+    expect(decideCheckIn(chk({ minutesSinceWeWrote: 6 })).action).toBe("wait");
+    const d = decideCheckIn(chk({ minutesSinceWeWrote: 11 }));
     expect(d.action).toBe("send");
     if (d.action !== "send") return;
+    expect(d.rung).toBe(1);
     expect(d.text).toMatch(/everything ok|going ok|get on/i);
   });
 
-  it("leaves alone anybody who has answered us", () => {
+  it("leaves alone anybody who has answered us with a real message", () => {
     expect(decideCheckIn(chk({ minutesSinceWeWrote: 300, repliedSinceWeWrote: true })).action).toBe("wait");
   });
 
-  it("waits much longer for the second one, and changes what it says", () => {
-    const first = decideCheckIn(chk({ minutesSinceWeWrote: 20, checkInsThisStep: 0 }));
-    expect(decideCheckIn(chk({ minutesSinceWeWrote: 40, checkInsThisStep: 1 })).action).toBe("wait");
-    const second = decideCheckIn(chk({ minutesSinceWeWrote: 100, checkInsThisStep: 1 }));
-    expect(second.action).toBe("send");
-    if (first.action !== "send" || second.action !== "send") return;
-    expect(second.text).not.toBe(first.text);
-    expect(second.text).toMatch(/stopped|stuck|here to help/i);
+  // Hugo, 08 Aug 2026: four follow-ups per step, "two in the same hour, then
+  // six hours, then twenty-three", and it applies to EVERY step, so a creator
+  // cannot stall on step 3 and quietly be forgotten.
+  it("runs four rungs at 10 min, 30 min, 6h and 23h", () => {
+    expect([...CHECK_IN_LADDER_MINUTES]).toEqual([10, 30, 360, 1380]);
+    const seen: string[] = [];
+    for (const [rung, mins] of CHECK_IN_LADDER_MINUTES.entries()) {
+      expect(decideCheckIn(chk({ minutesSinceWeWrote: mins - 1, checkInsThisStep: rung })).action).toBe("wait");
+      const d = decideCheckIn(chk({ minutesSinceWeWrote: mins + 1, checkInsThisStep: rung }));
+      expect(d.action, `rung ${rung + 1}`).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.rung).toBe(rung + 1);
+      seen.push(d.text);
+    }
+    // Rungs 2 and 4 repeat the STEP itself, with its pictures, because by
+    // then "is everything ok" has already failed to move them.
+    const withPics = [1, 3].map((i) => decideCheckIn(chk({ minutesSinceWeWrote: 9999, checkInsThisStep: i })));
+    for (const d of withPics) {
+      if (d.action !== "send") throw new Error("expected send");
+      expect(d.images?.length).toBeGreaterThan(0);
+      expect(d.text).toMatch(/invite|email|skool/i);
+    }
+    // Consecutive rungs never repeat the same words.
+    expect(new Set(seen).size).toBeGreaterThan(2);
   });
 
-  // Two is the whole budget. After that it is the slow nudge ladder's problem,
-  // and a third message the same day is pestering, which buys blocks.
-  it("stops after two and hands over", () => {
-    const d = decideCheckIn(chk({ minutesSinceWeWrote: 600, checkInsThisStep: 2 }));
+  it("every rung lands inside the free 24h window their message opened", () => {
+    for (const m of CHECK_IN_LADDER_MINUTES) expect(m).toBeLessThan(24 * 60);
+  });
+
+  it("stops after the fourth and hands over to the slow ladder", () => {
+    const d = decideCheckIn(chk({ minutesSinceWeWrote: 5000, checkInsThisStep: CHECK_IN_LADDER_MINUTES.length }));
     expect(d.action).toBe("handover");
   });
 
@@ -1214,5 +1236,48 @@ describe("the rest of the 08 Aug audit list", () => {
   it("never answers somebody else's auto-responder", () => {
     const d = decideReply(ctx({ said: ["Thank you for contacting Nigel! Please let us know how we can help you."] }));
     expect(d.action).toBe("silence");
+  });
+});
+
+describe("a creator whose Instagram is really in trouble", () => {
+  // Hasnain, 08 Aug 2026. We asked why his connection had died, he answered
+  // "My account is suspended", and the brain sent the reassurance script:
+  // "yes, your account is safe, we use official login". Tone deaf, useless,
+  // and it left him in the nudge queue for steps he cannot physically do.
+  it("never answers a real suspension with the safety reassurance", () => {
+    for (const m of [
+      "My account is suspended",
+      "my instagram was banned",
+      "instagram disabled my account",
+      "account restricted",
+      "I got banned",
+    ]) {
+      const d = decideReply(ctx({ said: [m], hasAccount: true, stepsDone: ["instagram"] }));
+      expect(d.action, m).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.key, m).toBe("account_in_trouble");
+      expect(d.text, m).toMatch(/appeal/i);
+    }
+  });
+
+  it("still reassures somebody who is only WORRIED about their account", () => {
+    for (const m of ["is my account safe?", "will i get banned for this?", "any risk of a strike?"]) {
+      const d = decideReply(ctx({ said: [m] }));
+      expect(d.action, m).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.key, m).toBe("account_safe");
+    }
+  });
+
+  it("picks the onboarding back up when they say it is restored", () => {
+    const d = decideReply(ctx({ said: ["my account is back"], hasAccount: true, stepsDone: [] }));
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("account_back");
+  });
+
+  it("does not mistake 'still not back' for good news", () => {
+    const d = decideReply(ctx({ said: ["my account is still not back"], hasAccount: true, stepsDone: [] }));
+    if (d.action === "send") expect(d.key).not.toBe("account_back");
   });
 });

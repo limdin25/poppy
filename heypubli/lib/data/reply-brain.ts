@@ -346,6 +346,41 @@ const SAFETY = new RegExp(
   "i",
 );
 
+/** They came back to say the suspension is over. The counterpart to
+ *  ACCOUNT_IN_TROUBLE, and the thing that un-pauses their onboarding. */
+const ACCOUNT_BACK = new RegExp(
+  [
+    "\\b(account|profile|insta(gram)?|ig|it)\\b[^.?!]{0,25}\\b(is\\s+)?(back|restored|active\\s+again|working\\s+again|unbanned|unsuspended|recovered|fixed)\\b",
+    "\\b(got|have)\\s+(it|my\\s+account)\\s+back\\b",
+    "\\bappeal\\b[^.?!]{0,25}\\b(worked|accepted|approved|successful)\\b",
+  ].join("|"),
+  "i",
+);
+
+/**
+ * Their Instagram is ACTUALLY in trouble, right now. This is a statement of
+ * fact, not the "is my account safe with you" worry, and the two were being
+ * answered identically.
+ *
+ * Hasnain, 08 Aug 2026: his Instagram connection had gone dead, we asked why,
+ * he answered "My account is suspended", and the machine replied with the
+ * reassurance script, "yes, we use Instagram's official login, your account
+ * is safe". Tone deaf and useless. It also kept him in the nudge queue for
+ * steps he physically cannot do.
+ *
+ * Needs a possessive or a passive: "my account is suspended", "instagram
+ * banned me", "got disabled". A bare "suspended" still reads as the worry.
+ */
+const ACCOUNT_IN_TROUBLE = new RegExp(
+  [
+    "\\b(my|the)\\s+(account|profile|page|insta(gram)?|ig)\\b[^.?!]{0,30}\\b(is|was|got|has\\s+been|been)\\b[^.?!]{0,20}\\b(suspend|ban|block|disabl|restrict|lock|hack|delet|deactivat)",
+    "\\b(insta(gram)?|meta|they)\\b[^.?!]{0,20}\\b(suspend|ban|block|disabl|restrict|lock)(ed)?\\b[^.?!]{0,15}\\b(me|my|it)\\b",
+    "\\b(account|profile)\\s+(suspended|banned|disabled|restricted|locked|hacked|deactivated)\\b",
+    "\\bi\\s+(got|was|have\\s+been)\\s+(suspend|ban|block|disabl|restrict|lock|hack)",
+  ].join("|"),
+  "i",
+);
+
 /** "Ok sir", "thanks", a lone thumbs up. Nothing is being asked. */
 export const ACK = /^\W*(ok(ay)?|k+|thanks?|thank\s*you|thx|ty|sure|fine|got\s*it|noted|great|nice|good|yes)?(\s*(ji|sir|ma'?am|bro|boss))?\W*$/i;
 
@@ -530,6 +565,13 @@ const REPLIES: Record<string, (v: Vars) => string> = {
   // pay it. The person who pays is whoever joins through the creator's link.
   no_subscription_needed: ({ hi }) =>
     `${hi}you do not pay anything, ever. Not 9 dollars, not a penny. You join the community free with our invite, there is no subscription for you.\n\nThe 9 dollars is what OTHER people pay when they join through your link. That is the part that goes to you, never the part you pay.`,
+  // Their Instagram really is suspended or banned. Say the useful thing:
+  // how to appeal, and that we will wait. Never the reassurance script.
+  account_in_trouble: ({ hi }) =>
+    `${hi}ah, that explains it, thank you for telling me. While Instagram has your account suspended nothing can be posted to it, so there is no point in you doing the other steps yet.\n\nAppeal it in the Instagram app: Settings, then Help, then Support requests. Tell me the moment it is back and I will reconnect you and pick up exactly where we stopped. I am not going anywhere.`,
+  // They came back to say the account is working again.
+  account_back: ({ hi }) =>
+    `${hi}great news, thank you for coming back to tell me.\n\nReconnect your Instagram at heypubli.com/onboarding and it carries on from the step you stopped at. Shout if anything looks wrong.`,
   account_safe: ({ hi }) =>
     `${hi}yes. We connect through Instagram's own official login, the same one Meta gives to businesses. You never give us your password and we never see it.\n\nNothing gets posted outside Instagram's rules, and you can disconnect us any time from Settings, one tap.`,
   // The rate, and then straight back to the page that owns the numbers. The
@@ -762,6 +804,27 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
       key: "niche_random",
       text: render("niche_random", ctx),
       reason: "asked to choose the niche, the honest answer is no",
+    };
+  }
+  // "It is back" outranks the trouble rule: the same sentence often names
+  // the suspension it is reporting the end of.
+  if (ACCOUNT_BACK.test(text) && !/\bnot\b|\bstill\b/i.test(text)) {
+    return {
+      action: "send",
+      key: "account_back",
+      text: render("account_back", ctx),
+      reason: "their Instagram is back, restart their onboarding",
+    };
+  }
+  // BEFORE the safety worry: "my account is suspended" is a fact about their
+  // Instagram, not a question about ours, and answering it with reassurance
+  // is worse than saying nothing.
+  if (ACCOUNT_IN_TROUBLE.test(text)) {
+    return {
+      action: "send",
+      key: "account_in_trouble",
+      text: render("account_in_trouble", ctx),
+      reason: "their Instagram is suspended or banned, pause the steps and help them appeal",
     };
   }
   if (SAFETY.test(text)) {
@@ -1077,35 +1140,41 @@ export interface CheckInContext {
   /** Did they write to us in the last 24 hours? Free-form only lands if so. */
   windowOpen: boolean;
   firstName?: string | null;
+  /** Their own bio sentence and saved link, so a bio rung is copy-paste ready. */
+  bioSentence?: string | null;
+  affiliateUrl?: string | null;
 }
 
 export type CheckInDecision =
-  | { action: "send"; key: string; text: string; reason: string }
+  | { action: "send"; key: string; text: string; reason: string; rung: number; images?: string[] }
   | { action: "wait"; reason: string }
   | { action: "handover"; reason: string };
 
 /**
- * The short follow-up ladder. Hugo, 07 Aug 2026: "we should have some small
- * follow-ups. Hey, is everything ok? Then take longer. Just checking again, I
- * saw you stopped, please let me know, I'm here to help."
+ * The follow-up ladder for a creator sitting on an unfinished step.
  *
- * Two rungs and no more, both inside the day they started:
+ * Hugo, 08 Aug 2026, after seeing 11 creators who had never saved their Skool
+ * link: "for every action we do two follow-ups in the same hour, one after
+ * ten minutes and another after thirty minutes, then another around six hours
+ * and another around twenty-three hours", and "this is not one off, it is for
+ * new accounts as well". So it is the SAME four rungs the pre-signup chase
+ * uses, and it runs PER STEP: finishing a step resets the ladder, so every
+ * one of the five gets its own four chances. A creator cannot fall silent on
+ * step 3 and simply be forgotten, which is exactly what was happening.
  *
- *   15 minutes  long enough to read an email and tap a button, short enough
- *               that they are still holding the phone. This is the one that
- *               actually saves people.
- *   90 minutes  they put it down. Ask once more, warmly, and offer to do it
- *               with them.
+ * Rung 2 and rung 4 repeat the step itself WITH the guide pictures, because
+ * by then "is everything ok" has already failed and what they need is the
+ * instructions again, not another greeting.
  *
- * Then it stops and the slow ladder in onboarding-nudges.ts takes over at 2h,
- * 22h and 44h. A third message the same day is pestering, and pestering on a
- * shared WhatsApp sender buys blocks, not signups.
+ * Beyond the four, the slow template ladder in onboarding-nudges.ts owns them
+ * (22h then 44h, six lifetime), which is also the only thing that can reach
+ * somebody whose 24h window has shut.
  *
  * Deliberately does no clock or timezone work: this file only decides. Quiet
  * hours in the creator's own timezone are checked at the sending layer, where
  * the phone number lives.
  */
-export const CHECK_IN_LADDER_MINUTES = [15, 90] as const;
+export const CHECK_IN_LADDER_MINUTES = [10, 30, 360, 1380] as const;
 
 export function decideCheckIn(ctx: CheckInContext): CheckInDecision {
   const ackPause = ctx.repliedSinceWeWrote && ctx.theirReplyWasAckOnly;
@@ -1122,23 +1191,36 @@ export function decideCheckIn(ctx: CheckInContext): CheckInDecision {
     return { action: "wait", reason: "nothing left for them to do" };
   }
   if (ctx.checkInsThisStep >= CHECK_IN_LADDER_MINUTES.length) {
-    return { action: "handover", reason: "both check-ins spent, the slow nudge ladder has it" };
+    return { action: "handover", reason: "all four check-ins spent, the slow nudge ladder has it" };
   }
   if (!ctx.windowOpen) {
     // Outside 24h only an approved template can be sent, and that is the nudge
     // brain's job. Trying here would just bounce with window_closed.
     return { action: "handover", reason: "24h window shut, needs a template" };
   }
-  const due = CHECK_IN_LADDER_MINUTES[ctx.checkInsThisStep];
+  const rung = ctx.checkInsThisStep;
+  const due = CHECK_IN_LADDER_MINUTES[rung];
   if (quietFor < due) {
     return { action: "wait", reason: `${due - Math.round(quietFor)} minutes early` };
   }
-  const key = ctx.checkInsThisStep === 0 ? "check_in_1" : "check_in_2";
+  // Rungs 2 and 4 are the step itself, with its pictures: by then asking "is
+  // everything ok" again is noise, and what unsticks somebody is being shown
+  // the thing to do one more time.
+  const stepRung = rung === 1 || rung === 3;
+  const key = stepRung ? STEP_KEY[ctx.openStep] : rung === 0 ? "check_in_1" : "check_in_2";
+  const vars: Vars = {
+    hi: nameOf(ctx.firstName),
+    code: "",
+    sentence: ctx.bioSentence || "",
+    link: ctx.affiliateUrl || "",
+  };
   return {
     action: "send",
     key,
-    text: REPLIES[key]({ hi: nameOf(ctx.firstName), code: "", sentence: "", link: "" }),
-    reason: `quiet ${Math.round(quietFor)} minutes on ${ctx.openStep}${ackPause ? " after an ok" : ""}`,
+    rung: rung + 1,
+    text: REPLIES[key](vars),
+    reason: `quiet ${Math.round(quietFor)} minutes on ${ctx.openStep}, rung ${rung + 1} of ${CHECK_IN_LADDER_MINUTES.length}${ackPause ? " after an ok" : ""}`,
+    ...(stepRung ? imagesFor(ctx.openStep) : {}),
   };
 }
 

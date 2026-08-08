@@ -54,8 +54,11 @@ export const STEP_HINT: Record<HeypubliStepId, string> = {
 
 // --- the ladder, copied from heypubli -------------------------------------
 
-/** The fast rungs, in minutes since we last wrote. reply-brain.ts. */
-export const CHECK_IN_LADDER_MINUTES = [15, 90] as const;
+/** The fast rungs, in minutes of quiet. reply-brain.ts. Four rungs PER STEP
+ *  since 08 Aug 2026 (Hugo: "two follow-ups in the same hour, then six hours,
+ *  then twenty-three", and it applies to every step and every new account),
+ *  so finishing a step gives the creator a fresh set of four on the next one. */
+export const CHECK_IN_LADDER_MINUTES = [10, 30, 360, 1380] as const;
 /** How long a creator sits still before the FIRST slow nudge. */
 export const FIRST_NUDGE_AFTER_HOURS = 2;
 /** Gap before the second nudge, then every one after that. */
@@ -332,7 +335,7 @@ export function nextTouch(input: NextTouchInput): NextTouch {
     const dueMs = outbound + CHECK_IN_LADDER_MINUTES[rung] * 60_000;
     return {
       kind: 'check_in',
-      label: `Check-in ${rung + 1} of 2`,
+      label: `Check-in ${rung + 1} of ${CHECK_IN_LADDER_MINUTES.length}`,
       detail: `A short "everything ok?" about ${stepLabel}. It is cancelled the moment they reply.`,
       dueAt: new Date(dueMs).toISOString(),
       overdue: dueMs <= now,
