@@ -146,7 +146,7 @@ describe("Funnel", () => {
     expect(screen.getByTestId("recheck-bio")).toBeInTheDocument();
     expect(screen.queryByTestId("declare-bio")).not.toBeInTheDocument();
     // The message names the missing half, so "not there" is actionable.
-    expect(screen.getByText(/FIRST link/i)).toBeInTheDocument();
+    expect(screen.getByText(/The sentence is in\. The link is not showing yet/i)).toBeInTheDocument();
   });
 
   it("keeps the self-declare escape when we genuinely cannot look", () => {

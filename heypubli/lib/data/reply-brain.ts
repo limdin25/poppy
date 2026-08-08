@@ -279,6 +279,27 @@ const COST = new RegExp(
 );
 
 /**
+ * They think THEY have to pay the community subscription. Saad, 08 Aug 2026:
+ * "I don't have $9 to buy subscription" landed in the NEEDS YOU pile, when
+ * the answer is the single most reassuring fact we have: the creator never
+ * pays, they join free on our invite, and the 9 dollars is what OTHER people
+ * pay when they join through the creator's link. Hugo: "he thinks he needs
+ * to pay nine dollars and he doesn't have to pay and you know that."
+ */
+const SUBSCRIPTION_WORRY = new RegExp(
+  [
+    "\\bsubscriptions?\\b",
+    "\\bmembership\\s*(fee|cost|price)?\\b",
+    "(don'?t|do\\s+not|no)\\s+have\\s+(the\\s+)?(\\$|money|\\d)",
+    "can'?t\\s+afford\\b",
+    "\\bafford\\b",
+    "\\b(9|nine)\\s*(dollars?|bucks?|usd)\\b",
+    "\\$\\s*9\\b",
+  ].join("|"),
+  "i",
+);
+
+/**
  * Can they pick what the videos are about? No. Hugo, 07 Aug 2026: "the videos
  * are randomized. Your page is gonna be about AI videos, so it's not a
  * specific niche. Realistic AI videos."
@@ -322,7 +343,10 @@ const STUCK = new RegExp(
   [
     "\\b(stuck|unable|problem|issue|error|help)\\b",
     "\\b(can'?t|cant|cannot|won'?t\\s+let|not\\s+allow)",
-    "\\b(not|isn'?t|doesn'?t|does\\s+not)\\s+work",
+    "\\b(not|isn'?t|doesn'?t|does\\s+not|ain'?t|aint)\\s+work",
+    // "the link ain't opening", Kenyan and Nigerian English says ain't where
+    // the patterns above expected isn't. The word alone signals trouble.
+    "\\bain'?t\\b",
     "\\bnot\\s+(find|showing|opening)\\b",
     "\\bno\\s+(option|email|invite|mail|link)\\b",
     "\\bwhere\\s+is\\b",
@@ -351,6 +375,18 @@ const SIGNUP_CONFUSION = /\b(sign\s*up|signup|signing\s*up|register|registration
  * stage, account or no account.
  */
 const IG_CATEGORY = /\bcategor(y|ies)\b|\bwhat\b[^.?!]*\bchoose\b[^.?!]*\b(creator|professional|business)\b/i;
+
+/**
+ * "Am I supposed to open a new account?" (Samuel, 08 Aug 2026). The answer
+ * Hugo signed off has two halves and both matter: no, we post to the
+ * Instagram they already have; AND if they would rather start with a brand
+ * new Instagram, that is allowed too, it just takes longer to get traction.
+ * Both regexes must hit: the new-account phrase AND a question shape, so
+ * "I created a new account" (them reporting work done) stays out of it.
+ */
+const NEW_ACCOUNT_PHRASE =
+  /\b(open|create|creating|make|making|start|starting)\b[^.?!]{0,30}\bnew\b[^.?!]{0,20}\b(insta(gram)?|ig|account|profile|page)\b|\bnew\s+(insta(gram)?|ig)\b/i;
+const QUESTION_SHAPE = /\?|\b(should|supposed|need|have\s+to|do\s+i|am\s+i|can\s+i|or\s+not)\b/i;
 
 /** They have watched the video. Often word for word, because it is the
  *  prefilled text behind the watch page's button. */
@@ -449,6 +485,11 @@ const REPLIES: Record<string, (v: Vars) => string> = {
   // --- questions anybody asks, at any stage ---
   cost_free: ({ hi }) =>
     `${hi}nothing. It is free for you, we never charge you a penny.\n\nYou connect your Instagram, we make the videos and post them for you.`,
+  // The subscription confusion, answered head on. Never uses the banned
+  // payout words; it may name the 9 dollars ONLY to say the creator does not
+  // pay it. The person who pays is whoever joins through the creator's link.
+  no_subscription_needed: ({ hi }) =>
+    `${hi}you do not pay anything, ever. Not 9 dollars, not a penny. You join the community free with our invite, there is no subscription for you.\n\nThe 9 dollars is what OTHER people pay when they join through your link. That is the part that goes to you, never the part you pay.`,
   account_safe: ({ hi }) =>
     `${hi}yes. We connect through Instagram's own official login, the same one Meta gives to businesses. You never give us your password and we never see it.\n\nNothing gets posted outside Instagram's rules, and you can disconnect us any time from Settings, one tap.`,
   // The rate, and then straight back to the page that owns the numbers. The
@@ -476,6 +517,8 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${hi}you cannot choose it, the videos are picked at random. Your page becomes an AI video page: realistic AI clips, lifestyle, that sort of thing.\n\nYou do not film anything and you do not write anything.`,
   ig_category: ({ hi }) =>
     `${hi}choose Personal blog. That is the one. If Personal blog is not in the list, pick Blogger, either works.\n\nIf any screen after that gives you trouble, send me a screenshot and I will tell you exactly what to tap.`,
+  existing_or_new_ig: ({ hi }) =>
+    `${hi}no. We post to the Instagram you already have, you just connect it with Instagram's own login.\n\nIf you would rather start fresh with a brand new Instagram account, that works too. Just know a new account takes longer to get traction than one that already has followers.`,
   stuck_signup: ({ hi, code }) =>
     `${hi}tell me what the page says when you try, or send me a screenshot, and I will sort it out with you.\n\nHere is the link again: heypubli.com/signup${code ? `?u=${code}` : ""}`,
 
@@ -682,6 +725,14 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
       reason: "asked which Instagram category to pick, the answer is Personal blog",
     };
   }
+  if (NEW_ACCOUNT_PHRASE.test(text) && QUESTION_SHAPE.test(text)) {
+    return {
+      action: "send",
+      key: "existing_or_new_ig",
+      text: render("existing_or_new_ig", ctx),
+      reason: "asked whether they need a new Instagram account, existing works and new is allowed",
+    };
+  }
   // BEFORE the cost rule on purpose: "how many followers can you give me for
   // free" contains "free", and Carl got the what-does-it-cost answer twice
   // before landing in Hugo's queue as a handover. A follower demand outranks
@@ -695,6 +746,17 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
       key: "no_free_followers",
       text: render("no_free_followers", ctx),
       reason: "wants free followers, one straight no",
+    };
+  }
+  // BEFORE the generic cost rule: "I don't have $9 to buy subscription"
+  // contains no cost word at all, and the generic "it is free" answer does
+  // not kill the specific fear. Name the 9 dollars, say who really pays it.
+  if (SUBSCRIPTION_WORRY.test(text)) {
+    return {
+      action: "send",
+      key: "no_subscription_needed",
+      text: render("no_subscription_needed", ctx),
+      reason: "thinks they must pay the subscription, they never do",
     };
   }
   if (COST.test(text)) {

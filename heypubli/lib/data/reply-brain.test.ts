@@ -1011,3 +1011,57 @@ describe("questions the brain must never hand over", () => {
     expect(d.text).toMatch(/screenshot/i);
   });
 });
+
+describe("the subscription confusion", () => {
+  // Saad, 08 Aug 2026: "I don't have $9 to buy subscription" sat in NEEDS
+  // YOU. He thought HE had to pay. He never does, and the machine knows it.
+  it.each([
+    "I don't have $9 to buy subscription",
+    "i cant afford the subscription",
+    "is there a membership fee",
+    "I dont have money for the 9 dollars",
+  ])("answers %s with the straight truth: they never pay", (msg) => {
+    const d = decideReply(ctx({ said: [msg] }));
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("no_subscription_needed");
+    expect(d.text).toMatch(/never|not a penny|do not pay/i);
+    expect(d.text).toContain("free with our invite");
+  });
+
+  it("works mid-onboarding too, the fear does not care about the step", () => {
+    const d = decideReply(
+      ctx({ said: ["do I need to pay the subscription?"], hasAccount: true, stepsDone: ["instagram"] }),
+    );
+    if (d.action !== "send") throw new Error("expected send");
+    expect(d.key).toBe("no_subscription_needed");
+  });
+});
+
+describe("the new Instagram account question", () => {
+  // Samuel, 08 Aug 2026: "Am I supposed to open a new account?" Hugo's
+  // answer has two halves and both must be said: existing works, and a
+  // fresh account is allowed but takes longer to get traction.
+  it("answers with both halves at any stage", () => {
+    for (const account of [false, true]) {
+      const d = decideReply(
+        ctx({
+          hasAccount: account,
+          stepsDone: account ? ["instagram"] : [],
+          said: ["Am I supposed to open a new account?"],
+        }),
+      );
+      expect(d.action).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.key).toBe("existing_or_new_ig");
+      expect(d.text).toContain("Instagram you already have");
+      expect(d.text).toMatch(/new Instagram account, that works too/);
+      expect(d.text).toMatch(/longer to get traction/);
+    }
+  });
+
+  it("does not fire on somebody REPORTING they made an account", () => {
+    const d = decideReply(ctx({ said: ["I created a new account"] }));
+    if (d.action === "send") expect(d.key).not.toBe("existing_or_new_ig");
+  });
+});

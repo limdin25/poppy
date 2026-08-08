@@ -83,12 +83,14 @@ export const ONB_TEMPLATES: Record<"general", string[]> &
     onb_step_affiliate: sidFor("WA_TEMPLATE_ONB_AFFILIATE_SID", "HXbfa6b82dac4f96dad6273984f0dc1a2d"),
     onb_step_photo: sidFor("WA_TEMPLATE_ONB_PHOTO_SID", "HXa52032caee2ff0e6a712cbc7ba2946a9"),
     onb_step_bio: sidFor("WA_TEMPLATE_ONB_BIO_SID", "HX0b30cae97dc9e3ba199be8afd7c6a942"),
-    // Hugo, 08 Aug 2026: "you must add your referral URL to your Instagram
-    // bio so you can get paid." Submitted to Meta the same day; defers
-    // safely until approved, like every unapproved template.
-    onb3_bio_get_paid: sidFor(
-      "WA_TEMPLATE_ONB_BIO_PAID_SID",
-      "HXec56a83aa19cd6486a5ec337fdb99593",
+    // Hugo, 08 Aug 2026, second draft after correcting the first: the reason
+    // the link goes in the bio is TRACKING (sales credited to them), never a
+    // "before you can get paid" threat. Say the two actions plainly, end
+    // with "let me know if you get stuck"; the stuck reply then brings the
+    // screenshots. Submitted to Meta the same day; defers until approved.
+    onb4_bio_track_link: sidFor(
+      "WA_TEMPLATE_ONB_BIO_TRACK_SID",
+      "HX20e85847724ef17097b49cf1a2b3ec44",
     ),
   },
   general: ["onb_nudge_general_a", "onb_nudge_general_b"],
@@ -96,7 +98,7 @@ export const ONB_TEMPLATES: Record<"general", string[]> &
   community: ["onb_step_community"],
   affiliate: ["onb_step_affiliate"],
   photo: ["onb_step_photo"],
-  bio: ["onb3_bio_get_paid", "onb_step_bio"],
+  bio: ["onb4_bio_track_link", "onb_step_bio"],
 };
 
 type Freeform = (first: string) => string;
