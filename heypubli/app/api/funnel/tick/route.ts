@@ -11,6 +11,7 @@ import {
   backfillMissingInvites,
   dispatchQueuedInvites,
 } from "@/lib/data/skool-invite-dispatch";
+import { runEmailFollowUps } from "@/lib/data/email-follow-ups";
 import { pitchBlockedForPhone } from "@/lib/data/reply-brain";
 import { LIVE_THREAD_WINDOW_MS } from "@/lib/data/lead-arming";
 import {
@@ -444,7 +445,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "no funnel_settings row" }, { status: 500 });
     }
 
-    const [invites, nurture, onboarding, bioVerify] = await Promise.allSettled([
+    const [invites, nurture, onboarding, bioVerify, emails] = await Promise.allSettled([
       settings.skool_invites_enabled
         ? dispatchSkoolInvites(admin)
         : Promise.resolve({ disabled: true }),
@@ -455,6 +456,14 @@ export async function GET(request: Request) {
       // them. The reply-runner does the same check when a creator writes;
       // this catches the ones who do the work and never come back.
       runBioVerification(admin),
+      // THE FREE LADDER. Four WhatsApp chases a step is the whole paid budget
+      // (four cents each); after that this carries on by email, daily for a
+      // week and then weekly, until they finish or press the stop link. Hugo,
+      // 08 Aug 2026: "after twenty four hours we keep following up on them via
+      // email, until they do it, because we have their email as well."
+      settings.onboarding_nudges_enabled
+        ? runEmailFollowUps(admin)
+        : Promise.resolve({ disabled: true }),
     ]);
 
     // Phase 4: delivery is not sending. A nudge Twilio accepted then failed to
@@ -482,6 +491,7 @@ export async function GET(request: Request) {
         bioVerify.status === "fulfilled"
           ? bioVerify.value
           : { error: String(bioVerify.reason) },
+      emails: emails.status === "fulfilled" ? emails.value : { error: String(emails.reason) },
     });
   } finally {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -952,7 +952,11 @@ export async function chasesSpentOnStep(
       .from("onboarding_nudges")
       .select("id", { count: "exact", head: true })
       .eq("profile_id", profileId)
-      .eq("step", step),
+      .eq("step", step)
+      // Emails are the FREE ladder that starts where this budget ends, so
+      // counting them here would make the paid ladder look spent before it had
+      // sent anything, and then keep it that way forever.
+      .neq("kind", "email"),
   ]);
   return (checkIns ?? 0) + (templates ?? 0);
 }
