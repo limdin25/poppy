@@ -916,6 +916,47 @@ export interface ReplyRunReport {
   dry?: Array<{ phone: string; action: string; key?: string; reason: string; text?: string }>;
 }
 
+/**
+ * ONE BUDGET FOR ALL CHASING, counted per step.
+ *
+ * Hugo, 08 Aug 2026, on cost: "a lead costs us six cents, a message costs us
+ * four cents. We would rather not waste time with people who don't do the job,
+ * we just work on the new ones. Chase them three times the first day, then
+ * just one more time."
+ *
+ * That is exactly the four rungs already in `CHECK_IN_LADDER_MINUTES`
+ * (10 minutes, 30 minutes, 6 hours, then 23 hours: three on day one and one
+ * the next). What it was NOT is a total. Two ladders chase the same creator,
+ * the free-form check-ins here and the template nudges in onboarding-nudges,
+ * and each counted only its own sends, so somebody who never lifted a finger
+ * could collect four of one plus six of the other. This is the shared count
+ * they both spend from.
+ *
+ * PER STEP, not per lifetime, and that is deliberate: finishing a step is
+ * somebody doing the job, and it earns them a fresh four for the next one. It
+ * is only the person who does nothing at all who runs out.
+ */
+export async function chasesSpentOnStep(
+  admin: ReturnType<typeof createAdminClient>,
+  profileId: string,
+  step: OnboardingStepId,
+): Promise<number> {
+  const [{ count: checkIns }, { count: templates }] = await Promise.all([
+    admin
+      .from("funnel_replies")
+      .select("id", { count: "exact", head: true })
+      .eq("profile_id", profileId)
+      .eq("kind", "check_in")
+      .eq("step", step),
+    admin
+      .from("onboarding_nudges")
+      .select("id", { count: "exact", head: true })
+      .eq("profile_id", profileId)
+      .eq("step", step),
+  ]);
+  return (checkIns ?? 0) + (templates ?? 0);
+}
+
 export async function runReplyBrain(
   admin: ReturnType<typeof createAdminClient>,
   settings: FunnelSettings,
@@ -1030,12 +1071,7 @@ export async function runReplyBrain(
       if (creator.lead?.whatsapp_opted_out_at) continue;
       if (!creator.openStep) continue;
 
-      const { count: spent } = await admin
-        .from("funnel_replies")
-        .select("id", { count: "exact", head: true })
-        .eq("profile_id", profile.id)
-        .eq("kind", "check_in")
-        .eq("step", creator.openStep);
+      const spent = await chasesSpentOnStep(admin, profile.id, creator.openStep);
 
       // An "Ok" and nothing else is a pause, not a conversation. Without
       // this the ladder waited forever on it and the reply brain had already
@@ -1049,7 +1085,7 @@ export async function runReplyBrain(
           : undefined,
         repliedSinceWeWrote: split.repliedSinceWeWrote,
         theirReplyWasAckOnly: ackOnly,
-        checkInsThisStep: spent ?? 0,
+        checkInsThisStep: spent,
         openStep: creator.openStep,
         windowOpen: split.windowOpen,
         firstName: profile.first_name || creator.lead?.first_name || null,

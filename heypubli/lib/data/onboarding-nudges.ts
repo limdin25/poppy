@@ -6,7 +6,8 @@ import { isCommunityMember } from "@/lib/data/community";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { checkBio, bioVerified } from "@/lib/bio-check";
 import { skoolUrlInProfile, wrongCodeInProfile } from "@/lib/data/creator-roster";
-import { renderReply } from "@/lib/data/reply-brain";
+import { chasesSpentOnStep } from "@/lib/data/reply-runner";
+import { renderReply, CHASES_PER_STEP } from "@/lib/data/reply-brain";
 import { bioSentence } from "@/lib/bio-variants";
 import { cleanSkoolAffiliateUrl, skoolLinkNeedle } from "@/lib/skool-link";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
@@ -505,6 +506,20 @@ export async function runOnboardingNudges(
           continue;
         }
       }
+    }
+
+    // THE SHARED BUDGET. Three chases on the first day and one more the next,
+    // counted across BOTH ladders (see chasesSpentOnStep). Hugo, 08 Aug 2026:
+    // "a lead costs six cents, a message costs four. We would rather not waste
+    // time with people who don't do the job, we just work on the new ones."
+    // Spent means spent: they are marked stopped, with the step named, and the
+    // monitor's "nobody is chasing" list says so out loud rather than letting
+    // it look like a working ladder.
+    const spent = await chasesSpentOnStep(admin, profile.id, openStep);
+    if (spent >= CHASES_PER_STEP) {
+      if (!nudgeState.stopped_at) await stopFor(profile.id, `four chases spent on ${openStep}`);
+      else skip("chases_spent");
+      continue;
     }
 
     const pick = pickNudge(openStep, nudgeState.nudge_count);

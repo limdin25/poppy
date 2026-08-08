@@ -1316,6 +1316,19 @@ export type CheckInDecision =
 export const CHECK_IN_LADDER_MINUTES = [10, 30, 360, 1380] as const;
 
 /**
+ * How many chases a creator gets on ONE step, across every ladder we own.
+ *
+ * Three on the first day (10 minutes, 30 minutes, 6 hours) and one more the
+ * next (23 hours), then we stop. Hugo, 08 Aug 2026: "a lead costs us six cents,
+ * a message costs us four cents, so we would rather not waste time with people
+ * who don't do the job, we just work on the new ones."
+ *
+ * Per step, not per lifetime: finishing a step IS doing the job, and it earns a
+ * fresh four for the next one. Only somebody who does nothing runs out.
+ */
+export const CHASES_PER_STEP = CHECK_IN_LADDER_MINUTES.length;
+
+/**
  * How long a message we could not answer is allowed to sit before the machine
  * answers it anyway. Long enough that a human genuinely could have stepped in,
  * short enough that nobody is left wondering for an afternoon.
