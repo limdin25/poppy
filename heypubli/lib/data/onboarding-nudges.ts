@@ -5,8 +5,9 @@ import { resolveFunnel } from "@/lib/data/onboarding";
 import { isCommunityMember } from "@/lib/data/community";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { checkBio, bioVerified } from "@/lib/bio-check";
+import { skoolUrlInProfile } from "@/lib/data/creator-roster";
 import { bioSentence } from "@/lib/bio-variants";
-import { skoolLinkNeedle } from "@/lib/skool-link";
+import { cleanSkoolAffiliateUrl, skoolLinkNeedle } from "@/lib/skool-link";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import type { StepState } from "@/lib/data/brochure";
 import type { FunnelSettings, OnboardingStepId, Profile } from "@/types/database";
@@ -614,13 +615,21 @@ export interface BioVerifyReport {
   checked: number;
   verified: number;
   congratulated: number;
+  /** Links read off a creator's own Instagram bio because we held none. */
+  linksCaptured: number;
   errors: string[];
 }
 
 export async function runBioVerification(
   admin: ReturnType<typeof createAdminClient>,
 ): Promise<BioVerifyReport> {
-  const report: BioVerifyReport = { checked: 0, verified: 0, congratulated: 0, errors: [] };
+  const report: BioVerifyReport = {
+    checked: 0,
+    verified: 0,
+    congratulated: 0,
+    linksCaptured: 0,
+    errors: [],
+  };
   const provider = (await getPostingSettingsAdmin())?.active_provider ?? "heypubli";
   if (provider !== "outstand") return report; // the only provider whose read includes the website field
 
@@ -632,7 +641,6 @@ export async function runBioVerification(
     .eq("onboarding_complete", false)
     .eq("is_admin", false)
     .is("suspended_at", null)
-    .not("skool_affiliate_url", "is", null)
     .or(`bio_checked_at.is.null,bio_checked_at.lt.${cutoff}`)
     .order("bio_checked_at", { ascending: true, nullsFirst: true })
     .limit(BIO_CHECKS_PER_RUN)) as { data: Profile[] | null };
@@ -657,6 +665,28 @@ export async function runBioVerification(
         .eq("id", profile.id);
       if (!ig?.statsAvailable) continue;
       report.checked++;
+
+      // THEIR LINK, TAKEN OFF THEIR OWN PROFILE. Ma. Edelyn, 08 Aug 2026, had
+      // pasted her Skool referral link into her Instagram bio and never told
+      // us, so we held no link for her, could not check anything, and every
+      // automatic read called her unfinished. If a Skool link is sitting on
+      // their profile and we hold none, that link is theirs: save it. Never
+      // overwrites one we already have, because replacing the link that
+      // credits their sales is a decision, not a guess.
+      if (!profile.skool_affiliate_url) {
+        const found = skoolUrlInProfile(ig.biography, ig.website);
+        const cleaned = found ? cleanSkoolAffiliateUrl(found) : null;
+        if (cleaned) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (admin.from("profiles") as any)
+            .update({ skool_affiliate_url: cleaned })
+            .eq("id", profile.id)
+            .is("skool_affiliate_url", null);
+          profile.skool_affiliate_url = cleaned;
+          report.linksCaptured++;
+        }
+      }
+      if (!profile.skool_affiliate_url) continue;
 
       const evidence = checkBio({
         tag: skoolLinkNeedle(profile.skool_affiliate_url)?.value ?? null,

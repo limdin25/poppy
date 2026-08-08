@@ -12,6 +12,7 @@ import { NURTURE_PLAN, NURTURE_TEMPLATE_SIDS } from "@/lib/data/lanes";
 import { ONB_TEMPLATES } from "@/lib/data/onboarding-nudges";
 import { getInboxSummary, getTemplateStatuses } from "@/lib/integrations/whatsapp";
 import { sendEmail } from "@/lib/integrations/resend";
+import { buildCreatorRoster, renderRoster } from "@/lib/data/creator-roster";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { FunnelMonitorState, FunnelSettings, NurtureSend } from "@/types/database";
 
@@ -426,6 +427,25 @@ export async function GET(request: Request) {
     pausedReason,
     gatherErrors,
   };
+
+  // THE ROSTER. Reads every connected creator's real Instagram, so the hourly
+  // email can say who genuinely has their own Skool link live and who does
+  // not, with their handle, join time, followers and posts. Hugo, 08 Aug
+  // 2026, after an audit found the summary counts hiding a wrong referral
+  // code and two dead connections: "so we know that you actually checking
+  // correctly... and also make sure the system knows how to check every time."
+  //
+  // Failure here must never lose the rest of the email: a monitor that dies
+  // on a third-party read is worse than a monitor with one section missing.
+  try {
+    const roster = await buildCreatorRoster(admin);
+    data.rosterHtml = renderRoster(roster);
+    data.rosterProblems = roster.filter(
+      (r) => r.verdict === "wrong_code" || r.verdict === "unreadable",
+    ).length;
+  } catch (e) {
+    gatherErrors.push(`creator roster: ${e instanceof Error ? e.message : "unknown"}`);
+  }
 
   const report = buildFunnelReport(data);
 

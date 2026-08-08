@@ -38,7 +38,7 @@
     },
     {
       "path": "/api/cron/accounts-digest",
-      "schedule": "0 6,19 * * *"
+      "schedule": "0 * * * *"
     }
   ]
 }

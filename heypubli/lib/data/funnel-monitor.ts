@@ -125,6 +125,14 @@ export interface MonitorData {
   autoReply: MonitorAutoReply;
   pausedReason: string | null;
   gatherErrors: string[];
+  /** The full creator roster, already rendered. Hugo, 08 Aug 2026: "I wanna
+   *  every hour a report with the accounts connected... which ones has the
+   *  school URL connected as well... the date joined, the time, the posts."
+   *  Rendered upstream so this file stays free of Instagram reads. */
+  rosterHtml?: string;
+  /** Creators the roster could not check or found a wrong code on. Urgent:
+   *  a broken connection means we cannot post for them either. */
+  rosterProblems?: number;
 }
 
 export interface MonitorReport {
@@ -185,7 +193,10 @@ export function shouldEmailNow(d: MonitorData, lastEmailAt: Date | null): EmailD
     // Unlike a deliberate handover, it shouts on every run until it is zero.
     d.neverLooked.length > 0 ||
     heartbeatAlarms(d.heartbeats).length > 0 ||
-    Boolean(d.sheetSync && (d.sheetSync.error || (d.sheetSync.staleMinutes ?? 0) > 10));
+    Boolean(d.sheetSync && (d.sheetSync.error || (d.sheetSync.staleMinutes ?? 0) > 10)) ||
+    // A dead Instagram connection is invisible everywhere else: the creator
+    // looks like a slow starter while we cannot post to them at all.
+    (d.rosterProblems ?? 0) > 0;
   if (urgent) return { send: true, reason: "urgent" };
   if (!lastEmailAt || d.now.getTime() - lastEmailAt.getTime() > ROUTINE_EMAIL_GAP_MS) {
     return { send: true, reason: "routine" };
@@ -435,6 +446,11 @@ export function buildFunnelReport(d: MonitorData): MonitorReport {
       `<p style="color:#b91c1c">Monitor could not read: ${d.gatherErrors.map(esc).join("; ")}</p>`,
     );
   }
+
+  // The roster last, because it is the longest section and the alarms above
+  // are the ones that need acting on first. It is in EVERY email, hourly,
+  // whether or not anything is wrong: Hugo reads it to see who to chase.
+  if (d.rosterHtml) parts.push(d.rosterHtml);
 
   return { subject, html: parts.join("\n") };
 }
