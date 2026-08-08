@@ -39,6 +39,8 @@ function lead(over: Partial<SignupLead> = {}): SignupLead {
     nurture_next_at: null,
     nurture_last_sent_at: null,
     nurture_stop_reason: null,
+    chase_next_at: null,
+    chase_count: 0,
     whatsapp_opted_out_at: null,
     whatsapp_undeliverable_code: null,
     approval_state: "none",

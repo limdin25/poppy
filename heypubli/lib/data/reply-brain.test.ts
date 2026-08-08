@@ -308,7 +308,23 @@ describe("rules that are enforced, not remembered", () => {
   });
 
   it("every reply fits in two SMS segments", () => {
-    const tooLong = replyBrainSelfCheck().filter((r) => r.length > 320);
+    // The bio-instruction replies carry the creator's OWN sentence and their
+    // OWN affiliate link so they can copy both straight out of the chat (08
+    // Aug 2026, after "paste it here" turned out to save nothing anywhere).
+    // That payload alone is ~170 characters. These replies only ever travel
+    // WhatsApp, where length costs nothing, so they get a wider budget; the
+    // 320 discipline stays for everything else.
+    const CARRIES_THEIR_CONTENT = new Set([
+      "link_saved_bio_next",
+      "bio_missing_both",
+      "bio_missing_link",
+      "bio_missing_sentence",
+      "step_bio",
+      "stuck_bio",
+    ]);
+    const tooLong = replyBrainSelfCheck().filter(
+      (r) => r.length > (CARRIES_THEIR_CONTENT.has(r.key) ? 560 : 320),
+    );
     expect(tooLong.map((o) => `${o.key}:${o.length}`)).toEqual([]);
   });
 });
@@ -776,5 +792,166 @@ describe("the LLM is given the lead's own watch link", () => {
     const llm = read("llm-reply.ts");
     expect(llm).toMatch(/watchLink/);
     expect(llm).toMatch(/exactly this link|no other link/i);
+  });
+});
+
+// ------------------------------------------------------------------
+// 08 Aug 2026. Abdul Latif pasted his Skool link after "paste it here and I
+// will put it in for you", nothing saved it, the self-declared bio counted as
+// done, and the machine told him "your link is live" over an empty Instagram
+// profile. Everything below pins the fixes.
+// ------------------------------------------------------------------
+import {
+  extractSkoolLink,
+  decideLeadChase,
+  LEAD_CHASE_AFTER_HOURS,
+  type LeadChaseContext,
+} from "./reply-brain";
+
+describe("the pasted Skool link", () => {
+  it("finds and cleans a link however it arrives", () => {
+    expect(
+      extractSkoolLink(["https://www.skool.com/ai-influencer-flywheel-5612/about?ref=27ddbab", "My link"]),
+    ).toBe("https://www.skool.com/ai-influencer-flywheel-5612/about?ref=27ddbab");
+    expect(extractSkoolLink(["here it is skool.com/x/about?ref=abc."]))
+      .toBe("https://skool.com/x/about?ref=abc");
+    expect(extractSkoolLink(["notskool.com/x?ref=abc"])).toBeNull();
+    expect(extractSkoolLink(["ok", "thanks"])).toBeNull();
+  });
+
+  it("a saved link answers with the bio instructions, their sentence and their link in the message", () => {
+    const d = decideReply(
+      ctx({
+        hasAccount: true,
+        stepsDone: ["instagram", "community", "affiliate", "photo"],
+        said: ["https://www.skool.com/ai-influencer-flywheel-5612/about?ref=27ddbab", "My link"],
+        justSavedLink: true,
+        bioSentence: "Every clip here is AI made. See how below.",
+        affiliateUrl: "https://www.skool.com/ai-influencer-flywheel-5612/about?ref=27ddbab",
+      }),
+    );
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("link_saved_bio_next");
+    expect(d.text).toContain("Every clip here is AI made.");
+    expect(d.text).toContain("?ref=27ddbab");
+    expect(d.images).toEqual(["/guide/step4-1-edit-profile.jpg", "/guide/step4-2-done.jpg"]);
+  });
+
+  it("a saved link with the photo step still open sends the photo step, never a false done", () => {
+    const d = decideReply(
+      ctx({
+        hasAccount: true,
+        stepsDone: ["instagram", "community", "affiliate"],
+        said: ["skool.com/x/about?ref=abc"],
+        justSavedLink: true,
+      }),
+    );
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("link_saved_photo_next");
+  });
+});
+
+describe("the live bio read decides what we say, never their word", () => {
+  const base = {
+    hasAccount: true,
+    stepsDone: ["instagram", "community", "affiliate", "photo"] as const,
+    bioSentence: "Every clip here is AI made. See how below.",
+    affiliateUrl: "https://www.skool.com/x/about?ref=abc",
+  };
+
+  it("says exactly which half is missing", () => {
+    const link = decideReply(
+      ctx({ ...base, said: ["done"], bioEvidence: { checked: true, link: false, sentence: true } }),
+    );
+    expect(link.action).toBe("send");
+    if (link.action !== "send") return;
+    expect(link.key).toBe("bio_missing_link");
+    expect(link.text).toMatch(/FIRST link/);
+
+    const sentence = decideReply(
+      ctx({ ...base, said: ["done"], bioEvidence: { checked: true, link: true, sentence: false } }),
+    );
+    if (sentence.action !== "send") throw new Error("expected send");
+    expect(sentence.key).toBe("bio_missing_sentence");
+
+    const both = decideReply(
+      ctx({ ...base, said: ["I added it, check now"], bioEvidence: { checked: true, link: false, sentence: false } }),
+    );
+    if (both.action !== "send") throw new Error("expected send");
+    expect(both.key).toBe("bio_missing_both");
+  });
+
+  it("congratulates the moment the live read passes, even on a bare ok", () => {
+    const d = decideReply(
+      ctx({
+        ...base,
+        stepsDone: ["instagram", "community", "affiliate", "photo", "bio"],
+        said: ["Ok"],
+        justVerifiedBio: true,
+      }),
+    );
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("all_done");
+  });
+
+  it("a plain ok with an unfinished bio stays silent, exactly as before", () => {
+    const d = decideReply(
+      ctx({ ...base, said: ["Ok"], bioEvidence: { checked: true, link: false, sentence: false } }),
+    );
+    expect(d.action).toBe("silence");
+  });
+});
+
+describe("chasing an answered lead with no account", () => {
+  const chase = (over: Partial<LeadChaseContext> = {}): LeadChaseContext => ({
+    hoursSinceWeWrote: 4,
+    repliedSinceWeWrote: false,
+    windowOpen: true,
+    chasesThisSpell: 0,
+    chaseCount: 0,
+    sentVideo: true,
+    sentSignup: false,
+    firstName: "Jowie",
+    watchCode: "98ec42",
+    ...over,
+  });
+
+  it("waits while they are fresh, then chases with the thing they already have", () => {
+    expect(decideLeadChase(chase({ hoursSinceWeWrote: 1 })).action).toBe("wait");
+    const d = decideLeadChase(chase());
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("chase_watch");
+    expect(d.text).toContain("watch?u=98ec42");
+  });
+
+  it("the signup link outranks the video once it has been sent", () => {
+    const d = decideLeadChase(chase({ sentSignup: true }));
+    if (d.action !== "send") throw new Error("expected send");
+    expect(d.key).toBe("chase_signup");
+    expect(d.text).toContain("signup?u=98ec42");
+  });
+
+  it("never talks over them, and hands to the drip after one chase or a shut window", () => {
+    expect(decideLeadChase(chase({ repliedSinceWeWrote: true })).action).toBe("wait");
+    expect(decideLeadChase(chase({ chasesThisSpell: 1 })).action).toBe("hand_to_drip");
+    expect(decideLeadChase(chase({ windowOpen: false })).action).toBe("hand_to_drip");
+    expect(decideLeadChase(chase({ chaseCount: 6 })).action).toBe("stop");
+  });
+
+  it("the chase copy passes the same house rules as every reply", () => {
+    const rows = replyBrainSelfCheck().filter((r) => r.key.startsWith("chase_"));
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+    for (const r of rows) {
+      expect(r.punctuation, r.key).toBe(false);
+      expect(r.money, r.key).toBe(false);
+    }
+  });
+
+  it(`the first chase waits ${LEAD_CHASE_AFTER_HOURS} hours, inside the 24h window`, () => {
+    expect(LEAD_CHASE_AFTER_HOURS).toBeLessThan(24);
   });
 });

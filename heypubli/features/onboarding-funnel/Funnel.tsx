@@ -301,30 +301,35 @@ function StepContent({ id, data }: { id: OnboardingStepId; data: OnboardingData 
         state={bio.state}
         message={
           bio.state === "done"
-            ? bio.declaredAt
-              ? t.steps.bio.status.doneDeclared
-              : t.steps.bio.status.doneChecked
+            ? bio.linkFound && bio.sentenceFound
+              ? t.steps.bio.status.doneChecked
+              : t.steps.bio.status.doneDeclared
             : bio.state === "blocked"
               ? t.steps.bio.status.blocked
               : bio.state === "unknown"
                 ? t.steps.bio.status.unknown
-                : t.steps.bio.status.waiting
+                : bio.sentenceFound && !bio.linkFound
+                  ? t.steps.bio.status.waitingLink
+                  : bio.linkFound && !bio.sentenceFound
+                    ? t.steps.bio.status.waitingSentence
+                    : t.steps.bio.status.waiting
         }
       >
         {bio.state === "waiting" && (
           <RecheckButton testId="recheck-bio" label={t.steps.bio.recheck} />
         )}
-        {/* Self-declaring is offered when we could not look, AND when we
-            looked and did not find it. Instagram's Links row holds several
-            links but the API hands back only the first, so a creator who did
-            exactly what we asked could sit on "not there yet" forever with
-            nothing but a Recheck button. Their word beats our one-link read;
-            the status line still records which of the two ticked it. */}
-        {(bio.state === "unknown" || bio.state === "waiting") && (
+        {/* Self-declaring NEVER completes this step any more. 08 Aug 2026: a
+            creator ticked "It is there" over a completely empty profile,
+            reached 5/5 and was told his link was live. While we can read
+            their real Instagram, only the read finishes the step; the button
+            is offered when our eyes fail (state unknown), where their word is
+            the only evidence there can be. On waiting, the granular message
+            above says exactly which of the two things is missing. */}
+        {bio.state === "unknown" && (
           <DeclareButton
             action={declareBioDone}
             label={t.steps.bio.declare}
-            note={bio.state === "waiting" ? t.steps.bio.declareNote : undefined}
+            note={t.steps.bio.declareNote}
             testId="declare-bio"
           />
         )}

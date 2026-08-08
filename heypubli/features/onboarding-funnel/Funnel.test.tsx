@@ -122,14 +122,21 @@ describe("Funnel", () => {
     expect(words).toContain("Lim Din");
   });
 
-  // Instagram's Links row holds several links and the API returns only the
-  // first, so "we read your bio and it is not there" can be plain wrong. A
-  // creator who did the work must always have a way through: recheck first,
-  // and their own word as the backstop.
-  it("never leaves the last step with no way forward", () => {
+  // 08 Aug 2026: the declare button on "waiting" let a creator tick the step
+  // over a completely empty Instagram, reach 5/5, and be told his link was
+  // live. While we can genuinely read their profile, the read is the only way
+  // through: recheck, plus a granular message saying exactly which half is
+  // missing. The declare escape survives ONLY when our eyes fail (unknown).
+  it("verifies the last step instead of taking their word for it", () => {
     const openBio = {
       ...funnelMockComplete,
-      bio: { ...funnelMockComplete.bio, state: "waiting" as const, declaredAt: null },
+      bio: {
+        ...funnelMockComplete.bio,
+        state: "waiting" as const,
+        declaredAt: null,
+        linkFound: false,
+        sentenceFound: true,
+      },
       stepStates: { ...funnelMockComplete.stepStates, bio: "waiting" as const },
       openStep: "bio" as const,
       doneSteps: 4,
@@ -137,6 +144,27 @@ describe("Funnel", () => {
     };
     render(<Funnel data={openBio} />);
     expect(screen.getByTestId("recheck-bio")).toBeInTheDocument();
+    expect(screen.queryByTestId("declare-bio")).not.toBeInTheDocument();
+    // The message names the missing half, so "not there" is actionable.
+    expect(screen.getByText(/FIRST link/i)).toBeInTheDocument();
+  });
+
+  it("keeps the self-declare escape when we genuinely cannot look", () => {
+    const unknownBio = {
+      ...funnelMockComplete,
+      bio: {
+        ...funnelMockComplete.bio,
+        state: "unknown" as const,
+        declaredAt: null,
+        linkFound: null,
+        sentenceFound: null,
+      },
+      stepStates: { ...funnelMockComplete.stepStates, bio: "unknown" as const },
+      openStep: "bio" as const,
+      doneSteps: 4,
+      allDone: false,
+    };
+    render(<Funnel data={unknownBio} />);
     expect(screen.getByTestId("declare-bio")).toBeInTheDocument();
   });
 

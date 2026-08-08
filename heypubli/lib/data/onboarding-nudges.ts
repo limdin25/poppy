@@ -4,7 +4,8 @@ import { timezoneForPhone, withinSendingHours } from "@/lib/data/lanes";
 import { resolveFunnel } from "@/lib/data/onboarding";
 import { isCommunityMember } from "@/lib/data/community";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
-import { hasLinkInBio } from "@/lib/bio-check";
+import { checkBio, bioVerified } from "@/lib/bio-check";
+import { bioSentence } from "@/lib/bio-variants";
 import { skoolLinkNeedle } from "@/lib/skool-link";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import type { StepState } from "@/lib/data/brochure";
@@ -276,7 +277,11 @@ export async function resolveStatesForCron(
     community: communityDone ? "done" : "todo",
     affiliate: profile.skool_affiliate_url ? "done" : "todo",
     photo: profile.photo_declared_at ? "done" : "todo",
-    bio: profile.bio_link_declared_at || bioStamped ? "done" : "todo",
+    // The progress stamp only: it is written by a live read of their real
+    // Instagram (page render, tick verify, reply-runner check). A declaration
+    // is a claim, and 08 Aug 2026 a claim with an empty profile reached 5/5
+    // and got told "your link is live". Never again off somebody's word.
+    bio: bioStamped ? "done" : "todo",
   };
 }
 
@@ -468,11 +473,14 @@ export async function runOnboardingNudges(
       const ig = await getOutstandInstagramData(profile.id);
       if (ig?.statsAvailable) {
         const needle = skoolLinkNeedle(profile.skool_affiliate_url);
-        const found = hasLinkInBio({
-          tag: needle?.value ?? null,
-          biography: ig.biography,
-          website: ig.website,
-        });
+        const found = bioVerified(
+          checkBio({
+            tag: needle?.value ?? null,
+            sentence: bioSentence(profile.bio_variant_index ?? 0),
+            biography: ig.biography,
+            website: ig.website,
+          }),
+        );
         if (found) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (admin.from("onboarding_progress") as any).upsert({
@@ -579,3 +587,115 @@ export async function runOnboardingNudges(
 }
 
 export { FREEFORM_GENERAL, FREEFORM_BY_STEP };
+
+// ------------------------------------------------------------------
+// The bio verify sweep. "Of course you need to check their IG to make sure"
+// (Hugo, 08 Aug 2026). The reply-runner checks when a creator WRITES; this
+// checks the quiet ones on a timer, so a creator who pastes the sentence and
+// link and never comes back to the page (or the chat) still goes green and
+// still gets told. It is the ONLY thing besides a live page read that may
+// stamp the bio step done.
+// ------------------------------------------------------------------
+
+/** Re-read an unfinished bio at most this often. */
+const BIO_CHECK_EVERY_MS = 10 * 60 * 1000;
+const BIO_CHECKS_PER_RUN = 15;
+
+export interface BioVerifyReport {
+  checked: number;
+  verified: number;
+  congratulated: number;
+  errors: string[];
+}
+
+export async function runBioVerification(
+  admin: ReturnType<typeof createAdminClient>,
+): Promise<BioVerifyReport> {
+  const report: BioVerifyReport = { checked: 0, verified: 0, congratulated: 0, errors: [] };
+  const provider = (await getPostingSettingsAdmin())?.active_provider ?? "heypubli";
+  if (provider !== "outstand") return report; // the only provider whose read includes the website field
+
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - BIO_CHECK_EVERY_MS).toISOString();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profiles } = (await (admin.from("profiles") as any)
+    .select("*")
+    .eq("onboarding_complete", false)
+    .eq("is_admin", false)
+    .is("suspended_at", null)
+    .not("skool_affiliate_url", "is", null)
+    .or(`bio_checked_at.is.null,bio_checked_at.lt.${cutoff}`)
+    .order("bio_checked_at", { ascending: true, nullsFirst: true })
+    .limit(BIO_CHECKS_PER_RUN)) as { data: Profile[] | null };
+
+  for (const profile of profiles ?? []) {
+    try {
+      const { data: progress } = await admin
+        .from("onboarding_progress")
+        .select("profile_id, step, first_seen_at, completed_at")
+        .eq("profile_id", profile.id)
+        .returns<ProgressRow[]>();
+      const states = await resolveStatesForCron(admin, profile, provider, progress ?? []);
+      if (states.bio === "done") continue; // bio not the problem; not ours
+      const { openStep } = resolveFunnel(states);
+      if (openStep !== "bio") continue; // an earlier step is open, nudges own it
+
+      const ig = await getOutstandInstagramData(profile.id);
+      const nowIso = new Date().toISOString();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("profiles") as any)
+        .update({ bio_checked_at: nowIso })
+        .eq("id", profile.id);
+      if (!ig?.statsAvailable) continue;
+      report.checked++;
+
+      const evidence = checkBio({
+        tag: skoolLinkNeedle(profile.skool_affiliate_url)?.value ?? null,
+        sentence: bioSentence(profile.bio_variant_index ?? 0),
+        biography: ig.biography,
+        website: ig.website,
+      });
+      if (!bioVerified(evidence)) continue;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("onboarding_progress") as any).upsert({
+        profile_id: profile.id,
+        step: "bio",
+        first_seen_at: nowIso,
+        completed_at: nowIso,
+        updated_at: nowIso,
+      });
+      report.verified++;
+
+      const after = await resolveStatesForCron(admin, profile, provider, [
+        ...(progress ?? []).filter((r) => r.step !== "bio"),
+        { profile_id: profile.id, step: "bio", first_seen_at: nowIso, completed_at: nowIso },
+      ]);
+      if (resolveFunnel(after).allDone) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (admin.from("profiles") as any)
+          .update({ onboarding_complete: true })
+          .eq("id", profile.id);
+      }
+
+      // Tell them, once, in their daytime. The external id makes a crashed
+      // and re-run tick send it once; outside their hours the stamp stands
+      // and the page is already green, the message is a courtesy not a duty.
+      if (profile.whatsapp && withinSendingHours(now, timezoneForPhone(profile.whatsapp))) {
+        const first = (profile.first_name || "").trim().split(" ")[0];
+        const res = await sendPartnerWhatsApp({
+          to: profile.whatsapp,
+          firstName: first,
+          body:
+            `${first ? `${first}, ` : ""}I just checked your Instagram and everything is in: your sentence, your link, all five steps done.\n\n` +
+            `Your videos start going out from here. I will let you know when the first one lands.`,
+          externalId: `bioverified:${profile.id}`,
+        });
+        if (res.ok) report.congratulated++;
+      }
+    } catch (e) {
+      report.errors.push(`${profile.id}: ${e instanceof Error ? e.message : "unknown"}`);
+    }
+  }
+  return report;
+}

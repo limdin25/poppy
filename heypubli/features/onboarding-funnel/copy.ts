@@ -137,18 +137,22 @@ export const funnelCopy = {
       copied: "Copied",
       copyFallback: "Press and hold the text to copy it.",
       recheck: "Check my bio again",
-      declare: "It is there, tick it off",
+      declare: "I have added both, check my profile",
       declareNote:
-        "If your profile has more than one link we can only read the first one, so we may miss yours. If it is in, tick it off and carry on.",
+        "We read your real Instagram profile before this step goes green. Add the sentence and the link, then press this and we look straight away.",
       status: {
-        doneChecked: "Found it. Your link is live in your bio.",
+        doneChecked: "Found both. Your sentence and your link are live on your profile.",
         doneDeclared:
-          "You told us it is there, so we ticked it off. We will keep looking anyway.",
+          "You told us it is in and we cannot read your profile right now, so your word stands. We will keep checking.",
         waiting:
-          "We read your bio and the link is not in it yet. If you have just added it, give Instagram a few minutes and check again.",
+          "We read your Instagram and the sentence and the link are not on it yet. Add both under Edit profile, then check again.",
+        waitingLink:
+          "The sentence is in. The link is not showing yet. Add it in the Links row and make it the FIRST link in the list, we can only read the first one.",
+        waitingSentence:
+          "Your link is in. The sentence is not in your Bio box yet. Copy it from above and paste it exactly as it is.",
         blocked: "This one unlocks after the steps above.",
         unknown:
-          "We cannot read your bio right now. That is our side, not yours. Put the sentence and the link in anyway, then tick it off below.",
+          "We cannot read your profile right now. That is our side, not yours. Put the sentence and the link in anyway, then tell us with the button below.",
       },
       weakNeedle:
         "One thing to know. Your link has no personal code on the end, so all we can tell is that a Skool link is in your bio, not that it is yours. If Skool offers you a link with your own code in it, use that one instead.",

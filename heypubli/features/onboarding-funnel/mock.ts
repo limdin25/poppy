@@ -12,7 +12,7 @@ export const funnelMockFresh: OnboardingData = {
   photo: { state: "todo", declaredAt: null },
   inviteQueued: false,
   instagramError: false,
-  bio: { state: "blocked", sentence: "AI videos, posted for me daily.", needleKind: null, declaredAt: null },
+  bio: { state: "blocked", sentence: "AI videos, posted for me daily.", needleKind: null, declaredAt: null, linkFound: null, sentenceFound: null },
   doneCount: 0,
   stepStates: {
     instagram: "todo",
@@ -56,6 +56,8 @@ export const funnelMockComplete: OnboardingData = {
     sentence: "AI videos, posted for me daily.",
     needleKind: "referral",
     declaredAt: null,
+    linkFound: true,
+    sentenceFound: true,
   },
   doneCount: 4,
   stepStates: {

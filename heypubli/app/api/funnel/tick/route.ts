@@ -18,7 +18,7 @@ import {
 } from "@/lib/integrations/whatsapp";
 import { sendEmail } from "@/lib/integrations/resend";
 import { LEAD_STAGES } from "@/lib/data/signup-leads";
-import { runOnboardingNudges } from "@/lib/data/onboarding-nudges";
+import { runBioVerification, runOnboardingNudges } from "@/lib/data/onboarding-nudges";
 import type { FunnelSettings, SignupLead } from "@/types/database";
 
 export const maxDuration = 300;
@@ -434,12 +434,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "no funnel_settings row" }, { status: 500 });
     }
 
-    const [invites, nurture, onboarding] = await Promise.allSettled([
+    const [invites, nurture, onboarding, bioVerify] = await Promise.allSettled([
       settings.skool_invites_enabled
         ? dispatchSkoolInvites(admin)
         : Promise.resolve({ disabled: true }),
       runNurture(admin, settings),
       runOnboardingNudges(admin, settings),
+      // The verify sweep: reads the quiet creators' real Instagram, stamps the
+      // bio step when the sentence AND link are genuinely there, and tells
+      // them. The reply-runner does the same check when a creator writes;
+      // this catches the ones who do the work and never come back.
+      runBioVerification(admin),
     ]);
 
     // Phase 4: delivery is not sending. A nudge Twilio accepted then failed to
@@ -463,6 +468,10 @@ export async function GET(request: Request) {
         onboarding.status === "fulfilled"
           ? onboarding.value
           : { error: String(onboarding.reason) },
+      bioVerify:
+        bioVerify.status === "fulfilled"
+          ? bioVerify.value
+          : { error: String(bioVerify.reason) },
     });
   } finally {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

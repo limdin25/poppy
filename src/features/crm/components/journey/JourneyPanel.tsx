@@ -154,7 +154,7 @@ export default function JourneyPanel({
     // lib/data/reply-brain.ts has tests and NO production caller. Promising
     // Hugo a 15 minute check-in that nothing sends would be worse than saying
     // nothing. Flip this the day somebody wires it up.
-    checkInsLive: false,
+    checkInsLive: true,
   });
 
   // A pre-signup lead is the DRIP's to chase, not the nudge ladder's, so the

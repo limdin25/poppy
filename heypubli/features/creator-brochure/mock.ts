@@ -14,6 +14,8 @@ export const brochureMock: BrochureData = {
     sentence: "Every video on this page is made with AI. Learn how below.",
     needleKind: null,
     declaredAt: null,
+    linkFound: null,
+    sentenceFound: null,
   },
   doneCount: 0,
 };
@@ -29,6 +31,8 @@ export const brochureMockComplete: BrochureData = {
     sentence: brochureMock.bio.sentence,
     needleKind: "referral",
     declaredAt: null,
+    linkFound: true,
+    sentenceFound: true,
   },
   doneCount: 4,
 };

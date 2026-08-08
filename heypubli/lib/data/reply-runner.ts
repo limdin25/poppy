@@ -1,14 +1,20 @@
 import {
   decideCheckIn,
+  decideLeadChase,
   decideReply,
+  extractSkoolLink,
   pitchBlockedForPhone,
+  LEAD_CHASE_AFTER_HOURS,
   type ReplyContext,
 } from "@/lib/data/reply-brain";
 import { llmReply } from "@/lib/data/llm-reply";
 import { resolveFunnel, ONBOARDING_STEPS } from "@/lib/data/onboarding";
 import { resolveStatesForCron } from "@/lib/data/onboarding-nudges";
 import { timezoneForPhone, withinSendingHours } from "@/lib/data/lanes";
-import { getPostingSettingsAdmin } from "@/lib/data/outstand";
+import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
+import { checkBio, bioVerified, type BioEvidence } from "@/lib/bio-check";
+import { bioSentence } from "@/lib/bio-variants";
+import { skoolLinkNeedle } from "@/lib/skool-link";
 import {
   getInboxSummary,
   getThreadMessages,
@@ -94,16 +100,93 @@ export function splitThread(messages: ThreadMessage[], now: Date): ThreadSplit {
 
 const FORM_EMAIL_RE = /email\s*:\s*([^\s,]+@[^\s,]+)/i;
 const FORM_PHONE_RE = /phone\s*number\s*:\s*(\+?[0-9][0-9 ()-]{6,20})/i;
+const FORM_NAME_RE = /first\s*name\s*:\s*([^\n]+)/i;
 
-export function formDetails(said: string[]): { email: string | null; phone: string | null } {
+/** The same hygiene the CRM backfill applies: cut at the first pipe (people
+ *  paste their whole Instagram bio into the name box), require a letter,
+ *  refuse greetings typed into the field, cap the length. */
+function usableFormName(raw: string): string | null {
+  const cut = raw.split("|")[0].trim().replace(/\s+/g, " ");
+  if (!cut || cut.length > 60) return null;
+  if (!/[a-z]/i.test(cut)) return null;
+  if (/^(hi|hello|hey|ok|okay|yes|no|sir|madam|ma'?am|test)$/i.test(cut)) return null;
+  return cut;
+}
+
+export function formDetails(said: string[]): {
+  email: string | null;
+  phone: string | null;
+  firstName: string | null;
+} {
   const text = said.join("\n");
   const email = (text.match(FORM_EMAIL_RE)?.[1] ?? "").trim().toLowerCase() || null;
   const raw = text.match(FORM_PHONE_RE)?.[1] ?? "";
   const digits = raw.replace(/[^\d+]/g, "");
+  const name = text.match(FORM_NAME_RE)?.[1];
   return {
     email,
     phone: digits.replace(/\D/g, "").length >= 8 ? digits : null,
+    firstName: name ? usableFormName(name) : null,
   };
+}
+
+/**
+ * The lead the intake door refused, created from the conversation itself.
+ *
+ * 08 Aug 2026, Ali: his form phone was "03107660436", no country code, so the
+ * sheet import refused the row (rightly: blindly prefixing "+" invents a
+ * foreign number). But he then MESSAGED US from his real number, which is the
+ * one fact the sheet never had. A person talking to us with a name and an
+ * email is a lead by any definition, and without the row he has no code, so
+ * every link he got was bare and his signup and video views tracked to nobody.
+ *
+ * Created stopped-for-nurture on purpose: they are mid-conversation, and the
+ * one-engine rule says the reply brain owns a live thread, never the drip.
+ */
+async function createLeadFromForm(
+  admin: ReturnType<typeof createAdminClient>,
+  phone: string,
+  said: string[],
+  lastInboundAt: string | null,
+): Promise<CreatorState["lead"]> {
+  const details = formDetails(said);
+  if (!details.email) return null;
+  const e164 = !unsendablePhone(phone)
+    ? phone
+    : details.phone?.startsWith("+")
+      ? details.phone
+      : null;
+  const nowIso = new Date().toISOString();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: inserted, error } = await (admin.from("signup_leads") as any)
+    .insert({
+      first_name: details.firstName ?? "",
+      last_name: "",
+      email: details.email,
+      whatsapp: e164 ?? details.phone ?? "",
+      whatsapp_e164: e164,
+      lane: "partner",
+      source: "fb_lead_form",
+      lane_locked_by: "fb_lead_form",
+      status: "captured",
+      captured_at: nowIso,
+      consent_source: "fb_lead_form",
+      consent_at: nowIso,
+      last_seen_at: nowIso,
+      engaged_at: lastInboundAt ?? nowIso,
+      nurture_state: "stopped",
+      nurture_stop_reason: "was already in conversation before import",
+    })
+    .select("id, first_name, whatsapp_opted_out_at, profile_id, whatsapp_e164")
+    .single();
+  if (error) {
+    // 23505: the row landed between our adopt attempt and now (sheet import
+    // racing us). Theirs is the truth; pick it up by the same details.
+    if (error.code === "23505") return adoptLeadByFormDetails(admin, phone, said);
+    console.error("[reply-runner] createLeadFromForm failed", error);
+    return null;
+  }
+  return inserted as CreatorState["lead"];
 }
 
 interface CreatorState {
@@ -302,6 +385,14 @@ export async function processWaitingThread(
       // lands the row and replies with the coded link. Blocked countries never
       // wait: their import is refused at the door, the row is not coming.
       return;
+    } else if (!creator.profile && !pitchBlockedForPhone(phone) && !opts.dry) {
+      // The import is NOT coming (grace expired, usually a form phone with no
+      // country code that the door rightly refused). The person is real and
+      // talking to us, so make the lead HERE, off the conversation, or they
+      // spend their whole journey codeless: bare links, anonymous video
+      // views, an unattributed signup and nothing scheduled to chase them.
+      const made = await createLeadFromForm(admin, phone, split.said, split.lastInboundAt);
+      if (made) creator = { ...creator, lead: made };
     }
   }
   if (creator.lead?.whatsapp_opted_out_at) {
@@ -332,9 +423,96 @@ export async function processWaitingThread(
   if (creator.lead && split.lastInboundAt) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (admin.from("signup_leads") as any)
-      .update({ engaged_at: split.lastInboundAt, last_seen_at: now.toISOString() })
+      .update({
+        engaged_at: split.lastInboundAt,
+        last_seen_at: now.toISOString(),
+        // They wrote last, so the pending chase is off: the ball is ours, and
+        // the reply we are about to send re-arms the countdown fresh.
+        chase_next_at: null,
+      })
       .eq("id", creator.lead.id)
       .or(`engaged_at.is.null,engaged_at.lt.${split.lastInboundAt}`);
+  }
+
+  // Whatever a creator pastes into WhatsApp gets WRITTEN DOWN. 08 Aug 2026:
+  // the machine said "paste it here and I will put it in for you", Abdul Latif
+  // pasted his Skool link, and nothing anywhere saved it. Save first, then let
+  // the brain answer off the state the save produced. Never overwrites a link
+  // that is already there: replacing the link that credits their sales is a
+  // human decision.
+  let justSavedLink = false;
+  const pastedLink = extractSkoolLink(split.said);
+  if (creator.profile && pastedLink && !creator.profile.skool_affiliate_url) {
+    if (opts.dry) {
+      justSavedLink = true;
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: saveErr } = await (admin.from("profiles") as any)
+        .update({ skool_affiliate_url: pastedLink })
+        .eq("id", creator.profile.id);
+      if (saveErr) {
+        report.errors.push(`${phone}: skool link save ${saveErr.message}`);
+      } else {
+        justSavedLink = true;
+        creator = await loadCreatorState(admin, phone, provider);
+      }
+    }
+  }
+
+  // When the bio is the open step, READ THEIR REAL INSTAGRAM before answering.
+  // "Done" from a creator and done on their profile are different facts, and
+  // only one of them starts the posting. A pass on the live read stamps the
+  // step and flips the account to onboarded; a fail gives the brain the exact
+  // missing half to talk about.
+  let bioEvidence: BioEvidence & { checked: boolean } = {
+    checked: false,
+    link: null,
+    sentence: null,
+  };
+  let justVerifiedBio = false;
+  if (
+    creator.profile &&
+    creator.openStep === "bio" &&
+    provider === "outstand" &&
+    creator.profile.skool_affiliate_url
+  ) {
+    const ig = await getOutstandInstagramData(creator.profile.id);
+    if (ig?.statsAvailable) {
+      const evidence = checkBio({
+        tag: skoolLinkNeedle(creator.profile.skool_affiliate_url)?.value ?? null,
+        sentence: bioSentence(creator.profile.bio_variant_index ?? 0),
+        biography: ig.biography,
+        website: ig.website,
+      });
+      bioEvidence = { checked: true, ...evidence };
+      if (!opts.dry) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (admin.from("profiles") as any)
+          .update({ bio_checked_at: now.toISOString() })
+          .eq("id", creator.profile.id);
+        if (bioVerified(evidence)) {
+          const profileId = creator.profile.id;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (admin.from("onboarding_progress") as any).upsert({
+            profile_id: profileId,
+            step: "bio",
+            first_seen_at: now.toISOString(),
+            completed_at: now.toISOString(),
+            updated_at: now.toISOString(),
+          });
+          justVerifiedBio = true;
+          creator = await loadCreatorState(admin, phone, provider);
+          if (creator.openStep === null) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (admin.from("profiles") as any)
+              .update({ onboarding_complete: true })
+              .eq("id", profileId);
+          }
+        }
+      } else if (bioVerified(evidence)) {
+        justVerifiedBio = true;
+      }
+    }
   }
 
   const ctx: ReplyContext = {
@@ -354,6 +532,11 @@ export async function processWaitingThread(
     // recruits people into work they cannot be paid for. Their questions are
     // still answered, they are simply never walked down the funnel.
     pitchBlocked: pitchBlockedForPhone(phone),
+    bioSentence: creator.profile ? bioSentence(creator.profile.bio_variant_index ?? 0) : null,
+    affiliateUrl: creator.profile?.skool_affiliate_url ?? (justSavedLink ? pastedLink : null),
+    justSavedLink,
+    bioEvidence,
+    justVerifiedBio,
   };
   let decision = decideReply(ctx);
   const isRefusal = decision.action === "human" && decision.reason.startsWith("refusal");
@@ -525,8 +708,23 @@ export async function processWaitingThread(
     .update({ status: res.ok ? "sent" : (res.blocked ?? "failed") })
     .eq("in_reply_to", split.lastInboundId)
     .eq("kind", "reply");
-  if (res.ok) report.replied++;
-  else report.errors.push(`${phone}: send ${res.blocked ?? res.error}`);
+  if (res.ok) {
+    report.replied++;
+    // An answered no-account lead now has a follow-up ON THE BOOKS. The chase
+    // engine recomputes from the thread anyway; this stamp is what the CRM
+    // inbox card counts down from, so "nothing scheduled" stops being the
+    // answer for a lead we just replied to.
+    if (creator.lead && !creator.profile && !ctx.pitchBlocked) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("signup_leads") as any)
+        .update({
+          chase_next_at: new Date(
+            now.getTime() + LEAD_CHASE_AFTER_HOURS * 3600_000,
+          ).toISOString(),
+        })
+        .eq("id", creator.lead.id);
+    }
+  } else report.errors.push(`${phone}: send ${res.blocked ?? res.error}`);
 }
 
 export interface ReplyRunReport {
@@ -537,6 +735,7 @@ export interface ReplyRunReport {
   refusals: number;
   silences: number;
   checkIns: number;
+  leadChases: number;
   claimed: number;
   errors: string[];
   /** Dry mode: what WOULD have happened, nothing written, nothing sent. */
@@ -555,6 +754,7 @@ export async function runReplyBrain(
     refusals: 0,
     silences: 0,
     checkIns: 0,
+    leadChases: 0,
     claimed: 0,
     errors: [],
     ...(opts.dry ? { dry: [] } : {}),
@@ -720,7 +920,187 @@ export async function runReplyBrain(
     }
   }
 
+  // ---- 3. Lead chases: answered leads with NO account who went quiet. ----
+  // The drip stops itself the moment a conversation exists (one engine per
+  // lead), and until 08 Aug 2026 nothing else ever chased these people:
+  // answered leads sat in the inbox wearing "NOTHING SCHEDULED" forever. One
+  // contextual free-form chase inside their 24h window, then the thread is
+  // handed BACK to the template drip, which owns the long tail.
+  await runLeadChases(admin, report, now, opts);
+
   return report;
+}
+
+const MAX_LEAD_CHASES_PER_RUN = 5;
+/** When the drip takes back over, its next template waits this long. Past the
+ *  24h live-thread guard in runNurture on purpose: 3h of quiet before the
+ *  chase plus this gap puts their last inbound out of the guard's window, so
+ *  the hand-back cannot be instantly re-stopped as "live conversation". */
+const DRIP_HANDBACK_HOURS = 22;
+
+async function runLeadChases(
+  admin: ReturnType<typeof createAdminClient>,
+  report: ReplyRunReport,
+  now: Date,
+  opts: { dry?: boolean } = {},
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: leads } = (await (admin.from("signup_leads") as any)
+    .select("*")
+    .is("profile_id", null)
+    .not("engaged_at", "is", null)
+    .is("whatsapp_opted_out_at", null)
+    .in("nurture_state", ["stopped", "exhausted"])
+    .gte("engaged_at", new Date(now.getTime() - 7 * 24 * 3600_000).toISOString())
+    .order("engaged_at", { ascending: false })
+    .limit(40)) as { data: SignupLead[] | null };
+
+  for (const lead of leads ?? []) {
+    if (report.leadChases >= MAX_LEAD_CHASES_PER_RUN) break;
+    const phone = lead.whatsapp_e164 ?? lead.whatsapp;
+    if (!phone || unsendablePhone(phone)) continue;
+    if (pitchBlockedForPhone(phone)) continue;
+    try {
+      if (!withinSendingHours(now, timezoneForPhone(phone))) continue;
+
+      const conv = await getThreadMessages(phone);
+      if (!conv.ok || !conv.messages || conv.do_not_text) continue;
+      const split = splitThread(conv.messages, now);
+      if (!split.lastOutboundAt || !split.lastInboundId) continue;
+
+      const { count: spellChases } = await admin
+        .from("funnel_replies")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", lead.id)
+        .eq("kind", "check_in")
+        .like("key", `leadchase%:${split.lastInboundId}`);
+
+      const decision = decideLeadChase({
+        hoursSinceWeWrote:
+          (now.getTime() - Date.parse(split.lastOutboundAt)) / 3600_000,
+        repliedSinceWeWrote: split.repliedSinceWeWrote,
+        windowOpen: split.windowOpen,
+        chasesThisSpell: spellChases ?? 0,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        chaseCount: (lead as any).chase_count ?? 0,
+        sentVideo: split.alreadySent.some((b) => b.includes("/watch")),
+        sentSignup: split.alreadySent.some((b) => b.includes("/signup")),
+        firstName: lead.first_name,
+        watchCode: lead.id.slice(0, 6),
+      });
+
+      if (decision.action === "wait") {
+        // Keep the countdown honest for the inbox card: the chase that IS
+        // coming, stamped where the CRM reads it.
+        if (!opts.dry && decision.dueInHours !== undefined) {
+          const due = new Date(
+            Date.parse(split.lastOutboundAt) + LEAD_CHASE_AFTER_HOURS * 3600_000,
+          ).toISOString();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((lead as any).chase_next_at !== due) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (admin.from("signup_leads") as any)
+              .update({ chase_next_at: due })
+              .eq("id", lead.id);
+          }
+        }
+        continue;
+      }
+
+      if (decision.action === "stop") {
+        if (!opts.dry) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (admin.from("signup_leads") as any)
+            .update({ chase_next_at: null })
+            .eq("id", lead.id);
+        }
+        continue;
+      }
+
+      if (decision.action === "hand_to_drip") {
+        if (!opts.dry) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (admin.from("signup_leads") as any)
+            .update({
+              chase_next_at: null,
+              nurture_state: "active",
+              // Never step 0: the welcome is for strangers, this person has
+              // been talked to. Step 1 is "finish your signup", which is
+              // exactly where an answered no-account lead is stuck.
+              nurture_step: Math.max(lead.nurture_step ?? 0, 1),
+              nurture_next_at: new Date(
+                now.getTime() + DRIP_HANDBACK_HOURS * 3600_000,
+              ).toISOString(),
+              nurture_stop_reason: null,
+            })
+            .eq("id", lead.id);
+        }
+        continue;
+      }
+
+      // send
+      if (opts.dry) {
+        report.dry!.push({
+          phone,
+          action: "lead_chase",
+          key: decision.key,
+          reason: decision.reason,
+          text: decision.text,
+        });
+        continue;
+      }
+      // Claim first: one chase per rung per quiet spell, the unique index on
+      // (lead_id, key) makes overlapping runs collide instead of double-send.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: claimErr } = await (admin.from("funnel_replies") as any).insert({
+        phone,
+        lead_id: lead.id,
+        kind: "check_in",
+        key: `leadchase1:${split.lastInboundId}`,
+        body: decision.text,
+        reason: decision.reason,
+        status: "pending",
+      });
+      if (claimErr) {
+        if (claimErr.code !== "23505") {
+          report.errors.push(`${phone}: leadchase claim ${claimErr.code}`);
+        }
+        continue;
+      }
+      const res = await sendPartnerWhatsApp({
+        to: phone,
+        firstName: lead.first_name || "",
+        body: decision.text,
+        externalId: `leadchase:${lead.id}:${split.lastInboundId}`,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("funnel_replies") as any)
+        .update({ status: res.ok ? "sent" : (res.blocked ?? "failed") })
+        .eq("lead_id", lead.id)
+        .eq("kind", "check_in")
+        .eq("key", `leadchase1:${split.lastInboundId}`);
+      if (res.ok) {
+        report.leadChases++;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (admin.from("signup_leads") as any)
+          .update({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            chase_count: ((lead as any).chase_count ?? 0) + 1,
+            // The next thing on the books is the drip's template, and the
+            // hand-back branch above will arm it on the next pass; until
+            // then the card counts down to that same moment.
+            chase_next_at: new Date(
+              now.getTime() + DRIP_HANDBACK_HOURS * 3600_000,
+            ).toISOString(),
+          })
+          .eq("id", lead.id);
+      } else {
+        report.errors.push(`${phone}: leadchase send ${res.blocked ?? res.error}`);
+      }
+    } catch (e) {
+      report.errors.push(`${phone}: ${e instanceof Error ? e.message : "unknown"}`);
+    }
+  }
 }
 
 // ------------------------------------------------------------------
@@ -792,6 +1172,7 @@ export async function runTriggeredReply(
     refusals: 0,
     silences: 0,
     checkIns: 0,
+    leadChases: 0,
     claimed: 0,
     errors: [],
   };

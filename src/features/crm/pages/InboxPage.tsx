@@ -565,7 +565,7 @@ export default function InboxPage() {
             lastInboundAt: r.lastInboundAt,
             lastOutboundAt: r.lastOutboundAt,
             checkInsThisStep: 0,
-            checkInsLive: false,
+            checkInsLive: true,
           });
           if (next.kind === 'stopped') {
             followUp = { label: 'no more follow-ups', tone: 'stopped', title: next.detail };

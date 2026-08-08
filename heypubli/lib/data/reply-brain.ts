@@ -1,5 +1,6 @@
 import { ONBOARDING_STEPS } from "@/lib/data/onboarding";
 import { COMMISSION_RATE } from "@/lib/earnings";
+import { cleanSkoolAffiliateUrl } from "@/lib/skool-link";
 import type { OnboardingStepId } from "@/types/database";
 
 /**
@@ -38,6 +39,28 @@ export interface ReplyContext {
   firstName?: string | null;
   /** Their per-lead code for heypubli.com/watch?u=CODE */
   watchCode?: string | null;
+  /**
+   * The creator's own bio sentence and saved affiliate link, so the bio
+   * instructions can be copied straight out of the chat instead of sending
+   * them back to a page. Null when not allocated / not saved yet.
+   */
+  bioSentence?: string | null;
+  affiliateUrl?: string | null;
+  /**
+   * A skool.com link they pasted into the chat, already validated by the
+   * runner, which SAVED it to their profile before calling this. 08 Aug 2026:
+   * the machine said "paste it here and I will put it in for you" and nothing
+   * anywhere put it in. Whatever a creator pastes must be written down.
+   */
+  justSavedLink?: boolean;
+  /**
+   * The live read of their real Instagram, when the runner made one. This is
+   * what stops "all five steps are done and your link is live" being said to
+   * a creator whose actual profile is empty (Abdul Latif, 08 Aug 2026).
+   */
+  bioEvidence?: { checked: boolean; link: boolean | null; sentence: boolean | null };
+  /** The runner verified the bio live in THIS pass: congratulate even on "ok". */
+  justVerifiedBio?: boolean;
   /**
    * True when this lead cannot currently be paid, so we do not recruit them.
    *
@@ -130,6 +153,9 @@ export const STEP_IMAGE_SETS: Partial<Record<OnboardingStepId, string[]>> = {
   community: ["/guide/step2-1-find-the-email.jpg", "/guide/step2-2-join-now.jpg"],
   affiliate: ["/guide/step3-1-invite-people.jpg", "/guide/step3-2-copy-your-link.jpg"],
   photo: ["/guide/step4-1-edit-profile.jpg", "/guide/step4-2-done.jpg"],
+  // The bio instructions travel with both Edit profile shots: one to find the
+  // screen, one showing the finished profile with the sentence and link in.
+  bio: ["/guide/step4-1-edit-profile.jpg", "/guide/step4-2-done.jpg"],
 };
 // ------------------------------------------------------------------
 // Reading what they wrote
@@ -334,6 +360,28 @@ const YES =
 const WHAT =
   /\b(details?|how\s+(does|do|it)|what\s+is\s+(this|it)|explain|tell\s+me|more\s+info|what\s+work|what\s+kind|what\s+now|what'?s\s+next|next\s+process|next\s+step)\b/i;
 
+/**
+ * A skool.com link pasted into the chat. We ASK for this ("paste it here and I
+ * will put it in for you"), so finding one is the single most actionable
+ * message a mid-onboarding creator can send. The runner validates it with
+ * cleanSkoolAffiliateUrl and saves it to their profile; this only finds it.
+ */
+// The lookbehind keeps "notskool.com" and "skool.com.evil.test/skool.com/x"
+// prefixes from matching as if they were the real host.
+const SKOOL_URL = /(?<![\w.-])(?:https?:\/\/)?(?:www\.)?skool\.com\/\S+/i;
+
+/** The first valid Skool link anywhere in what they said, cleaned, or null. */
+export function extractSkoolLink(said: string[]): string | null {
+  for (const s of said) {
+    const m = (s || "").match(SKOOL_URL);
+    if (!m) continue;
+    // Strip trailing punctuation a sentence glues on ("...about?ref=x." )
+    const cleaned = cleanSkoolAffiliateUrl(m[0].replace(/[).,;!?]+$/, ""));
+    if (cleaned) return cleaned;
+  }
+  return null;
+}
+
 // Demands for followers: "give me 500 followers", "how many followers can you
 // give me for free", "can you give me free followers". The word alone is not
 // enough (a lead may ASK about followers legitimately); it must pair with
@@ -350,6 +398,28 @@ interface Vars {
   /** "Sam, " or "" */
   hi: string;
   code: string;
+  /** Their own bio sentence, ready to copy. "" when not allocated. */
+  sentence: string;
+  /** Their saved affiliate link. "" when not saved yet. */
+  link: string;
+}
+
+/**
+ * The bio instructions as one block, used by several replies. When we hold
+ * their sentence and their link the message IS the work: copy from the chat,
+ * paste into Instagram, no page visit needed. When we do not, point at the
+ * page that has them.
+ */
+function bioSteps(v: Vars): string {
+  if (v.sentence && v.link) {
+    return (
+      `Open Instagram, tap Edit profile, and do two things.\n\n` +
+      `1. Paste this in your Bio box:\n${v.sentence}\n\n` +
+      `2. Add this link in the Links row and make it the FIRST link:\n${v.link}\n\n` +
+      `Tell me when it is in and I will check your profile and confirm.`
+    );
+  }
+  return `Your sentence and your link are ready to copy at heypubli.com/onboarding. They go in your Instagram bio, under Edit profile. Tell me when it is in and I will check your profile and confirm.`;
 }
 
 const REPLIES: Record<string, (v: Vars) => string> = {
@@ -396,8 +466,29 @@ const REPLIES: Record<string, (v: Vars) => string> = {
   // --- has an account ---
   already_have_account: ({ hi }) =>
     `${hi}your account is already made, so there is nothing to sign up for. Go straight to heypubli.com/onboarding and it carries on where you stopped.\n\nIf that page is what is stopping you, send me a screenshot of it and I will tell you exactly what to tap.`,
+  // Only reachable when the bio step is genuinely done, which since 08 Aug
+  // 2026 means a live read of their real Instagram found the sentence and the
+  // link. Abdul Latif was told this over a completely empty profile because
+  // "done" used to include a self-declared tick.
   all_done: ({ hi }) =>
-    `${hi}nothing at all, you are set up. All five steps are done and your link is live on your page.\n\nYour videos start going out from here. I will let you know when the first one lands.`,
+    `${hi}nothing at all, you are set up. All five steps are done, your sentence and your link are in your Instagram bio.\n\nYour videos start going out from here. I will let you know when the first one lands.`,
+
+  // --- the pasted Skool link, saved. What happens next depends on the step
+  // --- that is open now, so the runner picks one of these three.
+  link_saved_bio_next: (v) =>
+    `${v.hi}got it, your link is saved.\n\nLast step, two minutes. ${bioSteps(v)}`,
+  link_saved_photo_next: ({ hi }) =>
+    `${hi}got it, your link is saved.\n\nNext: a clear profile photo on your Instagram, under Edit profile. Add it, tick the step at heypubli.com/onboarding, and then the last step is your bio.`,
+  link_saved_generic: ({ hi }) =>
+    `${hi}got it, your link is saved. Carry on at heypubli.com/onboarding, it shows you the next step.`,
+
+  // --- the live Instagram read said no. Say exactly which half is missing.
+  bio_missing_both: (v) =>
+    `${v.hi}I just checked your Instagram and the sentence and the link are not on your profile yet.\n\n${bioSteps(v)}`,
+  bio_missing_link: (v) =>
+    `${v.hi}I checked your Instagram. The sentence is in, nice. The link is not showing yet.\n\nAdd it under Edit profile, then Links, and make it the FIRST link in the list:\n${v.link || "your link is at heypubli.com/onboarding"}\n\nTell me when it is in and I will check again.`,
+  bio_missing_sentence: (v) =>
+    `${v.hi}I checked your Instagram. Your link is in. The sentence is not in your Bio box yet.\n\nPaste this exactly as it is:\n${v.sentence || "it is ready to copy at heypubli.com/onboarding"}\n\nTell me when it is done and I will check again.`,
 
   // --- the five steps, plain ---
   step_instagram: ({ hi }) =>
@@ -414,8 +505,7 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${hi}next step is your own link.\n\nOpen skool.com/ai-influencer-flywheel-5612/about, tap the three dots at the top right or Settings, then Invite people, then COPY.\n\nPaste it here and I will put it in for you.`,
   step_photo: ({ hi }) =>
     `${hi}next step is a clear profile photo on your Instagram. Add it under Edit profile, then tick the step at heypubli.com/onboarding.`,
-  step_bio: ({ hi }) =>
-    `${hi}last step. Copy the sentence and your link from heypubli.com/onboarding into your Instagram bio, under Edit profile, then Links.`,
+  step_bio: (v) => `${v.hi}last step. ${bioSteps(v)}`,
 
   // --- the five steps, when they say it is not working ---
   // The move that unsticks people is to stop explaining and take the job off
@@ -432,14 +522,26 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${hi}send me the link and I will put it in for you.\n\nTo find it: open skool.com/ai-influencer-flywheel-5612/about, tap the three dots at the top right or Settings, then Invite people, then COPY. Paste whatever it gives you straight into this chat.`,
   stuck_photo: ({ hi }) =>
     `${hi}send me a screenshot of your Instagram profile and I will tell you what is missing.\n\nIt is Edit profile in the Instagram app, then tap your picture to change it.`,
-  stuck_bio: ({ hi }) =>
-    `${hi}send me a screenshot of your Edit profile screen and I will tell you where it goes.\n\nThe sentence and the link are both ready to copy at heypubli.com/onboarding.`,
+  stuck_bio: (v) =>
+    `${v.hi}send me a screenshot of your Edit profile screen and I will tell you where it goes.\n\n${bioSteps(v)}`,
 
   // --- checking back on somebody who went quiet mid-step ---
   check_in_1: ({ hi }) =>
     `${hi}is everything ok? If you got stuck anywhere, just tell me what you can see on the screen and I will sort it.`,
   check_in_2: ({ hi }) =>
     `${hi}just checking again, I saw you stopped partway. Tell me where you got to and I will finish it with you, or send a screenshot and I will point at exactly what to tap. I am here to help.`,
+
+  // --- chasing an answered lead who has NO account yet and went quiet.
+  // 08 Aug 2026: the drip stops the moment a conversation starts (one engine
+  // per lead), which left every answered no-account lead with NOTHING
+  // scheduled, ever. Hugo: "everyone deserves a follow-up." What we chase
+  // with depends on what they already have.
+  chase_watch: ({ hi, code }) =>
+    `${hi}did you get a moment to watch it? It is 90 seconds: heypubli.com/watch?u=${code}\n\nTell me when you have seen it and I will get you set up.`,
+  chase_signup: ({ hi, code }) =>
+    `${hi}your account is still one minute away: heypubli.com/signup${code ? `?u=${code}` : ""}\n\nMake it and tell me when you are in, I will walk you through the rest.`,
+  chase_hello: ({ hi }) =>
+    `${hi}is everything ok? If anything was unclear, ask me here, I answer everything. When you are ready I will get you set up, it takes a minute.`,
 };
 
 const STUCK_KEY: Record<OnboardingStepId, string> = {
@@ -470,7 +572,12 @@ function nameOf(first: string | null | undefined): string {
 }
 
 function render(key: string, ctx: ReplyContext): string {
-  return REPLIES[key]({ hi: nameOf(ctx.firstName), code: ctx.watchCode || "" });
+  return REPLIES[key]({
+    hi: nameOf(ctx.firstName),
+    code: ctx.watchCode || "",
+    sentence: ctx.bioSentence || "",
+    link: ctx.affiliateUrl || "",
+  });
 }
 
 /**
@@ -571,6 +678,49 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
   const onlyAck = said.every((s) => ACK.test(s));
 
   if (ctx.hasAccount) {
+    // A pasted Skool link the runner just SAVED outranks everything else in
+    // the same breath, including the ack check: "My link" plus the URL is not
+    // chit-chat, it is the step being completed in front of us. Answer with
+    // what happens next, which depends on the step that is open NOW.
+    if (ctx.justSavedLink && openStep !== null) {
+      if (openStep === "bio") {
+        return {
+          action: "send",
+          key: "link_saved_bio_next",
+          text: render("link_saved_bio_next", ctx),
+          reason: "saved their pasted skool link, bio instructions next",
+          ...imagesFor("bio"),
+        };
+      }
+      if (openStep === "photo") {
+        return {
+          action: "send",
+          key: "link_saved_photo_next",
+          text: render("link_saved_photo_next", ctx),
+          reason: "saved their pasted skool link, photo step next",
+          ...imagesFor("photo"),
+        };
+      }
+      return {
+        action: "send",
+        key: "link_saved_generic",
+        text: render("link_saved_generic", ctx),
+        reason: "saved their pasted skool link",
+      };
+    }
+
+    // The runner read their real Instagram this pass and found the sentence
+    // and the link. Congratulate even if all they wrote was "ok": the check
+    // happening at all means they were told we would look.
+    if (ctx.justVerifiedBio) {
+      return {
+        action: "send",
+        key: "all_done",
+        text: render("all_done", ctx),
+        reason: "bio verified live on their Instagram this pass",
+      };
+    }
+
     // They are already being guided. An "ok" is an acknowledgement, and
     // repeating the step at somebody who just said ok is how you look like a
     // robot.
@@ -594,6 +744,28 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
         key: "already_have_account",
         text: render("already_have_account", ctx),
         reason: "has an account but is trying to sign up again",
+      };
+    }
+    // On the bio step with a fresh live read in hand, the generic step text is
+    // a worse answer than the truth: say exactly which half is missing. This
+    // is what "check their IG to make sure" looks like in a reply. Anything
+    // they write here that survived the question rules above ("done", "added
+    // it", "check now", another paste of their link) is them reporting on the
+    // step, so the precise state of their real profile IS the answer.
+    if (openStep === "bio" && ctx.bioEvidence?.checked) {
+      const ev = ctx.bioEvidence;
+      const key =
+        ev.sentence && !ev.link
+          ? "bio_missing_link"
+          : ev.link && !ev.sentence
+            ? "bio_missing_sentence"
+            : "bio_missing_both";
+      return {
+        action: "send",
+        key,
+        text: render(key, ctx),
+        reason: `bio checked live, ${key.replace(/_/g, " ")}`,
+        ...imagesFor("bio"),
       };
     }
     if (STUCK.test(text)) {
@@ -748,8 +920,80 @@ export function decideCheckIn(ctx: CheckInContext): CheckInDecision {
   return {
     action: "send",
     key,
-    text: REPLIES[key]({ hi: nameOf(ctx.firstName), code: "" }),
+    text: REPLIES[key]({ hi: nameOf(ctx.firstName), code: "", sentence: "", link: "" }),
     reason: `quiet ${Math.round(ctx.minutesSinceWeWrote)} minutes on ${ctx.openStep}`,
+  };
+}
+
+// ------------------------------------------------------------------
+// Chasing an answered lead with no account. The 15/90 check-ins above are
+// for creators mid-onboarding; these are for the people BEFORE the account:
+// we answered, they went quiet, and the drip is stopped because the
+// conversation exists. One contextual free-form chase while their 24h window
+// is open, then the thread is handed back to the template drip, so the two
+// engines stay one voice and nobody is left with "nothing scheduled".
+// ------------------------------------------------------------------
+
+/** Quiet hours before the free-form chase. Short: the window is only 24h. */
+export const LEAD_CHASE_AFTER_HOURS = 3;
+/** Lifetime free-form chases per lead, across every quiet spell. */
+export const LEAD_CHASE_LIFETIME_CAP = 6;
+
+export interface LeadChaseContext {
+  hoursSinceWeWrote: number;
+  /** They wrote after our last message: the reply engine owns this thread. */
+  repliedSinceWeWrote: boolean;
+  /** Their 24h free-form window is still open. */
+  windowOpen: boolean;
+  /** Chases already sent since THEIR newest message (this quiet spell). */
+  chasesThisSpell: number;
+  /** Lifetime chase_count from the lead row. */
+  chaseCount: number;
+  sentVideo: boolean;
+  sentSignup: boolean;
+  firstName?: string | null;
+  watchCode?: string | null;
+}
+
+export type LeadChaseDecision =
+  | { action: "send"; key: string; text: string; reason: string }
+  | { action: "wait"; reason: string; dueInHours?: number }
+  | { action: "hand_to_drip"; reason: string }
+  | { action: "stop"; reason: string };
+
+export function decideLeadChase(ctx: LeadChaseContext): LeadChaseDecision {
+  if (ctx.repliedSinceWeWrote) {
+    return { action: "wait", reason: "they wrote last, the reply engine owns it" };
+  }
+  if (ctx.chaseCount >= LEAD_CHASE_LIFETIME_CAP) {
+    return { action: "stop", reason: "lifetime chase cap spent" };
+  }
+  if (ctx.chasesThisSpell >= 1) {
+    // One free-form chase per quiet spell, then the templates take over.
+    // Two unanswered messages in a row is the ceiling (Discipline X rule).
+    return { action: "hand_to_drip", reason: "chase sent this spell, drip takes over" };
+  }
+  if (!ctx.windowOpen) {
+    return { action: "hand_to_drip", reason: "24h window shut, only a template can reach them" };
+  }
+  if (ctx.hoursSinceWeWrote < LEAD_CHASE_AFTER_HOURS) {
+    return {
+      action: "wait",
+      reason: `${(LEAD_CHASE_AFTER_HOURS - ctx.hoursSinceWeWrote).toFixed(1)}h early`,
+      dueInHours: LEAD_CHASE_AFTER_HOURS - ctx.hoursSinceWeWrote,
+    };
+  }
+  const key = ctx.sentSignup ? "chase_signup" : ctx.sentVideo ? "chase_watch" : "chase_hello";
+  return {
+    action: "send",
+    key,
+    text: REPLIES[key]({
+      hi: nameOf(ctx.firstName),
+      code: ctx.watchCode || "",
+      sentence: "",
+      link: "",
+    }),
+    reason: `quiet ${Math.round(ctx.hoursSinceWeWrote)}h with no account, ${key}`,
   };
 }
 
@@ -769,7 +1013,14 @@ export function replyBrainSelfCheck(): Array<{
   punctuation: boolean;
   length: number;
 }> {
-  const v: Vars = { hi: "Sam, ", code: "1234" };
+  const v: Vars = {
+    hi: "Sam, ",
+    code: "1234",
+    // Realistic samples so the house rules are measured on what really goes
+    // out. The sentence corpus itself is money-word-free by its own test.
+    sentence: "AI made every clip on this page. The link below shows the tool.",
+    link: "https://www.skool.com/ai-influencer-flywheel-5612/about?ref=abc123",
+  };
   return Object.entries(REPLIES).map(([key, fn]) => {
     const text = fn(v);
     return {

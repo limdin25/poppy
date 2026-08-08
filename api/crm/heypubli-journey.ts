@@ -172,7 +172,7 @@ export default async function handler(req: Request): Promise<Response> {
   // phone with only a lead row still gets an answer.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: chaseLeads } = await (hp.from('signup_leads') as any)
-    .select('whatsapp, whatsapp_e164, profile_id, nurture_state, nurture_next_at, nurture_stop_reason, whatsapp_opted_out_at')
+    .select('whatsapp, whatsapp_e164, profile_id, nurture_state, nurture_next_at, nurture_stop_reason, whatsapp_opted_out_at, chase_next_at, chase_count')
     .or(
       [...allowed]
         .flatMap((d) => [
@@ -193,15 +193,24 @@ export default async function handler(req: Request): Promise<Response> {
     nurture_next_at: string | null;
     nurture_stop_reason: string | null;
     whatsapp_opted_out_at: string | null;
+    chase_next_at: string | null;
+    chase_count: number | null;
   }>) {
     let row: ChaseRow;
     if (l.whatsapp_opted_out_at) row = { kind: 'stopped', at: null, reason: 'they opted out' };
     else if (l.nurture_state === 'blocked')
       row = { kind: 'stopped', at: null, reason: l.nurture_stop_reason ?? 'refused' };
-    else if (l.nurture_state === 'exhausted')
-      row = { kind: 'stopped', at: null, reason: 'every automatic follow-up went out, no reply' };
     else if (l.nurture_state === 'active' && l.nurture_next_at)
       row = { kind: 'drip', at: l.nurture_next_at, reason: null };
+    // The reply brain's own chase for answered no-account leads (08 Aug
+    // 2026). Stamped by heypubli's reply-runner; read BEFORE the exhausted
+    // verdict because a lead who replied after exhausting the drip is back
+    // in a conversation and IS being chased again.
+    else if (l.chase_next_at) row = { kind: 'drip', at: l.chase_next_at, reason: null };
+    else if (l.nurture_state === 'exhausted')
+      row = { kind: 'stopped', at: null, reason: 'every automatic follow-up went out, no reply' };
+    else if ((l.chase_count ?? 0) > 0 && l.nurture_state === 'stopped' && !l.nurture_next_at)
+      row = { kind: 'none', at: null, reason: 'chased, waiting on them' };
     else row = { kind: 'none', at: null, reason: l.nurture_stop_reason };
     for (const p of [l.whatsapp_e164, l.whatsapp]) {
       const k = phoneKey(p);

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getInstagramProfile } from "@/lib/integrations/instagram";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { isCommunityMember } from "@/lib/data/community";
-import { hasLinkInBio } from "@/lib/bio-check";
+import { checkBio, bioVerified } from "@/lib/bio-check";
 import { skoolLinkNeedle } from "@/lib/skool-link";
 import { bioSentence } from "@/lib/bio-variants";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
@@ -53,8 +53,11 @@ export interface BrochureData {
     sentence: string;
     /** What we searched their bio for, and how strong that evidence is. */
     needleKind: "referral" | "community" | null;
-    /** Set when they told us themselves, because we could not look. */
+    /** Their claim that it is in. A claim we record, never a completion. */
     declaredAt: string | null;
+    /** What the live read actually found. Null when we could not judge. */
+    linkFound: boolean | null;
+    sentenceFound: boolean | null;
   };
 
   doneCount: number;
@@ -191,23 +194,39 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
   const affiliateUrl = profile.skool_affiliate_url ?? null;
   const needle = skoolLinkNeedle(affiliateUrl);
 
-  // Step 4 in full. Read the order carefully: every "we cannot check" branch is
-  // taken BEFORE the one that would say "missing", so the only way to be told
-  // the link is not there is for us to have genuinely read a bio without it.
+  // Step 5 in full. Two rules, in this order:
+  //
+  //   1. Every "we cannot check" branch is taken BEFORE the one that would say
+  //      "missing", so the only way to be told the link is not there is for us
+  //      to have genuinely read a bio without it.
+  //   2. A declaration NEVER completes the step while we can read the profile.
+  //      08 Aug 2026: a creator ticked "It is there" over a completely empty
+  //      Instagram and the machine told him his link was live. Their word only
+  //      stands in when our eyes genuinely fail (provider down, no tag to
+  //      search for), because punishing them for our outage is worse.
+  const sentence = bioSentence(variantIndex);
   let bioState: StepState;
-  if (profile.bio_link_declared_at) {
-    bioState = "done";
-  } else if (!ig.connected || !affiliateUrl) {
+  let linkFound: boolean | null = null;
+  let sentenceFound: boolean | null = null;
+  if (!ig.connected || !affiliateUrl) {
     bioState = "blocked";
   } else if (!ig.textAvailable) {
-    bioState = "unknown";
+    bioState = profile.bio_link_declared_at ? "done" : "unknown";
   } else {
-    const found = hasLinkInBio({
+    const evidence = checkBio({
       tag: needle?.value ?? null,
+      sentence,
       biography: ig.biography,
       website: ig.website,
     });
-    bioState = found === null ? "unknown" : found ? "done" : "waiting";
+    linkFound = evidence.link;
+    sentenceFound = evidence.sentence;
+    if (evidence.link === null) {
+      // No needle derivable from their link: nothing to search for.
+      bioState = profile.bio_link_declared_at ? "done" : "unknown";
+    } else {
+      bioState = bioVerified(evidence) ? "done" : "waiting";
+    }
   }
 
   const instagramState: StepState = ig.connected
@@ -244,9 +263,11 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
     affiliate: { state: affiliateState, url: affiliateUrl },
     bio: {
       state: bioState,
-      sentence: bioSentence(variantIndex),
+      sentence,
       needleKind: needle?.kind ?? null,
       declaredAt: profile.bio_link_declared_at ?? null,
+      linkFound,
+      sentenceFound,
     },
     doneCount,
   };

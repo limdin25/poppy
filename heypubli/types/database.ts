@@ -44,8 +44,10 @@ export interface Profile {
   profile_ready_at: string | null;
   /** Which bio sentence they were given at /brochure step 4. Allocated once, then frozen. */
   bio_variant_index: number | null;
-  /** They said the link is in their bio, offered only when we could not read it ourselves. */
+  /** They said the link is in their bio. A recorded claim, never a completion. */
   bio_link_declared_at: string | null;
+  /** When the tick or reply-runner last read their real Instagram for the bio check. */
+  bio_checked_at: string | null;
   /** They said they joined the community. Self-declared because Skool cannot tell us. */
   community_joined_declared_at: string | null;
   /** They said their profile photo is in place. Self-declared, no API can judge a photo. */
@@ -259,6 +261,10 @@ export interface SignupLead {
   nurture_next_at: string | null;
   nurture_last_sent_at: string | null;
   nurture_stop_reason: string | null;
+  /** The reply brain's chase for answered no-account leads: when the next one is due. */
+  chase_next_at: string | null;
+  /** Lifetime free-form chases sent to this lead. */
+  chase_count: number;
   whatsapp_opted_out_at: string | null;
   whatsapp_undeliverable_code: string | null;
   approval_state: ApprovalState;
