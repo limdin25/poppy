@@ -804,7 +804,7 @@ describe("the LLM is given the lead's own watch link", () => {
 import {
   extractSkoolLink,
   decideLeadChase,
-  LEAD_CHASE_AFTER_HOURS,
+  LEAD_CHASE_RUNG_MINUTES,
   type LeadChaseContext,
 } from "./reply-brain";
 
@@ -906,8 +906,12 @@ describe("the live bio read decides what we say, never their word", () => {
 });
 
 describe("chasing an answered lead with no account", () => {
+  // Hugo, 08 Aug 2026: "one after ten minutes, another one after thirty
+  // minutes, then another one around six hours and then another one like
+  // twenty-three hours. So that means four follow-ups." All measured from
+  // THEIR last message, all inside the free 24h window it opened.
   const chase = (over: Partial<LeadChaseContext> = {}): LeadChaseContext => ({
-    hoursSinceWeWrote: 4,
+    minutesSinceTheirMessage: 15,
     repliedSinceWeWrote: false,
     windowOpen: true,
     chasesThisSpell: 0,
@@ -920,10 +924,11 @@ describe("chasing an answered lead with no account", () => {
   });
 
   it("waits while they are fresh, then chases with the thing they already have", () => {
-    expect(decideLeadChase(chase({ hoursSinceWeWrote: 1 })).action).toBe("wait");
+    expect(decideLeadChase(chase({ minutesSinceTheirMessage: 5 })).action).toBe("wait");
     const d = decideLeadChase(chase());
     expect(d.action).toBe("send");
     if (d.action !== "send") return;
+    expect(d.rung).toBe(1);
     expect(d.key).toBe("chase_watch");
     expect(d.text).toContain("watch?u=98ec42");
   });
@@ -935,23 +940,74 @@ describe("chasing an answered lead with no account", () => {
     expect(d.text).toContain("signup?u=98ec42");
   });
 
-  it("never talks over them, and hands to the drip after one chase or a shut window", () => {
+  it("four rungs at 10min, 30min, 6h and 23h, each with its own words", () => {
+    expect(LEAD_CHASE_RUNG_MINUTES).toEqual([10, 30, 360, 1380]);
+    const rung2 = decideLeadChase(chase({ chasesThisSpell: 1, minutesSinceTheirMessage: 31 }));
+    if (rung2.action !== "send") throw new Error("expected send");
+    expect(rung2.key).toBe("chase_second");
+    expect(
+      decideLeadChase(chase({ chasesThisSpell: 2, minutesSinceTheirMessage: 100 })).action,
+    ).toBe("wait");
+    const rung3 = decideLeadChase(chase({ chasesThisSpell: 2, minutesSinceTheirMessage: 361 }));
+    if (rung3.action !== "send") throw new Error("expected send");
+    expect(rung3.key).toBe("chase_third");
+    const rung4 = decideLeadChase(chase({ chasesThisSpell: 3, minutesSinceTheirMessage: 1381 }));
+    if (rung4.action !== "send") throw new Error("expected send");
+    expect(rung4.key).toBe("chase_final");
+    expect(rung4.text).toMatch(/last check/i);
+  });
+
+  it("the whole ladder fits inside the 24h window their message opened", () => {
+    for (const m of LEAD_CHASE_RUNG_MINUTES) expect(m).toBeLessThan(24 * 60);
+  });
+
+  it("never talks over them, stops after four, and only templates reach a shut window", () => {
     expect(decideLeadChase(chase({ repliedSinceWeWrote: true })).action).toBe("wait");
-    expect(decideLeadChase(chase({ chasesThisSpell: 1 })).action).toBe("hand_to_drip");
+    expect(decideLeadChase(chase({ chasesThisSpell: 4 })).action).toBe("stop");
     expect(decideLeadChase(chase({ windowOpen: false })).action).toBe("hand_to_drip");
-    expect(decideLeadChase(chase({ chaseCount: 6 })).action).toBe("stop");
+    expect(decideLeadChase(chase({ chaseCount: 8 })).action).toBe("stop");
   });
 
   it("the chase copy passes the same house rules as every reply", () => {
     const rows = replyBrainSelfCheck().filter((r) => r.key.startsWith("chase_"));
-    expect(rows.length).toBeGreaterThanOrEqual(3);
+    expect(rows.length).toBeGreaterThanOrEqual(5);
     for (const r of rows) {
       expect(r.punctuation, r.key).toBe(false);
       expect(r.money, r.key).toBe(false);
     }
   });
+});
 
-  it(`the first chase waits ${LEAD_CHASE_AFTER_HOURS} hours, inside the 24h window`, () => {
-    expect(LEAD_CHASE_AFTER_HOURS).toBeLessThan(24);
+describe("questions the brain must never hand over", () => {
+  it("answers the Instagram category question at ANY stage: Personal blog", () => {
+    // Ayji, 08 Aug 2026, no linked account, sat in NEEDS YOU for an hour over
+    // a question whose answer has been in this file since day one.
+    for (const account of [false, true]) {
+      const d = decideReply(
+        ctx({
+          hasAccount: account,
+          stepsDone: account ? ["instagram"] : [],
+          said: ["What category do i choose upon switching my ig account to creator", "Artist, product/service etc?"],
+        }),
+      );
+      expect(d.action).toBe("send");
+      if (d.action !== "send") return;
+      expect(d.key).toBe("ig_category");
+      expect(d.text).toContain("Personal blog");
+    }
+  });
+
+  it("signup link trouble gets help and the coded link again, not a handover", () => {
+    const d = decideReply(
+      ctx({
+        said: ["Help i can't sign up in that link"],
+        alreadySent: ["make your account here: heypubli.com/signup?u=6aa746"],
+      }),
+    );
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("stuck_signup");
+    expect(d.text).toContain("heypubli.com/signup?u=1234");
+    expect(d.text).toMatch(/screenshot/i);
   });
 });

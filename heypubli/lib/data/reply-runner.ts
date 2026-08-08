@@ -4,13 +4,13 @@ import {
   decideReply,
   extractSkoolLink,
   pitchBlockedForPhone,
-  LEAD_CHASE_AFTER_HOURS,
+  LEAD_CHASE_RUNG_MINUTES,
   type ReplyContext,
 } from "@/lib/data/reply-brain";
 import { llmReply } from "@/lib/data/llm-reply";
 import { resolveFunnel, ONBOARDING_STEPS } from "@/lib/data/onboarding";
 import { resolveStatesForCron } from "@/lib/data/onboarding-nudges";
-import { timezoneForPhone, withinSendingHours } from "@/lib/data/lanes";
+import { mayContactNow, timezoneForPhone, withinSendingHours } from "@/lib/data/lanes";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { checkBio, bioVerified, type BioEvidence } from "@/lib/bio-check";
 import { bioSentence } from "@/lib/bio-variants";
@@ -21,6 +21,7 @@ import {
   sendPartnerWhatsApp,
   type ThreadMessage,
 } from "@/lib/integrations/whatsapp";
+import { sendEmail } from "@/lib/integrations/resend";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { FunnelSettings, OnboardingStepId, Profile, SignupLead } from "@/types/database";
 
@@ -177,7 +178,7 @@ async function createLeadFromForm(
       nurture_state: "stopped",
       nurture_stop_reason: "was already in conversation before import",
     })
-    .select("id, first_name, whatsapp_opted_out_at, profile_id, whatsapp_e164")
+    .select("id, first_name, email, whatsapp_opted_out_at, profile_id, whatsapp_e164")
     .single();
   if (error) {
     // 23505: the row landed between our adopt attempt and now (sheet import
@@ -192,7 +193,7 @@ async function createLeadFromForm(
 interface CreatorState {
   lead: Pick<
     SignupLead,
-    "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164"
+    "id" | "first_name" | "email" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164"
   > | null;
   profile: Profile | null;
   stepsDone: OnboardingStepId[];
@@ -210,12 +211,12 @@ async function loadCreatorState(
   // moves on, which answers nobody wrongly.
   const { data: leads, error: leadErr } = await admin
     .from("signup_leads")
-    .select("id, first_name, whatsapp_opted_out_at, profile_id, whatsapp_e164")
+    .select("id, first_name, email, whatsapp_opted_out_at, profile_id, whatsapp_e164")
     .or(`whatsapp_e164.eq.${phone},whatsapp.eq.${phone}`)
     .order("first_seen_at", { ascending: false })
     .limit(1)
     .returns<
-      Pick<SignupLead, "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164">[]
+      Pick<SignupLead, "id" | "first_name" | "email" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164">[]
     >();
   if (leadErr) throw new Error(`lead read failed: ${leadErr.message}`);
   const lead = leads?.[0] ?? null;
@@ -273,12 +274,12 @@ async function adoptLeadByFormDetails(
   }
   const { data: leads } = await admin
     .from("signup_leads")
-    .select("id, first_name, whatsapp_opted_out_at, profile_id, whatsapp_e164")
+    .select("id, first_name, email, whatsapp_opted_out_at, profile_id, whatsapp_e164")
     .or(ors.join(","))
     .order("first_seen_at", { ascending: false })
     .limit(1)
     .returns<
-      Pick<SignupLead, "id" | "first_name" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164">[]
+      Pick<SignupLead, "id" | "first_name" | "email" | "whatsapp_opted_out_at" | "profile_id" | "whatsapp_e164">[]
     >();
   const lead = leads?.[0] ?? null;
   if (!lead) return null;
@@ -680,6 +681,49 @@ export async function processWaitingThread(
     !unsendablePhone(creator.lead.whatsapp_e164)
       ? creator.lead.whatsapp_e164
       : phone;
+
+  // SELF-FIX before failing. Uncle, 08 Aug 2026: a 16-digit WhatsApp privacy
+  // ID, a form phone with no country code, so no sendable number exists and
+  // the thread wore REPLY FAILED waiting for a human. But the form gave us an
+  // EMAIL, and the answer does not care which pipe it travels. WhatsApp when
+  // we can, email when we cannot, a human only when both are impossible.
+  if (unsendablePhone(realTo)) {
+    const emailTo =
+      (creator.lead?.email?.includes("@") ? creator.lead.email : null) ??
+      formDetails(split.said).email;
+    if (emailTo && !emailTo.endsWith("@instagram.heypubli.com")) {
+      const html = sendText!
+        .split("\n\n")
+        .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+        .join("\n");
+      const sentByEmail = await sendEmail({
+        to: emailTo,
+        subject: "From Lim at HeyPubli",
+        html: `${html}\n<p>PS: I tried to answer you on WhatsApp first and it could not be delivered, so I am writing here. Just reply to this email or message us on WhatsApp.</p>`,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin.from("funnel_replies") as any)
+        .update({
+          status: sentByEmail ? "sent" : "failed",
+          reason: sentByEmail
+            ? "whatsapp number unsendable, answered by email"
+            : "whatsapp number unsendable and the email send failed too",
+        })
+        .eq("in_reply_to", split.lastInboundId)
+        .eq("kind", "reply");
+      if (sentByEmail) report.replied++;
+      else report.errors.push(`${phone}: no sendable number and email failed`);
+      return;
+    }
+    // No email either: this genuinely needs a human, say so loudly.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin.from("funnel_replies") as any)
+      .update({ status: "failed", reason: "no sendable number and no email on file" })
+      .eq("in_reply_to", split.lastInboundId)
+      .eq("kind", "reply");
+    report.errors.push(`${phone}: no sendable number and no email on file`);
+    return;
+  }
   const res = await sendPartnerWhatsApp({
     to: realTo,
     firstName: ctx.firstName ?? "",
@@ -715,11 +759,12 @@ export async function processWaitingThread(
     // inbox card counts down from, so "nothing scheduled" stops being the
     // answer for a lead we just replied to.
     if (creator.lead && !creator.profile && !ctx.pitchBlocked) {
+      const spellStart = split.lastInboundAt ? Date.parse(split.lastInboundAt) : now.getTime();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (admin.from("signup_leads") as any)
         .update({
           chase_next_at: new Date(
-            now.getTime() + LEAD_CHASE_AFTER_HOURS * 3600_000,
+            spellStart + LEAD_CHASE_RUNG_MINUTES[0] * 60_000,
           ).toISOString(),
         })
         .eq("id", creator.lead.id);
@@ -933,10 +978,17 @@ export async function runReplyBrain(
 
 const MAX_LEAD_CHASES_PER_RUN = 5;
 /** When the drip takes back over, its next template waits this long. Past the
- *  24h live-thread guard in runNurture on purpose: 3h of quiet before the
- *  chase plus this gap puts their last inbound out of the guard's window, so
- *  the hand-back cannot be instantly re-stopped as "live conversation". */
+ *  24h live-thread guard in runNurture on purpose, so the hand-back cannot be
+ *  instantly re-stopped as "live conversation". */
 const DRIP_HANDBACK_HOURS = 22;
+
+/** The rung due times, measured from THEIR newest message. */
+function chaseDueAt(spellStartMs: number, rung: number): string | null {
+  const minutes = LEAD_CHASE_RUNG_MINUTES[rung];
+  return minutes === undefined
+    ? null
+    : new Date(spellStartMs + minutes * 60_000).toISOString();
+}
 
 async function runLeadChases(
   admin: ReturnType<typeof createAdminClient>,
@@ -961,12 +1013,16 @@ async function runLeadChases(
     if (!phone || unsendablePhone(phone)) continue;
     if (pitchBlockedForPhone(phone)) continue;
     try {
-      if (!withinSendingHours(now, timezoneForPhone(phone))) continue;
-
+      // The first two rungs land minutes after their own message, so a lead
+      // active at 11pm still gets them (they are awake, mayContactNow knows).
+      // The 6h and 23h rungs fall back to daytime-only like everything else.
       const conv = await getThreadMessages(phone);
       if (!conv.ok || !conv.messages || conv.do_not_text) continue;
       const split = splitThread(conv.messages, now);
       if (!split.lastOutboundAt || !split.lastInboundId) continue;
+      if (!mayContactNow(now, timezoneForPhone(phone), split.lastInboundAt)) continue;
+
+      const spellStart = Date.parse(split.lastInboundAt ?? split.lastOutboundAt);
 
       const { count: spellChases } = await admin
         .from("funnel_replies")
@@ -976,8 +1032,7 @@ async function runLeadChases(
         .like("key", `leadchase%:${split.lastInboundId}`);
 
       const decision = decideLeadChase({
-        hoursSinceWeWrote:
-          (now.getTime() - Date.parse(split.lastOutboundAt)) / 3600_000,
+        minutesSinceTheirMessage: (now.getTime() - spellStart) / 60_000,
         repliedSinceWeWrote: split.repliedSinceWeWrote,
         windowOpen: split.windowOpen,
         chasesThisSpell: spellChases ?? 0,
@@ -992,12 +1047,10 @@ async function runLeadChases(
       if (decision.action === "wait") {
         // Keep the countdown honest for the inbox card: the chase that IS
         // coming, stamped where the CRM reads it.
-        if (!opts.dry && decision.dueInHours !== undefined) {
-          const due = new Date(
-            Date.parse(split.lastOutboundAt) + LEAD_CHASE_AFTER_HOURS * 3600_000,
-          ).toISOString();
+        if (!opts.dry && decision.dueInMinutes !== undefined) {
+          const due = chaseDueAt(spellStart, spellChases ?? 0);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if ((lead as any).chase_next_at !== due) {
+          if (due && (lead as any).chase_next_at !== due) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (admin.from("signup_leads") as any)
               .update({ chase_next_at: due })
@@ -1051,12 +1104,13 @@ async function runLeadChases(
       }
       // Claim first: one chase per rung per quiet spell, the unique index on
       // (lead_id, key) makes overlapping runs collide instead of double-send.
+      const claimKey = `leadchase${decision.rung}:${split.lastInboundId}`;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: claimErr } = await (admin.from("funnel_replies") as any).insert({
         phone,
         lead_id: lead.id,
         kind: "check_in",
-        key: `leadchase1:${split.lastInboundId}`,
+        key: claimKey,
         body: decision.text,
         reason: decision.reason,
         status: "pending",
@@ -1071,14 +1125,14 @@ async function runLeadChases(
         to: phone,
         firstName: lead.first_name || "",
         body: decision.text,
-        externalId: `leadchase:${lead.id}:${split.lastInboundId}`,
+        externalId: `leadchase:${lead.id}:${decision.rung}:${split.lastInboundId}`,
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (admin.from("funnel_replies") as any)
         .update({ status: res.ok ? "sent" : (res.blocked ?? "failed") })
         .eq("lead_id", lead.id)
         .eq("kind", "check_in")
-        .eq("key", `leadchase1:${split.lastInboundId}`);
+        .eq("key", claimKey);
       if (res.ok) {
         report.leadChases++;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1086,12 +1140,9 @@ async function runLeadChases(
           .update({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             chase_count: ((lead as any).chase_count ?? 0) + 1,
-            // The next thing on the books is the drip's template, and the
-            // hand-back branch above will arm it on the next pass; until
-            // then the card counts down to that same moment.
-            chase_next_at: new Date(
-              now.getTime() + DRIP_HANDBACK_HOURS * 3600_000,
-            ).toISOString(),
+            // The card counts down to the NEXT rung; after the fourth there
+            // is nothing more on the books for this spell.
+            chase_next_at: chaseDueAt(spellStart, decision.rung),
           })
           .eq("id", lead.id);
       } else {

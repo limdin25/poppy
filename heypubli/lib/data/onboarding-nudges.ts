@@ -83,13 +83,20 @@ export const ONB_TEMPLATES: Record<"general", string[]> &
     onb_step_affiliate: sidFor("WA_TEMPLATE_ONB_AFFILIATE_SID", "HXbfa6b82dac4f96dad6273984f0dc1a2d"),
     onb_step_photo: sidFor("WA_TEMPLATE_ONB_PHOTO_SID", "HXa52032caee2ff0e6a712cbc7ba2946a9"),
     onb_step_bio: sidFor("WA_TEMPLATE_ONB_BIO_SID", "HX0b30cae97dc9e3ba199be8afd7c6a942"),
+    // Hugo, 08 Aug 2026: "you must add your referral URL to your Instagram
+    // bio so you can get paid." Submitted to Meta the same day; defers
+    // safely until approved, like every unapproved template.
+    onb3_bio_get_paid: sidFor(
+      "WA_TEMPLATE_ONB_BIO_PAID_SID",
+      "HXec56a83aa19cd6486a5ec337fdb99593",
+    ),
   },
   general: ["onb_nudge_general_a", "onb_nudge_general_b"],
   instagram: ["onb_step_instagram"],
   community: ["onb_step_community"],
   affiliate: ["onb_step_affiliate"],
   photo: ["onb_step_photo"],
-  bio: ["onb_step_bio"],
+  bio: ["onb3_bio_get_paid", "onb_step_bio"],
 };
 
 type Freeform = (first: string) => string;

@@ -340,6 +340,18 @@ const STUCK = new RegExp(
 /** They think they still need to create an account. */
 const SIGNUP_CONFUSION = /\b(sign\s*up|signup|signing\s*up|register|registration|create\s+(an?\s+)?account|new\s+account)\b/i;
 
+/**
+ * Instagram's category picker, mid switch to a professional or creator
+ * account. Ayji, 08 Aug 2026: "What category do i choose upon switching my ig
+ * account to creator" then "Artist, product/service etc?" sat in the NEEDS
+ * YOU pile for over an hour. The answer has been in this file since day one
+ * (stuck_instagram says Personal blog) but only creators with linked accounts
+ * ever reached it, and Ayji's lead was not linked yet. The question only
+ * arises while somebody is DOING our step 1, so it deserves an answer at any
+ * stage, account or no account.
+ */
+const IG_CATEGORY = /\bcategor(y|ies)\b|\bwhat\b[^.?!]*\bchoose\b[^.?!]*\b(creator|professional|business)\b/i;
+
 /** They have watched the video. Often word for word, because it is the
  *  prefilled text behind the watch page's button. */
 const WATCHED =
@@ -462,6 +474,10 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${hi}payouts to India are blocked on Skool's side right now, not something either of us can fix.\n\nSkool has said PayPal may be coming, which could open it back up, no date yet.\n\nStay in the community and keep set up. The moment India opens again, your link is already live and ready.`,
   niche_random: ({ hi }) =>
     `${hi}you cannot choose it, the videos are picked at random. Your page becomes an AI video page: realistic AI clips, lifestyle, that sort of thing.\n\nYou do not film anything and you do not write anything.`,
+  ig_category: ({ hi }) =>
+    `${hi}choose Personal blog. That is the one. If Personal blog is not in the list, pick Blogger, either works.\n\nIf any screen after that gives you trouble, send me a screenshot and I will tell you exactly what to tap.`,
+  stuck_signup: ({ hi, code }) =>
+    `${hi}tell me what the page says when you try, or send me a screenshot, and I will sort it out with you.\n\nHere is the link again: heypubli.com/signup${code ? `?u=${code}` : ""}`,
 
   // --- has an account ---
   already_have_account: ({ hi }) =>
@@ -542,6 +558,12 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${hi}your account is still one minute away: heypubli.com/signup${code ? `?u=${code}` : ""}\n\nMake it and tell me when you are in, I will walk you through the rest.`,
   chase_hello: ({ hi }) =>
     `${hi}is everything ok? If anything was unclear, ask me here, I answer everything. When you are ready I will get you set up, it takes a minute.`,
+  chase_second: ({ hi }) =>
+    `${hi}me again. If something was not clear, ask me anything here, that is what I am for. I can also walk you through it step by step.`,
+  chase_third: ({ hi, code }) =>
+    `${hi}still here when you are ready. It takes about a minute to start: heypubli.com/signup${code ? `?u=${code}` : ""}\n\nIf anything is in the way, tell me what it is and I will sort it.`,
+  chase_final: ({ hi, code }) =>
+    `${hi}last check from me, I will stop nudging after this one. Your spot stays open and your link keeps working: heypubli.com/signup${code ? `?u=${code}` : ""}\n\nMessage me any time and I will get you set up.`,
 };
 
 const STUCK_KEY: Record<OnboardingStepId, string> = {
@@ -647,6 +669,17 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
       key: "account_safe",
       text: render("account_safe", ctx),
       reason: "worried about the account",
+    };
+  }
+  // Asked at any stage, because the category picker appears the moment they
+  // start switching their Instagram, whether or not their account is linked
+  // to a lead yet. The answer is always the same and it is ours to give.
+  if (IG_CATEGORY.test(text)) {
+    return {
+      action: "send",
+      key: "ig_category",
+      text: render("ig_category", ctx),
+      reason: "asked which Instagram category to pick, the answer is Personal blog",
     };
   }
   // BEFORE the cost rule on purpose: "how many followers can you give me for
@@ -807,6 +840,18 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
   const hasVideo = sent(ctx, "/watch?u=");
   const hasSignup = sent(ctx, "/signup");
 
+  // They have the signup link and something about it is not working. "Help i
+  // can't sign up in that link" (Ayji, 08 Aug 2026) used to fall through to
+  // the handover pile. Ask for the screen, resend the coded link.
+  if (hasSignup && STUCK.test(text)) {
+    return {
+      action: "send",
+      key: "stuck_signup",
+      text: render("stuck_signup", ctx),
+      reason: "signup link is giving them trouble",
+    };
+  }
+
   // Watched it, or said yes to a video they already have. Either way the next
   // thing they need is the account, not the video again.
   if (WATCHED.test(text) || (hasVideo && (YES.test(text) || onlyAck))) {
@@ -929,18 +974,35 @@ export function decideCheckIn(ctx: CheckInContext): CheckInDecision {
 // Chasing an answered lead with no account. The 15/90 check-ins above are
 // for creators mid-onboarding; these are for the people BEFORE the account:
 // we answered, they went quiet, and the drip is stopped because the
-// conversation exists. One contextual free-form chase while their 24h window
-// is open, then the thread is handed back to the template drip, so the two
-// engines stay one voice and nobody is left with "nothing scheduled".
+// conversation exists.
+//
+// Hugo, 08 Aug 2026: "for every action we do two follow-ups in the same
+// hour, like maybe one after ten minutes, and another one after thirty
+// minutes, and then another one around six hours and then another one like
+// twenty-three hours. So that means four follow-ups." All four ride the free
+// 24h window their own message opened (23h is deliberately inside it), so
+// none of this costs a template. If that whole ladder gets no reply, the
+// spell is over and we stop; a lead whose window is ALREADY shut when we
+// find them goes to the template drip instead, the only channel that still
+// reaches them.
 // ------------------------------------------------------------------
 
-/** Quiet hours before the free-form chase. Short: the window is only 24h. */
-export const LEAD_CHASE_AFTER_HOURS = 3;
-/** Lifetime free-form chases per lead, across every quiet spell. */
-export const LEAD_CHASE_LIFETIME_CAP = 6;
+/** Minutes after THEIR last message that each chase goes out. */
+export const LEAD_CHASE_RUNG_MINUTES = [10, 30, 360, 1380] as const;
+/** Lifetime free-form chases per lead, across every quiet spell: two spells. */
+export const LEAD_CHASE_LIFETIME_CAP = 8;
+
+/** Which wording each rung uses. Rung 1 is contextual; the rest escalate. */
+function chaseKeyFor(rung: number, sentVideo: boolean, sentSignup: boolean): string {
+  if (rung === 0) return sentSignup ? "chase_signup" : sentVideo ? "chase_watch" : "chase_hello";
+  if (rung === 1) return "chase_second";
+  if (rung === 2) return "chase_third";
+  return "chase_final";
+}
 
 export interface LeadChaseContext {
-  hoursSinceWeWrote: number;
+  /** Minutes since THEIR newest message: the spell clock every rung hangs off. */
+  minutesSinceTheirMessage: number;
   /** They wrote after our last message: the reply engine owns this thread. */
   repliedSinceWeWrote: boolean;
   /** Their 24h free-form window is still open. */
@@ -956,8 +1018,8 @@ export interface LeadChaseContext {
 }
 
 export type LeadChaseDecision =
-  | { action: "send"; key: string; text: string; reason: string }
-  | { action: "wait"; reason: string; dueInHours?: number }
+  | { action: "send"; key: string; rung: number; text: string; reason: string }
+  | { action: "wait"; reason: string; dueInMinutes?: number }
   | { action: "hand_to_drip"; reason: string }
   | { action: "stop"; reason: string };
 
@@ -968,32 +1030,32 @@ export function decideLeadChase(ctx: LeadChaseContext): LeadChaseDecision {
   if (ctx.chaseCount >= LEAD_CHASE_LIFETIME_CAP) {
     return { action: "stop", reason: "lifetime chase cap spent" };
   }
-  if (ctx.chasesThisSpell >= 1) {
-    // One free-form chase per quiet spell, then the templates take over.
-    // Two unanswered messages in a row is the ceiling (Discipline X rule).
-    return { action: "hand_to_drip", reason: "chase sent this spell, drip takes over" };
+  if (ctx.chasesThisSpell >= LEAD_CHASE_RUNG_MINUTES.length) {
+    return { action: "stop", reason: "all four chases sent this spell, the ball is theirs" };
   }
   if (!ctx.windowOpen) {
     return { action: "hand_to_drip", reason: "24h window shut, only a template can reach them" };
   }
-  if (ctx.hoursSinceWeWrote < LEAD_CHASE_AFTER_HOURS) {
+  const due = LEAD_CHASE_RUNG_MINUTES[ctx.chasesThisSpell];
+  if (ctx.minutesSinceTheirMessage < due) {
     return {
       action: "wait",
-      reason: `${(LEAD_CHASE_AFTER_HOURS - ctx.hoursSinceWeWrote).toFixed(1)}h early`,
-      dueInHours: LEAD_CHASE_AFTER_HOURS - ctx.hoursSinceWeWrote,
+      reason: `rung ${ctx.chasesThisSpell + 1} is ${Math.ceil(due - ctx.minutesSinceTheirMessage)} min away`,
+      dueInMinutes: due - ctx.minutesSinceTheirMessage,
     };
   }
-  const key = ctx.sentSignup ? "chase_signup" : ctx.sentVideo ? "chase_watch" : "chase_hello";
+  const key = chaseKeyFor(ctx.chasesThisSpell, ctx.sentVideo, ctx.sentSignup);
   return {
     action: "send",
     key,
+    rung: ctx.chasesThisSpell + 1,
     text: REPLIES[key]({
       hi: nameOf(ctx.firstName),
       code: ctx.watchCode || "",
       sentence: "",
       link: "",
     }),
-    reason: `quiet ${Math.round(ctx.hoursSinceWeWrote)}h with no account, ${key}`,
+    reason: `quiet ${Math.round(ctx.minutesSinceTheirMessage)} min with no account, rung ${ctx.chasesThisSpell + 1}: ${key}`,
   };
 }
 
