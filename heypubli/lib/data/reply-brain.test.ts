@@ -311,14 +311,17 @@ describe("rules that are enforced, not remembered", () => {
     // The bio-instruction replies carry the creator's OWN sentence and their
     // OWN affiliate link so they can copy both straight out of the chat (08
     // Aug 2026, after "paste it here" turned out to save nothing anywhere).
-    // That payload alone is ~170 characters. These replies only ever travel
-    // WhatsApp, where length costs nothing, so they get a wider budget; the
-    // 320 discipline stays for everything else.
+    // That payload alone is ~170 characters, and since 08 Aug 2026 they also
+    // spell out that the link goes in the LINKS box and not in the bio text,
+    // which is the mistake that made creators' links unclickable. These replies
+    // only ever travel WhatsApp, where length costs nothing, so they get a
+    // wider budget; the 320 discipline stays for everything else.
     const CARRIES_THEIR_CONTENT = new Set([
       "link_saved_bio_next",
       "bio_missing_both",
       "bio_missing_link",
       "bio_missing_sentence",
+      "bio_link_not_clickable",
       "step_bio",
       "stuck_bio",
       // Tells a creator with a suspended Instagram exactly how to appeal,
@@ -326,7 +329,7 @@ describe("rules that are enforced, not remembered", () => {
       "account_in_trouble",
     ]);
     const tooLong = replyBrainSelfCheck().filter(
-      (r) => r.length > (CARRIES_THEIR_CONTENT.has(r.key) ? 560 : 320),
+      (r) => r.length > (CARRIES_THEIR_CONTENT.has(r.key) ? 600 : 320),
     );
     expect(tooLong.map((o) => `${o.key}:${o.length}`)).toEqual([]);
   });
@@ -903,6 +906,26 @@ describe("the live bio read decides what we say, never their word", () => {
     );
     if (both.action !== "send") throw new Error("expected send");
     expect(both.key).toBe("bio_missing_both");
+  });
+
+  // Hugo, 08 Aug 2026: "the way the link is now, is not hyperlinked." Telling
+  // somebody their link is missing while they are looking at it in their own
+  // bio is how you lose them, so the wrong-box message beats both "missing"
+  // messages whatever else the read found.
+  it("says MOVE IT when the link is typed in the bio text instead of the Links box", () => {
+    for (const sentenceFound of [true, false]) {
+      const d = decideReply(
+        ctx({
+          ...base,
+          said: ["done"],
+          bioEvidence: { checked: true, link: false, linkInText: true, sentence: sentenceFound },
+        }),
+      );
+      if (d.action !== "send") throw new Error("expected send");
+      expect(d.key).toBe("bio_link_not_clickable");
+      expect(d.text).toMatch(/Links/);
+      expect(d.text).toContain(base.affiliateUrl);
+    }
   });
 
   it("congratulates the moment the live read passes, even on a bare ok", () => {

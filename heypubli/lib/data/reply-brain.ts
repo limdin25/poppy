@@ -58,7 +58,13 @@ export interface ReplyContext {
    * what stops "all five steps are done and your link is live" being said to
    * a creator whose actual profile is empty (Abdul Latif, 08 Aug 2026).
    */
-  bioEvidence?: { checked: boolean; link: boolean | null; sentence: boolean | null };
+  bioEvidence?: {
+    checked: boolean;
+    /** Clickable, in the Links field. Typed into the bio text does NOT count. */
+    link: boolean | null;
+    linkInText?: boolean;
+    sentence: boolean | null;
+  };
   /** The runner verified the bio live in THIS pass: congratulate even on "ok". */
   justVerifiedBio?: boolean;
   /**
@@ -536,13 +542,14 @@ interface Vars {
 function bioSteps(v: Vars): string {
   if (v.sentence && v.link) {
     return (
-      `Open Instagram, tap Edit profile, and do two things.\n\n` +
-      `1. Paste this in your Bio box:\n${v.sentence}\n\n` +
-      `2. Add this link in the Links row and make it the FIRST link:\n${v.link}\n\n` +
-      `Tell me when it is in and I will check your profile and confirm.`
+      `Open Instagram, tap Edit profile. Two boxes, one thing in each.\n\n` +
+      `1. BIO box, paste this sentence. It is yours, nobody else has it:\n${v.sentence}\n\n` +
+      `2. LINKS box, tap Add external link and paste this, first in the list:\n${v.link}\n\n` +
+      `Do not type the link in the Bio box. Instagram only makes it tappable from the Links box.\n\n` +
+      `Tell me when it is in and I will check and confirm.`
     );
   }
-  return `Your sentence and your link are ready to copy at heypubli.com/onboarding. They go in your Instagram bio, under Edit profile. Tell me when it is in and I will check your profile and confirm.`;
+  return `Your sentence and your link are ready to copy at heypubli.com/onboarding. The sentence goes in your Bio box and the link goes in the Links box, both under Edit profile. Tell me when it is in and I will check your profile and confirm.`;
 }
 
 const REPLIES: Record<string, (v: Vars) => string> = {
@@ -627,7 +634,14 @@ const REPLIES: Record<string, (v: Vars) => string> = {
   bio_missing_both: (v) =>
     `${v.hi}I just checked your Instagram and the sentence and the link are not on your profile yet.\n\n${bioSteps(v)}`,
   bio_missing_link: (v) =>
-    `${v.hi}I checked your Instagram. The sentence is in, nice. The link is not showing yet.\n\nAdd it under Edit profile, then Links, and make it the FIRST link in the list:\n${v.link || "your link is at heypubli.com/onboarding"}\n\nTell me when it is in and I will check again.`,
+    `${v.hi}I checked your Instagram. The sentence is in, nice. The link is not showing yet.\n\nAdd it under Edit profile, then Links, then Add external link, and make it the FIRST link in the list:\n${v.link || "your link is at heypubli.com/onboarding"}\n\nTell me when it is in and I will check again.`,
+  // They DID paste their link, into the wrong box. Instagram only makes a URL
+  // tappable from the Links field; in the Bio box it is grey text. Say what
+  // they did right first, this is a two-tap fix and they are nearly done.
+  bio_link_not_clickable: (v) =>
+    `${v.hi}I can see your link on your profile, but it is typed inside your Bio text, so nobody can tap it and it tracks nothing for you. Instagram only makes it a real link from the Links box.\n\nTwo taps to fix. Edit profile, then Links, then Add external link, paste it there:\n${v.link || "your link is at heypubli.com/onboarding"}\n\nThen take it out of your Bio text.${
+      v.sentence ? ` Your Bio box should just say:\n${v.sentence}` : ""
+    }\n\nTell me when it is moved and I will check again.`,
   bio_missing_sentence: (v) =>
     `${v.hi}I checked your Instagram. Your link is in. The sentence is not in your Bio box yet.\n\nPaste this exactly as it is:\n${v.sentence || "it is ready to copy at heypubli.com/onboarding"}\n\nTell me when it is done and I will check again.`,
 
@@ -970,8 +984,12 @@ export function decideReply(ctx: ReplyContext): ReplyDecision {
     // step, so the precise state of their real profile IS the answer.
     if (openStep === "bio" && ctx.bioEvidence?.checked) {
       const ev = ctx.bioEvidence;
-      const key =
-        ev.sentence && !ev.link
+      // The wrong-box case wins over both "missing" messages: telling somebody
+      // their link is not there when they are staring at it in their own bio
+      // is how you lose them.
+      const key = ev.linkInText
+        ? "bio_link_not_clickable"
+        : ev.sentence && !ev.link
           ? "bio_missing_link"
           : ev.link && !ev.sentence
             ? "bio_missing_sentence"

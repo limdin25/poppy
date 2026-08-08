@@ -308,11 +308,16 @@ function StepContent({ id, data }: { id: OnboardingStepId; data: OnboardingData 
               ? t.steps.bio.status.blocked
               : bio.state === "unknown"
                 ? t.steps.bio.status.unknown
-                : bio.sentenceFound && !bio.linkFound
-                  ? t.steps.bio.status.waitingLink
-                  : bio.linkFound && !bio.sentenceFound
-                    ? t.steps.bio.status.waitingSentence
-                    : t.steps.bio.status.waiting
+                : // The wrong box beats every other message. They can see their
+                  // own link on their profile, so "it is not there" reads as us
+                  // being broken.
+                  bio.linkInText && !bio.linkFound
+                  ? t.steps.bio.status.waitingNotClickable
+                  : bio.sentenceFound && !bio.linkFound
+                    ? t.steps.bio.status.waitingLink
+                    : bio.linkFound && !bio.sentenceFound
+                      ? t.steps.bio.status.waitingSentence
+                      : t.steps.bio.status.waiting
         }
       >
         {bio.state === "waiting" && (

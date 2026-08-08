@@ -12,14 +12,16 @@ describe("hasLinkInBio", () => {
     ).toBe(true);
   });
 
-  it("finds the tag pasted in the bio text", () => {
+  // Hugo, 08 Aug 2026: "the way the link is now, is not hyperlinked." A URL
+  // typed into the Bio box is grey text nobody can tap, so it is not a pass.
+  it("REFUSES a tag that is only typed in the bio text", () => {
     expect(
       hasLinkInBio({
         tag: "k7m2p4qa",
         biography: "Meu link: scanplates.com/?sck=K7M2P4QA",
         website: null,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("misses when neither bio nor website carries the tag", () => {
@@ -57,7 +59,35 @@ describe("checkBio", () => {
       biography: "Every clip here is AI made.   See how below.",
       website: "https://skool.com/x/about?ref=27DDBAB",
     });
-    expect(ev).toEqual({ link: true, sentence: true });
+    expect(ev).toEqual({ link: true, linkInText: false, sentence: true });
+    expect(bioVerified(ev)).toBe(true);
+  });
+
+  // The whole reason this file exists twice over. 08 Aug 2026: creators were
+  // pasting the URL into the Bio box, where Instagram never links it, and we
+  // were calling that done.
+  it("a link typed in the BIO TEXT is not clickable, so it does not pass", () => {
+    const ev = checkBio({
+      tag: "27ddbab",
+      sentence,
+      biography: `${sentence} skool.com/x/about?ref=27ddbab`,
+      website: "",
+    });
+    expect(ev.link).toBe(false);
+    expect(ev.linkInText).toBe(true);
+    expect(ev.sentence).toBe(true);
+    expect(bioVerified(ev)).toBe(false);
+  });
+
+  it("the same link in the Links field passes, wherever the bio text is", () => {
+    const ev = checkBio({
+      tag: "27ddbab",
+      sentence,
+      biography: sentence,
+      website: "skool.com/x/about?ref=27ddbab",
+    });
+    expect(ev.link).toBe(true);
+    expect(ev.linkInText).toBe(false);
     expect(bioVerified(ev)).toBe(true);
   });
 

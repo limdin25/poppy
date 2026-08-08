@@ -7,7 +7,22 @@ const COMMUNITY = "https://www.skool.com/ai-influencer-flywheel-5612/about";
 const sentence = "This is AI, not a camera. See how below.";
 
 describe("what the roster says about a real profile", () => {
-  it("verified: their own code and their sentence are both live (John, @ay_jiiiii)", () => {
+  it("verified: their code is CLICKABLE in the Links box and their sentence is in the Bio box", () => {
+    const saved = `${COMMUNITY}?ref=abc123def456`;
+    const r = verdictFor({
+      readable: true,
+      savedSkoolUrl: saved,
+      sentence,
+      biography: sentence,
+      website: saved,
+    });
+    expect(r.verdict).toBe("verified");
+  });
+
+  // Hugo, 08 Aug 2026: "the link on bio needs to be under url... the way the
+  // link is now, is not hyperlinked." The same link, in the same profile, in
+  // the wrong box. It looks done to the creator and earns them nothing.
+  it("link_not_clickable: their own link typed into the bio TEXT", () => {
     const saved = `${COMMUNITY}?ref=abc123def456`;
     const r = verdictFor({
       readable: true,
@@ -16,7 +31,8 @@ describe("what the roster says about a real profile", () => {
       biography: `${sentence} ${saved}`,
       website: null,
     });
-    expect(r.verdict).toBe("verified");
+    expect(r.verdict).toBe("link_not_clickable");
+    expect(VERDICT_LABEL[r.verdict]).toMatch(/not clickable/);
   });
 
   it("link_only: the link is live but the sentence was never pasted (ROBERT, Hasty, Marry)", () => {

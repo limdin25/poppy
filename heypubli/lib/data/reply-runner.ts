@@ -473,6 +473,7 @@ export async function processWaitingThread(
   let bioEvidence: BioEvidence & { checked: boolean } = {
     checked: false,
     link: null,
+    linkInText: false,
     sentence: null,
   };
   let justVerifiedBio = false;

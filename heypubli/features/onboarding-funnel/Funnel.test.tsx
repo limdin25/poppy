@@ -149,6 +149,30 @@ describe("Funnel", () => {
     expect(screen.getByText(/The sentence is in\. The link is not showing yet/i)).toBeInTheDocument();
   });
 
+  // Hugo, 08 Aug 2026: "the way the link is now, is not hyperlinked." Their
+  // link IS on the profile, in the box where Instagram never links it. Saying
+  // "not showing yet" to somebody staring at their own link reads as a bug.
+  it("tells them to MOVE the link when it is typed in the bio text", () => {
+    const wrongBox = {
+      ...funnelMockComplete,
+      bio: {
+        ...funnelMockComplete.bio,
+        state: "waiting" as const,
+        declaredAt: null,
+        linkFound: false,
+        linkInText: true,
+        sentenceFound: true,
+      },
+      stepStates: { ...funnelMockComplete.stepStates, bio: "waiting" as const },
+      openStep: "bio" as const,
+      doneSteps: 4,
+      allDone: false,
+    };
+    render(<Funnel data={wrongBox} />);
+    expect(screen.getByText(/typed inside your Bio text/i)).toBeInTheDocument();
+    expect(screen.queryByText(/The link is not showing yet/i)).not.toBeInTheDocument();
+  });
+
   it("keeps the self-declare escape when we genuinely cannot look", () => {
     const unknownBio = {
       ...funnelMockComplete,

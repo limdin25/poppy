@@ -32,6 +32,7 @@ import type { StepState } from "@/lib/data/brochure";
 export type BioVerdict =
   | "verified" // their own referral code and their sentence are both on the profile
   | "link_only" // their own code is there, the sentence is not
+  | "link_not_clickable" // their code is TYPED IN THE BIO TEXT: dead characters
   | "sentence_only"
   | "wrong_code" // a Skool link is there but the code is NOT theirs: they earn nothing
   | "foreign_link" // a link that is not ours at all, in the place ours should be
@@ -116,6 +117,12 @@ export function verdictFor(input: {
   if (evidence.link && evidence.sentence) return { verdict: "verified", bioSkoolUrl };
   if (evidence.link) return { verdict: "link_only", bioSkoolUrl };
 
+  // Their own link, typed into the Bio box. Instagram does not make bio text
+  // tappable, so it reads as a link and works as nothing. This person tried and
+  // is one drag away from done, which is a completely different message from
+  // "nothing in their bio yet".
+  if (evidence.linkInText) return { verdict: "link_not_clickable", bioSkoolUrl };
+
   // No match for THEIR code. If some other Skool link is there, that is a
   // different and much worse problem than an empty bio: the page looks set up
   // and every sale it makes is credited to somebody else.
@@ -131,6 +138,7 @@ export function verdictFor(input: {
 export const VERDICT_LABEL: Record<BioVerdict, string> = {
   verified: "YES, their link and sentence are live",
   link_only: "link is live, sentence missing",
+  link_not_clickable: "TYPED IN THE BIO TEXT, not clickable, tracks nothing",
   sentence_only: "sentence is in, LINK MISSING",
   wrong_code: "WRONG CODE, the link in their bio is not theirs",
   foreign_link: "someone else's link is in their bio",
@@ -258,12 +266,17 @@ const when = (iso: string): string => iso.slice(0, 16).replace("T", " ") + " UTC
 export function renderRoster(rows: RosterRow[]): string {
   if (!rows.length) return "";
   const yes = rows.filter((r) => r.verdict === "verified");
-  const problem = rows.filter((r) => r.verdict === "wrong_code" || r.verdict === "unreadable");
+  const problem = rows.filter(
+    (r) =>
+      r.verdict === "wrong_code" ||
+      r.verdict === "unreadable" ||
+      r.verdict === "link_not_clickable",
+  );
   const parts: string[] = [
     `<h3 style="margin:18px 0 4px">Every creator account (${rows.length})</h3>`,
-    `<p style="color:#374151;margin:0 0 8px"><strong>${yes.length} of ${rows.length}</strong> have their own Skool link AND their sentence live on Instagram, checked just now on their real profile.` +
+    `<p style="color:#374151;margin:0 0 8px"><strong>${yes.length} of ${rows.length}</strong> have their own Skool link CLICKABLE in the Links box AND their sentence in the Bio box, checked just now on their real profile.` +
       (problem.length
-        ? ` <span style="color:#b91c1c"><strong>${problem.length} need you</strong> (wrong code, or we cannot read their profile).</span>`
+        ? ` <span style="color:#b91c1c"><strong>${problem.length} need you</strong> (wrong code, link not clickable, or we cannot read their profile).</span>`
         : "") +
       `</p>`,
   ];
@@ -272,11 +285,16 @@ export function renderRoster(rows: RosterRow[]): string {
     parts.push(
       `<div style="background:#fee2e2;padding:10px;border-radius:6px;margin:8px 0">`,
       `<strong style="color:#b91c1c">These are not a simple "not done yet":</strong><ul style="margin:6px 0">`,
-      ...problem.map((r) =>
-        r.verdict === "wrong_code"
-          ? `<li><strong>${esc(r.name)}</strong> (<a href="${esc(r.igUrl)}">@${esc(r.igUsername)}</a>) has a Skool link in their bio with someone ELSE'S referral code. Their sales credit that person, not them.<br><span style="color:#6b7280;font-size:12px">in bio: ${esc(r.bioSkoolUrl)}<br>should be: ${esc(r.savedSkoolUrl)}</span></li>`
-          : `<li><strong>${esc(r.name)}</strong> (<a href="${esc(r.igUrl)}">@${esc(r.igUsername)}</a>): their Instagram connection is broken, so we cannot read their profile OR post to it. They have been asked whether they disconnected.</li>`,
-      ),
+      ...problem.map((r) => {
+        const who = `<strong>${esc(r.name)}</strong> (<a href="${esc(r.igUrl)}">@${esc(r.igUsername)}</a>)`;
+        if (r.verdict === "wrong_code") {
+          return `<li>${who} has a Skool link in their bio with someone ELSE'S referral code. Their sales credit that person, not them.<br><span style="color:#6b7280;font-size:12px">in bio: ${esc(r.bioSkoolUrl)}<br>should be: ${esc(r.savedSkoolUrl)}</span></li>`;
+        }
+        if (r.verdict === "link_not_clickable") {
+          return `<li>${who} typed their link into the Bio box instead of the Links box, so it is plain text nobody can tap and it tracks nothing. They are being told to move it.</li>`;
+        }
+        return `<li>${who}: their Instagram connection is broken, so we cannot read their profile OR post to it. They have been asked whether they disconnected.</li>`;
+      }),
       `</ul></div>`,
     );
   }
@@ -291,7 +309,10 @@ export function renderRoster(rows: RosterRow[]): string {
   );
   for (const r of rows) {
     const good = r.verdict === "verified";
-    const bad = r.verdict === "wrong_code" || r.verdict === "unreadable";
+    const bad =
+      r.verdict === "wrong_code" ||
+      r.verdict === "unreadable" ||
+      r.verdict === "link_not_clickable";
     const colour = good ? "#047857" : bad ? "#b91c1c" : "#92400e";
     parts.push(
       `<tr>` +

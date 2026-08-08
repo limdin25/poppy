@@ -100,8 +100,9 @@ for (const p of candidates) {
     console.log(`OK    ${label}: sentence and link really are on their profile`);
     continue;
   }
-  const missing =
-    evidence.link && !evidence.sentence
+  const missing = evidence.linkInText
+    ? "LINK IN THE BIO TEXT, not clickable"
+    : evidence.link && !evidence.sentence
       ? "sentence missing"
       : evidence.sentence && !evidence.link
         ? "link missing"

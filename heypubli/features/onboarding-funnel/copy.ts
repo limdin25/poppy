@@ -124,16 +124,17 @@ export const funnelCopy = {
     bio: {
       number: "5",
       title: "Write your bio and add your link on Instagram",
-      summary: "Two pastes on your Instagram profile. Then we start posting.",
+      summary: "Two boxes on your Instagram profile, one thing in each. Then we start posting.",
       body: [
-        "Open Instagram, tap Edit profile, and do these two things.",
-        "1. Copy your sentence below and paste it in the Bio box. It was written just for you and nobody else has it, so use it exactly as it is.",
-        "2. Copy your link below and add it in the Links row: Edit profile, then Links, then Add external link. Make it the FIRST link in the list. This link is how sales from your page get tracked to you.",
-        "When both are on your profile, we check it and this step goes green on its own. Stuck anywhere? Message us on WhatsApp and we will walk you through it.",
+        "Open Instagram, tap Edit profile. There are two different boxes and each one gets its own thing.",
+        "1. THE BIO BOX. Copy your sentence below and paste it there. It was written just for you, nobody else on HeyPubli has this sentence, so use it exactly as it is.",
+        "2. THE LINKS BOX. Edit profile, then Links, then Add external link. Paste your link below in there and make it the FIRST link in the list.",
+        "Do not type the link inside your Bio text. Instagram only makes it tappable from the Links box. In the Bio box it is plain text nobody can click, and a link nobody clicks tracks no sales to you.",
+        "When both are on your profile, we read it and this step goes green on its own. Stuck anywhere? Message us on WhatsApp and we will walk you through it.",
       ],
       sentenceLabel: "Your sentence, paste it in the Bio box",
       sentenceNote: "Written just for you. Nobody else on HeyPubli has this sentence. Paste it exactly as it is.",
-      linkLabel: "Your link, add it under Links",
+      linkLabel: "Your link, add it in the Links box (not in the bio text)",
       linkMissing: "Save your link in step three and it will appear here.",
       copy: "Copy",
       copied: "Copied",
@@ -149,7 +150,9 @@ export const funnelCopy = {
         waiting:
           "We read your Instagram and the sentence and the link are not on it yet. Add both under Edit profile, then check again.",
         waitingLink:
-          "The sentence is in. The link is not showing yet. Add it in the Links row and make it the FIRST link in the list, we can only read the first one.",
+          "The sentence is in. The link is not showing yet. Add it in the Links box (Edit profile, then Links, then Add external link) and make it the FIRST link in the list, we can only read the first one.",
+        waitingNotClickable:
+          "We can see your link, but it is typed inside your Bio text, so nobody can tap it and it tracks nothing. Move it: Edit profile, then Links, then Add external link, paste it there and make it the first one. Then take it out of your Bio text.",
         waitingSentence:
           "Your link is in. The sentence is not in your Bio box yet. Copy it from above and paste it exactly as it is.",
         blocked: "This one unlocks after the steps above.",

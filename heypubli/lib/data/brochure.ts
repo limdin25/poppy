@@ -55,8 +55,11 @@ export interface BrochureData {
     needleKind: "referral" | "community" | null;
     /** Their claim that it is in. A claim we record, never a completion. */
     declaredAt: string | null;
-    /** What the live read actually found. Null when we could not judge. */
+    /** What the live read actually found. Null when we could not judge.
+     *  `linkFound` means CLICKABLE, in the Links field. */
     linkFound: boolean | null;
+    /** The link is typed in the bio text, where Instagram never links it. */
+    linkInText: boolean;
     sentenceFound: boolean | null;
   };
 
@@ -207,6 +210,7 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
   const sentence = bioSentence(variantIndex);
   let bioState: StepState;
   let linkFound: boolean | null = null;
+  let linkInText = false;
   let sentenceFound: boolean | null = null;
   if (!ig.connected || !affiliateUrl) {
     bioState = "blocked";
@@ -220,6 +224,7 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
       website: ig.website,
     });
     linkFound = evidence.link;
+    linkInText = evidence.linkInText;
     sentenceFound = evidence.sentence;
     if (evidence.link === null) {
       // No needle derivable from their link: nothing to search for.
@@ -267,6 +272,7 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
       needleKind: needle?.kind ?? null,
       declaredAt: profile.bio_link_declared_at ?? null,
       linkFound,
+      linkInText,
       sentenceFound,
     },
     doneCount,

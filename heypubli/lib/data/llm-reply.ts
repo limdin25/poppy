@@ -39,7 +39,12 @@ export interface LlmReplyInput {
    */
   bioSentence?: string | null;
   affiliateUrl?: string | null;
-  bioEvidence?: { checked: boolean; link: boolean | null; sentence: boolean | null };
+  bioEvidence?: {
+    checked: boolean;
+    link: boolean | null;
+    linkInText?: boolean;
+    sentence: boolean | null;
+  };
   /**
    * A screenshot they sent, base64. Hugo asked for this twice: a creator who
    * cannot describe the screen photographs it, and every one of those was a
@@ -95,9 +100,15 @@ THE FIVE STEPS, at heypubli.com/onboarding, in this order
    the three dots top right or Settings, then Invite people, then COPY. They
    can paste it straight into the chat and we save it for them.
 4. A clear profile photo on their Instagram, under Edit profile.
-5. Their sentence in the Instagram Bio box AND their link in the Links row,
-   made the FIRST link. The link is how sales get tracked to them. We read
-   their real profile to confirm; their word alone does not complete it.
+5. Their sentence in the Instagram BIO box AND their link in the LINKS box
+   (Edit profile, then Links, then Add external link), made the FIRST link.
+   These are two different boxes and this trips people up constantly: a URL
+   typed inside the Bio text is NOT a link. Instagram only makes it tappable
+   from the Links box, so in the bio text it is dead characters that track
+   nothing. If somebody has their link in the bio text, tell them they are
+   nearly there and to move it into the Links box. The link is how sales get
+   tracked to them. We read their real profile to confirm; their word alone
+   does not complete it.
 
 ANSWERS THAT ARE ALWAYS THE SAME
 - Instagram asks which CATEGORY when switching to professional or creator:
@@ -120,8 +131,10 @@ When a picture is attached, it is a photo of the creator's own phone and they
 are showing you where they are stuck. Say what to tap, in their words, about
 the screen in front of them. Some things worth knowing:
 - Instagram's category picker during the switch to professional: Personal blog.
-- Instagram Edit profile: the Bio box takes the sentence, the Links row takes
-  the link, and the link must be FIRST in that row for us to read it.
+- Instagram Edit profile: the Bio box takes the sentence, the Links box takes
+  the link, and the link must be FIRST in that box for us to read it. If the
+  screenshot shows their link sitting inside the Bio text, that is the wrong
+  box: it is not clickable there.
 - The Skool invite email is from sender "Lim Din", not HeyPubli.
 - In Skool, their own link is the three dots top right, Invite people, COPY.
 - If the picture shows an error you do not recognise, or is not a phone screen
@@ -185,7 +198,13 @@ export async function llmReply(input: LlmReplyInput): Promise<LlmReplyResult> {
       ? `Their own bio sentence, which is theirs alone and must be pasted exactly: ${input.bioSentence}`
       : "",
     input.bioEvidence?.checked
-      ? `We read their real Instagram profile just now. The link is ${input.bioEvidence.link ? "IN their bio" : "NOT in their bio"} and the sentence is ${input.bioEvidence.sentence ? "IN their bio" : "NOT in their bio"}. Say only what this read shows.`
+      ? `We read their real Instagram profile just now. Their link is ${
+          input.bioEvidence.link
+            ? "in the Links box and clickable, which is correct"
+            : input.bioEvidence.linkInText
+              ? "TYPED INSIDE THEIR BIO TEXT, which is the wrong box: it is not clickable there and tracks nothing, so tell them to move it into the Links box"
+              : "NOT on their profile at all"
+        }, and the sentence is ${input.bioEvidence.sentence ? "IN their Bio box" : "NOT in their Bio box"}. Say only what this read shows.`
       : "",
     input.lastWeSaid ? `The last thing WE sent them: ${input.lastWeSaid}` : "We have not messaged them yet.",
     `They just wrote (oldest first):`,
