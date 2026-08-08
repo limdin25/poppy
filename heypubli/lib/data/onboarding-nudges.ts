@@ -5,7 +5,7 @@ import { resolveFunnel } from "@/lib/data/onboarding";
 import { isCommunityMember } from "@/lib/data/community";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { checkBio, bioVerified } from "@/lib/bio-check";
-import { skoolUrlInProfile } from "@/lib/data/creator-roster";
+import { skoolUrlInProfile, wrongCodeInProfile } from "@/lib/data/creator-roster";
 import { renderReply } from "@/lib/data/reply-brain";
 import { bioSentence } from "@/lib/bio-variants";
 import { cleanSkoolAffiliateUrl, skoolLinkNeedle } from "@/lib/skool-link";
@@ -620,6 +620,8 @@ export interface BioVerifyReport {
   linksCaptured: number;
   /** Creators told their link is in the Bio box and needs moving to Links. */
   movedToLinksBox: number;
+  /** Creators told the Skool link on their page credits somebody else. */
+  wrongCodeTold: number;
   errors: string[];
 }
 
@@ -632,6 +634,7 @@ export async function runBioVerification(
     congratulated: 0,
     linksCaptured: 0,
     movedToLinksBox: 0,
+    wrongCodeTold: 0,
     errors: [],
   };
   const provider = (await getPostingSettingsAdmin())?.active_provider ?? "heypubli";
@@ -698,11 +701,37 @@ export async function runBioVerification(
         biography: ig.biography,
         website: ig.website,
       });
+      // Two states worth an unprompted message, because in both of them the
+      // creator believes they have finished and every other check just reads
+      // "not done" and chases them for it. Once each, keyed on the profile.
+      //
+      // THE WRONG CODE first, because it is money leaving: a Skool link on
+      // their page carrying a stranger's referral (Nzama, 08 Aug 2026). Their
+      // own traffic pays somebody else and nothing about the page looks wrong.
+      const wrongCode = wrongCodeInProfile(
+        profile.skool_affiliate_url,
+        ig.biography,
+        ig.website,
+      );
+      if (wrongCode) {
+        if (profile.whatsapp && withinSendingHours(now, timezoneForPhone(profile.whatsapp))) {
+          const first = (profile.first_name || "").trim().split(" ")[0];
+          const res = await sendPartnerWhatsApp({
+            to: profile.whatsapp,
+            firstName: first,
+            body: renderReply("bio_wrong_code", {
+              firstName: first,
+              affiliateUrl: profile.skool_affiliate_url,
+              bioSentence: bioSentence(profile.bio_variant_index ?? 0),
+            }),
+            externalId: `biowrongcode:${profile.id}`,
+          });
+          if (res.ok) report.wrongCodeTold++;
+        }
+        continue;
+      }
       // THE WRONG BOX. They did the work and put the link where Instagram
-      // never makes it tappable, so every other check just reads "not done"
-      // and chases them for something they believe they have finished. This
-      // is the one state worth an unprompted message: it is a two-tap fix and
-      // the person is already trying. Once each, keyed on the profile.
+      // never makes it tappable. A two-tap fix, and the person is trying.
       if (!evidence.link && evidence.linkInText) {
         if (profile.whatsapp && withinSendingHours(now, timezoneForPhone(profile.whatsapp))) {
           const first = (profile.first_name || "").trim().split(" ")[0];

@@ -322,6 +322,7 @@ describe("rules that are enforced, not remembered", () => {
       "bio_missing_link",
       "bio_missing_sentence",
       "bio_link_not_clickable",
+      "bio_wrong_code",
       "step_bio",
       "stuck_bio",
       // Tells a creator with a suspended Instagram exactly how to appeal,

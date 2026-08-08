@@ -14,6 +14,7 @@ import { resolveStatesForCron } from "@/lib/data/onboarding-nudges";
 import { mayContactNow, timezoneForPhone, withinSendingHours } from "@/lib/data/lanes";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { checkBio, bioVerified, type BioEvidence } from "@/lib/bio-check";
+import { wrongCodeInProfile } from "@/lib/data/creator-roster";
 import { bioSentence } from "@/lib/bio-variants";
 import { skoolLinkNeedle } from "@/lib/skool-link";
 import {
@@ -470,11 +471,12 @@ export async function processWaitingThread(
   // only one of them starts the posting. A pass on the live read stamps the
   // step and flips the account to onboarded; a fail gives the brain the exact
   // missing half to talk about.
-  let bioEvidence: BioEvidence & { checked: boolean } = {
+  let bioEvidence: BioEvidence & { checked: boolean; wrongCode: boolean } = {
     checked: false,
     link: null,
     linkInText: false,
     sentence: null,
+    wrongCode: false,
   };
   let justVerifiedBio = false;
   if (
@@ -491,7 +493,13 @@ export async function processWaitingThread(
         biography: ig.biography,
         website: ig.website,
       });
-      bioEvidence = { checked: true, ...evidence };
+      bioEvidence = {
+        checked: true,
+        ...evidence,
+        wrongCode: Boolean(
+          wrongCodeInProfile(creator.profile.skool_affiliate_url, ig.biography, ig.website),
+        ),
+      };
       if (!opts.dry) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (admin.from("profiles") as any)

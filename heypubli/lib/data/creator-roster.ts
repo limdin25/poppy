@@ -99,6 +99,25 @@ export function skoolUrlInProfile(
 }
 
 /**
+ * A Skool link on their profile carrying SOMEBODY ELSE'S referral code, or
+ * null. Nzama, 08 Aug 2026: her page looked finished and every sale it made
+ * would have credited a stranger. Exported because the reply brain and the bio
+ * sweep both need to tell her, and "wrong code" must mean the same thing in
+ * all three places.
+ */
+export function wrongCodeInProfile(
+  savedSkoolUrl: string | null,
+  biography: string | null,
+  website: string | null,
+): string | null {
+  const found = skoolUrlInProfile(biography, website);
+  if (!found) return null;
+  const theirs = refOf(savedSkoolUrl);
+  const onPage = refOf(found);
+  return theirs && onPage && theirs !== onPage ? found : null;
+}
+
+/**
  * The verdict, pure so it can be tested against the real profiles the browser
  * audit captured. Read the order: every "we could not check" answer is
  * reached before any answer that would accuse a creator of not doing it.
@@ -132,10 +151,8 @@ export function verdictFor(input: {
   // No match for THEIR code. If some other Skool link is there, that is a
   // different and much worse problem than an empty bio: the page looks set up
   // and every sale it makes is credited to somebody else.
-  if (bioSkoolUrl) {
-    const theirs = refOf(input.savedSkoolUrl);
-    const found = refOf(bioSkoolUrl);
-    if (theirs && found && theirs !== found) return { verdict: "wrong_code", bioSkoolUrl };
+  if (wrongCodeInProfile(input.savedSkoolUrl, input.biography, input.website)) {
+    return { verdict: "wrong_code", bioSkoolUrl };
   }
   if (evidence.sentence) return { verdict: "sentence_only", bioSkoolUrl };
   return { verdict: "missing", bioSkoolUrl };

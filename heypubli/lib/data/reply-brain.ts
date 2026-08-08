@@ -69,6 +69,8 @@ export interface ReplyContext {
     link: boolean | null;
     linkInText?: boolean;
     sentence: boolean | null;
+    /** A Skool link on their page with somebody else's referral code. */
+    wrongCode?: boolean;
   };
   /** The runner verified the bio live in THIS pass: congratulate even on "ok". */
   justVerifiedBio?: boolean;
@@ -640,6 +642,13 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${v.hi}I just checked your Instagram and the sentence and the link are not on your profile yet.\n\n${bioSteps(v)}`,
   bio_missing_link: (v) =>
     `${v.hi}I checked your Instagram. The sentence is in, nice. The link is not showing yet.\n\nAdd it under Edit profile, then Links, then Add external link, and make it the FIRST link in the list:\n${v.link || "your link is at heypubli.com/onboarding"}\n\nTell me when it is in and I will check again.`,
+  // A Skool link is on their page and the referral code is not theirs. This is
+  // the only bio message about money, because it IS about money: their own
+  // traffic is paying a stranger. Say it plainly and give them theirs.
+  bio_wrong_code: (v) =>
+    `${v.hi}one thing on your Instagram is costing you money, so I am telling you straight away.\n\nThe Skool link in your bio works, but it is not yours. It carries somebody else's referral code, so anyone who joins through your page credits them, not you.\n\nSwap it for this one:\n${v.link || "your link is at heypubli.com/onboarding"}\n\nEdit profile, then Links, delete the old one, add this first.${
+      v.sentence ? ` Your Bio box should say:\n${v.sentence}` : ""
+    }\n\nTell me when it is swapped and I will check.`,
   // They DID paste their link, into the wrong box. Instagram only makes a URL
   // tappable from the Links field; in the Bio box it is grey text. Say what
   // they did right first, this is a two-tap fix and they are nearly done.
@@ -1045,11 +1054,14 @@ function decideReplyCore(ctx: ReplyContext): ReplyDecision {
     // step, so the precise state of their real profile IS the answer.
     if (openStep === "bio" && ctx.bioEvidence?.checked) {
       const ev = ctx.bioEvidence;
-      // The wrong-box case wins over both "missing" messages: telling somebody
-      // their link is not there when they are staring at it in their own bio
-      // is how you lose them.
-      const key = ev.linkInText
-        ? "bio_link_not_clickable"
+      // Order matters. A stranger's code on their page is money leaving, so it
+      // beats everything. Then the wrong-box case: telling somebody their link
+      // is not there when they are staring at it in their own bio is how you
+      // lose them.
+      const key = ev.wrongCode
+        ? "bio_wrong_code"
+        : ev.linkInText
+          ? "bio_link_not_clickable"
         : ev.sentence && !ev.link
           ? "bio_missing_link"
           : ev.link && !ev.sentence
