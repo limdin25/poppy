@@ -36,7 +36,13 @@ const MIGRATION = read('supabase/migrations/20260731000002_call_script_key.sql')
 
 describe('COLD CALLS ARE UNTOUCHED', () => {
   it('the cold request body is byte-identical: script_key only under a conditional spread', () => {
-    expect(MACHINE).toMatch(/\.\.\.\(scriptKeyForLead\?\.\(lead\.contactId\) === 'vsl_close'/)
+    // 2026-08-09: the property call became a third script key, so the inline
+    // ternary became a named variable. The GUARANTEE is unchanged and is what
+    // this asserts: on a cold dial the spread contributes nothing, so the body
+    // is exactly what it always was.
+    expect(MACHINE).toMatch(/\.\.\.scriptKeyBody,/)
+    expect(MACHINE).toMatch(/scriptKeyBody = leadScriptKey === 'vsl_close' \|\| leadScriptKey === 'property_call'/)
+    expect(MACHINE).toMatch(/:\s*\{\};/) // the cold-dial branch is an empty object
     // Never an unconditional field on the body.
     expect(MACHINE).not.toMatch(/^\s*script_key:/m)
   })
@@ -44,7 +50,9 @@ describe('COLD CALLS ARE UNTOUCHED', () => {
   it('the mint maps to a literal and never passes the client value through', () => {
     // Otherwise a client could put arbitrary text into the field that decides
     // which coaching a live call gets.
-    expect(MINT).toMatch(/body\.script_key === 'vsl_close' \? 'vsl_close' : null/)
+    expect(MINT).toMatch(/body\.script_key === 'vsl_close' \? 'vsl_close'/)
+    expect(MINT).toMatch(/body\.script_key === 'property_call' \? 'property_call'/)
+    expect(MINT).toMatch(/:\s*null;/) // anything else falls to the cold call
     expect(MINT).not.toMatch(/script_key: body\.script_key/)
   })
 

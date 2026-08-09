@@ -3,6 +3,7 @@
 // qualified ones become deals in Hugo's live business pipeline.
 import { createClient } from '@supabase/supabase-js';
 import { notifyBusinessOwner } from './notify.js';
+import { offerRange, fmtGBP } from './brrr-offer.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -60,30 +61,13 @@ export async function saveBrrrSettings(patch: Partial<BrrrSettings>): Promise<Br
   return merged;
 }
 
-/** The offer band the AI is allowed to talk in.
- *
- *  Primary source: the scraper's valuation engine (deal.offer_min/offer_max —
- *  a % of the property's worth-now value from sold comps, never above asking).
- *  Fallback (no valuation sent): % of asking from settings, capped below asking. */
-export function offerRange(property: BrrrProperty, s: BrrrSettings): { min: number; max: number } {
-  const deal = (property.deal || {}) as Record<string, unknown>;
-  const num = (v: unknown) => parseFloat(String(v ?? '')) || 0;
-
-  const engineMax = num(deal.offer_max) || num(deal.offer_price);
-  if (engineMax > 0) {
-    const engineMin = num(deal.offer_min);
-    return {
-      min: Math.round(engineMin > 0 ? Math.min(engineMin, engineMax) : engineMax),
-      max: Math.round(engineMax),
-    };
-  }
-
-  const asking = Number(property.asking_price) || 0;
-  let max = Math.round(asking * s.offer_high_pct / 100);
-  let min = Math.round(asking * s.offer_low_pct / 100);
-  if (!min || min > max) min = max;
-  return { min, max };
-}
+/** The offer band, the money formatter and the negotiation ladder now live in
+ *  ./brrr-offer.ts — a pure module with no createClient() at import time, so
+ *  the dialer's browser code can import the SAME maths instead of keeping its
+ *  own copy. Re-exported here so every existing importer of this file is
+ *  unchanged. See that file for why the offer is never a % of GDV. */
+export { offerRange, fmtGBP, gbpShort, ladderText } from './brrr-offer.js';
+export type { OfferPercents, OfferSubject } from './brrr-offer.js';
 
 export interface BrrrProperty {
   id: string;
@@ -115,11 +99,6 @@ export function toE164(phone: string | null | undefined): string | null {
   return `+44${digits}`;
 }
 
-export function fmtGBP(n: unknown): string {
-  const v = typeof n === 'number' ? n : parseFloat(String(n || ''));
-  if (!isFinite(v) || v <= 0) return 'an amount to be discussed';
-  return `£${Math.round(v).toLocaleString('en-GB')}`;
-}
 
 export interface Qualification {
   outcome?: 'qualified' | 'not_qualified' | 'callback' | 'no_answer';

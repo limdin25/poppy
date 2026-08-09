@@ -19,7 +19,7 @@ interface UseDialerMachineOpts {
    *  the live coach (which is driven by Twilio and cannot see the browser)
    *  coaches the same script the agent has on screen. Omitted everywhere else,
    *  so every other dial path is unchanged. */
-  scriptKeyForLead?: (contactId: string) => 'cold_call' | 'vsl_close';
+  scriptKeyForLead?: (contactId: string) => 'cold_call' | 'vsl_close' | 'property_call';
   onToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -230,6 +230,15 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
         return;
       }
 
+      // Which script is on the agent's screen for THIS lead. Persisted onto
+      // wk_calls so the live coach (which is driven by Twilio and rebuilds its
+      // context from the database, never from the browser) coaches the same
+      // call the agent is reading.
+      const leadScriptKey = scriptKeyForLead?.(lead.contactId);
+      const scriptKeyBody = leadScriptKey === 'vsl_close' || leadScriptKey === 'property_call'
+        ? { script_key: leadScriptKey }
+        : {};
+
       // Create call record server-side
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.functions as any).invoke('wk-calls-create', {
@@ -239,9 +248,7 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
           campaign_id: campaignId,
           // Spread, not a plain field: on a cold dial the request body stays
           // byte-identical to what it has always been.
-          ...(scriptKeyForLead?.(lead.contactId) === 'vsl_close'
-            ? { script_key: 'vsl_close' }
-            : {}),
+          ...scriptKeyBody,
         },
       });
       if (error || !data) {

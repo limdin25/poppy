@@ -38,6 +38,14 @@ export const SCRIPT_TEXT_TOKENS = [
   // ahead, from an electricians search. Use these in script copy so the WORDS
   // match the numbers: "you're behind [competitors_ahead] other [trade_plural]".
   'trade', 'trade_plural', 'competitors_ahead', 'total_competitors',
+  // Property call (the Houses campaign). These do NOT come from the contact:
+  // one estate agency lists many houses, so the values belong to whichever
+  // listing the agent has selected in the Houses tab and arrive via the
+  // `extra` argument below. Listed here so an unfilled one still renders as a
+  // visible brown slot rather than a bare bracket.
+  'property_address', 'property_street', 'asking_price', 'bedrooms',
+  'property_type', 'days_on_market', 'agency', 'property_worth',
+  'offer_open', 'offer_ceiling', 'ladder', 'comp_evidence', 'valuation_notes',
 ] as const;
 
 const PH_OPEN = '<span class="ph">';
@@ -83,7 +91,18 @@ export function highlightTokens(html: string): string {
   return out;
 }
 
-export function interpolateScript(templateHtml: string, contact?: ScriptContact | null): string {
+/**
+ * @param extra Token values that do not come from the contact. Used only by the
+ *   property call, where the figures belong to the selected LISTING rather than
+ *   to the estate agency being rung, and can change mid-call. Keys are bare
+ *   names ("offer_open"), not bracketed. Omitting it leaves behaviour for every
+ *   existing caller byte-identical.
+ */
+export function interpolateScript(
+  templateHtml: string,
+  contact?: ScriptContact | null,
+  extra?: Record<string, string | undefined> | null,
+): string {
   const cf = contact?.customFields ?? {};
   const name = (contact?.name ?? '').trim();
   const trade = resolveTrade(cf, cf.town?.trim(), name);
@@ -105,6 +124,13 @@ export function interpolateScript(templateHtml: string, contact?: ScriptContact 
     '[competitors_ahead]': cf.plumbers_ahead?.trim() || undefined,
     '[total_competitors]': cf.total_plumbers?.trim() || undefined,
   };
+
+  // Caller-supplied values win. Only the property call passes any, so for every
+  // existing script this loop does nothing at all.
+  for (const [key, value] of Object.entries(extra ?? {})) {
+    const v = (value ?? '').trim();
+    if (v) textTokens[`[${key}]`] = v;
+  }
 
   // Start from bare tokens (defensive: a template captured from a highlighted
   // view still fills cleanly).

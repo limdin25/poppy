@@ -4,6 +4,10 @@ import { DataTable } from '../components/DataTable'
 import { MetricCard } from '../components/MetricCard'
 import { AdminError } from '../components/AdminError'
 import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
+// The SAME offer maths the dial cron and Pedro's dialer use. Pure module, safe
+// to import into the browser (api/lib/brrr.ts itself is not — it builds a
+// Supabase client at import time).
+import { offerRange } from '../../../../api/lib/brrr-offer'
 
 interface PropertyCall {
   id: string
@@ -118,23 +122,10 @@ function fmtWhen(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-// Mirrors offerRange in api/lib/brrr.ts: scraper valuation engine first,
-// % of asking only as a fallback when no valuation was sent.
-function offerBand(p: PropertyRow, s: BrrrSettings | null): { min: number; max: number } {
-  const num = (v: unknown) => parseFloat(String(v ?? '')) || 0
-  const engineMax = num(p.deal?.offer_max) || num(p.deal?.offer_price)
-  if (engineMax > 0) {
-    const engineMin = num(p.deal?.offer_min)
-    return { min: Math.round(engineMin > 0 ? Math.min(engineMin, engineMax) : engineMax), max: Math.round(engineMax) }
-  }
-  const asking = Number(p.asking_price) || 0
-  const lowPct = s?.offer_low_pct ?? 70
-  const highPct = s?.offer_high_pct ?? 75
-  let max = Math.round(asking * highPct / 100)
-  let min = Math.round(asking * lowPct / 100)
-  if (!min || min > max) min = max
-  return { min, max }
-}
+// The offer band used to be re-implemented here, a hand-copy of offerRange in
+// api/lib/brrr.ts that had to be kept in step by hand. It is now the same
+// function, imported above — see api/lib/brrr-offer.ts for why the offer is a
+// percentage of what the property is worth today and never of GDV.
 
 export default function PropertiesPage() {
   const { data, loading, error, refetch } = useAdminApi<PropertiesResponse | PropertyRow[]>('properties', { properties: [], settings: null })
@@ -350,7 +341,7 @@ export default function PropertiesPage() {
               key: 'numbers',
               header: 'Numbers',
               render: (p) => {
-                const band = offerBand(p, settings)
+                const band = offerRange(p, settings)
                 return (
                   <div className="text-[12px]">
                     <div className="font-medium text-ink">{p.price_text || gbp(p.asking_price)}</div>
@@ -460,7 +451,7 @@ export default function PropertiesPage() {
 
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(() => {
-                const band = offerBand(selected, settings)
+                const band = offerRange(selected, settings)
                 return [
                   ['Asking', selected.price_text || gbp(selected.asking_price)],
                   ['AI offer range', `${gbp(band.min)}–${gbp(band.max)}`],

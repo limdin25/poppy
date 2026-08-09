@@ -59,8 +59,12 @@ export default function DialerProPage() {
   const autoCallContactId = searchParams.get('call');
   // Captured once: onAutoCallConsumed clears the query string, which would
   // otherwise swap the script back to cold mid-call.
-  const [scriptKey] = useState<ScriptKey>(() =>
-    searchParams.get('script') === 'vsl_close' ? 'vsl_close' : 'cold_call');
+  const [scriptKey] = useState<ScriptKey>(() => {
+    const q = searchParams.get('script');
+    // Allowlist, never the raw query value: this decides which words an agent
+    // reads down a live phone line.
+    return q === 'vsl_close' || q === 'property_call' ? q : 'cold_call';
+  });
   return (
     <DialerProContent
       autoCallContactId={autoCallContactId}

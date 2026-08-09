@@ -34,6 +34,12 @@ export function scriptForCall({
   openedForContactId,
   currentLeadContactId,
 }: ScriptForCallArgs): ScriptKey {
+  // The property call belongs to the CAMPAIGN, not to one lead. Every lead in
+  // the Houses queue is an estate agency, so unlike the close script there is
+  // no "the next lead is a stranger" problem to guard against: Next call pulls
+  // another estate agency and the same script is still the right one.
+  if (openedWith === 'property_call') return 'property_call';
+
   // A room opened normally is always the cold script, whoever is on the phone.
   if (openedWith !== 'vsl_close') return 'cold_call';
   // Idle, or still on the lead the funnel sent us to close: close script.

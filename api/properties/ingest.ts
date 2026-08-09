@@ -55,10 +55,13 @@ export default async function handler(req: Request): Promise<Response> {
       updated_at: new Date().toISOString(),
     };
 
+    // NOTE: `row` deliberately does NOT carry call_channel. A re-send of a
+    // property whose branch a human agent already owns must not reset it to
+    // 'ai' and hand the branch back to the robot.
     const { data, error } = await supabase
       .from('brrr_properties')
       .upsert(row, { onConflict: 'source,source_property_id' })
-      .select('id, status')
+      .select('id, status, call_channel')
       .single();
 
     if (error) {
@@ -69,9 +72,15 @@ export default async function handler(req: Request): Promise<Response> {
     // valuation engine's pursue flag is advisory only and must not block an
     // explicit send (its warnings still reach the agent via deal.flags).
     // Re-sends of already-processed properties don't re-queue.
+    //
+    // call_channel === 'human' means a CRM agent owns this whole branch and is
+    // working it through the dialer. Queueing an AI call as well would ring the
+    // same office twice from two different numbers, which is exactly what the
+    // cron's 30-minute same-agency spacing exists to prevent.
     let callQueued = false;
     const settings = await getBrrrSettings();
     if (settings.auto_queue_on_ingest && row.agent_phone
+        && data.call_channel !== 'human'
         && ['new', 'call_queued'].includes(data.status)) {
       const q = await queuePropertyCall(data.id);
       callQueued = q.queued;

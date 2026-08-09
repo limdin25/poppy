@@ -148,6 +148,22 @@ export default async function handler(req: Request): Promise<Response> {
         .eq('id', entry.property_id)
         .single();
 
+      // This branch belongs to a human agent now. The queue row was created
+      // before the handover (ingest guards new ones), so retire it rather than
+      // dial: two calls to the same office from two different numbers is the
+      // complaint the spacing rule below exists to prevent, and a human is
+      // mid-negotiation with them.
+      if (property?.call_channel === 'human') {
+        await supabase.from('brrr_property_calls')
+          .update({
+            status: 'skipped',
+            error: 'branch assigned to a human agent',
+            updated_at: now.toISOString(),
+          })
+          .eq('id', entry.id);
+        continue;
+      }
+
       const toNumber = toE164(property?.agent_phone);
       if (!property || !toNumber) {
         await supabase.from('brrr_property_calls')

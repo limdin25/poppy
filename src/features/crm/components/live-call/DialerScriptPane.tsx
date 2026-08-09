@@ -19,7 +19,7 @@
 // So editing never bakes one lead's numbers into the saved script, and every
 // agent dialling any lead sees that lead's own personalised script.
 //
-// TWO SCRIPTS, picked by `scriptKey`:
+// THREE SCRIPTS, picked by `scriptKey`:
 //   'cold_call' (default) — one-call-script.html / wk_sales_script. Every
 //                           normal dial. Nothing passes the prop, so this path
 //                           behaves exactly as it did before the second script
@@ -28,20 +28,26 @@
 //                           when the dialer is opened from the video funnel
 //                           (?script=vsl_close) for a lead who already watched
 //                           their video.
+//   'property_call'       — property-call-script.html / wk_property_call_script.
+//                           The Houses campaign: ringing an estate agency about
+//                           a house. Its money section is filled from the
+//                           selected property via `extraTokens`.
 // Separate bundled files AND separate tables, so editing one can never touch
-// the other.
+// the others.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileText, Pencil, Printer, Save, X } from 'lucide-react';
 import scriptHtml from '@/core/content/one-call-script.html?raw';
 import vslCloseHtml from '@/core/content/vsl-close-script.html?raw';
+import propertyCallHtml from '@/core/content/property-call-script.html?raw';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useSalesScript } from '../../hooks/useSalesScript';
 import { useVslCloseScript } from '../../hooks/useVslCloseScript';
+import { usePropertyCallScript } from '../../hooks/usePropertyCallScript';
 import { interpolateScript, highlightTokens, stripHighlights } from '../../lib/interpolateScript';
 import type { Contact } from '../../types';
 
-export type ScriptKey = 'cold_call' | 'vsl_close';
+export type ScriptKey = 'cold_call' | 'vsl_close' | 'property_call';
 
 // Reuse the script's own print rules (hide topbar/rails/controls, page full
 // width) but apply them always, so the dialer shows only the centre column.
@@ -55,28 +61,41 @@ const LEAN_STYLE = `<style id="__dialer_lean__">
 const LEAN_HTML: Record<ScriptKey, string> = {
   cold_call: scriptHtml.replace('</head>', `${LEAN_STYLE}</head>`),
   vsl_close: vslCloseHtml.replace('</head>', `${LEAN_STYLE}</head>`),
+  property_call: propertyCallHtml.replace('</head>', `${LEAN_STYLE}</head>`),
 };
 
 const PANE_TITLE: Record<ScriptKey, string> = {
   cold_call: 'Sales script',
   vsl_close: 'Close script · they watched the video',
+  property_call: 'Property call · estate agent',
 };
 
 interface Props {
   /** The lead being dialled — its custom_fields fill the script's tokens. */
   contact?: Contact | null;
   /** Which script to show. Omitted everywhere except the video funnel's
-   *  "Call to close" deep link, so every existing caller keeps the cold script. */
+   *  "Call to close" deep link and the Houses campaign, so every existing
+   *  caller keeps the cold script. */
   scriptKey?: ScriptKey;
+  /** Extra token values that do NOT come from the contact — the property call's
+   *  money section is filled from whichever listing the agent has selected in
+   *  the Houses tab, which can change mid-call without the contact changing. */
+  extraTokens?: Record<string, string | undefined>;
 }
 
-export default function DialerScriptPane({ contact, scriptKey = 'cold_call' }: Props) {
+export default function DialerScriptPane({ contact, scriptKey = 'cold_call', extraTokens }: Props) {
   const { isAdmin } = useAuth();
-  // Both hooks run unconditionally (Rules of Hooks) and we use the one this
-  // pane is showing. The unused one is a single cheap singleton read.
+  // All three hooks run unconditionally (Rules of Hooks) and we use the one
+  // this pane is showing. The unused two are single cheap singleton reads.
   const cold = useSalesScript();
   const vslClose = useVslCloseScript();
-  const { savedHtml, loading, saving, error, save } = scriptKey === 'vsl_close' ? vslClose : cold;
+  const propertyCall = usePropertyCallScript();
+  const byKey: Record<ScriptKey, typeof cold> = {
+    cold_call: cold,
+    vsl_close: vslClose,
+    property_call: propertyCall,
+  };
+  const { savedHtml, loading, saving, error, save } = byKey[scriptKey] ?? cold;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [docReady, setDocReady] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -116,11 +135,16 @@ export default function DialerScriptPane({ contact, scriptKey = 'cold_call' }: P
 
   // Render the DISPLAY (template filled for the current contact) whenever the
   // template or the active lead changes — but never while an admin is editing.
+  // extraTokens is stringified for the dependency array: it is rebuilt fresh on
+  // every render by the parent, so comparing by reference would re-render the
+  // iframe body on every keystroke elsewhere in the dialer.
+  const extraKey = JSON.stringify(extraTokens ?? null);
   useEffect(() => {
     if (editing || template == null) return;
     const page = pageEl();
-    if (page) page.innerHTML = interpolateScript(template, contact);
-  }, [template, contact, editing, pageEl]);
+    if (page) page.innerHTML = interpolateScript(template, contact, extraTokens);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template, contact, editing, pageEl, extraKey]);
 
   const startEdit = () => {
     const page = pageEl();

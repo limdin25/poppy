@@ -79,3 +79,60 @@ describe('scriptForCall — the close script belongs to one lead', () => {
     })).toBe('cold_call')
   })
 })
+
+describe('the property call belongs to the CAMPAIGN, not to one lead', () => {
+  // The opposite rule to the close script above, and deliberately so. Every
+  // lead in the Houses queue is an estate agency, so "Next call" pulls another
+  // estate agency and the same script is still the right conversation. The
+  // close script's problem (the next lead is a stranger who never saw a video)
+  // simply does not exist here.
+  const BRANCH_A = 'branch-aaaa'
+  const BRANCH_B = 'branch-bbbb'
+
+  it('stays on the property script for the lead it was opened for', () => {
+    expect(scriptForCall({
+      openedWith: 'property_call',
+      openedForContactId: BRANCH_A,
+      currentLeadContactId: BRANCH_A,
+    })).toBe('property_call')
+  })
+
+  it('STAYS on it for the next branch too, unlike the close script', () => {
+    expect(scriptForCall({
+      openedWith: 'property_call',
+      openedForContactId: BRANCH_A,
+      currentLeadContactId: BRANCH_B,
+    })).toBe('property_call')
+  })
+
+  it('stays on it while idle between calls', () => {
+    expect(scriptForCall({
+      openedWith: 'property_call',
+      openedForContactId: null,
+      currentLeadContactId: null,
+    })).toBe('property_call')
+  })
+
+  it('a cold room NEVER becomes a property call', () => {
+    // The dangerous direction: a plumber hearing an estate-agent opener.
+    for (const openedForContactId of [null, BRANCH_A]) {
+      for (const currentLeadContactId of [null, BRANCH_A, COLD_LEAD]) {
+        expect(scriptForCall({
+          openedWith: 'cold_call',
+          openedForContactId,
+          currentLeadContactId,
+        })).toBe('cold_call')
+      }
+    }
+  })
+
+  it('a close room NEVER becomes a property call', () => {
+    for (const currentLeadContactId of [null, WATCHED_LEAD, COLD_LEAD]) {
+      expect(scriptForCall({
+        openedWith: 'vsl_close',
+        openedForContactId: WATCHED_LEAD,
+        currentLeadContactId,
+      })).not.toBe('property_call')
+    }
+  })
+})

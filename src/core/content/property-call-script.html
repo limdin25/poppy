@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Property call script</title>
+<!--
+  The THIRD sales script: ringing an estate agency about a house.
+
+  Words converted from the Retell qualifier's prompt in
+  scripts/create-property-qualifier-agent.mjs, which is already Hugo's approved
+  script for exactly this call. Two deliberate differences, because a person is
+  reading it rather than a model:
+
+    1. No honest-AI disclosure. Pedro is a person.
+    2. He IS told the walk-away figure, in the red box. The AI is explicitly
+       told never to learn its own ceiling so it cannot leak it; a human has to
+       know where to stop, and is trusted not to say it out loud.
+
+  THE STYLESHEET ABOVE IS vsl-close-script.html'S, COPIED BYTE FOR BYTE by
+  scratchpad/build-property-script.mjs, plus one appended block for the money
+  panel and the flat-vs-house split. Do not restyle it by hand. If the cold
+  script's design changes, copy it across again.
+
+  Deliberately LINEAR: no chooser engine, no build(). The content IS the markup
+  inside #page, so the dialer's template capture reads it straight, and the
+  objection panels are plain <details> that need no JavaScript.
+
+  Tokens in [brackets] are filled per property by interpolateScript(). An
+  unfilled one renders in a brown .ph span, so a missing figure is visible
+  rather than silently blank.
+-->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  background:#e8e8e6;
+  color:#1a1a1a;
+  font-family:Georgia,'Times New Roman',serif;
+  line-height:1.65;
+  padding:0 0 140px;
+}
+
+/* Top bar */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  background:#fff;border-bottom:1px solid #d5d5d3;
+  display:flex;align-items:center;gap:14px;
+  padding:10px 20px;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+.topbar .title{font-weight:700;font-size:14px;color:#1a1a1a}
+.topbar .stage{
+  font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:#888;margin-left:auto;
+}
+
+/* The page */
+.page{
+  background:#fff;
+  flex:0 1 760px;
+  max-width:760px;
+  margin:0;
+  padding:56px 64px 72px;
+  box-shadow:0 1px 4px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.06);
+  border-radius:2px;
+}
+
+/* 3-column workspace: objections | script | calculator */
+.workspace{
+  display:flex;
+  gap:22px;
+  align-items:flex-start;
+  justify-content:center;
+  max-width:1520px;
+  margin:0 auto;
+  padding:26px 20px 40px;
+}
+.rail{
+  flex:0 0 300px;
+  width:300px;
+  position:sticky;
+  top:58px;
+  max-height:calc(100vh - 78px);
+  overflow-y:auto;
+  background:#fff;
+  border:1px solid #e4e4e1;
+  border-radius:10px;
+  padding:16px 18px;
+  box-shadow:0 1px 3px rgba(0,0,0,.05);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+.rail h3{
+  font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#9a9a9a;
+  font-weight:800;margin-bottom:6px;
+}
+.rail .rail-sub{font-size:11.5px;color:#b0b0b0;margin-bottom:12px;line-height:1.4}
+
+/* Left rail, whisper safety-net box */
+.whisper{
+  background:#fff8ec;border:1px solid #f0dfb0;border-radius:9px;
+  padding:12px 14px;margin-bottom:16px;
+}
+.whisper-head{
+  font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#b58a2e;
+  font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:6px;
+}
+.whisper-sub{font-size:11px;color:#b9a06a;margin-bottom:8px;line-height:1.35}
+.whisper ul{list-style:none;margin:0;padding:0}
+.whisper li{
+  font-size:12.5px;color:#5a4a20;line-height:1.45;
+  padding:7px 0;border-top:1px solid #f3e8cf;
+}
+.whisper li:first-child{border-top:none}
+.whisper li em{color:#a08a52;font-style:normal;font-size:11px}
+
+/* Left rail, general objections / FAQ */
+.faq-item{border-top:1px solid #f0f0ee}
+.faq-item:first-of-type{border-top:none}
+.faq-item>summary{
+  cursor:pointer;list-style:none;padding:9px 0;
+  font-weight:600;font-size:13px;color:#1a1a1a;line-height:1.35;
+  display:flex;gap:8px;align-items:flex-start;
+}
+.faq-item>summary::-webkit-details-marker{display:none}
+.faq-item>summary::before{content:'+';color:#7bbd88;font-weight:800;flex-shrink:0;font-size:14px;line-height:1.2}
+.faq-item[open]>summary::before{content:'-'}
+.faq-item>summary:hover{color:#2f6db0}
+.faq-a{font-size:12.5px;color:#5f5f5f;line-height:1.55;padding:0 0 11px 17px}
+
+/* Right rail, calculator */
+.calc-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+.calc-row label{font-size:12.5px;color:#444}
+.calc-row input{
+  width:78px;padding:6px 8px;border:1px solid #cfcfcc;border-radius:6px;
+  font-size:14px;text-align:right;font-family:inherit;color:#1a1a1a;
+  font-variant-numeric:tabular-nums;
+}
+.calc-row input:focus{outline:none;border-color:#7bbd88}
+.calc-out{
+  background:#f4f9f5;border:1px solid #d8ebdd;border-radius:9px;
+  padding:13px 15px;margin-top:13px;
+}
+.calc-out.roi{background:#f6f8fb;border-color:#dde6f0}
+.calc-out .big{font-size:30px;font-weight:800;color:#2e7d43;line-height:1.05;font-variant-numeric:tabular-nums}
+.calc-out .cap{font-size:11px;color:#7a9a80;margin-bottom:8px}
+.calc-line{display:flex;justify-content:space-between;font-size:12.5px;color:#555;margin:6px 0}
+.calc-line b{color:#1a1a1a;font-variant-numeric:tabular-nums}
+.calc-line.gap{border-top:1px dashed #cfe0d4;padding-top:7px;margin-top:8px}
+.calc-line.gap b{color:#c0392b}
+.calc-sub{font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:#aaa;font-weight:800;margin:18px 0 9px}
+.calc-note{font-size:12px;color:#456;line-height:1.45;margin-top:2px}
+
+@media(max-width:1160px){
+  .workspace{flex-direction:column;align-items:center;gap:16px}
+  .rail{position:static;width:100%;max-width:760px;max-height:none;flex:none}
+  .page{order:0}
+  .rail-right{order:1}
+  .rail-left{order:2}
+}
+
+.doc-head{
+  border-bottom:2px solid #1a1a1a;
+  padding-bottom:14px;margin-bottom:28px;
+}
+.doc-head h1{font-size:23px;font-weight:700;letter-spacing:-.3px}
+.doc-head .sub{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:12px;color:#777;margin-top:6px;line-height:1.5;
+}
+
+/* Stage divider */
+.stage-div{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:#7d93b0;
+  margin:32px 0 16px;padding-bottom:6px;border-bottom:1px solid #e7edf4;
+}
+.stage-div:first-child{margin-top:0}
+
+/* A spoken block */
+.block{margin-bottom:8px}
+.line{font-size:19px;line-height:1.7;margin-bottom:10px}
+.line .who{font-weight:700}
+.line .who.you{color:#2f6db0}
+
+/* Live Google-search link (competitor demo), filled per lead in the dialer */
+.gsearch{
+  display:inline-flex;align-items:center;gap:5px;
+  margin-top:8px;font-size:14px;font-weight:600;
+  color:#fff;background:#2f6db0;text-decoration:none;
+  padding:6px 12px;border-radius:8px;
+}
+.gsearch:hover{background:#255a93}
+
+/* Unfilled placeholder slot, brown so it's obvious it's a fill-in the dialer
+   replaces per lead (shown in Edit mode + on leads missing that field). */
+.ph{color:#8a4b1f;font-weight:700;background:#f6ecdf;border-radius:4px;padding:0 3px}
+
+/* Stage direction (coaching note) */
+.dir{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-style:normal;
+  font-size:13.5px;line-height:1.55;color:#8a8a8a;
+  border-left:2px solid #e0e0e0;
+  padding:2px 0 2px 14px;margin:2px 0 16px;
+}
+
+/* Prospect answer (locked, after choosing) */
+.them{
+  font-size:18px;color:#555;margin:4px 0 22px;font-style:italic;
+  border-left:2px solid #e3d9c4;padding-left:14px;
+}
+.them .who{font-weight:700;font-style:normal;color:#a88a4a}
+
+/* The response chooser */
+.chooser{margin:6px 0 8px}
+.chooser-label{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:#999;margin-bottom:10px;
+}
+.opts{display:flex;flex-wrap:wrap;gap:9px}
+.opt{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:14.5px;line-height:1.35;
+  background:#f3f8f4;color:#1a1a1a;
+  border:1.5px solid #c3ddc8;border-radius:7px;
+  padding:9px 15px;cursor:pointer;
+  text-align:left;transition:all .12s;
+  display:inline-flex;align-items:center;gap:9px;
+}
+.opt:hover{background:#dff0e3;border-color:#7bbd88}
+.opt .num{
+  font-size:11px;font-weight:700;color:#4a9159;
+  border:1px solid currentColor;border-radius:4px;
+  width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;
+  opacity:.7;flex-shrink:0;
+}
+.opt.obj{background:#fdf6ea;border-color:#ecd3a0}
+.opt.obj:hover{background:#f9ebd2;border-color:#dcb765}
+.opt.obj .num{color:#b58a2e}
+.opt .tag{
+  font-size:9.5px;font-weight:700;letter-spacing:.5px;color:#b58a2e;
+  opacity:.85;text-transform:uppercase;
+}
+
+/* End markers */
+.end-won,.end-lost{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  margin-top:28px;padding:22px 24px;border-radius:8px;text-align:center;
+}
+.end-won{background:#eef8f0;border:2px solid #7bbd88}
+.end-won .big{font-size:20px;font-weight:800;letter-spacing:1px;margin-bottom:6px;color:#2e7d43}
+.end-won .small{font-size:13.5px;color:#4a6b52;line-height:1.5}
+.end-lost{border:1.5px dashed #d8b8b8;color:#a88;font-size:14px}
+
+/* Response row under each line */
+.responses{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 24px}
+
+/* "keep reading" chip, the straight-line answer */
+.continue{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:12.5px;color:#3d8a4f;
+  background:#eef8f0;border:1px solid #cfe6d4;border-radius:6px;padding:5px 11px;
+}
+
+/* Branch / objection toggles */
+details.branch{display:inline-block}
+details.branch>summary{
+  list-style:none;cursor:pointer;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:12.5px;color:#1a1a1a;
+  background:#f3f8f4;border:1px solid #c3ddc8;border-radius:6px;padding:5px 11px;
+  display:inline-flex;align-items:center;gap:7px;user-select:none;transition:background .12s;
+}
+details.branch>summary:hover{background:#e3f0e6}
+details.branch>summary::-webkit-details-marker{display:none}
+details.branch>summary::before{content:'▸';color:#4a9159;font-size:10px}
+details.branch[open]>summary::before{content:'▾'}
+details.branch.obj>summary{background:#fdf6ea;border-color:#ecd3a0}
+details.branch.obj>summary:hover{background:#f7ebd2}
+details.branch.obj>summary::before{color:#b58a2e}
+details.branch>summary .tag{
+  font-size:9px;font-weight:700;letter-spacing:.5px;color:#b58a2e;text-transform:uppercase;
+}
+
+/* Expanded panel */
+.obj-panel{
+  margin:11px 0 4px 4px;padding:14px 18px;
+  background:#fcfbf7;border:1px solid #eee5cf;border-left:3px solid #e0c078;border-radius:8px;
+}
+.obj-panel .obj-panel{background:#fbf9f2}
+.obj-say{font-size:16.5px;line-height:1.6;margin-bottom:6px}
+.obj-say .who{font-weight:700;color:#2f6db0}
+.obj-panel .dir{margin:2px 0 12px}
+.obj-responses{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.resume{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:12px;color:#777;
+  background:#f4f4f2;border:1px solid #e4e4e0;border-radius:6px;padding:5px 10px;
+}
+.resume.win{color:#2e7d43;background:#eef8f0;border-color:#cfe6d4}
+.resume.lost{color:#b08a8a;background:#faf3f3;border-color:#ecd9d9}
+
+/* Bottom controls */
+.controls{
+  position:fixed;bottom:0;left:0;right:0;z-index:20;
+  background:#fff;border-top:1px solid #d5d5d3;
+  display:flex;gap:8px;align-items:center;
+  padding:11px 20px;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+.ctrl{
+  background:#fff;border:1.5px solid #ccc;color:#444;
+  padding:8px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;
+  transition:all .12s;
+}
+.ctrl:hover{border-color:#1a1a1a;color:#1a1a1a}
+.ctrl.danger:hover{border-color:#c00;color:#c00}
+.ctrl.primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a;margin-left:auto}
+.ctrl.primary:hover{background:#000}
+.hint{margin-left:auto;font-size:11.5px;color:#bbb}
+.controls .hint + .ctrl.primary{margin-left:8px}
+
+/* Print: clean document, no UI */
+@media print{
+  body{background:#fff;padding:0}
+  .topbar,.controls,.chooser,.rail{display:none !important}
+  .workspace{display:block;padding:0;max-width:100%}
+  .page{box-shadow:none;margin:0;max-width:100%;padding:20px 30px;flex:none}
+  .dir{color:#666}
+}
+
+@media(max-width:640px){
+  .page{padding:32px 22px 48px;margin:14px 8px}
+  .line{font-size:17px}
+}
+</style>
+<style>
+/* The money panel. .ceiling is the walk-away: read it, never say it. */
+.money{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  margin:14px 0 20px;border:1px solid #d8e2ee;border-radius:10px;overflow:hidden;
+}
+.money .row{display:flex;gap:14px;padding:12px 16px;border-bottom:1px solid #eef2f7}
+.money .row:last-child{border-bottom:0}
+.money .k{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7d93b0;width:132px;flex:0 0 132px;padding-top:3px}
+.money .v{font-size:20px;font-weight:800;color:#1a1a1a}
+.money .v small{display:block;font-size:12.5px;font-weight:500;color:#6b7f96;margin-top:3px;line-height:1.45}
+.money .open{background:#eef8f0}
+.money .open .v{color:#2e7d43}
+.money .ceiling{background:#fdf0f0}
+.money .ceiling .k{color:#b06060}
+.money .ceiling .v{color:#a83232}
+.money .ceiling .never{
+  display:inline-block;margin-top:5px;font-size:11px;font-weight:800;
+  letter-spacing:1.2px;text-transform:uppercase;color:#fff;background:#a83232;
+  padding:3px 9px;border-radius:5px;
+}
+.evidence{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:13.5px;color:#4a5b6e;background:#f6f8fb;border-left:3px solid #b9cbe0;
+  padding:10px 14px;border-radius:0 6px 6px 0;margin:0 0 18px;line-height:1.6;
+}
+/* Two columns of type-specific questions, so nobody asks a house about a lease. */
+.split{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 18px}
+.split .col{flex:1 1 260px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px}
+.split .col h4{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;
+  color:#7d93b0;margin-bottom:8px;
+}
+.split .col ul{margin:0;padding-left:18px;font-size:14.5px;line-height:1.75}
+.split .col.warn{border-color:#e8d5b0;background:#fffdf6}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="title">Property call &middot; estate agent</span>
+  <span class="stage">Cold call &middot; they do not know you</span>
+</div>
+
+<div class="workspace">
+  <div class="page" id="page">
+
+    <div class="doc-head">
+      <h1>Ringing the agent about [property_address]</h1>
+      <div class="sub">
+        You are calling on behalf of the director, who is a cash buyer. Your job
+        is to find out about the house and gauge how flexible the vendor is. You
+        do <b>not</b> make a formal offer and you do <b>not</b> book a viewing.
+        Read the <b>blue</b> lines aloud. Grey lines are notes for you only. One
+        question at a time, and react to what they say before asking the next
+        thing. If they push back, open the amber button on that line.
+      </div>
+    </div>
+
+    <div class="stage-div">1. Is it still available</div>
+
+    <div class="line"><span class="who you">YOU:</span> "Hi, hello. I'm calling about the property on [property_street], the [bedrooms] bed [property_type]. Is that one still available?"</div>
+    <div class="dir">
+      Then <b>stop</b>. Nothing else. This one question tells you whether there
+      is a call to have at all, and asking it plainly makes you sound like a
+      buyer rather than a salesman.
+    </div>
+    <div class="responses">
+      <span class="continue">&#10003; "Yes, still available", keep reading &#8595;</span>
+      <details class="branch obj">
+        <summary>"It's sold" / "it's under offer" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Ah, fair enough. Would the vendor consider backup offers at all?"</div>
+          <div class="dir">
+            Worth 20 seconds. Chains fall through constantly and a backup offer
+            costs nothing. Note what they say, thank them, wrap up. Mark the
+            outcome <b>Not qualified</b> unless they say yes to a backup, in
+            which case mark it <b>Callback</b>.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>They don't recognise the property <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Sorry, my mistake, I may have the wrong branch. Thanks anyway."</div>
+          <div class="dir">Apologise, end it politely. Mark <b>Not qualified</b>.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>You get a menu or a switchboard <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="dir">
+            Choose sales, residential sales, or general enquiries about buying.
+            If you reach voicemail, hang up without leaving a message and mark
+            it <b>No answer</b>, it will come round again.
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="stage-div">2. Ask for the two minutes</div>
+
+    <div class="line"><span class="who you">YOU:</span> "Oh lovely. So, I'm calling on behalf of our director, he's a cash buyer. Mind if I ask a couple of quick questions? Then he can call you back himself."</div>
+    <div class="dir">
+      Wait for the yes. "Cash buyer" is the reason they will give you two
+      minutes, so do not bury it. "He'll call you back himself" tells them this
+      call is not the pitch, which takes the pressure off both of you.
+    </div>
+    <div class="responses">
+      <span class="continue">&#10003; "Yeah, go on", keep reading &#8595;</span>
+      <details class="branch obj">
+        <summary>"I'm with someone, can you call back?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Course. When's good, later today or tomorrow morning?"</div>
+          <div class="dir">Take the time, mark <b>Callback</b>, move on. Do not try to squeeze it in.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>They sound rushed but will talk <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="dir">
+            Drop to the four that matter: <b>occupancy</b>, <b>condition</b>,
+            <b>why they're selling</b>, then go straight to the money. Skip the
+            rest.
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="stage-div">3. The checklist</div>
+
+    <div class="dir">
+      Conversational, not a form. Acknowledge each answer, "ah okay", "that
+      makes sense", "lovely", before the next question. If they volunteer
+      something, do not ask it again. Tick them off in the <b>Houses</b> tab on
+      the right as you go.
+    </div>
+
+    <div class="line"><span class="who you">YOU:</span> "Is it vacant, or is there a tenant in?"</div>
+    <div class="dir">If tenanted: are they staying or leaving, and what rent are they paying?</div>
+
+    <div class="line"><span class="who you">YOU:</span> "And what sort of condition is it in, ready to move into or does it need work?"</div>
+    <div class="dir">Then the big ones: roof, damp, electrics, boiler. This is what moves the number.</div>
+
+    <div class="line"><span class="who you">YOU:</span> "Has it had much interest? Any offers so far?"</div>
+    <div class="dir">And: has a sale ever fallen through on it? A fall-through is the single best sign a vendor will take less.</div>
+
+    <div class="line"><span class="who you">YOU:</span> "Do you know why they're selling?"</div>
+    <div class="dir">Then: are they in a hurry, and is there an onward chain? Motivation is worth more than any other answer on this page.</div>
+
+    <div class="line"><span class="who you">YOU:</span> "Is it freehold or leasehold?"</div>
+    <div class="dir">Their answer decides which column below you use. Ask the wrong set and you sound like you have never bought a house.</div>
+
+    <div class="split">
+      <div class="col">
+        <h4>If it is a flat or maisonette</h4>
+        <ul>
+          <li>Years left on the lease</li>
+          <li>Service charge per year</li>
+          <li>Ground rent</li>
+          <li>Any big one-off bills or major works planned for the block</li>
+          <li>Taller block? Any cladding or EWS1 issues</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>If it is a house or bungalow</h4>
+        <ul>
+          <li>Confirm it is freehold</li>
+          <li>Structural: roof, damp, subsidence</li>
+          <li>Any extensions or conversions done, and were they signed off</li>
+        </ul>
+      </div>
+      <div class="col warn">
+        <h4>Never</h4>
+        <ul>
+          <li>Never ask a house about service charges or a lease, unless they say it is leasehold</li>
+          <li>Never ask a flat about subsidence, unless they raise it</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stage-div">4. The money</div>
+
+    <div class="dir">
+      This is the part that pays for the call. Open <b>low</b>, climb one step
+      at a time, and only when they give you something. Never name your ceiling
+      and never say "between X and Y".
+    </div>
+
+    <div class="money">
+      <div class="row open">
+        <div class="k">Open at</div>
+        <div class="v">[offer_open]<small>The first figure you say. Not a range, not a hint. This one number.</small></div>
+      </div>
+      <div class="row">
+        <div class="k">Then climb</div>
+        <div class="v">[ladder]<small>One step at a time, and only when they give ground or tell you something useful.</small></div>
+      </div>
+      <div class="row ceiling">
+        <div class="k">Walk away at</div>
+        <div class="v">[offer_ceiling]<small>Past this the deal stops working. Stop, say the director will come back to them, and end it warmly.</small><span class="never">Never say this number out loud</span></div>
+      </div>
+      <div class="row">
+        <div class="k">Worth today</div>
+        <div class="v">[property_worth]<small>What the sold prices nearby say it is worth as it stands. Asking is [asking_price].</small></div>
+      </div>
+    </div>
+
+    <div class="line"><span class="who you">YOU:</span> "Realistically my director would be looking at somewhere around [offer_open] on this one. How would that land with the vendor?"</div>
+    <div class="dir">Then be quiet. The silence after a number is the most useful thing you own. Let them fill it.</div>
+
+    <div class="evidence">
+      <b>If they push back, this is your evidence.</b> One comp at a time, said
+      casually, never read out as a list: [comp_evidence]
+    </div>
+
+    <div class="line"><span class="who you">YOU:</span> "I only ask because a similar one nearby went for less not long ago. What sort of figure do you think would actually get it done?"</div>
+    <div class="dir">
+      Asking <b>them</b> for the number is the whole trick. Any figure they say
+      is worth more than any figure you say. Write it down in the Houses tab
+      exactly as they said it.
+    </div>
+
+    <div class="responses">
+      <span class="continue">&#10003; They give you a figure or a reaction, keep reading &#8595;</span>
+      <details class="branch obj">
+        <summary>"That's far too low" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Fair enough. What would the vendor actually take, do you think?"</div>
+          <div class="dir">Do not defend the number and do not jump to your ceiling. Make them counter. Then climb ONE rung.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Is that your best?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "It's where he'd start. If there's a number that gets it done quickly, tell me and I'll put it to him."</div>
+          <div class="dir">Never answer that question with your ceiling. Ever.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Put it in writing" / "make a formal offer" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Of course, this is just a feeler. The director will confirm everything himself when he calls you."</div>
+          <div class="dir">You are not authorised to make a formal offer. Never imply you are.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>The listing looks unusually cheap <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "It looks keenly priced. Is there a reason, lease or condition or anything?"</div>
+          <div class="dir">Notes on this one: [valuation_notes]</div>
+        </div>
+      </details>
+    </div>
+
+    <div class="stage-div">5. Wrap up</div>
+
+    <div class="line"><span class="who you">YOU:</span> "And what do viewings look like, weekdays, weekends, how much notice?"</div>
+    <div class="dir">
+      Ask, but do <b>not</b> book one. The director arranges viewings himself.
+      Offering to book is the fastest way to be asked a question you cannot
+      answer.
+    </div>
+
+    <div class="line"><span class="who you">YOU:</span> "That's great, thanks for your time. The director will be in touch."</div>
+    <div class="dir">
+      Then <b>wait</b>. Do not hang up on your own closing line. They often add
+      the most useful thing in the call after they think it is over.
+    </div>
+
+    <div class="end-won">
+      <div class="big">BEFORE YOU MOVE ON</div>
+      <div class="small">
+        Tick off what you learned in the <b>Houses</b> tab and pick an outcome.
+        If they gave you a figure, type it in. That number is the reason this
+        call happened.
+      </div>
+    </div>
+
+    <div class="end-lost">
+      Never invent anything about the property, the director or the financing.
+      You only know what is on this page. If they ask for company details beyond
+      the name, the director will share them when he calls back.
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
