@@ -8,19 +8,25 @@ import { ExternalLink, Search, LayoutGrid, Star, Calculator, CircleDot } from 'l
  *
  * It used to run on Hugo's Mac at http://127.0.0.1:5050, so it only worked at
  * his desk and only while the Mac was awake. It now runs on margarita-server
- * under systemd, behind nginx with a password, at https://scraper.heyelsie.com.
+ * under systemd at https://scraper.heyelsie.com.
+ *
+ * There is NO password (Hugo, 2026-08-09: "I don't want any passwords or
+ * anything like that"). Access is a key in the URL, once: opening
+ * scraper.heyelsie.com/?k=... sets a two-year cookie and nginx accepts the
+ * cookie from then on. Anything without either gets a 404.
  *
  * Two consequences that shape this page:
  *
  *  1. The status ping hits /api/floorplans/stats, which nginx deliberately
- *     leaves un-gated (it returns four integers and nothing else). Every other
- *     path needs the password, so the badge can stay honest without shipping a
- *     credential to the browser.
+ *     leaves open (it returns four integers and nothing else). Every other path
+ *     needs the key, so the badge stays honest without shipping a secret to the
+ *     browser. The key is NOT in this bundle for the same reason: JS assets are
+ *     publicly fetchable, so embedding it would be the same as removing it.
  *
- *  2. Browsers refuse to show a password prompt inside a cross-origin iframe.
- *     So the first visit has to happen in a real tab — hence "Open scraper"
- *     being a real button rather than a courtesy link. Once that origin is
- *     authenticated the browser reuses it and the embed below fills in.
+ *  2. The cookie is SameSite=None so it is sent inside this cross-origin
+ *     iframe, but only once the browser has it. So the first visit still has to
+ *     happen in a real tab, which is why "Open scraper" is a real button rather
+ *     than a courtesy link.
  */
 const SCRAPER_URL = import.meta.env.VITE_SCRAPER_URL || 'https://scraper.heyelsie.com'
 
@@ -105,8 +111,8 @@ export default function ScraperPage() {
 
       {online && (
         <p className="mt-2 text-[12px] text-ink-muted">
-          Asks for a password the first time. Use <strong>Open scraper</strong> above, sign in once,
-          then it loads here too.
+          No password. If this panel is blank, click <strong>Open scraper</strong> above once on this
+          device using your saved link, then it loads here too.
         </p>
       )}
 
