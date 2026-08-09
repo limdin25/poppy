@@ -110,6 +110,50 @@ describe("what the roster says about a real profile", () => {
     const r = verdictFor({ readable: true, savedSkoolUrl: null, sentence, biography: "hi", website: null });
     expect(r.verdict).toBe("no_link_saved");
   });
+
+  // Shoaib, 09 Aug 2026. He saved his Skool PROFILE page, which carries no
+  // referral code, and put the same page in his bio. Every check we had was
+  // "is the link you gave us on your profile?", so it matched itself and the
+  // roster printed verified over a link that credits nobody. The verdict now
+  // reads the link before it reads the profile.
+  it("no_ref_code: their saved link has no referral code, so nothing can credit them", () => {
+    const profilePage = "https://www.skool.com/@shoaib-aftab-3382?g=ai-influencer-flywheel-5612";
+    const r = verdictFor({
+      readable: true,
+      savedSkoolUrl: profilePage,
+      sentence,
+      biography: sentence,
+      website: profilePage,
+    });
+    expect(r.verdict).toBe("no_ref_code");
+    expect(VERDICT_LABEL[r.verdict]).toMatch(/NO REFERRAL CODE/);
+  });
+
+  // Jonaid saved the community page with nothing on the end. The old fallback
+  // searched his bio for the last part of the path, the word "about", which
+  // half the bios on Instagram contain by accident.
+  it("no_ref_code: the bare community page never passes on the word about", () => {
+    const r = verdictFor({
+      readable: true,
+      savedSkoolUrl: COMMUNITY,
+      sentence,
+      biography: `${sentence} ask me about anything`,
+      website: "https://linktr.ee/someone/about",
+    });
+    expect(r.verdict).toBe("no_ref_code");
+  });
+
+  // "We could not look" still outranks it: a broken connection is our problem.
+  it("a broken connection is still reported before a bad link", () => {
+    const r = verdictFor({
+      readable: false,
+      savedSkoolUrl: `${COMMUNITY}`,
+      sentence,
+      biography: null,
+      website: null,
+    });
+    expect(r.verdict).toBe("unreadable");
+  });
 });
 
 // A dead Instagram authorisation has to reopen step 1, or the creator sits at

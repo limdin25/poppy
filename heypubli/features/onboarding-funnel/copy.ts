@@ -100,6 +100,11 @@ export const funnelCopy = {
       status: {
         done: "Saved.",
         todo: "Nothing saved yet.",
+        // The link we hold is a real Skool address that pays them nothing,
+        // usually the "share my profile" page instead of Invite people. Say
+        // what is wrong with the one they sent, not just "nothing saved".
+        noRefCode:
+          "The link we have for you has no referral code in it, so nobody joining through it would count as yours. Get the one from Invite people, it has ?ref= in it, and paste it above.",
       },
     },
 

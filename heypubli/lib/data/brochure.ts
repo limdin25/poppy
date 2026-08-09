@@ -4,7 +4,7 @@ import { getInstagramProfile } from "@/lib/integrations/instagram";
 import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/outstand";
 import { isCommunityMember } from "@/lib/data/community";
 import { checkBio, bioVerified } from "@/lib/bio-check";
-import { skoolLinkNeedle } from "@/lib/skool-link";
+import { skoolLinkCounts, skoolLinkNeedle } from "@/lib/skool-link";
 import { bioSentence } from "@/lib/bio-variants";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import type { Profile } from "@/types/database";
@@ -45,6 +45,12 @@ export interface BrochureData {
   affiliate: {
     state: StepState;
     url: string | null;
+    /**
+     * We hold a link for them and it cannot pay them: no referral code in it.
+     * The step reopens and says so, rather than sitting green over a link that
+     * credits nobody (Shoaib, 09 Aug 2026).
+     */
+    problem: "no_ref_code" | null;
   };
 
   bio: {
@@ -195,7 +201,10 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
   ]);
 
   const affiliateUrl = profile.skool_affiliate_url ?? null;
-  const needle = skoolLinkNeedle(affiliateUrl);
+  // Holding a link is not the same as holding a link that pays them. Only one
+  // with a referral code in it finishes step 3 or unlocks the bio step.
+  const affiliateCounts = skoolLinkCounts(affiliateUrl);
+  const needle = affiliateCounts ? skoolLinkNeedle(affiliateUrl) : null;
 
   // Step 5 in full. Two rules, in this order:
   //
@@ -212,7 +221,7 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
   let linkFound: boolean | null = null;
   let linkInText = false;
   let sentenceFound: boolean | null = null;
-  if (!ig.connected || !affiliateUrl) {
+  if (!ig.connected || !affiliateCounts) {
     bioState = "blocked";
   } else if (!ig.textAvailable) {
     bioState = profile.bio_link_declared_at ? "done" : "unknown";
@@ -244,7 +253,7 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
   const communityDeclared = Boolean(profile.community_joined_declared_at);
   const communityState: StepState =
     communityJoined || communityDeclared ? "done" : emailUsable ? "waiting" : "blocked";
-  const affiliateState: StepState = affiliateUrl ? "done" : "todo";
+  const affiliateState: StepState = affiliateCounts ? "done" : "todo";
 
   const doneCount = [instagramState, communityState, affiliateState, bioState].filter(
     (s) => s === "done",
@@ -265,7 +274,11 @@ export async function getBrochureData(profile: Profile): Promise<BrochureData> {
       emailUsable,
       selfDeclared: communityDeclared && !communityJoined,
     },
-    affiliate: { state: affiliateState, url: affiliateUrl },
+    affiliate: {
+      state: affiliateState,
+      url: affiliateUrl,
+      problem: affiliateUrl && !affiliateCounts ? "no_ref_code" : null,
+    },
     bio: {
       state: bioState,
       sentence,

@@ -869,6 +869,47 @@ describe("the pasted Skool link", () => {
     expect(d.images).toEqual(["/guide/step4-1-edit-profile.jpg", "/guide/step4-2-done.jpg"]);
   });
 
+  // Shoaib, 09 Aug 2026. He pasted his Skool PROFILE page and the machine
+  // saved it, thanked him and moved him on. It carries no referral code, so
+  // every video we posted for him after that credited nobody. Saying "got it,
+  // your link is saved" over a link that pays them nothing is the worst answer
+  // available, because it ends the conversation.
+  it("a pasted link with no referral code is REFUSED, not saved, and named out loud", () => {
+    const d = decideReply(
+      ctx({
+        hasAccount: true,
+        stepsDone: ["instagram", "community"],
+        said: ["https://www.skool.com/@shoaib-aftab-3382?g=ai-influencer-flywheel-5612"],
+        pastedLinkNoCode: true,
+      }),
+    );
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("link_no_ref_code");
+    expect(d.text).toContain("?ref=");
+    expect(d.text).toContain("Invite people");
+    // The pictures of the right button go with it, every time.
+    expect(d.images).toEqual([
+      "/guide/step3-1-invite-people.jpg",
+      "/guide/step3-2-copy-your-link.jpg",
+    ]);
+  });
+
+  it("refusing the link beats every other reading of the same message", () => {
+    // "done" plus a bad link used to read as the step being finished.
+    const d = decideReply(
+      ctx({
+        hasAccount: true,
+        stepsDone: ["instagram", "community"],
+        said: ["done, here it is skool.com/@me?g=ai-influencer-flywheel-5612"],
+        pastedLinkNoCode: true,
+      }),
+    );
+    expect(d.action).toBe("send");
+    if (d.action !== "send") return;
+    expect(d.key).toBe("link_no_ref_code");
+  });
+
   it("a saved link with the photo step still open sends the photo step, never a false done", () => {
     const d = decideReply(
       ctx({

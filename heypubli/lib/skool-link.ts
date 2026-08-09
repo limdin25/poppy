@@ -4,6 +4,78 @@
 
 const SKOOL_HOSTS = ["skool.com", "www.skool.com"];
 
+/** The query keys Skool has put a referral code under. Order is preference. */
+const REF_KEYS = ["ref", "r", "via", "aff"] as const;
+
+/**
+ * THE CODE, the only part of the link that pays them.
+ *
+ * 09 Aug 2026: four creators had saved a skool.com address carrying no code at
+ * all. Shoaib copied the "share my profile" button, which gives
+ * skool.com/@his-name?g=our-community; Jonaid copied the community page with
+ * nothing on the end. Both are real Skool links and both credit nobody. Every
+ * check we owned asked only whether the link they gave us was on their
+ * Instagram, so Shoaib's bio matched the same wrong link back and the roster
+ * printed "YES, their link and sentence are live" over a page earning zero.
+ *
+ * Three characters is the floor: "?ref=ab" is a stub, not a code.
+ */
+export function skoolReferralCode(url: string | null | undefined): string | null {
+  if (!url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+  } catch {
+    return null;
+  }
+  for (const key of REF_KEYS) {
+    const value = parsed.searchParams.get(key);
+    if (value && value.trim().length >= 3) return value.trim().toLowerCase();
+  }
+  return null;
+}
+
+/**
+ * Does this saved link actually count? ONE rule, shared by the funnel step, the
+ * cron that decides who is stuck, the roster email and the reply brain, so a
+ * link cannot be "done" on the page and "not theirs" in the report.
+ */
+export function skoolLinkCounts(url: string | null | undefined): boolean {
+  return skoolReferralCode(url) !== null;
+}
+
+export type SkoolLinkFault = "not_skool" | "no_ref_code";
+
+export type SkoolLinkRead =
+  | { ok: true; url: string; code: string }
+  | { ok: false; fault: SkoolLinkFault; url: string | null };
+
+/**
+ * Read a pasted link and say precisely what is wrong with it, because "that is
+ * not a Skool link" is a lie to somebody who pasted a Skool link off the wrong
+ * button, and a person who is told the wrong thing pastes the same link again.
+ */
+export function readSkoolAffiliateUrl(raw: string): SkoolLinkRead {
+  const url = cleanSkoolAffiliateUrl(raw);
+  if (!url) return { ok: false, fault: "not_skool", url: null };
+  const code = skoolReferralCode(url);
+  if (!code) return { ok: false, fault: "no_ref_code", url };
+  return { ok: true, url, code };
+}
+
+/**
+ * What a creator is told at every door that takes a link: the form on
+ * /onboarding, the form on /brochure, Getting started, and the WhatsApp paste.
+ * One wording, so a creator refused in two places is not given two stories.
+ */
+export const SKOOL_LINK_FAULT_MESSAGE: Record<SkoolLinkFault, string> = {
+  not_skool: "That is not a Skool link. It should start with skool.com.",
+  no_ref_code:
+    "That link has no referral code in it, so nobody who joins through it would be counted as yours. " +
+    "In Skool, open our community, tap the three dots at the top right or Settings, then Invite people, then COPY. " +
+    "The right one has ?ref= in it.",
+};
+
 /**
  * Normalise a pasted Skool link, or null if it is not one.
  *
@@ -66,12 +138,8 @@ export function skoolLinkNeedle(
     return null;
   }
 
-  for (const key of ["ref", "r", "via", "aff"]) {
-    const value = parsed.searchParams.get(key);
-    if (value && value.trim().length >= 3) {
-      return { value: value.trim().toLowerCase(), kind: "referral" };
-    }
-  }
+  const code = skoolReferralCode(parsed.toString());
+  if (code) return { value: code, kind: "referral" };
 
   const segment = parsed.pathname.split("/").filter(Boolean).pop();
   if (segment && segment.length >= 3) {

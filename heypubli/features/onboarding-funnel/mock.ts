@@ -8,7 +8,7 @@ export const funnelMockFresh: OnboardingData = {
   instagramEnabled: true,
   instagram: { state: "todo", username: null, canReadBio: false },
   community: { state: "waiting", emailUsable: true, selfDeclared: false },
-  affiliate: { state: "todo", url: null },
+  affiliate: { state: "todo", url: null, problem: null },
   photo: { state: "todo", declaredAt: null },
   inviteQueued: false,
   instagramError: false,
@@ -49,7 +49,7 @@ export const funnelMockComplete: OnboardingData = {
   ...funnelMockFresh,
   instagram: { state: "done", username: "aisha.creates", canReadBio: true },
   community: { state: "done", emailUsable: true, selfDeclared: true },
-  affiliate: { state: "done", url: "https://www.skool.com/signup?ref=abc123" },
+  affiliate: { state: "done", url: "https://www.skool.com/signup?ref=abc123", problem: null },
   photo: { state: "done", declaredAt: "2026-08-06T10:00:00Z" },
   bio: {
     state: "done",

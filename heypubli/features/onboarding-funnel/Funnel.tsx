@@ -225,7 +225,9 @@ function StepContent({ id, data }: { id: OnboardingStepId; data: OnboardingData 
           message={
             affiliate.state === "done"
               ? t.steps.affiliate.status.done
-              : t.steps.affiliate.status.todo
+              : affiliate.problem === "no_ref_code"
+                ? t.steps.affiliate.status.noRefCode
+                : t.steps.affiliate.status.todo
           }
         />
       </>

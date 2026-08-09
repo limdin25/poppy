@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { cleanSkoolAffiliateUrl } from "@/lib/skool-link";
+import { readSkoolAffiliateUrl } from "@/lib/skool-link";
 
 /**
  * Step 3 of Getting started: the creator says their Instagram profile is
@@ -25,14 +25,15 @@ export async function saveProfileReady(formData: FormData): Promise<void> {
   if (!user) redirect("/login");
 
   const raw = formData.get("skool_affiliate_url");
-  const cleaned = typeof raw === "string" ? cleanSkoolAffiliateUrl(raw) : null;
+  const read = typeof raw === "string" ? readSkoolAffiliateUrl(raw) : null;
 
   const patch: { profile_ready_at: string; skool_affiliate_url?: string } = {
     profile_ready_at: new Date().toISOString(),
   };
-  // Only write the link when it parsed. A blank or refused paste leaves the
-  // one we already hold alone rather than wiping it.
-  if (cleaned) patch.skool_affiliate_url = cleaned;
+  // Only write the link when it parsed AND carries their referral code. A
+  // blank, a refused paste, or a Skool page that credits nobody leaves the one
+  // we already hold alone rather than wiping it.
+  if (read?.ok) patch.skool_affiliate_url = read.url;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (supabase.from("profiles") as any).update(patch).eq("id", user.id);

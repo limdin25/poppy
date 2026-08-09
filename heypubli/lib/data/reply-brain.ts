@@ -59,6 +59,15 @@ export interface ReplyContext {
    */
   justSavedLink?: boolean;
   /**
+   * They pasted a skool.com link and it carries NO referral code, so the runner
+   * refused to save it. Shoaib, 09 Aug 2026: he sent his Skool profile page,
+   * the machine saved it, said "got it, your link is saved" and moved him on,
+   * and every video posted for him afterwards credited nobody. A link that
+   * cannot pay them is not a completed step, it is the step going wrong in
+   * front of us, and it outranks every other reading of the same message.
+   */
+  pastedLinkNoCode?: boolean;
+  /**
    * The live read of their real Instagram, when the runner made one. This is
    * what stops "all five steps are done and your link is live" being said to
    * a creator whose actual profile is empty (Abdul Latif, 08 Aug 2026).
@@ -684,6 +693,12 @@ const REPLIES: Record<string, (v: Vars) => string> = {
     `${hi}got it, your link is saved.\n\nNext: a clear profile photo on your Instagram, under Edit profile. Add it, tick the step at heypubli.com/onboarding, and then the last step is your bio.`,
   link_saved_generic: ({ hi }) =>
     `${hi}got it, your link is saved. Carry on at heypubli.com/onboarding, it shows you the next step.`,
+  // A skool.com link with no referral code in it. Thank them, say plainly why
+  // this one cannot pay them, and give the exact route to the right one. Never
+  // "that is not a Skool link": it IS a Skool link, they pressed the wrong
+  // button, and telling somebody the wrong thing gets the same paste back.
+  link_no_ref_code: ({ hi }) =>
+    `${hi}thank you, but that one will not pay you. It has no referral code in it, so a person joining through it is not counted as yours.\n\nOpen skool.com/ai-influencer-flywheel-5612/about, tap the three dots or Settings, then Invite people, then COPY.\n\nThe right one has ?ref= in it. Paste it here and I will put it in.`,
 
   // --- the live Instagram read said no. Say exactly which half is missing.
   bio_missing_both: (v) =>
@@ -1026,6 +1041,19 @@ function decideReplyCore(ctx: ReplyContext): ReplyDecision {
   const onlyAck = said.every((s) => ACK.test(s));
 
   if (ctx.hasAccount) {
+    // THE BAD LINK FIRST, above the saved one and above the ack check. They
+    // have done the work of finding and sending something; it is the wrong
+    // thing, and every minute it stays wrong is videos posted for nobody.
+    if (ctx.pastedLinkNoCode) {
+      return {
+        action: "send",
+        key: "link_no_ref_code",
+        text: render("link_no_ref_code", ctx),
+        reason: "pasted a skool link with no referral code, refused and asked for the right one",
+        ...imagesFor("affiliate"),
+      };
+    }
+
     // A pasted Skool link the runner just SAVED outranks everything else in
     // the same breath, including the ack check: "My link" plus the URL is not
     // chit-chat, it is the step being completed in front of us. Answer with

@@ -91,6 +91,9 @@ export const brochureCopy = {
       status: {
         done: "Saved.",
         todo: "Nothing saved yet.",
+        // Same wording as the funnel: a real Skool link that credits nobody.
+        noRefCode:
+          "The link we have for you has no referral code in it, so nobody joining through it would count as yours. Get the one from Invite people, it has ?ref= in it, and paste it above.",
       },
     },
 

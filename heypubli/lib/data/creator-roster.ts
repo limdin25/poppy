@@ -3,7 +3,7 @@ import { getPostingSettingsAdmin } from "@/lib/data/outstand";
 import { getInstagramMetricsResult } from "@/lib/integrations/outstand";
 import { checkBio } from "@/lib/bio-check";
 import { bioSentence } from "@/lib/bio-variants";
-import { skoolLinkNeedle } from "@/lib/skool-link";
+import { skoolLinkCounts, skoolLinkNeedle, skoolReferralCode } from "@/lib/skool-link";
 import { resolveFunnel, ONBOARDING_STEPS } from "@/lib/data/onboarding";
 import type { OnboardingStepId, Profile } from "@/types/database";
 import type { StepState } from "@/lib/data/brochure";
@@ -35,6 +35,7 @@ export type BioVerdict =
   | "link_not_clickable" // their code is TYPED IN THE BIO TEXT: dead characters
   | "sentence_only"
   | "wrong_code" // a Skool link is there but the code is NOT theirs: they earn nothing
+  | "no_ref_code" // the link they saved carries no referral code at all: it credits nobody
   | "foreign_link" // a link that is not ours at all, in the place ours should be
   | "missing" // we read the profile and neither is there
   | "no_link_saved" // they have never given us a link, so there is nothing to look for
@@ -71,21 +72,6 @@ export interface RosterRow {
 
 const SKOOL_IN_TEXT = /(?:https?:\/\/)?(?:www\.)?skool\.com\/[^\s"'<>)]+/i;
 
-/** The referral code inside any Skool URL, or null. */
-function refOf(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
-    for (const k of ["ref", "r", "via", "aff"]) {
-      const v = u.searchParams.get(k);
-      if (v && v.trim().length >= 3) return v.trim().toLowerCase();
-    }
-  } catch {
-    /* not a URL we can parse */
-  }
-  return null;
-}
-
 /** Any Skool link sitting in the bio text or the website field. */
 export function skoolUrlInProfile(
   biography: string | null,
@@ -112,8 +98,8 @@ export function wrongCodeInProfile(
 ): string | null {
   const found = skoolUrlInProfile(biography, website);
   if (!found) return null;
-  const theirs = refOf(savedSkoolUrl);
-  const onPage = refOf(found);
+  const theirs = skoolReferralCode(savedSkoolUrl);
+  const onPage = skoolReferralCode(found);
   return theirs && onPage && theirs !== onPage ? found : null;
 }
 
@@ -132,6 +118,11 @@ export function verdictFor(input: {
   const bioSkoolUrl = skoolUrlInProfile(input.biography, input.website);
   if (!input.readable) return { verdict: "unreadable", bioSkoolUrl };
   if (!input.savedSkoolUrl) return { verdict: "no_link_saved", bioSkoolUrl };
+  // BEFORE we look at their profile at all. A link with no referral code in it
+  // cannot credit them however perfectly it is displayed, and checking the
+  // profile first is what let Shoaib's wrong link match itself and read as
+  // verified (09 Aug 2026). The bad link is the finding; the bio is not.
+  if (!skoolLinkCounts(input.savedSkoolUrl)) return { verdict: "no_ref_code", bioSkoolUrl };
 
   const evidence = checkBio({
     tag: skoolLinkNeedle(input.savedSkoolUrl)?.value ?? null,
@@ -164,6 +155,7 @@ export const VERDICT_LABEL: Record<BioVerdict, string> = {
   link_not_clickable: "TYPED IN THE BIO TEXT, not clickable, tracks nothing",
   sentence_only: "sentence is in, LINK MISSING",
   wrong_code: "WRONG CODE, the link in their bio is not theirs",
+  no_ref_code: "NO REFERRAL CODE in the link they saved, it credits nobody",
   foreign_link: "someone else's link is in their bio",
   missing: "nothing in their bio yet",
   no_link_saved: "no link saved with us yet",
@@ -253,7 +245,7 @@ export async function buildCreatorRoster(
     const states: Record<OnboardingStepId, StepState> = {
       instagram: conn ? "done" : "todo",
       community: p.community_joined_declared_at || done.has("community") ? "done" : "todo",
-      affiliate: p.skool_affiliate_url ? "done" : "todo",
+      affiliate: skoolLinkCounts(p.skool_affiliate_url) ? "done" : "todo",
       photo: p.photo_declared_at || done.has("photo") ? "done" : "todo",
       bio: done.has("bio") ? "done" : "todo",
     };
@@ -351,6 +343,7 @@ export function renderRoster(rows: RosterRow[]): string {
   const problem = rows.filter(
     (r) =>
       r.verdict === "wrong_code" ||
+      r.verdict === "no_ref_code" ||
       r.verdict === "unreadable" ||
       r.verdict === "link_not_clickable",
   );
@@ -358,7 +351,7 @@ export function renderRoster(rows: RosterRow[]): string {
     `<h3 style="margin:18px 0 4px">Every creator account (${rows.length})</h3>`,
     `<p style="color:#374151;margin:0 0 8px"><strong>${yes.length} of ${rows.length}</strong> have their own Skool link CLICKABLE in the Links box AND their sentence in the Bio box, checked just now on their real profile.` +
       (problem.length
-        ? ` <span style="color:#b91c1c"><strong>${problem.length} need you</strong> (wrong code, link not clickable, or we cannot read their profile).</span>`
+        ? ` <span style="color:#b91c1c"><strong>${problem.length} need you</strong> (no referral code, wrong code, link not clickable, or we cannot read their profile).</span>`
         : "") +
       `</p>`,
   ];
@@ -371,6 +364,9 @@ export function renderRoster(rows: RosterRow[]): string {
         const who = `<strong>${esc(r.name)}</strong> (<a href="${esc(r.igUrl)}">@${esc(r.igUsername)}</a>)`;
         if (r.verdict === "wrong_code") {
           return `<li>${who} has a Skool link in their bio with someone ELSE'S referral code. Their sales credit that person, not them.<br><span style="color:#6b7280;font-size:12px">in bio: ${esc(r.bioSkoolUrl)}<br>should be: ${esc(r.savedSkoolUrl)}</span></li>`;
+        }
+        if (r.verdict === "no_ref_code") {
+          return `<li>${who} saved a Skool link with NO referral code in it (usually the "share my profile" page, not Invite people). Anyone joining through it credits nobody. Their step 3 is open again and they are being asked for the right one.<br><span style="color:#6b7280;font-size:12px">they saved: ${esc(r.savedSkoolUrl)}</span></li>`;
         }
         if (r.verdict === "link_not_clickable") {
           return `<li>${who} typed their link into the Bio box instead of the Links box, so it is plain text nobody can tap and it tracks nothing. They are being told to move it.</li>`;
@@ -393,6 +389,7 @@ export function renderRoster(rows: RosterRow[]): string {
     const good = r.verdict === "verified";
     const bad =
       r.verdict === "wrong_code" ||
+      r.verdict === "no_ref_code" ||
       r.verdict === "unreadable" ||
       r.verdict === "link_not_clickable";
     const colour = good ? "#047857" : bad ? "#b91c1c" : "#92400e";

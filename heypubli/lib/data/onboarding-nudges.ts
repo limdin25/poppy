@@ -9,7 +9,7 @@ import { skoolUrlInProfile, wrongCodeInProfile } from "@/lib/data/creator-roster
 import { chasesSpentOnStep } from "@/lib/data/reply-runner";
 import { renderReply, CHASES_PER_STEP } from "@/lib/data/reply-brain";
 import { bioSentence } from "@/lib/bio-variants";
-import { cleanSkoolAffiliateUrl, skoolLinkNeedle } from "@/lib/skool-link";
+import { cleanSkoolAffiliateUrl, skoolLinkCounts, skoolLinkNeedle } from "@/lib/skool-link";
 import { INSTAGRAM_ENABLED } from "@/lib/flags";
 import type { StepState } from "@/lib/data/brochure";
 import type { FunnelSettings, OnboardingStepId, Profile } from "@/types/database";
@@ -287,7 +287,9 @@ export async function resolveStatesForCron(
   return {
     instagram: igConnected ? "done" : INSTAGRAM_ENABLED ? "todo" : "blocked",
     community: communityDone ? "done" : "todo",
-    affiliate: profile.skool_affiliate_url ? "done" : "todo",
+    // A link with no referral code in it is not a finished step 3: it cannot
+    // credit them for anybody (Shoaib, 09 Aug 2026). One rule, in skool-link.
+    affiliate: skoolLinkCounts(profile.skool_affiliate_url) ? "done" : "todo",
     photo: profile.photo_declared_at ? "done" : "todo",
     // The progress stamp only: it is written by a live read of their real
     // Instagram (page render, tick verify, reply-runner check). A declaration
@@ -638,6 +640,8 @@ export interface BioVerifyReport {
   movedToLinksBox: number;
   /** Creators told the Skool link on their page credits somebody else. */
   wrongCodeTold: number;
+  /** Creators told their saved link carries no referral code at all. */
+  noRefCodeTold: number;
   errors: string[];
 }
 
@@ -651,6 +655,7 @@ export async function runBioVerification(
     linksCaptured: 0,
     movedToLinksBox: 0,
     wrongCodeTold: 0,
+    noRefCodeTold: 0,
     errors: [],
   };
   const provider = (await getPostingSettingsAdmin())?.active_provider ?? "heypubli";
@@ -677,6 +682,34 @@ export async function runBioVerification(
         .eq("profile_id", profile.id)
         .returns<ProgressRow[]>();
       const states = await resolveStatesForCron(admin, profile, provider, progress ?? []);
+
+      // THE LINK THAT CANNOT PAY THEM, before anything about a bio. We hold a
+      // real skool.com address with no referral code in it, so every video we
+      // post for them credits nobody and nothing they do to their profile can
+      // fix it (Shoaib, 09 Aug 2026: he sent his Skool profile page, we saved
+      // it, and his bio matched the same wrong link straight back at us).
+      //
+      // Told once, keyed on the profile, in their own daytime. The stamp is
+      // written either way so the same four people cannot occupy every slot in
+      // this sweep forever.
+      if (profile.skool_affiliate_url && !skoolLinkCounts(profile.skool_affiliate_url)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (admin.from("profiles") as any)
+          .update({ bio_checked_at: new Date().toISOString() })
+          .eq("id", profile.id);
+        if (profile.whatsapp && withinSendingHours(now, timezoneForPhone(profile.whatsapp))) {
+          const first = (profile.first_name || "").trim().split(" ")[0];
+          const res = await sendPartnerWhatsApp({
+            to: profile.whatsapp,
+            firstName: first,
+            body: renderReply("link_no_ref_code", { firstName: first }),
+            externalId: `norefcode:${profile.id}`,
+          });
+          if (res.ok) report.noRefCodeTold++;
+        }
+        continue;
+      }
+
       if (states.bio === "done") continue; // bio not the problem; not ours
       const { openStep } = resolveFunnel(states);
       if (openStep !== "bio") continue; // an earlier step is open, nudges own it
@@ -697,10 +730,14 @@ export async function runBioVerification(
       // their profile and we hold none, that link is theirs: save it. Never
       // overwrites one we already have, because replacing the link that
       // credits their sales is a decision, not a guess.
+      //
+      // Only a link with a REFERRAL CODE in it is worth capturing. A Skool
+      // profile page sitting in a bio credits nobody, and saving it would tick
+      // their step 3 off a link that pays them nothing (Shoaib, 09 Aug 2026).
       if (!profile.skool_affiliate_url) {
         const found = skoolUrlInProfile(ig.biography, ig.website);
         const cleaned = found ? cleanSkoolAffiliateUrl(found) : null;
-        if (cleaned) {
+        if (cleaned && skoolLinkCounts(cleaned)) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (admin.from("profiles") as any)
             .update({ skool_affiliate_url: cleaned })

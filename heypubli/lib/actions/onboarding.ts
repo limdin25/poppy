@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { cleanSkoolAffiliateUrl } from "@/lib/skool-link";
+import { readSkoolAffiliateUrl, SKOOL_LINK_FAULT_MESSAGE } from "@/lib/skool-link";
 import type { SkoolLinkResult } from "@/lib/actions/onboarding-shared";
 
 /**
@@ -68,20 +68,22 @@ export async function declareBioDone(): Promise<DeclareResult> {
   return stampOnce("bio_link_declared_at");
 }
 
-/** Step 3: the pasted affiliate link, validated hard (skool.com only). */
+/**
+ * Step 3: the pasted affiliate link, validated hard. skool.com is only half of
+ * it. The link has to carry their referral code, because that is the part that
+ * credits them, and four creators saved a code-less Skool page and were told
+ * they had finished (09 Aug 2026).
+ */
 export async function saveSkoolLink(
   _prev: SkoolLinkResult,
   formData: FormData,
 ): Promise<SkoolLinkResult> {
   const raw = String(formData.get("skool_affiliate_url") ?? "");
-  const cleaned = cleanSkoolAffiliateUrl(raw);
-  if (!cleaned) {
-    return {
-      ok: false,
-      message: "That is not a skool.com link. Copy the whole address from Skool.",
-      url: null,
-    };
+  const read = readSkoolAffiliateUrl(raw);
+  if (!read.ok) {
+    return { ok: false, message: SKOOL_LINK_FAULT_MESSAGE[read.fault], url: null };
   }
+  const cleaned = read.url;
 
   const { supabase, user } = await requireUser();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

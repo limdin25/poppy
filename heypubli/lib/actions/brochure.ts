@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { cleanSkoolAffiliateUrl } from "@/lib/skool-link";
+import { readSkoolAffiliateUrl, SKOOL_LINK_FAULT_MESSAGE } from "@/lib/skool-link";
 
 export interface SkoolLinkResult {
   ok: boolean;
@@ -45,14 +45,13 @@ export async function saveSkoolLink(
     return { ok: false, message: "Paste your link first.", url: null };
   }
 
-  const cleaned = cleanSkoolAffiliateUrl(text);
-  if (!cleaned) {
-    return {
-      ok: false,
-      message: "That is not a Skool link. It should start with skool.com.",
-      url: null,
-    };
+  // Being a skool.com address was never enough. The referral code is the only
+  // part that credits them, and a link without one is refused by name.
+  const read = readSkoolAffiliateUrl(text);
+  if (!read.ok) {
+    return { ok: false, message: SKOOL_LINK_FAULT_MESSAGE[read.fault], url: null };
   }
+  const cleaned = read.url;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase.from("profiles") as any)

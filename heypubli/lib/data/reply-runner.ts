@@ -17,7 +17,7 @@ import { getPostingSettingsAdmin, getOutstandInstagramData } from "@/lib/data/ou
 import { checkBio, bioVerified, type BioEvidence } from "@/lib/bio-check";
 import { wrongCodeInProfile } from "@/lib/data/creator-roster";
 import { bioSentence } from "@/lib/bio-variants";
-import { skoolLinkNeedle } from "@/lib/skool-link";
+import { skoolLinkCounts, skoolLinkNeedle } from "@/lib/skool-link";
 import {
   getInboundMedia,
   getInboxSummary,
@@ -467,12 +467,29 @@ export async function processWaitingThread(
   // Whatever a creator pastes into WhatsApp gets WRITTEN DOWN. 08 Aug 2026:
   // the machine said "paste it here and I will put it in for you", Abdul Latif
   // pasted his Skool link, and nothing anywhere saved it. Save first, then let
-  // the brain answer off the state the save produced. Never overwrites a link
-  // that is already there: replacing the link that credits their sales is a
+  // the brain answer off the state the save produced. A working link already on
+  // file is never overwritten: replacing the link that credits their sales is a
   // human decision.
+  //
+  // 09 Aug 2026: what they paste has to be able to PAY them. Shoaib sent his
+  // Skool profile page, a real skool.com address with no referral code in it.
+  // It was saved, he was thanked, and his step 3 went green over a link that
+  // credits nobody. A code-less link is never written down; the brain refuses
+  // it out loud and asks for the one from Invite people.
+  //
+  // A link we already hold is only left alone when it actually counts. Swapping
+  // a code-less one for a real one is not overwriting their earnings, it is the
+  // fix, and refusing it would trap the very creators this is here to unstick.
   let justSavedLink = false;
+  let pastedLinkNoCode = false;
   const pastedLink = extractSkoolLink(split.said);
-  if (creator.profile && pastedLink && !creator.profile.skool_affiliate_url) {
+  if (creator.profile && pastedLink && !skoolLinkCounts(pastedLink)) {
+    pastedLinkNoCode = true;
+  } else if (
+    creator.profile &&
+    pastedLink &&
+    !skoolLinkCounts(creator.profile.skool_affiliate_url)
+  ) {
     if (opts.dry) {
       justSavedLink = true;
     } else {
@@ -615,8 +632,16 @@ export async function processWaitingThread(
     // still answered, they are simply never walked down the funnel.
     pitchBlocked: pitchBlockedForPhone(phone),
     bioSentence: creator.profile ? bioSentence(creator.profile.bio_variant_index ?? 0) : null,
-    affiliateUrl: creator.profile?.skool_affiliate_url ?? (justSavedLink ? pastedLink : null),
+    // Only a link that can pay them is ever quoted back at them. Handing a
+    // creator their own code-less link inside the bio instructions would be
+    // telling them to publish the thing we just refused.
+    affiliateUrl: skoolLinkCounts(creator.profile?.skool_affiliate_url)
+      ? (creator.profile?.skool_affiliate_url ?? null)
+      : justSavedLink
+        ? pastedLink
+        : null,
     justSavedLink,
+    pastedLinkNoCode,
     bioEvidence,
     justVerifiedBio,
   };
