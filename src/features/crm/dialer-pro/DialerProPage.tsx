@@ -35,6 +35,8 @@ import { useCurrentAgent } from '@/features/crm/hooks/useCurrentAgent';
 import { useSmsV2 } from '@/features/crm/store/SmsV2Store';
 import { useContactPersistence } from '@/features/crm/hooks/useContactPersistence';
 import EditableName from '@/features/crm/components/contacts/EditableName';
+import OfferStrip from '@/features/crm/components/live-call/OfferStrip';
+import { usePropertyListings, scriptTokensFor } from '@/features/crm/hooks/usePropertyListings';
 import { useDialerMachine } from './useDialerMachine';
 import { useQueuePro } from './useQueuePro';
 import type { QueueLead } from './types';
@@ -375,6 +377,30 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
     openedForContactId: closeCallContactIdRef.current,
     currentLeadContactId: state.currentLead?.contactId ?? null,
   });
+
+  // ── Houses mode ────────────────────────────────────────────────────────────
+  // One estate agency lists many houses, so "which house are we talking about"
+  // is a choice the agent makes mid-call, and it drives three surfaces at once:
+  // the offer strip pinned above the script, the script's own money section,
+  // and the Houses tab. The selection is lifted here so those three cannot
+  // disagree about which figures are on screen.
+  //
+  // The hook is called here AND inside PropertiesPane. That is not a second
+  // request: TanStack Query dedupes on the key, so both mounts share one.
+  const isHousesCall = paneScriptKey === 'property_call';
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  const { listings: houseListings } = usePropertyListings(
+    isHousesCall ? contact?.phone : null,
+  );
+  const selectedListing = useMemo(
+    () => houseListings.find((l) => l.id === selectedPropertyId) ?? houseListings[0] ?? null,
+    [houseListings, selectedPropertyId],
+  );
+  const housesTotal = houseListings.length;
+  const handleSelectProperty = useCallback((id: string) => setSelectedPropertyId(id), []);
+  // A new lead is a different agency, so the old selection is not merely stale,
+  // it is another branch's house with another branch's numbers.
+  useEffect(() => { setSelectedPropertyId(null); }, [activeContactId]);
 
   // The lead on the phone, through the same batched hook every other surface
   // uses, with a list of one.
@@ -807,22 +833,37 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
 
           <ResizableHandle withHandle />
 
-          {/* COL 2 — Sales script: editable (admin), lean, read live. */}
+          {/* COL 2 — Sales script: editable (admin), lean, read live.
+              On a property call the offer band is PINNED above it, because the
+              moment those three figures scroll off screen is the moment an
+              agent guesses at them. */}
           <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
-            {/* key= forces a clean remount on a script switch. Without it the
-                pane's srcDoc changes while its captured template/docReady state
-                is still the old script's, and the onLoad it depends on may
-                already have fired — leaving the previous script (or a blank
-                pane) on screen at the exact moment it matters. */}
-            <DialerScriptPane key={paneScriptKey} contact={contact} scriptKey={paneScriptKey} />
+            <div className="flex h-full flex-col">
+              {isHousesCall && (
+                <OfferStrip listing={selectedListing} total={housesTotal} />
+              )}
+              <div className="min-h-0 flex-1">
+                {/* key= forces a clean remount on a script switch. Without it the
+                    pane's srcDoc changes while its captured template/docReady state
+                    is still the old script's, and the onLoad it depends on may
+                    already have fired — leaving the previous script (or a blank
+                    pane) on screen at the exact moment it matters. */}
+                <DialerScriptPane
+                  key={paneScriptKey}
+                  contact={contact}
+                  scriptKey={paneScriptKey}
+                  extraTokens={isHousesCall ? scriptTokensFor(selectedListing) : undefined}
+                />
+              </div>
+            </div>
           </ResizablePanel>
 
           <ResizableHandle withHandle />
 
-          {/* COL 3 — Right tabs: Calculator (default) / Objections / Messages.
-              The Messages tab is the send box on top + history below, following
-              the same contact as COL 1 (live call → currentLead, else next in
-              queue). */}
+          {/* COL 3 — Right tabs. Normally Coach / Calculator / Objections /
+              Messages. On a property call: Houses / Coach / Messages, because
+              the Calculator sells websites and the Objections answer plumber
+              objections. */}
           <ResizablePanel defaultSize={30} minSize={16} className="overflow-hidden">
             <DialerRightTabs
               contactId={activeContactId ?? undefined}
@@ -836,6 +877,9 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               currentCallId={state.currentCallId}
               callConnected={state.phase === 'connected'}
               liveDurationSec={liveDuration}
+              showHouses={isHousesCall}
+              selectedPropertyId={selectedPropertyId}
+              onSelectProperty={handleSelectProperty}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

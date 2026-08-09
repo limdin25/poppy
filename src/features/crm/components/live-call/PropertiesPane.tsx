@@ -1,0 +1,304 @@
+// The Houses tab: everything behind the three numbers pinned above the script.
+//
+// Layout follows Tajul's NFStay BrrrrCallPanel, which Hugo pointed at as the
+// shape he wants: property picker, the facts, then sold comps and rentals, then
+// the questions. What it does NOT follow is his offer maths (GDV x 0.70, which
+// produces offers above asking) — the figures here all come from the same
+// offerRange() the dial cron uses. See api/lib/brrr-offer.ts.
+//
+// Only mounted when the dialer is on the property script, so nothing here is
+// reachable from a plumber dial.
+
+import { useEffect, useMemo, useState } from 'react';
+import { ExternalLink, Loader2, Check } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/browser';
+import { gbpShort } from '../../../../../api/lib/brrr-offer';
+import { usePropertyListings, type PropertyListing } from '../../hooks/usePropertyListings';
+
+/** The 16 questions, mirroring QUALIFICATION_QUESTIONS in api/lib/brrr.ts so a
+ *  human call and an AI call record the same facts under the same keys. */
+const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> = [
+  { key: 'still_available', label: 'Still available?' },
+  { key: 'occupancy', label: 'Vacant or tenanted?' },
+  { key: 'condition_notes', label: 'Condition / works needed?' },
+  { key: 'interest_level', label: 'Viewings or offers so far?' },
+  { key: 'fallen_through', label: 'Has a sale fallen through before?' },
+  { key: 'why_selling', label: 'Why are they selling?' },
+  { key: 'motivation', label: 'How motivated?' },
+  { key: 'chain', label: 'Onward chain?' },
+  { key: 'tenure', label: 'Freehold or leasehold?' },
+  { key: 'lease_years', label: 'Years left on the lease', only: 'flat' },
+  { key: 'service_charge', label: 'Service charge', only: 'flat' },
+  { key: 'ground_rent', label: 'Ground rent', only: 'flat' },
+  { key: 'major_works', label: 'Major works / cladding', only: 'flat' },
+  { key: 'offer_reaction', label: 'How did the offer land?' },
+  { key: 'best_price_indicated', label: 'Figure THEY mentioned' },
+  { key: 'viewing_availability', label: 'When can viewings happen?' },
+];
+
+const OUTCOMES: Array<{ key: string; label: string; cls: string }> = [
+  { key: 'qualified', label: 'Qualified', cls: 'bg-[#2E7D43] hover:bg-[#276b39]' },
+  { key: 'callback', label: 'Call back', cls: 'bg-[#3C5A87] hover:bg-[#33507a]' },
+  { key: 'not_qualified', label: 'Not for us', cls: 'bg-[#6B7280] hover:bg-[#5b626d]' },
+  { key: 'no_answer', label: 'No answer', cls: 'bg-[#9CA3AF] hover:bg-[#8b919b]' },
+];
+
+interface Props {
+  contactPhone?: string;
+  selectedPropertyId: string | null;
+  onSelectProperty: (id: string, listing: PropertyListing) => void;
+  /** The live wk_calls id, so the outcome can be joined to the call later. */
+  currentCallId?: string | null;
+}
+
+export default function PropertiesPane({
+  contactPhone, selectedPropertyId, onSelectProperty, currentCallId,
+}: Props) {
+  const { listings, loading, error, refetch } = usePropertyListings(contactPhone);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const selected = useMemo(
+    () => listings.find((l) => l.id === selectedPropertyId) ?? listings[0] ?? null,
+    [listings, selectedPropertyId],
+  );
+
+  // Auto-select the best deal as soon as the branch loads, so the offer strip
+  // and the script are filled before the agent touches anything.
+  useEffect(() => {
+    if (!selectedPropertyId && listings.length > 0) {
+      onSelectProperty(listings[0].id, listings[0]);
+    }
+  }, [listings, selectedPropertyId, onSelectProperty]);
+
+  // A different property means a different set of answers.
+  useEffect(() => {
+    setAnswers({});
+    setNote('');
+    setSaved(null);
+    setSaveError(null);
+  }, [selected?.id]);
+
+  const isFlat = /flat|apartment|maisonette/i.test(selected?.property_type ?? '');
+  const isHouse = !isFlat && !!selected?.property_type;
+  const visibleQuestions = QUESTIONS.filter((q) =>
+    !q.only || (q.only === 'flat' && !isHouse) || (q.only === 'house' && !isFlat),
+  );
+
+  async function submit(outcome: string) {
+    if (!selected) return;
+    setSaving(outcome);
+    setSaveError(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error('not signed in');
+      const res = await fetch('/api/crm/property-outcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          property_id: selected.id,
+          outcome,
+          qualification: answers,
+          note,
+          wk_call_id: currentCallId ?? undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `failed (${res.status})`);
+      setSaved(json.warning || (json.property_updated === false ? json.reason : 'Saved'));
+      void refetch();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (!contactPhone) {
+    return <Empty>No lead on screen.</Empty>;
+  }
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-4 w-4 animate-spin text-[#9CA3AF]" />
+      </div>
+    );
+  }
+  if (error) {
+    return <Empty>Could not load this branch: {error}</Empty>;
+  }
+  if (listings.length === 0) {
+    return (
+      <Empty>
+        No properties on file for this number. It may have been imported as an
+        ordinary lead rather than from the scraper.
+      </Empty>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-y-auto">
+      {/* Branch header */}
+      <div className="border-b border-[#E5E7EB] px-3 py-2">
+        <div className="text-[12px] font-semibold text-[#1A1A1A]">
+          {listings[0].agent_name || 'This branch'}
+        </div>
+        <div className="text-[11px] text-[#6B7280]">
+          {listings[0].agent_phone} · {listings.length} listing{listings.length === 1 ? '' : 's'} on file
+        </div>
+      </div>
+
+      {/* Property picker, only when there is a choice to make */}
+      {listings.length > 1 && (
+        <div className="border-b border-[#E5E7EB] px-3 py-2">
+          <Label>Talking about</Label>
+          <div className="mt-1 space-y-1">
+            {listings.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => onSelectProperty(l.id, l)}
+                className={`flex w-full items-baseline gap-2 rounded-md border px-2 py-1.5 text-left transition ${
+                  l.id === selected?.id
+                    ? 'border-[#3C5A87] bg-[#EEF2F8]'
+                    : 'border-[#E5E7EB] hover:bg-[#FAFAF8]'
+                }`}
+              >
+                <span className="flex-1 truncate text-[11.5px] text-[#1A1A1A]">{l.address}</span>
+                <span className="whitespace-nowrap text-[11px] font-semibold text-[#2E7D43]">
+                  {gbpShort(l.offerMin)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selected && (
+        <>
+          {/* Facts */}
+          <div className="border-b border-[#E5E7EB] px-3 py-2 text-[11.5px] text-[#4B5563]">
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+              {selected.bedrooms != null && <span>{selected.bedrooms} bed</span>}
+              {selected.property_type && <span>{selected.property_type}</span>}
+              {selected.days_on_market && <span>{selected.days_on_market} days listed</span>}
+              <span>asking {selected.price_text || gbpShort(selected.asking_price)}</span>
+            </div>
+            {selected.listing_url && (
+              <a
+                href={selected.listing_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-[#3C5A87] hover:underline"
+              >
+                Open the listing <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+            {(selected.floorplan_urls ?? []).length > 0 && (
+              <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+                {(selected.floorplan_urls ?? []).map((u) => (
+                  <a key={u} href={u} target="_blank" rel="noreferrer" className="flex-shrink-0">
+                    <img
+                      src={u}
+                      alt="Floor plan"
+                      className="h-20 w-auto rounded border border-[#E5E7EB] bg-white object-contain"
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* The evidence behind the number */}
+          {selected.evidence.length > 0 && (
+            <div className="border-b border-[#E5E7EB] px-3 py-2">
+              <Label>Sold nearby, your evidence</Label>
+              <ul className="mt-1 space-y-0.5">
+                {selected.evidence.map((e) => (
+                  <li key={e} className="text-[11.5px] leading-snug text-[#4B5563]">{e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {selected.flags.length > 0 && (
+            <div className="border-b border-[#E5E7EB] bg-[#FDF9F0] px-3 py-2">
+              <Label>Worth knowing</Label>
+              <ul className="mt-1 space-y-0.5">
+                {selected.flags.map((f) => (
+                  <li key={f} className="text-[11.5px] leading-snug text-[#9A6B1E]">{f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* The checklist */}
+          <div className="border-b border-[#E5E7EB] px-3 py-2">
+            <Label>What you learned{isFlat ? ' (flat)' : isHouse ? ' (house)' : ''}</Label>
+            <div className="mt-1.5 space-y-1.5">
+              {visibleQuestions.map((q) => (
+                <label key={q.key} className="block">
+                  <span className="text-[10.5px] font-medium text-[#6B7280]">{q.label}</span>
+                  <input
+                    value={answers[q.key] ?? ''}
+                    onChange={(e) => setAnswers((a) => ({ ...a, [q.key]: e.target.value }))}
+                    className="mt-0.5 w-full rounded border border-[#E5E7EB] px-2 py-1 text-[12px] text-[#1A1A1A] focus:border-[#3C5A87] focus:outline-none"
+                  />
+                </label>
+              ))}
+              <label className="block">
+                <span className="text-[10.5px] font-medium text-[#6B7280]">Anything else</span>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={2}
+                  className="mt-0.5 w-full resize-y rounded border border-[#E5E7EB] px-2 py-1 text-[12px] text-[#1A1A1A] focus:border-[#3C5A87] focus:outline-none"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Outcome */}
+          <div className="px-3 py-2.5">
+            <Label>How did it go</Label>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+              {OUTCOMES.map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => void submit(o.key)}
+                  disabled={!!saving}
+                  className={`rounded-md px-2 py-1.5 text-[12px] font-semibold text-white transition disabled:opacity-50 ${o.cls}`}
+                >
+                  {saving === o.key ? 'Saving…'.replace('…', '...') : o.label}
+                </button>
+              ))}
+            </div>
+            {saved && (
+              <div className="mt-2 flex items-start gap-1.5 text-[11px] text-[#2E7D43]">
+                <Check className="mt-px h-3 w-3 flex-shrink-0" /> {saved}
+              </div>
+            )}
+            {saveError && (
+              <div className="mt-2 text-[11px] text-[#EF4444]">{saveError}</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">{children}</span>
+  );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-4 py-6 text-center text-[12px] leading-snug text-[#9CA3AF]">{children}</div>
+  );
+}

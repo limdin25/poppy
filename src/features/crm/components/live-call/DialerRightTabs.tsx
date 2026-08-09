@@ -9,7 +9,7 @@
 // the moment a call connects so the agent's eye lands on the read-aloud line.
 
 import { useEffect, useRef, useState } from 'react';
-import { Calculator, MessageSquare, ShieldAlert, Sparkles } from 'lucide-react';
+import { Calculator, Home, MessageSquare, ShieldAlert, Sparkles } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import SalesCalculatorPane from './SalesCalculatorPane';
 import ObjectionsPane from './ObjectionsPane';
@@ -19,8 +19,10 @@ import { useContactMessages, type CrmMessage } from '../../hooks/useContactMessa
 import { useSmsV2 } from '../../store/SmsV2Store';
 import SendSiteButton from './SendSiteButton';
 import VideoLinkButton from './VideoLinkButton';
+import PropertiesPane from './PropertiesPane';
+import type { PropertyListing } from '../../hooks/usePropertyListings';
 
-type Tab = 'coach' | 'calculator' | 'objections' | 'messages';
+type Tab = 'coach' | 'houses' | 'calculator' | 'objections' | 'messages';
 
 interface Props {
   contactId?: string;
@@ -39,6 +41,15 @@ interface Props {
   currentCallId?: string | null;
   callConnected?: boolean;
   liveDurationSec?: number;
+  /** Houses mode: the lead is an estate agency, not a plumber.
+   *
+   *  Swaps the tab set rather than adding to it. Calculator sells websites and
+   *  Objections answers plumber objections, so both are worse than useless on a
+   *  property call. Absent (every existing caller) leaves the four original
+   *  tabs and the Calculator default exactly as they were. */
+  showHouses?: boolean;
+  selectedPropertyId?: string | null;
+  onSelectProperty?: (id: string, listing: PropertyListing) => void;
 }
 
 export default function DialerRightTabs({
@@ -53,8 +64,11 @@ export default function DialerRightTabs({
   currentCallId,
   callConnected,
   liveDurationSec,
+  showHouses,
+  selectedPropertyId,
+  onSelectProperty,
 }: Props) {
-  const [tab, setTab] = useState<Tab>('calculator');
+  const [tab, setTab] = useState<Tab>(showHouses ? 'houses' : 'calculator');
   const { messages } = useContactMessages(contactId ?? '');
 
   // Auto-open the Coach tab the instant the call connects, so the read-aloud
@@ -69,9 +83,16 @@ export default function DialerRightTabs({
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="flex border-b border-[#E5E7EB]">
+        {showHouses && (
+          <TabButton active={tab === 'houses'} icon={<Home className="w-3.5 h-3.5" />} label="Houses" onClick={() => setTab('houses')} />
+        )}
         <TabButton active={tab === 'coach'} icon={<Sparkles className="w-3.5 h-3.5" />} label="Coach" onClick={() => setTab('coach')} />
-        <TabButton active={tab === 'calculator'} icon={<Calculator className="w-3.5 h-3.5" />} label="Calculator" onClick={() => setTab('calculator')} />
-        <TabButton active={tab === 'objections'} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Objections" onClick={() => setTab('objections')} />
+        {!showHouses && (
+          <>
+            <TabButton active={tab === 'calculator'} icon={<Calculator className="w-3.5 h-3.5" />} label="Calculator" onClick={() => setTab('calculator')} />
+            <TabButton active={tab === 'objections'} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Objections" onClick={() => setTab('objections')} />
+          </>
+        )}
         <TabButton active={tab === 'messages'} icon={<MessageSquare className="w-3.5 h-3.5" />} label="Messages" count={messages.length} onClick={() => setTab('messages')} />
       </div>
 
@@ -82,6 +103,14 @@ export default function DialerRightTabs({
             contactId={contactId ?? ''}
             callId={currentCallId ?? null}
             agentFirstName={agentFirstName}
+          />
+        )}
+        {tab === 'houses' && (
+          <PropertiesPane
+            contactPhone={contactPhone}
+            selectedPropertyId={selectedPropertyId ?? null}
+            onSelectProperty={onSelectProperty ?? (() => {})}
+            currentCallId={currentCallId}
           />
         )}
         {tab === 'calculator' && <SalesCalculatorPane />}

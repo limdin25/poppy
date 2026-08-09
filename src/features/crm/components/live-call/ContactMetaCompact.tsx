@@ -67,18 +67,29 @@ export default function ContactMetaCompact({ contact }: Props) {
   const hasLeadFacts = !!(websiteUrl || rating || reviews || rank || town || comp1);
   const competitors = [comp1, comp2].filter(Boolean).join(', ');
 
+  // An estate agency is not a lead for the Elsie product, it is a company we are
+  // trying to buy a house from. All three buttons below are LIVE actions: one
+  // texts a subscribe-and-pay link, one queues a render of a personalised "you
+  // are buried on Google" video, one builds them a website. Every one of them
+  // is wrong, and embarrassing, on a property call.
+  const isEstateAgent = cf.lead_type === 'estate_agent';
+
   return (
     <div className="space-y-1.5">
-      {/* Video-first close: their personal VSL page, texted in one tap. */}
-      <VideoLinkButton contact={contact} />
+      {!isEstateAgent && (
+        <>
+          {/* Video-first close: their personal VSL page, texted in one tap. */}
+          <VideoLinkButton contact={contact} />
 
-      {/* One-tap close: create the account + Stripe link and text it live. */}
-      <SubscribeButton contact={contact} />
+          {/* One-tap close: create the account + Stripe link and text it live. */}
+          <SubscribeButton contact={contact} />
 
-      {/* Build them a website and text the link. Third in the stack because
-          the other two assume a conversation is already going, and this one is
-          what starts it. */}
-      <SendSiteButton contact={contact} />
+          {/* Build them a website and text the link. Third in the stack because
+              the other two assume a conversation is already going, and this one is
+              what starts it. */}
+          <SendSiteButton contact={contact} />
+        </>
+      )}
 
       {/* Property address + URL — only render when one or both are set. */}
       {(propertyAddress || propertyUrl) && (
