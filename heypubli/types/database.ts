@@ -145,6 +145,9 @@ export interface ScheduledPost {
   shares: number | null;
   campaign_id: string | null;
   campaign_item_id: string | null;
+  /** When a publish run took ownership of this row. Stops two overlapping runs
+   *  posting the same video twice. See claimPost in lib/data/posts.ts. */
+  claimed_at: string | null;
   created_at: string;
 }
 

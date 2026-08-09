@@ -214,8 +214,24 @@ export function composeCaption(
   return `${body}\n\n${hashtagsFor(masterSeq, variantIdx).join(" ")}`;
 }
 
-/** The two daily base slots, in the creator's OWN local time. */
-export const SLOT_HOURS = [11, 19] as const;
+/** The daily base slots, in the creator's OWN local time.
+ *
+ *  Hugo, 09 Aug 2026: "we have to post three videos per day per account. Of
+ *  course the timing has to be different times like it is already." The two
+ *  original hours are untouched, so no live account's existing posting times
+ *  move; 15:00 is the new one, four hours either side of the other two, and
+ *  every account still shifts all three by its own stagger minute.
+ *
+ *  The whole pipeline reads its posts-per-day from the LENGTH of this list, so
+ *  a fourth hour is a one-line change and nothing else. */
+export const SLOT_HOURS = [11, 15, 19] as const;
+
+/** Names in SLOT_HOURS order, for the admin page. */
+const SLOT_NAMES = ["morning", "midday", "evening"] as const;
+
+/** How many pipeline posts an account gets in one local day. Derived, never
+ *  typed twice: the cap and the slots cannot drift apart. */
+export const POSTS_PER_DAY = SLOT_HOURS.length;
 
 /** Minutes between two accounts' stagger offsets, over the same [0, 126)
  *  window either side of each slot hour.
@@ -320,13 +336,14 @@ function zonedTimeToUtc(y: number, m: number, d: number, hh: number, mm: number,
 export interface PostSlot {
   /** The exact instant the post goes out. */
   at: Date;
-  /** 'morning' | 'evening', for the admin page. */
-  slot: "morning" | "evening";
+  /** Which of the day's slots this is, for the admin page. 'now' is the
+   *  kickoff post a brand new account gets the moment it connects. */
+  slot: "morning" | "midday" | "evening" | "now";
 }
 
 /**
  * The next `count` posting slots for one account, starting strictly after
- * `after`. Two a day at SLOT_HOURS local, each shifted by the account's
+ * `after`. Three a day at SLOT_HOURS local, each shifted by the account's
  * stagger minutes. Deterministic, timezone-correct, never in the past.
  */
 export function nextSlots(
@@ -342,7 +359,7 @@ export function nextSlots(
       const base = zonedTimeToUtc(today.y, today.m, today.d, SLOT_HOURS[s], 0, timeZone);
       const at = new Date(base.getTime() + dayOffset * 86_400_000 + staggerMin * 60_000);
       if (at.getTime() <= after.getTime()) continue;
-      out.push({ at, slot: s === 0 ? "morning" : "evening" });
+      out.push({ at, slot: SLOT_NAMES[s] });
     }
   }
   return out;
@@ -352,17 +369,43 @@ export function nextSlots(
  * The slots still remaining in the account's CURRENT local day. This is what
  * the scheduler fills from: review proved that filling "until 2 today" from
  * slots that may land on FUTURE days marches the sequence weeks ahead (each
- * 15-minute run adds two more tomorrow-or-later posts while today's count
- * never moves). Filling only today's remaining slots is self-limiting: at
- * most two per day, an account enrolled at noon gets one today and the full
- * two from tomorrow.
+ * run adds more tomorrow-or-later posts while today's count never moves).
+ * Filling only today's remaining slots is self-limiting: at most POSTS_PER_DAY,
+ * and an account enrolled at noon gets what is left of today and the full three
+ * from tomorrow.
  */
 export function todaySlots(now: Date, timeZone: string, staggerMin: number): PostSlot[] {
   const today = zoneParts(now, timeZone);
-  return nextSlots(now, timeZone, staggerMin, 2).filter((s) => {
+  return nextSlots(now, timeZone, staggerMin, POSTS_PER_DAY).filter((s) => {
     const p = zoneParts(s.at, timeZone);
     return p.y === today.y && p.m === today.m && p.d === today.d;
   });
+}
+
+/**
+ * Today's slots for an account, with the first video going out IMMEDIATELY if
+ * this account has never posted.
+ *
+ * Hugo, 09 Aug 2026: "as soon as the user connects we already should post, and
+ * then within five minutes we should post the first video, and then it gets on
+ * the queue for the day."
+ *
+ * The kickoff post TAKES THE PLACE of the next clock slot rather than being
+ * added to it, for two reasons: day one is then still three videos and not
+ * four, and an account connecting at 10:55 does not post twice inside five
+ * minutes. If every slot for today has already gone by, the kickoff is still
+ * made, so somebody who connects at 21:00 sees their first video tonight
+ * instead of waiting until 11:00 tomorrow.
+ */
+export function todaySlotsWithKickoff(
+  now: Date,
+  timeZone: string,
+  staggerMin: number,
+  neverPosted: boolean,
+): PostSlot[] {
+  const slots = todaySlots(now, timeZone, staggerMin);
+  if (!neverPosted) return slots;
+  return [{ at: now, slot: "now" }, ...slots.slice(1)];
 }
 
 /** The zone an account posts in: from their WhatsApp country, else UTC. */

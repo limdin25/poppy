@@ -1,8 +1,16 @@
-// The creator video pipeline's conductor, every 15 minutes.
+// The creator video pipeline's conductor, every 2 minutes.
 //
 // Hugo, 07 Aug 2026: "every time an account gets signed up on our app, they
-// receive the video... every account gets two videos per day... everyone gets
-// on the same pipeline of videos in sequence... it cannot be in the same time."
+// receive the video... everyone gets on the same pipeline of videos in
+// sequence... it cannot be in the same time." And 09 Aug 2026: "we have to
+// post three videos per day per account... as soon as the user connects, within
+// five minutes we should post the first video, and then it gets on the queue
+// for the day."
+//
+// The beat is 2 minutes rather than 15 for that last sentence alone: a new
+// account has to be enrolled, rendered and scheduled while they are still
+// looking at the screen, and four 15-minute waits stacked up made the first
+// video anything up to an hour away.
 //
 // Three duties, in dependency order, all idempotent:
 //   1. ENROLL: every connected Instagram account gets a permanent color (from
@@ -11,12 +19,13 @@
 //      onboarding or not.
 //   2. QUEUE RENDERS: for each account, the next few APPROVED masters in the
 //      sequence get a render row (master x profile unique, so re-runs are
-//      no-ops). The Mac worker drains these.
-//   3. SCHEDULE POSTS: while an account has fewer than two pipeline posts in
-//      its own local day and the NEXT master in its sequence is approved and
-//      rendered, create the scheduled_posts row at the next local slot
-//      (11:00/19:00 + the account's stagger) and advance the pointer. The
-//      existing /api/instagram/publish cron does the actual posting.
+//      no-ops). The render worker drains these.
+//   3. SCHEDULE POSTS: while an account has fewer than POSTS_PER_DAY pipeline
+//      posts in its own local day and the NEXT master in its sequence is
+//      approved and rendered, create the scheduled_posts row at the next local
+//      slot (11:00/15:00/19:00 + the account's stagger, or RIGHT NOW if the
+//      account has never posted) and advance the pointer. The existing
+//      /api/instagram/publish cron does the actual posting.
 //
 // Nothing here posts anything for a master Hugo has not approved on
 // /admin/videos. That page is the authorization; this cron only executes it.
@@ -26,11 +35,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   composeCaption,
   creatorTimeZone,
+  POSTS_PER_DAY,
   STAGGER_SLOTS,
   enrollmentOffsets,
   pickColorFamily,
   postsInLocalDay,
-  todaySlots,
+  todaySlotsWithKickoff,
 } from "@/lib/data/video-pipeline";
 import type {
   CreatorVideoRender,
@@ -42,8 +52,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /** How many masters ahead of an account's pointer to keep rendered. Two days
- *  of buffer at two posts a day. */
-const RENDER_AHEAD = 4;
+ *  of buffer at three posts a day. */
+const RENDER_AHEAD = 2 * POSTS_PER_DAY;
 
 export async function GET(request: NextRequest) {
   const auth = request.headers.get("authorization");
@@ -230,16 +240,21 @@ export async function GET(request: NextRequest) {
     const mine = postsBy.get(s.profile_id) ?? [];
     const taken = takenInstants.get(s.profile_id) ?? new Set<number>();
 
+    // next_seq only ever leaves 1 when a post has been scheduled, so this is
+    // the account's "nothing has ever gone out" flag, and it is the one that
+    // earns an immediate first video.
+    const neverPosted = s.next_seq === 1;
+
     // Fill ONLY today's remaining local slots. Review proved the previous
-    // "keep filling until two exist today" marched the sequence days ahead:
-    // once today's slots were gone, every run scheduled two more on ever
-    // later days while today's count never moved. Today-only is self-limiting
-    // at two per day, and tomorrow's cron fills tomorrow.
-    const open = todaySlots(now, tz, s.stagger_min).filter(
+    // "keep filling until the day is full" marched the sequence days ahead:
+    // once today's slots were gone, every run scheduled more on ever later
+    // days while today's count never moved. Today-only is self-limiting at
+    // POSTS_PER_DAY, and tomorrow's cron fills tomorrow.
+    const open = todaySlotsWithKickoff(now, tz, s.stagger_min, neverPosted).filter(
       (slot) => !taken.has(slot.at.getTime()),
     );
     for (const slot of open) {
-      if (postsInLocalDay(now, tz, mine) >= 2) break;
+      if (postsInLocalDay(now, tz, mine) >= POSTS_PER_DAY) break;
       const m = masterBySeq.get(s.next_seq);
       if (!m) break; // sequence exhausted; Hugo uploads more
       const render = renderByKey.get(`${m.id}:${s.profile_id}`);

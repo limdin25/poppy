@@ -15,6 +15,11 @@ export const SUBSCRIPTION_PRICE_USD = 108;
 export const COMMISSION_RATE = 0.4;
 export const COMMISSION_PER_SALE_USD = SUBSCRIPTION_PRICE_USD * COMMISSION_RATE;
 
+/* DELIBERATELY NOT the pipeline's POSTS_PER_DAY, which went to 3 on 09 Aug 2026
+ * (lib/data/video-pipeline.ts). Raising it here raises every projected figure a
+ * lead is shown by half, and the landing copy would have to stop saying "twice
+ * a day" too. That is a claims decision for Hugo, not a side effect of a
+ * scheduling change. Leave the two apart until he says otherwise. */
 export const POSTS_PER_DAY = 2;
 export const VIDEOS_PER_MONTH = POSTS_PER_DAY * 30;
 

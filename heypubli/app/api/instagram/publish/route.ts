@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { markPostPublished, markPostFailed } from "@/lib/data/posts";
+import {
+  markPostPublished,
+  markPostFailed,
+  claimPost,
+  releasePostClaim,
+} from "@/lib/data/posts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createMediaContainer,
@@ -23,7 +28,12 @@ import type { PostMediaType, ScheduledPost } from "@/types/database";
 
 // Publishing many accounts in one run can exceed the default function duration
 // (Outstand processing is polled per post). Unfinished posts stay pending and are
-// picked up by the next 15-min run without duplicating (see publishViaOutstand).
+// picked up by the next run without duplicating (see publishViaOutstand).
+//
+// This runs every 2 minutes and can therefore overlap itself, so every row is
+// CLAIMED before it is worked (migration 042). Without that, two runs both call
+// Outstand createPost inside the upload window and the creator posts the same
+// video twice.
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
@@ -70,6 +80,12 @@ export async function GET(request: Request) {
       continue;
     }
 
+    // Another run is already on this one. Skipping is the whole point.
+    if (!(await claimPost(post.id))) {
+      results.push({ id: post.id, status: "claimed by another run" });
+      continue;
+    }
+
     try {
       if (provider === "outstand") {
         await publishViaOutstand(post, postingSettings?.outstand_api_key ?? null);
@@ -83,6 +99,10 @@ export async function GET(request: Request) {
       // and stays PENDING, so the next run takes the "already created" branch
       // and resolves it instead of creating a duplicate.
       if (err instanceof StillProcessingError) {
+        // Hand the row back so the next beat resolves it, rather than making it
+        // sit out the stale window. It keeps its outstand_post_id, so re-entry
+        // takes the already-created branch and cannot double post.
+        await releasePostClaim(post.id);
         results.push({ id: post.id, status: "still processing" });
         continue;
       }
@@ -91,6 +111,7 @@ export async function GET(request: Request) {
       // permanently over something that fixes itself. Leave it pending.
       if (err instanceof OutstandApiError && err.retryable) {
         console.error("[publish] transient Outstand error, leaving pending:", err.message.slice(0, 200));
+        await releasePostClaim(post.id);
         results.push({ id: post.id, status: `retrying: ${err.status}` });
         continue;
       }

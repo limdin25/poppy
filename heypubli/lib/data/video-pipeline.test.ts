@@ -13,7 +13,10 @@ import {
   nextSlots,
   pickColorFamily,
   postsInLocalDay,
+  POSTS_PER_DAY,
+  SLOT_HOURS,
   todaySlots,
+  todaySlotsWithKickoff,
   STAGGER_STEP_MIN,
   STAGGER_SLOTS,
 } from "./video-pipeline";
@@ -106,37 +109,93 @@ describe("stagger", () => {
   });
 });
 
+describe("three a day", () => {
+  // Hugo, 09 Aug 2026: "we have to post three videos per day per account."
+  it("is three slots, and the cap is read from the slot list", () => {
+    expect(SLOT_HOURS.length).toBe(3);
+    expect(POSTS_PER_DAY).toBe(3);
+  });
+
+  it("keeps the two hours live accounts already post at", () => {
+    // Adding a third slot must not move anybody's existing posting times.
+    expect(SLOT_HOURS).toContain(11);
+    expect(SLOT_HOURS).toContain(19);
+  });
+
+  it("spreads the hours out, never two in the same part of the day", () => {
+    const gaps = SLOT_HOURS.slice(1).map((h, i) => h - SLOT_HOURS[i]);
+    for (const g of gaps) expect(g).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describe("todaySlots", () => {
   it("returns only slots landing on the account's current local day", () => {
-    // 06:00 UTC = 11:30 IST: the 11:00 slot is gone, only 19:00 remains today.
+    // 06:00 UTC = 11:30 IST: the 11:00 slot is gone, 15:00 and 19:00 remain.
     const slots = todaySlots(new Date("2026-08-08T06:00:00Z"), "Asia/Kolkata", 0);
-    expect(slots.map((s) => s.slot)).toEqual(["evening"]);
+    expect(slots.map((s) => s.slot)).toEqual(["midday", "evening"]);
   });
 
   it("after the last slot has passed it returns NOTHING, never tomorrow", () => {
-    // 15:00 UTC = 20:30 IST: both of today's slots are gone. The review bug:
-    // returning tomorrow's here made every 15-minute run schedule two more.
+    // 15:00 UTC = 20:30 IST: all of today's slots are gone. The review bug:
+    // returning tomorrow's here made every run schedule more.
     const slots = todaySlots(new Date("2026-08-08T15:00:00Z"), "Asia/Kolkata", 0);
     expect(slots).toEqual([]);
   });
 
-  it("early morning returns both of today's slots", () => {
+  it("early morning returns all three of today's slots", () => {
     const slots = todaySlots(new Date("2026-08-08T00:30:00Z"), "Asia/Kolkata", 21);
-    expect(slots.map((s) => s.slot)).toEqual(["morning", "evening"]);
+    expect(slots.map((s) => s.slot)).toEqual(["morning", "midday", "evening"]);
+  });
+});
+
+describe("todaySlotsWithKickoff", () => {
+  // Hugo, 09 Aug 2026: "as soon as the user connects... within five minutes we
+  // should post the first video, and then it gets on the queue for the day."
+  const dawn = new Date("2026-08-08T00:30:00Z"); // 06:00 IST, before every slot
+
+  it("an account that has never posted goes out RIGHT NOW", () => {
+    const slots = todaySlotsWithKickoff(dawn, "Asia/Kolkata", 21, true);
+    expect(slots[0].slot).toBe("now");
+    expect(slots[0].at.getTime()).toBe(dawn.getTime());
+  });
+
+  it("day one is still three videos, not four", () => {
+    const slots = todaySlotsWithKickoff(dawn, "Asia/Kolkata", 21, true);
+    expect(slots.length).toBe(POSTS_PER_DAY);
+    // The kickoff REPLACES the next clock slot, so an account connecting five
+    // minutes before 11:00 does not post twice inside five minutes.
+    expect(slots.map((s) => s.slot)).toEqual(["now", "midday", "evening"]);
+  });
+
+  it("connecting after the last slot still posts tonight, not tomorrow", () => {
+    const late = new Date("2026-08-08T15:00:00Z"); // 20:30 IST, every slot gone
+    const slots = todaySlotsWithKickoff(late, "Asia/Kolkata", 0, true);
+    expect(slots.map((s) => s.slot)).toEqual(["now"]);
+    expect(slots[0].at.getTime()).toBe(late.getTime());
+  });
+
+  it("an account that has posted before is left on the clock", () => {
+    const now = new Date("2026-08-08T06:00:00Z");
+    expect(todaySlotsWithKickoff(now, "Asia/Kolkata", 0, false)).toEqual(
+      todaySlots(now, "Asia/Kolkata", 0),
+    );
   });
 });
 
 describe("nextSlots", () => {
   // 06:00 UTC = 11:30 in India (UTC+5:30): the morning slot is 11:00 IST,
-  // already past, so the first slot must be this evening.
+  // already past, so the first slot must be this afternoon.
   it("skips a slot already past in the creator's own day", () => {
     const after = new Date("2026-08-08T06:00:00Z");
-    const slots = nextSlots(after, "Asia/Kolkata", 0, 2);
-    expect(slots[0].slot).toBe("evening");
+    const slots = nextSlots(after, "Asia/Kolkata", 0, 3);
+    expect(slots[0].slot).toBe("midday");
+    // 15:00 IST = 09:30 UTC
+    expect(slots[0].at.toISOString()).toBe("2026-08-08T09:30:00.000Z");
+    expect(slots[1].slot).toBe("evening");
     // 19:00 IST = 13:30 UTC
-    expect(slots[0].at.toISOString()).toBe("2026-08-08T13:30:00.000Z");
-    expect(slots[1].slot).toBe("morning");
-    expect(slots[1].at.toISOString()).toBe("2026-08-09T05:30:00.000Z");
+    expect(slots[1].at.toISOString()).toBe("2026-08-08T13:30:00.000Z");
+    expect(slots[2].slot).toBe("morning");
+    expect(slots[2].at.toISOString()).toBe("2026-08-09T05:30:00.000Z");
   });
 
   it("applies the stagger to every slot", () => {

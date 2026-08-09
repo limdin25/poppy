@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/instagram/publish",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/unipile/sync-cron",
@@ -34,7 +34,7 @@
     },
     {
       "path": "/api/cron/video-pipeline",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/cron/accounts-digest",

@@ -6,6 +6,7 @@ import {
   composeCaption,
   creatorTimeZone,
   nextSlots,
+  POSTS_PER_DAY,
   FAMILY_ACCENT_HEX,
   FAMILY_CHIP_HEX,
 } from "@/lib/data/video-pipeline";
@@ -186,7 +187,9 @@ export async function getVideoPipelineOverview(): Promise<PipelineOverview> {
       timeZone: tz,
       staggerMin: s?.stagger_min ?? 0,
       nextSeq: s?.next_seq ?? 1,
-      nextTimes: s ? nextSlots(now, tz, s.stagger_min, 2).map((x) => x.at.toISOString()) : [],
+      nextTimes: s
+        ? nextSlots(now, tz, s.stagger_min, POSTS_PER_DAY).map((x) => x.at.toISOString())
+        : [],
       enrolled: Boolean(s),
       connectedAt: (c as { created_at?: string }).created_at ?? null,
     };

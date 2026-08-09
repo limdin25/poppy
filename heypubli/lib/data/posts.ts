@@ -52,6 +52,51 @@ export async function getPendingPosts() {
   return data ?? [];
 }
 
+/** A claim is treated as abandoned after this long. It has to be comfortably
+ *  longer than a publish run can live (maxDuration is 300s), or a run still
+ *  working a post would have it stolen out from under it. */
+const CLAIM_STALE_MS = 10 * 60_000;
+
+/**
+ * Take ownership of a pending post so no other publish run can work it.
+ *
+ * Returns false when somebody else already holds it. One conditional UPDATE
+ * does the whole job: Postgres locks the row, and the loser of the race
+ * re-checks the WHERE against the winner's fresh claimed_at, fails it, and gets
+ * zero rows back. That matters because the gap between selecting a row and
+ * recording its Outstand id is up to 90 seconds of media upload, and the cron
+ * now runs every 2 minutes.
+ */
+export async function claimPost(postId: string): Promise<boolean> {
+  const supabase = createAdminClient();
+  const stale = new Date(Date.now() - CLAIM_STALE_MS).toISOString();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("scheduled_posts") as any)
+    .update({ claimed_at: new Date().toISOString() })
+    .eq("id", postId)
+    .eq("status", "pending")
+    .or(`claimed_at.is.null,claimed_at.lt.${stale}`)
+    .select("id");
+
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * Hand a post back unfinished. Used when Outstand is simply slow or having a
+ * bad minute: the row stays pending on purpose, and clearing the claim lets the
+ * next run resolve it two minutes later instead of waiting out the stale
+ * window. Re-entry is safe because the row keeps its outstand_post_id and the
+ * publisher takes the already-created branch.
+ */
+export async function releasePostClaim(postId: string): Promise<void> {
+  const supabase = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase.from("scheduled_posts") as any)
+    .update({ claimed_at: null })
+    .eq("id", postId);
+}
+
 export async function markPostPublished(
   postId: string,
   igMediaId: string,

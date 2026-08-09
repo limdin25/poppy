@@ -25,9 +25,13 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 const markPostPublished = vi.fn();
 const markPostFailed = vi.fn();
+const claimPost = vi.fn(async () => true);
+const releasePostClaim = vi.fn();
 vi.mock("@/lib/data/posts", () => ({
   markPostPublished: (...a: unknown[]) => markPostPublished(...a),
   markPostFailed: (...a: unknown[]) => markPostFailed(...a),
+  claimPost: (...a: unknown[]) => claimPost(...(a as [])),
+  releasePostClaim: (...a: unknown[]) => releasePostClaim(...a),
 }));
 
 const createPost = vi.fn();
@@ -88,6 +92,58 @@ beforeEach(() => {
   markPostFailed.mockClear();
   createPost.mockClear();
   getPostStatus.mockClear();
+  claimPost.mockClear();
+  claimPost.mockResolvedValue(true);
+  releasePostClaim.mockClear();
+});
+
+describe("publish cron — one run per post", () => {
+  // The cron went to every 2 minutes on 09 Aug 2026 so a new creator's first
+  // video goes out within minutes of connecting. A run can now start while the
+  // last one is still uploading a reel, and both see the same pending row.
+  it("touches nothing when another run already holds the post", async () => {
+    pendingPosts.push({
+      id: "post-held",
+      profile_id: "user-1",
+      media_type: "reel",
+      media_url: "https://cdn.example.com/r.mp4",
+      caption: "Hi",
+      status: "pending",
+      provider: "outstand",
+      outstand_post_id: null,
+    });
+    claimPost.mockResolvedValue(false);
+
+    const res = await GET(cronRequest());
+    const body = await res.json();
+
+    // Creating it here is the double post: the other run is mid-upload and has
+    // not written its outstand_post_id yet, so nothing else would catch it.
+    expect(createPost).not.toHaveBeenCalled();
+    expect(markPostPublished).not.toHaveBeenCalled();
+    expect(markPostFailed).not.toHaveBeenCalled();
+    expect(body.published).toBe(0);
+  });
+
+  it("claims the post before doing any work on it", async () => {
+    pendingPosts.push({
+      id: "post-mine",
+      profile_id: "user-1",
+      media_type: "story_image",
+      media_url: "https://cdn.example.com/s.jpg",
+      caption: "Hi",
+      status: "pending",
+      provider: "outstand",
+      outstand_post_id: "out-1",
+    });
+    getPostStatus.mockResolvedValue({
+      socialAccounts: [{ status: "published", platformPostId: "ig-1" }],
+    });
+
+    await GET(cronRequest());
+
+    expect(claimPost).toHaveBeenCalledWith("post-mine");
+  });
 });
 
 describe("publish cron — Outstand resume safety", () => {
