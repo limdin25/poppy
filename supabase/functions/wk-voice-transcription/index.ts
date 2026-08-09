@@ -295,6 +295,112 @@ const CLOSE_CALL_CONTEXT = [
   'Do not coach the cold opener. Do not coach a pitch. Four beats: who is that, why you are ringing, any questions, ask for the yes.',
 ].join('\n');
 
+// ---------------------------------------------------------------------------
+// THE PROPERTY CALL (wk_calls.script_key = 'property_call')
+//
+// The agent is ringing an ESTATE AGENCY about a house their client wants to
+// buy. Nothing about the Elsie product is relevant: no reviews, no Google rank,
+// no competitors, no subscription. Coaching the cold-call guide here would have
+// the agent pitching a review service to someone selling a terrace.
+//
+// Same shape and the same reasoning as the close-call block above: module
+// constants rather than DB rows, because the words must stay in lockstep with
+// src/core/content/property-call-script.html and a test
+// (tests/coach-property-call.test.ts) fails the build when they drift.
+//
+// EVERY reference to these is gated on isPropertyCall, so a cold dial and a
+// close call both run exactly the code they ran before this existed.
+// ---------------------------------------------------------------------------
+
+const PROPERTY_STAGE_ORDER = [
+  'Is it still available',
+  'Ask for the two minutes',
+  'The checklist',
+  'The money',
+  'Wrap up',
+];
+
+/** The words on the agent's screen, as markdown, for the AGENT'S CALL SCRIPT
+ *  layer. `## N. Stage` headings so parseScriptAnchors finds the sections. */
+const PROPERTY_AGENT_SCRIPT_MD = `# Ringing the agent about a house
+
+Calling on behalf of the director, who is a cash buyer. Gather information and
+gauge how flexible the vendor is. Do NOT make a formal offer. Do NOT book a
+viewing. One question at a time.
+
+## 1. Is it still available
+"Hi, hello. I'm calling about the property on {{property_street}}, the {{bedrooms}} bed {{property_type}}. Is that one still available?"
+Then stop. Nothing else.
+If sold or under offer: "Ah, fair enough. Would the vendor consider backup offers at all?"
+
+## 2. Ask for the two minutes
+"Oh lovely. So, I'm calling on behalf of our director, he's a cash buyer. Mind if I ask a couple of quick questions? Then he can call you back himself."
+Wait for the yes.
+
+## 3. The checklist
+"Is it vacant, or is there a tenant in?" If tenanted: staying or leaving, and what rent.
+"And what sort of condition is it in, ready to move into or does it need work?" Then roof, damp, electrics, boiler.
+"Has it had much interest? Any offers so far?" And has a sale ever fallen through.
+"Do you know why they're selling?" Then: in a hurry, and is there an onward chain.
+"Is it freehold or leasehold?"
+FLAT only: years left on the lease, service charge, ground rent, major works, cladding or EWS1.
+HOUSE only: confirm freehold, structural issues, extensions signed off.
+Never ask a house about service charges or a lease unless they say it is leasehold. Never ask a flat about subsidence unless they raise it.
+
+## 4. The money
+"Realistically my director would be looking at somewhere around {{offer_open}} on this one. How would that land with the vendor?"
+Then be quiet. Let the silence do the work.
+If they push back: "I only ask because a similar one nearby went for less not long ago. What sort of figure do you think would actually get it done?"
+Climb the ladder ONE step at a time, only when they give ground.
+"Obviously my director would confirm everything himself."
+
+## 5. Wrap up
+"And what do viewings look like, weekdays, weekends, how much notice?" Ask, do not book.
+"That's great, thanks for your time. The director will be in touch."
+Then wait. Do not hang up on your own closing line.`;
+
+const PROPERTY_SCRIPT_PROMPT = [
+  'This call is an agent ringing an ESTATE AGENCY about a house. The person on the phone sells houses for a living. They are NOT a sales lead, they are the seller\'s representative, and we are the buyer.',
+  '',
+  'THE FIVE BEATS, forward-only order',
+  '1. Is it still available',
+  '2. Ask for the two minutes',
+  '3. The checklist',
+  '4. The money',
+  '5. Wrap up',
+  '',
+  'NEVER MENTION, none of it exists on this call:',
+  '- Google reviews, star ratings, local ranking, competitors',
+  '- websites, video, subscriptions, pricing, free trials',
+  '- anything at all about the Elsie product.',
+  'If a card would have referenced any of that, it is the wrong call type. Emit STAY_ON_SCRIPT instead.',
+  '',
+  'THE MONEY, this is the part that pays for the call:',
+  '- The agent OPENS on the "open at" figure in THIS LEAD. One number, never a range.',
+  '- Never coach the agent to say a range, and never coach "between X and Y".',
+  '- NEVER SAY THE WALK-AWAY FIGURE, and never coach the agent to reveal it, hint at it, or confirm a guess at it. It is their ceiling and it is private. If the estate agent asks "is that your best?", the answer is "it\'s where he\'d start", never the ceiling.',
+  '- Climb the ladder ONE rung at a time, and only after the estate agent gives ground or new information.',
+  '- Justify with the sold evidence in THIS LEAD, one comparable at a time, said casually. Never read the list out.',
+  '- Always push the question back: "what sort of figure do you think would actually get it done?" A figure THEY say is worth more than any figure we say.',
+  '',
+  'NEVER PROMISE. The agent is not authorised to make a formal offer or book a viewing. Everything is "the director will confirm that himself". If pushed for a formal offer, coach exactly that line.',
+  '',
+  'PROPERTY TYPE. Coach lease, service charge, ground rent and cladding questions ONLY for a flat, maisonette or apartment. Coach freehold, subsidence and extension questions ONLY for a house or bungalow. Asking the wrong set makes the agent sound like they have never bought a house, and estate agents notice immediately.',
+  '',
+  'SILENCE. After the agent names a figure, the estate agent going quiet is NOT a cue for a card. The silence is the tactic. Emit STAY_ON_SCRIPT.',
+  '',
+  'NEVER INVENT a fact about the property, the director, or the financing. Everything known is in THIS LEAD. If it is not there, coach the agent to ask rather than to assert.',
+].join('\n');
+
+/** One extra block on the user message so the model cannot mistake the call
+ *  type even if it skims the system layers. */
+const PROPERTY_CALL_CONTEXT = [
+  '=== THIS CALL IS ABOUT BUYING A HOUSE ===',
+  'The person on the phone is an ESTATE AGENT. We are the buyer. There is no product being sold to them, no reviews, no website, no subscription.',
+  'Five beats: is it still available, ask for two minutes, the checklist, the money, wrap up.',
+  'The walk-away figure in THIS LEAD is private. Never coach the agent to say it.',
+].join('\n');
+
 // Hugo 2026-04-29: replaced the single mega-prompt with three independently
 // editable layers (style / script / knowledge base). The model receives them
 // as separate system messages so each can evolve in isolation. See
@@ -310,7 +416,7 @@ interface CoachLayers {
   // → contact's first name, `{{agent_first_name}}` → agent's first
   // name. Empty string when no script is found at all.
   agentScriptBody: string;
-  agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'none';
+  agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'property_call' | 'none';
 }
 
 interface CoachOptions {
@@ -334,7 +440,7 @@ interface CoachOptions {
    *  Undefined on every normal dial, which renders the original literal. */
   stageOrder?: string[];
   /** 'vsl_close' adds one block to the user message. Undefined = cold call. */
-  callKind?: 'vsl_close';
+  callKind?: 'vsl_close' | 'property_call';
   onChunk: (accumulated: string, isFirst: boolean) => void;
   isAborted: () => boolean;
 }
@@ -658,7 +764,9 @@ async function generateCoachSuggestion(
 
   // Empty array on a cold call, so the assembled cold user message is
   // byte-identical to what it has always been.
-  const closeCallBlock = callKind === 'vsl_close' ? [CLOSE_CALL_CONTEXT, ''] : [];
+  const closeCallBlock = callKind === 'vsl_close' ? [CLOSE_CALL_CONTEXT, '']
+    : callKind === 'property_call' ? [PROPERTY_CALL_CONTEXT, '']
+    : [];
 
   const userMsg = [
     'Recent conversation (most recent line at bottom):',
@@ -1150,6 +1258,9 @@ serve(async (req: Request) => {
           // NULL on every existing row and every cold dial, so the whole close
           // branch below is dead code on a normal call.
           const isCloseCall = (call.script_key as string | null) === 'vsl_close';
+          // Ringing an estate agency about a house. Mutually exclusive with
+          // isCloseCall by construction: script_key holds one value.
+          const isPropertyCall = (call.script_key as string | null) === 'property_call';
           const [
             recentRes,
             priorCardsRes,
@@ -1356,10 +1467,14 @@ serve(async (req: Request) => {
           // voice AND the UK compliance bans (never guarantee a ranking, never
           // call a paid start free), every word of which is still true on a
           // close call. Forking it would mean maintaining those bans twice.
-          const closeScript = isCloseCall ? CLOSE_SCRIPT_PROMPT : '';
+          const closeScript = isCloseCall ? CLOSE_SCRIPT_PROMPT
+            : isPropertyCall ? PROPERTY_SCRIPT_PROMPT
+            : '';
           const closeScriptRow = isCloseCall
             ? { name: 'VSL close', body_md: CLOSE_AGENT_SCRIPT_MD }
-            : undefined;
+            : isPropertyCall
+              ? { name: 'Property call', body_md: PROPERTY_AGENT_SCRIPT_MD }
+              : undefined;
           let columnScriptRow:
             | { name: string; body_md: string }
             | undefined;
@@ -1489,8 +1604,8 @@ serve(async (req: Request) => {
           // script, and a close call is not a variant of one.
           const resolvedAgentScript =
             closeScriptRow ?? ownScriptRow ?? columnScriptRow ?? campaignScriptRow ?? defaultScriptRow ?? null;
-          const agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'none' = closeScriptRow
-            ? 'vsl_close'
+          const agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'property_call' | 'none' = closeScriptRow
+            ? (isPropertyCall ? 'property_call' : 'vsl_close')
             : ownScriptRow
             ? 'own'
             : columnScriptRow
@@ -1518,18 +1633,55 @@ serve(async (req: Request) => {
           const contactFirstName =
             ownerName.split(/\s+/)[0] || contactName.split(/\s+/)[0] || 'the caller';
           const leadFactLines: string[] = [];
-          if (ownerName) leadFactLines.push(`Owner's name (greet them by this): ${ownerName}`);
-          if (businessName) leadFactLines.push(`Business name: ${businessName}`);
-          if ((cf.reviews ?? '').trim()) leadFactLines.push(`Google reviews they have right now: ${(cf.reviews ?? '').trim()}`);
-          if ((cf.rating ?? '').trim()) leadFactLines.push(`Google star rating: ${(cf.rating ?? '').trim()}`);
-          if ((cf.rank ?? '').trim()) {
-            const ahead = (cf.plumbers_ahead ?? '').trim();
-            leadFactLines.push(`Local Google rank: #${(cf.rank ?? '').trim()}${ahead ? ` (${ahead} businesses ahead of them)` : ''}`);
-          }
-          if ((cf.town ?? '').trim()) leadFactLines.push(`Town / area: ${(cf.town ?? '').trim()}`);
-          {
-            const comps = [cf.competitor_1, cf.competitor_2].map((c) => (c ?? '').trim()).filter(Boolean);
-            if (comps.length) leadFactLines.push(`Competitors ranking above them: ${comps.join(', ')}`);
+          if (cf.lead_type === 'estate_agent') {
+            // A PROPERTY CALL. Every fact in the plumber branch below is either
+            // empty or actively wrong here: an estate agency has no review count
+            // we care about, no local rank we are selling against, and no
+            // competitors. Left on the plumber branch the coach would prompt
+            // the agent about Google reviews mid-negotiation over a house.
+            //
+            // These values are written onto the contact by
+            // scripts/assign-properties-to-pedro-houses.mjs and refreshed by the
+            // Houses tab when the agent switches property, because the coach
+            // rebuilds from the database on every utterance and cannot see the
+            // browser's selection.
+            const f = (k: string) => (cf[k] ?? '').trim();
+            if (f('agency')) leadFactLines.push(`Estate agency you are calling: ${f('agency')}`);
+            if (f('property_address')) leadFactLines.push(`The property: ${f('property_address')}`);
+            {
+              const bits = [
+                f('bedrooms') ? `${f('bedrooms')} bed` : '',
+                f('property_type'),
+              ].filter(Boolean).join(' ');
+              if (bits) leadFactLines.push(`Type: ${bits}`);
+            }
+            if (f('asking_price')) leadFactLines.push(`Asking price: ${f('asking_price')}`);
+            if (f('days_on_market')) leadFactLines.push(`Days on the market: ${f('days_on_market')}`);
+            if (f('property_worth')) leadFactLines.push(`What the sold evidence says it is worth today: ${f('property_worth')}`);
+            if (f('offer_open')) leadFactLines.push(`OPEN AT this figure, say this one number: ${f('offer_open')}`);
+            if (f('offer_ladder')) leadFactLines.push(`Climb this ladder, one rung at a time: ${f('offer_ladder')}`);
+            if (f('offer_ceiling')) {
+              leadFactLines.push(
+                `WALK AWAY at ${f('offer_ceiling')}. This figure is PRIVATE. Never say it, never hint at it, never confirm a guess at it.`,
+              );
+            }
+            if (f('comp_evidence')) leadFactLines.push(`Sold nearby, use one at a time as justification: ${f('comp_evidence')}`);
+            if (f('valuation_notes')) leadFactLines.push(`Worth knowing about this one: ${f('valuation_notes')}`);
+            if (f('properties_count')) leadFactLines.push(`This branch has ${f('properties_count')} listings on our list.`);
+          } else {
+            if (ownerName) leadFactLines.push(`Owner's name (greet them by this): ${ownerName}`);
+            if (businessName) leadFactLines.push(`Business name: ${businessName}`);
+            if ((cf.reviews ?? '').trim()) leadFactLines.push(`Google reviews they have right now: ${(cf.reviews ?? '').trim()}`);
+            if ((cf.rating ?? '').trim()) leadFactLines.push(`Google star rating: ${(cf.rating ?? '').trim()}`);
+            if ((cf.rank ?? '').trim()) {
+              const ahead = (cf.plumbers_ahead ?? '').trim();
+              leadFactLines.push(`Local Google rank: #${(cf.rank ?? '').trim()}${ahead ? ` (${ahead} businesses ahead of them)` : ''}`);
+            }
+            if ((cf.town ?? '').trim()) leadFactLines.push(`Town / area: ${(cf.town ?? '').trim()}`);
+            {
+              const comps = [cf.competitor_1, cf.competitor_2].map((c) => (c ?? '').trim()).filter(Boolean);
+              if (comps.length) leadFactLines.push(`Competitors ranking above them: ${comps.join(', ')}`);
+            }
           }
           const leadFacts = leadFactLines.join('\n');
 
@@ -1590,8 +1742,12 @@ serve(async (req: Request) => {
             currentStage: (call.current_stage as string | null) ?? null,
             leadFacts,
             // Both undefined on a cold dial.
-            stageOrder: isCloseCall ? CLOSE_STAGE_ORDER : undefined,
-            callKind: isCloseCall ? 'vsl_close' : undefined,
+            stageOrder: isCloseCall ? CLOSE_STAGE_ORDER
+              : isPropertyCall ? PROPERTY_STAGE_ORDER
+              : undefined,
+            callKind: isCloseCall ? 'vsl_close'
+              : isPropertyCall ? 'property_call'
+              : undefined,
             onChunk: (accumulated) => {
               if (firstToken) {
                 log('first token');

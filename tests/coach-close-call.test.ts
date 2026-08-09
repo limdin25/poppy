@@ -73,10 +73,23 @@ describe('COLD CALLS ARE UNTOUCHED', () => {
   })
 
   it('every close term in the coach is gated on isCloseCall', () => {
-    expect(COACH).toMatch(/const closeScript = isCloseCall \? CLOSE_SCRIPT_PROMPT : '';/)
+    // 2026-08-09: the property call became a third call kind, so these four
+    // two-way ternaries became three-way. The GUARANTEE is unchanged and is
+    // what is asserted: every CLOSE_ constant is reached only through
+    // isCloseCall, so a cold dial and a property call both skip all of them.
+    expect(COACH).toMatch(/const closeScript = isCloseCall \? CLOSE_SCRIPT_PROMPT/)
     expect(COACH).toMatch(/const closeScriptRow = isCloseCall/)
-    expect(COACH).toMatch(/stageOrder: isCloseCall \? CLOSE_STAGE_ORDER : undefined/)
-    expect(COACH).toMatch(/callKind: isCloseCall \? 'vsl_close' : undefined/)
+    expect(COACH).toMatch(/isCloseCall \? CLOSE_STAGE_ORDER/)
+    expect(COACH).toMatch(/callKind: isCloseCall \? 'vsl_close'/)
+
+    // And the strong form: no CLOSE_ constant is ever reached without it.
+    const lines = COACH.split('\n')
+    lines.forEach((line, i) => {
+      if (!/\bCLOSE_(STAGE_ORDER|SCRIPT_PROMPT|AGENT_SCRIPT_MD|CALL_CONTEXT)\b/.test(line)) return
+      if (/^\s*(\/\/|\*|const CLOSE_)/.test(line)) return   // definitions and comments
+      const window = [lines[i - 1] ?? '', line].join('\n')
+      expect(window).toMatch(/isCloseCall|callKind === 'vsl_close'/)
+    })
   })
 
   it('the cold cascades keep their exact order, below the close term', () => {

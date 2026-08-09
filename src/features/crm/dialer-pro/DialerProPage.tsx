@@ -402,6 +402,31 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
   // it is another branch's house with another branch's numbers.
   useEffect(() => { setSelectedPropertyId(null); }, [activeContactId]);
 
+  // Push the selected property's figures onto the CONTACT.
+  //
+  // The live coach is driven by Twilio, not the browser: it rebuilds its whole
+  // context from the database on every caller utterance and cannot see what is
+  // on screen. Without this write the coach would coach the headline property
+  // while the agent talks about the third one down, naming the wrong opening
+  // figure out loud. Same reason wk_calls.script_key exists at all.
+  const syncedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isHousesCall || !selectedListing || !activeContactId) return;
+    const key = `${activeContactId}:${selectedListing.id}`;
+    if (syncedRef.current === key) return;   // only on a real change
+    syncedRef.current = key;
+    const facts = scriptTokensFor(selectedListing);
+    void (async () => {
+      // Merge, never replace: custom_fields also holds who owns the lead, the
+      // agency name and anything an admin typed by hand.
+      const { data: row } = await supabase
+        .from('wk_contacts').select('custom_fields').eq('id', activeContactId).maybeSingle();
+      const merged = { ...(row?.custom_fields ?? {}), ...facts, lead_type: 'estate_agent' };
+      await supabase.from('wk_contacts')
+        .update({ custom_fields: merged }).eq('id', activeContactId);
+    })();
+  }, [isHousesCall, selectedListing, activeContactId]);
+
   // The lead on the phone, through the same batched hook every other surface
   // uses, with a list of one.
   const funnelIds = useMemo(() => (contact?.id ? [contact.id] : []), [contact?.id]);
