@@ -63,6 +63,7 @@ Every component designed for mobile first, then scales up.
 9. No filler phrases ("Great question!", "Certainly!").
 10. When something breaks: what broke, why, what you're doing to fix it. One sentence each.
 11. **Never write a long dash.** No em dash, no en dash, anywhere: code, comments, commits, docs, UI copy, messages, prompts, and replies to Hugo. Use a comma, a full stop, brackets or a new sentence. Same for curly quotes and ellipsis characters. Hugo, 2026-07-27: "no long dashes ever, we don't use."
+12. **Never launch a big multi-agent review on your own judgement.** Two adversarial-review Workflows in one session (37 then 39 agents) burned about 5.1M tokens and a quarter of Hugo's weekly Claude Code limit. Hugo, 2026-08-07, asked directly whether to keep doing them before risky launches and answered: **"trust"**. So: tests plus your own read of the code is the standard, even for code that sends real messages, moves money, or runs autonomously. Use the Workflow tool ONLY when Hugo asks for it in his own words that session. If a review does run and dies partway on a rate limit, say so plainly instead of reporting only the findings that finished.
 
 ---
 
@@ -240,15 +241,23 @@ All API keys, tokens, and login credentials are stored in Claude Code memory at 
 - **Admin pages**: fully wired to real Supabase via `/api/admin/*` routes
 - **Build errors fixed**: all API route imports use `.js` extensions for Vercel node16 compat
 - **BRRR property qualifier live (2026-06-10)** — see [docs/BRRR_QUALIFIER_PLAN.md](docs/BRRR_QUALIFIER_PLAN.md):
-  - Rightmove scraper lives IN THIS REPO at `scraper/` (Python/Flask, launchd `com.margarita.propertytool`, port 5050, Mac-only; old Margarita path is a symlink; `scraper/data/` gitignored, excluded from Vercel via `.vercelignore`). "Send to Elsie" on its Comps tab → `POST /api/properties/ingest` (secret: `PROPERTY_INGEST_SECRET`, scraper keeps it in `scraper/data/elsie.json`) → **auto-queues the call**
-  - Admin tabs: **BRRR → Scraper** (embeds 127.0.0.1:5050), **BRRR → Properties**, **BRRR → Pipeline** (embeds /leads)
+  - **The scraper is NOT in this repo** (a partial copy on `main` was deleted in July and would not even import). It runs on **margarita-server** at `/root/scraper`, systemd unit `margarita-scraper`, served at **https://scraper.heyelsie.com** behind nginx basic auth (user `hugo`; password in Claude memory `credentials_scraper_site`). Backed up to the private repo **hrds100/property-scraper**. The Mac launchd job `com.margarita.propertytool` is the retired path. "Send to Elsie" on its Comps tab → `POST /api/properties/ingest` (secret `PROPERTY_INGEST_SECRET`, scraper keeps it in `data/elsie.json`) → **auto-queues the call** unless `call_channel='human'`
+  - Admin tabs: **BRRR → Scraper** (embeds scraper.heyelsie.com; `/api/floorplans/stats` is deliberately un-gated so the status badge works, everything else needs the password), **BRRR → Properties**, **BRRR → Pipeline** (embeds /leads)
   - Call rules adjustable in admin (key `brrr_settings` in `platform_settings`): attempts, retry gap, dials/run, days/hours, offer min/max %
   - Tables `brrr_properties` + `brrr_property_calls` (admin-only, no RLS)
   - Admin tab **BRRR → Properties** (`/admin/properties`): numbers, floor plans, "Call agent" button, transcript/recording viewer
-  - Outbound qualifier agent: `agent_539daa8b3bedf3d3de876276a2` / LLM `llm_3da4d9ae0e456b8498b09b000b3e` (cartesia-Willa, en-GB, press_digit IVR tool, honest-AI "Maya from Airbrick Properties"). NO agents-table row on purpose (sync-prompts would clobber it)
-  - Dial cron `/api/cron/process-property-calls` every 2 min: UK-hours guard (Mon–Sat 09:30–17:00), atomic claim, max 2 dials/run, 3 attempts, calls from `+447426495169`
+  - Outbound qualifier agent: `agent_539daa8b3bedf3d3de876276a2` / LLM `llm_3da4d9ae0e456b8498b09b000b3e` (cartesia-Willa, en-GB, press_digit IVR tool, honest-AI, introduces itself as **Elsie** for Airbrick Properties). NO agents-table row on purpose (sync-prompts would clobber it). **Currently DARK**: `RETELL_PROPERTY_AGENT_ID` and `PROPERTY_FROM_NUMBER` are empty in production, and its Retell webhook points at `legacy.hostunico.com`, not at us. Repoint the webhook BEFORE ever restoring those env vars, or calls fire and every transcript lands in the wrong app
+  - Dial cron `/api/cron/process-property-calls` every 2 min: UK-hours guard (Mon–Sat 09:30–17:00), atomic claim, max 2 dials/run, 3 attempts, 30-min same-agency spacing
   - Retell webhook branches on `metadata.type === 'brrr_property'` → Claude extracts qualification → qualified properties become deals in Hugo's live pipeline (stage "Qualified") + email notification
   - Env: `PROPERTY_INGEST_SECRET`, `RETELL_PROPERTY_AGENT_ID`, `PROPERTY_FROM_NUMBER`, `PROPERTY_PIPELINE_BUSINESS_ID`
+
+- **Houses for Pedro — the HUMAN path (2026-08-09)**, see Claude memory `project_houses_pedro`:
+  - Same two tables, second channel. `brrr_properties.call_channel` is `ai` or `human` and is set **per BRANCH, never per property** by `scripts/assign-properties-to-pedro-houses.mjs`, because one agency lists many houses and a half-handed-over branch means both channels ring the same switchboard
+  - Human call rows are shaped so all four AI queries skip them (`status:'completed'`, `retell_call_id:null`). The ONE deliberate crossover is the cron's 30-minute spacing window, which DOES see them on purpose. Pinned by `tests/property-human-call-isolation.test.ts`
+  - Pedro's room: `/admin/crm/dialer-pro?script=property_call`. Offer band **pinned above the script**, right tabs swap to Houses · Coach · Messages
+  - Third sales script (`wk_property_call_script` + `src/core/content/property-call-script.html`), third `ScriptKey`, third hook. Separate tables so editing one can never touch the plumber script Pedro and Marr read on every dial
+  - `wk_calls.script_key` gained `'property_call'`; `leadFacts` in `wk-voice-transcription` branches on `custom_fields.lead_type === 'estate_agent'`, so the coach stops talking about Google reviews
+  - **Offers are never a % of GDV.** One shared module `api/lib/brrr-offer.ts`; `tests/brrr-offer.test.ts` fails the build if anyone reintroduces it
 
 - **Twilio SMS geo-permissions — per-country allowlist (learned 2026-07-16 the hard way)**:
   - Twilio blocks outbound SMS to any country not ticked at Console → Messaging → Settings → Geo Permissions. Error = **21408**, shows under "Fraud" in the health score. 129 sends died this way on 2026-07-16 (US wasn't ticked).
