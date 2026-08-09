@@ -53,7 +53,11 @@ describe('the media proxy refuses what it should', () => {
     // definition, so relaxing it in one place cannot leave the other pinned.
     expect(read('api/lib/twilio-media.ts')).toMatch(/TWILIO_MEDIA_HOST = 'api\.twilio\.com'/);
     expect(route).toMatch(/ALLOWED_HOST = TWILIO_MEDIA_HOST/);
-    expect(route).toMatch(/parsed\.hostname !== ALLOWED_HOST/);
+    // Reworded on 2026-08-07 when outbound got its own allowlist. The assertion
+    // it replaces was the literal `parsed.hostname !== ALLOWED_HOST`; what
+    // matters is unchanged, that an INBOUND url is compared against the Twilio
+    // pin and nothing else.
+    expect(route).toMatch(/:\s*parsed\.hostname === ALLOWED_HOST/);
     expect(route).toMatch(/parsed\.protocol !== 'https:'/);
   });
 
@@ -82,5 +86,61 @@ describe('the token never reaches a log', () => {
 
   it('revokes the blob url, or a long thread leaks one per image', () => {
     expect(component).toMatch(/URL\.revokeObjectURL\(objectUrl\)/);
+  });
+});
+
+// ------------------------------------------------------------------
+// MEDIA WE SENT, not media we received.
+//
+// 07 Aug 2026. A lead asked to see our content, so three demo clips went out on
+// WhatsApp. Twilio fetched all three, stored them as video/mp4 and delivered
+// them: the lead has the videos. The CRM thread showed "Attachment could not be
+// loaded" three times, and it looked exactly like a failed send.
+//
+// The cause was our own SSRF guard doing its job. media_urls holds a webhook
+// supplied address for INBOUND messages, so the proxy pins the host to Twilio.
+// Outbound rows hold a URL this codebase chose, on our own domain, and the pin
+// refused it.
+//
+// The pin is right and stays. The fix is that outbound has its own allowlist.
+// ------------------------------------------------------------------
+const twilioMedia = read('api/lib/twilio-media.ts');
+
+describe('media we sent ourselves renders too', () => {
+  it('the inbound pin is untouched, a webhook still cannot redirect us', () => {
+    expect(twilioMedia).toMatch(/TWILIO_MEDIA_HOST\s*=\s*'api\.twilio\.com'/);
+    expect(route).toMatch(/ALLOWED_HOST\s*=\s*TWILIO_MEDIA_HOST/);
+  });
+
+  it('outbound media has its own explicit host allowlist, never a free-for-all', () => {
+    expect(twilioMedia).toMatch(/OUTBOUND_MEDIA_HOSTS/);
+    // The hosts this codebase actually sends from.
+    expect(twilioMedia).toMatch(/heypubli\.com/);
+    expect(twilioMedia).toMatch(/supabase\.co/);
+    // An allowlist, not a wildcard.
+    expect(twilioMedia).not.toMatch(/OUTBOUND_MEDIA_HOSTS[^;]*\*/);
+  });
+
+  it('the route decides which list applies from the message direction', () => {
+    expect(route).toMatch(/select\('[^']*direction[^']*'\)/);
+    expect(route).toMatch(/OUTBOUND_MEDIA_HOSTS/);
+  });
+
+  // Our own public URLs need no credentials, and attaching Twilio's account
+  // auth to a request at our own domain would be handing them out for nothing.
+  it('does not send Twilio credentials to our own hosts', () => {
+    expect(route).toMatch(/isOutbound/);
+    expect(route).toMatch(/isOutbound\s*\?\s*\{\}|!isOutbound/);
+  });
+});
+
+describe('a video renders as a video', () => {
+  // The thread only ever knew how to draw images, because until now every piece
+  // of media had come from a lead sending a screenshot. Three mp4s came out as
+  // three "Open attachment" links at best.
+  it('the component plays video inline instead of offering a download', () => {
+    expect(component).toMatch(/type\.startsWith\('video\//);
+    expect(component).toMatch(/<video/);
+    expect(component).toMatch(/controls/);
   });
 });

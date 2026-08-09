@@ -390,8 +390,11 @@ const N = {
     ]},
 
   the_offer: {stage:'OFFER',
-    say:`"Right, so here's why I actually rang. I've recorded you a 2-minute video that shows how we can help you rank higher on Google and of course get more jobs. Can I send it to you?"`,
-    dir:`THIS IS THE WHOLE CALL. Straight from the opener into this, no digging, no comparisons, no telling them what they are doing wrong. You are not selling anything, you are asking permission to send a video. Say "2 minutes" and mean it. Then STOP TALKING and let them answer.`,
+    say:`"Right, so here's why I actually rang. I've recorded you a 2-minute video about your business that shows how we can help you get more reviews, rank higher on Google, and of course win more jobs. Can I send it to you on this number?"`,
+    dir:`THIS IS THE WHOLE CALL. Straight from the opener into this, no digging, no comparisons, no telling them what they are doing wrong. You are not selling anything, you are asking permission to send a video. Say "2 minutes" and mean it.
+
+🛑🛑🛑 STOP TALKING. 🛑🛑🛑
+The second you finish "send it to you on this number?", SHUT UP. Do not add a word. Do not fill the silence. Let them answer, even if it feels like forever. Whoever talks first loses. The silence IS the close.`,
     r:[
       {l:`"Yeah, go on then"`,n:`permission_send`},
       {l:`"What is it? What's the catch?"`,n:`what_do_i_get`,obj:true},
@@ -440,7 +443,7 @@ const N = {
     r:[]},
 
   permission: {stage:'PERMISSION',
-    say:`"Oh right, perfect. So the reason I'm calling: I built a system that helps plumbers get more Google reviews, and I want to get you 25 completely free, just for some feedback. Got 30 seconds?"`,
+    say:`"Oh right, perfect. So the reason I'm calling: I built a system that helps plumbers get more Google reviews, and I can get your first 25 from customers you've already done work for. Got 30 seconds?"`,
     dir:`Say "30 seconds," not a minute, a minute feels longer. Assume the yes and move straight into discovery. Don't wait for permission.`,
     r:[
       {l:`Yeah / go on / sure`,n:`the_offer`},
@@ -450,7 +453,7 @@ const N = {
     ]},
 
   permission_new: {stage:'PERMISSION',
-    say:`"Oh, so you're building things up, makes sense. The reason I'm calling: I built a system that helps new plumbers get their first big batch of reviews from past customers. I want to show you how it works, completely free. Got 30 seconds?"`,
+    say:`"Oh, so you're building things up, makes sense. The reason I'm calling: I built a system that helps new plumbers get their first big batch of reviews from past customers. Let me show you how it works. Got 30 seconds?"`,
     dir:`Same close, adjusted frame for a newer business.`,
     r:[
       {l:`Yeah / go on`,n:`the_offer`},
@@ -540,7 +543,7 @@ const N = {
     r:[{l:`They seem happy / "go on"`,n:`the_offer`}]},
 
   just_reviews: {stage:'OFFER',
-    say:`"Yep, reviews, done properly and on autopilot. That's the 80%. Nail that and you climb. Simple as that, it's exactly why it works so well. So let's get your 10-day free trial switched on."`,
+    say:`"Yep, reviews, done properly and on autopilot. That's the 80%. Nail that and you climb. Simple as that, it's exactly why it works so well. So let's get you switched on, it's a quid to start."`,
     dir:`Say it with pride, no hedging.`,
     r:[
       {l:`"Okay, what does it cost?"`,n:`the_offer`},
@@ -553,7 +556,7 @@ const N = {
     r:[{l:`"Makes sense / okay"`,n:`the_offer`}]},
 
   price_present: {stage:'OFFER',
-    say:`"So the way it works, at the number of jobs you're doing you're looking at £___ a month, everything included, no contract. And I'll be straight with you, this is the lowest it's going to be. I'm taking a few more plumbers on at this rate and then it goes up. Lock in now and this is your price, you keep it even when everyone joining after you is paying more. Best bit: you don't pay a penny today. It's a 10-day free trial, I switch it on, the reviews start landing, and if you're not blown away in 10 days you cancel and owe nothing. Fair enough?"`,
+    say:`"So the way it works, at the number of jobs you're doing you're looking at £___ a month, everything included, no contract. And I'll be straight with you, this is the lowest it's going to be. I'm taking a few more plumbers on at this rate and then it goes up. Lock in now and this is your price, you keep it even when everyone joining after you is paying more. And to start, it's just £1 today, that's it. I switch it on, you get 10 days, the reviews start landing, and if you're not blown away you cancel inside those 10 days and you're only ever out the pound, the £___ never comes off. Fair enough?"`,
     dir:`⚠️ ONE price only, never read out the menu. Type their jobs/month into the calculator (right rail) — it sets the price for you: up to 50 → £99 (Starter), 50–100 → £179 (Growth, most common), 100+ → £279 (Pro). Read that £___ figure as THE price, not "a" price. The urgency is "this price is going up soon, lock yours in" — it's honest ONLY because the price genuinely rises for later joiners while early ones keep their rate. Never bolt on a fake hard deadline ("closing this week", "last spot today") unless it's actually true — fake urgency is illegal in the UK.`,
     r:[
       {l:`"Yeah, fair enough"`,n:`the_offer`},
@@ -565,7 +568,7 @@ const N = {
     ]},
 
   takeaway: {stage:'OFFER',
-    say:`"One thing about me, I don't chase people with follow-up calls. And here's why: you and I both know that the second we hang up you'll get busy, you'll have a job on, and it'll slip. I only take one plumber per town, and I've genuinely got another setup call shortly. So, no pressure either way, it's a free trial, shall we get your 10 days going?"`,
+    say:`"One thing about me, I don't chase people with follow-up calls. And here's why: you and I both know that the second we hang up you'll get busy, you'll have a job on, and it'll slip. I only take one plumber per town, and I've genuinely got another setup call shortly. So, no pressure either way, it's a quid to get going, shall we switch your 10 days on?"`,
     dir:`Straight into the card ask, no pause.`,
     r:[
       {l:`"Yeah, alright then"`,n:`permission_send`},
@@ -586,7 +589,7 @@ const N = {
     ]},
 
   card_link: {stage:'PERMISSION',
-    say:`"Great, open it up and pop me on speaker while you sign up, takes 30 seconds. Just fill your details in and add a card to start the free trial. Nothing's charged for 10 days."`,
+    say:`"Great, open it up and pop me on speaker while you sign up, takes 30 seconds. Just fill your details in and add a card, it's £1 to start. Then nothing else comes off for 10 days."`,
     dir:`Stay on the line and talk them through the sign-up. Confirm it's actually done before you move on, "all signed up? Perfect, I can see it come through my end."`,
     r:[
       {l:`Signed up ✓`,n:`sent_confirm`},
@@ -595,7 +598,7 @@ const N = {
 
   card_read: {stage:'PERMISSION',
     say:`"Course, I can pop it into the sign-up for you if that's easier. Go on, starting with four."`,
-    dir:`Only if THEY ask to read it out, never lead with this in the UK. Just start writing as they read. Then reassure: "Nothing's charged today, this just starts your free trial. Nothing comes off the card for 10 days."`,
+    dir:`Only if THEY ask to read it out, never lead with this in the UK. Just start writing as they read. Then reassure: "It's just £1 today to start it, then nothing else comes off the card for 10 days."`,
     r:[{l:`Card taken ✓`,n:`sent_confirm`}]},
 
   customer_list: {stage:'PERMISSION',
@@ -684,7 +687,7 @@ const N = {
     ]},
 
   busy_opener: {stage:'OPENER',
-    say:`"I hear you, 30 seconds, that's it. I noticed you've only got [X] reviews and I want to get you 25 more for free, just for feedback. Got 30 seconds?"`,
+    say:`"I hear you, 30 seconds, that's it. I noticed you've only got [X] reviews and I can get you 25 more from customers you've already done work for, just for feedback. Got 30 seconds?"`,
     dir:`If they say "call me back," don't, you'll never get them. Push now.`,
     r:[
       {l:`"Go on then"`,n:`the_offer`},
@@ -693,7 +696,7 @@ const N = {
     ]},
 
   no_callback: {stage:'OPENER',
-    say:`"I don't do callbacks, because we both know what happens: you get busy, forget, and we've both wasted time. It's literally 30 seconds. You know how big free reviews could be for your business."`,
+    say:`"I don't do callbacks, because we both know what happens: you get busy, forget, and we've both wasted time. It's literally 30 seconds. You know how big 25 fresh reviews could be for your business."`,
     dir:`One push. If they insist, move on.`,
     r:[
       {l:`"Alright, go on then"`,n:`the_offer`},
@@ -701,7 +704,7 @@ const N = {
     ]},
 
   busy_permission: {stage:'PERMISSION',
-    say:`"It's literally 30 seconds. What are you worried about, it's free reviews, I'm not trying to sell you anything. Quick one: how many lads have you got working for you?"`,
+    say:`"It's literally 30 seconds. What are you worried about, it's reviews from your own customers, I'm not trying to sell you anything. Quick one: how many lads have you got working for you?"`,
     dir:`Keep asking questions. Every time they say "I've got to go," ask another one. If they're answering, they're staying.`,
     r:[
       {l:`They answer`,n:`the_offer`},
@@ -846,7 +849,7 @@ const N = {
     r:[{l:`"Okay, alright"`,n:`permission_send`}]},
 
   never_phone: {stage:'PERMISSION',
-    say:`"That's the thing, you're not giving me anything over the phone. I text you a link, you sign up yourself on your own phone and pop the card in on a secure Stripe page, I never see it. Nothing comes off it for 10 days. Fair enough?"`,
+    say:`"That's the thing, you're not giving me anything over the phone. I text you a link, you sign up yourself on your own phone and pop the card in on a secure Stripe page, I never see it. Just a pound to start, then nothing else for 10 days. Fair enough?"`,
     dir:`In the UK this objection is nearly always card fear, signing up themselves on a secure page removes it completely. Say it calmly.`,
     r:[
       {l:`"Oh, alright then"`,n:`permission_send`},
@@ -1022,7 +1025,7 @@ window.addEventListener('beforeprint', expandAll);
 const FAQ = [
   {q:`Where are you based?`, a:`We're a UK company, registered in London, 483 Green Lanes, N13 4BS. Here's my personal number, call me any time to check me out.`},
   {q:`Are you a real registered company?`, a:`Yes, registered at Companies House as ULINC UNICO GROUP LTD, company number 11197856, registered office 483 Green Lanes, London N13 4BS. We trade as HeyElsie, look us up any time.`},
-  {q:`How long have you been doing this?`, a:`I'm building this up right now, which is exactly why it's free to try, no contract, and I only take one plumber per town. I'd rather earn your trust with results than a sales story.`},
+  {q:`How long have you been doing this?`, a:`I'm building this up right now, which is exactly why it's just a pound to try, no contract, and I only take one plumber per town. I'd rather earn your trust with results than a sales story.`},
   {q:`Is this a contract?`, a:`No contract at all, cancel any time, no notice, no penalty.`},
   {q:`Can I cancel whenever?`, a:`Any time before your next billing date, one message and it's done.`},
   {q:`How much to start?`, a:`A pound — that covers the first 10 days. The video shows the monthly price; don't read the tiers out.`},
@@ -1041,7 +1044,7 @@ const FAQ = [
   {q:`I'm retiring / selling up soon.`, a:`That's the best reason, a profile with 200 reviews is worth real money to whoever buys it, and it keeps you busy till you hand over the keys.`},
   {q:`Can you guarantee number one on Google?`, a:`No honest person can, but the reviews land fast and your ranking climbs from there.`},
   {q:`Do I still own my Google account?`, a:`Completely, you just give management access, and can remove it in 30 seconds any time.`},
-  {q:`What if it doesn't work?`, a:`It's a free trial with no contract, if it's not landing reviews, you walk, no harm done.`},
+  {q:`What if it doesn't work?`, a:`It's a quid to start, no contract, if it's not landing reviews you cancel inside the 10 days and you're only ever out the pound.`},
 ];
 function renderFAQ(){
   document.getElementById('faq').innerHTML = FAQ.map(f=>

@@ -62,9 +62,9 @@ export interface PropertyListing extends ListingRow {
   isAuction: boolean;
 }
 
-/** The engine's flag codes, in words an agent can use on the phone. Mirrors
- *  FLAG_NOTES in api/cron/process-property-calls.ts so the human and the AI are
- *  warned about the same things in the same words. */
+/** The engine's flag codes, in words an agent can use on the phone.
+ *  This is now the ONLY copy. The AI qualifier that held the other one was
+ *  retired on 2026-08-09, and its cron was deleted with it. */
 const FLAG_NOTES: Record<string, string> = {
   conversion_adds_no_value: 'Converting this adds little value. The money has to come off the purchase price.',
   low_confidence: 'Thin sold evidence nearby. Treat the figures as a guide, not gospel.',

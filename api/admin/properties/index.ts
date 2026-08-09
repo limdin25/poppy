@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../../../src/integrations/supabase/client.js'
 import {
-  pushPropertyToPipeline, queuePropertyCall, toE164,
+  pushPropertyToPipeline,
   getBrrrSettings, saveBrrrSettings, type BrrrProperty, type BrrrSettings,
 } from '../../lib/brrr.js'
 
@@ -88,14 +88,11 @@ export default async function handler(req: Request) {
       .single()
     if (error || !property) return Response.json({ error: 'property not found' }, { status: 404 })
 
+    // The 'call' action is gone. It queued an AI qualifier call, and the AI
+    // qualifier was retired on 2026-08-09 (Hugo: "no more robot calls for the
+    // properties"). Estate agents are rung by a human through the CRM dialer.
     if (body.action === 'call') {
-      if (!toE164(property.agent_phone)) {
-        return Response.json({ error: 'No agent phone number on this property' }, { status: 400 })
-      }
-      const q = await queuePropertyCall(property.id)
-      if (!q.ok) return Response.json({ error: q.error }, { status: 500 })
-      if (!q.queued) return Response.json({ error: 'A call is already queued for this property' }, { status: 409 })
-      return Response.json({ ok: true })
+      return Response.json({ error: 'AI property calling was retired. Estate agents are called by a human agent in the CRM dialer.' }, { status: 410 })
     }
 
     if (body.action === 'push_to_pipeline') {

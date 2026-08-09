@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { toE164, getBrrrSettings, queuePropertyCall } from '../lib/brrr.js';
+import { toE164 } from '../lib/brrr.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -57,36 +57,24 @@ export default async function handler(req: Request): Promise<Response> {
 
     // NOTE: `row` deliberately does NOT carry call_channel. A re-send of a
     // property whose branch a human agent already owns must not reset it to
-    // 'ai' and hand the branch back to the robot.
+    // 'ai' and hand the branch back to anything else.
     const { data, error } = await supabase
       .from('brrr_properties')
       .upsert(row, { onConflict: 'source,source_property_id' })
-      .select('id, status, call_channel')
+      .select('id, status')
       .single();
 
     if (error) {
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 
-    // "Send to Elsie" is Hugo explicitly clearing this property to call — the
-    // valuation engine's pursue flag is advisory only and must not block an
-    // explicit send (its warnings still reach the agent via deal.flags).
-    // Re-sends of already-processed properties don't re-queue.
-    //
-    // call_channel === 'human' means a CRM agent owns this whole branch and is
-    // working it through the dialer. Queueing an AI call as well would ring the
-    // same office twice from two different numbers, which is exactly what the
-    // cron's 30-minute same-agency spacing exists to prevent.
-    let callQueued = false;
-    const settings = await getBrrrSettings();
-    if (settings.auto_queue_on_ingest && row.agent_phone
-        && data.call_channel !== 'human'
-        && ['new', 'call_queued'].includes(data.status)) {
-      const q = await queuePropertyCall(data.id);
-      callQueued = q.queued;
-    }
-
-    return new Response(JSON.stringify({ ok: true, id: data.id, status: data.status, call_queued: callQueued }), { status: 200 });
+    // Ingest NEVER starts a call. The AI property qualifier was retired on
+    // 2026-08-09 (Hugo: "no more robot calls for the properties, that was just
+    // a test"). "Send to Elsie" now only files the property; a human agent
+    // picks it up through scripts/assign-properties-to-pedro-houses.mjs.
+    // call_queued stays in the response so the scraper's existing parser, which
+    // reads this field, keeps working against an older build.
+    return new Response(JSON.stringify({ ok: true, id: data.id, status: data.status, call_queued: false }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

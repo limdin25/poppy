@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { TWILIO_MEDIA_HOST } from '../lib/twilio-media.js';
+import { TWILIO_MEDIA_HOST, OUTBOUND_MEDIA_HOSTS, isOurOwnMediaHost } from '../lib/twilio-media.js';
 
 export const config = { runtime: 'edge' };
 
@@ -58,7 +58,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const { data: row, error: rowErr } = await supabase
     .from('wk_sms_messages')
-    .select('media_urls')
+    .select('media_urls, direction')
     .eq('id', messageId)
     .maybeSingle();
   if (rowErr) return json(500, { error: 'lookup_failed', detail: rowErr.message });
@@ -68,15 +68,34 @@ export default async function handler(req: Request): Promise<Response> {
   const target = media[index];
   if (!target) return json(404, { error: 'no media at that index' });
 
+  // WHICH LIST APPLIES DEPENDS ON WHO CHOSE THE URL.
+  //
+  // Inbound: the address arrived on a webhook, so it is attacker-suppliable and
+  // stays pinned to Twilio. Outbound: this codebase picked it, on a host we
+  // publish to, and it is public by necessity because Twilio has to fetch it.
+  // Treating the two the same is what made three delivered videos look like a
+  // failed send on 07 Aug 2026.
+  const isOutbound = row.direction === 'outbound';
+
   let parsed: URL;
   try { parsed = new URL(target); } catch { return json(400, { error: 'bad media url' }); }
-  if (parsed.protocol !== 'https:' || parsed.hostname !== ALLOWED_HOST) {
-    return json(400, { error: 'refused host' });
+  const hostAllowed = isOutbound
+    ? isOurOwnMediaHost(parsed.hostname)
+    : parsed.hostname === ALLOWED_HOST;
+  if (parsed.protocol !== 'https:' || !hostAllowed) {
+    return json(400, {
+      error: 'refused host',
+      allowed: isOutbound ? OUTBOUND_MEDIA_HOSTS : [ALLOWED_HOST],
+    });
   }
 
   const sid = process.env.TWILIO_ACCOUNT_SID || '';
   const authToken = process.env.TWILIO_AUTH_TOKEN || '';
-  if (!sid || !authToken) return json(500, { error: 'twilio credentials missing' });
+  // Only Twilio's own media needs Twilio's credentials. Attaching them to a
+  // request at our own domain would hand the account out for nothing in return.
+  if (!isOutbound && (!sid || !authToken)) {
+    return json(500, { error: 'twilio credentials missing' });
+  }
 
   // Twilio 307s the media request to a signed S3 URL. Following that redirect
   // with our Authorization header still attached would leak the account
@@ -84,7 +103,7 @@ export default async function handler(req: Request): Promise<Response> {
   // header is dropped on the second request.
   const first = await fetch(parsed.toString(), {
     redirect: 'manual',
-    headers: { Authorization: `Basic ${btoa(`${sid}:${authToken}`)}` },
+    headers: isOutbound ? {} : { Authorization: `Basic ${btoa(`${sid}:${authToken}`)}` },
   });
   let upstream = first;
   const location = first.headers.get('location');
@@ -92,7 +111,7 @@ export default async function handler(req: Request): Promise<Response> {
     upstream = await fetch(location);
   }
   if (!upstream.ok) {
-    return json(upstream.status === 404 ? 404 : 502, { error: 'twilio_fetch_failed', status: upstream.status });
+    return json(upstream.status === 404 ? 404 : 502, { error: 'media_fetch_failed', status: upstream.status });
   }
 
   return new Response(upstream.body, {

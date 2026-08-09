@@ -221,3 +221,26 @@ overruns its box or never finishes typing.
 - CRM: "Make video" queues; the board's **Rendering → Ready to send**
   columns hold the review step; `mark_sent` is refused until the page has a
   playable video. Full plan: ~/.claude/plans/purring-gliding-thompson.md.
+
+---
+
+## Short-form variation factory (added 2026-08-03)
+
+A SECOND, independent pipeline lives in `src/variants/`, registered as the
+`VariantVideo` composition. Drop any clip into `sources-in/`, run
+`node scripts/factory.mjs --count=N`, and it produces N distinct vertical posts
+per clip. Full docs: [VARIANTS.md](VARIANTS.md).
+
+It shares this Remotion project but is isolated from everything above:
+
+- it takes all its data from `inputProps`, never from `data/lead-gen.json`, so
+  the VSL worker's rewrite-and-revert cycle cannot affect it and vice versa;
+- it never writes into `src/`. Per-job data goes to `jobs/` (gitignored);
+- **do not edit `remotion.config.ts` for it.** That file is project-global and
+  shared with `FlowVideo`. Raising quality there would slow the customer-facing
+  VSL render against its 25 minute stale-requeue. Every setting the factory needs
+  is passed per render instead.
+
+The only real conflict is CPU. If you must run a batch while the VSL queue is
+live, prefix it with `nice -n 19`, since that worker's unit is `Nice=10`.
+

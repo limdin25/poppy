@@ -172,10 +172,6 @@
       "schedule": "*/5 * * * *"
     },
     {
-      "path": "/api/cron/process-property-calls",
-      "schedule": "*/2 * * * *"
-    },
-    {
       "path": "/api/agent/tick",
       "schedule": "* * * * *"
     },

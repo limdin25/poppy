@@ -36,7 +36,7 @@ select 'The 2-minute video', $md$
 
 ## 2 · The offer, this is the whole call
 
-> Right, so here's why I actually rang. I've recorded you a 2-minute video that shows how we can help you rank higher on Google and of course get more jobs. Can I send it to you?
+> I've recorded a 2-minute video showing how {{business}} can get more reviews, rank higher on Google, and win more jobs. Can I send it to you on this number?
 
 - You are **not selling anything here**. You are asking permission to send a video.
 - Say "2 minutes" and mean it. Then stop talking.
@@ -82,7 +82,7 @@ update wk_ai_settings set coach_script_prompt = regexp_replace(
   'CALL STAGES \(strict forward-only progression\).*?(?=STAGE LOCK)',
   $stages$CALL STAGES (strict forward-only progression)
 1. Opener. Warm, casual, like a mate ringing. Their name and business and NOTHING else: "Hi, quick one: is that [name], from [business]?" No recording notice, no review count, no "are you new to the area". Get the yes and move straight to the offer.
-2. Offer. THE WHOLE CALL, and it comes straight after the opener: "Right, so here's why I actually rang. I've recorded you a 2-minute video that shows how we can help you rank higher on Google and of course get more jobs. Can I send it to you?"
+2. Offer. THE WHOLE CALL, and it comes straight after the opener: "I've recorded a 2-minute video showing how [business] can get more reviews, rank higher on Google, and win more jobs. Can I send it to you on this number?"
 3. Permission. Give the time back: "I'm not going to take any more of your time, that's genuinely it. I'll get it over to you in the next few minutes. If I send it across, will you watch it?" This is the ONLY close on the call, and it is a yes to WATCHING, not to buying. NEVER promise the video arrives during the call, it is built after the agent hangs up.
 4. Sent. Tell them it is coming over to this number shortly and let them go. NEVER ask for their phone number: we dialled it, we already have it, and asking makes the agent sound like they bought a list. Only take a number if THEY volunteer a different one. The agent taps Send as video; it renders and texts itself minutes later. Do not hold them on the line waiting for it.
 5. Done. "2 minutes, watch it tonight. If it makes sense you can start it yourself from there for a quid." Then get off the phone.

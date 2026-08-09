@@ -36,6 +36,7 @@ export default function InboundMedia({ messageId, count, tone }: Props) {
 type State =
   | { kind: 'loading' }
   | { kind: 'image'; url: string }
+  | { kind: 'video'; url: string; type: string }
   | { kind: 'file'; url: string; type: string }
   | { kind: 'error' };
 
@@ -61,10 +62,17 @@ function MediaItem({ messageId, index, tone }: { messageId: string; index: numbe
         const blob = await res.blob();
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
+        // Video, not just image. Everything here used to arrive as a lead's
+        // screenshot, so anything that was not an image fell through to a
+        // download link. Since 07 Aug 2026 we send demo clips out on this
+        // channel and they have to be watchable in the thread, or nobody can
+        // check what a lead was actually shown.
         setState(
           type.startsWith('image/')
             ? { kind: 'image', url: objectUrl }
-            : { kind: 'file', url: objectUrl, type },
+            : type.startsWith('video/')
+              ? { kind: 'video', url: objectUrl, type }
+              : { kind: 'file', url: objectUrl, type },
         );
       } catch {
         if (!cancelled) setState({ kind: 'error' });
@@ -91,6 +99,17 @@ function MediaItem({ messageId, index, tone }: { messageId: string; index: numbe
       <div className={`flex items-center gap-1.5 text-[11px] ${muted}`}>
         <ImageOff className="w-3 h-3" /> Attachment could not be loaded
       </div>
+    );
+  }
+  if (state.kind === 'video') {
+    return (
+      <video
+        controls
+        preload="metadata"
+        className="rounded-xl max-w-full max-h-[320px] bg-black/[0.03]"
+      >
+        <source src={state.url} type={state.type} />
+      </video>
     );
   }
   if (state.kind === 'file') {

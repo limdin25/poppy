@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agency Admin</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="orbs" aria-hidden="true">
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="orb orb-c"></div>
+</div>
+<div class="titlebar"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-col">
+    <header class="topbar" id="topbar"></header>
+    <main class="page" id="page"></main>
+  </div>
+</div>
+<div id="modal-root"></div>
+<div id="slideover-root"></div>
+<div id="toast-root" class="toast-root"></div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script src="pages/dashboard.js"></script>
+<script src="pages/money.js"></script>
+<script src="pages/clients.js"></script>
+<script src="pages/calendar.js"></script>
+<script src="pages/leads.js"></script>
+<script src="pages/ideation.js"></script>
+<script src="pages/thumbnails.js"></script>
+<script src="pages/analytics.js"></script>
+<script src="pages/team.js"></script>
+<script src="pages/onboarding.js"></script>
+<script src="pages/settings.js"></script>
+<script>App.init();</script>
+</body>
+</html>

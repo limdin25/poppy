@@ -110,8 +110,6 @@ const STATUS_ORDER: Record<string, number> = {
   qualified: 0, calling: 1, call_queued: 2, callback: 3, new: 4, no_answer: 5, not_qualified: 6,
 }
 
-const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-
 function gbp(v: unknown): string {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''))
   if (!isFinite(n) || n <= 0) return '—'
@@ -210,14 +208,14 @@ export default function PropertiesPage() {
         <div>
           <h1 className="text-xl font-semibold text-ink">Properties</h1>
           <p className="mt-1 text-[13px] text-ink-muted">
-            BRRR candidates from the scraper — sent here means Elsie is cleared to call the agent
+            BRRR candidates from the scraper — a human agent rings the branch from the CRM dialer
           </p>
         </div>
         <button
           onClick={() => setShowSettings((v) => !v)}
           className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[12px] font-medium text-ink-muted transition hover:bg-elevated"
         >
-          <Settings2 size={14} /> Call rules
+          <Settings2 size={14} /> Offer rules
         </button>
       </div>
       {error && <AdminError error={error} />}
@@ -225,66 +223,21 @@ export default function PropertiesPage() {
 
       {showSettings && draft && (
         <div className="mt-4 rounded-xl border border-border bg-surface p-4">
-          <h2 className="text-[13px] font-semibold text-ink">Call rules — adjust how Elsie chases agents</h2>
+          {/* Attempts, retry gap, dials per run, auto-call on send, calling
+              hours and calling days used to live here. Every one of them was
+              read only by the AI qualifier's dial cron, deleted 2026-08-09, so
+              they were controls that changed nothing. The two offer
+              percentages below are the only settings still wired to anything:
+              the dialer's offer strip reads them through
+              wk_property_agent_listings. */}
+          <h2 className="text-[13px] font-semibold text-ink">Offer rules — the fallback band when a property has no valuation</h2>
           <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {numField('Max attempts', 'max_attempts', 'tries')}
-            {numField('Retry gap', 'retry_hours', 'hours')}
-            {numField('Dials per run', 'max_dials_per_run', '/ 2 min')}
-            <label className="block">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Auto-call on send</span>
-              <div className="mt-1.5">
-                <button
-                  onClick={() => setDraft({ ...draft, auto_queue_on_ingest: !draft.auto_queue_on_ingest })}
-                  className={`rounded-md px-3 py-1.5 text-[12px] font-semibold transition ${draft.auto_queue_on_ingest ? 'bg-success/10 text-success' : 'bg-elevated text-ink-muted'}`}
-                >
-                  {draft.auto_queue_on_ingest ? 'On — send = call' : 'Off — manual only'}
-                </button>
-              </div>
-            </label>
             {numField('Offer from', 'offer_low_pct', '% of asking')}
             {numField('Offer up to', 'offer_high_pct', '% of asking')}
-            <label className="block">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Calling from</span>
-              <input
-                type="time"
-                value={draft.call_start}
-                onChange={(e) => setDraft({ ...draft, call_start: e.target.value })}
-                className="mt-1 block rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-ink"
-              />
-            </label>
-            <label className="block">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Until</span>
-              <input
-                type="time"
-                value={draft.call_end}
-                onChange={(e) => setDraft({ ...draft, call_end: e.target.value })}
-                className="mt-1 block rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-ink"
-              />
-            </label>
-          </div>
-          <div className="mt-3">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Calling days</span>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {ALL_DAYS.map((day) => {
-                const on = draft.call_days.includes(day)
-                return (
-                  <button
-                    key={day}
-                    onClick={() => setDraft({
-                      ...draft,
-                      call_days: on ? draft.call_days.filter((d) => d !== day) : [...draft.call_days, day],
-                    })}
-                    className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${on ? 'bg-brand text-white' : 'bg-elevated text-ink-muted'}`}
-                  >
-                    {day}
-                  </button>
-                )
-              })}
-            </div>
           </div>
           <p className="mt-2 text-[11px] text-ink-subtle">
             Offer figures normally come from the scraper's valuation engine (a % of the property's worth-now value from sold comps).
-            The two percentages here are only the fallback when a property arrives without a valuation. Times are UK time.
+            The two percentages here are only the fallback when a property arrives without a valuation.
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -402,13 +355,9 @@ export default function PropertiesPage() {
               header: '',
               render: (p) => (
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => run('call', p)}
-                    disabled={busy !== null || !p.agent_phone || ['call_queued', 'calling'].includes(p.status)}
-                    className="rounded-md bg-brand px-2.5 py-1 text-[11px] font-medium text-white transition hover:opacity-90 disabled:opacity-40"
-                  >
-                    {busy === `call:${p.id}` ? 'Queuing…' : p.status === 'call_queued' ? 'Queued' : p.status === 'calling' ? 'Calling…' : 'Call agent'}
-                  </button>
+                  {/* The dial button is gone. It queued an AI qualifier call,
+                      retired 2026-08-09. Estate agents are rung by a human in
+                      the CRM dialer instead. */}
                   {!p.deal_id && (
                     <button
                       onClick={() => run('push_to_pipeline', p)}

@@ -36,6 +36,22 @@ export function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
+/**
+ * A one-line preview of a message, for a chat list row.
+ *
+ * Newlines are collapsed (a WhatsApp lead-ad message is four lines and would
+ * otherwise render as its blank first line), and anything over `max` is cut
+ * with THREE FULL STOPS, never the single ellipsis character. That is CLAUDE.md
+ * rule 11: one punctuation rule everywhere is cheaper to keep than a UI rule
+ * and a messaging rule, and in a text the ellipsis character alone drops the
+ * segment from 160 characters to 70.
+ */
+export function snippet(text: string | null | undefined, max = 48): string {
+  const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (flat.length <= max) return flat;
+  return `${flat.slice(0, max)}...`;
+}
+
 export function formatCurrency(amount: number, currency = "USD"): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

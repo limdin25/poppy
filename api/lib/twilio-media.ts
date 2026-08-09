@@ -10,6 +10,33 @@
 /** Twilio and nothing else. A webhook cannot talk us into fetching elsewhere. */
 export const TWILIO_MEDIA_HOST = 'api.twilio.com';
 
+/**
+ * Hosts we send media FROM, for outbound rows only.
+ *
+ * 07 Aug 2026: three demo clips went out to a lead who asked to see our
+ * content. Twilio fetched all three, stored them as video/mp4 and delivered
+ * them. The CRM thread said "Attachment could not be loaded" three times and
+ * read exactly like a failed send.
+ *
+ * The pin above was doing its job. An outbound media_urls entry is a URL THIS
+ * CODEBASE chose, on our own domain, not one an attacker put on a webhook, so
+ * it gets its own list. Still a list: "outbound, therefore any host" would hand
+ * the SSRF hole straight back the first time somebody stored a URL from user
+ * input on an outbound row.
+ *
+ * Add a host here only when we are the ones publishing to it.
+ */
+export const OUTBOUND_MEDIA_HOSTS = [
+  'heypubli.com',
+  'www.heypubli.com',
+  // Public Supabase Storage: the site-assets bucket, where explainer cards live.
+  'loggyxryrhqsbtqpteog.supabase.co',
+] as const;
+
+export function isOurOwnMediaHost(hostname: string): boolean {
+  return (OUTBOUND_MEDIA_HOSTS as readonly string[]).includes(hostname);
+}
+
 export interface TwilioMedia {
   /** Raw bytes, base64. */
   base64: string;

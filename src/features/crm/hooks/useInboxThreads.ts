@@ -35,6 +35,10 @@ export interface InboxThread {
    *  too. Named to match CallHistoryPro so there is one vocabulary. */
   contactOwner: string;
   contactWebsite: string;
+  /** custom_fields.product, the stamp that says which product's funnel this
+   *  lead came from ('heypubli' for a creator). The inbox needs it to know
+   *  that owner + website mean nothing for this person. */
+  contactProduct: string;
   lastMessageBody: string;
   lastMessageAt: string;
   lastDirection: 'inbound' | 'outbound';
@@ -258,6 +262,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         contactPhone: c?.phone ?? '',
         contactOwner: c?.custom_fields?.owner_name ?? '',
         contactWebsite: c?.custom_fields?.website ?? '',
+        contactProduct: c?.custom_fields?.product ?? '',
         // An image with no caption used to leave the row's preview blank, which
         // read as an empty or broken thread. Say what actually arrived.
         lastMessageBody: m.body?.trim()

@@ -22,12 +22,19 @@ const relayRoute = read('heypubli/app/api/webhooks/whatsapp-inbound/route.ts')
 
 /** Rebuild the detector from the source, so the test cannot drift from the code. */
 function refusalMatchers(): RegExp[] {
+  // The patterns are re(`...`) template literals that interpolate ${G}, the
+  // word gap. Read G out of the source too, so widening the gap in one place
+  // widens it here and this test keeps testing the real thing.
+  const gap = incomingSrc.match(/const G = '([^']+)'/)?.[1]
+  expect(gap, 'const G (the word gap) not found in wk-sms-incoming').toBeTruthy()
   const block = incomingSrc.split('const refused =')[1]?.split(';')[0] ?? ''
-  const found = block.match(/\/(?:\\.|\[[^\]]*\]|[^/\\])+\/i/g) ?? []
+  const found = block.match(/re\(`([^`]+)`\)/g) ?? []
   expect(found.length).toBeGreaterThan(0)
-  return found.map((literal) => {
-    const body = literal.slice(1, literal.lastIndexOf('/'))
-    return new RegExp(body, 'i')
+  return found.map((call) => {
+    const body = call.slice(call.indexOf('`') + 1, call.lastIndexOf('`'))
+    // Undo the TS string escaping (\\b -> \b) and substitute the gap.
+    const src = body.replace(/\\\\/g, '\\').split('${G}').join(gap as string)
+    return new RegExp(src, 'i')
   })
 }
 
@@ -48,6 +55,15 @@ describe('refusal detector', () => {
     'dont message me',
     "don't contact me again",
     'leave me alone',
+    // A real lead, 07 Aug 06:37, two minutes after we explained the offer.
+    // Every pattern demanded whitespace between the words, so this one got
+    // through and the automation would have pitched him again.
+    'No..thanks',
+    'no.thanks',
+    'No, thanks',
+    'No -- thanks',
+    'not.interested',
+    'Not-Interested',
   ])('treats %j as a refusal', (text) => {
     expect(isRefusal(text)).toBe(true)
   })

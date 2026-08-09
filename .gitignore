@@ -28,6 +28,18 @@ scripts/.crm-twilio-output.json
 # VSL video project — never commit renders, heavy media, or the TTS venv
 video/out/
 video/public/*.mp4
+# Encoded render sources, ~210MB, rebuilt by video/scripts/ingest-sources.mjs.
+# Note the pattern above does NOT cover this: a single * does not cross a slash.
+video/public/sources/
+# Generated ambient beds, ~60MB, rebuilt by video/scripts/make-ambience.mjs.
+video/public/ambience/
+# Flywheel VSL: the normalised avatar recording plus its generated B-roll,
+# ~50MB. Same slash caveat as above, the *.mp4 line does not reach in here.
+video/public/flywheel/
+# The drop folder. Whatever clips are being turned into posts this week; the
+# originals live wherever they came from, not in the repo.
+video/sources-in/
+video/jobs/
 video/public/actor*/
 video/public/clips/
 video/public/audio/r*.m4a

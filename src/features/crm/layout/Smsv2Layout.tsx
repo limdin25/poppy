@@ -69,7 +69,10 @@ export default function Smsv2Layout() {
           <DialerProModalProvider>
             <div
               data-feature="SMSV2__LAYOUT"
-              className="h-screen flex flex-col bg-[#F3F3EE]"
+              /* h-dvh, not h-screen: on iOS Safari 100vh is taller than the
+                 visible area (it assumes the address bar is hidden), so the
+                 reply box sat below the fold on every phone. */
+              className="h-dvh flex flex-col bg-[#F3F3EE]"
             >
               {/* Follow-up banner — above nav per Hugo */}
               <FollowupBanner />

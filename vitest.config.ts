@@ -4,7 +4,11 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
+    // video/src/variants/** is the short-form variation factory's pure core. It
+    // imports nothing from Remotion, so it runs here in plain node. Including it
+    // by path (rather than adding video/ to a tsconfig) keeps the Remotion
+    // project's manual `cd video && npx tsc --noEmit` arrangement untouched.
+    include: ["tests/**/*.test.ts", "src/**/*.test.ts", "video/src/**/*.test.ts"],
     // These are Playwright-style tests (they import @playwright/test) — they run
     // under `npx playwright test`, not vitest. tests/e2e/ holds the new e2e suite.
     exclude: [

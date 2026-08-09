@@ -1,5 +1,25 @@
 # BRRR Property Qualifier — Plan (2026-06-10, v3 same day)
 
+> ## RETIRED 2026-08-09 — the AI caller no longer exists
+>
+> Everything below describing an **AI voice agent calling estate agents** is
+> history. Hugo: *"the robot, it doesn't exist, we don't want to use that any
+> more, no more robot calls for the properties, that was just a test, we're not
+> gonna do that."* It ran for one month and made 26 calls.
+>
+> **Estate agents are now rung by a human agent in the CRM dialer**, at
+> `/admin/crm/dialer-pro?script=property_call`. See the "Houses for Pedro"
+> section of [CLAUDE.md](../CLAUDE.md) and Claude memory `project_houses_pedro`.
+>
+> Deleted with it: `api/cron/process-property-calls.ts`,
+> `scripts/create-property-qualifier-agent.mjs`, the Vercel cron entry, the
+> ingest auto-queue branch and the admin dial button. Pinned by
+> `tests/property-no-ai-calls.test.ts`. **Do not rebuild any of it.**
+>
+> What survives and is still correct: the **scraper**, the **valuation engine**
+> (v3 note below), the **ingest endpoint**, the `brrr_properties` /
+> `brrr_property_calls` tables, and `pushPropertyToPipeline`.
+
 > **v3 — valuation engine.** The Comps tab's offer maths was fundamentally
 > broken (offers were 70–75% of GDV with a default £250/sqft — producing
 > offers ABOVE asking). Replaced by a research-backed, test-driven engine:
