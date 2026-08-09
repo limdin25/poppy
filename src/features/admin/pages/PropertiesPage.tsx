@@ -8,6 +8,7 @@ import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 // to import into the browser (api/lib/brrr.ts itself is not — it builds a
 // Supabase client at import time).
 import { offerRange } from '../../../../api/lib/brrr-offer'
+import DealCalculator from '../components/DealCalculator'
 
 interface PropertyCall {
   id: string
@@ -473,6 +474,25 @@ export default function PropertiesPage() {
             {(selected.deal?.verdict as string) && (
               <p className="mt-3 rounded-lg bg-elevated p-3 text-[12px] text-ink">{String(selected.deal.verdict)}</p>
             )}
+
+            {/* Does it stack, and how much cash. Starts from this property's
+                real figures: what we would offer, what the comps say it is
+                worth, and the local rent. Hugo's tool, not the agent's. */}
+            <div className="mt-4">
+              {(() => {
+                const band = offerRange(selected, settings)
+                const num = (v: unknown) => parseFloat(String(v ?? '')) || 0
+                return (
+                  <DealCalculator
+                    defaultPurchase={band.max}
+                    defaultMarketValue={num(selected.deal?.cmv) || num(selected.asking_price)}
+                    defaultRent={num(selected.deal?.rent)}
+                    engineTotalCash={num(selected.deal?.total_cash) || null}
+                    engineVerdict={(selected.deal?.stack_verdict as string) ?? null}
+                  />
+                )
+              })()}
+            </div>
 
             {selected.floorplan_urls?.length > 0 && (
               <div className="mt-4 flex gap-2 overflow-x-auto">
