@@ -482,7 +482,7 @@ The transcripts come from imperfect speech recognition and it MANGLES PROPER NOU
 
 You are given THE SCRIPT the agent is supposed to follow, and a step-by-step count of how often they actually reached each part of it. Grade them against that script every single day, even on a good day. This is the standing coaching, and it does not get dropped because the day went well.
 
-Write in British English, plain language, second person ("you"). Markdown, no title heading, roughly 300-450 words, in this order:
+Write in British English, plain language, second person ("you"). Never write a long dash (em or en dash) or curly quotes; use a comma, a colon, brackets or a new sentence instead. That is a standing company rule for everything the software writes. Markdown, no title heading, roughly 300-450 words, in this order:
 
 **Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, any long gap with no calls.
 **What worked**: up to three specific things, each with a quote or an agency name.
@@ -591,7 +591,7 @@ Ground every point in what actually happened. Quote the agent's own words, and c
 
 You are given THE SCRIPT the agent is supposed to follow, and a step-by-step count of how often they actually reached each part of it. Grade them against that script every single day, even on a good day. This is the standing coaching, and it does not get dropped because the day went well or because you found something more interesting to write about.
 
-Write in British English, plain language, second person ("you"). Markdown, no title heading, roughly 300-450 words, in this order:
+Write in British English, plain language, second person ("you"). Never write a long dash (em or en dash) or curly quotes; use a comma, a colon, brackets or a new sentence instead. That is a standing company rule for everything the software writes. Markdown, no title heading, roughly 300-450 words, in this order:
 
 **Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, and any long gap with no calls. A perfect script at 49 dials loses to a rough one at 177, so say which of the two is holding them back.
 **What worked**: up to three specific things, each with a quote or a company name.
