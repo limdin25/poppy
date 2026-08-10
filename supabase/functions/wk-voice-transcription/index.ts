@@ -968,6 +968,11 @@ async function generateCoachSuggestion(
   }
 }
 
+/** Models that accept `reasoning_effort`. The GPT-5 family reasons before it
+ *  emits a visible token, which is exactly what we are turning down; everything
+ *  else rejects the parameter outright with a 400. */
+const REASONING_MODEL = /^(gpt-5|o[1-9])/i;
+
 // Internal streaming worker — separated so tests / future callers can
 // invoke without rebuilding the prompt. Returns the post-processed
 // final text or null on rejection.
@@ -1003,6 +1008,35 @@ async function streamCoachInternal(args: {
       frequency_penalty: 0.2,
       // GPT-5 family rejects `max_tokens` — use max_completion_tokens.
       max_completion_tokens: 120,
+      // The coach runs on a GPT-5 family model, which reasons before it emits a
+      // visible token, and the hidden reasoning also eats the same 120-token
+      // budget the card is supposed to use.
+      //
+      // BE HONEST ABOUT WHAT THIS BUYS. Measured 2026-08-10 against the live
+      // model on a real-sized 8.4KB coach prompt, three runs each:
+      //   default : 0.52 / 0.47 / 0.78s   mean 0.59s
+      //   none    : 0.52 / 0.48 / 0.50s   mean 0.50s
+      // That is about 90ms and a tighter spread, NOT the 1 to 2.5 seconds first
+      // estimated. The model is not the bottleneck and turning this down does
+      // not fix a late card. Kept because it is free and removes the outlier,
+      // but the real cost is elsewhere: Twilio will not release a word until
+      // its endpointer calls the sentence over (partialResults="false" in
+      // wk-voice-twiml-outgoing), which is 1.5 to 2.5s of the budget, and the
+      // fix that actually put the right words in front of Pedro in time is the
+      // no-model card in src/core/coach/instantCoach.ts.
+      //
+      // 'none', NOT 'minimal'. Measured against the live model on 2026-08-10:
+      //   minimal -> 400 "does not support 'minimal' with this model"
+      //   none    -> 200
+      //   low     -> 200
+      // 'minimal' is the documented value on some GPT-5 models and not on this
+      // one, and the failure mode is not a slow coach, it is NO coach at all,
+      // on every card, on a live calling day. Check before changing it.
+      //
+      // Sent ONLY to models that understand the parameter. live_coach_model is
+      // an admin setting, so gpt-4o and friends can be selected at any time and
+      // would reject it outright.
+      ...(REASONING_MODEL.test(model) ? { reasoning_effort: 'none' } : {}),
       stream: true,
       // v8: tag this prompt prefix so OpenAI prompt-caching buckets
       // calls with the same three system messages together. Cache TTL

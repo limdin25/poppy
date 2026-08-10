@@ -14,6 +14,7 @@ import { cn } from '@/core/lib/cn';
 import { MOCK_TRANSCRIPT, MOCK_COACH_EVENTS } from '../../data/mockTranscripts';
 import { useKillSwitch } from '../../hooks/useKillSwitch';
 import { useSmsV2 } from '../../store/SmsV2Store';
+import { instantCoachCard, type InstantCard } from '@/core/coach/instantCoach';
 import { supabase } from '@/integrations/supabase/browser';
 
 interface Props {
@@ -25,6 +26,11 @@ interface Props {
   /** First name of the agent placing the call. Used for the prefill
    *  opener card. */
   agentFirstName?: string;
+  /** Ringing an estate agency about a house, not a plumber about reviews.
+   *  Turns on the instant local card (src/core/coach/instantCoach.ts), which
+   *  answers a money moment in ~200ms instead of the model path's 4.5 to 7
+   *  seconds. Off by default, so no plumber call changes. */
+  isPropertyCall?: boolean;
 }
 
 interface LiveTranscriptRow {
@@ -118,7 +124,7 @@ function pickFiller(): string {
   return BUYTIME_FILLERS[Math.floor(Math.random() * BUYTIME_FILLERS.length)];
 }
 
-export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName }: Props) {
+export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false }: Props) {
   const { aiCoach } = useKillSwitch();
   const store = useSmsV2();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -132,6 +138,10 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
   // re-pick fires for each new utterance (not just the first).
   const [filler, setFiller] = useState<string | null>(null);
   const [callerUtteranceCount, setCallerUtteranceCount] = useState(0);
+  // The pre-approved answer to the moment that just happened, matched in the
+  // browser with no model call. Null on every utterance we have no sanctioned
+  // words for, which is most of them.
+  const [instant, setInstant] = useState<InstantCard | null>(null);
   // Real contact name → first-name label for the caller side. Falls back
   // to "Caller" if we can't resolve a name (e.g. inbound from a number we
   // don't have a wk_contacts row for yet).
@@ -255,6 +265,14 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           if (payload.new.speaker !== 'agent') {
             setFiller(pickFiller());
             setCallerUtteranceCount((n) => n + 1);
+            // ...and, on a property call, answer the moment outright if it is
+            // one we already have approved words for. The model path costs 4.5
+            // to 7 seconds and this costs about 200ms, which is the difference
+            // between coaching Pedro and describing what he should have done.
+            // See src/core/coach/instantCoach.ts for the call this exists for.
+            if (isPropertyCall) {
+              setInstant(instantCoachCard(payload.new.body ?? ''));
+            }
           }
         }
       )
@@ -444,6 +462,29 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           <div className="sticky top-0 -mt-3 -mx-4 px-4 py-1.5 mb-2 bg-white/95 backdrop-blur text-[10px] font-bold uppercase tracking-wide text-[#3C5A87]">
             AI coach — read this aloud
           </div>
+            {/* The instant card. No model, no network: matched in the browser
+                the moment the estate agent's words arrive, so it is on screen
+                in ~200ms while the model card is still 4 to 7 seconds away.
+                Sits ABOVE everything because it is the one thing on this pane
+                that is guaranteed to be about what was just said. */}
+            {instant && isPropertyCall && (useLive || allowMock) && (
+              <div
+                key={`instant-${callerUtteranceCount}`}
+                className="rounded-lg border border-[#2E7D43] bg-[#F0FAF3] p-3 mb-2"
+                style={{ borderLeftWidth: 4 }}
+                data-testid="instant-coach-card"
+              >
+                <div className="text-[9px] font-bold uppercase tracking-wide text-[#2E7D43] mb-1">
+                  ⚡ SAY THIS · {instant.title}
+                </div>
+                <div className="text-[18px] leading-[1.35] font-semibold text-[#1A1A1A]">
+                  "{instant.say}"
+                </div>
+                <div className="mt-1.5 text-[11px] leading-snug text-[#4B5563]">
+                  {instant.why}
+                </div>
+              </div>
+            )}
             {/* PR 113: buy-time filler chip. Pops the instant a caller
                 utterance lands. Replaced when the real coach line
                 arrives. Same uppercase+pulse pattern as the OBJECTION

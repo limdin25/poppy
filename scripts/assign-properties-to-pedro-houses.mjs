@@ -20,6 +20,9 @@
  *   node scripts/assign-properties-to-pedro-houses.mjs --pursue-only --apply
  *   node scripts/assign-properties-to-pedro-houses.mjs --setup-only --apply
  *
+ * Give him back the offices that never picked up, and only those:
+ *   node scripts/assign-properties-to-pedro-houses.mjs --refresh --unanswered-only --branches=100 --apply
+ *
  * DRY BY DEFAULT. Without --apply nothing is written and nothing is charged:
  * unlike the trade-lead scripts there is no paid screen in here at all (see
  * "Two things this deliberately does NOT do" below).
@@ -59,6 +62,21 @@ const APPLY = process.argv.includes('--apply')
 // call unless something rewrites them. Without this the only way to correct a
 // queued branch is to unpick it by hand.
 const REFRESH = process.argv.includes('--refresh')
+// --unanswered-only re-queues ONLY the branches nobody ever actually spoke to.
+//
+// Hugo, 2026-08-10: "the offices that didn't pick up, they should go to the end
+// of the list". --refresh on its own re-queues every branch Pedro holds, which
+// on 2026-08-11 would have redialled 13 offices that had already given him a
+// real answer (7 Interested, 6 Not interested). Ringing somebody back the next
+// morning to ask the same questions is how a branch stops taking your calls.
+//
+// The test is the OUTCOME he pressed, not the length of the call. A duration
+// rule looked tempting and is wrong on both of its edge cases here:
+// Purplebricks ran 210 seconds and every one of them was hold music, and the
+// Bridgfords call ran 217 seconds and the transcript simply stops mid-question
+// because the line dropped. Both of those deserve another ring; a "longer than
+// two minutes means they spoke" rule would have buried them.
+const UNANSWERED_ONLY = process.argv.includes('--unanswered-only')
 const SETUP_ONLY = process.argv.includes('--setup-only')
 const PURSUE_ONLY = process.argv.includes('--pursue-only')
 const MAX_BRANCHES = parseInt(arg('branches', '25'), 10)
@@ -224,6 +242,49 @@ async function loadProperties() {
   return all
 }
 
+/** Outcomes that mean a human at the branch actually talked to us. A branch
+ *  sitting on one of these is a conversation to follow up deliberately, never a
+ *  cold row to deal back onto the top of the queue. */
+const SPOKE_TO_A_HUMAN = new Set(['Interested', 'Not interested', 'Booked', 'Nurturing'])
+
+/** phone -> the outcome pressed on the MOST RECENT call to that branch, for the
+ *  agent we are dealing to. Null when the branch has never been called, or was
+ *  called and no outcome was pressed at all (16 of Pedro's 55 calls on day one),
+ *  which counts as unanswered because nothing says otherwise. */
+async function lastOutcomeByPhone(phones, agentId) {
+  const out = new Map()
+  if (!agentId || phones.length === 0) return out
+
+  const contacts = []
+  for (let i = 0; i < phones.length; i += 200) {
+    const { data } = await db.from('wk_contacts').select('id, phone').in('phone', phones.slice(i, i + 200))
+    contacts.push(...(data ?? []))
+  }
+  if (contacts.length === 0) return out
+  const phoneOf = new Map(contacts.map((c) => [c.id, c.phone]))
+
+  const { data: cols } = await db.from('wk_pipeline_columns').select('id, name')
+  const colName = new Map((cols ?? []).map((c) => [c.id, c.name]))
+
+  const ids = contacts.map((c) => c.id)
+  const calls = []
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await db.from('wk_calls')
+      .select('contact_id, disposition_column_id, started_at')
+      .eq('agent_id', agentId)
+      .in('contact_id', ids.slice(i, i + 200))
+      .order('started_at', { ascending: false })
+    calls.push(...(data ?? []))
+  }
+  // Ordered newest first, so the first row seen for a contact is its last call.
+  for (const c of calls) {
+    const phone = phoneOf.get(c.contact_id)
+    if (!phone || out.has(phone)) continue
+    out.set(phone, c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null)
+  }
+  return out
+}
+
 /** The facts the SCRIPT and the COACH both read off the contact. Mirrors
  *  scriptTokensFor() in src/features/crm/hooks/usePropertyListings.ts — the
  *  dialer refreshes these when the agent switches property mid-call, this sets
@@ -315,15 +376,28 @@ async function main() {
   const usable = PURSUE_ONLY
     ? properties.filter((p) => p.deal?.pursue === true || p.deal?.pursue === 'true')
     : properties
-  const branches = groupByBranch(usable).slice(0, MAX_BRANCHES)
+  const allBranches = groupByBranch(usable)
+
+  let eligible = allBranches
+  let heldBack = []
+  if (UNANSWERED_ONLY) {
+    const outcomes = await lastOutcomeByPhone(allBranches.map((b) => b.phone), agentId)
+    heldBack = allBranches.filter((b) => SPOKE_TO_A_HUMAN.has(outcomes.get(b.phone) ?? ''))
+    eligible = allBranches.filter((b) => !SPOKE_TO_A_HUMAN.has(outcomes.get(b.phone) ?? ''))
+  }
+  const branches = eligible.slice(0, MAX_BRANCHES)
 
   say('')
   say(`  status filter        : ${STATUSES.join(', ')}`)
   say(`  properties available : ${properties.length}${PURSUE_ONLY ? ` (${usable.length} after --pursue-only)` : ''}`)
-  say(`  branches behind them : ${groupByBranch(usable).length}`)
+  say(`  branches behind them : ${allBranches.length}`)
+  if (UNANSWERED_ONLY) {
+    say(`  never answered       : ${eligible.length} (--unanswered-only)`)
+    say(`  held back, they spoke: ${heldBack.length}${heldBack.length ? ` (${heldBack.slice(0, 6).map((b) => b.agency).join(', ')}${heldBack.length > 6 ? ', ...' : ''})` : ''}`)
+  }
   say(`  taking               : ${branches.length} (--branches=${MAX_BRANCHES})`)
-  if (groupByBranch(usable).length > branches.length) {
-    say(`  NOT taking           : ${groupByBranch(usable).length - branches.length} branches left for a later run`)
+  if (eligible.length > branches.length) {
+    say(`  NOT taking           : ${eligible.length - branches.length} branches left for a later run`)
   }
   say('')
 

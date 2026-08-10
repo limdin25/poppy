@@ -103,6 +103,11 @@ export default function DialerRightTabs({
             contactId={contactId ?? ''}
             callId={currentCallId ?? null}
             agentFirstName={agentFirstName}
+            // showHouses IS "this is a property call": it is the same flag that
+            // swaps these tabs to Houses/Coach/Messages. Threaded through so
+            // the coach can answer a money moment locally, without waiting for
+            // the model. Never true on a plumber call.
+            isPropertyCall={showHouses === true}
           />
         )}
         {tab === 'houses' && (
