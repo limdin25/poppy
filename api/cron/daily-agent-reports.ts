@@ -50,6 +50,15 @@ const VOICEMAIL = new RegExp(
     'currently unavailable', "you'?re through to", 'thank you for calling',
     'press one', 'press 1', 'finished your message', "i'?ll see if this person",
     "sorry we can'?t",
+    // Switchboards, hold queues and closed offices, added 2026-08-10. Without
+    // these an IVR reads as "a human answered and said something", which is
+    // what invented a system fault that never happened. See DEAD_AIR below.
+    'call is in a queue', 'in a queue', 'your call cannot be',
+    'cannot be transferred', 'could not be connected', 'i cannot hear you',
+    "we'?re closed", 'office is closed', 'opening hours', 'our hours are',
+    'all of our (agents|advisors|team)', 'please hold', 'hold the line',
+    'your call is important', 'select one of the following', 'main menu',
+    'for sales', 'for lettings', 'press the star', 'this call may be',
   ].join('|'),
   'i',
 );
@@ -99,7 +108,7 @@ const text = (c: CallRow, who?: string) =>
 const agentWords = (c: CallRow) => text(c, 'agent').split(/\s+/).filter(Boolean).length;
 const isVoicemail = (c: CallRow) => VOICEMAIL.test(text(c, 'caller'));
 
-function computeStats(calls: CallRow[]) {
+export function computeStats(calls: CallRow[]) {
   const connected = calls.filter((c) => c.status === 'completed');
   const voicemail = calls.filter((c) => c.lines?.length && isVoicemail(c));
   const conversations = calls.filter(
@@ -107,13 +116,23 @@ function computeStats(calls: CallRow[]) {
   );
   const real = conversations.filter((c) => (c.duration_sec ?? 0) >= 60);
   // Human picked up, agent said nothing at all — the mic-fault signature.
-  const deadAir = calls.filter(
-    (c) =>
-      c.lines?.length &&
-      agentWords(c) === 0 &&
-      !isVoicemail(c) &&
-      text(c, 'caller').split(/\s+/).filter(Boolean).length >= 2,
-  );
+  //
+  // THIS COUNTER TOLD PEDRO ABOUT A SYSTEM FAULT THAT NEVER HAPPENED. On
+  // 2026-08-10 it reported 12 dead-air calls; reading all 30 silent calls by
+  // hand found ZERO. Every one was an IVR, a voicemail greeting, a hold queue
+  // or a closed office, and all of it transcribes as "caller" speech because
+  // Twilio does not care whether the thing talking is a person.
+  //
+  // Two guards now. The auto-attendant phrases above catch most of it, and a
+  // machine reading a menu talks for far longer than a human saying "hello?"
+  // into a dead line, so anything past a short greeting is a recording rather
+  // than a person waiting for us. Being wrong here costs real trust: it hands
+  // an agent an excuse for a bad day that he did not need and cannot verify.
+  const deadAir = calls.filter((c) => {
+    if (!c.lines?.length || agentWords(c) !== 0 || isVoicemail(c)) return false;
+    const words = text(c, 'caller').split(/\s+/).filter(Boolean).length;
+    return words >= 2 && words <= 25;
+  });
   const outcome = (name: string) =>
     calls.filter((c) => (c.disposition ?? '').toLowerCase() === name).length;
   const talkSec = calls.reduce((s, c) => s + (c.duration_sec ?? 0), 0);
@@ -350,11 +369,37 @@ const P_TENURE = /freehold|leasehold/i;
 /** Money in ASR text: "£62,000", "62k", "62 grand", "sixty two thousand". */
 const P_MONEY = /£ ?\d|\b\d{2,3}[.,]?\d{0,3} ?(k\b|grand|thousand)|\b(fifty|sixty|seventy|eighty|ninety|hundred)([- ]\w+)? (thousand|grand)/i;
 /** The offer WITHOUT offering: "if we were to offer around X, am I in the
- *  ballpark". Also credited when a number is floated with offer language. */
-const P_FLOATS_FIGURE = /if we (were|was) to (offer|come in|go in)|in the ball ?park|million miles (off|away)|silly offer/i;
-const P_FLOAT_WORDS = /offer|stretch to|could (probably )?do|start(ing)? (at|around)|come in (at|around)|go in (at|around)/i;
-const P_ASKS_THEIR_FIGURE = /what (would|do you (think|reckon))[^.?!]{0,45}(take|accept|get it (done|over)|land|sell)|what sort of (figure|number|price)|what('?s| is) the (figure|number)[^.?!]{0,25}(done|line)|where[^.?!]{0,30}they'?d land|would (actually|honestly) (take|accept)/i;
-const P_CALLBACK = /ring you back|call (you )?back|speak to you (then|soon|tomorrow|monday|tuesday|wednesday|thursday|friday)|when'?s (good|best|a good time)|best time to (catch|ring|call|reach)|later (today|in the week)|tomorrow morning|give you a (ring|call|bell) (back )?(tomorrow|later|next week|in a few weeks)/i;
+ *  ballpark".
+ *
+ *  WIDENED 2026-08-10 after this counter reported 4 on a day Pedro actually did
+ *  it 9 times. "if we offer around 88,000" (no "were to") and "we offer if we
+ *  offer around" were both invisible, and being told you reached the money four
+ *  times when you reached it nine is how a report loses its authority. */
+const P_FLOATS_FIGURE = /if (we|i) (were|was) to (offer|come in|go in)|if (we|i) (offer|offered)\b|in the ball ?park|million miles (off|away)|silly offer|embarrass (anyone|the vendor)/i;
+/** Offer language that turns a nearby number INTO a float.
+ *
+ *  NARROWED in the same pass, and this half mattered more. It used to contain
+ *  the bare substring `offer`, so "It's on at £150,000, has it had any offers
+ *  so far?" scored as a floated offer. That is a CHECKLIST question. Worse,
+ *  floated_a_figure anchors lead_named_figure, so a false float plus any price
+ *  the branch says next fabricated a figure obtained out of nothing. */
+const P_FLOAT_WORDS = /\b(we|i)('?d| would| could| can)? ?(offer|offering)\b|offer (you|around|of)\b|stretch to|could (probably )?do|start(ing)? (at|around)|come in (at|around)|go in (at|around)|looking (at|around) (about )?£?\d/i;
+/** Asking THEM for a number.
+ *
+ *  REWRITTEN 2026-08-10: the old version anchored `what` immediately next to
+ *  `would|do you think`, so "what FIGURE do you think would get it done" and
+ *  "what are they looking for" both missed. Measured at roughly one natural
+ *  phrasing in five. A counter that under-reports the single most important
+ *  behaviour on the call is worse than no counter. */
+const P_ASKS_THEIR_FIGURE = /what[^.?!]{0,30}(would|do you (think|reckon)|are they)[^.?!]{0,45}(take|accept|get it (done|over)|land|sell|looking|want|after|expect)|what sort of (figure|number|price|ball ?park)|what('?s| is| would be) the (figure|number|price)[^.?!]{0,30}(done|line|work|right)|where[^.?!]{0,30}(they'?d|they would|they will) land|would (actually|honestly|realistically) (take|accept|go)|(lowest|least|best)[^.?!]{0,25}(they'?d|they would|would)[^.?!]{0,15}(take|accept|go)|how (low|flexible)[^.?!]{0,25}(they|would)|any (movement|flexibility|room) on (the )?price|give me a ball ?park|is there a (figure|number)[^.?!]{0,30}(get|gets|would)/i;
+/** Agreeing a time to ring back. Widened for the same reason: reported 0 on a
+ *  day he agreed at least 5, one of them at a named clock time. */
+const P_CALLBACK = /ring you back|call (you )?back|phone (you )?back|get back to you (late|tomorrow|next)|speak to you (then|soon|tomorrow|monday|tuesday|wednesday|thursday|friday)|when'?s (good|best|a good time)|best time to (catch|ring|call|reach)|(good|best) time (for me )?to (ring|call|phone)|later (today|in the week)|tomorrow (morning|afternoon)|give you a (ring|call|bell) (back )?(tomorrow|later|next week|in a few weeks)|(ring|call|phone) (you )?(back )?(in|around) (about )?(an? )?(hour|day|week)|follow up in/i;
+/** Asking the branch for a video walkthrough. New: the remote model runs on it,
+ *  and the course says agents are "always more than happy to". */
+const P_ASKS_FOR_VIDEO = /video (walk ?through|tour|viewing)|walk ?through video|face ?time|send me (a|some) (video|footage)|show me (a|around on a) video|any more photos/i;
+/** Offering subject to a builder rather than promising a viewing. */
+const P_SUBJECT_TO_BUILDER = /subject to (our|my|a) builder|builder (going|coming) round|builder[^.?!]{0,30}(view|quote|price)|send (our|my|a) builder/i;
 // Rule breaks. The deflections the script TEACHES must not count as breaks:
 // "nothing I've said today is a formal offer" contains "formal offer", and
 // "let me check Hugo's diary" is the correct viewing dodge.
@@ -363,6 +408,40 @@ const P_FORMAL_OFFER_DEFLECTION = /nothing i('?ve| have) said|not (a |the )?(for
 const P_BOOKS_VIEWING = /\b(book|arrange|schedule|set up)[^.?!]{0,20}viewing|book (you|us|me) in\b|viewing (for|at) (today|tomorrow|\d)/i;
 const P_VIEWING_DEFLECTION = /check (hugo|ugo)'?s? diary|(hugo|ugo|director)[^.?!]{0,30}(diary|arrange|be there|book)|come back to you|what (have you got|times are) free/i;
 const P_SOURCER_TALK = /\bsourc(er|ers|ing)\b|done a course|on a course|training course|my mentor|list of investors/i;
+
+/** The branch knocking our figure back. */
+const P_LEAD_REJECTS = /too low|way off|miles off|million miles|no chance|wouldn'?t be accepted|not be accepted|won'?t accept|wouldn'?t accept|don'?t think (they|that|it)|wouldn'?t consider|not consider|nowhere near|above (the )?asking|higher offer/i;
+/** Closing pleasantries. Saying one of these is not carrying on. */
+const P_SIGN_OFF = /thank you for your time|thanks for your time|have a (great|good|lovely) (day|afternoon|evening)|speak (to you )?soon|all the best|cheers,? (bye|thanks)|good ?bye|take care/i;
+
+/** Where in each conversation the money question landed, as a share of the
+ *  agent's turns. Reported as a median so one 15-minute outlier cannot move it.
+ *
+ *  Position in TURNS rather than seconds: the transcript rows carry an order
+ *  but the per-line timestamps are the transcriber's, not the call clock, and
+ *  turn position is what the agent can actually act on ("get there sooner").
+ */
+export function moneyTiming(convs: CallRow[]) {
+  const pcts: number[] = [];
+  for (const c of convs) {
+    const lines = c.lines ?? [];
+    const agentTurns = lines.filter((l) => l.speaker === 'agent');
+    if (agentTurns.length < 3) continue;
+    const at = agentTurns.findIndex(
+      (l) => P_FLOATS_FIGURE.test(l.body ?? '') || P_ASKS_THEIR_FIGURE.test(l.body ?? '')
+        || (P_MONEY.test(l.body ?? '') && P_FLOAT_WORDS.test(l.body ?? '')),
+    );
+    if (at === -1) continue;
+    pcts.push(Math.round((at / (agentTurns.length - 1)) * 100));
+  }
+  if (pcts.length === 0) {
+    return { reached_money_in: 0, pct_of_call_before_money: null as number | null };
+  }
+  const sorted = [...pcts].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+  return { reached_money_in: pcts.length, pct_of_call_before_money: median };
+}
 
 /** The property steps, counted in code so the report grades the same way
  *  every day and the model never has to tally. Same contract as scriptCheck():
@@ -409,6 +488,30 @@ export function propertyScriptCheck(calls: CallRow[]) {
       return lines.slice(at + 1).some((l) => l.speaker === 'caller' && P_MONEY.test(l.body ?? ''));
     }).length,
     agreed_callback_time: n((c) => any(c, P_CALLBACK)),
+    asked_for_video_tour: n((c) => any(c, P_ASKS_FOR_VIDEO)),
+    offered_subject_to_builder: n((c) => any(c, P_SUBJECT_TO_BUILDER)),
+    // HOW FAR INTO THE CALL THE MONEY ARRIVES. The single most useful number on
+    // this report and nothing measured it until 2026-08-10, when reading the
+    // transcripts by hand found the median sitting at 87%: the figure went in
+    // with a tenth of the call left, so there was no runway to negotiate in.
+    // The two calls that reached money early (45% and 52%) were the only two
+    // real negotiations of the day. Perfect correlation, and invisible to every
+    // counter we had.
+    ...moneyTiming(convs),
+    // Did he say ANYTHING after the first rejection, or thank them and hang up?
+    // At Alan Cooper the branch named the vendor's figure and he said "thank
+    // you for your time, have a great day". That is the whole coaching point.
+    second_gear_after_a_no: convs.filter((c) => {
+      const lines = c.lines ?? [];
+      const no = lines.findIndex((l) => l.speaker === 'caller' && P_LEAD_REJECTS.test(l.body ?? ''));
+      if (no === -1) return false;
+      // A goodbye does not count as carrying on.
+      return lines.slice(no + 1).some(
+        (l) => l.speaker === 'agent' && (l.body ?? '').trim().length > 0 && !P_SIGN_OFF.test(l.body ?? ''),
+      );
+    }).length,
+    faced_a_no: convs.filter((c) =>
+      (c.lines ?? []).some((l) => l.speaker === 'caller' && P_LEAD_REJECTS.test(l.body ?? ''))).length,
     // Rule breaks. All should be zero.
     made_formal_offer: n((c) =>
       agentLines(c).some((b) => P_FORMAL_OFFER.test(b) && !P_FORMAL_OFFER_DEFLECTION.test(b))),
@@ -484,9 +587,9 @@ You are given THE SCRIPT the agent is supposed to follow, and a step-by-step cou
 
 Write in British English, plain language, second person ("you"). Never write a long dash (em or en dash) or curly quotes; use a comma, a colon, brackets or a new sentence instead. That is a standing company rule for everything the software writes. Markdown, no title heading, roughly 300-450 words, in this order:
 
-**Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, any long gap with no calls.
+**Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, any long gap with no calls. If a CORRECTION block appears at the top of this prompt, the FIRST thing in this section is that correction, said plainly and without excuses.
 **What worked**: up to three specific things, each with a quote or an agency name.
-**The grade**: the day as one funnel, on its own lines: dials, conversations, availability confirmed, money conversations opened, figures obtained from the branch, callbacks agreed with a time. Then say plainly which step is losing the most. A figure out of the branch's mouth is the score that matters; a polite day of chat that never reaches the money is not a good day. If outcomes were not logged in the Houses tab, say so: the figures are the reason the calls happen and they must be written down where the director can see them.
+**The grade**: the day as one funnel, on its own lines: dials, conversations, availability confirmed, money conversations opened, figures obtained from the branch, callbacks agreed with a time. Include how far into the call the money landed, because that is usually the answer. Then say plainly which step is losing the most. A figure out of the branch's mouth is the score that matters; a polite day of chat that never reaches the money is not a good day. If outcomes were not logged in the Houses tab, say so: the figures are the reason the calls happen and they must be written down where the director can see them.
 **Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the fact checklist, the floated figure, asking THEM for a figure, the callback time, then the rule breaks (formal offer, booked viewing, sourcer/course talk), which should all be zero. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
 **Fix tomorrow**: every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
 **Tomorrow's one thing**: a single sentence naming the one change that would make the biggest difference.
@@ -510,9 +613,18 @@ async function writePropertyReport(
   pace: ReturnType<typeof paceStats>,
   dispositions: Record<string, number>,
   houses: HousesTabStats,
+  correction?: string,
 ): Promise<string> {
   const prompt = `Agent: ${agentName}
-Date: ${dateKey}
+Date: ${dateKey}${correction ? `
+
+=== CORRECTION, PUT THIS FIRST ===
+An earlier version of this report was published to this agent and it was WRONG.
+Open the Today section by correcting it, in your own words, plainly, in two or
+three sentences. Do not be defensive and do not bury it. He may have already
+read the wrong one, and he needs to know which numbers to trust.
+${correction}
+=== END CORRECTION ===` : ''}
 Business: property deal sourcing, ringing estate agents about listed properties for a cash buyer. This agent does NOT sell anything and has nothing to do with the retired Google-reviews product; if a transcript shows them pitching reviews or videos, that is them reading the wrong script and it belongs under Fix tomorrow.
 
 STATISTICS (authoritative, do not recompute):
@@ -547,8 +659,12 @@ SCRIPT STEPS REACHED, out of ${adherence.conversations_graded} live conversation
 ${JSON.stringify(adherence, null, 2)}
 
 Notes on the script counts:
-- These are detected from the transcript text, which comes from imperfect speech recognition. They are close, not exact. Where a count disagrees with what you can plainly read in the transcripts, believe the transcripts and say what you actually saw.
+- These are DERIVED from imperfect speech recognition by pattern matching. They are a floor, not a fact: they miss things the agent genuinely did.
+- NEVER STATE AN ABSOLUTE FROM ONE OF THESE COUNTS. Do not write "you never once asked", "you did not agree a single callback", or "X: 0" unless you have read the transcripts and confirmed it yourself. Write "I could only find two" and quote one of them. On 2026-08-10 this report told an agent he floated a figure 4 times when he did it 9 times, and that he agreed no callbacks on a day he agreed five, one at a named time. Being told you did not do something you did is how a coaching report loses its authority for good.
+- Where a count disagrees with what you can plainly read in the transcripts, the transcripts win. Say what you actually saw.
 - "floated_a_figure" is the offer-without-offering ("if we were to offer around X, am I in the ballpark"). "asked_them_for_a_figure" is the other half of the money conversation. "lead_named_figure" is the score: a number out of the branch's mouth.
+- "pct_of_call_before_money" is the median share of the agent's turns that passed before the money question landed, across the calls that reached it. This is the most actionable number on the page. Under about 60% there is room to negotiate; up near 90% the figure goes in with nothing left of the call and the answer is always no. If it is high, lead with it.
+- "second_gear_after_a_no" out of "faced_a_no" is how often they kept going after the branch knocked the figure back, rather than thanking them and hanging up. This is where deals die.
 - "made_formal_offer", "booked_a_viewing" and "sourcer_or_course_talk" are rule breaks and should all be zero. The script's own deflection lines ("nothing I've said today is a formal offer", "let me check Hugo's diary") are correct play and are already excluded from those counts.
 
 TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS (voicemails excluded):
@@ -687,7 +803,9 @@ SCRIPT STEPS REACHED, out of ${adherence.conversations_graded} live conversation
 ${JSON.stringify(adherence, null, 2)}
 
 Notes on the script counts:
-- These are detected from the transcript text, which comes from imperfect speech recognition. They are close, not exact. Where a count disagrees with what you can plainly read in the transcripts, believe the transcripts and say what you actually saw.
+- These are DERIVED from imperfect speech recognition by pattern matching. They are a floor, not a fact, and they miss things the agent genuinely did.
+- NEVER STATE AN ABSOLUTE FROM ONE OF THESE COUNTS. Do not write "you never once did X" or "X: 0" unless you have read the transcripts and confirmed it. Write "I could only find two" and quote one. Being told you did not do something you did is how a coaching report loses its authority for good.
+- Where a count disagrees with what you can plainly read in the transcripts, the transcripts win. Say what you actually saw.
 - "name_before_recording" is the one that matters most in the opener. Saying the recording notice without first saying who you are and that you are from HeyElsie makes the call sound like a scam, and prospects react to it.
 - "asked_for_their_number" and "read_out_monthly_tiers" are rule breaks and should both be zero. We dial their mobile, so we already have their number; asking for it makes us sound like we bought a list.
 
@@ -749,6 +867,13 @@ export default async function handler(
   const rawDate = req.query?.date;
   const dateKey = (Array.isArray(rawDate) ? rawDate[0] : rawDate) || ukToday(new Date());
   const { since, until } = ukDayBounds(dateKey);
+
+  // ?correction=... when a published report was WRONG and is being replaced.
+  // The agent may already have read it, so the new one opens by saying so
+  // rather than quietly swapping the numbers under him. Only ever passed by
+  // hand on a re-run; the 17:30 cron never sets it.
+  const rawCorrection = req.query?.correction;
+  const correction = (Array.isArray(rawCorrection) ? rawCorrection[0] : rawCorrection) || undefined;
 
   // Roster: same rule as the leaderboard — a CRM agent or an account with a
   // limits row, minus anyone an admin has un-ticked.
@@ -862,6 +987,7 @@ export default async function handler(
         raw = await writePropertyReport(
           name, dateKey, computeStats(rows), transcriptBlock(rows),
           script, adherence, paceStats(rows), dispositions, houses,
+          correction,
         );
       } catch (e) {
         console.error(`[daily-report] ${name} (property) failed:`, e);

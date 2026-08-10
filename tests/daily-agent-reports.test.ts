@@ -391,9 +391,13 @@ describe('the report always covers the standing coaching', () => {
 
   it('admits the counts come from imperfect speech recognition', () => {
     // Overstating a derived number to an agent who knows what they said is how
-    // a coaching report loses its authority.
-    expect(cron).toMatch(/close, not exact/i)
-    expect(cron).toMatch(/believe the transcripts/i)
+    // a coaching report loses its authority. This used to assert the softer
+    // "close, not exact"; on 2026-08-10 that turned out not to be strong
+    // enough, because the report went on to publish "you never once asked" off
+    // a counter that matched one phrasing in five. The wording is now "a floor,
+    // not a fact" plus an outright ban on absolutes, asserted below.
+    expect(cron).toMatch(/a floor, not a fact/i)
+    expect(cron).toMatch(/the transcripts win/i)
   })
 })
 
@@ -661,6 +665,214 @@ describe('property days are graded against the property business', () => {
 
   it('property rule breaks are the property ones, not the sales ones', () => {
     expect(cron).toMatch(/formal_offer\|booked_viewing\|invented_fact\|said_ceiling/)
+  })
+})
+
+// The counters lied, and a coaching report that tells a man he did not do
+// something he did is worse than no report. Every string below is copied
+// verbatim out of Pedro's 2026-08-10 transcripts, ASR mangling included.
+
+describe('the counters that got it wrong on day one', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  const conv = (agentLines: string[], callerLines: string[] = ['Hello, sales.']) => ({
+    id: 'p1', started_at: '2026-08-10T13:00:00Z', duration_sec: 300, status: 'completed',
+    disposition: null, company: 'A Branch', script_key: 'property_call',
+    lines: [
+      { speaker: 'caller', body: callerLines[0] ?? 'Hello.' },
+      ...agentLines.map((b) => ({ speaker: 'agent', body: b })),
+      ...callerLines.slice(1).map((b) => ({ speaker: 'caller', body: b })),
+    ],
+  })
+
+  it('counts the float phrasings it used to miss (reported 4, he did 9)', async () => {
+    const { propertyScriptCheck } = await load()
+    for (const said of [
+      'if we were to offer around uh 56,500 pounds',                 // it did catch this one
+      'we offer if we offer around 88,000 pounds',                   // and missed this
+      'if we offer around 107 and 500,000',                          // and this
+      "I don't want to waste your time or embarrass anyone with a silly offer",
+    ]) {
+      const r = propertyScriptCheck([conv([said])] as never)
+      expect(`${said} => ${r.floated_a_figure}`).toBe(`${said} => 1`)
+    }
+  })
+
+  it('STOPS counting a checklist question as a floated offer', async () => {
+    // The false positive that also poisoned lead_named_figure: a fabricated
+    // float plus any price the branch said next invented a figure obtained.
+    const { propertyScriptCheck } = await load()
+    for (const said of [
+      "It's on at £150,000 I see, has it had any offers so far?",
+      'Have you had any offers near the £185,000 asking?',
+    ]) {
+      const r = propertyScriptCheck([conv([said])] as never)
+      expect(`${said} => ${r.floated_a_figure}`).toBe(`${said} => 0`)
+    }
+  })
+
+  it('counts the ways of asking THEM for a figure it used to miss', async () => {
+    const { propertyScriptCheck } = await load()
+    for (const said of [
+      'So what sort of figure do you think would actually get it done?',   // the scripted line
+      'What figure do you think would get it done?',                      // noun in the middle: missed before
+      'What are they looking for?',
+      'What would the vendor actually take, do you think?',
+      "What's the lowest they would go?",
+      'Is there a number that would get it done today?',
+      'Any movement on the price at all?',
+    ]) {
+      const r = propertyScriptCheck([conv([said])] as never)
+      expect(`${said} => ${r.asked_them_for_a_figure}`).toBe(`${said} => 1`)
+    }
+  })
+
+  it('counts the callbacks it reported as zero (he agreed at least five)', async () => {
+    const { propertyScriptCheck } = await load()
+    for (const said of [
+      'can I give you a ring back uh around 4:30. How fast for today or perhaps tomorrow morning?',
+      'Can I get back to you late uh tomorrow morning would that be ok?',
+      'Can can I phone you back uh later today? Would that be ok uh in about an hour?',
+      'can I follow up in about a week, would that be okay?',
+      'can I phone back uh tomorrow instead?',
+    ]) {
+      const r = propertyScriptCheck([conv([said])] as never)
+      expect(`${said} => ${r.agreed_callback_time}`).toBe(`${said} => 1`)
+    }
+  })
+
+  it('counts the new remote-model moves: the video ask and subject to a builder', async () => {
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([conv([
+      'we put the figure forward subject to our builder going round',
+      'Any chance you could send me a video walkthrough?',
+    ])] as never)
+    expect(r.offered_subject_to_builder).toBe(1)
+    expect(r.asked_for_video_tour).toBe(1)
+  })
+})
+
+describe('how far into the call the money lands', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  // The finding of the whole day and nothing measured it. Reading the
+  // transcripts by hand put the median at 87%: the figure went in with a tenth
+  // of the call left, so the answer was always no.
+  const call = (agentLines: string[]) => ({
+    id: 'x', started_at: '2026-08-10T13:00:00Z', duration_sec: 300, status: 'completed',
+    disposition: null, company: 'A Branch', script_key: 'property_call',
+    lines: [{ speaker: 'caller', body: 'Hello, sales.' }, ...agentLines.map((b) => ({ speaker: 'agent', body: b }))],
+  })
+  const FILLER = 'And what condition is it in?'
+  const MONEY = 'if we were to offer around £62,000, am I in the ballpark?'
+
+  it('reports late money as late', async () => {
+    const { moneyTiming } = await load()
+    // Money on the last of ten turns.
+    const t = moneyTiming([call([...Array(9).fill(FILLER), MONEY])] as never)
+    expect(t.reached_money_in).toBe(1)
+    expect(t.pct_of_call_before_money).toBe(100)
+  })
+
+  it('reports early money as early', async () => {
+    const { moneyTiming } = await load()
+    const t = moneyTiming([call([FILLER, MONEY, ...Array(8).fill(FILLER)])] as never)
+    expect(t.pct_of_call_before_money).toBeLessThan(20)
+  })
+
+  it('takes the median so one long call cannot move it', async () => {
+    const { moneyTiming } = await load()
+    const early = call([MONEY, ...Array(9).fill(FILLER)])
+    const late = call([...Array(9).fill(FILLER), MONEY])
+    const t = moneyTiming([early, early, late] as never)
+    expect(t.pct_of_call_before_money).toBe(0)
+  })
+
+  it('says nothing rather than guessing when the money never came up', async () => {
+    const { moneyTiming } = await load()
+    const t = moneyTiming([call([FILLER, FILLER, FILLER])] as never)
+    expect(t.reached_money_in).toBe(0)
+    expect(t.pct_of_call_before_money).toBeNull()
+  })
+})
+
+describe('the second gear after a no', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  const call = (lines: Array<[string, string]>) => ({
+    id: 'x', started_at: '2026-08-10T13:00:00Z', duration_sec: 300, status: 'completed',
+    disposition: null, company: 'Alan Cooper Estates', script_key: 'property_call',
+    lines: lines.map(([speaker, body]) => ({ speaker, body })),
+  })
+
+  it('THE ALAN COOPER CALL: a goodbye is not a second gear', async () => {
+    // Verbatim. She named the vendor's figure and he thanked her and hung up.
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([call([
+      ['caller', 'Hello, sales.'],
+      ['agent', 'if we were to offer around 124,500 pounds, am I in the ballpark?'],
+      ['caller', "so I don't think that would be a figure. They would be looking around the 140 Mark"],
+      ['agent', 'Actually understand well. Thank you for your time. Have a great day.'],
+    ])] as never)
+    expect(r.faced_a_no).toBe(1)
+    expect(r.second_gear_after_a_no).toBe(0)
+  })
+
+  it('credits him when he actually keeps going', async () => {
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([call([
+      ['caller', 'Hello, sales.'],
+      ['agent', 'if we were to offer around 124,500 pounds, am I in the ballpark?'],
+      ['caller', "I don't think they would consider it at this time."],
+      ['agent', 'Fair enough, no problem. What would the vendor actually take, do you think?'],
+    ])] as never)
+    expect(r.faced_a_no).toBe(1)
+    expect(r.second_gear_after_a_no).toBe(1)
+  })
+})
+
+describe('dead air was a fault that never happened', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  const silent = (callerLine: string) => ({
+    id: 'v', started_at: '2026-08-10T13:00:00Z', duration_sec: 40, status: 'completed',
+    disposition: null, company: 'A Branch', script_key: 'property_call',
+    lines: [{ speaker: 'caller', body: callerLine }],
+  })
+
+  it('does not call an IVR, a hold queue or a closed office a system fault', async () => {
+    // The report claimed 12 dead-air calls. Reading all 30 silent calls found
+    // zero: every one was a machine. Telling an agent his audio failed when it
+    // did not hands him an excuse he never needed.
+    const { computeStats } = await load()
+    for (const line of [
+      'Your call cannot be transferred, please try again later',
+      'Your call is in a queue and will be answered shortly',
+      'I cannot hear you',
+      'Our office is closed, our opening hours are nine to five thirty',
+      'Please hold, your call is important to us',
+      'For sales press one, for lettings press two',
+    ]) {
+      const s = computeStats([silent(line)] as never)
+      expect(`${line} => ${s.dead_air}`).toBe(`${line} => 0`)
+    }
+  })
+
+  it('still catches the real thing: a human says hello into a dead line', async () => {
+    const { computeStats } = await load()
+    expect(computeStats([silent('Hello? Hello, can you hear me?')] as never).dead_air).toBe(1)
+  })
+})
+
+describe('the report may not state an absolute from a derived count', () => {
+  it('says so in both prompts, with the day it learned it', () => {
+    expect(cron).toMatch(/NEVER STATE AN ABSOLUTE FROM ONE OF THESE COUNTS/)
+    expect(cron.match(/NEVER STATE AN ABSOLUTE FROM ONE OF THESE COUNTS/g)?.length).toBe(2)
+    expect(cron).toMatch(/I could only find/)
+    expect(cron).toMatch(/floated a figure 4 times when he did it 9 times/)
+  })
+
+  it('can be handed a correction when a published report was wrong', () => {
+    expect(cron).toMatch(/CORRECTION, PUT THIS FIRST/)
+    expect(cron).toMatch(/He may have already\n read the wrong one|already\s+read the wrong one/)
+    // Only ever by hand. The 17:30 cron must never set it.
+    expect(cron).toMatch(/req\.query\?\.correction/)
   })
 })
 
