@@ -137,3 +137,43 @@ export function ladderText(
   if (steps.length > 1) return steps.map((n) => fmtGBP(n)).join(', then ');
   return `${fmtGBP(band.min)}, climbing at most to ${fmtGBP(band.max)}`;
 }
+
+/**
+ * What it costs to add a bedroom, by how many the house already has.
+ *
+ * Hugo's own figures, 2026-08-10, for the kitchen-to-bedroom conversion plus a
+ * light refurb. This is the FIRST refurb estimate in the system that varies by
+ * property: valuation.py has carried one flat `"refurb": 10_000` for every
+ * house since it was written, which quietly prices a 3-to-4-bed conversion the
+ * same as a 1-to-2.
+ *
+ * `budget` is the number to plan on. `low` and `high` are the range it usually
+ * lands between, shown so nobody mistakes a planning figure for a quote.
+ *
+ * THE TWIN: scripts/lib/bedroom_uplift.py, which is copied to the scraper on
+ * the VPS and imported by valuation.py. They MUST stay identical, and
+ * tests/brrr-offer.test.ts reads the twin's source and fails if the numbers
+ * drift. Same arrangement as api/lib/uk-places.ts and its .mjs twin. If you
+ * edit one, edit the other.
+ */
+export const BEDROOM_UPLIFT_REFURB = [
+  { from: 1, to: 2, low: 12_000, high: 15_000, budget: 14_000 },
+  { from: 2, to: 3, low: 14_000, high: 18_000, budget: 16_000 },
+  { from: 3, to: 4, low: 16_000, high: 22_000, budget: 19_000 },
+] as const;
+
+export interface UpliftRefurb { from: number; to: number; low: number; high: number; budget: number }
+
+/**
+ * The cost of taking this house from its current bed count to one more.
+ *
+ * Returns null outside 1 to 3 beds, and that matters: there is no row for a
+ * studio or for a 4-bed going to 5, and inventing one by extrapolating is how
+ * a plausible wrong number ends up on screen next to a real valuation. A null
+ * means "we do not have a figure for this", which the UI can say honestly.
+ */
+export function upliftRefurb(beds: number | null | undefined): UpliftRefurb | null {
+  const n = typeof beds === 'number' ? beds : parseInt(String(beds ?? ''), 10);
+  if (!Number.isFinite(n)) return null;
+  return BEDROOM_UPLIFT_REFURB.find((r) => r.from === n) ?? null;
+}

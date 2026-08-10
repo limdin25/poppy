@@ -113,6 +113,18 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
             worth about {gbpShort(cmv)} today
           </span>
         ) : null}
+        {/* What it is worth with the extra bedroom, and what that costs. The
+            value is the engine's own GDV (the comps pipeline run again over
+            beds+1), never a multiplier on top of today's figure. Hidden rather
+            than guessed when either half is missing. */}
+        {listing.upliftValue > 0 && (
+          <span className="text-[11px] text-[#6B7280]">
+            as a {(listing.bedrooms ?? 0) + 1} bed: {gbpShort(listing.upliftValue)}
+            {listing.upliftRefurbBudget > 0
+              ? `, refurb about ${gbpShort(listing.upliftRefurbBudget)}`
+              : ''}
+          </span>
+        )}
         {listing.isAuction && (
           <span className="rounded border border-[#EBD9B4] bg-[#FDF3E3] px-1.5 py-0.5 text-[10px] font-semibold text-[#9A6B1E]">
             AUCTION

@@ -18,7 +18,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
-import { offerRange, gbpShort, ladderText } from '../../../../api/lib/brrr-offer';
+import { offerRange, gbpShort, ladderText, upliftRefurb } from '../../../../api/lib/brrr-offer';
 
 /** One row as the RPC returns it. */
 interface ListingRow {
@@ -60,6 +60,14 @@ export interface PropertyListing extends ListingRow {
   /** Plain-English warnings from the valuation engine. */
   flags: string[];
   isAuction: boolean;
+  /** What it is worth with one more bedroom. This is the engine's GDV: it runs
+   *  the whole comparables pipeline a second time over beds+1 sold comps, then
+   *  caps it at the street ceiling and at 1.30x today's value. 0 when the
+   *  engine could not establish it. */
+  upliftValue: number;
+  /** What that conversion costs, from the bedroom table in brrr-offer. 0 when
+   *  the bed count is outside 1 to 3, where we have no figure and say so. */
+  upliftRefurbBudget: number;
 }
 
 /** The engine's flag codes, in words an agent can use on the phone.
@@ -67,6 +75,12 @@ export interface PropertyListing extends ListingRow {
  *  retired on 2026-08-09, and its cron was deleted with it. */
 const FLAG_NOTES: Record<string, string> = {
   conversion_adds_no_value: 'Converting this adds little value. The money has to come off the purchase price.',
+  // The GDV flags. These live in deal.gdv.flags and were never read on this
+  // path, so the dialer could show "with an extra bedroom: X" on a property the
+  // engine had already flagged as gaining nothing from the conversion.
+  street_ceiling_cap: 'The extra-bedroom value is capped by the best sale on that street.',
+  uplift_exceeds_light_refurb_cap: 'The extra-bedroom value looks too good for a light refurb. Treat it with suspicion.',
+  uplift_review: 'The uplift from the extra bedroom is large. Worth a second look before offering.',
   low_confidence: 'Thin sold evidence nearby. Treat the figures as a guide, not gospel.',
   wide_ring: 'The comparable sales are further away than ideal.',
   old_comps: 'The comparable sales are old. The local market may have moved.',
@@ -88,6 +102,19 @@ function cmvOf(deal: Record<string, unknown> | null | undefined): number {
   const n = typeof c === 'object' && c !== null
     ? Number((c as Record<string, unknown>).estimate)
     : Number(c);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** What it is worth with the extra bedroom. The engine already computes this as
+ *  `gdv`, by running the whole comparables pipeline a second time over beds+1
+ *  sold comps: it is not an estimate on top of an estimate. Written as a sibling
+ *  of cmvOf, and for the same reason, because both deal shapes are live in the
+ *  wild and two readers of the same field is how they drift. */
+function gdvOf(deal: Record<string, unknown> | null | undefined): number {
+  const g = deal?.gdv;
+  const n = typeof g === 'object' && g !== null
+    ? Number((g as Record<string, unknown>).estimate)
+    : Number(g);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
@@ -129,9 +156,17 @@ export function usePropertyListings(phone: string | null | undefined) {
         ? deal.offer as Record<string, unknown> : {};
       const isAuction = deal.is_auction === true || deal.is_auction === '1'
         || String(offerObj.verdict ?? deal.verdict ?? '').includes('auction');
-      const flagSrc = Array.isArray(offerObj.flags) ? offerObj.flags
-        : (Array.isArray(deal.flags) ? deal.flags : []);
-      const flagCodes = (flagSrc as unknown[]).map(str);
+      // The GDV flags live on deal.gdv and were never read here, so a property
+      // the engine had flagged as gaining nothing from the conversion could
+      // still show an extra-bedroom figure with no warning beside it.
+      const gdvObj = (deal.gdv && typeof deal.gdv === 'object')
+        ? deal.gdv as Record<string, unknown> : null;
+      const flagSrc = [
+        ...(Array.isArray(offerObj.flags) ? offerObj.flags as unknown[] : []),
+        ...(Array.isArray(gdvObj?.flags) ? gdvObj.flags as unknown[] : []),
+        ...(Array.isArray(deal.flags) ? deal.flags as unknown[] : []),
+      ];
+      const flagCodes = [...new Set(flagSrc.map(str))];
       return {
         ...r,
         offerMin: band.min,
@@ -142,6 +177,8 @@ export function usePropertyListings(phone: string | null | undefined) {
           .map(str).filter(Boolean).slice(0, 3),
         flags: flagCodes.map((c) => FLAG_NOTES[c] ?? c).filter(Boolean),
         isAuction,
+        upliftValue: gdvOf(deal),
+        upliftRefurbBudget: upliftRefurb(r.bedrooms)?.budget ?? 0,
       };
     });
   }, [q.data]);

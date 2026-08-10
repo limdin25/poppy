@@ -7,7 +7,7 @@ import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 // The SAME offer maths the dial cron and Pedro's dialer use. Pure module, safe
 // to import into the browser (api/lib/brrr.ts itself is not — it builds a
 // Supabase client at import time).
-import { offerRange } from '../../../../api/lib/brrr-offer'
+import { offerRange, upliftRefurb } from '../../../../api/lib/brrr-offer'
 import DealCalculator from '../components/DealCalculator'
 
 interface PropertyCall {
@@ -407,15 +407,25 @@ export default function PropertiesPage() {
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(() => {
                 const band = offerRange(selected, settings)
+                // valuation.py NESTS its answer: deal.gdv = {estimate, ...},
+                // deal.stack = {total_in, verdict}, deal.rent = {estimate}.
+                // These tiles read the flat keys the retired browser Comps page
+                // used to send, so every property the scraper itself ingested
+                // rendered a dash: parseFloat("[object Object]") is NaN. Same
+                // nesting fault as the offer band, three copies of which were
+                // fixed on 2026-08-10 and this one was missed.
+                const nested = (v: unknown, key = 'estimate') =>
+                  v && typeof v === 'object' ? (v as Record<string, unknown>)[key] : v
+                const uplift = upliftRefurb(selected.bedrooms)
                 return [
                   ['Asking', selected.price_text || gbp(selected.asking_price)],
-                  ['AI offer range', `${gbp(band.min)}–${gbp(band.max)}`],
-                  ['GDV', gbp(selected.deal?.gdv)],
-                  ['Rent /mo', gbp(selected.deal?.rent)],
-                  ['Refurb', gbp(selected.deal?.refurb)],
-                  ['Cash needed', gbp(selected.deal?.total_cash)],
+                  ['AI offer range', `${gbp(band.min)}-${gbp(band.max)}`],
+                  ['Worth today', gbp(nested(selected.deal?.cmv))],
+                  [`As a ${(selected.bedrooms ?? 0) + 1} bed`, gbp(nested(selected.deal?.gdv))],
+                  ['Refurb budget', uplift ? gbp(uplift.budget) : 'no figure'],
+                  ['Rent /mo', gbp(nested(selected.deal?.rent))],
+                  ['Cash needed', gbp(nested(selected.deal?.stack, 'total_in') ?? selected.deal?.total_cash)],
                   ['Comps', String(selected.comps?.length ?? 0)],
-                  ['Floor plans', String(selected.floorplan_urls?.length || 0)],
                 ] as Array<[string, string]>
               })().map(([label, value]) => (
                 <div key={label} className="rounded-lg border border-border p-2.5">
@@ -436,13 +446,22 @@ export default function PropertiesPage() {
               {(() => {
                 const band = offerRange(selected, settings)
                 const num = (v: unknown) => parseFloat(String(v ?? '')) || 0
+                const nested = (v: unknown, key = 'estimate') =>
+                  v && typeof v === 'object' ? (v as Record<string, unknown>)[key] : v
+                // Falling back to the ASKING price as "market value" is the
+                // exact failure the valuation engine exists to prevent: it
+                // prices off what the agent wants rather than what the house is
+                // worth. It happened silently on every scraper-ingested property
+                // because deal.cmv is an object here, not a number.
+                const cmv = num(nested(selected.deal?.cmv))
                 return (
                   <DealCalculator
                     defaultPurchase={band.max}
-                    defaultMarketValue={num(selected.deal?.cmv) || num(selected.asking_price)}
-                    defaultRent={num(selected.deal?.rent)}
-                    engineTotalCash={num(selected.deal?.total_cash) || null}
-                    engineVerdict={(selected.deal?.stack_verdict as string) ?? null}
+                    defaultMarketValue={cmv || num(selected.asking_price)}
+                    defaultRent={num(nested(selected.deal?.rent))}
+                    defaultRefurb={upliftRefurb(selected.bedrooms)?.budget}
+                    engineTotalCash={num(nested(selected.deal?.stack, 'total_in')) || num(selected.deal?.total_cash) || null}
+                    engineVerdict={(nested(selected.deal?.stack, 'verdict') as string) ?? (selected.deal?.stack_verdict as string) ?? null}
                   />
                 )
               })()}

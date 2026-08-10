@@ -18,12 +18,18 @@ import { usePropertyListings, type PropertyListing } from '../../hooks/useProper
 /** The 16 questions, mirroring QUALIFICATION_QUESTIONS in api/lib/brrr.ts so a
  *  human call and an AI call record the same facts under the same keys. */
 const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> = [
+  // The figure comes FIRST now. It was question 15 of 16, and on the first day
+  // of real calls not one outcome was logged all day, so the only number any
+  // branch gave (Alan Cooper, 140k) survived nowhere but in Pedro's head. It is
+  // the reason the call happens, so it is the first thing on the card.
+  { key: 'best_price_indicated', label: 'FIGURE THEY MENTIONED' },
+  { key: 'offer_reaction', label: 'How did the offer land?' },
   { key: 'still_available', label: 'Still available?' },
   { key: 'occupancy', label: 'Vacant or tenanted?' },
   { key: 'condition_notes', label: 'Condition / works needed?' },
+  { key: 'why_selling', label: 'Why are they selling?' },
   { key: 'interest_level', label: 'Viewings or offers so far?' },
   { key: 'fallen_through', label: 'Has a sale fallen through before?' },
-  { key: 'why_selling', label: 'Why are they selling?' },
   { key: 'motivation', label: 'How motivated?' },
   { key: 'chain', label: 'Onward chain?' },
   { key: 'tenure', label: 'Freehold or leasehold?' },
@@ -31,9 +37,12 @@ const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> 
   { key: 'service_charge', label: 'Service charge', only: 'flat' },
   { key: 'ground_rent', label: 'Ground rent', only: 'flat' },
   { key: 'major_works', label: 'Major works / cladding', only: 'flat' },
-  { key: 'offer_reaction', label: 'How did the offer land?' },
-  { key: 'best_price_indicated', label: 'Figure THEY mentioned' },
-  { key: 'viewing_availability', label: 'When can viewings happen?' },
+  // We never view a property: our builder does, and he prices the refurb while
+  // he is there. So the question is no longer "when can viewings happen" but
+  // whether we got the video that lets the builder quote without driving.
+  { key: 'video_walkthrough', label: 'Video walkthrough asked for?' },
+  { key: 'branch_contact_name', label: 'Who did you speak to?' },
+  { key: 'viewing_availability', label: 'Builder visit, easy to arrange?' },
 ];
 
 /** The five end states of a property call, in the order they are worth.
@@ -195,6 +204,19 @@ export default function PropertiesPane({
               {selected.days_on_market && <span>{selected.days_on_market} days listed</span>}
               <span>asking {selected.price_text || gbpShort(selected.asking_price)}</span>
             </div>
+            {/* The whole strategy in one line: what it is worth once the kitchen
+                becomes a bedroom, and what that conversion costs. Sits directly
+                under "2 bed, Terraced, asking £124,950", which is the context
+                that makes "as a 3 bed" mean anything. */}
+            {selected.upliftValue > 0 && (
+              <div className="mt-0.5 text-[11.5px] leading-snug text-[#4B5563]">
+                as a {(selected.bedrooms ?? 0) + 1} bed:{' '}
+                <b>{gbpShort(selected.upliftValue)}</b>
+                {selected.upliftRefurbBudget > 0
+                  ? <>, refurb about <b>{gbpShort(selected.upliftRefurbBudget)}</b></>
+                  : null}
+              </div>
+            )}
             {selected.listing_url && (
               <a
                 href={selected.listing_url}
@@ -273,8 +295,8 @@ export default function PropertiesPane({
           <div className="px-3 py-2.5">
             <Label>How did it go</Label>
             <p className="mt-1 text-[10.5px] leading-snug text-[#9CA3AF]">
-              Got a number out of them? Type it in "Figure THEY mentioned" above,
-              then press Figure obtained.
+              Got a number out of them? Type it in the box at the top, then press
+              Figure obtained. Whatever the number is, even miles above ours.
             </p>
             <div className="mt-1.5 grid grid-cols-2 gap-1.5">
               {OUTCOMES.map((o) => (

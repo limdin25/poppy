@@ -20,6 +20,10 @@ interface Props {
   defaultMarketValue: number;
   /** From the scraper's rental comps, when it found any. */
   defaultRent: number;
+  /** What the bedroom conversion costs for this bed count, from the table in
+   *  api/lib/brrr-offer.ts. Undefined when we have no figure (outside 1 to 3
+   *  beds), in which case the old flat 15,000 stands as a starting guess. */
+  defaultRefurb?: number;
   /** The valuation engine's own conclusion, for comparison. */
   engineTotalCash?: number | null;
   engineVerdict?: string | null;
@@ -33,11 +37,11 @@ const VERDICT_STYLES: Record<string, string> = {
 };
 
 export default function DealCalculator({
-  defaultPurchase, defaultMarketValue, defaultRent, engineTotalCash, engineVerdict,
+  defaultPurchase, defaultMarketValue, defaultRent, defaultRefurb, engineTotalCash, engineVerdict,
 }: Props) {
   const [purchase, setPurchase] = useState(Math.round(defaultPurchase) || 0);
   const [marketValue, setMarketValue] = useState(Math.round(defaultMarketValue) || 0);
-  const [refurb, setRefurb] = useState(15000);
+  const [refurb, setRefurb] = useState(Math.round(defaultRefurb ?? 0) || 15000);
   const [rentPcm, setRentPcm] = useState(Math.round(defaultRent) || 0);
   const [termMonths, setTermMonths] = useState(9);
 

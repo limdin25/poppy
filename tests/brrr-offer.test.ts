@@ -19,7 +19,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { offerRange, fmtGBP, gbpShort, ladderText } from '../api/lib/brrr-offer'
+import { offerRange, fmtGBP, gbpShort, ladderText, BEDROOM_UPLIFT_REFURB, upliftRefurb } from '../api/lib/brrr-offer'
 
 const root = resolve(__dirname, '..')
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8')
@@ -212,5 +212,69 @@ describe('there is exactly ONE copy of this maths', () => {
       expect(body).not.toMatch(/gdv\s*\*\s*0?\.7/i)
       expect(body).not.toMatch(/OFFER_MAX_BMV_PCT/)
     }
+  })
+})
+
+// The first refurb estimate in the system that varies by property. valuation.py
+// has carried one flat £10,000 for every house since it was written, which
+// prices a 3-to-4-bed conversion the same as a 1-to-2.
+
+describe('what it costs to add a bedroom', () => {
+  it('carries Hugo\'s figures exactly', () => {
+    expect(upliftRefurb(1)).toMatchObject({ from: 1, to: 2, low: 12_000, high: 15_000, budget: 14_000 })
+    expect(upliftRefurb(2)).toMatchObject({ from: 2, to: 3, low: 14_000, high: 18_000, budget: 16_000 })
+    expect(upliftRefurb(3)).toMatchObject({ from: 3, to: 4, low: 16_000, high: 22_000, budget: 19_000 })
+  })
+
+  it('refuses to guess outside the table', () => {
+    // There is no row for a studio, or a 4-bed going to 5. Extrapolating one is
+    // how a plausible wrong number ends up on screen beside a real valuation,
+    // so the honest answer is null and the UI says nothing.
+    for (const beds of [0, 4, 5, 9, null, undefined, NaN, 'three' as unknown as number]) {
+      expect(`${String(beds)} => ${upliftRefurb(beds as number)}`).toBe(`${String(beds)} => null`)
+    }
+  })
+
+  it('reads a numeric string, because bedrooms arrive as text from the listing', () => {
+    expect(upliftRefurb('2' as unknown as number)?.budget).toBe(16_000)
+  })
+
+  it('the budget always sits inside its own range', () => {
+    for (const r of BEDROOM_UPLIFT_REFURB) {
+      expect(r.low).toBeLessThan(r.high)
+      expect(r.budget).toBeGreaterThanOrEqual(r.low)
+      expect(r.budget).toBeLessThanOrEqual(r.high)
+      expect(r.to).toBe(r.from + 1)
+    }
+  })
+})
+
+describe('the Python twin the scraper imports stays in step', () => {
+  // valuation.py runs on the VPS, in Python, in a different git repo, so it
+  // cannot import the TypeScript canon. The twin is checked in here so this
+  // test can read it; deploying means copying it to /root/scraper.
+  const py = read('scripts/lib/bedroom_uplift.py')
+
+  it('holds the same numbers, checked against the TypeScript values', () => {
+    for (const r of BEDROOM_UPLIFT_REFURB) {
+      // Interpolating the imported constant means the TS side is the source of
+      // truth: change it there and this test tells you the twin is stale.
+      const row = new RegExp(`\\(${r.from},\\s*${r.to}\\):\\s*\\(${r.low},\\s*${r.high},\\s*${r.budget}\\)`)
+      expect(`${r.from}->${r.to}: ${row.test(py)}`).toBe(`${r.from}->${r.to}: true`)
+    }
+  })
+
+  it('has the same number of rows, so neither side can gain one quietly', () => {
+    const rows = py.match(/\(\d,\s*\d\):\s*\(/g) ?? []
+    expect(rows).toHaveLength(BEDROOM_UPLIFT_REFURB.length)
+  })
+
+  it('returns None outside the table on the Python side too', () => {
+    expect(py).toMatch(/return None/)
+    expect(py).toMatch(/None means "no figure"/)
+  })
+
+  it('names its canon, so whoever edits it knows to edit both', () => {
+    expect(py).toMatch(/the Python twin of api\/lib\/brrr-offer\.ts/)
   })
 })

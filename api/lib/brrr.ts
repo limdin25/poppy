@@ -124,7 +124,9 @@ export interface Qualification {
   interest_level?: string | null;       // viewings/offers so far
   offer_reaction?: string | null;
   best_price_indicated?: string | null; // any figure the AGENT hinted would get it done
-  viewing_availability?: string | null;
+  viewing_availability?: string | null; // now "is a builder visit easy to arrange", we never view
+  video_walkthrough?: string | null;    // did we ask for one, and did they send it
+  branch_contact_name?: string | null;  // who we spoke to, so the next call asks for them by name
   summary?: string | null;
   action_required?: string | null;
 }
@@ -147,7 +149,12 @@ export const QUALIFICATION_QUESTIONS: Array<{ key: keyof Qualification; question
   { key: 'major_works', question: 'Major works planned / cladding issues? (flats)' },
   { key: 'offer_reaction', question: 'How did the offer feeler land?' },
   { key: 'best_price_indicated', question: 'What figure did the agent hint would get it done?' },
-  { key: 'viewing_availability', question: 'When can viewings happen?' },
+  // We never view a property ourselves: the builder does, and prices the refurb
+  // while he is there. So the question is whether we got the video that lets him
+  // quote without anybody driving to Sheffield.
+  { key: 'video_walkthrough', question: 'Did we ask for a video walkthrough, and did they agree?' },
+  { key: 'branch_contact_name', question: 'Who did we speak to at the branch?' },
+  { key: 'viewing_availability', question: 'Is a builder visit easy to arrange with them?' },
 ];
 
 /** Extract a structured qualification from the call transcript via Claude. */
