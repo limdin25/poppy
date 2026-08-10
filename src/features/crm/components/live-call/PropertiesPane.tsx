@@ -36,7 +36,15 @@ const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> 
   { key: 'viewing_availability', label: 'When can viewings happen?' },
 ];
 
+/** The five end states of a property call, in the order they are worth.
+ *
+ *  'figure_obtained' arrived 2026-08-10 with the script rewrite that has the
+ *  agent negotiate on the call. It is the best outcome there is: the branch has
+ *  said a number that would get it done and the deal is now on the director. It
+ *  gets its own button, and its own pipeline stage, because filing it as plain
+ *  Qualified hid the one thing Hugo actually has to act on. */
 const OUTCOMES: Array<{ key: string; label: string; cls: string }> = [
+  { key: 'figure_obtained', label: 'Figure obtained', cls: 'bg-[#B8860B] hover:bg-[#a2760a]' },
   { key: 'qualified', label: 'Qualified', cls: 'bg-[#2E7D43] hover:bg-[#276b39]' },
   { key: 'callback', label: 'Call back', cls: 'bg-[#3C5A87] hover:bg-[#33507a]' },
   { key: 'not_qualified', label: 'Not for us', cls: 'bg-[#6B7280] hover:bg-[#5b626d]' },
@@ -264,6 +272,10 @@ export default function PropertiesPane({
           {/* Outcome */}
           <div className="px-3 py-2.5">
             <Label>How did it go</Label>
+            <p className="mt-1 text-[10.5px] leading-snug text-[#9CA3AF]">
+              Got a number out of them? Type it in "Figure THEY mentioned" above,
+              then press Figure obtained.
+            </p>
             <div className="mt-1.5 grid grid-cols-2 gap-1.5">
               {OUTCOMES.map((o) => (
                 <button

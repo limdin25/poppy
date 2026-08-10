@@ -1,0 +1,15 @@
+# heyelsie.com
+#
+# Everything else is crawlable as before. This file exists for one reason: the
+# internal pages below must never turn up in a search result. /pedro-training in
+# particular hosts lessons from a paid course, re-published for one contractor
+# behind a PIN, and the page also carries a noindex meta tag.
+
+User-agent: *
+Disallow: /pedro-training
+Disallow: /hugo-training
+Disallow: /script
+Disallow: /blueprint
+Disallow: /rank-frame
+Disallow: /admin
+Disallow: /super

@@ -61,9 +61,23 @@ export function offerRange(
   const deal = property.deal || {};
 
   // Preferred: the valuation engine's own figures.
-  const engineMax = num(deal.offer_max) || num(deal.offer_price);
+  //
+  // TWO SHAPES, and both are real. valuation.py returns the offer NESTED, as
+  // deal.offer = { open, max, ladder, ... }. The Comps page in the browser
+  // used to flatten it to deal.offer_min / deal.offer_max before posting.
+  // Reading only the flat keys is how 157 properties reached Pedro's screen
+  // showing 70-75% of the ASKING PRICE while a real valuation sat in the row
+  // underneath: nothing errored, the fallback simply took over. Found on the
+  // live dialer 2026-08-10, Coniston Avenue NE31, which showed open £52,500
+  // against the engine's £56,500 and, worse, a walk-away of £56,250 against a
+  // true ceiling of £60,900. A silent fallback that produces a plausible
+  // number is more dangerous than one that produces none.
+  const nested = (deal.offer && typeof deal.offer === 'object'
+    ? deal.offer as Record<string, unknown>
+    : {});
+  const engineMax = num(nested.max) || num(deal.offer_max) || num(deal.offer_price);
   if (engineMax > 0) {
-    const engineMin = num(deal.offer_min);
+    const engineMin = num(nested.open) || num(deal.offer_min);
     return {
       min: Math.round(engineMin > 0 ? Math.min(engineMin, engineMax) : engineMax),
       max: Math.round(engineMax),
@@ -112,7 +126,13 @@ export function ladderText(
   if (isAuction) {
     return `AUCTION — your absolute maximum is ${fmtGBP(band.max)}, never go beyond it`;
   }
-  const arr = Array.isArray(deal?.ladder) ? (deal!.ladder as unknown[]) : [];
+  // Same two shapes as offerRange: the engine nests the ladder inside `offer`,
+  // the old browser flow flattened it onto the deal.
+  const nested = (deal?.offer && typeof deal.offer === 'object'
+    ? deal.offer as Record<string, unknown>
+    : {});
+  const src = Array.isArray(nested.ladder) ? nested.ladder : deal?.ladder;
+  const arr = Array.isArray(src) ? (src as unknown[]) : [];
   const steps = arr.map(num).filter((n) => n > 0);
   if (steps.length > 1) return steps.map((n) => fmtGBP(n)).join(', then ');
   return `${fmtGBP(band.min)}, climbing at most to ${fmtGBP(band.max)}`;

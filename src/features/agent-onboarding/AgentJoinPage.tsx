@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { downloadSignedAgreement } from '@/core/agreements/signedAgreementDoc';
 
 // The CRM login always lives on the app origin, even when this page is served
 // from go.heyelsie.com. Absolute so it works from either host.
@@ -7,16 +8,30 @@ const CRM_LOGIN_URL = 'https://app.heyelsie.com/login';
 /**
  * Public agent onboarding, the link an admin sends to a new hire.
  *
- * Flow (one page, staged):
- *   1. sign    read the agreement, type name, draw a signature
- *   2. confirm a pop-up of tick-box acknowledgements (understand hours, pay,
- *              breaks, trial, taxes) so there is no way they did not read it
- *   3. email   enter email, we email a 6-digit code (POST /sign)
- *   4. verify  enter the code + choose a password, account created (POST /verify)
- *   5. done    download the signed agreement + log into the CRM
+ * One page, two modes, decided by the agreement itself:
  *
- * Renders outside the app Layout (no auth). The agreement text + the open/closed
- * gate come from /api/agent-onboarding/config.
+ *   mode 'account'   (/join, the B2B Sales Closer agreement)
+ *     1. sign    read the agreement, type name, draw a signature
+ *     2. confirm a pop-up of tick-box acknowledgements so there is no way they
+ *                did not read it
+ *     3. email   enter email, we email a 6-digit code (POST /sign)
+ *     4. verify  enter the code + choose a password, account created (POST /verify)
+ *     5. done    download the signed agreement + log into the CRM
+ *
+ *   mode 'sign_only' (/join/property, for somebody who already works here and
+ *                     already has a CRM login)
+ *     1. sign    same
+ *     2. confirm same
+ *     3. email   confirm their email and submit (POST /sign-only)
+ *     4. done    download the signed agreement
+ *     No password, no 6-digit code, and no account is created or changed.
+ *
+ * The role comes from the URL: /join/<slug>. Plain /join is the original
+ * agreement and is unchanged.
+ *
+ * Renders outside the app Layout (no auth) and uses no router, so the slug is
+ * read straight off the pathname (go.heyelsie.com serves this page without a
+ * Router around it).
  */
 
 interface Term {
@@ -24,16 +39,22 @@ interface Term {
   body: string;
 }
 interface Agreement {
+  slug: string;
+  roleLabel: string | null;
   title: string;
   intro: string;
   terms: Term[];
+  acks: string[];
   company: string;
+  mode: 'account' | 'sign_only';
+  version: number;
 }
 
 type Stage = 'loading' | 'closed' | 'sign' | 'email' | 'verify' | 'done';
 
-// The tick-box acknowledgements shown in the pop-up before the signature is
-// finalised. Every one must be checked to continue.
+// Fallback acknowledgements for the original agreement, used only if the row
+// has none stored. The live tick boxes come from the agreement itself, so each
+// role confirms its own terms.
 const ACKS = [
   'I understand the working hours: Monday to Friday, 10:00am to 6:00pm UK time, with a 1 hour break.',
   "I understand my pay: a weekly salary paid on Monday, plus 50% commission on each client's first month.",
@@ -42,9 +63,17 @@ const ACKS = [
   'I understand I am responsible for my own taxes and equipment, and I will keep everything confidential.',
 ];
 
+/** /join → null, /join/property → "property". */
+function slugFromPath(): string | null {
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  const m = path.match(/^\/join\/([a-z0-9][a-z0-9-]*)\/?$/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
 export default function AgentJoinPage() {
   const [stage, setStage] = useState<Stage>('loading');
   const [agreement, setAgreement] = useState<Agreement | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -63,20 +92,29 @@ export default function AgentJoinPage() {
   // Captured when the acknowledgements are confirmed, so they survive to the
   // email/verify/done stages (the canvas is unmounted after the sign stage).
   const [signaturePng, setSignaturePng] = useState<string | null>(null);
-  const [signedDate, setSignedDate] = useState('');
+  const [signedAt, setSignedAt] = useState<Date | null>(null);
 
   // Acknowledgement pop-up.
   const [showAck, setShowAck] = useState(false);
-  const [acks, setAcks] = useState<boolean[]>(Array(ACKS.length).fill(false));
+  const [acks, setAcks] = useState<boolean[]>([]);
+
+  const signOnly = agreement?.mode === 'sign_only';
+  const ackList = agreement && agreement.acks.length ? agreement.acks : ACKS;
 
   useEffect(() => {
-    document.title = 'Join the team | HeyElsie';
-    fetch('/api/agent-onboarding/config')
-      .then((r) => r.json())
-      .then((j) => {
-        if (!j?.ok) { setStage('closed'); return; }
-        setAgreement(j.agreement);
-        setStage(j.open ? 'sign' : 'closed');
+    // Neutral until the agreement says which company it is, so the property
+    // page never flashes the wrong name in the tab.
+    document.title = 'Join the team';
+    const slug = slugFromPath();
+    fetch(`/api/agent-onboarding/config${slug ? `?slug=${encodeURIComponent(slug)}` : ''}`)
+      .then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }))
+      .then(({ status, body }) => {
+        if (status === 404) { setNotFound(true); setStage('closed'); return; }
+        if (!body?.ok) { setStage('closed'); return; }
+        setAgreement(body.agreement);
+        // The company differs per role (HeyElsie for sales, Unico for property).
+        if (body.agreement?.company) document.title = `Join the team | ${body.agreement.company}`;
+        setStage(body.open ? 'sign' : 'closed');
       })
       .catch(() => setStage('closed'));
   }, []);
@@ -126,7 +164,7 @@ export default function AgentJoinPage() {
     setError(null);
     if (!name.trim()) { setError('Please type your full name.'); return; }
     if (!hasInk) { setError('Please sign in the box.'); return; }
-    setAcks(Array(ACKS.length).fill(false));
+    setAcks(Array(ackList.length).fill(false));
     setShowAck(true);
   };
 
@@ -134,7 +172,7 @@ export default function AgentJoinPage() {
   const confirmAck = () => {
     const png = canvasRef.current?.toDataURL('image/png') ?? null;
     setSignaturePng(png);
-    setSignedDate(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }));
+    setSignedAt(new Date());
     setShowAck(false);
     setError(null);
     setStage('email');
@@ -151,12 +189,38 @@ export default function AgentJoinPage() {
       const res = await fetch('/api/agent-onboarding/sign', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), signaturePng }),
+        body: JSON.stringify({ slug: agreement?.slug, name: name.trim(), email: email.trim(), signaturePng }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setError(j.error || 'Could not send the code.'); return; }
       setSignupId(j.signupId);
       setStage('verify');
+    } catch {
+      setError('Network error, please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // sign_only: record the signature against the agreement and stop. No account
+  // is created, and an email that already has one is fine.
+  const submitSignature = async () => {
+    setError(null);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
+      setError('Please enter a valid email.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/agent-onboarding/sign-only', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: agreement?.slug, name: name.trim(), email: email.trim(), signaturePng }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(j.error || 'Could not save your signature.'); return; }
+      setStage('done');
+      window.scrollTo(0, 0);
     } catch {
       setError('Network error, please try again.');
     } finally {
@@ -186,48 +250,36 @@ export default function AgentJoinPage() {
     }
   };
 
-  // Build a self-contained signed copy the worker can keep (opens + prints to PDF).
+  // A self-contained signed copy the worker can keep (opens + prints to PDF).
   const downloadAgreement = () => {
     if (!agreement) return;
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const sections = agreement.terms
-      .map((t) => `<h2 style="font-size:16px;margin:18px 0 4px">${esc(t.heading)}</h2><p style="margin:0 0 10px;color:#333">${esc(t.body)}</p>`)
-      .join('');
-    const sig = signaturePng
-      ? `<img src="${signaturePng}" alt="Signature" style="max-width:320px;display:block;margin-top:10px;border:1px solid #eee;border-radius:8px;padding:6px"/>`
-      : '';
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(agreement.title)}</title></head>
-<body style="font-family:Inter,Arial,sans-serif;max-width:760px;margin:40px auto;color:#1A1A1A;line-height:1.6;padding:0 24px">
-<div style="font-weight:800;font-size:20px;margin-bottom:6px">${esc(agreement.company)}</div>
-<h1 style="font-size:26px;margin:0 0 8px">${esc(agreement.title)}</h1>
-<p style="color:#555">${esc(agreement.intro)}</p>
-${sections}
-<hr style="margin:28px 0;border:none;border-top:1px solid #ddd">
-<div><strong>Signed by:</strong> ${esc(name)}</div>
-<div><strong>Date:</strong> ${esc(signedDate)}</div>
-${sig}
-<p style="color:#999;font-size:12px;margin-top:24px">Generated by ${esc(agreement.company)} when you signed your working agreement.</p>
-</body></html>`;
-    const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${agreement.company}-Working-Agreement-${name.replace(/[^a-z0-9]+/gi, '-') || 'signed'}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadSignedAgreement({
+      company: agreement.company,
+      title: agreement.title,
+      intro: agreement.intro,
+      terms: agreement.terms,
+      acks: ackList,
+      fullName: name,
+      email,
+      signedAt: signedAt ?? new Date(),
+      signaturePng,
+      slug: agreement.slug,
+      version: agreement.version,
+    });
   };
 
   const company = agreement?.company || 'HeyElsie';
-  const allAcked = acks.every(Boolean);
+  // The badge follows the company on the agreement, so the property page reads
+  // U for Unico rather than the HeyElsie H.
+  const companyInitial = company.trim().charAt(0).toUpperCase() || 'H';
+  const allAcked = acks.length > 0 && acks.every(Boolean);
 
   return (
     <div className="min-h-screen bg-[#F7F7F4] text-[#1A1A1A]">
       <header className="bg-white border-b border-[#E5E7EB]">
         <div className="max-w-[760px] mx-auto px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-[9px] bg-[#3C5A87] text-white grid place-items-center font-extrabold">H</span>
+            <span className="w-8 h-8 rounded-[9px] bg-[#3C5A87] text-white grid place-items-center font-extrabold">{companyInitial}</span>
             <span className="font-extrabold text-[17px]">{company}</span>
           </div>
           <span className={`text-[12px] font-semibold px-3 py-1 rounded-full ${stage === 'done' ? 'bg-[#DEF3E8] text-[#2E7D5B]' : 'bg-[#EEF2F8] text-[#3C5A87]'}`}>
@@ -238,14 +290,18 @@ ${sig}
 
       <main className="max-w-[760px] mx-auto px-5 py-8 pb-24">
         {stage === 'loading' && (
-          <div className="text-center py-24 text-[#6B7280]">Loading…</div>
+          <div className="text-center py-24 text-[#6B7280]">Loading</div>
         )}
 
         {stage === 'closed' && (
           <div className="bg-white border border-[#E5E7EB] rounded-2xl p-8 text-center">
-            <h1 className="text-[22px] font-extrabold mb-2">Onboarding is closed</h1>
+            <h1 className="text-[22px] font-extrabold mb-2">
+              {notFound ? 'This link is not active' : 'Onboarding is closed'}
+            </h1>
             <p className="text-[#6B7280] text-[15px]">
-              We are not taking new agents through this link right now. Please contact your manager.
+              {notFound
+                ? 'There is no agreement at this address. Please check the link your manager sent you.'
+                : 'We are not taking new agents through this link right now. Please contact your manager.'}
             </p>
           </div>
         )}
@@ -253,6 +309,11 @@ ${sig}
         {stage === 'sign' && agreement && (
           <>
             <h1 className="text-[26px] sm:text-[30px] font-extrabold tracking-tight mb-1.5">{agreement.title}</h1>
+            {agreement.roleLabel && (
+              <div className="inline-block text-[12px] font-semibold text-[#3C5A87] bg-[#EEF2F8] px-3 py-1 rounded-full mb-3">
+                {agreement.roleLabel}
+              </div>
+            )}
             <p className="text-[#46514B] text-[15px] mb-6">{agreement.intro}</p>
 
             <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-8 space-y-4">
@@ -280,8 +341,9 @@ ${sig}
                   ref={canvasRef}
                   className="w-full h-40 bg-white border border-dashed border-[#3C5A87]/60 rounded-xl touch-none cursor-crosshair block"
                 />
+                <p className="text-[12px] text-[#9CA3AF] mt-1.5 sm:hidden">Draw your signature with your finger.</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={openAck}
                   className="bg-[#3C5A87] text-white font-semibold text-[15px] px-6 py-3 rounded-xl hover:bg-[#33507a]"
@@ -300,23 +362,31 @@ ${sig}
 
         {stage === 'email' && (
           <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-8 max-w-md mx-auto">
-            <h1 className="text-[22px] font-extrabold mb-1.5">What is your email?</h1>
-            <p className="text-[#6B7280] text-[14px] mb-5">We will send you a 6-digit code to confirm it. This becomes your CRM login.</p>
+            <h1 className="text-[22px] font-extrabold mb-1.5">
+              {signOnly ? 'Confirm your email' : 'What is your email?'}
+            </h1>
+            <p className="text-[#6B7280] text-[14px] mb-5">
+              {signOnly
+                ? 'We will file your signed agreement against this address and send you a copy to keep.'
+                : 'We will send you a 6-digit code to confirm it. This becomes your CRM login.'}
+            </p>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void sendCode()}
+              onKeyDown={(e) => e.key === 'Enter' && void (signOnly ? submitSignature() : sendCode())}
               placeholder="you@example.com"
               className="w-full h-12 px-4 border border-[#E5E7EB] rounded-xl text-[15px] mb-3 focus:outline-none focus:ring-2 focus:ring-[#3C5A87]/30"
             />
             {error && <p className="text-[13px] text-[#B42318] mb-3">{error}</p>}
             <button
-              onClick={() => void sendCode()}
+              onClick={() => void (signOnly ? submitSignature() : sendCode())}
               disabled={busy}
               className="w-full bg-[#3C5A87] text-white font-semibold text-[15px] py-3 rounded-xl hover:bg-[#33507a] disabled:opacity-60"
             >
-              {busy ? 'Sending…' : 'Send code'}
+              {signOnly
+                ? (busy ? 'Saving your signature' : 'Submit my signed agreement')
+                : (busy ? 'Sending' : 'Send code')}
             </button>
             <button onClick={() => { setError(null); setStage('sign'); }} className="w-full text-[13px] text-[#6B7280] mt-3 hover:text-[#1A1A1A]">
               Back to the agreement
@@ -362,7 +432,7 @@ ${sig}
               disabled={busy}
               className="w-full bg-[#3C5A87] text-white font-semibold text-[15px] py-3 rounded-xl hover:bg-[#33507a] disabled:opacity-60"
             >
-              {busy ? 'Creating your account…' : 'Create my account'}
+              {busy ? 'Creating your account' : 'Create my account'}
             </button>
             <button onClick={() => { setError(null); void sendCode(); }} disabled={busy} className="w-full text-[13px] text-[#6B7280] mt-3 hover:text-[#1A1A1A] disabled:opacity-60">
               Did not get it? Resend code
@@ -373,16 +443,28 @@ ${sig}
         {stage === 'done' && (
           <div className="bg-white border border-[#E5E7EB] rounded-2xl p-8 text-center max-w-md mx-auto">
             <div className="w-16 h-16 rounded-full bg-[#DEF3E8] text-[#2E7D5B] grid place-items-center text-3xl mx-auto mb-5">✓</div>
-            <h1 className="text-[24px] font-extrabold mb-2">You are in, {name.split(' ')[0]}!</h1>
+            <h1 className="text-[24px] font-extrabold mb-2">
+              {signOnly ? `Thank you, ${name.split(' ')[0]}!` : `You are in, ${name.split(' ')[0]}!`}
+            </h1>
             <p className="text-[#6B7280] text-[15px] mb-6">
-              Your agent account is ready. Log in with <strong className="text-[#1A1A1A]">{email}</strong> and the password you just set.
+              {signOnly ? (
+                <>
+                  Your signed agreement is saved and a copy is on its way to{' '}
+                  <strong className="text-[#1A1A1A]">{email}</strong>. Nothing else to do, carry on in the CRM
+                  with the login you already use.
+                </>
+              ) : (
+                <>
+                  Your agent account is ready. Log in with <strong className="text-[#1A1A1A]">{email}</strong> and the password you just set.
+                </>
+              )}
             </p>
             <div className="flex flex-col gap-2.5">
               <a
                 href={CRM_LOGIN_URL}
                 className="inline-block bg-[#3C5A87] text-white font-semibold text-[15px] px-6 py-3 rounded-xl hover:bg-[#33507a]"
               >
-                Log into the CRM
+                {signOnly ? 'Go to the CRM' : 'Log into the CRM'}
               </a>
               <button
                 onClick={downloadAgreement}
@@ -402,11 +484,11 @@ ${sig}
             <h2 className="text-[20px] font-extrabold mb-1">Before you sign</h2>
             <p className="text-[#6B7280] text-[14px] mb-4">Please tick each box to confirm you have read and understood.</p>
             <div className="space-y-2.5">
-              {ACKS.map((label, i) => (
+              {ackList.map((label, i) => (
                 <label key={i} className="flex items-start gap-3 p-3 border border-[#E5E7EB] rounded-xl cursor-pointer hover:bg-[#F9FAFB]">
                   <input
                     type="checkbox"
-                    checked={acks[i]}
+                    checked={acks[i] ?? false}
                     onChange={(e) => setAcks(acks.map((v, j) => (j === i ? e.target.checked : v)))}
                     className="mt-0.5 w-5 h-5 accent-[#3C5A87] flex-shrink-0"
                   />

@@ -79,6 +79,18 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v : v == null ? '' : String(v);
 }
 
+/** What the property is worth today, out of either deal shape.
+ *  valuation.py returns deal.cmv = { estimate, confidence, ... }; the old
+ *  browser Comps page sent a bare number. One helper so the two callers here
+ *  cannot drift apart. */
+function cmvOf(deal: Record<string, unknown> | null | undefined): number {
+  const c = deal?.cmv;
+  const n = typeof c === 'object' && c !== null
+    ? Number((c as Record<string, unknown>).estimate)
+    : Number(c);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 export function usePropertyListings(phone: string | null | undefined) {
   const digits = (phone ?? '').replace(/\D/g, '');
   const enabled = digits.length >= 9;
@@ -105,15 +117,27 @@ export function usePropertyListings(phone: string | null | undefined) {
         offer_high_pct: r.offer_high_pct ?? 75,
       };
       const band = offerRange(r, pct);
+      // valuation.py NESTS its answer (deal.cmv = {estimate, confidence, ...},
+      // deal.offer = {open, max, ladder, flags, verdict}); the old browser Comps
+      // page flattened it. Both shapes are in the table, so read both. Reading
+      // only the flat keys is what made a fully valued property show a grey
+      // "no valuation" chip beside a real GBP 81,224 figure, and it is the same
+      // fault that put a percentage of the asking price in the offer strip.
+      const cmvObj = (deal.cmv && typeof deal.cmv === 'object')
+        ? deal.cmv as Record<string, unknown> : null;
+      const offerObj = (deal.offer && typeof deal.offer === 'object')
+        ? deal.offer as Record<string, unknown> : {};
       const isAuction = deal.is_auction === true || deal.is_auction === '1'
-        || String(deal.verdict ?? '').includes('auction');
-      const flagCodes = Array.isArray(deal.flags) ? (deal.flags as unknown[]).map(str) : [];
+        || String(offerObj.verdict ?? deal.verdict ?? '').includes('auction');
+      const flagSrc = Array.isArray(offerObj.flags) ? offerObj.flags
+        : (Array.isArray(deal.flags) ? deal.flags : []);
+      const flagCodes = (flagSrc as unknown[]).map(str);
       return {
         ...r,
         offerMin: band.min,
         offerMax: band.max,
         ladder: ladderText(deal, band, isAuction),
-        confidence: str(deal.cmv_confidence) || 'unknown',
+        confidence: str(cmvObj?.confidence ?? deal.cmv_confidence) || 'unknown',
         evidence: (Array.isArray(deal.evidence) ? (deal.evidence as unknown[]) : [])
           .map(str).filter(Boolean).slice(0, 3),
         flags: flagCodes.map((c) => FLAG_NOTES[c] ?? c).filter(Boolean),
@@ -144,8 +168,11 @@ export function scriptTokensFor(l: PropertyListing | null | undefined): Record<s
     property_type: (l.property_type ?? '').toLowerCase(),
     days_on_market: l.days_on_market ?? '',
     agency: l.agent_name ?? '',
-    property_worth: l.deal?.cmv
-      ? `${gbpShort(l.deal.cmv)}${l.confidence !== 'unknown' ? ` (${l.confidence} confidence)` : ''}`
+    // Same nesting again: cmv is an object, so gbpShort on it printed a dash.
+    // This string is a script token the agent reads aloud, so "worth about —"
+    // is not a cosmetic bug, it is Pedro saying nothing where a number belongs.
+    property_worth: cmvOf(l.deal) > 0
+      ? `${gbpShort(cmvOf(l.deal))}${l.confidence !== 'unknown' ? ` (${l.confidence} confidence)` : ''}`
       : 'not established',
     offer_open: gbpShort(l.offerMin),
     offer_ceiling: gbpShort(l.offerMax),

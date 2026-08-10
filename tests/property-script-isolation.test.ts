@@ -148,6 +148,65 @@ describe('the script itself', () => {
     expect(html).toMatch(/not authorised to make a formal offer/i)
   })
 
+  it('answers "who is calling" and "what company", the two he used to freeze on', () => {
+    // Hugo, 2026-08-10: an estate agent asks both on nearly every cold call and
+    // the script had no answer anywhere in it.
+    expect(html).toMatch(/who's calling/i)
+    expect(html).toMatch(/what company are you with/i)
+    // Said out loud as Unico; the legal name only if they press.
+    expect(html).toContain('Unico')
+    expect(html).toContain('Ulinc Unico Group Limited')
+    expect(html).toContain('11197856')
+    expect(html).toContain('483 Green Lanes')
+    // A real person, working with the director, at a real company.
+    expect(html).toMatch(/I work with (our director )?Hugo/i)
+  })
+
+  it('has him NEGOTIATE, with the director as a lever used later', () => {
+    // The old stage 2 defused the whole call before it started with "then he
+    // can call you back himself". That sentence must not come back.
+    expect(html).not.toMatch(/Then he can call you back himself/i)
+    expect(html).toMatch(/When to play the director card/i)
+    // The offer without offering: the wording IS the technique.
+    expect(html).toMatch(/if we were to offer/i)
+    expect(html).not.toMatch(/I'd like to offer/i)
+    expect(html).toMatch(/am I in the ballpark/i)
+    // And he asks THEM for a figure.
+    expect(html).toMatch(/what sort of figure do you think would actually get it done/i)
+  })
+
+  it('spells the money out rung by rung instead of "one step at a time"', () => {
+    for (const rung of ['Rung 0.', 'Rung 1.', 'Rung 2.', 'Rung 3.', 'Rung 4.']) {
+      expect(html).toContain(rung)
+    }
+    expect(html).toMatch(/Say <b>one<\/b> number/i)
+    expect(html).toMatch(/Never<\/b> say the walk-away figure out loud/i)
+    expect(html).toMatch(/Never<\/b> bid against yourself/i)
+  })
+
+  it('carries a real set of estate-agent objections, not four', () => {
+    // The plumber script has dozens. This one had nine, which is why Pedro
+    // would have been guessing on his first day.
+    const panels = html.match(/<details class="branch obj">/g) ?? []
+    expect(panels.length).toBeGreaterThanOrEqual(24)
+    for (const objection of [
+      /cash buyer, or do you need a mortgage/i,
+      /Are you a sourcer/i,
+      /don't deal with investors/i,
+      /mailing list/i,
+      /You'll have to view it before/i,
+      /Put it in writing/i,
+      /The vendor won't accept that/i,
+      /We've had higher offers/i,
+      /How quickly could you complete/i,
+      /proof of funds/i,
+      /Are you chain free/i,
+      /branch manager/i,
+    ]) {
+      expect(html).toMatch(objection)
+    }
+  })
+
   it('has no long dashes, curly quotes or ellipsis characters', () => {
     // A standing repo rule. In SMS it also triples the cost; here it is simply
     // house style, and it is enforced rather than remembered.

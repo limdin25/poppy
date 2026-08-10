@@ -37,7 +37,9 @@ test.describe('Dialer Pro — the Houses call', () => {
     // COL 3: Houses is present and selected first, and the two plumber tabs are
     // gone. Coach stays, because the live AI coach works on this call too.
     await expect(page.getByRole('button', { name: /Houses/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Coach/ })).toBeVisible()
+    // Exact: the CRM header gained a "Coach: ON" pill, so a loose /Coach/ now
+    // matches two buttons and fails on strict mode. The tab is the one we mean.
+    await expect(page.getByRole('button', { name: 'Coach', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: /Messages/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /Calculator/ })).toBeHidden()
     await expect(page.getByRole('button', { name: /Objections/ })).toBeHidden()

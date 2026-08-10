@@ -101,10 +101,23 @@ describe('the human path is untouched by the removal', () => {
     expect(OUTCOME).toMatch(/status:\s*403/)
   })
 
-  it('only accepts the four outcomes', () => {
-    expect(OUTCOME).toMatch(/const OUTCOMES = \['qualified', 'not_qualified', 'callback', 'no_answer'\]/)
+  it('only accepts the five outcomes', () => {
+    // 'figure_obtained' joined the list on 2026-08-10, when the script rewrite
+    // put the money conversation in the agent's hands: the common end state is
+    // now "the branch said a number and it is on the director", which needs its
+    // own state and its own pipeline stage.
+    expect(OUTCOME).toMatch(
+      /const OUTCOMES = \['qualified', 'figure_obtained', 'not_qualified', 'callback', 'no_answer'\]/)
     // An allowlist, never the raw body value straight into the update.
     expect(OUTCOME).toMatch(/OUTCOMES\.includes\(outcome\)/)
+  })
+
+  it('a figure out of the agent files a deal and lands it in its own stage', () => {
+    expect(OUTCOME).toMatch(/const PIPELINE_OUTCOMES: readonly Outcome\[\] = \['qualified', 'figure_obtained'\]/)
+    expect(OUTCOME).toMatch(/PIPELINE_OUTCOMES\.includes\(outcome\)/)
+    expect(OUTCOME).toMatch(/next_step: 'awaiting_director' as const/)
+    expect(read('api/lib/brrr.ts')).toMatch(
+      /awaiting_director: \{ name: 'Awaiting director'/)
   })
 
   it('records the call before anything else can go wrong', () => {

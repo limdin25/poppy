@@ -31,12 +31,18 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 const RESEND_WEBHOOK_SECRET_ENV = Deno.env.get('RESEND_WEBHOOK_SECRET') ?? '';
-// Inbound recipient allowlist domain (e.g. "heyelsie.com"). No default —
-// if unset we fail closed rather than accepting (or hardcoding) a domain.
-const CRM_INBOUND_EMAIL_DOMAIN = (Deno.env.get('CRM_INBOUND_EMAIL_DOMAIN') ?? '')
-  .trim()
+// Inbound recipient allowlist, comma-separated domains (e.g.
+// "heyelsie.com,unicohost.com"). No default — if unset we fail closed rather
+// than accepting (or hardcoding) a domain. Widened from a single domain on
+// 2026-08-10 when pedro@unicohost.com became Pedro Houses' address for
+// estate-agent email: the Resend webhook fires for EVERY receiving domain on
+// the account, and a single-domain allowlist meant adding his domain would
+// have silently dropped mail to the other one.
+const CRM_INBOUND_EMAIL_DOMAINS = (Deno.env.get('CRM_INBOUND_EMAIL_DOMAIN') ?? '')
   .toLowerCase()
-  .replace(/^@/, '');
+  .split(',')
+  .map((d) => d.trim().replace(/^@/, ''))
+  .filter(Boolean);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -325,12 +331,12 @@ serve(async (req: Request) => {
     return ok({ note: 'no from' });
   }
 
-  // Only accept emails delivered to the configured CRM inbound domain
-  // (CRM_INBOUND_EMAIL_DOMAIN). Resend's MX can also catch other domains
-  // pointed at it (DMARC reports, postmaster bounces) — drop those at
-  // webhook intake so the CRM only ever sees its own domain's traffic.
-  // If the env var is unset, fail closed instead of guessing a domain.
-  if (!CRM_INBOUND_EMAIL_DOMAIN) {
+  // Only accept emails delivered to a configured CRM inbound domain.
+  // Resend's MX can also catch other domains pointed at it (DMARC reports,
+  // postmaster bounces) — drop those at webhook intake so the CRM only ever
+  // sees its own domains' traffic. If the env var is unset, fail closed
+  // instead of guessing a domain.
+  if (!CRM_INBOUND_EMAIL_DOMAINS.length) {
     console.error('[wk-email-webhook] CRM_INBOUND_EMAIL_DOMAIN not set — rejecting event');
     return new Response(
       JSON.stringify({ error: 'CRM_INBOUND_EMAIL_DOMAIN not configured' }),
@@ -338,8 +344,8 @@ serve(async (req: Request) => {
     );
   }
   const toEmail = toAddr.toLowerCase().trim();
-  if (!toEmail.endsWith(`@${CRM_INBOUND_EMAIL_DOMAIN}`)) {
-    console.log(`[wk-email-webhook] dropping recipient outside ${CRM_INBOUND_EMAIL_DOMAIN}: ${toEmail}`);
+  if (!CRM_INBOUND_EMAIL_DOMAINS.some((d) => toEmail.endsWith(`@${d}`))) {
+    console.log(`[wk-email-webhook] dropping recipient outside ${CRM_INBOUND_EMAIL_DOMAINS.join(',')}: ${toEmail}`);
     return ok({ note: 'recipient outside CRM inbound domain — dropped', to: toEmail });
   }
 

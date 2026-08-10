@@ -44,6 +44,12 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
 
   const conf = CONFIDENCE[listing.confidence] ?? CONFIDENCE.unknown;
   const noValuation = !listing.offerMax;
+  // valuation.py nests this: deal.cmv = { estimate, low, high, audit }. The old
+  // flow flattened it to a bare number, so read both.
+  const cmvRaw = listing.deal?.cmv as unknown;
+  const cmv = typeof cmvRaw === 'object' && cmvRaw !== null
+    ? Number((cmvRaw as Record<string, unknown>).estimate) || 0
+    : Number(cmvRaw) || 0;
 
   return (
     <div className="border-b border-[#E5E7EB] bg-white">
@@ -97,9 +103,14 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
         <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${conf.cls}`}>
           {conf.label}
         </span>
-        {listing.deal?.cmv ? (
+        {/* cmv is an OBJECT from valuation.py ({estimate, low, high, audit}),
+            not a number. Passing the object to gbpShort produced "worth about
+            — today" on every property, which reads as "we could not value
+            this" beside a perfectly good valuation. Same nesting mistake as
+            the offer band. */}
+        {cmv > 0 ? (
           <span className="text-[11px] text-[#6B7280]">
-            worth about {gbpShort(listing.deal.cmv)} today
+            worth about {gbpShort(cmv)} today
           </span>
         ) : null}
         {listing.isAuction && (

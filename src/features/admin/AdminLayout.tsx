@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   LogOut,
   Star,
+  GraduationCap,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -68,6 +69,7 @@ const navGroups = [
     items: [
       { to: '/admin/crm', icon: Headset, label: 'CRM' },
       { to: '/admin/phone-validation', icon: ShieldCheck, label: 'Phone Validator' },
+      { to: '/admin/training', icon: GraduationCap, label: 'Training' },
     ],
   },
   {

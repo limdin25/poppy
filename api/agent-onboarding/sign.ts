@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../src/integrations/supabase/client.js';
 import { sendEmail } from '../../src/integrations/resend/client.js';
 import { hashOnboardingCode, genOnboardingCode } from '../lib/onboarding.js';
+import { loadAgreement, recordSignature } from '../lib/agreements.js';
 
 export const config = { runtime: 'edge' };
 
@@ -11,12 +12,17 @@ export const config = { runtime: 'edge' };
  *
  * Guards: onboarding must be open; an email that already has an agent account
  * is bounced to the login instead of being re-onboarded.
+ *
+ * `slug` is optional and defaults to the original singleton row, so the plain
+ * /join link behaves exactly as it always has. Agreements marked 'sign_only'
+ * are rejected here: those are signed at api/agent-onboarding/sign-only.
  */
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
   try {
-    const { name, email, signaturePng } = (await req.json()) as {
+    const { slug, name, email, signaturePng } = (await req.json()) as {
+      slug?: string;
       name?: string;
       email?: string;
       signaturePng?: string;
@@ -30,11 +36,10 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     // Onboarding open?
-    const { data: agr } = await supabaseAdmin
-      .from('wk_agent_agreement')
-      .select('onboarding_open, company')
-      .eq('id', 1)
-      .single();
+    const agr = await loadAgreement(slug);
+    if (agr && agr.mode === 'sign_only') {
+      return Response.json({ error: 'This agreement does not create an account.' }, { status: 400 });
+    }
     if (agr && agr.onboarding_open === false) {
       return Response.json(
         { error: 'Onboarding is currently closed. Please contact your manager.' },
@@ -42,6 +47,7 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
     const company = agr?.company || 'HeyElsie';
+    const agreementSlug = agr?.slug || 'sales-closer';
 
     // Never onboard an email that already has an account — an existing agent, or
     // a business owner logging in with their real email. They should sign in, not
@@ -82,12 +88,27 @@ export default async function handler(req: Request): Promise<Response> {
         code_hash,
         code_expires_at,
         attempts: 0,
+        agreement_slug: agreementSlug,
       })
       .select('id')
       .single();
 
     if (error || !row) {
       return Response.json({ error: error?.message || 'Could not start onboarding' }, { status: 500 });
+    }
+
+    // File the immutable snapshot of the wording they just signed. Best effort:
+    // the signup row above is what the rest of this flow runs on, so a failure
+    // here must never stop a new hire mid-onboarding.
+    if (agr) {
+      await recordSignature({
+        agreement: agr,
+        fullName: cleanName,
+        email: cleanEmail,
+        signaturePng: signaturePng ?? null,
+        signupId: row.id as string,
+        req,
+      });
     }
 
     const html = `

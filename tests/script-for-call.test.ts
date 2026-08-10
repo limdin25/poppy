@@ -11,7 +11,7 @@
 // outlives a call was never exercised.
 
 import { describe, it, expect } from 'vitest'
-import { scriptForCall } from '../src/features/crm/lib/scriptForCall'
+import { scriptForCall, scriptFromLandingPath } from '../src/features/crm/lib/scriptForCall'
 
 const WATCHED_LEAD = 'contact-watched-the-video'
 const COLD_LEAD = 'contact-never-heard-of-us'
@@ -77,6 +77,42 @@ describe('scriptForCall — the close script belongs to one lead', () => {
       openedForContactId: null,
       currentLeadContactId: COLD_LEAD,
     })).toBe('cold_call')
+  })
+})
+
+describe('scriptFromLandingPath: a bare /dialer-pro opens in the agent\'s OWN room', () => {
+  // Hugo, 2026-08-10, after saying it ten times: the Google-reviews business is
+  // dead and Pedro must land on the property business. The sidebar Dialer link,
+  // bookmarks and History redials all open /admin/crm/dialer-pro with no query
+  // string, so the page resolves the default script from profiles.landing_path.
+  it('reads property_call off Pedro Houses\' landing_path', () => {
+    expect(scriptFromLandingPath('/admin/crm/dialer-pro?script=property_call')).toBe('property_call')
+  })
+
+  it('everyone with no landing_path keeps the cold script exactly', () => {
+    expect(scriptFromLandingPath(null)).toBe(null)
+    expect(scriptFromLandingPath(undefined)).toBe(null)
+    expect(scriptFromLandingPath('')).toBe(null)
+    expect(scriptFromLandingPath('   ')).toBe(null)
+  })
+
+  it('a landing_path that is not the dialer never changes the dialer', () => {
+    expect(scriptFromLandingPath('/admin/crm/inbox')).toBe(null)
+    expect(scriptFromLandingPath('/dashboard?script=property_call')).toBe(null)
+  })
+
+  it('never honours vsl_close as a standing default, that script belongs to one lead', () => {
+    expect(scriptFromLandingPath('/admin/crm/dialer-pro?script=vsl_close')).toBe(null)
+  })
+
+  it('ignores rubbish: junk script values, external URLs, missing query', () => {
+    expect(scriptFromLandingPath('/admin/crm/dialer-pro?script=DROP_TABLE')).toBe(null)
+    expect(scriptFromLandingPath('/admin/crm/dialer-pro')).toBe(null)
+    expect(scriptFromLandingPath('https://evil.example/dialer-pro?script=property_call')).toBe(null)
+  })
+
+  it('finds the script among other params, whatever the order', () => {
+    expect(scriptFromLandingPath('/admin/crm/dialer-pro?campaign=abc&script=property_call')).toBe('property_call')
   })
 })
 

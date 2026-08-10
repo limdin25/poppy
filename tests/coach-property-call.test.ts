@@ -51,7 +51,7 @@ describe('the coach knows it is a property call', () => {
     // sits on one line and the value it selects on the next.
     const lines = COACH.split('\n')
     lines.forEach((line, i) => {
-      if (!/\bPROPERTY_(STAGE_ORDER|SCRIPT_PROMPT|AGENT_SCRIPT_MD|CALL_CONTEXT)\b/.test(line)) return
+      if (!/\bPROPERTY_(STAGE_ORDER|SCRIPT_PROMPT|AGENT_SCRIPT_MD|CALL_CONTEXT|OBJECTIONS)\b/.test(line)) return
       if (/^\s*(\/\/|\*|const PROPERTY_)/.test(line)) return   // definitions and comments
       const window = [lines[i - 1] ?? '', line].join('\n')
       expect(window).toMatch(/isPropertyCall|callKind === 'property_call'/)
@@ -106,6 +106,56 @@ describe('the coach is told the right facts about the right thing', () => {
     expect(PAGE).toMatch(/from\('wk_contacts'\)\s*\n?\s*\.update\(\{ custom_fields: merged \}\)/)
     // Merged, never replaced: custom_fields also holds the agency and owner.
     expect(PAGE).toMatch(/\.\.\.\(row\?\.custom_fields \?\? \{\}\), \.\.\.facts/)
+  })
+})
+
+describe('the coach has the property objections, and only those', () => {
+  const block = COACH.slice(
+    COACH.indexOf('const PROPERTY_OBJECTIONS'),
+    COACH.indexOf('const PROPERTY_CALL_CONTEXT'),
+  )
+
+  it('replaces the workspace knowledge base instead of adding to it', () => {
+    // Every wk_coach_facts row is an Elsie product fact. On a call to somebody
+    // selling a house they are all wrong, and leaving them in is exactly how a
+    // card ends up mentioning Google reviews to an estate agent.
+    expect(COACH).toMatch(
+      /const baseFacts: CoachFact\[\] = isPropertyCall \? PROPERTY_OBJECTIONS : wsFacts;/)
+    // Campaign facts still override by key, on BOTH paths.
+    expect(COACH).toMatch(/\.\.\.baseFacts\.filter\(\(f\) => !overrideKeys\.has\(f\.key\)\),/)
+  })
+
+  it('answers the two questions that used to have no answer at all', () => {
+    expect(block).toMatch(/prop_who_is_calling/)
+    expect(block).toMatch(/prop_what_company/)
+    // The company, as it is said out loud, and the legal detail as the backup.
+    expect(block).toContain('Unico')
+    expect(block).toContain('11197856')
+    expect(block).toContain('483 Green Lanes')
+  })
+
+  it('carries the estate-agent objections the script now has panels for', () => {
+    for (const key of [
+      'prop_cash_or_mortgage', 'prop_are_you_a_sourcer', 'prop_no_investors',
+      'prop_mailing_list', 'prop_must_view_first', 'prop_formal_offer',
+      'prop_higher_offers', 'prop_vendor_wont_accept', 'prop_how_quickly',
+      'prop_proof_of_funds', 'prop_chain_free', 'prop_branch_manager',
+    ]) {
+      expect(block).toContain(key)
+    }
+  })
+
+  it('never puts the ceiling in the knowledge base', () => {
+    // The facts layer is quoted back verbatim by design, so a ceiling in here
+    // would be a ceiling said down the phone.
+    expect(block).not.toMatch(/offer_ceiling/)
+    expect(block).toMatch(/Never say the walk-away figure here either/)
+  })
+
+  it('has no long dashes, curly quotes or ellipsis characters', () => {
+    for (const ch of ['—', '–', '‘', '’', '“', '”', '…']) {
+      expect(block).not.toContain(ch)
+    }
   })
 })
 

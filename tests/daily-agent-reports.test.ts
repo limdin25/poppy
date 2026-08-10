@@ -477,6 +477,193 @@ describe('the grade: videos sent', () => {
   })
 })
 
+// Hugo 2026-08-10: "the Google business is dead ... now we are selling, we are
+// making offers on properties. That's what we are doing now."
+//
+// Pedro Houses' first real property day (60 calls to estate agents) was graded
+// by this cron against the HeyElsie reviews script and scored zero, with the
+// report telling him he "did not run the HeyElsie script", the script of a
+// business he is not in. A day with property_call-stamped calls now grades
+// against the property script.
+
+describe('property days are graded against the property business', () => {
+  const load = async () => import('../api/cron/daily-agent-reports')
+  const pconv = (agent: string[], caller: string[] = ['Hello, sales.'], scriptKey: string | null = 'property_call') => ({
+    id: 'p1', started_at: '2026-08-10T13:00:00Z', duration_sec: 120, status: 'completed',
+    disposition: null, company: 'Reeds Rains', script_key: scriptKey,
+    lines: [
+      { speaker: 'caller', body: caller[0] ?? 'Hello.' },
+      ...agent.map((b) => ({ speaker: 'agent', body: b })),
+      ...caller.slice(1).map((b) => ({ speaker: 'caller', body: b })),
+    ],
+  })
+
+  it('one stamped call marks the whole day as property', async () => {
+    // 15 of Pedro's 60 first-day calls carried NULL script_key because he had
+    // been dropped in the wrong room, the day is still a property day.
+    const { isPropertyDay } = await load()
+    expect(isPropertyDay([pconv(['x'], ['y'], null), pconv(['x'])] as never)).toBe(true)
+    expect(isPropertyDay([pconv(['x'], ['y'], null)] as never)).toBe(false)
+    expect(isPropertyDay([] as never)).toBe(false)
+  })
+
+  it('the handler branches BEFORE the sales grading, and has its own system prompt', () => {
+    expect(cron).toMatch(/if \(isPropertyDay\(rows\)\)/)
+    expect(cron).toMatch(/PROPERTY_SYSTEM/)
+    expect(cron).toMatch(/property deal-sourcing caller/i)
+  })
+
+  it('credits the intro even through mangled ASR ("Ugo at Unio")', async () => {
+    // The transcriber writes "I work with our director Ugo at Unio", and that IS
+    // the correct intro, said correctly, transcribed badly.
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([pconv([
+      'I work with our director Ugo at Unio, we buy in the area, cash.',
+    ])] as never)
+    expect(r.said_who_we_are).toBe(1)
+    expect(r.said_cash).toBe(1)
+  })
+
+  it('counts the availability opener and the checklist families', async () => {
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([pconv([
+      'Hi, I\'m calling about the three bed on Mill Lane, is that one still available?',
+      'Is it vacant or is there a tenant in?',
+      'What sort of condition is it in, does it need work?',
+      'Has it had much interest, any offers so far?',
+      'Do you know why they\'re selling?',
+      'How long\'s it been on with you, has the price come down at all?',
+      'Is it freehold or leasehold?',
+    ])] as never)
+    expect(r.asked_availability).toBe(1)
+    expect(r.asked_occupancy).toBe(1)
+    expect(r.asked_condition).toBe(1)
+    expect(r.asked_interest).toBe(1)
+    expect(r.asked_why_selling).toBe(1)
+    expect(r.asked_time_on_market).toBe(1)
+    expect(r.asked_tenure).toBe(1)
+  })
+
+  it('the offer without offering counts as a float, not a formal offer', async () => {
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([pconv([
+      'If we were to offer around £62,000, am I in the ballpark or am I a million miles off?',
+    ])] as never)
+    expect(r.floated_a_figure).toBe(1)
+    expect(r.made_formal_offer).toBe(0)
+  })
+
+  it('a figure only scores when the BRANCH says one, after the money is opened', async () => {
+    const { propertyScriptCheck } = await load()
+    // Branch names a number after the float: the score.
+    const scored = propertyScriptCheck([pconv(
+      ['If we were to offer around £62,000, am I in the ballpark?'],
+      ['Hello.', 'They\'d want closer to 70 grand, honestly.'],
+    )] as never)
+    expect(scored.lead_named_figure).toBe(1)
+    // "It's on at £150,000" in the availability chat is not a figure obtained.
+    const notScored = propertyScriptCheck([pconv(
+      ['Is that one still available?'],
+      ['It\'s on at £150,000 and yes it\'s available.'],
+    )] as never)
+    expect(notScored.lead_named_figure).toBe(0)
+  })
+
+  it('asking THEM for a figure is its own count', async () => {
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([pconv([
+      'So what sort of figure do you think would actually get it done?',
+    ])] as never)
+    expect(r.asked_them_for_a_figure).toBe(1)
+  })
+
+  it('the script\'s own deflection lines are NOT rule breaks', async () => {
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([pconv([
+      'Of course. Nothing I\'ve said today is a formal offer, I\'m just trying to find out if we\'re in the right area.',
+      'Let me check Hugo\'s diary and come back to you, he\'d want to be there. What have you got free later in the week?',
+    ])] as never)
+    expect(r.made_formal_offer).toBe(0)
+    expect(r.booked_a_viewing).toBe(0)
+  })
+
+  it('a real formal offer and a real booking ARE rule breaks', async () => {
+    const { propertyScriptCheck } = await load()
+    const r = propertyScriptCheck([pconv([
+      'We\'re offering sixty two thousand and that\'s our formal offer.',
+      'Shall I book a viewing for Thursday at two?',
+    ])] as never)
+    expect(r.made_formal_offer).toBe(1)
+    expect(r.booked_a_viewing).toBe(1)
+  })
+
+  it('sourcer and course talk is flagged, agents hang up on course graduates', async () => {
+    const { propertyScriptCheck } = await load()
+    expect(propertyScriptCheck([pconv(['We\'re deal sourcers, I\'ve just done a course on this.'])] as never)
+      .sourcer_or_course_talk).toBe(1)
+    expect(propertyScriptCheck([pconv(['Of course, I\'ll do that.'])] as never)
+      .sourcer_or_course_talk).toBe(0)
+  })
+
+  it('grades live conversations only, never voicemail', async () => {
+    const { propertyScriptCheck } = await load()
+    const vm = {
+      id: 'v1', started_at: '2026-08-10T10:00:00Z', duration_sec: 20, status: 'completed',
+      disposition: 'Voicemail', company: 'Hunters', script_key: 'property_call',
+      lines: [
+        { speaker: 'caller', body: 'Please leave a message after the tone.' },
+        { speaker: 'agent', body: 'Hi, calling about the house on Mill Lane.' },
+      ],
+    }
+    expect(propertyScriptCheck([vm] as never).conversations_graded).toBe(0)
+  })
+
+  it('counts the outcome buttons by name, the property pipeline has its own', async () => {
+    const { dispositionCounts } = await load()
+    const m = dispositionCounts([
+      { ...pconv(['x']), disposition: 'Interested' },
+      { ...pconv(['x']), disposition: 'Interested' },
+      { ...pconv(['x']), disposition: null },
+    ] as never)
+    expect(m['interested']).toBe(2)
+    expect(m['none pressed']).toBe(1)
+  })
+
+  it('reads the property script live (DB copy first, bundled file as fallback)', () => {
+    expect(cron).toMatch(/from\('wk_property_call_script'\)/)
+    expect(cron).toMatch(/property-call-script\.html/)
+    // And the deploy ships the fallback file with the function.
+    const fns = (JSON.parse(read('vercel.json')) as {
+      functions: Record<string, { includeFiles?: string }>
+    }).functions
+    expect(fns['api/cron/daily-agent-reports.ts']?.includeFiles)
+      .toBe('src/core/content/property-call-script.html')
+  })
+
+  it('htmlToText keeps the words and drops the markup', async () => {
+    const { htmlToText } = await load()
+    const t = htmlToText('<style>.x{}</style><h2>The money</h2><p>Say <b>one</b> number &amp; stop.</p><!-- note -->')
+    expect(t).toContain('## The money')
+    expect(t).toContain('Say one number & stop.')
+    expect(t).not.toContain('<')
+  })
+
+  it('tells the model the ASR mangles proper nouns and never to coach off them', () => {
+    expect(cron).toMatch(/MANGLES PROPER NOUNS/i)
+    expect(cron).toMatch(/never coach anyone off a mangled name/i)
+  })
+
+  it('the property grade is figures out of branches, and the Houses tab must be used', () => {
+    expect(cron).toMatch(/figure out of the branch'?s mouth is the score/i)
+    expect(cron).toMatch(/houses_outcomes_logged/)
+    expect(cron).toMatch(/figures out of branches/) // the email headline
+  })
+
+  it('property rule breaks are the property ones, not the sales ones', () => {
+    expect(cron).toMatch(/formal_offer\|booked_viewing\|invented_fact\|said_ceiling/)
+  })
+})
+
 // Hugo 2026-07-27: "Are you sure fourteen plumbers said yes today and never got
 // anything. 100% sure? why?"
 //

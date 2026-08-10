@@ -52,6 +52,13 @@ const arg = (n, d) => {
   return hit ? hit.slice(n.length + 3) : d
 }
 const APPLY = process.argv.includes('--apply')
+// --refresh re-reads branches Pedro ALREADY has and rewrites the saved facts.
+// Needed because those facts are not a display detail: the live AI coach reads
+// offer_open, offer_ceiling and offer_ladder off the contact, so a valuation
+// that arrives (or a maths fix) after the branch was queued never reaches the
+// call unless something rewrites them. Without this the only way to correct a
+// queued branch is to unpick it by hand.
+const REFRESH = process.argv.includes('--refresh')
 const SETUP_ONLY = process.argv.includes('--setup-only')
 const PURSUE_ONLY = process.argv.includes('--pursue-only')
 const MAX_BRANCHES = parseInt(arg('branches', '25'), 10)
@@ -66,7 +73,15 @@ const STATUSES = arg('status', 'new,call_queued').split(',').map((s) => s.trim()
 
 // ── Fixed configuration ────────────────────────────────────────────────────
 const AGENT = {
-  email: 'pedrohouses@heyelsie.com',
+  // ONE address for login, sending and receiving: pedro@hostunico.com. It was
+  // pedro@unicohost.com for a few hours on 2026-08-10 until Hugo tried to sign
+  // in with the EMAIL address and hit invalid credentials; two identities one
+  // letter apart is a trap, so the login was changed to match the mailbox
+  // (hostunico.com is the domain we control and the one Resend sends from).
+  // It has to match the auth account, or this script finds nobody and creates
+  // a duplicate agent: the campaign, the number pin and the queue all hang off
+  // the existing id, so a twin would leave Pedro logging in to an empty room.
+  email: 'pedro@hostunico.com',
   name: 'Pedro Houses',
   // Property negotiations run long, so the plumber default of £10/day is low.
   dailyLimitPence: 3000,
@@ -192,9 +207,12 @@ async function loadProperties() {
   const all = []
   const PAGE = 1000
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from('brrr_properties')
+    let q = db.from('brrr_properties')
       .select('id, address, agent_phone, agent_name, asking_price, price_text, bedrooms, property_type, days_on_market, deal, status, call_channel, created_at, listing_url')
-      .eq('call_channel', 'ai')
+    // Normally only branches nobody has taken. Under --refresh, the ones Pedro
+    // already holds, so their saved figures can be rewritten in place.
+    q = REFRESH ? q.eq('call_channel', 'human') : q.eq('call_channel', 'ai')
+    const { data, error } = await q
       .not('agent_phone', 'is', null)
       .in('status', STATUSES)
       .order('created_at', { ascending: false })
@@ -215,11 +233,38 @@ function factsFor(branch, headline, settings) {
   const num = (v) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0 }
   const lowPct = settings.offer_low_pct ?? 70
   const highPct = settings.offer_high_pct ?? 75
-  const engineMax = num(deal.offer_max) || num(deal.offer_price)
+
+  // valuation.py NESTS its answer: deal.offer = { open, max, ladder, flags },
+  // deal.cmv = { estimate, confidence, ... }. The old browser Comps page
+  // flattened it to deal.offer_min / offer_max before posting, so both shapes
+  // exist in the wild and both must be read. Reading only the flat ones put
+  // 157 branches in Pedro's queue quoting 70-75% of the ASKING PRICE with a
+  // real valuation sitting underneath, and, because these same fields are what
+  // the live AI coach reads, it would have coached him to walk away GBP 4,650
+  // below the true ceiling. Nothing errored. It just quietly used the fallback.
+  // Kept in step with offerRange() in api/lib/brrr-offer.ts, which this file
+  // cannot import (it is .ts, this is a plain .mjs script).
+  const offer = (deal.offer && typeof deal.offer === 'object') ? deal.offer : {}
+  const cmvObj = (deal.cmv && typeof deal.cmv === 'object') ? deal.cmv : null
+  const cmv = cmvObj ? num(cmvObj.estimate) : num(deal.cmv)
+  const cmvConf = cmvObj ? cmvObj.confidence : deal.cmv_confidence
+
+  const engineMax = num(offer.max) || num(deal.offer_max) || num(deal.offer_price)
   const max = engineMax > 0 ? engineMax : Math.round(num(headline.asking_price) * highPct / 100)
-  const minRaw = engineMax > 0 ? num(deal.offer_min) : Math.round(num(headline.asking_price) * lowPct / 100)
+  const minRaw = engineMax > 0
+    ? (num(offer.open) || num(deal.offer_min))
+    : Math.round(num(headline.asking_price) * lowPct / 100)
   const min = minRaw > 0 && minRaw <= max ? minRaw : max
-  const ladder = Array.isArray(deal.ladder) ? deal.ladder.map(num).filter((n) => n > 0) : []
+  const ladderSrc = Array.isArray(offer.ladder) ? offer.ladder : deal.ladder
+  const ladder = Array.isArray(ladderSrc) ? ladderSrc.map(num).filter((n) => n > 0) : []
+  // The engine reports its reservations on the offer, plus any top-level
+  // warnings. Both matter to Pedro: "suspiciously_cheap_asking" is exactly the
+  // sort of thing to know before he opens his mouth.
+  const notes = [
+    ...(Array.isArray(offer.flags) ? offer.flags : []),
+    ...(Array.isArray(deal.warnings) ? deal.warnings : []),
+    ...(Array.isArray(deal.flags) ? deal.flags : []),
+  ].filter(Boolean)
   const addr = headline.address ?? ''
 
   return {
@@ -232,16 +277,20 @@ function factsFor(branch, headline, settings) {
     bedrooms: headline.bedrooms != null ? String(headline.bedrooms) : '',
     property_type: (headline.property_type ?? '').toLowerCase(),
     days_on_market: headline.days_on_market ?? '',
-    property_worth: deal.cmv
-      ? `${money(deal.cmv)}${deal.cmv_confidence ? ` (${deal.cmv_confidence} confidence)` : ''}`
+    property_worth: cmv > 0
+      ? `${money(cmv)}${cmvConf ? ` (${cmvConf} confidence)` : ''}`
       : 'not established',
     offer_open: money(min),
     offer_ceiling: money(max),
     offer_ladder: ladder.length > 1 ? ladder.map(money).join(', then ') : `${money(min)}, up to ${money(max)}`,
-    comp_evidence: Array.isArray(deal.evidence) && deal.evidence.length
-      ? deal.evidence.slice(0, 3).join(' · ') : 'no sold comparables on file',
-    valuation_notes: Array.isArray(deal.flags) && deal.flags.length
-      ? deal.flags.join(', ') : 'nothing unusual flagged',
+    // No distance in this sentence. cmv.ring_used is the engine's ring INDEX,
+    // not a number of metres, and "4 sold comparables within 1m" is a line
+    // Pedro would read out to an estate agent.
+    comp_evidence: cmvObj && num(cmvObj.n_used) > 0
+      ? `${cmvObj.n_used} sold comparables nearby put it at ${money(cmv)}`
+      : (Array.isArray(deal.evidence) && deal.evidence.length
+        ? deal.evidence.slice(0, 3).join(' · ') : 'no sold comparables on file'),
+    valuation_notes: notes.length ? notes.join(', ') : 'nothing unusual flagged',
     properties_count: String(branch.properties.length),
   }
 }

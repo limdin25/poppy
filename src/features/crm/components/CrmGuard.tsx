@@ -63,7 +63,11 @@ export default function CrmGuard({ children }: Props) {
   if (!user) {
     // One login for the whole app host — /login routes CRM staff straight back
     // here after auth (via the `from` state), receptionist owners to /dashboard.
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    // pathname AND search: the dialer's mode lives in the query
+    // (?script=property_call), and bouncing through login used to strip it,
+    // which dropped Pedro onto the PLUMBER script with his estate-agent queue
+    // still loaded behind it.
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
 
   // Hardcoded admins pass even if workspace_role column is null.

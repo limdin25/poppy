@@ -21,6 +21,8 @@
 // Node runtime, not edge: two Claude calls with adaptive thinking can run well
 // past the edge budget.
 
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '../../src/integrations/resend/client.js';
 
@@ -60,6 +62,9 @@ interface CallRow {
   status: string;
   disposition: string | null;
   company: string | null;
+  /** 'property_call' when the dialer room was the Houses one. NULL on plumber
+   *  calls and on property calls made before the room stamped it. */
+  script_key: string | null;
   lines: Line[];
 }
 
@@ -270,6 +275,288 @@ export function videoStats(pages: VslPageRow[], since: string, until: string) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// The PROPERTY business. Hugo, 2026-08-10: "the Google business is dead ...
+// now we are selling, we are making offers on properties. That's what we are
+// doing now." The first property calling day was graded by this cron against
+// the HeyElsie reviews script and scored zero, a report about a business the
+// agent is not in. A day with property_call-stamped calls is graded against
+// the property script instead; a sales day is graded exactly as before.
+// ---------------------------------------------------------------------------
+
+/** True when this agent's day was the property business. The 'property_call'
+ *  stamp comes from the dialer room; calls made from a mis-landed room carry
+ *  NULL, so one stamped call marks the whole day rather than requiring all. */
+export function isPropertyDay(calls: CallRow[]): boolean {
+  return calls.some((c) => c.script_key === 'property_call');
+}
+
+/** Rough text of an HTML script, good enough for a model to read as THE
+ *  SCRIPT. Headings kept, styles/notes markup dropped. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<h2[^>]*>/gi, '\n\n## ')
+    .replace(/<h3[^>]*>/gi, '\n\n### ')
+    .replace(/<(p|div|li|tr|br)[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** The property script, read live: the DB copy when an admin has saved one in
+ *  the dialer (wk_property_call_script.html), else the bundled default the
+ *  script pane falls back to. Same rule as the screen, so the report grades
+ *  the words Pedro was actually shown. */
+async function loadPropertyScript(): Promise<string> {
+  const { data } = await supabase
+    .from('wk_property_call_script')
+    .select('html')
+    .eq('id', 1)
+    .maybeSingle();
+  let html = (data?.html as string | null) ?? '';
+  if (!html) {
+    try {
+      html = readFileSync(
+        join(process.cwd(), 'src', 'core', 'content', 'property-call-script.html'),
+        'utf8',
+      );
+    } catch {
+      // Deployed without the file: the step counters still grade the day.
+      html = '';
+    }
+  }
+  return htmlToText(html);
+}
+
+// Detected from ASR text, so wide on purpose: the transcriber writes "Ugo at
+// Unio" for "Hugo at Unico" and the counts must not punish the transcriber.
+const P_AVAILABILITY = /still (available|on the market|for sale|up for sale|got (it|that one))|is (it|that one|this one) (still )?available/i;
+const P_INTRO = /(work|working) with .{0,30}(director|hugo|ugo)|director,? (hugo|ugo)|at uni?c?o\b|from uni?c?o\b|with uni?c?o\b|we buy in the area/i;
+const P_CASH = /\bcash\b/i;
+const P_ASKS_NAME = /who am i (speaking|talking)|who'?s (this|that)(,? sorry)?|what'?s your name|catch your name|sorry,? your name|by the way,? who/i;
+const P_OCCUPANCY = /vacant|tenant|tenanted|anybody (in|living)|somebody (in|living)|empty|occupied|lived in/i;
+const P_CONDITION = /condition|needs? (work|doing|much)|ready to move|refurb|modernis|liveable|livable|state of it|roof|damp|boiler|electrics/i;
+const P_INTEREST = /(much|any) interest|any offers|offers (so far|on it)|fall(en|s)? through|fell through/i;
+const P_MOTIVE = /why (are )?they('?re)? selling|why'?s it (for sale|up|on)|reason .{0,25}sell|in a hurry|motivated/i;
+const P_TIME_ON_MARKET = /how long('?s| has| is)? it been|been on (the market|with you)|price (come down|came down|dropped|reduced)|any reductions|reduced at all/i;
+const P_TENURE = /freehold|leasehold/i;
+/** Money in ASR text: "£62,000", "62k", "62 grand", "sixty two thousand". */
+const P_MONEY = /£ ?\d|\b\d{2,3}[.,]?\d{0,3} ?(k\b|grand|thousand)|\b(fifty|sixty|seventy|eighty|ninety|hundred)([- ]\w+)? (thousand|grand)/i;
+/** The offer WITHOUT offering: "if we were to offer around X, am I in the
+ *  ballpark". Also credited when a number is floated with offer language. */
+const P_FLOATS_FIGURE = /if we (were|was) to (offer|come in|go in)|in the ball ?park|million miles (off|away)|silly offer/i;
+const P_FLOAT_WORDS = /offer|stretch to|could (probably )?do|start(ing)? (at|around)|come in (at|around)|go in (at|around)/i;
+const P_ASKS_THEIR_FIGURE = /what (would|do you (think|reckon))[^.?!]{0,45}(take|accept|get it (done|over)|land|sell)|what sort of (figure|number|price)|what('?s| is) the (figure|number)[^.?!]{0,25}(done|line)|where[^.?!]{0,30}they'?d land|would (actually|honestly) (take|accept)/i;
+const P_CALLBACK = /ring you back|call (you )?back|speak to you (then|soon|tomorrow|monday|tuesday|wednesday|thursday|friday)|when'?s (good|best|a good time)|best time to (catch|ring|call|reach)|later (today|in the week)|tomorrow morning|give you a (ring|call|bell) (back )?(tomorrow|later|next week|in a few weeks)/i;
+// Rule breaks. The deflections the script TEACHES must not count as breaks:
+// "nothing I've said today is a formal offer" contains "formal offer", and
+// "let me check Hugo's diary" is the correct viewing dodge.
+const P_FORMAL_OFFER = /\b(i'?m|we'?re|we are|i am) offering\b|formal offer|official offer|put (an|the|our) offer in\b|(i'?d|we'?d|i would|we would) like to offer|offer (is|stands) (final|binding)|we('?ll| will) take it\b/i;
+const P_FORMAL_OFFER_DEFLECTION = /nothing i('?ve| have) said|not (a |the )?(formal|binding)|isn'?t (a |the )?(formal|binding)|no formal offer|find out if we'?re in the right area/i;
+const P_BOOKS_VIEWING = /\b(book|arrange|schedule|set up)[^.?!]{0,20}viewing|book (you|us|me) in\b|viewing (for|at) (today|tomorrow|\d)/i;
+const P_VIEWING_DEFLECTION = /check (hugo|ugo)'?s? diary|(hugo|ugo|director)[^.?!]{0,30}(diary|arrange|be there|book)|come back to you|what (have you got|times are) free/i;
+const P_SOURCER_TALK = /\bsourc(er|ers|ing)\b|done a course|on a course|training course|my mentor|list of investors/i;
+
+/** The property steps, counted in code so the report grades the same way
+ *  every day and the model never has to tally. Same contract as scriptCheck():
+ *  live conversations only, ASR-close-not-exact, transcripts win on a clash. */
+export function propertyScriptCheck(calls: CallRow[]) {
+  const convs = calls.filter((c) => c.lines?.length && agentWords(c) > 0 && !isVoicemail(c));
+  const agentLines = (c: CallRow) =>
+    (c.lines ?? []).filter((l) => l.speaker === 'agent').map((l) => (l.body ?? '').trim());
+  const any = (c: CallRow, re: RegExp) => agentLines(c).some((b) => re.test(b));
+  const n = (f: (c: CallRow) => boolean) => convs.filter(f).length;
+
+  const floated = (c: CallRow) =>
+    agentLines(c).some((b) => P_FLOATS_FIGURE.test(b) || (P_MONEY.test(b) && P_FLOAT_WORDS.test(b)));
+
+  return {
+    conversations_graded: convs.length,
+    // The opener and the intro.
+    asked_availability: n((c) => any(c, P_AVAILABILITY)),
+    said_who_we_are: n((c) => any(c, P_INTRO)),
+    said_cash: n((c) => any(c, P_CASH)),
+    asked_their_name: n((c) => any(c, P_ASKS_NAME)),
+    // The checklist, one number per fact family.
+    asked_occupancy: n((c) => any(c, P_OCCUPANCY)),
+    asked_condition: n((c) => any(c, P_CONDITION)),
+    asked_interest: n((c) => any(c, P_INTEREST)),
+    asked_why_selling: n((c) => any(c, P_MOTIVE)),
+    asked_time_on_market: n((c) => any(c, P_TIME_ON_MARKET)),
+    asked_tenure: n((c) => any(c, P_TENURE)),
+    // The money. Floating a figure and asking for theirs are different skills
+    // and different numbers, exactly like reached_offer vs offer_agreed.
+    floated_a_figure: n(floated),
+    asked_them_for_a_figure: n((c) => any(c, P_ASKS_THEIR_FIGURE)),
+    // A branch NAMING money back is the score of the call. Counted only after
+    // the agent opened the money conversation, so "it's on at 150" in the
+    // availability chat does not inflate it.
+    lead_named_figure: convs.filter((c) => {
+      const lines = c.lines ?? [];
+      const at = lines.findIndex(
+        (l) => l.speaker === 'agent'
+          && (P_FLOATS_FIGURE.test(l.body ?? '') || P_ASKS_THEIR_FIGURE.test(l.body ?? '')
+            || (P_MONEY.test(l.body ?? '') && P_FLOAT_WORDS.test(l.body ?? ''))),
+      );
+      if (at === -1) return false;
+      return lines.slice(at + 1).some((l) => l.speaker === 'caller' && P_MONEY.test(l.body ?? ''));
+    }).length,
+    agreed_callback_time: n((c) => any(c, P_CALLBACK)),
+    // Rule breaks. All should be zero.
+    made_formal_offer: n((c) =>
+      agentLines(c).some((b) => P_FORMAL_OFFER.test(b) && !P_FORMAL_OFFER_DEFLECTION.test(b))),
+    booked_a_viewing: n((c) =>
+      agentLines(c).some((b) => P_BOOKS_VIEWING.test(b) && !P_VIEWING_DEFLECTION.test(b))),
+    sourcer_or_course_talk: n((c) => any(c, P_SOURCER_TALK)),
+  };
+}
+
+/** Which outcome buttons were actually pressed, by name. The property pipeline
+ *  has its own columns, so this is a map rather than the four sales fields. */
+export function dispositionCounts(calls: CallRow[]): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const c of calls) {
+    const d = (c.disposition ?? 'none pressed').toLowerCase();
+    m[d] = (m[d] ?? 0) + 1;
+  }
+  return m;
+}
+
+interface HousesTabStats {
+  houses_outcomes_logged: number;
+  houses_outcomes: Record<string, number>;
+  figures_reported: string[];
+}
+
+/** What went through the Houses tab (api/crm/property-outcome.ts): the
+ *  qualified / figure_obtained / callback log with the figures the branch
+ *  gave. Zero while calls exist means the tab is not being used, which the
+ *  report is told to coach rather than guess around. */
+async function housesTabStats(agentId: string, since: string, until: string): Promise<HousesTabStats> {
+  const { data } = await supabase
+    .from('brrr_property_calls')
+    .select('qualification')
+    .eq('channel', 'human')
+    .eq('human_agent_id', agentId)
+    .gte('updated_at', since)
+    .lt('updated_at', until);
+  const rows = (data ?? []) as Array<{ qualification: Record<string, unknown> | null }>;
+  const outcomes: Record<string, number> = {};
+  const figures: string[] = [];
+  for (const r of rows) {
+    const q = r.qualification ?? {};
+    const o = String(q.outcome ?? 'unknown');
+    outcomes[o] = (outcomes[o] ?? 0) + 1;
+    const fig = q.best_price_indicated;
+    if (typeof fig === 'string' && fig.trim()) figures.push(fig.trim());
+    else if (typeof fig === 'number') figures.push(String(fig));
+  }
+  return { houses_outcomes_logged: rows.length, houses_outcomes: outcomes, figures_reported: figures };
+}
+
+const PROPERTY_SYSTEM = `You write the end-of-day coaching report for a UK property deal-sourcing caller. They ring estate agents about specific listed properties on behalf of a cash buyer: the company is Unico, the director is Hugo, and the agent's job on every call is to confirm the property is available, work a 16-question fact checklist, then run the money conversation themselves: float an opening figure WITHOUT making a formal offer, go quiet, get the branch to name a figure back, push back once with a comparable sale, and climb their ladder one rung at a time. "Let me put that to Hugo" is a lever used late, never an opener. They must NEVER make a formal or binding offer, NEVER book a viewing (the director arranges those), never quote completion timescales, and never reveal or confirm their walk-away ceiling.
+
+The agent reads this report themselves. Write it to be read by the person it is about.
+
+Be direct and complete. Your job is to tell them everything that would make them better tomorrow, not to be gentle. Do not soften, omit, or generalise a problem to spare feelings. At the same time you are a coach, not a disciplinarian: give the fix, not a telling-off.
+
+Non-negotiable: you MUST report these explicitly if they appear anywhere in the transcripts:
+- Swearing or crude language by the agent. Quote it verbatim, name the agency and call_id, and say plainly that it is not acceptable on a business call.
+- Rudeness, arguing, talking over people, or pressuring a branch that has clearly said no.
+- A formal or binding offer, or agreeing a price as if it were final. Only the director can offer.
+- Booking or promising a viewing, or committing the director to a time.
+- Inventing facts: funds, completion timescales, valuations, or company details. The company line is Unico (full name Ulinc Unico Group Limited) and anything beyond the approved details is the director's to share.
+- Saying or confirming the walk-away ceiling out loud.
+Never leave one of these out because the day went well otherwise.
+
+Ground every point in what actually happened. Quote the agent's own words, and cite the agency name so they can find the call. Never invent a quote. The statistics are given to you and are correct. Never recompute them or contradict them.
+
+The transcripts come from imperfect speech recognition and it MANGLES PROPER NOUNS: "Hugo" arrives as "Ugo", "Unico" as "Unio" or "Nico". Treat those spellings as the transcriber's fault, never the agent's pronunciation, and never coach anyone off a mangled name alone.
+
+You are given THE SCRIPT the agent is supposed to follow, and a step-by-step count of how often they actually reached each part of it. Grade them against that script every single day, even on a good day. This is the standing coaching, and it does not get dropped because the day went well.
+
+Write in British English, plain language, second person ("you"). Markdown, no title heading, roughly 300-450 words, in this order:
+
+**Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, any long gap with no calls.
+**What worked**: up to three specific things, each with a quote or an agency name.
+**The grade**: the day as one funnel, on its own lines: dials, conversations, availability confirmed, money conversations opened, figures obtained from the branch, callbacks agreed with a time. Then say plainly which step is losing the most. A figure out of the branch's mouth is the score that matters; a polite day of chat that never reaches the money is not a good day. If outcomes were not logged in the Houses tab, say so: the figures are the reason the calls happen and they must be written down where the director can see them.
+**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the fact checklist, the floated figure, asking THEM for a figure, the callback time, then the rule breaks (formal offer, booked viewing, sourcer/course talk), which should all be zero. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
+**Fix tomorrow**: every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
+**Tomorrow's one thing**: a single sentence naming the one change that would make the biggest difference.
+
+After the report, and only if one or more of the non-negotiables above actually occurred, append this exact delimiter on its own line:
+
+---FLAGS---
+
+followed by a JSON array, one object per item, and nothing else:
+[{"type":"swearing|rudeness|pressure|formal_offer|booked_viewing|invented_fact|said_ceiling","quote":"their exact words","company":"agency name","call_id":"the call_id","why":"one sentence on why it matters"}]
+
+Emit the delimiter only when there is at least one item. Never emit an empty array. The flags duplicate what you already wrote in the report; they are an index for the business owner, not a replacement.`;
+
+async function writePropertyReport(
+  agentName: string,
+  dateKey: string,
+  stats: ReturnType<typeof computeStats>,
+  transcripts: string,
+  script: string,
+  adherence: ReturnType<typeof propertyScriptCheck>,
+  pace: ReturnType<typeof paceStats>,
+  dispositions: Record<string, number>,
+  houses: HousesTabStats,
+): Promise<string> {
+  const prompt = `Agent: ${agentName}
+Date: ${dateKey}
+Business: property deal sourcing, ringing estate agents about listed properties for a cash buyer. This agent does NOT sell anything and has nothing to do with the retired Google-reviews product; if a transcript shows them pitching reviews or videos, that is them reading the wrong script and it belongs under Fix tomorrow.
+
+STATISTICS (authoritative, do not recompute):
+${JSON.stringify(stats, null, 2)}
+
+Notes on the stats:
+- "dead_air" = a human answered but the agent's audio never reached them. This is a KNOWN SYSTEM FAULT, not the agent's fault. If it is above zero, say so explicitly and reassure them it is not counted against them.
+- "conversations" excludes voicemail. "real_conversations" are those lasting 60s or more.
+- "talk_ratio" is agent words per lead word. Above ~1.8 means they are talking over people. On this script LISTENING is the job: the checklist answers and the branch's figure are the product.
+- "interested" / "booked" here are the generic CRM buttons, not the property outcomes. The outcome buttons pressed are listed next.
+
+OUTCOME BUTTONS PRESSED (authoritative):
+${JSON.stringify(dispositions, null, 2)}
+
+HOUSES TAB, property outcomes logged (authoritative):
+${JSON.stringify(houses, null, 2)}
+
+Notes on the Houses tab:
+- This is where a property call's real outcome lives: qualified / figure obtained / callback / not qualified, plus the figure the branch indicated, written down for the director.
+- If "houses_outcomes_logged" is 0 while conversations happened, the day's figures exist only in the agent's head. Say so plainly under Fix tomorrow: every conversation ends with an outcome picked in the Houses tab and the figure typed in, before the next dial.
+
+DIALLING PACE (authoritative):
+${JSON.stringify(pace, null, 2)}
+
+Notes on pace:
+- "idle_minutes" is the total time between calls. One long gap is a lunch break and is theirs to take; say so rather than treating it as slacking. Several long gaps, or a "longest_gap_minutes" running into hours, is the day leaking away and should be named plainly.
+
+THE SCRIPT THEY ARE MEANT TO FOLLOW (property call):
+${script || '(no script on file)'}
+
+SCRIPT STEPS REACHED, out of ${adherence.conversations_graded} live conversations:
+${JSON.stringify(adherence, null, 2)}
+
+Notes on the script counts:
+- These are detected from the transcript text, which comes from imperfect speech recognition. They are close, not exact. Where a count disagrees with what you can plainly read in the transcripts, believe the transcripts and say what you actually saw.
+- "floated_a_figure" is the offer-without-offering ("if we were to offer around X, am I in the ballpark"). "asked_them_for_a_figure" is the other half of the money conversation. "lead_named_figure" is the score: a number out of the branch's mouth.
+- "made_formal_offer", "booked_a_viewing" and "sourcer_or_course_talk" are rule breaks and should all be zero. The script's own deflection lines ("nothing I've said today is a formal offer", "let me check Hugo's diary") are correct play and are already excluded from those counts.
+
+TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS (voicemails excluded):
+${transcripts || '(no live conversations today)'}`;
+
+  return callClaude(PROPERTY_SYSTEM, prompt);
+}
+
 /** Transcripts of real conversations only — voicemails carry no coaching signal. */
 function transcriptBlock(calls: CallRow[]): string {
   return calls
@@ -293,7 +580,7 @@ The agent reads this report themselves, and so does the other agent on the team 
 
 Be direct and complete. Your job is to tell them everything that would make them better tomorrow, not to be gentle. Do not soften, omit, or generalise a problem to spare feelings. At the same time you are a coach, not a disciplinarian: give the fix, not a telling-off.
 
-Non-negotiable — you MUST report these explicitly if they appear anywhere in the transcripts:
+Non-negotiable: you MUST report these explicitly if they appear anywhere in the transcripts:
 - Swearing or crude language by the agent. Quote it verbatim, name the company and call_id, and say plainly that it is not acceptable on a customer call.
 - Rudeness, arguing with a prospect, talking over them, or pressuring someone who has clearly said no.
 - Anything misleading about price, what is free, or what the product does.
@@ -306,12 +593,12 @@ You are given THE SCRIPT the agent is supposed to follow, and a step-by-step cou
 
 Write in British English, plain language, second person ("you"). Markdown, no title heading, roughly 300-450 words, in this order:
 
-**Today** — two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, and any long gap with no calls. A perfect script at 49 dials loses to a rough one at 177, so say which of the two is holding them back.
-**What worked** — up to three specific things, each with a quote or a company name.
-**The grade** — the day as one funnel, on its own lines: dials, conversations, offers made, offers agreed, videos made, videos sent. Then say plainly which step is losing the most and what that costs. Videos sent is the score that matters; a day of perfect calls with no videos sent is not a good day, and a rough day with videos sent beats it. If a render failed or is still going, say so and make clear it is not held against them.
+**Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, and any long gap with no calls. A perfect script at 49 dials loses to a rough one at 177, so say which of the two is holding them back.
+**What worked**: up to three specific things, each with a quote or a company name.
+**The grade**: the day as one funnel, on its own lines: dials, conversations, offers made, offers agreed, videos made, videos sent. Then say plainly which step is losing the most and what that costs. Videos sent is the score that matters; a day of perfect calls with no videos sent is not a good day, and a rough day with videos sent beats it. If a render failed or is still going, say so and make clear it is not held against them.
 **Script check** — go through the six steps in order and give the number for each: opener (name and HeyElsie BEFORE the recording line), hook, offer, the close, and the two rule breaks (asking for their number, reading out monthly prices). One line per step, the count, then a word on whether that is good or not. Where a step is being missed, quote the words they used instead. Praise the steps they are hitting; do not only list failures.
-**Fix tomorrow** — every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
-**Tomorrow's one thing** — a single sentence naming the one change that would make the biggest difference.
+**Fix tomorrow**: every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
+**Tomorrow's one thing**: a single sentence naming the one change that would make the biggest difference.
 
 After the report, and only if one or more of the non-negotiables above actually occurred, append this exact delimiter on its own line:
 
@@ -320,7 +607,7 @@ After the report, and only if one or more of the non-negotiables above actually 
 followed by a JSON array, one object per item, and nothing else:
 [{"type":"swearing|rudeness|pressure|misleading|wrong_name","quote":"their exact words","company":"company name","call_id":"the call_id","why":"one sentence on why it matters"}]
 
-Emit the delimiter only when there is at least one item. Never emit an empty array. The flags duplicate what you already wrote in the report — they are an index for the business owner, not a replacement.`;
+Emit the delimiter only when there is at least one item. Never emit an empty array. The flags duplicate what you already wrote in the report; they are an index for the business owner, not a replacement.`;
 
 export interface ConductFlag {
   type: string;
@@ -407,6 +694,11 @@ Notes on the script counts:
 TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS (voicemails excluded):
 ${transcripts || '(no live conversations today)'}`;
 
+  return callClaude(SYSTEM, prompt);
+}
+
+/** One place for the model call, shared by the sales and property reports. */
+async function callClaude(system: string, prompt: string): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -419,7 +711,7 @@ ${transcripts || '(no live conversations today)'}`;
       max_tokens: MAX_TOKENS,
       thinking: { type: 'adaptive' },
       output_config: { effort: 'high' },
-      system: SYSTEM,
+      system,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -493,11 +785,27 @@ export default async function handler(
     flags: ConductFlag[];
   }> = [];
 
+  const writtenProperty: Array<{
+    name: string;
+    body: string;
+    stats: ReturnType<typeof computeStats>
+      & ReturnType<typeof paceStats>
+      & HousesTabStats
+      & {
+        kind: 'property';
+        dispositions: Record<string, number>;
+        script_check: ReturnType<typeof propertyScriptCheck>;
+      };
+    flags: ConductFlag[];
+  }> = [];
+  // Loaded once, and only on a day that actually has a property agent.
+  let propertyScript: Promise<string> | null = null;
+
   for (const agent of roster) {
     const name = (agent.name || agent.email || 'Agent') as string;
     const { data: calls } = await supabase
       .from('wk_calls')
-      .select('id, started_at, duration_sec, status, disposition_column_id, contact_id')
+      .select('id, started_at, duration_sec, status, disposition_column_id, contact_id, script_key')
       .eq('agent_id', agent.id)
       .gte('started_at', since)
       .lt('started_at', until);
@@ -527,8 +835,49 @@ export default async function handler(
       status: c.status,
       disposition: c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null,
       company: c.contact_id ? contactName.get(c.contact_id) ?? null : null,
+      script_key: (c as { script_key?: string | null }).script_key ?? null,
       lines: byCall.get(c.id) ?? [],
     }));
+
+    // A property day is graded against the property business, full stop.
+    // Grading Pedro's estate-agent calls against the dead Google-reviews
+    // script produced a report that scored his best day zero (2026-08-10).
+    if (isPropertyDay(rows)) {
+      const [script, houses] = await Promise.all([
+        propertyScript ?? (propertyScript = loadPropertyScript()),
+        housesTabStats(agent.id, since, until),
+      ]);
+      const dispositions = dispositionCounts(rows);
+      const adherence = propertyScriptCheck(rows);
+      const stats = {
+        kind: 'property' as const,
+        ...computeStats(rows),
+        ...paceStats(rows),
+        ...houses,
+        dispositions,
+        script_check: adherence,
+      };
+      let raw: string;
+      try {
+        raw = await writePropertyReport(
+          name, dateKey, computeStats(rows), transcriptBlock(rows),
+          script, adherence, paceStats(rows), dispositions, houses,
+        );
+      } catch (e) {
+        console.error(`[daily-report] ${name} (property) failed:`, e);
+        continue;
+      }
+      if (!raw) continue;
+      const { body, flags } = splitReport(raw);
+      if (!body) continue;
+      const { error } = await supabase.from('wk_agent_daily_reports').upsert(
+        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: MODEL, updated_at: new Date().toISOString() },
+        { onConflict: 'agent_id,report_date' },
+      );
+      if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);
+      else writtenProperty.push({ name, body, stats, flags });
+      continue;
+    }
 
     // Videos are fetched on their own window rather than joined to the day's
     // calls: a video made today off yesterday's call still counts as today's
@@ -567,11 +916,14 @@ export default async function handler(
 
   // Email Hugo the lot.
   const to = process.env.DAILY_REPORT_EMAIL || 'hugodesouzax@gmail.com';
-  if (written.length > 0) {
+  if (written.length + writtenProperty.length > 0) {
     const esc = (s: string) =>
       String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
-    const flagged = written.filter((w) => w.flags.length > 0);
+    const flagged: Array<{ name: string; flags: ConductFlag[] }> = [
+      ...writtenProperty.map((w) => ({ name: w.name, flags: w.flags })),
+      ...written.map((w) => ({ name: w.name, flags: w.flags })),
+    ].filter((w) => w.flags.length > 0);
 
     // Conduct + compliance first. This is the part that must never be missed.
     const alerts = flagged.length
@@ -602,6 +954,47 @@ export default async function handler(
       <h2 style="margin:0 0 4px">Daily agent reports — ${dateKey}</h2>
       <p style="color:#6B7280;margin:0 0 20px;font-size:14px">Each agent sees only their own on the leaderboard. You see all of them.</p>
       ${alerts}
+      ${writtenProperty
+        .map(
+          (r) => `<div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">
+            <h3 style="margin:0 0 8px">${esc(r.name)} <span style="color:#6B7280;font-weight:400;font-size:13px">· property</span></h3>
+            <p style="font-size:14px;margin:0 0 6px">
+              <strong style="font-size:20px">${r.stats.script_check.lead_named_figure}</strong> figures out of branches
+              <span style="color:#6B7280">from ${r.stats.conversations} conversations and ${r.stats.dials} dials</span>${
+                r.stats.houses_outcomes_logged === 0 && r.stats.conversations > 0
+                  ? ` <span style="color:#B45309">· nothing logged in the Houses tab</span>`
+                  : ''
+              }
+            </p>
+            <p style="color:#6B7280;font-size:13px;margin:0 0 12px">
+              ${r.stats.script_check.floated_a_figure} figures floated · ${r.stats.script_check.asked_them_for_a_figure} asked for theirs · ${r.stats.script_check.agreed_callback_time} callbacks with a time · ${r.stats.talk_minutes} min talking · ${r.stats.idle_minutes} min idle
+            </p>
+            <p style="color:#6B7280;font-size:12px;margin:0 0 12px">
+              Script, out of ${r.stats.script_check.conversations_graded}:
+              availability ${r.stats.script_check.asked_availability} ·
+              intro ${r.stats.script_check.said_who_we_are} ·
+              cash ${r.stats.script_check.said_cash} ·
+              floated ${r.stats.script_check.floated_a_figure} ·
+              asked them ${r.stats.script_check.asked_them_for_a_figure}${
+                r.stats.script_check.made_formal_offer > 0
+                  ? ` · <span style="color:#B91C1C">formal offer ${r.stats.script_check.made_formal_offer}</span>`
+                  : ''
+              }${
+                r.stats.script_check.booked_a_viewing > 0
+                  ? ` · <span style="color:#B91C1C">booked viewing ${r.stats.script_check.booked_a_viewing}</span>`
+                  : ''
+              }${
+                r.stats.script_check.sourcer_or_course_talk > 0
+                  ? ` · <span style="color:#B91C1C">sourcer/course talk ${r.stats.script_check.sourcer_or_course_talk}</span>`
+                  : ''
+              }
+            </p>
+            <div style="font-size:14px;line-height:1.55;white-space:pre-wrap">${r.body
+              .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</div>
+          </div>`,
+        )
+        .join('')}
       ${written
         .map(
           (r) => `<div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">
@@ -651,5 +1044,9 @@ export default async function handler(
     }
   }
 
-  res.status(200).json({ ok: true, date: dateKey, reports: written.map((w) => w.name) });
+  res.status(200).json({
+    ok: true,
+    date: dateKey,
+    reports: [...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
+  });
 }

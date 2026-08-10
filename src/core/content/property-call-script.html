@@ -18,6 +18,32 @@
        told never to learn its own ceiling so it could not leak it; a human has
        to know where to stop, and is trusted not to say it out loud.
 
+  REWRITTEN 2026-08-10, Hugo, three changes, all deliberate:
+
+    a) IDENTITY. An estate agent asks "who's calling" and "what company" on
+       nearly every cold call and the script had no answer at all, so the caller
+       froze at the one moment that decides whether the rest of the call
+       happens. The opener now gives a name, the company (Unico, legally ULINC
+       UNICO GROUP LTD, 11197856, 483 Green Lanes London N13 4BS) and the word
+       cash, and there are objection panels for both questions plus the
+       sourcer / investor / proof-of-funds versions of them.
+    b) HE NEGOTIATES. Stage 2 used to promise a call back from the director in
+       its second sentence, which defused the whole call before it had started
+       and left the caller with nothing to do. He now works the money on
+       the call: offer without offering, ask THEM for a figure, push back once,
+       climb the ladder one rung at a time. "Let me speak to my director" moved
+       from the opener to a LEVER pulled later, when he has a figure to bank,
+       when they want something formal, or when he is pushed for a commitment
+       he cannot give. The two hard boundaries are unchanged: never a formal
+       offer, never book a viewing.
+    c) THE MONEY IS SPELLED OUT. Four numbered rules, then a rung-by-rung ladder
+       with the words to say at each step, because "climb one step at a time"
+       means nothing to somebody who has never negotiated.
+
+  The negotiation wording is grounded in the Fontaine Brothers deal-sourcing
+  course Hugo bought (Module 8: Estate Agents, Offer Without Offering, and the
+  live agent call), which is also what the /pedro-training page teaches.
+
   THE STYLESHEET ABOVE IS vsl-close-script.html'S, COPIED BYTE FOR BYTE by
   scratchpad/build-property-script.mjs, plus one appended block for the money
   panel and the flat-vs-house split. Do not restyle it by hand. If the cold
@@ -389,12 +415,14 @@ details.branch>summary .tag{
     <div class="doc-head">
       <h1>Ringing the agent about [property_address]</h1>
       <div class="sub">
-        You are calling on behalf of the director, who is a cash buyer. Your job
-        is to find out about the house and gauge how flexible the vendor is. You
-        do <b>not</b> make a formal offer and you do <b>not</b> book a viewing.
-        Read the <b>blue</b> lines aloud. Grey lines are notes for you only. One
-        question at a time, and react to what they say before asking the next
-        thing. If they push back, open the amber button on that line.
+        You are a real person, at a real company, ringing about a real house.
+        You work with the director, who is a cash buyer. Your job is to find out
+        about the property and to <b>work the money yourself</b>: float a figure,
+        get them to name one back, push once. What you never do is make a formal
+        or binding offer, and you never book a viewing. Read the <b>blue</b>
+        lines aloud. Grey lines are notes for you only. One question at a time,
+        and react to what they say before asking the next thing. If they push
+        back, open the amber button on that line.
       </div>
     </div>
 
@@ -411,13 +439,20 @@ details.branch>summary .tag{
       <details class="branch obj">
         <summary>"It's sold" / "it's under offer" <span class="tag">obj</span></summary>
         <div class="obj-panel">
-          <div class="obj-say"><span class="who">YOU:</span> "Ah, fair enough. Would the vendor consider backup offers at all?"</div>
+          <div class="obj-say"><span class="who">YOU:</span> "Ah, fair enough. Would the vendor consider backup offers at all? And how long has it been agreed, out of interest?"</div>
           <div class="dir">
             Worth 20 seconds. Chains fall through constantly and a backup offer
-            costs nothing. Note what they say, thank them, wrap up. Mark the
-            outcome <b>Not qualified</b> unless they say yes to a backup, in
-            which case mark it <b>Callback</b>.
+            costs nothing. Get their name before you go, and agree to ring back
+            in a few weeks. Mark the outcome <b>Not qualified</b> unless they say
+            yes to a backup, in which case mark it <b>Callback</b>.
           </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Which one? We've got a few on that road" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "The [bedrooms] bed [property_type], it's on at [asking_price]. That's the one."</div>
+          <div class="dir">Read it off the Houses tab. Never guess a number at an agent, they know their own stock.</div>
         </div>
       </details>
       <details class="branch obj">
@@ -441,14 +476,129 @@ details.branch>summary .tag{
 
     <div class="stage-div">2. Ask for the two minutes</div>
 
-    <div class="line"><span class="who you">YOU:</span> "Oh lovely. So, I'm calling on behalf of our director, he's a cash buyer. Mind if I ask a couple of quick questions? Then he can call you back himself."</div>
+    <div class="line"><span class="who you">YOU:</span> "Oh lovely. I'm Pedro by the way, who am I speaking to?"</div>
     <div class="dir">
-      Wait for the yes. "Cash buyer" is the reason they will give you two
-      minutes, so do not bury it. "He'll call you back himself" tells them this
-      call is not the pitch, which takes the pressure off both of you.
+      Get their name in the first thirty seconds and then <b>use it</b>. Write it
+      in the Houses tab. Next time you ring this branch you ask for them by name,
+      and that is how a cold call turns into a relationship. Say your own name
+      first, always, or the next thing you ask sounds like a survey.
+    </div>
+
+    <div class="line"><span class="who you">YOU:</span> "Nice one. So, I work with our director Hugo at Unico, we buy in the area, cash. Mind if I ask you a couple of quick questions about it?"</div>
+    <div class="dir">
+      That is the whole introduction and it does three jobs at once: a name, a
+      company, and the word <b>cash</b>. Cash is the reason they will give you
+      two minutes, so do not bury it. Then <b>wait for the yes</b>. From here on
+      you say <b>we</b>, not I, because you are one of two people buying, not a
+      lad with a spreadsheet.
+    </div>
+    <div class="dir">
+      <b>What changed, read this once.</b> You are not just collecting answers
+      for somebody else to act on. You run the money conversation on this call.
+      "I'll speak to my director and come back to you" is a <b>tool you use
+      later</b>, at the moment you need it, not an opener that lets you off the
+      hook before you have started. See stage 4.
     </div>
     <div class="responses">
       <span class="continue">&#10003; "Yeah, go on", keep reading &#8595;</span>
+      <details class="branch obj">
+        <summary>"Sorry, who's calling?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "It's Pedro. I work with Hugo, our director, at Unico. We buy residential property, we're looking in your patch at the minute."</div>
+          <div class="dir">
+            Say it flat and unbothered, the way you would give your name at a
+            garage. Hesitating here is the single fastest way to sound like a
+            scam call. Then go straight back to your question, do not wait to be
+            asked a second thing.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"What company are you with?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Unico. We're a small property company, the director Hugo buys with cash and I do the legwork for him."</div>
+          <div class="dir">
+            Say <b>Unico</b> out loud. That is what we call ourselves.
+          </div>
+          <div class="obj-panel">
+            <div class="obj-say"><span class="who">YOU:</span> "Full name's Ulinc Unico Group Limited, company number 11197856. Registered office is 483 Green Lanes in London, N13 4BS."</div>
+            <div class="dir">
+              <b>Only if they push for the legal detail</b>, which some branches
+              do before they will pass anything to a vendor. It is all public on
+              Companies House, so there is nothing to be shy about, but do not
+              lead with it. Read it exactly as written, never improvise a
+              company number or an address.
+            </div>
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Are you a cash buyer, or do you need a mortgage?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Cash. No mortgage, no chain, nothing to sell."</div>
+          <div class="dir">
+            Three words and stop. This is the strongest sentence you own on the
+            whole call and it gets weaker every word you add after it. Do not
+            invent a figure, a fund, a bank or a timescale.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Are you a sourcer? An investor?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "We buy for ourselves. Hugo's the buyer, I do the running around. If it's right we move quickly, if it's not we won't waste your afternoon."</div>
+          <div class="dir">
+            Agents are wary of deal sourcers because most of the ones who ring
+            them are time wasters who never buy anything. So do not use the word
+            sourcer, do not claim a "list of investors", and above all <b>never
+            say you have just done a course</b>. The moment you do, they stop
+            listening. Answer the question, then prove it by knowing your numbers.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"We don't deal with investors" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "No, fair enough. We're a cash buyer with nothing to sell, so if you ever get one that's dragging or a sale falls over, we're the boring easy one. Can I leave you my number?"</div>
+          <div class="dir">
+            Do not argue. Leave the door open and get off the phone politely.
+            Mark <b>Not qualified</b> and note the branch, because the person who
+            said that today may not be the person answering in six weeks.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"I'll add you to our mailing list" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Yeah, do, cheers. Though what's more useful to me is this one in front of me. Can I ask you two quick things about it?"</div>
+          <div class="dir">
+            <b>This is a brush-off, not a win.</b> Their mailing list is every
+            property that goes on Rightmove anyway, which you can already see. It
+            means you have not built a relationship yet. Accept it in one breath,
+            then get straight back to the actual property.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"You'd need to speak to the branch manager" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "No problem. Is he about now, or when's the best time to catch him? And what's his name, sorry?"</div>
+          <div class="dir">
+            Take the name and a time. Never leave a call with only "he's not in".
+            Mark <b>Callback</b> with the time in the note.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Can you email me instead?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Course, I'll do that. While I've got you though, is it vacant or is somebody in it?"</div>
+          <div class="dir">
+            An email is where this call goes to die. Agree, ask one more question
+            anyway, and get a callback time before you hang up.
+          </div>
+        </div>
+      </details>
       <details class="branch obj">
         <summary>"I'm with someone, can you call back?" <span class="tag">obj</span></summary>
         <div class="obj-panel">
@@ -474,11 +624,13 @@ details.branch>summary .tag{
       Conversational, not a form. Acknowledge each answer, "ah okay", "that
       makes sense", "lovely", before the next question. If they volunteer
       something, do not ask it again. Tick them off in the <b>Houses</b> tab on
-      the right as you go.
+      the right as you go. Everything you get here is ammunition for stage 4,
+      so listen for the words <b>empty</b>, <b>probate</b>, <b>relocating</b>,
+      <b>fell through</b> and <b>needs work</b>.
     </div>
 
     <div class="line"><span class="who you">YOU:</span> "Is it vacant, or is there a tenant in?"</div>
-    <div class="dir">If tenanted: are they staying or leaving, and what rent are they paying?</div>
+    <div class="dir">If tenanted: are they staying or leaving, and what rent are they paying? An empty house costs the vendor money every month, which is why this question is first.</div>
 
     <div class="line"><span class="who you">YOU:</span> "And what sort of condition is it in, ready to move into or does it need work?"</div>
     <div class="dir">Then the big ones: roof, damp, electrics, boiler. This is what moves the number.</div>
@@ -488,6 +640,13 @@ details.branch>summary .tag{
 
     <div class="line"><span class="who you">YOU:</span> "Do you know why they're selling?"</div>
     <div class="dir">Then: are they in a hurry, and is there an onward chain? Motivation is worth more than any other answer on this page.</div>
+
+    <div class="line"><span class="who you">YOU:</span> "How long's it been on with you? And has the price come down at all?"</div>
+    <div class="dir">
+      A property that has been reduced twice and is still sitting is a property
+      the agent is being judged on. That makes them <b>want</b> you to be the
+      answer, which is worth more than any argument you could make.
+    </div>
 
     <div class="line"><span class="who you">YOU:</span> "Is it freehold or leasehold?"</div>
     <div class="dir">Their answer decides which column below you use. Ask the wrong set and you sound like you have never bought a house.</div>
@@ -520,46 +679,122 @@ details.branch>summary .tag{
       </div>
     </div>
 
+    <div class="responses">
+      <span class="continue">&#10003; You have your facts, go to the money &#8595;</span>
+      <details class="branch obj">
+        <summary>"I'd have to check with the vendor on that" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "No bother, whatever you know off the top of your head is fine. What about the condition, is it liveable as it stands?"</div>
+          <div class="dir">Never make them feel tested. Move to the next question and come back to it at the end if it matters.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Why do you need to know all this?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Just so I'm not wasting your time. I'd rather work out on the phone whether we're anywhere near it than drag you into viewings that go nowhere."</div>
+          <div class="dir">True, and it is the same sentence that buys you the money conversation in a minute. Say it once, warmly, and carry on.</div>
+        </div>
+      </details>
+    </div>
+
     <div class="stage-div">4. The money</div>
 
     <div class="dir">
-      This is the part that pays for the call. Open <b>low</b>, climb one step
-      at a time, and only when they give you something. Never name your ceiling
-      and never say "between X and Y".
+      This is the part that pays for the call, and <b>you</b> run it. Not the
+      director, not later, now. The whole method is one thing: you float a number
+      <b>without formally offering it</b>, then you go quiet and let them tell
+      you where the vendor really is.
     </div>
 
     <div class="money">
       <div class="row open">
         <div class="k">Open at</div>
-        <div class="v">[offer_open]<small>The first figure you say. Not a range, not a hint. This one number.</small></div>
+        <div class="v">[offer_open]<small>The first figure you say, and the ONLY figure you say at first. One number. Never a range, never "somewhere in the region of X to Y".</small></div>
       </div>
       <div class="row">
         <div class="k">Then climb</div>
-        <div class="v">[ladder]<small>One step at a time, and only when they give ground or tell you something useful.</small></div>
+        <div class="v">[ladder]<small>Your rungs, in order. You move UP one rung at a time and only in exchange for something. Never jump two.</small></div>
       </div>
       <div class="row ceiling">
         <div class="k">Walk away at</div>
-        <div class="v">[offer_ceiling]<small>Past this the deal stops working. Stop, say the director will come back to them, and end it warmly.</small><span class="never">Never say this number out loud</span></div>
+        <div class="v">[offer_ceiling]<small>The last rung. Past this the deal stops working, so you stop. Say the director will come back to them and end it warmly.</small><span class="never">Never say this number out loud</span></div>
       </div>
       <div class="row">
         <div class="k">Worth today</div>
-        <div class="v">[property_worth]<small>What the sold prices nearby say it is worth as it stands. Asking is [asking_price].</small></div>
+        <div class="v">[property_worth]<small>What the sold prices nearby say it is worth as it stands. Asking is [asking_price]. This is the number your figure is built on, not the asking price.</small></div>
       </div>
     </div>
 
-    <div class="line"><span class="who you">YOU:</span> "Realistically my director would be looking at somewhere around [offer_open] on this one. How would that land with the vendor?"</div>
-    <div class="dir">Then be quiet. The silence after a number is the most useful thing you own. Let them fill it.</div>
+    <div class="evidence">
+      <b>The four rules of this section. Break none of them.</b><br>
+      1. Say <b>one</b> number. A range hands them the top of it for free and you will never see the bottom again.<br>
+      2. <b>Never</b> say the walk-away figure out loud, and never confirm it if they guess it. It is in the red box for you only.<br>
+      3. After you say the number, <b>say nothing</b>. Count to five in your head. Whoever speaks first loses this bit.<br>
+      4. Get <b>them</b> to say a figure. Any number out of their mouth is worth more than any number out of yours.
+    </div>
+
+    <div class="line"><span class="who you">YOU:</span> "Right, so I've had a proper look at this one. I've been through what's sold on the same streets and worked out roughly what it'd cost us to put it right. I'll be honest with you, I can't get near what you're asking, and I don't want to waste your time or embarrass anyone with a silly offer. But <b>if we were to offer around [offer_open]</b>, am I in the ballpark, or am I a million miles off?"</div>
+    <div class="dir">
+      <b>This is the offer without offering, and it is the most important line on
+      the page.</b> Notice the words: "if we were to offer", not "I'd like to
+      offer". You have said the number out loud without putting an offer on the
+      table, so they cannot be insulted by it and you cannot be held to it. A
+      straight lowball offer gets you a polite no and a branch that stops taking
+      your calls. This gets you an answer.
+    </div>
+    <div class="dir">
+      Then <b>be quiet</b>. The silence after a number is the most useful thing
+      you own. Let them fill it. Whatever they say next, write it down word for
+      word in the Houses tab.
+    </div>
 
     <div class="evidence">
       <b>If they push back, this is your evidence.</b> One comp at a time, said
       casually, never read out as a list: [comp_evidence]
     </div>
 
-    <div class="line"><span class="who you">YOU:</span> "I only ask because a similar one nearby went for less not long ago. What sort of figure do you think would actually get it done?"</div>
+    <div class="line"><span class="who you">YOU:</span> "I only say that because a similar one nearby went for less not long ago. So what sort of figure do you think would actually get it done?"</div>
     <div class="dir">
-      Asking <b>them</b> for the number is the whole trick. Any figure they say
-      is worth more than any figure you say. Write it down in the Houses tab
-      exactly as they said it.
+      Asking <b>them</b> for the number is the whole trick, and it is the second
+      thing you must get off this call after the facts. Any figure they say is
+      worth more than any figure you say. Write it down in the Houses tab exactly
+      as they said it, then <b>shut up again</b>.
+    </div>
+
+    <div class="evidence">
+      <b>How to climb, one rung at a time.</b><br>
+      <b>Rung 0.</b> You are at [offer_open]. Do not move at all until they have
+      given you something: a figure, a reason, a bit of the vendor's position.
+      A moan is not a reason.<br>
+      <b>Rung 1.</b> They give you something. Now move ONE step up the ladder,
+      and make them see it cost you. Say: <i>"Look, if it's vacant and they want
+      it gone, I could probably stretch to [the next rung on the ladder]. Would
+      that get it over the line?"</i> Then stop talking.<br>
+      <b>Rung 2.</b> Still no. Push back <b>once</b>, and only once, using a comp:
+      <i>"The thing is, the one that sold on the same street went for less than
+      that and it didn't need the work this one needs. What would they actually
+      take?"</i> Then stop talking.<br>
+      <b>Rung 3.</b> If they name a number that is on or under the last rung of
+      the ladder, you are done negotiating. Say: <i>"Right, that's not miles off.
+      Let me put that exact figure to Hugo and I'll come back to you."</i><br>
+      <b>Rung 4.</b> If their number is above the red box, you are finished for
+      today. Do not creep up to it, do not hint at it, do not say "we could maybe
+      do a bit more". Say: <i>"That's a fair bit above where we are, so I won't
+      mess you about. Leave it with me, I'll speak to Hugo. If it's still around
+      in a few weeks, is it alright if I give you a ring?"</i><br>
+      <b>Never</b> bid against yourself. If you say a number and they say nothing,
+      you do NOT improve it. You wait.
+    </div>
+
+    <div class="dir">
+      <b>When to play the director card.</b> "Let me speak to Hugo and come back
+      to you" is a lever, and levers only work when you pull them at the right
+      moment. Use it when: (a) you have got a real figure out of them and you
+      want to bank it without accepting it, (b) they ask for something formal or
+      in writing, or (c) they push you for a commitment you are not allowed to
+      give. Do <b>not</b> use it at the start of the call, and do not use it to
+      dodge the money conversation. It buys you a reason to ring back, which is
+      the whole point.
     </div>
 
     <div class="responses">
@@ -567,22 +802,101 @@ details.branch>summary .tag{
       <details class="branch obj">
         <summary>"That's far too low" <span class="tag">obj</span></summary>
         <div class="obj-panel">
-          <div class="obj-say"><span class="who">YOU:</span> "Fair enough. What would the vendor actually take, do you think?"</div>
-          <div class="dir">Do not defend the number and do not jump to your ceiling. Make them counter. Then climb ONE rung.</div>
+          <div class="obj-say"><span class="who">YOU:</span> "Fair enough, no problem. What would the vendor actually take, do you think?"</div>
+          <div class="dir">
+            Do not defend the number, do not apologise for it, and do not jump up
+            the ladder to make them feel better. "No problem" then a question.
+            Make them counter. Then climb ONE rung.
+          </div>
         </div>
       </details>
       <details class="branch obj">
         <summary>"Is that your best?" <span class="tag">obj</span></summary>
         <div class="obj-panel">
-          <div class="obj-say"><span class="who">YOU:</span> "It's where he'd start. If there's a number that gets it done quickly, tell me and I'll put it to him."</div>
-          <div class="dir">Never answer that question with your ceiling. Ever.</div>
+          <div class="obj-say"><span class="who">YOU:</span> "It's where we'd start. If there's a number that gets it done quickly, tell me what it is and I'll put it to Hugo today."</div>
+          <div class="dir">Never answer that question with your ceiling. Ever. Answer it with a question.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"The vendor won't accept that" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "You know them better than me. Where do you honestly think they'd land if the right buyer turned up with cash and no chain?"</div>
+          <div class="dir">
+            Flatter their judgement and ask again. Notice you have not moved your
+            number. You are still on rung 0.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"We've had higher offers than that" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Okay, no worries. Are those still on the table, or did they come and go? Because it's still on the market, so I'm guessing something didn't stick."</div>
+          <div class="dir">
+            Said lightly, never as a gotcha. Half the time the higher offer was
+            weeks ago, or was a buyer with a house to sell. A cash buyer with no
+            chain beats a bigger number that cannot complete, and the agent knows
+            that better than you do.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"You'll have to view it before we put anything forward" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Understood, and we would. The only reason I'm asking first is I don't want to drag you and the vendor through a viewing if we're a million miles apart on price. Could you sound them out on the figure, then we'll get in and see it?"</div>
+          <div class="dir">
+            This is the most common wall on the call and it is not a no. You are
+            not refusing to view, you are asking for an indication first, which is
+            a reasonable thing to want. <b>Never book the viewing yourself.</b>
+            Note in the Houses tab that a viewing is the next step and let the
+            director arrange it.
+          </div>
         </div>
       </details>
       <details class="branch obj">
         <summary>"Put it in writing" / "make a formal offer" <span class="tag">obj</span></summary>
         <div class="obj-panel">
-          <div class="obj-say"><span class="who">YOU:</span> "Of course, this is just a feeler. The director will confirm everything himself when he calls you."</div>
-          <div class="dir">You are not authorised to make a formal offer. Never imply you are.</div>
+          <div class="obj-say"><span class="who">YOU:</span> "Of course. Nothing I've said today is a formal offer, I'm just trying to find out if we're in the right area. Let me put the figure to Hugo and he'll confirm everything properly with you."</div>
+          <div class="dir">
+            You are <b>not authorised to make a formal offer</b>, so never imply
+            you are, never say "I'm offering", and never agree a price as though
+            it is binding. This is the moment the director card is meant for:
+            pull it here.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"How quickly could you complete?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Quickly, we're cash and there's no chain, so it's down to the solicitors more than us. Hugo will give you the exact timescale when he confirms, but we're not the ones who'd be holding it up."</div>
+          <div class="dir">
+            Do not invent a number of weeks. "We're cash, no chain" is the
+            answer. A promised completion date you cannot keep is the one thing
+            that would burn this branch permanently.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Have you got proof of funds?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Yeah, that's no issue at all. Hugo handles that side, so as soon as we're agreed on a figure he'll send it over to you."</div>
+          <div class="dir">
+            A completely normal question, treat it as one. Never send anything
+            yourself, never quote a balance, never say what is in an account.
+          </div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Are you chain free?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Completely. Nothing to sell, no mortgage to arrange, no chain behind us."</div>
+          <div class="dir">Short and confident. This is your best card, so play it whenever it is true, and it is true.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"What are you going to do with it?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Do it up and hold it, most likely. It's why the condition matters to me more than the postcode."</div>
+          <div class="dir">Answer plainly and move on. Do not describe a strategy, a yield, or what you think it is worth after works.</div>
         </div>
       </details>
       <details class="branch obj">
@@ -590,6 +904,13 @@ details.branch>summary .tag{
         <div class="obj-panel">
           <div class="obj-say"><span class="who">YOU:</span> "It looks keenly priced. Is there a reason, lease or condition or anything?"</div>
           <div class="dir">Notes on this one: [valuation_notes]</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>They ask YOU what it's worth <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Honestly, on what I can see sold nearby, less than you're asking. That's why I gave you the figure I did."</div>
+          <div class="dir">Never say the walk-away number here either. "Less than you're asking" is a complete answer.</div>
         </div>
       </details>
     </div>
@@ -603,25 +924,55 @@ details.branch>summary .tag{
       answer.
     </div>
 
-    <div class="line"><span class="who you">YOU:</span> "That's great, thanks for your time. The director will be in touch."</div>
+    <div class="line"><span class="who you">YOU:</span> "Right, I'll get that figure over to Hugo today. What's a realistic time for me to ring you back, tomorrow or is it better later in the week?"</div>
+    <div class="dir">
+      <b>Never end a call without a time.</b> Getting them to agree when you ring
+      back is what turns pestering into an appointment, and it puts a small
+      deadline on them to have spoken to the vendor. Put the time and their name
+      in the Houses tab. The money in this job is in the follow-up: most of these
+      houses will still be sitting there in five weeks, and the vendor will be a
+      lot keener then than they are today.
+    </div>
+
+    <div class="line"><span class="who you">YOU:</span> "That's great, thanks for your time [their name]. Speak to you then."</div>
     <div class="dir">
       Then <b>wait</b>. Do not hang up on your own closing line. They often add
       the most useful thing in the call after they think it is over.
+    </div>
+
+    <div class="responses">
+      <details class="branch obj">
+        <summary>"Shall I book you in for a viewing?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Let me check Hugo's diary and come back to you, he'd want to be there. What have you got free later in the week?"</div>
+          <div class="dir">Take the availability, book nothing. Then mark it in the Houses tab so the director can pick it up.</div>
+        </div>
+      </details>
+      <details class="branch obj">
+        <summary>"Can I take your details?" <span class="tag">obj</span></summary>
+        <div class="obj-panel">
+          <div class="obj-say"><span class="who">YOU:</span> "Yeah, it's Pedro, and this number's the best one for me."</div>
+          <div class="dir">Give your name and the number you are calling from. Nothing else without asking the director first.</div>
+        </div>
+      </details>
     </div>
 
     <div class="end-won">
       <div class="big">BEFORE YOU MOVE ON</div>
       <div class="small">
         Tick off what you learned in the <b>Houses</b> tab and pick an outcome.
-        If they gave you a figure, type it in. That number is the reason this
-        call happened.
+        If they gave you a figure, type it in and use <b>Figure obtained</b>.
+        That number is the reason this call happened. Put their name and the
+        agreed callback time in the notes.
       </div>
     </div>
 
     <div class="end-lost">
       Never invent anything about the property, the director or the financing.
-      You only know what is on this page. If they ask for company details beyond
-      the name, the director will share them when he calls back.
+      You only know what is on this page. Company details, if they press: Unico,
+      full name Ulinc Unico Group Limited, company number 11197856, registered
+      office 483 Green Lanes, London, N13 4BS. Anything beyond that, the director
+      will share it when he calls.
     </div>
 
   </div>

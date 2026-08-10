@@ -1,9 +1,11 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './Layout'
 import { ProtectedRoute } from '@/core/auth/ProtectedRoute'
 import { VoiceRoute } from '@/core/auth/VoiceRoute'
 import { FullAppRoute } from '@/core/auth/FullAppRoute'
+import { useAuth } from '@/core/auth/AuthProvider'
+import { supabase } from '@/integrations/supabase/browser'
 
 const RegistrationPage = lazy(() => import('@/features/registration/RegistrationPage'))
 const OnboardingPage = lazy(() => import('@/features/onboarding/OnboardingPage'))
@@ -40,6 +42,8 @@ const CrmApp = lazy(() => import('@/features/crm/CrmApp'))
 const AgentJoinPage = lazy(() => import('@/features/agent-onboarding/AgentJoinPage'))
 const ScriptPage = lazy(() => import('@/features/script/ScriptPage'))
 const BlueprintPage = lazy(() => import('@/features/blueprint/BlueprintPage'))
+const PedroTrainingPage = lazy(() => import('@/features/training/PedroTrainingPage'))
+const HugoTrainingPage = lazy(() => import('@/features/training/HugoTrainingPage'))
 const LandingPage = lazy(() => import('@/features/landing/LandingPage'))
 const ReviewsApp = lazy(() => import('@/features/reviews/ReviewsApp'))
 const RankFrame = lazy(() => import('@/features/reviews/video/RankFrame'))
@@ -71,7 +75,37 @@ function RootEntry() {
   const host = typeof window !== 'undefined' ? window.location.hostname : ''
   const isMarketing = host === 'heyelsie.com' || host === 'www.heyelsie.com'
   if (isMarketing) return <LandingPage />
-  return <Navigate to="/dashboard" replace />
+  return <AppHome />
+}
+
+/**
+ * Where "/" goes on the app host. /dashboard for everyone, EXCEPT an account
+ * with profiles.landing_path set, which goes there instead.
+ *
+ * The login form already honours landing_path, but a signed-in person opening
+ * app.heyelsie.com lands here, not there, and "/" used to hard-send everyone to
+ * /dashboard, the receptionist product. That is how Pedro Houses, whose whole
+ * job is the property dialer, kept waking up in a Google-reviews dashboard for
+ * a business he has nothing to do with (Hugo, 2026-08-10: "very disturbing that
+ * he lands on old google crm, that business is dead"). landing_path is NULL for
+ * every other account, so nobody else moves.
+ */
+function AppHome() {
+  const { user, loading } = useAuth()
+  const [dest, setDest] = useState<string | null>(null)
+  useEffect(() => {
+    if (loading) return
+    if (!user) { setDest('/dashboard'); return } // guard bounces it to /login as before
+    void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase.from('profiles') as any)
+        .select('landing_path').eq('id', user.id).maybeSingle()
+      const p = (data?.landing_path as string | null)?.trim()
+      setDest(p && p.startsWith('/') ? p : '/dashboard')
+    })()
+  }, [user, loading])
+  if (!dest) return <LoadingFallback />
+  return <Navigate to={dest} replace />
 }
 
 /**
@@ -93,11 +127,13 @@ export default function App() {
   const host = typeof window !== 'undefined' ? window.location.hostname : ''
   // go.localhost → loopback in Chromium; lets Playwright/dev hit the reviews app
   if (host === 'go.heyelsie.com' || host === 'go.localhost') {
-    // Agent hiring link lives here too (Hugo shares go.heyelsie.com/join). It is
-    // a standalone public page, so serve it before the reviews app takes over the
-    // whole origin. Rendered outside the Router, so AgentJoinPage uses no router.
+    // Agent hiring link lives here too (Hugo shares go.heyelsie.com/join, and
+    // go.heyelsie.com/join/<role> for a role-scoped agreement). It is a
+    // standalone public page, so serve it before the reviews app takes over the
+    // whole origin. Rendered outside the Router, so AgentJoinPage uses no router
+    // and reads the role slug straight off the pathname.
     const path = typeof window !== 'undefined' ? window.location.pathname : ''
-    if (path === '/join' || path === '/join/') {
+    if (path === '/join' || path === '/join/' || /^\/join\/[a-z0-9][a-z0-9-]*\/?$/i.test(path)) {
       return (
         <Suspense fallback={<LoadingFallback />}>
           <AgentJoinPage />
@@ -127,10 +163,24 @@ export default function App() {
         {/* Public agent hiring link — the new hire signs the agreement,
             verifies their email, and gets a CRM agent account. */}
         <Route path="join" element={<AgentJoinPage />} />
+        {/* Role-scoped working agreements, one public URL each (e.g.
+            /join/property). Same page: the agreement's own mode decides whether
+            it creates an account or only records the signature. */}
+        <Route path="join/:slug" element={<AgentJoinPage />} />
         {/* PIN-gated one-call sales script (heyelsie.com/script). */}
         <Route path="script" element={<ScriptPage />} />
         {/* PIN-gated dev environment checklist for people learning to code with Claude (heyelsie.com/blueprint). */}
         <Route path="blueprint" element={<BlueprintPage />} />
+        {/* PIN-gated property cold-calling training: three videos + a timed test
+            (heyelsie.com/pedro-training). noindex, and NOT to be shared: the
+            videos are lessons from a paid course. The slug is also excluded
+            from the VSL catch-all rewrite in vercel.json, or the apex would
+            serve a sales page here instead of this route. */}
+        <Route path="pedro-training" element={<PedroTrainingPage />} />
+        {/* The owner's copy of the same training: nothing gated, every answer
+            shown. A DIFFERENT PIN, checked server side, because this page is
+            the answer key to the page above. */}
+        <Route path="hugo-training" element={<HugoTrainingPage />} />
         {/* Internal render surface for the personalised "you're buried on
             Google" video. Google-styled, real lead + live local pack. */}
         <Route path="rank-frame" element={<RankFrame />} />

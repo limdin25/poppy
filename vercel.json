@@ -82,7 +82,7 @@
       "destination": "/api/site-demo/page?slug=:slug"
     },
     {
-      "source": "/:slug((?!api$|assets$|r$|s$|report$|timesheet$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|blueprint$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
+      "source": "/:slug((?!api$|assets$|r$|s$|report$|timesheet$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|blueprint$|pedro-training$|hugo-training$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
       "has": [
         {
           "type": "host",
@@ -101,6 +101,10 @@
     }
   ],
   "functions": {
+    "api/cron/daily-agent-reports.ts": {
+      "maxDuration": 300,
+      "includeFiles": "src/core/content/property-call-script.html"
+    },
     "api/cron/review-requests.ts": {
       "maxDuration": 60
     },

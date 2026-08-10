@@ -59,6 +59,42 @@ describe('offerRange — the valuation engine wins', () => {
     const band = offerRange({ asking_price: 200000, deal: { offer_max: 0 } }, PCT)
     expect(band).toEqual({ min: 140000, max: 150000 }) // percentage fallback
   })
+
+  // The shape valuation.py actually emits. Everything above tests the FLAT
+  // keys the browser Comps page used to send, and that gap put 157 properties
+  // in front of Pedro quoting 70-75% of the asking price with a real valuation
+  // sitting in the row underneath. Nothing errored: the fallback just took
+  // over, and a plausible wrong number is worse than no number.
+  //
+  // Live on 2026-08-10, Coniston Avenue NE31, asking GBP 75,000: the screen
+  // said open GBP 52,500 / walk away GBP 56,250 while the engine had said
+  // GBP 56,500 and GBP 60,900. He would have abandoned deals worth taking.
+  it('reads the NESTED shape the valuation engine really returns', () => {
+    const band = offerRange(
+      { asking_price: 75000, deal: { offer: { open: 56500, max: 60900, ladder: [56500, 58000, 59500, 60900] } } },
+      PCT,
+    )
+    expect(band).toEqual({ min: 56500, max: 60900 })
+  })
+
+  it('does not fall back to a percentage when the nested offer is present', () => {
+    const band = offerRange({ asking_price: 75000, deal: { offer: { open: 56500, max: 60900 } } }, PCT)
+    expect(band.max).not.toBe(56250) // 75% of asking, the old wrong answer
+  })
+
+  it('still prefers the nested figure when both shapes are present', () => {
+    const band = offerRange(
+      { asking_price: 75000, deal: { offer: { open: 56500, max: 60900 }, offer_min: 1, offer_max: 2 } },
+      PCT,
+    )
+    expect(band).toEqual({ min: 56500, max: 60900 })
+  })
+
+  it('reads the nested ladder, so the climb is the engine\'s not a made-up one', () => {
+    const deal = { offer: { open: 56500, max: 60900, ladder: [56500, 58000, 59500, 60900] } }
+    const text = ladderText(deal, offerRange({ asking_price: 75000, deal }, PCT))
+    expect(text).toBe('£56,500, then £58,000, then £59,500, then £60,900')
+  })
 })
 
 describe('offerRange — the percentage fallback', () => {

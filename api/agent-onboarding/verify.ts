@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../src/integrations/supabase/client.js';
 import { sendEmail } from '../../src/integrations/resend/client.js';
 import { hashOnboardingCode } from '../lib/onboarding.js';
+import { loadAgreement } from '../lib/agreements.js';
 
 export const config = { runtime: 'edge' };
 
@@ -57,11 +58,8 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     // Defence in depth: onboarding could have been closed after the code was sent.
-    const { data: agr } = await supabaseAdmin
-      .from('wk_agent_agreement')
-      .select('onboarding_open')
-      .eq('id', 1)
-      .single();
+    // Checked against the agreement this person actually signed.
+    const agr = await loadAgreement(s.agreement_slug);
     if (agr && agr.onboarding_open === false) {
       return Response.json({ error: 'Onboarding is currently closed.' }, { status: 403 });
     }
@@ -122,6 +120,13 @@ export default async function handler(req: Request): Promise<Response> {
       .from('wk_agent_signups')
       .update({ status: 'created', agent_id: userId, code_hash: null })
       .eq('id', signupId);
+
+    // Point the stored signature at the account it created. The wording snapshot
+    // itself is never touched.
+    await supabaseAdmin
+      .from('wk_agreement_signatures')
+      .update({ profile_id: userId })
+      .eq('signup_id', signupId);
 
     // 5) Welcome email with payment-setup instructions (best-effort — a failed
     //    send must never fail the account creation the hire just completed).

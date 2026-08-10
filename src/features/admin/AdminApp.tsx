@@ -23,6 +23,7 @@ const PipelinePage = lazy(() => import('./pages/PipelinePage'))
 const CeoCockpitPage = lazy(() => import('./pages/CeoCockpitPage'))
 const PhoneValidationPage = lazy(() => import('./pages/PhoneValidationPage'))
 const ReviewsAdminPage = lazy(() => import('./pages/ReviewsAdminPage'))
+const TrainingPage = lazy(() => import('./pages/TrainingPage'))
 
 function AdminFallback() {
   return (
@@ -54,6 +55,7 @@ export default function AdminApp() {
               <Route path="properties" element={<PropertiesPage />} />
               <Route path="scraper" element={<ScraperPage />} />
               <Route path="pipeline" element={<PipelinePage />} />
+              <Route path="training" element={<TrainingPage />} />
               <Route path="phone-validation" element={<PhoneValidationPage />} />
               <Route path="system" element={<SystemHealthPage />} />
               <Route path="analytics" element={<AdminAnalyticsPage />} />

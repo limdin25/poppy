@@ -99,15 +99,17 @@ const STATUS_STYLES: Record<string, string> = {
   new: 'bg-elevated text-ink-muted',
   call_queued: 'bg-blue-500/10 text-blue-600',
   calling: 'bg-violet-500/10 text-violet-600',
+  figure_obtained: 'bg-yellow-500/15 text-yellow-700',
   qualified: 'bg-success/10 text-success',
   not_qualified: 'bg-danger/10 text-danger',
   no_answer: 'bg-amber-500/10 text-amber-600',
   callback: 'bg-cyan-500/10 text-cyan-600',
 }
 
-// Qualified first (Hugo's action), live calls next, dead ends at the bottom.
+// Figure obtained first (waiting on Hugo's decision), then qualified (Hugo's
+// action), live calls next, dead ends at the bottom.
 const STATUS_ORDER: Record<string, number> = {
-  qualified: 0, calling: 1, call_queued: 2, callback: 3, new: 4, no_answer: 5, not_qualified: 6,
+  figure_obtained: 0, qualified: 1, calling: 2, call_queued: 3, callback: 4, new: 5, no_answer: 6, not_qualified: 7,
 }
 
 function gbp(v: unknown): string {
@@ -150,7 +152,10 @@ export default function PropertiesPage() {
     if (settings && !draft) setDraft(settings)
   }, [settings, draft])
 
-  const qualified = properties.filter((p) => p.status === 'qualified').length
+  // "Qualified" on this card means "a call turned it into a live deal", which
+  // since 2026-08-10 is either of the two pipeline outcomes. Counting only
+  // 'qualified' would have shown zero on a day of good calls.
+  const qualified = properties.filter((p) => ['qualified', 'figure_obtained'].includes(p.status)).length
   const awaiting = properties.filter((p) => ['new', 'call_queued', 'calling'].includes(p.status)).length
   const totalCostUsd = properties.flatMap((p) => p.calls || []).reduce((sum, c) => sum + (Number(c.cost_usd) || 0), 0)
 

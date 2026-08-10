@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Mail, Lock, ArrowRight, Star, Check } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -23,7 +23,13 @@ async function resolveDestination(from?: string): Promise<string> {
   if (!user) return '/dashboard'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: prof } = await (supabase.from('profiles') as any)
-    .select('workspace_role').eq('id', user.id).maybeSingle()
+    .select('workspace_role, landing_path').eq('id', user.id).maybeSingle()
+  // A per-person landing page, when one is set. Pedro Houses does exactly one
+  // job, ringing estate agents, and the inbox then the plumber dialer is the
+  // wrong script, the wrong pitch and the wrong leads. NULL for everyone else,
+  // so every other account is unchanged.
+  const landing = (prof?.landing_path as string | null)?.trim()
+  if (landing && landing.startsWith('/')) return landing
   if ((prof?.workspace_role as string | null)) return '/admin/crm/inbox'
   if (user.email) {
     const { data: adm } = await supabase.from('admin_users').select('email').eq('email', user.email).maybeSingle()
@@ -88,10 +94,23 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  const { signInWithPassword } = useAuth()
+  const { signInWithPassword, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from
+
+  // Already signed in? Straight to where this account belongs (landing_path
+  // aware, same resolver as a fresh sign-in). Pedro bookmarked /login and kept
+  // arriving at a sign-in form for a session he already had; the natural next
+  // click from there dumped him in the receptionist dashboard.
+  useEffect(() => {
+    if (!user) return
+    let stale = false
+    void resolveDestination(from).then((dest) => {
+      if (!stale) navigate(dest, { replace: true })
+    })
+    return () => { stale = true }
+  }, [user, from, navigate])
 
   async function signIn(em: string, pw: string) {
     setLoading(true)

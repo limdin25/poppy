@@ -324,9 +324,9 @@ const PROPERTY_STAGE_ORDER = [
  *  layer. `## N. Stage` headings so parseScriptAnchors finds the sections. */
 const PROPERTY_AGENT_SCRIPT_MD = `# Ringing the agent about a house
 
-Calling on behalf of the director, who is a cash buyer. Gather information and
-gauge how flexible the vendor is. Do NOT make a formal offer. Do NOT book a
-viewing. One question at a time.
+A real person at a real company, working with the director, who is a cash buyer.
+Gather the facts AND work the money on this call. Do NOT make a formal offer. Do
+NOT book a viewing. One question at a time.
 
 ## 1. Is it still available
 "Hi, hello. I'm calling about the property on {{property_street}}, the {{bedrooms}} bed {{property_type}}. Is that one still available?"
@@ -334,29 +334,37 @@ Then stop. Nothing else.
 If sold or under offer: "Ah, fair enough. Would the vendor consider backup offers at all?"
 
 ## 2. Ask for the two minutes
-"Oh lovely. So, I'm calling on behalf of our director, he's a cash buyer. Mind if I ask a couple of quick questions? Then he can call you back himself."
+"Oh lovely. I'm Pedro by the way, who am I speaking to?" Take their name and use it for the rest of the call.
+"Nice one. So, I work with our director Hugo at Unico, we buy in the area, cash. Mind if I ask you a couple of quick questions about it?"
 Wait for the yes.
+If asked who is calling: "It's Pedro. I work with Hugo, our director, at Unico. We buy residential property, we're looking in your patch at the minute."
+If asked what company: "Unico. We're a small property company, the director Hugo buys with cash and I do the legwork for him." Only if they press for the legal detail: "Full name's Ulinc Unico Group Limited, company number 11197856. Registered office is 483 Green Lanes in London, N13 4BS."
+If asked cash or mortgage: "Cash. No mortgage, no chain, nothing to sell."
 
 ## 3. The checklist
 "Is it vacant, or is there a tenant in?" If tenanted: staying or leaving, and what rent.
 "And what sort of condition is it in, ready to move into or does it need work?" Then roof, damp, electrics, boiler.
 "Has it had much interest? Any offers so far?" And has a sale ever fallen through.
 "Do you know why they're selling?" Then: in a hurry, and is there an onward chain.
+"How long's it been on with you? And has the price come down at all?"
 "Is it freehold or leasehold?"
 FLAT only: years left on the lease, service charge, ground rent, major works, cladding or EWS1.
 HOUSE only: confirm freehold, structural issues, extensions signed off.
 Never ask a house about service charges or a lease unless they say it is leasehold. Never ask a flat about subsidence unless they raise it.
 
 ## 4. The money
-"Realistically my director would be looking at somewhere around {{offer_open}} on this one. How would that land with the vendor?"
-Then be quiet. Let the silence do the work.
-If they push back: "I only ask because a similar one nearby went for less not long ago. What sort of figure do you think would actually get it done?"
-Climb the ladder ONE step at a time, only when they give ground.
-"Obviously my director would confirm everything himself."
+The offer without offering, said as one breath: "I've had a proper look at this one. I've been through what's sold on the same streets and worked out roughly what it'd cost us to put it right. I can't get near what you're asking, and I don't want to waste your time or embarrass anyone with a silly offer. But if we were to offer around {{offer_open}}, am I in the ballpark, or am I a million miles off?"
+"If we were to offer", never "I'd like to offer". Then be quiet. Let the silence do the work.
+Then get THEIR figure: "I only say that because a similar one nearby went for less not long ago. So what sort of figure do you think would actually get it done?"
+Climb the ladder ONE rung at a time, and only in exchange for something they have given you.
+Push back once, with a comp: "The one that sold on the same street went for less than that and it didn't need the work this one needs. What would they actually take?"
+"Let me speak to Hugo and come back to you" is a lever used LATER, not an opener: when a real figure has been banked, when they ask for something formal, or when pushed for a commitment the agent cannot give.
+If asked "is that your best?": "It's where we'd start. If there's a number that gets it done quickly, tell me what it is and I'll put it to Hugo today."
 
 ## 5. Wrap up
 "And what do viewings look like, weekdays, weekends, how much notice?" Ask, do not book.
-"That's great, thanks for your time. The director will be in touch."
+"What's a realistic time for me to ring you back, tomorrow or is it better later in the week?" Never end the call without an agreed callback time.
+"That's great, thanks for your time. Speak to you then."
 Then wait. Do not hang up on your own closing line.`;
 
 const PROPERTY_SCRIPT_PROMPT = [
@@ -392,6 +400,152 @@ const PROPERTY_SCRIPT_PROMPT = [
   'NEVER INVENT a fact about the property, the director, or the financing. Everything known is in THIS LEAD. If it is not there, coach the agent to ask rather than to assert.',
 ].join('\n');
 
+/**
+ * The KNOWLEDGE BASE for a property call: the estate-agent objections and the
+ * approved answer to each, word for word, mirroring the amber panels in
+ * src/core/content/property-call-script.html.
+ *
+ * Why a module constant and not wk_coach_facts rows: the workspace facts are
+ * Elsie product facts (price, what is included, how the review system works)
+ * and every one of them is WRONG on this call. Feeding them to the model here
+ * is what would let a card say something about reviews to somebody selling a
+ * terrace. So on a property call this REPLACES the workspace knowledge base
+ * rather than adding to it. Per-campaign wk_campaign_facts still override by
+ * key, so Hugo keeps a way to add a fact without a deploy.
+ *
+ * `keywords` feed retrieveFacts(), which highlights the matching fact from the
+ * estate agent's last utterance, so the answer is in front of the model at the
+ * moment the objection is actually said.
+ */
+const PROPERTY_OBJECTIONS: CoachFact[] = [
+  {
+    key: 'prop_who_is_calling',
+    label: 'They ask who is calling',
+    value: 'Say: "It\'s Pedro. I work with Hugo, our director, at Unico. We buy residential property, we\'re looking in your patch at the minute." Flat and unbothered. Hesitating here reads as a scam call.',
+    keywords: ['who\'s calling', 'who is calling', 'who am i speaking', 'sorry who', 'what was your name', 'who is this'],
+  },
+  {
+    key: 'prop_what_company',
+    label: 'They ask what company',
+    value: 'Say: "Unico. We\'re a small property company, the director Hugo buys with cash and I do the legwork for him." ONLY if they press for legal detail: "Full name\'s Ulinc Unico Group Limited, company number 11197856. Registered office is 483 Green Lanes in London, N13 4BS." Never improvise a number or an address.',
+    keywords: ['what company', 'which company', 'who do you work for', 'what firm', 'company name', 'are you with'],
+  },
+  {
+    key: 'prop_cash_or_mortgage',
+    label: 'Cash buyer or mortgage',
+    value: 'Say: "Cash. No mortgage, no chain, nothing to sell." Three words and stop. Never invent a fund, a bank, a figure or a timescale.',
+    keywords: ['cash buyer', 'mortgage', 'finance', 'funding', 'how are you buying', 'chain'],
+  },
+  {
+    key: 'prop_are_you_a_sourcer',
+    label: 'Are you a sourcer or an investor',
+    value: 'Say: "We buy for ourselves. Hugo\'s the buyer, I do the running around. If it\'s right we move quickly, if it\'s not we won\'t waste your afternoon." Never use the word sourcer, never claim a list of investors, and never mention a course or training.',
+    keywords: ['sourcer', 'sourcing', 'investor', 'investment company', 'do you buy', 'trade buyer', 'developer'],
+  },
+  {
+    key: 'prop_no_investors',
+    label: 'We do not deal with investors',
+    value: 'Do not argue. Say: "No, fair enough. We\'re a cash buyer with nothing to sell, so if you ever get one that\'s dragging or a sale falls over, we\'re the boring easy one. Can I leave you my number?" Then end it politely.',
+    keywords: ['don\'t deal with investors', 'do not deal with investors', 'no investors', 'not interested in investors'],
+  },
+  {
+    key: 'prop_mailing_list',
+    label: 'I will add you to our mailing list',
+    value: 'This is a brush-off, not a win: their list is every property that goes on Rightmove anyway. Accept it in one breath and get straight back to the property. Say: "Yeah, do, cheers. Though what\'s more useful to me is this one in front of me. Can I ask you two quick things about it?"',
+    keywords: ['mailing list', 'our list', 'database', 'send you what comes', 'add you to', 'applicant list'],
+  },
+  {
+    key: 'prop_branch_manager',
+    label: 'Speak to the branch manager',
+    value: 'Take a name and a time, never just "he\'s not in". Say: "No problem. Is he about now, or when\'s the best time to catch him? And what\'s his name, sorry?"',
+    keywords: ['branch manager', 'manager', 'the boss', 'not in today', 'he\'s out', 'she\'s out'],
+  },
+  {
+    key: 'prop_email_me',
+    label: 'Can you email me instead',
+    value: 'An email is where the call dies. Agree, ask one more question anyway, get a callback time. Say: "Course, I\'ll do that. While I\'ve got you though, is it vacant or is somebody in it?"',
+    keywords: ['email me', 'send me an email', 'put it in an email', 'drop me an email'],
+  },
+  {
+    key: 'prop_too_low',
+    label: 'That is far too low',
+    value: 'Do not defend the number and do not climb to make them feel better. Say: "Fair enough, no problem. What would the vendor actually take, do you think?" Make them counter first, THEN move one rung.',
+    keywords: ['too low', 'way off', 'never accept', 'insulting', 'miles off', 'not going to happen'],
+  },
+  {
+    key: 'prop_is_that_your_best',
+    label: 'Is that your best',
+    value: 'Never answer with the ceiling. Say: "It\'s where we\'d start. If there\'s a number that gets it done quickly, tell me what it is and I\'ll put it to Hugo today."',
+    keywords: ['your best', 'best offer', 'best you can do', 'final offer', 'push it up', 'go any higher'],
+  },
+  {
+    key: 'prop_vendor_wont_accept',
+    label: 'The vendor will not accept that',
+    value: 'Flatter their judgement and ask again without moving the number. Say: "You know them better than me. Where do you honestly think they\'d land if the right buyer turned up with cash and no chain?"',
+    keywords: ['vendor won\'t', 'seller won\'t', 'they won\'t accept', 'won\'t take that', 'holding out for'],
+  },
+  {
+    key: 'prop_higher_offers',
+    label: 'We have had higher offers',
+    value: 'Said lightly, never as a gotcha. Say: "Okay, no worries. Are those still on the table, or did they come and go? Because it\'s still on the market, so I\'m guessing something didn\'t stick." A cash buyer with no chain beats a bigger number that cannot complete.',
+    keywords: ['higher offer', 'had offers', 'better offer', 'more than that', 'offers over', 'another buyer'],
+  },
+  {
+    key: 'prop_must_view_first',
+    label: 'You have to view it first',
+    value: 'Not a no. Say: "Understood, and we would. The only reason I\'m asking first is I don\'t want to drag you and the vendor through a viewing if we\'re a million miles apart on price. Could you sound them out on the figure, then we\'ll get in and see it?" NEVER book the viewing.',
+    keywords: ['view it first', 'come and see', 'viewing first', 'need to view', 'see the property', 'book a viewing'],
+  },
+  {
+    key: 'prop_formal_offer',
+    label: 'Put it in writing or make a formal offer',
+    value: 'This is the moment for the director card. Say: "Of course. Nothing I\'ve said today is a formal offer, I\'m just trying to find out if we\'re in the right area. Let me put the figure to Hugo and he\'ll confirm everything properly with you."',
+    keywords: ['in writing', 'formal offer', 'officially', 'put an offer in', 'submit an offer', 'in an email'],
+  },
+  {
+    key: 'prop_how_quickly',
+    label: 'How quickly could you complete',
+    value: 'Never invent a number of weeks. Say: "Quickly, we\'re cash and there\'s no chain, so it\'s down to the solicitors more than us. Hugo will give you the exact timescale when he confirms, but we\'re not the ones who\'d be holding it up."',
+    keywords: ['how quickly', 'how fast', 'complete', 'completion', 'timescale', 'how soon', 'exchange'],
+  },
+  {
+    key: 'prop_proof_of_funds',
+    label: 'Have you got proof of funds',
+    value: 'A normal question, treat it as one. Say: "Yeah, that\'s no issue at all. Hugo handles that side, so as soon as we\'re agreed on a figure he\'ll send it over to you." Never quote a balance and never send anything yourself.',
+    keywords: ['proof of funds', 'pof', 'evidence of funds', 'bank statement', 'prove the money', 'show funds'],
+  },
+  {
+    key: 'prop_chain_free',
+    label: 'Are you chain free',
+    value: 'Short and confident. Say: "Completely. Nothing to sell, no mortgage to arrange, no chain behind us."',
+    keywords: ['chain free', 'chain-free', 'anything to sell', 'own chain', 'position'],
+  },
+  {
+    key: 'prop_what_will_you_do_with_it',
+    label: 'What will you do with it',
+    value: 'Say: "Do it up and hold it, most likely. It\'s why the condition matters to me more than the postcode." Never describe a yield, a strategy, or what it is worth after works.',
+    keywords: ['what are you going to do', 'rent it out', 'flip it', 'live in it', 'do it up', 'refurb it'],
+  },
+  {
+    key: 'prop_what_is_it_worth',
+    label: 'They ask what you think it is worth',
+    value: 'Say: "Honestly, on what I can see sold nearby, less than you\'re asking. That\'s why I gave you the figure I did." Never say the walk-away figure here either.',
+    keywords: ['what do you think it\'s worth', 'what\'s it worth', 'what would you value', 'your valuation'],
+  },
+  {
+    key: 'prop_sold_or_under_offer',
+    label: 'It is sold or under offer',
+    value: 'Worth 20 seconds. Say: "Ah, fair enough. Would the vendor consider backup offers at all? And how long has it been agreed, out of interest?" Get their name and agree to ring back in a few weeks.',
+    keywords: ['sold', 'under offer', 'sale agreed', 'sold stc', 'gone', 'off the market'],
+  },
+  {
+    key: 'prop_callback_time',
+    label: 'Ending the call',
+    value: 'Never end a call without an agreed callback time. Say: "What\'s a realistic time for me to ring you back, tomorrow or is it better later in the week?" That turns pestering into an appointment, and the money in this job is in the follow-up.',
+    keywords: ['ring me', 'call me back', 'get back to you', 'speak to the vendor', 'i\'ll find out', 'leave it with me'],
+  },
+];
+
 /** One extra block on the user message so the model cannot mistake the call
  *  type even if it skims the system layers. */
 const PROPERTY_CALL_CONTEXT = [
@@ -399,6 +553,7 @@ const PROPERTY_CALL_CONTEXT = [
   'The person on the phone is an ESTATE AGENT. We are the buyer. There is no product being sold to them, no reviews, no website, no subscription.',
   'Five beats: is it still available, ask for two minutes, the checklist, the money, wrap up.',
   'The walk-away figure in THIS LEAD is private. Never coach the agent to say it.',
+  'The KNOWLEDGE BASE on this call is the estate-agent objection list. Answer an objection with the approved line from it, never with a new argument.',
 ].join('\n');
 
 // Hugo 2026-04-29: replaced the single mega-prompt with three independently
@@ -1698,9 +1853,15 @@ serve(async (req: Request) => {
           // preserved so the model still has the full company context.
           const wsFacts = (factsRes.data ?? []) as CoachFact[];
           const campFacts = (campaignFactsRes.data ?? []) as CoachFact[];
+          // A property call REPLACES the workspace knowledge base rather than
+          // adding to it: every workspace fact is an Elsie product fact (price,
+          // what is included, how reviews work) and all of them are wrong when
+          // the person on the phone is selling a house. Campaign facts still
+          // override by key on both paths, so nothing about a cold dial moves.
+          const baseFacts: CoachFact[] = isPropertyCall ? PROPERTY_OBJECTIONS : wsFacts;
           const overrideKeys = new Set(campFacts.map((f) => f.key));
           const mergedFacts: CoachFact[] = [
-            ...wsFacts.filter((f) => !overrideKeys.has(f.key)),
+            ...baseFacts.filter((f) => !overrideKeys.has(f.key)),
             ...campFacts,
           ];
 
@@ -1723,7 +1884,7 @@ serve(async (req: Request) => {
           };
           log(
             'layers loaded',
-            `style=${layers.stylePrompt.length}c script=${layers.scriptPrompt.length}c facts=${layers.facts.length}(ws=${wsFacts.length}+cam=${campFacts.length}) agentScript=${agentScriptBody.length}c(${agentScriptSource}) close=${isCloseCall} campaign=${campaignId ?? 'none'} caller=${contactFirstName}`
+            `style=${layers.stylePrompt.length}c script=${layers.scriptPrompt.length}c facts=${layers.facts.length}(base=${baseFacts.length}+cam=${campFacts.length}) agentScript=${agentScriptBody.length}c(${agentScriptSource}) close=${isCloseCall} property=${isPropertyCall} campaign=${campaignId ?? 'none'} caller=${contactFirstName}`
           );
 
           // 8. Build the user message + run streaming.

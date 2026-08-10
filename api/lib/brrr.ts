@@ -101,8 +101,14 @@ export function toE164(phone: string | null | undefined): string | null {
 
 
 export interface Qualification {
-  outcome?: 'qualified' | 'not_qualified' | 'callback' | 'no_answer';
-  next_step?: 'book_viewing' | 'make_offer' | 'monitor_backup' | 'call_back' | 'none' | null;
+  // 'figure_obtained' is the human path only, added 2026-08-10 when Pedro
+  // started negotiating on the call himself: the agent has told him a number
+  // that would get it done and the deal is now waiting on the director, which
+  // is a different thing from "qualified" (worth pursuing) and from "callback"
+  // (nothing learned). The retired AI extractor never emits it, so its prompt
+  // below is deliberately left alone.
+  outcome?: 'qualified' | 'figure_obtained' | 'not_qualified' | 'callback' | 'no_answer';
+  next_step?: 'book_viewing' | 'make_offer' | 'monitor_backup' | 'call_back' | 'awaiting_director' | 'none' | null;
   still_available?: boolean | null;
   occupancy?: string | null;            // vacant / tenanted (+ tenancy details)
   condition_notes?: string | null;
@@ -275,10 +281,18 @@ export async function pushPropertyToPipeline(
     }
   }
 
-  // Stage by the call's next step: viewing-first deals go straight to a
-  // "Viewing" column, sale-agreed backups to "Monitoring", the rest to
-  // "Qualified". Stages are created on first use.
+  // Stage by the call's next step: a figure out of the agent waits in
+  // "Awaiting director", viewing-first deals go straight to a "Viewing" column,
+  // sale-agreed backups to "Monitoring", the rest to "Qualified". Stages are
+  // created on first use.
+  //
+  // "Awaiting director" exists because the call flow changed on 2026-08-10:
+  // Pedro now negotiates on the phone, so the common end state is "they said
+  // £X, it is on Hugo now". Filing that as plain "Qualified" hid the one thing
+  // Hugo has to act on, in the same column as deals nobody is waiting on. It
+  // sorts FIRST for that reason.
   const STAGE_BY_NEXT_STEP: Record<string, { name: string; color: string; sort_order: number }> = {
+    awaiting_director: { name: 'Awaiting director', color: 'amber', sort_order: 1 },
     book_viewing: { name: 'Viewing', color: 'sky', sort_order: 3 },
     monitor_backup: { name: 'Monitoring', color: 'slate', sort_order: 7 },
   };
@@ -313,7 +327,9 @@ export async function pushPropertyToPipeline(
   const lines = [
     nextStep === 'monitor_backup'
       ? `Sale agreed elsewhere — tracked as cash backup by Elsie.`
-      : `BRRR property qualified by Elsie.`,
+      : nextStep === 'awaiting_director'
+        ? `Figure obtained on the phone. Waiting on the director to decide.`
+        : `BRRR property qualified by Elsie.`,
     property.listing_url ? `Listing: ${property.listing_url}` : null,
     `Asking: ${property.price_text || fmtGBP(property.asking_price)} · Offer target: ${fmtGBP(deal.offer_price)} · GDV: ${fmtGBP(deal.gdv)}`,
     deal.rent ? `Target rent: ${fmtGBP(deal.rent)}/mo · Cash needed: ${fmtGBP(deal.total_cash)}` : null,

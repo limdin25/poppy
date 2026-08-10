@@ -40,9 +40,19 @@ const supabase = createClient(
 );
 
 /** What Pedro can pick. Mirrors Qualification['outcome'] in api/lib/brrr.ts so
- *  a human call and an AI call land the property in the same states. */
-const OUTCOMES = ['qualified', 'not_qualified', 'callback', 'no_answer'] as const;
+ *  a human call and an AI call land the property in the same states.
+ *
+ *  'figure_obtained' was added 2026-08-10 with the script rewrite that has Pedro
+ *  negotiate on the call rather than hand every money question to the director.
+ *  The common end state is now "the agent said £X and it is on Hugo", which is
+ *  neither 'qualified' (worth pursuing, nobody waiting) nor 'callback' (nothing
+ *  learned). It files the deal under a stage of its own so the ones needing
+ *  Hugo's decision are not buried among the ones that do not. */
+const OUTCOMES = ['qualified', 'figure_obtained', 'not_qualified', 'callback', 'no_answer'] as const;
 type Outcome = (typeof OUTCOMES)[number];
+
+/** Outcomes that put the property in front of Hugo as a deal. */
+const PIPELINE_OUTCOMES: readonly Outcome[] = ['qualified', 'figure_obtained'];
 
 interface Body {
   property_id?: string;
@@ -105,6 +115,11 @@ export default async function handler(req: Request): Promise<Response> {
   const qualification: Qualification = {
     ...(body.qualification as Qualification),
     outcome,
+    // 'figure_obtained' IS the next step, so the agent is not asked to pick one
+    // in a second control. Anything the agent already set wins.
+    ...(outcome === 'figure_obtained' && !(body.qualification as Qualification)?.next_step
+      ? { next_step: 'awaiting_director' as const }
+      : {}),
   };
   const note = String(body.note || '').trim();
 
@@ -162,7 +177,7 @@ export default async function handler(req: Request): Promise<Response> {
   let dealId: string | null = property.deal_id ?? null;
   let warning: string | undefined;
 
-  if (outcome === 'qualified') {
+  if (PIPELINE_OUTCOMES.includes(outcome)) {
     const pushed = await pushPropertyToPipeline(
       { ...property, qualification } as BrrrProperty,
       qualification,
@@ -176,14 +191,18 @@ export default async function handler(req: Request): Promise<Response> {
       if (PIPELINE_BUSINESS_ID) {
         // Same shape as the AI path's notification (api/lib/brrr.ts:578), so
         // Hugo's alerts read the same whoever made the call.
+        const awaiting = outcome === 'figure_obtained';
         await notifyBusinessOwner(PIPELINE_BUSINESS_ID, 'call', {
-          title: `Property qualified: ${property.address || property.source_property_id}`,
+          title: `${awaiting ? 'Figure obtained, needs you' : 'Property qualified'}: ${property.address || property.source_property_id}`,
           body: [
             note || null,
+            qualification.best_price_indicated ? `Agent said: ${qualification.best_price_indicated}` : null,
             qualification.offer_reaction ? `Offer reaction: ${qualification.offer_reaction}` : null,
             property.agent_phone ? `Agent: ${property.agent_name || ''} ${property.agent_phone}` : null,
             property.listing_url,
-            'Qualified on a call by a CRM agent.',
+            awaiting
+              ? 'A CRM agent got a figure out of the branch. Waiting on your decision.'
+              : 'Qualified on a call by a CRM agent.',
           ].filter(Boolean).join('\n'),
         }).catch(() => {});
       }

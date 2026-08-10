@@ -23,7 +23,7 @@ import { useKillSwitch } from '@/features/crm/caller-pad/hooks/useKillSwitch';
 import type { Campaign } from '@/features/crm/caller-pad/types';
 
 import DialerScriptPane, { type ScriptKey } from '@/features/crm/components/live-call/DialerScriptPane';
-import { scriptForCall } from '@/features/crm/lib/scriptForCall';
+import { scriptForCall, scriptFromLandingPath } from '@/features/crm/lib/scriptForCall';
 import DialerRightTabs from '@/features/crm/components/live-call/DialerRightTabs';
 import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaCompact';
 import CallTimeline from '@/features/crm/components/live-call/CallTimeline';
@@ -61,12 +61,50 @@ export default function DialerProPage() {
   const autoCallContactId = searchParams.get('call');
   // Captured once: onAutoCallConsumed clears the query string, which would
   // otherwise swap the script back to cold mid-call.
-  const [scriptKey] = useState<ScriptKey>(() => {
+  const [urlScript] = useState<ScriptKey | null>(() => {
     const q = searchParams.get('script');
     // Allowlist, never the raw query value: this decides which words an agent
     // reads down a live phone line.
-    return q === 'vsl_close' || q === 'property_call' ? q : 'cold_call';
+    return q === 'vsl_close' || q === 'property_call' ? q : null;
   });
+  // No ?script= in the URL: the agent's own default decides, not a hardcoded
+  // cold_call. The sidebar Dialer link, bookmarks and History redials all open
+  // this page bare, and for Pedro Houses bare used to mean the dead
+  // Google-reviews script over his estate-agent queue. profiles.landing_path
+  // already names his room; scriptFromLandingPath() reads the script off it.
+  // NULL landing_path (every other account) resolves to cold_call, unchanged.
+  // When an admin is impersonating ("See as"), the impersonated agent's
+  // default is used, so Hugo checking Pedro's room sees Pedro's script.
+  const { user } = useAuth();
+  const impersonatedId = useImpersonatedAgentId();
+  const profileId = impersonatedId ?? user?.id ?? null;
+  const [homeScript, setHomeScript] = useState<ScriptKey | undefined>(
+    urlScript ? 'cold_call' : undefined, // irrelevant when the URL decides
+  );
+  useEffect(() => {
+    if (urlScript) return;
+    if (!profileId) { setHomeScript('cold_call'); return; }
+    let cancelled = false;
+    void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase.from('profiles') as any)
+        .select('landing_path').eq('id', profileId).maybeSingle();
+      if (cancelled) return;
+      setHomeScript(scriptFromLandingPath(data?.landing_path as string | null) ?? 'cold_call');
+    })();
+    return () => { cancelled = true; };
+  }, [urlScript, profileId]);
+
+  const scriptKey: ScriptKey | undefined = urlScript ?? homeScript;
+  if (!scriptKey) {
+    // One profiles read before the room mounts. The room is heavy anyway, and
+    // mounting it on cold_call then flipping would re-fire its setup hooks.
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#3C5A87] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
   return (
     <DialerProContent
       autoCallContactId={autoCallContactId}

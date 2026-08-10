@@ -29,6 +29,32 @@ export interface ScriptForCallArgs {
   currentLeadContactId: string | null;
 }
 
+/** The default script for an agent whose profiles.landing_path points at the
+ *  dialer with a ?script= of its own, e.g.
+ *  '/admin/crm/dialer-pro?script=property_call'.
+ *
+ *  Why this exists: the sidebar Dialer link, a bookmark, and a redial from
+ *  History all open /admin/crm/dialer-pro with no query string, and the page
+ *  used to hard-default that to the cold plumber script. Pedro Houses landed
+ *  on the dead Google-reviews pitch every time he arrived any way other than
+ *  the one deep link (Hugo, 2026-08-10, tenth time: "this business is dead,
+ *  he should land on the real estate business"). landing_path already says
+ *  which room is HIS; this reads the script off it so every road into the
+ *  dialer agrees. NULL landing_path (everyone else) keeps cold_call exactly.
+ *
+ *  'vsl_close' is deliberately NOT honoured here: that script belongs to one
+ *  lead the funnel opened the room for (see scriptForCall below), never to a
+ *  person as their standing default. */
+export function scriptFromLandingPath(landingPath: string | null | undefined): ScriptKey | null {
+  const lp = (landingPath ?? '').trim();
+  if (!lp.startsWith('/')) return null;
+  const q = lp.indexOf('?');
+  if (q === -1) return null;
+  if (!lp.slice(0, q).includes('/dialer')) return null;
+  const script = new URLSearchParams(lp.slice(q + 1)).get('script');
+  return script === 'property_call' ? 'property_call' : null;
+}
+
 export function scriptForCall({
   openedWith,
   openedForContactId,
