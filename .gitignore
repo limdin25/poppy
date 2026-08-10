@@ -47,3 +47,4 @@ video/public/audio/*backup*
 video/public/audio/voice/
 video/tts-env/
 video/node_modules/
+.tmp-run/

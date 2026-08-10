@@ -343,7 +343,21 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
   const pickNextLead = useCallback(
     async (queue: QueueLead[]): Promise<QueueLead | null> => {
       for (const lead of queue) {
-        if (dialedRef.current.has(lead.queueRowId)) continue;
+        // Already rung in THIS sitting. The guard exists so hitting "next"
+        // cannot walk back over the same lead while the queue reloads.
+        //
+        // It is keyed on the queue ROW, not the contact, and that is what makes
+        // the requeue work: when a branch goes to voicemail, wk_apply_outcome
+        // now sends that same row back to 'pending' with a rest gap of two
+        // hours (migration 20260810000007). The row keeps its id, so this set
+        // would refuse to ever dial it again, and the requeue would silently do
+        // nothing until Pedro restarted the dialer. Anything the server has
+        // deliberately scheduled for later is therefore forgotten here, and the
+        // scheduled_for filter in useQueuePro is what actually holds it back.
+        if (dialedRef.current.has(lead.queueRowId)) {
+          if (!lead.scheduledFor) continue;
+          dialedRef.current.delete(lead.queueRowId);
+        }
         if (!lead.phone) continue;
         return lead;
       }
