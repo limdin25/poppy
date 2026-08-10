@@ -127,12 +127,29 @@ describe('the video list is one config, and the gate follows it', () => {
                        'live-call-vincent', 'bonus-sourcing', 'bonus-brrr-explained']) {
       expect(cfg).toContain(`key: '${key}'`)
     }
-    // Four required, two optional. Comments are stripped first: the block above
-    // the array explains the flag by quoting it, which would be counted.
-    const entries = cfg.slice(cfg.indexOf('export const TRAINING_VIDEOS'))
-      .replace(/^\s*(\/\/|\*|\/\*).*$/gm, '')
-    expect(entries.match(/required: true/g) ?? []).toHaveLength(4)
-    expect(entries.match(/required: false/g) ?? []).toHaveLength(2)
+    // Four required, two optional IN ROUND ONE. Scoped to that array on
+    // purpose: round two was added on 2026-08-10 after the script rewrite and
+    // has its own list, and counting across the whole file would make adding a
+    // round fail a test about round one. Round one is the record of what
+    // somebody was actually tested on and must not move.
+    const roundOne = cfg.slice(
+      cfg.indexOf('export const TRAINING_VIDEOS'),
+      cfg.indexOf('export const REQUIRED_VIDEOS'),
+    ).replace(/^\s*(\/\/|\*|\/\*).*$/gm, '')
+    expect(roundOne.match(/required: true/g) ?? []).toHaveLength(4)
+    expect(roundOne.match(/required: false/g) ?? []).toHaveLength(2)
+  })
+
+  it('round two exists, re-uses the required four, and starts locked', () => {
+    // Adding videos to round ONE would re-lock a test Pedro has already passed
+    // and lose the record of what he watched. Rounds are scoped in the database
+    // instead (migration 20260810000008), so round two starts every video
+    // unwatched with the quiz shut.
+    expect(cfg).toMatch(/export const TRAINING_ROUND_TWO/)
+    expect(cfg).toMatch(/TRAINING_ROUNDS: Record<number, TrainingVideo\[\]>/)
+    expect(cfg).toMatch(/1: TRAINING_VIDEOS/)
+    expect(cfg).toMatch(/dealing-with-agents-mastermind/)
+    expect(cfg).toMatch(/property-viewings-mastermind/)
   })
 
   it('the YouTube ones are embedded by id and never downloaded', () => {
@@ -144,9 +161,38 @@ describe('the video list is one config, and the gate follows it', () => {
     expect(session).toMatch(/youtubeId: v\.source === 'youtube' \? v\.ref : null/)
   })
 
-  it('the gate counts the required videos and ignores the optional ones', () => {
+  it('the gate counts the required videos of THAT ROUND and ignores the optional ones', () => {
     expect(cfg).toMatch(/REQUIRED_VIDEOS = TRAINING_VIDEOS\.filter\(\(v\) => v\.required\)/)
-    expect(cfg).toMatch(/return REQUIRED_VIDEOS\.every\(\(v\) => \(pct\[v\.key\] \?\? 0\) >= WATCHED_PCT\)/)
+    // Round-scoped since 2026-08-10. Reading the whole set would let round
+    // one's finished videos unlock round two's test, which is the single thing
+    // a second round has to prevent.
+    expect(cfg).toMatch(/const required = videosForRound\(round\)\.filter\(\(v\) => v\.required\)/)
+    expect(cfg).toMatch(/return required\.every\(\(v\) => \(pct\[v\.key\] \?\? 0\) >= WATCHED_PCT\)/)
+  })
+
+  it('progress and attempts are written against a round, and read back by it', () => {
+    const progress = read('api/pedro-training/progress.ts')
+    const session = read('api/pedro-training/session.ts')
+    const quiz = read('api/pedro-training/quiz.ts')
+    expect(progress).toMatch(/\.eq\('round', round\)/)
+    expect(progress).toMatch(/round,\n\s*video_key: video\.key/)
+    expect(session).toMatch(/\.eq\('round', round\)/)
+    expect(quiz).toMatch(/\.eq\('round', round\)/)
+    expect(quiz).toMatch(/trainee_key: TRAINEE_KEY, round, status: 'in_progress'/)
+  })
+
+  it('records how long each question took, and the order it was shown', () => {
+    // Hugo 2026-08-10: "make sure all recoreded for admin, time spent on each
+    // answer etc". Two POSTs for the whole test, so the seconds ride in on the
+    // submit rather than adding twenty network waits to a clock he is racing.
+    const quiz = read('api/pedro-training/quiz.ts')
+    expect(quiz).toMatch(/seconds: Number\.isFinite/)
+    expect(quiz).toMatch(/position: i \+ 1/)
+    // Clamped, because it is client-supplied like duration_sec already was.
+    expect(quiz).toMatch(/Math\.max\(0, Math\.min\(600/)
+    const ui = read('src/features/training/TrainingQuiz.tsx')
+    expect(ui).toMatch(/secondsRef/)
+    expect(ui).toMatch(/questionShownAtRef/)
   })
 
   it('adding a video cannot wipe what has already been watched', () => {

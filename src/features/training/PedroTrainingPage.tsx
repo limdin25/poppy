@@ -19,6 +19,17 @@ import { TRAINING_PIN } from '../../../api/lib/training';
  * cannot drift apart. It is not a secret: it is in the client bundle by design,
  * and nothing behind it can change anything that matters.
  */
+/** Which round this page is. /pedro-training is round one and always will be:
+ *  it is the record of what he was actually tested on. /pedro-training/v2 is
+ *  the round after the script was rewritten on 2026-08-10, and it starts every
+ *  video unwatched and the quiz locked again.
+ *
+ *  Read off the pathname rather than a router param because this page is
+ *  mounted as a flat top-level route, outside every layout and guard. Two path
+ *  segments also mean the apex VSL catch-all cannot swallow it: that rewrite
+ *  only ever matches a single segment, the same reason /join/property works. */
+const ROUND = typeof window !== 'undefined' && /\/pedro-training\/v2\/?$/.test(window.location.pathname) ? 2 : 1;
+
 export default function PedroTrainingPage() {
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState('');
@@ -57,7 +68,7 @@ export default function PedroTrainingPage() {
       const res = await fetch('/api/pedro-training/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: TRAINING_PIN }),
+        body: JSON.stringify({ pin: TRAINING_PIN, round: ROUND }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Could not load (${res.status})`);
@@ -203,6 +214,7 @@ export default function PedroTrainingPage() {
               {allWatched ? (
                 <TrainingQuiz
                   pin={TRAINING_PIN}
+                  round={ROUND}
                   secondsPerQuestion={session.quiz.secondsPerQuestion}
                   passPct={session.quiz.passPct}
                   onFinished={() => void load()}

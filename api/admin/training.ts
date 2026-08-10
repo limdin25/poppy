@@ -39,7 +39,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const { data: progressRows } = await supabaseAdmin
     .from('training_video_progress')
-    .select('video_key, watched_sec, duration_sec, pct, play_count, first_seen_at, completed_at, updated_at')
+    .select('video_key, round, watched_sec, duration_sec, pct, play_count, first_seen_at, completed_at, updated_at')
     .eq('trainee_key', TRAINEE_KEY);
 
   interface ProgressRow {
@@ -77,7 +77,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const { data: attempts } = await supabaseAdmin
     .from('training_quiz_attempts')
-    .select('id, status, score, total, pct, passed, started_at, submitted_at, duration_sec, results')
+    .select('id, round, status, score, total, pct, passed, started_at, submitted_at, duration_sec, results')
     .eq('trainee_key', TRAINEE_KEY)
     .order('started_at', { ascending: false })
     .limit(10);

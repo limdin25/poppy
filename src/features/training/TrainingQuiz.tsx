@@ -44,6 +44,9 @@ interface Props {
   onFinished: () => void;
   /** Which route grades it. Defaults to Pedro's, which is the gated one. */
   endpoint?: string;
+  /** Which training round this sitting belongs to. The server gates on it, so
+   *  round two cannot be unlocked by round one's watched videos. */
+  round?: number;
 }
 
 type Phase = 'warning' | 'running' | 'grading' | 'done';
@@ -53,7 +56,7 @@ type Phase = 'warning' | 'running' | 'grading' | 'done';
 const QUIZ_REAL_SECONDS = 30;
 
 export default function TrainingQuiz({
-  pin, secondsPerQuestion, passPct, onFinished,
+  pin, secondsPerQuestion, passPct, onFinished, round = 1,
   endpoint = '/api/pedro-training/quiz',
 }: Props) {
   const timed = secondsPerQuestion > 0;
@@ -69,6 +72,14 @@ export default function TrainingQuiz({
 
   const answersRef = useRef<Array<number | string | null>>([]);
   const startedAtRef = useRef(0);
+  // Seconds spent on each question, and when the current one appeared. Hugo,
+  // 2026-08-10, wants to see where he hesitated, not just what he got wrong: a
+  // question answered correctly in 28 of its 30 seconds is a different thing
+  // from one answered in four. Timed here because the whole test is two POSTs
+  // and per-question round trips would add twenty network waits to a clock
+  // somebody is racing.
+  const secondsRef = useRef<Array<number | null>>([]);
+  const questionShownAtRef = useRef(0);
   const submittingRef = useRef(false);
 
   const submit = useCallback(async () => {
@@ -84,6 +95,7 @@ export default function TrainingQuiz({
           action: 'submit',
           attempt_id: attemptId,
           answers: answersRef.current,
+          seconds: secondsRef.current,
           duration_sec: Math.round((Date.now() - startedAtRef.current) / 1000),
         }),
       });
@@ -104,6 +116,10 @@ export default function TrainingQuiz({
   const advance = useCallback(
     (answer: number | string | null) => {
       answersRef.current[current] = answer;
+      secondsRef.current[current] = questionShownAtRef.current
+        ? Math.round((Date.now() - questionShownAtRef.current) / 1000)
+        : null;
+      questionShownAtRef.current = Date.now();
       setTyped('');
       if (current + 1 >= questions.length) {
         void submit();
@@ -146,14 +162,16 @@ export default function TrainingQuiz({
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, action: 'start' }),
+        body: JSON.stringify({ pin, action: 'start', round }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Could not start');
       setAttemptId(json.attempt_id);
       setQuestions(json.questions ?? []);
       answersRef.current = new Array((json.questions ?? []).length).fill(null);
+      secondsRef.current = new Array((json.questions ?? []).length).fill(null);
       startedAtRef.current = Date.now();
+      questionShownAtRef.current = Date.now();
       setCurrent(0);
       setPhase('running');
     } catch (e) {

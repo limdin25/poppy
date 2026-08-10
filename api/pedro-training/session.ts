@@ -22,6 +22,8 @@
 import { supabaseAdmin } from '../../src/integrations/supabase/client.js';
 import {
   TRAINING_VIDEOS,
+  videosForRound,
+  roundOf,
   TRAINING_BUCKET,
   SIGNED_URL_TTL_SEC,
   TRAINEE_KEY,
@@ -55,6 +57,9 @@ export default async function handler(req: Request): Promise<Response> {
   } catch {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+  const round = roundOf((body as { round?: unknown }).round);
+  const roundVideos = videosForRound(round);
+
   if (!pinOk(body.pin)) {
     return Response.json({ error: 'Wrong PIN' }, { status: 401 });
   }
@@ -62,14 +67,17 @@ export default async function handler(req: Request): Promise<Response> {
   const { data: rows } = await supabaseAdmin
     .from('training_video_progress')
     .select('video_key, watched_sec, duration_sec, pct, play_count, completed_at')
-    .eq('trainee_key', TRAINEE_KEY);
+    .eq('trainee_key', TRAINEE_KEY)
+    // Scoped to the round, which is what makes round two start unwatched
+    // rather than inheriting a full set of ticks from round one.
+    .eq('round', round);
 
   const byKey = new Map<string, ProgressRow>(
     ((rows ?? []) as ProgressRow[]).map((r) => [r.video_key, r]),
   );
 
   const videos = await Promise.all(
-    TRAINING_VIDEOS.map(async (v) => {
+    roundVideos.map(async (v) => {
       // Only the bucket files need a URL minting. A YouTube video is embedded
       // by id through the player API, so there is nothing to sign and nothing
       // of ours being served.
@@ -115,7 +123,7 @@ export default async function handler(req: Request): Promise<Response> {
     ok: true,
     videos,
     quiz: {
-      unlocked: quizUnlocked(pct),
+      unlocked: quizUnlocked(pct, round),
       watchedThreshold: WATCHED_PCT,
       questionCount: QUIZ_QUESTION_COUNT,
       secondsPerQuestion: QUIZ_SECONDS_PER_QUESTION,

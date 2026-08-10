@@ -28,6 +28,8 @@ import {
   REQUIRED_VIDEOS,
   WATCHED_PCT,
   quizUnlocked,
+  roundOf,
+  videosForRound,
   pinOk,
 } from '../lib/training.js';
 import {
@@ -56,6 +58,10 @@ interface Body {
    *  means it ran out of time or he left it blank. */
   answers?: Array<number | string | null>;
   duration_sec?: number;
+  /** submit only. Seconds spent on each question, same order as `answers`. */
+  seconds?: Array<number | null>;
+  /** start only. Which training round this sitting belongs to. */
+  round?: number;
 }
 
 function shuffle<T>(input: T[]): T[] {
@@ -80,29 +86,31 @@ export default async function handler(req: Request): Promise<Response> {
   }
   if (!pinOk(body.pin)) return Response.json({ error: 'Wrong PIN' }, { status: 401 });
 
-  if (body.action === 'start') return start();
+  if (body.action === 'start') return start(roundOf(body.round));
   if (body.action === 'submit') return submit(body);
   return Response.json({ error: 'action must be start or submit' }, { status: 400 });
 }
 
-async function start(): Promise<Response> {
+async function start(round: number): Promise<Response> {
   // The gate is enforced here, not only in the UI, or the quiz would be one
   // fetch away from being taken without watching anything.
   const { data: rows } = await supabaseAdmin
     .from('training_video_progress')
     .select('video_key, pct')
-    .eq('trainee_key', TRAINEE_KEY);
+    .eq('trainee_key', TRAINEE_KEY)
+    .eq('round', round);
 
   const pct: Record<string, number> = {};
   for (const r of (rows ?? []) as Array<{ video_key: string; pct: number | null }>) {
     pct[r.video_key] = r.pct ?? 0;
   }
-  if (!quizUnlocked(pct)) {
-    const missing = REQUIRED_VIDEOS
+  const required = videosForRound(round).filter((v) => v.required);
+  if (!quizUnlocked(pct, round)) {
+    const missing = required
       .filter((v) => (pct[v.key] ?? 0) < WATCHED_PCT)
       .map((v) => v.title);
     return Response.json(
-      { error: `Watch all ${REQUIRED_VIDEOS.length} required videos first`, missing },
+      { error: `Watch all ${required.length} required videos first`, missing },
       { status: 403 },
     );
   }
@@ -129,7 +137,7 @@ async function start(): Promise<Response> {
 
   const { data: attempt, error } = await supabaseAdmin
     .from('training_quiz_attempts')
-    .insert({ trainee_key: TRAINEE_KEY, status: 'in_progress', served })
+    .insert({ trainee_key: TRAINEE_KEY, round, status: 'in_progress', served })
     .select('id')
     .single();
   if (error || !attempt) {
@@ -146,6 +154,7 @@ async function start(): Promise<Response> {
 }
 
 async function submit(body: Body): Promise<Response> {
+  const seconds = Array.isArray(body.seconds) ? body.seconds : null;
   const attemptId = String(body.attempt_id ?? '').trim();
   if (!attemptId) return Response.json({ error: 'attempt_id required' }, { status: 400 });
 
@@ -191,6 +200,17 @@ async function submit(body: Body): Promise<Response> {
           ? (s.options?.[s.correct ?? 0] ?? '')
           : (q?.accept?.[0] ?? ''),
       explanation: q?.explanation ?? '',
+      // How long this ONE question took, and where it came in the run. Hugo,
+      // 2026-08-10: "make sure all recoreded for admin, time spent on each
+      // answer etc". The whole test is two POSTs, so the seconds ride in on the
+      // submit rather than adding twenty round trips to a timed exam. That
+      // makes them client-supplied, exactly like the attempt's own duration_sec
+      // already is; grading is still done server-side against the questions we
+      // served, so a fiddled clock buys nothing but a wrong stopwatch.
+      seconds: Number.isFinite(seconds?.[i] as number)
+        ? Math.max(0, Math.min(600, Math.round(seconds![i] as number)))
+        : null,
+      position: i + 1,
     };
   });
 

@@ -35,7 +35,8 @@ interface AttemptRow {
   started_at: string
   submitted_at: string | null
   duration_sec: number | null
-  results: Array<{ prompt: string; correct: boolean; given: string; correctAnswer: string }> | null
+  round?: number | null
+  results: Array<{ prompt: string; correct: boolean; given: string; correctAnswer: string; seconds?: number | null; position?: number | null }> | null
 }
 
 interface Payload {
@@ -172,28 +173,70 @@ export default function TrainingPage() {
         </h2>
         <div className="divide-y divide-line">
           {data.attempts.map((a) => (
-            <div key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3">
-              <div>
-                <span className="text-sm font-medium text-ink">
-                  {a.status === 'submitted'
-                    ? `${a.score} of ${a.total} (${a.pct}%)`
-                    : 'Started, not finished'}
-                </span>
-                {a.status === 'submitted' && (
-                  <span
-                    className={`ml-2 rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                      a.passed ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
-                    }`}
-                  >
-                    {a.passed ? 'pass' : 'fail'}
+            <details key={a.id} className="px-4 py-3">
+              <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-2">
+                <span>
+                  <span className="text-sm font-medium text-ink">
+                    {a.status === 'submitted'
+                      ? `${a.score} of ${a.total} (${a.pct}%)`
+                      : 'Started, not finished'}
                   </span>
-                )}
-              </div>
-              <span className="text-xs text-ink-muted">
-                {when(a.submitted_at ?? a.started_at)}
-                {a.duration_sec != null ? ` · took ${mmss(a.duration_sec)}` : ''}
-              </span>
-            </div>
+                  {a.status === 'submitted' && (
+                    <span
+                      className={`ml-2 rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                        a.passed ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
+                      }`}
+                    >
+                      {a.passed ? 'pass' : 'fail'}
+                    </span>
+                  )}
+                  {a.round ? (
+                    <span className="ml-2 rounded-md bg-elevated px-2 py-0.5 text-[11px] text-ink-muted">
+                      round {a.round}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="text-xs text-ink-muted">
+                  {when(a.submitted_at ?? a.started_at)}
+                  {a.duration_sec != null ? ` · took ${mmss(a.duration_sec)}` : ''}
+                </span>
+              </summary>
+              {/* Every question, what he answered, and how long he sat on it.
+                  Hugo 2026-08-10: "time spent on each answer etc". The blob was
+                  already being stored and had never been rendered, so the only
+                  thing visible was a final score. A question answered correctly
+                  in 28 of its 30 seconds is a different thing from one answered
+                  in four, and neither shows up in a percentage. */}
+              {a.results && a.results.length > 0 ? (
+                <ol className="mt-3 space-y-2">
+                  {a.results.map((r, i) => (
+                    <li
+                      key={i}
+                      className={`rounded-lg border p-2.5 text-[12px] ${
+                        r.correct ? 'border-line bg-elevated' : 'border-danger/30 bg-danger/5'
+                      }`}
+                    >
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-medium text-ink">
+                          {r.position ?? i + 1}. {r.prompt}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-ink-muted">
+                          {r.seconds != null ? `${r.seconds}s` : 'no timing'}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-ink-muted">
+                        {r.correct ? 'Right' : 'Wrong'}: {r.given || 'left blank'}
+                        {!r.correct && r.correctAnswer ? ` · answer: ${r.correctAnswer}` : ''}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-3 text-xs text-ink-muted">
+                  No per-question detail on this attempt. Sittings before 2026-08-10 recorded only a score.
+                </p>
+              )}
+            </details>
           ))}
           {!loading && data.attempts.length === 0 && (
             <p className="px-4 py-6 text-sm text-ink-muted">

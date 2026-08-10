@@ -177,6 +177,11 @@ export default function App() {
             from the VSL catch-all rewrite in vercel.json, or the apex would
             serve a sales page here instead of this route. */}
         <Route path="pedro-training" element={<PedroTrainingPage />} />
+        {/* Round two, after the 2026-08-10 script rewrite. TWO segments
+            on purpose: the apex VSL catch-all only swallows single-segment
+            paths, so this needs no vercel.json change, exactly like
+            /join/property. A hyphenated /pedro-training-v2 WOULD be eaten. */}
+        <Route path="pedro-training/v2" element={<PedroTrainingPage />} />
         {/* The owner's copy of the same training: nothing gated, every answer
             shown. A DIFFERENT PIN, checked server side, because this page is
             the answer key to the page above. */}

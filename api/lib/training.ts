@@ -165,16 +165,78 @@ export const TRAINING_VIDEOS: TrainingVideo[] = [
 export const REQUIRED_VIDEOS = TRAINING_VIDEOS.filter((v) => v.required);
 export const OPTIONAL_VIDEOS = TRAINING_VIDEOS.filter((v) => !v.required);
 
-export function findTrainingVideo(key: string): TrainingVideo | undefined {
-  return TRAINING_VIDEOS.find((v) => v.key === key);
+/** ROUND TWO, 2026-08-10 evening.
+ *
+ *  After the first real day of calls the script was rewritten (the money now
+ *  comes after three questions, we never view a property, our builder does),
+ *  and two course sessions that had never been transcribed were mined into it.
+ *  So the training has to go round again: same four required videos, re-watched
+ *  against the new script, plus the two sessions nobody had seen.
+ *
+ *  A SECOND ROUND IS NOT THE SAME AS ADDING VIDEOS. Adding to round one would
+ *  re-lock a test Pedro has already passed and lose the record of what he
+ *  watched the first time. Rounds are scoped in the database instead
+ *  (migration 20260810000008), so round two starts every video unwatched and
+ *  the quiz locked, and round one stays exactly as it was.
+ */
+export const TRAINING_ROUND_TWO: TrainingVideo[] = [
+  ...TRAINING_VIDEOS.filter((v) => v.required).map((v) => ({
+    ...v,
+    why: `${v.why} Watch it again with the NEW script in front of you: the money now comes after three questions, not sixteen.`,
+  })),
+  {
+    key: 'dealing-with-agents-mastermind',
+    title: 'Dealing With Agents (the session nobody had seen)',
+    why: 'Sixty five minutes that were sitting on the course portal untranscribed until 2026-08-10. Where the weekly follow-up rule comes from, why you ask for the valuer rather than the negotiator, and the joke delivery of the ballpark question that we had been getting wrong.',
+    source: 'storage',
+    ref: 'dealing-with-agents-mastermind.mp4',
+    durationLabel: '65m 00s',
+    durationSec: 3899,
+    required: true,
+  },
+  {
+    key: 'property-viewings-mastermind',
+    title: 'Property Viewings, and why our builder goes instead',
+    why: 'What a builder is actually looking for, so you know what you are asking a branch to send you. This is the session behind "subject to our builder going round", and behind asking for the full EPC report and the floor plan when a video is a stretch.',
+    source: 'storage',
+    ref: 'property-viewings-mastermind.mp4',
+    durationLabel: '53m 20s',
+    durationSec: 3200,
+    required: false,
+  },
+];
+
+/** Rounds by number. Round 1 is the original and must never change: it is the
+ *  record of what somebody was actually tested on. */
+export const TRAINING_ROUNDS: Record<number, TrainingVideo[]> = {
+  1: TRAINING_VIDEOS,
+  2: TRAINING_ROUND_TWO,
+};
+
+export const LATEST_ROUND = 2;
+
+/** Coerce anything off a URL or a request body into a real round number. */
+export function roundOf(v: unknown): number {
+  const n = typeof v === 'number' ? v : parseInt(String(v ?? ''), 10);
+  return Number.isFinite(n) && TRAINING_ROUNDS[n] ? n : 1;
+}
+
+export function videosForRound(round: number): TrainingVideo[] {
+  return TRAINING_ROUNDS[roundOf(round)] ?? TRAINING_VIDEOS;
+}
+
+export function findTrainingVideo(key: string, round = 1): TrainingVideo | undefined {
+  return videosForRound(round).find((v) => v.key === key)
+    ?? TRAINING_VIDEOS.find((v) => v.key === key);
 }
 
 /** True when every REQUIRED video has been watched. Optional ones are ignored
  *  on purpose, so adding one can never re-lock a quiz somebody already
  *  unlocked. Adding a REQUIRED one does re-lock it, which is the point, and it
  *  leaves every finished video finished. */
-export function quizUnlocked(pct: Record<string, number>): boolean {
-  return REQUIRED_VIDEOS.every((v) => (pct[v.key] ?? 0) >= WATCHED_PCT);
+export function quizUnlocked(pct: Record<string, number>, round = 1): boolean {
+  const required = videosForRound(round).filter((v) => v.required);
+  return required.every((v) => (pct[v.key] ?? 0) >= WATCHED_PCT);
 }
 
 /** Constant-time-ish PIN comparison. Pedro's PIN is public (it is in the client

@@ -26,7 +26,8 @@ export type QuestionSource =
   | 'live-agent-call-harvey'
   | 'live-call-vincent'
   | 'script'
-  | 'objections';
+  | 'objections'
+  | 'day-one';
 
 export interface TrainingQuestion {
   id: string;
@@ -151,9 +152,9 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     id: 'ea_viewing_spree',
     kind: 'mc',
     source: 'estate-agents',
-    prompt: 'Why is booking ten viewings a day a mistake?',
+    prompt: 'Why is booking viewings before you have talked money a mistake?',
     options: [
-      'They blur into one, you learn nothing, and it is a lot of effort that produces no deals.',
+      'They blur into one, you learn nothing, and it is a lot of effort that produces no deals. Get the ballpark first.',
       'Agents charge you for viewings after the third one.',
       'It is fine, it is a numbers game.',
       'You are not insured to view that many.',
@@ -321,12 +322,12 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     source: 'live-agent-call-harvey',
     prompt: 'The agent says "you would have to view it before we put any offer forward". What is the move?',
     options: [
-      'Agree that you would view it, and ask them to sound the vendor out on the figure first so nobody wastes a trip.',
-      'Refuse to ever view it.',
+      'Say someone will: we put the figure forward subject to our builder going round, who views it and prices the work in one trip. Then ask for a video walkthrough.',
+      'Agree to go and view it yourself this week.',
+      'Refuse to ever view it and tell them that is not how we buy.',
       'Book the viewing there and then.',
-      'Tell them that is not how it works and ask for the manager.',
     ],
-    explanation: 'It is not a no, it is a hurdle. You are not refusing to view, you are asking for an indication first, which is a reasonable thing to want.',
+    explanation: 'It is not a no and we do not refuse. Somebody DOES view it, and that somebody is the builder, because he has to price the refurb anyway. Two birds, one trip. Say "subject to our builder", never "subject to survey".',
   },
   {
     id: 'harvey_callback_time',
@@ -384,12 +385,12 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     id: 'harvey_worth_viewing',
     kind: 'mc',
     source: 'live-agent-call-harvey',
-    prompt: 'When is a viewing actually worth the trip?',
+    prompt: 'Who actually goes and looks at the house?',
     options: [
-      'When the gap between what they will take and what it is worth after the work still leaves a margin.',
-      'Whenever the agent offers one.',
-      'Whenever the house is within an hour drive.',
-      'Always. Never turn a viewing down.',
+      'The builder, once the money looks right. He views it and prices the work in the same trip.',
+      'You do, as soon as the agent offers.',
+      'Nobody ever, we buy purely off photographs.',
+      'The director, before any figure is discussed.',
     ],
     explanation: 'If it is worth 120, they want 90 and it needs 15 of work, there is nothing there and the drive is wasted. Do that sum before you agree to anything.',
   },
@@ -427,9 +428,9 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     id: 'vin_why_ask_first',
     kind: 'mc',
     source: 'live-call-vincent',
-    prompt: 'Why does he ask those questions BEFORE he goes to see the property?',
+    prompt: 'Why does he ask those questions BEFORE anybody goes to see the property?',
     options: [
-      'To work out whether the viewing is even worth doing.',
+      'To find out whether there is a deal at all, so nobody wastes a trip on a house we are miles away from.',
       'Because agents refuse to answer questions after a viewing.',
       'To get the viewing booked more quickly.',
       'Because he is not allowed to view until he has made an offer.',
@@ -530,7 +531,7 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     source: 'script',
     prompt: 'There are two things you must never do on this call, no matter what they say. What are they?',
     options: [
-      'Never make a formal or binding offer, and never book a viewing.',
+      'Never make a formal or binding offer, and never book or attend a viewing yourself.',
       'Never say you are a cash buyer, and never give your name.',
       'Never mention the asking price, and never ask why they are selling.',
       'Never ring the same branch twice, and never leave a message.',
@@ -781,20 +782,160 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     ],
     explanation: 'Chains fall through constantly and a backup costs nothing. That twenty seconds is where a fair number of deals actually come from.',
   },
+  // ── Round two, written from what actually happened on 2026-08-10 ──────────
+  //
+  // Hugo: "things he done wrong today, like make question to see if he improves
+  // based on report". Every one of these is a real moment from his first day of
+  // calls, so a wrong answer here is a wrong answer he already made once.
+  {
+    id: 'day1_alan_cooper',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'You offer 124,500. The agent goes away, checks with a colleague, comes back and says "they would be looking around the 140 mark, the property is very new to the market". What do you do?',
+    options: [
+      'Bank the 140. Say "that is not miles off, let me put that exact figure to Hugo and I will ring you back", agree a time, and press Figure obtained.',
+      'Say thank you for your time and have a great day, and move to the next branch.',
+      'Immediately raise your offer to 140 to keep them interested.',
+      'Tell them 140 is unrealistic and explain what the comparables say.',
+    ],
+    explanation: 'This exact call happened and was ended with "thank you for your time, have a great day". A number out of their mouth is the entire reason you rang, whatever the number is. It is not a rejection, it is the deal. Bank it, get a callback time, let the director decide.',
+  },
+  {
+    id: 'day1_flat_no',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'The agent knocks your figure back with no number of their own: "no chance, that is a million miles off." What comes out of your mouth next?',
+    options: [
+      '"Fair enough, no problem. What would the vendor actually take, do you think?"',
+      '"Thanks for your time, I will leave it there."',
+      '"What if I came up to the asking price?"',
+      '"Can I speak to your manager about it?"',
+    ],
+    explanation: 'Four branches said this on day one and the call ended within seconds every time. A flat no with no number is not an answer, it is the start of the negotiation. Ask twice, warmly. Never improve your own number to fill a silence: you have been given nothing, so there is nothing to pay for.',
+  },
+  {
+    id: 'day1_personal_preference',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'You ask what work it needs and the agent says "it is all personal preference really". What do you ask?',
+    options: [
+      '"No, course. I mean more the boring stuff, like the boiler, the electrics, the roof, any damp?"',
+      '"Could you be a little bit more specific?"',
+      '"So would you say it is in good condition then?"',
+      'Nothing, move on to the next question.',
+    ],
+    explanation: 'This stonewalled you three times on day one. At Greenco you cracked it yourself with exactly this line and got "the boiler is ok, electric is ok, the kitchen is a little bit dated". Ask about the four things that cost real money and nobody can call it a matter of taste.',
+  },
+  {
+    id: 'day1_price_range',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'Early in the call the agent asks "what sort of price range are you looking at?". What do you say?',
+    options: [
+      '"It really depends on the house and what it needs. This one is the one I am interested in today. Is it vacant, or is somebody in it?"',
+      '"Up to about 80,000."',
+      '"Whatever the right deal is, we have got plenty."',
+      '"I would rather not say."',
+    ],
+    explanation: 'You gave a number on day one and the reply was "we have not really got anything on the market at that price", and the call was over in five seconds. A budget caps every property they will ever send you. Answer with the property in front of you.',
+  },
+  {
+    id: 'day1_money_timing',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'How far into the call should the money question come?',
+    options: [
+      'After three questions: is it empty, does it need work, why are they selling.',
+      'After the full sixteen question checklist, so you have all the facts.',
+      'In the first sentence, before they have said anything.',
+      'Only on the second call, once you have built a relationship.',
+    ],
+    explanation: 'On day one the figure landed a median 87% of the way through the call, so there was nothing left to negotiate with. The two calls that got there early were the only two real negotiations all day. Three questions, then the money, then everything else only if the money went somewhere.',
+  },
+  {
+    id: 'day1_shared_ownership',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'The agent tells you it is shared ownership. What does that mean, and what do you ask?',
+    options: [
+      'They own a share and pay rent on the rest. Ask what share is being sold, what the rent is, and who has to approve a buyer.',
+      'Two people own it and both have to agree, so ask to speak to both.',
+      'It is owned with the council, so it cannot be bought by a company.',
+      'It is a timeshare and not worth pursuing.',
+    ],
+    explanation: 'You were asked this on day one and had to ask the agent what it meant. It is not a reason to hang up. It usually needs the housing association to approve the buyer, so find out who and write it in the Houses tab.',
+  },
+  {
+    id: 'day1_log_the_outcome',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'The call ends. Before you dial the next branch, what has to happen?',
+    options: [
+      'The figure and the outcome go in the Houses tab.',
+      'Nothing, the transcript records everything automatically.',
+      'Send the director an email summarising the call.',
+      'Update the property on Rightmove.',
+    ],
+    explanation: 'On day one, sixty calls produced zero logged outcomes, so the only figure any branch gave existed nowhere but in your head. If it is not in the Houses tab it did not happen.',
+  },
+  {
+    id: 'day1_ballpark_tone',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'How do you deliver the ballpark question?',
+    options: [
+      'Lightly, almost as a joke, and when they counter higher you laugh and refuse to go all the way.',
+      'Firmly and seriously, so they know you mean it.',
+      'Apologetically, so they do not take offence.',
+      'As a formal statement of what the director has authorised.',
+    ],
+    explanation: 'They are not supposed to tell you, so you are giving them a way to. Said flat it sounds like a demand and they close up. "If I was to say around 70, am I close?" then a laugh and "I am not going all the way up there" is what pulls the real number out.',
+  },
+  {
+    id: 'day1_valuer',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'Who at the branch is worth getting to know, and why?',
+    options: [
+      'The valuer, because they see houses before they are ever listed and know which vendors are desperate.',
+      'The branch manager, because they can overrule the negotiator.',
+      'Whoever answers the phone, because they are quickest to reach.',
+      'The lettings team, because they know the landlords.',
+    ],
+    explanation: 'The negotiator who answers usually has not been there long and does not know the stock. Ask "who does your valuations there, is it yourself?", get the name, and ask for them next time.',
+  },
+  {
+    id: 'day1_stuck_stock',
+    kind: 'short',
+    source: 'day-one',
+    prompt: 'Type the thing you ask at the end of EVERY call, even one that went nowhere. It is about what else they have that is not completing.',
+    accept: ['stuck', 'fallen through', 'fell through', 'chain'],
+    explanation: 'Cash is the reason they are talking to you, so ask: "have you got anything else stuck? Anything in a chain that is dragging, or a sale that has fallen through where cash would sort it?" It produces a second property on calls where the first went nowhere.',
+  },
+  {
+    id: 'day1_price_or_terms',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'The agent says the vendor wants more money. What is the strongest thing you can say?',
+    options: [
+      '"It is either your price on my terms, or my price on your terms. If they want it gone quickly and cleanly, that is what the figure reflects."',
+      '"That is the most we can do, take it or leave it."',
+      '"I could probably stretch a little if you can get it agreed today."',
+      '"The comparables say you are wrong."',
+    ],
+    explanation: 'You are not defending a low number, you are naming the trade they are actually making. Then give them what the discount buys: one viewing, no chain, no mortgage, nobody traipsing through every Saturday.',
+  },
+  {
+    id: 'day1_crash_course',
+    kind: 'mc',
+    source: 'day-one',
+    prompt: 'An agent asks "you are off one of them courses, are you?". What do you say?',
+    options: [
+      '"No, we are just buying. Hugo has bought in the area before and I do the legwork for him." Then straight back to the property.',
+      '"Yes, I have just finished a property sourcing course actually."',
+      '"Does it matter?"',
+      '"I am not able to discuss that."',
+    ],
+    explanation: 'The fastest way to be written off. Branches get rung all day by people fresh off a weekend course who never buy anything. Deny it flatly, do not get defensive, and be back on the property within one sentence.',
+  },
 ];
-
-/** The bank keyed by id, for grading. */
-export const QUESTION_BY_ID: Record<string, TrainingQuestion> = Object.fromEntries(
-  QUESTION_BANK.map((q) => [q.id, q]),
-);
-
-/** Loose match for a short answer: strip punctuation and case, then look for
- *  any accepted fragment. Deliberately forgiving. It is testing whether he
- *  remembers the line, not whether he can type. */
-export function shortAnswerCorrect(q: TrainingQuestion, given: string): boolean {
-  const norm = (s: string) =>
-    s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const g = norm(given);
-  if (!g) return false;
-  return (q.accept ?? []).some((a) => g.includes(norm(a)));
-}

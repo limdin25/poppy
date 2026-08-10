@@ -20,13 +20,14 @@
 // it" mean something more than "I opened the page".
 
 import { supabaseAdmin } from '../../src/integrations/supabase/client.js';
-import { TRAINEE_KEY, WATCHED_PCT, findTrainingVideo, pinOk } from '../lib/training.js';
+import { TRAINEE_KEY, WATCHED_PCT, findTrainingVideo, pinOk, roundOf } from '../lib/training.js';
 
 export const config = { runtime: 'edge' };
 
 interface Body {
   pin?: string;
   video_key?: string;
+  round?: number;
   /** Unique seconds decoded, summed from video.played by the page. */
   watched_sec?: number;
   /** The duration the browser reports for the file. */
@@ -48,7 +49,8 @@ export default async function handler(req: Request): Promise<Response> {
   }
   if (!pinOk(body.pin)) return Response.json({ error: 'Wrong PIN' }, { status: 401 });
 
-  const video = findTrainingVideo(String(body.video_key ?? ''));
+  const round = roundOf(body.round);
+  const video = findTrainingVideo(String(body.video_key ?? ''), round);
   if (!video) return Response.json({ error: 'Unknown video' }, { status: 400 });
 
   // The catalogue duration is the authority. A browser-reported duration is
@@ -67,6 +69,7 @@ export default async function handler(req: Request): Promise<Response> {
     .from('training_video_progress')
     .select('id, watched_sec, play_count, completed_at')
     .eq('trainee_key', TRAINEE_KEY)
+    .eq('round', round)
     .eq('video_key', video.key)
     .maybeSingle();
 
@@ -92,6 +95,7 @@ export default async function handler(req: Request): Promise<Response> {
   } else {
     await supabaseAdmin.from('training_video_progress').insert({
       trainee_key: TRAINEE_KEY,
+      round,
       video_key: video.key,
       watched_sec: watched,
       duration_sec: duration,
