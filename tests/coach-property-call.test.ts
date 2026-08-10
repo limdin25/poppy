@@ -227,11 +227,59 @@ describe('the screen and the coach say the same thing', () => {
   const html = read('src/core/content/property-call-script.html')
   const md = COACH.slice(COACH.indexOf('const PROPERTY_AGENT_SCRIPT_MD'), COACH.indexOf('const PROPERTY_SCRIPT_PROMPT'))
 
-  it('the five beats match, in the same order', () => {
-    const beats = ['Is it still available', 'Ask for the two minutes', 'The checklist', 'The money', 'Wrap up']
+  it('the six beats match, in the same order', () => {
+    // Was five, with the checklist at 3 and the money at 4. Rewritten
+    // 2026-08-10 after the money was measured landing at a median 87% of the
+    // way through a call, leaving no runway to negotiate. Three questions now
+    // stand between the opener and the figure; the rest of the checklist moved
+    // to after the money and only runs when the money went somewhere.
+    const beats = [
+      'Is it still available',
+      'Ask for the two minutes',
+      'The three that move the number',
+      'The money',
+      'Now get everything else',
+      'Lock the next step',
+    ]
     expect(COACH.slice(COACH.indexOf('const PROPERTY_STAGE_ORDER'), COACH.indexOf('PROPERTY_AGENT_SCRIPT_MD')))
       .toContain(beats.join("',\n  '"))
     for (const b of beats) expect(md).toContain(b)
+    // And the screen has to agree, or the agent reads one thing and hears another.
+    for (const b of beats) expect(html).toContain(b)
+  })
+
+  it('BOTH say the only purpose of the call is a ballpark', () => {
+    expect(COACH).toMatch(/THE ONLY PURPOSE OF THIS CALL IS TO GET A BALLPARK FIGURE/)
+    expect(md).toMatch(/THE ONLY PURPOSE OF THIS CALL IS A BALLPARK FIGURE/)
+    expect(html).toMatch(/You are ringing to get one thing: a ballpark figure/)
+  })
+
+  it('BOTH answer the viewing wall with the builder, never a survey', () => {
+    expect(COACH).toMatch(/subject to our builder going round/i)
+    expect(md).toMatch(/builder round to have a look/i)
+    expect(html).toMatch(/subject to our builder going round/)
+    // "subject to survey" may only ever appear as an instruction NOT to say it.
+    expect(COACH).not.toMatch(/Say: "[^"]*subject to (a |an |the )?survey/i)
+  })
+
+  it('BOTH coach the second gear rather than letting a no end the call', () => {
+    expect(COACH).toMatch(/THE SECOND GEAR/)
+    expect(COACH).toMatch(/What would the vendor actually take/)
+    // And the silence rule no longer swallows a spoken rejection.
+    expect(COACH).toMatch(/This applies to silence ONLY/)
+  })
+
+  it('BOTH treat a figure from the branch as the win, not the end', () => {
+    expect(COACH).toMatch(/WHEN THE BRANCH NAMES A FIGURE/)
+    expect(COACH).toMatch(/NEVER let the agent thank them and end the call on a number/)
+    expect(html).toMatch(/THEY NAME A FIGURE\. This is the call\./)
+  })
+
+  it('the coach can still find the ladder after the agent switches property', () => {
+    // The dialer writes custom_fields.ladder when the agent picks a different
+    // listing mid-call; the assign script writes offer_ladder. Reading only one
+    // meant the rungs vanished the moment he changed house.
+    expect(COACH).toMatch(/f\('offer_ladder'\) \|\| f\('ladder'\)/)
   })
 
   it('the opener is word for word the same', () => {

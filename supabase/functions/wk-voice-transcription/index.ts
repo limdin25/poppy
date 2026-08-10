@@ -315,9 +315,10 @@ const CLOSE_CALL_CONTEXT = [
 const PROPERTY_STAGE_ORDER = [
   'Is it still available',
   'Ask for the two minutes',
-  'The checklist',
+  'The three that move the number',
   'The money',
-  'Wrap up',
+  'Now get everything else',
+  'Lock the next step',
 ];
 
 /** The words on the agent's screen, as markdown, for the AGENT'S CALL SCRIPT
@@ -325,8 +326,10 @@ const PROPERTY_STAGE_ORDER = [
 const PROPERTY_AGENT_SCRIPT_MD = `# Ringing the agent about a house
 
 A real person at a real company, working with the director, who is a cash buyer.
-Gather the facts AND work the money on this call. Do NOT make a formal offer. Do
-NOT book a viewing. One question at a time.
+THE ONLY PURPOSE OF THIS CALL IS A BALLPARK FIGURE. Three questions, then the
+money, then the rest only if the money went somewhere. Do NOT make a formal
+offer. NEVER view a property and never book one: our builder views it and prices
+the refurb at the same time. One question at a time.
 
 ## 1. Is it still available
 "Hi, hello. I'm calling about the property on {{property_street}}, the {{bedrooms}} bed {{property_type}}. Is that one still available?"
@@ -341,16 +344,13 @@ If asked who is calling: "It's Pedro. I work with Hugo, our director, at Unico. 
 If asked what company: "Unico. We're a small property company, the director Hugo buys with cash and I do the legwork for him." Only if they press for the legal detail: "Full name's Ulinc Unico Group Limited, company number 11197856. Registered office is 483 Green Lanes in London, N13 4BS."
 If asked cash or mortgage: "Cash. No mortgage, no chain, nothing to sell."
 
-## 3. The checklist
+## 3. The three that move the number
+THREE questions, not sixteen, then straight to the money.
 "Is it vacant, or is there a tenant in?" If tenanted: staying or leaving, and what rent.
-"And what sort of condition is it in, ready to move into or does it need work?" Then roof, damp, electrics, boiler.
-"Has it had much interest? Any offers so far?" And has a sale ever fallen through.
+"And what sort of condition is it in, ready to move into or does it need work?"
+If they say it is down to personal preference: "No, course. I mean more the boring stuff, like the boiler, the electrics, the roof, any damp?"
 "Do you know why they're selling?" Then: in a hurry, and is there an onward chain.
-"How long's it been on with you? And has the price come down at all?"
-"Is it freehold or leasehold?"
-FLAT only: years left on the lease, service charge, ground rent, major works, cladding or EWS1.
-HOUSE only: confirm freehold, structural issues, extensions signed off.
-Never ask a house about service charges or a lease unless they say it is leasehold. Never ask a flat about subsidence unless they raise it.
+Everything else waits until after the money.
 
 ## 4. The money
 The offer without offering, said as one breath: "I've had a proper look at this one. I've been through what's sold on the same streets and worked out roughly what it'd cost us to put it right. I can't get near what you're asking, and I don't want to waste your time or embarrass anyone with a silly offer. But if we were to offer around {{offer_open}}, am I in the ballpark, or am I a million miles off?"
@@ -361,8 +361,18 @@ Push back once, with a comp: "The one that sold on the same street went for less
 "Let me speak to Hugo and come back to you" is a lever used LATER, not an opener: when a real figure has been banked, when they ask for something formal, or when pushed for a commitment the agent cannot give.
 If asked "is that your best?": "It's where we'd start. If there's a number that gets it done quickly, tell me what it is and I'll put it to Hugo today."
 
-## 5. Wrap up
-"And what do viewings look like, weekdays, weekends, how much notice?" Ask, do not book.
+## 5. Now get everything else
+ONLY once the money has gone somewhere. If they refused a figure outright, stop here and move to the next branch.
+"Has it had much interest? Any offers so far?" And has a sale ever fallen through.
+"How long's it been on with you? And has the price come down at all?"
+"Is it freehold or leasehold?"
+FLAT only: years left on the lease, service charge, ground rent, major works, cladding or EWS1.
+HOUSE only: confirm freehold, structural issues, extensions signed off.
+Never ask a house about service charges or a lease unless they say it is leasehold. Never ask a flat about subsidence unless they raise it.
+
+## 6. Lock the next step
+"Is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it?" Ask this on EVERY call.
+"And when it comes to it, we'd get our builder round to have a look and price the work up." Ask, do not book.
 "What's a realistic time for me to ring you back, tomorrow or is it better later in the week?" Never end the call without an agreed callback time.
 "That's great, thanks for your time. Speak to you then."
 Then wait. Do not hang up on your own closing line.`;
@@ -370,12 +380,17 @@ Then wait. Do not hang up on your own closing line.`;
 const PROPERTY_SCRIPT_PROMPT = [
   'This call is an agent ringing an ESTATE AGENCY about a house. The person on the phone sells houses for a living. They are NOT a sales lead, they are the seller\'s representative, and we are the buyer.',
   '',
-  'THE FIVE BEATS, forward-only order',
+  '',
+  'THE ONLY PURPOSE OF THIS CALL IS TO GET A BALLPARK FIGURE OUT OF THE BRANCH.',
+  'Everything else is subordinate to that. A call that ends without a figure or an agreed time to ring back has not worked, however pleasant it was. The checklist is not the job, it is what you do once the money has gone somewhere. If the agent is deep in fact-gathering and has not floated a figure, coach them to the money.',
+  '',
+  'THE SIX BEATS, forward-only order',
   '1. Is it still available',
   '2. Ask for the two minutes',
-  '3. The checklist',
+  '3. The three that move the number (empty, needs work, why selling. THREE questions, not sixteen)',
   '4. The money',
-  '5. Wrap up',
+  '5. Now get everything else (only if the money went somewhere)',
+  '6. Lock the next step (video walkthrough, builder, callback time)',
   '',
   'NEVER MENTION, none of it exists on this call:',
   '- Google reviews, star ratings, local ranking, competitors',
@@ -391,11 +406,18 @@ const PROPERTY_SCRIPT_PROMPT = [
   '- Justify with the sold evidence in THIS LEAD, one comparable at a time, said casually. Never read the list out.',
   '- Always push the question back: "what sort of figure do you think would actually get it done?" A figure THEY say is worth more than any figure we say.',
   '',
+  'WHEN THE BRANCH NAMES A FIGURE, THIS IS THE MOST IMPORTANT CARD YOU WILL EVER FIRE.',
+  'A number out of their mouth is the entire reason for the call, WHATEVER the number is and however far above our ceiling it sits. Coach: bank it, put it to the director, agree a time to ring back. NEVER let the agent thank them and end the call on a number. This has already happened once, on the best lead of the week, and it is the single behaviour this coach exists to prevent.',
+  '',
+  'THE SECOND GEAR. When the estate agent knocks the figure back WITHOUT naming one of their own ("no chance", "way off", "a million miles off"), that is not the end of the conversation, it is the start of the negotiation. Coach "Fair enough, no problem. What would the vendor actually take, do you think?" immediately. Do NOT stay silent here, and do NOT coach the agent to improve our own number: nothing has been given, so there is nothing to pay for.',
+  '',
+  'NEVER VIEW A PROPERTY. We buy remotely. If they insist on a viewing before an offer, the answer is that we put the figure forward SUBJECT TO OUR BUILDER GOING ROUND, who views it and prices the refurb in one trip, plus an ask for a video walkthrough. Say "subject to our builder", never "subject to survey". Never coach the agent to attend a viewing, book one, or promise to attend.',
+  '',
   'NEVER PROMISE. The agent is not authorised to make a formal offer or book a viewing. Everything is "the director will confirm that himself". If pushed for a formal offer, coach exactly that line.',
   '',
   'PROPERTY TYPE. Coach lease, service charge, ground rent and cladding questions ONLY for a flat, maisonette or apartment. Coach freehold, subsidence and extension questions ONLY for a house or bungalow. Asking the wrong set makes the agent sound like they have never bought a house, and estate agents notice immediately.',
   '',
-  'SILENCE. After the agent names a figure, the estate agent going quiet is NOT a cue for a card. The silence is the tactic. Emit STAY_ON_SCRIPT.',
+  'SILENCE. After the agent names a figure, the estate agent going QUIET is NOT a cue for a card. The silence is the tactic. Emit STAY_ON_SCRIPT. This applies to silence ONLY: if the estate agent actually SAYS something, including a rejection, that is a cue and you must fire.',
   '',
   'NEVER INVENT a fact about the property, the director, or the financing. Everything known is in THIS LEAD. If it is not there, coach the agent to ask rather than to assert.',
 ].join('\n');
@@ -493,8 +515,74 @@ const PROPERTY_OBJECTIONS: CoachFact[] = [
   {
     key: 'prop_must_view_first',
     label: 'You have to view it first',
-    value: 'Not a no. Say: "Understood, and we would. The only reason I\'m asking first is I don\'t want to drag you and the vendor through a viewing if we\'re a million miles apart on price. Could you sound them out on the figure, then we\'ll get in and see it?" NEVER book the viewing.',
-    keywords: ['view it first', 'come and see', 'viewing first', 'need to view', 'see the property', 'book a viewing'],
+    value: 'Not a no, and we do not refuse. Say: "Course, and someone will. We buy across the country, so the way we do it is we put the figure forward subject to our builder going round. He views it and prices the work at the same time. While I\'ve got you, is there any chance you could send me a video walkthrough?" Say SUBJECT TO OUR BUILDER, never "subject to survey". NEVER book a viewing and never offer to attend one yourself.',
+    keywords: ['view it first', 'come and see', 'viewing first', 'need to view', 'see the property', 'book a viewing', 'have to view', 'before we can put', 'before taking an offer', 'go and see it'],
+  },
+  {
+    key: 'prop_they_named_a_figure',
+    label: 'THEY NAME A FIGURE. This is the call.',
+    value: 'A number out of their mouth is the whole reason for the call, whatever the number is. Say: "Right, that\'s not miles off. Let me put that exact figure to Hugo and I\'ll come back to you. What\'s a realistic time for me to ring you back?" Then write it in the Houses tab word for word and press Figure obtained. NEVER thank them and hang up on a number.',
+    keywords: ['looking around', 'looking for', 'would be looking', 'they\'d want', 'they want', 'hoping for', 'holding out for', 'in the region of', 'closer to', 'the mark'],
+  },
+  {
+    key: 'prop_flat_no_no_number',
+    label: 'A flat no with no number attached',
+    value: 'You have a second gear. Say: "Fair enough, no problem. What would the vendor actually take, do you think?" If they still will not say: "Okay. And if a cash buyer with nothing to sell came along, where do you honestly think they\'d land?" Ask twice, warmly, then leave it. NEVER improve your own figure to fill a silence.',
+    keywords: ['no chance', 'not going to happen', 'million miles', 'way off', 'nowhere near', 'wouldn\'t consider', 'don\'t think they', 'wouldn\'t be accepted'],
+  },
+  {
+    key: 'prop_cannot_disclose',
+    label: 'I cannot disclose what they would accept',
+    value: 'Give them permission not to answer and they usually answer. Say: "No, and I wouldn\'t ask you to. I don\'t want to compromise you with your client. But if I were a smidgen above where I am, would I be in with a shout? You don\'t have to tell me where." Then be quiet.',
+    keywords: ['can\'t disclose', 'cannot disclose', 'not at liberty', 'confidential', 'can\'t tell you what', 'can\'t say what'],
+  },
+  {
+    key: 'prop_only_vendor_can_answer',
+    label: 'Only the vendor or head office can answer that',
+    value: 'Do not argue, deputise them. Say: "Of course. Could you put it to them for me? Just as an indication, not an offer, so nobody wastes a viewing finding out we are miles apart. When would you get the chance to ask?" An agent who agrees to ask the vendor has to ring you back. Get the day.',
+    keywords: ['only the vendor', 'housing company', 'corporate', 'head office', 'act on behalf', 'masked client', 'would be able to answer', 'have to ask them'],
+  },
+  {
+    key: 'prop_condition_preference',
+    label: 'We cannot say what work it needs, it is personal preference',
+    value: 'Ask about the four things that cost real money, which nobody can call a matter of taste. Say: "No, course. I mean more the boring stuff, like the boiler, the electrics, the roof, any damp?" This exact follow-up got a full answer out of a branch that had just stonewalled.',
+    keywords: ['personal preference', 'different preference', 'everybody\'s got a different', 'up to you', 'just needs updating', 'difficult for me to say', 'depends what you want'],
+  },
+  {
+    key: 'prop_shared_ownership',
+    label: 'It is shared ownership or a part exchange',
+    value: 'Do not pretend to know. Say: "Ah right, so what share is being sold, and what is the rent on the rest? And is it the housing association who would need to approve a buyer?" Shared ownership means they own a share and pay rent on the remainder. Part exchange means a housebuilder took it against a new build and wants it gone, which is usually a motivated seller. Both need somebody else to approve, so find out who and note it.',
+    keywords: ['shared ownership', 'shared owner', 'part exchange', 'part-exchange', 'housing association', 'staircasing', '25%', 'own a percentage'],
+  },
+  {
+    key: 'prop_what_price_range',
+    label: 'What price range are you looking at',
+    value: 'Never give a budget: it caps every property they will ever send you, and on the first day of calls it ended a conversation in five seconds. Say: "It really depends on the house and what it needs. This one is the one I am interested in today. Is it vacant, or is somebody in it?"',
+    keywords: ['price range', 'what\'s your budget', 'how much are you looking', 'looking to spend', 'up to what', 'what sort of price are you'],
+  },
+  {
+    key: 'prop_off_a_course',
+    label: 'You are off one of them courses, are you',
+    value: 'The fastest way to be written off. Deny it flatly, do not get defensive, and be back on the property within one sentence. Say: "No, we are just buying. Hugo has bought in the area before and I do the legwork for him. Anyway, is it vacant or is somebody in it?" NEVER mention training, a mentor or a programme.',
+    keywords: ['crash course', 'one of them courses', 'done a course', 'training course', 'seminar', 'been on a course'],
+  },
+  {
+    key: 'prop_not_local',
+    label: 'Where are you calling from, you are not local',
+    value: 'Turn it into the reason you are asking rather than a weakness. Say: "We are London based, we buy all over. That is exactly why I am asking about the price before anything else, I do not want to send someone up there if we are a million miles apart."',
+    keywords: ['not local', 'where are you calling from', 'where are you based', 'you\'re not from', 'your accent', 'down south', 'whereabouts are you'],
+  },
+  {
+    key: 'prop_register_me',
+    label: 'I need to register you, what is your email',
+    value: 'Know these without hunting. Say: "Course. It is Pedro, the company is Unico, and the email is pedro@hostunico.com. Registered office is 483 Green Lanes, London, N13 4BS." Company number if pressed: 11197856, Ulinc Unico Group Limited. Give it plainly and get back to the property.',
+    keywords: ['register you', 'registered with us', 'your email', 'email address', 'take your details', 'get you on the system', 'applicant'],
+  },
+  {
+    key: 'prop_video_walkthrough',
+    label: 'Asking for a video walkthrough',
+    value: 'Ask on EVERY call, it is what lets the builder quote without anybody driving anywhere. Say: "One last thing, is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it whenever you are next there." Most branches already have one from a previous viewing.',
+    keywords: ['video', 'walkthrough', 'walk through', 'facetime', 'photos', 'pictures', 'more images', 'floor plan'],
   },
   {
     key: 'prop_formal_offer',
@@ -1848,7 +1936,13 @@ serve(async (req: Request) => {
             if (f('days_on_market')) leadFactLines.push(`Days on the market: ${f('days_on_market')}`);
             if (f('property_worth')) leadFactLines.push(`What the sold evidence says it is worth today: ${f('property_worth')}`);
             if (f('offer_open')) leadFactLines.push(`OPEN AT this figure, say this one number: ${f('offer_open')}`);
-            if (f('offer_ladder')) leadFactLines.push(`Climb this ladder, one rung at a time: ${f('offer_ladder')}`);
+            // Two keys on purpose. The assign script writes `offer_ladder`, but
+            // scriptTokensFor() in the dialer writes `ladder` when the agent
+            // switches property mid-call, so reading only the first meant the
+            // coach silently lost the ladder the moment he changed listing and
+            // had no idea what the rungs were for the rest of the call.
+            const ladder = f('offer_ladder') || f('ladder');
+            if (ladder) leadFactLines.push(`Climb this ladder, one rung at a time: ${ladder}`);
             if (f('offer_ceiling')) {
               leadFactLines.push(
                 `WALK AWAY at ${f('offer_ceiling')}. This figure is PRIVATE. Never say it, never hint at it, never confirm a guess at it.`,

@@ -216,6 +216,135 @@ describe('the script itself', () => {
   })
 })
 
+// Rewritten 2026-08-10, evening, after the first full day of real calls.
+//
+// The money used to be stage 4 of 5, behind a sixteen-question checklist, and
+// the measured result was that the figure went in at a median 87% of the way
+// through the call, with nothing left to negotiate with. The two calls that
+// reached money early were the only two real negotiations of the day.
+//
+// And "you'll have to view it first" beat him four times out of four, because
+// the script promised a viewing ("Understood, and we would") and had no idea a
+// builder existed.
+
+describe('the ballpark is the point of the call', () => {
+  const html = read(PROP_HTML)
+  const at = (needle: string) => html.indexOf(needle)
+
+  it('says so at the top, before any stage', () => {
+    expect(html).toMatch(/You are ringing to get one thing: a ballpark figure/)
+    expect(html).toMatch(/has not worked, however pleasant it was/)
+  })
+
+  it('THE STRUCTURAL FIX: the money comes BEFORE the full checklist', () => {
+    const three = at('3. The three that move the number')
+    const money = at('4. The money')
+    const rest = at('5. Now get everything else')
+    const lock = at('6. Lock the next step')
+    for (const [label, i] of Object.entries({ three, money, rest, lock })) {
+      expect(`${label} present`).toBe(i > -1 ? `${label} present` : `${label} MISSING`)
+    }
+    expect(three).toBeLessThan(money)
+    expect(money).toBeLessThan(rest)   // <- the whole point
+    expect(rest).toBeLessThan(lock)
+  })
+
+  it('only three questions stand between the opener and the money', () => {
+    const stage3 = html.slice(at('3. The three that move the number'), at('4. The money'))
+    const spoken = stage3.match(/class="who you"/g) ?? []
+    expect(spoken).toHaveLength(3)
+    expect(stage3).toMatch(/Three questions\. Not sixteen\./)
+    // Which three: empty, needs work, why they are selling.
+    expect(stage3).toMatch(/vacant, or is there a tenant/)
+    expect(stage3).toMatch(/what sort of condition/)
+    expect(stage3).toMatch(/why they're selling/)
+  })
+
+  it('the lease and service-charge questions moved AFTER the money, not before', () => {
+    const rest = html.slice(at('5. Now get everything else'))
+    expect(rest).toMatch(/freehold or leasehold/)
+    expect(rest).toMatch(/Years left on the lease/)
+    // And the never-ask rules survived the move.
+    expect(rest).toMatch(/Never ask a house about service charges/)
+    expect(rest).toMatch(/Never ask a flat about subsidence/)
+  })
+})
+
+describe('we never view a property, our builder does', () => {
+  const html = read(PROP_HTML)
+
+  it('answers the viewing wall with the builder, and asks for a video', () => {
+    expect(html).toMatch(/subject to our builder going round/)
+    expect(html).toMatch(/video walkthrough/)
+    expect(html).toMatch(/FaceTime me round it/)
+  })
+
+  it('says builder, never "subject to survey", in the words he reads ALOUD', () => {
+    // The course says "subject to my builder" in all five instances and never
+    // once says survey. Survey is a mortgage buyer's word and we are cash.
+    //
+    // Checked against the spoken lines only, on purpose: the grey note beside
+    // the panel has to be able to say "never say subject to survey", and a
+    // whole-file match would forbid teaching the rule it is enforcing.
+    const spoken = (html.match(/<div class="(?:obj-say|line)">[\s\S]*?<\/div>/g) ?? []).join('\n')
+    expect(spoken).toMatch(/subject to our builder/)
+    expect(spoken).not.toMatch(/subject to (a |an |the )?survey/i)
+  })
+
+  it('the old promise to view it ourselves is GONE', () => {
+    expect(html).not.toMatch(/Understood, and we would/)
+    expect(html).not.toMatch(/then we'll get in and see it/)
+  })
+
+  it('still refuses to book anything', () => {
+    expect(html).toMatch(/do <b>not<\/b> book/)
+    expect(html).toMatch(/book nothing/)
+  })
+})
+
+describe('the panels written from what actually went wrong', () => {
+  const html = read(PROP_HTML)
+
+  it('THEY NAME A FIGURE is a panel of its own, naming the Alan Cooper call', () => {
+    // The single coaching point of the week: a number out of their mouth is the
+    // deal, and he thanked them for it and hung up.
+    expect(html).toMatch(/THEY NAME A FIGURE\. This is the call\./)
+    expect(html).toMatch(/Alan Cooper Estates/)
+    expect(html).toMatch(/Their number is not a rejection\. It is the deal\./)
+    expect(html).toMatch(/Never thank them\s*\n?\s*and hang up on a number/)
+  })
+
+  it('gives him a second gear for a flat no', () => {
+    expect(html).toMatch(/no number attached is not an answer/)
+    expect(html).toMatch(/where do you honestly think they'd land/)
+  })
+
+  it('carries his own winning condition probe, verbatim', () => {
+    // "everybody's got a different preference" stonewalled him three times.
+    // At Greenco he cracked it himself with exactly this.
+    expect(html).toMatch(/the boiler, the electrics, the roof, any damp/)
+  })
+
+  it('covers the traps that cost him whole minutes', () => {
+    for (const needle of [
+      'shared ownership',        // he could not answer "what does that mean?"
+      'part exchange',
+      "I'll need to register you",
+      'pedro@hostunico.com',     // four minutes lost with no email to give
+      '11197856',
+      "You're off one of them courses",
+      'price range are you looking at',
+    ]) {
+      expect(`${needle}: ${html.toLowerCase().includes(needle.toLowerCase())}`).toBe(`${needle}: true`)
+    }
+  })
+
+  it('grew the panel count rather than trading one problem for another', () => {
+    const panels = html.match(/<details class="branch obj">/g) ?? []
+    expect(panels.length).toBeGreaterThanOrEqual(40)
+  })
+})
+
 describe('the property script belongs to the campaign, not to one lead', () => {
   const chooser = read('src/features/crm/lib/scriptForCall.ts')
 
