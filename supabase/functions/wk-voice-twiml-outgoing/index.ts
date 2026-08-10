@@ -107,7 +107,31 @@ function buildOutgoingTwiml(args: {
         `    speechModel="telephony"`,
         `    inboundTrackLabel="agent"`,
         `    outboundTrackLabel="caller"`,
-        `    partialResults="false"`,
+        // THE SINGLE BIGGEST COST IN THE COACH'S LATENCY BUDGET.
+        //
+        // With partialResults="false" Twilio sends nothing until its own
+        // endpointer decides the sentence is over, which is 1.5 to 2.5 seconds
+        // of the 4.5 to 7 the coach takes end to end. The coach is structurally
+        // blind while the estate agent is still talking. On the Alan Cooper
+        // call the word "140" was spoken roughly EIGHT SECONDS before Twilio
+        // released the sentence, and the right card was still streaming when
+        // Pedro said goodbye.
+        //
+        // The handler was written for interim chunks and has never been fed
+        // one: wk-voice-transcription debounces interims on 400ms through
+        // wk_acquire_coach_lock and lets finals force-supersede, so a growing
+        // sentence replaces its own card in place rather than stacking. The
+        // transcript PANE stays finals-only, so it does not fill with
+        // half-sentences.
+        //
+        // This is the same move our own voice caller makes in bridge/: act on
+        // a partial that has stopped growing instead of waiting to be told the
+        // turn ended, which took it from 2.9s to 1.2s.
+        //
+        // KILL SWITCH: set COACH_PARTIAL_RESULTS=0 and redeploy this function
+        // to go straight back to the old behaviour. It costs more OpenAI calls,
+        // so if the bill or the card noise is wrong, that is the lever.
+        `    partialResults="${Deno.env.get('COACH_PARTIAL_RESULTS') === '0' ? 'false' : 'true'}"`,
         `  />`,
         `</Start>`,
       ].join('\n')
@@ -206,7 +230,12 @@ serve(async (req: Request) => {
               '    speechModel="telephony"',
               '    inboundTrackLabel="agent"',
               '    outboundTrackLabel="caller"',
-              '    partialResults="false"',
+              // Same switch as the agent-initiated branch above, and it has to
+              // move with it: this is the parallel-dial path, and a coach that
+              // is fast on one route and blind on the other is worse than one
+              // that is consistently slow, because nobody can tell which they
+              // are looking at.
+              `    partialResults="${Deno.env.get('COACH_PARTIAL_RESULTS') === '0' ? 'false' : 'true'}"`,
               '  />',
               '</Start>',
             ].join('\n')

@@ -1465,7 +1465,19 @@ serve(async (req: Request) => {
     //
     // EdgeRuntime.waitUntil keeps the streaming worker alive past the
     // 200 we return to Twilio.
-    if (call.ai_coach_enabled && speaker === 'caller') {
+    // A FRAGMENT IS NOT A TURN. With partials on, the first interim of a
+    // sentence is often two words ("they would"), and answering that produces a
+    // card about nothing which then gets replaced a beat later. Our own voice
+    // caller learned this on a live call: at a 0.45s settle with no length
+    // floor it fired on "Uh, who's" and replied to half a question, which is
+    // why bridge/config.py now carries SETTLED_PARTIAL_MIN_WORDS = 4.
+    //
+    // Finals are never gated: a genuinely short answer ("Yeah." / "No chance.")
+    // is a real turn and often the most important one on the call.
+    const wordCount = transcriptText.split(/\s+/).filter(Boolean).length;
+    const tooShortToAnswer = !isFinal && wordCount < 4;
+
+    if (call.ai_coach_enabled && speaker === 'caller' && !tooShortToAnswer) {
       const generationId = crypto.randomUUID();
       const genShort = generationId.slice(0, 8);
       const t0 = Date.now();
