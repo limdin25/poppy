@@ -81,15 +81,35 @@ export interface OutstandSocialAccount {
   profile_picture_url?: string;
 }
 
+// THE LIST IS PAGED AT 50 AND THE FILTERS ARE DECORATION. Both halves of that
+// cost us 26 creators on 09 Aug 2026: a single unpaged read stopped seeing new
+// accounts the moment the 51st was connected, and passing tenant_id in the
+// query changes nothing at all (asking for one tenant still returns all 82).
+// So: page to the end, always, and do the filtering here.
+const PAGE = 50;
+
+async function fetchAccountPage<T>(
+  apiKey: string,
+  offset: number,
+): Promise<{ data: T[]; total: number }> {
+  const res = await fetch(
+    `${BASE}/social-accounts?network=instagram&limit=${PAGE}&offset=${offset}`,
+    { method: "GET", headers: headers(apiKey) },
+  );
+  const json = await handleResponse<{ data: T[]; total?: number }>(res);
+  const data = json.data ?? [];
+  return { data, total: json.total ?? data.length };
+}
+
 export async function listSocialAccounts(
   apiKey: string,
 ): Promise<OutstandSocialAccount[]> {
-  const res = await fetch(`${BASE}/social-accounts?network=instagram`, {
-    method: "GET",
-    headers: headers(apiKey),
-  });
-  const json = await handleResponse<{ data: OutstandSocialAccount[] }>(res);
-  return json.data;
+  const out: OutstandSocialAccount[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, total } = await fetchAccountPage<OutstandSocialAccount>(apiKey, offset);
+    out.push(...data);
+    if (data.length === 0 || out.length >= total) return out;
+  }
 }
 
 // Fetch a connected account's display info (username + profile photo) by its id.
@@ -221,13 +241,19 @@ async function parseMetrics(res: Response): Promise<OutstandIgMetrics | null> {
 // and a transient fetch failure must not abort the remaining attempts.
 //
 // IMPORTANT: Outstand IGNORES the `tenant_id` query filter and returns EVERY Instagram
-// account in the org. We therefore filter client-side by the tenant_id we bound for this
-// round-trip (a fresh per-OAuth nonce, or the logged-in user's id). That value is unique
-// to this attempt, so an exact match unambiguously identifies the just-connected account
-// — picking "the newest account overall" instead would grab whoever connected most
-// recently, i.e. the wrong person, when two signups overlap. Only if no account carries
-// our tenant_id (legacy rows without the field, or a lag we can't wait out) do we fall
-// back to the most recently connected one.
+// account in the org, 50 to a page. We therefore page to the end and filter client-side
+// by the tenant_id we bound for this round-trip (a fresh per-OAuth nonce, or the
+// logged-in user's id). That value is unique to this attempt, so an exact match
+// unambiguously identifies the just-connected account.
+//
+// THERE IS NO FALLBACK, AND THERE MUST NEVER BE ONE AGAIN. This used to end with
+// "if our tenant is nowhere, take the newest account overall". Combined with the unpaged
+// read above, that quietly handed 26 creators the same stranger's Instagram between
+// 09 and 10 Aug 2026: page one stopped growing at the 50th account, so "newest overall"
+// froze on @ziddiqueen15200 and every new signup was wired to it, publishing 54 videos
+// in their name to somebody else's profile. Returning null instead sends the creator
+// back an honest "that did not finish, try again", which is recoverable. A wrong
+// account is not: it looks like success to every check we own.
 export async function getSocialAccountByTenant(
   apiKey: string,
   tenantId: string,
@@ -249,28 +275,24 @@ export async function getSocialAccountByTenant(
   const newest = (list: RawAccount[]) =>
     [...list].sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0];
 
-  let fallback: ReturnType<typeof pick> | null = null;
-
   for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(
-        `${BASE}/social-accounts?network=instagram&tenant_id=${encodeURIComponent(tenantId)}`,
-        { method: "GET", headers: headers(apiKey) },
-      );
-      const json = await handleResponse<{ data: RawAccount[] }>(res);
-      const accounts = json.data ?? [];
-
-      const mine = accounts.filter((a) => a.tenant_id === tenantId);
-      if (mine.length > 0) return pick(newest(mine));
-
-      // Remember the newest-overall once, in case our tenant never shows up.
-      if (accounts.length > 0 && !fallback) fallback = pick(newest(accounts));
+      // Stop at the page that holds it rather than always reading them all: the
+      // account we want is the newest, so in practice it is on the last page.
+      let seen = 0;
+      for (let offset = 0; ; offset += PAGE) {
+        const { data, total } = await fetchAccountPage<RawAccount>(apiKey, offset);
+        const mine = data.filter((a) => a.tenant_id === tenantId);
+        if (mine.length > 0) return pick(newest(mine));
+        seen += data.length;
+        if (data.length === 0 || seen >= total) break;
+      }
     } catch {
       // transient Outstand error — keep trying until the window closes
     }
     if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500));
   }
-  return fallback;
+  return null;
 }
 
 // --- Pending Connections ---

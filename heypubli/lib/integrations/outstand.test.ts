@@ -87,16 +87,44 @@ describe("listSocialAccounts", () => {
       success: true,
       data: [{ id: "acc_1", network: "instagram", username: "user1", isActive: true }],
       count: 1,
+      total: 1,
     });
 
     const result = await listSocialAccounts(API_KEY);
 
     expect(spy).toHaveBeenCalledWith(
-      "https://api.outstand.so/v1/social-accounts?network=instagram",
+      "https://api.outstand.so/v1/social-accounts?network=instagram&limit=50&offset=0",
       expect.objectContaining({ method: "GET" }),
     );
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("acc_1");
+  });
+
+  it("keeps paging past 50 instead of stopping at the first page", async () => {
+    const page = (n: number, from: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `acc_${from + i}`,
+        network: "instagram",
+        username: `u${from + i}`,
+        isActive: true,
+      }));
+    vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+      const offset = Number(new URL(String(url)).searchParams.get("offset"));
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: offset === 0 ? page(50, 0) : page(32, 50),
+            total: 82,
+          }),
+        text: () => Promise.resolve(""),
+      } as Response);
+    });
+
+    const result = await listSocialAccounts(API_KEY);
+    expect(result).toHaveLength(82);
   });
 });
 
@@ -292,7 +320,10 @@ describe("getSocialAccountByTenant", () => {
 
     const result = await getSocialAccountByTenant(API_KEY, "T1");
 
-    expect(spy.mock.calls[0][0]).toContain("tenant_id=T1");
+    // The tenant_id filter is NOT sent: Outstand ignores it and returns the whole
+    // org anyway, so the paging params are what actually matter.
+    expect(spy.mock.calls[0][0]).toContain("limit=50");
+    expect(spy.mock.calls[0][0]).toContain("offset=0");
     expect(result).toEqual({ id: "acc_t", username: "joe", igUserId: null });
   });
 
@@ -322,14 +353,55 @@ describe("getSocialAccountByTenant", () => {
     expect(result).toEqual({ id: "acc_mine", username: "me", igUserId: "ig9" });
   });
 
-  it("falls back to the most recent account when none carries our tenant_id", async () => {
+  // THE 09 AUG 2026 MIX-UP, both halves of it, pinned.
+  it("finds the account on a LATER PAGE (the list is capped at 50)", async () => {
+    // Page one is the oldest 50 and stops growing; every new account lands on
+    // page two. Reading one page is what made 26 creators invisible to their
+    // own lookup.
+    const page1 = Array.from({ length: 50 }, (_, i) => ({
+      id: `old_${i}`,
+      username: `old_${i}`,
+      tenant_id: `OTHER_${i}`,
+      createdAt: `2026-08-0${(i % 9) + 1}`,
+    }));
+    vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+      const offset = Number(new URL(String(url)).searchParams.get("offset"));
+      const data =
+        offset === 0
+          ? page1
+          : [
+              {
+                id: "acc_mine",
+                username: "me",
+                tenant_id: "T1",
+                network_unique_id: "ig9",
+                createdAt: "2026-08-10",
+              },
+            ];
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ success: true, data, total: 51 }),
+        text: () => Promise.resolve(""),
+      } as Response);
+    });
+
+    const result = await getSocialAccountByTenant(API_KEY, "T1", 1);
+    expect(result).toEqual({ id: "acc_mine", username: "me", igUserId: "ig9" });
+  });
+
+  it("NEVER hands back somebody else's account when ours is missing", async () => {
+    // This used to return acc_x, the newest account in the org. That single
+    // line published 54 videos to a stranger's Instagram. A null here becomes
+    // "that did not finish, please try again", which costs one retry.
     mockFetch({
       success: true,
       data: [{ id: "acc_x", username: "x", createdAt: "2026-01-01" }], // no tenant_id field
       count: 1,
+      total: 1,
     });
     const result = await getSocialAccountByTenant(API_KEY, "T1", 1);
-    expect(result).toEqual({ id: "acc_x", username: "x", igUserId: null });
+    expect(result).toBeNull();
   });
 
   it("returns null when no account is connected for the tenant", async () => {
