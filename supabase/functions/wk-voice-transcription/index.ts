@@ -579,6 +579,42 @@ const PROPERTY_OBJECTIONS: CoachFact[] = [
     keywords: ['register you', 'registered with us', 'your email', 'email address', 'take your details', 'get you on the system', 'applicant'],
   },
   {
+    key: 'prop_price_or_terms',
+    label: 'Your price my terms, or my price your terms',
+    value: 'The strongest answer to any money objection, because it names the trade instead of defending the number. Say: "I get it, everyone wants the best price and the quickest sale, but you can\'t really have both. It\'s either your price on my terms, or my price on your terms. If they want it gone quickly and cleanly, that\'s what we do, and that\'s what the figure reflects." Then give them what the discount buys: one viewing, no chain, no mortgage, no time wasters every Saturday.',
+    keywords: ['too low', 'best price', 'want more', 'not enough', 'worth more', 'hold out', 'get more for it'],
+  },
+  {
+    key: 'prop_mortgage_advisor',
+    label: 'Come in and see our mortgage advisor',
+    value: 'Corporate branches gate every buyer through their in-house adviser because they earn on the mortgage. Cash takes you straight out of it. Say: "No need on this one, it would be a cash purchase. Happy to get proof of funds over once we are anywhere near agreeing a figure." Say it once and move on.',
+    keywords: ['mortgage advisor', 'mortgage adviser', 'financial advisor', 'financial adviser', 'in house', 'come in and see', 'sit down with'],
+  },
+  {
+    key: 'prop_talks_you_out',
+    label: 'They try to talk you out of the property',
+    value: 'Do not argue and do not sound stung. Say: "I appreciate that, and thanks for being straight with me. I would still like to look at the numbers properly. Can you send me the EPC and the floor plan?" If they keep blocking, ask for somebody else: "is there anyone else there who deals with the sales side?" There always is.',
+    keywords: ['nothing in it', "wouldn't bother", 'would not bother', 'not worth', 'no money in it', "don't view", 'do not view', 'waste of time for you'],
+  },
+  {
+    key: 'prop_priced_right',
+    label: 'It is priced right, that is what it is worth',
+    value: 'Find the gap without calling anybody wrong. Say: "Can I ask, what did you originally value it at compared to what it is on for now?" An agent often wins the instruction by promising a number nobody can get, then spends months walking the vendor down, and that gap is the opportunity. Then show, never tell: "the ones that actually sold on those streets went for less, and they did not need the work this one needs. Would you say the market has moved since it went on?" People like to feel clever, and an agent who gets there himself will carry it to the vendor for you.',
+    keywords: ['priced right', 'worth what', 'it is worth', 'valued at', 'market value', 'fairly priced', 'no room'],
+  },
+  {
+    key: 'prop_anything_stuck',
+    label: 'Ask what else is stuck',
+    value: 'Free money, and it works. Cash is the reason the branch is talking to you, so the moment they hear it they start thinking about the one that will not complete. Say: "Before I let you go, have you got anything else stuck? Anything in a chain that is dragging, or a sale that has fallen through where cash would sort it?" Ask it even on a call that went nowhere.',
+    keywords: ['fallen through', 'fell through', 'chain', 'dragging', 'not completing', 'taken so long', 'stuck'],
+  },
+  {
+    key: 'prop_ask_for_valuer',
+    label: 'Ask who does the valuations',
+    value: 'The best question for the long game. The valuer sees a house before it is ever listed and knows which vendors are desperate; the negotiator who answered the phone usually does not. Say: "And who does your valuations there, is it yourself?" Get the name and ask for them next time.',
+    keywords: ['valuation', 'valuer', 'who values', 'appraisal', 'market appraisal'],
+  },
+  {
     key: 'prop_video_walkthrough',
     label: 'Asking for a video walkthrough',
     value: 'Ask on EVERY call, it is what lets the builder quote without anybody driving anywhere. Say: "One last thing, is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it whenever you are next there." Most branches already have one from a previous viewing.',
