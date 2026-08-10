@@ -939,3 +939,18 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     explanation: 'The fastest way to be written off. Branches get rung all day by people fresh off a weekend course who never buy anything. Deny it flatly, do not get defensive, and be back on the property within one sentence.',
   },
 ];
+/** The bank keyed by id, for grading. */
+export const QUESTION_BY_ID: Record<string, TrainingQuestion> = Object.fromEntries(
+  QUESTION_BANK.map((q) => [q.id, q]),
+);
+
+/** Loose match for a short answer: strip punctuation and case, then look for
+ *  any accepted fragment. Deliberately forgiving. It is testing whether he
+ *  remembers the line, not whether he can type. */
+export function shortAnswerCorrect(q: TrainingQuestion, given: string): boolean {
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const g = norm(given);
+  if (!g) return false;
+  return (q.accept ?? []).some((a) => g.includes(norm(a)));
+}
