@@ -683,20 +683,33 @@ export async function runBioVerification(
         .returns<ProgressRow[]>();
       const states = await resolveStatesForCron(admin, profile, provider, progress ?? []);
 
+      // STAMP FIRST, ALWAYS. `bio_checked_at` is this sweep's QUEUE POSITION,
+      // not a record of a successful read: the select takes the 15 oldest and
+      // orders by it. So a profile we look at and skip must still move to the
+      // back, or it holds a slot in every run forever and starves everyone
+      // behind it. Both step checks below used to `continue` without writing
+      // it, which meant any creator not on the bio step was re-picked and
+      // re-skipped on every single run. It only ever looked like "the sweep is
+      // a bit slow", because the profiles wedged at the front were a stable set
+      // and the ones behind them were simply never reached (10 Aug 2026: 22
+      // wedged profiles took all 15 slots and the sweep did nothing for 16
+      // minutes).
+      await (
+        admin.from("profiles") as unknown as {
+          update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<unknown> };
+        }
+      )
+        .update({ bio_checked_at: new Date().toISOString() })
+        .eq("id", profile.id);
+
       // THE LINK THAT CANNOT PAY THEM, before anything about a bio. We hold a
       // real skool.com address with no referral code in it, so every video we
       // post for them credits nobody and nothing they do to their profile can
       // fix it (Shoaib, 09 Aug 2026: he sent his Skool profile page, we saved
       // it, and his bio matched the same wrong link straight back at us).
       //
-      // Told once, keyed on the profile, in their own daytime. The stamp is
-      // written either way so the same four people cannot occupy every slot in
-      // this sweep forever.
+      // Told once, keyed on the profile, in their own daytime.
       if (profile.skool_affiliate_url && !skoolLinkCounts(profile.skool_affiliate_url)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (admin.from("profiles") as any)
-          .update({ bio_checked_at: new Date().toISOString() })
-          .eq("id", profile.id);
         if (profile.whatsapp && withinSendingHours(now, timezoneForPhone(profile.whatsapp))) {
           const first = (profile.first_name || "").trim().split(" ")[0];
           const res = await sendPartnerWhatsApp({
@@ -710,17 +723,15 @@ export async function runBioVerification(
         continue;
       }
 
+      // Both of these are cheap skips, and both are already stamped above, so
+      // they rotate to the back instead of wedging at the front.
       if (states.bio === "done") continue; // bio not the problem; not ours
       const { openStep } = resolveFunnel(states);
       if (openStep !== "bio") continue; // an earlier step is open, nudges own it
 
       const ig = await getOutstandInstagramData(profile.id);
-      const nowIso = new Date().toISOString();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (admin.from("profiles") as any)
-        .update({ bio_checked_at: nowIso })
-        .eq("id", profile.id);
       if (!ig?.statsAvailable) continue;
+      const nowIso = new Date().toISOString();
       report.checked++;
 
       // THEIR LINK, TAKEN OFF THEIR OWN PROFILE. Ma. Edelyn, 08 Aug 2026, had

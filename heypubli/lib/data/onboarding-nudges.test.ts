@@ -122,3 +122,36 @@ describe("pickNudge", () => {
     }
   });
 });
+
+// STRUCTURAL GUARD, 10 Aug 2026. `bio_checked_at` is runBioVerification's queue
+// position: the sweep takes the 15 oldest and orders by it. A profile that is
+// looked at and skipped must still be stamped, or it holds a slot in every run
+// forever and starves everyone behind it. Two `continue`s used to skip without
+// stamping, so any creator not on the bio step wedged at the front; 22 of them
+// took all 15 slots and the sweep did nothing at all for 16 minutes.
+//
+// Pinned in the source because the alternative is mocking Supabase, Outstand
+// and WhatsApp to assert one UPDATE, and that test would break for reasons that
+// have nothing to do with this rule.
+describe("runBioVerification queue rotation", () => {
+  it("stamps bio_checked_at before any step check can skip the profile", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "lib/data/onboarding-nudges.ts"),
+      "utf8",
+    );
+    const body = src.slice(src.indexOf("export async function runBioVerification"));
+    const stamp = body.indexOf("bio_checked_at: new Date().toISOString()");
+    const bioDoneSkip = body.indexOf('if (states.bio === "done") continue');
+    const openStepSkip = body.indexOf('if (openStep !== "bio") continue');
+
+    expect(stamp).toBeGreaterThan(-1);
+    expect(bioDoneSkip).toBeGreaterThan(-1);
+    expect(openStepSkip).toBeGreaterThan(-1);
+    // The stamp has to come first, or the skip wedges the profile at the head
+    // of the queue.
+    expect(stamp).toBeLessThan(bioDoneSkip);
+    expect(stamp).toBeLessThan(openStepSkip);
+  });
+});
