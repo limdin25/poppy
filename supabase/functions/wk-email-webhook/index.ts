@@ -201,12 +201,57 @@ function stripReplyQuotes(input: string): string {
   return text;
 }
 
+/** Free mailbox providers. Their domain says nothing about who the sender is,
+ *  so the company-name join below must never fire on them: an email from
+ *  someone@gmail.com must not attach itself to a contact called "Gmail". */
+const PUBLIC_MAIL_DOMAINS = new Set([
+  'gmail', 'googlemail', 'outlook', 'hotmail', 'live', 'msn', 'yahoo', 'ymail',
+  'icloud', 'me', 'mac', 'aol', 'proton', 'protonmail', 'pm', 'gmx', 'zoho',
+  'btinternet', 'sky', 'talktalk', 'virginmedia', 'blueyonder', 'ntlworld',
+]);
+
+/** "Gascoigne Halman" and "gascoignehalman.co.uk" reduce to the same key. */
+function companyKey(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** The first label of an email's domain: sale@gascoignehalman.co.uk -> "gascoignehalman" */
+function domainLabel(email: string): string {
+  return (email.split('@')[1] ?? '').split('.')[0] ?? '';
+}
+
+/**
+ * Which agent should own a contact created from an email sent to `toEmail`.
+ *
+ * The recipient mailbox IS the answer: pedro@hostunico.com is the profile
+ * email of the Pedro Houses login, so an email to that address belongs to
+ * Pedro. Without this every inbound email was created with owner_agent_id
+ * NULL, and wk_sms_messages_read only lets an agent read a message when
+ * wk_agent_participates(contact_id) is true, which ownerless means never.
+ * The mail landed in the database and no agent on earth could open it.
+ */
+async function ownerForRecipient(
+  supa: SupabaseClient,
+  toEmail: string,
+): Promise<string | null> {
+  if (!toEmail) return null;
+  const { data } = await supa
+    .from('profiles')
+    .select('id')
+    .ilike('email', toEmail)
+    .limit(1)
+    .maybeSingle();
+  return (data as { id?: string } | null)?.id ?? null;
+}
+
 async function findOrCreateContact(
   supa: SupabaseClient,
   email: string,
   contactName: string,
   firstEmailId: string,
+  toEmail: string,
 ): Promise<string | null> {
+  // 1. The sender is already a contact by address. Unchanged, and still first.
   const { data: existing } = await supa
     .from('wk_contacts')
     .select('id')
@@ -217,17 +262,70 @@ async function findOrCreateContact(
     return (existing as { id: string }).id;
   }
 
+  // 2. The sender is a branch we already know by PHONE, with no email on file.
+  //
+  //    This is the case that mattered. Pedro rang Gascoigne Halman at 12:35,
+  //    they emailed back at 12:48, and matching on the email column alone
+  //    could not see the branch he had just spoken to, because a scraped
+  //    branch has a phone number and no address. So it minted a second
+  //    "Gascoigne Halman", owned by nobody, that no agent could open, while
+  //    the card Pedro owns sat there looking like they had never replied.
+  //
+  //    The join is exact, not fuzzy: strip everything but letters and digits
+  //    from the contact's name and from the first label of the sender's
+  //    domain, and require them to be equal. Public mail providers are
+  //    excluded, and an ambiguous match (two contacts, same key) creates a
+  //    new contact rather than guessing which branch replied.
+  const label = domainLabel(email);
+  if (label && !PUBLIC_MAIL_DOMAINS.has(label)) {
+    const CANDIDATE_CAP = 500;
+    const { data: candidates } = await supa
+      .from('wk_contacts')
+      .select('id, name, email')
+      .is('email', null)
+      // Cheap prefilter so this does not pull the whole contact table. The
+      // exact comparison is done below; this only has to not exclude a match,
+      // and every companyKey match necessarily contains these letters.
+      .ilike('name', `%${label.slice(0, 4)}%`)
+      .limit(CANDIDATE_CAP);
+
+    const rows = (candidates ?? []) as Array<{ id: string; name: string | null }>;
+    if (rows.length === CANDIDATE_CAP) {
+      // Say it rather than let a match go missing quietly.
+      console.warn(`[wk-email-webhook] candidate prefilter hit its ${CANDIDATE_CAP} cap for "${label}" — a real match may have been cut off`);
+    }
+    const hits = rows.filter((c) => companyKey(c.name ?? '') === label);
+
+    if (hits.length === 1) {
+      // Backfill the address so the next reply takes the cheap path above.
+      await supa.from('wk_contacts').update({ email }).eq('id', hits[0].id);
+      console.log(`[wk-email-webhook] matched ${email} to existing contact ${hits[0].name}`);
+      return hits[0].id;
+    }
+    if (hits.length > 1) {
+      console.log(`[wk-email-webhook] ${hits.length} contacts match "${label}" — creating a new one rather than guessing`);
+    }
+  }
+
+  // 3. Nobody we know. Create, but never ownerless: an unowned contact is one
+  //    an agent is not permitted to read.
+  const ownerAgentId = await ownerForRecipient(supa, toEmail);
+  if (!ownerAgentId) {
+    console.warn(`[wk-email-webhook] no agent owns the mailbox ${toEmail} — contact will be admin-only`);
+  }
+
   const { data: inserted, error: insErr } = await supa
     .from('wk_contacts')
     .insert({
       name: contactName || email,
       email,
       phone: `email:${email}`, // wk_contacts.phone is UNIQUE NOT NULL — synthesise a non-conflicting placeholder
-      owner_agent_id: null,
+      owner_agent_id: ownerAgentId,
       pipeline_column_id: null,
       custom_fields: {
         source: 'inbound_email',
         first_email_id: firstEmailId,
+        received_at_mailbox: toEmail || null,
       },
       is_hot: false,
     })
@@ -381,7 +479,7 @@ serve(async (req: Request) => {
   // PR 104: strip quoted history so the inbox shows only the new reply.
   const bodyText = stripReplyQuotes(rawBodyText);
 
-  const contactId = await findOrCreateContact(supa, fromEmail, fromName, emailId);
+  const contactId = await findOrCreateContact(supa, fromEmail, fromName, emailId, toEmail);
   if (!contactId) return ok({ note: 'contact resolution failed' });
 
   const { error: msgErr } = await supa
