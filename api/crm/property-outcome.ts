@@ -49,11 +49,24 @@ const supabase = createClient(
  *  neither 'qualified' (worth pursuing, nobody waiting) nor 'callback' (nothing
  *  learned). It files the deal under a stage of its own so the ones needing
  *  Hugo's decision are not buried among the ones that do not. */
-const OUTCOMES = ['qualified', 'figure_obtained', 'not_qualified', 'callback', 'no_answer'] as const;
+const OUTCOMES = ['qualified', 'figure_obtained', 'deciding', 'follow_up', 'not_qualified', 'callback', 'no_answer'] as const;
 type Outcome = (typeof OUTCOMES)[number];
 
-/** Outcomes that put the property in front of Hugo as a deal. */
+/** Outcomes that put the property in front of Hugo as a deal. 'deciding' and
+ *  'follow_up' are deliberately NOT here: they are warm tracking states Hugo
+ *  watches on the CRM board, not a figure for the director to act on, so they
+ *  move the board card (below) without creating a BRRR deal or alerting him. */
 const PIPELINE_OUTCOMES: readonly Outcome[] = ['qualified', 'figure_obtained'];
+
+/** Which CRM board column an outcome drops the branch card into. Generalised
+ *  2026-08-11 from the single figure_obtained -> Ballpark move: a disposition
+ *  is only useful if the board reflects it. Outcomes not listed here leave the
+ *  card where it is. Column names, matched case-exact against wk_pipeline_columns. */
+const BOARD_COLUMN_FOR: Partial<Record<Outcome, string>> = {
+  figure_obtained: 'Ballpark',
+  deciding: 'Deciding',
+  follow_up: 'Follow up',
+};
 
 interface Body {
   property_id?: string;
@@ -256,10 +269,14 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
-  // 4. Move the branch card to "Ballpark" on the CRM board.
+  // 4. Move the branch card to its disposition column on the CRM board.
   //
   //    Hugo, 2026-08-11: "we need a new pipeline where it says ballpark
-  //    achieved, where the calls that we got the ballpark it goes there."
+  //    achieved, where the calls that we got the ballpark it goes there", and
+  //    later the same day: "can we add more disposition option like deciding
+  //    so its specific for me and follow up as well". So the single figure
+  //    -> Ballpark move became a table (BOARD_COLUMN_FOR): Figure obtained ->
+  //    Ballpark, Deciding -> Deciding, Follow up -> Follow up.
   //
   //    Step 3 above files the PROPERTY on the BRRR board (pipeline_stages,
   //    under "Awaiting director"). That is a different table from the CRM board
@@ -274,7 +291,8 @@ export default async function handler(req: Request): Promise<Response> {
   //    not save". If the column has been renamed or deleted this does nothing
   //    rather than inventing one.
   let boardWarning: string | undefined;
-  if (outcome === 'figure_obtained' && property.wk_contact_id) {
+  const targetColumn = BOARD_COLUMN_FOR[outcome];
+  if (targetColumn && property.wk_contact_id) {
     try {
       const { data: contact } = await supabase
         .from('wk_contacts')
@@ -283,8 +301,9 @@ export default async function handler(req: Request): Promise<Response> {
         .maybeSingle();
 
       if (contact) {
-        // Find Ballpark in the board this contact is already on, so a workspace
-        // with several pipelines cannot fling the card onto a foreign one.
+        // Find the column in the board this contact is already on, so a
+        // workspace with several pipelines cannot fling the card onto a
+        // foreign one.
         let pipelineId: string | null = null;
         if (contact.pipeline_column_id) {
           const { data: current } = await supabase
@@ -298,28 +317,28 @@ export default async function handler(req: Request): Promise<Response> {
         const q = supabase
           .from('wk_pipeline_columns')
           .select('id')
-          .eq('name', 'Ballpark');
-        const { data: ballpark } = await (pipelineId ? q.eq('pipeline_id', pipelineId) : q)
+          .eq('name', targetColumn);
+        const { data: col } = await (pipelineId ? q.eq('pipeline_id', pipelineId) : q)
           .limit(1)
           .maybeSingle();
 
-        if (ballpark?.id && ballpark.id !== contact.pipeline_column_id) {
+        if (col?.id && col.id !== contact.pipeline_column_id) {
           await supabase
             .from('wk_contacts')
             .update({
-              pipeline_column_id: ballpark.id,
+              pipeline_column_id: col.id,
               stage_moved_at: nowIso,
               stage_moved_from: contact.pipeline_column_id,
               stage_moved_by: user.id,
               // 'agent', not 'automation': a CHECK constraint allows only
               // agent / automation / import / backfill, and this move is the
-              // direct result of Pedro pressing Figure obtained. The board
-              // should credit him, which is also what StageMoveChip renders.
+              // direct result of Pedro pressing the outcome. The board should
+              // credit him, which is also what StageMoveChip renders.
               stage_move_source: 'agent',
             })
             .eq('id', contact.id);
-        } else if (!ballpark?.id) {
-          boardWarning = 'no Ballpark column on this board, so the card was left where it was';
+        } else if (!col?.id) {
+          boardWarning = `no ${targetColumn} column on this board, so the card was left where it was`;
         }
       }
     } catch (e: unknown) {

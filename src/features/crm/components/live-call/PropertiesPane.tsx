@@ -45,16 +45,24 @@ const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> 
   { key: 'viewing_availability', label: 'Builder visit, easy to arrange?' },
 ];
 
-/** The five end states of a property call, in the order they are worth.
+/** The end states of a property call, in the order they are worth.
  *
  *  'figure_obtained' arrived 2026-08-10 with the script rewrite that has the
  *  agent negotiate on the call. It is the best outcome there is: the branch has
  *  said a number that would get it done and the deal is now on the director. It
  *  gets its own button, and its own pipeline stage, because filing it as plain
- *  Qualified hid the one thing Hugo actually has to act on. */
+ *  Qualified hid the one thing Hugo actually has to act on.
+ *
+ *  'deciding' and 'follow_up' arrived 2026-08-11 at Hugo's request ("add more
+ *  disposition option like deciding so its specific for me and follow up as
+ *  well"). Deciding = the branch has our interest and is thinking it over;
+ *  Follow up = warm, ring again. Each has its own board column (see the
+ *  matching migration) so Hugo can watch them, and both flag a follow-up. */
 const OUTCOMES: Array<{ key: string; label: string; cls: string }> = [
   { key: 'figure_obtained', label: 'Figure obtained', cls: 'bg-[#B8860B] hover:bg-[#a2760a]' },
   { key: 'qualified', label: 'Qualified', cls: 'bg-[#2E7D43] hover:bg-[#276b39]' },
+  { key: 'deciding', label: 'Deciding', cls: 'bg-[#7C5CBF] hover:bg-[#6a4ea8]' },
+  { key: 'follow_up', label: 'Follow up', cls: 'bg-[#2F8F9D] hover:bg-[#297d8a]' },
   { key: 'callback', label: 'Call back', cls: 'bg-[#3C5A87] hover:bg-[#33507a]' },
   { key: 'not_qualified', label: 'Not for us', cls: 'bg-[#6B7280] hover:bg-[#5b626d]' },
   { key: 'no_answer', label: 'No answer', cls: 'bg-[#9CA3AF] hover:bg-[#8b919b]' },

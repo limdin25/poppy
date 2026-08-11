@@ -101,15 +101,23 @@ describe('the human path is untouched by the removal', () => {
     expect(OUTCOME).toMatch(/status:\s*403/)
   })
 
-  it('only accepts the five outcomes', () => {
-    // 'figure_obtained' joined the list on 2026-08-10, when the script rewrite
-    // put the money conversation in the agent's hands: the common end state is
-    // now "the branch said a number and it is on the director", which needs its
-    // own state and its own pipeline stage.
+  it('only accepts the known outcomes', () => {
+    // 'figure_obtained' joined 2026-08-10 with the script rewrite that put the
+    // money conversation in the agent's hands. 'deciding' and 'follow_up'
+    // joined 2026-08-11 at Hugo's request for warm tracking states he can watch
+    // on the board.
     expect(OUTCOME).toMatch(
-      /const OUTCOMES = \['qualified', 'figure_obtained', 'not_qualified', 'callback', 'no_answer'\]/)
+      /const OUTCOMES = \['qualified', 'figure_obtained', 'deciding', 'follow_up', 'not_qualified', 'callback', 'no_answer'\]/)
     // An allowlist, never the raw body value straight into the update.
     expect(OUTCOME).toMatch(/OUTCOMES\.includes\(outcome\)/)
+  })
+
+  it('deciding and follow up move the board but are not deals for the director', () => {
+    // They must NOT be pipeline outcomes (no BRRR deal, no director alert), but
+    // must have their own board column so Hugo can see them.
+    expect(OUTCOME).toMatch(/const PIPELINE_OUTCOMES: readonly Outcome\[\] = \['qualified', 'figure_obtained'\]/)
+    expect(OUTCOME).toMatch(/deciding: 'Deciding'/)
+    expect(OUTCOME).toMatch(/follow_up: 'Follow up'/)
   })
 
   it('a figure out of the agent files a deal and lands it in its own stage', () => {

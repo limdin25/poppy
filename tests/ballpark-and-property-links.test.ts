@@ -83,13 +83,22 @@ describe('pressing Figure obtained moves the branch card', () => {
   it('moves it on the CRM board, which is a different table from the BRRR board', () => {
     // pushPropertyToPipeline() files the PROPERTY under "Awaiting director" in
     // pipeline_stages. The board Hugo watches is wk_pipeline_columns, and
-    // nothing moved a card there until this.
-    expect(OUTCOME).toMatch(/from\('wk_pipeline_columns'\)[\s\S]*?\.eq\('name', 'Ballpark'\)/);
-    expect(OUTCOME).toMatch(/pipeline_column_id: ballpark\.id/);
+    // nothing moved a card there until this. Generalised 2026-08-11 from a
+    // hardcoded Ballpark to a per-outcome column map (BOARD_COLUMN_FOR), so
+    // the column name is now a variable.
+    expect(OUTCOME).toMatch(/from\('wk_pipeline_columns'\)[\s\S]*?\.eq\('name', targetColumn\)/);
+    expect(OUTCOME).toMatch(/pipeline_column_id: col\.id/);
   });
 
-  it('only on figure_obtained', () => {
-    expect(OUTCOME).toMatch(/outcome === 'figure_obtained' && property\.wk_contact_id/);
+  it('maps figure_obtained to Ballpark, and the warm states to their own columns', () => {
+    // The move is now driven by a table. Figure obtained still lands in
+    // Ballpark; Deciding and Follow up (added 2026-08-11) each get their own.
+    expect(OUTCOME).toMatch(/figure_obtained: 'Ballpark'/);
+    expect(OUTCOME).toMatch(/deciding: 'Deciding'/);
+    expect(OUTCOME).toMatch(/follow_up: 'Follow up'/);
+    // Only mapped outcomes move a card; the rest leave it where it is.
+    expect(OUTCOME).toMatch(/const targetColumn = BOARD_COLUMN_FOR\[outcome\]/);
+    expect(OUTCOME).toMatch(/if \(targetColumn && property\.wk_contact_id\)/);
   });
 
   it("uses a stage_move_source the CHECK constraint actually allows", () => {
@@ -104,7 +113,7 @@ describe('pressing Figure obtained moves the branch card', () => {
     // The outcome and the deal are already written by this point. A board that
     // did not move must not read back to Pedro as "your call did not save".
     expect(OUTCOME).not.toMatch(/from\('wk_pipeline_columns'\)[\s\S]{0,200}\.insert\(/);
-    expect(OUTCOME).toMatch(/no Ballpark column on this board/);
+    expect(OUTCOME).toMatch(/no \$\{targetColumn\} column on this board/);
     expect(OUTCOME).toMatch(/board_warning/);
   });
 

@@ -107,7 +107,12 @@ export interface Qualification {
   // is a different thing from "qualified" (worth pursuing) and from "callback"
   // (nothing learned). The retired AI extractor never emits it, so its prompt
   // below is deliberately left alone.
-  outcome?: 'qualified' | 'figure_obtained' | 'not_qualified' | 'callback' | 'no_answer';
+  // 'deciding' and 'follow_up' joined 2026-08-11 at Hugo's request: a branch
+  // that has our interest and is thinking it over, and one that simply needs
+  // ringing again. Both are warm tracking states he watches on the board, not
+  // deals for the director, so neither is a PIPELINE_OUTCOME. The retired AI
+  // extractor never emits any of these.
+  outcome?: 'qualified' | 'figure_obtained' | 'deciding' | 'follow_up' | 'not_qualified' | 'callback' | 'no_answer';
   next_step?: 'book_viewing' | 'make_offer' | 'monitor_backup' | 'call_back' | 'awaiting_director' | 'none' | null;
   still_available?: boolean | null;
   occupancy?: string | null;            // vacant / tenanted (+ tenancy details)

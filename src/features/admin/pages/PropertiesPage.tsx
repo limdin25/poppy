@@ -103,6 +103,8 @@ const STATUS_STYLES: Record<string, string> = {
   calling: 'bg-violet-500/10 text-violet-600',
   figure_obtained: 'bg-yellow-500/15 text-yellow-700',
   qualified: 'bg-success/10 text-success',
+  deciding: 'bg-violet-500/10 text-violet-600',
+  follow_up: 'bg-teal-500/10 text-teal-600',
   not_qualified: 'bg-danger/10 text-danger',
   no_answer: 'bg-amber-500/10 text-amber-600',
   callback: 'bg-cyan-500/10 text-cyan-600',
@@ -112,10 +114,10 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 // Figure obtained first (waiting on Hugo's decision), then qualified (Hugo's
-// action), live calls next, dead ends at the bottom.
+// action), the warm tracking states, live calls next, dead ends at the bottom.
 const STATUS_ORDER: Record<string, number> = {
-  figure_obtained: 0, qualified: 1, calling: 2, call_queued: 3, callback: 4, new: 5, no_answer: 6, not_qualified: 7,
-  auditor_killed: 8,
+  figure_obtained: 0, qualified: 1, deciding: 2, follow_up: 3, callback: 4, calling: 5, call_queued: 6,
+  new: 7, no_answer: 8, not_qualified: 9, auditor_killed: 10,
 }
 
 function gbp(v: unknown): string {
