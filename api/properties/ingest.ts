@@ -40,12 +40,44 @@ export default async function handler(req: Request): Promise<Response> {
     // auditor exists because Holloway Head passed every other rule.
     const deal = body.deal && typeof body.deal === 'object'
       ? body.deal as Record<string, unknown> : {};
-    if (deal.pursue === false) {
-      // Never sent, so never called, so there is no call history to explain.
-      return new Response(JSON.stringify({ ok: false, error: 'engine says do not pursue' }), { status: 422 });
-    }
-    const audit = deal.audit && typeof deal.audit === 'object'
+
+    // Does Elsie already know this property? It decides what a rejection means.
+    const { data: existing } = await supabase
+      .from('brrr_properties')
+      .select('status')
+      .eq('source', body.source || 'rightmove')
+      .eq('source_property_id', propertyId)
+      .maybeSingle();
+    const prevStatus = existing?.status ?? null;
+
+    let audit = deal.audit && typeof deal.audit === 'object'
       ? deal.audit as Record<string, unknown> : null;
+
+    if (deal.pursue === false) {
+      if (!existing) {
+        // Unknown and not worth pursuing: never sent, never called, nothing to
+        // explain. Refusing keeps the table free of properties nobody ever saw.
+        return new Response(JSON.stringify({ ok: false, error: 'engine says do not pursue' }), { status: 422 });
+      }
+      // KNOWN, and the engine has changed its mind. It must be withdrawn here,
+      // or the row keeps showing the numbers from before. When the refurb
+      // costings were corrected on 2026-08-11 this was twenty properties still
+      // sitting callable in Pedro's queue at yesterday's prices.
+      const offerVerdict = String((deal.offer as Record<string, unknown>)?.verdict ?? '');
+      const stackVerdict = String((deal.stack as Record<string, unknown>)?.verdict ?? '');
+      const why = `the valuation engine no longer pursues this one${
+        offerVerdict ? ` (offer: ${offerVerdict.replace(/_/g, ' ')}` : ''}${
+        stackVerdict ? `, deal stack: ${stackVerdict.replace(/_/g, ' ')})` : offerVerdict ? ')' : ''}`;
+      audit = {
+        ...(audit ?? {}),
+        verdict: 'kill',
+        reasons: [...(Array.isArray(audit?.reasons) ? audit.reasons : []), 'engine_no_longer_pursues'],
+        checks: [...(Array.isArray(audit?.checks) ? audit.checks : []),
+          { level: 'kill', code: 'engine_no_longer_pursues', detail: why }],
+      };
+      deal.audit = audit;
+    }
+
     const killed = audit?.verdict === 'kill' && audit?.forced !== true;
     if (killed) {
       // FILED, NOT REFUSED. A killed deal used to be rejected here and deleted
@@ -63,13 +95,6 @@ export default async function handler(req: Request): Promise<Response> {
     // A human outcome outranks a machine one. If somebody already qualified or
     // spoke to this branch, a later auditor kill must not overwrite that.
     const MACHINE_STATUSES = ['new', 'call_queued', 'auditor_killed'];
-    const { data: existing } = await supabase
-      .from('brrr_properties')
-      .select('status')
-      .eq('source', body.source || 'rightmove')
-      .eq('source_property_id', propertyId)
-      .maybeSingle();
-    const prevStatus = existing?.status ?? null;
     let killedStatus: string | null = null;
     if (killed) {
       killedStatus = MACHINE_STATUSES.includes(prevStatus ?? 'new')

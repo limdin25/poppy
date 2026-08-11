@@ -16,9 +16,18 @@ const read = (...p: string[]) => readFileSync(resolve(__dirname, '..', ...p), 'u
 describe('the ingest enforces both brains', () => {
   const src = read('api', 'properties', 'ingest.ts')
 
-  it('refuses a deal the engine said not to pursue', () => {
+  it('refuses an UNKNOWN deal the engine said not to pursue', () => {
     expect(src).toMatch(/deal\.pursue === false/)
+    expect(src).toMatch(/if \(!existing\)/)
     expect(src).toMatch(/status: 422/)
+  })
+
+  it('WITHDRAWS a known one instead, so it cannot keep yesterday s numbers', () => {
+    // When the refurb costings were corrected, twenty properties stopped being
+    // worth a call and every one stayed callable in Pedro's queue, because
+    // nothing ever sent the bad news.
+    expect(src).toMatch(/engine_no_longer_pursues/)
+    expect(src).toMatch(/verdict: 'kill'/)
   })
 
   // Changed 2026-08-11 the same evening. The kill used to be REFUSED, and the
