@@ -19,6 +19,8 @@ import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 import StageMoveChip from '../components/shared/StageMoveChip';
+import PropertyLinkChips from '../components/shared/PropertyLinkChips';
+import { usePropertyLinks, phoneTail } from '../hooks/usePropertyLinks';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
 
@@ -27,6 +29,10 @@ export default function PipelinesPage() {
   // One batched query for the whole board, not one per card.
   const funnelIds = useMemo(() => contacts.map((c) => c.id), [contacts]);
   const funnelByContact = useContactFunnelStatus(funnelIds);
+  // Same shape, same reason: one batched RPC for the whole board so every card
+  // can link out to the house without a query per card.
+  const boardPhones = useMemo(() => contacts.map((c) => c.phone), [contacts]);
+  const { byPhone: propertiesByPhone } = usePropertyLinks(boardPhones);
   const persist = useContactPersistence();
 
   // Load pipelines via shared hook (TanStack Query cache). Prevents the
@@ -285,6 +291,13 @@ export default function PipelinesPage() {
                           <CalcChip calcAt={funnelByContact.get(c.id)?.calcAt} count={funnelByContact.get(c.id)?.calcCount} />
                           <AgentChip agentId={c.ownerAgentId} size="xs" className="ml-auto" />
                         </div>
+                        {/* Hugo 2026-08-11: the house this branch is selling,
+                            one click away. Estate agent cards only; a plumber
+                            lead has no property and renders nothing. */}
+                        <PropertyLinkChips
+                          links={propertiesByPhone.get(phoneTail(c.phone))}
+                          className="mt-1"
+                        />
                         {/* Hugo 2026-07-27: the board must always say where this
                             card last moved and who moved it — including the
                             moves the video funnel makes on its own. */}

@@ -27,6 +27,8 @@ import { MOCK_AGENTS } from '../data/mockAgents';
 import { formatDuration, formatPence, formatRelativeTime } from '../data/helpers';
 import { cn } from '@/core/lib/cn';
 import { useCalls, signCallRecording } from '../hooks/useCalls';
+import PropertyLinkChips from '../components/shared/PropertyLinkChips';
+import { usePropertyLinks, phoneTail } from '../hooks/usePropertyLinks';
 import { useSmsV2 } from '../store/SmsV2Store';
 import { useContactPersistence } from '../hooks/useContactPersistence';
 import { useDemoMode } from '../lib/useDemoMode';
@@ -77,6 +79,12 @@ export default function CallsPage() {
   const persist = useContactPersistence();
   const { agents: realAgentsToday } = useAgentsToday();
   const demoMode = useDemoMode();
+  // Hugo 2026-08-11: "from the call recording we should be able to go and see
+  // the property". One batched RPC for every branch on the page, never one per
+  // row. Keyed off the contacts rather than the calls because two calls to the
+  // same branch share a number and would otherwise ask twice.
+  const callPhones = useMemo(() => realContacts.map((c) => c.phone), [realContacts]);
+  const { byPhone: propertiesByPhone } = usePropertyLinks(callPhones);
   // PR 107: avoid the "unused" warning when columns are only consumed
   // through StageSelector now (no more inline IIFE that read them).
   void columns;
@@ -407,6 +415,13 @@ export default function CallsPage() {
                       <div className="text-[10px] text-[#9CA3AF] tabular-nums">
                         {contact?.phone}
                       </div>
+                      {/* Hugo 2026-08-11: listen to the call, then click
+                          straight through to the house it was about. */}
+                      <PropertyLinkChips
+                        links={propertiesByPhone.get(phoneTail(contact?.phone))}
+                        max={2}
+                        className="mt-0.5"
+                      />
                     </td>
                     <td className="px-2 py-2.5 text-[#6B7280]">{agent?.name ?? '—'}</td>
                     <td className="px-2 py-2.5">

@@ -213,11 +213,83 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
+  // 4. Move the branch card to "Ballpark" on the CRM board.
+  //
+  //    Hugo, 2026-08-11: "we need a new pipeline where it says ballpark
+  //    achieved, where the calls that we got the ballpark it goes there."
+  //
+  //    Step 3 above files the PROPERTY on the BRRR board (pipeline_stages,
+  //    under "Awaiting director"). That is a different table from the CRM board
+  //    Hugo watches all day (wk_pipeline_columns), and until now nothing moved
+  //    the branch card there when a figure came out of a call. Dixons showed
+  //    what that costs: a branch agreed GBP 95,000 at 12:22 and then sat in
+  //    Interested among sixty other branches, indistinguishable from a branch
+  //    that had merely been polite.
+  //
+  //    Best-effort by design. The outcome and the deal are already saved; a
+  //    board that did not move must never read back to Pedro as "your call did
+  //    not save". If the column has been renamed or deleted this does nothing
+  //    rather than inventing one.
+  let boardWarning: string | undefined;
+  if (outcome === 'figure_obtained' && property.wk_contact_id) {
+    try {
+      const { data: contact } = await supabase
+        .from('wk_contacts')
+        .select('id, pipeline_column_id')
+        .eq('id', property.wk_contact_id)
+        .maybeSingle();
+
+      if (contact) {
+        // Find Ballpark in the board this contact is already on, so a workspace
+        // with several pipelines cannot fling the card onto a foreign one.
+        let pipelineId: string | null = null;
+        if (contact.pipeline_column_id) {
+          const { data: current } = await supabase
+            .from('wk_pipeline_columns')
+            .select('pipeline_id')
+            .eq('id', contact.pipeline_column_id)
+            .maybeSingle();
+          pipelineId = current?.pipeline_id ?? null;
+        }
+
+        const q = supabase
+          .from('wk_pipeline_columns')
+          .select('id')
+          .eq('name', 'Ballpark');
+        const { data: ballpark } = await (pipelineId ? q.eq('pipeline_id', pipelineId) : q)
+          .limit(1)
+          .maybeSingle();
+
+        if (ballpark?.id && ballpark.id !== contact.pipeline_column_id) {
+          await supabase
+            .from('wk_contacts')
+            .update({
+              pipeline_column_id: ballpark.id,
+              stage_moved_at: nowIso,
+              stage_moved_from: contact.pipeline_column_id,
+              stage_moved_by: user.id,
+              // 'agent', not 'automation': a CHECK constraint allows only
+              // agent / automation / import / backfill, and this move is the
+              // direct result of Pedro pressing Figure obtained. The board
+              // should credit him, which is also what StageMoveChip renders.
+              stage_move_source: 'agent',
+            })
+            .eq('id', contact.id);
+        } else if (!ballpark?.id) {
+          boardWarning = 'no Ballpark column on this board, so the card was left where it was';
+        }
+      }
+    } catch (e: unknown) {
+      boardWarning = `the card did not move: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
   return Response.json({
     ok: true,
     property_updated: true,
     status: outcome,
     deal_id: dealId,
     ...(warning ? { warning } : {}),
+    ...(boardWarning ? { board_warning: boardWarning } : {}),
   });
 }
