@@ -1983,6 +1983,9 @@ serve(async (req: Request) => {
             if (f('asking_price')) leadFactLines.push(`Asking price: ${f('asking_price')}`);
             if (f('days_on_market')) leadFactLines.push(`Days on the market: ${f('days_on_market')}`);
             if (f('property_worth')) leadFactLines.push(`What the sold evidence says it is worth today: ${f('property_worth')}`);
+            if (f('worth_after_bed') && f('worth_after_bed') !== 'not established') {
+              leadFactLines.push(`Worth after the kitchen becomes a bedroom: ${f('worth_after_bed')}. This is why we are buying it.`);
+            }
             if (f('offer_open')) leadFactLines.push(`OPEN AT this figure, say this one number: ${f('offer_open')}`);
             // Two keys on purpose. The assign script writes `offer_ladder`, but
             // scriptTokensFor() in the dialer writes `ladder` when the agent

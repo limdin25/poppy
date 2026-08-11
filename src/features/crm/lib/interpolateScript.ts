@@ -45,6 +45,7 @@ export const SCRIPT_TEXT_TOKENS = [
   // visible brown slot rather than a bare bracket.
   'property_address', 'property_street', 'asking_price', 'bedrooms',
   'property_type', 'days_on_market', 'agency', 'property_worth',
+  'worth_after_bed',
   'offer_open', 'offer_ceiling', 'ladder', 'comp_evidence', 'valuation_notes',
 ] as const;
 

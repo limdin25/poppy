@@ -10,7 +10,7 @@
 // a negotiation, it loses a house purchase, so the walk-away rules matter most.
 
 import { describe, it, expect } from 'vitest'
-import { computeDeal, money, DEAL_ASSUMPTIONS } from '../src/features/admin/lib/dealMaths'
+import { computeDeal, money, DEAL_ASSUMPTIONS } from '../src/core/lib/dealMaths'
 
 const base = {
   purchase: 87_500,
@@ -170,20 +170,39 @@ describe('money formatting', () => {
 })
 
 describe('it is Hugo s tool, not the agent s', () => {
-  it('lives in the admin feature and is never imported by the CRM', async () => {
+  // Rewritten 2026-08-11. Hugo asked for the whole calculator breakdown in
+  // Call history ("no more flying blind after the call is made"), so the
+  // maths moved to src/core/lib/dealMaths.ts and exactly ONE CRM file may
+  // read it: the calls DealSnapshotDrawer, where the sums render for admins
+  // only. The DIALER stays clean: Pedro's live-call screen must never carry
+  // the cash position or the partner split.
+  it('inside the CRM, only the calls snapshot drawer touches the maths, and never the dialer', async () => {
     const { readFileSync, readdirSync, statSync } = await import('node:fs')
     const { resolve, join } = await import('node:path')
     const root = resolve(__dirname, '..', 'src', 'features', 'crm')
+    const allowed = join(root, 'components', 'calls', 'DealSnapshotDrawer.tsx')
     const offenders: string[] = []
     const walk = (dir: string) => {
       for (const e of readdirSync(dir)) {
         const p = join(dir, e)
         if (statSync(p).isDirectory()) { walk(p); continue }
         if (!/\.tsx?$/.test(e)) continue
+        if (p === allowed) continue
         if (/dealMaths|admin\/components\/DealCalculator/.test(readFileSync(p, 'utf8'))) offenders.push(p)
       }
     }
     walk(root)
     expect(offenders).toEqual([])
+  })
+
+  it('the snapshot drawer gates the sums on isAdmin', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const src = readFileSync(
+      resolve(__dirname, '..', 'src', 'features', 'crm', 'components', 'calls', 'DealSnapshotDrawer.tsx'),
+      'utf8',
+    )
+    expect(src).toMatch(/isAdmin && sums/)
+    expect(src).toMatch(/from '@\/core\/lib\/dealMaths'/)
   })
 })

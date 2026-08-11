@@ -14,10 +14,12 @@ import {
   Download,
   MessageSquare,
   CalendarDays,
+  Home,
 } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, startOfYesterday, endOfYesterday } from '@/features/crm/lib/dates';
 import { Popover, PopoverContent, PopoverTrigger } from '@/features/crm/ui/popover';
 import CallTranscriptModal from '../components/calls/CallTranscriptModal';
+import DealSnapshotDrawer from '../components/calls/DealSnapshotDrawer';
 import StageSelector from '../components/shared/StageSelector';
 import EditContactModal from '../components/contacts/EditContactModal';
 import { useAgentsToday } from '../hooks/useAgentsToday';
@@ -73,6 +75,10 @@ export default function CallsPage() {
   const [transcriptCallId, setTranscriptCallId] = useState<string | null>(null);
   // PR 115: edit-contact modal — opened by clicking a prospect name.
   const [editing, setEditing] = useState<Contact | null>(null);
+  // Hugo 2026-08-11: "the call history should be a complete snapshot when
+  // click: the full deal, the ballpark numbers, the whole calculator
+  // breakdown, and the outcome of the call, all in one place."
+  const [dealView, setDealView] = useState<{ contact: Contact; call: CallRecord } | null>(null);
 
   const { calls: realCalls, loadingMore, total, hasMore, loadMore } = useCalls();
   const { contacts: realContacts, columns, patchContact, upsertContact, pushToast } = useSmsV2();
@@ -85,9 +91,6 @@ export default function CallsPage() {
   // same branch share a number and would otherwise ask twice.
   const callPhones = useMemo(() => realContacts.map((c) => c.phone), [realContacts]);
   const { byPhone: propertiesByPhone } = usePropertyLinks(callPhones);
-  // PR 107: avoid the "unused" warning when columns are only consumed
-  // through StageSelector now (no more inline IIFE that read them).
-  void columns;
 
   // In production, always use real data — even if empty. The mock fallback
   // is reachable only with `?demo=1` so internal demos / screenshots still
@@ -422,6 +425,17 @@ export default function CallsPage() {
                         max={2}
                         className="mt-0.5"
                       />
+                      {/* And the same day, the rest of it: the whole deal in
+                          one click, not just the listing link. */}
+                      {contact && (propertiesByPhone.get(phoneTail(contact.phone))?.length ?? 0) > 0 && (
+                        <button
+                          onClick={() => setDealView({ contact, call: c })}
+                          className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-[#3C5A87] hover:underline"
+                          data-testid="open-deal-snapshot"
+                        >
+                          <Home className="h-3 w-3" /> Full deal
+                        </button>
+                      )}
                     </td>
                     <td className="px-2 py-2.5 text-[#6B7280]">{agent?.name ?? '—'}</td>
                     <td className="px-2 py-2.5">
@@ -635,6 +649,15 @@ export default function CallsPage() {
           />
         );
       })()}
+      {dealView && (
+        <DealSnapshotDrawer
+          contact={dealView.contact}
+          call={dealView.call}
+          agentName={agents.find((a) => a.id === dealView.call.agentId)?.name}
+          stageName={columns.find((col) => col.id === dealView.contact.pipelineColumnId)?.name}
+          onClose={() => setDealView(null)}
+        />
+      )}
       {/* PR 115: edit contact directly from Call history. Same modal +
           persist pattern used elsewhere. */}
       <EditContactModal

@@ -301,11 +301,18 @@ export default function PropertiesPage() {
               header: 'Numbers',
               render: (p) => {
                 const band = offerRange(p, settings)
+                // deal.gdv is an OBJECT from valuation.py ({estimate, flags});
+                // the retired browser page sent a bare number. Reading only the
+                // flat shape rendered a dash on every engine-valued row.
+                const gdvRaw = p.deal?.gdv as unknown
+                const gdv = typeof gdvRaw === 'object' && gdvRaw !== null
+                  ? Number((gdvRaw as Record<string, unknown>).estimate) || 0
+                  : Number(gdvRaw) || 0
                 return (
                   <div className="text-[12px]">
                     <div className="font-medium text-ink">{p.price_text || gbp(p.asking_price)}</div>
                     <div className="text-ink-muted">
-                      Offer {gbp(band.min)}–{gbp(band.max)} · GDV {gbp(p.deal?.gdv)}
+                      Offer {gbp(band.min)}–{gbp(band.max)}{gdv > 0 ? <> · as a {(p.bedrooms ?? 0) + 1} bed {gbp(gdv)}</> : null}
                     </div>
                   </div>
                 )

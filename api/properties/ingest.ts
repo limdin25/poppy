@@ -33,6 +33,25 @@ export default async function handler(req: Request): Promise<Response> {
     const priceText = body.price || null;
     const askingPrice = parseFloat(String(priceText || '').replace(/[^0-9.]/g, '')) || null;
 
+    // The two brains on the VPS have already judged this deal. An ingest that
+    // accepts what they rejected re-opens the exact holes they closed: the
+    // engine's pursue=false was ignored once before (Linfield Terrace reached
+    // Pedro with a £69,000 open the engine had called overpriced), and the
+    // auditor exists because Holloway Head passed every other rule. A human
+    // can override a kill deliberately: the scraper stamps audit.forced=true
+    // when someone sends with force, and that stays on the record.
+    const deal = body.deal && typeof body.deal === 'object'
+      ? body.deal as Record<string, unknown> : {};
+    if (deal.pursue === false) {
+      return new Response(JSON.stringify({ ok: false, error: 'engine says do not pursue' }), { status: 422 });
+    }
+    const audit = deal.audit && typeof deal.audit === 'object'
+      ? deal.audit as Record<string, unknown> : null;
+    if (audit?.verdict === 'kill' && audit?.forced !== true) {
+      const reasons = Array.isArray(audit.reasons) ? audit.reasons.join(', ') : '';
+      return new Response(JSON.stringify({ ok: false, error: `auditor kill: ${reasons}` }), { status: 422 });
+    }
+
     const row = {
       source: body.source || 'rightmove',
       source_property_id: propertyId,
@@ -51,7 +70,7 @@ export default async function handler(req: Request): Promise<Response> {
       agent_branch_url: body.agent_branch_url || null,
       floorplan_urls: Array.isArray(body.floorplans) ? body.floorplans : [],
       comps: Array.isArray(body.comps) ? body.comps : [],
-      deal: body.deal && typeof body.deal === 'object' ? body.deal : {},
+      deal,
       updated_at: new Date().toISOString(),
     };
 

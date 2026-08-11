@@ -11,7 +11,7 @@
 // so a disagreement between the two is visible rather than hidden.
 
 import { useState } from 'react';
-import { computeDeal, money, DEAL_ASSUMPTIONS } from '../lib/dealMaths';
+import { computeDeal, money, DEAL_ASSUMPTIONS } from '@/core/lib/dealMaths';
 
 interface Props {
   /** What we would pay: the offer band's ceiling, capped below asking. */
@@ -117,7 +117,7 @@ export default function DealCalculator({
       <p className="mt-3 text-[11px] leading-snug text-ink-muted">
         Assumes {(DEAL_ASSUMPTIONS.ltv * 100).toFixed(0)}% loan to value, {(DEAL_ASSUMPTIONS.bridgeRate * 100).toFixed(0)}% a month
         bridging, {(DEAL_ASSUMPTIONS.sdltRate * 100).toFixed(0)}% stamp duty and a {(DEAL_ASSUMPTIONS.btlRate * 100).toFixed(1)}% buy-to-let
-        rate. Change them in src/features/admin/lib/dealMaths.ts.
+        rate. Change them in src/core/lib/dealMaths.ts.
       </p>
     </div>
   );

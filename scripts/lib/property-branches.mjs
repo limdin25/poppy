@@ -64,7 +64,11 @@ export function headlineProperty(properties) {
   const list = [...(properties ?? [])]
   if (list.length === 0) return null
   list.sort((a, b) => {
-    const byOffer = num(b.deal?.offer_max) - num(a.deal?.offer_max)
+    // valuation.py NESTS the band (deal.offer.max); the retired browser page
+    // flattened it (deal.offer_max). Reading only the flat key made every
+    // nested row sort as zero, so the headline fell to newest-listing order.
+    const offerMax = (x) => num(x.deal?.offer?.max) || num(x.deal?.offer_max)
+    const byOffer = offerMax(b) - offerMax(a)
     if (byOffer !== 0) return byOffer
     const pursue = (x) => (x.deal?.pursue === true || x.deal?.pursue === 'true' ? 1 : 0)
     const byPursue = pursue(b) - pursue(a)

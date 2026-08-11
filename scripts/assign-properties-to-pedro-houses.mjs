@@ -325,7 +325,15 @@ function factsFor(branch, headline, settings) {
     ...(Array.isArray(offer.flags) ? offer.flags : []),
     ...(Array.isArray(deal.warnings) ? deal.warnings : []),
     ...(Array.isArray(deal.flags) ? deal.flags : []),
+    // The second brain's reservations (deal_auditor.py on the VPS). A killed
+    // deal is never ingested at all; these are the pass-with-reservations.
+    ...(deal.audit && Array.isArray(deal.audit.reasons) ? deal.audit.reasons : []),
   ].filter(Boolean)
+  // What it is worth with the extra bedroom: the engine's GDV, the comps
+  // pipeline run again over beds+1 sales. The buying thesis in one number,
+  // and until 2026-08-11 it never reached the contact.
+  const gdvObj = (deal.gdv && typeof deal.gdv === 'object') ? deal.gdv : null
+  const gdv = gdvObj ? num(gdvObj.estimate) : num(deal.gdv)
   const addr = headline.address ?? ''
 
   return {
@@ -340,6 +348,9 @@ function factsFor(branch, headline, settings) {
     days_on_market: headline.days_on_market ?? '',
     property_worth: cmv > 0
       ? `${money(cmv)}${cmvConf ? ` (${cmvConf} confidence)` : ''}`
+      : 'not established',
+    worth_after_bed: gdv > 0
+      ? `${money(gdv)} as a ${(parseInt(String(headline.bedrooms ?? ''), 10) || 0) + 1} bed`
       : 'not established',
     offer_open: money(min),
     offer_ceiling: money(max),

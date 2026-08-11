@@ -75,6 +75,17 @@ export interface PropertyListing extends ListingRow {
  *  retired on 2026-08-09, and its cron was deleted with it. */
 const FLAG_NOTES: Record<string, string> = {
   conversion_adds_no_value: 'Converting this adds little value. The money has to come off the purchase price.',
+  // The re-anchor and the second brain (deal_auditor.py), 2026-08-11. A kill
+  // never reaches this screen; these are the flags that ride along on a deal
+  // the auditor let through with reservations.
+  cmv_far_above_asking_reanchored: 'Comps nearby run far above the asking price, so the band is anchored to asking. Verify the value before treating it as a bargain.',
+  suspiciously_cheap_asking: 'Priced well below what the comps suggest. Find out why before you believe it.',
+  deal_stack_unverified: 'No target-bed evidence, so the refinance sums are unverified.',
+  bmv_claim_unproven: 'Below-market claim has no same-street sale behind it. Verify before leaning on it.',
+  opener_far_below_asking: 'The opener is far below asking. Expect pushback; know your evidence.',
+  conversion_value_unpriced: 'No 3-bed sales nearby, so the extra-bedroom value is a guess.',
+  engine_vs_raw_median: 'The estimate drifts from the plain median of its own comps. Double-check it.',
+  stack_limited: 'The walk-away is capped by the refinance sums, not the market value.',
   // The GDV flags. These live in deal.gdv.flags and were never read on this
   // path, so the dialer could show "with an extra bedroom: X" on a property the
   // engine had already flagged as gaining nothing from the conversion.
@@ -161,20 +172,46 @@ export function usePropertyListings(phone: string | null | undefined) {
       // still show an extra-bedroom figure with no warning beside it.
       const gdvObj = (deal.gdv && typeof deal.gdv === 'object')
         ? deal.gdv as Record<string, unknown> : null;
+      // The second brain's reservations ride along with the deal
+      // (deal.audit.reasons, written by deal_auditor.py on the VPS). A killed
+      // deal never reaches this screen at all.
+      const auditObj = (deal.audit && typeof deal.audit === 'object')
+        ? deal.audit as Record<string, unknown> : null;
       const flagSrc = [
         ...(Array.isArray(offerObj.flags) ? offerObj.flags as unknown[] : []),
         ...(Array.isArray(gdvObj?.flags) ? gdvObj.flags as unknown[] : []),
         ...(Array.isArray(deal.flags) ? deal.flags as unknown[] : []),
+        ...(Array.isArray(auditObj?.reasons) ? auditObj.reasons as unknown[] : []),
       ];
       const flagCodes = [...new Set(flagSrc.map(str))];
+      // Evidence sentences. The flat shape carried deal.evidence; the nested
+      // engine never emits that key, so every nested row fell through to
+      // "no sold comparables on file" the moment the dialer merged its tokens
+      // into the contact, even with five comps behind the number. Hugo's
+      // screenshot of the Dixons contact is exactly that. Build the sentences
+      // from the audit rows the engine already returns: raw sold price and
+      // date, never the time-adjusted figure, because Pedro says these out
+      // loud to someone who can check.
+      const flatEvidence = (Array.isArray(deal.evidence) ? (deal.evidence as unknown[]) : [])
+        .map(str).filter(Boolean);
+      const auditRows = Array.isArray(cmvObj?.audit)
+        ? cmvObj.audit as Array<Record<string, unknown>> : [];
+      const nestedEvidence = auditRows
+        .filter((a) => a.included === true && Number(a.price) > 0)
+        .slice(0, 3)
+        .map((a) => `${str(a.address)} sold for ${gbpShort(Number(a.price))}${a.date ? ` (${str(a.date)})` : ''}`);
+      const nUsed = Number(cmvObj?.n_used ?? 0);
+      const evidence = flatEvidence.length > 0 ? flatEvidence.slice(0, 3)
+        : nestedEvidence.length > 0 ? nestedEvidence
+          : nUsed > 0 ? [`${nUsed} sold comparables nearby put it at ${gbpShort(cmvOf(deal))}`]
+            : [];
       return {
         ...r,
         offerMin: band.min,
         offerMax: band.max,
         ladder: ladderText(deal, band, isAuction),
         confidence: str(cmvObj?.confidence ?? deal.cmv_confidence) || 'unknown',
-        evidence: (Array.isArray(deal.evidence) ? (deal.evidence as unknown[]) : [])
-          .map(str).filter(Boolean).slice(0, 3),
+        evidence,
         flags: flagCodes.map((c) => FLAG_NOTES[c] ?? c).filter(Boolean),
         isAuction,
         upliftValue: gdvOf(deal),
@@ -214,6 +251,12 @@ export function scriptTokensFor(l: PropertyListing | null | undefined): Record<s
     offer_open: gbpShort(l.offerMin),
     offer_ceiling: gbpShort(l.offerMax),
     ladder: l.ladder,
+    // What it is worth once the kitchen becomes a bedroom. This is the whole
+    // buying thesis, and until 2026-08-11 it never reached the contact, so
+    // the coach could not say it and Hugo could not see it on the lead.
+    worth_after_bed: l.upliftValue > 0
+      ? `${gbpShort(l.upliftValue)} as a ${(l.bedrooms ?? 0) + 1} bed`
+      : 'not established',
     comp_evidence: l.evidence.length ? l.evidence.join(' · ') : 'no sold comparables on file',
     valuation_notes: l.flags.length ? l.flags.join(' ') : 'nothing unusual flagged',
   };
