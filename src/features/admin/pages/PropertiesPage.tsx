@@ -104,12 +104,16 @@ const STATUS_STYLES: Record<string, string> = {
   not_qualified: 'bg-danger/10 text-danger',
   no_answer: 'bg-amber-500/10 text-amber-600',
   callback: 'bg-cyan-500/10 text-cyan-600',
+  // Withdrawn by the second brain (deal_auditor.py). Kept on file so a branch
+  // Pedro has rung never goes blank, never queued, never shown in the dialer.
+  auditor_killed: 'bg-danger/10 text-danger',
 }
 
 // Figure obtained first (waiting on Hugo's decision), then qualified (Hugo's
 // action), live calls next, dead ends at the bottom.
 const STATUS_ORDER: Record<string, number> = {
   figure_obtained: 0, qualified: 1, calling: 2, call_queued: 3, callback: 4, new: 5, no_answer: 6, not_qualified: 7,
+  auditor_killed: 8,
 }
 
 function gbp(v: unknown): string {

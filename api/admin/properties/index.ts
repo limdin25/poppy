@@ -28,12 +28,29 @@ export default async function handler(req: Request) {
   if (denied) return denied
 
   if (req.method === 'GET') {
-    const { data: properties, error } = await supabaseAdmin
-      .from('brrr_properties')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(200)
+    // Live deals first, in their own window, then a recent sample of what the
+    // auditor withdrew. One 200-row fetch ordered by created_at would let a
+    // night's rejects (127 of them on 2026-08-11) push every live deal off the
+    // page, which is the opposite of what this screen is for. The withdrawn
+    // ones are still worth showing: they are the evidence the second brain is
+    // working, and where Hugo checks whether it is being too harsh.
+    const [liveRes, withdrawnRes] = await Promise.all([
+      supabaseAdmin
+        .from('brrr_properties')
+        .select('*')
+        .neq('status', 'auditor_killed')
+        .order('created_at', { ascending: false })
+        .limit(200),
+      supabaseAdmin
+        .from('brrr_properties')
+        .select('*')
+        .eq('status', 'auditor_killed')
+        .order('updated_at', { ascending: false })
+        .limit(50),
+    ])
+    const error = liveRes.error || withdrawnRes.error
     if (error) return Response.json({ error: error.message }, { status: 500 })
+    const properties = [...(liveRes.data || []), ...(withdrawnRes.data || [])]
 
     const ids = (properties || []).map((p) => p.id)
     let callsByProperty: Record<string, unknown[]> = {}
