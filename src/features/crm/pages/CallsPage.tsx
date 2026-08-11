@@ -426,8 +426,14 @@ export default function CallsPage() {
                         className="mt-0.5"
                       />
                       {/* And the same day, the rest of it: the whole deal in
-                          one click, not just the listing link. */}
-                      {contact && (propertiesByPhone.get(phoneTail(contact.phone))?.length ?? 0) > 0 && (
+                          one click, not just the listing link.
+                          Shown on EVERY estate-agent call, not only where a
+                          live listing chip exists. Dixons had one property, the
+                          auditor withdrew it, and thirteen calls went blank
+                          with no way to ask why. A property call always has a
+                          deal behind it, even if that deal is now withdrawn. */}
+                      {contact && (contact.customFields?.lead_type === 'estate_agent'
+                        || (propertiesByPhone.get(phoneTail(contact.phone))?.length ?? 0) > 0) && (
                         <button
                           onClick={() => setDealView({ contact, call: c })}
                           className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-[#3C5A87] hover:underline"

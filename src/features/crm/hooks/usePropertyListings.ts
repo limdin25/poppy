@@ -68,6 +68,14 @@ export interface PropertyListing extends ListingRow {
   /** What that conversion costs, from the bedroom table in brrr-offer. 0 when
    *  the bed count is outside 1 to 3, where we have no figure and say so. */
   upliftRefurbBudget: number;
+  /** The second brain withdrew this deal (status 'auditor_killed'). Hidden
+   *  from the dialer entirely; Call history shows it, clearly marked, because
+   *  a branch Pedro has already rung must never go blank. */
+  withdrawn: boolean;
+  /** Why, in the auditor's own words. Empty unless withdrawn. */
+  withdrawnReasons: string[];
+  /** When it was filed as withdrawn. ISO, empty when unknown. */
+  withdrawnAt: string;
 }
 
 /** The engine's flag codes, in words an agent can use on the phone.
@@ -129,7 +137,15 @@ function gdvOf(deal: Record<string, unknown> | null | undefined): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-export function usePropertyListings(phone: string | null | undefined) {
+interface Options {
+  /** Include deals the auditor withdrew. The DIALER must never pass this:
+   *  a withdrawn deal's figures are exactly what nobody may quote. Call
+   *  history passes it so a rung branch still shows what it was about. */
+  includeWithdrawn?: boolean;
+}
+
+export function usePropertyListings(phone: string | null | undefined, opts?: Options) {
+  const includeWithdrawn = opts?.includeWithdrawn === true;
   const digits = (phone ?? '').replace(/\D/g, '');
   const enabled = digits.length >= 9;
 
@@ -177,11 +193,22 @@ export function usePropertyListings(phone: string | null | undefined) {
       // deal never reaches this screen at all.
       const auditObj = (deal.audit && typeof deal.audit === 'object')
         ? deal.audit as Record<string, unknown> : null;
+      const withdrawn = r.status === 'auditor_killed';
+      // The auditor's own sentences, not the codes: "comps price it at 2.9x
+      // the asking price and none of them are on the subject's street".
+      const withdrawnReasons = withdrawn
+        ? (Array.isArray(auditObj?.checks) ? auditObj.checks as Array<Record<string, unknown>> : [])
+          .filter((c) => c.level === 'kill')
+          .map((c) => str(c.detail))
+          .filter(Boolean)
+        : [];
       const flagSrc = [
         ...(Array.isArray(offerObj.flags) ? offerObj.flags as unknown[] : []),
         ...(Array.isArray(gdvObj?.flags) ? gdvObj.flags as unknown[] : []),
         ...(Array.isArray(deal.flags) ? deal.flags as unknown[] : []),
-        ...(Array.isArray(auditObj?.reasons) ? auditObj.reasons as unknown[] : []),
+        // On a withdrawn deal the reasons are spelled out in full above, so
+        // they are not repeated as one-line flags.
+        ...(!withdrawn && Array.isArray(auditObj?.reasons) ? auditObj.reasons as unknown[] : []),
       ];
       const flagCodes = [...new Set(flagSrc.map(str))];
       // Evidence sentences. The flat shape carried deal.evidence; the nested
@@ -216,9 +243,12 @@ export function usePropertyListings(phone: string | null | undefined) {
         isAuction,
         upliftValue: gdvOf(deal),
         upliftRefurbBudget: upliftRefurb(r.bedrooms)?.budget ?? 0,
+        withdrawn,
+        withdrawnReasons,
+        withdrawnAt: str(auditObj?.filed_at),
       };
-    });
-  }, [q.data]);
+    }).filter((l) => includeWithdrawn || !l.withdrawn);
+  }, [q.data, includeWithdrawn]);
 
   return {
     listings,

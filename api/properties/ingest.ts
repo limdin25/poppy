@@ -37,19 +37,43 @@ export default async function handler(req: Request): Promise<Response> {
     // accepts what they rejected re-opens the exact holes they closed: the
     // engine's pursue=false was ignored once before (Linfield Terrace reached
     // Pedro with a £69,000 open the engine had called overpriced), and the
-    // auditor exists because Holloway Head passed every other rule. A human
-    // can override a kill deliberately: the scraper stamps audit.forced=true
-    // when someone sends with force, and that stays on the record.
+    // auditor exists because Holloway Head passed every other rule.
     const deal = body.deal && typeof body.deal === 'object'
       ? body.deal as Record<string, unknown> : {};
     if (deal.pursue === false) {
+      // Never sent, so never called, so there is no call history to explain.
       return new Response(JSON.stringify({ ok: false, error: 'engine says do not pursue' }), { status: 422 });
     }
     const audit = deal.audit && typeof deal.audit === 'object'
       ? deal.audit as Record<string, unknown> : null;
-    if (audit?.verdict === 'kill' && audit?.forced !== true) {
-      const reasons = Array.isArray(audit.reasons) ? audit.reasons.join(', ') : '';
-      return new Response(JSON.stringify({ ok: false, error: `auditor kill: ${reasons}` }), { status: 422 });
+    const killed = audit?.verdict === 'kill' && audit?.forced !== true;
+    if (killed) {
+      // FILED, NOT REFUSED. A killed deal used to be rejected here and deleted
+      // from the table, which emptied the branch: Dixons had one listing
+      // (Holloway Head), it was withdrawn, and thirteen calls in Pedro's
+      // history suddenly had nothing behind them at all. Losing the record is
+      // the "flying blind after the call" this whole panel exists to end. So
+      // the deal is kept with status 'auditor_killed', which no queue and no
+      // dialer will touch (the assign script only takes new/call_queued, and
+      // usePropertyListings hides withdrawn deals from Pedro), and Call
+      // history can show what was withdrawn and why.
+      (audit as Record<string, unknown>).filed_at = new Date().toISOString();
+    }
+
+    // A human outcome outranks a machine one. If somebody already qualified or
+    // spoke to this branch, a later auditor kill must not overwrite that.
+    const MACHINE_STATUSES = ['new', 'call_queued', 'auditor_killed'];
+    let killedStatus: string | null = null;
+    if (killed) {
+      const { data: existing } = await supabase
+        .from('brrr_properties')
+        .select('status')
+        .eq('source', body.source || 'rightmove')
+        .eq('source_property_id', propertyId)
+        .maybeSingle();
+      killedStatus = MACHINE_STATUSES.includes(existing?.status ?? 'new')
+        ? 'auditor_killed'
+        : (existing?.status ?? 'auditor_killed');
     }
 
     const row = {
@@ -71,6 +95,7 @@ export default async function handler(req: Request): Promise<Response> {
       floorplan_urls: Array.isArray(body.floorplans) ? body.floorplans : [],
       comps: Array.isArray(body.comps) ? body.comps : [],
       deal,
+      ...(killedStatus ? { status: killedStatus } : {}),
       updated_at: new Date().toISOString(),
     };
 
@@ -93,7 +118,10 @@ export default async function handler(req: Request): Promise<Response> {
     // picks it up through scripts/assign-properties-to-pedro-houses.mjs.
     // call_queued stays in the response so the scraper's existing parser, which
     // reads this field, keeps working against an older build.
-    return new Response(JSON.stringify({ ok: true, id: data.id, status: data.status, call_queued: false }), { status: 200 });
+    return new Response(JSON.stringify({
+      ok: true, id: data.id, status: data.status, call_queued: false,
+      withdrawn: killed,
+    }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

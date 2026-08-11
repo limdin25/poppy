@@ -17,7 +17,7 @@
 //      the partner split and the cash position are the director's business,
 //      not the caller's; the dialer itself stays clean of this maths.
 import { useMemo, useState } from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import { AlertTriangle, ExternalLink, X } from 'lucide-react';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import { computeDeal, money } from '@/core/lib/dealMaths';
 import { useAuth } from '../../lib/useCrmAuth';
@@ -45,7 +45,11 @@ function numOf(v: unknown): number {
 
 export default function DealSnapshotDrawer({ contact, call, agentName, stageName, onClose }: Props) {
   const { isAdmin } = useAuth();
-  const { listings, loading } = usePropertyListings(contact?.phone);
+  // Withdrawn deals INCLUDED here, and only here. A branch Pedro has already
+  // rung must never go blank because the auditor later pulled its only deal:
+  // that is the flying-blind this panel exists to end. The dialer calls the
+  // same hook without this flag, so he can never quote a withdrawn figure.
+  const { listings, loading } = usePropertyListings(contact?.phone, { includeWithdrawn: true });
   const [pickedId, setPickedId] = useState<string | null>(null);
   const selected: PropertyListing | null = useMemo(() => {
     if (listings.length === 0) return null;
@@ -126,8 +130,8 @@ export default function DealSnapshotDrawer({ contact, call, agentName, stageName
           <div className="px-4 py-6 text-[12px] text-[#9CA3AF]">Loading the deal…</div>
         ) : !selected ? (
           <div className="px-4 py-6 text-[12px] text-[#9CA3AF]">
-            No property on file behind this number any more. If the auditor
-            killed the deal after the call, that is why.
+            No property was ever filed against this number. It was probably
+            imported as an ordinary lead rather than from the scraper.
           </div>
         ) : (
           <>
@@ -151,6 +155,33 @@ export default function DealSnapshotDrawer({ contact, call, agentName, stageName
                       <span className="whitespace-nowrap font-semibold text-[#2E7D43]">{gbpShort(l.offerMin)}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {selected.withdrawn && (
+              <div className="border-b border-[#F3C2C2] bg-[#FDF1F1] px-4 py-2.5" data-testid="deal-withdrawn">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-px h-3.5 w-3.5 flex-shrink-0 text-[#A83232]" />
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-[#A83232]">
+                      Deal withdrawn by the auditor
+                      {selected.withdrawnAt
+                        ? ` · ${new Date(selected.withdrawnAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+                        : ''}
+                    </div>
+                    <ul className="mt-1 space-y-0.5">
+                      {(selected.withdrawnReasons.length
+                        ? selected.withdrawnReasons
+                        : ['The second brain rejected this valuation.']).map((why) => (
+                        <li key={why} className="text-[11.5px] leading-snug text-[#A83232]">{why}</li>
+                      ))}
+                    </ul>
+                    <div className="mt-1 text-[11.5px] text-[#8A5A5A]">
+                      The figures below are what the branch was called about. Do not
+                      quote them; this one is off Pedro's list.
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -208,7 +239,10 @@ export default function DealSnapshotDrawer({ contact, call, agentName, stageName
 
             {/* 3. Hugo's calculator. Admin only: the cash position and the
                 partner split are the director's business, not the caller's. */}
-            {isAdmin && sums && (
+            {/* No sums on a withdrawn deal. They are built on the valuation the
+                auditor just rejected, and a precise "cash needed" figure off a
+                broken value is the false confidence this whole day was about. */}
+            {isAdmin && sums && !selected.withdrawn && (
               <div className="border-b border-[#E5E7EB] px-4 py-2.5" data-testid="deal-snapshot-sums">
                 <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[#8A9AAB]">
                   The sums at {gbpShort(selected.offerMax)} (admin only)

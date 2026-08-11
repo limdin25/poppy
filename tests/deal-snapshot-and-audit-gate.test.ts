@@ -21,8 +21,19 @@ describe('the ingest enforces both brains', () => {
     expect(src).toMatch(/status: 422/)
   })
 
-  it('refuses an auditor kill unless a human forced it', () => {
+  // Changed 2026-08-11 the same evening. The kill used to be REFUSED, and the
+  // purge deleted the rows, which left Dixons with thirteen calls and no deal
+  // behind any of them. A kill is now FILED as 'auditor_killed': never queued,
+  // never shown to the dialer, always visible in Call history.
+  it('files an auditor kill as withdrawn rather than refusing it', () => {
     expect(src).toMatch(/audit\?\.verdict === 'kill' && audit\?\.forced !== true/)
+    expect(src).toMatch(/killedStatus \? \{ status: killedStatus \} : \{\}/)
+    expect(src).toMatch(/'auditor_killed'/)
+  })
+
+  it('never lets a machine kill overwrite a human outcome', () => {
+    expect(src).toMatch(/MACHINE_STATUSES = \['new', 'call_queued', 'auditor_killed'\]/)
+    expect(src).toMatch(/MACHINE_STATUSES\.includes\(existing\?\.status \?\? 'new'\)/)
   })
 
   it('still never starts a call', () => {
@@ -80,11 +91,67 @@ describe('call history opens the complete deal', () => {
     expect(src).toMatch(/open-deal-snapshot/)
   })
 
+  it('the button shows on every estate-agent call, not only where a chip exists', () => {
+    // Dixons had one listing, the auditor withdrew it, and the button
+    // vanished along with thirteen calls' worth of context.
+    const src = read('src', 'features', 'crm', 'pages', 'CallsPage.tsx')
+    expect(src).toMatch(/customFields\?\.lead_type === 'estate_agent'/)
+  })
+
   it('the drawer shows the same OfferStrip Pedro sees, and the call outcome', () => {
     const src = read('src', 'features', 'crm', 'components', 'calls', 'DealSnapshotDrawer.tsx')
     expect(src).toMatch(/from '\.\.\/live-call\/OfferStrip'/)
     expect(src).toMatch(/usePropertyListings/)
     expect(src).toMatch(/This call/)
+  })
+})
+
+describe('a withdrawn deal is visible in history and invisible to the dialer', () => {
+  const hook = read('src', 'features', 'crm', 'hooks', 'usePropertyListings.ts')
+  const drawer = read('src', 'features', 'crm', 'components', 'calls', 'DealSnapshotDrawer.tsx')
+
+  it('the hook hides withdrawn deals unless asked for them', () => {
+    expect(hook).toMatch(/status === 'auditor_killed'/)
+    expect(hook).toMatch(/\.filter\(\(l\) => includeWithdrawn \|\| !l\.withdrawn\)/)
+  })
+
+  it('only Call history asks for them, never the dialer', async () => {
+    const { readFileSync, readdirSync, statSync } = await import('node:fs')
+    const { resolve, join } = await import('node:path')
+    const root = resolve(__dirname, '..', 'src', 'features', 'crm')
+    const allowed = join(root, 'components', 'calls', 'DealSnapshotDrawer.tsx')
+    const offenders: string[] = []
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir)) {
+        const p = join(dir, e)
+        if (statSync(p).isDirectory()) { walk(p); continue }
+        if (!/\.tsx?$/.test(e) || p === allowed) continue
+        if (/includeWithdrawn:\s*true/.test(readFileSync(p, 'utf8'))) offenders.push(p)
+      }
+    }
+    walk(root)
+    expect(offenders).toEqual([])
+  })
+
+  it('the drawer explains the withdrawal in the auditor s own words', () => {
+    expect(drawer).toMatch(/deal-withdrawn/)
+    expect(drawer).toMatch(/Deal withdrawn by the auditor/)
+    expect(drawer).toMatch(/withdrawnReasons/)
+  })
+
+  it('and refuses to compute sums off a rejected valuation', () => {
+    expect(drawer).toMatch(/isAdmin && sums && !selected\.withdrawn/)
+  })
+
+  it('the chips RPC leaves withdrawn houses off the board', () => {
+    const sql = read('supabase', 'migrations', '20260811000003_property_links_exclude_withdrawn.sql')
+    expect(sql).toMatch(/coalesce\(p\.status, ''\) <> 'auditor_killed'/)
+  })
+
+  it('the purge withdraws rather than deletes', () => {
+    const src = read('scripts', 'prune-audit-killed.mjs')
+    expect(src).toMatch(/update\(\{ status: 'auditor_killed' \}\)/)
+    expect(src).not.toMatch(/from\('brrr_properties'\)\.delete\(\)/)
   })
 })
 

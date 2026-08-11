@@ -13,11 +13,20 @@
 // audit that gates send_to_elsie.py, so the list and the gate cannot disagree.
 //
 // What it does, only with --apply:
-//   1. Deletes killed brrr_properties rows, UNLESS a call is already logged
-//      against one; those are demoted to status 'not_qualified' instead.
+//   1. Marks killed brrr_properties rows status 'auditor_killed'. It does NOT
+//      delete them, and that is the whole lesson of 2026-08-11: the first
+//      version deleted 127 rows, Dixons' only listing was one of them, and
+//      thirteen calls in Pedro's history were left with no deal behind them
+//      and no way to ask why. A withdrawn deal is hidden from the dialer
+//      (usePropertyListings drops it) and can never be queued (the assign
+//      script only takes new/call_queued), but Call history still shows it,
+//      marked withdrawn, with the auditor's reasons. Rows already carrying a
+//      HUMAN outcome are left exactly as they are.
 //   2. Removes still-pending wk_dialer_queue rows for branch contacts left
-//      with no property behind them. In-progress and completed rows stay.
-//   3. Writes a JSON backup of everything first, so this is reversible.
+//      with no live property behind them. In-progress and completed rows stay.
+//   3. Strips the money fields from those emptied branch contacts, because the
+//      live coach reads custom_fields and must never quote a dead figure.
+//   4. Writes a JSON backup of everything first.
 //
 //   node scripts/prune-audit-killed.mjs --map=kills.json           # dry run
 //   node scripts/prune-audit-killed.mjs --map=kills.json --apply
@@ -53,23 +62,21 @@ if (error) throw new Error(error.message)
 const bad = props.filter((p) => p.source_property_id in kills)
 say(`  in Elsie: ${props.length} properties; ${bad.length} on the kill list`)
 
-const badIds = bad.map((p) => p.id)
-let calledIds = new Set()
-if (badIds.length) {
-  const { data: calls } = await db.from('brrr_property_calls')
-    .select('property_id').in('property_id', badIds)
-  calledIds = new Set((calls ?? []).map((c) => c.property_id))
-}
-const toDelete = bad.filter((p) => !calledIds.has(p.id))
-const toDemote = bad.filter((p) => calledIds.has(p.id))
+// A human outcome outranks a machine one, so a branch somebody has actually
+// qualified keeps its status; only machine-set rows become 'auditor_killed'.
+const MACHINE_STATUSES = new Set(['new', 'call_queued', 'auditor_killed'])
+const toWithdraw = bad.filter((p) => MACHINE_STATUSES.has(p.status))
+const leftAlone = bad.filter((p) => !MACHINE_STATUSES.has(p.status))
 
-for (const p of toDelete.slice(0, 12)) {
-  say(`   DELETE  ${String(p.asking_price ?? '?').padStart(8)}  ${(p.address ?? '').slice(0, 46)}  [${kills[p.source_property_id]}]`)
+for (const p of toWithdraw.slice(0, 12)) {
+  say(`   WITHDRAW  ${String(p.asking_price ?? '?').padStart(8)}  ${(p.address ?? '').slice(0, 44)}  [${kills[p.source_property_id]}]`)
 }
-if (toDelete.length > 12) say(`   ... and ${toDelete.length - 12} more`)
-for (const p of toDemote) say(`   DEMOTE (has calls)  ${(p.address ?? '').slice(0, 52)}`)
+if (toWithdraw.length > 12) say(`   ... and ${toWithdraw.length - 12} more`)
+for (const p of leftAlone) say(`   LEFT ALONE (human status "${p.status}")  ${(p.address ?? '').slice(0, 44)}`)
 
-const survivors = props.filter((p) => !toDelete.some((d) => d.id === p.id))
+// A withdrawn property is no longer something to ring about, so its branch
+// counts as empty for the queue even though the row survives.
+const survivors = props.filter((p) => !toWithdraw.some((d) => d.id === p.id))
 const liveByContact = new Map()
 for (const p of survivors) {
   if (p.wk_contact_id) liveByContact.set(p.wk_contact_id, (liveByContact.get(p.wk_contact_id) ?? 0) + 1)
@@ -84,19 +91,14 @@ if (!APPLY) {
 }
 
 const backup = path.join(path.dirname(mapPath), `pruned-audit-killed-${Date.now()}.json`)
-fs.writeFileSync(backup, JSON.stringify({ toDelete, toDemote, emptyContacts }, null, 1))
+fs.writeFileSync(backup, JSON.stringify({ toWithdraw, leftAlone, emptyContacts }, null, 1))
 say(`  backup written: ${backup}`)
 
-if (toDelete.length) {
-  const { error: e } = await db.from('brrr_properties').delete().in('id', toDelete.map((p) => p.id))
-  if (e) throw new Error(`delete: ${e.message}`)
-  say(`  deleted ${toDelete.length} properties`)
-}
-if (toDemote.length) {
+if (toWithdraw.length) {
   const { error: e } = await db.from('brrr_properties')
-    .update({ status: 'not_qualified' }).in('id', toDemote.map((p) => p.id))
-  if (e) throw new Error(`demote: ${e.message}`)
-  say(`  demoted ${toDemote.length} properties with call history`)
+    .update({ status: 'auditor_killed' }).in('id', toWithdraw.map((p) => p.id))
+  if (e) throw new Error(`withdraw: ${e.message}`)
+  say(`  withdrew ${toWithdraw.length} properties (kept on file, hidden from the dialer)`)
 }
 if (emptyContacts.length) {
   const { data: gone, error: e } = await db.from('wk_dialer_queue')
