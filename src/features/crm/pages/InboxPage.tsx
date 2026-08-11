@@ -59,6 +59,7 @@ import ContactIdentity from '../components/shared/ContactIdentity';
 import InboundMedia from '../components/InboundMedia';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
+import MessageBody from '../components/shared/MessageBody';
 import { CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 import { usePendingDrafts } from '../hooks/usePendingDrafts';
@@ -1657,7 +1658,11 @@ export default function InboxPage() {
                 <div
                   key={`sms-${m.id}`}
                   className={cn(
-                    'rounded-2xl px-3 py-2 max-w-[60%] text-[13px] leading-snug',
+                    'rounded-2xl px-3 py-2 text-[13px] leading-snug',
+                    // Email is the one channel people write paragraphs in, so
+                    // it gets the room. 60% is right for a text message and
+                    // squeezes an agency reply into a column.
+                    ch === 'email' ? 'max-w-[85%]' : 'max-w-[60%]',
                     isDraft
                       ? 'bg-[#EEF2F8] border border-dashed border-[#3C5A87] text-[#1A1A1A] ml-auto'
                       : m.direction === 'outbound'
@@ -1680,7 +1685,13 @@ export default function InboxPage() {
                       {subj}
                     </div>
                   )}
-                  {m.body}
+                  {/* Was a bare {m.body}. With no whitespace rule the browser
+                      collapsed every newline, so a paragraphed email rendered
+                      as one unbroken wall of text. */}
+                  <MessageBody
+                    body={m.body}
+                    tone={m.direction === 'outbound' && !isDraft ? 'dark' : 'light'}
+                  />
                   {/* What the LEAD sent us. Kept apart from attachmentUrl below,
                       which is the brochure WE attach. Before 2026-08-03 an
                       image-only message drew a bubble with nothing in it. */}

@@ -78,7 +78,10 @@ function SmsEntry({ row }: { row: TimelineRow }) {
         {outbound ? 'Sent' : 'Received'}
         <span className="ml-auto tabular-nums font-normal">{time}</span>
       </div>
-      <div className="text-[#1A1A1A] leading-snug">{row.body}</div>
+      {/* Same fault as the inbox bubble had (2026-08-11): without a whitespace
+          rule every newline collapses, so an email read as one wall of text
+          while Pedro was on the phone. */}
+      <div className="text-[#1A1A1A] leading-snug whitespace-pre-wrap break-words">{row.body}</div>
     </div>
   );
 }
