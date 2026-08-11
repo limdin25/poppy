@@ -168,6 +168,90 @@ async function verifySvixSignature(
 // quote-prefixed lines. Conservative — if no marker is recognised,
 // we return the text as-is so we never accidentally truncate a real
 // reply that happens to contain the word "wrote:".
+/** A tracking link, which is all machine and no meaning. Kept deliberately
+ *  narrow: only http(s) URLs of real length, so a short link somebody typed on
+ *  purpose ("see rightmove.co.uk/123") survives. */
+const LONG_URL = /https?:\/\/\S{60,}/g;
+
+const ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  rsquo: "'", lsquo: "'", rdquo: '"', ldquo: '"', hellip: '...',
+  mdash: '-', ndash: '-', pound: '£', euro: '€', copy: '(c)', reg: '(r)',
+  trade: '(tm)', bull: '*', middot: '·',
+};
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => codePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => codePoint(parseInt(d, 10)))
+    .replace(/&([a-z]+);/gi, (m, name: string) => ENTITIES[name.toLowerCase()] ?? m);
+}
+
+function codePoint(n: number): string {
+  // Long dashes, curly quotes and ellipsis characters are banned in this
+  // codebase and would arrive here straight out of somebody else's mail
+  // client, so they are folded to their plain equivalents on the way in.
+  const FOLD: Record<number, string> = {
+    0x2013: '-', 0x2014: '-', 0x2018: "'", 0x2019: "'",
+    0x201c: '"', 0x201d: '"', 0x2026: '...', 0x00a0: ' ',
+  };
+  if (FOLD[n]) return FOLD[n];
+  try {
+    return String.fromCodePoint(n);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * HTML down to something a human can read in a chat bubble.
+ *
+ * Mirrors htmlToText() in api/cron/daily-agent-reports.ts, with the two things
+ * an inbound email needs and a report does not: an <a> keeps its anchor text
+ * and loses its href (that is where the tracking junk lives), and <img>,
+ * <style> and <head> go entirely.
+ */
+export function htmlToText(input: string): string {
+  return input
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(style|script|head|title)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<img[^>]*>/gi, '')
+    // Anchor text only. An <a> wrapping an image or nothing at all leaves
+    // nothing behind, which is right: a bare tracking pixel is not content.
+    .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (_, inner: string) => inner)
+    .replace(/<h[1-6][^>]*>/gi, '\n\n')
+    .replace(/<\/(h[1-6]|p|div|tr|li|table|blockquote)>/gi, '\n')
+    .replace(/<(p|div|br|tr|li|blockquote)[^>]*>/gi, '\n')
+    .replace(/<(td|th)[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[#a-z0-9]+;/gi, (m) => decodeEntities(m))
+    .replace(LONG_URL, '')
+    // Zero-width joiners and BOMs. Mail merges scatter them between
+    // words ("Dear \u200bMr\u200b \u200bPedro\u200b") and they render as gaps.
+    .replace(/[\u200b-\u200d\ufeff]/g, '')
+    .replace(/[ \t ]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** The plain-text alternative, used only when there is no HTML. Same tidying,
+ *  minus the markup work. */
+export function tidyPlainText(input: string): string {
+  return decodeEntities(input)
+    .replace(LONG_URL, '')
+    // Zero-width joiners and BOMs. Mail merges scatter them between
+    // words ("Dear \u200bMr\u200b \u200bPedro\u200b") and they render as gaps.
+    .replace(/[\u200b-\u200d\ufeff]/g, '')
+    // Marketing text/plain writes "[Google Play Store] ( <url> )". With the
+    // url gone the empty brackets are noise.
+    .replace(/\(\s*\)/g, '')
+    .replace(/[ \t ]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function stripReplyQuotes(input: string): string {
   if (!input) return '';
   let text = input;
@@ -242,6 +326,59 @@ async function ownerForRecipient(
     .limit(1)
     .maybeSingle();
   return (data as { id?: string } | null)?.id ?? null;
+}
+
+/**
+ * Let the agent whose mailbox this arrived at read the thread.
+ *
+ * Hugo, 2026-08-11, after the ownership fix: "also my test email, still not
+ * there". He had mailed pedro@hostunico.com from his own address, and his
+ * contact record is owned by Pedro's OLD sales-closer account, so the Pedro
+ * Houses login could not see a message that was addressed to it. Ownership of
+ * the SENDER decided who could read mail sent to the RECIPIENT, which is the
+ * wrong way round.
+ *
+ * Fixed with an assignment rather than by moving ownership, because moving
+ * ownership would quietly take the lead off whichever agent already had it.
+ * wk_agent_participates() accepts an active row here, and the inbox's own
+ * scoping in useInboxThreads.ts reads the same table, so one row satisfies
+ * both the database and the screen.
+ */
+async function grantRecipientAccess(
+  supa: SupabaseClient,
+  contactId: string,
+  agentId: string | null,
+): Promise<void> {
+  if (!agentId) return;
+
+  // Already theirs by ownership? Then there is nothing to grant.
+  const { data: owned } = await supa
+    .from('wk_contacts')
+    .select('id')
+    .eq('id', contactId)
+    .eq('owner_agent_id', agentId)
+    .maybeSingle();
+  if (owned) return;
+
+  const { data: already } = await supa
+    .from('wk_lead_assignments')
+    .select('id')
+    .eq('contact_id', contactId)
+    .eq('agent_id', agentId)
+    .in('status', ['assigned', 'in_progress'])
+    .limit(1)
+    .maybeSingle();
+  if (already) return;
+
+  const { error } = await supa.from('wk_lead_assignments').insert({
+    contact_id: contactId,
+    agent_id: agentId,
+    status: 'assigned',
+    assigned_at: new Date().toISOString(),
+  });
+  // Best effort. The message is already saved by the time this runs, and a
+  // failure here must not turn a delivered email into a 500 back to Resend.
+  if (error) console.error('[wk-email-webhook] could not grant inbox access', error);
 }
 
 async function findOrCreateContact(
@@ -475,7 +612,17 @@ serve(async (req: Request) => {
   } else {
     console.warn('[wk-email-webhook] RESEND_API_KEY missing — body will be empty');
   }
-  const rawBodyText = text || html.replace(/<[^>]+>/g, '');
+  // Prefer the HTML and render it down ourselves.
+  //
+  // Hugo, 2026-08-11: "emails are not formated, pls fix". The Gascoigne Halman
+  // welcome mail arrived as a wall of "https://mailing.street.co.uk/ls/click?
+  // upn=u001.6cL4aGcwD419h-2BpLNm8D2AQQ05..." because the old line took
+  // `text` whenever it existed, and a marketing tool's text/plain alternative
+  // spells every link out in full next to its anchor. The HTML has the same
+  // links tucked inside href attributes where they can be dropped, so
+  // converting the HTML gives a far cleaner read than the sender's own plain
+  // text. Falls back to `text` when there is no HTML at all.
+  const rawBodyText = html ? htmlToText(html) : tidyPlainText(text);
   // PR 104: strip quoted history so the inbox shows only the new reply.
   const bodyText = stripReplyQuotes(rawBodyText);
 
@@ -509,6 +656,9 @@ serve(async (req: Request) => {
       .from('wk_contacts')
       .update({ last_contact_at: new Date().toISOString() })
       .eq('id', contactId);
+    // Whoever this was addressed to can now read it, whatever the sender's
+    // contact record says about who owns them.
+    await grantRecipientAccess(supa, contactId, await ownerForRecipient(supa, toEmail));
   }
 
   return ok({ saved: !msgErr, email_id: emailId });

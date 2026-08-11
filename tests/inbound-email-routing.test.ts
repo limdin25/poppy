@@ -100,6 +100,82 @@ describe('a new contact from inbound email is never ownerless', () => {
   });
 });
 
+describe('the email is readable by whoever it was addressed to', () => {
+  it('grants access by assignment, never by taking ownership', () => {
+    // Hugo, 2026-08-11: "also my test email, still not there". He had mailed
+    // pedro@hostunico.com, and his own contact record belongs to Pedro's OLD
+    // sales-closer account, so ownership of the SENDER was deciding who could
+    // read mail sent to the RECIPIENT. Moving ownership would have taken the
+    // lead off whichever agent already had it, so this adds a row that
+    // wk_agent_participates() accepts and changes nothing else.
+    expect(HOOK).toMatch(/async function grantRecipientAccess/);
+    expect(HOOK).toMatch(/\.from\('wk_lead_assignments'\)[\s\S]{0,400}\.insert\(\{/);
+    expect(HOOK).toMatch(/status: 'assigned'/);
+    const grant = HOOK.slice(
+      HOOK.indexOf('async function grantRecipientAccess'),
+      HOOK.indexOf('async function findOrCreateContact'),
+    );
+    expect(grant).not.toMatch(/owner_agent_id:/);
+  });
+
+  it('does not pile up a row per email', () => {
+    expect(HOOK).toMatch(/\.in\('status', \['assigned', 'in_progress'\]\)/);
+    expect(HOOK).toMatch(/if \(already\) return;/);
+    expect(HOOK).toMatch(/if \(owned\) return;/);
+  });
+
+  it('runs after the message is saved, and cannot fail the delivery', () => {
+    expect(HOOK).toMatch(/could not grant inbox access/);
+  });
+
+  it('matches the status values the RLS function and the inbox both accept', () => {
+    // wk_agent_participates() and useInboxThreads.ts both read
+    // status in ('assigned','in_progress'). A different word here would
+    // insert a row that grants nothing.
+    const INBOX = readFileSync(resolve(root, 'src/features/crm/hooks/useInboxThreads.ts'), 'utf8');
+    expect(INBOX).toMatch(/\['assigned', 'in_progress'\]/);
+  });
+});
+
+describe('an email body a human can read', () => {
+  it('prefers the HTML, because the sender’s own plain text is the junk', () => {
+    // The Gascoigne Halman welcome mail was 3,955 characters of
+    // "https://mailing.street.co.uk/ls/click?upn=u001.6cL4aGcwD419h-2B..."
+    // in text/plain, and 1,370 characters of English once its HTML was
+    // converted. The old line took `text` whenever it existed.
+    expect(HOOK).toMatch(/html \? htmlToText\(html\) : tidyPlainText\(text\)/);
+    expect(HOOK).not.toMatch(/text \|\| html\.replace/);
+  });
+
+  it('keeps the words of a link and drops the tracking address', () => {
+    expect(HOOK).toMatch(/<a\\b\[\^>\]\*>\(\[\\s\\S\]\*\?\)<\\\/a>/);
+    expect(HOOK).toMatch(/LONG_URL = \/https\?:\\\/\\\/\\S\{60,\}\/g/);
+  });
+
+  it('leaves a short link somebody typed on purpose alone', () => {
+    // rightmove.co.uk/properties/174993728 is content, not tracking.
+    const short = 'https://www.rightmove.co.uk/properties/174993728';
+    expect(short.length).toBeLessThan(60);
+  });
+
+  it('throws away style, script and images', () => {
+    expect(HOOK).toMatch(/<\(style\|script\|head\|title\)/);
+    expect(HOOK).toMatch(/<img\[\^>\]\*>/);
+  });
+
+  it('folds the punctuation this codebase bans on the way in', () => {
+    // A long dash or curly quote arriving from somebody else's mail client
+    // must not end up stored in our database.
+    expect(HOOK).toMatch(/0x2013: '-', 0x2014: '-'/);
+    expect(HOOK).toMatch(/0x201c: '"', 0x201d: '"'/);
+    expect(HOOK).toMatch(/0x2026: '\.\.\.'/);
+  });
+
+  it('strips the zero-width characters mail merges scatter about', () => {
+    expect(HOOK).toMatch(/\\u200b-\\u200d\\ufeff/);
+  });
+});
+
 describe('the recipient is still the security boundary', () => {
   it('keeps dropping mail sent outside our own domains', () => {
     // Unchanged by this work, and worth pinning: without it anyone could
