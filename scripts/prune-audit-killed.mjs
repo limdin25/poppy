@@ -74,16 +74,23 @@ for (const p of toWithdraw.slice(0, 12)) {
 if (toWithdraw.length > 12) say(`   ... and ${toWithdraw.length - 12} more`)
 for (const p of leftAlone) say(`   LEFT ALONE (human status "${p.status}")  ${(p.address ?? '').slice(0, 44)}`)
 
-// A withdrawn property is no longer something to ring about, so its branch
-// counts as empty for the queue even though the row survives.
-const survivors = props.filter((p) => !toWithdraw.some((d) => d.id === p.id))
+// A branch with nothing live behind it is not a branch to ring, WHATEVER
+// emptied it. Computed from the state of the table rather than from this run's
+// kill list on purpose: properties also leave the callable set when the engine
+// stops pursuing them (the ingest withdraws those), and a rule that only knew
+// about auditor kills left four branches sitting in Pedro's queue with nothing
+// to talk about.
+const withdrawnIds = new Set(toWithdraw.map((p) => p.id))
+const isLive = (p) => p.status !== 'auditor_killed' && !withdrawnIds.has(p.id)
 const liveByContact = new Map()
-for (const p of survivors) {
-  if (p.wk_contact_id) liveByContact.set(p.wk_contact_id, (liveByContact.get(p.wk_contact_id) ?? 0) + 1)
+const allContacts = new Set()
+for (const p of props) {
+  if (!p.wk_contact_id) continue
+  allContacts.add(p.wk_contact_id)
+  if (isLive(p)) liveByContact.set(p.wk_contact_id, (liveByContact.get(p.wk_contact_id) ?? 0) + 1)
 }
-const touchedContacts = [...new Set(bad.map((p) => p.wk_contact_id).filter(Boolean))]
-const emptyContacts = touchedContacts.filter((c) => !liveByContact.has(c))
-say(`  branches emptied by this: ${emptyContacts.length}`)
+const emptyContacts = [...allContacts].filter((c) => !liveByContact.has(c))
+say(`  branches with nothing live left: ${emptyContacts.length}`)
 
 if (!APPLY) {
   say('\nDry run. Nothing written. Add --apply to do it.')

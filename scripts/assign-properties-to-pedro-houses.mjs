@@ -13,6 +13,10 @@
  * the agent all of them; the headline (biggest offer) fills the offer strip and
  * the script.
  *
+ * A BRANCH THAT HAS BEEN CALLED IS NEVER DEALT AGAIN unless you ask for it.
+ * See scripts/lib/redial-policy.mjs for why, and for what --redial-unanswered
+ * and --redial-all do.
+ *
  * Usage:
  *   node scripts/assign-properties-to-pedro-houses.mjs               # dry run
  *   node scripts/assign-properties-to-pedro-houses.mjs --apply
@@ -20,8 +24,9 @@
  *   node scripts/assign-properties-to-pedro-houses.mjs --pursue-only --apply
  *   node scripts/assign-properties-to-pedro-houses.mjs --setup-only --apply
  *
- * Give him back the offices that never picked up, and only those:
- *   node scripts/assign-properties-to-pedro-houses.mjs --refresh --unanswered-only --branches=100 --apply
+ * Give him back the offices that never picked up, and only those, behind
+ * everything he has not touched yet:
+ *   node scripts/assign-properties-to-pedro-houses.mjs --refresh --redial-unanswered --apply
  *
  * DRY BY DEFAULT. Without --apply nothing is written and nothing is charged:
  * unlike the trade-lead scripts there is no paid screen in here at all (see
@@ -36,6 +41,7 @@ import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { phoneTail9, groupByBranch, headlineProperty } from './lib/property-branches.mjs'
+import { decideRedial, redialModeFromArgv, REDIAL_MIN_GAP_HOURS } from './lib/redial-policy.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -62,13 +68,15 @@ const APPLY = process.argv.includes('--apply')
 // call unless something rewrites them. Without this the only way to correct a
 // queued branch is to unpick it by hand.
 const REFRESH = process.argv.includes('--refresh')
-// --unanswered-only re-queues ONLY the branches nobody ever actually spoke to.
+// Whether an already-called branch may be dealt back onto the queue:
 //
-// Hugo, 2026-08-10: "the offices that didn't pick up, they should go to the end
-// of the list". --refresh on its own re-queues every branch Pedro holds, which
-// on 2026-08-11 would have redialled 13 offices that had already given him a
-// real answer (7 Interested, 6 Not interested). Ringing somebody back the next
-// morning to ask the same questions is how a branch stops taking your calls.
+//   (nothing)             never. The default, and what --refresh does.
+//   --redial-unanswered   only the offices nobody picked up, and only after
+//                         REDIAL_MIN_GAP_HOURS, behind everything untouched.
+//   --redial-all          every branch he holds, warts and all.
+//
+// --unanswered-only is the old spelling of --redial-unanswered and still works.
+// The rules and the reasoning live in scripts/lib/redial-policy.mjs.
 //
 // The test is the OUTCOME he pressed, not the length of the call. A duration
 // rule looked tempting and is wrong on both of its edge cases here:
@@ -76,7 +84,7 @@ const REFRESH = process.argv.includes('--refresh')
 // Bridgfords call ran 217 seconds and the transcript simply stops mid-question
 // because the line dropped. Both of those deserve another ring; a "longer than
 // two minutes means they spoke" rule would have buried them.
-const UNANSWERED_ONLY = process.argv.includes('--unanswered-only')
+const REDIAL = redialModeFromArgv(process.argv)
 const SETUP_ONLY = process.argv.includes('--setup-only')
 const PURSUE_ONLY = process.argv.includes('--pursue-only')
 const MAX_BRANCHES = parseInt(arg('branches', '25'), 10)
@@ -227,9 +235,16 @@ async function loadProperties() {
   for (let from = 0; ; from += PAGE) {
     let q = db.from('brrr_properties')
       .select('id, address, agent_phone, agent_name, asking_price, price_text, bedrooms, property_type, days_on_market, deal, status, call_channel, created_at, listing_url')
-    // Normally only branches nobody has taken. Under --refresh, the ones Pedro
-    // already holds, so their saved figures can be rewritten in place.
-    q = REFRESH ? q.eq('call_channel', 'human') : q.eq('call_channel', 'ai')
+    // Normally only branches nobody has taken. Under --refresh, EVERYTHING:
+    // the branches Pedro holds so their saved figures can be rewritten, AND
+    // the untouched ones so tonight's scrape reaches him.
+    //
+    // --refresh used to load `human` INSTEAD of `ai`, which made the overnight
+    // machine (whose only assign step is `--refresh --apply`) structurally
+    // incapable of queueing a branch it had never seen. Every house the night
+    // scraped sat at call_channel='ai' waiting for somebody to run the script
+    // by hand. Nobody noticed because it was hand-run all week.
+    if (!REFRESH) q = q.eq('call_channel', 'ai')
     const { data, error } = await q
       .not('agent_phone', 'is', null)
       .in('status', STATUSES)
@@ -242,18 +257,19 @@ async function loadProperties() {
   return all
 }
 
-/** Outcomes that mean a human at the branch actually talked to us. A branch
- *  sitting on one of these is a conversation to follow up deliberately, never a
- *  cold row to deal back onto the top of the queue. */
-const SPOKE_TO_A_HUMAN = new Set(['Interested', 'Not interested', 'Booked', 'Nurturing'])
-
-/** phone -> the outcome pressed on the MOST RECENT call to that branch, for the
- *  agent we are dealing to. Null when the branch has never been called, or was
- *  called and no outcome was pressed at all (16 of Pedro's 55 calls on day one),
- *  which counts as unanswered because nothing says otherwise. */
-async function lastOutcomeByPhone(phones, agentId) {
+/** phone -> { lastCallAt, lastOutcome } for the MOST RECENT outbound call to
+ *  that branch. Empty for a branch nobody has rung. lastOutcome is null when the
+ *  call happened and no outcome was pressed at all (16 of Pedro's 55 calls on
+ *  day one), which counts as unanswered because nothing says otherwise.
+ *
+ *  Deliberately NOT scoped to one agent: the office does not care which of us
+ *  rang it. Outbound only, so a branch ringing US back never blocks the queue.
+ *
+ *  This is read on EVERY run now, not just under a redial flag. It is the thing
+ *  that stops Pedro being handed a branch he has just finished with. */
+async function callHistoryByPhone(phones) {
   const out = new Map()
-  if (!agentId || phones.length === 0) return out
+  if (phones.length === 0) return out
 
   const contacts = []
   for (let i = 0; i < phones.length; i += 200) {
@@ -271,7 +287,7 @@ async function lastOutcomeByPhone(phones, agentId) {
   for (let i = 0; i < ids.length; i += 200) {
     const { data } = await db.from('wk_calls')
       .select('contact_id, disposition_column_id, started_at')
-      .eq('agent_id', agentId)
+      .eq('direction', 'outbound')
       .in('contact_id', ids.slice(i, i + 200))
       .order('started_at', { ascending: false })
     calls.push(...(data ?? []))
@@ -280,7 +296,10 @@ async function lastOutcomeByPhone(phones, agentId) {
   for (const c of calls) {
     const phone = phoneOf.get(c.contact_id)
     if (!phone || out.has(phone)) continue
-    out.set(phone, c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null)
+    out.set(phone, {
+      lastCallAt: c.started_at ?? null,
+      lastOutcome: c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null,
+    })
   }
   return out
 }
@@ -389,41 +408,66 @@ async function main() {
     : properties
   const allBranches = groupByBranch(usable)
 
-  let eligible = allBranches
-  let heldBack = []
-  if (UNANSWERED_ONLY) {
-    const outcomes = await lastOutcomeByPhone(allBranches.map((b) => b.phone), agentId)
-    heldBack = allBranches.filter((b) => SPOKE_TO_A_HUMAN.has(outcomes.get(b.phone) ?? ''))
-    eligible = allBranches.filter((b) => !SPOKE_TO_A_HUMAN.has(outcomes.get(b.phone) ?? ''))
-  }
+  // Who has already been rung, and what they said. Read every run: a branch
+  // Pedro has worked is held back by default, and only a --redial flag can
+  // deal it again. Before this, the ONLY guard was "is there a pending queue
+  // row", which is false the moment he finishes a call, so a re-run handed him
+  // back exactly the offices he had just done.
+  const nowMs = Date.now()
+  const history = await callHistoryByPhone(allBranches.map((b) => b.phone))
+  const decided = allBranches.map((b) => ({
+    branch: b,
+    ...decideRedial({
+      ...(history.get(b.phone) ?? {}),
+      // Newest CALLABLE listing: loadProperties has already dropped anything
+      // the auditor killed, so a dead deal filed tonight cannot reopen an
+      // office.
+      newestListedAt: b.properties.map((p) => p.created_at ?? '').sort().slice(-1)[0] || null,
+      mode: REDIAL,
+      nowMs,
+    }),
+  }))
+  const eligible = decided.filter((d) => d.queue)
+  // Called already and not due a redial. Under --refresh their saved figures
+  // are still rewritten and any new listing is still filed against them; what
+  // they do not get is a place in the queue.
+  const heldBack = decided.filter((d) => !d.queue)
   const branches = eligible.slice(0, MAX_BRANCHES)
 
   say('')
   say(`  status filter        : ${STATUSES.join(', ')}`)
   say(`  properties available : ${properties.length}${PURSUE_ONLY ? ` (${usable.length} after --pursue-only)` : ''}`)
   say(`  branches behind them : ${allBranches.length}`)
-  if (UNANSWERED_ONLY) {
-    say(`  never answered       : ${eligible.length} (--unanswered-only)`)
-    say(`  held back, they spoke: ${heldBack.length}${heldBack.length ? ` (${heldBack.slice(0, 6).map((b) => b.agency).join(', ')}${heldBack.length > 6 ? ', ...' : ''})` : ''}`)
-  }
+  say(`  redial policy        : ${REDIAL === 'never'
+    ? 'a branch that has been called is not dealt again'
+    : REDIAL === 'unanswered'
+      ? `re-deal the no-answers only, after ${REDIAL_MIN_GAP_HOURS}h, at the back`
+      : 're-deal EVERY branch he holds (--redial-all)'}`)
+  say(`  held back, called already: ${heldBack.length}${heldBack.length ? ` (${heldBack.slice(0, 4).map((d) => `${d.branch.agency}: ${d.reason}`).join('; ')}${heldBack.length > 4 ? '; ...' : ''})` : ''}`)
+  say(`  queueable            : ${eligible.length}`)
   say(`  taking               : ${branches.length} (--branches=${MAX_BRANCHES})`)
   if (eligible.length > branches.length) {
     say(`  NOT taking           : ${eligible.length - branches.length} branches left for a later run`)
   }
   say('')
 
-  let queued = 0, skippedOwned = 0, propsFlipped = 0
+  let queued = 0, skippedOwned = 0, propsFlipped = 0, refreshedOnly = 0
   const maxPriority = await currentMaxPriority(campaignId)
+  // A redial goes BEHIND everything still waiting. The picker takes the highest
+  // priority first, so stacking a second attempt on top (which is what happened
+  // all day on 2026-08-11) buries 58 offices nobody has ever rung.
+  const minPriority = await currentMinPendingPriority(campaignId)
 
-  for (const [i, branch] of branches.entries()) {
+  for (const [i, { branch, back, reason }] of branches.entries()) {
     const headline = headlineProperty(branch.properties)
     const facts = factsFor(branch, headline, settings)
     const label = `${branch.agency} (${branch.phone})`
 
     if (!APPLY) {
-      say(`  ${String(i + 1).padStart(3)}. ${label}`)
+      say(`  ${String(i + 1).padStart(3)}. ${label}${back ? '  [REDIAL, to the back]' : ''}`)
       say(`       ${branch.properties.length} listing(s), open at ${facts.offer_open}, ceiling ${facts.offer_ceiling}`)
       say(`       headline: ${facts.property_address}`)
+      if (back) say(`       ${reason}`)
       continue
     }
 
@@ -460,8 +504,8 @@ async function main() {
       .in('id', branch.properties.map((p) => p.id))
     propsFlipped += count ?? branch.properties.length
 
-    // Stack above whatever is already queued, so an existing queue order is
-    // untouched and the biggest branches come first.
+    // A fresh branch stacks above whatever is already queued, so the biggest
+    // branches come first. A redial goes underneath the lot.
     const { data: already } = await db.from('wk_dialer_queue')
       .select('id').eq('campaign_id', campaignId).eq('contact_id', contact.id)
       .in('status', ['pending', 'dialing']).limit(1)
@@ -469,16 +513,44 @@ async function main() {
 
     await db.from('wk_dialer_queue').insert({
       campaign_id: campaignId, contact_id: contact.id,
-      status: 'pending', priority: maxPriority + (branches.length - i),
+      status: 'pending',
+      priority: back ? minPriority - 1 - i : maxPriority + (branches.length - i),
     })
     queued++
-    say(`  ${String(i + 1).padStart(3)}. ${label} — ${branch.properties.length} listing(s), queued`)
+    say(`  ${String(i + 1).padStart(3)}. ${label} — ${branch.properties.length} listing(s), queued${back ? ` at the back (${reason})` : ''}`)
+  }
+
+  // The branches he has already worked. No queue row, ever, on this path: the
+  // point is that the facts and the listings stay current on a branch he holds
+  // WITHOUT the branch being dealt back to him.
+  if (APPLY) {
+    for (const { branch, reason } of heldBack) {
+      const { data: contact } = await db.from('wk_contacts')
+        .select('id, owner_agent_id').eq('phone', branch.phone).maybeSingle()
+      if (!contact || contact.owner_agent_id !== agentId) continue
+      // Facts only under --refresh. On a normal run this branch's rows are the
+      // NEW listings alone, so recomputing the headline from them would throw
+      // away a better house the branch already had on file.
+      if (REFRESH) {
+        const facts = factsFor(branch, headlineProperty(branch.properties), settings)
+        await db.from('wk_contacts').update({ custom_fields: facts })
+          .eq('id', contact.id).eq('owner_agent_id', agentId)
+      }
+      const { count } = await db.from('brrr_properties')
+        .update({ call_channel: 'human', human_agent_id: agentId, wk_contact_id: contact.id },
+                 { count: 'exact' })
+        .in('id', branch.properties.map((p) => p.id))
+      propsFlipped += count ?? 0
+      refreshedOnly++
+      say(`  held  ${branch.agency} — ${REFRESH ? 'facts refreshed' : 'listings filed'}, not queued (${reason})`)
+    }
   }
 
   say('')
   say('─'.repeat(64))
   if (APPLY) {
     say(`  branches queued        : ${queued}`)
+    say(`  held back, not queued  : ${heldBack.length} (${refreshedOnly} ${REFRESH ? 'had their figures refreshed' : 'had new listings filed'})`)
     say(`  properties -> human    : ${propsFlipped}`)
     if (skippedOwned) say(`  skipped, owned by others: ${skippedOwned}`)
     say('')
@@ -494,6 +566,17 @@ async function currentMaxPriority(campaignId) {
   const { data } = await db.from('wk_dialer_queue')
     .select('priority').eq('campaign_id', campaignId)
     .order('priority', { ascending: false }).limit(1)
+  return data?.[0]?.priority ?? 0
+}
+
+/** The bottom of the LIVE queue, so a redial lands under every branch still
+ *  waiting. Rows already dialled are ignored: their priorities are history and
+ *  counting them would drag each night's redials further into the negatives. */
+async function currentMinPendingPriority(campaignId) {
+  if (!campaignId) return 0
+  const { data } = await db.from('wk_dialer_queue')
+    .select('priority').eq('campaign_id', campaignId).eq('status', 'pending')
+    .order('priority', { ascending: true }).limit(1)
   return data?.[0]?.priority ?? 0
 }
 

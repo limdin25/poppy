@@ -1,0 +1,134 @@
+// A branch Pedro has already called must not be dealt back to him.
+//
+// The day this went wrong (2026-08-11) he sent two screenshots an hour apart:
+// "the leads repeated, this one I have already spoken earlier to she said" and
+// "even this one i think ive already called this". Both were true. McDonald of
+// Bispham said no at 15:03 UK and the queue handed the office back at 17:30.
+// Seventeen branches were rung twice or three times that day, and the repeats
+// were inserted ABOVE 58 offices nobody had ever rung.
+//
+// These tests hold the new rule: having been called is a reason NOT to deal a
+// branch, and a redial must be asked for and goes to the back of the queue.
+
+import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import {
+  decideRedial, redialModeFromArgv, SPOKE_TO_A_HUMAN, NOBODY_ANSWERED, REDIAL_MIN_GAP_HOURS,
+} from '../scripts/lib/redial-policy.mjs'
+
+const root = resolve(__dirname, '..')
+const read = (p: string) => readFileSync(resolve(root, p), 'utf8')
+
+const NOW = Date.parse('2026-08-11T17:30:00Z')
+const hoursAgo = (h: number) => new Date(NOW - h * 3_600_000).toISOString()
+
+describe('a branch nobody has rung', () => {
+  it('is queued, at the front', () => {
+    const d = decideRedial({ lastCallAt: null, nowMs: NOW })
+    expect(d.queue).toBe(true)
+    expect(d.back).toBe(false)
+  })
+})
+
+describe('the default: called once is called enough', () => {
+  it('refuses McDonald, told us no two and a half hours earlier', () => {
+    const d = decideRedial({ lastCallAt: hoursAgo(2.5), lastOutcome: 'Not interested', nowMs: NOW })
+    expect(d.queue).toBe(false)
+    expect(d.reason).toMatch(/already called/)
+  })
+
+  it('refuses a branch that was called and had NO outcome pressed', () => {
+    // 16 of Pedro's first 55 calls ended with nothing pressed. Under the old
+    // guard those were indistinguishable from a branch never touched.
+    expect(decideRedial({ lastCallAt: hoursAgo(1), lastOutcome: null, nowMs: NOW }).queue).toBe(false)
+  })
+
+  it('refuses a branch that rang out, even days later', () => {
+    expect(decideRedial({ lastCallAt: hoursAgo(72), lastOutcome: 'No pickup', nowMs: NOW }).queue).toBe(false)
+  })
+})
+
+describe('--redial-unanswered: only the offices nobody picked up', () => {
+  const mode = 'unanswered'
+
+  it('holds back every outcome that means a human spoke to us', () => {
+    for (const outcome of SPOKE_TO_A_HUMAN) {
+      const d = decideRedial({ lastCallAt: hoursAgo(48), lastOutcome: outcome, mode, nowMs: NOW })
+      expect(d.queue, `${outcome} must never be redialled`).toBe(false)
+    }
+  })
+
+  it('holds back Ballpark, the best outcome on a property call', () => {
+    // Ballpark was missing from the old list, so the one branch that had
+    // actually named a figure was eligible to be rung again and asked afresh.
+    expect(SPOKE_TO_A_HUMAN.has('Ballpark')).toBe(true)
+    expect(decideRedial({ lastCallAt: hoursAgo(48), lastOutcome: 'Ballpark', mode, nowMs: NOW }).queue).toBe(false)
+  })
+
+  it('re-deals a voicemail from yesterday, at the BACK', () => {
+    const d = decideRedial({ lastCallAt: hoursAgo(REDIAL_MIN_GAP_HOURS + 1), lastOutcome: 'Voicemail', mode, nowMs: NOW })
+    expect(d.queue).toBe(true)
+    expect(d.back).toBe(true)
+  })
+
+  it('refuses that same voicemail two hours later', () => {
+    const d = decideRedial({ lastCallAt: hoursAgo(2), lastOutcome: 'Voicemail', mode, nowMs: NOW })
+    expect(d.queue).toBe(false)
+    expect(d.reason).toMatch(/too soon/)
+  })
+
+  it('treats an unknown outcome as a conversation, not as a no-answer', () => {
+    // Fails safe: a column somebody adds later must not become a licence to
+    // ring a branch back.
+    expect(NOBODY_ANSWERED.has('Interested')).toBe(false)
+    expect(decideRedial({ lastCallAt: hoursAgo(99), lastOutcome: 'Some new column', mode, nowMs: NOW }).queue).toBe(false)
+  })
+})
+
+describe('--redial-all: everything back, but still behind the fresh stock', () => {
+  it('queues a branch that said no, and sends it to the back', () => {
+    const d = decideRedial({ lastCallAt: hoursAgo(1), lastOutcome: 'Not interested', mode: 'all', nowMs: NOW })
+    expect(d.queue).toBe(true)
+    expect(d.back).toBe(true)
+  })
+})
+
+describe('the flags', () => {
+  it('defaults to never, which is what the overnight machine runs', () => {
+    expect(redialModeFromArgv(['--refresh', '--apply'])).toBe('never')
+  })
+
+  it('accepts both spellings of the unanswered flag', () => {
+    expect(redialModeFromArgv(['--redial-unanswered'])).toBe('unanswered')
+    expect(redialModeFromArgv(['--unanswered-only'])).toBe('unanswered')
+  })
+
+  it('accepts --redial-all', () => {
+    expect(redialModeFromArgv(['--redial-all'])).toBe('all')
+  })
+})
+
+describe('the assign script actually applies the policy', () => {
+  const src = read('scripts/assign-properties-to-pedro-houses.mjs')
+
+  it('reads call history on every run, not only under a flag', () => {
+    // The whole bug was a guard that only looked at the queue. If this call
+    // ever moves back inside an `if (SOME_FLAG)` the repeats come back.
+    expect(src).toMatch(/const history = await callHistoryByPhone\(/)
+    expect(src).toMatch(/decideRedial\(/)
+  })
+
+  it('sends a redial to the back of the live queue', () => {
+    expect(src).toMatch(/priority: back \? minPriority - 1 - i : maxPriority/)
+    expect(src).toMatch(/currentMinPendingPriority/)
+  })
+
+  it('never queues a held-back branch, only refreshes it', () => {
+    const start = src.indexOf('for (const { branch, reason } of heldBack)')
+    const end = src.indexOf("say('─'.repeat(64))", start)
+    expect(start).toBeGreaterThan(0)
+    expect(end).toBeGreaterThan(start)
+    expect(src.slice(start, end)).not.toMatch(/wk_dialer_queue/)
+  })
+})
