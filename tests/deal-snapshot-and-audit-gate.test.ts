@@ -33,7 +33,14 @@ describe('the ingest enforces both brains', () => {
 
   it('never lets a machine kill overwrite a human outcome', () => {
     expect(src).toMatch(/MACHINE_STATUSES = \['new', 'call_queued', 'auditor_killed'\]/)
-    expect(src).toMatch(/MACHINE_STATUSES\.includes\(existing\?\.status \?\? 'new'\)/)
+    expect(src).toMatch(/MACHINE_STATUSES\.includes\(prevStatus \?\? 'new'\)/)
+  })
+
+  it('lets a withdrawn deal come back when it next passes', () => {
+    // Deals are re-judged nightly. Without this the withdrawn status sticks
+    // forever and a deal the engine has since cleared stays hidden.
+    expect(src).toMatch(/prevStatus === 'auditor_killed'/)
+    expect(src).toMatch(/killedStatus = 'new'/)
   })
 
   it('still never starts a call', () => {

@@ -8,6 +8,7 @@ import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 // to import into the browser (api/lib/brrr.ts itself is not — it builds a
 // Supabase client at import time).
 import { offerRange, upliftRefurb } from '../../../../api/lib/brrr-offer'
+import type { Calibration } from '../../../../api/lib/price-feedback'
 import DealCalculator from '../components/DealCalculator'
 
 interface PropertyCall {
@@ -73,6 +74,7 @@ interface BrrrSettings {
 interface PropertiesResponse {
   properties: PropertyRow[]
   settings: BrrrSettings | null
+  calibration?: Calibration | null
 }
 
 // Mirrors QUALIFICATION_QUESTIONS in api/lib/brrr.ts — what Elsie asks on the call.
@@ -272,6 +274,8 @@ export default function PropertiesPage() {
         <MetricCard label="Qualified" value={loading ? '...' : qualified} icon={<BadgeCheck size={16} />} />
         <MetricCard label="AI call spend" value={loading ? '...' : `$${totalCostUsd.toFixed(2)}`} change="+ phone charges" trend="neutral" />
       </div>
+
+      <CalibrationPanel calibration={resp.calibration ?? null} loading={loading} />
 
       <div className="mt-6">
         <DataTable
@@ -564,6 +568,93 @@ export default function PropertiesPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Is the engine right? The only honest answer comes from the figures estate
+ *  agents say out loud, so this is that comparison and nothing else.
+ *
+ *  Hugo, 2026-08-11, on being told no valuation had ever been checked against
+ *  reality: "yes wire it". It stays deliberately quiet until there is enough
+ *  data to mean something: a ratio off two calls is noise wearing a percentage
+ *  sign, and this panel exists to stop confident numbers appearing from
+ *  nowhere, not to add another one. */
+function CalibrationPanel({ calibration, loading }: { calibration: Calibration | null; loading: boolean }) {
+  if (loading) return null
+  const n = calibration?.n ?? 0
+  const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v * 100)}%`)
+
+  return (
+    <div className="mt-4 rounded-xl border border-line bg-surface p-4">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-[13px] font-semibold text-ink">Is the valuation right?</h2>
+        <span className="text-[11px] text-ink-muted">
+          {n === 0 ? 'no figures yet' : `${n} figure${n === 1 ? '' : 's'} named on calls`}
+        </span>
+      </div>
+
+      {n < 5 ? (
+        <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+          Every time a branch names a price, it is recorded here beside what the
+          engine said that property was worth at that moment. After about five
+          of them this panel starts reporting whether the valuations run high or
+          low, and by how much. {n === 0
+            ? 'Nothing has been logged yet, so the engine is unproven: treat every valuation as an estimate.'
+            : `${n} so far, which is not yet enough to draw a line through.`}
+        </p>
+      ) : (
+        <>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <Stat
+              label="They said, against our value"
+              value={pct(calibration?.vsCmv)}
+              note={
+                (calibration?.vsCmv ?? 1) > 1.05
+                  ? 'Branches are asking more than we think it is worth. The engine may be valuing low.'
+                  : (calibration?.vsCmv ?? 1) < 0.95
+                    ? 'Branches are talking below our valuation. The engine may be optimistic.'
+                    : 'The engine and the market broadly agree.'
+              }
+            />
+            <Stat
+              label="They said, against asking"
+              value={pct(calibration?.vsAsking)}
+              note="How far branches actually come down from the advert."
+            />
+            <Stat
+              label="Inside our walk-away"
+              value={pct(calibration?.withinCeilingPct)}
+              note={`${calibration?.withinCeiling ?? 0} of ${n} figures were at or below the most we would pay.`}
+            />
+          </div>
+
+          {Object.keys(calibration?.byConfidence ?? {}).length > 0 && (
+            <div className="mt-3 border-t border-line pt-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                Does the confidence label mean anything?
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
+                {Object.entries(calibration!.byConfidence).map(([k, v]) => (
+                  <span key={k} className="text-[12px] text-ink-muted">
+                    {k}: <b className="text-ink">{pct(v.vsCmv)}</b> ({v.n})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function Stat({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-ink-muted">{label}</div>
+      <div className="text-[20px] font-bold text-ink">{value}</div>
+      <div className="text-[11px] leading-snug text-ink-muted">{note}</div>
     </div>
   )
 }

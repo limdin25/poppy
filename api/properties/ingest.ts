@@ -63,17 +63,25 @@ export default async function handler(req: Request): Promise<Response> {
     // A human outcome outranks a machine one. If somebody already qualified or
     // spoke to this branch, a later auditor kill must not overwrite that.
     const MACHINE_STATUSES = ['new', 'call_queued', 'auditor_killed'];
+    const { data: existing } = await supabase
+      .from('brrr_properties')
+      .select('status')
+      .eq('source', body.source || 'rightmove')
+      .eq('source_property_id', propertyId)
+      .maybeSingle();
+    const prevStatus = existing?.status ?? null;
     let killedStatus: string | null = null;
     if (killed) {
-      const { data: existing } = await supabase
-        .from('brrr_properties')
-        .select('status')
-        .eq('source', body.source || 'rightmove')
-        .eq('source_property_id', propertyId)
-        .maybeSingle();
-      killedStatus = MACHINE_STATUSES.includes(existing?.status ?? 'new')
+      killedStatus = MACHINE_STATUSES.includes(prevStatus ?? 'new')
         ? 'auditor_killed'
-        : (existing?.status ?? 'auditor_killed');
+        : prevStatus;
+    } else if (prevStatus === 'auditor_killed') {
+      // A KILL IS A VERDICT ABOUT TODAY'S DATA, NOT A TOMBSTONE. Deals are
+      // re-judged every night, and a property whose comps have since improved
+      // (or whose price has come down) must be able to come back. Without
+      // this the row keeps the withdrawn status forever, the dialer keeps
+      // hiding it and Pedro never sees a deal the engine has already cleared.
+      killedStatus = 'new';
     }
 
     const row = {

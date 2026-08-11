@@ -3,6 +3,7 @@ import {
   pushPropertyToPipeline,
   getBrrrSettings, saveBrrrSettings, type BrrrProperty, type BrrrSettings,
 } from '../../lib/brrr.js'
+import { calibrate, type CalibrationRow } from '../../lib/price-feedback.js'
 
 export const config = { runtime: 'edge' };
 
@@ -66,9 +67,21 @@ export default async function handler(req: Request) {
       }, {})
     }
     const settings = await getBrrrSettings()
+
+    // How the engine is doing against the only ground truth this business
+    // generates: the figures branches say out loud. Empty until Pedro logs
+    // some, and it says so rather than showing a confident zero.
+    const { data: feedback } = await supabaseAdmin
+      .from('brrr_price_feedback')
+      .select('said_price, asking_price, cmv, cmv_confidence, offer_max')
+      .order('created_at', { ascending: false })
+      .limit(500)
+    const calibration = calibrate((feedback || []) as CalibrationRow[])
+
     return Response.json({
       properties: (properties || []).map((p) => ({ ...p, calls: callsByProperty[p.id] || [] })),
       settings,
+      calibration,
     })
   }
 

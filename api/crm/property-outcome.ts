@@ -31,6 +31,7 @@ import {
   type Qualification,
 } from '../lib/brrr.js';
 import { notifyBusinessOwner } from '../lib/notify.js';
+import { parseSpokenPrice } from '../lib/price-feedback.js';
 
 export const config = { runtime: 'edge' };
 
@@ -139,6 +140,48 @@ export default async function handler(req: Request): Promise<Response> {
   });
   if (callErr) {
     return Response.json({ error: callErr.message }, { status: 500 });
+  }
+
+  // 1b. THE CALIBRATION ROW. The one piece of ground truth this business
+  //     generates is a branch saying a number out loud, and until 2026-08-11 it
+  //     was filed as free text on a property that gets re-priced and overwritten
+  //     every night. Frozen here instead, beside what the engine claimed at that
+  //     moment, so the valuations can finally be judged against reality rather
+  //     than against their own confidence score.
+  //
+  //     Best effort on purpose: this is measurement, and measurement must never
+  //     be able to fail a real call. The outcome above is already saved.
+  const saidText = String(
+    (body.qualification as Record<string, unknown> | undefined)?.best_price_indicated ?? '',
+  ).trim();
+  if (saidText) {
+    const asking = Number(property.asking_price) || null;
+    const spoken = parseSpokenPrice(saidText, asking);
+    const deal = (property.deal ?? {}) as Record<string, any>;
+    const nested = (v: unknown): number | null => {
+      const n = typeof v === 'object' && v !== null
+        ? Number((v as Record<string, unknown>).estimate)
+        : Number(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    await supabase.from('brrr_price_feedback').insert({
+      property_id: propertyId,
+      wk_call_id: body.wk_call_id || null,
+      agent_id: user.id,
+      said_text: saidText,
+      said_price: spoken.price,
+      said_parse_note: spoken.reason ?? null,
+      asking_price: asking,
+      cmv: nested(deal.cmv),
+      cmv_confidence: (deal.cmv && typeof deal.cmv === 'object'
+        ? String((deal.cmv as Record<string, unknown>).confidence ?? '')
+        : String(deal.cmv_confidence ?? '')) || null,
+      gdv: nested(deal.gdv),
+      offer_open: nested(deal.offer?.open) ?? nested(deal.offer_min),
+      offer_max: nested(deal.offer?.max) ?? nested(deal.offer_max),
+      outcome,
+      address: property.address ?? null,
+    }).then(undefined, () => {});
   }
 
   // 2. The property itself — but only if the AI is not mid-dial on it. If it

@@ -156,19 +156,48 @@ export function ladderText(
  * drift. Same arrangement as api/lib/uk-places.ts and its .mjs twin. If you
  * edit one, edit the other.
  */
+// Hugo's costings, 2026-08-11, and they REPLACED a much thinner table that had
+// a 2-bed conversion at £16,000. That old figure was roughly the low end of the
+// kitchen move alone, with no allowance for the rest of the works, and it fed
+// straight into the maximum offer: measured across the live batch, every £1 of
+// refurb error moves the most we can pay by £1.05. So the engine was prepared
+// to overpay by about £20,000 on a 2-bed.
+//
+// Four costs per row, because the two jobs are separate and only their sum is
+// what you actually spend:
+//   conversion  moving the kitchen and building the new bedroom
+//   refurb      the light refurbishment the rest of the place needs
+//   total       the two added up, before contingency
+//   low/high    Hugo's SENSIBLE BUDGET, which already carries 10-15% contingency
+//
+// `budget` is the midpoint of that sensible range and is the number to plan on.
+// CONTINGENCY IS ALREADY INSIDE IT: nothing downstream may multiply it again,
+// and valuation.py no longer does. Where extra caution is wanted (a suspiciously
+// cheap asking price usually means something is wrong with the building) the
+// engine uses `high` rather than inventing a multiplier of its own.
 export const BEDROOM_UPLIFT_REFURB = [
-  { from: 1, to: 2, low: 12_000, high: 15_000, budget: 14_000 },
-  { from: 2, to: 3, low: 14_000, high: 18_000, budget: 16_000 },
-  { from: 3, to: 4, low: 16_000, high: 22_000, budget: 19_000 },
+  { from: 1, to: 2, conversionLow: 12_000, conversionHigh: 22_000, refurbLow: 8_000, refurbHigh: 14_000, totalLow: 20_000, totalHigh: 36_000, low: 22_000, high: 41_000, budget: 31_500 },
+  { from: 2, to: 3, conversionLow: 13_000, conversionHigh: 23_000, refurbLow: 11_000, refurbHigh: 18_000, totalLow: 24_000, totalHigh: 41_000, low: 26_000, high: 47_000, budget: 36_500 },
+  { from: 3, to: 4, conversionLow: 14_000, conversionHigh: 25_000, refurbLow: 15_000, refurbHigh: 24_000, totalLow: 29_000, totalHigh: 49_000, low: 32_000, high: 56_000, budget: 44_000 },
+  { from: 4, to: 5, conversionLow: 15_000, conversionHigh: 27_000, refurbLow: 19_000, refurbHigh: 30_000, totalLow: 34_000, totalHigh: 57_000, low: 37_000, high: 66_000, budget: 51_500 },
 ] as const;
 
-export interface UpliftRefurb { from: number; to: number; low: number; high: number; budget: number }
+export interface UpliftRefurb {
+  from: number; to: number;
+  conversionLow: number; conversionHigh: number;
+  refurbLow: number; refurbHigh: number;
+  totalLow: number; totalHigh: number;
+  /** The sensible budget range, contingency INCLUDED. */
+  low: number; high: number;
+  /** Midpoint of that range: the number to plan on. Never multiply it again. */
+  budget: number;
+}
 
 /**
  * The cost of taking this house from its current bed count to one more.
  *
- * Returns null outside 1 to 3 beds, and that matters: there is no row for a
- * studio or for a 4-bed going to 5, and inventing one by extrapolating is how
+ * Returns null outside 1 to 4 beds, and that matters: there is no row for a
+ * studio or for a 5-bed going to 6, and inventing one by extrapolating is how
  * a plausible wrong number ends up on screen next to a real valuation. A null
  * means "we do not have a figure for this", which the UI can say honestly.
  */

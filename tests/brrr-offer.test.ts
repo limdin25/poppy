@@ -220,23 +220,52 @@ describe('there is exactly ONE copy of this maths', () => {
 // prices a 3-to-4-bed conversion the same as a 1-to-2.
 
 describe('what it costs to add a bedroom', () => {
+  // Rewritten 2026-08-11 with Hugo's real costings. The previous figures
+  // (a 2-bed at £16,000) were roughly the low end of the kitchen move alone
+  // and carried nothing for the rest of the works. Since £1 of refurb error
+  // moves the maximum offer by £1.05, the engine was prepared to overpay by
+  // about £20,000 on a 2-bed. Measured over the live batch when this landed:
+  // 439 of 441 refinance ceilings dropped, median £19,000.
   it('carries Hugo\'s figures exactly', () => {
-    expect(upliftRefurb(1)).toMatchObject({ from: 1, to: 2, low: 12_000, high: 15_000, budget: 14_000 })
-    expect(upliftRefurb(2)).toMatchObject({ from: 2, to: 3, low: 14_000, high: 18_000, budget: 16_000 })
-    expect(upliftRefurb(3)).toMatchObject({ from: 3, to: 4, low: 16_000, high: 22_000, budget: 19_000 })
+    expect(upliftRefurb(1)).toMatchObject({ from: 1, to: 2, low: 22_000, high: 41_000, budget: 31_500 })
+    expect(upliftRefurb(2)).toMatchObject({ from: 2, to: 3, low: 26_000, high: 47_000, budget: 36_500 })
+    expect(upliftRefurb(3)).toMatchObject({ from: 3, to: 4, low: 32_000, high: 56_000, budget: 44_000 })
+    expect(upliftRefurb(4)).toMatchObject({ from: 4, to: 5, low: 37_000, high: 66_000, budget: 51_500 })
+  })
+
+  it('keeps the conversion and the refurbishment as separate lines', () => {
+    // They are two different jobs and only their sum is what gets spent, so a
+    // builder's quote can be argued against the right one.
+    expect(upliftRefurb(2)).toMatchObject({
+      conversionLow: 13_000, conversionHigh: 23_000,
+      refurbLow: 11_000, refurbHigh: 18_000,
+      totalLow: 24_000, totalHigh: 41_000,
+    })
+  })
+
+  it('the budget range already carries the contingency', () => {
+    // low/high are the SENSIBLE BUDGET (10-15% contingency inside), so they
+    // sit above the bare project total. Anything that multiplies these again
+    // is double-counting, which is exactly what valuation.py used to do.
+    for (const r of BEDROOM_UPLIFT_REFURB) {
+      expect(r.low).toBeGreaterThan(r.totalLow)
+      expect(r.high).toBeGreaterThan(r.totalHigh)
+      expect(r.totalLow).toBe(r.conversionLow + r.refurbLow)
+      expect(r.totalHigh).toBe(r.conversionHigh + r.refurbHigh)
+    }
   })
 
   it('refuses to guess outside the table', () => {
-    // There is no row for a studio, or a 4-bed going to 5. Extrapolating one is
+    // There is no row for a studio, or a 5-bed going to 6. Extrapolating one is
     // how a plausible wrong number ends up on screen beside a real valuation,
     // so the honest answer is null and the UI says nothing.
-    for (const beds of [0, 4, 5, 9, null, undefined, NaN, 'three' as unknown as number]) {
+    for (const beds of [0, 5, 6, 9, null, undefined, NaN, 'three' as unknown as number]) {
       expect(`${String(beds)} => ${upliftRefurb(beds as number)}`).toBe(`${String(beds)} => null`)
     }
   })
 
   it('reads a numeric string, because bedrooms arrive as text from the listing', () => {
-    expect(upliftRefurb('2' as unknown as number)?.budget).toBe(16_000)
+    expect(upliftRefurb('2' as unknown as number)?.budget).toBe(36_500)
   })
 
   it('the budget always sits inside its own range', () => {
