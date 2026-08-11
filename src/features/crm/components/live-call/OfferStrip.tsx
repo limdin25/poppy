@@ -100,8 +100,20 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
       )}
 
       <div className="flex flex-wrap items-center gap-2 px-4 py-1.5">
-        <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${conf.cls}`}>
-          {conf.label}
+        {/* A withdrawn deal must not wear a green confidence badge. The
+            valuation is the thing the auditor rejected, so saying "fair
+            evidence, worth about £293,296" directly under "withdrawn, the
+            comps are the wrong class of building" is the same false
+            confidence in a smaller font. Only ever true in Call history:
+            the dialer never receives a withdrawn listing. */}
+        <span
+          className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+            listing.withdrawn
+              ? 'border-[#F3C2C2] bg-[#FDF1F1] text-[#A83232]'
+              : conf.cls
+          }`}
+        >
+          {listing.withdrawn ? 'valuation rejected' : conf.label}
         </span>
         {/* cmv is an OBJECT from valuation.py ({estimate, low, high, audit}),
             not a number. Passing the object to gbpShort produced "worth about
@@ -109,8 +121,8 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
             this" beside a perfectly good valuation. Same nesting mistake as
             the offer band. */}
         {cmv > 0 ? (
-          <span className="text-[11px] text-[#6B7280]">
-            worth about {gbpShort(cmv)} today
+          <span className={`text-[11px] ${listing.withdrawn ? 'text-[#A83232] line-through' : 'text-[#6B7280]'}`}>
+            {listing.withdrawn ? '' : 'worth about '}{gbpShort(cmv)}{listing.withdrawn ? '' : ' today'}
           </span>
         ) : null}
         {/* What it is worth with the extra bedroom, and what that costs. The
