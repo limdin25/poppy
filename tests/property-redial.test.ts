@@ -86,6 +86,36 @@ describe('--redial-unanswered: only the offices nobody picked up', () => {
   })
 })
 
+describe('a house the branch listed after we rang them', () => {
+  it('reopens the branch, at the back, once the gap has passed', () => {
+    const d = decideRedial({
+      lastCallAt: hoursAgo(30), lastOutcome: 'Not interested',
+      newestListedAt: hoursAgo(2), nowMs: NOW,
+    })
+    expect(d.queue).toBe(true)
+    expect(d.back).toBe(true)
+    expect(d.reason).toMatch(/new listing/)
+  })
+
+  it('does NOT reopen it the same afternoon', () => {
+    // McDonald said no at 15:03 and a batch landed at 16:30. Ringing back at
+    // 17:30 is the exact complaint that started all this.
+    const d = decideRedial({
+      lastCallAt: hoursAgo(2.5), lastOutcome: 'Not interested',
+      newestListedAt: hoursAgo(1), nowMs: NOW,
+    })
+    expect(d.queue).toBe(false)
+  })
+
+  it('does not count a listing that was already on file when we rang', () => {
+    const d = decideRedial({
+      lastCallAt: hoursAgo(30), lastOutcome: 'Not interested',
+      newestListedAt: hoursAgo(50), nowMs: NOW,
+    })
+    expect(d.queue).toBe(false)
+  })
+})
+
 describe('--redial-all: everything back, but still behind the fresh stock', () => {
   it('queues a branch that said no, and sends it to the back', () => {
     const d = decideRedial({ lastCallAt: hoursAgo(1), lastOutcome: 'Not interested', mode: 'all', nowMs: NOW })
@@ -122,6 +152,15 @@ describe('the assign script actually applies the policy', () => {
   it('sends a redial to the back of the live queue', () => {
     expect(src).toMatch(/priority: back \? minPriority - 1 - i : maxPriority/)
     expect(src).toMatch(/currentMinPendingPriority/)
+  })
+
+  it('--refresh loads the untouched branches too, not only the held ones', () => {
+    // The overnight machine's ONLY assign step is `--refresh --apply`. While
+    // --refresh swapped the channel filter instead of widening it, that run
+    // could not queue a branch it had never seen, so a whole night's scrape
+    // stayed invisible to Pedro.
+    expect(src).toMatch(/if \(!REFRESH\) q = q\.eq\('call_channel', 'ai'\)/)
+    expect(src).not.toMatch(/REFRESH \? q\.eq\('call_channel', 'human'\)/)
   })
 
   it('never queues a held-back branch, only refreshes it', () => {
