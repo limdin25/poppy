@@ -12,8 +12,9 @@
 // bad day, the card says so in one line and the agent carries on.
 
 import { useEffect, useState } from 'react';
-import { Sparkles, Check, X, Loader2, ChevronDown } from 'lucide-react';
+import { Sparkles, Check, X, Loader2, ChevronDown, GraduationCap } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
+import { useAuth } from '@/features/crm/lib/useCrmAuth';
 
 interface Review {
   verdict?: string;
@@ -43,7 +44,12 @@ function Tick({ ok, label }: { ok?: boolean; label: string }) {
 }
 
 export default function CallReviewCard({ callId }: { callId: string | null }) {
+  const { user } = useAuth();
+  const agentKey = user?.id ?? 'unknown';
   const [review, setReview] = useState<Review | null>(null);
+  // How many of this call's mistakes were queued as questions. Hugo 2026-08-12:
+  // the checkpoint should ask about HIS mistakes, not a random topic.
+  const [queued, setQueued] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
@@ -71,6 +77,26 @@ export default function CallReviewCard({ callId }: { callId: string | null }) {
         if (cancelled) return;
         if (!res.ok) { setError(data.error ?? 'No review for this one.'); return; }
         setReview(data);
+
+        // Queue what went wrong, so the next checkpoint asks about it. The
+        // unique index on (agent, call, question) makes a repeat mount a no-op,
+        // so this cannot stack up the same mistake twice.
+        const mistakes = (data.mistakes ?? [])
+          .map((m) => `${m.what} ${m.shouldHaveSaid ?? ''}`)
+          .join(' ')
+          .trim();
+        if (!mistakes) return;
+        try {
+          const q = await fetch('/api/crm/knowledge-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'flag', agentKey, callId, mistakes }),
+          });
+          const qd = (await q.json()) as { queued?: number };
+          if (!cancelled) setQueued(qd.queued ?? 0);
+        } catch {
+          // Queuing practice is a bonus. Never let it break the review.
+        }
       } catch {
         if (!cancelled) setError('No review for this one.');
       } finally {
@@ -78,7 +104,7 @@ export default function CallReviewCard({ callId }: { callId: string | null }) {
       }
     };
     return () => { cancelled = true; clearTimeout(t); };
-  }, [callId]);
+  }, [callId, agentKey]);
 
   if (!callId) return null;
 
@@ -150,6 +176,14 @@ export default function CallReviewCard({ callId }: { callId: string | null }) {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {queued > 0 && (
+                <p className="flex items-start gap-1 text-[10px] leading-snug text-[#6B7280]">
+                  <GraduationCap className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                  {queued === 1 ? 'This is' : `${queued} of these are`} going into your next
+                  knowledge check.
+                </p>
               )}
 
               {review.nextCall && (

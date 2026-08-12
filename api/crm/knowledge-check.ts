@@ -20,6 +20,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { QUESTION_BANK, QUESTION_BY_ID } from '../lib/training-questions.js';
+import { topicsForMistakes, TOPICS } from '../lib/knowledge-topics.js';
 
 export const config = { runtime: 'edge' };
 
@@ -34,13 +35,24 @@ const supabase = createClient(
  *  enough that it lands the same day. */
 export const REPEAT_AFTER_ROUNDS = 10;
 
+/** The gap grows when he keeps getting one wrong: 10, then 20, then 30, capped.
+ *  A question he fails repeatedly should be coming BACK at him, not drifting
+ *  away, and a cap stops one bad topic hogging every checkpoint for a week. */
+const MAX_WRONG_GAP = 30;
+
+/** Getting it right on a comeback does NOT retire the question. It schedules one
+ *  confirmation this many rounds later, and only answering THAT correctly
+ *  closes it. Right once, ten minutes after being shown the answer, is not
+ *  knowing it. */
+export const CONFIRM_AFTER_ROUNDS = 30;
+
 /** How many calls between checkpoints. Hugo asked for "every six, seven
  *  dialogs"; the client owns the counting, this is the number it reads so both
  *  ends cannot disagree. */
 export const CHECKPOINT_EVERY = 7;
 
 interface Body {
-  action?: 'draw' | 'grade';
+  action?: 'draw' | 'grade' | 'flag';
   /** Who is answering. The CRM user id when there is one. */
   agentKey?: string;
   /** grade only. */
@@ -50,6 +62,10 @@ interface Body {
   /** draw only: ids already asked this shift, so the same one does not come
    *  round twice in an afternoon. */
   exclude?: string[];
+  /** flag only: what the AI review said went wrong on a real call, and which
+   *  call it was. */
+  mistakes?: string;
+  callId?: string;
 }
 
 function shuffle<T>(input: T[]): T[] {
@@ -91,6 +107,37 @@ export default async function handler(req: Request): Promise<Response> {
     return count ?? 0;
   };
 
+  // The AI review of a real call says what he got wrong. Those topics go into
+  // the same owed queue as a failed checkpoint, due immediately, so the very
+  // next checkpoint asks about HIS mistake instead of a random topic.
+  if (body.action === 'flag') {
+    const topics = topicsForMistakes(body.mistakes ?? '');
+    if (topics.length === 0) return json({ queued: 0 });
+    const round = await roundsSoFar();
+    let queued = 0;
+    for (const t of topics) {
+      // One question per topic, the first that is not already owed. Three
+      // questions about the same mistake is a punishment, not a lesson.
+      const id = t.questionIds.find((qid) => QUESTION_BY_ID[qid]?.options?.length);
+      if (!id) continue;
+      const { error } = await supabase.from('wk_knowledge_checks').insert({
+        agent_key: agentKey,
+        question_id: id,
+        correct: false,
+        round,
+        // Due now. He made this mistake twenty minutes ago.
+        due_round: round,
+        origin: 'call_review',
+        call_id: body.callId ?? null,
+      });
+      // The unique index on (agent_key, call_id, question_id) makes a second
+      // insert for the same call a no-op rather than a duplicate. The review
+      // card can safely fire twice.
+      if (!error) queued += 1;
+    }
+    return json({ queued });
+  }
+
   if (body.action === 'grade') {
     const q = QUESTION_BY_ID[body.id ?? ''];
     if (!q || !q.options?.length) return json({ error: 'unknown question' }, 400);
@@ -98,27 +145,60 @@ export default async function handler(req: Request): Promise<Response> {
     // shuffled copy, so comparing the text is enough and leaks nothing.
     const correct = (body.answer ?? '').trim() === q.options[0].trim();
 
-    // Write it down, then either close the debt or set when it comes back.
+    // THE SCHEDULE. This is the whole strategy, and it is four lines of rules:
+    //
+    //   wrong          -> comes back at 10, then 20, then 30. Failing it pulls
+    //                     it TOWARDS him, it does not let it drift away.
+    //   right, but owed -> not retired. One confirmation 30 rounds later.
+    //   right on the confirmation -> retired for good.
+    //   right, never owed -> nothing scheduled. He knows it.
+    //
     // Best effort: a failed write must never stop him answering and dialling.
+    let nextIn: number | null = null;
+    let confirming = false;
     try {
+      const now = new Date().toISOString();
       const round = (await roundsSoFar()) + 1;
+
+      // What is currently owed on this question, and how many times he has
+      // already got it wrong.
+      const { data: history } = await supabase
+        .from('wk_knowledge_checks')
+        .select('id, correct, resolved_at')
+        .eq('agent_key', agentKey)
+        .eq('question_id', q.id);
+      const rows = history ?? [];
+      const owed = rows.filter((r) => !r.resolved_at);
+      const wrongsBefore = rows.filter((r) => r.correct === false).length;
+      // An owed row that he got RIGHT is a confirmation falling due.
+      confirming = owed.length > 0 && owed.every((r) => r.correct === true);
+
+      if (!correct) {
+        nextIn = Math.min(REPEAT_AFTER_ROUNDS * (wrongsBefore + 1), MAX_WRONG_GAP);
+      } else if (owed.length > 0 && !confirming) {
+        nextIn = CONFIRM_AFTER_ROUNDS;
+      }
+
+      // Everything previously owed on this question is settled by this answer:
+      // either it is closed (right) or it is replaced by the new, later row
+      // (wrong). Two open rows for one question would ask it twice.
+      if (owed.length > 0) {
+        await supabase
+          .from('wk_knowledge_checks')
+          .update({ resolved_at: now })
+          .eq('agent_key', agentKey)
+          .eq('question_id', q.id)
+          .is('resolved_at', null);
+      }
+
       await supabase.from('wk_knowledge_checks').insert({
         agent_key: agentKey,
         question_id: q.id,
         correct,
         round,
-        due_round: correct ? null : round + REPEAT_AFTER_ROUNDS,
+        due_round: nextIn === null ? null : round + nextIn,
+        origin: 'checkpoint',
       });
-      if (correct) {
-        // He owed this one. He does not any more.
-        await supabase
-          .from('wk_knowledge_checks')
-          .update({ resolved_at: new Date().toISOString() })
-          .eq('agent_key', agentKey)
-          .eq('question_id', q.id)
-          .eq('correct', false)
-          .is('resolved_at', null);
-      }
     } catch {
       // The marking above is what he sees. The history is a nice-to-have.
     }
@@ -127,7 +207,11 @@ export default async function handler(req: Request): Promise<Response> {
       correct,
       explanation: q.explanation,
       right: q.options[0],
-      repeatAfter: correct ? null : REPEAT_AFTER_ROUNDS,
+      /** Rounds until it comes back. Null when it is retired. */
+      repeatAfter: nextIn,
+      /** True when he has just answered a confirmation correctly, which is the
+       *  moment a question is actually learned rather than remembered. */
+      retired: correct && confirming,
     });
   }
 
@@ -135,28 +219,39 @@ export default async function handler(req: Request): Promise<Response> {
   // random one. Oldest debt first, so nothing sits owed for ever.
   try {
     const round = await roundsSoFar();
+    // Anything still owed and now due: a wrong answer coming back, a
+    // confirmation falling due, or a mistake the AI review flagged on a real
+    // call. Oldest debt first, so nothing sits owed for ever.
     const { data: owed } = await supabase
       .from('wk_knowledge_checks')
-      .select('question_id, due_round')
+      .select('question_id, due_round, origin, correct')
       .eq('agent_key', agentKey)
-      .eq('correct', false)
       .is('resolved_at', null)
+      .not('due_round', 'is', null)
       .lte('due_round', round)
       .order('due_round', { ascending: true })
       .limit(1);
-    const again = owed?.[0]?.question_id
-      ? QUESTION_BY_ID[owed[0].question_id as string]
-      : undefined;
+    const row = owed?.[0];
+    const again = row?.question_id ? QUESTION_BY_ID[row.question_id as string] : undefined;
     if (again?.options?.length) {
+      const fromCall = row?.origin === 'call_review';
+      const topic = fromCall
+        ? TOPICS.find((t) => t.questionIds.includes(again.id))
+        : undefined;
       return json({
         id: again.id,
         prompt: again.prompt,
         options: shuffle(again.options),
         source: again.source,
         every: CHECKPOINT_EVERY,
-        // The screen says so out loud. Being told "you got this one wrong
-        // before" is most of what makes it stick.
+        // The screen says so out loud. Being told WHY this question is in front
+        // of him is most of what makes it stick.
         repeat: true,
+        fromCall,
+        // "They gave you a number on that call and it nearly got away."
+        because: topic?.because ?? null,
+        // A confirmation, rather than a question he got wrong.
+        confirming: row?.correct === true,
       });
     }
   } catch {

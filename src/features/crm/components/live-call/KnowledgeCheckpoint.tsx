@@ -27,6 +27,13 @@ interface Question {
    *  (Hugo 2026-08-12: wrong answers return after 10 rounds until he gets them
    *  right). Saying so on screen is most of what makes it stick. */
   repeat?: boolean;
+  /** It came from the AI review of a real call, not from a checkpoint. */
+  fromCall?: boolean;
+  /** Why he is being asked this one, in the review's terms. */
+  because?: string | null;
+  /** A confirmation: he got this right last time and this is the check that
+   *  retires it. */
+  confirming?: boolean;
 }
 
 interface Props {
@@ -45,7 +52,10 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
   const [loading, setLoading] = useState(true);
   const [picked, setPicked] = useState<string | null>(null);
   const [result, setResult] = useState<
-    { correct: boolean; explanation: string; right: string; repeatAfter: number | null } | null
+    {
+      correct: boolean; explanation: string; right: string;
+      repeatAfter: number | null; retired: boolean;
+    } | null
   >(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +82,9 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
         options: data.options,
         source: data.source,
         repeat: data.repeat,
+        fromCall: data.fromCall,
+        because: data.because,
+        confirming: data.confirming,
       });
     } catch {
       setError('Could not load the question.');
@@ -99,7 +112,7 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
       });
       const data = (await res.json()) as {
         correct?: boolean; explanation?: string; right?: string;
-        repeatAfter?: number | null; error?: string;
+        repeatAfter?: number | null; retired?: boolean; error?: string;
       };
       if (!res.ok) { setError(data.error ?? 'Could not mark that.'); return; }
       setResult({
@@ -107,6 +120,7 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
         explanation: data.explanation ?? '',
         right: data.right ?? '',
         repeatAfter: data.repeatAfter ?? null,
+        retired: !!data.retired,
       });
     } catch {
       setError('Could not mark that.');
@@ -152,9 +166,21 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
           {q && !loading && (
             <>
               {q.repeat && (
-                <p className="mb-2 inline-flex items-center gap-1 rounded bg-[#FFF7ED] px-2 py-1 text-[11px] font-semibold text-[#B45309]">
-                  <RotateCcw className="h-3 w-3" />
-                  You got this one wrong before. Here it is again.
+                <p
+                  className={cn(
+                    'mb-2 inline-flex items-start gap-1 rounded px-2 py-1 text-[11px] font-semibold',
+                    q.confirming ? 'bg-[#E8F5EC] text-[#1F5C33]' : 'bg-[#FFF7ED] text-[#B45309]',
+                  )}
+                  data-testid="knowledge-checkpoint-repeat"
+                >
+                  <RotateCcw className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                  <span>
+                    {q.confirming
+                      ? 'You got this right last time. Get it right again and it is done.'
+                      : q.fromCall
+                        ? (q.because ?? 'This came off one of your own calls.')
+                        : 'You got this one wrong before. Here it is again.'}
+                  </span>
                 </p>
               )}
               <p className="text-[15px] font-semibold leading-snug text-[#1A1A1A]">{q.prompt}</p>
@@ -203,6 +229,14 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
                     <p className="mt-1 font-semibold">
                       This one comes back in {result.repeatAfter} checkpoints, and it keeps coming
                       back until you get it right.
+                    </p>
+                  )}
+                  {result.correct && result.retired && (
+                    <p className="mt-1 font-semibold">That one is done. You will not see it again.</p>
+                  )}
+                  {result.correct && !result.retired && result.repeatAfter && (
+                    <p className="mt-1 font-semibold">
+                      One more check in {result.repeatAfter} checkpoints and it is done.
                     </p>
                   )}
                 </div>

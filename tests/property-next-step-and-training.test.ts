@@ -37,6 +37,8 @@ const SCRIPT = read('src/core/content/property-call-script.html');
 const DRAFT = stripComments(read('api/crm/draft-offer-email.ts'));
 const CHECK = stripComments(read('api/crm/knowledge-check.ts'));
 const REVIEW = stripComments(read('api/crm/call-review.ts'));
+const TOPICS_SRC = read('api/lib/knowledge-topics.ts');
+const BANK = read('api/lib/training-questions.ts');
 
 describe('the property call pane', () => {
   it('drops the two buttons that sell the plumber product', () => {
@@ -171,15 +173,15 @@ describe('the knowledge checkpoint', () => {
   // gets them right."
   it('brings a wrong answer back, and only when it is due', () => {
     expect(CHECK).toMatch(/REPEAT_AFTER_ROUNDS = 10/);
-    expect(CHECK).toMatch(/due_round: correct \? null : round \+ REPEAT_AFTER_ROUNDS/);
+    expect(CHECK).toMatch(/nextIn = Math\.min\(REPEAT_AFTER_ROUNDS/);
     expect(CHECK).toMatch(/\.lte\('due_round', round\)/);
     expect(CHECK).toMatch(/\.order\('due_round', \{ ascending: true \}\)/);
   });
 
   it('stops asking once he gets it right', () => {
-    expect(CHECK).toMatch(/resolved_at: new Date\(\)\.toISOString\(\)/);
-    expect(CHECK).toMatch(/\.eq\('correct', false\)/);
+    expect(CHECK).toMatch(/const now = new Date\(\)\.toISOString\(\)/);
     expect(CHECK).toMatch(/\.is\('resolved_at', null\)/);
+    expect(CHECK).toMatch(/resolved_at: now/);
   });
 
   it('follows the person, not the browser', () => {
@@ -202,6 +204,78 @@ describe('the knowledge checkpoint', () => {
     expect(raw).toMatch(/try \{[\s\S]*wk_knowledge_checks[\s\S]*\} catch/);
     expect(raw).toMatch(/The marking above is what he sees/);
     expect(raw).toMatch(/fall through to a fresh one/);
+  });
+
+  // Hugo 2026-08-12: "did you find a good strategy?" This is it, in four rules.
+  describe('the repetition strategy', () => {
+    it('pulls a repeatedly wrong question towards him, not away', () => {
+      expect(CHECK).toMatch(/REPEAT_AFTER_ROUNDS \* \(wrongsBefore \+ 1\)/);
+      expect(CHECK).toMatch(/MAX_WRONG_GAP = 30/);
+      expect(CHECK).toMatch(/Math\.min\(/);
+    });
+
+    it('does not retire a question just because he got it right once', () => {
+      expect(CHECK).toMatch(/CONFIRM_AFTER_ROUNDS = 30/);
+      expect(CHECK).toMatch(/owed\.length > 0 && !confirming/);
+    });
+
+    it('retires it only when the confirmation is answered right', () => {
+      expect(CHECK).toMatch(/retired: correct && confirming/);
+      const client = read('src/features/crm/components/live-call/KnowledgeCheckpoint.tsx');
+      expect(client).toMatch(/That one is done/);
+    });
+
+    it('never leaves two open rows asking the same question twice', () => {
+      expect(CHECK).toMatch(/if \(owed\.length > 0\) \{[\s\S]{0,320}resolved_at: now/);
+    });
+
+    it('a question he has never got wrong schedules nothing', () => {
+      // nextIn stays null, so the row carries no due_round and never comes back.
+      expect(CHECK).toMatch(/let nextIn: number \| null = null/);
+      expect(CHECK).toMatch(/due_round: nextIn === null \? null : round \+ nextIn/);
+    });
+  });
+
+  describe('the checkpoint asks about his own calls', () => {
+    it('every question a topic points at is really in the bank', () => {
+      const ids = new Set([...BANK.matchAll(/id: '([^']+)'/g)].map((m) => m[1]));
+      const block = TOPICS_SRC.slice(TOPICS_SRC.indexOf('export const TOPICS'));
+      const used = [...block.matchAll(/questionIds: \[([^\]]+)\]/g)]
+        .flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]));
+      expect(used.length).toBeGreaterThan(8);
+      for (const id of used) {
+        expect(ids, `topic points at a question "${id}" that does not exist`).toContain(id);
+      }
+    });
+
+    it('reads the review in its own words', () => {
+      expect(TOPICS_SRC).toMatch(/topicsForMistakes/);
+      expect(CHECK).toMatch(/action === 'flag'/);
+      expect(CHECK).toMatch(/origin: 'call_review'/);
+      expect(CHECK).toMatch(/due_round: round,/);
+    });
+
+    it('queues at most three, and one question per mistake', () => {
+      expect(TOPICS_SRC).toMatch(/limit = 3/);
+      expect(TOPICS_SRC).toMatch(/found\.length >= limit/);
+      expect(CHECK).toMatch(/t\.questionIds\.find\(/);
+    });
+
+    it('the review posts its mistakes, and cannot queue them twice', () => {
+      const card = read('src/features/crm/components/live-call/CallReviewCard.tsx');
+      expect(card).toMatch(/action: 'flag'/);
+      expect(card).toMatch(/mistakes/);
+      // The unique index is what makes a second mount a no-op.
+      const mig = read('supabase/migrations/20260812000003_knowledge_checks_from_calls.sql');
+      expect(mig).toMatch(/create unique index[\s\S]*agent_key, call_id, question_id/);
+    });
+
+    it('tells him on screen why he is being asked it', () => {
+      const client = read('src/features/crm/components/live-call/KnowledgeCheckpoint.tsx');
+      expect(client).toMatch(/data-testid="knowledge-checkpoint-repeat"/);
+      expect(client).toMatch(/q\.because/);
+      expect(TOPICS_SRC).toMatch(/because: '/);
+    });
   });
 
   it('asks the same number of calls apart at both ends', () => {
