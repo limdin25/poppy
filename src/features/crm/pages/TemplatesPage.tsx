@@ -17,6 +17,9 @@ const TABS = [
   // this page could never have listed them (Hugo 2026-07-27).
   { id: 'video', label: 'Video', icon: Clapperboard },
   { id: 'agreements', label: 'Agreements', icon: FileText },
+  // The property deal process is NOT a tab here. Hugo 2026-08-12: "it should not
+  // be inside the templates, it should be below the templates on the menu." It
+  // lives at /admin/crm/deal-process.
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];

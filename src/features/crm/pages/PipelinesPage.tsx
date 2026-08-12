@@ -19,6 +19,7 @@ import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 import StageMoveChip from '../components/shared/StageMoveChip';
+import NextStepChip from '../components/shared/NextStepChip';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
 import { usePropertyLinks, phoneTail } from '../hooks/usePropertyLinks';
 
@@ -296,6 +297,14 @@ export default function PipelinesPage() {
                             lead has no property and renders nothing. */}
                         <PropertyLinkChips
                           links={propertiesByPhone.get(phoneTail(c.phone))}
+                          className="mt-1"
+                        />
+                        {/* Hugo 2026-08-12: the card says what to do next, and
+                            hovering or clicking the tag explains the step and
+                            hands over the message to send. Property deals only,
+                            fed by custom_fields.next_step. */}
+                        <NextStepChip
+                          value={c.customFields?.next_step ?? c.customFields?.deal_stage}
                           className="mt-1"
                         />
                         {/* Hugo 2026-07-27: the board must always say where this

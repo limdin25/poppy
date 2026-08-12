@@ -11,6 +11,7 @@ const CallsPage = lazy(() => import('./pages/CallsPage'))
 const PastCallScreen = lazy(() => import('./pages/PastCallScreen'))
 const AiCallsPage = lazy(() => import('./pages/AiCallsPage'))
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
+const DealProcessPage = lazy(() => import('./pages/DealProcessPage'))
 const ContactsPage = lazy(() => import('./pages/ContactsPage'))
 const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage'))
 const PipelinesPage = lazy(() => import('./pages/PipelinesPage'))
@@ -57,6 +58,9 @@ export default function CrmApp() {
                 who did not ask to be recorded. */}
             <Route path="ai-calls" element={<AdminOnlyRoute><AiCallsPage /></AdminOnlyRoute>} />
             <Route path="templates" element={<TemplatesPage />} />
+            {/* The property deal process, step by step. Its own page under
+                Templates in the menu (Hugo 2026-08-12), not a tab inside it. */}
+            <Route path="deal-process" element={<DealProcessPage />} />
             <Route path="dialer" element={<Navigate to="/admin/crm/dialer-pro" replace />} />
             <Route path="dialer-pro" element={<DialerProPage />} />
             <Route path="contacts" element={<ContactsPage />} />

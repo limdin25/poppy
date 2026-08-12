@@ -12,6 +12,7 @@ import {
   Clapperboard,
   Workflow,
   FileText,
+  ListChecks,
   Megaphone,
   Bot,
   Settings,
@@ -55,6 +56,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Call history', path: '/admin/crm/calls', icon: PhoneCall },
   { label: 'AI calls', path: '/admin/crm/ai-calls', icon: Bot, adminOnly: true },
   { label: 'Templates', path: '/admin/crm/templates', icon: FileText },
+  // Directly under Templates, Hugo 2026-08-12. Pedro opens it mid-call, so it
+  // is its own page at its own URL rather than a tab inside Templates.
+  { label: 'Deal process', path: '/admin/crm/deal-process', icon: ListChecks },
   { label: 'Settings', path: '/admin/crm/settings', icon: Settings, adminOnly: true },
 ];
 
