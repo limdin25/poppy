@@ -73,6 +73,40 @@ describe('the offer band is pinned above the script', () => {
     expect(STRIP).toMatch(/do not name a figure/i)
   })
 
+  it('shows the strategy, the BMV band and the reason line', () => {
+    // Stage 7. Pedro was guessing at all three: what kind of deal this is,
+    // how hard he may push, and why we want the house at all.
+    expect(STRIP).toMatch(/\{strategy\}/)
+    expect(STRIP).toMatch(/\{band\.label\}/)
+    expect(STRIP).toMatch(/\{band\.note\}/)
+    expect(STRIP).toMatch(/BAND_CLS\[band\.code\]/)
+  })
+
+  it('draws NOTHING at all when the engine did not judge the property', () => {
+    // The normal state today, not an edge case: the deal engine that fills
+    // these is still being wired up, so most properties arrive with all three
+    // empty. Each is behind its own guard, so an unjudged property renders
+    // exactly the strip Pedro has now: no empty box, no placeholder dash.
+    expect(STRIP).toMatch(/\{\(strategy \|\| band\) && \(/)
+    expect(STRIP).toMatch(/\{reason && \(/)
+    // And all three are READ off the listing, never worked out from the
+    // figures on screen. BMV is measured against GDV minus refurb, the refurb
+    // never reaches this repo, so anything computed here would be plausible
+    // and wrong. api/lib/brrr-deal-facts.ts is the only reader.
+    expect(STRIP).toMatch(/listing\.withdrawn \? null : listing\.strategy/)
+    expect(STRIP).toMatch(/listing\.withdrawn \? null : listing\.bmvBand/)
+    // No arithmetic on the money anywhere in this component.
+    expect(STRIP).not.toMatch(/offerM(in|ax)\s*[/*]/)
+    expect(STRIP).not.toMatch(/asking_price\s*[/*]/)
+  })
+
+  it('a withdrawn deal wears no strategy, no band and no reason', () => {
+    // Same rule as the confidence badge above it. The auditor rejected this
+    // valuation, so "STRONG DEAL, needs a full refurb" underneath "valuation
+    // rejected" is the same false confidence in bolder type.
+    expect(STRIP).toMatch(/const reason = listing\.withdrawn \? '' : listing\.reasonLine/)
+  })
+
   it('selecting a different house clears when the LEAD changes', () => {
     // A new lead is a different agency. Carrying the old selection over would
     // put another branch's asking price in front of the agent.
@@ -161,5 +195,50 @@ describe('scriptTokensFor — what actually lands in the script', () => {
 
   it('returns nothing at all for no listing, so tokens stay visible slots', () => {
     expect(scriptTokensFor(null)).toEqual({})
+  })
+
+  it('carries the strategy, the band and the reason to the coach', () => {
+    // The live coach is driven by Twilio and rebuilds from the database on
+    // every caller utterance, so it cannot see the strip. Anything Pedro can
+    // read off the screen has to be written onto the contact.
+    const judged = {
+      ...listing,
+      strategy: 'BRRR',
+      bmvBand: { code: 'thin', label: 'THIN DEAL', note: 'Hold near the opener.' },
+      reasonLine: 'needs a full refurb, 12 Bedford St sold for £114,000',
+    } as unknown as PropertyListing
+    const t = scriptTokensFor(judged)
+    expect(t.deal_strategy).toBe('BRRR')
+    expect(t.bmv_band).toContain('THIN DEAL')
+    expect(t.deal_reason).toMatch(/full refurb/)
+  })
+
+  it('CLEARS them when the next house has not been judged', () => {
+    // The bug this prevents, and it is the dangerous one on this screen.
+    // DialerProPage MERGES these tokens over the contact's existing
+    // custom_fields, so a key that is simply left out keeps whatever the LAST
+    // property wrote. One branch has many listings and Pedro switches between
+    // them mid-call, so an omitted key means the coach keeps telling him
+    // "STRONG DEAL" about a house nobody has graded. Empty string, always
+    // present, is what overwrites it.
+    const unjudged = {
+      ...listing, strategy: null, bmvBand: null, reasonLine: '',
+    } as unknown as PropertyListing
+    const t = scriptTokensFor(unjudged)
+    expect(Object.keys(t)).toContain('deal_strategy')
+    expect(Object.keys(t)).toContain('bmv_band')
+    expect(Object.keys(t)).toContain('deal_reason')
+    expect(t.deal_strategy).toBe('')
+    expect(t.bmv_band).toBe('')
+    expect(t.deal_reason).toBe('')
+  })
+
+  it('the coach reads all three, and stays quiet when they are blank', () => {
+    const fn = read('supabase/functions/wk-voice-transcription/index.ts')
+    for (const key of ['deal_strategy', 'bmv_band', 'deal_reason']) {
+      expect(fn).toMatch(new RegExp(`if \\(f\\('${key}'\\)\\)`))
+    }
+    // The band is Pedro's judgement, not a thing to say to an estate agent.
+    expect(fn).toMatch(/Never say the band out loud/)
   })
 })

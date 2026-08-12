@@ -6,7 +6,9 @@
 // parse is worse than no parse: it would calibrate the engine against noise.
 // Every case below is a real shape of note, or a real way this could go wrong.
 import { describe, it, expect } from 'vitest'
-import { parseSpokenPrice, calibrate } from '../api/lib/price-feedback'
+import {
+  parseSpokenPrice, calibrate, calibrateBy, valuationVerdict, refurbVerdict,
+} from '../api/lib/price-feedback'
 
 describe('reading the figure out of what the branch said', () => {
   it('reads the plain ways people write a price', () => {
@@ -138,6 +140,114 @@ describe('judging the engine against what they said', () => {
   })
 })
 
+// The weekly report, Stage 8. The value of this thing is that somebody changes
+// a rate card or a comps radius because of it, so a wrong reading here costs
+// real money on the scraper box. Everything below is a way of being wrong.
+describe('cutting the calibration by outcode and by condition', () => {
+  const row = (
+    said: number | null, cmv: number, asking: number, max: number,
+    extra: Partial<{ outcode: string | null; condition_band: string | null; offer_open: number }> = {},
+  ) => ({
+    said_price: said, cmv, asking_price: asking, offer_max: max, cmv_confidence: 'medium',
+    ...extra,
+  })
+
+  it('keeps each area to its own median', () => {
+    const groups = calibrateBy([
+      row(120_000, 100_000, 130_000, 75_000, { outcode: 'FY1' }),
+      row(130_000, 100_000, 130_000, 75_000, { outcode: 'FY1' }),
+      row(101_000, 100_000, 130_000, 75_000, { outcode: 'NE31' }),
+    ], (r) => r.outcode)
+    expect(groups.map((g) => g.key)).toEqual(['FY1', 'NE31'])
+    expect(groups[0].vsCmv).toBeCloseTo(1.25, 5)
+    expect(groups[1].vsCmv).toBeCloseTo(1.01, 5)
+  })
+
+  it('files a row with no area under unknown rather than into a real one', () => {
+    // A misfiled row does not just lose itself, it moves a real area's median
+    // and that is what somebody would act on.
+    const groups = calibrateBy([
+      row(120_000, 100_000, 130_000, 75_000, { outcode: null }),
+      row(120_000, 100_000, 130_000, 75_000, { outcode: '' }),
+    ], (r) => r.outcode)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].key).toBe('unknown')
+    expect(groups[0].n).toBe(2)
+  })
+
+  it('drops the unreadable notes from every group, exactly like the headline', () => {
+    const groups = calibrateBy([
+      row(null, 100_000, 130_000, 75_000, { outcode: 'S8' }),
+      row(110_000, 100_000, 130_000, 75_000, { outcode: 'S8' }),
+    ], (r) => r.outcode)
+    expect(groups[0].n).toBe(1)
+  })
+
+  it('puts the biggest sample first, so a group of one is never the headline', () => {
+    const groups = calibrateBy([
+      row(120_000, 100_000, 130_000, 75_000, { outcode: 'LS12' }),
+      row(120_000, 100_000, 130_000, 75_000, { outcode: 'CV6' }),
+      row(120_000, 100_000, 130_000, 75_000, { outcode: 'CV6' }),
+    ], (r) => r.outcode)
+    expect(groups[0].key).toBe('CV6')
+    expect(groups[0].n).toBe(2)
+  })
+
+  it('reports our offer against their number, which is the whole report', () => {
+    const c = calibrate([
+      row(120_000, 100_000, 130_000, 90_000, { offer_open: 80_000 }),
+      row(100_000, 100_000, 130_000, 90_000, { offer_open: 80_000 }),
+    ])
+    // 1.5 and 1.25, median 1.375.
+    expect(c.vsOffer).toBeCloseTo(1.375, 5)
+  })
+
+  it('says n/a rather than a confident 1.0 when we never opened at anything', () => {
+    expect(calibrate([row(120_000, 100_000, 130_000, 90_000)]).vsOffer).toBeNull()
+  })
+})
+
+describe('what the report says out loud', () => {
+  it('refuses to read anything into three calls', () => {
+    // The dataset starts at zero and grows one call at a time. A verdict off
+    // two rows would be the first thing anybody read and the first thing they
+    // acted on.
+    expect(valuationVerdict(1.4, 3)).toMatch(/too few/i)
+    expect(valuationVerdict(null, 50)).toMatch(/too few/i)
+  })
+
+  it('names the direction, because the two directions need opposite fixes', () => {
+    expect(valuationVerdict(1.3, 20)).toMatch(/running low/i)
+    expect(valuationVerdict(0.7, 20)).toMatch(/optimistic/i)
+    expect(valuationVerdict(1.0, 20)).toMatch(/agree within 5%/i)
+  })
+
+  it('will not call a refurb drift off one condition band', () => {
+    // The refurb read is a COMPARISON between bands. With one band there is
+    // nothing to compare it to, and "unknown" is not a band.
+    const g = (key: string, n: number, withinCeilingPct: number) => ({
+      key, n, withinCeilingPct, vsCmv: 1, vsAsking: 1, vsOffer: 1,
+      withinCeiling: Math.round(n * withinCeilingPct), byConfidence: {},
+    })
+    expect(refurbVerdict([g('full_refurb', 20, 0.2)])).toMatch(/not enough/i)
+    expect(refurbVerdict([g('unknown', 90, 0.2), g('turnkey', 20, 0.9)])).toMatch(/not enough/i)
+    expect(refurbVerdict([g('full_refurb', 20, 0.2), g('turnkey', 20, 0.9)]))
+      .toMatch(/refurb estimate, not the valuation/i)
+    // Close together is not a drift.
+    expect(refurbVerdict([g('full_refurb', 20, 0.5), g('turnkey', 20, 0.55)]))
+      .toMatch(/no clear refurb drift/i)
+  })
+
+  it('never writes a long dash or a curly quote', () => {
+    const all = [
+      valuationVerdict(1.3, 20), valuationVerdict(0.7, 20), valuationVerdict(1.0, 20),
+      valuationVerdict(1.1, 20), valuationVerdict(0.9, 20), valuationVerdict(1, 1),
+      refurbVerdict([]),
+    ].join(' ')
+    expect(all).not.toMatch(/[‐-―‘’“”…]/)
+  })
+})
+
 describe('the loop is actually wired in, not just written', () => {
   it('the outcome route records the figure with the engine numbers frozen beside it', async () => {
     const { readFileSync } = await import('node:fs')
@@ -156,6 +266,40 @@ describe('the loop is actually wired in, not just written', () => {
     const { resolve } = await import('node:path')
     const src = readFileSync(resolve(__dirname, '..', 'api', 'crm', 'property-outcome.ts'), 'utf8')
     expect(src).toMatch(/\.then\(undefined, \(\) => \{\}\)/)
+  })
+
+  it('the outcode and the condition band are FROZEN with the rest', async () => {
+    // Both are read at the moment of the call, not joined later. A property is
+    // re-priced and re-surveyed every night, so a join would compare a Tuesday
+    // call to Friday's survey and the calibration would drift on its own.
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const src = readFileSync(resolve(__dirname, '..', 'api', 'crm', 'property-outcome.ts'), 'utf8')
+    expect(src).toMatch(/outcode: outcodeOf\(property\.address\)/)
+    expect(src).toMatch(/condition_band: dealConditionBand\(/)
+  })
+
+  it('the weekly report exists, is scheduled, and stays quiet on an empty table', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const root = resolve(__dirname, '..')
+    const cron = readFileSync(resolve(root, 'api', 'cron', 'price-feedback-weekly.ts'), 'utf8')
+    // Both cuts, which is the entire ask of Stage 8.
+    expect(cron).toMatch(/calibrateBy\(withOutcode, \(r\) => r\.outcode\)/)
+    expect(cron).toMatch(/calibrateBy\(withOutcode, \(r\) => r\.condition_band\)/)
+    // No figures on file means no email. A weekly "nothing happened" is how a
+    // report gets filtered into a folder nobody opens.
+    expect(cron).toMatch(/no figures on file/)
+    // Every number is arithmetic. No model is asked to interpret this table.
+    expect(cron).not.toMatch(/anthropic|claude|gemini/i)
+
+    const vercel = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8')) as {
+      crons: Array<{ path: string; schedule: string }>
+    }
+    const entry = vercel.crons.find((c) => c.path === '/api/cron/price-feedback-weekly')
+    expect(entry).toBeTruthy()
+    // Weekly, on a Monday.
+    expect(entry!.schedule).toMatch(/\* \* 1$/)
   })
 
   it('the admin page reports it', async () => {

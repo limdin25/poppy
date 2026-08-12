@@ -13,6 +13,13 @@
 // page that must never be said out loud. The AI qualifier is deliberately never
 // told its own ceiling so it cannot leak it. A human has to know where to stop,
 // so he is told and trusted, and the warning is what makes that safe.
+//
+// 2026-08-12: three more things the deal engine works out, and Pedro was
+// guessing at all three. WHICH DEAL it is (BRRR, flip, HMO), HOW FAR BELOW
+// MARKET it is as a band (thin, meets criteria, strong) so he knows how hard to
+// push, and ONE LINE OF WHY. Every one of them is read from the engine and
+// never derived here. They are missing on most properties today and the strip
+// simply does not draw them: no empty box, no placeholder dash, no "unknown".
 
 import { AlertTriangle } from 'lucide-react';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
@@ -25,6 +32,15 @@ const CONFIDENCE: Record<string, { label: string; cls: string }> = {
   low: { label: 'thin evidence', cls: 'bg-[#FDF3E3] text-[#9A6B1E] border-[#EBD9B4]' },
   insufficient: { label: 'not enough sold data', cls: 'bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]' },
   unknown: { label: 'no valuation', cls: 'bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]' },
+};
+
+/** How hard to push, in a colour. A thin deal is amber because it is the one
+ *  where climbing costs real money, and amber is already what this screen uses
+ *  for "careful". */
+const BAND_CLS: Record<string, string> = {
+  thin: 'bg-[#FDF3E3] text-[#9A6B1E] border-[#EBD9B4]',
+  meets_criteria: 'bg-[#EEF2F8] text-[#3C5A87] border-[#CFDCEC]',
+  strong: 'bg-[#E8F5EC] text-[#2E7D43] border-[#CFE6D4]',
 };
 
 interface Props {
@@ -51,6 +67,14 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
     ? Number((cmvRaw as Record<string, unknown>).estimate) || 0
     : Number(cmvRaw) || 0;
 
+  // A withdrawn deal wears none of this. The auditor rejected the valuation,
+  // and "STRONG DEAL, needs a full refurb" sitting under "valuation rejected"
+  // is the same false confidence as a green evidence badge, only louder. Only
+  // ever true in Call history; the dialer never receives a withdrawn listing.
+  const strategy = listing.withdrawn ? null : listing.strategy;
+  const band = listing.withdrawn ? null : listing.bmvBand;
+  const reason = listing.withdrawn ? '' : listing.reasonLine;
+
   return (
     <div className="border-b border-[#E5E7EB] bg-white">
       <div className="flex items-baseline gap-2 px-4 pt-2.5 pb-1.5">
@@ -66,6 +90,29 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
           </span>
         )}
       </div>
+
+      {/* What kind of deal, and how hard to push. Directly above the three
+          figures so it frames them, and drawn only when the engine actually
+          said something. Most properties have neither today. */}
+      {(strategy || band) && (
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-1.5">
+          {strategy && (
+            <span className="rounded border border-[#D8DEE7] bg-[#F5F7FA] px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-[#3C5A87]">
+              {strategy}
+            </span>
+          )}
+          {band && (
+            <>
+              <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold tracking-wider ${BAND_CLS[band.code]}`}>
+                {band.label}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[11px] text-[#6B7280]" title={band.note}>
+                {band.note}
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       {noValuation ? (
         <div className="mx-4 mb-2.5 flex items-start gap-2 rounded-md border border-[#EBD9B4] bg-[#FDF3E3] px-3 py-2 text-[12px] text-[#9A6B1E]">
@@ -148,6 +195,18 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
           </span>
         )}
       </div>
+
+      {/* Why this is a deal, in one line. The engine's own sentence when it
+          wrote one, otherwise the condition read plus the first sold comp.
+          Empty on most properties today, and an empty reason renders nothing
+          rather than a bare dash under the figures. */}
+      {reason && (
+        <div className="border-t border-[#F0F1F3] px-4 py-1.5">
+          <span className="block truncate text-[11.5px] leading-snug text-[#4B5563]" title={reason}>
+            {reason}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

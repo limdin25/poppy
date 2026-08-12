@@ -2001,6 +2001,15 @@ serve(async (req: Request) => {
             }
             if (f('comp_evidence')) leadFactLines.push(`Sold nearby, use one at a time as justification: ${f('comp_evidence')}`);
             if (f('valuation_notes')) leadFactLines.push(`Worth knowing about this one: ${f('valuation_notes')}`);
+            // What the deal engine concluded, the same three things pinned on
+            // the strip above the agent's script. Blank on a property the
+            // engine has not judged, and blank means say nothing about it: the
+            // dialer deliberately writes an EMPTY string rather than omitting
+            // the key, so switching listing mid-call clears the last one
+            // instead of leaving the coach coaching the previous house.
+            if (f('deal_strategy')) leadFactLines.push(`The plan for this house: ${f('deal_strategy')}`);
+            if (f('bmv_band')) leadFactLines.push(`How hard to push: ${f('bmv_band')} Never say the band out loud, it is for your judgement only.`);
+            if (f('deal_reason')) leadFactLines.push(`Why this one is worth buying: ${f('deal_reason')}`);
             if (f('properties_count')) leadFactLines.push(`This branch has ${f('properties_count')} listings on our list.`);
           } else {
             if (ownerName) leadFactLines.push(`Owner's name (greet them by this): ${ownerName}`);

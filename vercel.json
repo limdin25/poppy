@@ -196,6 +196,10 @@
       "schedule": "0 8 * * 1"
     },
     {
+      "path": "/api/cron/price-feedback-weekly",
+      "schedule": "30 8 * * 1"
+    },
+    {
       "path": "/api/cron/daily-agent-reports",
       "schedule": "30 16 * * *"
     },

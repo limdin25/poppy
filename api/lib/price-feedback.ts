@@ -104,6 +104,14 @@ export interface CalibrationRow {
   cmv: number | null;
   cmv_confidence: string | null;
   offer_max: number | null;
+  /** What Pedro opened at. Optional because the admin panel has never selected
+   *  it; the weekly report does, and "our offer versus their number" is
+   *  literally this column against said_price. */
+  offer_open?: number | null;
+  /** Postcode outward code, frozen at the call. Optional for the same reason. */
+  outcode?: string | null;
+  /** What the engine thought the condition was, frozen at the call. */
+  condition_band?: string | null;
 }
 
 export interface Calibration {
@@ -117,6 +125,10 @@ export interface Calibration {
    *  come down from the advert, which is the number that decides whether the
    *  whole strategy has room in it. */
   vsAsking: number | null;
+  /** Median of (what they said / what we OPENED at). The headline of the
+   *  weekly report: our offer against their number. 1.0 would mean they name
+   *  the figure we open at, 1.4 means they are 40% above where we start. */
+  vsOffer: number | null;
   /** How often their figure was at or below our walk-away price, so the deal
    *  was doable on our own maths. */
   withinCeiling: number;
@@ -143,6 +155,7 @@ export function calibrate(rows: CalibrationRow[]): Calibration {
   const usable = rows.filter((r) => (r.said_price ?? 0) > 0);
   const cmvRatios: number[] = [];
   const askRatios: number[] = [];
+  const offerRatios: number[] = [];
   const byConf: Record<string, number[]> = {};
   let within = 0;
 
@@ -155,6 +168,7 @@ export function calibrate(rows: CalibrationRow[]): Calibration {
       (byConf[key] ||= []).push(ratio);
     }
     if (r.asking_price && r.asking_price > 0) askRatios.push(said / r.asking_price);
+    if (r.offer_open && r.offer_open > 0) offerRatios.push(said / r.offer_open);
     if (r.offer_max && r.offer_max > 0 && said <= r.offer_max) within += 1;
   }
 
@@ -167,8 +181,123 @@ export function calibrate(rows: CalibrationRow[]): Calibration {
     n: usable.length,
     vsCmv: median(cmvRatios),
     vsAsking: median(askRatios),
+    vsOffer: median(offerRatios),
     withinCeiling: within,
     withinCeilingPct: usable.length ? within / usable.length : null,
     byConfidence,
   };
+}
+
+/** One slice of the calibration set: an outcode, or a condition band. */
+export interface CalibrationGroup extends Calibration {
+  /** The outcode or condition band. 'unknown' when the row carried neither. */
+  key: string;
+}
+
+/**
+ * The same maths, cut by area or by condition.
+ *
+ * This is the whole point of the weekly report. A single national median tells
+ * you the engine is out by 20% and nothing about what to do; the same figure
+ * split by outcode says WHERE, and split by condition band says whether it is
+ * the valuation or the refurb estimate that is wrong.
+ *
+ * Sorted by sample size, biggest first, because a group of one is noise and
+ * should never sit at the top of a report Hugo acts on. Groups keep their real
+ * n so the reader can dismiss the small ones themselves.
+ */
+export function calibrateBy(
+  rows: CalibrationRow[],
+  keyOf: (r: CalibrationRow) => string | null | undefined,
+): CalibrationGroup[] {
+  const buckets = new Map<string, CalibrationRow[]>();
+  for (const r of rows) {
+    if (!((r.said_price ?? 0) > 0)) continue;   // same gate as calibrate()
+    const key = (keyOf(r) || '').trim() || 'unknown';
+    const arr = buckets.get(key) ?? [];
+    arr.push(r);
+    buckets.set(key, arr);
+  }
+  return [...buckets.entries()]
+    .map(([key, group]) => ({ key, ...calibrate(group) }))
+    .sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
+}
+
+// ── Reading the calibration out loud ────────────────────────────────────────
+//
+// The weekly report says what the medians MEAN in a sentence, and it is a
+// threshold on a number rather than a model writing prose. Same rule as the
+// rest of the pipeline: labels in, arithmetic out. A confident paragraph about
+// a drift that is not there would send somebody to change a rate card that was
+// fine, which is a worse outcome than saying nothing.
+//
+// They live here rather than in the cron so they can be tested without a
+// database client, and so there is one copy if anything else ever reports on
+// this table.
+
+/** Below this a median is one or two calls and means nothing. The same bar the
+ *  admin calibration panel uses, so the two surfaces never disagree. */
+export const MEANINGFUL_SAMPLE = 5;
+
+/** 0.23 -> "23%". Null stays "n/a", never "0%". */
+export function pctText(v: number | null): string {
+  return v == null ? 'n/a' : `${Math.round(v * 100)}%`;
+}
+
+/** 1.2 -> "1.20x". Null stays "n/a". */
+export function ratioText(v: number | null): string {
+  return v == null ? 'n/a' : `${v.toFixed(2)}x`;
+}
+
+/**
+ * What the headline ratio means, in one sentence.
+ *
+ * `vsCmv` is what they said over what we said the house is worth today. Above
+ * 1 means branches are talking ABOVE our valuation, so the valuation is
+ * running low. Below 1 means we are the optimistic ones, which is the more
+ * dangerous direction: it makes bad deals look buyable.
+ */
+export function valuationVerdict(vsCmv: number | null, n: number): string {
+  if (n < MEANINGFUL_SAMPLE || vsCmv == null) {
+    return `Too few figures to judge the engine yet (${n} of ${MEANINGFUL_SAMPLE} needed). Nothing to act on.`;
+  }
+  if (vsCmv >= 1.15) {
+    return `Branches are talking about ${pctText(vsCmv - 1)} above what the engine says these houses are worth. The valuation is running low, which means real deals are being priced out before Pedro ever rings.`;
+  }
+  if (vsCmv >= 1.05) {
+    return `Branches sit a little above the engine's valuation (${ratioText(vsCmv)}). Normal negotiating room, worth watching rather than changing anything.`;
+  }
+  if (vsCmv <= 0.85) {
+    return `Branches are naming figures well BELOW the engine's valuation (${ratioText(vsCmv)}). The engine is optimistic about what these houses are worth, which is the dangerous direction: it makes bad deals look buyable.`;
+  }
+  if (vsCmv <= 0.95) {
+    return `Branches are coming in slightly under the engine's valuation (${ratioText(vsCmv)}). The engine is a touch optimistic.`;
+  }
+  return `The engine and the branches agree within 5% (${ratioText(vsCmv)}). Nothing to change.`;
+}
+
+/**
+ * The refurb read, which is the other half of the report.
+ *
+ * The offer is (GDV minus refurb) x 0.75, so the refurb estimate moves the
+ * ceiling roughly pound for pound. If branches land inside our ceiling on
+ * turnkey houses and outside it on the ones needing work, the refurb card is
+ * the thing that is wrong, not the valuation. That is a comparison BETWEEN
+ * bands, so it refuses to say anything until at least two bands have a real
+ * sample behind them.
+ */
+export function refurbVerdict(groups: CalibrationGroup[]): string {
+  const usable = groups.filter(
+    (g) => g.key !== 'unknown' && g.n >= MEANINGFUL_SAMPLE && g.withinCeilingPct != null,
+  );
+  if (usable.length < 2) {
+    return 'Not enough condition-banded calls yet to say whether the refurb estimate is drifting. The engine that fills the condition band is still being wired up, so most calls are filed as unknown.';
+  }
+  const best = usable.reduce((a, b) => ((a.withinCeilingPct ?? 0) >= (b.withinCeilingPct ?? 0) ? a : b));
+  const worst = usable.reduce((a, b) => ((a.withinCeilingPct ?? 1) <= (b.withinCeilingPct ?? 1) ? a : b));
+  const gap = (best.withinCeilingPct ?? 0) - (worst.withinCeilingPct ?? 0);
+  if (gap < 0.2) {
+    return `The condition bands behave much the same (${best.key} ${pctText(best.withinCeilingPct)} of figures inside our ceiling, ${worst.key} ${pctText(worst.withinCeilingPct)}). No clear refurb drift.`;
+  }
+  return `We can reach ${pctText(best.withinCeilingPct)} of asked figures on ${best.key} houses but only ${pctText(worst.withinCeilingPct)} on ${worst.key} ones. That gap is the refurb estimate, not the valuation: the more work we price in, the further our ceiling falls below what the branch will take.`;
 }

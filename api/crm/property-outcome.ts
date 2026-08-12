@@ -32,6 +32,7 @@ import {
 } from '../lib/brrr.js';
 import { notifyBusinessOwner } from '../lib/notify.js';
 import { parseSpokenPrice } from '../lib/price-feedback.js';
+import { dealConditionBand, outcodeOf } from '../lib/brrr-deal-facts.js';
 
 export const config = { runtime: 'edge' };
 
@@ -192,6 +193,13 @@ export default async function handler(req: Request): Promise<Response> {
       gdv: nested(deal.gdv),
       offer_open: nested(deal.offer?.open) ?? nested(deal.offer_min),
       offer_max: nested(deal.offer?.max) ?? nested(deal.offer_max),
+      // WHERE and WHAT CONDITION, frozen with the rest. A single national
+      // median cannot be acted on; by outcode and by condition band it says
+      // which of the two estimates is drifting and where. The condition read
+      // in particular has to be frozen: the property is re-surveyed nightly,
+      // so a join would compare this call to next week's survey.
+      outcode: outcodeOf(property.address),
+      condition_band: dealConditionBand({ deal }),
       outcome,
       address: property.address ?? null,
     }).then(undefined, () => {});

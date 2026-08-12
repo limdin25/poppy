@@ -19,6 +19,10 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
 import { offerRange, gbpShort, ladderText, upliftRefurb } from '../../../../api/lib/brrr-offer';
+import {
+  dealStrategy, dealBmvBand, dealConditionBand, dealReasonLine,
+  type BmvBand,
+} from '../../../../api/lib/brrr-deal-facts';
 
 /** One row as the RPC returns it. */
 interface ListingRow {
@@ -76,6 +80,20 @@ export interface PropertyListing extends ListingRow {
   withdrawnReasons: string[];
   /** When it was filed as withdrawn. ISO, empty when unknown. */
   withdrawnAt: string;
+  /** Which deal this is: BRRR, FLIP, HMO. Null until the deal engine sends it.
+   *  READ from the engine, never worked out here. See api/lib/brrr-deal-facts. */
+  strategy: string | null;
+  /** How far below market, as a band, so Pedro knows how hard to push. Null
+   *  until the engine sends it, and never derived from the offer band: BMV is
+   *  measured against GDV minus refurb, and the refurb figure never reaches
+   *  this repo. */
+  bmvBand: BmvBand | null;
+  /** The condition read behind the refurb estimate, e.g. "full_refurb". Null
+   *  when the engine did not say, or said "unknown" (about a third of them). */
+  conditionBand: string | null;
+  /** One line of why this is a deal. Empty string when there is nothing
+   *  honest to say, which the strip renders as nothing at all. */
+  reasonLine: string;
 }
 
 /** The engine's flag codes, in words an agent can use on the phone.
@@ -246,6 +264,15 @@ export function usePropertyListings(phone: string | null | undefined, opts?: Opt
         withdrawn,
         withdrawnReasons,
         withdrawnAt: str(auditObj?.filed_at),
+        // What the engine CONCLUDED, as opposed to what it computed. All three
+        // are read straight out of the deal blob and are null on every property
+        // until the new engine lands, which is the normal state and not a
+        // fault. Nothing here is inferred from the offer band: see the header
+        // of api/lib/brrr-deal-facts.ts for why that would be dangerous.
+        strategy: dealStrategy(r),
+        bmvBand: dealBmvBand(r),
+        conditionBand: dealConditionBand(r),
+        reasonLine: dealReasonLine(r, evidence),
       };
     }).filter((l) => includeWithdrawn || !l.withdrawn);
   }, [q.data, includeWithdrawn]);
@@ -289,5 +316,20 @@ export function scriptTokensFor(l: PropertyListing | null | undefined): Record<s
       : 'not established',
     comp_evidence: l.evidence.length ? l.evidence.join(' · ') : 'no sold comparables on file',
     valuation_notes: l.flags.length ? l.flags.join(' ') : 'nothing unusual flagged',
+    // What the strip above the script shows him. The live coach is driven by
+    // Twilio and rebuilds from the database on every caller utterance, so it
+    // cannot see the screen: anything Pedro can read off the strip has to be
+    // written onto the contact or the coach is coaching a different property.
+    //
+    // ALWAYS PRESENT, EMPTY WHEN UNKNOWN, and that is load-bearing. The dialer
+    // merges this object over the contact's existing custom_fields, so a key
+    // that is simply left out keeps whatever the LAST property wrote. Pedro
+    // switches house mid-call constantly (one branch, many listings), and a
+    // stale "STRONG DEAL" carried over from the previous property is exactly
+    // the confidently wrong fact this whole screen exists to prevent. An empty
+    // string overwrites it; interpolateScript and the coach both skip blanks.
+    deal_strategy: l.strategy ?? '',
+    bmv_band: l.bmvBand ? `${l.bmvBand.label}. ${l.bmvBand.note}` : '',
+    deal_reason: l.reasonLine ?? '',
   };
 }
