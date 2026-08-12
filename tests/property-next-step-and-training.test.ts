@@ -248,6 +248,32 @@ describe('the knowledge checkpoint', () => {
       }
     });
 
+    // Hugo 2026-08-12: the script grew an email ask, a remote-buyer
+    // explanation and a subject-to-our-builder clause, and the bank tested none
+    // of them. "yes pls."
+    it('tests the parts of the script that were added today', () => {
+      for (const id of [
+        'script_email_address',
+        'obj_email_general_inbox',
+        'script_who_sends_the_offer',
+        'script_subject_to_builder',
+        'obj_who_views_it',
+        'script_quote_comes_back_higher',
+        'script_what_a_chase_call_is_for',
+      ]) {
+        expect(BANK, `${id} is missing from the question bank`).toContain(id);
+      }
+    });
+
+    it('teaches subject to our builder, never subject to survey', () => {
+      const q = BANK.slice(BANK.indexOf("id: 'script_subject_to_builder'"));
+      const opts = q.slice(q.indexOf('options: ['), q.indexOf(']', q.indexOf('options: [')));
+      // options[0] is the correct one in this file, and the survey is a wrong
+      // answer sitting right underneath it.
+      expect(opts).toMatch(/'Our builder going round/);
+      expect(opts).toMatch(/satisfactory survey/);
+    });
+
     it('reads the review in its own words', () => {
       expect(TOPICS_SRC).toMatch(/topicsForMistakes/);
       expect(CHECK).toMatch(/action === 'flag'/);

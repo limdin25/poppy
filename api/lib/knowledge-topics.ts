@@ -33,13 +33,9 @@ export const TOPICS: Topic[] = [
     because: 'They gave you a number on that call and it nearly got away.',
   },
   {
-    // The bank has no question about the email address yet: it was added to the
-    // script on 2026-08-12, after the bank was written. Until somebody writes
-    // one, this points at the closest thing, which is what you must never end a
-    // call without. Worth a proper question next time the bank is edited.
     key: 'the-email',
     match: /email/i,
-    questionIds: ['script_end_with_time'],
+    questionIds: ['script_email_address', 'obj_email_general_inbox'],
     because: 'You came off that call without their email address.',
   },
   {
@@ -51,14 +47,28 @@ export const TOPICS: Topic[] = [
   {
     key: 'never-offer',
     match: /formal offer|made an offer|promised|committed|authorised/i,
-    questionIds: ['owo_exact_wording', 'obj_formal_offer', 'script_never_two'],
+    questionIds: ['script_who_sends_the_offer', 'owo_exact_wording', 'obj_formal_offer'],
     because: 'You went further than an offer without offering on that call.',
   },
   {
     key: 'the-viewing',
     match: /viewing|view it|book(ed|ing)? a view|going round to see/i,
-    questionIds: ['harvey_viewing_objection', 'obj_book_viewing', 'harvey_worth_viewing'],
+    questionIds: ['obj_who_views_it', 'harvey_viewing_objection', 'obj_book_viewing'],
     because: 'The viewing question came up on that call.',
+  },
+  {
+    // Added 2026-08-12 with the questions that teach it: how we explain buying
+    // remotely, and why the offer is subject to our builder and not a survey.
+    key: 'how-we-buy',
+    match: /remote|nationwide|national buyer|subject to (a )?survey|survey|how we work|explain(ed)? (the|our) (model|process)/i,
+    questionIds: ['script_subject_to_builder', 'obj_who_views_it'],
+    because: 'The way we buy did not come across clearly on that call.',
+  },
+  {
+    key: 'the-chase',
+    match: /chase|already (in|with the vendor)|asked (for )?(the|a) ballpark again|re-?asked/i,
+    questionIds: ['script_what_a_chase_call_is_for'],
+    because: 'That was a chase call, and it did not sound like one.',
   },
   {
     key: 'walk-away',

@@ -938,6 +938,103 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     ],
     explanation: 'The fastest way to be written off. Branches get rung all day by people fresh off a weekend course who never buy anything. Deny it flatly, do not get defensive, and be back on the property within one sentence.',
   },
+
+  // ------------------------------------------------- the 2026-08-12 additions
+  // Everything below was added to the script on 2026-08-12 and had no question
+  // testing it: the email address, who actually sends the offer, why it is
+  // subject to our builder rather than to a survey, how we explain buying
+  // remotely, and what a chase call is for. Hugo: "yes pls."
+  {
+    id: 'script_email_address',
+    kind: 'mc',
+    source: 'script',
+    prompt: 'The call is winding down and you have your answer on the number. What must you get before you hang up?',
+    options: [
+      'Their email address. Every offer goes out by email, so a call without one cannot turn into an offer.',
+      'Their mobile number, so you can text them later.',
+      'The vendor\'s name.',
+      'Nothing else. You have what you rang for.',
+    ],
+    explanation: 'Hugo sends every offer himself, by email. A call that went brilliantly and produced no email address cannot become an offer. Ask it as the ordinary admin question it is: "what is the best email for you? Hugo will want to put something over in writing."',
+  },
+  {
+    id: 'obj_email_general_inbox',
+    kind: 'mc',
+    source: 'objections',
+    prompt: 'You ask for their email and they give you the branch\'s general inbox.',
+    options: [
+      'Take it, then ask for theirs as well: "and is there a direct one for you?"',
+      'Refuse it and insist on a personal address.',
+      'Take it and move on. An inbox is an inbox.',
+      'Say you will find it on their website.',
+    ],
+    explanation: 'The general inbox is better than nothing, but an offer sitting in it belongs to nobody. The person you have just built a rapport with is the person who will walk it to the vendor.',
+  },
+  {
+    id: 'script_who_sends_the_offer',
+    kind: 'mc',
+    source: 'script',
+    prompt: 'The agent says "put it in writing and I will take it to the vendor". Who sends that offer?',
+    options: [
+      'Hugo does, by email. You say you will speak to him and come back to them.',
+      'You do, straight after the call, using the figure on your screen.',
+      'Nobody. We never put anything in writing.',
+      'The solicitor sends it once the price is agreed.',
+    ],
+    explanation: 'You are not authorised to make a formal offer and you never send one. It is always "let me speak to Hugo and come back to you". That is not weakness, it is the oldest lever in negotiating: the person on the phone cannot say yes.',
+  },
+  {
+    id: 'script_subject_to_builder',
+    kind: 'mc',
+    source: 'script',
+    prompt: 'Our offer email says the offer is subject to something. Subject to what?',
+    options: [
+      'Our builder going round to view it and price the works.',
+      'A satisfactory survey.',
+      'Contract, as every offer is.',
+      'The mortgage being agreed.',
+    ],
+    explanation: 'Say "subject to our builder", never "subject to survey". The builder\'s visit IS the viewing and it produces the real quote in the same trip. A survey sounds like a buyer with a lender behind them, which is slower and less attractive to a vendor than cash.',
+  },
+  {
+    id: 'obj_who_views_it',
+    kind: 'mc',
+    source: 'objections',
+    prompt: '"Somebody has to actually see it before the vendor will accept anything."',
+    options: [
+      '"Of course. We buy across the country so we assess remotely first, then our builder comes round and views it and prices the work in the same visit. He can be there this week."',
+      '"I will come and see it myself this week."',
+      '"We do not need to see it. We are buying on the numbers."',
+      '"Can you send me a video instead?"',
+    ],
+    explanation: 'It answers the objection without a single wasted trip, and it sounds like a professional operation rather than somebody dodging a viewing. Ask for the video as well, but lead with the builder.',
+  },
+  {
+    id: 'script_quote_comes_back_higher',
+    kind: 'mc',
+    source: 'script',
+    prompt: 'The builder has been round and the work costs more than we budgeted. What happens?',
+    options: [
+      'We go back to the agent with the quote as evidence and ask the vendor to meet a lower figure.',
+      'We pull out. The deal is dead.',
+      'We pay the difference and carry on.',
+      'We hide it from the investor and hope for the best.',
+    ],
+    explanation: 'A written quote is evidence, not haggling, and agents treat it completely differently from a buyer who simply changes their mind. Offer to send it over. If they will not move and it no longer stacks, we walk and refund, which costs us nothing.',
+  },
+  {
+    id: 'script_what_a_chase_call_is_for',
+    kind: 'mc',
+    source: 'script',
+    prompt: 'You are ringing a branch back about an offer that is already with the vendor. What is that call for?',
+    options: [
+      'Has the vendor seen it, what did they say, and when is realistic to ring back.',
+      'Asking the ballpark question again to see if the number has moved.',
+      'Improving our offer to help it along.',
+      'Booking a viewing.',
+    ],
+    explanation: 'Asking for a ballpark you already have makes us look like we keep no records. And never improve our own offer unprompted: nothing has been given, so there is nothing to pay for. If they knock it back without naming a figure, ask what the vendor would actually take.',
+  },
 ];
 /** The bank keyed by id, for grading. */
 export const QUESTION_BY_ID: Record<string, TrainingQuestion> = Object.fromEntries(
