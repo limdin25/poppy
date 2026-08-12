@@ -7,9 +7,14 @@
 // AI coach" pane, bound to the active call's wk_calls.id) now lives HERE, in
 // the single dialer room, instead of a separate LiveCallScreen. It auto-opens
 // the moment a call connects so the agent's eye lands on the read-aloud line.
+//
+// Hugo 2026-08-12: the Houses tab LEFT this column. The house panel now sits
+// in the left column under the SMS history, so on a property call this column
+// opens on the Coach and stays there: "in that way he can have the coach
+// always open as well." Messages is still one click away.
 
 import { useEffect, useRef, useState } from 'react';
-import { Calculator, Home, MessageSquare, ShieldAlert, Sparkles } from 'lucide-react';
+import { Calculator, MessageSquare, ShieldAlert, Sparkles } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import SalesCalculatorPane from './SalesCalculatorPane';
 import ObjectionsPane from './ObjectionsPane';
@@ -19,10 +24,8 @@ import { useContactMessages, type CrmMessage } from '../../hooks/useContactMessa
 import { useSmsV2 } from '../../store/SmsV2Store';
 import SendSiteButton from './SendSiteButton';
 import VideoLinkButton from './VideoLinkButton';
-import PropertiesPane from './PropertiesPane';
-import type { PropertyListing } from '../../hooks/usePropertyListings';
 
-type Tab = 'coach' | 'houses' | 'calculator' | 'objections' | 'messages';
+type Tab = 'coach' | 'calculator' | 'objections' | 'messages';
 
 interface Props {
   contactId?: string;
@@ -48,8 +51,6 @@ interface Props {
    *  property call. Absent (every existing caller) leaves the four original
    *  tabs and the Calculator default exactly as they were. */
   showHouses?: boolean;
-  selectedPropertyId?: string | null;
-  onSelectProperty?: (id: string, listing: PropertyListing) => void;
 }
 
 export default function DialerRightTabs({
@@ -65,10 +66,11 @@ export default function DialerRightTabs({
   callConnected,
   liveDurationSec,
   showHouses,
-  selectedPropertyId,
-  onSelectProperty,
 }: Props) {
-  const [tab, setTab] = useState<Tab>(showHouses ? 'houses' : 'calculator');
+  // A property call opens on the Coach and stays there, because the houses
+  // panel it used to open on now lives in the left column and is always on
+  // screen beside it. A plumber call is untouched: Calculator, as ever.
+  const [tab, setTab] = useState<Tab>(showHouses ? 'coach' : 'calculator');
   const { messages } = useContactMessages(contactId ?? '');
 
   // Auto-open the Coach tab the instant the call connects, so the read-aloud
@@ -83,9 +85,6 @@ export default function DialerRightTabs({
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="flex border-b border-[#E5E7EB]">
-        {showHouses && (
-          <TabButton active={tab === 'houses'} icon={<Home className="w-3.5 h-3.5" />} label="Houses" onClick={() => setTab('houses')} />
-        )}
         <TabButton active={tab === 'coach'} icon={<Sparkles className="w-3.5 h-3.5" />} label="Coach" onClick={() => setTab('coach')} />
         {!showHouses && (
           <>
@@ -104,18 +103,10 @@ export default function DialerRightTabs({
             callId={currentCallId ?? null}
             agentFirstName={agentFirstName}
             // showHouses IS "this is a property call": it is the same flag that
-            // swaps these tabs to Houses/Coach/Messages. Threaded through so
+            // cuts these tabs down to Coach and Messages. Threaded through so
             // the coach can answer a money moment locally, without waiting for
             // the model. Never true on a plumber call.
             isPropertyCall={showHouses === true}
-          />
-        )}
-        {tab === 'houses' && (
-          <PropertiesPane
-            contactPhone={contactPhone}
-            selectedPropertyId={selectedPropertyId ?? null}
-            onSelectProperty={onSelectProperty ?? (() => {})}
-            currentCallId={currentCallId}
           />
         )}
         {tab === 'calculator' && <SalesCalculatorPane />}

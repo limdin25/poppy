@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, LogOut } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
@@ -59,6 +59,18 @@ export default function Smsv2Layout() {
   }, [sidebarCollapsed]);
   const { isAdmin } = useAuth();
   const location = useLocation();
+
+  // The dialer room always OPENS with the rail shut. Hugo 2026-08-12: "the menu
+  // on the left always starts minimized." The call room is the one page where
+  // every pixel is script, house and coach, so arriving there folds the rail
+  // away. It is only on arrival: he can still open it by hand and it stays open
+  // while he is in the room.
+  const onDialer = location.pathname.startsWith('/admin/crm/dialer');
+  const wasOnDialer = useRef(false);
+  useEffect(() => {
+    if (onDialer && !wasOnDialer.current) setSidebarCollapsed(true);
+    wasOnDialer.current = onDialer;
+  }, [onDialer]);
 
   return (
     <CrmGuard>

@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom';
 import {
   Phone, PhoneOff, Mic, MicOff, Pause as PauseIcon, Play, Square,
   SkipForward, Flame, Maximize2, Minus,
-  MessageSquare, FileText, PhoneForwarded, Hash, Circle,
+  MessageSquare, FileText, PhoneForwarded, Hash, Circle, Home,
   ChevronDown, Voicemail, Pencil} from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
@@ -27,6 +27,7 @@ import { scriptForCall, scriptFromLandingPath } from '@/features/crm/lib/scriptF
 import DialerRightTabs from '@/features/crm/components/live-call/DialerRightTabs';
 import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaCompact';
 import CallTimeline from '@/features/crm/components/live-call/CallTimeline';
+import PropertiesPane from '@/features/crm/components/live-call/PropertiesPane';
 import EditContactModal from '@/features/crm/components/contacts/EditContactModal';
 import type { Contact } from '@/features/crm/types';
 
@@ -426,6 +427,18 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
   // The hook is called here AND inside PropertiesPane. That is not a second
   // request: TanStack Query dedupes on the key, so both mounts share one.
   const isHousesCall = paneScriptKey === 'property_call';
+  // The SMS history above the house panel, open or shut. Hugo 2026-08-12:
+  // "you have a little room for this SMS that you can expand and minimize, and
+  // then below that you put the house details." It starts shut because it is
+  // empty until a call connects, and the house is what he is working from.
+  // sessionStorage, not localStorage: the choice belongs to this shift at this
+  // desk, and a new day starts tidy again.
+  const [smsOpen, setSmsOpen] = useState<boolean>(() => {
+    try { return sessionStorage.getItem('dialer_pro_sms_open') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem('dialer_pro_sms_open', smsOpen ? '1' : '0'); } catch { /* ignore */ }
+  }, [smsOpen]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const { listings: houseListings } = usePropertyListings(
     isHousesCall ? contact?.phone : null,
@@ -833,11 +846,17 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
       <div className="flex-1 overflow-hidden">
         <ResizablePanelGroup
           direction="horizontal"
-          autoSaveId="dialer-pro-call-layout-v4"
+          /* A property call carries the whole house panel in COL 1, so it gets
+             its own saved widths. The plumber room keeps v4 and every width
+             Pedro and Marr have already dragged into place. isHousesCall is
+             fixed for the life of the page (scriptForCall returns
+             property_call for every lead once the room opened on it), so this
+             never swaps under a live call. */
+          autoSaveId={isHousesCall ? 'dialer-pro-houses-layout-v1' : 'dialer-pro-call-layout-v4'}
           className="h-full"
         >
-          {/* COL 1 — Contact + SMS / WhatsApp (always visible) */}
-          <ResizablePanel defaultSize={22} minSize={16} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
+          {/* COL 1: contact, SMS history, and on a property call the house */}
+          <ResizablePanel defaultSize={isHousesCall ? 32 : 22} minSize={16} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
             {contact ? (
               <>
                 <div className="px-4 py-3 border-b border-[#E5E7EB]">
@@ -878,12 +897,54 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                   )}
                   <div className="mt-2"><ContactMetaCompact contact={contact} /></div>
                 </div>
-                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[12px]">
-                  {/* Keypad moved to a button on the dialer card; the SMS /
-                      WhatsApp / Email send box moved to the Messages tab on
-                      the right. COL 1 is now the contact context + timeline. */}
-                  <CallTimeline callId={state.currentCallId} />
-                </div>
+                {isHousesCall ? (
+                  <>
+                    {/* SMS history, folded away by default. It is empty until a
+                        call connects, and on a property call the space below it
+                        is doing the real work. */}
+                    <div className="border-b border-[#E5E7EB] flex-shrink-0">
+                      <button
+                        onClick={() => setSmsOpen((v) => !v)}
+                        aria-expanded={smsOpen}
+                        data-testid="dialer-sms-toggle"
+                        className="w-full flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF] hover:bg-[#F3F3EE]/60 transition-colors"
+                      >
+                        <ChevronDown className={cn('w-3 h-3 transition-transform', !smsOpen && '-rotate-90')} />
+                        <span>SMS history</span>
+                      </button>
+                      {smsOpen && (
+                        <div className="px-4 pb-3 text-[12px] max-h-[35vh] overflow-y-auto">
+                          <CallTimeline callId={state.currentCallId} />
+                        </div>
+                      )}
+                    </div>
+                    {/* The house, underneath it, scrolling on its own so the
+                        contact header and the SMS strip stay put.
+                        Still called Houses: the coach, the training questions
+                        and the daily report all tell Pedro to write the figure
+                        down "in the Houses tab", and those words have to point
+                        at something he can see. */}
+                    <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[#E5E7EB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF] flex-shrink-0">
+                      <Home className="w-3 h-3" />
+                      <span>Houses</span>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-hidden" data-testid="dialer-houses-panel">
+                      <PropertiesPane
+                        contactPhone={contact.phone}
+                        selectedPropertyId={selectedPropertyId}
+                        onSelectProperty={handleSelectProperty}
+                        currentCallId={state.currentCallId}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[12px]">
+                    {/* Keypad moved to a button on the dialer card; the SMS /
+                        WhatsApp / Email send box moved to the Messages tab on
+                        the right. COL 1 is now the contact context + timeline. */}
+                    <CallTimeline callId={state.currentCallId} />
+                  </div>
+                )}
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
@@ -900,7 +961,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               On a property call the offer band is PINNED above it, because the
               moment those three figures scroll off screen is the moment an
               agent guesses at them. */}
-          <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
+          <ResizablePanel defaultSize={isHousesCall ? 40 : 48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
             <div className="flex h-full flex-col">
               {isHousesCall && (
                 <OfferStrip listing={selectedListing} total={housesTotal} />
@@ -924,10 +985,11 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
           <ResizableHandle withHandle />
 
           {/* COL 3 — Right tabs. Normally Coach / Calculator / Objections /
-              Messages. On a property call: Houses / Coach / Messages, because
+              Messages. On a property call: Coach and Messages only, because
               the Calculator sells websites and the Objections answer plumber
-              objections. */}
-          <ResizablePanel defaultSize={30} minSize={16} className="overflow-hidden">
+              objections, and it opens on the Coach and stays there now that the
+              house panel is in COL 1. */}
+          <ResizablePanel defaultSize={isHousesCall ? 28 : 30} minSize={16} className="overflow-hidden">
             <DialerRightTabs
               contactId={activeContactId ?? undefined}
               contactName={contact?.name}
@@ -941,8 +1003,6 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               callConnected={state.phase === 'connected'}
               liveDurationSec={liveDuration}
               showHouses={isHousesCall}
-              selectedPropertyId={selectedPropertyId}
-              onSelectProperty={handleSelectProperty}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

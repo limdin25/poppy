@@ -50,6 +50,24 @@ interface ListingRow {
   last_call_summary: string | null;
 }
 
+/** One sold comparable behind the valuation, ready to read out loud.
+ *
+ *  The engine files these as OBJECTS in deal.evidence (comp_type, address,
+ *  price, bedrooms, property_type, date_info, distance_label, url). They used
+ *  to be pushed through String(), which is what printed "[object Object]"
+ *  three times under "sold nearby, your evidence" on Pedro's screen. */
+export interface PropertyComp {
+  /** 'today' is a sale at the SAME bed count, so it is what the house is worth
+   *  now. 'after' is a sale at the TARGET bed count, so it is what it is worth
+   *  once the conversion is done. Saying one when you mean the other is how an
+   *  agent quotes a 5 bed price for a 3 bed house. */
+  when: 'today' | 'after';
+  /** "3 bed terraced, 14 ORCHARD TERRACE, £92,000, Same road, sold 2026-05-01" */
+  text: string;
+  /** The listing behind it, empty when the engine had none. */
+  url: string;
+}
+
 export interface PropertyListing extends ListingRow {
   /** Open here. Never higher. */
   offerMin: number;
@@ -61,6 +79,10 @@ export interface PropertyListing extends ListingRow {
   confidence: string;
   /** Up to three sold comps, as sentences. */
   evidence: string[];
+  /** Every sold comp the engine sent, split into what it is worth today and
+   *  what it is worth converted. Empty when the row only carries the older
+   *  flat sentences, and the screen falls back to `evidence` then. */
+  comps: PropertyComp[];
   /** Plain-English warnings from the valuation engine. */
   flags: string[];
   isAuction: boolean;
@@ -128,6 +150,32 @@ const FLAG_NOTES: Record<string, string> = {
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : v == null ? '' : String(v);
+}
+
+/** One comp row from the engine, as a sentence.
+ *
+ *  Every field is optional in practice, so the sentence is assembled from
+ *  whatever is actually there rather than from a fixed template with holes in
+ *  it. The bed count leads because it is the thing that must not be muddled:
+ *  a sale at the target size is not evidence of what the house is worth today.
+ *
+ *  Exported only so tests can pin it. Nothing else calls it. */
+export function compText(c: Record<string, unknown>): string {
+  const beds = str(c.bedrooms).trim();
+  const type = str(c.property_type).trim().toLowerCase();
+  const size = [beds ? `${beds} bed` : '', type].filter(Boolean).join(' ');
+  const rawPrice = str(c.price).trim();
+  // Land Registry prices arrive already formatted ("£92,000"); other sources
+  // send a bare number, and "92000" read down a phone line is not a price.
+  const price = /^[\d.]+$/.test(rawPrice) ? gbpShort(Number(rawPrice)) : rawPrice;
+  const date = str(c.date_info).trim();
+  return [
+    size,
+    str(c.address).trim(),
+    price,
+    str(c.distance_label).trim(),
+    date ? `sold ${date}` : '',
+  ].filter(Boolean).join(', ');
 }
 
 /** What the property is worth today, out of either deal shape.
@@ -237,8 +285,20 @@ export function usePropertyListings(phone: string | null | undefined, opts?: Opt
       // from the audit rows the engine already returns: raw sold price and
       // date, never the time-adjusted figure, because Pedro says these out
       // loud to someone who can check.
-      const flatEvidence = (Array.isArray(deal.evidence) ? (deal.evidence as unknown[]) : [])
-        .map(str).filter(Boolean);
+      const evidenceRows = Array.isArray(deal.evidence) ? (deal.evidence as unknown[]) : [];
+      const flatEvidence = evidenceRows
+        .filter((e) => typeof e === 'string').map(str).filter(Boolean);
+      // The engine's own comp rows. build_pedro_list.py sends about ten per
+      // property, half at today's bed count and half at the target, and until
+      // 2026-08-12 every one of them rendered as "[object Object]".
+      const comps: PropertyComp[] = evidenceRows
+        .filter((e): e is Record<string, unknown> => typeof e === 'object' && e !== null)
+        .map((c) => ({
+          when: str(c.comp_type).includes('target') ? 'after' as const : 'today' as const,
+          text: compText(c),
+          url: str(c.url).trim(),
+        }))
+        .filter((c) => c.text);
       const auditRows = Array.isArray(cmvObj?.audit)
         ? cmvObj.audit as Array<Record<string, unknown>> : [];
       const nestedEvidence = auditRows
@@ -246,10 +306,18 @@ export function usePropertyListings(phone: string | null | undefined, opts?: Opt
         .slice(0, 3)
         .map((a) => `${str(a.address)} sold for ${gbpShort(Number(a.price))}${a.date ? ` (${str(a.date)})` : ''}`);
       const nUsed = Number(cmvObj?.n_used ?? 0);
+      // Today's sales come first, always. This list is what the agent reads out
+      // as the evidence for the price he is offering NOW, and a sale at the
+      // converted size proves a different number entirely.
+      const compEvidence = [
+        ...comps.filter((c) => c.when === 'today'),
+        ...comps.filter((c) => c.when === 'after'),
+      ].map((c) => c.text);
       const evidence = flatEvidence.length > 0 ? flatEvidence.slice(0, 3)
-        : nestedEvidence.length > 0 ? nestedEvidence
-          : nUsed > 0 ? [`${nUsed} sold comparables nearby put it at ${gbpShort(cmvOf(deal))}`]
-            : [];
+        : compEvidence.length > 0 ? compEvidence.slice(0, 3)
+          : nestedEvidence.length > 0 ? nestedEvidence
+            : nUsed > 0 ? [`${nUsed} sold comparables nearby put it at ${gbpShort(cmvOf(deal))}`]
+              : [];
       return {
         ...r,
         offerMin: band.min,
@@ -257,6 +325,7 @@ export function usePropertyListings(phone: string | null | undefined, opts?: Opt
         ladder: ladderText(deal, band, isAuction),
         confidence: str(cmvObj?.confidence ?? deal.cmv_confidence) || 'unknown',
         evidence,
+        comps,
         flags: flagCodes.map((c) => FLAG_NOTES[c] ?? c).filter(Boolean),
         isAuction,
         upliftValue: gdvOf(deal),

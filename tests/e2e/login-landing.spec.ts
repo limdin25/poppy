@@ -101,10 +101,12 @@ test('Pedro Houses lands straight in the property call room, no bookmark needed'
 
   // COL 3 swaps to the property tabs. The two plumber tools are the tell: the
   // Gap calculator sells websites and Objections answers plumber objections.
-  await expect(page.getByRole('button', { name: 'Houses', exact: true })).toBeVisible()
+  // Since 2026-08-12 the houses panel is in COL 1, so this column is the Coach
+  // and Messages, and it opens on the Coach.
   await expect(page.getByRole('button', { name: 'Coach', exact: true })).toBeVisible()
   // Not exact: the Messages tab carries a message-count badge in its label.
   await expect(page.getByRole('button', { name: /^Messages/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Houses', exact: true })).toBeHidden()
   await expect(page.getByRole('button', { name: 'Calculator', exact: true })).toBeHidden()
   await expect(page.getByRole('button', { name: 'Objections', exact: true })).toBeHidden()
 
@@ -114,6 +116,13 @@ test('Pedro Houses lands straight in the property call room, no bookmark needed'
   // The count, not the words: COL 1 says "No leads in queue" while it is still
   // loading, which matches too early and screenshots an empty room.
   await page.getByText(/^\d+ leads in queue$/).waitFor({ timeout: 20_000 }).catch(() => {})
+
+  // With a lead on screen, COL 1 carries the house: the SMS history folded away
+  // at the top, the Houses panel underneath it. Soft for the same reason as the
+  // queue wait above: an empty queue one day is not a failed login test.
+  if (await page.getByTestId('dialer-sms-toggle').isVisible().catch(() => false)) {
+    await expect(page.getByTestId('dialer-houses-panel')).toBeVisible()
+  }
   await page.screenshot({ path: 'playwright-report/pedro-landing.png' })
 })
 

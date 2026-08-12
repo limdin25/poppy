@@ -6,7 +6,8 @@ import { test, expect } from './helpers/auth'
  * Two things are being proved here, and the second matters more than the first.
  *
  * 1. Pedro's screen is right: the property script in the middle, the offer band
- *    pinned above it, and Houses / Coach / Messages on the right, with the
+ *    pinned above it, the house in the LEFT column under a collapsible SMS
+ *    history (Hugo, 2026-08-12), and the Coach open on the right with the
  *    plumber-only Calculator and Objections gone.
  *
  * 2. THE PLUMBER DIALER IS UNCHANGED. Pedro and Marr open the same room ~200
@@ -22,7 +23,7 @@ import { test, expect } from './helpers/auth'
 test.describe('Dialer Pro — the Houses call', () => {
   test.skip(process.env.E2E_OWNER_READY !== '1', 'needs a CRM admin account (E2E_OWNER_READY=1)')
 
-  test('property script + pinned offer band + Houses tab', async ({ authedPage: page }) => {
+  test('property script + pinned offer band + the house in the left column', async ({ authedPage: page }) => {
     await page.goto('/admin/crm/dialer-pro?script=property_call')
 
     // COL 2 shows the property script, not the plumber one.
@@ -34,15 +35,29 @@ test.describe('Dialer Pro — the Houses call', () => {
     await expect(frame.locator('body')).toContainText(/Never say this number out loud/i)
     await expect(frame.locator('body')).toContainText(/Never ask a house about service charges/i)
 
-    // COL 3: Houses is present and selected first, and the two plumber tabs are
-    // gone. Coach stays, because the live AI coach works on this call too.
-    await expect(page.getByRole('button', { name: /Houses/ })).toBeVisible()
+    // COL 3: the Coach, which is now what a property call opens on, and
+    // Messages. The Houses tab moved out of this column entirely and the two
+    // plumber tabs are still gone.
     // Exact: the CRM header gained a "Coach: ON" pill, so a loose /Coach/ now
     // matches two buttons and fails on strict mode. The tab is the one we mean.
     await expect(page.getByRole('button', { name: 'Coach', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: /Messages/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Houses/ })).toBeHidden()
     await expect(page.getByRole('button', { name: /Calculator/ })).toBeHidden()
     await expect(page.getByRole('button', { name: /Objections/ })).toBeHidden()
+
+    // COL 1: the SMS history folded away at the top, the house underneath it.
+    // Soft, because COL 1 shows "No leads in queue" when the queue is empty and
+    // an empty queue is not a broken layout.
+    if (await page.getByTestId('dialer-sms-toggle').isVisible().catch(() => false)) {
+      await expect(page.getByTestId('dialer-houses-panel')).toBeVisible()
+      // Shut by default, and it opens on a click.
+      await expect(page.getByText('SMS history appears once a call connects.')).toBeHidden()
+      await page.getByTestId('dialer-sms-toggle').click()
+      await expect(page.getByText('SMS history appears once a call connects.')).toBeVisible()
+      await page.getByTestId('dialer-sms-toggle').click()
+      await expect(page.getByText('SMS history appears once a call connects.')).toBeHidden()
+    }
   })
 
   test('the offer band is pinned above the script, not inside a tab', async ({ authedPage: page }) => {
@@ -73,8 +88,10 @@ test.describe('Dialer Pro — the Houses call', () => {
     await expect(page.getByRole('button', { name: /Objections/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /Messages/ })).toBeVisible()
 
-    // Nothing from the Houses feature leaks in.
+    // Nothing from the Houses feature leaks in, in either column.
     await expect(page.getByRole('button', { name: /Houses/ })).toBeHidden()
+    await expect(page.getByTestId('dialer-houses-panel')).toBeHidden()
+    await expect(page.getByTestId('dialer-sms-toggle')).toBeHidden()
     await expect(page.getByText('Walk away at')).toBeHidden()
     await expect(page.getByText('NEVER SAY THIS OUT LOUD')).toBeHidden()
   })

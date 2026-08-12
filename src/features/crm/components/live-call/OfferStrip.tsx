@@ -6,8 +6,8 @@
 //
 // It lives at the top of the middle column, above the script, rather than in a
 // tab, because the moment it scrolls away is the moment an agent guesses. The
-// comps and floor plans that justify these figures are one click away in the
-// Houses tab; these three are always on screen.
+// comps and floor plans that justify these figures are beside it in the Houses
+// panel in the left column; these three are always on screen.
 //
 // The ceiling is red and carries a warning because it is the one number on the
 // page that must never be said out loud. The AI qualifier is deliberately never
@@ -53,7 +53,7 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
   if (!listing) {
     return (
       <div className="border-b border-[#E5E7EB] bg-[#FAFAF8] px-4 py-2.5 text-[12px] text-[#9CA3AF]">
-        No property selected. Pick one in the Houses tab.
+        No property selected. Pick one in the Houses panel on the left.
       </div>
     );
   }

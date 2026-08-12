@@ -1,4 +1,9 @@
-// The Houses tab: everything behind the three numbers pinned above the script.
+// The house panel: everything behind the three numbers pinned above the script.
+//
+// It lived in a tab on the right until 2026-08-12, when Hugo moved it into the
+// LEFT column under the SMS history so the Coach can stay open beside it: "in
+// that way he can have the coach always open as well." Nothing inside changed
+// with the move; it is the same panel in a different column.
 //
 // Layout follows Tajul's NFStay BrrrrCallPanel, which Hugo pointed at as the
 // shape he wants: property picker, the facts, then sold comps and rentals, then
@@ -13,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
-import { usePropertyListings, type PropertyListing } from '../../hooks/usePropertyListings';
+import { usePropertyListings, type PropertyComp, type PropertyListing } from '../../hooks/usePropertyListings';
 
 /** The 16 questions, mirroring QUALIFICATION_QUESTIONS in api/lib/brrr.ts so a
  *  human call and an AI call record the same facts under the same keys. */
@@ -250,15 +255,33 @@ export default function PropertiesPane({
             )}
           </div>
 
-          {/* The evidence behind the number */}
-          {selected.evidence.length > 0 && (
+          {/* The evidence behind the number.
+              The engine sends these as objects, so they are grouped by what
+              they prove: a sale at today's bed count is what the house is
+              worth now, a sale at the target bed count is what it is worth
+              once the conversion is done. Reading one out as the other is how
+              an agent quotes a 5 bed price for a 3 bed house. */}
+          {(selected.comps.length > 0 || selected.evidence.length > 0) && (
             <div className="border-b border-[#E5E7EB] px-3 py-2">
               <Label>Sold nearby, your evidence</Label>
-              <ul className="mt-1 space-y-0.5">
-                {selected.evidence.map((e) => (
-                  <li key={e} className="text-[11.5px] leading-snug text-[#4B5563]">{e}</li>
-                ))}
-              </ul>
+              {selected.comps.length > 0 ? (
+                <div className="mt-1 space-y-2">
+                  <CompGroup
+                    heading="Same size as it is now"
+                    comps={selected.comps.filter((c) => c.when === 'today')}
+                  />
+                  <CompGroup
+                    heading="The size it becomes after the conversion"
+                    comps={selected.comps.filter((c) => c.when === 'after')}
+                  />
+                </div>
+              ) : (
+                <ul className="mt-1 space-y-0.5">
+                  {selected.evidence.map((e) => (
+                    <li key={e} className="text-[11.5px] leading-snug text-[#4B5563]">{e}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
@@ -329,6 +352,29 @@ export default function PropertiesPane({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** One block of sold comps under its own plain-English heading. Draws nothing
+ *  when the engine found none of that kind, which is common: plenty of
+ *  properties have same-size sales nearby and no converted ones. */
+function CompGroup({ heading, comps }: { heading: string; comps: PropertyComp[] }) {
+  if (comps.length === 0) return null;
+  return (
+    <div>
+      <div className="text-[10px] font-semibold text-[#6B7280]">{heading}</div>
+      <ul className="mt-0.5 space-y-0.5">
+        {comps.map((c) => (
+          <li key={`${c.text}${c.url}`} className="text-[11.5px] leading-snug text-[#4B5563] break-words">
+            {c.url ? (
+              <a href={c.url} target="_blank" rel="noreferrer" className="hover:underline">
+                {c.text}
+              </a>
+            ) : c.text}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

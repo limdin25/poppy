@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { scriptTokensFor } from '../src/features/crm/hooks/usePropertyListings'
+import { compText, scriptTokensFor } from '../src/features/crm/hooks/usePropertyListings'
 import type { PropertyListing } from '../src/features/crm/hooks/usePropertyListings'
 
 const root = resolve(__dirname, '..')
@@ -25,9 +25,14 @@ const META = read('src/features/crm/components/live-call/ContactMetaCompact.tsx'
 const HOOK = read('src/features/crm/hooks/usePropertyListings.ts')
 
 describe('the tab set swaps, it does not just grow', () => {
-  it('Houses and Coach show on a property call', () => {
-    expect(TABS).toMatch(/showHouses && \(\s*\n?\s*<TabButton active=\{tab === 'houses'\}/)
+  it('the Coach is what a property call opens on', () => {
+    // Hugo 2026-08-12: the houses panel moved to COL 1, under the SMS history,
+    // "in that way he can have the coach always open as well". So this column
+    // no longer carries a Houses tab at all, and a property call lands on the
+    // Coach instead of leaving it behind a click.
     expect(TABS).toMatch(/label="Coach"/)
+    expect(TABS).not.toMatch(/label="Houses"/)
+    expect(TABS).not.toMatch(/<PropertiesPane/)
   })
 
   it('Calculator and Objections are HIDDEN on a property call', () => {
@@ -40,12 +45,59 @@ describe('the tab set swaps, it does not just grow', () => {
     expect(hidden).toMatch(/label="Objections"/)
   })
 
-  it('defaults to Houses when in houses mode, Calculator otherwise', () => {
-    expect(TABS).toMatch(/useState<Tab>\(showHouses \? 'houses' : 'calculator'\)/)
+  it('defaults to Coach in houses mode, Calculator otherwise', () => {
+    expect(TABS).toMatch(/useState<Tab>\(showHouses \? 'coach' : 'calculator'\)/)
+  })
+
+  it('Messages is still reachable on a property call', () => {
+    // The tab set shrank to two. Losing the send box with it would take the
+    // mid-call SMS off the one agent who uses it most.
+    expect(TABS).toMatch(/label="Messages"/)
+    expect(TABS).toMatch(/tab === 'messages' && \(/)
   })
 
   it('showHouses is optional, so every existing caller is unchanged', () => {
     expect(TABS).toMatch(/showHouses\?: boolean/)
+  })
+})
+
+describe('the house sits in the left column, under a collapsible SMS history', () => {
+  it('COL 1 mounts the house panel, and only on a property call', () => {
+    // Hugo's words: "move that to the left-hand side where it's written SMS
+    // history appears here once a call connects... below that you put the
+    // house details."
+    expect(PAGE).toMatch(/<PropertiesPane/)
+    expect(PAGE).toMatch(/\{isHousesCall \? \(/)
+    // And the plumber room keeps the plain timeline it has always had.
+    expect(PAGE).toMatch(/<CallTimeline callId=\{state\.currentCallId\} \/>/)
+  })
+
+  it('the SMS history folds away, and remembers only for the session', () => {
+    // Shut by default: it is empty until a call connects, and the house is the
+    // thing being worked from. sessionStorage, so a new day starts tidy.
+    expect(PAGE).toMatch(/sessionStorage\.getItem\('dialer_pro_sms_open'\) === '1'/)
+    expect(PAGE).toMatch(/data-testid="dialer-sms-toggle"/)
+  })
+
+  it('keeps the word Houses on screen, because the coach says it out loud', () => {
+    // instantCoach, the training questions and the daily report all tell Pedro
+    // to write the figure "in the Houses tab". Those words have to point at
+    // something he can still see.
+    expect(PAGE).toMatch(/data-testid="dialer-houses-panel"/)
+    expect(PAGE).toMatch(/<span>Houses<\/span>/)
+  })
+
+  it('the property room has its own saved column widths', () => {
+    // COL 1 now carries the whole house panel, so it opens wider. The plumber
+    // room keeps v4 and every width already dragged into place.
+    expect(PAGE).toMatch(/autoSaveId=\{isHousesCall \? 'dialer-pro-houses-layout-v1' : 'dialer-pro-call-layout-v4'\}/)
+  })
+
+  it('the rail is folded away on arrival in the call room', () => {
+    // Hugo: "the menu on the left always starts minimized."
+    const layout = read('src/features/crm/layout/Smsv2Layout.tsx')
+    expect(layout).toMatch(/pathname\.startsWith\('\/admin\/crm\/dialer'\)/)
+    expect(layout).toMatch(/if \(onDialer && !wasOnDialer\.current\) setSidebarCollapsed\(true\)/)
   })
 })
 
@@ -125,6 +177,52 @@ describe('the send buttons are hidden from estate agents', () => {
     for (const b of ['VideoLinkButton', 'SubscribeButton', 'SendSiteButton']) {
       expect(guarded).toContain(b)
     }
+  })
+})
+
+describe('the sold comps are sentences, never [object Object]', () => {
+  // The engine files deal.evidence as OBJECTS. They were run through String(),
+  // so "sold nearby, your evidence" printed "[object Object]" three times on
+  // the one panel whose whole job is to justify the figure Pedro is saying.
+  const comp = {
+    comp_type: 'sale_same',
+    address: '14 ORCHARD TERRACE',
+    price: '£92,000',
+    bedrooms: '3',
+    property_type: 'Terraced',
+    url: '',
+    date_info: '2026-05-01',
+    distance_m: '0',
+    distance_label: 'Same road',
+    source: 'Land Registry',
+    floor_area_sqm: '79',
+  }
+
+  it('reads as something an agent can say down the phone', () => {
+    const t = compText(comp)
+    expect(t).not.toContain('[object Object]')
+    expect(t).toBe('3 bed terraced, 14 ORCHARD TERRACE, £92,000, Same road, sold 2026-05-01')
+  })
+
+  it('formats a bare number, because "92000" is not a price', () => {
+    expect(compText({ ...comp, price: '92000' })).toContain('£92,000')
+  })
+
+  it('leaves out what the engine did not send, rather than printing a hole', () => {
+    expect(compText({ address: 'Smith Street', price: '£118,000' }))
+      .toBe('Smith Street, £118,000')
+    expect(compText({})).toBe('')
+  })
+
+  it('the panel splits today from after the conversion', () => {
+    // A sale at the target bed count proves what the house is worth CONVERTED.
+    // Read out as evidence for today's offer it is simply a wrong number.
+    const pane = read('src/features/crm/components/live-call/PropertiesPane.tsx')
+    expect(pane).toMatch(/c\.when === 'today'/)
+    expect(pane).toMatch(/c\.when === 'after'/)
+    expect(HOOK).toMatch(/str\(c\.comp_type\)\.includes\('target'\) \? 'after'/)
+    // And today's sales lead the three that reach the script token.
+    expect(HOOK).toMatch(/comps\.filter\(\(c\) => c\.when === 'today'\)/)
   })
 })
 
