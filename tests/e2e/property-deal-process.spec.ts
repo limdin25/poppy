@@ -67,7 +67,9 @@ test.describe('Deal process page', () => {
     await page.goto('/admin/crm/deal-process');
 
     await page.getByRole('button', { name: /Submit the formal offer/i }).click();
-    await expect(page.locator('body')).toContainText(/Subject to: my builder inspecting/i);
+    // The wording the live script and the AI coach both use. "Subject to
+    // survey" would contradict what Pedro says on the phone.
+    await expect(page.locator('body')).toContainText(/Subject to: our builder going round/i);
     await expect(
       page.getByRole('button', { name: /Copy Formal offer email/i })
     ).toBeVisible();

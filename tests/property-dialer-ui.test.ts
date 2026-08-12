@@ -61,7 +61,7 @@ describe('the tab set swaps, it does not just grow', () => {
   })
 })
 
-describe('the house sits in the left column, under a collapsible SMS history', () => {
+describe('the house sits in the left column, under the next step', () => {
   it('COL 1 mounts the house panel, and only on a property call', () => {
     // Hugo's words: "move that to the left-hand side where it's written SMS
     // history appears here once a call connects... below that you put the
@@ -72,11 +72,22 @@ describe('the house sits in the left column, under a collapsible SMS history', (
     expect(PAGE).toMatch(/<CallTimeline callId=\{state\.currentCallId\} \/>/)
   })
 
-  it('the SMS history folds away, and remembers only for the session', () => {
-    // Shut by default: it is empty until a call connects, and the house is the
-    // thing being worked from. sessionStorage, so a new day starts tidy.
-    expect(PAGE).toMatch(/sessionStorage\.getItem\('dialer_pro_sms_open'\) === '1'/)
-    expect(PAGE).toMatch(/data-testid="dialer-sms-toggle"/)
+  // Hugo 2026-08-12: "the SMS history should be on the right hand side, on the
+  // messages with the history." Two histories in two columns was one too many,
+  // and the space in COL 1 is worth more as the next step.
+  it('the SMS fold-out is gone from the left column', () => {
+    expect(PAGE).not.toMatch(/dialer_pro_sms_open/)
+    expect(PAGE).not.toMatch(/data-testid="dialer-sms-toggle"/)
+  })
+
+  it('the call timeline moved into the Messages tab on the right', () => {
+    expect(TABS).toMatch(/<CallTimeline callId=\{currentCallId \?\? null\} \/>/)
+    expect(TABS).toMatch(/data-testid="messages-sms-history"/)
+  })
+
+  it('what to do next sits where the SMS fold-out used to be', () => {
+    expect(PAGE).toMatch(/<NextStepPanel/)
+    expect(PAGE).toMatch(/customFields\?\.next_step/)
   })
 
   it('keeps the word Houses on screen, because the coach says it out loud', () => {

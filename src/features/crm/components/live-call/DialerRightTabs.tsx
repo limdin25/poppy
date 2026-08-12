@@ -24,6 +24,8 @@ import { useContactMessages, type CrmMessage } from '../../hooks/useContactMessa
 import { useSmsV2 } from '../../store/SmsV2Store';
 import SendSiteButton from './SendSiteButton';
 import VideoLinkButton from './VideoLinkButton';
+import CallTimeline from './CallTimeline';
+import type { OfferHouse } from './MidCallSmsSender';
 
 type Tab = 'coach' | 'calculator' | 'objections' | 'messages';
 
@@ -51,6 +53,9 @@ interface Props {
    *  property call. Absent (every existing caller) leaves the four original
    *  tabs and the Calculator default exactly as they were. */
   showHouses?: boolean;
+  /** The house on screen, so "write the offer with AI" writes about THIS one.
+   *  Only ever set on a property call. */
+  offerHouse?: OfferHouse | null;
 }
 
 export default function DialerRightTabs({
@@ -66,6 +71,7 @@ export default function DialerRightTabs({
   callConnected,
   liveDurationSec,
   showHouses,
+  offerHouse,
 }: Props) {
   // A property call opens on the Coach and stays there, because the houses
   // panel it used to open on now lives in the left column and is always on
@@ -122,6 +128,9 @@ export default function DialerRightTabs({
             campaignId={campaignId}
             pipelineId={pipelineId}
             messages={messages}
+            showHouses={showHouses}
+            currentCallId={currentCallId}
+            offerHouse={offerHouse}
           />
         )}
       </div>
@@ -131,12 +140,21 @@ export default function DialerRightTabs({
 
 function MessagesTab({
   contactId, contactName, contactPhone, contactEmail, ownerName, agentFirstName, campaignId, pipelineId, messages,
+  showHouses, currentCallId, offerHouse,
 }: Props & { messages: CrmMessage[] }) {
   // Hugo 2026-07-27: "under message put option to send video there as well."
   // Same component as the contact pane — its send guards are module-scoped, so
   // two mounts can't text the lead twice.
+  //
+  // Hugo 2026-08-12, property calls only: "remove send a video, build and send
+  // the website, Pedro doesn't need that." Both sell the Elsie product to a
+  // plumber. On a property call the person on the phone is an estate agent
+  // selling a house, so the buttons are worse than clutter, they are a way to
+  // send the wrong thing to the wrong person. Plumber calls keep both exactly
+  // as they were.
   const { getContact } = useSmsV2();
   const contact = contactId ? getContact(contactId) : undefined;
+  const isPropertyCall = showHouses === true;
 
   if (!contactId || !contactName || !contactPhone) {
     return (
@@ -149,8 +167,8 @@ function MessagesTab({
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Send box on top, with the video as its own one-tap option above it. */}
       <div className="px-3 py-3 border-b border-[#E5E7EB] space-y-2">
-        {contact && <VideoLinkButton contact={contact} compact />}
-              {contact && <SendSiteButton contact={contact} compact />}
+        {contact && !isPropertyCall && <VideoLinkButton contact={contact} compact />}
+        {contact && !isPropertyCall && <SendSiteButton contact={contact} compact />}
         <MidCallSmsSender
           contactId={contactId}
           contactName={contactName}
@@ -160,9 +178,14 @@ function MessagesTab({
           agentFirstName={agentFirstName}
           campaignId={campaignId ?? null}
           pipelineId={pipelineId ?? null}
+          isPropertyCall={isPropertyCall}
+          offerHouse={offerHouse ?? null}
+          offerCallId={currentCallId ?? null}
         />
       </div>
-      {/* History below */}
+      {/* History below. Hugo 2026-08-12: "the SMS history should be on the right
+          hand side, on the messages with the history." It used to be a fold-out
+          in the left column, which put two histories in two places. */}
       <div className="px-3 py-2 space-y-1.5">
         <div className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF] mb-1 px-0.5">History</div>
         {messages.length === 0 ? (
@@ -171,6 +194,14 @@ function MessagesTab({
           </div>
         ) : (
           messages.map((m) => <MessageBubble key={m.id} message={m} />)
+        )}
+        {isPropertyCall && (
+          <div className="pt-2 mt-2 border-t border-[#E5E7EB]" data-testid="messages-sms-history">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF] mb-1 px-0.5">
+              This call
+            </div>
+            <CallTimeline callId={currentCallId ?? null} />
+          </div>
         )}
       </div>
     </div>

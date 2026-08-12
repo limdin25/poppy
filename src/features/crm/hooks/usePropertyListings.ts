@@ -402,3 +402,40 @@ export function scriptTokensFor(l: PropertyListing | null | undefined): Record<s
     deal_reason: l.reasonLine ?? '',
   };
 }
+
+/** The figures the AI offer drafter is allowed to use, and nothing else.
+ *
+ *  Hugo 2026-08-12: the offer email is written per house, off the listing and
+ *  off what the agent said on the call. The model writes the English; every
+ *  number it may use comes from here, because a model that can invent a price
+ *  can invent an offer. The refurb figure is deliberately included and the
+ *  endpoint is told never to print it: it explains the number without handing
+ *  our costing to the seller. */
+export function offerHouseFor(l: PropertyListing | null | undefined) {
+  if (!l) return null;
+  return {
+    address: l.address,
+    askingPrice: l.asking_price,
+    offerPrice: l.offerMin > 0 ? l.offerMin : null,
+    gdv: cmvOf(l.deal) > 0 ? cmvOf(l.deal) : null,
+    refurb: refurbOf(l.deal),
+    beds: l.bedrooms,
+    propertyType: l.property_type,
+    reasonLine: l.reasonLine || null,
+    strategy: l.strategy,
+  };
+}
+
+/** The engine files refurb in a couple of shapes across versions. 0 when it
+ *  said nothing, which the drafter reads as "leave that line out". */
+function refurbOf(deal: Record<string, unknown> | null | undefined): number | null {
+  if (!deal) return null;
+  for (const key of ['refurb', 'refurb_budget', 'refurb_cost']) {
+    const raw = deal[key];
+    const n = typeof raw === 'object' && raw !== null
+      ? Number((raw as Record<string, unknown>).estimate)
+      : Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}

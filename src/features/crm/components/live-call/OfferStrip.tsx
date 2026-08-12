@@ -21,9 +21,10 @@
 // never derived here. They are missing on most properties today and the strip
 // simply does not draw them: no empty box, no placeholder dash, no "unknown".
 
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import type { PropertyListing } from '../../hooks/usePropertyListings';
+import { resolveStage } from '../templates/dealProcessSteps';
 
 /** How much to trust the valuation, in a colour. */
 const CONFIDENCE: Record<string, { label: string; cls: string }> = {
@@ -47,9 +48,15 @@ interface Props {
   listing: PropertyListing | null;
   /** How many houses this branch has, so he knows there are others to raise. */
   total?: number;
+  /** What to do with this deal next, off custom_fields.next_step. Hugo
+   *  2026-08-12: "on that strip the next step is written now, as well as
+   *  everywhere else." Absent on every non-property caller, and the line simply
+   *  is not drawn. */
+  nextStep?: string | null;
 }
 
-export default function OfferStrip({ listing, total = 0 }: Props) {
+export default function OfferStrip({ listing, total = 0, nextStep }: Props) {
+  const step = resolveStage(nextStep);
   if (!listing) {
     return (
       <div className="border-b border-[#E5E7EB] bg-[#FAFAF8] px-4 py-2.5 text-[12px] text-[#9CA3AF]">
@@ -77,6 +84,21 @@ export default function OfferStrip({ listing, total = 0 }: Props) {
 
   return (
     <div className="border-b border-[#E5E7EB] bg-white">
+      {step && (
+        <div
+          className="flex items-center gap-1.5 border-b border-[#CFDCEC] bg-[#EEF2F8] px-4 py-1.5"
+          data-testid="offer-strip-next-step"
+          title={`${step.who}: ${step.doNow}`}
+        >
+          <ArrowRight className="h-3 w-3 flex-shrink-0 text-[#3C5A87]" />
+          <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#3C5A87]">
+            Next step
+          </span>
+          <span className="flex-shrink-0 text-[11px] font-semibold text-[#1A1A1A]">{step.tag}</span>
+          <span className="min-w-0 flex-1 truncate text-[11px] text-[#6B7280]">{step.doNow}</span>
+        </div>
+      )}
+
       <div className="flex items-baseline gap-2 px-4 pt-2.5 pb-1.5">
         <span className="truncate text-[12px] font-semibold text-[#1A1A1A]" title={listing.address ?? ''}>
           {listing.address || 'Property'}

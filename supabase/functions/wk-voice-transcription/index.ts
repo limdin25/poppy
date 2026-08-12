@@ -372,10 +372,67 @@ Never ask a house about service charges or a lease unless they say it is leaseho
 
 ## 6. Lock the next step
 "Is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it?" Ask this on EVERY call.
+"What's the best email for you? Hugo will want to put something over in writing." Ask this on EVERY call too. Never hang up without the email address: every offer goes out by email, so a call with no email cannot become an offer.
 "And when it comes to it, we'd get our builder round to have a look and price the work up." Ask, do not book.
 "What's a realistic time for me to ring you back, tomorrow or is it better later in the week?" Never end the call without an agreed callback time.
 "That's great, thanks for your time. Speak to you then."
 Then wait. Do not hang up on your own closing line.`;
+
+/** WHAT THIS PARTICULAR CALL IS FOR.
+ *
+ *  Hugo 2026-08-12: "when Pedro is gonna follow up, the script and the AI coach
+ *  should change according to that step of the process."
+ *
+ *  Until now there was one property prompt and it assumed every call was the
+ *  first one: the goal is a ballpark figure. So when Pedro rang back to chase an
+ *  offer that was already in, the coach pushed him to get a figure he already
+ *  had.
+ *
+ *  The step comes off the branch card (wk_contacts.custom_fields.next_step),
+ *  which is written by the queue script, by the outcome he presses, and by the
+ *  offer email going out. The tags match
+ *  src/features/crm/components/templates/dealProcessSteps.ts exactly.
+ *
+ *  Absent or unknown step -> nothing is appended and the coach behaves exactly
+ *  as it did before this existed. */
+const PROPERTY_STEP_PROMPT: Record<string, string> = {
+  'Confirm the numbers': [
+    'WHICH CALL THIS IS: a FOLLOW UP. A ballpark figure has already come out of this branch and the director is pricing it up now.',
+    'So do NOT coach the ballpark question again, and do NOT coach a new figure. Asking for a ballpark twice makes us look like we do not keep records.',
+    'What this call is for, in order: anything still missing on the house (photos that never arrived, the floorplan, the full EPC, a video walkthrough), the estate agent\'s EMAIL ADDRESS if we still do not have it, whether anything has changed (other offers, a price drop, is it still available), and an agreed time to ring back.',
+    'If the estate agent volunteers a new or lower figure, that is the most important thing on the call: bank it, say it goes to the director, agree a callback.',
+  ].join('\n'),
+  'Hugo prices the works': [
+    'WHICH CALL THIS IS: a FOLLOW UP while the director prices the building work.',
+    'Do NOT coach the ballpark question again and do NOT coach a figure of any kind.',
+    'What this call is for: photos, floorplan, full EPC or a video walkthrough for the builder, the estate agent\'s email address, and whether anything has changed. Then an agreed callback.',
+  ].join('\n'),
+  'Send the offer': [
+    'WHICH CALL THIS IS: the offer is going over by email from the director TODAY.',
+    'What this call is for: tell them it is coming or that it has landed, and explain how we work in one breath. We buy across the country, we assess remotely first, and we send a local builder round to view it and price the work in the same visit. That is why the offer is subject to our builder rather than to a survey.',
+    'Coach the agent to ask them to put it to the vendor and to agree a time to ring back. Never coach a NEW figure on this call: the number is the director\'s and it is already written down.',
+    'If they ask for anything in writing, that is a yes: get the email address confirmed.',
+  ].join('\n'),
+  'Chase the agent': [
+    'WHICH CALL THIS IS: a CHASE. An offer or a figure is already with the vendor and we are waiting on an answer.',
+    'What this call is for: has the vendor seen it, what did they say, and when is realistic to ring back. Nothing else.',
+    'Do NOT coach the ballpark question again. Do NOT improve our own offer unprompted: nothing has been given, so there is nothing to pay for.',
+    'If they knock it back WITHOUT naming a figure, coach "fair enough, what would they actually take?" immediately.',
+    'If they name a figure, bank it, put it to the director, agree a callback. That is the whole call.',
+  ].join('\n'),
+  'Get it in writing': [
+    'WHICH CALL THIS IS: they have ACCEPTED. The only thing missing is it in writing.',
+    'What this call is for: thank them, and ask for an email confirming the address and the agreed price, for our records and for the solicitor. Coach exactly that.',
+    'Do NOT coach any negotiation. The price is agreed and reopening it here loses the deal.',
+    'Then: the buyer details and proof of funds follow shortly, and ask what they need from our side.',
+  ].join('\n'),
+  'Renegotiate': [
+    'WHICH CALL THIS IS: our builder has been round and the work costs more than we budgeted.',
+    'What this call is for: put the builder\'s quote to them as EVIDENCE, not as haggling, and ask them to take a revised figure to the vendor. Coach offering to send the quote over.',
+    'The revised figure is the director\'s and is already decided. Never coach a number that is not on screen.',
+    'Keep the rest of the deal in the sentence: still cash, still no chain, still the same timescale.',
+  ].join('\n'),
+};
 
 const PROPERTY_SCRIPT_PROMPT = [
   'This call is an agent ringing an ESTATE AGENCY about a house. The person on the phone sells houses for a living. They are NOT a sales lead, they are the seller\'s representative, and we are the buyer.',
@@ -390,7 +447,7 @@ const PROPERTY_SCRIPT_PROMPT = [
   '3. The three that move the number (empty, needs work, why selling. THREE questions, not sixteen)',
   '4. The money',
   '5. Now get everything else (only if the money went somewhere)',
-  '6. Lock the next step (video walkthrough, builder, callback time)',
+  '6. Lock the next step (video walkthrough, THE EMAIL ADDRESS, builder, callback time)',
   '',
   'NEVER MENTION, none of it exists on this call:',
   '- Google reviews, star ratings, local ranking, competitors',
@@ -412,6 +469,8 @@ const PROPERTY_SCRIPT_PROMPT = [
   'THE SECOND GEAR. When the estate agent knocks the figure back WITHOUT naming one of their own ("no chance", "way off", "a million miles off"), that is not the end of the conversation, it is the start of the negotiation. Coach "Fair enough, no problem. What would the vendor actually take, do you think?" immediately. Do NOT stay silent here, and do NOT coach the agent to improve our own number: nothing has been given, so there is nothing to pay for.',
   '',
   'NEVER VIEW A PROPERTY. We buy remotely. If they insist on a viewing before an offer, the answer is that we put the figure forward SUBJECT TO OUR BUILDER GOING ROUND, who views it and prices the refurb in one trip, plus an ask for a video walkthrough. Say "subject to our builder", never "subject to survey". Never coach the agent to attend a viewing, book one, or promise to attend.',
+  '',
+  'THE EMAIL ADDRESS. Every offer we make goes out by email, so a call that ends without the estate agent\'s email address cannot become an offer however well it went. If the call is winding down and no email has been given, coach: "what\'s the best email for you? Hugo will want to put something over in writing." Fire this even on a call that went badly, because a branch email is worth having either way.',
   '',
   'NEVER PROMISE. The agent is not authorised to make a formal offer or book a viewing. Everything is "the director will confirm that himself". If pushed for a formal offer, coach exactly that line.',
   '',
@@ -1792,9 +1851,18 @@ serve(async (req: Request) => {
           // voice AND the UK compliance bans (never guarantee a ranking, never
           // call a paid start free), every word of which is still true on a
           // close call. Forking it would mean maintaining those bans twice.
-          const closeScript = isCloseCall ? CLOSE_SCRIPT_PROMPT
-            : isPropertyCall ? PROPERTY_SCRIPT_PROMPT
+          // Which STEP of the deal process this branch is on, so a chase call
+          // is not coached as a first call (Hugo 2026-08-12). Unknown or
+          // missing step appends nothing at all.
+          const propertyStep = isPropertyCall
+            ? (contactData?.custom_fields?.next_step ?? '').trim()
             : '';
+          const stepOverlay = PROPERTY_STEP_PROMPT[propertyStep] ?? '';
+          const STEP_HEADER = 'THIS IS NOT THE FIRST CALL TO THIS BRANCH. Everything below OVERRIDES the six beats above wherever they disagree.';
+          const propertyPrompt = isPropertyCall && stepOverlay
+            ? `${PROPERTY_SCRIPT_PROMPT}\n\n${'='.repeat(60)}\n${STEP_HEADER}\n${stepOverlay}`
+            : isPropertyCall ? PROPERTY_SCRIPT_PROMPT : '';
+          const closeScript = isCloseCall ? CLOSE_SCRIPT_PROMPT : propertyPrompt;
           const closeScriptRow = isCloseCall
             ? { name: 'VSL close', body_md: CLOSE_AGENT_SCRIPT_MD }
             : isPropertyCall

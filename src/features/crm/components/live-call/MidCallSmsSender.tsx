@@ -12,7 +12,7 @@
 // LiveCallScreen.tsx; the displayed title changes per channel.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, MessageSquare, ArrowRight, ArrowUp, Phone, Mail } from 'lucide-react';
+import { Send, MessageSquare, ArrowRight, ArrowUp, Phone, Mail, Sparkles } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../../store/SmsV2Store';
@@ -22,6 +22,8 @@ import StageSelector from '../shared/StageSelector';
 import FollowupPromptModal from '../followups/FollowupPromptModal';
 import { useActiveCallCtx } from './ActiveCallContext';
 import { useResolvedFromLine } from '../../hooks/useResolvedFromLine';
+import { DEAL_STAGES } from '../templates/dealProcessSteps';
+import { offerSentFields } from '../../lib/nextStep';
 
 type Channel = 'sms' | 'whatsapp' | 'email';
 
@@ -76,6 +78,32 @@ interface Props {
    *  pipeline. Required for the dialer-pro mid-call surface; without
    *  it the dropdown flattens 16 columns from 2 pipelines into one. */
   pipelineId?: string | null;
+  /** Houses mode. Hugo 2026-08-12: on a property call the only templates that
+   *  belong here are the deal-process ones, and the Elsie templates (subscribe
+   *  link, onboarding link) are a way to send a plumber signup link to an
+   *  estate agent. Absent on every existing caller, so a plumber call keeps
+   *  exactly the templates it had. */
+  isPropertyCall?: boolean;
+  /** The house on screen, so the AI draft can write about THIS one. Only ever
+   *  passed on a property call. */
+  offerHouse?: OfferHouse | null;
+  /** wk_calls.id of the live or last call, so the draft can read what the
+   *  estate agent actually said. */
+  offerCallId?: string | null;
+}
+
+/** Only the figures. The draft endpoint is told never to invent one, and this
+ *  is the whole set it is allowed to use. */
+export interface OfferHouse {
+  address?: string | null;
+  askingPrice?: number | null;
+  offerPrice?: number | null;
+  gdv?: number | null;
+  refurb?: number | null;
+  beds?: number | null;
+  propertyType?: string | null;
+  reasonLine?: string | null;
+  strategy?: string | null;
 }
 
 const CHANNEL_LABEL: Record<Channel, string> = {
@@ -93,6 +121,9 @@ export default function MidCallSmsSender({
   agentFirstName,
   campaignId = null,
   pipelineId = null,
+  isPropertyCall = false,
+  offerHouse = null,
+  offerCallId = null,
 }: Props) {
   const { pushToast, columns, patchContact, contacts } = useSmsV2();
   const currentContact = contacts.find((c) => c.id === contactId);
@@ -108,6 +139,11 @@ export default function MidCallSmsSender({
   const [sending, setSending] = useState(false);
   const [loadingTpls, setLoadingTpls] = useState(true);
   const [pickedStageId, setPickedStageId] = useState<string | null>(null);
+  // The AI draft. Hugo 2026-08-12: "there is gonna be AI on demand, it has to be
+  // there on the right." It writes into the same box a human then edits, and it
+  // never sends anything by itself.
+  const [drafting, setDrafting] = useState(false);
+  const [draftNote, setDraftNote] = useState<string | null>(null);
   // PR 116 (Hugo 2026-04-28): show "From: …" above the send box so the
   // agent sees which line the message will go from.
   // Fix (Hugo 2026-07-23): the caption used to show the FIRST active
@@ -158,9 +194,30 @@ export default function MidCallSmsSender({
     return source.trim().split(/\s+/)[0] ?? '';
   }, [ownerName, currentContact?.customFields?.owner_name, contactName]);
 
+  // On a property call the list IS the deal process: the same wording as the
+  // Deal process page and the next-step panel, so Pedro reads one set of words
+  // wherever he happens to be looking (Hugo 2026-08-12).
+  const propertyTemplates = useMemo<Template[]>(() => {
+    if (!isPropertyCall) return [];
+    return DEAL_STAGES.flatMap((stage) =>
+      stage.templates
+        .filter((t) => t.channel === 'Email' || t.channel === 'WhatsApp')
+        .map((t) => ({
+          id: `deal:${stage.n}:${t.label}`,
+          name: `${stage.n}. ${t.label}`,
+          body_md: t.body,
+          move_to_stage_id: null,
+          channel: (t.channel === 'Email' ? 'email' : 'whatsapp') as Channel,
+          subject: t.subject ?? null,
+        })),
+    );
+  }, [isPropertyCall]);
+
   const filteredTemplates = useMemo(
-    () => templates.filter((t) => t.channel == null || t.channel === channel),
-    [templates, channel]
+    () => (isPropertyCall ? propertyTemplates : templates).filter(
+      (t) => t.channel == null || t.channel === channel,
+    ),
+    [isPropertyCall, propertyTemplates, templates, channel]
   );
 
   const selectedTemplate = useMemo(
@@ -172,6 +229,47 @@ export default function MidCallSmsSender({
     if (!selectedTemplate?.move_to_stage_id) return null;
     return columns.find((c) => c.id === selectedTemplate.move_to_stage_id) ?? null;
   }, [selectedTemplate, columns]);
+
+  /** Write the offer email for THIS house, from the listing, the numbers and
+   *  what the estate agent actually said. Lands in the box; a human sends it. */
+  const draftWithAi = async () => {
+    if (!offerHouse?.offerPrice) {
+      setDraftNote('No offer figure on this property yet, so there is nothing to offer.');
+      return;
+    }
+    setDrafting(true);
+    setDraftNote(null);
+    try {
+      const res = await fetch('/api/crm/draft-offer-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callId: offerCallId,
+          house: offerHouse,
+          agentName: currentContact?.customFields?.owner_name ?? null,
+          agencyName: contactName,
+          fromName: agentFirstName,
+        }),
+      });
+      const data = (await res.json()) as { subject?: string; body?: string; usedTranscript?: boolean; error?: string };
+      if (!res.ok || !data.body) {
+        setDraftNote(data.error ?? 'Could not write the draft. Try again.');
+        return;
+      }
+      setChannel('email');
+      setSubject(data.subject ?? '');
+      setBody(data.body);
+      setDraftNote(
+        data.usedTranscript
+          ? 'Drafted from the listing and this call. Read it before you send it.'
+          : 'Drafted from the listing. There was no transcript, so read it carefully.',
+      );
+    } catch {
+      setDraftNote('Could not reach the drafter. Try again.');
+    } finally {
+      setDrafting(false);
+    }
+  };
 
   const applyTemplate = (id: string) => {
     setSelectedTemplateId(id);
@@ -271,6 +369,20 @@ export default function MidCallSmsSender({
       }
       pushToast(`${CHANNEL_LABEL[channel]} sent`, 'success');
 
+      // An offer that went out by email is written on the deal: the figure, the
+      // date, and what to do next (Hugo 2026-08-12). Nothing recorded this
+      // before, so nothing could chase an offer or count one. Best effort by
+      // design: the email has already gone, and a failed patch must never read
+      // back as "your email did not send".
+      if (isPropertyCall && channel === 'email' && offerHouse?.offerPrice) {
+        const fields = {
+          ...(currentContact?.customFields ?? {}),
+          ...offerSentFields(offerHouse.offerPrice, new Date().toISOString()),
+        };
+        patchContact(contactId, { customFields: fields });
+        void persist.patchContact(contactId, { custom_fields: fields });
+      }
+
       const target = columns.find((c) => c.id === pickedStageId);
       if (target && target.id !== currentContact?.pipelineColumnId) {
         patchContact(contactId, { pipelineColumnId: target.id });
@@ -365,6 +477,33 @@ export default function MidCallSmsSender({
           role="alert"
         >
           {channelDisabledReason}
+        </div>
+      )}
+
+      {isPropertyCall && (
+        <div className="mb-2">
+          <button
+            type="button"
+            onClick={() => void draftWithAi()}
+            disabled={drafting}
+            data-testid="ai-draft-offer"
+            className={cn(
+              'w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-[8px] text-[11px] font-semibold transition-colors',
+              drafting
+                ? 'bg-[#EEF2F8] text-[#9CA3AF]'
+                : 'bg-[#3C5A87] text-white hover:bg-[#31486D]',
+            )}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {drafting ? 'Writing the offer…' : 'Write the offer with AI'}
+          </button>
+          <p className="text-[10px] text-[#6B7280] mt-1 leading-snug">
+            Reads this listing, these figures and what the agent said on the call. It writes the
+            words, never the numbers. Read it before you send it.
+          </p>
+          {draftNote && (
+            <p className="text-[10px] text-[#B45309] mt-1 leading-snug">{draftNote}</p>
+          )}
         </div>
       )}
 

@@ -51,6 +51,30 @@ const supabase = createClient(
  *  learned). It files the deal under a stage of its own so the ones needing
  *  Hugo's decision are not buried among the ones that do not. */
 const OUTCOMES = ['qualified', 'figure_obtained', 'deciding', 'follow_up', 'not_qualified', 'callback', 'no_answer'] as const;
+
+/** Which step of the deal process an outcome leaves the branch on.
+ *
+ *  The strings MUST match a tag in
+ *  src/features/crm/components/templates/dealProcessSteps.ts, which is the one
+ *  list the Deal process page, the pipeline chip, the dialer panel and the
+ *  offer strip all read. tests/property-deal-process.test.ts pins them together
+ *  so a renamed step cannot leave a card pointing at nothing.
+ *
+ *  undefined = leave the tag exactly as it is. '' = clear it, this one is dead.
+ */
+const STEP_FOR_OUTCOME: Record<string, string | undefined> = {
+  // A figure is out of the branch, which is the entire point of the call. Hugo
+  // is next: confirm the GDV and the works before anybody offers anything.
+  figure_obtained: 'Confirm the numbers',
+  qualified: 'Confirm the numbers',
+  // Alive, no number yet. Ring them back.
+  deciding: 'Chase the agent',
+  follow_up: 'Chase the agent',
+  callback: 'Chase the agent',
+  // Nobody picked up, so the first call still has not happened.
+  no_answer: 'Call the agent',
+  not_qualified: '',
+};
 type Outcome = (typeof OUTCOMES)[number];
 
 /** Outcomes that put the property in front of Hugo as a deal. 'deciding' and
@@ -298,13 +322,43 @@ export default async function handler(req: Request): Promise<Response> {
   //    board that did not move must never read back to Pedro as "your call did
   //    not save". If the column has been renamed or deleted this does nothing
   //    rather than inventing one.
+  // 3b. What to do with this branch NEXT, written onto the card itself.
+  //
+  //     Hugo 2026-08-12: "the brain should add a tag on the deal on the
+  //     pipeline telling us what to do next." The dialer's left column, the
+  //     offer strip and the pipeline card all read custom_fields.next_step and
+  //     show the step from dealProcessSteps.ts. Nothing wrote it until now, so
+  //     every card showed nothing.
+  //
+  //     Deterministic, from the outcome Pedro pressed. Best effort: the outcome
+  //     is already saved and a failed tag must never read back as a lost call.
+  const nextStep = STEP_FOR_OUTCOME[outcome];
+  if (nextStep !== undefined && property.wk_contact_id) {
+    try {
+      const { data: c } = await supabase
+        .from('wk_contacts')
+        .select('custom_fields')
+        .eq('id', property.wk_contact_id)
+        .maybeSingle();
+      const fields = { ...((c?.custom_fields as Record<string, string> | null) ?? {}) };
+      if (nextStep === '') delete fields.next_step;
+      else fields.next_step = nextStep;
+      await supabase
+        .from('wk_contacts')
+        .update({ custom_fields: fields })
+        .eq('id', property.wk_contact_id);
+    } catch {
+      // A card without a tag is the state it was already in. Never fatal.
+    }
+  }
+
   let boardWarning: string | undefined;
   const targetColumn = BOARD_COLUMN_FOR[outcome];
   if (targetColumn && property.wk_contact_id) {
     try {
       const { data: contact } = await supabase
         .from('wk_contacts')
-        .select('id, pipeline_column_id')
+        .select('id, pipeline_column_id, custom_fields')
         .eq('id', property.wk_contact_id)
         .maybeSingle();
 

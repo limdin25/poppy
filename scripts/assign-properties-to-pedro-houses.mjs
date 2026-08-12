@@ -383,6 +383,18 @@ function factsFor(branch, headline, settings) {
         ? deal.evidence.slice(0, 3).join(' · ') : 'no sold comparables on file'),
     valuation_notes: notes.length ? notes.join(', ') : 'nothing unusual flagged',
     properties_count: String(branch.properties.length),
+    // What to do with this one next. Every branch arriving here is at step 1 of
+    // the deal process by definition: nobody has rung it yet. The dialer, the
+    // offer strip and the pipeline card all read this field and show the step
+    // (Hugo 2026-08-12). The tag string must match a tag in
+    // src/features/crm/components/templates/dealProcessSteps.ts, which
+    // tests/property-deal-process.test.ts pins.
+    //
+    // Only ever set on a NEW branch or a --refresh. It is not a status field
+    // and nothing here advances it: api/crm/property-outcome.ts moves it on
+    // when Pedro presses an outcome, and the send box moves it on when an offer
+    // email goes out.
+    next_step: 'Call the agent',
   }
 }
 
@@ -492,8 +504,13 @@ async function main() {
       say(`  SKIP ${label}: already owned by another agent (${contact.owner_agent_id})`)
       continue
     }
+    // Same rule as the held-back branch below: the facts refresh, the step
+    // does not rewind. A branch already at "Confirm the numbers" stays there.
+    const { data: prevRow } = await db.from('wk_contacts')
+      .select('custom_fields').eq('id', contact.id).maybeSingle()
+    const prevStep = prevRow?.custom_fields?.next_step
     await db.from('wk_contacts')
-      .update({ custom_fields: facts })
+      .update({ custom_fields: prevStep ? { ...facts, next_step: prevStep } : facts })
       .eq('id', contact.id).eq('owner_agent_id', agentId)
 
     // The whole branch moves to human, never one property: the AI must not ring
@@ -533,6 +550,14 @@ async function main() {
       // away a better house the branch already had on file.
       if (REFRESH) {
         const facts = factsFor(branch, headlineProperty(branch.properties), settings)
+        // A refresh rewrites the FACTS. It must not rewind the deal: a branch
+        // Pedro has already worked may be on "Confirm the numbers" or further,
+        // and putting it back to "Call the agent" would tell him to ring a
+        // branch he has rung (Hugo 2026-08-12).
+        const { data: prev } = await db.from('wk_contacts')
+          .select('custom_fields').eq('id', contact.id).maybeSingle()
+        const prevStep = prev?.custom_fields?.next_step
+        if (prevStep) facts.next_step = prevStep
         await db.from('wk_contacts').update({ custom_fields: facts })
           .eq('id', contact.id).eq('owner_agent_id', agentId)
       }

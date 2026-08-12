@@ -28,6 +28,14 @@ import DialerRightTabs from '@/features/crm/components/live-call/DialerRightTabs
 import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaCompact';
 import CallTimeline from '@/features/crm/components/live-call/CallTimeline';
 import PropertiesPane from '@/features/crm/components/live-call/PropertiesPane';
+import NextStepPanel from '@/features/crm/components/shared/NextStepPanel';
+import KnowledgeCheckpoint from '@/features/crm/components/live-call/KnowledgeCheckpoint';
+import CallReviewCard from '@/features/crm/components/live-call/CallReviewCard';
+
+/** How many property calls between knowledge checkpoints. Hugo asked for
+ *  "every six, seven dialogs" (2026-08-12). Mirrors CHECKPOINT_EVERY in
+ *  api/crm/knowledge-check.ts. */
+const CHECKPOINT_EVERY = 7;
 import EditContactModal from '@/features/crm/components/contacts/EditContactModal';
 import type { Contact } from '@/features/crm/types';
 
@@ -37,7 +45,7 @@ import { useSmsV2 } from '@/features/crm/store/SmsV2Store';
 import { useContactPersistence } from '@/features/crm/hooks/useContactPersistence';
 import EditableName from '@/features/crm/components/contacts/EditableName';
 import OfferStrip from '@/features/crm/components/live-call/OfferStrip';
-import { usePropertyListings, scriptTokensFor } from '@/features/crm/hooks/usePropertyListings';
+import { usePropertyListings, scriptTokensFor, offerHouseFor } from '@/features/crm/hooks/usePropertyListings';
 import { useDialerMachine } from './useDialerMachine';
 import { useQueuePro } from './useQueuePro';
 import type { QueueLead } from './types';
@@ -427,18 +435,50 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
   // The hook is called here AND inside PropertiesPane. That is not a second
   // request: TanStack Query dedupes on the key, so both mounts share one.
   const isHousesCall = paneScriptKey === 'property_call';
-  // The SMS history above the house panel, open or shut. Hugo 2026-08-12:
-  // "you have a little room for this SMS that you can expand and minimize, and
-  // then below that you put the house details." It starts shut because it is
-  // empty until a call connects, and the house is what he is working from.
-  // sessionStorage, not localStorage: the choice belongs to this shift at this
-  // desk, and a new day starts tidy again.
-  const [smsOpen, setSmsOpen] = useState<boolean>(() => {
-    try { return sessionStorage.getItem('dialer_pro_sms_open') === '1'; } catch { return false; }
+
+  // ── The knowledge checkpoint ───────────────────────────────────────────────
+  // Hugo 2026-08-12: "bake in an agent knowledge checkpoint every dial, locking
+  // the workflow until they answer correctly."
+  //
+  // Counted here because this is the one place that sees every call end. It
+  // fires on the wrap_up transition, which is after the call and before the
+  // next dial, so it never interrupts a live conversation with an estate agent.
+  // Property calls only: the questions are all about buying houses.
+  //
+  // sessionStorage, so the count and the questions already asked belong to this
+  // shift at this desk and a new day starts fresh.
+  const [checkpointDue, setCheckpointDue] = useState(false);
+  const [askedQuestions, setAskedQuestions] = useState<string[]>(() => {
+    try { return JSON.parse(sessionStorage.getItem('dialer_checkpoint_asked') ?? '[]') as string[]; }
+    catch { return []; }
   });
   useEffect(() => {
-    try { sessionStorage.setItem('dialer_pro_sms_open', smsOpen ? '1' : '0'); } catch { /* ignore */ }
-  }, [smsOpen]);
+    const prev = prevPhaseRef.current;
+    if (!isHousesCall || state.phase !== 'wrap_up' || prev === 'wrap_up') return;
+    let n = 0;
+    try {
+      n = Number(sessionStorage.getItem('dialer_calls_since_check') ?? '0') + 1;
+      sessionStorage.setItem('dialer_calls_since_check', String(n));
+    } catch { return; }
+    if (n >= CHECKPOINT_EVERY) setCheckpointDue(true);
+    // prevPhaseRef is advanced by the history effect above, which runs first.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase, isHousesCall]);
+
+  const passCheckpoint = useCallback((questionId: string) => {
+    setCheckpointDue(false);
+    setAskedQuestions((prev) => {
+      const next = [...prev, questionId].slice(-40);
+      try { sessionStorage.setItem('dialer_checkpoint_asked', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+    try { sessionStorage.setItem('dialer_calls_since_check', '0'); } catch { /* ignore */ }
+  }, []);
+
+  // The SMS fold-out that used to sit here moved to the Messages tab on the
+  // right, beside the message history it belongs with (Hugo 2026-08-12: "the
+  // SMS history should be on the right hand side, on the messages with the
+  // history"). Its space in this column is now the next step.
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const { listings: houseListings } = usePropertyListings(
     isHousesCall ? contact?.phone : null,
@@ -899,25 +939,14 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                 </div>
                 {isHousesCall ? (
                   <>
-                    {/* SMS history, folded away by default. It is empty until a
-                        call connects, and on a property call the space below it
-                        is doing the real work. */}
-                    <div className="border-b border-[#E5E7EB] flex-shrink-0">
-                      <button
-                        onClick={() => setSmsOpen((v) => !v)}
-                        aria-expanded={smsOpen}
-                        data-testid="dialer-sms-toggle"
-                        className="w-full flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF] hover:bg-[#F3F3EE]/60 transition-colors"
-                      >
-                        <ChevronDown className={cn('w-3 h-3 transition-transform', !smsOpen && '-rotate-90')} />
-                        <span>SMS history</span>
-                      </button>
-                      {smsOpen && (
-                        <div className="px-4 pb-3 text-[12px] max-h-[35vh] overflow-y-auto">
-                          <CallTimeline callId={state.currentCallId} />
-                        </div>
-                      )}
-                    </div>
+                    {/* What to do with this one next, where the SMS fold-out
+                        used to be. Hugo 2026-08-12: the SMS history moved to
+                        the Messages tab on the right, next to the message
+                        history it belongs with, and the next step took its
+                        place because it is what he needs before he dials. */}
+                    <NextStepPanel
+                      value={contact.customFields?.next_step ?? contact.customFields?.deal_stage}
+                    />
                     {/* The house, underneath it, scrolling on its own so the
                         contact header and the SMS strip stay put.
                         Still called Houses: the coach, the training questions
@@ -964,7 +993,11 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
           <ResizablePanel defaultSize={isHousesCall ? 40 : 48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
             <div className="flex h-full flex-col">
               {isHousesCall && (
-                <OfferStrip listing={selectedListing} total={housesTotal} />
+                <OfferStrip
+                  listing={selectedListing}
+                  total={housesTotal}
+                  nextStep={contact?.customFields?.next_step ?? contact?.customFields?.deal_stage}
+                />
               )}
               <div className="min-h-0 flex-1">
                 {/* key= forces a clean remount on a script switch. Without it the
@@ -1003,10 +1036,16 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               callConnected={state.phase === 'connected'}
               liveDurationSec={liveDuration}
               showHouses={isHousesCall}
+              offerHouse={isHousesCall ? offerHouseFor(selectedListing) : null}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      {/* The room locks here, between two calls, until the answer is right. */}
+      {checkpointDue && (
+        <KnowledgeCheckpoint asked={askedQuestions} onPassed={passCheckpoint} />
+      )}
 
       {/* ─── FLOATING CARD + Queue/History (always visible, draggable) ─── */}
       <div className="fixed z-[210] select-text" style={{ left: cardPos.x, top: cardPos.y, width: CARD_W }}>
@@ -1348,6 +1387,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               onDragMove={onDragMove}
               onDragEnd={onDragEnd}
               onMinimize={() => setMinimized(true)}
+              review={isHousesCall ? <CallReviewCard callId={state.currentCallId} /> : null}
             />
           )
         )}
@@ -1607,9 +1647,13 @@ interface WrapUpCardProps {
   onDragMove: (e: React.PointerEvent) => void;
   onDragEnd: (e: React.PointerEvent) => void;
   onMinimize: () => void;
+  /** The AI review of the call that just ended, on a property call. Passed in
+   *  rather than rendered here so the plumber room is byte-for-byte unchanged
+   *  (Hugo 2026-08-12: "give an AI report as well, after every call"). */
+  review?: React.ReactNode;
 }
 
-function WrapUpCard({ lead, endReason, durationSec, columns, columnsLoading = false, campaignPipelineId = null, suggestedId, applying, onNext, onApply, onSkip, onRedial, onPause, onDragStart, onDragMove, onDragEnd, onMinimize }: WrapUpCardProps) {
+function WrapUpCard({ lead, endReason, durationSec, columns, columnsLoading = false, campaignPipelineId = null, suggestedId, applying, onNext, onApply, onSkip, onRedial, onPause, onDragStart, onDragMove, onDragEnd, onMinimize, review = null }: WrapUpCardProps) {
   const [pickedId, setPickedId] = useState<string | null>(suggestedId);
   const [notes, setNotes] = useState('');
   const [showMore, setShowMore] = useState(false);
@@ -1749,6 +1793,9 @@ function WrapUpCard({ lead, endReason, durationSec, columns, columnsLoading = fa
             </>
           )}
         </div>
+
+        {/* What just went wrong, before he picks an outcome and moves on. */}
+        {review}
 
         {/* Notes textarea */}
         <div className="px-4 pb-3">
