@@ -18,9 +18,21 @@
 // answerable in fifteen seconds; the long short-answer questions stay on the
 // training page where there is time to think.
 
+import { createClient } from '@supabase/supabase-js';
 import { QUESTION_BANK, QUESTION_BY_ID } from '../lib/training-questions.js';
 
 export const config = { runtime: 'edge' };
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
+/** How many checkpoints later a wrong answer comes back. Hugo 2026-08-12:
+ *  "make wrong answers come back after 10 rounds until he gets them right."
+ *  Ten is far enough that he cannot parrot the answer he just read, and near
+ *  enough that it lands the same day. */
+export const REPEAT_AFTER_ROUNDS = 10;
 
 /** How many calls between checkpoints. Hugo asked for "every six, seven
  *  dialogs"; the client owns the counting, this is the number it reads so both
@@ -29,6 +41,8 @@ export const CHECKPOINT_EVERY = 7;
 
 interface Body {
   action?: 'draw' | 'grade';
+  /** Who is answering. The CRM user id when there is one. */
+  agentKey?: string;
   /** grade only. */
   id?: string;
   /** grade only: the exact text of the option the agent pressed. */
@@ -65,13 +79,88 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
 
+  const agentKey = (body.agentKey ?? '').trim() || 'unknown';
+
+  /** Which checkpoint this is for this agent: one row per answer, so the count
+   *  IS the round. No counter to drift out of step with the history. */
+  const roundsSoFar = async (): Promise<number> => {
+    const { count } = await supabase
+      .from('wk_knowledge_checks')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_key', agentKey);
+    return count ?? 0;
+  };
+
   if (body.action === 'grade') {
     const q = QUESTION_BY_ID[body.id ?? ''];
     if (!q || !q.options?.length) return json({ error: 'unknown question' }, 400);
     // options[0] is the correct one in the bank; the client only ever saw a
     // shuffled copy, so comparing the text is enough and leaks nothing.
     const correct = (body.answer ?? '').trim() === q.options[0].trim();
-    return json({ correct, explanation: q.explanation, right: q.options[0] });
+
+    // Write it down, then either close the debt or set when it comes back.
+    // Best effort: a failed write must never stop him answering and dialling.
+    try {
+      const round = (await roundsSoFar()) + 1;
+      await supabase.from('wk_knowledge_checks').insert({
+        agent_key: agentKey,
+        question_id: q.id,
+        correct,
+        round,
+        due_round: correct ? null : round + REPEAT_AFTER_ROUNDS,
+      });
+      if (correct) {
+        // He owed this one. He does not any more.
+        await supabase
+          .from('wk_knowledge_checks')
+          .update({ resolved_at: new Date().toISOString() })
+          .eq('agent_key', agentKey)
+          .eq('question_id', q.id)
+          .eq('correct', false)
+          .is('resolved_at', null);
+      }
+    } catch {
+      // The marking above is what he sees. The history is a nice-to-have.
+    }
+
+    return json({
+      correct,
+      explanation: q.explanation,
+      right: q.options[0],
+      repeatAfter: correct ? null : REPEAT_AFTER_ROUNDS,
+    });
+  }
+
+  // A question he has already got wrong, if enough rounds have passed, beats a
+  // random one. Oldest debt first, so nothing sits owed for ever.
+  try {
+    const round = await roundsSoFar();
+    const { data: owed } = await supabase
+      .from('wk_knowledge_checks')
+      .select('question_id, due_round')
+      .eq('agent_key', agentKey)
+      .eq('correct', false)
+      .is('resolved_at', null)
+      .lte('due_round', round)
+      .order('due_round', { ascending: true })
+      .limit(1);
+    const again = owed?.[0]?.question_id
+      ? QUESTION_BY_ID[owed[0].question_id as string]
+      : undefined;
+    if (again?.options?.length) {
+      return json({
+        id: again.id,
+        prompt: again.prompt,
+        options: shuffle(again.options),
+        source: again.source,
+        every: CHECKPOINT_EVERY,
+        // The screen says so out loud. Being told "you got this one wrong
+        // before" is most of what makes it stick.
+        repeat: true,
+      });
+    }
+  } catch {
+    // No history, or the table is unreachable: fall through to a fresh one.
   }
 
   const exclude = new Set(body.exclude ?? []);

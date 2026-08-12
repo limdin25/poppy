@@ -14,14 +14,19 @@
 // the right answer is in this file or in the bundle.
 
 import { useCallback, useEffect, useState } from 'react';
-import { GraduationCap, Check, X, Loader2 } from 'lucide-react';
+import { GraduationCap, Check, X, Loader2, RotateCcw } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
+import { useAuth } from '@/features/crm/lib/useCrmAuth';
 
 interface Question {
   id: string;
   prompt: string;
   options: string[];
   source?: string;
+  /** True when this is one he got wrong before and it has come back round
+   *  (Hugo 2026-08-12: wrong answers return after 10 rounds until he gets them
+   *  right). Saying so on screen is most of what makes it stick. */
+  repeat?: boolean;
 }
 
 interface Props {
@@ -32,10 +37,16 @@ interface Props {
 }
 
 export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
+  // Who is answering, so a wrong answer follows the person rather than the
+  // browser. Falls back to a fixed key rather than dropping the history.
+  const { user } = useAuth();
+  const agentKey = user?.id ?? 'unknown';
   const [q, setQ] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
   const [picked, setPicked] = useState<string | null>(null);
-  const [result, setResult] = useState<{ correct: boolean; explanation: string; right: string } | null>(null);
+  const [result, setResult] = useState<
+    { correct: boolean; explanation: string; right: string; repeatAfter: number | null } | null
+  >(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,20 +59,26 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
       const res = await fetch('/api/crm/knowledge-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'draw', exclude }),
+        body: JSON.stringify({ action: 'draw', exclude, agentKey }),
       });
       const data = (await res.json()) as Question & { error?: string };
       if (!res.ok || !data.options) {
         setError(data.error ?? 'Could not load the question.');
         return;
       }
-      setQ({ id: data.id, prompt: data.prompt, options: data.options, source: data.source });
+      setQ({
+        id: data.id,
+        prompt: data.prompt,
+        options: data.options,
+        source: data.source,
+        repeat: data.repeat,
+      });
     } catch {
       setError('Could not load the question.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [agentKey]);
 
   // Deferred by a tick on purpose: draw() sets loading/error state, and doing
   // that synchronously inside an effect body cascades a render (and the lint
@@ -78,14 +95,18 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
       const res = await fetch('/api/crm/knowledge-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'grade', id: q.id, answer: picked }),
+        body: JSON.stringify({ action: 'grade', id: q.id, answer: picked, agentKey }),
       });
-      const data = (await res.json()) as { correct?: boolean; explanation?: string; right?: string; error?: string };
+      const data = (await res.json()) as {
+        correct?: boolean; explanation?: string; right?: string;
+        repeatAfter?: number | null; error?: string;
+      };
       if (!res.ok) { setError(data.error ?? 'Could not mark that.'); return; }
       setResult({
         correct: !!data.correct,
         explanation: data.explanation ?? '',
         right: data.right ?? '',
+        repeatAfter: data.repeatAfter ?? null,
       });
     } catch {
       setError('Could not mark that.');
@@ -130,6 +151,12 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
 
           {q && !loading && (
             <>
+              {q.repeat && (
+                <p className="mb-2 inline-flex items-center gap-1 rounded bg-[#FFF7ED] px-2 py-1 text-[11px] font-semibold text-[#B45309]">
+                  <RotateCcw className="h-3 w-3" />
+                  You got this one wrong before. Here it is again.
+                </p>
+              )}
               <p className="text-[15px] font-semibold leading-snug text-[#1A1A1A]">{q.prompt}</p>
 
               <div className="mt-3 space-y-2">
@@ -172,6 +199,12 @@ export default function KnowledgeCheckpoint({ asked, onPassed }: Props) {
                 >
                   <p className="font-bold">{result.correct ? 'Right.' : 'Not that one.'}</p>
                   <p className="mt-0.5">{result.explanation}</p>
+                  {!result.correct && result.repeatAfter && (
+                    <p className="mt-1 font-semibold">
+                      This one comes back in {result.repeatAfter} checkpoints, and it keeps coming
+                      back until you get it right.
+                    </p>
+                  )}
                 </div>
               )}
 

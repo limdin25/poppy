@@ -167,6 +167,43 @@ describe('the knowledge checkpoint', () => {
     expect(PAGE).toMatch(/checkpointDue && \(/);
   });
 
+  // Hugo 2026-08-12: "make wrong answers come back after 10 rounds until he
+  // gets them right."
+  it('brings a wrong answer back, and only when it is due', () => {
+    expect(CHECK).toMatch(/REPEAT_AFTER_ROUNDS = 10/);
+    expect(CHECK).toMatch(/due_round: correct \? null : round \+ REPEAT_AFTER_ROUNDS/);
+    expect(CHECK).toMatch(/\.lte\('due_round', round\)/);
+    expect(CHECK).toMatch(/\.order\('due_round', \{ ascending: true \}\)/);
+  });
+
+  it('stops asking once he gets it right', () => {
+    expect(CHECK).toMatch(/resolved_at: new Date\(\)\.toISOString\(\)/);
+    expect(CHECK).toMatch(/\.eq\('correct', false\)/);
+    expect(CHECK).toMatch(/\.is\('resolved_at', null\)/);
+  });
+
+  it('follows the person, not the browser', () => {
+    const client = stripComments(read('src/features/crm/components/live-call/KnowledgeCheckpoint.tsx'));
+    expect(client).toMatch(/agentKey = user\?\.id/);
+    expect(client).toMatch(/action: 'grade'.*agentKey/s);
+    expect(CHECK).toMatch(/agent_key: agentKey/);
+  });
+
+  it('says out loud that a repeat is a repeat', () => {
+    const client = read('src/features/crm/components/live-call/KnowledgeCheckpoint.tsx');
+    expect(client).toMatch(/You got this one wrong before/);
+    expect(CHECK).toMatch(/repeat: true/);
+  });
+
+  it('never lets a history failure stop him dialling', () => {
+    // The marking is what he sees; the row is a nice-to-have. Every database
+    // call sits inside a try/catch, so an unreachable table costs him nothing.
+    const raw = read('api/crm/knowledge-check.ts');
+    expect(raw).toMatch(/try \{[\s\S]*wk_knowledge_checks[\s\S]*\} catch/);
+    expect(raw).toMatch(/The marking above is what he sees/);
+    expect(raw).toMatch(/fall through to a fresh one/);
+  });
+
   it('asks the same number of calls apart at both ends', () => {
     const server = CHECK.match(/CHECKPOINT_EVERY = (\d+)/)?.[1];
     const client = PAGE.match(/const CHECKPOINT_EVERY = (\d+)/)?.[1];
