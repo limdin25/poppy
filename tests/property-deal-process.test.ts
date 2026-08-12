@@ -106,10 +106,38 @@ describe('the deal process', () => {
     expect(accepted.n).toBeLessThan(quote.n);
   });
 
-  it('never sends an offer without the subject-to clause', () => {
+  // "Subject to our builder", never "subject to survey". The live property
+  // script and the AI coach both say it that way, so the email has to match or
+  // Pedro explains one thing on the phone while Hugo writes another.
+  it('never sends an offer without the subject-to-the-builder clause', () => {
     const offer = DEAL_STAGES.find((s) => s.tag === 'Send the offer')!;
-    const email = offer.templates.find((t) => t.label === 'Formal offer email')!;
-    expect(email.body).toMatch(/Subject to: my builder inspecting and quoting/);
+    const email = offer.templates.find((t) => t.label.startsWith('Formal offer email'))!;
+    expect(email.body).toMatch(/Subject to: our builder going round/);
+    expect(email.body).not.toMatch(/satisfactory survey/i);
+  });
+
+  it('has Pedro ring the agent after the offer email lands', () => {
+    const offer = DEAL_STAGES.find((s) => s.tag === 'Send the offer')!;
+    const call = offer.templates.find((t) => t.channel === 'Phone')!;
+    expect(call.body).toMatch(/remotely/i);
+    expect(call.body).toMatch(/builder/i);
+  });
+
+  // Hugo 2026-08-12: Pedro never offers, and he never hangs up without the
+  // email address, because the offer goes out by email.
+  it('keeps the offer out of Pedro hands and gets the agent email on the call', () => {
+    const joined = DEAL_STAGES[0].points.join(' ');
+    expect(joined).toMatch(/NEVER make the offer/);
+    expect(joined).toMatch(/speak to Hugo/);
+    expect(joined).toMatch(/email address before you hang up/);
+  });
+
+  it('says out loud which steps are Hugo and which are Pedro', () => {
+    for (const stage of DEAL_STAGES) {
+      expect(stage.who, `step ${stage.n} does not name an owner`).toMatch(/PEDRO|HUGO/);
+    }
+    expect(DEAL_STAGES.find((s) => s.n === 3)!.who).toMatch(/HUGO/);
+    expect(DEAL_STAGES.find((s) => s.n === 4)!.who).toMatch(/HUGO/);
   });
 });
 

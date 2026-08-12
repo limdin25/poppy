@@ -61,10 +61,10 @@ export const DEAL_STAGES: DealStage[] = [
     n: 1,
     tag: 'Call the agent',
     title: 'The ballpark call',
-    who: 'Pedro',
+    who: 'PEDRO',
     where: 'We have found a house that looks cheap for what it could be worth.',
-    doNow: 'Ring the agent and ask the ballpark question. Do not make an offer.',
-    doneWhen: 'The agent has told you whether that number is in the ballpark or miles off.',
+    doNow: 'Ring the agent, ask the ballpark question, get their email. Never offer.',
+    doneWhen: 'You have their answer on the number, their name, and their email address.',
     chaseAfterDays: 3,
     points: [
       'Open with: "I am not making an official offer yet, I just want to know if I am in the range before travelling, so I do not waste my time or yours."',
@@ -73,6 +73,8 @@ export const DEAL_STAGES: DealStage[] = [
       'If the card says the deal already works at the asking price, the asking price is your ballpark. Say "okay, let me get back to you on that" and move it on.',
       '"Miles off" means bin it and go to the next one. Never argue the price on this call.',
       'Anything softer than a flat no is a yes for now. Move the card to step 2.',
+      'You NEVER make the offer. If they push for one: "let me speak to Hugo and come back to you." Hugo sends every offer himself, by email.',
+      'Get their email address before you hang up, on every single call. The offer goes out by email and Hugo cannot send it without one.',
       'If they ask whether you want to be sent more properties, always say yes and give your email and number. That list is where the off market ones come from later.',
       'Write down the agent name. Every future call on that branch starts warm because of it.',
     ],
@@ -94,9 +96,9 @@ If they still will not say anything: "no problem, let me get back to you on that
     n: 2,
     tag: 'Ask for photos',
     title: 'Get the photos and the floorplan',
-    who: 'Pedro, on the same call',
+    who: 'PEDRO, on the same call',
     where: 'The agent has not said no. We now need to see the house properly.',
-    doNow: 'Ask for all the photos, the floorplan, the EPC, and any video. Send the email as a reminder.',
+    doNow: 'Ask for the photos, floorplan, EPC and video, and confirm their email address.',
     doneWhen: 'The photos and floorplan are in and attached to the deal.',
     chaseAfterDays: 2,
     points: [
@@ -137,9 +139,9 @@ Thanks,
     n: 3,
     tag: 'Confirm the numbers',
     title: 'Confirm the GDV and the works',
-    who: 'The engine, checked by Hugo',
+    who: 'HUGO, not Pedro',
     where: 'We have the photos. Now we confirm what the house is worth done up, and what it needs.',
-    doNow: 'Run the photos through the brain and check the GDV against the sold comparables.',
+    doNow: 'Hugo checks the GDV against the sold comparables and signs off the works list.',
     doneWhen: 'The GDV, the works list and the offer number are agreed and on the card.',
     chaseAfterDays: 1,
     points: [
@@ -155,9 +157,9 @@ Thanks,
     n: 4,
     tag: 'Hugo prices the works',
     title: 'Hugo gets the building estimate',
-    who: 'Hugo',
+    who: 'HUGO, not Pedro',
     where: 'The numbers look right on paper. Now we check the building cost with a real person.',
-    doNow: 'Send the photos and the video to the builder on WhatsApp for a ballpark price.',
+    doNow: 'Hugo sends the photos and video to the builder on WhatsApp for a ballpark price.',
     doneWhen: 'The builder has given a rough number and it is close to ours.',
     chaseAfterDays: 2,
     points: [
@@ -185,42 +187,62 @@ Roughly what am I looking at to get it to a good rentable standard? Ballpark is 
     n: 5,
     tag: 'Send the offer',
     title: 'Submit the formal offer',
-    who: 'Pedro sends it, Hugo has approved the number',
+    who: 'HUGO writes and sends it. PEDRO rings straight after.',
     where: 'Numbers confirmed, builder happy. Time to put it in writing.',
-    doNow: 'Email the offer to the agent, subject to the builder and to survey.',
-    doneWhen: 'The agent has confirmed they received it and taken it to the vendor.',
+    doNow: 'Hugo emails the offer subject to the builder. Pedro then rings to say it has landed.',
+    doneWhen: 'The agent has the email and has said they will put it to the vendor.',
     chaseAfterDays: 3,
     points: [
-      'An offer is only an email. Nothing is binding on anybody until exchange, months later.',
-      'Always subject to the builder inspecting and quoting, and to survey. That is the way out.',
-      'Have the solicitor name and email ready. The agent asks on the same call, every time.',
+      'An offer is only an email. Nothing is binding on anybody until exchange, months later. We can withdraw at any point before that and it costs nothing.',
+      '"Subject to our builder going round" is the whole trick, and it is not a trick. We are saying out loud what every buyer does quietly: the number can move if the house is worse than the photos.',
+      'The builder visit IS the viewing. One trip, two jobs: it satisfies the agent who wants somebody to see it, and it produces the real quote.',
+      'Say "subject to our builder", never "subject to survey". The script and the coach both say it that way, so the email must match.',
+      'The email is written fresh for every property. Read the listing again and use what the agent actually said on the call. A copied and pasted email reads like a copied and pasted email.',
       'Cash, limited company, no chain, 4 to 6 weeks. Speed is what beats a higher offer.',
-      'If they demand a viewing first, we send the builder or pay someone. Nobody drives there.',
+      'Pedro rings after the email so a human explains it: we are national buyers, we assess remotely first, and we send a local builder round to view and price in one visit.',
+      'Have the solicitor name and email ready. The agent asks on the same call, every time.',
     ],
     templates: [
       {
-        label: 'Formal offer email',
+        label: 'Formal offer email (rewrite it for every property)',
         channel: 'Email',
         subject: 'Offer for {address}',
-        body: `Hi {agent},
+        body: `This is the skeleton, not the email. Before you send it, read the listing again and put in what the agent actually told Pedro on the call: the vendor's situation, the condition, what has already been done, anything they let slip about the price. An agent can tell a copied email at a glance, and a copied email gets a copied answer.
 
-Further to our call, I would like to put a formal offer forward on {address}.
+Hi {agent},
+
+Thanks for your time with Pedro on {date}. Further to that call, I would like to put an offer forward on {address}.
 
 Offer: £{offer_price}
 Buyer: {your_company}, a limited company
-Funding: cash purchase, no mortgage, no chain
+Funding: cash purchase, no mortgage, no chain, nothing to sell
 Timescale: 4 to 6 weeks to completion from the memorandum of sale
 Solicitor: {solicitor_firm}, {solicitor_contact}, {solicitor_email}, {solicitor_phone}
-Subject to: my builder inspecting and quoting the works, and a satisfactory survey
+Subject to: our builder going round to view it and price the works
 Proof of funds: attached
 
-The offer reflects the condition and what the works are going to cost, not what the property will be worth once it is done. Happy to talk it through if the vendor wants to understand how I got there.
+{one or two lines that could only be about THIS house: what the works look like from the photos, what has sold nearby, and the thing the agent told us on the call}
 
-Could you confirm you have received this and let me know what they say?
+On how we work: we buy across the country and we assess remotely first, so we do not send people out on viewings that lead nowhere. If this is a runner, we send a local builder round to view it and price the refurb in the same visit, and he can do that this week. That is why the offer is subject to him rather than to a survey.
+
+The number reflects the condition and what the work will cost, not what the house will be worth once it is done. Happy to talk it through if the vendor wants to see how we got there.
+
+Could you confirm you have this, and let me know what they say?
 
 Thanks,
 {your_name}
 {your_company}`,
+      },
+      {
+        label: 'Pedro rings after the offer email',
+        channel: 'Phone',
+        body: `Ring the same day the email goes out. This call is why the offer gets read instead of filed.
+
+"Hi {agent}, it is Pedro, we spoke about {address}. Hugo has just emailed the offer over to you, £{offer_price}.
+
+Just so you know how we work: we buy all over the country, so we do the assessment remotely first rather than sending people out on viewings that go nowhere. If the vendor is interested, we send a local builder round to view it and price the work up in the same visit, and he can be there this week. That is why the offer says subject to our builder rather than subject to survey.
+
+It is cash, no mortgage, no chain. Could you put it to the vendor and let me know? When is realistic for me to ring you back?"`,
       },
       {
         label: 'They want a viewing before they will put the offer forward',
@@ -240,7 +262,7 @@ Thanks,
     n: 6,
     tag: 'Chase the agent',
     title: 'Follow up until you get an answer',
-    who: 'Pedro',
+    who: 'PEDRO',
     where: 'The offer is in. The vendor is thinking, or the agent has not asked them yet.',
     doNow: 'Ring the agent on the day they told you to ring back.',
     doneWhen: 'You have a yes, or a no with a reason.',
@@ -264,7 +286,7 @@ I notice it is still showing on Rightmove. Where did that one get to? If it has 
     n: 7,
     tag: 'Get it in writing',
     title: 'Offer accepted',
-    who: 'Pedro',
+    who: 'PEDRO',
     where: 'They said yes on the phone. On the phone is not good enough.',
     doNow: 'Ask the agent for an email with the address and the agreed price on it.',
     doneWhen: 'That email is in the inbox and saved on the deal.',
@@ -296,7 +318,7 @@ Thanks,
     n: 8,
     tag: 'Package and send',
     title: 'Sell the deal to an investor',
-    who: 'Hugo',
+    who: 'HUGO',
     where: 'We have an accepted offer in writing. Now we find the buyer.',
     doNow: 'Build the deal pack and send the teaser to the investor list.',
     doneWhen: 'An investor says they want it.',
@@ -333,7 +355,7 @@ Full pack with the sold comparables to anyone who wants it. First to reserve tak
     n: 9,
     tag: 'Reserve and funds',
     title: 'Investor reserves it',
-    who: 'Hugo',
+    who: 'HUGO',
     where: 'An investor wants it. Now we lock it down.',
     doNow: 'Get the reservation form signed, invoice half the fee, and ask for their proof of funds.',
     doneWhen: 'Form signed, half the fee in the client account, proof of funds received.',
@@ -360,7 +382,7 @@ Black out the account number and any transactions, nobody needs to see those. It
     n: 10,
     tag: 'Builder site visit',
     title: 'The real quote',
-    who: 'Hugo',
+    who: 'HUGO',
     where: 'The deal is sold. Now the builder actually walks the house.',
     doNow: 'Book the builder in through the agent and get an itemised written quote.',
     doneWhen: 'The written quote is in and compared against our budget.',
@@ -388,7 +410,7 @@ I need it itemised rather than one number, and I need it in writing. My budget w
     n: 11,
     tag: 'Renegotiate',
     title: 'Only if the quote came in over budget',
-    who: 'Pedro rings, Hugo sets the number',
+    who: 'HUGO sets the number, PEDRO rings',
     where: 'The builder found more work than the photos showed.',
     doNow: 'Go back to the agent with the quote and a new number.',
     doneWhen: 'They accept the new price, or we hand the reservation money back.',
@@ -422,7 +444,7 @@ Thanks,
     n: 12,
     tag: 'Instruct solicitors',
     title: 'Tip it into legals',
-    who: 'Hugo',
+    who: 'HUGO',
     where: 'Price agreed and buyer in place. Time to hand it to the lawyers.',
     doNow: 'Send the agent the buyer details with both solicitors copied in.',
     doneWhen: 'The memorandum of sale has gone out and the solicitors are talking.',
@@ -461,7 +483,7 @@ Thanks,
     n: 13,
     tag: 'Chase legals',
     title: 'Sales progression',
-    who: 'Hugo',
+    who: 'HUGO',
     where: 'It is with the solicitors and it will take as long as it takes.',
     doNow: 'One chase email a week. Not more.',
     doneWhen: 'A date for exchange is set.',
@@ -492,7 +514,7 @@ Thanks,
     n: 14,
     tag: 'Invoice the balance',
     title: 'Exchange, then completion',
-    who: 'Hugo',
+    who: 'HUGO',
     where: 'Contracts are being signed. This is payday.',
     doNow: 'Invoice the remaining half of the sourcing fee.',
     doneWhen: 'Paid, and the money has moved out of the client account.',
