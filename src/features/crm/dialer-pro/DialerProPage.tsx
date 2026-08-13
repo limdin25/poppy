@@ -24,6 +24,7 @@ import type { Campaign } from '@/features/crm/caller-pad/types';
 
 import DialerScriptPane, { type ScriptKey } from '@/features/crm/components/live-call/DialerScriptPane';
 import { scriptForCall, scriptFromLandingPath } from '@/features/crm/lib/scriptForCall';
+import { callModeForStep } from '@/features/crm/lib/nextStep';
 import DialerRightTabs from '@/features/crm/components/live-call/DialerRightTabs';
 import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaCompact';
 import CallTimeline from '@/features/crm/components/live-call/CallTimeline';
@@ -1010,6 +1011,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                   contact={contact}
                   scriptKey={paneScriptKey}
                   extraTokens={isHousesCall ? scriptTokensFor(selectedListing) : undefined}
+                  callMode={isHousesCall ? callModeForStep(contact?.customFields?.next_step) : undefined}
                 />
               </div>
             </div>

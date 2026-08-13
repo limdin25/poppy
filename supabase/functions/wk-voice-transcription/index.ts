@@ -315,10 +315,10 @@ const CLOSE_CALL_CONTEXT = [
 const PROPERTY_STAGE_ORDER = [
   'Is it still available',
   'Ask for the two minutes',
-  'The three that move the number',
-  'The money',
-  'Now get everything else',
+  'The discovery questions',
+  'Their figure, never ours',
   'Lock the next step',
+  'Call two, the offer',
 ];
 
 /** The words on the agent's screen, as markdown, for the AGENT'S CALL SCRIPT
@@ -326,10 +326,13 @@ const PROPERTY_STAGE_ORDER = [
 const PROPERTY_AGENT_SCRIPT_MD = `# Ringing the agent about a house
 
 A real person at a real company, working with the director, who is a cash buyer.
-THE ONLY PURPOSE OF THIS CALL IS A BALLPARK FIGURE. Three questions, then the
-money, then the rest only if the money went somewhere. Do NOT make a formal
-offer. NEVER view a property and never book one: our builder views it and prices
-the refurb at the same time. One question at a time.
+TWO CALLS. CALL ONE IS DISCOVERY: the facts, what sold done up on the street,
+what has been rejected, THEIR figure if they will give one, the video and the
+measurements, the email address, and a booked time to ring back. THE AGENT NEVER
+SAYS A NUMBER OF OUR OWN ON CALL ONE. Call two is the offer call, made only
+after the homework, with the director's confirmed figure. Do NOT make a formal
+offer on either call. NEVER view a property and never book one: our builder
+views it and prices the refurb at the same time. One question at a time.
 
 ## 1. Is it still available
 "Hi, hello. I'm calling about the property on {{property_street}}, the {{bedrooms}} bed {{property_type}}. Is that one still available?"
@@ -344,39 +347,45 @@ If asked who is calling: "It's Pedro. I work with Hugo, our director, at Unico. 
 If asked what company: "Unico. We're a small property company, the director Hugo buys with cash and I do the legwork for him." Only if they press for the legal detail: "Full name's Ulinc Unico Group Limited, company number 11197856. Registered office is 483 Green Lanes in London, N13 4BS."
 If asked cash or mortgage: "Cash. No mortgage, no chain, nothing to sell."
 
-## 3. The three that move the number
-THREE questions, not sixteen, then straight to the money.
+## 3. The discovery questions
+The whole job of call one. Conversational, not a form.
 "Is it vacant, or is there a tenant in?" If tenanted: staying or leaving, and what rent.
 "And what sort of condition is it in, ready to move into or does it need work?"
 If they say it is down to personal preference: "No, course. I mean more the boring stuff, like the boiler, the electrics, the roof, any damp?"
 "Do you know why they're selling?" Then: in a hurry, and is there an onward chain.
-Everything else waits until after the money.
-
-## 4. The money
-The offer without offering, said as one breath: "I've had a proper look at this one. I've been through what's sold on the same streets and worked out roughly what it'd cost us to put it right. I can't get near what you're asking, and I don't want to waste your time or embarrass anyone with a silly offer. But if we were to offer around {{offer_open}}, am I in the ballpark, or am I a million miles off?"
-"If we were to offer", never "I'd like to offer". Then be quiet. Let the silence do the work.
-Then get THEIR figure: "I only say that because a similar one nearby went for less not long ago. So what sort of figure do you think would actually get it done?"
-Climb the ladder ONE rung at a time, and only in exchange for something they have given you.
-Push back once, with a comp: "The one that sold on the same street went for less than that and it didn't need the work this one needs. What would they actually take?"
-"Let me speak to Hugo and come back to you" is a lever used LATER, not an opener: when a real figure has been banked, when they ask for something formal, or when pushed for a commitment the agent cannot give.
-If asked "is that your best?": "It's where we'd start. If there's a number that gets it done quickly, tell me what it is and I'll put it to Hugo today."
-
-## 5. Now get everything else
-ONLY once the money has gone somewhere. If they refused a figure outright, stop here and move to the next branch.
-"Has it had much interest? Any offers so far?" And has a sale ever fallen through.
+"Has anything on that street sold recently that was done up? What did it actually go for?" The most valuable question on the page: the done-up value from the person who sells that street.
+"Has it had much interest? Any offers so far, and has anything been turned down?" A rejected offer is the floor. And has a sale ever fallen through.
 "How long's it been on with you? And has the price come down at all?"
+"Have you got the floor area on it, or the room measurements?" Ask whenever the listing has no floor plan.
 "Is it freehold or leasehold?"
 FLAT only: years left on the lease, service charge, ground rent, major works, cladding or EWS1.
 HOUSE only: confirm freehold, structural issues, extensions signed off.
 Never ask a house about service charges or a lease unless they say it is leasehold. Never ask a flat about subsidence unless they raise it.
 
-## 6. Lock the next step
-"Is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it?" Ask this on EVERY call.
-"What's the best email for you? Hugo will want to put something over in writing." Ask this on EVERY call too. Never hang up without the email address: every offer goes out by email, so a call with no email cannot become an offer.
+## 4. Their figure, never ours
+"Is there a figure the vendor has in mind that would actually get it done? What sort of figure do you think would actually get it done?" Said lightly. Then be quiet: whoever speaks first loses this bit.
+A figure THEY say is worth more than any figure we could float. Write it down word for word.
+If they push for OUR number: "Honestly, I don't want to give you a number I'd have to take back. Let me do the work properly, what's sold, what the work costs, and I'll come back to you tomorrow with something you can actually put to the vendor." That is the whole answer, on every first call.
+If they cannot disclose: "No, and I wouldn't ask you to. Roughly though, are they wedded to the asking price, or is there room? You don't have to give me a number."
+
+## 5. Lock the next step
+"Is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it?" Ask this on EVERY call. The builder prices the refurb off the video before anyone travels.
+"What's the best email for you? Hugo will want to put something over in writing once we've done the homework." Ask this on EVERY call too. Never hang up without the email address: every offer goes out by email, so a call with no email cannot become an offer.
+"Before I let you go, have you got anything else stuck? Anything in a chain that's dragging, or a sale that's fallen through where cash would sort it?"
 "And when it comes to it, we'd get our builder round to have a look and price the work up." Ask, do not book.
-"What's a realistic time for me to ring you back, tomorrow or is it better later in the week?" Never end the call without an agreed callback time.
+"Right, that's everything I need. I'll do the homework on it properly tonight. What's a realistic time for me to ring you back, tomorrow or is it better later in the week?" Never end the call without an agreed callback time. The booked callback IS call two.
 "That's great, thanks for your time. Speak to you then."
-Then wait. Do not hang up on your own closing line.`;
+Then wait. Do not hang up on your own closing line.
+
+## 6. Call two, the offer
+ONLY after the homework, with the director's confirmed figures on screen. Open: "Hi, it's Pedro from Unico, we spoke about {{property_street}}. I said I'd do the homework and come back to you, so here I am."
+The offer without offering, said as one breath: "I've had a proper look at this one. I've been through what's sold on the same streets and worked out roughly what it'd cost us to put it right. I can't get near what you're asking, and I don't want to waste your time or embarrass anyone with a silly offer. But if we were to offer around {{offer_open}}, am I in the ballpark, or am I a million miles off?"
+"If we were to offer", never "I'd like to offer". Then be quiet. Let the silence do the work.
+Climb the ladder ONE rung at a time, and only in exchange for something they have given you.
+Push back once, with a comp: "The one that sold on the same street went for less than that and it didn't need the work this one needs. What would they actually take?"
+"Let me speak to Hugo and come back to you" is a lever used LATER, not an opener: when a real figure has been banked, when they ask for something formal, or when pushed for a commitment the agent cannot give.
+If asked "is that your best?": "It's where we'd start. If there's a number that gets it done quickly, tell me what it is and I'll put it to Hugo today."
+Close: ask them to put the figure to the vendor, and book the ring-back. Hugo follows up in writing, subject to our builder going round.`;
 
 /** WHAT THIS PARTICULAR CALL IS FOR.
  *
@@ -396,22 +405,35 @@ Then wait. Do not hang up on your own closing line.`;
  *  Absent or unknown step -> nothing is appended and the coach behaves exactly
  *  as it did before this existed. */
 const PROPERTY_STEP_PROMPT: Record<string, string> = {
-  'Confirm the numbers': [
+  'Discovery call': [
+    'WHICH CALL THIS IS: THE FIRST CALL to this branch. Discovery only.',
+    'THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN ON THIS CALL. Not a figure, not a range, not "around" anything. If they start to float one, fire a card immediately: "No number on a first call. If pushed: I don\'t want to give you a number I\'d have to take back, let me do the homework and come back to you tomorrow."',
+    'What this call is for, in order: the facts (vacant, condition, why selling), what sold DONE UP on the street and for how much, offers and rejections, the floor area or room measurements, THEIR figure if they will give one, a video walkthrough or the floor plan, the estate agent\'s EMAIL ADDRESS, and a BOOKED time to ring back.',
+    'If the branch names a figure of their own, that is the prize: bank it word for word, coach the callback booking, never a counter-number.',
+  ].join('\n'),
+  'Do the homework': [
     'WHICH CALL THIS IS: a FOLLOW UP. A ballpark figure has already come out of this branch and the director is pricing it up now.',
     'So do NOT coach the ballpark question again, and do NOT coach a new figure. Asking for a ballpark twice makes us look like we do not keep records.',
     'What this call is for, in order: anything still missing on the house (photos that never arrived, the floorplan, the full EPC, a video walkthrough), the estate agent\'s EMAIL ADDRESS if we still do not have it, whether anything has changed (other offers, a price drop, is it still available), and an agreed time to ring back.',
     'If the estate agent volunteers a new or lower figure, that is the most important thing on the call: bank it, say it goes to the director, agree a callback.',
   ].join('\n'),
-  'Hugo prices the works': [
+  'Builder ballpark': [
     'WHICH CALL THIS IS: a FOLLOW UP while the director prices the building work.',
     'Do NOT coach the ballpark question again and do NOT coach a figure of any kind.',
     'What this call is for: photos, floorplan, full EPC or a video walkthrough for the builder, the estate agent\'s email address, and whether anything has changed. Then an agreed callback.',
   ].join('\n'),
-  'Send the offer': [
+  'Email the offer': [
     'WHICH CALL THIS IS: the offer is going over by email from the director TODAY.',
     'What this call is for: tell them it is coming or that it has landed, and explain how we work in one breath. We buy across the country, we assess remotely first, and we send a local builder round to view it and price the work in the same visit. That is why the offer is subject to our builder rather than to a survey.',
     'Coach the agent to ask them to put it to the vendor and to agree a time to ring back. Never coach a NEW figure on this call: the number is the director\'s and it is already written down.',
     'If they ask for anything in writing, that is a yes: get the email address confirmed.',
+  ].join('\n'),
+  'Offer call': [
+    'WHICH CALL THIS IS: THE OFFER CALL, call two. The homework is done and the director\'s confirmed figure is in THIS LEAD.',
+    'Open by picking up where call one left off: "it\'s Pedro from Unico, we spoke about the house, I said I\'d do the homework and come back to you."',
+    'Now the money conversation IS the job: the offer without offering with the "open at" figure in THIS LEAD, one number, never a range, then silence. Climb the ladder one rung at a time. Push back once with a comparable.',
+    'Close: ask them to put the figure to the vendor and BOOK the ring-back. The director follows up in writing, subject to our builder going round.',
+    'If the money boxes in THIS LEAD are empty, something is wrong: coach the agent to gather facts and book a callback instead, and never to invent a figure.',
   ].join('\n'),
   'Chase the agent': [
     'WHICH CALL THIS IS: a CHASE. An offer or a figure is already with the vendor and we are waiting on an answer.',
@@ -419,6 +441,10 @@ const PROPERTY_STEP_PROMPT: Record<string, string> = {
     'Do NOT coach the ballpark question again. Do NOT improve our own offer unprompted: nothing has been given, so there is nothing to pay for.',
     'If they knock it back WITHOUT naming a figure, coach "fair enough, what would they actually take?" immediately.',
     'If they name a figure, bank it, put it to the director, agree a callback. That is the whole call.',
+  ].join('\n'),
+  'Book the viewing': [
+    'WHICH CALL THIS IS: the ballpark has come back accepted or close, so the builder\'s visit is being arranged. The visit IS the viewing: he views it and prices the works in one trip.',
+    'What this call is for: agree access with the branch for our builder, confirm who meets him, and keep the figure exactly where it is. Never renegotiate on this call and never book the agent themselves to attend.',
   ].join('\n'),
   'Get it in writing': [
     'WHICH CALL THIS IS: they have ACCEPTED. The only thing missing is it in writing.',
@@ -438,16 +464,17 @@ const PROPERTY_SCRIPT_PROMPT = [
   'This call is an agent ringing an ESTATE AGENCY about a house. The person on the phone sells houses for a living. They are NOT a sales lead, they are the seller\'s representative, and we are the buyer.',
   '',
   '',
-  'THE ONLY PURPOSE OF THIS CALL IS TO GET A BALLPARK FIGURE OUT OF THE BRANCH.',
-  'Everything else is subordinate to that. A call that ends without a figure or an agreed time to ring back has not worked, however pleasant it was. The checklist is not the job, it is what you do once the money has gone somewhere. If the agent is deep in fact-gathering and has not floated a figure, coach them to the money.',
+  'THIS IS A TWO CALL PROCESS AND YOU MUST COACH THE RIGHT CALL.',
+  'CALL ONE is DISCOVERY: the facts, what sold done up on the street, offers and rejections, the measurements, THEIR figure if they will give one, the video, THE EMAIL ADDRESS, and a booked time to ring back. THE AGENT NEVER SAYS A NUMBER OF OUR OWN ON A FIRST CALL: no figure, no range, no "around". If they start to, fire a card that stops them, with the approved line: "I don\'t want to give you a number I\'d have to take back, let me do the homework and come back to you tomorrow." CALL TWO is the offer call, made after the homework with the director\'s confirmed figure: there, and only there, the ballpark question is the job. A WHICH CALL THIS IS block appears below when the deal step is known; without one, treat the call as a FIRST call.',
+  'On every call: a figure out of the BRANCH\'S mouth is the prize, and a call that ends without a booked ring-back time has not worked, however pleasant it was.',
   '',
   'THE SIX BEATS, forward-only order',
   '1. Is it still available',
   '2. Ask for the two minutes',
-  '3. The three that move the number (empty, needs work, why selling. THREE questions, not sixteen)',
-  '4. The money',
-  '5. Now get everything else (only if the money went somewhere)',
-  '6. Lock the next step (video walkthrough, THE EMAIL ADDRESS, builder, callback time)',
+  '3. The discovery questions (empty, needs work, why selling, what sold done up on the street, offers and rejections, time on market, measurements, tenure)',
+  '4. Their figure, never ours (call one never floats OUR number)',
+  '5. Lock the next step (video walkthrough, THE EMAIL ADDRESS, builder, callback time)',
+  '6. Call two, the offer (ONLY after the homework, with the director\'s confirmed figure)',
   '',
   'NEVER MENTION, none of it exists on this call:',
   '- Google reviews, star ratings, local ranking, competitors',
@@ -455,7 +482,7 @@ const PROPERTY_SCRIPT_PROMPT = [
   '- anything at all about the Elsie product.',
   'If a card would have referenced any of that, it is the wrong call type. Emit STAY_ON_SCRIPT instead.',
   '',
-  'THE MONEY, this is the part that pays for the call:',
+  'THE MONEY, on the OFFER CALL ONLY, never on a first call:',
   '- The agent OPENS on the "open at" figure in THIS LEAD. One number, never a range.',
   '- Never coach the agent to say a range, and never coach "between X and Y".',
   '- NEVER SAY THE WALK-AWAY FIGURE, and never coach the agent to reveal it, hint at it, or confirm a guess at it. It is their ceiling and it is private. If the estate agent asks "is that your best?", the answer is "it\'s where he\'d start", never the ceiling.',

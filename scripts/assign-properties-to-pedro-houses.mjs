@@ -394,7 +394,7 @@ function factsFor(branch, headline, settings) {
     // and nothing here advances it: api/crm/property-outcome.ts moves it on
     // when Pedro presses an outcome, and the send box moves it on when an offer
     // email goes out.
-    next_step: 'Call the agent',
+    next_step: 'Discovery call',
   }
 }
 
@@ -552,7 +552,7 @@ async function main() {
         const facts = factsFor(branch, headlineProperty(branch.properties), settings)
         // A refresh rewrites the FACTS. It must not rewind the deal: a branch
         // Pedro has already worked may be on "Confirm the numbers" or further,
-        // and putting it back to "Call the agent" would tell him to ring a
+        // and putting it back to "Discovery call" would tell him to ring a
         // branch he has rung (Hugo 2026-08-12).
         const { data: prev } = await db.from('wk_contacts')
           .select('custom_fields').eq('id', contact.id).maybeSingle()

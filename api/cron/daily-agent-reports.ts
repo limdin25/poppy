@@ -74,6 +74,11 @@ interface CallRow {
   /** 'property_call' when the dialer room was the Houses one. NULL on plumber
    *  calls and on property calls made before the room stamped it. */
   script_key: string | null;
+  /** Who the call was to, so a first call to a branch can be told apart from
+   *  a ring-back. The two-call process (2026-08-13) grades them oppositely:
+   *  floating OUR figure on a first call is a rule break, on the offer call
+   *  it is the job. */
+  contact_id: string | null;
   lines: Line[];
 }
 
@@ -366,6 +371,9 @@ const P_INTEREST = /(much|any) interest|any offers|offers (so far|on it)|fall(en
 const P_MOTIVE = /why (are )?they('?re)? selling|why'?s it (for sale|up|on)|reason .{0,25}sell|in a hurry|motivated/i;
 const P_TIME_ON_MARKET = /how long('?s| has| is)? it been|been on (the market|with you)|price (come down|came down|dropped|reduced)|any reductions|reduced at all/i;
 const P_TENURE = /freehold|leasehold/i;
+// The two discovery questions added 2026-08-13 with the two-call process.
+const P_STREET_SOLD = /(anything|what|one)[^.?!]{0,40}(sold|gone|went)[^.?!]{0,40}(street|road|nearby)|(street|road)[^.?!]{0,30}sold[^.?!]{0,30}(recently|done up)|done up[^.?!]{0,40}(went|go|sold|achieve)|what did (it|that one|they) (go|sell|achieve)/i;
+const P_MEASUREMENTS = /floor ?area|square met|\bsq ?m\b|room (measurements|sizes)|floor ?plan/i;
 /** Money in ASR text: "£62,000", "62k", "62 grand", "sixty two thousand". */
 const P_MONEY = /£ ?\d|\b\d{2,3}[.,]?\d{0,3} ?(k\b|grand|thousand)|\b(fifty|sixty|seventy|eighty|ninety|hundred)([- ]\w+)? (thousand|grand)/i;
 /** The offer WITHOUT offering: "if we were to offer around X, am I in the
@@ -446,7 +454,7 @@ export function moneyTiming(convs: CallRow[]) {
 /** The property steps, counted in code so the report grades the same way
  *  every day and the model never has to tally. Same contract as scriptCheck():
  *  live conversations only, ASR-close-not-exact, transcripts win on a clash. */
-export function propertyScriptCheck(calls: CallRow[]) {
+export function propertyScriptCheck(calls: CallRow[], firstContactIds?: Set<string>) {
   const convs = calls.filter((c) => c.lines?.length && agentWords(c) > 0 && !isVoicemail(c));
   const agentLines = (c: CallRow) =>
     (c.lines ?? []).filter((l) => l.speaker === 'agent').map((l) => (l.body ?? '').trim());
@@ -456,8 +464,27 @@ export function propertyScriptCheck(calls: CallRow[]) {
   const floated = (c: CallRow) =>
     agentLines(c).some((b) => P_FLOATS_FIGURE.test(b) || (P_MONEY.test(b) && P_FLOAT_WORDS.test(b)));
 
+  // The two-call split (2026-08-13). A DISCOVERY call is a conversation with a
+  // branch this agent had never rung before today; an OFFER call is a ring-back.
+  // Undecidable when the caller does not pass the history (old tests, missing
+  // contact ids): then both counts stay at zero and no rule break is claimed.
+  const isFirst = (c: CallRow) =>
+    firstContactIds != null && c.contact_id != null && firstContactIds.has(c.contact_id);
+  const discovery = firstContactIds ? convs.filter(isFirst) : [];
+  const ringbacks = firstContactIds ? convs.filter((c) => !isFirst(c)) : [];
+
   return {
     conversations_graded: convs.length,
+    // The two-call process, graded oppositely by call type.
+    discovery_calls: discovery.length,
+    offer_or_chase_calls: ringbacks.length,
+    // RULE BREAK: our figure floated on a FIRST call. The whole 2026-08-13
+    // change exists because numbers built on a guessed refurb went out on
+    // first calls and turned into offers. Should be zero, always.
+    floated_our_figure_on_first_call: discovery.filter(floated).length,
+    // The new discovery questions.
+    asked_what_sold_done_up_on_street: n((c) => any(c, P_STREET_SOLD)),
+    asked_floor_area_or_measurements: n((c) => any(c, P_MEASUREMENTS)),
     // The opener and the intro.
     asked_availability: n((c) => any(c, P_AVAILABILITY)),
     said_who_we_are: n((c) => any(c, P_INTRO)),
@@ -564,7 +591,13 @@ async function housesTabStats(agentId: string, since: string, until: string): Pr
   return { houses_outcomes_logged: rows.length, houses_outcomes: outcomes, figures_reported: figures };
 }
 
-const PROPERTY_SYSTEM = `You write the end-of-day coaching report for a UK property deal-sourcing caller. They ring estate agents about specific listed properties on behalf of a cash buyer: the company is Unico, the director is Hugo, and the agent's job on every call is to confirm the property is available, work a 16-question fact checklist, then run the money conversation themselves: float an opening figure WITHOUT making a formal offer, go quiet, get the branch to name a figure back, push back once with a comparable sale, and climb their ladder one rung at a time. "Let me put that to Hugo" is a lever used late, never an opener. They must NEVER make a formal or binding offer, NEVER book a viewing (the director arranges those), never quote completion timescales, and never reveal or confirm their walk-away ceiling.
+const PROPERTY_SYSTEM = `You write the end-of-day coaching report for a UK property deal-sourcing caller. They ring estate agents about specific listed properties on behalf of a cash buyer: the company is Unico, the director is Hugo. Since 2026-08-13 the job is a TWO CALL process, and the single most important thing you grade is whether the right call got the right behaviour.
+
+CALL ONE, DISCOVERY (a branch rung for the first time): confirm it is available, work the fact checklist, ask what sold DONE UP on the same street and for how much, ask about offers and rejections, get the floor area or room measurements, ask for a video walkthrough, get THEIR figure if they will give one ("is there a figure the vendor has in mind that would actually get it done?"), get the agent's email address, and book a time to ring back. ON A FIRST CALL THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN: no figure, no range, no "around". The approved deflection when pushed is "I don't want to give you a number I'd have to take back, let me do the homework and come back to you tomorrow." A number of ours floated on a first call is a RULE BREAK and must be reported plainly, with the quote.
+
+CALL TWO, THE OFFER CALL (a ring-back, after the homework): float the director's confirmed opening figure WITHOUT making a formal offer ("if we were to offer around X, am I in the ballpark or a million miles off?"), go quiet, get the branch to name a figure back, push back once with a comparable sale, climb the ladder one rung at a time, and push to get the figure to the vendor before any viewing. On THAT call the floated figure is the job, not a fault.
+
+On both calls: "let me put that to Hugo" is a lever used late, never an opener. They must NEVER make a formal or binding offer, NEVER book a viewing (the director arranges those, and our builder is the viewer), never quote completion timescales, and never reveal or confirm their walk-away ceiling.
 
 The agent reads this report themselves. Write it to be read by the person it is about.
 
@@ -577,6 +610,7 @@ Non-negotiable: you MUST report these explicitly if they appear anywhere in the 
 - Booking or promising a viewing, or committing the director to a time.
 - Inventing facts: funds, completion timescales, valuations, or company details. The company line is Unico (full name Ulinc Unico Group Limited) and anything beyond the approved details is the director's to share.
 - Saying or confirming the walk-away ceiling out loud.
+- A figure of ours floated on a FIRST call to a branch (the stats mark these): quote it and restate the rule, the homework comes before any number.
 Never leave one of these out because the day went well otherwise.
 
 Ground every point in what actually happened. Quote the agent's own words, and cite the agency name so they can find the call. Never invent a quote. The statistics are given to you and are correct. Never recompute them or contradict them.
@@ -590,7 +624,7 @@ Write in British English, plain language, second person ("you"). Never write a l
 **Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, any long gap with no calls. If a CORRECTION block appears at the top of this prompt, the FIRST thing in this section is that correction, said plainly and without excuses.
 **What worked**: up to three specific things, each with a quote or an agency name.
 **The grade**: the day as one funnel, on its own lines: dials, conversations, availability confirmed, money conversations opened, figures obtained from the branch, callbacks agreed with a time. Include how far into the call the money landed, because that is usually the answer. Then say plainly which step is losing the most. A figure out of the branch's mouth is the score that matters; a polite day of chat that never reaches the money is not a good day. If outcomes were not logged in the Houses tab, say so: the figures are the reason the calls happen and they must be written down where the director can see them.
-**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the fact checklist, the floated figure, asking THEM for a figure, the callback time, then the rule breaks (formal offer, booked viewing, sourcer/course talk), which should all be zero. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
+**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the fact checklist, what sold done up on the street, the floor area ask, asking THEM for a figure, the video ask, the email address, the callback time, then the rule breaks (a figure of ours on a first call, formal offer, booked viewing, sourcer/course talk), which should all be zero. On ring-backs, grade the money conversation: the floated figure, the silence, the ladder. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
 **Fix tomorrow**: every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
 **Tomorrow's one thing**: a single sentence naming the one change that would make the biggest difference.
 
@@ -599,7 +633,7 @@ After the report, and only if one or more of the non-negotiables above actually 
 ---FLAGS---
 
 followed by a JSON array, one object per item, and nothing else:
-[{"type":"swearing|rudeness|pressure|formal_offer|booked_viewing|invented_fact|said_ceiling","quote":"their exact words","company":"agency name","call_id":"the call_id","why":"one sentence on why it matters"}]
+[{"type":"swearing|rudeness|pressure|formal_offer|booked_viewing|invented_fact|said_ceiling|first_call_figure","quote":"their exact words","company":"agency name","call_id":"the call_id","why":"one sentence on why it matters"}]
 
 Emit the delimiter only when there is at least one item. Never emit an empty array. The flags duplicate what you already wrote in the report; they are an index for the business owner, not a replacement.`;
 
@@ -662,7 +696,10 @@ Notes on the script counts:
 - These are DERIVED from imperfect speech recognition by pattern matching. They are a floor, not a fact: they miss things the agent genuinely did.
 - NEVER STATE AN ABSOLUTE FROM ONE OF THESE COUNTS. Do not write "you never once asked", "you did not agree a single callback", or "X: 0" unless you have read the transcripts and confirmed it yourself. Write "I could only find two" and quote one of them. On 2026-08-10 this report told an agent he floated a figure 4 times when he did it 9 times, and that he agreed no callbacks on a day he agreed five, one at a named time. Being told you did not do something you did is how a coaching report loses its authority for good.
 - Where a count disagrees with what you can plainly read in the transcripts, the transcripts win. Say what you actually saw.
-- "floated_a_figure" is the offer-without-offering ("if we were to offer around X, am I in the ballpark"). "asked_them_for_a_figure" is the other half of the money conversation. "lead_named_figure" is the score: a number out of the branch's mouth.
+- "discovery_calls" are conversations with branches rung for the FIRST time today; "offer_or_chase_calls" are ring-backs. They are graded oppositely.
+- "floated_our_figure_on_first_call" is a RULE BREAK and should be zero: on a first call the agent never says a number of ours. Read the transcript, quote the words, and give the approved deflection ("I don't want to give you a number I'd have to take back") as the fix. On a ring-back a floated figure is correct play.
+- "asked_what_sold_done_up_on_street" and "asked_floor_area_or_measurements" are the two discovery questions added 2026-08-13. They are the highest-value questions on the call: the first prices the deal from the agent's own street, the second is what lets the homework check the comparables. Praise them when present, coach them when missing.
+- "floated_a_figure" is the offer-without-offering ("if we were to offer around X, am I in the ballpark"). On a RING-BACK it is the job. "asked_them_for_a_figure" is the other half of the money conversation and is right on EVERY call. "lead_named_figure" is the score: a number out of the branch's mouth.
 - "pct_of_call_before_money" is the median share of the agent's turns that passed before the money question landed, across the calls that reached it. This is the most actionable number on the page. Under about 60% there is room to negotiate; up near 90% the figure goes in with nothing left of the call and the answer is always no. If it is high, lead with it.
 - "second_gear_after_a_no" out of "faced_a_no" is how often they kept going after the branch knocked the figure back, rather than thanking them and hanging up. This is where deals die.
 - "made_formal_offer", "booked_a_viewing" and "sourcer_or_course_talk" are rule breaks and should all be zero. The script's own deflection lines ("nothing I've said today is a formal offer", "let me check Hugo's diary") are correct play and are already excluded from those counts.
@@ -960,6 +997,7 @@ export default async function handler(
       status: c.status,
       disposition: c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null,
       company: c.contact_id ? contactName.get(c.contact_id) ?? null : null,
+      contact_id: c.contact_id ?? null,
       script_key: (c as { script_key?: string | null }).script_key ?? null,
       lines: byCall.get(c.id) ?? [],
     }));
@@ -973,7 +1011,22 @@ export default async function handler(
         housesTabStats(agent.id, since, until),
       ]);
       const dispositions = dispositionCounts(rows);
-      const adherence = propertyScriptCheck(rows);
+      // Which of today's branches had never been rung before today. The
+      // two-call process grades a first call and a ring-back oppositely, so
+      // the check needs the history: a branch with no call before today is a
+      // DISCOVERY call today.
+      const todaysContacts = [...new Set(rows.map((r) => r.contact_id).filter(Boolean))] as string[];
+      const firstContactIds = new Set(todaysContacts);
+      for (let i = 0; i < todaysContacts.length; i += 200) {
+        const { data: prior } = await supabase
+          .from('wk_calls')
+          .select('contact_id')
+          .eq('agent_id', agent.id)
+          .lt('started_at', since)
+          .in('contact_id', todaysContacts.slice(i, i + 200));
+        for (const r of prior ?? []) firstContactIds.delete(r.contact_id as string);
+      }
+      const adherence = propertyScriptCheck(rows, firstContactIds);
       const stats = {
         kind: 'property' as const,
         ...computeStats(rows),

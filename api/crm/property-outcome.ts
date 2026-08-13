@@ -63,16 +63,17 @@ const OUTCOMES = ['qualified', 'figure_obtained', 'deciding', 'follow_up', 'not_
  *  undefined = leave the tag exactly as it is. '' = clear it, this one is dead.
  */
 const STEP_FOR_OUTCOME: Record<string, string | undefined> = {
-  // A figure is out of the branch, which is the entire point of the call. Hugo
-  // is next: confirm the GDV and the works before anybody offers anything.
-  figure_obtained: 'Confirm the numbers',
-  qualified: 'Confirm the numbers',
+  // A figure is out of the branch, which is the entire point of the call. The
+  // homework is next: the deal gets built from what the agent said before
+  // anybody rings back with a number of ours.
+  figure_obtained: 'Do the homework',
+  qualified: 'Do the homework',
   // Alive, no number yet. Ring them back.
   deciding: 'Chase the agent',
   follow_up: 'Chase the agent',
   callback: 'Chase the agent',
   // Nobody picked up, so the first call still has not happened.
-  no_answer: 'Call the agent',
+  no_answer: 'Discovery call',
   not_qualified: '',
 };
 type Outcome = (typeof OUTCOMES)[number];
@@ -88,8 +89,8 @@ const PIPELINE_OUTCOMES: readonly Outcome[] = ['qualified', 'figure_obtained'];
  *  is only useful if the board reflects it. Outcomes not listed here leave the
  *  card where it is. Column names, matched case-exact against wk_pipeline_columns. */
 const BOARD_COLUMN_FOR: Partial<Record<Outcome, string>> = {
-  figure_obtained: 'Ballpark',
-  deciding: 'Deciding',
+  figure_obtained: 'Ballpark agreed',
+  deciding: 'Offer with vendor',
   follow_up: 'Follow up',
 };
 

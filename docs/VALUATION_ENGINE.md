@@ -1,3 +1,18 @@
+> # ⚠️ SUPERSEDED 2026-08-13 — TWO RULES BELOW ARE NOW THE OPPOSITE OF WHAT WE DO
+>
+> This spec says **"GDV is never an input to the offer"** and **"offer is never
+> above asking"**. Both were replaced on 2026-08-12 by the Fontaine course
+> formula, which is verified against three of their live deals to two decimal
+> places:
+>
+> ```
+> TMV        = GDV - (refurb + 5% contingency)      <- GDV IS the input
+> open at    = TMV x 0.75
+> never above  TMV x 0.80                            <- asking price is irrelevant
+> ```
+>
+> **Current strategy: `/Users/hugo/Whats/scraper/BRRR_STRATEGY.md`.**
+
 # Valuation Engine — research-backed spec (2026-06-10)
 
 Implemented in scraper/valuation.py (tests: scraper/test_valuation.py).

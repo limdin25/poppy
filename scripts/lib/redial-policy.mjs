@@ -31,7 +31,11 @@
  * worth protecting most were the ones eligible to be rung again.
  */
 export const SPOKE_TO_A_HUMAN = new Set([
-  'Interested', 'Not interested', 'Booked', 'Nurturing', 'Ballpark',
+  // Current board names (renamed 2026-08-13 to match the two-call process)...
+  'Discovery done', 'Ballpark agreed', 'Offer with vendor',
+  // ...and the old names, kept so a call dispositioned before the rename
+  // still reads as a conversation rather than a cold row to re-deal.
+  'Interested', 'Not interested', 'Booked', 'Nurturing', 'Ballpark', 'Deciding',
 ])
 
 /** Outcomes that mean nobody picked up. Everything else that was pressed is

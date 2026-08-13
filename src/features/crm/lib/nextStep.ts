@@ -15,12 +15,13 @@
 import { DEAL_STAGES } from '../components/templates/dealProcessSteps';
 
 export const STEP = {
-  call: 'Call the agent',
-  photos: 'Ask for photos',
-  numbers: 'Confirm the numbers',
-  builder: 'Hugo prices the works',
-  offer: 'Send the offer',
+  call: 'Discovery call',
+  homework: 'Do the homework',
+  builder: 'Builder ballpark',
+  offerCall: 'Offer call',
+  offer: 'Email the offer',
   chase: 'Chase the agent',
+  viewing: 'Book the viewing',
   writing: 'Get it in writing',
 } as const;
 
@@ -41,10 +42,11 @@ export function isKnownStep(tag: string): boolean {
 export function stepForOutcome(outcome: string): StepTag | '' | null {
   switch (outcome) {
     // A figure came out of the branch, which is the whole point of the call.
-    // Hugo is next: confirm the GDV and the works before anyone offers.
+    // The homework is next: the deal gets built from what the agent said,
+    // before anyone rings back with a number of ours.
     case 'figure_obtained':
     case 'qualified':
-      return STEP.numbers;
+      return STEP.homework;
     // Alive, but the branch has not given a number yet. Ring them back.
     case 'deciding':
     case 'follow_up':
@@ -58,6 +60,21 @@ export function stepForOutcome(outcome: string): StepTag | '' | null {
     default:
       return null;
   }
+}
+
+/** Which of the two calls the property script pane shows for a branch.
+ *
+ *  Hugo 2026-08-13: "on the 2nd call the script must change so pedro must see
+ *  a new script." Discovery until the homework has produced a confirmed
+ *  figure; the offer view from 'Offer call' onward. Unknown, missing or
+ *  mid-homework steps are DISCOVERY, because the safe wrong answer is the one
+ *  with no money section on the screen. */
+export function callModeForStep(step?: string | null): 'discovery' | 'offer' {
+  const s = (step ?? '').trim();
+  const offerSteps = new Set<string>([
+    STEP.offerCall, STEP.offer, STEP.chase, STEP.viewing, STEP.writing, 'Renegotiate',
+  ]);
+  return offerSteps.has(s) ? 'offer' : 'discovery';
 }
 
 /** The custom_fields patch for a deal whose offer has just gone out by email.

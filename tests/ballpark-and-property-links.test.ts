@@ -93,8 +93,8 @@ describe('pressing Figure obtained moves the branch card', () => {
   it('maps figure_obtained to Ballpark, and the warm states to their own columns', () => {
     // The move is now driven by a table. Figure obtained still lands in
     // Ballpark; Deciding and Follow up (added 2026-08-11) each get their own.
-    expect(OUTCOME).toMatch(/figure_obtained: 'Ballpark'/);
-    expect(OUTCOME).toMatch(/deciding: 'Deciding'/);
+    expect(OUTCOME).toMatch(/figure_obtained: 'Ballpark agreed'/);
+    expect(OUTCOME).toMatch(/deciding: 'Offer with vendor'/);
     expect(OUTCOME).toMatch(/follow_up: 'Follow up'/);
     // Only mapped outcomes move a card; the rest leave it where it is.
     expect(OUTCOME).toMatch(/const targetColumn = BOARD_COLUMN_FOR\[outcome\]/);

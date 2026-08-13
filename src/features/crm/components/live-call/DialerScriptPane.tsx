@@ -81,9 +81,18 @@ interface Props {
    *  money section is filled from whichever listing the agent has selected in
    *  the Houses tab, which can change mid-call without the contact changing. */
   extraTokens?: Record<string, string | undefined>;
+  /** Property call only: which of the two calls this branch is on.
+   *
+   *  Hugo 2026-08-13: "on the 2nd call the script must change so pedro must
+   *  see a new script." The script HTML carries both calls, wrapped in
+   *  .call1 / .call2 sections; this prop hides the one that does not apply, so
+   *  a first call shows ONLY discovery (no money section anywhere on screen)
+   *  and a booked-callback shows ONLY the offer call. Omitted (the standalone
+   *  /script page, other script keys): both sections render as before. */
+  callMode?: 'discovery' | 'offer';
 }
 
-export default function DialerScriptPane({ contact, scriptKey = 'cold_call', extraTokens }: Props) {
+export default function DialerScriptPane({ contact, scriptKey = 'cold_call', extraTokens, callMode }: Props) {
   const { isAdmin } = useAuth();
   // All three hooks run unconditionally (Rules of Hooks) and we use the one
   // this pane is showing. The unused two are single cheap singleton reads.
@@ -176,11 +185,32 @@ export default function DialerScriptPane({ contact, scriptKey = 'cold_call', ext
 
   const print = () => iframeRef.current?.contentWindow?.print();
 
+  // Show one call at a time on the property script. A style tag in the
+  // iframe's head, so the template capture (#page.innerHTML) never sees it and
+  // the saved script stays whole. Editing shows both halves so an admin can
+  // edit either call.
+  useEffect(() => {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc || !docReady) return;
+    doc.getElementById('__call_mode__')?.remove();
+    if (scriptKey !== 'property_call' || !callMode || editing) return;
+    const st = doc.createElement('style');
+    st.id = '__call_mode__';
+    st.textContent = callMode === 'offer'
+      ? '.call1{display:none !important}'
+      : '.call2{display:none !important}';
+    doc.head.appendChild(st);
+  }, [docReady, callMode, scriptKey, editing]);
+
+  const paneTitle = scriptKey === 'property_call' && callMode
+    ? (callMode === 'offer' ? 'Property call · CALL 2, THE OFFER' : 'Property call · CALL 1, DISCOVERY')
+    : PANE_TITLE[scriptKey];
+
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="px-4 py-2.5 border-b border-[#E5E7EB] flex items-center gap-2">
         <FileText className="w-3.5 h-3.5 text-[#3C5A87]" />
-        <span className="text-[12px] font-semibold text-[#1A1A1A]">{PANE_TITLE[scriptKey]}</span>
+        <span className={`text-[12px] font-semibold ${scriptKey === 'property_call' && callMode === 'offer' ? 'text-[#a83232]' : 'text-[#1A1A1A]'}`}>{paneTitle}</span>
         {error && <span className="text-[10px] text-[#EF4444] truncate">⚠ {error}</span>}
         <div className="ml-auto flex items-center gap-1.5">
           {isAdmin && !editing && (

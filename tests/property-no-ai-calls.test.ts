@@ -116,7 +116,7 @@ describe('the human path is untouched by the removal', () => {
     // They must NOT be pipeline outcomes (no BRRR deal, no director alert), but
     // must have their own board column so Hugo can see them.
     expect(OUTCOME).toMatch(/const PIPELINE_OUTCOMES: readonly Outcome\[\] = \['qualified', 'figure_obtained'\]/)
-    expect(OUTCOME).toMatch(/deciding: 'Deciding'/)
+    expect(OUTCOME).toMatch(/deciding: 'Offer with vendor'/)
     expect(OUTCOME).toMatch(/follow_up: 'Follow up'/)
   })
 

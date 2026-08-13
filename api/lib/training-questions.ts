@@ -539,6 +539,32 @@ export const QUESTION_BANK: TrainingQuestion[] = [
     explanation: 'You float figures, you do not commit to them, and the director arranges viewings himself. Both boundaries survived the rewrite untouched.',
   },
   {
+    id: 'script_first_call_no_number',
+    kind: 'mc',
+    source: 'script',
+    prompt: 'You are on a FIRST call to a branch and they ask what you would offer. What do you say?',
+    options: [
+      'That you do not want to give a number you would have to take back: you will do the homework and come back tomorrow with something they can actually put to the vendor.',
+      'The Open at figure on your screen, so the call is not wasted.',
+      'A rough range, so they know we are serious without committing.',
+      'The asking price minus ten percent, as a starting point.',
+    ],
+    explanation: 'You never say a number of ours on a first call. Not a figure, not a range, not "around". Call one is discovery: the facts, their figure, the video, the email, a booked callback. The number comes on call two, after the homework, and it is the director\'s confirmed figure.',
+  },
+  {
+    id: 'script_street_sold_question',
+    kind: 'mc',
+    source: 'script',
+    prompt: 'What is the most valuable discovery question on the page?',
+    options: [
+      'Whether anything on that street sold recently that was done up, and what it actually went for.',
+      'Whether the vendor is friendly.',
+      'How many viewings the branch does per week.',
+      'Whether the agent thinks the asking price is fair.',
+    ],
+    explanation: 'The done-up sale on the same street is the end value, from the person who sells that street for a living. It prices the deal better than anything we can compute at a desk, and a rejected offer from the same conversation gives you the floor.',
+  },
+  {
     id: 'script_never_say_ceiling',
     kind: 'mc',
     source: 'script',

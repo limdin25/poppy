@@ -89,55 +89,63 @@ describe('the deal process', () => {
     }
   });
 
-  // Hugo's own summary of the order, 2026-08-12: ballpark, confirm the numbers
-  // and the GDV, Hugo prices the building work, then submit the offer.
-  it('runs ballpark, numbers, builder estimate, offer, in that order', () => {
+  // Hugo's agreed order, 2026-08-13: discovery, homework, builder ballpark,
+  // the offer call, the offer in writing.
+  it('runs discovery, homework, builder, offer call, offer email, in that order', () => {
     const n = (tag: string) => DEAL_STAGES.find((s) => s.tag === tag)!.n;
-    expect(n('Call the agent')).toBeLessThan(n('Confirm the numbers'));
-    expect(n('Confirm the numbers')).toBeLessThan(n('Hugo prices the works'));
-    expect(n('Hugo prices the works')).toBeLessThan(n('Send the offer'));
+    expect(n('Discovery call')).toBeLessThan(n('Do the homework'));
+    expect(n('Do the homework')).toBeLessThan(n('Builder ballpark'));
+    expect(n('Builder ballpark')).toBeLessThan(n('Offer call'));
+    expect(n('Offer call')).toBeLessThan(n('Email the offer'));
   });
 
-  it('puts the builder quote after acceptance, not before the offer', () => {
-    const offer = DEAL_STAGES.find((s) => s.title.includes('formal offer'))!;
-    const accepted = DEAL_STAGES.find((s) => s.title === 'Offer accepted')!;
-    const quote = DEAL_STAGES.find((s) => s.tag === 'Builder site visit')!;
-    expect(offer.n).toBeLessThan(accepted.n);
-    expect(accepted.n).toBeLessThan(quote.n);
+  it('puts the viewing after the ballpark is agreed, never before the offer', () => {
+    // Hugo 2026-08-13: "we only view if ballpark is accepted." The builder IS
+    // the viewer, and his trip doubles as the real quote.
+    const n = (tag: string) => DEAL_STAGES.find((s) => s.tag === tag)!.n;
+    expect(n('Email the offer')).toBeLessThan(n('Book the viewing'));
+    expect(n('Book the viewing')).toBeLessThan(n('Get it in writing'));
+    const viewing = DEAL_STAGES.find((s) => s.tag === 'Book the viewing')!;
+    expect(viewing.points.join(' ')).toMatch(/Never before the ballpark is agreed/);
+    expect(viewing.who).toMatch(/BUILDER/);
   });
 
   // "Subject to our builder", never "subject to survey". The live property
   // script and the AI coach both say it that way, so the email has to match or
   // Pedro explains one thing on the phone while Hugo writes another.
   it('never sends an offer without the subject-to-the-builder clause', () => {
-    const offer = DEAL_STAGES.find((s) => s.tag === 'Send the offer')!;
+    const offer = DEAL_STAGES.find((s) => s.tag === 'Email the offer')!;
     const email = offer.templates.find((t) => t.label.startsWith('Formal offer email'))!;
     expect(email.body).toMatch(/Subject to: our builder going round/);
     expect(email.body).not.toMatch(/satisfactory survey/i);
   });
 
   it('has Pedro ring the agent after the offer email lands', () => {
-    const offer = DEAL_STAGES.find((s) => s.tag === 'Send the offer')!;
+    const offer = DEAL_STAGES.find((s) => s.tag === 'Email the offer')!;
     const call = offer.templates.find((t) => t.channel === 'Phone')!;
     expect(call.body).toMatch(/remotely/i);
     expect(call.body).toMatch(/builder/i);
   });
 
-  // Hugo 2026-08-12: Pedro never offers, and he never hangs up without the
-  // email address, because the offer goes out by email.
-  it('keeps the offer out of Pedro hands and gets the agent email on the call', () => {
+  // Hugo 2026-08-13: no number of ours on a first call, ever, and Pedro never
+  // hangs up without the email address, because the offer goes out by email.
+  it('keeps every number off the first call and gets the agent email', () => {
     const joined = DEAL_STAGES[0].points.join(' ');
-    expect(joined).toMatch(/NEVER make the offer/);
-    expect(joined).toMatch(/speak to Hugo/);
+    expect(joined).toMatch(/never say a number of our own on a first call/i);
+    expect(joined).toMatch(/take back/);
     expect(joined).toMatch(/email address before you hang up/);
   });
 
   it('says out loud which steps are Hugo and which are Pedro', () => {
     for (const stage of DEAL_STAGES) {
-      expect(stage.who, `step ${stage.n} does not name an owner`).toMatch(/PEDRO|HUGO/);
+      expect(stage.who, `step ${stage.n} does not name an owner`).toMatch(/PEDRO|HUGO|BRAIN/);
     }
-    expect(DEAL_STAGES.find((s) => s.n === 3)!.who).toMatch(/HUGO/);
-    expect(DEAL_STAGES.find((s) => s.n === 4)!.who).toMatch(/HUGO/);
+    // The homework and the builder ballpark are never Pedro's.
+    expect(DEAL_STAGES.find((s) => s.tag === 'Do the homework')!.who).not.toMatch(/PEDRO/);
+    expect(DEAL_STAGES.find((s) => s.tag === 'Builder ballpark')!.who).toMatch(/HUGO/);
+    // The two calls are his.
+    expect(DEAL_STAGES.find((s) => s.tag === 'Discovery call')!.who).toMatch(/PEDRO/);
+    expect(DEAL_STAGES.find((s) => s.tag === 'Offer call')!.who).toMatch(/PEDRO/);
   });
 });
 
@@ -163,8 +171,8 @@ describe('the tag on the pipeline card', () => {
   });
 
   it('matches a stage by tag, by number, or not at all', () => {
-    expect(resolveStage('Send the offer')?.n).toBe(5);
-    expect(resolveStage('send the offer')?.n).toBe(5);
+    expect(resolveStage('Email the offer')?.n).toBe(5);
+    expect(resolveStage('email the offer')?.n).toBe(5);
     expect(resolveStage('5')?.n).toBe(5);
     expect(resolveStage('')).toBeNull();
     expect(resolveStage(undefined)).toBeNull();

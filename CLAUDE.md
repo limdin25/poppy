@@ -185,6 +185,24 @@ Each prompt should be a single fenced code block, ready to paste. Use `{{NAME}}`
 
 ## Living docs
 
+**⚠️ THE PROPERTY BUSINESS IS DOCUMENTED IN THE OTHER FOLDER, ON PURPOSE.**
+Before touching `brrr_properties`, Pedro's offer numbers, the property script or
+anything on the property pipeline board, read:
+
+> **`/Users/hugo/Whats/scraper/BRRR_STRATEGY.md`**
+
+That is the single source of truth for what a deal is, how the offer is
+calculated, and what Pedro is allowed to say. It lives in the scraper folder
+because that is where the engine that produces the numbers lives, and **there is
+deliberately only one copy of it**. Do not copy it here. Two copies drift, and
+on 2026-08-13 five separate docs across both folders were each claiming to be
+the current strategy while describing an abandoned one.
+
+⚠️ **`docs/VALUATION_ENGINE.md` and `docs/BRRR_ADD_VALUE_PIVOT.md` below are
+SUPERSEDED** and carry banners saying so. `VALUATION_ENGINE.md` in particular
+says "GDV is never an input to the offer" and "offer is never above asking",
+both of which are now the opposite of what we do.
+
 Keep these current as we go:
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

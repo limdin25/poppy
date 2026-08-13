@@ -228,18 +228,17 @@ describe('the screen and the coach say the same thing', () => {
   const md = COACH.slice(COACH.indexOf('const PROPERTY_AGENT_SCRIPT_MD'), COACH.indexOf('const PROPERTY_SCRIPT_PROMPT'))
 
   it('the six beats match, in the same order', () => {
-    // Was five, with the checklist at 3 and the money at 4. Rewritten
-    // 2026-08-10 after the money was measured landing at a median 87% of the
-    // way through a call, leaving no runway to negotiate. Three questions now
-    // stand between the opener and the figure; the rest of the checklist moved
-    // to after the money and only runs when the money went somewhere.
+    // Rewritten 2026-08-13 for the two-call process: discovery (stages 1-5,
+    // never a number of ours) and the offer call (stage 6, the director's
+    // confirmed figure). The stage order is shared by the script page, the
+    // coach's beat tracker and the agent-script layer, byte for byte.
     const beats = [
       'Is it still available',
       'Ask for the two minutes',
-      'The three that move the number',
-      'The money',
-      'Now get everything else',
+      'The discovery questions',
+      'Their figure, never ours',
       'Lock the next step',
+      'Call two, the offer',
     ]
     expect(COACH.slice(COACH.indexOf('const PROPERTY_STAGE_ORDER'), COACH.indexOf('PROPERTY_AGENT_SCRIPT_MD')))
       .toContain(beats.join("',\n  '"))
@@ -248,10 +247,13 @@ describe('the screen and the coach say the same thing', () => {
     for (const b of beats) expect(html).toContain(b)
   })
 
-  it('BOTH say the only purpose of the call is a ballpark', () => {
-    expect(COACH).toMatch(/THE ONLY PURPOSE OF THIS CALL IS TO GET A BALLPARK FIGURE/)
-    expect(md).toMatch(/THE ONLY PURPOSE OF THIS CALL IS A BALLPARK FIGURE/)
-    expect(html).toMatch(/You are ringing to get one thing: a ballpark figure/)
+  it('BOTH teach the two-call rule: no number of ours on a first call', () => {
+    expect(COACH).toMatch(/NEVER SAYS A NUMBER OF OUR OWN ON A FIRST CALL/)
+    expect(md).toMatch(/NEVER\nSAYS A NUMBER OF OUR OWN ON CALL ONE|NEVER SAYS A NUMBER OF OUR OWN ON CALL ONE/)
+    expect(html).toMatch(/never say a number of our own on call one/i)
+    // And the approved deflection is the same sentence on both surfaces.
+    expect(COACH).toMatch(/have to take back/)  // \' escaped in source
+    expect(html).toMatch(/a number I'd have to take back/)
   })
 
   it('BOTH answer the viewing wall with the builder, never a survey', () => {

@@ -227,46 +227,62 @@ describe('the script itself', () => {
 // the script promised a viewing ("Understood, and we would") and had no idea a
 // builder existed.
 
-describe('the ballpark is the point of the call', () => {
+describe('two calls: discovery first, the offer only after the homework', () => {
   const html = read(PROP_HTML)
   const at = (needle: string) => html.indexOf(needle)
 
+  // Rewritten 2026-08-13. The one-call version had Pedro float a figure built
+  // on a guessed refurb on the first dial; three of those turned into formal
+  // offers in a single week. Call one is now discovery with NO number of ours,
+  // and the money lives on call two with the director's confirmed figure.
   it('says so at the top, before any stage', () => {
-    expect(html).toMatch(/You are ringing to get one thing: a ballpark figure/)
-    expect(html).toMatch(/has not worked, however pleasant it was/)
+    expect(html).toMatch(/TWO CALL process/)
+    expect(html).toMatch(/never say a number of our own on call one/i)
+    expect(html).toMatch(/CALL TWO is the offer call/)
   })
 
-  it('THE STRUCTURAL FIX: the money comes BEFORE the full checklist', () => {
-    const three = at('3. The three that move the number')
-    const money = at('4. The money')
-    const rest = at('5. Now get everything else')
-    const lock = at('6. Lock the next step')
-    for (const [label, i] of Object.entries({ three, money, rest, lock })) {
+  it('THE STRUCTURAL FIX: discovery and their-figure come before the money, which is call two', () => {
+    const three = at('3. The discovery questions')
+    const theirs = at('4. Their figure, never ours')
+    const lock = at('5. Lock the next step')
+    const money = at('6. Call two, the offer')
+    for (const [label, i] of Object.entries({ three, theirs, lock, money })) {
       expect(`${label} present`).toBe(i > -1 ? `${label} present` : `${label} MISSING`)
     }
-    expect(three).toBeLessThan(money)
-    expect(money).toBeLessThan(rest)   // <- the whole point
-    expect(rest).toBeLessThan(lock)
+    expect(three).toBeLessThan(theirs)
+    expect(theirs).toBeLessThan(lock)
+    expect(lock).toBeLessThan(money)   // <- the whole point: the money is LAST, on call two
   })
 
-  it('only three questions stand between the opener and the money', () => {
-    const stage3 = html.slice(at('3. The three that move the number'), at('4. The money'))
-    const spoken = stage3.match(/class="who you"/g) ?? []
-    expect(spoken).toHaveLength(3)
-    expect(stage3).toMatch(/Three questions\. Not sixteen\./)
-    // Which three: empty, needs work, why they are selling.
+  it('the discovery stage asks the questions that price the deal', () => {
+    const stage3 = html.slice(at('3. The discovery questions'), at('4. Their figure, never ours'))
     expect(stage3).toMatch(/vacant, or is there a tenant/)
     expect(stage3).toMatch(/what sort of condition/)
     expect(stage3).toMatch(/why they're selling/)
+    // The two added 2026-08-13: the done-up street sale, and the size.
+    expect(stage3).toMatch(/sold recently that was done up/)
+    expect(stage3).toMatch(/floor area on it, or the room measurements/)
+    expect(stage3).toMatch(/freehold or leasehold/)
+    expect(stage3).toMatch(/Years left on the lease/)
+    expect(stage3).toMatch(/Never ask a house about service charges/)
+    expect(stage3).toMatch(/Never ask a flat about subsidence/)
   })
 
-  it('the lease and service-charge questions moved AFTER the money, not before', () => {
-    const rest = html.slice(at('5. Now get everything else'))
-    expect(rest).toMatch(/freehold or leasehold/)
-    expect(rest).toMatch(/Years left on the lease/)
-    // And the never-ask rules survived the move.
-    expect(rest).toMatch(/Never ask a house about service charges/)
-    expect(rest).toMatch(/Never ask a flat about subsidence/)
+  it('call one never floats our figure, and has the take-back line for when they push', () => {
+    const callOne = html.slice(at('<div class="call1">'), at('</div><!-- /call1 -->'))
+    expect(callOne).not.toMatch(/\[offer_open\]/)
+    expect(callOne).not.toMatch(/\[offer_ceiling\]/)
+    expect(callOne).toMatch(/I don't want to give you a number I'd have to take back/)
+  })
+
+  it('the money panel and the ladder live inside call two only', () => {
+    const callTwo = html.slice(at('<div class="call2">'), at('</div><!-- /call2 -->'))
+    expect(callTwo).toMatch(/\[offer_open\]/)
+    expect(callTwo).toMatch(/\[offer_ceiling\]/)
+    expect(callTwo).toMatch(/if we were to offer/)
+    expect(callTwo).toMatch(/Rung 0\./)
+    // And it opens with the guard that keeps a first call out of it.
+    expect(callTwo).toMatch(/Are you allowed on this stage/)
   })
 })
 

@@ -1,3 +1,12 @@
+> # ⚠️ SUPERSEDED 2026-08-13 — DO NOT BUILD FROM THIS
+>
+> This doc says stop fighting on price and create the value instead. It was
+> built, run, and measured on 2026-08-12: **an extra bedroom is worth about 1%**
+> at the same square footage on the same street. We went back to fighting on
+> price, because the discount is the only lever that closes the refinance gap.
+>
+> **Current strategy: `/Users/hugo/Whats/scraper/BRRR_STRATEGY.md`.**
+
 # The add-value pivot — stop fighting on price, qualify on the refinance
 
 **Decided by Hugo 2026-08-11, day two of Pedro's real calls.** This doc is the

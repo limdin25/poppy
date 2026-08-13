@@ -12,15 +12,20 @@
 //   doNow   = the one thing to do next
 //   doneWhen = how you know you can move the card on
 //
-// Hugo's own summary of the order, 2026-08-12, and it is correct:
-// ballpark, then confirm the numbers and the GDV, then Hugo prices the building
-// work, then we submit the offer. The only thing sitting in between is getting
-// the photos off the agent, because the numbers cannot be confirmed without
-// them.
+// Hugo's agreed order, 2026-08-13, replacing the 2026-08-12 one after three
+// first-call numbers turned into formal offers built on a guessed refurb:
+// 1 discovery call (all questions, video, THEIR figure, NEVER a number of
+// ours), 2 the homework (the brain prices it off what the agent said),
+// 3 builder ballpark off the video, 4 the offer call at the booked time,
+// 5 the offer in writing (pre-viewing where they will take it), 6 chase,
+// 7 the viewing ONLY once the ballpark is agreed (the builder IS the viewer
+// and prices the works in the same trip), 8 acceptance in writing, then
+// investors, reserve, legals.
 //
-// Source: Fontaine Brothers Deal Sourcing Course, Module 12 (The FULL Process)
-// plus the 2026-08-12 audio where they move the builder quote from BEFORE the
-// offer to AFTER acceptance. That reorder is the whole point of this file.
+// Source: Fontaine Brothers Deal Sourcing Course, Module 8 (Estate Agents,
+// Offer Without Offering, the live Harvey call) and Module 12 (The FULL
+// Process), plus the 2026-08-13 conversation where the discovery call was
+// split from the offer call.
 //
 // Placeholders are written {like_this} so they read as blanks to fill, not as
 // anything the CRM merges automatically.
@@ -59,75 +64,43 @@ export interface DealStage {
 export const DEAL_STAGES: DealStage[] = [
   {
     n: 1,
-    tag: 'Call the agent',
-    title: 'The ballpark call',
+    tag: 'Discovery call',
+    title: 'Call one: discovery, never a number',
     who: 'PEDRO',
-    where: 'We have found a house that looks cheap for what it could be worth.',
-    doNow: 'Ring the agent, ask the ballpark question, get their email. Never offer.',
-    doneWhen: 'You have their answer on the number, their name, and their email address.',
-    chaseAfterDays: 3,
+    where: 'First contact. This branch has never heard from us about this house.',
+    doNow: 'Get the facts, what sold done up, THEIR figure, the video, the email, a booked callback.',
+    doneWhen: 'The Houses tab is full and a ring-back time is booked. No number of ours was said.',
+    chaseAfterDays: 2,
     points: [
-      'Open with: "I am not making an official offer yet, I just want to know if I am in the range before travelling, so I do not waste my time or yours."',
-      'Then say: "if I was to offer around X, am I in the ballpark, or am I a million miles off?"',
-      'X is the Open at number on your screen. You never invent it and you never go under it.',
-      'If the card says the deal already works at the asking price, the asking price is your ballpark. Say "okay, let me get back to you on that" and move it on.',
-      '"Miles off" means bin it and go to the next one. Never argue the price on this call.',
-      'Anything softer than a flat no is a yes for now. Move the card to step 2.',
-      'You NEVER make the offer. If they push for one: "let me speak to Hugo and come back to you." Hugo sends every offer himself, by email.',
+      'THE RULE: you never say a number of our own on a first call. Not a figure, not a range, not "around". Every number we floated off a guess this week either killed the call or turned into an offer we never meant to make.',
+      'If they push you for one: "I don\'t want to give you a number I\'d have to take back. Let me do the work properly and I\'ll come back to you tomorrow with something you can actually put to the vendor." That sentence is what makes us different from every lowballer who rings them.',
+      'The facts: vacant or tenanted, condition (boiler, electrics, roof, damp), why they are selling, interest and offers, anything rejected, time on market and price cuts, freehold or leasehold.',
+      'The Harvey question, every call: "has anything on that street sold recently that was done up, and what did it go for?" That answer prices the deal better than anything we can compute.',
+      'The floor area or the room measurements, whenever the listing has no floor plan. Without the size the homework cannot check the comparables.',
+      'THEIR figure, never ours: "is there a figure the vendor has in mind that would actually get it done?" Write whatever they say word for word and press Figure obtained.',
+      'Ask for the video walkthrough or a FaceTime round it, every call. The builder prices off it.',
       'Get their email address before you hang up, on every single call. The offer goes out by email and Hugo cannot send it without one.',
-      'If they ask whether you want to be sent more properties, always say yes and give your email and number. That list is where the off market ones come from later.',
+      'Book the callback time. The booked callback IS call two. Never end without one.',
       'Write down the agent name. Every future call on that branch starts warm because of it.',
     ],
     templates: [
       {
-        label: 'They will not discuss numbers until you view it',
-        channel: 'Phone',
-        body: `Pedro asked this one on 2026-08-12 and it comes up constantly. Say:
-
-"That is fair enough, and I am not asking you to put an offer forward. I am not making an official offer yet. I just want to know if I am in the range before I travel, so I do not waste my time or yours.
-
-If I am in the range, I will get someone round to view it this week and then I will put a proper offer in writing. If I am nowhere near, tell me now and neither of us has wasted an afternoon."
-
-If they still will not say anything: "no problem, let me get back to you on that." Move the card on, and log what they said. Then Hugo decides whether it is worth paying someone to view it.`,
-      },
-    ],
-  },
-  {
-    n: 2,
-    tag: 'Ask for photos',
-    title: 'Get the photos and the floorplan',
-    who: 'PEDRO, on the same call',
-    where: 'The agent has not said no. We now need to see the house properly.',
-    doNow: 'Ask for the photos, floorplan, EPC and video, and confirm their email address.',
-    doneWhen: 'The photos and floorplan are in and attached to the deal.',
-    chaseAfterDays: 2,
-    points: [
-      'Ask while you still have them on the phone. It is free and nearly everybody forgets.',
-      'Ask for the photos that did not make the listing. There are almost always more.',
-      'Ask if a sale has fallen through, and if the last buyer had a survey done. That is gold.',
-      'No photo of the kitchen or the bathroom usually means they are bad. That is useful to know, not a problem.',
-      'Some agents will not send video. Take whatever they will send, then ask if someone is booked in to view it this week who could take a few photos on their phone.',
-      'Say yes when they offer to add you to their list, and give the email and the number. Costs nothing and the off market ones come through it.',
-      'Without photos we cannot confirm the numbers, so this step blocks everything after it.',
-    ],
-    templates: [
-      {
-        label: 'Evidence request to the agent',
+        label: 'Evidence request after call one',
         channel: 'Email',
-        subject: '{address}, a few things before I put a number to it',
+        subject: '{address}, a few things so I can put a proper number to it',
         body: `Hi {agent},
 
-Thanks for your time on {address}.
+Thanks for your time on {address} just now.
 
-Before I take this any further, could you send over:
+I am doing the homework on it tonight, and these would help me get you a serious answer rather than a guess:
 
-1. All the photos you have, including any that did not make the listing
-2. The floorplan and the EPC
-3. A video walkthrough if you have one, or if someone is going round anyway
+1. The floor plan and the full EPC report
+2. Any photos that did not make the listing
+3. A video walkthrough if you have one, or even a phone video next time someone is round
 4. Anything you know about works done recently: roof, boiler, rewire, windows, damp
 5. If a sale has fallen through on it, any survey the last buyer had done
 
-I will come back to you with a number today or tomorrow. I would rather do the work up front than waste your time.
+I will ring you back {callback_time} as agreed, with a number you can actually put to the vendor.
 
 Thanks,
 {your_name}
@@ -136,37 +109,38 @@ Thanks,
     ],
   },
   {
-    n: 3,
-    tag: 'Confirm the numbers',
-    title: 'Confirm the GDV and the works',
-    who: 'HUGO, not Pedro',
-    where: 'We have the photos. Now we confirm what the house is worth done up, and what it needs.',
-    doNow: 'Hugo checks the GDV against the sold comparables and signs off the works list.',
-    doneWhen: 'The GDV, the works list and the offer number are agreed and on the card.',
+    n: 2,
+    tag: 'Do the homework',
+    title: 'The homework: value it off what the agent said',
+    who: 'THE BRAIN, then HUGO signs it off',
+    where: 'Call one is done. Now the deal gets built from what the agent actually told us.',
+    doNow: 'Read the call, price the house off the street evidence, and confirm the offer band.',
+    doneWhen: 'The offer band is on the card, built from the call plus checked comparables.',
     chaseAfterDays: 1,
     points: [
-      'GDV is what the house sells for once it is done up, taken from three sold houses nearby.',
-      'The brain reads the photos and the floorplan and lists what work the house needs.',
-      'True market value = GDV minus the works minus a bit of contingency.',
-      'Open offer = true market value times 0.75. That is the number Pedro says on the phone.',
-      'If the brain is not confident, a human looks at it before anyone offers anything.',
+      'What the agent said outranks the desk estimate: a done-up sale on their own street beats a Land Registry comp from a mile away, and a rejected offer is a hard floor.',
+      'The comparables must match: same street or close, same size within reason, same type, sold recently. If they do not match, the valuation is not evidence, it is a wish.',
+      'True market value = done-up value minus the works. Open offer = true market value times 0.75, never above 0.80. The course rules, unchanged.',
+      'No floor area, no offer: a house we cannot size, we cannot check. Get the floor plan first.',
+      'If the homework says there is no deal, that is a finished job, not a failure. Mark it and move on: nobody rings the branch back with a number we do not believe.',
     ],
     templates: [],
   },
   {
-    n: 4,
-    tag: 'Hugo prices the works',
-    title: 'Hugo gets the building estimate',
-    who: 'HUGO, not Pedro',
-    where: 'The numbers look right on paper. Now we check the building cost with a real person.',
-    doNow: 'Hugo sends the photos and video to the builder on WhatsApp for a ballpark price.',
-    doneWhen: 'The builder has given a rough number and it is close to ours.',
+    n: 3,
+    tag: 'Builder ballpark',
+    title: 'The builder prices the works off the video',
+    who: 'HUGO',
+    where: 'The homework stacks. Now the works number gets checked with a real builder.',
+    doNow: 'Send the photos, floor plan and video to the builder on WhatsApp for a rough price.',
+    doneWhen: 'The builder has given a rough number and it is inside our budget.',
     chaseAfterDays: 2,
     points: [
-      'No site visit yet. Photos on WhatsApp, ten minutes, no charge.',
-      'Within about 20% of our figure, carry on. Miles apart, look at it by hand before offering.',
+      'No site visit yet. Photos and video on WhatsApp, ten minutes, no charge.',
+      'This is why Pedro asks for the video on every discovery call.',
+      'Within about 20% of our figure, carry on. Miles apart, re-do the homework before anybody rings anybody.',
       'This is also how the builder relationship gets built, and you will need him on every deal.',
-      'Pedro does not do this step. He waits for Hugo to confirm before the offer goes out.',
+      'Pedro does not do this step. He waits for the confirmed figure before call two.',
     ],
     templates: [
       {
@@ -175,7 +149,7 @@ Thanks,
         body: `Morning {builder}, got one in {town} I am looking at.
 
 {beds} bed {property_type}, roughly {floor_area} sq m.
-Photos and floorplan here: {link}
+Photos, floor plan and video here: {link}
 
 From what I can see it needs: {works_list}
 
@@ -184,11 +158,31 @@ Roughly what am I looking at to get it to a good rentable standard? Ballpark is 
     ],
   },
   {
+    n: 4,
+    tag: 'Offer call',
+    title: 'Call two: the offer call',
+    who: 'PEDRO, at the time he booked',
+    where: 'Homework done, builder happy, confirmed figure on the card. Time to go back.',
+    doNow: 'Ring at the booked time, float the confirmed figure, push to get it to the vendor.',
+    doneWhen: 'The agent has agreed to put the figure to the vendor, and a ring-back is booked.',
+    chaseAfterDays: 2,
+    points: [
+      'Open warm: "it\'s Pedro from Unico, we spoke about {address}. I said I\'d do the homework and come back to you, so here I am." Ringing exactly when you said you would is the whole relationship.',
+      'The offer without offering: "if we were to offer around X, am I in the ballpark, or am I a million miles off?" X is the confirmed Open at figure on your screen. One number, never a range.',
+      'Then be quiet. Count to five. Whoever speaks first loses this bit.',
+      'Climb the ladder one rung at a time, only in exchange for something, and never past the ceiling. Never say the ceiling out loud.',
+      'PUSH HARD to get the figure to the vendor without a viewing: "before I send someone up, could you sound the vendor out on it? I don\'t want to waste your time or my money if we\'re a million miles apart." Cost and distance, never an argument about their viewing policy.',
+      'If they insist on a viewing before anything moves: "of course, and someone will view it, our builder does that and prices the work in the same trip. Sound them out on the figure first and we\'ll get him booked in."',
+      'You still never make a formal offer on the phone. The figure goes to the vendor as an indication; Hugo puts it in writing the same day.',
+    ],
+    templates: [],
+  },
+  {
     n: 5,
-    tag: 'Send the offer',
-    title: 'Submit the formal offer',
+    tag: 'Email the offer',
+    title: 'The offer in writing',
     who: 'HUGO writes and sends it. PEDRO rings straight after.',
-    where: 'Numbers confirmed, builder happy. Time to put it in writing.',
+    where: 'The figure has been floated on call two. Now it goes over in writing.',
     doNow: 'Hugo emails the offer subject to the builder. Pedro then rings to say it has landed.',
     doneWhen: 'The agent has the email and has said they will put it to the vendor.',
     chaseAfterDays: 3,
@@ -256,6 +250,24 @@ If they will not look at it without a viewing first, tell me and I will get some
 Thanks,
 {your_name}`,
       },
+      {
+        label: 'Confirming the offer after the builder has viewed',
+        channel: 'Email',
+        subject: '{address}, confirming our offer after the viewing',
+        body: `Hi {agent},
+
+Our builder has now been through {address}, so I am confirming our offer of £{offer_price} as a firm number: nothing further to check on our side.
+
+Everything else stands as before: {your_company}, cash purchase, no mortgage, no chain, 4 to 6 weeks from the memorandum of sale. Solicitor details below.
+
+Solicitor: {solicitor_firm}, {solicitor_contact}, {solicitor_email}, {solicitor_phone}
+
+Could you put it to the vendor and come back to me either way?
+
+Thanks,
+{your_name}
+{your_company}`,
+      },
     ],
   },
   {
@@ -284,6 +296,34 @@ I notice it is still showing on Rightmove. Where did that one get to? If it has 
   },
   {
     n: 7,
+    tag: 'Book the viewing',
+    title: 'The viewing, only when the ballpark is agreed',
+    who: 'HUGO books it, the BUILDER attends',
+    where: 'The vendor has said yes, or near enough. Now, and only now, somebody goes.',
+    doNow: 'Book the builder in through the agent. He views it and prices the works in one trip.',
+    doneWhen: 'The builder has been round and his itemised quote is in.',
+    chaseAfterDays: 3,
+    points: [
+      'Never before the ballpark is agreed. A viewing on a maybe is a wasted trip and a wasted favour.',
+      'The builder IS the viewer. One trip, two jobs: it satisfies the agent who wants somebody to see it, and it produces the real quote.',
+      'Itemised and in writing, with a screenshot for the deal pack.',
+      'Quote inside our budget: the deal is confirmed, push on to writing. Quote over: that is not a problem, that is leverage, go to Renegotiate.',
+      'Pedro books nothing and attends nothing. The director arranges the visit.',
+    ],
+    templates: [
+      {
+        label: 'Book the builder viewing',
+        channel: 'WhatsApp',
+        body: `Hi {builder}, the ballpark is agreed on {address}.
+
+Can you get round and view it this week? You are the viewing: check it over, and price the works properly while you are there. Access through {agent_name} at {agent_agency}, {agent_phone}, tell them you are viewing for {your_company}.
+
+I need it itemised rather than one number, and I need it in writing. My budget was around £{refurb_budget}. If you are coming in over that, tell me straight away, because there is still room to go back on the purchase price.`,
+      },
+    ],
+  },
+  {
+    n: 8,
     tag: 'Get it in writing',
     title: 'Offer accepted',
     who: 'PEDRO',
@@ -315,7 +355,7 @@ Thanks,
     ],
   },
   {
-    n: 8,
+    n: 9,
     tag: 'Package and send',
     title: 'Sell the deal to an investor',
     who: 'HUGO',
@@ -352,7 +392,7 @@ Full pack with the sold comparables to anyone who wants it. First to reserve tak
     ],
   },
   {
-    n: 9,
+    n: 10,
     tag: 'Reserve and funds',
     title: 'Investor reserves it',
     who: 'HUGO',
@@ -375,34 +415,6 @@ Full pack with the sold comparables to anyone who wants it. First to reserve tak
 To get this taken off the market I need proof of funds to send to the agent. A bank statement or a broker letter is fine, dated within the last 30 days, showing your name and the balance.
 
 Black out the account number and any transactions, nobody needs to see those. It goes to the agent only.`,
-      },
-    ],
-  },
-  {
-    n: 10,
-    tag: 'Builder site visit',
-    title: 'The real quote',
-    who: 'HUGO',
-    where: 'The deal is sold. Now the builder actually walks the house.',
-    doNow: 'Book the builder in through the agent and get an itemised written quote.',
-    doneWhen: 'The written quote is in and compared against our budget.',
-    chaseAfterDays: 5,
-    points: [
-      'This is the change from the old way. The quote confirms the deal, it no longer blocks the offer.',
-      'Quote lower than our budget: the deal just got better. Tell the investor.',
-      'Quote about the same: straight on to legals.',
-      'Quote higher: that is not a problem, that is leverage. Go to step 11.',
-      'Itemised and in writing, with a screenshot for the deal pack.',
-    ],
-    templates: [
-      {
-        label: 'Book the builder site visit',
-        channel: 'WhatsApp',
-        body: `Hi {builder}, offer accepted on {address}.
-
-Can you get round and price it up properly this week? Access through {agent_name} at {agent_agency}, {agent_phone}, tell them you are pricing it for {your_company}.
-
-I need it itemised rather than one number, and I need it in writing. My budget was around £{refurb_budget}. If you are coming in over that, tell me straight away, because there is still room to go back on the purchase price.`,
       },
     ],
   },

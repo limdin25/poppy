@@ -98,7 +98,7 @@ describe('the next step, written and shown', () => {
   });
 
   it('maps a call outcome to a step, or leaves it alone', () => {
-    expect(stepForOutcome('figure_obtained')).toBe(STEP.numbers);
+    expect(stepForOutcome('figure_obtained')).toBe(STEP.homework);
     expect(stepForOutcome('deciding')).toBe(STEP.chase);
     expect(stepForOutcome('no_answer')).toBe(STEP.call);
     expect(stepForOutcome('not_qualified')).toBe('');
@@ -119,13 +119,13 @@ describe('the next step, written and shown', () => {
     for (const tag of written) {
       expect(tags, `${tag} is not a step in dealProcessSteps.ts`).toContain(tag);
     }
-    expect(ASSIGN).toMatch(/next_step: 'Call the agent'/);
-    expect(tags).toContain('Call the agent');
+    expect(ASSIGN).toMatch(/next_step: 'Discovery call'/);
+    expect(tags).toContain('Discovery call');
   });
 
   it('a facts refresh never rewinds a branch to step one', () => {
     // The queue script rewrites custom_fields wholesale on --refresh. Without
-    // this, a branch already at "Confirm the numbers" would be told to ring
+    // this, a branch already at "Do the homework" would be told to ring
     // again from scratch.
     expect(ASSIGN).toMatch(/prevStep/);
     expect(ASSIGN).toMatch(/facts\.next_step = prevStep/);
