@@ -72,16 +72,11 @@ export const DEAL_STAGES: DealStage[] = [
     doneWhen: 'The Houses tab is full and a ring-back time is booked. No number of ours was said.',
     chaseAfterDays: 2,
     points: [
-      'THE RULE: you never say a number of our own on a first call. Not a figure, not a range, not "around". Every number we floated off a guess this week either killed the call or turned into an offer we never meant to make.',
-      'If they push you for one: "I don\'t want to give you a number I\'d have to take back. Let me do the work properly and I\'ll come back to you tomorrow with something you can actually put to the vendor." That sentence is what makes us different from every lowballer who rings them.',
-      'The facts: vacant or tenanted, condition (boiler, electrics, roof, damp), why they are selling, interest and offers, anything rejected, time on market and price cuts, freehold or leasehold.',
-      'The Harvey question, every call: "has anything on that street sold recently that was done up, and what did it go for?" That answer prices the deal better than anything we can compute.',
-      'The floor area or the room measurements, whenever the listing has no floor plan. Without the size the homework cannot check the comparables.',
-      'THEIR figure, never ours: "is there a figure the vendor has in mind that would actually get it done?" Write whatever they say word for word and press Figure obtained.',
-      'Ask for the video walkthrough or a FaceTime round it, every call. The builder prices off it.',
-      'Get their email address before you hang up, on every single call. The offer goes out by email and Hugo cannot send it without one.',
-      'Book the callback time. The booked callback IS call two. Never end without one.',
-      'Write down the agent name. Every future call on that branch starts warm because of it.',
+      'THE RULE: never say a number of our own on a first call. If pushed: \"I don\'t want to give you a number I\'d have to take back, I\'ll come back to you tomorrow.\"',
+      'Ask: vacant? condition (boiler, roof, damp)? why selling? any offers or rejections? how long on, price cuts? freehold or leasehold?',
+      'The golden question: \"has anything on that street sold recently that was done up, and what did it go for?\"',
+      'Get: their figure if they will give one, the floor area, a video walkthrough, and their email address before you hang up.',
+      'Book the callback time. That booked time IS call two.',
     ],
     templates: [
       {
@@ -118,11 +113,9 @@ Thanks,
     doneWhen: 'The offer band is on the card, built from the call plus checked comparables.',
     chaseAfterDays: 1,
     points: [
-      'What the agent said outranks the desk estimate: a done-up sale on their own street beats a Land Registry comp from a mile away, and a rejected offer is a hard floor.',
-      'The comparables must match: same street or close, same size within reason, same type, sold recently. If they do not match, the valuation is not evidence, it is a wish.',
-      'True market value = done-up value minus the works. Open offer = true market value times 0.75, never above 0.80. The course rules, unchanged.',
-      'No floor area, no offer: a house we cannot size, we cannot check. Get the floor plan first.',
-      'If the homework says there is no deal, that is a finished job, not a failure. Mark it and move on: nobody rings the branch back with a number we do not believe.',
+      'Price it off what the agent said: a done-up sale on their street beats any desk estimate, and a rejected offer is the floor.',
+      'True value = done-up value minus the works. Open at 0.75 of it, never above 0.80.',
+      'No floor area or no matching comparables: no offer. If it does not stack, mark it and move on.',
     ],
     templates: [],
   },
@@ -136,11 +129,9 @@ Thanks,
     doneWhen: 'The builder has given a rough number and it is inside our budget.',
     chaseAfterDays: 2,
     points: [
-      'No site visit yet. Photos and video on WhatsApp, ten minutes, no charge.',
-      'This is why Pedro asks for the video on every discovery call.',
-      'Within about 20% of our figure, carry on. Miles apart, re-do the homework before anybody rings anybody.',
-      'This is also how the builder relationship gets built, and you will need him on every deal.',
-      'Pedro does not do this step. He waits for the confirmed figure before call two.',
+      'Photos, floor plan and video to the builder on WhatsApp. Ten minutes, free, nobody travels.',
+      'Within 20% of our figure, carry on. Miles apart, re-do the homework.',
+      'Pedro waits for the confirmed figure before call two.',
     ],
     templates: [
       {
@@ -167,13 +158,10 @@ Roughly what am I looking at to get it to a good rentable standard? Ballpark is 
     doneWhen: 'The agent has agreed to put the figure to the vendor, and a ring-back is booked.',
     chaseAfterDays: 2,
     points: [
-      'Open warm: "it\'s Pedro from Unico, we spoke about {address}. I said I\'d do the homework and come back to you, so here I am." Ringing exactly when you said you would is the whole relationship.',
-      'The offer without offering: "if we were to offer around X, am I in the ballpark, or am I a million miles off?" X is the confirmed Open at figure on your screen. One number, never a range.',
-      'Then be quiet. Count to five. Whoever speaks first loses this bit.',
-      'Climb the ladder one rung at a time, only in exchange for something, and never past the ceiling. Never say the ceiling out loud.',
-      'PUSH HARD to get the figure to the vendor without a viewing: "before I send someone up, could you sound the vendor out on it? I don\'t want to waste your time or my money if we\'re a million miles apart." Cost and distance, never an argument about their viewing policy.',
-      'If they insist on a viewing before anything moves: "of course, and someone will view it, our builder does that and prices the work in the same trip. Sound them out on the figure first and we\'ll get him booked in."',
-      'You still never make a formal offer on the phone. The figure goes to the vendor as an indication; Hugo puts it in writing the same day.',
+      'Ring at the time you booked: \"I said I\'d do the homework and come back to you, so here I am.\"',
+      '\"If we were to offer around X, am I in the ballpark or a million miles off?\" One number, then silence.',
+      'Climb one rung at a time. Never past the ceiling, never say the ceiling.',
+      'Push to reach the vendor without a viewing: \"sound them out first, I don\'t want to waste a trip if we\'re miles apart.\"',
     ],
     templates: [],
   },
@@ -187,14 +175,10 @@ Roughly what am I looking at to get it to a good rentable standard? Ballpark is 
     doneWhen: 'The agent has the email and has said they will put it to the vendor.',
     chaseAfterDays: 3,
     points: [
-      'An offer is only an email. Nothing is binding on anybody until exchange, months later. We can withdraw at any point before that and it costs nothing.',
-      '"Subject to our builder going round" is the whole trick, and it is not a trick. We are saying out loud what every buyer does quietly: the number can move if the house is worse than the photos.',
-      'The builder visit IS the viewing. One trip, two jobs: it satisfies the agent who wants somebody to see it, and it produces the real quote.',
-      'Say "subject to our builder", never "subject to survey". The script and the coach both say it that way, so the email must match.',
-      'The email is written fresh for every property. Read the listing again and use what the agent actually said on the call. A copied and pasted email reads like a copied and pasted email.',
-      'Cash, limited company, no chain, 4 to 6 weeks. Speed is what beats a higher offer.',
-      'Pedro rings after the email so a human explains it: we are national buyers, we assess remotely first, and we send a local builder round to view and price in one visit.',
-      'Have the solicitor name and email ready. The agent asks on the same call, every time.',
+      'An offer is only an email. Nothing binds until exchange, and we can withdraw free.',
+      'Always \"subject to our builder going round\", never subject to survey.',
+      'Cash, limited company, no chain, 4 to 6 weeks. Written fresh for every property.',
+      'Pedro rings the same day: we assess remotely, our builder views and prices in one visit.',
     ],
     templates: [
       {
@@ -280,9 +264,8 @@ Thanks,
     doneWhen: 'You have a yes, or a no with a reason.',
     chaseAfterDays: 4,
     points: [
-      'Ask "when is realistic for me to call you back?" and then call exactly then. That is not pestering.',
-      'A no is not dead. Sales collapse constantly and the vendor comes back more motivated.',
-      'Every no gets a follow up 6 weeks out. Nothing ever leaves the pipeline.',
+      'Ring exactly when they said to. That is an appointment, not pestering.',
+      'A no is not dead: every no gets a follow up 6 weeks out. Nothing leaves the pipeline.',
     ],
     templates: [
       {
@@ -304,11 +287,9 @@ I notice it is still showing on Rightmove. Where did that one get to? If it has 
     doneWhen: 'The builder has been round and his itemised quote is in.',
     chaseAfterDays: 3,
     points: [
-      'Never before the ballpark is agreed. A viewing on a maybe is a wasted trip and a wasted favour.',
-      'The builder IS the viewer. One trip, two jobs: it satisfies the agent who wants somebody to see it, and it produces the real quote.',
-      'Itemised and in writing, with a screenshot for the deal pack.',
-      'Quote inside our budget: the deal is confirmed, push on to writing. Quote over: that is not a problem, that is leverage, go to Renegotiate.',
-      'Pedro books nothing and attends nothing. The director arranges the visit.',
+      'Never before the ballpark is agreed. A viewing on a maybe is a wasted trip.',
+      'The builder IS the viewer: one trip satisfies the agent and produces the real quote, itemised, in writing.',
+      'Inside budget: confirm the offer. Over budget: that is leverage, go to Renegotiate.',
     ],
     templates: [
       {
@@ -332,9 +313,8 @@ I need it itemised rather than one number, and I need it in writing. My budget w
     doneWhen: 'That email is in the inbox and saved on the deal.',
     chaseAfterDays: 1,
     points: [
-      'That one email is what turns a phone call into something we can actually sell.',
-      'No email, no deal pack, nothing goes to an investor.',
-      'Ask for it in the same breath as saying thank you. It never sounds odd.',
+      'A yes on the phone is not a deal. One email with the address and the price is.',
+      'Ask for it in the same breath as saying thank you.',
     ],
     templates: [
       {
@@ -364,10 +344,8 @@ Thanks,
     doneWhen: 'An investor says they want it.',
     chaseAfterDays: 3,
     points: [
-      'Deal pack: photos, floorplan, the numbers, three sold comparables and one rent comparable as links.',
-      'Our refurb figure is a budget and we say so. The builder quote follows later.',
-      'Ring the one or two investors who buy in that area before the list goes out.',
-      'Never inflate a number. One bad GDV and that investor never buys from us again.',
+      'Deal pack: photos, floorplan, the numbers, three sold comparables, one rent comparable.',
+      'Ring the investors who buy in that area before the list goes out. Never inflate a number.',
     ],
     templates: [
       {
@@ -401,10 +379,8 @@ Full pack with the sold comparables to anyone who wants it. First to reserve tak
     doneWhen: 'Form signed, half the fee in the client account, proof of funds received.',
     chaseAfterDays: 2,
     points: [
-      'Half the sourcing fee up front, into the client account. It is not our money until exchange.',
-      '48 hour cooling off period as standard. If they pull out inside it, refund in full.',
-      'Their proof of funds is what the agent needs to take the house off the market.',
-      'Once it is reserved, stop taking enquiries. It is theirs.',
+      'Half the fee up front into the client account. 48 hour cooling off, refund in full inside it.',
+      'Their proof of funds takes it off the market. Reserved means no more enquiries.',
     ],
     templates: [
       {
@@ -428,9 +404,8 @@ Black out the account number and any transactions, nobody needs to see those. It
     doneWhen: 'They accept the new price, or we hand the reservation money back.',
     chaseAfterDays: 3,
     points: [
-      'A builder quote is evidence, not haggling. Offer to send it over. It lands completely differently.',
-      'New number is worked out the same way: true market value minus the bigger refurb, times 0.75.',
-      'If they will not move and it no longer stacks, tell the investor and refund. Reputation is the business.',
+      'Only if the builder found more than we budgeted. The quote is evidence, not haggling: offer to send it over.',
+      'New number, same maths. If it no longer stacks, refund the investor and walk.',
     ],
     templates: [
       {
@@ -462,9 +437,7 @@ Thanks,
     doneWhen: 'The memorandum of sale has gone out and the solicitors are talking.',
     chaseAfterDays: 3,
     points: [
-      'One email. Buyer, buyer solicitor, agent, and us.',
-      'The agent writes the memorandum of sale. On a direct to vendor deal, we write it.',
-      'After this our job is chasing, not doing.',
+      'One email: buyer, buyer\'s solicitor, agent, us. The agent issues the memorandum of sale.',
     ],
     templates: [
       {
@@ -501,10 +474,8 @@ Thanks,
     doneWhen: 'A date for exchange is set.',
     chaseAfterDays: 14,
     points: [
-      'Six weeks at best, nine months at worst. Mostly out of everybody hands.',
-      'Weekly, not daily. Chase them daily and they stop copying you in.',
-      'Ask the investor how involved they want us. Some have used the same solicitor for ten years.',
-      'Good moment to introduce the letting agent so a tenant is ready for completion day.',
+      'One chase a week, not more. Six weeks at best, nine months at worst.',
+      'Introduce the letting agent now so a tenant is ready for completion day.',
     ],
     templates: [
       {
@@ -532,10 +503,8 @@ Thanks,
     doneWhen: 'Paid, and the money has moved out of the client account.',
     chaseAfterDays: null,
     points: [
-      'Exchange is when the buyer is legally committed. That is when the second half is due.',
-      'Completion is keys and money, often the same day, sometimes weeks later.',
-      'Introduce the builder and the letting agent so work starts the day they get the keys.',
-      'Ask for the testimonial while they are happy, then start the next one.',
+      'Exchange means legally committed, so the second half of the fee is due.',
+      'Builder and letting agent lined up for key day. Ask for the testimonial while they are happy.',
     ],
     templates: [
       {

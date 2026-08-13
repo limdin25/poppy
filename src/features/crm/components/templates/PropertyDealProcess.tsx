@@ -71,16 +71,10 @@ export default function PropertyDealProcess() {
           Property deals, start to finish
         </h2>
         <p className="text-[12px] text-[#6B7280] leading-relaxed">
-          Fourteen steps from the first phone call to getting paid. The tag beside each step is
-          the one the brain puts on the deal card in the pipeline, so the card always says what
-          to do next. Click a step to open it and copy the message that goes with it.
-        </p>
-        <p className="text-[12px] text-[#6B7280] leading-relaxed mt-2">
-          The one rule that runs through all of it: TWO calls, never one. Call one is discovery
-          and never says a number of ours. The homework and the builder price it off the video,
-          then call two floats the confirmed figure, the offer goes over in writing subject to
-          our builder, and the viewing only happens once the ballpark is agreed. The builder is
-          the viewer, and his quote is the reason to go back on price if it comes in high.
+          Two calls, never one. Call one is discovery and never says a number of ours. The
+          homework and the builder price it, call two floats the confirmed figure, the offer
+          goes over in writing, and the viewing only happens once the ballpark is agreed.
+          Click a step for the detail and the message to copy.
         </p>
       </section>
 
@@ -121,22 +115,6 @@ export default function PropertyDealProcess() {
 
                 {isOpen && (
                   <div className="px-3 pb-3 pt-1 border-t border-[#E5E7EB]">
-                    {/* Three lines first, so the step can be understood in ten
-                        seconds without reading the detail underneath. */}
-                    <p className="text-[12px] text-[#6B7280] leading-relaxed mt-2">
-                      {stage.where}
-                    </p>
-                    <div className="rounded-xl bg-[#EEF2F8] px-3 py-2 mt-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#3C5A87]">
-                        Do now
-                      </p>
-                      <p className="text-[13px] text-[#1A1A1A] leading-snug">{stage.doNow}</p>
-                    </div>
-                    <p className="text-[11px] text-[#6B7280] mt-2">
-                      <span className="font-semibold text-[#1A1A1A]">Done when:</span>{' '}
-                      {stage.doneWhen}
-                    </p>
-
                     <ul className="space-y-1.5 mt-2">
                       {stage.points.map((point) => (
                         <li
@@ -148,17 +126,23 @@ export default function PropertyDealProcess() {
                         </li>
                       ))}
                     </ul>
+                    <p className="text-[11px] text-[#6B7280] mt-2">
+                      <span className="font-semibold text-[#1A1A1A]">Done when:</span>{' '}
+                      {stage.doneWhen}
+                    </p>
 
-                    {stage.chaseAfterDays !== null && (
-                      <p className="text-[11px] text-[#6B7280] mt-2">
-                        Chase it if the card sits here more than {stage.chaseAfterDays}{' '}
-                        {stage.chaseAfterDays === 1 ? 'day' : 'days'}.
-                      </p>
+                    {stage.templates.length > 0 && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[12px] font-semibold text-[#3C5A87]">
+                          {stage.templates.length === 1
+                            ? 'Show the message'
+                            : `Show the messages (${stage.templates.length})`}
+                        </summary>
+                        {stage.templates.map((template) => (
+                          <TemplateBlock key={template.label} template={template} />
+                        ))}
+                      </details>
                     )}
-
-                    {stage.templates.map((template) => (
-                      <TemplateBlock key={template.label} template={template} />
-                    ))}
                   </div>
                 )}
               </div>
@@ -172,17 +156,13 @@ export default function PropertyDealProcess() {
           What the agent asks the second you offer
         </h2>
         <p className="text-[12px] text-[#6B7280] leading-relaxed mb-3">
-          Nine questions, more or less in this order. Have the answers ready before you send the
-          offer, because they come in the same phone call.
+          Have these ready. They all come in the same phone call.
         </p>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {AGENT_QUESTIONS.map((item) => (
-            <div key={item.q} className="border border-[#E5E7EB] rounded-xl px-3 py-2">
-              <p className="text-[13px] font-semibold text-[#1A1A1A]">{item.q}</p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">{item.why}</p>
-              <p className="text-[12px] text-[#1A1A1A] mt-1">
-                <span className="font-semibold text-[#3C5A87]">Say:</span> {item.answer}
-              </p>
+            <div key={item.q} className="flex gap-2 text-[12px] leading-relaxed">
+              <span className="font-semibold text-[#1A1A1A] shrink-0 w-[46%]">{item.q}</span>
+              <span className="text-[#1A1A1A]">{item.answer}</span>
             </div>
           ))}
         </div>
