@@ -80,20 +80,16 @@ export const DEAL_STAGES: DealStage[] = [
     ],
     templates: [
       {
-        label: 'Evidence request after call one',
+        label: 'Files chase (ONLY if something is missing after the call)',
         channel: 'Email',
-        subject: '{address}, a few things so I can put a proper number to it',
-        body: `Hi {agent},
+        subject: '{address}, the bits I mentioned',
+        body: `Send this ONLY when a file is missing after the call. Everything askable gets asked on the phone, never by email. This chases the things a phone line cannot carry.
 
-Thanks for your time on {address} just now.
+Hi {agent},
 
-I am doing the homework on it tonight, and these would help me get you a serious answer rather than a guess:
+Thanks for your time on {address} just now. As mentioned, could you send over:
 
-1. The floor plan and the full EPC report
-2. Any photos that did not make the listing
-3. A video walkthrough if you have one, or even a phone video next time someone is round
-4. Anything you know about works done recently: roof, boiler, rewire, windows, damp
-5. If a sale has fallen through on it, any survey the last buyer had done
+1. {whichever are missing: the floor plan, the full EPC report, the video walkthrough}
 
 I will ring you back {callback_time} as agreed, with a number you can actually put to the vendor.
 
