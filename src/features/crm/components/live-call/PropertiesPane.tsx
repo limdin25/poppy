@@ -15,6 +15,7 @@
 // reachable from a plumber dial.
 
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ExternalLink, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
@@ -115,23 +116,72 @@ export default function PropertiesPane({
   // The most recent call anywhere on this branch, so a re-dealt office is
   // never opened cold. Hugo, 2026-08-13: "when call again crm should show
   // clear, when we last call them and for what property, do pedro knows
-  // whats going on." The RPC already carries last_call_at per listing and
-  // the saved answers per property; this just surfaces them.
+  // whats going on."
+  //
+  // TWO sources, merged, because each one alone has a hole. The listings RPC
+  // carries last_call_at and the saved answers PER PROPERTY, but an outcome
+  // pressed on a property that was later withdrawn or pruned leaves every
+  // surviving listing blank (McDonald of Bispham, checked 2026-08-13: rung
+  // twice, both listings said never-called). wk_calls is the authoritative
+  // "did we ring this number" record, the same one the redial blacklist
+  // reads, so the WHEN and the outcome come from there; the property and the
+  // figure come from the RPC when a listing still carries them.
+  const phoneKey = (contactPhone ?? '').replace(/\s+/g, '');
+  const lastCallQ = useQuery({
+    queryKey: ['branch-last-call', phoneKey, currentCallId ?? ''],
+    enabled: phoneKey.length >= 9,
+    staleTime: 60_000,
+    queryFn: async () => {
+      let q = supabase
+        .from('wk_calls')
+        .select('id, started_at, disposition_column_id, agent_note')
+        .eq('to_e164', phoneKey)
+        .eq('direction', 'outbound')
+        .not('started_at', 'is', null)
+        .order('started_at', { ascending: false })
+        .limit(1);
+      // The live call already has a wk_calls row; the banner is about the
+      // time BEFORE this one.
+      if (currentCallId) q = q.neq('id', currentCallId);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      const row = data?.[0];
+      if (!row) return null;
+      let outcome = '';
+      if (row.disposition_column_id) {
+        const { data: col } = await supabase
+          .from('wk_pipeline_columns')
+          .select('name')
+          .eq('id', row.disposition_column_id)
+          .maybeSingle();
+        outcome = col?.name ?? '';
+      }
+      return {
+        at: row.started_at as string,
+        outcome,
+        note: (row.agent_note ?? '').trim(),
+      };
+    },
+  });
+
   const priorCall = useMemo(() => {
     const called = listings.filter((l) => l.last_call_at);
-    if (called.length === 0) return null;
-    const latest = [...called].sort((a, b) =>
-      String(b.last_call_at).localeCompare(String(a.last_call_at)))[0];
-    const figure = String(
-      (latest.qualification as Record<string, unknown> | null)?.best_price_indicated ?? '',
-    ).trim();
+    const latest = called.length === 0 ? null
+      : [...called].sort((a, b) =>
+        String(b.last_call_at).localeCompare(String(a.last_call_at)))[0];
+    const wk = lastCallQ.data ?? null;
+    if (!wk && !latest) return null;
+    const figure = latest
+      ? String((latest.qualification as Record<string, unknown> | null)?.best_price_indicated ?? '').trim()
+      : '';
     return {
-      at: latest.last_call_at as string,
-      address: latest.address || 'one of their listings',
+      at: (wk?.at ?? latest?.last_call_at) as string,
+      outcome: wk?.outcome ?? '',
+      address: latest?.address ?? '',
       figure,
-      note: (latest.last_call_summary || '').trim(),
+      note: (latest?.last_call_summary || wk?.note || '').trim(),
     };
-  }, [listings]);
+  }, [listings, lastCallQ.data]);
 
   const isFlat = /flat|apartment|maisonette/i.test(selected?.property_type ?? '');
   const isHouse = !isFlat && !!selected?.property_type;
@@ -210,7 +260,9 @@ export default function PropertiesPane({
             You have spoken to this office before
           </div>
           <div className="mt-0.5 text-[11.5px] leading-snug text-[#5a4a20]">
-            Last call {callAgo(priorCall.at)} about <b>{priorCall.address}</b>.
+            Last call {callAgo(priorCall.at)}
+            {priorCall.outcome && <>, outcome <b>{priorCall.outcome}</b></>}
+            {priorCall.address && <>, about <b>{priorCall.address}</b></>}.
             {priorCall.figure && <> They said: <b>{priorCall.figure}</b>.</>}
           </div>
           {priorCall.note && (
