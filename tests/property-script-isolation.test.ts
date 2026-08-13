@@ -284,6 +284,20 @@ describe('two calls: discovery first, the offer only after the homework', () => 
     // And it opens with the guard that keeps a first call out of it.
     expect(callTwo).toMatch(/Are you allowed on this stage/)
   })
+
+  it('the offer strip above the script obeys the same split', () => {
+    // Hugo, 2026-08-13, reading Pedro's screen: "we dont offer on call one
+    // anymore right?" He was right: the strip still said "Say this figure"
+    // while the next step said Discovery call. The strip now reads the same
+    // callModeForStep switch as the script pane, and on a discovery call the
+    // band flips to homework wording instead of an instruction to speak.
+    const strip = read('src/features/crm/components/live-call/OfferStrip.tsx')
+    expect(strip).toMatch(/callModeForStep/)
+    expect(strip).toMatch(/never say a number of ours today/i)
+    expect(strip).toMatch(/NOT on this call\. Homework first\./)
+    // The instruction wording survives for call two, behind the switch.
+    expect(strip).toMatch(/discovery \? 'NOT on this call\. Homework first\.' : 'Say this figure\. Not a range\.'/)
+  })
 })
 
 describe('we never view a property, our builder does', () => {

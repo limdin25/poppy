@@ -25,6 +25,7 @@ import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import type { PropertyListing } from '../../hooks/usePropertyListings';
 import { resolveStage } from '../templates/dealProcessSteps';
+import { callModeForStep } from '../../lib/nextStep';
 
 /** How much to trust the valuation, in a colour. */
 const CONFIDENCE: Record<string, { label: string; cls: string }> = {
@@ -57,6 +58,11 @@ interface Props {
 
 export default function OfferStrip({ listing, total = 0, nextStep }: Props) {
   const step = resolveStage(nextStep);
+  // Two calls, never one (2026-08-13). On a DISCOVERY call no number of ours
+  // is ever said, so the band must not read as an instruction. The figures
+  // stay visible, they are the homework and the coach checks against them,
+  // but the wording flips to "call 2 only". Same switch the script pane uses.
+  const discovery = callModeForStep(nextStep) === 'discovery';
   if (!listing) {
     return (
       <div className="border-b border-[#E5E7EB] bg-[#FAFAF8] px-4 py-2.5 text-[12px] text-[#9CA3AF]">
@@ -145,27 +151,42 @@ export default function OfferStrip({ listing, total = 0, nextStep }: Props) {
           </span>
         </div>
       ) : (
-        <div className="flex flex-wrap items-stretch gap-px overflow-hidden border-y border-[#E5E7EB] bg-[#E5E7EB]">
-          <Cell
-            label="Open at"
-            value={gbpShort(listing.offerMin)}
-            note="Say this figure. Not a range."
-            tone="open"
-          />
-          <Cell
-            label="Then climb"
-            value={listing.ladder}
-            note="One step at a time, only when they give ground."
-            tone="plain"
-            small
-          />
-          <Cell
-            label="Walk away at"
-            value={gbpShort(listing.offerMax)}
-            note="NEVER SAY THIS OUT LOUD"
-            tone="ceiling"
-          />
-        </div>
+        <>
+          {discovery && (
+            <div
+              className="flex items-start gap-2 border-t border-[#EBD9B4] bg-[#FDF3E3] px-4 py-1.5"
+              data-testid="offer-strip-discovery-warning"
+            >
+              <AlertTriangle className="mt-px h-3.5 w-3.5 flex-shrink-0 text-[#9A6B1E]" />
+              <span className="text-[11px] leading-snug text-[#9A6B1E]">
+                <b>Discovery call: never say a number of ours today.</b> These
+                figures are your homework for call 2. Get THEIR figure, never
+                give yours.
+              </span>
+            </div>
+          )}
+          <div className="flex flex-wrap items-stretch gap-px overflow-hidden border-y border-[#E5E7EB] bg-[#E5E7EB]">
+            <Cell
+              label={discovery ? 'Call 2 opens at' : 'Open at'}
+              value={gbpShort(listing.offerMin)}
+              note={discovery ? 'NOT on this call. Homework first.' : 'Say this figure. Not a range.'}
+              tone={discovery ? 'plain' : 'open'}
+            />
+            <Cell
+              label="Then climb"
+              value={listing.ladder}
+              note={discovery ? 'Call 2 only.' : 'One step at a time, only when they give ground.'}
+              tone="plain"
+              small
+            />
+            <Cell
+              label="Walk away at"
+              value={gbpShort(listing.offerMax)}
+              note="NEVER SAY THIS OUT LOUD"
+              tone="ceiling"
+            />
+          </div>
+        </>
       )}
 
       <div className="flex flex-wrap items-center gap-2 px-4 py-1.5">
