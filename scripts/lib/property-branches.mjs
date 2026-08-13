@@ -45,9 +45,14 @@ export function groupByBranch(properties) {
     }
     branch.properties.push(p)
   }
-  // Most stock first: a branch with 12 houses is worth more per call than one
-  // with a single listing, and the queue is priority-ordered.
-  return [...byTail.values()].sort((a, b) => b.properties.length - a.properties.length)
+  // Hugo, 2026-08-13: "price reduced decides queue order". A branch holding
+  // any price-cut listing rings before every branch holding none, because a
+  // recorded cut is the vendor saying out loud they will take less. Within
+  // each half, most stock first: a branch with 12 houses is worth more per
+  // call than one with a single listing, and the queue is priority-ordered.
+  const hasCut = (x) => (x.properties.some((p) => p?.deal?.price_reduced) ? 1 : 0)
+  return [...byTail.values()].sort((a, b) =>
+    (hasCut(b) - hasCut(a)) || (b.properties.length - a.properties.length))
 }
 
 const num = (v) => {

@@ -87,6 +87,18 @@ describe('groupByBranch', () => {
     expect(groupByBranch([])).toEqual([])
     expect(groupByBranch(undefined)).toEqual([])
   })
+
+  it('rings a branch holding a price-cut listing before a bigger branch without one', () => {
+    // Hugo, 2026-08-13: "price reduced decides queue order". Pattinson has
+    // three houses, Connells one, but the Connells house had its price cut,
+    // so Connells rings first. Ordering only: nobody is dropped.
+    const cut = [...props.slice(0, 4)]
+    cut[3] = { ...cut[3], deal: { ...cut[3].deal, price_reduced: true } }
+    const branches = groupByBranch(cut)
+    expect(branches[0].agency).toBe('Connells')
+    expect(branches[1].agency).toBe('Pattinson')
+    expect(branches.flatMap((b) => b.properties).length).toBe(4)
+  })
 })
 
 describe('headlineProperty — the one the call opens on', () => {
