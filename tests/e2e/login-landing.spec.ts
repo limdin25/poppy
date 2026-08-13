@@ -36,7 +36,10 @@ test.use({ storageState: { cookies: [], origins: [] } })
 const APP = process.env.E2E_BASE_URL || 'https://app.heyelsie.com'
 
 /** Pedro Houses, the property caller. The only profile with a landing_path. */
-const PEDRO_EMAIL = process.env.E2E_PEDRO_EMAIL || 'pedro@unicohost.com'
+// hostunico, never unicohost: unicohost.com does not exist (Hugo, 2026-08-13),
+// and the flipped default here quietly skipped this suite for anyone who did
+// not pass E2E_PEDRO_EMAIL.
+const PEDRO_EMAIL = process.env.E2E_PEDRO_EMAIL || 'pedro@hostunico.com'
 const PEDRO_PASSWORD = process.env.E2E_PEDRO_PASSWORD || ''
 
 /**
