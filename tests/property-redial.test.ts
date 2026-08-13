@@ -87,9 +87,22 @@ describe('--redial-unanswered: only the offices nobody picked up', () => {
 })
 
 describe('a house the branch listed after we rang them', () => {
-  it('reopens the branch, at the back, once the gap has passed', () => {
+  // Hugo, 2026-08-13: "pedro is calling same agent for another deal... please
+  // stop that and blacklist that agent for 2 weeks." An office where a human
+  // answered waits two weeks even when it lists a new house; only an office
+  // that never picked up reopens on the ordinary 20-hour gap.
+
+  it('an office a human answered stays blacklisted for two weeks', () => {
     const d = decideRedial({
       lastCallAt: hoursAgo(30), lastOutcome: 'Not interested',
+      newestListedAt: hoursAgo(2), nowMs: NOW,
+    })
+    expect(d.queue).toBe(false)
+  })
+
+  it('reopens a spoken-to office at the back once the two weeks have passed', () => {
+    const d = decideRedial({
+      lastCallAt: hoursAgo(15 * 24), lastOutcome: 'Not interested',
       newestListedAt: hoursAgo(2), nowMs: NOW,
     })
     expect(d.queue).toBe(true)
@@ -97,11 +110,21 @@ describe('a house the branch listed after we rang them', () => {
     expect(d.reason).toMatch(/new listing/)
   })
 
-  it('does NOT reopen it the same afternoon', () => {
+  it('an office that never picked up reopens on the 20-hour gap', () => {
+    const d = decideRedial({
+      lastCallAt: hoursAgo(30), lastOutcome: 'Voicemail',
+      newestListedAt: hoursAgo(2), nowMs: NOW,
+    })
+    expect(d.queue).toBe(true)
+    expect(d.back).toBe(true)
+    expect(d.reason).toMatch(/new listing/)
+  })
+
+  it('does NOT reopen an unanswered office the same afternoon', () => {
     // McDonald said no at 15:03 and a batch landed at 16:30. Ringing back at
     // 17:30 is the exact complaint that started all this.
     const d = decideRedial({
-      lastCallAt: hoursAgo(2.5), lastOutcome: 'Not interested',
+      lastCallAt: hoursAgo(2.5), lastOutcome: 'No pickup',
       newestListedAt: hoursAgo(1), nowMs: NOW,
     })
     expect(d.queue).toBe(false)

@@ -112,6 +112,27 @@ export default function PropertiesPane({
     setSaveError(null);
   }, [selected?.id]);
 
+  // The most recent call anywhere on this branch, so a re-dealt office is
+  // never opened cold. Hugo, 2026-08-13: "when call again crm should show
+  // clear, when we last call them and for what property, do pedro knows
+  // whats going on." The RPC already carries last_call_at per listing and
+  // the saved answers per property; this just surfaces them.
+  const priorCall = useMemo(() => {
+    const called = listings.filter((l) => l.last_call_at);
+    if (called.length === 0) return null;
+    const latest = [...called].sort((a, b) =>
+      String(b.last_call_at).localeCompare(String(a.last_call_at)))[0];
+    const figure = String(
+      (latest.qualification as Record<string, unknown> | null)?.best_price_indicated ?? '',
+    ).trim();
+    return {
+      at: latest.last_call_at as string,
+      address: latest.address || 'one of their listings',
+      figure,
+      note: (latest.last_call_summary || '').trim(),
+    };
+  }, [listings]);
+
   const isFlat = /flat|apartment|maisonette/i.test(selected?.property_type ?? '');
   const isHouse = !isFlat && !!selected?.property_type;
   const visibleQuestions = QUESTIONS.filter((q) =>
@@ -182,6 +203,27 @@ export default function PropertiesPane({
         </div>
       </div>
 
+      {/* Spoken to before: what happened last time, before Pedro says a word */}
+      {priorCall && (
+        <div className="border-b border-[#F0DFB0] bg-[#FFF8EC] px-3 py-2">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[#8a6d1a]">
+            You have spoken to this office before
+          </div>
+          <div className="mt-0.5 text-[11.5px] leading-snug text-[#5a4a20]">
+            Last call {callAgo(priorCall.at)} about <b>{priorCall.address}</b>.
+            {priorCall.figure && <> They said: <b>{priorCall.figure}</b>.</>}
+          </div>
+          {priorCall.note && (
+            <div className="mt-0.5 text-[11px] italic leading-snug text-[#5a4a20]">
+              Your note: {priorCall.note}
+            </div>
+          )}
+          <div className="mt-0.5 text-[11px] text-[#8a6d1a]">
+            Open by picking up where you left off, never as a cold call.
+          </div>
+        </div>
+      )}
+
       {/* Property picker, only when there is a choice to make */}
       {listings.length > 1 && (
         <div className="border-b border-[#E5E7EB] px-3 py-2">
@@ -198,6 +240,11 @@ export default function PropertiesPane({
                 }`}
               >
                 <span className="flex-1 truncate text-[11.5px] text-[#1A1A1A]">{l.address}</span>
+                {l.last_call_at && (
+                  <span className="whitespace-nowrap rounded bg-[#FFF8EC] px-1 text-[10px] font-semibold text-[#8a6d1a]">
+                    rung {callAgo(l.last_call_at)}
+                  </span>
+                )}
                 <span className="whitespace-nowrap text-[11px] font-semibold text-[#2E7D43]">
                   {gbpShort(l.offerMin)}
                 </span>
@@ -377,6 +424,19 @@ function CompGroup({ heading, comps }: { heading: string; comps: PropertyComp[] 
       </ul>
     </div>
   );
+}
+
+/** "2h ago" / "3d ago" plus the actual date, so "a while back" never happens.
+ *  UK time on purpose: it is when the office remembers being rung. */
+function callAgo(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '';
+  const hours = Math.max(0, (Date.now() - t) / 3_600_000);
+  const rel = hours < 24 ? `${Math.round(hours)}h ago` : `${Math.round(hours / 24)}d ago`;
+  const abs = new Date(iso).toLocaleString('en-GB', {
+    timeZone: 'Europe/London', day: 'numeric', month: 'short',
+  });
+  return `${rel} (${abs})`;
 }
 
 function Label({ children }: { children: React.ReactNode }) {

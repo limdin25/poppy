@@ -198,6 +198,12 @@ deliberately only one copy of it**. Do not copy it here. Two copies drift, and
 on 2026-08-13 five separate docs across both folders were each claiming to be
 the current strategy while describing an abandoned one.
 
+`docs/BRRR_STRATEGY.md` in this repo is a **symlink** to that file (Hugo asked
+for it to be reachable from this folder too, 2026-08-13). It is the same file,
+not a copy: edit either path and both see the change. On a machine without the
+scraper folder (the VPS clones) the link is simply dead, which is fine, the
+strategy is not code.
+
 ⚠️ **`docs/VALUATION_ENGINE.md` and `docs/BRRR_ADD_VALUE_PIVOT.md` below are
 SUPERSEDED** and carry banners saying so. `VALUATION_ENGINE.md` in particular
 says "GDV is never an input to the offer" and "offer is never above asking",

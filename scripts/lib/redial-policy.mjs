@@ -49,6 +49,15 @@ export const NOBODY_ANSWERED = new Set(['Voicemail', 'No pickup'])
  *  the list", meaning tomorrow, not in an hour. */
 export const REDIAL_MIN_GAP_HOURS = 20
 
+/** How long a branch where a human actually answered stays off the queue,
+ *  even when the office lists a new house. Hugo, 2026-08-13: "pedro is
+ *  calling same agent for another deal... please stop that and blacklist
+ *  that agent for 2 weeks." Before this, a new listing reopened a spoken-to
+ *  office after just 20 hours, so a busy agency was getting Pedro's opener
+ *  again a day after telling him no. The 20-hour gap now only applies to
+ *  offices that never picked up. */
+export const SPOKEN_BRANCH_COOLDOWN_HOURS = 14 * 24
+
 /**
  * Decide whether a branch should be put on the dialer queue.
  *
@@ -93,11 +102,18 @@ export function decideRedial({
   // offices that were all rung once, and none of it would ever be dealt.
   //
   // Only CALLABLE listings count, because the caller passes the filtered set:
-  // a deal the auditor killed at 16:30 is not a reason to ring anybody. And the
-  // same gap applies, so a house listed an hour after the call waits until
-  // tomorrow rather than ringing the same office twice in an afternoon.
+  // a deal the auditor killed at 16:30 is not a reason to ring anybody.
+  //
+  // The gap depends on what happened last time. An office where a HUMAN
+  // answered is blacklisted for two weeks (SPOKEN_BRANCH_COOLDOWN_HOURS),
+  // however many houses it lists in between: they have heard the pitch, and
+  // ringing them about a different door a day later reads as a call centre.
+  // An office that never picked up only waits the ordinary 20 hours. A null
+  // outcome counts as unanswered, same rule as the redial-unanswered mode.
+  const spoke = Boolean(lastOutcome) && !NOBODY_ANSWERED.has(lastOutcome)
+  const reopenGap = spoke ? SPOKEN_BRANCH_COOLDOWN_HOURS : minGapHours
   const listed = newestListedAt ? new Date(newestListedAt).getTime() : NaN
-  if (Number.isFinite(listed) && listed > called && hours >= minGapHours) {
+  if (Number.isFinite(listed) && listed > called && hours >= reopenGap) {
     return { queue: true, back: true, reason: `new listing since we rang ${ago}${said}` }
   }
 
