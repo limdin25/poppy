@@ -13,6 +13,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -85,25 +86,30 @@ window.addEventListener('DOMContentLoaded',function(){
 });
 </script>`;
 
-export default async function handler(req: Request): Promise<Response> {
+// Node runtime handler ON PURPOSE: this route reads the bundled script file
+// with node:fs, and in this repo the Node runtime uses the (req, res) callback
+// signature. A web-style Request/Response handler here is silently ignored by
+// the runtime and the request hangs until the gateway gives up.
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'GET') {
-    return new Response('Method not allowed', { status: 405 });
+    res.statusCode = 405;
+    res.end('Method not allowed');
+    return;
   }
   let html: string;
   try {
     html = await loadScriptHtml();
   } catch {
-    return new Response('Script unavailable', { status: 500 });
+    res.statusCode = 500;
+    res.end('Script unavailable');
+    return;
   }
   const out = html
     .replace('</head>', `${TAB_STYLE}</head>`)
     .replace('<body>', `<body>${TAB_BAR}`);
-  return new Response(out, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'X-Robots-Tag': 'noindex, nofollow',
-    },
-  });
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.end(out);
 }
