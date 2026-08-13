@@ -76,9 +76,11 @@ export default function PropertyDealProcess() {
           to do next. Click a step to open it and copy the message that goes with it.
         </p>
         <p className="text-[12px] text-[#6B7280] leading-relaxed mt-2">
-          The one rule that runs through all of it: the builder quote confirms the deal, it does
-          not block the offer. Offer subject to the builder, get it accepted, sell it, then price
-          it properly. If the quote comes in high, that is your reason to go back on price.
+          The one rule that runs through all of it: TWO calls, never one. Call one is discovery
+          and never says a number of ours. The homework and the builder price it off the video,
+          then call two floats the confirmed figure, the offer goes over in writing subject to
+          our builder, and the viewing only happens once the ballpark is agreed. The builder is
+          the viewer, and his quote is the reason to go back on price if it comes in high.
         </p>
       </section>
 

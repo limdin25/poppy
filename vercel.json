@@ -56,6 +56,14 @@
       "destination": "/api/reviews/click?token=:token"
     },
     {
+      "source": "/scriptcall1",
+      "destination": "/api/script-call"
+    },
+    {
+      "source": "/scripcall1",
+      "destination": "/api/script-call"
+    },
+    {
       "source": "/report",
       "destination": "/api/report"
     },
@@ -82,7 +90,7 @@
       "destination": "/api/site-demo/page?slug=:slug"
     },
     {
-      "source": "/:slug((?!api$|assets$|r$|s$|report$|timesheet$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|blueprint$|pedro-training$|hugo-training$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
+      "source": "/:slug((?!api$|assets$|r$|s$|report$|timesheet$|welcome$|subscribe$|onboarding$|login$|continue$|join$|integrations$|admin$|super$|favicon$|robots$|sitemap$|index$|pricing$|terms$|privacy$|dpa$|blog$|register$|forgot-password$|reset-password$|script$|scriptcall1$|scripcall1$|blueprint$|pedro-training$|hugo-training$|rank-frame$|leads$|calls$|appointments$|conversations$|quotes$|invoices$|contacts$|settings$)[a-z0-9][a-z0-9-]*$)",
       "has": [
         {
           "type": "host",
@@ -116,6 +124,9 @@
     },
     "api/reviews/social/publish.ts": {
       "maxDuration": 30
+    },
+    "api/script-call.ts": {
+      "includeFiles": "src/core/content/property-call-script.html"
     }
   },
   "crons": [
