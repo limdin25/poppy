@@ -91,8 +91,24 @@ describe('the three fences between a model and a price in writing', () => {
     expect(DRAFT).toMatch(/SYSTEM_FOLLOW_UP/)
     expect(DRAFT).toMatch(/NEVER invent a number\. Every figure you may use is given to you\./)
     expect(DRAFT).toMatch(/NEVER re-open the price/)
-    // A bank statement is not a promise. The model must not quote a balance.
-    expect(DRAFT).toMatch(/do NOT attach it, quote a balance, or name a bank/)
+    // A bank statement is not a promise. Reworded 2026-08-14 when the statement
+    // started travelling WITH the email: the model may now describe it, but
+    // only from facts it was handed, never from its own idea of our banking.
+    expect(DRAFT).toMatch(/never quote a balance, a company, a bank or a date that is not in the facts below/)
+  })
+
+  it('5. the proof of funds is described from the settings row, never invented', () => {
+    // Hugo: "make sure all explained on the email draft by our brain." An agent
+    // who cannot make sense of the attachment will not pass it to the vendor,
+    // and this one needs explaining: ten accounts, blanked account numbers, and
+    // a company that is not the one Pedro says on the phone.
+    expect(DRAFT).toMatch(/\.eq\('key', 'proof_of_funds'\)/)
+    expect(DRAFT).toMatch(/THE PROOF OF FUNDS IS ATTACHED TO THIS EMAIL/)
+    // Every fact comes off the row, so replacing the statement updates the
+    // wording with it. None of them may be hardcoded here.
+    expect(DRAFT).not.toMatch(/Airbrick|Revolut|102,071|bridging facility/)
+    // And it only describes an attachment the deal actually asked for.
+    expect(DRAFT).toMatch(/if \(isFollowUp && \/proof of fund/)
   })
 })
 

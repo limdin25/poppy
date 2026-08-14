@@ -184,13 +184,14 @@ const SYSTEM_FOLLOW_UP = [
   '',
   'HARD RULES.',
   '1. NEVER invent a number. Every figure you may use is given to you. If the blocker does not need a figure, do not put one in at all.',
-  '2. NEVER promise something we have not got. If they are waiting on proof of funds, say it is being sent and when, do NOT attach it, quote a balance, or name a bank.',
+  '2. NEVER promise something we have not got, and never quote a balance, a company, a bank or a date that is not in the facts below. If a proof of funds is attached you say so and explain it. If one is NOT attached, say only that it is being sent and when.',
   '3. NEVER re-open the price. If our offer is mentioned it is only to remind them what is on the table, in the words we already used.',
   '4. Answer the blocker in the FIRST two sentences. An estate agent reads one paragraph.',
   '4a. Write the address EXACTLY as you are given it. NEVER add a house number, a flat number or a postcode that is not there. Most listings do not publish a house number and a wrong one goes to the branch selling that exact house.',
+  '4b. IF a proof of funds is attached to this email, and only then, EXPLAIN IT in its own short paragraph, using the facts you are given and no others. Cover, in this order and in plain sentences: which company holds the money and that the statement is a certified copy from its bank on the date given; that the money sits across several company accounts, which is why there is more than one balance on it; the total available; that the account numbers, sort codes and IBANs are hidden for security, which is normal on a document sent by email and does not affect what it proves; and how the purchase completes. An agent who does not understand the document will not pass it to the vendor.',
   '5. Ask ONE clear question at the end, the one that moves it on, and make it easy to answer in a line.',
   '6. Never write "subject to survey". Our condition is always "subject to our builder going round to view it and price the works".',
-  '7. SHORT. Under 160 words.',
+  '7. SHORT. Under 160 words, or under 220 when a proof of funds has to be explained.',
   '8. British English. Plain, warm, direct, no salesmanship, no flattery, no exclamation marks, no chasing tone.',
   '9. NEVER use a long dash. No em dash, no en dash, anywhere. Use a comma or a full stop. No curly quotes, no ellipsis character.',
   '',
@@ -302,6 +303,52 @@ export default async function handler(req: Request): Promise<Response> {
   // do_now lines are what we have already decided to do about it.
   const c = body.context ?? {};
   const blockers = (c.blockers ?? []).filter(Boolean);
+
+  // THE DOCUMENT GOING WITH THIS EMAIL, described in its own words.
+  //
+  // Hugo, 2026-08-14: "with the statement we say that we will be using a bridge
+  // loan, all good. Hide sort codes and IBANs to stop fraud. Make sure all
+  // explained on the email draft by our brain."
+  //
+  // An estate agent who cannot make sense of the attachment will not pass it to
+  // the vendor, and this one needs explaining: the balances sit across ten
+  // company accounts, the account numbers are blanked, and the company on it is
+  // not the company Pedro said on the phone. So the facts are READ from the
+  // same platform_settings row the attachment itself comes from. They are never
+  // written here: replacing the statement updates the wording with it, and a
+  // model that is given a total cannot invent one.
+  let proofFacts = '';
+  if (isFollowUp && /proof of fund|pof\b|evidence of fund/i.test(
+    [...blockers, ...(c.doNow ?? []), c.pinnedNote ?? ''].join(' '),
+  )) {
+    try {
+      const { data: pofRow } = await supabase
+        .from('platform_settings')
+        .select('value')
+        .eq('key', 'proof_of_funds')
+        .maybeSingle();
+      const p = JSON.parse(String(pofRow?.value ?? '{}')) as Record<string, unknown>;
+      if (p.path) {
+        const total = Number(p.total_gbp);
+        proofFacts = [
+          'THE PROOF OF FUNDS IS ATTACHED TO THIS EMAIL. Explain it, using ONLY these facts:',
+          `- The document: a certified copy of the ${String(p.bank ?? 'bank')} balance sheets, dated ${String(p.dated ?? '')}`,
+          `- The company holding the funds: ${String(p.company ?? '')}`,
+          p.accounts ? `- It shows ${String(p.accounts)} company accounts, which is why there is more than one balance on it` : null,
+          Number.isFinite(total) && total > 0
+            ? `- Total available across those accounts: ${gbp(total)}`
+            : null,
+          p.redacted
+            ? '- The account numbers, sort codes and IBANs are hidden for security. Say so plainly and say it is normal for a document sent by email, and that it does not affect what the statement proves.'
+            : null,
+          p.funding_note ? `- How the purchase completes: ${String(p.funding_note)}` : null,
+        ].filter(Boolean).join('\n');
+      }
+    } catch {
+      // No pointer, or unreadable. The email still writes, it just does not
+      // describe an attachment, which is the honest outcome.
+    }
+  }
   const dealState = [
     c.step ? `The step this branch is on: ${c.step}` : null,
     blockers.length
@@ -311,6 +358,7 @@ export default async function handler(req: Request): Promise<Response> {
       ? `WHAT WE HAVE ALREADY DECIDED TO DO (say only the parts that concern THEM):\n${(c.doNow ?? []).map((d) => `- ${d}`).join('\n')}`
       : null,
     c.pinnedNote ? `OUR OWN NOTE on this deal (internal, never quote it):\n${c.pinnedNote}` : null,
+    proofFacts || null,
   ].filter(Boolean).join('\n\n');
 
   const user = [
