@@ -279,6 +279,14 @@ deterministic, every figure is read from the engine rather than worked out
 again, and a missing fact becomes a blocker rather than an assumption. Your own
 **pinned note** sits above it.
 
+**When the branch writes back, the card reacts** (built 2026-08-14). The
+webhook reads the email rather than just filing it: a rejection or a
+counter-offer moves the instruction off "chase the agent" and onto
+"Renegotiate", an acceptance becomes "Get it in writing", and anything less
+obvious raises the card's attention and leaves the tag to a human. It never
+moves a board column and never sends anything. Any figure the branch named is
+recorded as **theirs** (`branch_stated_figure`), never as a price we agreed.
+
 **The board, in order:** Discovery done evaluating → Ready for call 2 → Ballpark
 agreed → Needs viewing → Offer sent → Offer accepted → Sent to investor → Deal
 closed.
