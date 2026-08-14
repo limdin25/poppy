@@ -9,8 +9,9 @@
 
 import { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Bell, Save, Loader2, X } from 'lucide-react';
+import { Bell, Save, Loader2, X, Sparkles } from 'lucide-react';
 import { useFollowups } from '../../hooks/useFollowups';
+import { supabase } from '@/integrations/supabase/browser';
 
 interface Props {
   open: boolean;
@@ -72,14 +73,45 @@ export default function FollowupPromptModal({
   const [dueLocal, setDueLocal] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [assessing, setAssessing] = useState(false);
+  const [assessError, setAssessError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       const d = new Date(Date.now() + suggestedHoursAhead * 60 * 60 * 1000);
       setDueLocal(toLocalIsoForInput(d));
       setNote('');
+      setAssessError(null);
     }
   }, [open, suggestedHoursAhead]);
+
+  // Hugo, 2026-08-14: "ai brain do assessment as well and write note." Reads
+  // the deal brief (if there is one), Hugo's pinned note and the last few
+  // messages for this contact, and writes what the agent will otherwise have
+  // to remember by the time the follow-up comes due. Never overwrites a note
+  // the agent already typed by hand.
+  const askAi = async () => {
+    if (assessing) return;
+    setAssessing(true);
+    setAssessError(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch('/api/crm/followup-assessment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ contact_id: contactId }),
+      });
+      const json = await res.json() as { note?: string; error?: string };
+      if (!res.ok || !json.note) throw new Error(json.error ?? 'The brain did not answer');
+      setNote(json.note);
+    } catch (e) {
+      setAssessError(e instanceof Error ? e.message : 'Assessment failed');
+    } finally {
+      setAssessing(false);
+    }
+  };
 
   const applyPreset = (p: (typeof PRESETS)[number]) => {
     if (p.label === 'Tomorrow 9am') {
@@ -175,9 +207,24 @@ export default function FollowupPromptModal({
             </div>
           </div>
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#525252] mb-1.5">
-              What to do (optional)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#525252]">
+                What to do (optional)
+              </label>
+              <button
+                type="button"
+                onClick={() => void askAi()}
+                disabled={assessing}
+                className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#3C5A87] hover:text-[#3C5A87]/80 disabled:opacity-50"
+              >
+                {assessing ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3" />
+                )}
+                {assessing ? 'Reading the deal…' : 'Ask AI to assess'}
+              </button>
+            </div>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -185,6 +232,9 @@ export default function FollowupPromptModal({
               placeholder="e.g. Send the deal pack and confirm budget."
               className="w-full px-3 py-2 text-[12px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87] resize-none"
             />
+            {assessError && (
+              <div className="text-[11px] text-[#EF4444] mt-1">{assessError}</div>
+            )}
           </div>
           {hookError && (
             <div className="text-[12px] text-[#EF4444] bg-[#FEF2F2] border border-[#FEE2E2] rounded-md px-3 py-2">

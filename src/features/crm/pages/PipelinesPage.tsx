@@ -235,7 +235,17 @@ export default function PipelinesPage() {
 
       <div className="flex gap-3 overflow-x-auto pb-3">
         {visibleColumns.map((col) => {
-          const cards = contacts.filter((c) => c.pipelineColumnId === col.id);
+          // Overdue and soonest-due follow-ups float to the top of their
+          // column; cards with no follow-up keep falling to the bottom.
+          const cards = contacts
+            .filter((c) => c.pipelineColumnId === col.id)
+            .sort((a, b) => {
+              const dueA = followupByContact.get(a.id)?.due_at;
+              const dueB = followupByContact.get(b.id)?.due_at;
+              const tA = dueA ? +new Date(dueA) : Infinity;
+              const tB = dueB ? +new Date(dueB) : Infinity;
+              return tA - tB;
+            });
           const totalValue = cards.reduce((s, c) => s + (c.dealValuePence ?? 0), 0);
           return (
             <div

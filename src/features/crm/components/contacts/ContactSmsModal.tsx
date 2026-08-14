@@ -92,6 +92,19 @@ interface TemplatesTable {
   };
 }
 
+interface ContactByEmailTable {
+  from: (t: string) => {
+    select: (c: string) => {
+      eq: (
+        col: string,
+        val: string
+      ) => {
+        maybeSingle: () => Promise<{ data: { id: string } | null; error: { message: string } | null }>;
+      };
+    };
+  };
+}
+
 interface Props {
   contact: Contact | null;
   onClose: () => void;
@@ -478,6 +491,35 @@ export default function ContactSmsModal({
       const trimBody = body.trim();
       const trimSubject = subject.trim();
 
+      // A reply already made its OWN contact keyed on the address (see
+      // findKnownEmail above): inbound email never matches back to the
+      // branch's phone-keyed card unless the domain literally matches the
+      // trading name. Send anyway to that address and the message files
+      // under THIS deal's contact.id, a row the lead's own Inbox thread
+      // never reads from, so "sent" never shows up where Hugo is looking.
+      // Route to the address's own contact when one already exists.
+      let sendContactId = contact.id;
+      let sendContactIsOther = false;
+      if (channel === 'email') {
+        const cleanTo = toEmail.trim().toLowerCase();
+        if (cleanTo && cleanTo !== (contact.email ?? '').trim().toLowerCase()) {
+          try {
+            const { data: existing } = await (supabase as unknown as ContactByEmailTable)
+              .from('wk_contacts')
+              .select('id')
+              .eq('email', cleanTo)
+              .maybeSingle();
+            if (existing && existing.id !== contact.id) {
+              sendContactId = existing.id;
+              sendContactIsOther = true;
+            }
+          } catch {
+            // Lookup failed — fall back to filing under this deal's contact,
+            // same as before this fix.
+          }
+        }
+      }
+
       let resp: Awaited<ReturnType<SendInvoke['invoke']>>;
       if (channel === 'sms') {
         // PR 96 (Hugo 2026-04-28): was hitting legacy `sms-send` which
@@ -498,7 +540,7 @@ export default function ContactSmsModal({
       } else {
         resp = await fn.invoke('wk-email-send', {
           body: {
-            contact_id: contact.id,
+            contact_id: sendContactId,
             to_email: toEmail.trim().toLowerCase(),
             subject: trimSubject,
             body: trimBody,
@@ -514,13 +556,18 @@ export default function ContactSmsModal({
         pushToast(`${CHANNEL_LABEL[channel]} send failed: ${detail}`, 'error');
         return;
       }
-      pushToast(`${CHANNEL_LABEL[channel]} sent`, 'success');
+      pushToast(
+        sendContactIsOther
+          ? `Email sent — filed under ${toEmail.trim()}'s own Inbox thread, not this card`
+          : `${CHANNEL_LABEL[channel]} sent`,
+        'success'
+      );
 
       // Remember the address, so next week's offer email does not need it
       // asking for again. AFTER the send and best effort ON PURPOSE: a unique
       // index clash with a sister branch sharing the inbox must never read back
       // as "your email did not send".
-      if (channel === 'email') {
+      if (channel === 'email' && !sendContactIsOther) {
         const clean = toEmail.trim().toLowerCase();
         if (clean && clean !== (contact.email ?? '').trim().toLowerCase()) {
           patchContact(contact.id, { email: clean });

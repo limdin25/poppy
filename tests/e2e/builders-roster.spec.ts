@@ -39,24 +39,25 @@ test.describe('Builders roster', () => {
     await expect(row.getByRole('button', { name: 'Active' })).toBeVisible({ timeout: 10_000 })
 
     // Assign this builder to whatever property sits on top of the list, and
-    // confirm the assignment survives a reload.
+    // confirm the assignment survives a reload. Click near the top-left of
+    // the row (the address text) rather than the row's bounding-box centre —
+    // several cells further right (the agent phone link, the Rightmove link)
+    // stopPropagation() their own clicks so the row itself never opens.
     await page.goto('/admin/properties')
     const firstRow = page.locator('table tbody tr').first()
     await expect(firstRow).toBeVisible({ timeout: 15_000 })
-    await firstRow.click()
+    await firstRow.click({ position: { x: 10, y: 8 } })
 
-    const drawer = page.locator('text=Viewing').locator('..').locator('..')
     await expect(page.getByText('Viewing', { exact: true })).toBeVisible({ timeout: 10_000 })
     await page.locator('select').selectOption({ label: builderName })
     await page.getByRole('button', { name: /save viewing/i }).click()
     await expect(page.getByRole('button', { name: /save viewing/i })).toBeEnabled({ timeout: 10_000 })
 
     await page.reload()
-    await firstRow.click()
+    await firstRow.click({ position: { x: 10, y: 8 } })
     await expect(page.locator('select')).toHaveValue(/.+/, { timeout: 10_000 })
     const selectedLabel = await page.locator('select').locator('option:checked').textContent()
     expect(selectedLabel).toBe(builderName)
-    void drawer
 
     // Clear the assignment so the fixture doesn't leave a live house pointed
     // at a builder that's about to be deleted.

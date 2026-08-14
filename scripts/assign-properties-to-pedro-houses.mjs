@@ -43,6 +43,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { phoneTail9, groupByBranch, headlineProperty } from './lib/property-branches.mjs'
 import { decideRedial, redialModeFromArgv, REDIAL_MIN_GAP_HOURS } from './lib/redial-policy.mjs'
+import { meetsEvidenceStandard, belowStandardByTier } from './lib/evidence-standard.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -258,6 +259,7 @@ async function loadProperties() {
   return all
 }
 
+
 /** phone -> { lastCallAt, lastOutcome } for the MOST RECENT outbound call to
  *  that branch. Empty for a branch nobody has rung. lastOutcome is null when the
  *  call happened and no outcome was pressed at all (16 of Pedro's 55 calls on
@@ -415,9 +417,17 @@ async function main() {
   try { settings = sRow?.value ? JSON.parse(sRow.value) : {} } catch { settings = {} }
 
   const properties = await loadProperties()
-  const usable = PURSUE_ONLY
+  const pursued = PURSUE_ONLY
     ? properties.filter((p) => p.deal?.pursue === true || p.deal?.pursue === 'true')
     : properties
+  // Only gold and strong evidence reaches him. See meetsEvidenceStandard above.
+  const usable = pursued.filter(meetsEvidenceStandard)
+  const belowStandard = pursued.length - usable.length
+  if (belowStandard > 0) {
+    const tiers = belowStandardByTier(pursued)
+    say(`  evidence standard    : ${belowStandard} listing(s) held back, below gold/strong `
+      + `(${Object.entries(tiers).map(([t, n]) => `${n} ${t}`).join(', ')})`)
+  }
   const allBranches = groupByBranch(usable)
 
   // Who has already been rung, and what they said. Read every run: a branch

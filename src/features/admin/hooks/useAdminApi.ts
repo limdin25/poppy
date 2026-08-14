@@ -49,7 +49,7 @@ export function useAdminApi<T>(
   return { data, loading, error, refetch: fetchData }
 }
 
-export function useAdminMutation(path: string, method: 'POST' | 'PUT' | 'PATCH' = 'POST') {
+export function useAdminMutation(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'POST') {
   const { session } = useAuth()
 
   return useCallback(async (body: unknown) => {
