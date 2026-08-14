@@ -51,8 +51,10 @@ describe('the branch name the scraper writes', () => {
   })
 
   it('does not invent a match for an unrelated brand', () => {
-    // Zest trades as movewithzest.co.uk, so there is genuinely nothing to
-    // match, and inventing one would attach a stranger to the card.
+    // Zest trades as movewithzest.co.uk, so there is genuinely nothing HERE to
+    // match, and inventing one would attach a stranger to the card. The name
+    // rule stays exactly this strict. What rescues Zest is a different and
+    // much stronger signal, below: they named one of our houses.
     expect(keysOf('Zest, Hull')).not.toContain(domainLabel('leanne@movewithzest.co.uk'))
   })
 })
@@ -116,5 +118,80 @@ describe('an agent with two email addresses', () => {
     const block = HOOK_FROM.slice(HOOK_FROM.indexOf("channel === 'email'"))
     expect(block).toMatch(/\.eq\('assigned_agent_id', uid\)[\s\S]{0,600}?\.order\('created_at', \{ ascending: true \}\)/)
     expect(block).toMatch(/\.eq\('assigned_agent_id', uid\)[\s\S]{0,600}?\.limit\(1\)/)
+  })
+})
+
+describe('they named one of our houses, which beats any name guessing', () => {
+  // A branch writing "your offer on 39 Orion Way" is telling us exactly which
+  // deal this is, in their own words. It is the only thing that can rescue an
+  // agency whose domain is nothing like its trading name.
+  const street = (address: string) => {
+    const first = address.split(',')[0].trim()
+    const words = first.split(/\s+/).filter(Boolean)
+    const THOROUGHFARE = new Set(['road', 'street', 'avenue', 'lane', 'drive',
+      'close', 'way', 'grove', 'crescent', 'place', 'terrace', 'court',
+      'gardens', 'walk', 'rise', 'view'])
+    if (words.length > 2 && THOROUGHFARE.has(words[words.length - 1].toLowerCase())) words.pop()
+    return words.join(' ').replace(/[^a-z0-9 ]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  }
+  const GENERIC = new Set(['the', 'a', 'of', 'old', 'new', 'high', 'low', 'main',
+    'green', 'hill', 'park', 'church', 'mill', 'north', 'south', 'east', 'west',
+    'front', 'back', 'upper', 'lower', 'little', 'great', 'long', 'short',
+    'first', 'second', 'road', 'street', 'avenue', 'lane', 'drive', 'close',
+    'way', 'grove', 'crescent', 'place', 'terrace', 'court', 'gardens', 'walk',
+    'rise', 'view'])
+  const isEvidence = (s: string) =>
+    s.length >= 8 && s.includes(' ')
+    && s.split(' ').some((w) => w.length >= 4 && !GENERIC.has(w))
+  const names = (address: string, emailBody: string) => {
+    const s = street(address)
+    return isEvidence(s) && emailBody.toLowerCase().includes(s)
+  }
+
+  it('rescues the Zest case that the domain rule cannot', () => {
+    expect(names('Welwyn Park Road, Hull, HU6',
+      'I have been asked to email you so that you can send me through your proof '
+      + 'of funds for the property offer at Welwyn Park.')).toBe(true)
+  })
+
+  it('rescues the DDM case too', () => {
+    expect(names('Orion Way, Grimsby, DN34',
+      'Our vendors of 39 Orion Way have rejected your offer.')).toBe(true)
+  })
+
+  it('refuses a street too short or too generic to be evidence', () => {
+    // "Orion" alone, or a street called "The Green", would match half the
+    // language.
+    expect(names('The Green, Leeds', 'the green light is on')).toBe(false)
+    expect(names('Orion Way', 'we sell orion branded kitchens')).toBe(false)
+  })
+
+  it('does not fire on an email that names no house at all', () => {
+    expect(names('Welwyn Park Road, Hull', 'Thanks, I will chase the vendor.')).toBe(false)
+  })
+
+  it('the webhook refuses when two branches match, rather than guessing', () => {
+    expect(HOOK).toContain('refusing to guess')
+    expect(HOOK).toContain('hits.size === 1')
+  })
+
+  it('the webhook applies the same floors as this test', () => {
+    expect(HOOK).toContain('streetIsEvidence')
+    expect(HOOK).toContain('GENERIC_STREET_WORDS')
+    expect(HOOK).toContain("street.length < 8 || !street.includes(' ')")
+  })
+
+  it('a street of only generic words is refused even at the right length', () => {
+    // "The Green" is nine characters with a space, exactly like "Orion Way",
+    // so length alone cannot separate them. Distinctiveness can.
+    expect(isEvidence('the green')).toBe(false)
+    expect(isEvidence('church lane')).toBe(false)
+    expect(isEvidence('orion way')).toBe(true)
+    expect(isEvidence('welwyn park')).toBe(true)
+  })
+
+  it('is tried AFTER the domain rule, never instead of it', () => {
+    expect(HOOK.indexOf('matchByNamedHouse(supa, emailText)'))
+      .toBeGreaterThan(HOOK.indexOf('const hits = rows.filter'))
   })
 })

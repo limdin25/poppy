@@ -414,12 +414,98 @@ async function grantRecipientAccess(
   if (error) console.error('[wk-email-webhook] could not grant inbox access', error);
 }
 
+
+// ── 2b. THEY NAMED ONE OF OUR HOUSES ──────────────────────────────────────
+//
+// The strongest evidence there is, and much stronger than a name resembling a
+// domain. A branch writing "your offer on 39 Orion Way" is telling us exactly
+// which of our deals this is, in their own words.
+//
+// It exists because the domain rule genuinely cannot help in the common case:
+// Zest of Hull trades as movewithzest.co.uk, so "zest" is not the domain and
+// matching on the name alone would mean inventing a link. Leanne's email named
+// Welwyn Park; Lexi's named Orion Way. Both are unambiguous.
+//
+// Refuses on two matches, exactly like the domain rule. Nothing is guessed.
+const THOROUGHFARE = new Set([
+  'road', 'street', 'avenue', 'lane', 'drive', 'close', 'way', 'grove',
+  'crescent', 'place', 'terrace', 'court', 'gardens', 'walk', 'rise', 'view',
+]);
+
+/** "Welwyn Park Road, Hull, HU6" -> "welwyn park". Verbatim twin of
+ *  searchableStreet() in api/lib/branch-email-match.ts. */
+function searchableStreet(address: string): string {
+  const first = String(address ?? '').split(',')[0].trim();
+  if (!first) return '';
+  const words = first.split(/\s+/).filter(Boolean);
+  if (words.length > 2 && THOROUGHFARE.has(words[words.length - 1].toLowerCase())) {
+    words.pop();
+  }
+  return words.join(' ').replace(/[^a-z0-9 ]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+// Street words so common that a street made only of them is not evidence.
+// "The Green" appears in an email about a traffic light; "Welwyn Park" and
+// "Orion Way" do not appear in anything else. A usable street must carry at
+// least one word that is not on this list.
+const GENERIC_STREET_WORDS = new Set([
+  'the', 'a', 'of', 'old', 'new', 'high', 'low', 'main', 'green', 'hill',
+  'park', 'church', 'mill', 'north', 'south', 'east', 'west', 'front', 'back',
+  'upper', 'lower', 'little', 'great', 'long', 'short', 'first', 'second',
+  'road', 'street', 'avenue', 'lane', 'drive', 'close', 'way', 'grove',
+  'crescent', 'place', 'terrace', 'court', 'gardens', 'walk', 'rise', 'view',
+]);
+
+/** Is this street distinctive enough to prove which deal an email is about? */
+function streetIsEvidence(street: string): boolean {
+  if (street.length < 8 || !street.includes(' ')) return false;
+  return street.split(' ').some((w) => w.length >= 4 && !GENERIC_STREET_WORDS.has(w));
+}
+
+async function matchByNamedHouse(
+  supa: ReturnType<typeof createClient>,
+  emailText: string,
+): Promise<string | null> {
+  const text = (emailText ?? '').toLowerCase();
+  if (text.length < 20) return null;
+  try {
+    const { data } = await supa
+      .from('brrr_properties')
+      .select('address, wk_contact_id')
+      .not('wk_contact_id', 'is', null)
+      .limit(1000);
+    const hits = new Map<string, string>();
+    for (const row of (data ?? []) as Array<{ address?: string; wk_contact_id?: string }>) {
+      const street = searchableStreet(row.address ?? '');
+      if (!streetIsEvidence(street)) continue;
+      if (text.includes(street) && row.wk_contact_id) {
+        hits.set(row.wk_contact_id, street);
+      }
+    }
+    if (hits.size === 1) {
+      const [contactId, street] = [...hits.entries()][0];
+      console.log(`[wk-email-webhook] matched by named house "${street}" to contact ${contactId}`);
+      return contactId;
+    }
+    if (hits.size > 1) {
+      console.log(`[wk-email-webhook] ${hits.size} branches match a named house, refusing to guess`);
+    }
+  } catch (e) {
+    console.warn('[wk-email-webhook] house match failed', String(e));
+  }
+  return null;
+}
+
 async function findOrCreateContact(
   supa: SupabaseClient,
   email: string,
   contactName: string,
   firstEmailId: string,
   toEmail: string,
+  /** Subject and body, so a branch that NAMES one of our houses can be matched
+   *  to it. See matchByNamedHouse: much stronger evidence than a domain that
+   *  happens to resemble a trading name. */
+  emailText = '',
 ): Promise<string | null> {
   // 1. The sender is already a contact by address. Unchanged, and still first.
   const { data: existing } = await supa
@@ -499,6 +585,15 @@ async function findOrCreateContact(
     if (hits.length > 1) {
       console.log(`[wk-email-webhook] ${hits.length} contacts match "${label}" — creating a new one rather than guessing`);
     }
+  }
+
+  // 2b. They named one of our houses. Strongest evidence available, and the
+  //     only thing that can rescue an agency whose domain is nothing like its
+  //     trading name (Zest of Hull is movewithzest.co.uk).
+  const byHouse = await matchByNamedHouse(supa, emailText);
+  if (byHouse) {
+    await supa.from('wk_contacts').update({ email }).eq('id', byHouse);
+    return byHouse;
   }
 
   // 3. Nobody we know. Create, but never ownerless: an unowned contact is one
@@ -857,7 +952,8 @@ serve(async (req: Request) => {
   // PR 104: strip quoted history so the inbox shows only the new reply.
   const bodyText = stripReplyQuotes(rawBodyText);
 
-  const contactId = await findOrCreateContact(supa, fromEmail, fromName, emailId, toEmail);
+  const contactId = await findOrCreateContact(
+    supa, fromEmail, fromName, emailId, toEmail, `${subject ?? ''}\n${bodyText ?? ''}`);
   if (!contactId) return ok({ note: 'contact resolution failed' });
 
   const { error: msgErr } = await supa

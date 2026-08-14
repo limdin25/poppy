@@ -185,6 +185,9 @@ describe('the recipient is still the security boundary', () => {
   });
 
   it('passes the recipient through to contact resolution', () => {
-    expect(HOOK).toMatch(/findOrCreateContact\(supa, fromEmail, fromName, emailId, toEmail\)/);
+    // 2026-08-14: the call gained the email text as a sixth argument (so a
+    // branch that NAMES one of our houses can be matched to it) and wraps
+    // across two lines. The recipient must still be threaded through.
+    expect(HOOK).toMatch(/findOrCreateContact\(\s*supa, fromEmail, fromName, emailId, toEmail/);
   });
 });
