@@ -11,6 +11,11 @@
 > `/admin/crm/dialer-pro?script=property_call`. See the "Houses for Pedro"
 > section of [CLAUDE.md](../CLAUDE.md) and Claude memory `project_houses_pedro`.
 >
+> **What Pedro actually says, and what happens after the call, is documented in
+> [BRRR_STRATEGY.md](BRRR_STRATEGY.md) sections 8 to 8e** (the two calls, the
+> condition questions, water, the email sent on the call, the after-call brief,
+> and the EPC numbers). That file wins over anything below.
+>
 > Deleted with it: `api/cron/process-property-calls.ts`,
 > `scripts/create-property-qualifier-agent.mjs`, the Vercel cron entry, the
 > ingest auto-queue branch and the admin dial button. Pinned by
