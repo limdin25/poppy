@@ -365,13 +365,27 @@ already above the ceiling. There was never a number to send.
    makes our offers higher than a trade-rate crew could deliver.
 3. **The 21-day rule is off until 2026-08-28.**
 4. **Missing phone numbers are the biggest single loss.**
-5. **Floor area is still unknown on about 70% of judged properties**, so most
-   houses are valued without knowing their size, which is exactly what the
-   per-sqm pricing needs. EPC fills only 9.5% of the gap (394 of 4,160 lookups).
-   `floor_area.py` now runs every night (it did not before 2026-08-14) and the
-   cache went from 1,485 to 1,893 properties, but **3,779 floor plans we already
-   hold are still unread**, and about 36% of a read yields an area. Reading them
-   is the biggest remaining lever on valuation accuracy.
+5. **Floor area is still unknown on about three quarters of judged properties**
+   (1,004 of 1,363 on 2026-08-14), so most houses are valued without knowing
+   their size, which is exactly what the per-sqm pricing needs. This is the
+   biggest remaining lever on valuation accuracy and it is stubborn.
+
+   What has been done: `floor_area.py` now runs every night (it did not before
+   2026-08-14), and 2,922 unread plans plus 1,300 area-reads were put through.
+   The cache went 1,485 to 1,961.
+
+   **Why the ratio barely moved:** reading plans also lets MORE properties clear
+   the floor-plan must, so the judged pool grew from 1,041 to 1,363 at the same
+   time. Coverage chased a moving target. EPC contributes almost nothing (3 of
+   1,363), and roughly a quarter of area-reads fail outright on a missing image
+   URL.
+
+   **Two readers, and they are not interchangeable.** `rescore_floorplans.py`
+   answers "can this take another bedroom" into `rm_floorplan_ai`.
+   `read_for_area.py` measures ROOM DIMENSIONS into `rm_second_room`, and that
+   is the only one `floor_area.py` reads. Running the first and expecting a
+   floor area out of it produces exactly nothing, which is a mistake that has
+   now been made once.
 6. **A comps valuation is not a survey.** The cross-checks are two blunt second
    opinions and cannot see a whole postcode being wrong.
 7. **The 14-day branch cooldown is protective but expensive.**
