@@ -90,3 +90,31 @@ describe('mail to a misspelled mailbox still finds its owner', () => {
       .toBeLessThan(owner.indexOf('mailbox_owners'))
   })
 })
+
+describe('an agent with two email addresses', () => {
+  // Hugo, 2026-08-14: "add hello@hostunico.com synced to the inbox as well ...
+  // pedros inbox." Pedro now has two, and before this change that was a live
+  // trap: BOTH the send box and the server resolved the agent's address with a
+  // bare .maybeSingle(), which ERRORS on two rows. His resolved sender would
+  // have silently become null and the send would have fallen through to the
+  // workspace default, so he would have started emailing estate agents from
+  // the wrong address with nothing in the logs to say so.
+  const SEND = readFileSync(resolve(root, 'supabase/functions/wk-email-send/index.ts'), 'utf8')
+  const HOOK_FROM = readFileSync(resolve(root, 'src/features/crm/hooks/useResolvedFromLine.ts'), 'utf8')
+
+  it('the server takes the oldest, so adding one never moves an existing agent', () => {
+    // Anchored on the QUERY, not the first mention of the column: the
+    // precedence comment above it names assigned_agent_id too.
+    const q = SEND.indexOf(".eq('assigned_agent_id', agentId)")
+    expect(q).toBeGreaterThan(-1)
+    const block = SEND.slice(q, q + 300)
+    expect(block).toMatch(/\.order\('created_at', \{ ascending: true \}\)/)
+    expect(block).toMatch(/\.limit\(1\)/)
+  })
+
+  it('the send box resolves it the same way, or the caption lies', () => {
+    const block = HOOK_FROM.slice(HOOK_FROM.indexOf("channel === 'email'"))
+    expect(block).toMatch(/\.eq\('assigned_agent_id', uid\)[\s\S]{0,600}?\.order\('created_at', \{ ascending: true \}\)/)
+    expect(block).toMatch(/\.eq\('assigned_agent_id', uid\)[\s\S]{0,600}?\.limit\(1\)/)
+  })
+})

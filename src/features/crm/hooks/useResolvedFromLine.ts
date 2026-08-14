@@ -175,6 +175,13 @@ async function resolveFromLine(
         .eq('provider', 'resend')
         .eq('is_active', true)
         .eq('assigned_agent_id', uid)
+        // Ordered and limited, exactly as wk-email-send does it. A bare
+        // maybeSingle() ERRORS on two rows, so the caption would have gone
+        // blank the moment an agent was given a second address, while the
+        // server sent from somewhere else. The caption lying about the sender
+        // is the whole reason this hook exists.
+        .order('created_at', { ascending: true })
+        .limit(1)
         .maybeSingle();
       if ((data as NumberLike | null)?.e164) {
         return formatFromLine(data as NumberLike, true, agentFirstName);

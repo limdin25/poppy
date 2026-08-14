@@ -158,8 +158,16 @@ serve(async (req: Request) => {
     }
 
     if (!resolvedRow) {
-      // 2.2 — per-agent assigned row. Each agent owns at most one email
-      // address in wk_numbers (assigned_agent_id = profiles.id).
+      // 2.2 — per-agent assigned row.
+      //
+      // ORDERED AND LIMITED, not a bare maybeSingle(). The comment here used to
+      // say "each agent owns at most one email address", which was true only
+      // because nobody had added a second one. maybeSingle() ERRORS on two
+      // rows, so the first time an agent was given a second address their
+      // resolved sender would have silently become null and the send would have
+      // fallen through to the workspace default: they would have started
+      // emailing estate agents from the wrong address with nothing in the logs.
+      // Oldest wins, so adding an address never moves an existing agent's.
       const { data } = await supa
         .from('wk_numbers')
         .select('id, e164')
@@ -167,6 +175,8 @@ serve(async (req: Request) => {
         .eq('provider', 'resend')
         .eq('is_active', true)
         .eq('assigned_agent_id', agentId)
+        .order('created_at', { ascending: true })
+        .limit(1)
         .maybeSingle();
       resolvedRow = (data as { id: string; e164: string } | null) ?? null;
     }
