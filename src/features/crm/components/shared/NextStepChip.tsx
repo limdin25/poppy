@@ -64,9 +64,32 @@ export interface NextStepChipProps {
   /** The raw value off the card: a tag, a step number, or nothing. */
   value?: string | null;
   className?: string;
+  /** THE DEAL AND THE CONVERSATION, so clicking the tag answers the question
+   *  rather than raising one.
+   *
+   *  Hugo, 2026-08-14: "pipeline, when I click chase the agent, I can't see
+   *  full inbox information." The popover showed a static step definition and
+   *  nothing about THIS house or what the branch had actually said, which on a
+   *  card reading "chase the answer" is exactly the missing half: the answer
+   *  had arrived by email hours earlier. */
+  deal?: {
+    address?: string | null;
+    offerOpen?: number | null;
+    offerCeiling?: number | null;
+    lastReplyKind?: string | null;
+    lastReplySummary?: string | null;
+    branchStatedFigure?: string | null;
+  } | null;
+  /** Opens the branch's thread. Given the contact id. */
+  onOpenInbox?: () => void;
 }
 
-export default function NextStepChip({ value, className = '' }: NextStepChipProps) {
+const money = (n?: number | null) =>
+  typeof n === 'number' && n > 0 ? `GBP ${Math.round(n).toLocaleString('en-GB')}` : null;
+
+export default function NextStepChip({
+  value, className = '', deal = null, onOpenInbox,
+}: NextStepChipProps) {
   const stage = resolveStage(value);
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
 
@@ -165,6 +188,44 @@ export default function NextStepChip({ value, className = '' }: NextStepChipProp
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
+
+              {/* THIS HOUSE, and what the branch last said. Above the generic
+                  step, because a step definition is the same on every card and
+                  these two lines are not. */}
+              {deal && (deal.address || deal.lastReplySummary || money(deal.offerCeiling)) && (
+                <div className="mt-2 rounded-lg border border-[#E5E7EB] bg-[#FAFAF9] px-2 py-1.5 space-y-1">
+                  {deal.address && (
+                    <p className="text-[11px] font-semibold text-[#1A1A1A] truncate" title={deal.address}>
+                      {deal.address}
+                    </p>
+                  )}
+                  {(money(deal.offerOpen) || money(deal.offerCeiling)) && (
+                    <p className="text-[10px] text-[#374151] tabular-nums">
+                      Open {money(deal.offerOpen) ?? 'not set'}
+                      {money(deal.offerCeiling) && <> · never above {money(deal.offerCeiling)}</>}
+                    </p>
+                  )}
+                  {deal.lastReplySummary && (
+                    <div className="rounded-md bg-[#FEF2F2] border border-[#FECACA] px-1.5 py-1">
+                      <p className="text-[9px] font-bold uppercase tracking-wide text-[#DC2626]">
+                        They replied
+                      </p>
+                      <p className="text-[10px] leading-snug text-[#7F1D1D]">
+                        {deal.lastReplySummary}
+                      </p>
+                    </div>
+                  )}
+                  {onOpenInbox && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); close(); onOpenInbox(); }}
+                      className="text-[10px] font-semibold text-[#3C5A87] hover:underline"
+                    >
+                      Open the whole conversation
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* The three lines Pedro reads first. Everything else is detail. */}
               <div className="mt-2 space-y-1.5">

@@ -36,6 +36,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
 import { stripInventedHouseNumber } from '../lib/draft-guards.js';
+import { decideCounter, respectsCeiling } from '../lib/counter-position.js';
 
 export const config = { runtime: 'edge' };
 
@@ -54,6 +55,9 @@ interface Body {
     address?: string | null;
     askingPrice?: number | null;
     offerPrice?: number | null;
+    /** The engine's absolute maximum, deal.offer.max. Required for a
+     *  counter_reply: without it there is no way to know a figure is safe. */
+    ceiling?: number | null;
     gdv?: number | null;
     refurb?: number | null;
     beds?: number | null;
@@ -77,7 +81,7 @@ interface Body {
    *  Hugo 2026-08-14: "on this email we can just ask for the video ... so they
    *  have our address and we have theirs." Sent while the agent is still on the
    *  phone, which is why it has to be one press. */
-  kind?: 'offer' | 'video_request' | 'address_only' | 'follow_up';
+  kind?: 'offer' | 'video_request' | 'address_only' | 'follow_up' | 'counter_reply';
   /** THE DEAL AS IT STANDS, for kind 'follow_up'.
    *
    *  Hugo, 2026-08-14: "when we have to email the prospects I want the AI to
@@ -98,6 +102,14 @@ interface Body {
     pinnedNote?: string | null;
     /** The deal-process step the branch is on. */
     step?: string | null;
+    /** THE BRANCH'S OWN FIGURE, for kind 'counter_reply'. Never ours, and
+     *  never acted on directly: `decideCounter` decides what we do about it. */
+    theirFigure?: number | null;
+    /** gold / strong / good / fair / last_resort. Below gold or strong we do
+     *  not negotiate at all, whatever they have offered. */
+    evidenceTier?: string | null;
+    /** What we last put to them. */
+    currentOffer?: number | null;
   };
 }
 
@@ -202,6 +214,45 @@ const SYSTEM_FOLLOW_UP = [
   '<the email body, ending with the sign off>',
 ].join('\n');
 
+
+// THE REPLY WHEN THEY COME BACK ON PRICE.
+//
+// Hugo, 2026-08-14: "AI should draft the email reply based on the course and
+// based on comparable and likely cost of fixing and then decide if we can
+// increase the offer or just pass."
+//
+// The DECIDING is not done here. api/lib/counter-position.ts works out raise,
+// hold or pass and the exact figure, in code, and this prompt is handed the
+// answer and told to write it. A model asked "should we go up?" finds a reason
+// to say yes, because that is where the conversation pulls, and a number said
+// out loud on a property deal cannot be unsaid.
+//
+// This is the ONLY kind allowed to talk about price after an offer has gone
+// out. `follow_up` is explicitly forbidden from re-opening it (rule 3 there),
+// which is why it could not answer Lexi.
+const SYSTEM_COUNTER = [
+  'You write one email: a cash buyer replying to an estate agent who has come back on price.',
+  '',
+  'THE DECISION HAS ALREADY BEEN MADE and you are told what it is. You are writing it, not reaching it. Never argue with it, never soften it into a maybe, and never hint that a different number might be possible.',
+  '',
+  'HARD RULES.',
+  '1. NEVER name a figure other than the ones you are given. No arithmetic, no splitting the difference, no "around" a number, no hinting at a range.',
+  '2. If the decision is HOLD or PASS you may not put ANY offer figure in the email. Say plainly that we cannot improve it and why, in our own words.',
+  '3. If the decision is RAISE, name the new figure once, exactly as given, and say it is subject to our builder going round to view and price the works. NEVER "subject to survey".',
+  '4. When the new figure is our maximum, say so plainly and without apology, so their next answer is a yes or a no rather than another round.',
+  '5. Never blame the vendor, never lecture them about the market, and never explain our margin. One or two sentences on WHY the number is where it is, based on condition and the cost of the works.',
+  '6. Thank them for coming back to us. They did us a favour by answering.',
+  '7. Leave the door open on a hold or a pass: if the position changes, we would still be interested.',
+  '8. SHORT. Under 180 words.',
+  '9. British English. Plain, warm, direct, no salesmanship, no flattery, no exclamation marks.',
+  '10. NEVER use a long dash. No em dash, no en dash, anywhere. Use a comma or a full stop. No curly quotes, no ellipsis character.',
+  '',
+  'FORMAT. Return exactly this and nothing else:',
+  'SUBJECT: <one line, name the street>',
+  '<blank line>',
+  '<the email body, ending with the sign off>',
+].join('\n');
+
 const gbp = (n?: number | null) =>
   typeof n === 'number' && n > 0 ? `£${Math.round(n).toLocaleString('en-GB')}` : null;
 
@@ -290,9 +341,10 @@ export default async function handler(req: Request): Promise<Response> {
   const isAddressOnly = body.kind === 'address_only';
   const isVideoRequest = body.kind === 'video_request' || isAddressOnly;
   const isFollowUp = body.kind === 'follow_up';
+  const isCounterReply = body.kind === 'counter_reply';
   // The follow-up is the one kind that does not need a figure: a branch waiting
   // on proof of funds is emailed about the proof of funds, not about money.
-  if (!isVideoRequest && !isFollowUp && !gbp(h.offerPrice)) {
+  if (!isVideoRequest && !isFollowUp && !isCounterReply && !gbp(h.offerPrice)) {
     return new Response(
       JSON.stringify({ error: 'No offer figure on this property, so there is nothing to offer.' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
@@ -372,7 +424,52 @@ export default async function handler(req: Request): Promise<Response> {
     proofFacts || null,
   ].filter(Boolean).join('\n\n');
 
-  const user = [
+
+  // WHAT WE DO ABOUT THEIR FIGURE, decided in code before a word is written.
+  // The model is handed the answer; it cannot reach a different one because
+  // the only figures it is given are the ones this allows.
+  const counter = isCounterReply
+    ? decideCounter({
+        ceiling: h.ceiling ?? null,
+        currentOffer: c.currentOffer ?? h.offerPrice ?? null,
+        theirFigure: c.theirFigure ?? null,
+        evidenceTier: c.evidenceTier ?? null,
+      })
+    : null;
+
+  // THE FENCE. A decision that would have us pay more than the maximum is a
+  // bug, and an email is the one thing that cannot be unsent.
+  if (counter && !respectsCeiling(counter, h.ceiling ?? null)) {
+    return new Response(
+      JSON.stringify({ error: 'The reply would have gone above our maximum, so it was refused.' }),
+      { status: 422, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const counterFacts = counter ? [
+    `Address: ${h.address ?? 'the property'}`,
+    `THE DECISION, already made, write it and do not argue with it: ${counter.position.toUpperCase()}`,
+    `Why: ${counter.reason}`,
+    counter.newOffer != null
+      ? `THE ONLY FIGURE YOU MAY NAME: ${gbp(counter.newOffer)}`
+      : 'YOU MAY NOT PUT ANY OFFER FIGURE IN THIS EMAIL AT ALL.',
+    counter.code === 'raise_to_ceiling_final'
+      ? 'Say plainly that this is our maximum.' : null,
+    c.theirFigure ? `What they asked for (do NOT agree to it unless it IS the figure above): ${gbp(c.theirFigure)}` : null,
+    h.reasonLine ? `What the works look like: ${h.reasonLine}` : null,
+    body.agentName ? `Estate agent name: ${body.agentName}` : null,
+    body.fromName ? `From: ${body.fromName}` : null,
+    body.companyName ? `Buying company: ${body.companyName}` : null,
+  ].filter(Boolean).join('\n') : '';
+
+  const user = isCounterReply ? [
+    'THEY HAVE COME BACK ON PRICE. Here is what was decided and everything you may say:',
+    counterFacts,
+    '',
+    transcript
+      ? `WHAT WAS SAID ON THE LAST CALL (use the useful parts):\n${transcript}`
+      : 'There is no transcript for this one.',
+  ].join('\n') : [
     isVideoRequest ? 'THE HOUSE (facts only, and NO price of any kind goes in this email):' : 'THE HOUSE AND THE NUMBERS:',
     isVideoRequest ? videoFacts : facts,
     '',
@@ -387,10 +484,11 @@ export default async function handler(req: Request): Promise<Response> {
     MODEL,
     isAddressOnly ? SYSTEM_ADDRESS_ONLY
       : isVideoRequest ? SYSTEM_VIDEO
-        : isFollowUp ? SYSTEM_FOLLOW_UP
-          : SYSTEM_OFFER,
+        : isCounterReply ? SYSTEM_COUNTER
+          : isFollowUp ? SYSTEM_FOLLOW_UP
+            : SYSTEM_OFFER,
     [{ role: 'user', content: user }],
-    isAddressOnly ? 400 : isVideoRequest ? 700 : isFollowUp ? 800 : 1200,
+    isAddressOnly ? 400 : isVideoRequest ? 700 : isCounterReply ? 700 : isFollowUp ? 800 : 1200,
   );
   if (!out) {
     return new Response(JSON.stringify({ error: 'The model did not answer. Try again.' }), {

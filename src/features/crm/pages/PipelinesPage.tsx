@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, Flame, GripVertical, Pencil, MessageSquare, Mail, Phone } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { formatPence, formatRelativeTime } from '../data/helpers';
@@ -23,6 +24,7 @@ import NextStepChip from '../components/shared/NextStepChip';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
 import BriefLine from '../components/shared/BriefLine';
 import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
+import TodayPanel from '../components/deals/TodayPanel';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
 
@@ -80,6 +82,7 @@ export default function PipelinesPage() {
   const [smsTo, setSmsTo] = useState<Contact | null>(null);
   const [smsChannel, setSmsChannel] = useState<'sms' | 'whatsapp' | 'email' | null>(null);
   const { openDialerPro } = useDialerProModal();
+  const navigate = useNavigate();
 
   // The house a card speaks for. A branch can have several on file, so the one
   // that gets the card is the one carrying the freshest instruction: Hugo's own
@@ -233,6 +236,16 @@ export default function PipelinesPage() {
         </select>
       </header>
 
+      {/* THE DAY, ABOVE THE BOARD. The board shows where every deal IS; this
+          shows which ones want a person today, ordered by code so it is right
+          even with the deal brain switched off. */}
+      <TodayPanel
+        onOpen={(propertyId) => {
+          const match = contacts.find((c) => dealFor(c)?.property_id === propertyId);
+          if (match) setEditing(match);
+        }}
+      />
+
       <div className="flex gap-3 overflow-x-auto pb-3">
         {visibleColumns.map((col) => {
           // Overdue and soonest-due follow-ups float to the top of their
@@ -353,6 +366,15 @@ export default function PipelinesPage() {
                         <NextStepChip
                           value={c.customFields?.next_step ?? c.customFields?.deal_stage}
                           className="mt-1"
+                          deal={{
+                            address: deal?.address ?? c.customFields?.property_address,
+                            offerOpen: Number(String(c.customFields?.offer_open ?? '').replace(/[^0-9]/g, '')) || null,
+                            offerCeiling: Number(String(c.customFields?.offer_ceiling ?? '').replace(/[^0-9]/g, '')) || null,
+                            lastReplyKind: c.customFields?.last_reply_kind,
+                            lastReplySummary: c.customFields?.last_reply_summary,
+                            branchStatedFigure: c.customFields?.branch_stated_figure,
+                          }}
+                          onOpenInbox={() => navigate(`/admin/crm/inbox?contact=${c.id}`)}
                         />
                         {/* Hugo 2026-07-27: the board must always say where this
                             card last moved and who moved it — including the

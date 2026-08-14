@@ -84,7 +84,10 @@ describe('the three fences between a model and a price in writing', () => {
     // (a branch waiting on proof of funds is written to about the proof of
     // funds, not about money), so it is exempt from needing a figure. The
     // OFFER email is not, and that is what this pins.
-    expect(DRAFT).toMatch(/!isVideoRequest && !isFollowUp && !gbp\(h\.offerPrice\)/)
+    // The kinds that legitimately carry no offer figure are exempt; every
+    // other kind still refuses to send without one. counter_reply joined
+    // that list on 2026-08-14 because a hold or a pass names no figure.
+    expect(DRAFT).toMatch(/!isVideoRequest && !isFollowUp && !isCounterReply && !gbp\(h\.offerPrice\)/)
   })
 
   it('4. the follow-up may never invent or move a number either', () => {

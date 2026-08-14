@@ -56,6 +56,7 @@ import { supabase } from '@/integrations/supabase/browser';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact, CallRecord, ActivityEvent } from '../types';
 import LeadIdentity, { isPropertyLead, askForName } from '../components/shared/LeadIdentity';
+import { DEAL_STAGES } from '../components/templates/dealProcessSteps';
 import BriefLine from '../components/shared/BriefLine';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
 import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
@@ -764,6 +765,9 @@ export default function InboxPage() {
     } : undefined);
   const activeIsCreatorLead =
     isHeypubliProduct(activeContact?.customFields) || Boolean(activeRow?.isCreatorLead);
+  // A house thread, so the property templates apply and the reviews-era ones
+  // are noise.
+  const activeIsProperty = isPropertyLead(activeContact?.customFields, !!activeDeal);
   const activeJourney = activeContactId ? journeyByContact.get(activeContactId) ?? null : null;
   const timeline = useContactTimeline(activeContact?.id ?? '', activeContact?.phone);
   // PR 50 (Hugo 2026-04-27): SMS source is wk_sms_messages now.
@@ -913,10 +917,52 @@ export default function InboxPage() {
     return (activeContact.name ?? '').trim().split(/\s+/)[0] ?? '';
   }, [activeContact]);
 
+  // THE PROPERTY TEMPLATES, in the inbox as well as the board.
+  //
+  // Hugo, 2026-08-14: "when I open it I should be able to have the email
+  // templates, but not only the pipelines, I should be able to have the email
+  // template ready as well as in the inbox."
+  //
+  // They already existed, in components/templates/dealProcessSteps.ts, which
+  // drives the Deal process page and the next-step popover. But they were
+  // copy-to-clipboard only and never reached a compose box, so the inbox
+  // dropdown offered exactly two leftovers from the reviews business
+  // ("Subscribe link", "Onboarding link") on an estate agency thread.
+  //
+  // Read from the SAME list, so the playbook and the box can never drift.
+  const propertyTemplates = useMemo(() => {
+    if (!activeIsProperty) return [];
+    // The deal process labels its templates for humans ('Email', 'WhatsApp',
+    // 'Phone'); the compose box speaks in channel keys. A Phone template is a
+    // script to read, not something to send, so it never reaches the box.
+    const wanted = replyChannel === 'email' ? 'Email'
+      : replyChannel === 'whatsapp' ? 'WhatsApp' : null;
+    if (!wanted) return [];
+    return DEAL_STAGES.flatMap((stage) =>
+      stage.templates
+        .filter((t) => t.channel === wanted)
+        .map((t) => ({
+          id: `deal:${stage.tag}:${t.label}`,
+          name: `${stage.n}. ${t.label}`,
+          body_md: t.body,
+          subject: t.subject ?? null,
+          channel: replyChannel,
+          move_to_stage_id: null,
+          attachment_url: null,
+        })),
+    );
+  }, [activeIsProperty, replyChannel]);
+
+  // Property templates FIRST on a house thread: they are the ones that apply.
+  const allTemplates = useMemo(
+    () => [...propertyTemplates, ...visibleTemplates],
+    [propertyTemplates, visibleTemplates],
+  );
+
   const applyTemplate = (id: string) => {
     setSelectedTemplateId(id);
     if (!id) return;
-    const tpl = visibleTemplates.find((t) => t.id === id);
+    const tpl = allTemplates.find((t) => t.id === id);
     if (!tpl) return;
     const expandedBody = interpolateTemplate(tpl.body_md, {
       firstName: contactFirstName,
@@ -1991,7 +2037,7 @@ export default function InboxPage() {
             {/* PR 88: templates dropdown — filtered by selected channel.
                 Picking a template fills body (and subject for email),
                 substituting {first_name}/{agent_first_name}. */}
-            {replyChannel !== null && visibleTemplates.length > 0 && (
+            {replyChannel !== null && allTemplates.length > 0 && (
               <select
                 value={selectedTemplateId}
                 onChange={(e) => applyTemplate(e.target.value)}
@@ -2000,8 +2046,8 @@ export default function InboxPage() {
                 className="px-2 py-1 text-[11px] bg-white border border-[#E5E7EB] rounded-[8px] disabled:opacity-60 max-w-[200px]"
                 title="Insert a template"
               >
-                <option value="">Templates ({visibleTemplates.length})…</option>
-                {visibleTemplates.map((t) => (
+                <option value="">Templates ({allTemplates.length})…</option>
+                {allTemplates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}{t.channel ? ` · ${t.channel}` : ' · universal'}
                   </option>
