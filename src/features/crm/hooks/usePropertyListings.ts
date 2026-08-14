@@ -23,6 +23,7 @@ import {
   dealStrategy, dealBmvBand, dealConditionBand, dealReasonLine,
   type BmvBand,
 } from '../../../../api/lib/brrr-deal-facts';
+import type { NextStepBrief } from '../../../../api/lib/next-step-brief';
 
 /** One row as the RPC returns it. */
 interface ListingRow {
@@ -48,6 +49,11 @@ interface ListingRow {
   last_call_at: string | null;
   last_call_channel: string | null;
   last_call_summary: string | null;
+  /** The next-step brief the brain wrote after the last call on this house.
+   *  Null on a property nobody has rung yet, which renders as nothing. */
+  brief: NextStepBrief | null;
+  /** Hugo's own instruction, pinned above the brief. */
+  pinned_note: string | null;
 }
 
 /** One sold comparable behind the valuation, ready to read out loud.

@@ -20,6 +20,7 @@ import { ExternalLink, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import { usePropertyListings, type PropertyComp, type PropertyListing } from '../../hooks/usePropertyListings';
+import NextStepCard from '@/core/property/NextStepCard';
 
 /** The 16 questions, mirroring QUALIFICATION_QUESTIONS in api/lib/brrr.ts so a
  *  human call and an AI call record the same facts under the same keys. */
@@ -308,6 +309,12 @@ export default function PropertiesPane({
 
       {selected && (
         <>
+          {/* What to do next with THIS house, above every fact about it.
+              Written by the brain after the last call (api/lib/next-step-brief),
+              with Hugo's own pinned note on top when there is one. Nothing on
+              a house nobody has rung yet. */}
+          <NextStepCard brief={selected.brief} pinnedNote={selected.pinned_note} compact />
+
           {/* Facts */}
           <div className="border-b border-[#E5E7EB] px-3 py-2 text-[11.5px] text-[#4B5563]">
             <div className="flex flex-wrap gap-x-3 gap-y-0.5">

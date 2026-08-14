@@ -9,7 +9,9 @@ import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 // Supabase client at import time).
 import { offerRange, upliftRefurb } from '../../../../api/lib/brrr-offer'
 import type { Calibration } from '../../../../api/lib/price-feedback'
+import type { NextStepBrief } from '../../../../api/lib/next-step-brief'
 import DealCalculator from '../components/DealCalculator'
+import NextStepCard from '../../../core/property/NextStepCard'
 
 interface PropertyCall {
   id: string
@@ -54,6 +56,10 @@ interface PropertyRow {
   status: string
   qualification: Record<string, unknown>
   notes: string | null
+  /** The brain's next-step brief, rewritten after every call on this house. */
+  brief: NextStepBrief | null
+  /** Hugo's own instruction, pinned above it. */
+  pinned_note: string | null
   deal_id: string | null
   created_at: string
   calls: PropertyCall[]
@@ -143,6 +149,7 @@ export default function PropertiesPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [noteDraft, setNoteDraft] = useState('')
   const [draft, setDraft] = useState<BrrrSettings | null>(null)
 
   // Tolerate both response shapes so a stale cached bundle never blanks the page.
@@ -160,6 +167,12 @@ export default function PropertiesPage() {
     if (settings && !draft) setDraft(settings)
   }, [settings, draft])
 
+  // A different house means a different note. Seeded from the row, so opening
+  // the drawer shows what is actually pinned rather than the last one typed.
+  useEffect(() => {
+    setNoteDraft(selected?.pinned_note ?? '')
+  }, [selected?.id, selected?.pinned_note])
+
   // "Qualified" on this card means "a call turned it into a live deal", which
   // since 2026-08-10 is either of the two pipeline outcomes. Counting only
   // 'qualified' would have shown zero on a day of good calls.
@@ -175,6 +188,23 @@ export default function PropertiesPage() {
       refetch()
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Action failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Hugo's own instruction for the open house. Kept apart from the brain's
+  // brief on purpose: this one is never machine-written and never overwritten.
+  async function saveNote() {
+    if (!selected) return
+    setBusy('note')
+    setActionError(null)
+    try {
+      await act({ action: 'save_note', property_id: selected.id, note: noteDraft })
+      setSelected({ ...selected, pinned_note: noteDraft.trim() || null })
+      refetch()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not save the note')
     } finally {
       setBusy(null)
     }
@@ -419,6 +449,37 @@ export default function PropertiesPage() {
                 </p>
               </div>
               <button onClick={() => setSelected(null)} className="text-ink-muted hover:text-ink"><X size={18} /></button>
+            </div>
+
+            {/* What to do next with this house: Hugo's own note on top, then
+                the brief the brain wrote after the last call. Same component
+                Pedro reads in the dialer, so there is one rendering of it. */}
+            <div className="mt-4 overflow-hidden rounded-lg border border-border">
+              <NextStepCard brief={selected.brief} pinnedNote={selected.pinned_note} />
+              <div className="border-t border-border p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-subtle">
+                  Your note on this house (Pedro sees it above his script)
+                </p>
+                <textarea
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  rows={4}
+                  placeholder={'KEEP or DROP, why it holds, what Pedro does today, and anything blocking it.'}
+                  className="mt-1.5 w-full resize-y rounded-lg border border-border bg-surface p-2 text-[12px] text-ink focus:border-brand focus:outline-none"
+                />
+                <div className="mt-1.5 flex items-center gap-2">
+                  <button
+                    onClick={saveNote}
+                    disabled={busy === 'note' || noteDraft === (selected.pinned_note ?? '')}
+                    className="rounded-lg bg-brand px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
+                  >
+                    {busy === 'note' ? 'Saving…' : 'Save note'}
+                  </button>
+                  <span className="text-[11px] text-ink-subtle">
+                    Survives every re-scrape and every call. Clear it to remove it.
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">

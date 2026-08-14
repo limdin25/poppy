@@ -102,7 +102,9 @@ export default async function handler(req: Request) {
   }
 
   if (req.method === 'POST') {
-    const body = await req.json() as { action?: string; property_id?: string; settings?: Partial<BrrrSettings> }
+    const body = await req.json() as {
+      action?: string; property_id?: string; settings?: Partial<BrrrSettings>; note?: string
+    }
 
     if (body.action === 'save_settings') {
       const saved = await saveBrrrSettings(body.settings || {})
@@ -123,6 +125,20 @@ export default async function handler(req: Request) {
     // properties"). Estate agents are rung by a human through the CRM dialer.
     if (body.action === 'call') {
       return Response.json({ error: 'AI property calling was retired. Estate agents are called by a human agent in the CRM dialer.' }, { status: 410 })
+    }
+
+    // Hugo's own instruction for this house, pinned above the machine's brief
+    // wherever the property is shown. Kept in its own column: `notes` holds the
+    // scraper's listing description and the nightly re-send would bury it.
+    // Empty text clears the pin rather than storing an empty string.
+    if (body.action === 'save_note') {
+      const text = String(body.note ?? '').trim()
+      const { error: noteErr } = await supabaseAdmin
+        .from('brrr_properties')
+        .update({ pinned_note: text || null, updated_at: new Date().toISOString() })
+        .eq('id', property.id)
+      if (noteErr) return Response.json({ error: noteErr.message }, { status: 500 })
+      return Response.json({ ok: true, pinned_note: text || null })
     }
 
     if (body.action === 'push_to_pipeline') {

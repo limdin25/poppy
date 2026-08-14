@@ -33,6 +33,7 @@ import {
 import { notifyBusinessOwner } from '../lib/notify.js';
 import { parseSpokenPrice } from '../lib/price-feedback.js';
 import { dealConditionBand, outcodeOf } from '../lib/brrr-deal-facts.js';
+import { buildNextStepBrief, briefToText } from '../lib/next-step-brief.js';
 
 export const config = { runtime: 'edge' };
 
@@ -256,9 +257,38 @@ export default async function handler(req: Request): Promise<Response> {
     ? [property.notes, `[${nowIso.slice(0, 10)}] ${note}`].filter(Boolean).join('\n')
     : property.notes;
 
+  // Answers MERGE, they do not replace. The checklist opens blank on every
+  // call, so writing `qualification` straight through wiped everything the last
+  // call learned about this house: ring a branch twice and the figure from the
+  // first call disappeared. A blank field now means "not asked this time", not
+  // "the answer is nothing". New non-empty answers still win.
+  const priorAnswers = (property.qualification ?? {}) as Record<string, unknown>;
+  const mergedQualification: Qualification = { ...priorAnswers, ...qualification };
+  for (const [k, v] of Object.entries(qualification as Record<string, unknown>)) {
+    if (typeof v === 'string' && !v.trim() && typeof priorAnswers[k] === 'string' && String(priorAnswers[k]).trim()) {
+      (mergedQualification as Record<string, unknown>)[k] = priorAnswers[k];
+    }
+  }
+
+  // THE NEXT-STEP BRIEF. Written on every call, whatever the outcome, so the
+  // house always carries its own instruction rather than a stage name. See
+  // api/lib/next-step-brief.ts: deterministic, and every figure in it is read
+  // from the deal engine rather than worked out again here.
+  const nextStep = STEP_FOR_OUTCOME[outcome];
+  const targetColumn = BOARD_COLUMN_FOR[outcome];
+  const brief = buildNextStepBrief({
+    property,
+    outcome,
+    qualification: mergedQualification as Record<string, unknown>,
+    note,
+    step: nextStep,
+    board: targetColumn ?? null,
+    now: new Date(nowIso),
+  });
+
   const { error: updErr } = await supabase
     .from('brrr_properties')
-    .update({ status: outcome, qualification, notes, updated_at: nowIso })
+    .update({ status: outcome, qualification: mergedQualification, notes, brief, updated_at: nowIso })
     .eq('id', propertyId);
   if (updErr) {
     return Response.json({ error: updErr.message }, { status: 500 });
@@ -272,8 +302,8 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (PIPELINE_OUTCOMES.includes(outcome)) {
     const pushed = await pushPropertyToPipeline(
-      { ...property, qualification } as BrrrProperty,
-      qualification,
+      { ...property, qualification: mergedQualification } as BrrrProperty,
+      mergedQualification,
     ).catch((e: unknown) => ({
       ok: false as const,
       error: e instanceof Error ? e.message : String(e),
@@ -287,15 +317,14 @@ export default async function handler(req: Request): Promise<Response> {
         const awaiting = outcome === 'figure_obtained';
         await notifyBusinessOwner(PIPELINE_BUSINESS_ID, 'call', {
           title: `${awaiting ? 'Figure obtained, needs you' : 'Property qualified'}: ${property.address || property.source_property_id}`,
+          // The brief IS the notification now. It already carries the figure,
+          // the band, what is in the way and how sure we are, so the old
+          // three-line summary would only repeat it in a worse order.
           body: [
-            note || null,
-            qualification.best_price_indicated ? `Agent said: ${qualification.best_price_indicated}` : null,
-            qualification.offer_reaction ? `Offer reaction: ${qualification.offer_reaction}` : null,
-            property.agent_phone ? `Agent: ${property.agent_name || ''} ${property.agent_phone}` : null,
+            briefToText(brief),
+            note ? `\nPedro wrote: ${note}` : null,
+            property.agent_phone ? `\nBranch: ${property.agent_name || ''} ${property.agent_phone}` : null,
             property.listing_url,
-            awaiting
-              ? 'A CRM agent got a figure out of the branch. Waiting on your decision.'
-              : 'Qualified on a call by a CRM agent.',
           ].filter(Boolean).join('\n'),
         }).catch(() => {});
       }
@@ -337,7 +366,7 @@ export default async function handler(req: Request): Promise<Response> {
   //
   //     Deterministic, from the outcome Pedro pressed. Best effort: the outcome
   //     is already saved and a failed tag must never read back as a lost call.
-  const nextStep = STEP_FOR_OUTCOME[outcome];
+  //     (nextStep is worked out above, where the brief is written.)
   if (nextStep !== undefined && property.wk_contact_id) {
     try {
       const { data: c } = await supabase
@@ -358,7 +387,6 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   let boardWarning: string | undefined;
-  const targetColumn = BOARD_COLUMN_FOR[outcome];
   if (targetColumn && property.wk_contact_id) {
     try {
       const { data: contact } = await supabase
@@ -418,6 +446,9 @@ export default async function handler(req: Request): Promise<Response> {
     property_updated: true,
     status: outcome,
     deal_id: dealId,
+    // Handed straight back so the agent sees what the call produced without
+    // waiting for a refetch, and so a test can read it off one request.
+    brief,
     ...(warning ? { warning } : {}),
     ...(boardWarning ? { board_warning: boardWarning } : {}),
   });

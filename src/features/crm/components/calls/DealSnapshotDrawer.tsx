@@ -24,6 +24,7 @@ import { useAuth } from '../../lib/useCrmAuth';
 import { usePropertyListings } from '../../hooks/usePropertyListings';
 import type { PropertyListing } from '../../hooks/usePropertyListings';
 import OfferStrip from '../live-call/OfferStrip';
+import NextStepCard from '@/core/property/NextStepCard';
 import { formatDuration } from '../../data/helpers';
 import type { CallRecord, Contact } from '../../types';
 
@@ -187,6 +188,11 @@ export default function DealSnapshotDrawer({ contact, call, agentName, stageName
             )}
 
             <OfferStrip listing={selected} total={listings.length} />
+
+            {/* What the call left us to do, written the moment Pedro pressed
+                the outcome. Directly under the figures because the figures are
+                the context for the instruction, not the other way round. */}
+            <NextStepCard brief={selected.brief} pinnedNote={selected.pinned_note} />
 
             <div className="border-b border-[#E5E7EB] px-4 py-2.5 text-[11.5px] text-[#4B5563]">
               <div className="flex flex-wrap gap-x-3 gap-y-0.5">
