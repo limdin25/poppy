@@ -533,6 +533,156 @@ async function findOrCreateContact(
   return (inserted as { id: string }).id;
 }
 
+
+// ── READING WHAT THE BRANCH SAID ──────────────────────────────────────────
+//
+// VERBATIM TWIN of api/lib/inbound-classify.ts. Deno cannot import from the
+// Vercel api/ tree, so the rules live in two places and
+// tests/inbound-classify-twin.test.ts fails the build if they drift. Same
+// arrangement as api/lib/spoken-email.ts and its copy in
+// wk-voice-transcription.
+//
+// WHY IT IS HERE AT ALL. Until 2026-08-14 this function filed the email and
+// stopped. Lexi at DDM wrote at 08:38 saying the vendor had REJECTED our
+// offer; seven hours later the board still said "Chase the agent, follow up
+// until you get an answer" while the answer sat unread. Hugo: "the system has
+// not synchronized."
+
+const INBOUND_KINDS = [
+  'rejection', 'counter_offer', 'acceptance', 'question', 'document_request',
+  'viewing_response', 'info_supplied', 'out_of_office', 'not_interested', 'other',
+] as const;
+type InboundKind = (typeof INBOUND_KINDS)[number];
+
+const DEAL_CHANGING: InboundKind[] = [
+  'rejection', 'counter_offer', 'acceptance', 'question',
+  'document_request', 'viewing_response', 'not_interested', 'info_supplied',
+];
+
+const RULES: Array<{ kind: InboundKind; re: RegExp }> = [
+  { kind: 'out_of_office', re: /\b(out of (the )?office|annual leave|on holiday|automatic reply|auto[- ]?reply|away from my desk|maternity leave|no longer works? (at|for))\b/i },
+  { kind: 'acceptance', re: /\b(have|has|they'?ve) accepted\b|\boffer (is )?accepted\b|\bagreed (to|at) (the|your) offer\b|\bvendor accepts\b/i },
+  { kind: 'rejection', re: /\b(rejected|declined|turned (it |your offer )?down|not accept(ing|ed)?|unable to accept|will not be accepting)\b/i },
+  { kind: 'not_interested', re: /\b(not interested|no longer (available|on the market)|under offer|sold stc|withdrawn from the market|remove (us|me) from)\b/i },
+  { kind: 'document_request', re: /\b(proof of funds|evidence of funds|bank statement|id check|anti[- ]?money|solicitor'?s? details|memorandum of sale)\b/i },
+  { kind: 'viewing_response', re: /\b(viewing|view the property|access|key ?s|meet you there|available to view)\b/i },
+  { kind: 'info_supplied', re: /\b(please find attached|attached is|here is the (video|floor ?plan|epc)|as requested|i have attached)\b/i },
+];
+
+function figuresMentioned(text: string): number[] {
+  const out: number[] = [];
+  // Money is currency-marked or comma-grouped, never a bare run of digits: a
+  // branch signature's phone number would otherwise read as a price.
+  const re = /(?:GBP|£)\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,9}(?:\.\d+)?)|(\d{1,3}(?:,\d{3})+(?:\.\d+)?)/gi;
+  for (const m of text.matchAll(re)) {
+    const raw = (m[1] ?? m[2] ?? '').replace(/,/g, '');
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 1000) continue;
+    out.push(n);
+  }
+  return [...new Set(out)];
+}
+
+function gbp(n: number) { return `GBP ${Math.round(n).toLocaleString('en-GB')}`; }
+
+function summarise(kind: InboundKind, figures: number[]): string {
+  const most = figures.length ? Math.max(...figures) : null;
+  switch (kind) {
+    case 'rejection': return 'The offer has been rejected.';
+    case 'counter_offer': return most
+      ? `They have come back with a figure, ${gbp(most)}. Do not treat that as agreed.`
+      : 'They have come back on price.';
+    case 'acceptance': return 'They say the offer is accepted. Get it in writing with the address and the price.';
+    case 'question': return 'They have asked us something and are waiting on an answer.';
+    case 'document_request': return 'They are asking for a document before this can go further.';
+    case 'viewing_response': return 'They have written about a viewing or access.';
+    case 'info_supplied': return 'They have sent something over.';
+    case 'out_of_office': return 'Automatic reply. Nobody has read it yet.';
+    case 'not_interested': return 'They have closed the door on this one.';
+    default: return 'They have written back.';
+  }
+}
+
+function classifyByRules(subject: string, body: string) {
+  const text = `${subject ?? ''}\n${body ?? ''}`;
+  const figures = figuresMentioned(text);
+  for (const rule of RULES) {
+    if (!rule.re.test(text)) continue;
+    let kind = rule.kind;
+    if (kind === 'rejection' && figures.length) kind = 'counter_offer';
+    return { kind, figuresMentioned: figures, changesTheDeal: DEAL_CHANGING.includes(kind), summary: summarise(kind, figures) };
+  }
+  const asksSomething = /\?/.test(text)
+    || /\b(can|could|would|will|do|does|are|is|have|has|did)\s+(you|we|they)\b/i.test(text)
+    || /\b(please\s+(confirm|advise|let\s+me\s+know)|any\s+update|let\s+us\s+know)\b/i.test(text);
+  if (asksSomething) {
+    return { kind: 'question' as InboundKind, figuresMentioned: figures, changesTheDeal: true, summary: summarise('question', figures) };
+  }
+  return { kind: 'other' as InboundKind, figuresMentioned: figures, changesTheDeal: false, summary: 'They have written back.' };
+}
+
+function stepForInbound(kind: InboundKind): string | null {
+  switch (kind) {
+    case 'rejection':
+    case 'counter_offer': return 'Renegotiate';
+    case 'acceptance': return 'Get it in writing';
+    case 'not_interested': return '';
+    default: return null;
+  }
+}
+
+/** Act on what the branch said. Never sends anything, never moves a card
+ *  between board columns: it updates the INSTRUCTION and raises the alarm.
+ *  Deciding the money stays with the humans and the fences. */
+async function reactToInbound(
+  supa: ReturnType<typeof createClient>,
+  contactId: string,
+  subject: string,
+  body: string,
+) {
+  const reading = classifyByRules(subject ?? '', body ?? '');
+  if (!reading.changesTheDeal) return reading;
+
+  try {
+    const { data: c } = await supa
+      .from('wk_contacts').select('id, name, custom_fields').eq('id', contactId).maybeSingle();
+    const cf = ((c as { custom_fields?: Record<string, string> } | null)?.custom_fields ?? {});
+    // Only property leads: this reading is about houses.
+    if (cf.lead_type !== 'estate_agent') return reading;
+
+    const nextStep = stepForInbound(reading.kind);
+    const patch: Record<string, string> = {
+      ...cf,
+      last_reply_kind: reading.kind,
+      last_reply_at: new Date().toISOString(),
+      last_reply_summary: reading.summary,
+    };
+    if (reading.figuresMentioned.length) {
+      // Recorded as THEIR figure, never as an offer of ours. The name of the
+      // key matters: nothing downstream may mistake it for a price we agreed.
+      patch.branch_stated_figure = String(Math.max(...reading.figuresMentioned));
+    }
+    if (nextStep !== null) patch.next_step = nextStep;
+
+    await supa.from('wk_contacts').update({ custom_fields: patch }).eq('id', contactId);
+
+    // Tell Hugo. A rejection sat unread for seven hours while a fresh offer was
+    // about to go out blind, and that is the whole reason this exists.
+    await supa.from('wk_notifications').insert({
+      contact_id: contactId,
+      kind: 'branch_replied',
+      title: `${(c as { name?: string } | null)?.name ?? 'A branch'} replied`,
+      body: reading.summary,
+      meta: { inbound_kind: reading.kind, figures: reading.figuresMentioned },
+    });
+  } catch (e) {
+    // Reading the email must never stop it being filed.
+    console.error('[wk-email-webhook] reaction failed', String(e));
+  }
+  return reading;
+}
+
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') {
@@ -713,6 +863,9 @@ serve(async (req: Request) => {
       .from('wk_contacts')
       .update({ last_contact_at: new Date().toISOString() })
       .eq('id', contactId);
+    // READ IT, do not just file it. Updates the instruction on the card and
+    // raises the alarm; never sends, never moves a board column.
+    await reactToInbound(supa, contactId, subject, bodyText);
     // Whoever this was addressed to can now read it, whatever the sender's
     // contact record says about who owns them.
     await grantRecipientAccess(supa, contactId, await ownerForRecipient(supa, toEmail));
