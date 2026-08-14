@@ -534,7 +534,11 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
             )}
             {events.length > 0 && !aiCoach && (
               [...events].reverse().map((event, idx) => {
-                const meta = COACH_ICONS[event.kind];
+                // A kind this build has never heard of must not take the coach
+                // pane down mid-call: the lookup would be undefined and the
+                // render below reads .colour off it. The server can start
+                // emitting a new kind at any time, and the deploys are separate.
+                const meta = COACH_ICONS[event.kind] ?? COACH_ICONS.suggestion;
                 const isLatest = idx === 0;
                 return (
                   <div

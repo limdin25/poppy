@@ -14,12 +14,13 @@
 // always open as well." Messages is still one click away.
 
 import { useEffect, useRef, useState } from 'react';
-import { Calculator, MessageSquare, ShieldAlert, Sparkles } from 'lucide-react';
+import { Calculator, Mail, MessageSquare, ShieldAlert, Sparkles } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import SalesCalculatorPane from './SalesCalculatorPane';
 import ObjectionsPane from './ObjectionsPane';
 import MidCallSmsSender from './MidCallSmsSender';
 import LiveTranscriptPane from './LiveTranscriptPane';
+import PropertyEmailPane from './PropertyEmailPane';
 import { useContactMessages, type CrmMessage } from '../../hooks/useContactMessages';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import SendSiteButton from './SendSiteButton';
@@ -27,7 +28,7 @@ import VideoLinkButton from './VideoLinkButton';
 import CallTimeline from './CallTimeline';
 import type { OfferHouse } from './MidCallSmsSender';
 
-type Tab = 'coach' | 'calculator' | 'objections' | 'messages';
+type Tab = 'coach' | 'calculator' | 'objections' | 'messages' | 'email';
 
 interface Props {
   contactId?: string;
@@ -56,6 +57,12 @@ interface Props {
   /** The house on screen, so "write the offer with AI" writes about THIS one.
    *  Only ever set on a property call. */
   offerHouse?: OfferHouse | null;
+  /** custom_fields.next_step: decides whether the Email tab writes call one's
+   *  video request or call two's offer. Property calls only. */
+  nextStep?: string | null;
+  /** Who Pedro is speaking to at the branch, off the Houses checklist, so the
+   *  email opens with a name instead of "Hi". */
+  agentPersonName?: string | null;
 }
 
 export default function DialerRightTabs({
@@ -72,6 +79,8 @@ export default function DialerRightTabs({
   liveDurationSec,
   showHouses,
   offerHouse,
+  nextStep,
+  agentPersonName,
 }: Props) {
   // A property call opens on the Coach and stays there, because the houses
   // panel it used to open on now lives in the left column and is always on
@@ -98,6 +107,11 @@ export default function DialerRightTabs({
             <TabButton active={tab === 'objections'} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Objections" onClick={() => setTab('objections')} />
           </>
         )}
+        {/* Hugo 2026-08-14: the email is asked for and SENT on the call, so it
+            cannot live behind the Messages tab's channel and stage pickers. */}
+        {showHouses && (
+          <TabButton active={tab === 'email'} icon={<Mail className="w-3.5 h-3.5" />} label="Email" onClick={() => setTab('email')} />
+        )}
         <TabButton active={tab === 'messages'} icon={<MessageSquare className="w-3.5 h-3.5" />} label="Messages" count={messages.length} onClick={() => setTab('messages')} />
       </div>
 
@@ -113,6 +127,18 @@ export default function DialerRightTabs({
             // the coach can answer a money moment locally, without waiting for
             // the model. Never true on a plumber call.
             isPropertyCall={showHouses === true}
+          />
+        )}
+        {tab === 'email' && showHouses && (
+          <PropertyEmailPane
+            contactId={contactId}
+            contactName={contactName}
+            contactEmail={contactEmail}
+            agentPersonName={agentPersonName}
+            agentFirstName={agentFirstName}
+            currentCallId={currentCallId}
+            offerHouse={offerHouse}
+            nextStep={nextStep}
           />
         )}
         {tab === 'calculator' && <SalesCalculatorPane />}

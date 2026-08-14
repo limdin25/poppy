@@ -42,6 +42,99 @@ const corsHeaders = {
 };
 
 // ----------------------------------------------------------------------------
+// HEARING AN EMAIL ADDRESS. Hugo, 2026-08-14: "the brain recognizes he's asking
+// for the email ... it types the agent address" so Pedro does not have to spell
+// it back while the branch is still talking.
+//
+// The block between the markers is COPIED VERBATIM from api/lib/spoken-email.ts
+// (a Deno edge function cannot import from api/lib). tests/spoken-email.test.ts
+// compares the two character for character and fails the build if they drift.
+// Edit the api/lib copy, then paste it here. Nothing else may live inside the
+// markers.
+// ----------------------------------------------------------------------------
+
+// --- spoken-email:start
+/** Words that mean punctuation when somebody reads an address out loud. */
+const SPOKEN_SYMBOLS: Record<string, string> = {
+  dot: '.', point: '.', period: '.', stop: '.',
+  at: '@',
+  underscore: '_', under: '_',
+  dash: '-', hyphen: '-', minus: '-',
+};
+
+/** Noise that turns up around a spoken address and is never part of one. */
+const SPOKEN_NOISE = new Set([
+  'my', 'the', 'best', 'email', 'e-mail', 'address', 'is', 'its', "it's", 'it', 'so',
+  'you', 'can', 'send', 'to', 'me', 'on', 'that', 'would', 'be', 'just', 'and',
+  'um', 'uh', 'er', 'yeah', 'okay', 'ok', 'right', 'sure', 'please', 'thanks',
+  'lowercase', 'lower', 'case', 'uppercase', 'all', 'one', 'word', 'letter',
+  'full',
+]);
+
+/** A literal address, the easy case: the transcriber already joined it up. */
+const LITERAL_RE = /[a-z0-9][a-z0-9._%+-]*@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}/i;
+
+/** What an address has to look like before we hand it to anybody. */
+const VALID_RE = /^[a-z0-9][a-z0-9._%+-]{0,63}@[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)*\.[a-z]{2,10}$/;
+
+/**
+ * The address somebody just said, or null.
+ *
+ * Handles the literal form and the spoken form, including a domain read as
+ * separate words ("ddm residential dot co dot uk"), which is joined up because
+ * that is what the domain actually is.
+ */
+export function extractEmail(text: string | null | undefined): string | null {
+  const raw = String(text ?? '').trim();
+  if (!raw) return null;
+
+  // 1. Already an address. Strip the punctuation a sentence leaves on the end.
+  const literal = raw.match(LITERAL_RE);
+  if (literal) {
+    const hit = literal[0].toLowerCase().replace(/[.,;:!?)"']+$/, '');
+    if (VALID_RE.test(hit)) return hit;
+  }
+
+  // 2. Spoken. Only worth trying when the word "at" is in there somewhere:
+  //    without it there is no address, only a domain at best.
+  const words = raw
+    .toLowerCase()
+    .replace(/[,;:!?"()]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  const atIndex = words.findIndex((w) => w === 'at' || w === '@');
+  if (atIndex < 1) return null;
+
+  // A window either side. Wide enough for "doug dot allen at ddm residential
+  // dot co dot uk", tight enough that half a sentence cannot wander in.
+  const before = words.slice(Math.max(0, atIndex - 8), atIndex);
+  const after = words.slice(atIndex + 1, atIndex + 10);
+
+  const render = (list: string[]): string => list
+    .map((w) => w.replace(/[.]+$/, (m) => m))
+    .filter((w) => !SPOKEN_NOISE.has(w))
+    .map((w) => (SPOKEN_SYMBOLS[w] !== undefined && w !== 'at' ? SPOKEN_SYMBOLS[w] : w))
+    .join('')
+    .replace(/[^a-z0-9._%+-]/g, '');
+
+  const local = render(before);
+  const domain = render(after);
+  if (!local || !domain) return null;
+
+  const candidate = `${local}@${domain}`.replace(/\.+/g, '.').replace(/^\.|\.$/g, '');
+  if (!VALID_RE.test(candidate)) return null;
+  // A domain with no dot in it was never an address, and "at" is a common word.
+  if (!candidate.split('@')[1].includes('.')) return null;
+  return candidate;
+}
+// --- spoken-email:end
+
+/** Cheap gate: only look for an address on a line that mentions one. */
+function mentionsEmail(text: string | null | undefined): boolean {
+  return /\be-?mail\b|@/i.test(String(text ?? ''));
+}
+
+// ----------------------------------------------------------------------------
 // Twilio signature validation — same pattern as wk-voice-twiml-outgoing.
 // ----------------------------------------------------------------------------
 
@@ -375,7 +468,8 @@ If they cannot disclose: "No, and I wouldn't ask you to. Roughly though, are the
 
 ## 5. Lock the next step
 "Is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it?" Ask this on EVERY call. The builder prices the refurb off the video before anyone travels.
-"What's the best email for you? Hugo will want to put something over in writing once we've done the homework." Ask this on EVERY call too. Never hang up without the email address: every offer goes out by email, so a call with no email cannot become an offer.
+"What's the best email for you? Hugo will want to put something over in writing once we've done the homework, and I'd rather it came to you than the general inbox." Ask this on EVERY call. Never hang up without the email address: every offer goes out by email, so a call with no email cannot become an offer.
+THEN SEND IT WHILE THEY ARE STILL ON THE PHONE. As soon as they say the address: "Brilliant, I'm sending you one now so you've got my address, it's got the video request in it. Can you just tell me it's landed before I let you go?" The address types itself into the Email tab the moment they say it, the email is already written, so this is one press of Send. An email they watched arrive is an email that gets answered, and it gives them our address to send the video back to.
 "Before I let you go, have you got anything else stuck? Anything in a chain that's dragging, or a sale that's fallen through where cash would sort it?"
 "And when it comes to it, we'd get our builder round to have a look and price the work up." Ask, do not book.
 "Right, that's everything I need. I'll do the homework on it properly tonight. What's a realistic time for me to ring you back, tomorrow or is it better later in the week?" Never end the call without an agreed callback time. The booked callback IS call two.
@@ -1511,6 +1605,48 @@ serve(async (req: Request) => {
         speaker,
         body: transcriptText,
       });
+
+      // THE EMAIL ADDRESS, THE MOMENT IT IS SAID. Hugo, 2026-08-14: Pedro was
+      // typing it by hand mid-sentence, or asking the branch to repeat it, and
+      // "a call with no email cannot turn into an offer".
+      //
+      // PROPERTY CALLS ONLY. The same words on a plumber dial mean nothing and
+      // this must not touch Marr's 200 dials a day.
+      //
+      // BOTH SPEAKERS on purpose: the branch says it, and Pedro reads it back
+      // to check. Either one is the address.
+      //
+      // It is filed as a coach card carrying meta.captured_email, NOT written
+      // onto the contact. The Email pane picks it up over realtime and types it
+      // into a field Pedro can see and correct. A mistyped address is an offer
+      // that silently never arrives, so a human confirms it by pressing send.
+      if (call.script_key === 'property_call' && mentionsEmail(transcriptText)) {
+        try {
+          const heard = extractEmail(transcriptText);
+          if (heard) {
+            const { data: already } = await supa
+              .from('wk_live_coach_events')
+              .select('id')
+              .eq('call_id', call.id)
+              .eq('kind', 'metric')
+              .contains('meta', { captured_email: heard })
+              .limit(1);
+            if (!already || already.length === 0) {
+              await supa.from('wk_live_coach_events').insert({
+                call_id: call.id,
+                kind: 'metric',
+                title: 'Email heard',
+                body: `${heard} is now in the Email tab. Say "I'm sending you something now, can you confirm it lands?" and press Send.`,
+                meta: { captured_email: heard, heard_from: speaker },
+                status: 'final',
+              });
+            }
+          }
+        } catch (e) {
+          // Never let a nicety break the transcript pipeline mid-call.
+          console.warn('[wk-voice-transcription] email capture failed', String(e));
+        }
+      }
 
       // PR 58 (Hugo 2026-04-27): when the agent reads aloud one of
       // the script's section anchor lines, advance current_stage to

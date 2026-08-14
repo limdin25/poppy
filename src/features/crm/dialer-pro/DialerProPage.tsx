@@ -1040,6 +1040,16 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               liveDurationSec={liveDuration}
               showHouses={isHousesCall}
               offerHouse={isHousesCall ? offerHouseFor(selectedListing) : null}
+              // Which of the two calls this is, so the Email tab writes the
+              // video request on a discovery call and the offer on call two.
+              // Same field the script pane and the offer strip read.
+              nextStep={contact?.customFields?.next_step ?? contact?.customFields?.deal_stage}
+              // Who he is speaking to at the branch, off the Houses checklist,
+              // so the email opens with their name.
+              agentPersonName={
+                (selectedListing?.qualification as Record<string, unknown> | null | undefined)
+                  ?.branch_contact_name as string | undefined
+              }
             />
           </ResizablePanel>
         </ResizablePanelGroup>

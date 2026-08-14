@@ -57,6 +57,10 @@ interface SendBody {
   campaign_id?: string;
   /** Public URL to a file in crm-attachments bucket. Sent as Resend attachment. */
   attachment_url?: string;
+  /** Send to THIS address instead of the one stored on the contact. Used by the
+   *  dialer's property Email tab, where the agent has just said their address
+   *  on the call. Validated, never blindly trusted. */
+  to_email?: string;
 }
 
 const json = (status: number, payload: Record<string, unknown>) =>
@@ -102,7 +106,22 @@ serve(async (req: Request) => {
     if (contactErr) return json(500, { error: contactErr.message });
     if (!contact) return json(404, { error: 'Contact not found' });
 
-    const toEmail = (contact.email as string | null)?.trim();
+    // A typed recipient wins over the stored one.
+    //
+    // Hugo 2026-08-14: on a property call the estate agent says their address
+    // out loud and the email goes out while they are still on the phone. Two
+    // branches of the same agency routinely share one inbox
+    // (info@theagency.co.uk), and wk_contacts has a UNIQUE index on email, so
+    // storing it first is not always possible. Refusing to send because a
+    // sister branch already holds that address would be absurd.
+    //
+    // Validated here rather than trusted: this is the address a real email goes
+    // to, and every caller is already an authenticated agent.
+    const typedTo = (payload.to_email ?? '').trim().toLowerCase();
+    if (typedTo && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(typedTo)) {
+      return json(400, { error: 'That is not a valid email address' });
+    }
+    const toEmail = typedTo || (contact.email as string | null)?.trim();
     if (!toEmail) return json(400, { error: 'Contact has no email' });
 
     // 2. Resolve sender row. Precedence:
