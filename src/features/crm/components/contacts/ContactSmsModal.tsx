@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Send, MessageSquare, X, Check, ArrowRight, Phone, Mail, Paperclip, Trash2, Loader2, Sparkles, ShieldCheck } from 'lucide-react';
 import type { NextStepBrief } from '../../../../../api/lib/next-step-brief';
+import type { BranchEmail } from '../../../../../api/lib/branch-email-match';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../../store/SmsV2Store';
@@ -170,6 +171,10 @@ export default function ContactSmsModal({
   // one agency share an inbox and wk_contacts has a unique index on email), and
   // the address is written back onto the lead only AFTER it has gone.
   const [toEmail, setToEmail] = useState('');
+  /** Addresses the system already holds for this branch, with the evidence for
+   *  each. Hugo: "the system has the email, so the system should just add the
+   *  email there." It fills the box; the reason is shown so he can judge it. */
+  const [known, setKnown] = useState<BranchEmail[]>([]);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
@@ -344,14 +349,44 @@ export default function ContactSmsModal({
     }
   }, []);
 
-  // Both, the moment the email channel opens on a deal. One press for Hugo:
-  // read it, then send.
+  // THE ADDRESS WE ALREADY HOLD. An inbound email makes its own contact keyed
+  // on the address, so the branch card never sees the reply the branch sent us.
+  // Hugo, on being told to paste it by hand: "why do I need to paste the
+  // address? The system has the email." Quite right.
+  //
+  // Only when the lead has none of its own: a saved address is a decision
+  // somebody already made and it is never overridden by a lookup.
+  const findKnownEmail = useCallback(async () => {
+    if (!deal || (contact?.email ?? '').trim()) return;
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) return;
+      const res = await fetch('/api/crm/branch-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ street: deal.address ?? null, agency: deal.agencyName ?? contact?.name ?? null }),
+      });
+      const json = await res.json() as { emails?: BranchEmail[] };
+      const list = json.emails ?? [];
+      if (!list.length) return;
+      setKnown(list);
+      // Never over a human. If he has already typed one, his wins.
+      setToEmail((cur) => (cur.trim() ? cur : list[0].email));
+    } catch {
+      // No lookup is the state we were already in: he types it.
+    }
+  }, [deal, contact?.email, contact?.name]);
+
+  // All three, the moment the email channel opens on a deal. One press for
+  // Hugo: read it, then send.
   useEffect(() => {
     if (channel !== 'email' || !deal || drafted.current) return;
     drafted.current = true;
     void draft();
+    void findKnownEmail();
     if (needsProofOfFunds(deal)) void attachProof();
-  }, [channel, deal, draft, attachProof]);
+  }, [channel, deal, draft, attachProof, findKnownEmail]);
 
   // A different lead is a different email.
   useEffect(() => {
@@ -359,6 +394,7 @@ export default function ContactSmsModal({
     drafted.current = false;
     setDraftNote(null);
     setAttachmentName(null);
+    setKnown([]);
   }, [contact?.id]);
 
   const firstName = useMemo(
@@ -741,11 +777,37 @@ export default function ContactSmsModal({
                 className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
                 data-testid="contact-sms-modal-to"
               />
-              {!emailValid && (
+              {/* WHY that address is in the box. Never just filled in silently:
+                  an offer emailed to the wrong branch is worse than one not
+                  sent, so the evidence is on screen before he presses send. */}
+              {known.length > 0 && (
+                <div className="mt-1 space-y-1" data-testid="contact-sms-modal-known">
+                  {known.map((k) => {
+                    const picked = k.email === toEmail.trim().toLowerCase();
+                    return (
+                      <button
+                        key={k.email}
+                        type="button"
+                        onClick={() => setToEmail(k.email)}
+                        className={cn(
+                          'w-full rounded-[8px] border px-2 py-1 text-left text-[11px] leading-snug',
+                          picked
+                            ? 'border-[#2E7D43]/40 bg-[#E8F5EC] text-[#2E7D43]'
+                            : 'border-[#E5E5E5] bg-white text-[#6B7280] hover:bg-[#F9FAFB]',
+                        )}
+                      >
+                        <span className="font-semibold">{k.email}</span>
+                        <span className="block">{k.reason}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {!emailValid && known.length === 0 && (
                 <div className="mt-1 text-[11px] text-[#6B7280]">
                   {contact.email
                     ? 'That does not look like an email address.'
-                    : 'No address on file for this lead. Type theirs here, and it gets saved to the lead once the email has gone.'}
+                    : 'Nothing on file for this branch. Type theirs here, and it gets saved to the lead once the email has gone.'}
                 </div>
               )}
             </div>
