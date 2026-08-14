@@ -351,6 +351,11 @@ If asked cash or mortgage: "Cash. No mortgage, no chain, nothing to sell."
 The whole job of call one. Conversational, not a form.
 "Is it vacant, or is there a tenant in?" If tenanted: staying or leaving, and what rent.
 "And what sort of condition is it in, ready to move into or does it need work?"
+"It needs a bit of work" is NOT an answer and must never be accepted: that sentence covers a 5k tidy-up and a 40k strip-out, and the difference is the offer. Dig, one question at a time:
+"When you say it needs work, what sort of thing are we talking? Is it more cosmetic, kitchen, bathroom, carpets, decorating, or is it a proper full refurb?" If they hedge: "Could someone live in it while the work's being done, or is it a shell?"
+"And how are the big four, the roof, any damp, the electrics and the boiler? Have any of them been done?" One at a time, a rewire, boiler, roof or damp course are thousands each and none show in photos.
+"How old are the kitchen and the bathroom? And are the windows double glazed?"
+"Has anybody been round and priced the work up? What sort of number did they come back with?"
 If they say it is down to personal preference: "No, course. I mean more the boring stuff, like the boiler, the electrics, the roof, any damp?"
 "Do you know why they're selling?" Then: in a hurry, and is there an onward chain.
 "Has anything on that street sold recently that was done up? What did it actually go for?" The most valuable question on the page: the done-up value from the person who sells that street.

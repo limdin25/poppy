@@ -998,6 +998,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                   listing={selectedListing}
                   total={housesTotal}
                   nextStep={contact?.customFields?.next_step ?? contact?.customFields?.deal_stage}
+                  startCollapsed
                 />
               )}
               <div className="min-h-0 flex-1">

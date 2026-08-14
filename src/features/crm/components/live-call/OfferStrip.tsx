@@ -21,7 +21,16 @@
 // never derived here. They are missing on most properties today and the strip
 // simply does not draw them: no empty box, no placeholder dash, no "unknown".
 
-import { AlertTriangle, ArrowRight } from 'lucide-react';
+// 2026-08-14: the strip COLLAPSES, and in the dialer it starts collapsed.
+// Hugo, looking at Pedro's screen: "please give option to collapse all this and
+// start collapsed so pedro can read the script properly." The strip had grown to
+// six rows and was pushing the script off the fold, which is the opposite of why
+// it was pinned there. Collapsed it is one line (address, asking, which call),
+// and no figure of ours is on screen at all. Call history keeps it open, because
+// there the deal IS the thing being read.
+
+import { useState } from 'react';
+import { AlertTriangle, ArrowRight, ChevronDown, ChevronRight } from 'lucide-react';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import type { PropertyListing } from '../../hooks/usePropertyListings';
 import { resolveStage } from '../templates/dealProcessSteps';
@@ -54,9 +63,13 @@ interface Props {
    *  everywhere else." Absent on every non-property caller, and the line simply
    *  is not drawn. */
   nextStep?: string | null;
+  /** Start folded to the one-line header. The dialer passes this so the script
+   *  owns the screen; Call history leaves it open. */
+  startCollapsed?: boolean;
 }
 
-export default function OfferStrip({ listing, total = 0, nextStep }: Props) {
+export default function OfferStrip({ listing, total = 0, nextStep, startCollapsed = false }: Props) {
+  const [open, setOpen] = useState(!startCollapsed);
   const step = resolveStage(nextStep);
   // Two calls, never one (2026-08-13). On a DISCOVERY call no number of ours
   // is ever said, so the band must not read as an instruction. The figures
@@ -90,7 +103,7 @@ export default function OfferStrip({ listing, total = 0, nextStep }: Props) {
 
   return (
     <div className="border-b border-[#E5E7EB] bg-white">
-      {step && (
+      {open && step && (
         <div
           className="flex items-center gap-1.5 border-b border-[#CFDCEC] bg-[#EEF2F8] px-4 py-1.5"
           data-testid="offer-strip-next-step"
@@ -105,20 +118,39 @@ export default function OfferStrip({ listing, total = 0, nextStep }: Props) {
         </div>
       )}
 
-      <div className="flex items-baseline gap-2 px-4 pt-2.5 pb-1.5">
+      {/* The header is the toggle. Collapsed it carries the address, the asking
+          price and which call this is, and nothing else: no band, no ladder, no
+          ceiling. */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        data-testid="offer-strip-toggle"
+        aria-expanded={open}
+        title={open ? 'Hide the deal, more room for the script' : 'Show the deal'}
+        className={`flex w-full items-baseline gap-2 px-4 text-left hover:bg-[#FAFAF8] ${open ? 'pt-2.5 pb-1.5' : 'py-2'}`}
+      >
+        {open
+          ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 self-center text-[#9CA3AF]" />
+          : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 self-center text-[#9CA3AF]" />}
         <span className="truncate text-[12px] font-semibold text-[#1A1A1A]" title={listing.address ?? ''}>
           {listing.address || 'Property'}
         </span>
         <span className="whitespace-nowrap text-[11px] text-[#6B7280]">
           asking {listing.price_text || gbpShort(listing.asking_price)}
         </span>
-        {total > 1 && (
-          <span className="ml-auto whitespace-nowrap text-[11px] text-[#6B7280]">
-            {total} on file
-          </span>
+        {!open && step && (
+          <span className="whitespace-nowrap text-[11px] font-semibold text-[#3C5A87]">{step.tag}</span>
         )}
-      </div>
+        <span className="ml-auto flex items-baseline gap-2 whitespace-nowrap">
+          {total > 1 && <span className="text-[11px] text-[#6B7280]">{total} on file</span>}
+          <span className="text-[10px] font-bold uppercase tracking-wide text-[#3C5A87]">
+            {open ? 'Hide deal' : 'Show deal'}
+          </span>
+        </span>
+      </button>
 
+      {open && (
+        <>
       {/* What kind of deal, and how hard to push. Directly above the three
           figures so it frames them, and drawn only when the engine actually
           said something. Most properties have neither today. */}
@@ -249,6 +281,8 @@ export default function OfferStrip({ listing, total = 0, nextStep }: Props) {
             {reason}
           </span>
         </div>
+      )}
+        </>
       )}
     </div>
   );

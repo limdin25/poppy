@@ -268,6 +268,24 @@ describe('two calls: discovery first, the offer only after the homework', () => 
     expect(stage3).toMatch(/Never ask a flat about subsidence/)
   })
 
+  it('condition is a conversation, never one question and a tick', () => {
+    // Hugo, 2026-08-14: "on the script need to make sure to ask what type of
+    // work, discuss a bit, make clear." "It needs a bit of work" covers a five
+    // grand tidy-up and a forty grand strip-out, and the gap between those two
+    // IS the offer, so the one question has to become four.
+    const stage3 = html.slice(at('3. The discovery questions'), at('4. Their figure, never ours'))
+    expect(stage3).toMatch(/what sort of thing are we talking/)
+    expect(stage3).toMatch(/cosmetic/)
+    expect(stage3).toMatch(/full refurb/)
+    expect(stage3).toMatch(/the roof, any damp, the electrics and the boiler/)
+    expect(stage3).toMatch(/priced the work up/)
+    // And the same dig reaches the coach, or it grades a call against wording
+    // Pedro is no longer reading.
+    const coach = read('supabase/functions/wk-voice-transcription/index.ts')
+    expect(coach).toMatch(/what sort of thing are we talking/)
+    expect(coach).toMatch(/is NOT an answer/)
+  })
+
   it('call one never floats our figure, and has the take-back line for when they push', () => {
     const callOne = html.slice(at('<div class="call1">'), at('</div><!-- /call1 -->'))
     expect(callOne).not.toMatch(/\[offer_open\]/)

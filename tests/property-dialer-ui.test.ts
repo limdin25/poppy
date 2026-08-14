@@ -170,6 +170,23 @@ describe('the offer band is pinned above the script', () => {
     expect(STRIP).toMatch(/const reason = listing\.withdrawn \? '' : listing\.reasonLine/)
   })
 
+  it('folds away in the dialer, and starts folded', () => {
+    // Hugo, 2026-08-14: "please give option to collapse all this and start
+    // collapsed so pedro can read the script properly." The strip had grown to
+    // six rows and was pushing the script off the fold.
+    expect(STRIP).toMatch(/startCollapsed\?: boolean/)
+    expect(STRIP).toMatch(/useState\(!startCollapsed\)/)
+    expect(STRIP).toMatch(/data-testid="offer-strip-toggle"/)
+    // The dialer folds it, Call history does not: there the deal IS the thing
+    // being read, and the drawer would open on a header and nothing else.
+    expect(PAGE).toMatch(/startCollapsed/)
+    expect(read('src/features/crm/components/calls/DealSnapshotDrawer.tsx')).not.toMatch(/startCollapsed/)
+    // Collapsed, not one figure of ours is on screen. The ceiling and the
+    // ladder live inside the folded half, never in the header row.
+    const header = STRIP.slice(STRIP.indexOf('data-testid="offer-strip-toggle"'), STRIP.indexOf('</button>'))
+    expect(header).not.toMatch(/offerMin|offerMax|listing\.ladder/)
+  })
+
   it('selecting a different house clears when the LEAD changes', () => {
     // A new lead is a different agency. Carrying the old selection over would
     // put another branch's asking price in front of the agent.
