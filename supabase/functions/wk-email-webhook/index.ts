@@ -562,12 +562,36 @@ const DEAL_CHANGING: InboundKind[] = [
 const RULES: Array<{ kind: InboundKind; re: RegExp }> = [
   { kind: 'out_of_office', re: /\b(out of (the )?office|annual leave|on holiday|automatic reply|auto[- ]?reply|away from my desk|maternity leave|no longer works? (at|for))\b/i },
   { kind: 'acceptance', re: /\b(have|has|they'?ve) accepted\b|\boffer (is )?accepted\b|\bagreed (to|at) (the|your) offer\b|\bvendor accepts\b/i },
-  { kind: 'rejection', re: /\b(rejected|declined|turned (it |your offer )?down|not accept(ing|ed)?|unable to accept|will not be accepting)\b/i },
+  { kind: 'rejection', re: /\b(rejected|declined|turned (it |your offer )?down|unable to accept|will not be accepting|(not|non) accept(ing|ed)? (your|the|our|this) offer)\b/i },
   { kind: 'not_interested', re: /\b(not interested|no longer (available|on the market)|under offer|sold stc|withdrawn from the market|remove (us|me) from)\b/i },
   { kind: 'document_request', re: /\b(proof of funds|evidence of funds|bank statement|id check|anti[- ]?money|solicitor'?s? details|memorandum of sale)\b/i },
   { kind: 'viewing_response', re: /\b(viewing|view the property|access|key ?s|meet you there|available to view)\b/i },
   { kind: 'info_supplied', re: /\b(please find attached|attached is|here is the (video|floor ?plan|epc)|as requested|i have attached)\b/i },
 ];
+
+function stripDisclaimer(text: string): string {
+  // Live data, 2026-08-14: four inbound emails including DDM's own carry
+  // "does not accept liability" in the virus footer, which a rejection rule
+  // reads as the vendor turning us down. The footer is noise on every rule.
+  const markers = [
+    /this e-?mail (and|&) any attachment/i,
+    /this e-?mail (and|&) any files? transmitted/i,
+    /does not accept (liability|any responsibility)/i,
+    /cannot guarantee that attachments/i,
+    /if you are not the intended recipient/i,
+    /is confidential and may be privileged/i,
+    /the (contents of this|sender) (e-?mail )?(message )?(is|are) confidential/i,
+    /registered in england (and wales )?(no|number)/i,
+    /please consider the environment before printing/i,
+    /reserves the right to monitor all e-?mail/i,
+  ];
+  let cut = text.length;
+  for (const re of markers) {
+    const m = re.exec(text);
+    if (m && m.index < cut) cut = m.index;
+  }
+  return text.slice(0, cut);
+}
 
 function figuresMentioned(text: string): number[] {
   const out: number[] = [];
@@ -604,7 +628,7 @@ function summarise(kind: InboundKind, figures: number[]): string {
 }
 
 function classifyByRules(subject: string, body: string) {
-  const text = `${subject ?? ''}\n${body ?? ''}`;
+  const text = stripDisclaimer(`${subject ?? ''}\n${body ?? ''}`);
   const figures = figuresMentioned(text);
   for (const rule of RULES) {
     if (!rule.re.test(text)) continue;

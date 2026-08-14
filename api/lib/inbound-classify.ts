@@ -73,12 +73,51 @@ const RULES: Array<{ kind: InboundKind; re: RegExp; conf: 'high' | 'medium' }> =
   // and would otherwise match every rule below it.
   { kind: 'out_of_office', conf: 'high', re: /\b(out of (the )?office|annual leave|on holiday|automatic reply|auto[- ]?reply|away from my desk|maternity leave|no longer works? (at|for))\b/i },
   { kind: 'acceptance', conf: 'high', re: /\b(have|has|they'?ve) accepted\b|\boffer (is )?accepted\b|\bagreed (to|at) (the|your) offer\b|\bvendor accepts\b/i },
-  { kind: 'rejection', conf: 'high', re: /\b(rejected|declined|turned (it |your offer )?down|not accept(ing|ed)?|unable to accept|will not be accepting)\b/i },
+  // "not accept" on its own is a legal disclaimer far more often than a
+  // refusal, so it must be attached to the offer to count. stripDisclaimer
+  // removes most footers; this is the second fence behind it.
+  { kind: 'rejection', conf: 'high', re: /\b(rejected|declined|turned (it |your offer )?down|unable to accept|will not be accepting|(not|non) accept(ing|ed)? (your|the|our|this) offer)\b/i },
   { kind: 'not_interested', conf: 'high', re: /\b(not interested|no longer (available|on the market)|under offer|sold stc|withdrawn from the market|remove (us|me) from)\b/i },
   { kind: 'document_request', conf: 'high', re: /\b(proof of funds|evidence of funds|bank statement|id check|anti[- ]?money|solicitor'?s? details|memorandum of sale)\b/i },
   { kind: 'viewing_response', conf: 'medium', re: /\b(viewing|view the property|access|key ?s|meet you there|available to view)\b/i },
   { kind: 'info_supplied', conf: 'medium', re: /\b(please find attached|attached is|here is the (video|floor ?plan|epc)|as requested|i have attached)\b/i },
 ];
+
+/** Cut the legal boilerplate off before reading anything.
+ *
+ *  FOUND ON LIVE DATA, 2026-08-14. Four inbound emails, including DDM's own,
+ *  carry "does not accept liability" in the virus and confidentiality footer:
+ *
+ *    "...cannot guarantee that attachments are virus free or compatible with
+ *     your systems and does not accept liability in respect of viruses..."
+ *
+ *  A rejection rule matching "not accept" reads that as the vendor turning us
+ *  down, flips the card to Renegotiate and raises a false alarm on a perfectly
+ *  ordinary email. The footer is noise on EVERY rule, not just that one, so it
+ *  is removed once, up front, rather than worked around per pattern.
+ *
+ *  Cuts at the earliest marker found. If none is present the text is unchanged.
+ */
+export function stripDisclaimer(text: string): string {
+  const markers = [
+    /this e-?mail (and|&) any attachment/i,
+    /this e-?mail (and|&) any files? transmitted/i,
+    /does not accept (liability|any responsibility)/i,
+    /cannot guarantee that attachments/i,
+    /if you are not the intended recipient/i,
+    /is confidential and may be privileged/i,
+    /the (contents of this|sender) (e-?mail )?(message )?(is|are) confidential/i,
+    /registered in england (and wales )?(no|number)/i,
+    /please consider the environment before printing/i,
+    /reserves the right to monitor all e-?mail/i,
+  ];
+  let cut = text.length;
+  for (const re of markers) {
+    const m = re.exec(text);
+    if (m && m.index < cut) cut = m.index;
+  }
+  return text.slice(0, cut);
+}
 
 /** Figures the branch named, in pounds. Small numbers and years are not money. */
 export function figuresMentioned(text: string): number[] {
@@ -102,7 +141,7 @@ export function figuresMentioned(text: string): number[] {
 
 /** The deterministic read. Always runs, cannot fail, cannot be switched off. */
 export function classifyByRules(subject: string, body: string): InboundReading {
-  const text = `${subject ?? ''}\n${body ?? ''}`;
+  const text = stripDisclaimer(`${subject ?? ''}\n${body ?? ''}`);
   const figures = figuresMentioned(text);
 
   for (const rule of RULES) {

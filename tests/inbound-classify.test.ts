@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   classifyByRules, figuresMentioned, validateReading, summarise, stepForInbound,
-  INBOUND_KINDS, DEAL_CHANGING, type InboundReading,
+  stripDisclaimer, INBOUND_KINDS, DEAL_CHANGING, type InboundReading,
 } from '../api/lib/inbound-classify'
 
 // Lexi Collins, DDM Residential, 2026-08-14 08:38, verbatim.
@@ -226,5 +226,54 @@ describe('what the reply does to the next step', () => {
       const tag = stepForInbound(k)
       if (tag) expect(src, `${k} -> ${tag}`).toContain(`tag: '${tag}'`)
     }
+  })
+})
+
+describe('the legal footer must never look like a rejection', () => {
+  // FOUND ON LIVE DATA, 2026-08-14. Four inbound emails, DDM's own among them,
+  // carry this in the virus and confidentiality footer. A rejection rule
+  // matching a bare "not accept" reads it as the vendor turning us down,
+  // flips the card to Renegotiate and raises a false alarm.
+  const DDM_FOOTER = 'DDM Residential cannot guarantee that attachments are virus '
+    + 'free or compatible with your systems and does not accept liability in respect '
+    + 'of viruses or computer problems experienced.'
+
+  it('does not read a virus disclaimer as a rejection', () => {
+    const r = classifyByRules('Property details', `Hi Pedro, here are the details.\n\n${DDM_FOOTER}`)
+    expect(r.kind).not.toBe('rejection')
+    expect(r.kind).not.toBe('counter_offer')
+  })
+
+  it('strips the footer before anything reads it', () => {
+    const stripped = stripDisclaimer(`Real content here.\n\n${DDM_FOOTER}`)
+    expect(stripped).toContain('Real content here.')
+    expect(stripped).not.toContain('does not accept liability')
+  })
+
+  it.each([
+    'This email and any attachments are confidential.',
+    'If you are not the intended recipient, please delete it.',
+    'Registered in England number 12345678.',
+    'Please consider the environment before printing this email.',
+  ])('cuts at %s', (footer) => {
+    expect(stripDisclaimer(`Keep this.\n\n${footer} rejected declined`))
+      .not.toMatch(/rejected/)
+  })
+
+  it('leaves an email with no footer completely alone', () => {
+    const plain = 'The vendor has rejected your offer.'
+    expect(stripDisclaimer(plain)).toBe(plain)
+  })
+
+  it('STILL catches a real rejection sitting above a footer', () => {
+    const r = classifyByRules('Update on Offer',
+      `Unfortunately they have rejected your offer.\n\n${DDM_FOOTER}`)
+    expect(r.kind).toBe('rejection')
+  })
+
+  it('reads "not accepting your offer" but not "does not accept liability"', () => {
+    expect(classifyByRules('', 'They are not accepting your offer.').kind).toBe('rejection')
+    expect(classifyByRules('', 'The sender does not accept liability for viruses.').kind)
+      .not.toBe('rejection')
   })
 })
