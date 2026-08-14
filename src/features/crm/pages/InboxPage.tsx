@@ -315,7 +315,7 @@ export default function InboxPage() {
   // Same batched RPC the pipeline board uses, keyed on the last 9 digits of
   // the phone, so a branch reading its own thread shows the same deal, the
   // same instruction and the same person to ask for as its card. Before this
-  // the inbox said "Name not available" on the very branch the board was
+  // the inbox said the red gap marker on the very branch the board was
   // already labelling "Ask for Doug".
   const inboxPhones = useMemo(
     () => contacts.map((c) => c.phone).filter(Boolean),
@@ -357,7 +357,7 @@ export default function InboxPage() {
       owner: string;
       website: string;
       /** The lead's own fields, so the row can tell a property branch from a
-       *  reviews lead and show "Ask for Doug" instead of "Name not available". */
+       *  reviews lead and show "Ask for Doug" instead of the red gap marker. */
       customFields?: Record<string, string>;
       /** A HeyPubli creator: an individual, never a business with a website. */
       isCreatorLead: boolean;

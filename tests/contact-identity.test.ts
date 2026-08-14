@@ -40,16 +40,37 @@ describe('contactIdentity helpers', () => {
 })
 
 describe('every surface renders identity through the one component', () => {
+  // 2026-08-14: property surfaces now go through LeadIdentity, which picks
+  // between "Ask for Doug" (an estate agency branch has no owner and no
+  // website) and ContactIdentity for every other kind of lead. It is still ONE
+  // component per surface and identity is still never re-implemented inline;
+  // there are now two entry points and LeadIdentity delegates to the other.
   const SURFACES = [
-    'src/features/crm/pages/InboxPage.tsx',
-    'src/features/crm/pages/PipelinesPage.tsx',
     'src/features/crm/pages/VideoFunnelPage.tsx',
     'src/features/crm/dialer-pro/DialerProPage.tsx',
     'src/features/crm/components/live-call/LiveCallScreen.tsx',
   ]
+  const PROPERTY_SURFACES = [
+    'src/features/crm/pages/InboxPage.tsx',
+    'src/features/crm/pages/PipelinesPage.tsx',
+  ]
 
   it.each(SURFACES)('%s imports ContactIdentity', (p) => {
     expect(read(p)).toMatch(/import ContactIdentity from/)
+  })
+
+  it.each(PROPERTY_SURFACES)('%s renders identity through LeadIdentity', (p) => {
+    const src = read(p)
+    expect(src).toMatch(/import LeadIdentity/)
+    // and must NOT reach past it to the inner component, or the property
+    // branch is skipped and "Name not available" comes back.
+    expect(src).not.toMatch(/import ContactIdentity from/)
+  })
+
+  it('LeadIdentity is the only property-aware wrapper, and it delegates', () => {
+    const src = read('src/features/crm/components/shared/LeadIdentity.tsx')
+    expect(src).toMatch(/import ContactIdentity from/)
+    expect(src).toContain('Ask for')
   })
 
   // The mechanism that keeps "EVERYWHERE" true as surfaces get added: nothing

@@ -72,10 +72,16 @@ describe('the inbox card', () => {
     // These are individual people, not businesses; they will never have a
     // website. But the SAME inbox serves the Reviews product, where the
     // website is the whole point, so the line survives for everyone else.
-    expect(inbox).toMatch(/\{!r\.isCreatorLead && \(/);
-    expect(inbox).toMatch(/\{!activeIsCreatorLead && \(/);
+    expect(inbox).toMatch(/isCreatorLead=\{r\.isCreatorLead\}/);
+    // 2026-08-14: the flag is now a prop on LeadIdentity rather than a
+    // wrapping conditional, so a property branch can take a different
+    // path in the same component.
+    expect(inbox).toMatch(/isCreatorLead=\{activeIsCreatorLead\}/);
     // The component itself is still there, for every other lead.
-    expect(inbox).toContain('<ContactIdentity');
+    // Still rendered for every other lead, now via LeadIdentity, which
+    // delegates to ContactIdentity for anything that is not a property
+    // branch. tests/contact-identity.test.ts holds that delegation.
+    expect(inbox).toContain('<LeadIdentity');
   });
 
   it('decides "is this a creator" from the stamp the funnel writes', () => {

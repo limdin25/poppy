@@ -1,8 +1,8 @@
 // Who this lead IS, told the right way for the business the lead belongs to.
 //
-// Hugo, 2026-08-14: "the things on the cards, name not available, website not
-// available, that was for the older project, you can delete that. Maybe add
-// the agent name."
+// Hugo, 2026-08-14: "the things on the cards, [the two red gap markers],
+// that was for the older project, you can delete that. Maybe add the agent
+// name."
 //
 // An estate agency branch has no "owner" and no "website" in any sense that
 // helps Pedro. What he needs is the name of the person to ask for when the
@@ -15,7 +15,7 @@
 // same inbox served the reviews product where the website is the whole point.
 //
 // This lives in one component because the rule was previously written into the
-// pipeline card only, so the inbox kept showing "Name not available" on the
+// pipeline card only, so the inbox kept showing the red gap marker on the
 // same branch the board was already labelling "Ask for Doug".
 
 import ContactIdentity from './ContactIdentity';
