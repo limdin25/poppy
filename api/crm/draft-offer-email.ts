@@ -188,7 +188,8 @@ const SYSTEM_FOLLOW_UP = [
   '3. NEVER re-open the price. If our offer is mentioned it is only to remind them what is on the table, in the words we already used.',
   '4. Answer the blocker in the FIRST two sentences. An estate agent reads one paragraph.',
   '4a. Write the address EXACTLY as you are given it. NEVER add a house number, a flat number or a postcode that is not there. Most listings do not publish a house number and a wrong one goes to the branch selling that exact house.',
-  '4b. IF a proof of funds is attached to this email, and only then, EXPLAIN IT in its own short paragraph, using the facts you are given and no others. Cover, in this order and in plain sentences: which company holds the money and that the statement is a certified copy from its bank on the date given; that the money sits across several company accounts, which is why there is more than one balance on it; the total available; that the account numbers, sort codes and IBANs are hidden for security, which is normal on a document sent by email and does not affect what it proves; and how the purchase completes. An agent who does not understand the document will not pass it to the vendor.',
+  '4b. IF a proof of funds is attached to this email, and only then, EXPLAIN IT in its own short paragraph, using the facts you are given and no others. Cover, in this order and in plain sentences: that the money is held under OUR OWN company, named, and that the statement is a certified copy from its bank on the date given; that it sits across several company accounts, which is why there is more than one balance on it; the total available; that the account numbers, sort codes and IBANs are hidden for security, which is normal on a document sent by email and does not affect what it proves; and how the purchase completes. An agent who does not understand the document will not pass it to the vendor.',
+  '4c. The company on the statement will NOT be the trading name they know us by from the phone call. Write it as OURS, "our company X" or "held under our company X", so it plainly belongs to us. NEVER write it in a way that could read as a third party, a client, an investor or somebody else\'s money.',
   '5. Ask ONE clear question at the end, the one that moves it on, and make it easy to answer in a line.',
   '6. Never write "subject to survey". Our condition is always "subject to our builder going round to view it and price the works".',
   '7. SHORT. Under 160 words, or under 220 when a proof of funds has to be explained.',
@@ -333,7 +334,17 @@ export default async function handler(req: Request): Promise<Response> {
         proofFacts = [
           'THE PROOF OF FUNDS IS ATTACHED TO THIS EMAIL. Explain it, using ONLY these facts:',
           `- The document: a certified copy of the ${String(p.bank ?? 'bank')} balance sheets, dated ${String(p.dated ?? '')}`,
-          `- The company holding the funds: ${String(p.company ?? '')}`,
+          // "OUR company", never a bare name. Hugo, 2026-08-14: "you can say
+          // under our company." The entity on the statement is not the trading
+          // name Pedro gave on the phone, so a second company appearing with no
+          // relationship attached reads to an agent like somebody else's money,
+          // which is exactly the doubt this document exists to remove.
+          //
+          // The name itself is never written in this file, only referred to.
+          // tests/property-call-email.test.ts fails the build if any company,
+          // bank or total is hardcoded here rather than read from the settings
+          // row, because a stale statement must never leave stale wording.
+          `- The company holding the funds, which is OUR OWN company and must be written as ours ("our company ${String(p.company ?? '')}"), never as a third party: ${String(p.company ?? '')}`,
           p.accounts ? `- It shows ${String(p.accounts)} company accounts, which is why there is more than one balance on it` : null,
           Number.isFinite(total) && total > 0
             ? `- Total available across those accounts: ${gbp(total)}`
