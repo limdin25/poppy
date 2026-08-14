@@ -9,12 +9,9 @@ import {
   Kanban,
   BarChart3,
   Trophy,
-  Clapperboard,
-  Workflow,
   FileText,
   ListChecks,
   Megaphone,
-  Bot,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -41,6 +38,17 @@ interface NavItem {
   adminOnly?: boolean;
 }
 
+// THIS CRM IS THE PROPERTY BUSINESS NOW, and the sidebar says so.
+//
+// Hugo, 2026-08-14: "hide anything related to Video funnel, Website flow,
+// because this crm is for property only now."
+//
+// Video funnel, Website flow, AI calls and the AI agent all belong to the
+// retired reviews and receptionist businesses. They are hidden here and their
+// routes are gone from CrmApp, but NOTHING is deleted: the pages, the hooks and
+// every table stay exactly where they are, so this is one commit to undo. The
+// funnel data is still read by the journey panel and the calc chip on screens
+// we keep, so ripping it out would break the inbox.
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/admin/crm/dashboard', icon: LayoutDashboard, adminOnly: true },
   { label: 'Dialer', path: '/admin/crm/dialer-pro', icon: Radio },
@@ -48,13 +56,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Pipelines', path: '/admin/crm/pipelines', icon: Kanban },
   { label: 'Contacts', path: '/admin/crm/contacts', icon: Users },
   { label: 'Broadcasts', path: '/admin/crm/broadcasts', icon: Megaphone },
-  { label: 'AI agent', path: '/admin/crm/agent', icon: Bot, adminOnly: true },
   { label: 'Reports', path: '/admin/crm/reports', icon: BarChart3 },
   { label: 'Leaderboard', path: '/admin/crm/leaderboard', icon: Trophy },
-  { label: 'Video funnel', path: '/admin/crm/video-funnel', icon: Clapperboard },
-  { label: 'Website flow', path: '/admin/crm/site-flow', icon: Workflow },
   { label: 'Call history', path: '/admin/crm/calls', icon: PhoneCall },
-  { label: 'AI calls', path: '/admin/crm/ai-calls', icon: Bot, adminOnly: true },
   { label: 'Templates', path: '/admin/crm/templates', icon: FileText },
   // Directly under Templates, Hugo 2026-08-12. Pedro opens it mid-call, so it
   // is its own page at its own URL rather than a tab inside Templates.

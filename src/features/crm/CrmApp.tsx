@@ -9,7 +9,6 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const InboxPage = lazy(() => import('./pages/InboxPage'))
 const CallsPage = lazy(() => import('./pages/CallsPage'))
 const PastCallScreen = lazy(() => import('./pages/PastCallScreen'))
-const AiCallsPage = lazy(() => import('./pages/AiCallsPage'))
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 const DealProcessPage = lazy(() => import('./pages/DealProcessPage'))
 const ContactsPage = lazy(() => import('./pages/ContactsPage'))
@@ -17,15 +16,9 @@ const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage'))
 const PipelinesPage = lazy(() => import('./pages/PipelinesPage'))
 const ReportsPage = lazy(() => import('./pages/ReportsPage'))
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
-const VideoFunnelPage = lazy(() => import('./pages/VideoFunnelPage'))
-const SiteFlowPage = lazy(() => import('./pages/SiteFlowPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const DialerProPage = lazy(() => import('./dialer-pro/DialerProPage'))
 const BroadcastsPage = lazy(() => import('./pages/BroadcastsPage'))
-const CrmAgentLayout = lazy(() => import('./agent/CrmAgentLayout'))
-const CrmAgentPersonalityPage = lazy(() => import('./agent/CrmAgentPersonalityPage'))
-const CrmFishAgentPage = lazy(() => import('./agent/CrmFishAgentPage'))
-const CrmCallBehaviourPage = lazy(() => import('./agent/CrmCallBehaviourPage'))
 
 // CRM-scoped query client — react-query stays contained to this feature.
 const crmQueryClient = new QueryClient({
@@ -52,11 +45,6 @@ export default function CrmApp() {
             <Route path="inbox" element={<InboxPage />} />
             <Route path="calls" element={<CallsPage />} />
             <Route path="calls/:callId" element={<PastCallScreen />} />
-            {/* The outbound AI campaign, which is a different system from the
-                human dialler above: this reads wk_ai_called, that reads
-                wk_calls. Admin only, because these are recordings of people
-                who did not ask to be recorded. */}
-            <Route path="ai-calls" element={<AdminOnlyRoute><AiCallsPage /></AdminOnlyRoute>} />
             <Route path="templates" element={<TemplatesPage />} />
             {/* The property deal process, step by step. Its own page under
                 Templates in the menu (Hugo 2026-08-12), not a tab inside it. */}
@@ -65,22 +53,20 @@ export default function CrmApp() {
             <Route path="dialer-pro" element={<DialerProPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="broadcasts" element={<BroadcastsPage />} />
-            <Route path="agent" element={<AdminOnlyRoute><CrmAgentLayout /></AdminOnlyRoute>}>
-              <Route index element={<Navigate to="personality" replace />} />
-              <Route path="personality" element={<CrmAgentPersonalityPage />} />
-              <Route path="calling" element={<CrmCallBehaviourPage />} />
-              <Route path="fish" element={<CrmFishAgentPage />} />
-            </Route>
-            {/* Old bare warm-up form — now the SMS tab of the full agent UI. */}
-            <Route path="ai-warmup" element={<Navigate to="/admin/crm/agent/personality?ch=sms" replace />} />
             <Route path="contacts/:id" element={<ContactDetailPage />} />
             <Route path="pipelines" element={<PipelinesPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="leaderboard" element={<LeaderboardPage />} />
-            <Route path="video-funnel" element={<VideoFunnelPage />} />
-            {/* React Flow is a heavy dependency, so this page is lazy like the rest
-                and must never land in the main bundle. */}
-            <Route path="site-flow" element={<SiteFlowPage />} />
+            {/* RETIRED 2026-08-14, this CRM is the property business only.
+                The lazy imports were removed with the routes (noUnusedLocals).
+                Hugo: "hide anything related to Video funnel, Website flow,
+                because this crm is for property only now."
+
+                video-funnel, site-flow, ai-calls, agent/* and ai-warmup all
+                belonged to the reviews and receptionist businesses. The pages,
+                their hooks and every table are UNTOUCHED on disk, so restoring
+                one is a route and a nav entry. Old links fall through to the
+                catch-all below and land on the CRM home rather than a 404. */}
             <Route path="settings" element={<AdminOnlyRoute><SettingsPage /></AdminOnlyRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/admin/crm" replace />} />

@@ -14,7 +14,7 @@ import { rowToContact, CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
 import { supabase } from '@/integrations/supabase/browser';
 import { usePipelines } from '../hooks/usePipelines';
 import type { Contact } from '../types';
-import ContactIdentity from '../components/shared/ContactIdentity';
+import LeadIdentity, { isPropertyLead, askForName } from '../components/shared/LeadIdentity';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
@@ -287,10 +287,8 @@ export default function PipelinesPage() {
                   // things on the cards, name not available, website not
                   // available, that was for the older project, you can delete
                   // that. Maybe add the agent name."
-                  const person =
-                    (c.customFields?.branch_contact_name ?? '').trim() ||
-                    (deal?.branch_contact_name ?? '').trim();
-                  const isProperty = !!deal || c.customFields?.lead_type === 'estate_agent';
+                  const person = askForName(c.customFields, deal?.branch_contact_name);
+                  const isProperty = isPropertyLead(c.customFields, !!deal);
                   return (
                   <button
                     key={c.id}
@@ -316,21 +314,16 @@ export default function PipelinesPage() {
                           )}
                           <Pencil className="w-2.5 h-2.5 text-[#9CA3AF] opacity-0 group-hover:opacity-100 ml-auto" />
                         </div>
-                        {isProperty ? (
-                          person ? (
-                            <div className="mt-0.5 truncate text-[10px] text-[#374151]" title={person}>
-                              Ask for {person}
-                            </div>
-                          ) : null
-                        ) : (
-                          <ContactIdentity
-                            owner={c.customFields?.owner_name}
-                            website={c.customFields?.website}
-                            layout="stack"
-                            size="xs"
-                            className="mt-0.5"
-                          />
-                        )}
+                        <LeadIdentity
+                          isProperty={isProperty}
+                          person={person}
+                          owner={c.customFields?.owner_name}
+                          website={c.customFields?.website}
+                          layout="stack"
+                          size="xs"
+                          className="mt-0.5"
+                        />
+
                         <div className="flex items-center gap-2 mt-0.5 min-w-0">
                           <span className="text-[10px] text-[#6B7280] tabular-nums flex-shrink-0">
                             {c.phone}

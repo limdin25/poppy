@@ -55,7 +55,10 @@ import { interpolateTemplate } from '../lib/interpolateTemplate';
 import { supabase } from '@/integrations/supabase/browser';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact, CallRecord, ActivityEvent } from '../types';
-import ContactIdentity from '../components/shared/ContactIdentity';
+import LeadIdentity, { isPropertyLead, askForName } from '../components/shared/LeadIdentity';
+import BriefLine from '../components/shared/BriefLine';
+import PropertyLinkChips from '../components/shared/PropertyLinkChips';
+import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
 import InboundMedia from '../components/InboundMedia';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
@@ -303,6 +306,34 @@ export default function InboxPage() {
   // contacts whose wk_contacts row hadn't propagated yet AND ordered
   // by hydration order, not message recency.
   const { threads: inboxThreads, loading: threadsLoading } = useInboxThreads();
+
+  // THE HOUSE BEHIND THE BRANCH, in the inbox as well as on the board.
+  //
+  // Hugo, 2026-08-14: "make sure information we have on the card on the
+  // pipeline also accessible in the inbox."
+  //
+  // Same batched RPC the pipeline board uses, keyed on the last 9 digits of
+  // the phone, so a branch reading its own thread shows the same deal, the
+  // same instruction and the same person to ask for as its card. Before this
+  // the inbox said "Name not available" on the very branch the board was
+  // already labelling "Ask for Doug".
+  const inboxPhones = useMemo(
+    () => contacts.map((c) => c.phone).filter(Boolean),
+    [contacts],
+  );
+  const { byPhone: inboxPropertiesByPhone } = usePropertyLinks(inboxPhones);
+  // A branch can hold several houses. The one that speaks for the thread is
+  // the one carrying the freshest instruction, exactly as on the board:
+  // Hugo's pinned note first, then the most recent brief.
+  const dealForPhone = useCallback((phone?: string | null): PropertyLink | null => {
+    const links = inboxPropertiesByPhone.get(phoneTail(phone ?? ''));
+    if (!links || links.length === 0) return null;
+    return [...links].sort((a, b) => {
+      const pin = Number(!!b.pinned_note) - Number(!!a.pinned_note);
+      if (pin !== 0) return pin;
+      return String(b.brief?.written_at ?? '').localeCompare(String(a.brief?.written_at ?? ''));
+    })[0];
+  }, [inboxPropertiesByPhone]);
   // Calls/Voicemail/Missed pills are sourced from wk_calls, not message
   // threads. Loaded here so those pills show real call rows instead of
   // falling through to the full SMS list.
@@ -325,6 +356,9 @@ export default function InboxPage() {
       email?: string;
       owner: string;
       website: string;
+      /** The lead's own fields, so the row can tell a property branch from a
+       *  reviews lead and show "Ask for Doug" instead of "Name not available". */
+      customFields?: Record<string, string>;
       /** A HeyPubli creator: an individual, never a business with a website. */
       isCreatorLead: boolean;
       pipelineColumnId: string | undefined;
@@ -379,6 +413,7 @@ export default function InboxPage() {
           name: c?.name || call.fromE164 || call.toE164 || 'Unknown',
           owner: c?.customFields?.owner_name ?? '',
           website: c?.customFields?.website ?? '',
+          customFields: c?.customFields,
           isCreatorLead: isHeypubliProduct(c?.customFields),
           phone: c?.phone ?? call.fromE164 ?? call.toE164 ?? '',
           email: c?.email,
@@ -412,6 +447,7 @@ export default function InboxPage() {
           email: c?.email,
           owner: c?.customFields?.owner_name || t.contactOwner,
           website: c?.customFields?.website || t.contactWebsite,
+          customFields: c?.customFields,
           isCreatorLead: isHeypubliProduct(c?.customFields) || t.contactProduct === 'heypubli',
           pipelineColumnId: c?.pipelineColumnId,
           ownerAgentId: c?.ownerAgentId,
@@ -712,6 +748,7 @@ export default function InboxPage() {
   // for stage selector / edit modal) — fall back to a synthesized
   // shim from the sidebar row when the store hasn't hydrated yet.
   const activeRow = sidebarRows.find((r) => r.id === activeContactId);
+  const activeDeal = dealForPhone(activeRow?.phone ?? contacts.find((c) => c.id === activeContactId)?.phone);
   const activeContact: Contact | undefined =
     contacts.find((c) => c.id === activeContactId) ??
     (activeRow ? {
@@ -1279,9 +1316,15 @@ export default function InboxPage() {
                         alone. It stays for everybody else: the SAME inbox
                         serves the Reviews product, where the website is the
                         point of the whole lead. */}
-                    {!r.isCreatorLead && (
-                      <ContactIdentity owner={r.owner} website={r.website} layout="inline" size="sm" />
-                    )}
+                    <LeadIdentity
+                      isProperty={isPropertyLead(r.customFields, dealForPhone(r.phone) != null)}
+                      person={askForName(r.customFields, dealForPhone(r.phone)?.branch_contact_name)}
+                      owner={r.owner}
+                      website={r.website}
+                      layout="inline"
+                      size="sm"
+                      isCreatorLead={r.isCreatorLead}
+                    />
                     <AgentChip agentId={r.ownerAgentId} size="xs" />
                     <CalcChip calcAt={r.vsl?.calcAt} count={r.vsl?.calcCount} />
                     {r.campaignName && (
@@ -1588,17 +1631,28 @@ export default function InboxPage() {
             {/* Same rule as the cards: a creator has no business and no
                 website, so the gap markers are noise on them and information
                 on everybody else. */}
-            {!activeIsCreatorLead && (
-              <ContactIdentity
-                owner={activeContact.customFields?.owner_name}
-                website={activeContact.customFields?.website}
-                layout="stack"
-                size="sm"
-              />
-            )}
+            <LeadIdentity
+              isProperty={isPropertyLead(activeContact.customFields, !!activeDeal)}
+              person={askForName(activeContact.customFields, activeDeal?.branch_contact_name)}
+              owner={activeContact.customFields?.owner_name}
+              website={activeContact.customFields?.website}
+              layout="stack"
+              size="sm"
+              isCreatorLead={activeIsCreatorLead}
+            />
             <div className="text-[11px] text-[#6B7280] tabular-nums">
               {activeContact.phone}
             </div>
+            {/* THE DEAL, in the inbox. Hugo, 2026-08-14: "make sure information
+                we have on the card on the pipeline also accessible in the
+                inbox." The same links and the same instruction the board shows,
+                drawn by the same two components so they cannot drift. */}
+            {activeDeal && (
+              <div className="mt-1 space-y-1">
+                <PropertyLinkChips links={[activeDeal]} />
+                <BriefLine brief={activeDeal.brief} pinnedNote={activeDeal.pinned_note} />
+              </div>
+            )}
           </div>
           {/* Stage selector — change stage from inbox */}
           <StageSelector
