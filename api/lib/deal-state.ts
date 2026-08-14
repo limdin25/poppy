@@ -1,0 +1,358 @@
+// Everything the system knows about one deal, in one object.
+//
+// Layer 1 of the Deal Manager (docs/AI_DEAL_MANAGER_PLAN.md). Deterministic,
+// no AI, no network, no clock of its own: every input is passed in, so the
+// whole thing is testable with fixtures.
+//
+// WHY IT IS A SEPARATE LAYER. This is the ONLY thing the Manager is ever
+// shown. That is what makes the fences checkable rather than hopeful: if a
+// figure is not in this object, the Manager never saw it, so a figure it names
+// that is not in here is provably invented and the answer is thrown away.
+//
+// The five gaps this exists to close, in the order they cost money:
+//   1. nothing watches a deal BETWEEN events, so a card sits in Ready for
+//      call 2 for four days and nobody notices
+//   2. a branch's email reply changes no instruction anywhere
+//   3. the overnight machine never says "a branch you know just cut the price"
+//   4. past Offer accepted there is no code at all
+//   5. Pedro's day has a queue order but no priorities
+
+/** Everything that can be true about a deal, gathered from the tables. */
+export interface DealStateInput {
+  property: {
+    id: string;
+    address?: string | null;
+    status?: string | null;
+    asking_price?: number | null;
+    bedrooms?: number | null;
+    /** The engine's deal blob. Money is READ from here, never derived. */
+    deal?: Record<string, unknown> | null;
+    /** The deterministic brief. The Manager may never override it. */
+    brief?: Record<string, unknown> | null;
+    /** Hugo's own instruction. Outranks anything generated. */
+    pinned_note?: string | null;
+    qualification?: Record<string, unknown> | null;
+    assigned_builder_id?: string | null;
+    viewing_at?: string | null;
+    viewing_quote?: number | null;
+    updated_at?: string | null;
+  };
+  contact?: {
+    id: string;
+    name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    pipeline_column_id?: string | null;
+    custom_fields?: Record<string, string> | null;
+    stage_moved_at?: string | null;
+    last_contact_at?: string | null;
+  } | null;
+  /** Current board column name, resolved by the caller. */
+  columnName?: string | null;
+  /** Every call to this branch, newest first. */
+  calls?: Array<{
+    id: string;
+    created_at?: string | null;
+    direction?: string | null;
+    disposition?: string | null;
+    duration_sec?: number | null;
+  }>;
+  /** Every message in and out on this branch's contacts, newest first. */
+  messages?: Array<{
+    id: string;
+    created_at?: string | null;
+    direction?: string | null;
+    channel?: string | null;
+    subject?: string | null;
+    body?: string | null;
+  }>;
+  /** Pending or snoozed follow-ups for this contact. */
+  followups?: Array<{
+    id: string;
+    due_at?: string | null;
+    note?: string | null;
+    status?: string | null;
+  }>;
+  /** Builders whose coverage includes this house's outcode. */
+  builderMatches?: Array<{ id: string; name?: string | null }>;
+  /** Passed in, never read off the wall clock, so tests are stable. */
+  now: Date;
+}
+
+export interface DealState {
+  propertyId: string;
+  address: string | null;
+  status: string | null;
+  board: {
+    column: string | null;
+    movedAt: string | null;
+    hoursInColumn: number | null;
+  };
+  money: {
+    asking: number | null;
+    gdv: number | null;
+    tmv: number | null;
+    open: number | null;
+    ceiling: number | null;
+    refurb: number | null;
+    compsTier: string | null;
+    /** Every figure that is legitimately on this deal's file. The fence in
+     *  section 5 checks the Manager's words against exactly this list. */
+    figuresOnFile: number[];
+  };
+  brief: {
+    step: string | null;
+    doNow: string[];
+    blockers: string[];
+    confidence: string | null;
+    writtenAt: string | null;
+  };
+  pinnedNote: string | null;
+  calls: {
+    count: number;
+    lastAt: string | null;
+    lastOutcome: string | null;
+    hoursSinceLast: number | null;
+  };
+  writing: {
+    lastInboundAt: string | null;
+    lastOutboundAt: string | null;
+    /** THE GAP THAT COST MONEY. True when the branch has written to us since
+     *  the brief was written, so the instruction on the card predates their
+     *  answer. Lexi rejected an offer at 08:38 and the card still said "chase
+     *  the agent" seven hours later. */
+    replySinceBrief: boolean;
+    lastInboundPreview: string | null;
+  };
+  followups: {
+    nextDueAt: string | null;
+    overdue: boolean;
+    hoursOverdue: number | null;
+    note: string | null;
+  };
+  checklist: {
+    answered: number;
+    total: number;
+    missing: string[];
+  };
+  builder: {
+    matches: number;
+    booked: boolean;
+    viewingAt: string | null;
+    quote: number | null;
+  };
+  clock: {
+    lastTouchAt: string | null;
+    hoursSinceTouch: number | null;
+    /** Nothing has happened for long enough that the silence IS the problem. */
+    stale: boolean;
+  };
+}
+
+/** How long a deal may sit with nobody touching it before it is stale.
+ *  Three working days: long enough not to nag, short enough that a deal
+ *  cannot quietly die in Ready for call 2. */
+export const STALE_HOURS = 72;
+
+/** The condition and motivation questions the call is supposed to establish.
+ *  Missing ones become blockers, never assumptions. */
+export const CHECKLIST_KEYS = [
+  'still_available', 'why_selling', 'motivation', 'condition_notes',
+  'condition_band', 'water', 'tenure', 'floor_area',
+  'offers_received', 'best_price_indicated',
+] as const;
+
+const hoursBetween = (from: string | null | undefined, to: Date): number | null => {
+  if (!from) return null;
+  const t = Date.parse(from);
+  if (Number.isNaN(t)) return null;
+  return Math.round(((to.getTime() - t) / 3_600_000) * 10) / 10;
+};
+
+const num = (v: unknown): number | null => {
+  const n = typeof v === 'string' ? Number(v.replace(/[^0-9.]/g, '')) : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/** Read a nested key off the engine's deal blob without deriving anything. */
+const dig = (deal: Record<string, unknown> | null | undefined, ...path: string[]): unknown => {
+  let cur: unknown = deal;
+  for (const k of path) {
+    if (!cur || typeof cur !== 'object') return null;
+    cur = (cur as Record<string, unknown>)[k];
+  }
+  return cur;
+};
+
+export function buildDealState(input: DealStateInput): DealState {
+  const { property: p, contact, now } = input;
+  const deal = p.deal ?? null;
+
+  // ---- money, all READ, none derived ---------------------------------
+  const asking = num(p.asking_price);
+  const gdv = num(dig(deal, 'gdv', 'estimate'));
+  const tmv = num(dig(deal, 'tmv'));
+  const open = num(dig(deal, 'offer', 'open'));
+  const ceiling = num(dig(deal, 'offer', 'max')) ?? num(dig(deal, 'offer', 'ceiling'));
+  const refurb = num(dig(deal, 'refurb', 'low')) ?? num(dig(deal, 'refurb'));
+  const ladder = (dig(deal, 'offer', 'ladder') as unknown[] | null) ?? [];
+  const figuresOnFile = [
+    asking, gdv, tmv, open, ceiling, refurb,
+    num(p.viewing_quote),
+    ...ladder.map(num),
+  ].filter((n): n is number => n !== null);
+
+  // ---- the brief ------------------------------------------------------
+  const brief = p.brief ?? null;
+  const briefWrittenAt = (dig(brief, 'written_at') as string | null) ?? null;
+  const doNow = ((dig(brief, 'do_now') as string[] | null) ?? []).filter(Boolean);
+  const blockers = ((dig(brief, 'blockers') as string[] | null) ?? []).filter(Boolean);
+
+  // ---- calls ----------------------------------------------------------
+  const calls = [...(input.calls ?? [])].sort(
+    (a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')),
+  );
+  const lastCall = calls[0] ?? null;
+
+  // ---- writing --------------------------------------------------------
+  const messages = [...(input.messages ?? [])].sort(
+    (a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')),
+  );
+  const lastInbound = messages.find((m) => m.direction === 'inbound') ?? null;
+  const lastOutbound = messages.find((m) => m.direction === 'outbound') ?? null;
+  // The reply-after-brief test. A brief with no timestamp cannot be newer than
+  // anything, so any inbound counts: the safe wrong answer is "look at it".
+  const replySinceBrief = Boolean(
+    lastInbound?.created_at
+    && (!briefWrittenAt
+      || Date.parse(lastInbound.created_at) > Date.parse(briefWrittenAt)),
+  );
+
+  // ---- follow-ups -----------------------------------------------------
+  const live = (input.followups ?? []).filter(
+    (f) => f.status === 'pending' || f.status === 'snoozed' || !f.status,
+  ).sort((a, b) => String(a.due_at ?? '').localeCompare(String(b.due_at ?? '')));
+  const nextFollowup = live[0] ?? null;
+  const overdueHours = nextFollowup?.due_at
+    ? hoursBetween(nextFollowup.due_at, now)
+    : null;
+
+  // ---- checklist ------------------------------------------------------
+  const q = (p.qualification ?? {}) as Record<string, unknown>;
+  const missing = CHECKLIST_KEYS.filter((k) => {
+    const v = q[k];
+    return v === undefined || v === null || String(v).trim() === '';
+  });
+
+  // ---- the clock ------------------------------------------------------
+  const touches = [
+    lastCall?.created_at, lastInbound?.created_at, lastOutbound?.created_at,
+    contact?.last_contact_at, p.updated_at,
+  ].filter(Boolean) as string[];
+  const lastTouchAt = touches.length
+    ? touches.reduce((a, b) => (Date.parse(a) > Date.parse(b) ? a : b))
+    : null;
+  const hoursSinceTouch = hoursBetween(lastTouchAt, now);
+
+  return {
+    propertyId: p.id,
+    address: p.address ?? null,
+    status: p.status ?? null,
+    board: {
+      column: input.columnName ?? null,
+      movedAt: contact?.stage_moved_at ?? null,
+      hoursInColumn: hoursBetween(contact?.stage_moved_at, now),
+    },
+    money: {
+      asking, gdv, tmv, open, ceiling, refurb,
+      compsTier: (dig(deal, 'comps_tier') as string | null) ?? null,
+      figuresOnFile,
+    },
+    brief: {
+      step: (dig(brief, 'step') as string | null) ?? null,
+      doNow, blockers,
+      confidence: (dig(brief, 'confidence', 'level') as string | null) ?? null,
+      writtenAt: briefWrittenAt,
+    },
+    pinnedNote: p.pinned_note ?? null,
+    calls: {
+      count: calls.length,
+      lastAt: lastCall?.created_at ?? null,
+      lastOutcome: lastCall?.disposition ?? null,
+      hoursSinceLast: hoursBetween(lastCall?.created_at, now),
+    },
+    writing: {
+      lastInboundAt: lastInbound?.created_at ?? null,
+      lastOutboundAt: lastOutbound?.created_at ?? null,
+      replySinceBrief,
+      lastInboundPreview: lastInbound?.body
+        ? String(lastInbound.body).trim().slice(0, 400)
+        : null,
+    },
+    followups: {
+      nextDueAt: nextFollowup?.due_at ?? null,
+      overdue: overdueHours !== null && overdueHours > 0,
+      hoursOverdue: overdueHours !== null && overdueHours > 0 ? overdueHours : null,
+      note: nextFollowup?.note ?? null,
+    },
+    checklist: {
+      answered: CHECKLIST_KEYS.length - missing.length,
+      total: CHECKLIST_KEYS.length,
+      missing: [...missing],
+    },
+    builder: {
+      matches: (input.builderMatches ?? []).length,
+      booked: Boolean(p.assigned_builder_id),
+      viewingAt: p.viewing_at ?? null,
+      quote: num(p.viewing_quote),
+    },
+    clock: {
+      lastTouchAt,
+      hoursSinceTouch,
+      stale: hoursSinceTouch !== null && hoursSinceTouch >= STALE_HOURS,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------
+// THE FIGURE FENCE
+// ---------------------------------------------------------------------
+
+/** Every number the Manager wrote that could be money.
+ *
+ *  Small counts are ignored ("ring them in 2 days" is not a figure), and a
+ *  bare four-digit number in year range is treated as a year rather than a
+ *  price unless it carries a currency symbol.
+ *
+ *  A comma-grouped number counts WITH OR WITHOUT a currency prefix. That hole
+ *  is how "They want 105,000, so offer that" walked through the fence the
+ *  first time this was written: the branch's own number is exactly the kind
+ *  the Manager must not repeat as an instruction.
+ */
+export function figuresIn(text: string): number[] {
+  const out: number[] = [];
+  const re = /(GBP|£)?\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,9})/gi;
+  for (const m of text.matchAll(re)) {
+    const hasCurrency = Boolean(m[1]);
+    const raw = m[2].replace(/,/g, '');
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 1000) continue;
+    const looksLikeAYear = !hasCurrency && !m[2].includes(',')
+      && n >= 1900 && n <= 2099;
+    if (looksLikeAYear) continue;
+    out.push(n);
+  }
+  return out;
+}
+
+/** Is every figure in this text already on the deal's file?
+ *
+ *  The Manager may never name a figure that is not already recorded. It is not
+ *  allowed to do arithmetic, split a difference, or suggest a number "around"
+ *  something. A tolerance of nothing is deliberate: an offer is said out loud
+ *  on a phone call and cannot be unsaid.
+ */
+export function figuresAreOnFile(text: string, state: DealState): boolean {
+  const allowed = new Set(state.money.figuresOnFile.map((n) => Math.round(n)));
+  return figuresIn(text).every((n) => allowed.has(Math.round(n)));
+}
