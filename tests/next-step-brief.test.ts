@@ -194,9 +194,21 @@ describe('what is in the way is the part nobody can hold in their head', () => {
   it('invents no blocker when everything was answered', () => {
     const b = buildNextStepBrief({
       property: VALUED, outcome: 'figure_obtained', qualification: FULL_ANSWERS,
+      // An address to write to is part of "everything answered": a branch we
+      // cannot email is a deal that cannot be put in writing, so it is its own
+      // blocker (added 2026-08-14 after Hugo hit "contact has no email").
+      contactEmail: 'doug@ddmresidential.co.uk',
       step: 'Do the homework', now: NOW,
     })
     expect(b.blockers).toEqual([])
+  })
+
+  it('a branch with no email cannot be written to, and says so', () => {
+    const b = buildNextStepBrief({
+      property: VALUED, outcome: 'figure_obtained', qualification: FULL_ANSWERS,
+      step: 'Do the homework', now: NOW,
+    })
+    expect(b.blockers.join(' ')).toMatch(/No email address for this branch/i)
   })
 })
 

@@ -5,6 +5,11 @@
 //                          branch is still at the desk. NO figure of ours, ever.
 //                          It exists so they have our address to send the video
 //                          back to, and so we have theirs.
+//   kind: 'address_only'   the same call, when the branch has just said no to
+//                          the video. Two lines, asks for NOTHING, and its only
+//                          job is to make the address real while they are still
+//                          on the phone. A branch that has refused one thing
+//                          will refuse a second ask in the same breath.
 //   kind: 'offer'          call two, after the homework. The default, so every
 //                          existing caller is unchanged.
 //
@@ -71,7 +76,7 @@ interface Body {
    *  Hugo 2026-08-14: "on this email we can just ask for the video ... so they
    *  have our address and we have theirs." Sent while the agent is still on the
    *  phone, which is why it has to be one press. */
-  kind?: 'offer' | 'video_request';
+  kind?: 'offer' | 'video_request' | 'address_only';
 }
 
 const SYSTEM_OFFER = [
@@ -110,6 +115,28 @@ const SYSTEM_VIDEO = [
   '6. SHORT. Under 150 words. This is an admin email that has to be readable on a phone in ten seconds, not a pitch.',
   '7. British English. Warm, plain, no salesmanship, no flattery, no exclamation marks.',
   '8. NEVER use a long dash. No em dash, no en dash, anywhere. Use a comma or a full stop. No curly quotes, no ellipsis character.',
+  '',
+  'FORMAT. Return exactly this and nothing else:',
+  'SUBJECT: <one line, name the street>',
+  '<blank line>',
+  '<the email body, ending with the sign off>',
+].join('\n');
+
+// The email for a branch that said no to the video. It asks for nothing at all.
+// Hugo, 2026-08-14: "the email is gonna be just written hi, this is Pedro,
+// please confirm you have seen this email."
+const SYSTEM_ADDRESS_ONLY = [
+  'You write one very short email: a cash buyer following up a phone call with an estate agent in England, seconds after the call, while they are still at the desk.',
+  '',
+  'WHAT IT IS FOR. One thing only: they now have our email address, and they are asked to confirm it reached them. The agent has JUST declined to send a video, so this email asks for NOTHING.',
+  '',
+  'HARD RULES.',
+  '1. NEVER put a price, an offer, a figure or a range in this email. Not ours, not theirs, not the asking price.',
+  '2. ASK FOR NOTHING except a one line reply confirming it arrived. No video, no floor plan, no EPC, no viewing, no documents. They have just said no to one thing and this email must not read as a second ask.',
+  '3. Say who is writing, the company, and the property that was just discussed. Say the director may come back to them directly with a couple of questions.',
+  '4. VERY SHORT. Under 70 words. Four sentences at the most.',
+  '5. British English. Warm, plain, ordinary. No salesmanship, no flattery, no exclamation marks, no thanking them three times.',
+  '6. NEVER use a long dash. No em dash, no en dash, anywhere. Use a comma or a full stop. No curly quotes, no ellipsis character.',
   '',
   'FORMAT. Return exactly this and nothing else:',
   'SUBJECT: <one line, name the street>',
@@ -202,7 +229,8 @@ export default async function handler(req: Request): Promise<Response> {
 
   // Call one's email carries no figure at all, so it has nothing to refuse on.
   // The offer email without an offer is the thing that must never send.
-  const isVideoRequest = body.kind === 'video_request';
+  const isAddressOnly = body.kind === 'address_only';
+  const isVideoRequest = body.kind === 'video_request' || isAddressOnly;
   if (!isVideoRequest && !gbp(h.offerPrice)) {
     return new Response(
       JSON.stringify({ error: 'No offer figure on this property, so there is nothing to offer.' }),
@@ -221,9 +249,9 @@ export default async function handler(req: Request): Promise<Response> {
 
   const out = await callLLM(
     MODEL,
-    isVideoRequest ? SYSTEM_VIDEO : SYSTEM_OFFER,
+    isAddressOnly ? SYSTEM_ADDRESS_ONLY : isVideoRequest ? SYSTEM_VIDEO : SYSTEM_OFFER,
     [{ role: 'user', content: user }],
-    isVideoRequest ? 700 : 1200,
+    isAddressOnly ? 400 : isVideoRequest ? 700 : 1200,
   );
   if (!out) {
     return new Response(JSON.stringify({ error: 'The model did not answer. Try again.' }), {

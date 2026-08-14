@@ -91,6 +91,39 @@ export function videoRequestTemplate(opts: {
   };
 }
 
+/** The email for a branch that said NO to the video.
+ *
+ *  Hugo, 2026-08-14: "sometimes the agent refuses the video. Then how do we get
+ *  their email? You ask, can I have your email anyway, so my director can
+ *  contact you direct with some questions. And the email is gonna be just
+ *  written hi, this is Pedro, please confirm you have seen this email."
+ *
+ *  So it asks for NOTHING. Its whole job is to make the address real while they
+ *  are still on the phone: they read it out, they watch it arrive, they say so.
+ *  A branch that has just refused one thing will refuse a second ask in the same
+ *  breath, and we would rather have a working address than a second no. */
+export function addressOnlyTemplate(opts: {
+  street: string;
+  person?: string | null;
+  fromName: string;
+}): { subject: string; body: string } {
+  const hi = opts.person ? `Hi ${opts.person},` : 'Hi,';
+  return {
+    subject: `${opts.street}, ${opts.fromName} at ${COMPANY}`,
+    body: [
+      hi,
+      '',
+      `This is ${opts.fromName} at ${COMPANY}, we just spoke about ${opts.street}. Sending this so you have my email address.`,
+      '',
+      'Could you reply to confirm it has reached you? Our director may come back to you directly with a couple of questions on it.',
+      '',
+      'Thanks,',
+      `${opts.fromName}`,
+      COMPANY,
+    ].join('\n'),
+  };
+}
+
 const streetOf = (address?: string | null): string => {
   const s = (address ?? '').trim();
   if (!s) return 'the property';
@@ -124,17 +157,24 @@ export default function PropertyEmailPane({
   // than not drafting at all.
   const touched = useRef(false);
   const drafted = useRef(false);
+  // Which call-one email is in the box. Flipped by Pedro the moment a branch
+  // says no to the video, which happens mid-sentence, so it is one button and
+  // not a menu.
+  const [askKind, setAskKind] = useState<'video' | 'address_only'>('video');
 
   const street = streetOf(offerHouse?.address);
 
-  // 1. The template, immediately. There is always something to send.
+  // 1. The template, immediately. There is always something to send, and it
+  //    swaps the instant he presses the other button.
   useEffect(() => {
     if (touched.current) return;
     if (isOfferCall) return; // the offer email is written, never templated
-    const t = videoRequestTemplate({ street, person: agentPersonName, fromName: agentFirstName });
+    const t = askKind === 'video'
+      ? videoRequestTemplate({ street, person: agentPersonName, fromName: agentFirstName })
+      : addressOnlyTemplate({ street, person: agentPersonName, fromName: agentFirstName });
     setSubject(t.subject);
     setBody(t.body);
-  }, [street, agentPersonName, agentFirstName, isOfferCall]);
+  }, [street, agentPersonName, agentFirstName, isOfferCall, askKind]);
 
   // A different lead is a different email. Reset, or the last branch's draft
   // gets sent to this one.
@@ -144,6 +184,7 @@ export default function PropertyEmailPane({
     setSent(false);
     setNote(null);
     setHeard(null);
+    setAskKind('video');
     setEmail(contactEmail ?? '');
   }, [contactId, contactEmail]);
 
@@ -157,7 +198,7 @@ export default function PropertyEmailPane({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          kind: isOfferCall ? 'offer' : 'video_request',
+          kind: isOfferCall ? 'offer' : askKind === 'video' ? 'video_request' : 'address_only',
           callId: currentCallId ?? null,
           house: offerHouse ?? {},
           agentName: agentPersonName ?? null,
@@ -184,7 +225,7 @@ export default function PropertyEmailPane({
     } finally {
       setDrafting(false);
     }
-  }, [drafting, isOfferCall, currentCallId, offerHouse, agentPersonName, contactName, agentFirstName]);
+  }, [drafting, isOfferCall, askKind, currentCallId, offerHouse, agentPersonName, contactName, agentFirstName]);
 
   // 3. The address, typed by the brain. The coach files a card the moment it
   //    hears one; this listens for it and fills the field, then writes the
@@ -281,7 +322,9 @@ export default function PropertyEmailPane({
         <p className="mt-0.5 text-[11px] leading-snug text-[#6B7280]">
           {isOfferCall
             ? 'Written from this call and the figures on the strip. Read it before you send it.'
-            : 'Ask for the email, send this, then say: "I have just sent you one, can you tell me it lands?" It asks for the video and gives them our address.'}
+            : askKind === 'video'
+              ? 'Ask for the email, send this, then say: "I have just sent you one, can you tell me it lands?" It asks for the video and gives them our address.'
+              : 'They said no to the video. This one asks for nothing: it just puts your address in front of them and asks them to confirm it arrived.'}
         </p>
       </div>
 
@@ -324,23 +367,45 @@ export default function PropertyEmailPane({
             className="inline-flex items-center gap-1.5 rounded-md border border-[#CFDCEC] bg-[#EEF2F8] px-2 py-1 text-[11px] font-semibold text-[#3C5A87] disabled:opacity-50"
           >
             {drafting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {drafting ? 'Writing it' : isOfferCall ? 'Write the offer' : 'Write it from this call'}
+            {drafting
+              ? 'Writing it'
+              : isOfferCall
+                ? 'Write the offer'
+                : askKind === 'video'
+                  ? 'Write it from this call'
+                  : 'Write the short one'}
           </button>
-          {!isOfferCall && (
-            <button
-              onClick={() => {
-                touched.current = false;
-                const t = videoRequestTemplate({ street, person: agentPersonName, fromName: agentFirstName });
-                setSubject(t.subject);
-                setBody(t.body);
-                setNote('Back to the standard email.');
-              }}
-              className="text-[11px] font-medium text-[#6B7280] hover:text-[#1A1A1A] hover:underline"
-            >
-              Use the template
-            </button>
-          )}
         </div>
+
+        {/* THE TWO CALL-ONE EMAILS. A branch says no to the video mid-sentence,
+            and the answer to that is never "then we get no email": the address
+            is the call, the video is a bonus. One press swaps to the two-line
+            one that asks for nothing. */}
+        {!isOfferCall && (
+          <div className="flex gap-1" data-testid="property-email-ask-kind">
+            {([
+              ['video', 'Asked for the video'],
+              ['address_only', 'No video, just my address'],
+            ] as const).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => {
+                  touched.current = false;
+                  drafted.current = false;
+                  setAskKind(k);
+                  setNote(null);
+                }}
+                className={`flex-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                  askKind === k
+                    ? 'border-[#3C5A87] bg-[#EEF2F8] text-[#3C5A87]'
+                    : 'border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#FAFAF8]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {note && (
           <div className="flex items-start gap-1.5 rounded border border-[#EBD9B4] bg-[#FDF3E3] px-2 py-1 text-[11px] leading-snug text-[#9A6B1E]">
