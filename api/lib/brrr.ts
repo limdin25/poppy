@@ -4,6 +4,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { notifyBusinessOwner } from './notify.js';
 import { offerRange, fmtGBP } from './brrr-offer.js';
+import { firstText } from './anthropic-content.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -224,7 +225,7 @@ ${transcript}`,
     }),
   });
   const data = await res.json() as { content?: Array<{ text?: string }> };
-  const text = data.content?.[0]?.text || '';
+  const text = firstText(data.content);
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 }

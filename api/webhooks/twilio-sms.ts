@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendSMS } from '../../src/integrations/twilio/client.js';
 import { buildBusinessContext, getConversationHistory, generateAIReply, stripMarkdown } from '../lib/ai-reply.js';
+import { firstText } from '../lib/anthropic-content.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -42,7 +43,7 @@ async function maybeBookOnboarding(
       body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 150, messages: [{ role: 'user', content: `Today is ${today} (Europe/London). Below is a text chat where a business owner books a 15-minute ONBOARDING with Elsie. If a specific onboarding date AND time has now been clearly AGREED, return JSON {"booked":true,"iso":"<full ISO 8601 with the correct +01:00 BST offset>","label":"<short, e.g. Tomorrow 5pm>"}. If no firm date+time yet, return {"booked":false}. JSON only.\n\nChat:\n${chat}` }] }),
     });
     const data = await res.json() as { content?: Array<{ text?: string }> };
-    const m = (data.content?.[0]?.text || '').match(/\{[\s\S]*\}/);
+    const m = firstText(data.content).match(/\{[\s\S]*\}/);
     const parsed = m ? JSON.parse(m[0]) : { booked: false };
     if (!parsed.booked || !parsed.iso) return null;
     const start = new Date(parsed.iso);

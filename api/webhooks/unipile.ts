@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { fetchAndStoreAvatar, fetchEmailAvatar } from '../lib/fetch-avatar.js';
 import { maybeAlertChannelDisconnected } from '../lib/channel-alerts.js';
+import { firstText } from '../lib/anthropic-content.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -422,7 +423,7 @@ async function classifyLead(businessId: string, conversationId: string, contactI
     });
     if (!res.ok) return;
     const data = await res.json() as { content?: Array<{ text?: string }> };
-    const raw = data.content?.[0]?.text || '';
+    const raw = firstText(data.content);
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return;
     const parsed = JSON.parse(match[0]) as { status?: string; score?: number; reason?: string };

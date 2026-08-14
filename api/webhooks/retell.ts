@@ -3,6 +3,7 @@ import { notifyBusinessOwner } from '../lib/notify.js';
 import { handleBrrrCallEvent, handleBrrrTranscriptUpdate } from '../lib/brrr.js';
 import { sendSMS } from '../../src/integrations/twilio/client.js';
 import { getSmsFromNumber } from '../lib/channel-lookup.js';
+import { firstText } from '../lib/anthropic-content.js';
 import { callLLM } from '../lib/llm.js';
 import {
   advanceSiteState,
@@ -93,7 +94,7 @@ async function extractCallerInfo(transcript: string, businessName: string, busin
   });
 
   const data = await res.json() as { content?: Array<{ text?: string }> };
-  const text = data.content?.[0]?.text;
+  const text = firstText(data.content);
   if (!text) return {};
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
@@ -119,7 +120,7 @@ async function buildDemoRecap(transcript: string, phone: string, businessId: str
     }),
   });
   const data = await res.json() as { content?: Array<{ text?: string }> };
-  const m = (data.content?.[0]?.text || '').match(/\{[\s\S]*\}/);
+  const m = firstText(data.content).match(/\{[\s\S]*\}/);
   try {
     const j = JSON.parse(m![0]);
     return { sms: (j.sms || '').trim(), booked: !!j.booked, iso: j.iso || undefined, label: j.label || undefined };

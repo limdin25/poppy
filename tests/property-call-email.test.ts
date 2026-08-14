@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { videoRequestTemplate } from '../src/features/crm/components/live-call/PropertyEmailPane'
+import { firstText } from '../api/lib/anthropic-content'
 
 const root = resolve(__dirname, '..')
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8')
@@ -190,5 +191,40 @@ describe('the script tells him to send it on the call', () => {
   it('the coach carries the same instruction, or it grades a call on wording he cannot see', () => {
     expect(COACH).toMatch(/I'm sending you one now so you've got my address/)
     expect(COACH).toMatch(/Can you just tell me it's landed/)
+  })
+})
+
+describe('reading what the model actually said', () => {
+  // THE BUG THAT MADE EVERY AI EMAIL FAIL. claude-sonnet-5 answers with a
+  // `thinking` block FIRST, so content[0].text is undefined and callLLM
+  // returned '' every single time. On production the drafts had never once
+  // worked: the API call was fine, the reader was not. Found 2026-08-14 by
+  // replaying the request by hand against the production key.
+  it('takes the first block that HAS text, never content[0]', () => {
+    expect(firstText([{ type: 'thinking', thinking: 'hmm' } as never, { type: 'text', text: 'Dear Doug' }]))
+      .toBe('Dear Doug')
+    expect(firstText([{ type: 'text', text: 'plain' }])).toBe('plain')
+    expect(firstText([{ type: 'thinking' } as never])).toBe('')
+    expect(firstText(undefined)).toBe('')
+    expect(firstText([])).toBe('')
+    // A whitespace-only block is not an answer.
+    expect(firstText([{ type: 'text', text: '   ' }, { type: 'text', text: 'real' }])).toBe('real')
+  })
+
+  it('every Anthropic reader in api/ goes through it', () => {
+    // Same landmine everywhere else: those callers resolve to sonnet-4-6 today
+    // and work, and would have gone silent the day anyone switched the model in
+    // settings. The change is a no-op for a model with no thinking block.
+    for (const f of [
+      'api/lib/brrr.ts',
+      'api/webhooks/retell.ts',
+      'api/webhooks/unipile.ts',
+      'api/webhooks/twilio-sms.ts',
+      'api/follow-up/enqueue.ts',
+    ]) {
+      const src = read(f)
+      expect(src, f).not.toMatch(/content\?\.\[0\]\?\.text/)
+      expect(src, f).toMatch(/firstText/)
+    }
   })
 })

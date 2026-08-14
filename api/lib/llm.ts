@@ -1,4 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+import { firstText } from './anthropic-content.js';
+
+export { firstText };
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -152,8 +155,8 @@ export async function callLLM(
       console.error(`[llm] Anthropic error: ${res.status} ${await res.text()}`);
       return '';
     }
-    const data = await res.json() as { content?: Array<{ text?: string }> };
-    return data.content?.[0]?.text || '';
+    const data = await res.json() as { content?: Array<{ type?: string; text?: string }> };
+    return firstText(data.content);
   }
 
   const res = await fetch(`${getBaseUrl(provider)}/v1/chat/completions`, {

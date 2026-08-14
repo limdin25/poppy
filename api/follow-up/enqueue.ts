@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { firstText } from '../lib/anthropic-content.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -96,7 +97,7 @@ Rules:
   });
 
   const data = await res.json() as { content?: Array<{ text?: string }> };
-  const text = data.content?.[0]?.text || '';
+  const text = firstText(data.content);
 
   try {
     const parsed = JSON.parse(text);
