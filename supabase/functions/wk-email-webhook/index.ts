@@ -325,7 +325,40 @@ async function ownerForRecipient(
     .ilike('email', toEmail)
     .limit(1)
     .maybeSingle();
-  return (data as { id?: string } | null)?.id ?? null;
+  const direct = (data as { id?: string } | null)?.id ?? null;
+  if (direct) return direct;
+
+  // NOBODY SPELLS AN ADDRESS RIGHT ON A PHONE CALL. Pedro reads his address
+  // out on every property call and the branch types what it hears, so mail
+  // arrives at predro@, petro@ and hello@hostunico.com. The mailbox is a
+  // catch-all so it all lands, but none of it matches a profile, so all of it
+  // was created ownerless and NO AGENT COULD READ IT. Seven real threads were
+  // sitting in that state on 2026-08-14, including the vendor's rejection of
+  // our offer on Orion Way.
+  //
+  // The map is a platform_settings row, not a constant, because the next
+  // misspelling is not knowable from here and must not need a deploy.
+  try {
+    const { data: row } = await supa
+      .from('platform_settings')
+      .select('value')
+      .eq('key', 'mailbox_owners')
+      .maybeSingle();
+    const map = JSON.parse(String((row as { value?: string } | null)?.value ?? '{}')) as Record<string, string>;
+    const alias = map[toEmail.trim().toLowerCase()];
+    if (!alias) return null;
+    // The map holds an ADDRESS, never a user id: an id in a settings row is
+    // unreadable to whoever maintains it, and a wrong one is silent.
+    const { data: aliased } = await supa
+      .from('profiles')
+      .select('id')
+      .ilike('email', alias)
+      .limit(1)
+      .maybeSingle();
+    return (aliased as { id?: string } | null)?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -421,9 +454,16 @@ async function findOrCreateContact(
       .select('id, name, email')
       .is('email', null)
       // Cheap prefilter so this does not pull the whole contact table. The
-      // exact comparison is done below; this only has to not exclude a match,
-      // and every companyKey match necessarily contains these letters.
-      .ilike('name', `%${label.slice(0, 4)}%`)
+      // exact comparison is done below; this only has to not EXCLUDE a match.
+      //
+      // THREE characters, not four. The domain label has the spaces squeezed
+      // out of it and the contact name does not: "ddmresidential".slice(0, 4)
+      // is "ddmr", and "DDM Residential, Grimsby" does not contain "ddmr"
+      // because of the space after DDM. So the prefilter threw away the row
+      // before the comparison below ever saw it, and no amount of fixing the
+      // comparison would have helped. Three characters is the most that can be
+      // taken before a space can fall inside the window.
+      .ilike('name', `%${label.slice(0, 3)}%`)
       .limit(CANDIDATE_CAP);
 
     const rows = (candidates ?? []) as Array<{ id: string; name: string | null }>;
@@ -431,7 +471,24 @@ async function findOrCreateContact(
       // Say it rather than let a match go missing quietly.
       console.warn(`[wk-email-webhook] candidate prefilter hit its ${CANDIDATE_CAP} cap for "${label}" — a real match may have been cut off`);
     }
-    const hits = rows.filter((c) => companyKey(c.name ?? '') === label);
+    // THE SCRAPER NAMES A BRANCH "Agency, Town". So the contact is called "DDM
+    // Residential, Grimsby" and companyKey() gives "ddmresidentialgrimsby",
+    // which is never equal to the domain label "ddmresidential". Every estate
+    // agency the scraper files is named that way, so this exact-match rule
+    // could not attach a single branch reply, and it showed: on 2026-08-14
+    // Lexi Collins emailed to say the vendor had REJECTED our offer on Orion
+    // Way, it minted its own contact owned by nobody, and it sat unread for
+    // seven hours beside a card that looked like DDM had never replied.
+    //
+    // The town is dropped and tried as a second key. Still exact, still
+    // refusing on two matches, so nothing is guessed: "ddmresidential" either
+    // is the domain or it is not.
+    const keysOf = (name: string): string[] => {
+      const whole = companyKey(name);
+      const agency = companyKey(name.split(',')[0] ?? '');
+      return agency && agency !== whole ? [whole, agency] : [whole];
+    };
+    const hits = rows.filter((c) => keysOf(c.name ?? '').includes(label));
 
     if (hits.length === 1) {
       // Backfill the address so the next reply takes the cheap path above.
