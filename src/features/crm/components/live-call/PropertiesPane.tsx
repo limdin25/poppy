@@ -67,7 +67,7 @@ const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> 
 const OUTCOMES: Array<{ key: string; label: string; cls: string }> = [
   { key: 'figure_obtained', label: 'Figure obtained', cls: 'bg-[#B8860B] hover:bg-[#a2760a]' },
   { key: 'qualified', label: 'Qualified', cls: 'bg-[#2E7D43] hover:bg-[#276b39]' },
-  { key: 'deciding', label: 'Offer with vendor', cls: 'bg-[#7C5CBF] hover:bg-[#6a4ea8]' },
+  { key: 'deciding', label: 'Offer sent', cls: 'bg-[#7C5CBF] hover:bg-[#6a4ea8]' },
   { key: 'follow_up', label: 'Follow up', cls: 'bg-[#2F8F9D] hover:bg-[#297d8a]' },
   { key: 'callback', label: 'Call back', cls: 'bg-[#3C5A87] hover:bg-[#33507a]' },
   { key: 'not_qualified', label: 'Not for us', cls: 'bg-[#6B7280] hover:bg-[#5b626d]' },

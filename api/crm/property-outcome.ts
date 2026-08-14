@@ -89,8 +89,12 @@ const PIPELINE_OUTCOMES: readonly Outcome[] = ['qualified', 'figure_obtained'];
  *  is only useful if the board reflects it. Outcomes not listed here leave the
  *  card where it is. Column names, matched case-exact against wk_pipeline_columns. */
 const BOARD_COLUMN_FOR: Partial<Record<Outcome, string>> = {
+  // 2026-08-14, Hugo's two-call funnel: a finished discovery call parks the
+  // branch under "Discovery done, evaluating" (the deal is with us for
+  // pricing); Hugo drags it to "Ready for call 2" when the number is set.
+  qualified: 'Discovery done, evaluating',
   figure_obtained: 'Ballpark agreed',
-  deciding: 'Offer with vendor',
+  deciding: 'Offer sent',
   follow_up: 'Follow up',
 };
 

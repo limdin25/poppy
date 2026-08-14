@@ -94,8 +94,11 @@ describe('pressing Figure obtained moves the branch card', () => {
     // The move is now driven by a table. Figure obtained still lands in
     // Ballpark; Deciding and Follow up (added 2026-08-11) each get their own.
     expect(OUTCOME).toMatch(/figure_obtained: 'Ballpark agreed'/);
-    expect(OUTCOME).toMatch(/deciding: 'Offer with vendor'/);
+    expect(OUTCOME).toMatch(/deciding: 'Offer sent'/);
     expect(OUTCOME).toMatch(/follow_up: 'Follow up'/);
+    // The two-call funnel (2026-08-14): a finished discovery call parks the
+    // branch under evaluating, so it cannot vanish from the board.
+    expect(OUTCOME).toMatch(/qualified: 'Discovery done, evaluating'/);
     // Only mapped outcomes move a card; the rest leave it where it is.
     expect(OUTCOME).toMatch(/const targetColumn = BOARD_COLUMN_FOR\[outcome\]/);
     expect(OUTCOME).toMatch(/if \(targetColumn && property\.wk_contact_id\)/);

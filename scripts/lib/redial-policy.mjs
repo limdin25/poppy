@@ -31,10 +31,13 @@
  * worth protecting most were the ones eligible to be rung again.
  */
 export const SPOKE_TO_A_HUMAN = new Set([
-  // Current board names (renamed 2026-08-13 to match the two-call process)...
-  'Discovery done', 'Ballpark agreed', 'Offer with vendor',
-  // ...and the old names, kept so a call dispositioned before the rename
+  // Current board names (Hugo's two-call funnel, 2026-08-14)...
+  'Discovery done, evaluating', 'Ready for call 2', 'Ballpark agreed',
+  'Needs viewing', 'Offer sent', 'Offer accepted', 'Sent to investor',
+  'Deal closed',
+  // ...and every older name, kept so a call dispositioned before a rename
   // still reads as a conversation rather than a cold row to re-deal.
+  'Discovery done', 'Offer with vendor',
   'Interested', 'Not interested', 'Booked', 'Nurturing', 'Ballpark', 'Deciding',
 ])
 
