@@ -214,6 +214,9 @@ export default function PropertyEmailPane({
   }, [currentCallId, draft]);
 
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+  // No lead on screen is a real state in this room (between calls, empty
+  // queue). The pane still draws, so Pedro can read the email he is about to
+  // send before the lead lands; only the send is held back.
   const canSend = valid && !!subject.trim() && !!body.trim() && !sending && !!contactId;
 
   async function send() {
@@ -264,14 +267,6 @@ export default function PropertyEmailPane({
     } finally {
       setSending(false);
     }
-  }
-
-  if (!contactId) {
-    return (
-      <div className="px-4 py-6 text-center text-[12px] leading-snug text-[#9CA3AF]">
-        No lead on screen.
-      </div>
-    );
   }
 
   return (
@@ -377,11 +372,15 @@ export default function PropertyEmailPane({
           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : sent ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
           {sending ? 'Sending' : sent ? 'Sent, ask them to confirm it landed' : 'Send it now'}
         </button>
-        {!valid && (
+        {!contactId ? (
+          <p className="text-center text-[10.5px] text-[#9CA3AF]">
+            No lead on screen yet. This is the email that will go out.
+          </p>
+        ) : !valid ? (
           <p className="text-center text-[10.5px] text-[#9CA3AF]">
             The address is what is missing. Ask for it, or type it here.
           </p>
-        )}
+        ) : null}
       </div>
     </div>
   );
