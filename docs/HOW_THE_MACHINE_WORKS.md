@@ -293,6 +293,31 @@ closed.
 
 ---
 
+## Stage 10b. When they come back on price
+
+`api/lib/counter-position.ts` decides **raise, hold or pass**, in code, before
+a word of the reply is written. The email writer is handed the answer and the
+only figures that answer allows; it cannot reach a different one.
+
+| Situation | What happens |
+|---|---|
+| Their figure is inside our ceiling | Raise to their figure. That is a deal. |
+| They want more, and we have room | Raise to the ceiling and say it is the maximum, so the next answer is yes or no. |
+| They want more, and we are at the ceiling | Pass, and leave the door open. |
+| No ceiling on file | Hold. There is no way to know a figure is safe. |
+| Evidence below gold or strong | Hold. We do not negotiate on comps we would not have offered on. |
+
+**A decision may never propose paying above the ceiling.** That invariant is
+swept across hundreds of input combinations in the tests, because the ceiling is
+the whole business: the bank lends 75% of the finished value, so paying more
+leaves the investor's money stuck in the wall and there is no deal to sell.
+
+On 39 Orion Way it returns **hold**, because the valuation rests on `good`
+comparables. Even with sound evidence it would return **pass**, because we are
+already above the ceiling. There was never a number to send.
+
+---
+
 ## Stage 11. How a deal becomes money
 
 1. Ballpark agreed on call two.
