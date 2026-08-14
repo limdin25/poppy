@@ -55,8 +55,15 @@ interface SendBody {
   /** PR 86: campaign-aware resolution — picks from wk_campaign_numbers
    *  (channel='email') for this campaign, same precedence as wk-dialer-start. */
   campaign_id?: string;
-  /** Public URL to a file in crm-attachments bucket. Sent as Resend attachment. */
+  /** A URL Resend can fetch, and attaches for real. Usually a public file in
+   *  crm-attachments; since 2026-08-14 it may also be a SIGNED url from the
+   *  private proof-of-funds bucket, which is why the filename can no longer be
+   *  taken from the URL (a signed url ends in ?token=..., and Hugo's bank
+   *  statement would have arrived called "x.pdf?token=eyJhb..."). */
   attachment_url?: string;
+  /** What the attachment should be CALLED in the email. Optional: without it
+   *  the last path segment is used, which is right for an ordinary upload. */
+  attachment_name?: string;
   /** Send to THIS address instead of the one stored on the contact. Used by the
    *  dialer's property Email tab, where the agent has just said their address
    *  on the call. Validated, never blindly trusted. */
@@ -240,7 +247,12 @@ serve(async (req: Request) => {
         text: body || undefined,
         ...(payload.attachment_url ? {
           attachments: [{
-            filename: payload.attachment_url.split('/').pop() || 'attachment',
+            // The query string is stripped before the filename is taken: a
+            // signed url carries ?token=..., and an estate agent opening
+            // "statement.pdf?token=eyJhbGciOi..." is not a good look.
+            filename: (payload.attachment_name || '').trim()
+              || payload.attachment_url.split('?')[0].split('/').pop()
+              || 'attachment',
             path: payload.attachment_url,
           }],
         } : {}),

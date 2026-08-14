@@ -22,8 +22,9 @@
 // move_to_stage_id, sending advances the contact's pipeline column.
 // Same behaviour applies for WhatsApp + Email templates.
 
-import { useEffect, useMemo, useState } from 'react';
-import { Send, MessageSquare, X, Check, ArrowRight, Phone, Mail, Paperclip, Trash2, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Send, MessageSquare, X, Check, ArrowRight, Phone, Mail, Paperclip, Trash2, Loader2, Sparkles, ShieldCheck } from 'lucide-react';
+import type { NextStepBrief } from '../../../../../api/lib/next-step-brief';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../../store/SmsV2Store';
@@ -98,6 +99,28 @@ interface Props {
    *  "WhatsApp" icon on the contacts list opens the modal already
    *  pinned to WhatsApp instead of forcing a re-pick. */
   defaultChannel?: Channel | null;
+  /** THE DEAL BEHIND THIS CARD, on the boards that have one.
+   *
+   *  Hugo, 2026-08-14: "when we have to email the prospects I want the AI to
+   *  draft it, I don't want a static template. The prospect that's expecting
+   *  the approval of funds, the email should be there ready to go."
+   *
+   *  With this present the email channel writes itself from the next-step
+   *  brief the moment it opens, and attaches the proof of funds when that is
+   *  what the deal is waiting on. Absent everywhere else, so the eight other
+   *  call sites are byte-identical. */
+  deal?: EmailDeal | null;
+}
+
+export interface EmailDeal {
+  brief?: NextStepBrief | null;
+  pinnedNote?: string | null;
+  address?: string | null;
+  bedrooms?: number | null;
+  propertyType?: string | null;
+  /** The branch, and the person we ask for. */
+  agencyName?: string | null;
+  agentPersonName?: string | null;
 }
 
 const CHANNEL_LABEL: Record<Channel, string> = {
@@ -106,11 +129,26 @@ const CHANNEL_LABEL: Record<Channel, string> = {
   email: 'Email',
 };
 
+/** Does this deal hang on us proving we have the money?
+ *
+ *  Matched on the brief's own words rather than guessed, so the statement is
+ *  never attached to a branch that did not ask for it. A bank statement is not
+ *  something to send speculatively. */
+export function needsProofOfFunds(deal?: EmailDeal | null): boolean {
+  const text = [
+    ...(deal?.brief?.blockers ?? []),
+    ...(deal?.brief?.do_now ?? []),
+    deal?.pinnedNote ?? '',
+  ].join(' ');
+  return /proof of fund|pof\b|evidence of fund|proof of cash/i.test(text);
+}
+
 export default function ContactSmsModal({
   contact,
   onClose,
   agentFirstName,
   defaultChannel = null,
+  deal = null,
 }: Props) {
   const { pushToast, columns, patchContact } = useSmsV2();
   const persist = useContactPersistence();
@@ -135,7 +173,17 @@ export default function ContactSmsModal({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
+  /** What the attachment is CALLED. A signed url ends in ?token=..., so the
+   *  filename can no longer be read off the end of the link. */
+  const [attachmentName, setAttachmentName] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [draftNote, setDraftNote] = useState<string | null>(null);
+  // Once he types, nothing overwrites him. A draft can land seconds after he
+  // has started editing, and losing what somebody typed is worse than not
+  // drafting at all. Same rule as the dialer's Email pane.
+  const touched = useRef(false);
+  const drafted = useRef(false);
   const [sending, setSending] = useState(false);
   const [loadingTpls, setLoadingTpls] = useState(true);
   const [recentSendCount, setRecentSendCount] = useState(0);
@@ -211,6 +259,107 @@ export default function ContactSmsModal({
     setBody('');
     if (channel !== 'email') setSubject('');
   }, [channel]);
+
+  // THE EMAIL WRITES ITSELF. Hugo: "I don't want a static template, I want the
+  // AI brain to always draft it."
+  //
+  // Written from the next-step BRIEF, not from a transcript: by the time a card
+  // is being emailed off the board the call is days old, and what matters is
+  // the one thing the deal is waiting on. Every figure in the brief was read
+  // from the deal engine when it was written, so nothing is re-derived here.
+  const draft = useCallback(async () => {
+    if (!deal || drafting) return;
+    setDrafting(true);
+    setDraftNote(null);
+    try {
+      const res = await fetch('/api/crm/draft-offer-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'follow_up',
+          house: {
+            address: deal.address ?? null,
+            askingPrice: deal.brief?.asking ?? null,
+            offerPrice: deal.brief?.offer ?? null,
+            beds: deal.bedrooms ?? null,
+            propertyType: deal.propertyType ?? null,
+          },
+          context: {
+            doNow: deal.brief?.do_now ?? null,
+            blockers: deal.brief?.blockers ?? null,
+            pinnedNote: deal.pinnedNote ?? null,
+            step: deal.brief?.step ?? null,
+          },
+          agentName: deal.agentPersonName ?? null,
+          agencyName: deal.agencyName ?? contact?.name ?? null,
+          fromName: agentFirstName ?? 'Hugo',
+          companyName: 'Unico',
+        }),
+      });
+      const json = await res.json() as { subject?: string; body?: string; error?: string };
+      if (!res.ok || json.error) {
+        setDraftNote(json.error ?? 'Could not write it. Type the email yourself.');
+        return;
+      }
+      if (touched.current) {
+        setDraftNote('Draft ready, but you had started typing so it was left alone.');
+        return;
+      }
+      if (json.subject) setSubject(json.subject);
+      if (json.body) setBody(json.body);
+      setDraftNote('Written by the brain from this deal. Read it before you send it.');
+    } catch {
+      setDraftNote('Could not reach the writer. Type the email yourself.');
+    } finally {
+      setDrafting(false);
+    }
+  }, [deal, drafting, contact?.name, agentFirstName]);
+
+  // THE PROOF OF FUNDS, already attached. Hugo: "when our brain generates the
+  // email the proof of funds is already attached and we just confirm everything
+  // is okay and send it."
+  //
+  // Only when the deal actually asked for it. The document carries account
+  // numbers and sort codes, so it is never attached speculatively, and the link
+  // is a signed one that dies in an hour (api/crm/proof-of-funds.ts).
+  const attachProof = useCallback(async () => {
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) return;
+      const res = await fetch('/api/crm/proof-of-funds', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json() as {
+        available?: boolean; url?: string; filename?: string; reason?: string;
+      };
+      if (!json.available || !json.url) {
+        setDraftNote((n) => n ?? (json.reason ?? 'No proof of funds on file to attach.'));
+        return;
+      }
+      setAttachmentUrl(json.url);
+      setAttachmentName(json.filename ?? 'Proof of funds.pdf');
+    } catch {
+      setDraftNote((n) => n ?? 'The proof of funds could not be attached. Attach it by hand.');
+    }
+  }, []);
+
+  // Both, the moment the email channel opens on a deal. One press for Hugo:
+  // read it, then send.
+  useEffect(() => {
+    if (channel !== 'email' || !deal || drafted.current) return;
+    drafted.current = true;
+    void draft();
+    if (needsProofOfFunds(deal)) void attachProof();
+  }, [channel, deal, draft, attachProof]);
+
+  // A different lead is a different email.
+  useEffect(() => {
+    touched.current = false;
+    drafted.current = false;
+    setDraftNote(null);
+    setAttachmentName(null);
+  }, [contact?.id]);
 
   const firstName = useMemo(
     () => (contact?.name ?? '').trim().split(/\s+/)[0] ?? '',
@@ -319,6 +468,7 @@ export default function ContactSmsModal({
             body: trimBody,
             channel_id: selectedFromId || undefined,
             attachment_url: attachmentUrl || undefined,
+            attachment_name: attachmentName || undefined,
           },
         });
       }
@@ -553,6 +703,32 @@ export default function ContactSmsModal({
             </select>
           )}
 
+          {/* The brain wrote it. Hugo reads it and presses send, or asks for
+              another one. Only on a card that carries a deal; every other
+              email in this modal is untouched. */}
+          {channel === 'email' && deal && (
+            <div
+              className="flex items-center gap-2 rounded-[10px] border border-[#3C5A87]/25 bg-[#EEF2F8] px-3 py-2"
+              data-testid="contact-sms-modal-draft"
+            >
+              <Sparkles className={cn('w-3.5 h-3.5 text-[#3C5A87]', drafting && 'animate-pulse')} />
+              <span className="flex-1 text-[11px] leading-snug text-[#3C5A87]">
+                {drafting
+                  ? 'Writing this one from the deal...'
+                  : draftNote ?? 'Written from this deal, not from a template.'}
+              </span>
+              <button
+                type="button"
+                onClick={() => { touched.current = false; void draft(); }}
+                disabled={drafting}
+                className="flex-shrink-0 rounded-[8px] border border-[#3C5A87]/30 bg-white px-2 py-1 text-[11px] font-semibold text-[#3C5A87] hover:bg-[#F5F8FC] disabled:opacity-50"
+                data-testid="contact-sms-modal-rewrite"
+              >
+                Write it again
+              </button>
+            </div>
+          )}
+
           {channel === 'email' && (
             <div>
               <input
@@ -578,7 +754,7 @@ export default function ContactSmsModal({
           {channel === 'email' && (
             <input
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(e) => { touched.current = true; setSubject(e.target.value); }}
               placeholder="Email subject"
               className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
               data-testid="contact-sms-modal-subject"
@@ -588,6 +764,7 @@ export default function ContactSmsModal({
           <textarea
             value={body}
             onChange={(e) => {
+              touched.current = true;
               setBody(e.target.value);
               if (showSentBanner) setShowSentBanner(false);
             }}
@@ -604,12 +781,31 @@ export default function ContactSmsModal({
           {/* Attachment upload / preview */}
           <div className="flex items-center gap-2">
             {attachmentUrl ? (
-              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-[#EEF2F8] border border-[#3C5A87]/20 rounded-lg text-[11px]">
-                <Paperclip className="w-3 h-3 text-[#3C5A87]" />
-                <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-[#3C5A87] font-medium truncate max-w-[200px]">
-                  {attachmentUrl.split('/').pop()}
+              <div
+                className="flex items-center gap-2 px-2.5 py-1.5 bg-[#EEF2F8] border border-[#3C5A87]/20 rounded-lg text-[11px]"
+                data-testid="contact-sms-modal-attachment"
+              >
+                {attachmentName ? (
+                  <ShieldCheck className="w-3 h-3 text-[#2E7D43]" />
+                ) : (
+                  <Paperclip className="w-3 h-3 text-[#3C5A87]" />
+                )}
+                <a
+                  href={attachmentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open it and check it before you send"
+                  className="text-[#3C5A87] font-medium truncate max-w-[260px]"
+                >
+                  {/* The signed link ends in ?token=..., so the label is the
+                      name we were given, never the end of the URL. */}
+                  {attachmentName ?? attachmentUrl.split('?')[0].split('/').pop()}
                 </a>
-                <button onClick={() => setAttachmentUrl(null)} className="text-[#6B7280] hover:text-red-500">
+                <button
+                  onClick={() => { setAttachmentUrl(null); setAttachmentName(null); }}
+                  className="text-[#6B7280] hover:text-red-500"
+                  title="Take it off this email"
+                >
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>

@@ -37,6 +37,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { compEvidenceSentence } from './lib/comp-evidence.mjs'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -374,13 +375,12 @@ function factsFor(branch, headline, settings) {
     offer_open: money(min),
     offer_ceiling: money(max),
     offer_ladder: ladder.length > 1 ? ladder.map(money).join(', then ') : `${money(min)}, up to ${money(max)}`,
-    // No distance in this sentence. cmv.ring_used is the engine's ring INDEX,
-    // not a number of metres, and "4 sold comparables within 1m" is a line
-    // Pedro would read out to an estate agent.
-    comp_evidence: cmvObj && num(cmvObj.n_used) > 0
-      ? `${cmvObj.n_used} sold comparables nearby put it at ${money(cmv)}`
-      : (Array.isArray(deal.evidence) && deal.evidence.length
-        ? deal.evidence.slice(0, 3).join(' · ') : 'no sold comparables on file'),
+    // ONE renderer, in scripts/lib/comp-evidence.mjs. The engine moved
+    // deal.evidence from sentences to comp ROWS, and the .join() that used to
+    // live here printed "[object Object] · [object Object]" onto the contact,
+    // into a SCRIPT TOKEN, on its way to being read down the phone. It does not
+    // throw, which is why it survived two days on a live board.
+    comp_evidence: compEvidenceSentence(deal),
     valuation_notes: notes.length ? notes.join(', ') : 'nothing unusual flagged',
     properties_count: String(branch.properties.length),
     // What to do with this one next. Every branch arriving here is at step 1 of

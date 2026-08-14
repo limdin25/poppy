@@ -11,6 +11,7 @@
 // here.
 
 import { describe, it, expect } from 'vitest'
+import { stripInventedHouseNumber } from '../api/lib/draft-guards'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { videoRequestTemplate, addressOnlyTemplate } from '../src/features/crm/components/live-call/PropertyEmailPane'
@@ -79,7 +80,19 @@ describe('the three fences between a model and a price in writing', () => {
   })
 
   it('the offer email still refuses to send without an offer figure', () => {
-    expect(DRAFT).toMatch(/!isVideoRequest && !gbp\(h\.offerPrice\)/)
+    // 2026-08-14: 'follow_up' joined the guard. It is the board's chase email
+    // (a branch waiting on proof of funds is written to about the proof of
+    // funds, not about money), so it is exempt from needing a figure. The
+    // OFFER email is not, and that is what this pins.
+    expect(DRAFT).toMatch(/!isVideoRequest && !isFollowUp && !gbp\(h\.offerPrice\)/)
+  })
+
+  it('4. the follow-up may never invent or move a number either', () => {
+    expect(DRAFT).toMatch(/SYSTEM_FOLLOW_UP/)
+    expect(DRAFT).toMatch(/NEVER invent a number\. Every figure you may use is given to you\./)
+    expect(DRAFT).toMatch(/NEVER re-open the price/)
+    // A bank statement is not a promise. The model must not quote a balance.
+    expect(DRAFT).toMatch(/do NOT attach it, quote a balance, or name a bank/)
   })
 })
 
@@ -294,5 +307,48 @@ describe('a refused video never costs us the email', () => {
   it('the coach says the same, or it coaches a call Pedro is not on', () => {
     expect(COACH).toMatch(/IF THEY REFUSE THE VIDEO, THAT CHANGES NOTHING ABOUT THE EMAIL/)
     expect(COACH).toMatch(/never let a no on the video cost you the address/)
+  })
+})
+
+describe('a house number nobody gave it', () => {
+  // The first real follow-up draft, 2026-08-14, was headed "12 Welwyn Park
+  // Road, proof of funds" off a listing filed as "Welwyn Park Road, Hull,
+  // North Humberside, HU6". Rightmove rarely publishes a house number, so the
+  // model supplied a plausible one, and it was going to the branch selling
+  // that exact house.
+  it('takes back a number the model invented in front of the street', () => {
+    expect(stripInventedHouseNumber(
+      '12 Welwyn Park Road, proof of funds',
+      'Welwyn Park Road, Hull, North Humberside, HU6',
+    )).toBe('Welwyn Park Road, proof of funds')
+
+    expect(stripInventedHouseNumber(
+      'Our offer on 107a Welwyn Park Road stands.',
+      'Welwyn Park Road, Hull',
+    )).toBe('Our offer on Welwyn Park Road stands.')
+  })
+
+  it('leaves a real house number alone', () => {
+    // When the listing itself carries the number, the model may write it.
+    expect(stripInventedHouseNumber(
+      '12 Acacia Avenue, proof of funds',
+      '12 Acacia Avenue, London W1',
+    )).toBe('12 Acacia Avenue, proof of funds')
+  })
+
+  it('never touches other numbers in the email', () => {
+    expect(stripInventedHouseNumber(
+      'Our offer of £103,600 on Welwyn Park Road, 3 bed, stands.',
+      'Welwyn Park Road, Hull',
+    )).toBe('Our offer of £103,600 on Welwyn Park Road, 3 bed, stands.')
+  })
+
+  it('does nothing without an address to check against', () => {
+    expect(stripInventedHouseNumber('12 Somewhere Road', null)).toBe('12 Somewhere Road')
+    expect(stripInventedHouseNumber('12 Somewhere Road', '')).toBe('12 Somewhere Road')
+  })
+
+  it('is wired into what the endpoint returns, not just exported', () => {
+    expect(DRAFT).toMatch(/stripInventedHouseNumber\(clean\(s\), h\.address\)/)
   })
 })

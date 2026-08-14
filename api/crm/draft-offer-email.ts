@@ -35,6 +35,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
+import { stripInventedHouseNumber } from '../lib/draft-guards.js';
 
 export const config = { runtime: 'edge' };
 
@@ -76,7 +77,28 @@ interface Body {
    *  Hugo 2026-08-14: "on this email we can just ask for the video ... so they
    *  have our address and we have theirs." Sent while the agent is still on the
    *  phone, which is why it has to be one press. */
-  kind?: 'offer' | 'video_request' | 'address_only';
+  kind?: 'offer' | 'video_request' | 'address_only' | 'follow_up';
+  /** THE DEAL AS IT STANDS, for kind 'follow_up'.
+   *
+   *  Hugo, 2026-08-14: "when we have to email the prospects I want the AI to
+   *  draft it, I don't want a static template. The prospect that's expecting
+   *  the proof of funds, the email should be there ready to go."
+   *
+   *  There is no live call behind a board card, so the transcript is empty and
+   *  the model would otherwise be writing from an address and nothing else.
+   *  This is what it writes from instead: the next-step brief, in the brain's
+   *  own words. Every figure in it was READ from the deal engine when the brief
+   *  was written, so passing it through is not a second opinion about money. */
+  context?: {
+    /** What has to happen next, the brief's do_now lines. */
+    doNow?: string[] | null;
+    /** What is in the way. "The branch wants proof of funds" lives here. */
+    blockers?: string[] | null;
+    /** Hugo's own pinned note on the house, when he wrote one. */
+    pinnedNote?: string | null;
+    /** The deal-process step the branch is on. */
+    step?: string | null;
+  };
 }
 
 const SYSTEM_OFFER = [
@@ -137,6 +159,40 @@ const SYSTEM_ADDRESS_ONLY = [
   '4. VERY SHORT. Under 70 words. Four sentences at the most.',
   '5. British English. Warm, plain, ordinary. No salesmanship, no flattery, no exclamation marks, no thanking them three times.',
   '6. NEVER use a long dash. No em dash, no en dash, anywhere. Use a comma or a full stop. No curly quotes, no ellipsis character.',
+  '',
+  'FORMAT. Return exactly this and nothing else:',
+  'SUBJECT: <one line, name the street>',
+  '<blank line>',
+  '<the email body, ending with the sign off>',
+].join('\n');
+
+// The email Hugo sends from the BOARD, days after the call, when the deal is
+// waiting on one specific thing. Hugo, 2026-08-14: "the prospect that's
+// expecting the approval of funds, the template should be there ready to go."
+//
+// It is the only kind written from the BRIEF rather than from a transcript,
+// because by the time a card sits in Nurturing the call is long over and what
+// matters is the one thing standing in the way.
+//
+// It may name our offer, because the branch already has it: this email exists
+// on a deal that has been discussed. It may NOT invent a new number, move the
+// one we gave, or promise anything the brief does not say we have.
+const SYSTEM_FOLLOW_UP = [
+  'You write one email: a cash buyer chasing an estate agent in England on a house they have already discussed by phone.',
+  '',
+  'WHAT IT IS FOR. There is exactly ONE thing holding this deal up. You are told what it is. The whole email exists to move that one thing, and nothing else.',
+  '',
+  'HARD RULES.',
+  '1. NEVER invent a number. Every figure you may use is given to you. If the blocker does not need a figure, do not put one in at all.',
+  '2. NEVER promise something we have not got. If they are waiting on proof of funds, say it is being sent and when, do NOT attach it, quote a balance, or name a bank.',
+  '3. NEVER re-open the price. If our offer is mentioned it is only to remind them what is on the table, in the words we already used.',
+  '4. Answer the blocker in the FIRST two sentences. An estate agent reads one paragraph.',
+  '4a. Write the address EXACTLY as you are given it. NEVER add a house number, a flat number or a postcode that is not there. Most listings do not publish a house number and a wrong one goes to the branch selling that exact house.',
+  '5. Ask ONE clear question at the end, the one that moves it on, and make it easy to answer in a line.',
+  '6. Never write "subject to survey". Our condition is always "subject to our builder going round to view it and price the works".',
+  '7. SHORT. Under 160 words.',
+  '8. British English. Plain, warm, direct, no salesmanship, no flattery, no exclamation marks, no chasing tone.',
+  '9. NEVER use a long dash. No em dash, no en dash, anywhere. Use a comma or a full stop. No curly quotes, no ellipsis character.',
   '',
   'FORMAT. Return exactly this and nothing else:',
   'SUBJECT: <one line, name the street>',
@@ -231,27 +287,51 @@ export default async function handler(req: Request): Promise<Response> {
   // The offer email without an offer is the thing that must never send.
   const isAddressOnly = body.kind === 'address_only';
   const isVideoRequest = body.kind === 'video_request' || isAddressOnly;
-  if (!isVideoRequest && !gbp(h.offerPrice)) {
+  const isFollowUp = body.kind === 'follow_up';
+  // The follow-up is the one kind that does not need a figure: a branch waiting
+  // on proof of funds is emailed about the proof of funds, not about money.
+  if (!isVideoRequest && !isFollowUp && !gbp(h.offerPrice)) {
     return new Response(
       JSON.stringify({ error: 'No offer figure on this property, so there is nothing to offer.' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
     );
   }
 
+  // WHERE THE DEAL STANDS, for the follow-up. The brief is the whole input:
+  // the blocker is the reason the email is being written at all, and the
+  // do_now lines are what we have already decided to do about it.
+  const c = body.context ?? {};
+  const blockers = (c.blockers ?? []).filter(Boolean);
+  const dealState = [
+    c.step ? `The step this branch is on: ${c.step}` : null,
+    blockers.length
+      ? `WHAT IS HOLDING IT UP (this is what the email is FOR, answer it first):\n${blockers.map((b) => `- ${b}`).join('\n')}`
+      : 'Nothing specific is recorded as holding it up. Write a short, friendly chase asking where it stands.',
+    (c.doNow ?? []).filter(Boolean).length
+      ? `WHAT WE HAVE ALREADY DECIDED TO DO (say only the parts that concern THEM):\n${(c.doNow ?? []).map((d) => `- ${d}`).join('\n')}`
+      : null,
+    c.pinnedNote ? `OUR OWN NOTE on this deal (internal, never quote it):\n${c.pinnedNote}` : null,
+  ].filter(Boolean).join('\n\n');
+
   const user = [
     isVideoRequest ? 'THE HOUSE (facts only, and NO price of any kind goes in this email):' : 'THE HOUSE AND THE NUMBERS:',
     isVideoRequest ? videoFacts : facts,
     '',
-    transcript
-      ? `WHAT WAS SAID ON THE CALL (use the useful parts, ignore the rest):\n${transcript}`
-      : 'THERE IS NO TRANSCRIPT for this one. Write the email without referring to a conversation.',
+    isFollowUp
+      ? dealState
+      : transcript
+        ? `WHAT WAS SAID ON THE CALL (use the useful parts, ignore the rest):\n${transcript}`
+        : 'THERE IS NO TRANSCRIPT for this one. Write the email without referring to a conversation.',
   ].join('\n');
 
   const out = await callLLM(
     MODEL,
-    isAddressOnly ? SYSTEM_ADDRESS_ONLY : isVideoRequest ? SYSTEM_VIDEO : SYSTEM_OFFER,
+    isAddressOnly ? SYSTEM_ADDRESS_ONLY
+      : isVideoRequest ? SYSTEM_VIDEO
+        : isFollowUp ? SYSTEM_FOLLOW_UP
+          : SYSTEM_OFFER,
     [{ role: 'user', content: user }],
-    isAddressOnly ? 400 : isVideoRequest ? 700 : 1200,
+    isAddressOnly ? 400 : isVideoRequest ? 700 : isFollowUp ? 800 : 1200,
   );
   if (!out) {
     return new Response(JSON.stringify({ error: 'The model did not answer. Try again.' }), {
@@ -266,7 +346,9 @@ export default async function handler(req: Request): Promise<Response> {
     ? m[1].trim()
     : isVideoRequest
       ? `${h.address ?? 'The property'}, the bits I mentioned`
-      : `Offer for ${h.address ?? 'the property'}`;
+      : isFollowUp
+        ? `${h.address ?? 'The property'}, where we are`
+        : `Offer for ${h.address ?? 'the property'}`;
   const emailBody = (m ? m[2] : out).trim();
 
   // Belt and braces on Hugo's punctuation rule: the model is told, and the
@@ -287,8 +369,14 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
+  const finish = (s: string) => stripInventedHouseNumber(clean(s), h.address);
+
   return new Response(
-    JSON.stringify({ subject: clean(subject), body: clean(emailBody), usedTranscript: !!transcript }),
+    JSON.stringify({
+      subject: finish(subject),
+      body: finish(emailBody),
+      usedTranscript: !!transcript,
+    }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
 }

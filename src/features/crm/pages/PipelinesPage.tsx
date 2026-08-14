@@ -514,13 +514,32 @@ export default function PipelinesPage() {
         pinnedNote={editing ? dealFor(editing)?.pinned_note : null}
       />
 
-      {smsTo && (
-        <ContactSmsModal
-          contact={smsTo}
-          onClose={() => { setSmsTo(null); setSmsChannel(null); }}
-          defaultChannel={smsChannel}
-        />
-      )}
+      {/* Hugo 2026-08-14: "I don't want a static template, I want the AI brain
+          to always draft it, and the prospect expecting the proof of funds,
+          the email should be there ready to go." Passing the deal is what turns
+          the email channel from a blank box into a written email with the
+          statement already on it. */}
+      {smsTo && (() => {
+        const d = dealFor(smsTo);
+        return (
+          <ContactSmsModal
+            contact={smsTo}
+            onClose={() => { setSmsTo(null); setSmsChannel(null); }}
+            defaultChannel={smsChannel}
+            deal={d ? {
+              brief: d.brief,
+              pinnedNote: d.pinned_note,
+              address: d.address,
+              bedrooms: d.bedrooms,
+              propertyType: d.property_type,
+              agencyName: d.agent_name ?? smsTo.name,
+              agentPersonName:
+                (smsTo.customFields?.branch_contact_name ?? '').trim()
+                || d.branch_contact_name,
+            } : null}
+          />
+        );
+      })()}
     </div>
   );
 }
