@@ -33,7 +33,7 @@ const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> 
   { key: 'offer_reaction', label: 'How did the offer land?' },
   { key: 'still_available', label: 'Still available?' },
   { key: 'occupancy', label: 'Vacant or tenanted?' },
-  { key: 'condition_notes', label: 'Condition / works needed?' },
+  { key: 'condition_notes', label: 'Condition: roof, leaks, damp, boiler, electrics' },
   { key: 'why_selling', label: 'Why are they selling?' },
   { key: 'interest_level', label: 'Viewings or offers so far?' },
   { key: 'fallen_through', label: 'Has a sale fallen through before?' },

@@ -447,6 +447,7 @@ The whole job of call one. Conversational, not a form.
 "It needs a bit of work" is NOT an answer and must never be accepted: that sentence covers a 5k tidy-up and a 40k strip-out, and the difference is the offer. Dig, one question at a time:
 "When you say it needs work, what sort of thing are we talking? Is it more cosmetic, kitchen, bathroom, carpets, decorating, or is it a proper full refurb?" If they hedge: "Could someone live in it while the work's being done, or is it a shell?"
 "And how are the big four, the roof, any damp, the electrics and the boiler? Have any of them been done?" One at a time, a rewire, boiler, roof or damp course are thousands each and none show in photos.
+"And is it dry? Any leaks, anything coming in, any staining on the ceilings? What's the roof like, has it been done or is it the original?" ASK ON EVERY HOUSE, even an immaculate one. Water is what turns a 15k refurb into a 40k one and a photograph never shows it. Never accept "I think it's fine": push once with "has anyone been up on it?" and "has there ever been a leak in there, even one that's been sorted?". A leak is NOT a reason to walk away, it is the reason the price comes down, so never react to it and never say what it will cost us.
 "How old are the kitchen and the bathroom? And are the windows double glazed?"
 "Has anybody been round and priced the work up? What sort of number did they come back with?"
 If they say it is down to personal preference: "No, course. I mean more the boring stuff, like the boiler, the electrics, the roof, any damp?"

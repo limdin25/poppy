@@ -279,11 +279,27 @@ describe('two calls: discovery first, the offer only after the homework', () => 
     expect(stage3).toMatch(/full refurb/)
     expect(stage3).toMatch(/the roof, any damp, the electrics and the boiler/)
     expect(stage3).toMatch(/priced the work up/)
+    // WATER, ASKED SEPARATELY AND ON EVERY HOUSE. Hugo 2026-08-14: "very
+    // important on the prompts to find out if there is any leaking, any roof
+    // problems." It was one word inside "the big four", which is not the same
+    // as asking. Water is what turns a 15k refurb into a 40k one and it never
+    // shows in a photograph.
+    // The script wraps its lines, so these are matched on normalised text.
+    const flat = stage3.replace(/\s+/g, ' ')
+    expect(flat).toMatch(/Any leaks, anything coming in, any staining on the ceilings/)
+    expect(flat).toMatch(/What's the roof like, has it been done or is it the original/)
+    expect(flat).toMatch(/has anyone been up on it/)
+    expect(flat).toMatch(/has there ever been a leak in there, even one that's been sorted/)
+    // And the rule that stops him flinching at the answer.
+    expect(flat).toMatch(/not a reason to walk away, it is the reason the price comes down/)
+    expect(flat).toMatch(/ASK THIS ON EVERY SINGLE HOUSE/)
     // And the same dig reaches the coach, or it grades a call against wording
     // Pedro is no longer reading.
     const coach = read('supabase/functions/wk-voice-transcription/index.ts')
     expect(coach).toMatch(/what sort of thing are we talking/)
     expect(coach).toMatch(/is NOT an answer/)
+    expect(coach).toMatch(/Any leaks, anything coming in, any staining on the ceilings/)
+    expect(coach).toMatch(/has there ever been a leak in there/)
   })
 
   it('call one never floats our figure, and has the take-back line for when they push', () => {

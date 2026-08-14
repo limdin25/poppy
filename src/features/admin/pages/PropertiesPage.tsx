@@ -87,7 +87,7 @@ interface PropertiesResponse {
 const QUESTIONS: Array<{ key: string; label: string }> = [
   { key: 'still_available', label: 'Is the property still available?' },
   { key: 'occupancy', label: 'Vacant or tenanted?' },
-  { key: 'condition_notes', label: 'Condition / works needed?' },
+  { key: 'condition_notes', label: 'Condition: roof, leaks, damp, boiler, electrics' },
   { key: 'interest_level', label: 'Viewings / offers so far?' },
   { key: 'fallen_through', label: 'Has a sale fallen through before?' },
   { key: 'why_selling', label: 'Why is the vendor selling?' },
