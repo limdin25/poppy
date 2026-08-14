@@ -5,6 +5,8 @@ import { ACTIVE_PIPELINE } from '../../data/mockPipelines';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { useFollowups } from '../../hooks/useFollowups';
 import { useAgentDirectory } from '../../hooks/useAgentDirectory';
+import NextStepCard from '@/core/property/NextStepCard';
+import type { NextStepBrief } from '../../../../../api/lib/next-step-brief';
 
 interface Props {
   contact: Contact | null;
@@ -15,9 +17,23 @@ interface Props {
    * roster itself. Kept only so a test can inject a fixed list.
    */
   agents?: Array<{ id: string; name: string }>;
+  /**
+   * The deal behind this card, on the boards that have one to hand.
+   *
+   * Hugo, 2026-08-14: "when I click on the deal it doesn't say what's all this
+   * information, the next steps." Passed in rather than fetched here, because
+   * the pipeline board already reads every house on screen in one batched RPC
+   * and a per-modal query would be a second, slower source of the same truth.
+   * Absent everywhere else, and NextStepCard draws nothing without it, so the
+   * nine other call sites are unchanged.
+   */
+  brief?: NextStepBrief | null;
+  pinnedNote?: string | null;
 }
 
-export default function EditContactModal({ contact, onClose, onSave, agents }: Props) {
+export default function EditContactModal({
+  contact, onClose, onSave, agents, brief, pinnedNote,
+}: Props) {
   // The MOCK_AGENTS fallback that used to live here was worse than cosmetic:
   // 7 of the 10 call sites passed no `agents`, so the Owner dropdown offered
   // synthetic ids like "a-hugo". Picking one made patchContact's
@@ -96,6 +112,17 @@ export default function EditContactModal({ contact, onClose, onSave, agents }: P
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
+          {/* THE DEAL, first thing on the screen. Hugo's pinned note, then what
+              to do next, then what is in the way and how sure we are. Read
+              only: the brief is rewritten after every call and the pinned note
+              is edited on the house itself, so an editable copy here would be a
+              second version of both. Draws nothing on a lead with no house. */}
+          {(brief || pinnedNote) && (
+            <div className="-mx-5 -mt-5 border-b border-[#E5E7EB]">
+              <NextStepCard brief={brief} pinnedNote={pinnedNote} />
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Business name">
               <input

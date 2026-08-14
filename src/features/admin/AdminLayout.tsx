@@ -15,6 +15,7 @@ import {
   Activity,
   ScrollText,
   Home,
+  HardHat,
   SearchCode,
   KanbanSquare,
   Headset,
@@ -77,6 +78,7 @@ const navGroups = [
     items: [
       { to: '/admin/scraper', icon: SearchCode, label: 'Scraper' },
       { to: '/admin/properties', icon: Home, label: 'Properties' },
+      { to: '/admin/builders', icon: HardHat, label: 'Builders' },
       { to: '/admin/pipeline', icon: KanbanSquare, label: 'Pipeline' },
     ],
   },

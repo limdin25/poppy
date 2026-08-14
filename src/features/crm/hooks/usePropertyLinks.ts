@@ -18,6 +18,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
+import type { NextStepBrief } from '../../../../api/lib/next-step-brief';
 
 export interface PropertyLink {
   phone_tail: string;
@@ -28,6 +29,14 @@ export interface PropertyLink {
   asking_price: number | null;
   bedrooms: number | null;
   property_type: string | null;
+  /** 2026-08-14: the board card used to render a phone number over a house that
+   *  had a whole paragraph of instruction on it. All four of these already
+   *  existed on brrr_properties; the RPC simply did not project them. */
+  brief: NextStepBrief | null;
+  pinned_note: string | null;
+  agent_name: string | null;
+  /** Who Pedro spoke to at the branch, off the call checklist. */
+  branch_contact_name: string | null;
 }
 
 /** The last 9 digits of a phone, or '' when there are not 9 to take. Exported

@@ -114,6 +114,32 @@ export default function PropertiesPane({
     setSaveError(null);
   }, [selected?.id]);
 
+  // WHO HE IS SPEAKING TO, typed by the brain. Hugo, 2026-08-14: "if the AI
+  // captured the agent name then it has to add automatically." The coach hears
+  // the introduction and files a card carrying meta.captured_name (see
+  // api/lib/spoken-name.ts); this fills the checklist field from it, and from
+  // there pressing an outcome writes it onto the board card.
+  //
+  // Never over a human. If Pedro has already typed a name, his wins: he can
+  // hear the difference between "you're through to Doug" and the receptionist
+  // naming the colleague she is about to transfer him to.
+  useEffect(() => {
+    if (!currentCallId) return;
+    const channel = supabase
+      .channel(`name-capture-${currentCallId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wk_live_coach_events', filter: `call_id=eq.${currentCallId}` },
+        (payload: { new?: { meta?: { captured_name?: string } | null } }) => {
+          const found = payload.new?.meta?.captured_name;
+          if (!found) return;
+          setAnswers((a) => (a.branch_contact_name?.trim() ? a : { ...a, branch_contact_name: found }));
+        },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [currentCallId]);
+
   // The most recent call anywhere on this branch, so a re-dealt office is
   // never opened cold. Hugo, 2026-08-13: "when call again crm should show
   // clear, when we last call them and for what property, do pedro knows
@@ -183,6 +209,16 @@ export default function PropertiesPane({
       note: (latest?.last_call_summary || wk?.note || '').trim(),
     };
   }, [listings, lastCallQ.data]);
+
+  /** What earlier calls on this house already answered. */
+  const priorAnswers = useMemo(() => {
+    const q = (selected?.qualification ?? {}) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(q)) {
+      if (typeof v === 'string' && v.trim()) out[k] = v.trim();
+    }
+    return out;
+  }, [selected?.qualification]);
 
   const isFlat = /flat|apartment|maisonette/i.test(selected?.property_type ?? '');
   const isHouse = !isFlat && !!selected?.property_type;
@@ -412,7 +448,13 @@ export default function PropertiesPane({
                   <input
                     value={answers[q.key] ?? ''}
                     onChange={(e) => setAnswers((a) => ({ ...a, [q.key]: e.target.value }))}
-                    className="mt-0.5 w-full rounded border border-[#E5E7EB] px-2 py-1 text-[12px] text-[#1A1A1A] focus:border-[#3C5A87] focus:outline-none"
+                    // What the LAST call learned, as a placeholder rather than a
+                    // value. The checklist opens blank on purpose (a blank field
+                    // means "not asked this time", and the route merges rather
+                    // than replaces), but opening it with no memory at all is why
+                    // Pedro re-asks a branch its own name on the second call.
+                    placeholder={priorAnswers[q.key] ?? ''}
+                    className="mt-0.5 w-full rounded border border-[#E5E7EB] px-2 py-1 text-[12px] text-[#1A1A1A] placeholder:text-[#C4C7CC] focus:border-[#3C5A87] focus:outline-none"
                   />
                 </label>
               ))}

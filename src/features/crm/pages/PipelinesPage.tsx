@@ -21,7 +21,8 @@ import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
 import StageMoveChip from '../components/shared/StageMoveChip';
 import NextStepChip from '../components/shared/NextStepChip';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
-import { usePropertyLinks, phoneTail } from '../hooks/usePropertyLinks';
+import BriefLine from '../components/shared/BriefLine';
+import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
 
@@ -79,6 +80,21 @@ export default function PipelinesPage() {
   const [smsTo, setSmsTo] = useState<Contact | null>(null);
   const [smsChannel, setSmsChannel] = useState<'sms' | 'whatsapp' | 'email' | null>(null);
   const { openDialerPro } = useDialerProModal();
+
+  // The house a card speaks for. A branch can have several on file, so the one
+  // that gets the card is the one carrying the freshest instruction: Hugo's own
+  // pinned note first, then the most recently written brief. Everything the
+  // card and its modal show about the deal comes from this one row.
+  const dealFor = (contact: Contact): PropertyLink | null => {
+    const links = propertiesByPhone.get(phoneTail(contact.phone));
+    if (!links || links.length === 0) return null;
+    const ranked = [...links].sort((a, b) => {
+      const pin = Number(!!b.pinned_note) - Number(!!a.pinned_note);
+      if (pin !== 0) return pin;
+      return String(b.brief?.written_at ?? '').localeCompare(String(a.brief?.written_at ?? ''));
+    });
+    return ranked[0];
+  };
 
   // PR 20 + PR 107: per-channel "last sent" badge for each pipeline
   // card. Hook returns Map<contactId, { sms, whatsapp, email }> from
@@ -253,7 +269,19 @@ export default function PipelinesPage() {
                 </span>
               </div>
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                {cards.map((c) => (
+                {cards.map((c) => {
+                  const deal = dealFor(c);
+                  // Who Pedro asks for, off the call checklist, written onto the
+                  // card by api/crm/property-outcome.ts. On a house lead this
+                  // REPLACES the owner + website pair: Hugo, 2026-08-14, "the
+                  // things on the cards, name not available, website not
+                  // available, that was for the older project, you can delete
+                  // that. Maybe add the agent name."
+                  const person =
+                    (c.customFields?.branch_contact_name ?? '').trim() ||
+                    (deal?.branch_contact_name ?? '').trim();
+                  const isProperty = !!deal || c.customFields?.lead_type === 'estate_agent';
+                  return (
                   <button
                     key={c.id}
                     draggable
@@ -278,13 +306,21 @@ export default function PipelinesPage() {
                           )}
                           <Pencil className="w-2.5 h-2.5 text-[#9CA3AF] opacity-0 group-hover:opacity-100 ml-auto" />
                         </div>
-                        <ContactIdentity
-                          owner={c.customFields?.owner_name}
-                          website={c.customFields?.website}
-                          layout="stack"
-                          size="xs"
-                          className="mt-0.5"
-                        />
+                        {isProperty ? (
+                          person ? (
+                            <div className="mt-0.5 truncate text-[10px] text-[#374151]" title={person}>
+                              Ask for {person}
+                            </div>
+                          ) : null
+                        ) : (
+                          <ContactIdentity
+                            owner={c.customFields?.owner_name}
+                            website={c.customFields?.website}
+                            layout="stack"
+                            size="xs"
+                            className="mt-0.5"
+                          />
+                        )}
                         <div className="flex items-center gap-2 mt-0.5 min-w-0">
                           <span className="text-[10px] text-[#6B7280] tabular-nums flex-shrink-0">
                             {c.phone}
@@ -297,6 +333,14 @@ export default function PipelinesPage() {
                             lead has no property and renders nothing. */}
                         <PropertyLinkChips
                           links={propertiesByPhone.get(phoneTail(c.phone))}
+                          className="mt-1"
+                        />
+                        {/* Hugo 2026-08-14: what to do with this one, on the
+                            card, before anybody clicks anything. The whole
+                            brief opens with the card. */}
+                        <BriefLine
+                          brief={deal?.brief}
+                          pinnedNote={deal?.pinned_note}
                           className="mt-1"
                         />
                         {/* Hugo 2026-08-12: the card says what to do next, and
@@ -437,7 +481,8 @@ export default function PipelinesPage() {
                       </div>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
                 {cards.length === 0 && (
                   <div className="text-[11px] text-[#9CA3AF] text-center py-4 italic">
                     Empty column
@@ -457,10 +502,16 @@ export default function PipelinesPage() {
         })}
       </div>
 
+      {/* Hugo 2026-08-14: "when I click on the deal it doesn't say all this
+          information, the next steps." It does now: his pinned note and the
+          brain's brief open with the card, above the Notes box, drawn by the
+          same NextStepCard Pedro reads in the dialer. */}
       <EditContactModal
         contact={editing}
         onClose={() => setEditing(null)}
         onSave={save}
+        brief={editing ? dealFor(editing)?.brief : null}
+        pinnedNote={editing ? dealFor(editing)?.pinned_note : null}
       />
 
       {smsTo && (

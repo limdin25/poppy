@@ -276,6 +276,27 @@ export default async function handler(req: Request): Promise<Response> {
   // from the deal engine rather than worked out again here.
   const nextStep = STEP_FOR_OUTCOME[outcome];
   const targetColumn = BOARD_COLUMN_FOR[outcome];
+
+  // The CRM lead behind this branch, read ONCE. The brief needs to know whether
+  // there is anywhere to email them (2026-08-14: a branch with no address is a
+  // deal that cannot be put in writing, so it becomes a blocker and a chase),
+  // and both writes further down need the same row anyway.
+  interface ContactRow {
+    id: string;
+    email: string | null;
+    pipeline_column_id: string | null;
+    custom_fields: Record<string, string> | null;
+  }
+  let contactRow: ContactRow | null = null;
+  if (property.wk_contact_id) {
+    const { data } = await supabase
+      .from('wk_contacts')
+      .select('id, email, pipeline_column_id, custom_fields')
+      .eq('id', property.wk_contact_id)
+      .maybeSingle();
+    contactRow = (data as ContactRow | null) ?? null;
+  }
+
   const brief = buildNextStepBrief({
     property,
     outcome,
@@ -283,6 +304,7 @@ export default async function handler(req: Request): Promise<Response> {
     note,
     step: nextStep,
     board: targetColumn ?? null,
+    contactEmail: contactRow?.email ?? null,
     now: new Date(nowIso),
   });
 
@@ -367,20 +389,29 @@ export default async function handler(req: Request): Promise<Response> {
   //     Deterministic, from the outcome Pedro pressed. Best effort: the outcome
   //     is already saved and a failed tag must never read back as a lost call.
   //     (nextStep is worked out above, where the brief is written.)
-  if (nextStep !== undefined && property.wk_contact_id) {
+  //     Alongside it, THE PERSON WE SPOKE TO. Hugo 2026-08-14: "maybe add the
+  //     agent name, we need to ask for the agent name, and when the AI captured
+  //     the agent name it has to add automatically." The checklist already asks
+  //     it and the coach fills it in from the call, so the only thing missing
+  //     was carrying it onto the card, where a branch used to render "Name not
+  //     available". Only ever written, never blanked: leaving a question empty
+  //     on the second call means "not asked again", not "we no longer know".
+  if ((nextStep !== undefined || contactRow) && property.wk_contact_id) {
     try {
-      const { data: c } = await supabase
-        .from('wk_contacts')
-        .select('custom_fields')
-        .eq('id', property.wk_contact_id)
-        .maybeSingle();
-      const fields = { ...((c?.custom_fields as Record<string, string> | null) ?? {}) };
+      const fields = { ...(contactRow?.custom_fields ?? {}) };
       if (nextStep === '') delete fields.next_step;
-      else fields.next_step = nextStep;
+      else if (nextStep !== undefined) fields.next_step = nextStep;
+
+      const person = String(
+        (mergedQualification as Record<string, unknown>).branch_contact_name ?? '',
+      ).trim();
+      if (person) fields.branch_contact_name = person;
+
       await supabase
         .from('wk_contacts')
         .update({ custom_fields: fields })
         .eq('id', property.wk_contact_id);
+      if (contactRow) contactRow.custom_fields = fields;
     } catch {
       // A card without a tag is the state it was already in. Never fatal.
     }
@@ -389,11 +420,7 @@ export default async function handler(req: Request): Promise<Response> {
   let boardWarning: string | undefined;
   if (targetColumn && property.wk_contact_id) {
     try {
-      const { data: contact } = await supabase
-        .from('wk_contacts')
-        .select('id, pipeline_column_id, custom_fields')
-        .eq('id', property.wk_contact_id)
-        .maybeSingle();
+      const contact = contactRow;
 
       if (contact) {
         // Find the column in the board this contact is already on, so a

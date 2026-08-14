@@ -18,6 +18,7 @@ const SystemHealthPage = lazy(() => import('./pages/SystemHealthPage'))
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'))
 const AdminAnalyticsPage = lazy(() => import('./pages/AdminAnalyticsPage'))
 const PropertiesPage = lazy(() => import('./pages/PropertiesPage'))
+const BuildersPage = lazy(() => import('./pages/BuildersPage'))
 const ScraperPage = lazy(() => import('./pages/ScraperPage'))
 const PipelinePage = lazy(() => import('./pages/PipelinePage'))
 const CeoCockpitPage = lazy(() => import('./pages/CeoCockpitPage'))
@@ -53,6 +54,7 @@ export default function AdminApp() {
               <Route path="numbers" element={<NumberManagementPage />} />
               <Route path="feature-flags" element={<FeatureFlagsPage />} />
               <Route path="properties" element={<PropertiesPage />} />
+              <Route path="builders" element={<BuildersPage />} />
               <Route path="scraper" element={<ScraperPage />} />
               <Route path="pipeline" element={<PipelinePage />} />
               <Route path="training" element={<TrainingPage />} />

@@ -135,6 +135,122 @@ function mentionsEmail(text: string | null | undefined): boolean {
 }
 
 // ----------------------------------------------------------------------------
+// HEARING WHO YOU ARE SPEAKING TO. Hugo, 2026-08-14: "we need to ask for the
+// agent name, and if the AI captured the agent name then it has to add
+// automatically", after a board card rendered "Name not available" over a
+// branch Pedro had spoken to twice.
+//
+// The block between the markers is COPIED VERBATIM from api/lib/spoken-name.ts
+// (a Deno edge function cannot import from api/lib). tests/spoken-name.test.ts
+// compares the two character for character and fails the build if they drift.
+// Edit the api/lib copy, then paste it here. Nothing else may live inside the
+// markers.
+// ----------------------------------------------------------------------------
+
+// --- spoken-name:start
+/** The phrases somebody actually uses to say who they are, or to read it back.
+ *
+ *  Deliberately short. Every pattern here is an EXPLICIT introduction; there is
+ *  no "a capitalised word near the start" rule, because a transcriber
+ *  capitalises street names, agency names and the odd random noun, and each of
+ *  those would become somebody's name. */
+const NAME_PATTERNS: RegExp[] = [
+  // "you're through to Doug", "you are speaking to Doug Allen"
+  /\byou(?:'re|s? are|r)?\s+(?:through|speaking|talking)\s+(?:to|with)\s+([a-z][a-z'-]*(?:\s+[a-z][a-z'-]*)?)/i,
+  // "my name is Lucy", "my name's Lucy Barnes"
+  /\bmy name(?:'s| is)\s+([a-z][a-z'-]*(?:\s+[a-z][a-z'-]*)?)/i,
+  // "Zest, Lucy speaking"
+  /\b([a-z][a-z'-]*)\s+speaking\b/i,
+  // "this is Doug", "it's Doug"
+  /\b(?:this is|it'?s)\s+([a-z][a-z'-]*)\b/i,
+  // Pedro reading it back: "am I speaking to Doug", "is that Doug"
+  /\b(?:am i speaking (?:to|with)|is (?:that|this))\s+([a-z][a-z'-]*)\b/i,
+];
+
+/** Words that follow those phrases every day and are never the person's name.
+ *
+ *  "this is fine", "you're speaking to the wrong branch", "it's about the
+ *  property" all match a pattern above and all have to lose. */
+const NOT_A_NAME = new Set([
+  // pronouns. "you're speaking to..." matches the "X speaking" pattern with X
+  // = "you're", which is how the very first run of this offered Pedro the name
+  // "You're".
+  'i', 'you', 'we', 'he', 'she', 'they', 'im', 'ive', 'youre', 'weve',
+  // grammar that follows "this is" / "speaking to" far more often than a name
+  'a', 'an', 'the', 'my', 'your', 'our', 'his', 'her', 'their', 'its', 'it',
+  'that', 'this', 'these', 'those', 'there', 'here', 'me', 'him', 'them', 'us',
+  'who', 'what', 'which', 'someone', 'somebody', 'anyone', 'nobody', 'everyone',
+  // filler and reactions
+  'yes', 'yeah', 'no', 'nope', 'ok', 'okay', 'right', 'sure', 'fine', 'good',
+  'great', 'lovely', 'perfect', 'sorry', 'thanks', 'well', 'so', 'just', 'only',
+  'actually', 'really', 'still', 'now', 'then', 'about', 'because', 'but', 'and',
+  'not', 'never', 'always', 'maybe', 'probably', 'obviously', 'basically',
+  // the shape of a property call
+  'calling', 'ringing', 'going', 'looking', 'selling', 'buying', 'regarding',
+  'property', 'house', 'flat', 'branch', 'office', 'vendor', 'buyer', 'seller',
+  'agent', 'landlord', 'owner', 'director', 'manager', 'team', 'company',
+  'wrong', 'right', 'main', 'sales', 'lettings', 'reception', 'number',
+  'morning', 'afternoon', 'evening', 'today', 'tomorrow', 'yesterday',
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  // our own side. Pedro introduces himself on every single call, and the coach
+  // would otherwise file OUR name as the branch contact on all of them.
+  'pedro', 'hugo', 'unico', 'elsie', 'heyelsie',
+]);
+
+/**
+ * The name somebody just gave, capitalised, or null.
+ *
+ * Two words at most: "Doug" and "Doug Allen" are both real answers, a third
+ * word means the pattern has run off the end of the introduction and into the
+ * rest of the sentence.
+ */
+export function extractSpokenName(text: string | null | undefined): string | null {
+  const raw = String(text ?? '').trim();
+  if (!raw) return null;
+
+  for (const re of NAME_PATTERNS) {
+    const m = raw.match(re);
+    if (!m || !m[1]) continue;
+
+    const words = m[1]
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2);
+    if (words.length === 0) continue;
+
+    // Every word has to look like a name AND not be on the list. Checking every
+    // word rather than the first is what kills "speaking to the vendor".
+    const clean = words.filter((w) => /^[a-z][a-z'-]{1,19}$/i.test(w));
+    if (clean.length !== words.length) continue;
+    if (clean.some((w) => NOT_A_NAME.has(w.toLowerCase()))) continue;
+    // A CONTRACTION IS NEVER A NAME. "it's", "that's", "you're", "I'm" all pass
+    // the shape test above because an apostrophe is legal in O'Brien. No real
+    // name ends in one of these, so the ending is what tells them apart.
+    if (clean.some((w) => /'(re|s|m|ll|ve|d|t)$/i.test(w))) continue;
+
+    // A one-letter or two-letter "name" is a transcription artefact.
+    if (clean[0].length < 3) continue;
+
+    // "o'brien" -> "O'Brien", "anne-marie" -> "Anne-Marie": a name capitalises
+    // after its own punctuation, not only at the front.
+    return clean
+      .map((w) => w.toLowerCase().replace(/(^|['-])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase()))
+      .join(' ');
+  }
+  return null;
+}
+// --- spoken-name:end
+
+/** Cheap gate: only look for a name on a line that reads like an introduction. */
+function mentionsName(text: string | null | undefined): boolean {
+  return /\b(speaking|talking|through to|my name|this is|it'?s|is that|is this)\b/i.test(
+    String(text ?? ''),
+  );
+}
+
+// ----------------------------------------------------------------------------
 // Twilio signature validation — same pattern as wk-voice-twiml-outgoing.
 // ----------------------------------------------------------------------------
 
@@ -1647,6 +1763,47 @@ serve(async (req: Request) => {
         } catch (e) {
           // Never let a nicety break the transcript pipeline mid-call.
           console.warn('[wk-voice-transcription] email capture failed', String(e));
+        }
+      }
+
+      // WHO HE IS SPEAKING TO, the moment they say it. Hugo, 2026-08-14: "we
+      // need to ask for the agent name, and if the AI captured the agent name
+      // then it has to add automatically." It is said in the first ten seconds
+      // of nearly every call and typed on almost none of them, which is why a
+      // branch Pedro had rung twice still showed "Name not available".
+      //
+      // PROPERTY CALLS ONLY, same as the address above: the same words on a
+      // plumber dial mean nothing and must not touch Marr's day.
+      //
+      // ONLY THE FIRST ONE. A branch names its colleagues all call long ("I'll
+      // put you through to Lucy"), and the person Pedro actually spoke to is
+      // whoever answered. Filed as a coach card carrying meta.captured_name,
+      // never written onto the contact: the Houses checklist fills the field
+      // from it and Pedro can correct it before he presses an outcome.
+      if (call.script_key === 'property_call' && mentionsName(transcriptText)) {
+        try {
+          const person = extractSpokenName(transcriptText);
+          if (person) {
+            const { data: already } = await supa
+              .from('wk_live_coach_events')
+              .select('id')
+              .eq('call_id', call.id)
+              .eq('kind', 'metric')
+              .not('meta->>captured_name', 'is', null)
+              .limit(1);
+            if (!already || already.length === 0) {
+              await supa.from('wk_live_coach_events').insert({
+                call_id: call.id,
+                kind: 'metric',
+                title: 'Name heard',
+                body: `You are speaking to ${person}. It is in the Houses checklist, correct it there if that is not right.`,
+                meta: { captured_name: person, heard_from: speaker },
+                status: 'final',
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[wk-voice-transcription] name capture failed', String(e));
         }
       }
 

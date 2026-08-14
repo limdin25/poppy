@@ -105,6 +105,14 @@ export interface BriefInput {
   step?: string;
   /** The board column the outcome moves the card to, when it moves one. */
   board?: string | null;
+  /** The address on the CRM lead behind this branch, when it has one.
+   *
+   *  Hugo, 2026-08-14, clicking Email on a live deal and getting "contact has no
+   *  email address": "on the notes there's the instructions, one is to get the
+   *  ballpark confirmed and the other one is to get their email." Nothing about
+   *  this deal can be put in writing without it, so a branch we cannot email is
+   *  a blocker in its own right and the chase is an instruction, not a wish. */
+  contactEmail?: string | null;
   /** Live offer percentages, for the fallback band on a property that arrived
    *  with no valuation. */
   percents?: Partial<OfferPercents> | null;
@@ -142,6 +150,23 @@ function theirFigure(q: Record<string, unknown>): string {
   return str(q.best_price_indicated);
 }
 
+/** Do we have somewhere to send this branch an email?
+ *
+ *  Two places hold one: the CRM lead (written the moment Pedro sends the video
+ *  request from the dialer) and the checklist, when he typed it on the call and
+ *  never sent anything. Either counts. */
+function hasEmail(input: BriefInput): boolean {
+  const q = (input.qualification ?? {}) as Record<string, unknown>;
+  const candidate = str(input.contactEmail) || str(q.branch_email);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(candidate);
+}
+
+/** The one line that unblocks everything else, when we cannot write to them. */
+function emailLine(input: BriefInput): string | null {
+  if (hasEmail(input)) return null;
+  return 'Ask for their email address and send the video request while they are still on the phone. Nothing can be put in writing until we have it.';
+}
+
 /**
  * Everything we asked for on the call and did not get, in the order it costs us.
  *
@@ -168,6 +193,9 @@ function blockersFor(input: BriefInput, band: { min: number; max: number }): str
   }
   if (/viewing first|before (a|any) viewing|want(s)? a viewing|must view/.test(text)) {
     out.push('They want somebody to view it before they will put an offer forward. Our builder is the viewer.');
+  }
+  if (!hasEmail(input)) {
+    out.push('No email address for this branch, so nothing about this deal can go to them in writing.');
   }
   if (!has(q.video_walkthrough)) {
     out.push('No video walkthrough yet, so the builder cannot price the works without a trip.');
@@ -346,7 +374,9 @@ function doNowFor(
 
   // Whatever the step, an unanswered blocker IS the next action. Chasing the
   // missing thing beats every other instruction on the page.
+  const email = emailLine(input);
   const chase = (): void => {
+    if (email) lines.push(email);
     if (!has(q.video_walkthrough)) lines.push('Ask again for the video walkthrough, that is what the builder prices from.');
     if (!Number(input.property.floor_area_sqm)) lines.push('Ask for the floor plan by email, it is on their file.');
   };
@@ -379,6 +409,7 @@ function doNowFor(
           ? `Then Pedro rings ${person || branch} back with the confirmed figure. Call two, offer call.`
           : 'Then Pedro rings back at the booked time with the confirmed figure. Call two, offer call.',
       );
+      if (email) lines.push(`Pedro, before any of that: ${email.charAt(0).toLowerCase()}${email.slice(1)}`);
       return { who: 'HUGO', lines };
 
     case 'Chase the agent':
@@ -396,6 +427,14 @@ function doNowFor(
       return { who: 'PEDRO', lines };
 
     case 'Email the offer':
+      // No address means there is no offer to send, so that is the step, and it
+      // is Pedro's, not Hugo's. Printing "Hugo emails the offer" over a lead
+      // with nowhere to send it is how a deal sits still for a week.
+      if (email) {
+        lines.push(`There is nowhere to send it. ${email}`);
+        lines.push(`Then Hugo emails the offer on ${street}${band.min > 0 ? ` at ${fmtGBP(band.min)}` : ''}, subject to our builder.`);
+        return { who: 'PEDRO', lines };
+      }
       lines.push(`Hugo emails the offer on ${street}${band.min > 0 ? ` at ${fmtGBP(band.min)}` : ''}, subject to our builder.`);
       lines.push('Pedro rings the same day to say it has landed and to ask when the vendor will have seen it.');
       return { who: 'HUGO', lines };

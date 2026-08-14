@@ -104,6 +104,7 @@ export default async function handler(req: Request) {
   if (req.method === 'POST') {
     const body = await req.json() as {
       action?: string; property_id?: string; settings?: Partial<BrrrSettings>; note?: string
+      builder_id?: string | null; viewing_at?: string | null; viewing_quote?: number | null; viewing_notes?: string | null
     }
 
     if (body.action === 'save_settings') {
@@ -139,6 +140,23 @@ export default async function handler(req: Request) {
         .eq('id', property.id)
       if (noteErr) return Response.json({ error: noteErr.message }, { status: 500 })
       return Response.json({ ok: true, pinned_note: text || null })
+    }
+
+    // Which builder is booked to view this house, when, and what they quoted.
+    // Every field is optional and only touches what was sent, so the viewing
+    // date can be set today and the quote logged later without clobbering it.
+    if (body.action === 'save_viewing') {
+      const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+      if (body.builder_id !== undefined) update.assigned_builder_id = body.builder_id || null
+      if (body.viewing_at !== undefined) update.viewing_at = body.viewing_at || null
+      if (body.viewing_quote !== undefined) update.viewing_quote = body.viewing_quote === null || body.viewing_quote === undefined ? null : Number(body.viewing_quote)
+      if (body.viewing_notes !== undefined) update.viewing_notes = body.viewing_notes?.trim() || null
+      const { error: viewErr } = await supabaseAdmin
+        .from('brrr_properties')
+        .update(update)
+        .eq('id', property.id)
+      if (viewErr) return Response.json({ error: viewErr.message }, { status: 500 })
+      return Response.json({ ok: true })
     }
 
     if (body.action === 'push_to_pipeline') {

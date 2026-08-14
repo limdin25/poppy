@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Home, PhoneOutgoing, BadgeCheck, ExternalLink, X, Settings2, Phone } from 'lucide-react'
+import { Home, PhoneOutgoing, BadgeCheck, ExternalLink, X, Settings2, Phone, HardHat } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { MetricCard } from '../components/MetricCard'
 import { AdminError } from '../components/AdminError'
@@ -10,6 +10,8 @@ import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 import { offerRange, upliftRefurb } from '../../../../api/lib/brrr-offer'
 import type { Calibration } from '../../../../api/lib/price-feedback'
 import type { NextStepBrief } from '../../../../api/lib/next-step-brief'
+import { outcodeOf } from '../../../../api/lib/brrr-deal-facts'
+import { matchBuildersForOutcode, type BuilderRow } from '../../../../api/lib/builder-match'
 import DealCalculator from '../components/DealCalculator'
 import NextStepCard from '../../../core/property/NextStepCard'
 
@@ -63,6 +65,10 @@ interface PropertyRow {
   deal_id: string | null
   created_at: string
   calls: PropertyCall[]
+  assigned_builder_id: string | null
+  viewing_at: string | null
+  viewing_quote: number | null
+  viewing_notes: string | null
 }
 
 interface BrrrSettings {
@@ -137,6 +143,15 @@ function fmtWhen(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
+// <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in the browser's own
+// timezone, not the ISO string Postgres hands back.
+function toDatetimeLocal(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 // The offer band used to be re-implemented here, a hand-copy of offerRange in
 // api/lib/brrr.ts that had to be kept in step by hand. It is now the same
 // function, imported above — see api/lib/brrr-offer.ts for why the offer is a
@@ -144,6 +159,7 @@ function fmtWhen(iso: string | null | undefined): string {
 
 export default function PropertiesPage() {
   const { data, loading, error, refetch } = useAdminApi<PropertiesResponse | PropertyRow[]>('properties', { properties: [], settings: null })
+  const { data: builders } = useAdminApi<BuilderRow[]>('builders', [])
   const act = useAdminMutation('properties', 'POST')
   const [selected, setSelected] = useState<PropertyRow | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -151,6 +167,7 @@ export default function PropertiesPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
   const [draft, setDraft] = useState<BrrrSettings | null>(null)
+  const [viewingDraft, setViewingDraft] = useState({ builderId: '', viewingAt: '', quote: '', notes: '' })
 
   // Tolerate both response shapes so a stale cached bundle never blanks the page.
   const resp: PropertiesResponse = Array.isArray(data)
@@ -172,6 +189,15 @@ export default function PropertiesPage() {
   useEffect(() => {
     setNoteDraft(selected?.pinned_note ?? '')
   }, [selected?.id, selected?.pinned_note])
+
+  useEffect(() => {
+    setViewingDraft({
+      builderId: selected?.assigned_builder_id ?? '',
+      viewingAt: toDatetimeLocal(selected?.viewing_at ?? null),
+      quote: selected?.viewing_quote != null ? String(selected.viewing_quote) : '',
+      notes: selected?.viewing_notes ?? '',
+    })
+  }, [selected?.id, selected?.assigned_builder_id, selected?.viewing_at, selected?.viewing_quote, selected?.viewing_notes])
 
   // "Qualified" on this card means "a call turned it into a live deal", which
   // since 2026-08-10 is either of the two pipeline outcomes. Counting only
@@ -205,6 +231,38 @@ export default function PropertiesPage() {
       refetch()
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Could not save the note')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Which builder is booked, when, and what they quoted. Sent together so one
+  // Save covers "just booked it" and "the quote came in" alike.
+  async function saveViewing() {
+    if (!selected) return
+    setBusy('viewing')
+    setActionError(null)
+    try {
+      const viewingAtIso = viewingDraft.viewingAt ? new Date(viewingDraft.viewingAt).toISOString() : null
+      const quote = viewingDraft.quote.trim() ? Number(viewingDraft.quote) : null
+      await act({
+        action: 'save_viewing',
+        property_id: selected.id,
+        builder_id: viewingDraft.builderId || null,
+        viewing_at: viewingAtIso,
+        viewing_quote: quote,
+        viewing_notes: viewingDraft.notes,
+      })
+      setSelected({
+        ...selected,
+        assigned_builder_id: viewingDraft.builderId || null,
+        viewing_at: viewingAtIso,
+        viewing_quote: quote,
+        viewing_notes: viewingDraft.notes.trim() || null,
+      })
+      refetch()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not save the viewing')
     } finally {
       setBusy(null)
     }
@@ -480,6 +538,80 @@ export default function PropertiesPage() {
                   </span>
                 </div>
               </div>
+            </div>
+
+            {/* Book the viewing and log what the builder came back with. The
+                suggested builders are whoever on the roster covers this
+                house's postcode — see api/lib/builder-match.ts. Nobody near
+                this postcode shows nothing, on purpose, rather than a wrong
+                nearest guess. */}
+            <div className="mt-4 rounded-lg border border-border p-3">
+              <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-subtle">
+                <HardHat size={12} /> Viewing
+              </p>
+              {(() => {
+                const outcode = outcodeOf(selected.address)
+                const suggested = matchBuildersForOutcode(builders, outcode)
+                return suggested.length > 0 ? (
+                  <p className="mt-1 text-[11px] text-ink-subtle">
+                    Covers {outcode}: {suggested.map((b) => b.name).join(', ')}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-ink-subtle">
+                    {outcode ? `No builder on the roster covers ${outcode} yet.` : 'No postcode on this listing to match a builder against.'}
+                  </p>
+                )
+              })()}
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-[11px] text-ink-subtle">Builder</span>
+                  <select
+                    value={viewingDraft.builderId}
+                    onChange={(e) => setViewingDraft({ ...viewingDraft, builderId: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-ink"
+                  >
+                    <option value="">Unassigned</option>
+                    {builders.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-ink-subtle">Viewing time</span>
+                  <input
+                    type="datetime-local"
+                    value={viewingDraft.viewingAt}
+                    onChange={(e) => setViewingDraft({ ...viewingDraft, viewingAt: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-ink"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-ink-subtle">Builder's quote (£)</span>
+                  <input
+                    type="number"
+                    value={viewingDraft.quote}
+                    onChange={(e) => setViewingDraft({ ...viewingDraft, quote: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-ink"
+                  />
+                </label>
+                <label className="block sm:col-span-1">
+                  <span className="text-[11px] text-ink-subtle">Notes</span>
+                  <input
+                    type="text"
+                    value={viewingDraft.notes}
+                    onChange={(e) => setViewingDraft({ ...viewingDraft, notes: e.target.value })}
+                    placeholder="What the builder said"
+                    className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-ink"
+                  />
+                </label>
+              </div>
+              <button
+                onClick={saveViewing}
+                disabled={busy === 'viewing'}
+                className="mt-2 rounded-lg bg-brand px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
+              >
+                {busy === 'viewing' ? 'Saving…' : 'Save viewing'}
+              </button>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">

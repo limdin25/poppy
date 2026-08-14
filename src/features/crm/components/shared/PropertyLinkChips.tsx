@@ -27,7 +27,7 @@ function street(address: string | null): string {
   return (address ?? '').split(',')[0]?.trim() || 'View listing';
 }
 
-/** "Holloway Head — 2 bed Flat — £100,000", for the hover. */
+/** "Holloway Head · 2 bed Flat · £100,000", for the hover. */
 function describe(p: PropertyLink): string {
   return [
     p.address ?? 'Unknown address',
@@ -61,7 +61,7 @@ export default function PropertyLinkChips({
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          title={`${describe(p)} — opens Rightmove in a new tab`}
+          title={`${describe(p)} (opens Rightmove in a new tab)`}
           className="inline-flex items-center gap-1 max-w-full text-[9px] font-semibold bg-[#00DEB6]/12 text-[#0E7C68] px-1.5 py-0.5 rounded hover:bg-[#00DEB6]/25 hover:underline"
         >
           <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />

@@ -124,6 +124,14 @@ export default function ContactSmsModal({
   const [emailFroms, setEmailFroms] = useState<EmailFromRow[]>([]);
   const [selectedFromId, setSelectedFromId] = useState<string>('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  // WHO IT GOES TO, typed. Hugo, 2026-08-14, clicking Email on a live property
+  // deal: "it says contact has no email, but it doesn't have where for me to
+  // type the email, which is no good." A branch we have never emailed is the
+  // normal state of a new deal, so the missing address is a field to fill in,
+  // not a wall. wk-email-send already takes a typed recipient (two branches of
+  // one agency share an inbox and wk_contacts has a unique index on email), and
+  // the address is written back onto the lead only AFTER it has gone.
+  const [toEmail, setToEmail] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
@@ -191,6 +199,7 @@ export default function ContactSmsModal({
       setSelectedTemplateId('');
       setBody('');
       setSubject('');
+      setToEmail(contact.email ?? '');
       setRecentSendCount(0);
       setShowSentBanner(false);
       setChannel(defaultChannel);
@@ -252,14 +261,16 @@ export default function ContactSmsModal({
     setShowSentBanner(false);
   };
 
-  // Channel-aware preflight checks.
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(toEmail.trim());
+
+  // Channel-aware preflight checks. Email is deliberately NOT one of them any
+  // more: a missing address is answered by the To field below, not by a wall.
   const channelDisabledReason = useMemo<string | null>(() => {
     if (!contact) return null;
     if (channel === 'sms' && !contact.phone) return 'Contact has no phone number';
     if (channel === 'whatsapp' && !contact.phone) {
       return 'Contact has no phone number for WhatsApp';
     }
-    if (channel === 'email' && !contact.email) return 'Contact has no email address';
     return null;
   }, [contact, channel]);
 
@@ -268,7 +279,7 @@ export default function ContactSmsModal({
     sending ||
     channel === null ||
     !!channelDisabledReason ||
-    (channel === 'email' && !subject.trim());
+    (channel === 'email' && (!subject.trim() || !emailValid));
 
   const send = async () => {
     if (!contact || isSendDisabled) return;
@@ -303,6 +314,7 @@ export default function ContactSmsModal({
         resp = await fn.invoke('wk-email-send', {
           body: {
             contact_id: contact.id,
+            to_email: toEmail.trim().toLowerCase(),
             subject: trimSubject,
             body: trimBody,
             channel_id: selectedFromId || undefined,
@@ -317,6 +329,21 @@ export default function ContactSmsModal({
         return;
       }
       pushToast(`${CHANNEL_LABEL[channel]} sent`, 'success');
+
+      // Remember the address, so next week's offer email does not need it
+      // asking for again. AFTER the send and best effort ON PURPOSE: a unique
+      // index clash with a sister branch sharing the inbox must never read back
+      // as "your email did not send".
+      if (channel === 'email') {
+        const clean = toEmail.trim().toLowerCase();
+        if (clean && clean !== (contact.email ?? '').trim().toLowerCase()) {
+          patchContact(contact.id, { email: clean });
+          const saved = await persist.patchContact(contact.id, { email: clean });
+          if (typeof saved === 'string') {
+            pushToast(`Sent. The address was not saved to the lead: ${saved}`, 'error');
+          }
+        }
+      }
 
       // Stage-coupled templates apply to all channels.
       if (selectedTemplate?.move_to_stage_id && targetStage && contact.id) {
@@ -372,7 +399,7 @@ export default function ContactSmsModal({
   // Header label: when no channel picked, show generic "Message".
   const headerLabel = channel ? CHANNEL_LABEL[channel] : 'Message';
   const recipientLabel =
-    channel === 'email' ? contact.email ?? '(no email)' : contact.phone;
+    channel === 'email' ? toEmail.trim() || 'type an address below' : contact.phone;
 
   // PR 107: lookup column for follow-up modal (read from store columns).
   const followupColumn = followupTarget
@@ -524,6 +551,28 @@ export default function ContactSmsModal({
                 </option>
               ))}
             </select>
+          )}
+
+          {channel === 'email' && (
+            <div>
+              <input
+                value={toEmail}
+                onChange={(e) => setToEmail(e.target.value)}
+                placeholder="To: their email address"
+                type="email"
+                spellCheck={false}
+                autoCapitalize="off"
+                className="w-full px-3 py-2 text-[13px] border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
+                data-testid="contact-sms-modal-to"
+              />
+              {!emailValid && (
+                <div className="mt-1 text-[11px] text-[#6B7280]">
+                  {contact.email
+                    ? 'That does not look like an email address.'
+                    : 'No address on file for this lead. Type theirs here, and it gets saved to the lead once the email has gone.'}
+                </div>
+              )}
+            </div>
           )}
 
           {channel === 'email' && (
