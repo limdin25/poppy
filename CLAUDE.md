@@ -211,6 +211,7 @@ both of which are now the opposite of what we do.
 
 Keep these current as we go:
 
+- [docs/THE_STRATEGY.md](docs/THE_STRATEGY.md) — **read this first on anything property.** What we look for, what Pedro says, how the offer is worked out, and the four mistakes that shaped every rule in it (Orion Way, Doulton Street, Granton Avenue, Pendennis Street). Where it disagrees with an older doc, it wins.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md)
 - [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)
