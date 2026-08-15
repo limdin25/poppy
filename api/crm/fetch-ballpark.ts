@@ -171,7 +171,9 @@ export default async function handler(req: Request): Promise<Response> {
     typedNotes ? `THE CALLER'S TYPED NOTES:\n${typedNotes}` : '',
   ].join('\n');
 
-  const raw = await callLLM(MODEL, SYSTEM_EXTRACT, [{ role: 'user', content: user }], 900);
+  // 1600, not 900: a long call plus six quotes overran the first cap, the
+  // JSON came back truncated, and the parse failure read as a mystery error.
+  const raw = await callLLM(MODEL, SYSTEM_EXTRACT, [{ role: 'user', content: user }], 1600);
   if (!raw) return Response.json({ error: 'The reader did not answer. Try again.' }, { status: 502 });
 
   let heard: Extraction;
@@ -189,6 +191,7 @@ export default async function handler(req: Request): Promise<Response> {
       heard: (parsed.heard ?? []).map(String).slice(0, 6),
     };
   } catch {
+    console.warn('[fetch-ballpark] unparseable extraction:', raw.slice(0, 400));
     return Response.json({ error: 'Could not read the extraction. Try again.' }, { status: 502 });
   }
 
