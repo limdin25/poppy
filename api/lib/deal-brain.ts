@@ -24,6 +24,25 @@ import {
 
 export const DEAL_MANAGER_MODEL = 'claude-sonnet-5';
 
+/** RAISED FROM 700 TO 2000 ON 2026-08-15, measured rather than guessed.
+ *
+ *  The first live sweep came back `model_silent` on six of seven deals. The
+ *  cause is that claude-sonnet-5 emits a THINKING block before its answer, and
+ *  both come out of the same budget. Measured against the real API on a
+ *  moderate deal: 573 output tokens for a 4 sentence instruction, against a
+ *  ceiling of 700. Anything richer, a longer inbound quote, more blockers, a
+ *  fuller checklist, spends the lot on thinking, the text block never arrives,
+ *  and firstText() correctly returns nothing.
+ *
+ *  The fences behaved perfectly through all of it: every one of those six fell
+ *  back to the deterministic brief and said in the log exactly why. That is the
+ *  design working, but a brain that is silent six times out of seven is not a
+ *  brain, so the budget is the thing to fix.
+ *
+ *  It costs nothing to raise. Output tokens are billed as produced, not as
+ *  reserved, and the answer is still 2 to 4 sentences. */
+export const DEAL_MANAGER_MAX_TOKENS = 2000;
+
 export const DEAL_MANAGER_SYSTEM = [
   'You manage a property deal-sourcing pipeline. For ONE deal you decide how badly it needs a human today and what that human should do.',
   '',
@@ -38,6 +57,9 @@ export const DEAL_MANAGER_SYSTEM = [
   '6. NEVER use a long dash. No em dash, no en dash. Use a comma or a full stop. No curly quotes, no ellipsis character.',
   '7. If the branch has replied since the brief was written, that is the most important fact on the deal and your instruction must deal with it first.',
   '8. If a fact is missing, say it is missing. Never assume it.',
+  '9. WRITE IN PLAIN ENGLISH, NEVER IN FIELD NAMES. The checklist keys are internal. Say "whether it is still available", "why they are selling", "what condition it is in", "whether there is water coming in", "freehold or leasehold". Never write still_available, why_selling, condition_notes or any other underscored key: a person reads this out loud.',
+  '10. `figuresOnFile` is the complete list of figures legitimately recorded on this deal, and it INCLUDES the rungs of the offer ladder as well as the labelled fields. A figure appearing there without a label is normal and is NOT a mismatch. Only raise figure_mismatch when a figure in a CALL TRANSCRIPT or a BRANCH MESSAGE disagrees with the file.',
+  '11. There is no VA on this team at the moment. Address every instruction to PEDRO or to HUGO, and use HUGO for anything needing a decision about money or a stage.',
   '',
   'Return ONLY a JSON object:',
   '{"attention": 0-100, "action": "...", "who": "PEDRO"|"HUGO"|"VA"|"NOBODY", "instruction": "...", "flags": ["..."], "evidence": ["..."]}',
@@ -67,7 +89,7 @@ export async function assess(state: DealState): Promise<{
   try {
     out = await callLLM(
       DEAL_MANAGER_MODEL, DEAL_MANAGER_SYSTEM,
-      [{ role: 'user', content: dealManagerPrompt(state) }], 700,
+      [{ role: 'user', content: dealManagerPrompt(state) }], DEAL_MANAGER_MAX_TOKENS,
     );
   } catch (e) {
     return { verdict: fallbackVerdict(state), source: 'fallback', refused: `model_error: ${String(e).slice(0, 120)}` };

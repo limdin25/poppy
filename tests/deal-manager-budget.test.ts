@@ -159,11 +159,13 @@ describe('the defaults are the ones the plan budgeted for', () => {
     expect(MANAGER_DEFAULTS.daily_cap).toBe(250);
   });
 
-  it('takes at most 25 deals per sweep, so one run cannot eat the day', () => {
-    // 25 assessments at roughly two seconds each fits inside the route's
-    // maxDuration, and 25 every two minutes is far more headroom than a board
-    // of sixty branches ever needs.
-    expect(MANAGER_DEFAULTS.sweep_batch).toBe(25);
+  it('takes at most 8 deals per sweep, which is what fits in 60 seconds', () => {
+    // MEASURED on the live deployment 2026-08-15, not guessed: the first real
+    // sweep timed out at 25. Loading 179 deals costs about 8 seconds and each
+    // assessment about 5, so 8 + 5n must stay under the route's maxDuration of
+    // 60. Eight every two minutes is still thousands of assessments of daily
+    // capacity against a cap of 250.
+    expect(MANAGER_DEFAULTS.sweep_batch).toBe(8);
   });
 
   it('starts switched OFF, so the flag has to be set deliberately', () => {

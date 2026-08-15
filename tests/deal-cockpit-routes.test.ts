@@ -178,6 +178,29 @@ describe('there is ONE brain, and both callers use it', () => {
     expect(BRAIN).toContain("DEAL_MANAGER_MODEL = 'claude-sonnet-5'");
   });
 
+  it('gives the model room to think before it answers', () => {
+    // MEASURED 2026-08-15 on the live board: at 700 tokens SIX OF SEVEN
+    // assessments came back empty. claude-sonnet-5 emits a thinking block
+    // before its answer and both come out of the same budget, so a rich deal
+    // spent the lot thinking and the text block never arrived. The fences all
+    // behaved (every one fell back to the brief and logged model_silent), but
+    // a brain that is silent six times out of seven is not a brain.
+    expect(BRAIN).toMatch(/DEAL_MANAGER_MAX_TOKENS = 2000/);
+    expect(BRAIN).not.toMatch(/\], 700\)/);
+  });
+
+  it('is told the three things it got wrong on real data', () => {
+    // Found by reading the first live assessments rather than by guessing.
+    // Plain English, not field names: it was writing "still_available,
+    // why_selling, condition_notes" into an instruction a person reads out.
+    expect(BRAIN).toMatch(/NEVER IN FIELD NAMES/);
+    // The offer ladder's rungs are legitimately on file, and it was raising
+    // figure_mismatch about them.
+    expect(BRAIN).toMatch(/INCLUDES the rungs of the offer ladder/);
+    // It addressed work to a VA. There is no VA.
+    expect(BRAIN).toMatch(/There is no VA on this team/);
+  });
+
   it('still answers the Today list, which is what TodayPanel reads', () => {
     // This route is the kill-switch product: deterministic, no model, correct
     // with the brain switched off. It must keep working exactly as it does.

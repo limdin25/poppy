@@ -66,9 +66,30 @@ export const FORCE_REASSESS_HOURS = 20;
 export const MANAGER_DEFAULTS = {
   enabled: false,
   daily_cap: 250,
-  sweep_batch: 25,
+  /** LOWERED FROM 25 TO 8 ON 2026-08-15, measured on the live deployment
+   *  rather than guessed, twice.
+   *
+   *  The first real sweep hit FUNCTION_INVOCATION_TIMEOUT at 25. Timed with a
+   *  batch of one: about 8 seconds to load 179 deals, then about 5 seconds per
+   *  assessment. A batch of 8 then timed out as well, because raising the token
+   *  budget made each call think for longer. Running them side by side (see
+   *  SWEEP_CONCURRENCY) is what actually fixed it; the small batch is the
+   *  second belt.
+   *
+   *  It was never a throughput problem: 8 every two minutes through a working
+   *  day is thousands of assessments of capacity against a daily cap of 250,
+   *  and after hash dedupe a board this size needs a small fraction of that. */
+  sweep_batch: 8,
   reassess_min_seconds: 60,
 } as const;
+
+/** How many assessments run side by side inside one sweep.
+ *
+ *  Four, so a batch of eight is two rounds rather than eight, which is what
+ *  keeps the route inside its 60 second maxDuration. Deliberately not higher:
+ *  the goal is fitting in the wall clock, not maximum speed, and a wide
+ *  fan-out into the Anthropic API is how a sweep starts collecting 429s. */
+export const SWEEP_CONCURRENCY = 4;
 
 // ---------------------------------------------------------------------------
 // pure: the hash
@@ -512,6 +533,7 @@ export async function sweep(
     assess: Parameters<typeof assessAndLog>[1]['assess'];
     dailyCap?: number;
     batch?: number;
+    concurrency?: number;
     minSeconds?: number;
     model?: string;
   },
@@ -549,14 +571,11 @@ export async function sweep(
     .map((bundle) => ({ bundle, hash: stateHash(bundle.state), score: baselineAttention(bundle.state) }))
     .sort((a, b) => b.score - a.score);
 
-  let assessed = 0;
+  // ---- decide who gets looked at, before spending anything -------------
   let deduped = 0;
-  let failed = 0;
-
+  const due: Array<{ bundle: DealBundle; hash: string }> = [];
   for (const { bundle, hash } of ranked) {
-    if (spent + assessed >= cap) { base.capped = true; break; }
-    if (assessed >= batch) break;
-
+    if (due.length >= Math.min(batch, Math.max(0, cap - spent))) break;
     const last = priorities.get(bundle.state.propertyId) ?? null;
     const decision = shouldAssess({
       hash,
@@ -566,17 +585,51 @@ export async function sweep(
       now: args.now,
       minSeconds: args.minSeconds,
     });
-    if (!decision.assess) { deduped += 1; continue; }
-
-    try {
-      await assessAndLog(sb, { bundle, trigger: args.mode === 'full' ? 'morning_sweep' : 'sweep', hash, assess: args.assess, model: args.model });
-      assessed += 1;
-    } catch (e) {
-      // One bad property must never stop the run.
-      failed += 1;
-      console.warn('[deal-manager-run] deal failed', bundle.state.propertyId, String(e).slice(0, 160));
-    }
+    if (decision.assess) due.push({ bundle, hash });
+    else deduped += 1;
   }
+  if (spent + due.length >= cap) base.capped = true;
+
+  // ---- assess them SIDE BY SIDE ----------------------------------------
+  //
+  // MEASURED, NOT ASSUMED. Doing these one after another timed the route out
+  // twice on the live deployment: each assessment is a Sonnet call that thinks
+  // before it answers, so eight of them in a row is well past the 60 second
+  // maxDuration however small the batch gets. They are independent API calls
+  // about different houses, so there was never a reason to queue them.
+  //
+  // The pool is small on purpose. The point is fitting inside the route's
+  // wall clock, not going as fast as possible, and a wide fan-out into the
+  // Anthropic API is how a sweep starts collecting 429s.
+  const concurrency = Math.min(args.concurrency ?? SWEEP_CONCURRENCY, due.length);
+  let assessed = 0;
+  let failed = 0;
+  let cursor = 0;
+
+  const worker = async () => {
+    for (;;) {
+      const i = cursor;
+      cursor += 1;
+      if (i >= due.length) return;
+      const { bundle, hash } = due[i];
+      try {
+        await assessAndLog(sb, {
+          bundle,
+          trigger: args.mode === 'full' ? 'morning_sweep' : 'sweep',
+          hash,
+          assess: args.assess,
+          model: args.model,
+        });
+        assessed += 1;
+      } catch (e) {
+        // One bad property must never stop the run.
+        failed += 1;
+        console.warn('[deal-manager-run] deal failed', bundle.state.propertyId, String(e).slice(0, 160));
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
 
   return { ...base, assessed, deduped, failed };
 }
