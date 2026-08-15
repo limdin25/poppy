@@ -20,9 +20,18 @@ const list = stripComments(read('src/features/crm/components/templates/VideoTemp
 const api = stripComments(read('api/crm/vsl-templates.ts'));
 
 describe('the Templates page', () => {
-  it('has a Video tab beside SMS / WhatsApp / Email', () => {
-    expect(page).toMatch(/id: 'video'/);
-    expect(page).toMatch(/<VideoTemplateList/);
+  // RETIRED 2026-08-15. Hugo: "remove any contamination from old processes."
+  // The video funnel was killed on 2026-08-07 and the CRM is a property
+  // business now, so the tab is gone from TABS and its panel no longer renders.
+  //
+  // The assertion is INVERTED rather than deleted, because the component and
+  // its API route are still on disk and still tested below. Deleting this test
+  // would leave nothing recording that the tab's absence is a decision rather
+  // than an accident, and the next person to see VideoTemplateList sitting
+  // unused would wire it back in.
+  it('no longer offers a Video tab: that funnel is retired', () => {
+    expect(page).not.toMatch(/id: 'video'/);
+    expect(page).not.toMatch(/<VideoTemplateList/);
   });
 });
 

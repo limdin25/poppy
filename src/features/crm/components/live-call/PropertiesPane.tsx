@@ -50,6 +50,11 @@ const QUESTIONS: Array<{
   { key: 'occupancy', label: 'Vacant or tenanted?' },
   { key: 'condition_notes', label: 'The big four: roof, damp, electrics, boiler' },
   { key: 'water', label: 'Is it dry? Leaks, ceiling staining?' },
+  // Sits above the rejected offer because that is the order the script asks
+  // them in, and because it is the more valuable of the two: a done-up sale on
+  // the same street is a fact about the END value, which is the number every
+  // other number in the deal hangs off.
+  { key: 'agent_comparable', label: 'Anything DONE UP sold on that street? What for?' },
   { key: 'rejected_offer', label: 'Any offer rejected? At what level?' },
   { key: 'rent_estimate', label: 'What would it let for (pcm)?' },
   {

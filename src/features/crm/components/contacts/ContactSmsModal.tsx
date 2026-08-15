@@ -290,9 +290,15 @@ export default function ContactSmsModal({
     setDrafting(true);
     setDraftNote(null);
     try {
+      // The drafter reads live transcripts and the proof-of-funds settings with
+      // the service-role key, so it is gated like every other deal route.
+      const { data: sess } = await supabase.auth.getSession();
       const res = await fetch('/api/crm/draft-offer-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sess?.session?.access_token ?? ''}`,
+        },
         body: JSON.stringify({
           kind: 'follow_up',
           house: {

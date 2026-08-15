@@ -102,9 +102,12 @@ describe('routing — heyelsie.com/{slug}', () => {
     }
   })
 
-  it('the automation cron is registered every 5 minutes', () => {
+  // UNSCHEDULED 2026-08-15 with the rest of the dead-business crons. The
+  // funnel itself was killed on 2026-08-07; the cron had gone on running.
+  // Inverted rather than deleted so the absence stays a recorded decision.
+  it('the automation cron is no longer registered: the funnel is retired', () => {
     const cron = vercel.crons.find((c) => c.path === '/api/cron/vsl-automation')
-    expect(cron?.schedule).toBe('*/5 * * * *')
+    expect(cron).toBeFalsy()
   })
 })
 

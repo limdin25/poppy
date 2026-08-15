@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { buildNextStepBrief, briefToText, streetOf, compCount } from '../api/lib/next-step-brief'
+import { buildNextStepBrief, briefToText, streetOf, compCount, externalDoNow } from '../api/lib/next-step-brief'
 import { offerRange } from '../api/lib/brrr-offer'
 
 const root = resolve(__dirname, '..')
@@ -395,5 +395,53 @@ describe('one rendering of the brief, in core, not in a feature', () => {
   it('draws nothing at all on a house with neither a note nor a brief', () => {
     const card = read('src/core/property/NextStepCard.tsx')
     expect(card).toMatch(/if \(!note && !brief\) return null/)
+  })
+})
+
+describe('our ceiling never reaches a model writing to the branch', () => {
+  // The walk-away is the one figure in the business that must never reach the
+  // person we are negotiating against. `do_now` is written for Pedro and Hugo
+  // and states it twice: the band ("opens at X and stops at Y") and the ladder,
+  // whose last rung IS the ceiling. The very next line of the same array reads
+  // "Never say the ceiling out loud", and the whole array was being handed to
+  // SYSTEM_FOLLOW_UP as "say the parts that concern THEM".
+
+  it('strips every do-now line carrying one of our figures', () => {
+    expect(externalDoNow([
+      'Ring them back on Granton Avenue.',
+      "Today's band opens at £109,455 and stops at £123,250. Confirm before call two.",
+      'Climb one rung at a time: £109,455, £116,352, £123,250.',
+      'Chase the video, then send it to the builder.',
+    ])).toEqual([
+      'Ring them back on Granton Avenue.',
+      'Chase the video, then send it to the builder.',
+    ])
+  })
+
+  it('catches GBP written out as well as the symbol', () => {
+    expect(externalDoNow(['Open at GBP 95,000.', 'Ask who is handling it.']))
+      .toEqual(['Ask who is handling it.'])
+  })
+
+  it('survives nothing at all', () => {
+    expect(externalDoNow(null)).toEqual([])
+    expect(externalDoNow(undefined)).toEqual([])
+  })
+
+  it('the drafter uses the fence, and never the raw array', () => {
+    // The fence lives server-side on purpose: a filter at the caller would be
+    // one forgotten call away from leaking again.
+    const drafter = read('api/crm/draft-offer-email.ts')
+    expect(drafter).toMatch(/externalDoNow\(c\.doNow\)/)
+    expect(drafter).not.toMatch(/\(c\.doNow \?\? \[\]\)\.map/)
+  })
+
+  it('the brief really does put the ceiling in do_now, which is why the fence exists', () => {
+    // If this ever stops being true the fence is harmless, but the fact it IS
+    // true is the whole reason it was needed. Pinned so nobody removes the
+    // fence on the assumption the brief is already safe.
+    const brief = read('api/lib/next-step-brief.ts')
+    expect(brief).toMatch(/Climb one rung at a time/)
+    expect(brief).toMatch(/Never say the ceiling out loud/)
   })
 })

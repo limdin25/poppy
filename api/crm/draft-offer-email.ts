@@ -37,6 +37,7 @@ import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
 import { stripInventedHouseNumber } from '../lib/draft-guards.js';
 import { decideCounter, respectsCeiling } from '../lib/counter-position.js';
+import { externalDoNow } from '../lib/next-step-brief.js';
 
 export const config = { runtime: 'edge' };
 
@@ -261,6 +262,27 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'POST only' }), { status: 405 });
   }
 
+  // THE SAME DOOR AS EVERY OTHER DEAL ROUTE. This had no auth check of any
+  // kind, and it is not a harmless drafting endpoint: given a callId it reads
+  // `wk_live_transcripts` with the service-role key and echoes the call into
+  // its reply, and it reads `platform_settings.proof_of_funds`, which is the
+  // company name, the bank and a dated balance. Anyone who knew the URL could
+  // read both, and run up the model bill doing it.
+  const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!jwt) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  const { data: userResp } = await supabase.auth.getUser(jwt);
+  if (!userResp?.user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+  const caller = createClient(
+    process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { global: { headers: { Authorization: `Bearer ${jwt}` } } },
+  );
+  const { data: allowed } = await caller.rpc('wk_is_agent_or_admin');
+  if (!allowed) {
+    return new Response(JSON.stringify({ error: 'CRM access required' }), { status: 403 });
+  }
+
   let body: Body;
   try {
     body = (await req.json()) as Body;
@@ -417,8 +439,19 @@ export default async function handler(req: Request): Promise<Response> {
     blockers.length
       ? `WHAT IS HOLDING IT UP (this is what the email is FOR, answer it first):\n${blockers.map((b) => `- ${b}`).join('\n')}`
       : 'Nothing specific is recorded as holding it up. Write a short, friendly chase asking where it stands.',
-    (c.doNow ?? []).filter(Boolean).length
-      ? `WHAT WE HAVE ALREADY DECIDED TO DO (say only the parts that concern THEM):\n${(c.doNow ?? []).map((d) => `- ${d}`).join('\n')}`
+    // OUR OWN FIGURES ARE STRIPPED OUT BEFORE THE MODEL SEES THEM.
+    //
+    // `do_now` is written for Pedro and Hugo, and two of its lines state our
+    // money: "Today's band opens at X and stops at Y", and "Climb one rung at a
+    // time: A, B, C" whose last rung IS the walk-away. The next line of that
+    // same array reads "Never say the ceiling out loud" and the whole lot was
+    // being handed to a model told to "say the parts that concern THEM".
+    //
+    // Forbidding a model to mention a number while showing it the number is a
+    // hope, not a fence. This is the fence, and it lives here rather than at
+    // the caller so no future caller can skip it.
+    externalDoNow(c.doNow).filter(Boolean).length
+      ? `WHAT WE HAVE ALREADY DECIDED TO DO (say only the parts that concern THEM):\n${externalDoNow(c.doNow).map((d) => `- ${d}`).join('\n')}`
       : null,
     c.pinnedNote ? `OUR OWN NOTE on this deal (internal, never quote it):\n${c.pinnedNote}` : null,
     proofFacts || null,

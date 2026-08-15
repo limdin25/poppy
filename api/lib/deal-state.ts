@@ -159,7 +159,11 @@ export const STALE_HOURS = 72;
 export const CHECKLIST_KEYS = [
   'still_available', 'why_selling', 'motivation', 'condition_notes',
   'condition_band', 'water', 'tenure', 'floor_area',
-  'offers_received', 'best_price_indicated',
+  // 'offers_received' used to sit here and is NOT a key on Qualification, so
+  // nothing could ever answer it and the completeness score was permanently
+  // one short. Replaced 2026-08-15 by the two keys that do exist and that the
+  // ballpark now actually reads.
+  'rejected_offer', 'agent_comparable', 'rent_estimate', 'best_price_indicated',
 ] as const;
 
 const hoursBetween = (from: string | null | undefined, to: Date): number | null => {

@@ -517,6 +517,28 @@ export function buildNextStepBrief(input: BriefInput): NextStepBrief {
  * This is what goes in the notification that lands on his phone the moment
  * Pedro presses an outcome, and it is the same text the screen renders.
  */
+/** The do-now lines that are safe to put in front of a MODEL WRITING TO THE
+ *  BRANCH. Never use `brief.do_now` directly for that.
+ *
+ *  WHY THIS EXISTS. `do_now` is written for Pedro and Hugo and it states our
+ *  money: "Today's band opens at X and stops at Y", and "Climb one rung at a
+ *  time: A, B, C", whose last rung IS the ceiling. The very next line of the
+ *  same array says "Never say the ceiling out loud".
+ *
+ *  ContactSmsModal was handing that whole array to SYSTEM_FOLLOW_UP as "what we
+ *  have already decided to do, say only the parts that concern THEM". That
+ *  prompt is forbidden from re-opening price, but forbidding a model to mention
+ *  a number while showing it the number is not a fence, it is a hope. The
+ *  walk-away price is the one figure in the business that must never reach the
+ *  person we are negotiating against.
+ *
+ *  So the rule is blunt on purpose: a do-now line carrying a money figure is
+ *  ours. A follow-up email has no legitimate reason to carry one, because it is
+ *  not allowed to discuss price at all. */
+export function externalDoNow(lines: readonly string[] | null | undefined): string[] {
+  return (lines ?? []).filter((l) => !/[£$]\s?\d|\bGBP\s?\d/i.test(String(l)));
+}
+
 export function briefToText(b: NextStepBrief): string {
   const money = [
     b.asking ? `Asking: ${fmtGBP(b.asking)}` : null,

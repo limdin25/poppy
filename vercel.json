@@ -131,24 +131,12 @@
   },
   "crons": [
     {
-      "path": "/api/cron/social-posts",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/messages/poll",
       "schedule": "* * * * *"
     },
     {
       "path": "/api/messages/process-takeovers",
       "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/follow-up/enqueue",
-      "schedule": "15 * * * *"
-    },
-    {
-      "path": "/api/cron/follow-up",
-      "schedule": "0 * * * *"
     },
     {
       "path": "/api/contacts/sync-avatars",
@@ -183,28 +171,12 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/followups",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/agent/tick",
       "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/crm-jobs-pump",
       "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/review-requests",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/review-reconcile",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/review-weekly-email",
-      "schedule": "0 8 * * 1"
     },
     {
       "path": "/api/cron/price-feedback-weekly",
@@ -215,19 +187,7 @@
       "schedule": "30 16 * * *"
     },
     {
-      "path": "/api/cron/vsl-automation",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/vsl-auto-send",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/notify-drain",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/site-demo-followups",
       "schedule": "* * * * *"
     },
     {

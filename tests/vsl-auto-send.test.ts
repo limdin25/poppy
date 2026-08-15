@@ -162,10 +162,13 @@ describe('the arming endpoint', () => {
 });
 
 describe('the cron', () => {
-  it('runs every minute — a render finishing must not sit for five', () => {
+  // UNSCHEDULED 2026-08-15. The video funnel was killed on 2026-08-07 but its
+  // two crons kept firing, this one every single minute. The route file is
+  // untouched and everything below still tests it; only the schedule is gone,
+  // so putting it back is one entry in vercel.json.
+  it('is no longer scheduled: the video funnel is retired', () => {
     const entry = vercel.crons.find((c) => c.path === '/api/cron/vsl-auto-send');
-    expect(entry).toBeTruthy();
-    expect(entry!.schedule).toBe('* * * * *');
+    expect(entry).toBeFalsy();
   });
 
   it('is CRON_SECRET-gated like every other cron here', () => {

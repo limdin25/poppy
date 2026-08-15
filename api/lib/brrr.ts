@@ -127,6 +127,16 @@ export interface Qualification {
   floor_area?: string | null;           // sqm the AGENT stated, when the machine has none
   rent_estimate?: string | null;        // "what would it let for" pcm
   rejected_offer?: string | null;       // any offer rejected, and at what level
+  // Added 2026-08-15. The script has asked this since 8b and calls it "the most
+  // valuable question on this page", the coach prompts for it, and the
+  // confidence scorer names its absence as the thing holding a deal back. It
+  // had no field, so the answer went in the free-text note and nothing ever
+  // read it. A done-up sale on the subject's own street beats every comparable
+  // we can assemble at a desk, because it is the same street, the same stock
+  // and a finished condition, which is exactly what the Land Registry cannot
+  // tell us. Free text on purpose: Pedro types what he heard ("number 12 went
+  // for 118 in the spring"), and the ballpark extracts the figure from it.
+  agent_comparable?: string | null;     // done-up sale the AGENT quoted: address, price, when
   why_selling?: string | null;
   motivation?: string | null;           // how motivated/urgent the vendor is
   chain?: string | null;
@@ -155,6 +165,7 @@ export const QUALIFICATION_QUESTIONS: Array<{ key: keyof Qualification; question
   { key: 'water', question: 'Is it dry? Any leaks, ceiling staining, roof trouble?' },
   { key: 'floor_area', question: 'Floor area in sqm, if the agent has the particulars' },
   { key: 'rent_estimate', question: 'What would it let for, per month?' },
+  { key: 'agent_comparable', question: 'Anything on that street sold recently that was done up, and what did it go for?' },
   { key: 'rejected_offer', question: 'Has any offer been rejected, and at what level?' },
   { key: 'interest_level', question: 'How much interest — viewings / offers so far?' },
   { key: 'fallen_through', question: 'Has a sale ever fallen through on it?' },

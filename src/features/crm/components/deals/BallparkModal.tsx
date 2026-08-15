@@ -48,11 +48,29 @@ interface EngineAnswer {
   ceiling?: number;
   ladder?: number[];
   gdv?: number;
+  /** The works at the TRADE rate. This is the number that set the offer. */
   refurb?: number;
+  /** The same works at Hugo's own crew rate: what the builder is handed as a
+   *  budget. Deliberately a different number from the one above. */
+  refurb_builder_budget?: number;
   refurb_band?: string;
   tmv?: number;
   asking?: number;
   comps_tier?: string;
+  /** 'standard' = gold or strong (within 12 months). 'weaker' = the fair tier,
+   *  same 400m and same three same-style sales, but out to 24 months. */
+  evidence_strength?: string;
+  /** A done-up sale the AGENT quoted on the call. Used only when it is LOWER
+   *  than our own figure; recorded and ignored when higher. */
+  agent_comp?: {
+    price?: number; note?: string | null; engine_gdv?: number;
+    gap_pct?: number; used?: boolean; why?: string;
+  } | null;
+  /** What the vendor has already refused: their floor. Never lifts our band. */
+  rejected_offer?: {
+    price?: number; above_our_ceiling?: boolean;
+    gap_to_ceiling?: number; verdict?: string;
+  } | null;
   comps_used?: number;
   gdv_basis?: string;
   condition_source?: string;
@@ -224,9 +242,45 @@ export default function BallparkModal({ propertyId, address, onClose }: {
               <div className="bg-[#FBEFEA] rounded-[8px] p-2">Never above<br /><b className="text-[15px]">{gbp(engine.ceiling)}</b></div>
             </div>
             <div className="text-[11px] text-[#6B7280] mt-1">
-              Worth {gbp(engine.gdv)} done up, works {gbp(engine.refurb)} at the low end ({engine.refurb_band}),
+              Worth {gbp(engine.gdv)} done up, works {gbp(engine.refurb)} at the trade rate ({engine.refurb_band}),
               {' '}{engine.comps_used} sold comps, {engine.comps_tier} evidence. Asking {gbp(engine.asking)}.
             </div>
+            {/* The two refurb figures do different jobs and must never be read
+                as one. The offer is priced on the trade rate; the crew rate is
+                the budget the builder is given. Showing only one of them is how
+                a builder ends up quoting against the number we offered on. */}
+            {engine.refurb_builder_budget != null && (
+              <div className="text-[11px] text-[#1F2937] mt-1 bg-[#F6F7F9] border border-[#E5E7EB] rounded-[8px] p-2">
+                Offer priced on <b>{gbp(engine.refurb)}</b> of work.
+                {' '}Builder's budget: <b>{gbp(engine.refurb_builder_budget)}</b>.
+                <span className="text-[#6B7280]"> The gap is our cushion, not a saving to give away.</span>
+              </div>
+            )}
+            {engine.evidence_strength === 'weaker' && (
+              <div className="text-[11px] text-[#92400E] mt-1 bg-[#FFFBEB] border border-[#F59E0B]/40 rounded-[8px] p-2">
+                Weaker evidence: the three sold comparables are within 400 metres
+                but older than a year. The band is right on what we know, and
+                what we know is thinner than usual.
+              </div>
+            )}
+
+            {/* What the agent said that the desk could not know, and what the
+                engine did with it. Shown either way, so a figure that moved has
+                a visible cause and a figure that did not move is not silently
+                discarded. */}
+            {engine.agent_comp && (
+              <div className={`text-[11px] mt-1 rounded-[8px] p-2 border ${engine.agent_comp.used ? 'bg-[#F3F7F0] border-[#2E7D43]/30 text-[#1F2937]' : 'bg-[#FFFBEB] border-[#F59E0B]/40 text-[#92400E]'}`}>
+                <b>The agent's own done-up sale: {gbp(engine.agent_comp.price)}</b>
+                {engine.agent_comp.note && <span className="text-[#6B7280]"> ({engine.agent_comp.note})</span>}
+                <div className="mt-0.5">{engine.agent_comp.why}</div>
+              </div>
+            )}
+            {engine.rejected_offer && (
+              <div className={`text-[11px] mt-1 rounded-[8px] p-2 border ${engine.rejected_offer.above_our_ceiling ? 'bg-[#FBEFEA] border-[#DC2626]/40 text-[#7F1D1D]' : 'bg-[#F3F7F0] border-[#2E7D43]/30 text-[#1F2937]'}`}>
+                <b>They already turned down {gbp(engine.rejected_offer.price)}.</b>
+                <div className="mt-0.5">{engine.rejected_offer.verdict}</div>
+              </div>
+            )}
             {engine.why && <div className="text-[11px] text-[#374151] mt-1">{engine.why}</div>}
 
             {/* What the fresh look at every photograph found. */}

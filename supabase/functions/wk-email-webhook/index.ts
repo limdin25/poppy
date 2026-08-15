@@ -764,7 +764,7 @@ async function reactToInbound(
 
   try {
     const { data: c } = await supa
-      .from('wk_contacts').select('id, name, custom_fields').eq('id', contactId).maybeSingle();
+      .from('wk_contacts').select('id, name, custom_fields, agent_id').eq('id', contactId).maybeSingle();
     const cf = ((c as { custom_fields?: Record<string, string> } | null)?.custom_fields ?? {});
     // Only property leads: this reading is about houses.
     if (cf.lead_type !== 'estate_agent') return reading;
@@ -787,13 +787,33 @@ async function reactToInbound(
 
     // Tell Hugo. A rejection sat unread for seven hours while a fresh offer was
     // about to go out blind, and that is the whole reason this exists.
-    await supa.from('wk_notifications').insert({
-      contact_id: contactId,
-      kind: 'branch_replied',
-      title: `${(c as { name?: string } | null)?.name ?? 'A branch'} replied`,
-      body: reading.summary,
-      meta: { inbound_kind: reading.kind, figures: reading.figuresMentioned },
-    });
+    //
+    // IT HAD NEVER ONCE FIRED. `wk_notifications.agent_id` is NOT NULL with no
+    // default, and this insert omitted it, so every single one was rejected by
+    // Postgres. The whole block sits inside a try/catch whose job is to stop a
+    // reading failure from losing the email, so the violation was caught,
+    // logged and swallowed, and the feature looked like it worked.
+    //
+    // Who to tell: the agent the contact belongs to. If the row is unowned
+    // there is nobody to notify and we say so in the log rather than inventing
+    // a recipient, because a notification sent to the wrong person is worse
+    // than one not sent.
+    const ownerId = (c as { agent_id?: string | null } | null)?.agent_id ?? null;
+    if (ownerId) {
+      const { error: notifyErr } = await supa.from('wk_notifications').insert({
+        agent_id: ownerId,
+        contact_id: contactId,
+        kind: 'branch_replied',
+        title: `${(c as { name?: string } | null)?.name ?? 'A branch'} replied`,
+        body: reading.summary,
+        meta: { inbound_kind: reading.kind, figures: reading.figuresMentioned },
+      });
+      // Logged loudly rather than swallowed: silence is what hid this for days.
+      if (notifyErr) console.error('[wk-email-webhook] notification refused', notifyErr);
+    } else {
+      console.error('[wk-email-webhook] no agent owns contact', contactId,
+        '- nobody was told about this reply');
+    }
   } catch (e) {
     // Reading the email must never stop it being filed.
     console.error('[wk-email-webhook] reaction failed', String(e));

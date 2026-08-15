@@ -1,25 +1,33 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Mail, FileText, Clapperboard } from 'lucide-react';
+import { MessageSquare, Mail } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import TemplateList from '../components/templates/TemplateList';
-import AgreementTemplateList from '../components/templates/AgreementTemplateList';
-import VideoTemplateList from '../components/templates/VideoTemplateList';
 import WhatsAppMetaTemplates from '../components/templates/WhatsAppMetaTemplates';
 import WhatsAppProfileCard from '../components/templates/WhatsAppProfileCard';
 
+// HIDDEN 2026-08-15, on Hugo's "remove any contamination from old processes".
+// The CRM is a property business now and two of these tabs belonged to dead
+// ones. The components and their tables are untouched, so putting a tab back is
+// one line:
+//
+//   { id: 'video', label: 'Video', icon: Clapperboard }
+//       The VSL follow-up messages. That funnel was killed on 2026-08-07 and
+//       its two crons were unscheduled with this change.
+//   { id: 'agreements', label: 'Agreements', icon: FileText }
+//       Reads `agreement_templates`, the reviews-product client contracts.
+//       NOT Pedro's working agreement: that is `wk_agent_agreement`, it is very
+//       much live, and Hugo edits it in Settings, Agents and spend. Checked
+//       before removing this, because the two are easy to confuse by name.
+//
+// The property deal process is NOT a tab here either. Hugo 2026-08-12: "it
+// should not be inside the templates, it should be below the templates on the
+// menu." It lives at /admin/crm/deal-process.
 const TABS = [
   { id: 'sms', label: 'SMS', icon: MessageSquare },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
   { id: 'email', label: 'Email', icon: Mail },
-  // The video messages live in platform_settings, not wk_sms_templates — so
-  // this page could never have listed them (Hugo 2026-07-27).
-  { id: 'video', label: 'Video', icon: Clapperboard },
-  { id: 'agreements', label: 'Agreements', icon: FileText },
-  // The property deal process is NOT a tab here. Hugo 2026-08-12: "it should not
-  // be inside the templates, it should be below the templates on the menu." It
-  // lives at /admin/crm/deal-process.
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -114,16 +122,9 @@ export default function TemplatesPage() {
               <TemplateList filterChannel="email" isAdmin={isAdminOrWorkspaceAdmin} />
             </section>
           )}
-          {activeTab === 'video' && (
-            <section className={CARD}>
-              <VideoTemplateList isAdmin={isAdminOrWorkspaceAdmin} />
-            </section>
-          )}
-          {activeTab === 'agreements' && (
-            <section className={CARD}>
-              <AgreementTemplateList isAdmin={isAdminOrWorkspaceAdmin} />
-            </section>
-          )}
+          {/* The 'video' and 'agreements' panels were rendered here. Their tabs
+              are hidden (see TABS above) so neither id can be reached. The
+              components are still on disk and unchanged. */}
         </div>
       </div>
     </div>
