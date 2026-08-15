@@ -15,6 +15,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Gauge,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useIsMobile } from '@/core/hooks/useMediaQuery';
@@ -50,6 +51,10 @@ interface NavItem {
 // funnel data is still read by the journey panel and the calc chip on screens
 // we keep, so ripping it out would break the inbox.
 const NAV_ITEMS: NavItem[] = [
+  // First, because it is where the day starts. NOT adminOnly: Pedro is a
+  // first-class user of the cockpit, and Hugo's escalation lane is kept off
+  // his screen by RLS rather than by hiding the page.
+  { label: 'Cockpit', path: '/admin/crm/cockpit', icon: Gauge },
   { label: 'Dashboard', path: '/admin/crm/dashboard', icon: LayoutDashboard, adminOnly: true },
   { label: 'Dialer', path: '/admin/crm/dialer-pro', icon: Radio },
   { label: 'Inbox', path: '/admin/crm/inbox', icon: MessageSquare },
@@ -67,7 +72,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const MOBILE_TAB_ITEMS = NAV_ITEMS.filter(({ label }) =>
-  ['Dialer', 'Inbox', 'Pipelines', 'Contacts', 'Dashboard'].includes(label)
+  ['Cockpit', 'Dialer', 'Inbox', 'Pipelines', 'Contacts'].includes(label)
 );
 
 export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProps) {

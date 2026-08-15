@@ -20,8 +20,9 @@ import { ExternalLink, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import { dealConditionBand } from '../../../../../api/lib/brrr-deal-facts';
-import { usePropertyListings, type PropertyComp, type PropertyListing } from '../../hooks/usePropertyListings';
+import { usePropertyListings, type PropertyListing } from '../../hooks/usePropertyListings';
 import NextStepCard from '@/core/property/NextStepCard';
+import CompGroup from '../shared/CompGroup';
 
 /** The questions, mirroring QUALIFICATION_QUESTIONS in api/lib/brrr.ts so a
  *  human call and an AI call record the same facts under the same keys.
@@ -552,29 +553,6 @@ export default function PropertiesPane({
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-/** One block of sold comps under its own plain-English heading. Draws nothing
- *  when the engine found none of that kind, which is common: plenty of
- *  properties have same-size sales nearby and no converted ones. */
-function CompGroup({ heading, comps }: { heading: string; comps: PropertyComp[] }) {
-  if (comps.length === 0) return null;
-  return (
-    <div>
-      <div className="text-[10px] font-semibold text-[#6B7280]">{heading}</div>
-      <ul className="mt-0.5 space-y-0.5">
-        {comps.map((c) => (
-          <li key={`${c.text}${c.url}`} className="text-[11.5px] leading-snug text-[#4B5563] break-words">
-            {c.url ? (
-              <a href={c.url} target="_blank" rel="noreferrer" className="hover:underline">
-                {c.text}
-              </a>
-            ) : c.text}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

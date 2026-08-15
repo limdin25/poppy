@@ -21,6 +21,7 @@ const INBOX = read('src', 'features', 'crm', 'pages', 'InboxPage.tsx')
 const BOARD = read('src', 'features', 'crm', 'pages', 'PipelinesPage.tsx')
 const CHIP = read('src', 'features', 'crm', 'components', 'shared', 'NextStepChip.tsx')
 const TODAY = read('src', 'features', 'crm', 'components', 'deals', 'TodayPanel.tsx')
+const DAY = read('src', 'features', 'crm', 'lib', 'dealDay.ts')
 
 describe('the inbox loads the deal', () => {
   it('uses the SAME batched property hook the board uses', () => {
@@ -108,8 +109,20 @@ describe('the property templates reach the inbox compose box', () => {
 
 describe('the Today list', () => {
   it('is ordered by code, so it is right with the deal brain switched off', () => {
-    expect(TODAY).toContain('deterministic order')
+    // The wording moved to src/features/crm/lib/dealDay.ts on 2026-08-15 so
+    // the Deal Cockpit and this panel cannot tell Pedro different stories
+    // about the same deal. The promise is unchanged: when the brain is off,
+    // say so, and say what is showing instead.
+    expect(DAY).toContain('deterministic order')
+    expect(TODAY).toContain('BRAIN_OFF_NOTE')
     expect(TODAY).toContain('managerEnabled')
+  })
+
+  it('does not keep its own copy of the day vocabulary', () => {
+    // Lifted, not copied. Two copies agree until one of them is edited.
+    expect(TODAY).not.toMatch(/const FLAG_LABEL/)
+    expect(TODAY).not.toMatch(/const FLAG_TONE/)
+    expect(TODAY).toMatch(/from '\.\.\/\.\.\/lib\/dealDay'/)
   })
 
   it('shows what the branch actually said, not just the stale instruction', () => {
@@ -122,6 +135,7 @@ describe('the Today list', () => {
   })
 
   it('says nothing rather than lying when there is nothing to do', () => {
-    expect(TODAY).toContain('Nothing is waiting on anybody')
+    expect(DAY).toContain('Nothing is waiting on anybody')
+    expect(TODAY).toContain('NOTHING_WAITING')
   })
 })

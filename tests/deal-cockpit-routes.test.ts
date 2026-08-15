@@ -20,6 +20,10 @@ const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
 
 const MANAGER = read('api/crm/deal-manager.ts');
 const BRAIN = read('api/lib/deal-brain.ts');
+const COCKPIT = read('api/crm/cockpit.ts');
+const RUN = read('api/lib/deal-manager-run.ts');
+const SWEEP = read('api/cron/deal-sweep.ts');
+const COCKPIT_FILES = { COCKPIT, RUN, SWEEP };
 
 describe('the call history bug, pinned', () => {
   // Found 2026-08-15 while building the cockpit on top of this route, and
@@ -51,6 +55,98 @@ describe('the call history bug, pinned', () => {
   it('reads the column table once, not once per call', () => {
     const reads = MANAGER.match(/from\('wk_pipeline_columns'\)/g) ?? [];
     expect(reads.length).toBe(1);
+  });
+});
+
+describe('THE AI NEVER MOVES A CARD', () => {
+  // AI_DEAL_MANAGER_PLAN guardrail 2: "The Manager's route has no code path
+  // that touches pipeline_column_id. Stage moves stay with the outcome route
+  // and human drags. stage_mismatch is a flag for Hugo, never a correction."
+  //
+  // Hugo asked for "a seamless pipeline that moves automatically as we
+  // execute", and it does: the button calls the route that already moves the
+  // card. What must never happen is the machine moving one on its own.
+
+  for (const [name, src] of Object.entries(COCKPIT_FILES)) {
+    it(`${name} never writes a pipeline column`, () => {
+      expect(src).not.toMatch(/pipeline_column_id[\s\S]{0,80}?\.update\(/);
+      expect(src).not.toMatch(/\.update\([\s\S]{0,120}?pipeline_column_id/);
+    });
+  }
+
+  it('leaves the one place cards do move exactly where it was', () => {
+    const outcome = read('api/crm/property-outcome.ts');
+    expect(outcome).toMatch(/pipeline_column_id/);
+  });
+});
+
+describe('THE AI NEVER SENDS ANYTHING', () => {
+  // Guardrail 3: "The Manager drafts nothing and sends nothing. A human clicks
+  // send, always." A call is placed by the browser's Twilio device and an
+  // email by an edge function, so no server file here may reach either.
+
+  for (const [name, src] of Object.entries(COCKPIT_FILES)) {
+    it(`${name} sends no email and no text`, () => {
+      expect(src).not.toMatch(/wk-email-send/);
+      expect(src).not.toMatch(/\bsendEmail\(/);
+      expect(src).not.toMatch(/\bsendSMS\(/);
+      expect(src).not.toMatch(/wk-sms-send/);
+      expect(src).not.toMatch(/wk-calls-create/);
+    });
+  }
+});
+
+describe('a page load is never a model call', () => {
+  it('the cockpit read does not import the model at all', () => {
+    // The instructions come out of the log, which the sweep fills in the
+    // background. Assessing on demand would be a bill that scales with how
+    // often somebody glances at the screen.
+    expect(COCKPIT).not.toMatch(/callLLM/);
+    expect(COCKPIT).not.toMatch(/deal-brain/);
+    expect(COCKPIT).not.toMatch(/assess\(/);
+  });
+
+  it('reads the log through the CALLER, so RLS applies Hugo\'s lane', () => {
+    // A filter in the route could be forgotten by the next person. A policy
+    // cannot. Every wk_deal_manager_log read must go through `caller`.
+    expect(COCKPIT).toMatch(/dealLog\(caller/);
+    expect(COCKPIT).toMatch(/latestAssessments\(caller/);
+    expect(COCKPIT).not.toMatch(/latestAssessments\(supabase/);
+    expect(COCKPIT).not.toMatch(/dealLog\(supabase/);
+  });
+
+  it('lets code set the floor on attention, so a model cannot bury a reply', () => {
+    expect(COCKPIT).toMatch(/Math\.max\(floor, assessment\?\.attention \?\? 0\)/);
+  });
+
+  it('renders a stale instruction rather than a blank card', () => {
+    expect(COCKPIT).toMatch(/stale = Boolean\(assessment && assessment\.state_hash !== hash\)/);
+  });
+});
+
+describe('the sweep fails closed and loudly', () => {
+  it('does nothing at all when the flag is off', () => {
+    expect(SWEEP).toMatch(/cfg\.enabled !== true/);
+    expect(SWEEP).toMatch(/skipped: 'manager_off'/);
+  });
+
+  it('treats unreadable settings as off', () => {
+    expect(SWEEP).toMatch(/catch \{ cfg = \{\}; \}/);
+  });
+
+  it('logs the budget cap exactly once, so the cap cannot flood the history', () => {
+    expect(RUN).toMatch(/refused_reason: 'budget_capped'/);
+    const capBlock = RUN.match(/if \(spent >= cap\)[\s\S]*?return \{ \.\.\.base, capped: true \};/)?.[0] ?? '';
+    expect((capBlock.match(/logEvent\(/g) ?? []).length).toBe(1);
+  });
+
+  it('never lets one bad property stop the run', () => {
+    expect(RUN).toMatch(/failed \+= 1;/);
+    expect(RUN).toMatch(/One bad property must never stop the run/);
+  });
+
+  it('never lets a logging failure break a press', () => {
+    expect(RUN).toMatch(/export async function logEvent[\s\S]*?try \{[\s\S]*?\} catch/);
   });
 });
 

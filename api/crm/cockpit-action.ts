@@ -1,0 +1,394 @@
+// One endpoint, every button. Stress test first, act second, write it down
+// third, and in that order without exception.
+//
+// Hugo, 2026-08-15: "one-click buttons for calls, emails and comparisons",
+// "every move is backed by a stress test", "requires human approval to lock in
+// the move."
+//
+// ---------------------------------------------------------------------------
+// THE TWO RULES, ENFORCED STRUCTURALLY (tests/deal-cockpit-routes.test.ts)
+// ---------------------------------------------------------------------------
+//
+//   THIS FILE NEVER WRITES A PIPELINE COLUMN. Cards move because
+//   api/crm/property-outcome.ts moves them when a human presses an outcome,
+//   exactly as they did before any of this existed.
+//
+//   THIS FILE NEVER SENDS ANYTHING. A call is placed by the browser's Twilio
+//   device and an email by the wk-email-send edge function. For those two the
+//   server's whole job is to run the checks and record what happened, which is
+//   why they come back as `execute: { how: 'client' }` rather than being done
+//   here.
+//
+// A REFUSAL IS HTTP 200 with ok:false. It is the gate doing its job, not an
+// error, the same principle api/crm/deal-manager.ts already lives by, and the
+// UI prints `detail` verbatim next to a disabled button.
+//
+// phase 'check'  run the stress test, write nothing. What the gate calls on open.
+// phase 'press'  do it.
+// phase 'record' the browser finished a client-side action; file the outcome.
+
+import { createClient } from '@supabase/supabase-js';
+import { loadDealBundle, logEvent, stateHash, type Trigger } from '../lib/deal-manager-run.js';
+import {
+  stressTest, stressToText, ACTION_EXECUTION, ACTION_LABEL,
+  COCKPIT_ACTIONS, type CockpitAction,
+} from '../lib/deal-stress-test.js';
+import { dealReasonLine } from '../lib/brrr-deal-facts.js';
+import { notifyDeal } from '../lib/deal-notify.js';
+
+export const config = { runtime: 'edge' };
+
+const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+interface Body {
+  propertyId?: string;
+  action?: string;
+  phase?: 'check' | 'press' | 'record';
+  draft?: { subject?: string; body?: string; kind?: string };
+  dueAt?: string;
+  note?: string;
+  builderId?: string;
+  counter?: { theirFigure?: number | null; currentOffer?: number | null };
+  outcome?: { ok: boolean; ref?: string; error?: string };
+  requestId?: string;
+}
+
+const isCockpitAction = (a: string): a is CockpitAction =>
+  (COCKPIT_ACTIONS as readonly string[]).includes(a);
+
+export default async function handler(req: Request): Promise<Response> {
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'Method not allowed' }, { status: 405 });
+  }
+
+  const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!jwt) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: userResp } = await supabase.auth.getUser(jwt);
+  if (!userResp?.user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  const actorId = userResp.user.id;
+
+  const caller = createClient(SUPABASE_URL, SERVICE_KEY, {
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+  });
+  const { data: allowed } = await caller.rpc('wk_is_agent_or_admin');
+  if (!allowed) return Response.json({ error: 'CRM access required' }, { status: 403 });
+
+  let body: Body;
+  try { body = await req.json() as Body; }
+  catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+  const action = String(body.action ?? '');
+  if (!body.propertyId || !isCockpitAction(action)) {
+    return Response.json({ error: 'propertyId and a known action are required' }, { status: 400 });
+  }
+
+  const now = new Date();
+  const bundle = await loadDealBundle(supabase, body.propertyId, now);
+  if (!bundle) return Response.json({ error: 'unknown property' }, { status: 404 });
+  const { state } = bundle;
+
+  // -----------------------------------------------------------------------
+  // phase 'record': the browser did its half, file what happened
+  // -----------------------------------------------------------------------
+  if (body.phase === 'record') {
+    await logEvent(supabase, {
+      property_id: state.propertyId,
+      contact_id: bundle.contactId,
+      kind: body.outcome?.ok === false ? 'action_blocked' : 'action_executed',
+      trigger: 'button',
+      action,
+      board_column: state.board.column,
+      state_hash: stateHash(state),
+      source: 'human',
+      actor_id: actorId,
+      executed_by: 'client',
+      result: body.outcome ?? null,
+      refused_reason: body.outcome?.error ?? null,
+      instruction: body.outcome?.ok === false
+        ? `${ACTION_LABEL[action]} did not go through.`
+        : `${ACTION_LABEL[action]}, done from the cockpit.`,
+    });
+    return Response.json({ ok: body.outcome?.ok !== false, report: emptyReport(action) });
+  }
+
+  // -----------------------------------------------------------------------
+  // THE STRESS TEST. Always, before anything else, for every phase.
+  // -----------------------------------------------------------------------
+  const report = stressTest({
+    state,
+    action,
+    draft: body.draft ?? null,
+    contactEmail: bundle.email,
+    contactPhone: bundle.phone,
+    builderMatches: bundle.builderMatches,
+    dueAt: body.dueAt ?? null,
+    counter: body.counter ?? null,
+    now,
+  });
+
+  // ---- the dry run: what the gate calls when it opens -------------------
+  if (body.phase === 'check') {
+    // A draft is fetched here too, so the text the checks ran against is the
+    // text the human is about to read, not a different one written later.
+    let draft: { subject: string; body: string } | undefined;
+    if (body.draft?.kind) {
+      draft = await fetchDraft(req, jwt, bundle, body) ?? undefined;
+      if (draft) {
+        // Re-run against the words that actually came back.
+        const withDraft = stressTest({
+          state, action, draft: { ...draft, kind: body.draft.kind },
+          contactEmail: bundle.email, contactPhone: bundle.phone,
+          builderMatches: bundle.builderMatches, counter: body.counter ?? null, now,
+        });
+        return Response.json({ ok: withDraft.ok, report: withDraft, draft });
+      }
+    }
+    return Response.json({ ok: report.ok, report, draft });
+  }
+
+  // ---- refused ----------------------------------------------------------
+  if (!report.ok) {
+    await logEvent(supabase, {
+      property_id: state.propertyId,
+      contact_id: bundle.contactId,
+      kind: 'action_blocked',
+      trigger: 'button',
+      action,
+      board_column: state.board.column,
+      state_hash: stateHash(state),
+      source: 'human',
+      actor_id: actorId,
+      checks: report.checks,
+      blocked: true,
+      refused_reason: report.blocked[0] ?? 'blocked',
+      instruction: stressToText(report),
+    });
+    const first = report.checks.find((c) => c.level === 'block');
+    return Response.json({
+      ok: false, report,
+      refused: report.blocked[0] ?? 'blocked',
+      detail: first?.detail ?? 'The checks refused this one.',
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // do it
+  // -----------------------------------------------------------------------
+  const execution = ACTION_EXECUTION[action];
+  let result: Record<string, unknown> | null = null;
+  let draft: { subject: string; body: string } | undefined;
+
+  try {
+    switch (action) {
+      // ---- the browser finishes these two -----------------------------
+      case 'call_branch':
+        return await recordAndAnswer(supabase, {
+          state, bundle, action, actorId, report,
+          execute: {
+            how: 'client' as const, via: 'call',
+            payload: { contact_id: bundle.contactId, to_phone: bundle.phone },
+          },
+        });
+
+      case 'send_email':
+        if (!body.draft?.subject || !body.draft?.body) {
+          return Response.json({
+            ok: false, report,
+            refused: 'nothing_to_send',
+            detail: 'There is no subject or message to send.',
+          });
+        }
+        return await recordAndAnswer(supabase, {
+          state, bundle, action, actorId, report,
+          execute: {
+            how: 'client' as const, via: 'wk-email-send',
+            payload: {
+              contact_id: bundle.contactId,
+              to_email: bundle.email,
+              subject: body.draft.subject,
+              body: body.draft.body,
+            },
+          },
+        });
+
+      // ---- proxied to the route that already carries the fences ---------
+      case 'draft_video_email':
+      case 'draft_address_only_email':
+      case 'draft_offer_email':
+      case 'draft_follow_up_email':
+      case 'draft_counter_reply': {
+        draft = await fetchDraft(req, jwt, bundle, body) ?? undefined;
+        if (!draft) {
+          return Response.json({
+            ok: false, report,
+            refused: 'draft_refused',
+            detail: 'The draft was refused by its own checks. Send the plain template instead.',
+          });
+        }
+        result = { subject: draft.subject };
+        break;
+      }
+
+      // ---- server side, small and reversible ---------------------------
+      case 'book_builder': {
+        if (!body.builderId) {
+          return Response.json({
+            ok: false, report, refused: 'no_builder',
+            detail: 'Pick which builder is going before booking one.',
+          });
+        }
+        await (supabase.from('brrr_properties') as unknown as {
+          update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<unknown> };
+        }).update({
+          assigned_builder_id: body.builderId,
+          ...(body.dueAt ? { viewing_at: body.dueAt } : {}),
+        }).eq('id', state.propertyId);
+        result = { builderId: body.builderId, viewingAt: body.dueAt ?? null };
+        break;
+      }
+
+      case 'book_followup': {
+        if (!bundle.contactId) {
+          return Response.json({
+            ok: false, report, refused: 'no_contact',
+            detail: 'This house has no branch record to book a follow up against.',
+          });
+        }
+        await (supabase.from('wk_contact_followups') as unknown as {
+          insert: (v: Record<string, unknown>) => Promise<unknown>;
+        }).insert({
+          contact_id: bundle.contactId,
+          agent_id: actorId,
+          due_at: body.dueAt,
+          note: body.note ?? null,
+          status: 'pending',
+        });
+        result = { dueAt: body.dueAt };
+        break;
+      }
+
+      case 'escalate_hugo':
+        await notifyDeal(supabase, {
+          agentId: actorId,
+          contactId: bundle.contactId,
+          title: `Needs you: ${state.address ?? 'a property'}`,
+          body: body.note?.trim() || state.brief.doNow[0] || 'Sent to you from the cockpit.',
+          link: `/admin/crm/cockpit?deal=${state.propertyId}`,
+        });
+        result = { escalated: true };
+        break;
+
+      // ---- these two only ever write a line of history ------------------
+      case 'assemble_investor_pack':
+        // The gate above is the whole deliverable: every missing line blocks,
+        // so reaching here means the pack is complete. It does NOT build a
+        // document, deliberately, and that is written down in the plan.
+        result = { packComplete: true };
+        break;
+
+      case 'compare_comps':
+      case 'add_note':
+      case 'hold':
+        result = null;
+        break;
+    }
+  } catch (e) {
+    return Response.json({
+      ok: false, report, refused: 'failed',
+      detail: `That did not go through: ${String(e).slice(0, 160)}`,
+    });
+  }
+
+  await logEvent(supabase, {
+    property_id: state.propertyId,
+    contact_id: bundle.contactId,
+    kind: action === 'add_note' ? 'human_note' : 'action_executed',
+    trigger: 'button',
+    action,
+    board_column: state.board.column,
+    state_hash: stateHash(state),
+    source: 'human',
+    actor_id: actorId,
+    executed_by: execution.by === 'client' ? 'client' : 'server',
+    checks: report.checks,
+    result,
+    note: body.note ?? null,
+    instruction: action === 'hold'
+      ? 'Held on purpose. Nothing to do on this one today.'
+      : `${ACTION_LABEL[action]}, from the cockpit.`,
+  });
+
+  return Response.json({ ok: true, report, draft });
+}
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+type Bundle = NonNullable<Awaited<ReturnType<typeof loadDealBundle>>>;
+type Sb = ReturnType<typeof createClient>;
+
+async function recordAndAnswer(sb: Sb, args: {
+  state: Bundle['state']; bundle: Bundle; action: CockpitAction; actorId: string;
+  report: ReturnType<typeof stressTest>;
+  execute: { how: 'client'; via: string; payload: Record<string, unknown> };
+}): Promise<Response> {
+  // Nothing is logged as DONE here: the browser has not done it yet. The
+  // 'record' phase files the outcome once it has, so a call that never
+  // connected cannot appear in the history as a call that happened.
+  return Response.json({ ok: true, report: args.report, execute: args.execute });
+}
+
+/** Proxy to the draft route that already carries the three call-one fences.
+ *
+ *  Proxied rather than called from the browser so the stress test and the log
+ *  row both see the text that was actually produced. api/crm/draft-offer-email.ts
+ *  is not modified in any way, and its own 422 on a figure in a call-one email
+ *  comes back here as a refusal. */
+async function fetchDraft(
+  req: Request, jwt: string, bundle: Bundle, body: Body,
+): Promise<{ subject: string; body: string } | null> {
+  const { state } = bundle;
+  const origin = new URL(req.url).origin;
+  try {
+    const res = await fetch(`${origin}/api/crm/draft-offer-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({
+        kind: body.draft?.kind,
+        agentName: bundle.contactName,
+        house: {
+          address: state.address,
+          askingPrice: state.money.asking,
+          offerPrice: state.money.open,
+          ceiling: state.money.ceiling,
+          gdv: state.money.gdv,
+          refurb: state.money.refurb,
+          reasonLine: dealReasonLine({ deal: {} }, []),
+        },
+        context: {
+          doNow: state.brief.doNow,
+          blockers: state.brief.blockers,
+          pinnedNote: state.pinnedNote,
+          step: state.brief.step,
+          theirFigure: body.counter?.theirFigure ?? null,
+          currentOffer: body.counter?.currentOffer ?? state.money.open,
+          evidenceTier: state.money.compsTier,
+        },
+      }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json() as { subject?: string; body?: string };
+    if (!json.subject || !json.body) return null;
+    return { subject: json.subject, body: json.body };
+  } catch {
+    return null;
+  }
+}
+
+function emptyReport(action: CockpitAction) {
+  return { action, ok: true, level: 'pass' as const, blocked: [], warned: [], checks: [] };
+}

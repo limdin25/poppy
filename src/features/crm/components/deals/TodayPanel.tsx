@@ -15,6 +15,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { RefreshCw, Mail, Clock, AlarmClock, ChevronRight } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
+import {
+  FLAG_LABEL, FLAG_TONE, attentionTone, hoursAgo, NOTHING_WAITING,
+  BRAIN_OFF_NOTE, BRAIN_ON_NOTE,
+} from '../../lib/dealDay';
 
 interface TodayItem {
   propertyId: string;
@@ -26,31 +30,6 @@ interface TodayItem {
   repliedSinceBrief: boolean;
   lastInboundPreview: string | null;
   hoursSinceTouch: number | null;
-}
-
-/** Plain English for the closed flag list, so nobody has to learn the codes. */
-const FLAG_LABEL: Record<string, string> = {
-  reply_unread: 'They replied',
-  overdue_followup: 'Follow-up overdue',
-  stale_no_touch: 'Nothing has happened',
-  figure_mismatch: 'Figures disagree',
-  stage_mismatch: 'Wrong column',
-  price_cut_on_known_branch: 'Price cut',
-  blocked_needs_hugo: 'Needs Hugo',
-  pack_incomplete: 'Pack incomplete',
-};
-
-const FLAG_TONE: Record<string, string> = {
-  reply_unread: 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]',
-  overdue_followup: 'bg-[#FFF7ED] text-[#C2410C] border-[#FED7AA]',
-  stale_no_touch: 'bg-[#F3F4F6] text-[#4B5563] border-[#E5E7EB]',
-};
-
-function hours(h: number | null): string {
-  if (h === null) return 'never touched';
-  if (h < 1) return 'just now';
-  if (h < 48) return `${Math.round(h)}h ago`;
-  return `${Math.round(h / 24)}d ago`;
 }
 
 export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) => void }) {
@@ -91,8 +70,8 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
           <h2 className="text-[14px] font-semibold text-[#1A1A1A]">Today</h2>
           <p className="text-[11px] text-[#6B7280]">
             {managerOn
-              ? 'Ordered by what needs a person most'
-              : 'Ordered by what needs a person most. The deal brain is off, so this is the deterministic order.'}
+              ? BRAIN_ON_NOTE
+              : BRAIN_OFF_NOTE}
           </p>
         </div>
         <button
@@ -112,8 +91,7 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
 
       {!error && !loading && items.length === 0 && (
         <div className="px-4 py-8 text-center text-[12px] text-[#9CA3AF] italic">
-          Nothing is waiting on anybody. Every deal has been touched recently and
-          no branch is waiting on a reply.
+{NOTHING_WAITING}
         </div>
       )}
 
@@ -130,9 +108,7 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
                 <div
                   className={cn(
                     'flex-shrink-0 w-9 h-9 rounded-full grid place-items-center text-[12px] font-bold tabular-nums',
-                    it.attention >= 70 ? 'bg-[#FEF2F2] text-[#DC2626]'
-                      : it.attention >= 40 ? 'bg-[#FFF7ED] text-[#C2410C]'
-                        : 'bg-[#F3F4F6] text-[#6B7280]',
+                    attentionTone(it.attention),
                   )}
                   title={`Attention ${it.attention} of 100`}
                 >
@@ -177,7 +153,7 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
                     ))}
                     <span className="text-[9.5px] text-[#9CA3AF] inline-flex items-center gap-0.5">
                       <Clock className="w-2.5 h-2.5" />
-                      {hours(it.hoursSinceTouch)}
+                      {hoursAgo(it.hoursSinceTouch)}
                     </span>
                   </div>
                 </div>
