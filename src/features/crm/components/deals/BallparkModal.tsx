@@ -29,6 +29,17 @@ interface InvestorCase {
   sellable?: boolean;
 }
 
+interface ProjectCase {
+  total_project_cost?: number;
+  cash_in?: number;
+  refi_loan?: number;
+  left_in?: number;
+  recycled_pct?: number | null;
+  roi_on_capital_left?: number | null;
+  arv_needed?: Record<string, number | null>;
+  flags?: string[];
+}
+
 interface EngineAnswer {
   ok?: boolean;
   reason?: string;
@@ -55,6 +66,14 @@ interface EngineAnswer {
     rent_area?: {
       pcm?: number; p25?: number; p75?: number; n?: number;
       outcode?: string; bedrooms?: number; evidence?: string;
+    } | null;
+    /** The full cost view: every fee, three scenarios, and what the house
+     *  must be worth done up for the investor's money to come back. */
+    project?: {
+      conservative?: ProjectCase;
+      base?: ProjectCase;
+      optimistic?: ProjectCase;
+      verdict?: { ok?: boolean; headline?: string; recycled_pct?: number };
     } | null;
   };
   evidence?: Array<{
@@ -256,6 +275,39 @@ export default function BallparkModal({ propertyId, address, onClose }: {
                           : ', the median of nearby lets at the same bedroom count.'}
                     </div>
                   )}
+                  {/* Does the money come back out? Every fee counted, three
+                      scenarios, judged on the conservative one. */}
+                  {engine.investor?.project?.verdict && (() => {
+                    const p = engine.investor!.project!;
+                    const pct = (v?: number | null) =>
+                      typeof v === 'number' ? `${Math.round(v * 100)}%` : '?';
+                    return (
+                      <div className="mt-1.5 pt-1.5 border-t border-[#00000014]">
+                        <div className="text-[11px] font-bold text-[#374151]">
+                          Does the money come back? {p.verdict!.headline}
+                        </div>
+                        <div className="text-[11px] text-[#374151]">
+                          Full cost, every fee in: <b>{gbp(p.base?.total_project_cost)}</b>.
+                          {' '}Worst case {pct(p.conservative?.recycled_pct)} back
+                          ({gbp(p.conservative?.left_in)} stays in) ·
+                          {' '}likely {pct(p.base?.recycled_pct)} ({gbp(p.base?.left_in)} in) ·
+                          {' '}best {pct(p.optimistic?.recycled_pct)} ({gbp(p.optimistic?.left_in)} in).
+                        </div>
+                        {p.base?.arv_needed && (
+                          <div className="text-[11px] text-[#6B7280]">
+                            To get it all back it must be worth <b>{gbp(p.base.arv_needed['100'])}</b> done up
+                            {' '}(90% back: {gbp(p.base.arv_needed['90'])} · 75% back: {gbp(p.base.arv_needed['75'])}).
+                            {' '}We value it at {gbp(engine.gdv)}.
+                          </div>
+                        )}
+                        {(p.conservative?.flags ?? []).includes('fails_lender_rent_cover') && (
+                          <div className="text-[11px] text-[#B45309]">
+                            Warning: the rent fails a lender's 125% stress test, so the refinance may not be offered.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {(engine.investor?.rent_comps?.length ?? 0) > 0 && (
                     <div className="text-[11px] text-[#374151] mt-0.5">
                       Letting nearby:{' '}
