@@ -18,12 +18,15 @@
 // POST /api/crm/deal-manager { propertyId } -> assess one deal
 
 import { createClient } from '@supabase/supabase-js';
-import { callLLM } from '../lib/llm.js';
 import { buildDealState, type DealState, type DealStateInput } from '../lib/deal-state.js';
-import {
-  validateVerdict, fallbackVerdict, allowedActions, baselineAttention,
-  deterministicFlags, FLAGS, type ManagerVerdict,
-} from '../lib/deal-manager-contract.js';
+import { fallbackVerdict, baselineAttention, deterministicFlags } from '../lib/deal-manager-contract.js';
+import { assess } from '../lib/deal-brain.js';
+
+// The prompt and the assessment moved to api/lib/deal-brain.ts on 2026-08-15,
+// unchanged, so the Node cron (api/cron/deal-sweep.ts) can use the same brain
+// without importing an edge route. Re-exported here because this route has
+// been `assess`'s home since it shipped and nothing should have to care.
+export { assess };
 
 export const config = { runtime: 'edge' };
 
@@ -31,8 +34,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
-
-const MODEL = 'claude-sonnet-5';
 
 /** One flag returns the product to today, byte for byte. */
 async function managerEnabled(): Promise<boolean> {
@@ -45,81 +46,6 @@ async function managerEnabled(): Promise<boolean> {
     // Unreadable settings means OFF. The Manager is the optional layer.
     return false;
   }
-}
-
-const SYSTEM = [
-  'You manage a property deal-sourcing pipeline. For ONE deal you decide how badly it needs a human today and what that human should do.',
-  '',
-  'WHAT YOU DECIDE: attention, and words. Nothing else.',
-  '',
-  'HARD RULES.',
-  '1. NEVER name a figure that is not already in the state you are given. Do not add, subtract, split a difference, round, or suggest a number "around" another. If you want to talk about money, repeat a figure from the file exactly or refer to it in words.',
-  '2. You may NOT move a card, send a message, or promise anything. Your instruction tells a person what to do; it never describes something you have done.',
-  '3. Choose `action` from the allowed list you are given and NOTHING else. If none fits, choose `hold`.',
-  '4. Choose `flags` only from the allowed list. An empty list is fine.',
-  '5. The instruction is 2 to 4 plain sentences, addressed to the person who has to act. British English, no salesmanship.',
-  '6. NEVER use a long dash. No em dash, no en dash. Use a comma or a full stop. No curly quotes, no ellipsis character.',
-  '7. If the branch has replied since the brief was written, that is the most important fact on the deal and your instruction must deal with it first.',
-  '8. If a fact is missing, say it is missing. Never assume it.',
-  '',
-  'Return ONLY a JSON object:',
-  '{"attention": 0-100, "action": "...", "who": "PEDRO"|"HUGO"|"VA"|"NOBODY", "instruction": "...", "flags": ["..."], "evidence": ["..."]}',
-].join('\n');
-
-function userPrompt(state: DealState): string {
-  return [
-    'THE DEAL, as the system holds it:',
-    JSON.stringify(state, null, 1),
-    '',
-    `ALLOWED ACTIONS in "${state.board.column ?? '(no column)'}": ${allowedActions(state.board.column).join(', ')}`,
-    `ALLOWED FLAGS: ${FLAGS.join(', ')}`,
-    '',
-    'Every figure you are allowed to name, and no others: '
-      + (state.money.figuresOnFile.length
-        ? state.money.figuresOnFile.join(', ')
-        : 'NONE. Do not put any number in your instruction.'),
-  ].join('\n');
-}
-
-/** Assess one deal. Never throws, never returns an error to the caller: any
- *  failure is the deterministic brief plus a recorded reason. */
-export async function assess(state: DealState): Promise<{
-  verdict: ManagerVerdict; source: 'manager' | 'fallback'; refused?: string;
-}> {
-  let out = '';
-  try {
-    out = await callLLM(MODEL, SYSTEM, [{ role: 'user', content: userPrompt(state) }], 700);
-  } catch (e) {
-    return { verdict: fallbackVerdict(state), source: 'fallback', refused: `model_error: ${String(e).slice(0, 120)}` };
-  }
-  if (!out) return { verdict: fallbackVerdict(state), source: 'fallback', refused: 'model_silent' };
-
-  let parsed: unknown;
-  try {
-    const m = out.match(/\{[\s\S]*\}/);
-    parsed = JSON.parse(m ? m[0] : out);
-  } catch {
-    return { verdict: fallbackVerdict(state), source: 'fallback', refused: 'unparseable_json' };
-  }
-
-  const checked = validateVerdict(parsed, state);
-  if (checked.ok !== true) {
-    // A refusal is normal operation, not an incident. Logged so a pattern of
-    // the same refusal is visible, then the brief stands.
-    const { reason, detail } = checked as { reason: string; detail: string };
-    console.warn('[deal-manager] refused', reason, detail, state.propertyId);
-    return { verdict: fallbackVerdict(state), source: 'fallback', refused: reason };
-  }
-
-  // The model may re-rank, but never BELOW what code is certain about: a
-  // branch that wrote to us and was ignored outranks a model's opinion.
-  const floor = baselineAttention(state);
-  const verdict = {
-    ...checked.verdict,
-    attention: Math.max(checked.verdict.attention, floor),
-    flags: [...new Set([...checked.verdict.flags, ...deterministicFlags(state)])],
-  };
-  return { verdict, source: 'manager' };
 }
 
 /** Gather everything Layer 1 needs for one property. */
@@ -150,20 +76,41 @@ async function loadState(propertyId: string, now: Date): Promise<DealState | nul
       supabase.from('wk_contact_followups')
         .select('id, due_at, note, status')
         .eq('contact_id', prop.wk_contact_id),
+      // wk_calls HAS NO `disposition` COLUMN. The outcome of a call is
+      // disposition_column_id, the board column the agent dropped it into, so
+      // the name has to be resolved by a lookup.
+      //
+      // Selecting a column that does not exist is not a null, it is an error:
+      // PostgREST refuses the whole query, supabase-js puts it in `error`, and
+      // `cls ?? []` quietly became an empty list. From the day this route
+      // shipped until 2026-08-15 EVERY deal came back with no call history at
+      // all, so `clock.lastTouchAt` never counted a phone call and a branch
+      // rung an hour ago could look untouched for three days.
       supabase.from('wk_calls')
-        .select('id, created_at, direction, disposition, duration_sec')
+        .select('id, created_at, direction, disposition_column_id, duration_sec')
         .eq('contact_id', prop.wk_contact_id)
         .order('created_at', { ascending: false }).limit(20),
     ]);
     contact = c ?? null;
     messages = msgs ?? [];
     followups = fups ?? [];
-    calls = cls ?? [];
-    if (c?.pipeline_column_id) {
-      const { data: col } = await supabase
-        .from('wk_pipeline_columns').select('name').eq('id', c.pipeline_column_id).maybeSingle();
-      columnName = col?.name ?? null;
-    }
+
+    // One read of a small table gives both the card's column and every call's
+    // outcome, instead of one query per call.
+    const { data: cols } = await supabase.from('wk_pipeline_columns').select('id, name');
+    const columnById = new Map((cols ?? []).map((k) => [k.id as string, k.name as string]));
+
+    calls = (cls ?? []).map((k) => ({
+      id: k.id,
+      created_at: k.created_at,
+      direction: k.direction,
+      disposition: k.disposition_column_id
+        ? columnById.get(k.disposition_column_id as string) ?? null
+        : null,
+      duration_sec: k.duration_sec,
+    }));
+
+    if (c?.pipeline_column_id) columnName = columnById.get(c.pipeline_column_id) ?? null;
   }
 
   return buildDealState({ property: prop, contact, columnName, calls, messages, followups, now });

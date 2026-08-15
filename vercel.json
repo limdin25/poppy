@@ -191,6 +191,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/deal-sweep",
+      "schedule": "*/2 6-20 * * *"
+    },
+    {
       "path": "/api/cron/heypubli-pipeline-sync",
       "schedule": "*/10 * * * *"
     },

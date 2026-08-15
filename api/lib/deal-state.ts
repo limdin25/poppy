@@ -17,6 +17,13 @@
 //   4. past Offer accepted there is no code at all
 //   5. Pedro's day has a queue order but no priorities
 
+// The ONE import, and it is a pure function: compCount reads the three
+// different shapes valuation.py has written comparables in over time. Counting
+// them again here would be a fourth opinion about what a comparable is, and
+// that miscount is exactly how Welwyn Park Road reported "no sold comparables
+// on file" beside a real valuation.
+import { compCount } from './next-step-brief.js';
+
 /** Everything that can be true about a deal, gathered from the tables. */
 export interface DealStateInput {
   property: {
@@ -36,6 +43,8 @@ export interface DealStateInput {
     viewing_at?: string | null;
     viewing_quote?: number | null;
     updated_at?: string | null;
+    /** For the investor pack gate: the pack needs the plan, not just photos. */
+    floorplan_urls?: unknown;
   };
   contact?: {
     id: string;
@@ -140,6 +149,15 @@ export interface DealState {
     booked: boolean;
     viewingAt: string | null;
     quote: number | null;
+  };
+  /** What the investor pack has and has not got. Facts, not a judgement: the
+   *  gate that reads them (api/lib/deal-stress-test.ts) blocks on every missing
+   *  line, because past Offer accepted a missing fact is the whole business's
+   *  reputation rather than an inconvenience. */
+  pack: {
+    compsCount: number;
+    rentComp: boolean;
+    floorplans: boolean;
   };
   clock: {
     lastTouchAt: string | null;
@@ -309,6 +327,15 @@ export function buildDealState(input: DealStateInput): DealState {
       booked: Boolean(p.assigned_builder_id),
       viewingAt: p.viewing_at ?? null,
       quote: num(p.viewing_quote),
+    },
+    pack: {
+      compsCount: compCount(deal),
+      // Either the engine worked out a rent or the branch told us one on the
+      // phone. Both are a rent comparable; neither is an assumption.
+      rentComp: num(dig(deal, 'rent')) !== null
+        || num(dig(deal, 'rent', 'estimate')) !== null
+        || String(q.rent_estimate ?? '').trim() !== '',
+      floorplans: Array.isArray(p.floorplan_urls) && p.floorplan_urls.length > 0,
     },
     clock: {
       lastTouchAt,
