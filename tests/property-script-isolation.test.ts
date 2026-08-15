@@ -334,6 +334,53 @@ describe('two calls: discovery first, the offer only after the homework', () => 
   })
 })
 
+describe('the standing brief: our email left on every call', () => {
+  const html = read(PROP_HTML)
+  const at = (needle: string) => html.indexOf(needle)
+  const flat = (s: string) => s.replace(/\s+/g, ' ')
+
+  // Hugo, 2026-08-15: always tell the agent we are leaving our email so they
+  // keep an eye out for the ones needing a discount and plenty of refurb, and
+  // come to us directly. On the first AND the second call. It is the only part
+  // of the job that pays on a call that went nowhere: most branches have
+  // nothing for us today and every one of them gets a scruffy one eventually.
+  it('is on call one, after the email has landed', () => {
+    const callOne = flat(html.slice(at('<div class="call1">'), at('</div><!-- /call1 -->')))
+    expect(callOne).toMatch(/you've got my email there now/)
+    expect(callOne).toMatch(/needing plenty of work/)
+    expect(callOne).toMatch(/price has to come down/)
+    expect(callOne).toMatch(/send it straight to me/)
+    // It comes AFTER the email is sent and confirmed, or the address is not on
+    // their screen while he asks.
+    expect(at('Email sent and confirmed on the call')).toBeLessThan(at("you've got my email there now"))
+  })
+
+  it('is on call two as well, whatever the number did', () => {
+    const callTwo = flat(html.slice(at('<div class="call2">'), at('</div><!-- /call2 -->')))
+    expect(callTwo).toMatch(/same as I said last time/)
+    expect(callTwo).toMatch(/needing plenty of work/)
+    expect(callTwo).toMatch(/price has to come down/)
+  })
+
+  it('is a direct brief, NOT their mailing list', () => {
+    // The mailing-list panel already teaches that their list is every property
+    // on Rightmove. The two must not read as the same thing, or he will accept
+    // the brush-off and think he has done this step.
+    expect(flat(html)).toMatch(/not the same as being on their mailing list/i)
+    expect(flat(html)).toMatch(/The list is not what you want/)
+  })
+
+  it('reaches the coach and the daily report, so all three agree', () => {
+    const coach = read('supabase/functions/wk-voice-transcription/index.ts')
+    expect(coach).toMatch(/THE STANDING BRIEF/)
+    expect(coach).toMatch(/keep me in mind/)
+    expect(coach).toMatch(/price has to come down/)
+    const report = read('api/cron/daily-agent-reports.ts')
+    expect(report).toMatch(/left_the_standing_brief/)
+    expect(report).toMatch(/STANDING BRIEF/)
+  })
+})
+
 describe('we never view a property, our builder does', () => {
   const html = read(PROP_HTML)
 

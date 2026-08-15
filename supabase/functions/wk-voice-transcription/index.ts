@@ -589,6 +589,7 @@ If they cannot disclose: "No, and I wouldn't ask you to. Roughly though, are the
 IF THEY REFUSE THE VIDEO, THAT CHANGES NOTHING ABOUT THE EMAIL. The video is a bonus, the address is the call. Say "no bother at all" and go straight to the email ask with the word "anyway" in it. Never argue for the video, never ask twice, and never let a no on the video cost you the address. If they will not give a personal address, take the branch inbox and say you will put their name in the subject.
 THEN SEND IT WHILE THEY ARE STILL ON THE PHONE, whatever they said about the video. As soon as they say the address: "Brilliant, I'm sending you one now so you've got my address. Can you just tell me it's landed before I let you go?" If they said yes to the video the email asks for it; if they said no, he presses "No video, just my address" and it is two lines that ask for nothing. The address types itself into the Email tab the moment they say it, the email is already written, so this is one press of Send. An email they watched arrive is an email that gets answered, and it gives them our address to send the video back to.
 "Before I let you go, have you got anything else stuck? Anything in a chain that's dragging, or a sale that's fallen through where cash would sort it?"
+THE STANDING BRIEF, on every call: "And you've got my email there now, so do me a favour and keep me in mind. Anything that comes in needing plenty of work, or where the vendor has to move quick and the price has to come down, send it straight to me and I'll come back to you the same day." Two things only, needs plenty of work and the price has to come down, said lightly and once. It is a brief sent DIRECTLY to him, not their mailing list, and the reason they should bother is that we are cash, no chain, and answer the same day.
 "And when it comes to it, we'd get our builder round to have a look and price the work up." Ask, do not book.
 "Right, that's everything I need. I'll do the homework on it properly tonight. What's a realistic time for me to ring you back, tomorrow or is it better later in the week?" Never end the call without an agreed callback time. The booked callback IS call two.
 "That's great, thanks for your time. Speak to you then."
@@ -602,7 +603,8 @@ Climb the ladder ONE rung at a time, and only in exchange for something they hav
 Push back once, with a comp: "The one that sold on the same street went for less than that and it didn't need the work this one needs. What would they actually take?"
 "Let me speak to Hugo and come back to you" is a lever used LATER, not an opener: when a real figure has been banked, when they ask for something formal, or when pushed for a commitment the agent cannot give.
 If asked "is that your best?": "It's where we'd start. If there's a number that gets it done quickly, tell me what it is and I'll put it to Hugo today."
-Close: ask them to put the figure to the vendor, and book the ring-back. Hugo follows up in writing, subject to our builder going round.`;
+Close: ask them to put the figure to the vendor, and book the ring-back. Hugo follows up in writing, subject to our builder going round.
+Then the standing brief, last thing before the goodbye and however the money went: "same as I said last time, anything else that lands needing plenty of work, or where they've got to sell quick and the price has to come down, send it straight to me and I'll come back to you the same day."`;
 
 /** WHAT THIS PARTICULAR CALL IS FOR.
  *
@@ -627,6 +629,7 @@ const PROPERTY_STEP_PROMPT: Record<string, string> = {
     'THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN ON THIS CALL. Not a figure, not a range, not "around" anything. If they start to float one, fire a card immediately: "No number on a first call. If pushed: I don\'t want to give you a number I\'d have to take back, let me do the homework and come back to you tomorrow."',
     'What this call is for, in order: the facts (vacant, condition, why selling), what sold DONE UP on the street and for how much, offers and rejections, the floor area or room measurements, THEIR figure if they will give one, a video walkthrough or the floor plan, the estate agent\'s EMAIL ADDRESS, and a BOOKED time to ring back.',
     'If the branch names a figure of their own, that is the prize: bank it word for word, coach the callback booking, never a counter-number.',
+    'And before the goodbye, the STANDING BRIEF: our email left with them for anything needing plenty of work or where the price has to come down, sent straight to him. Coach it if the call is winding down without it.',
   ].join('\n'),
   'Do the homework': [
     'WHICH CALL THIS IS: a FOLLOW UP. A ballpark figure has already come out of this branch and the director is pricing it up now.',
@@ -651,6 +654,7 @@ const PROPERTY_STEP_PROMPT: Record<string, string> = {
     'Now the money conversation IS the job: the offer without offering with the "open at" figure in THIS LEAD, one number, never a range, then silence. Climb the ladder one rung at a time. Push back once with a comparable.',
     'Close: ask them to put the figure to the vendor and BOOK the ring-back. The director follows up in writing, subject to our builder going round.',
     'If the money boxes in THIS LEAD are empty, something is wrong: coach the agent to gather facts and book a callback instead, and never to invent a figure.',
+    'Last thing before the goodbye, wherever the number landed, the STANDING BRIEF: anything else needing plenty of work or where they have to sell quick and the price has to come down, straight to him, answered the same day. It matters most on the calls that died on price.',
   ].join('\n'),
   'Chase the agent': [
     'WHICH CALL THIS IS: a CHASE. An offer or a figure is already with the vendor and we are waiting on an answer.',
@@ -716,6 +720,8 @@ const PROPERTY_SCRIPT_PROMPT = [
   '',
   'THE EMAIL ADDRESS. Every offer we make goes out by email, so a call that ends without the estate agent\'s email address cannot become an offer however well it went. If the call is winding down and no email has been given, coach: "what\'s the best email for you? Hugo will want to put something over in writing." Fire this even on a call that went badly, because a branch email is worth having either way.',
   '',
+  'THE STANDING BRIEF, ON EVERY CALL, FIRST OR SECOND. Before the goodbye the agent leaves our email with a brief: anything needing plenty of work, or where the vendor has to move quick and the price has to come down, sent STRAIGHT TO HIM and he answers the same day. If the call is winding down and he has not said it, coach it in his words: "you\'ve got my email now, so keep me in mind, anything that needs plenty of work or where the price has to come down, send it straight to me." Fire it hardest on a call that died on price, because the relationship is the only thing left to take from it. Two things only, needs work and the price comes down. Never coach a list of criteria, never coach the word investor or sourcer, and never coach asking to be added to their mailing list: that is their whole Rightmove feed and it is a brush-off. This ask is DIRECT to that person.',
+  '',
   'NEVER PROMISE. The agent is not authorised to make a formal offer or book a viewing. Everything is "the director will confirm that himself". If pushed for a formal offer, coach exactly that line.',
   '',
   'PROPERTY TYPE. Coach lease, service charge, ground rent and cladding questions ONLY for a flat, maisonette or apartment. Coach freehold, subsidence and extension questions ONLY for a house or bungalow. Asking the wrong set makes the agent sound like they have never bought a house, and estate agents notice immediately.',
@@ -776,7 +782,7 @@ const PROPERTY_OBJECTIONS: CoachFact[] = [
   {
     key: 'prop_mailing_list',
     label: 'I will add you to our mailing list',
-    value: 'This is a brush-off, not a win: their list is every property that goes on Rightmove anyway. Accept it in one breath and get straight back to the property. Say: "Yeah, do, cheers. Though what\'s more useful to me is this one in front of me. Can I ask you two quick things about it?"',
+    value: 'This is a brush-off, not a win: their list is every property that goes on Rightmove anyway. Accept it in one breath and get straight back to the property. Say: "Yeah, do, cheers. Though what\'s more useful to me is this one in front of me. Can I ask you two quick things about it?" The list is not the goal, the standing brief at the end of the call is: our email with them, and them sending anything needing plenty of work straight to him.',
     keywords: ['mailing list', 'our list', 'database', 'send you what comes', 'add you to', 'applicant list'],
   },
   {

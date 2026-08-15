@@ -609,6 +609,37 @@ describe('property days are graded against the property business', () => {
       .sourcer_or_course_talk).toBe(0)
   })
 
+  it('counts the standing brief, and only when both halves are said', async () => {
+    // Hugo 2026-08-15: on call one AND call two, always leave the email and ask
+    // the branch to send anything needing plenty of work or a price drop
+    // directly. One sentence, and it is the whole long game of the job.
+    const { propertyScriptCheck } = await load()
+    const said = propertyScriptCheck([pconv([
+      'And you\'ve got my email there now, so do me a favour and keep me in mind.',
+      'Anything that comes in needing plenty of work, or where the price has to come down, send it straight to me and I\'ll come back to you the same day.',
+    ])] as never)
+    expect(said.left_the_standing_brief).toBe(1)
+    // The same sentence on call two, phrased as the reminder.
+    const callTwo = propertyScriptCheck([pconv([
+      'Same as I said last time, anything else that lands needing a proper refurb or where they\'ve got to sell quick, fire it over to me.',
+    ])] as never)
+    expect(callTwo.left_the_standing_brief).toBe(1)
+    // Half of it is not it: "send the floor plan straight to me" is the ask with
+    // no brief, and the condition question is the brief with no ask.
+    const halfOnly = propertyScriptCheck([pconv([
+      'Could you send the floor plan straight to me when you get a minute?',
+      'And what sort of condition is it in, is it ready to move into?',
+    ])] as never)
+    expect(halfOnly.left_the_standing_brief).toBe(0)
+    // And their mailing list is not the brief: the branch offering their
+    // Rightmove feed is a brush-off, so nothing the BRANCH says can score it.
+    const theirList = propertyScriptCheck([pconv(
+      ['Yeah, do, cheers.'],
+      ['Hello.', 'I\'ll add you to our mailing list, we send out everything that needs plenty of work straight to you.'],
+    )] as never)
+    expect(theirList.left_the_standing_brief).toBe(0)
+  })
+
   it('grades live conversations only, never voicemail', async () => {
     const { propertyScriptCheck } = await load()
     const vm = {

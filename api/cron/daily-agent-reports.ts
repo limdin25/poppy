@@ -406,6 +406,16 @@ const P_CALLBACK = /ring you back|call (you )?back|phone (you )?back|get back to
 /** Asking the branch for a video walkthrough. New: the remote model runs on it,
  *  and the course says agents are "always more than happy to". */
 const P_ASKS_FOR_VIDEO = /video (walk ?through|tour|viewing)|walk ?through video|face ?time|send me (a|some) (video|footage)|show me (a|around on a) video|any more photos/i;
+/** THE STANDING BRIEF, asked on every call from 2026-08-15. Hugo: always tell
+ *  the agent you are leaving your email so they keep an eye out for the ones
+ *  needing a discount and plenty of refurb, and come to us directly.
+ *
+ *  Two halves, because either half alone is something else he says anyway: the
+ *  ASK (keep me in mind / send it straight to me / come to me first) and the
+ *  BRIEF (needs work, or the price has to come down). "Send me the floor plan"
+ *  is not the brief, and "it needs work" is the condition question. */
+const P_BRIEF_ASK = /keep (me|us) in mind|bear (me|us) in mind|keep an eye out|think of (me|us)|send (it|them|it all|anything|any)[^.?!]{0,25}(straight |direct(ly)? )?to me|straight to me|send it (over|through) to me|(come|straight) (to|through) me first|fire (it|them|anything)[^.?!]{0,20}(over|to me)|let me know first|(you'?ve|you have) got my email/i;
+const P_BRIEF_WHAT = /(needs?|needing|need)[^.?!]{0,25}(plenty of work|a lot of work|full refurb|proper refurb|doing up|work doing|refurb)|price[^.?!]{0,25}(has|have|needs?|got) to come down|(has|have|got) to (sell|move) (quick|fast)|below (the )?asking|discount/i;
 /** Offering subject to a builder rather than promising a viewing. */
 const P_SUBJECT_TO_BUILDER = /subject to (our|my|a) builder|builder (going|coming) round|builder[^.?!]{0,30}(view|quote|price)|send (our|my|a) builder/i;
 // Rule breaks. The deflections the script TEACHES must not count as breaks:
@@ -517,6 +527,20 @@ export function propertyScriptCheck(calls: CallRow[], firstContactIds?: Set<stri
     agreed_callback_time: n((c) => any(c, P_CALLBACK)),
     asked_for_video_tour: n((c) => any(c, P_ASKS_FOR_VIDEO)),
     offered_subject_to_builder: n((c) => any(c, P_SUBJECT_TO_BUILDER)),
+    // THE STANDING BRIEF, on every call, first or second. Both halves have to
+    // be there, the ask and what to send, and they are looked for in a window
+    // of two consecutive agent turns rather than one line: the transcriber
+    // splits a long sentence at the comma often enough that a single-line test
+    // would under-report it, and under-reporting is how a counter loses its
+    // authority. A two-turn window still cannot span the call, so "keep me in
+    // mind" at the start plus the condition question later scores nothing.
+    left_the_standing_brief: n((c) => {
+      const lines = agentLines(c);
+      return lines.some((b, i) => {
+        const win = [b, lines[i + 1] ?? ''].join(' ');
+        return P_BRIEF_ASK.test(win) && P_BRIEF_WHAT.test(win);
+      });
+    }),
     // HOW FAR INTO THE CALL THE MONEY ARRIVES. The single most useful number on
     // this report and nothing measured it until 2026-08-10, when reading the
     // transcripts by hand found the median sitting at 87%: the figure went in
@@ -597,6 +621,8 @@ CALL ONE, DISCOVERY (a branch rung for the first time): confirm it is available,
 
 CALL TWO, THE OFFER CALL (a ring-back, after the homework): float the director's confirmed opening figure WITHOUT making a formal offer ("if we were to offer around X, am I in the ballpark or a million miles off?"), go quiet, get the branch to name a figure back, push back once with a comparable sale, climb the ladder one rung at a time, and push to get the figure to the vendor before any viewing. On THAT call the floated figure is the job, not a fault.
 
+ON BOTH CALLS, THE STANDING BRIEF (from 2026-08-15): before the goodbye they leave our email with the branch and give them a brief for the future, anything needing plenty of work or where the price has to come down, sent straight to them and answered the same day. It is counted as left_the_standing_brief. It costs one sentence, it is what turns a dead call into a source of houses, and a call that ended without it is a missed step even if the call went well. Being added to the branch's own mailing list is NOT this: that list is every property on Rightmove and it is a brush-off.
+
 On both calls: "let me put that to Hugo" is a lever used late, never an opener. They must NEVER make a formal or binding offer, NEVER book a viewing (the director arranges those, and our builder is the viewer), never quote completion timescales, and never reveal or confirm their walk-away ceiling.
 
 The agent reads this report themselves. Write it to be read by the person it is about.
@@ -624,7 +650,7 @@ Write in British English, plain language, second person ("you"). Never write a l
 **Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, any long gap with no calls. If a CORRECTION block appears at the top of this prompt, the FIRST thing in this section is that correction, said plainly and without excuses.
 **What worked**: up to three specific things, each with a quote or an agency name.
 **The grade**: the day as one funnel, on its own lines: dials, conversations, availability confirmed, money conversations opened, figures obtained from the branch, callbacks agreed with a time. Include how far into the call the money landed, because that is usually the answer. Then say plainly which step is losing the most. A figure out of the branch's mouth is the score that matters; a polite day of chat that never reaches the money is not a good day. If outcomes were not logged in the Houses tab, say so: the figures are the reason the calls happen and they must be written down where the director can see them.
-**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the fact checklist, what sold done up on the street, the floor area ask, asking THEM for a figure, the video ask, the email address, the callback time, then the rule breaks (a figure of ours on a first call, formal offer, booked viewing, sourcer/course talk), which should all be zero. On ring-backs, grade the money conversation: the floated figure, the silence, the ladder. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
+**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the fact checklist, what sold done up on the street, the floor area ask, asking THEM for a figure, the video ask, the email address, the standing brief left for future houses, the callback time, then the rule breaks (a figure of ours on a first call, formal offer, booked viewing, sourcer/course talk), which should all be zero. On ring-backs, grade the money conversation: the floated figure, the silence, the ladder. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
 **Fix tomorrow**: every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
 **Tomorrow's one thing**: a single sentence naming the one change that would make the biggest difference.
 
