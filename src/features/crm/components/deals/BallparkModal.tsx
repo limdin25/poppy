@@ -50,6 +50,8 @@ interface EngineAnswer {
     at_open?: InvestorCase;
     at_ceiling?: InvestorCase;
     rent_needed_pcm?: number;
+    rent_source?: string | null;
+    rent_comps?: Array<{ address?: string; pcm?: number; bedrooms?: number | null; distance_m?: number | null }>;
   };
 }
 
@@ -212,12 +214,25 @@ export default function BallparkModal({ propertyId, address, onClose }: {
                   )}
                   {noRent && (
                     <div className="text-[11px] text-[#B45309] mt-0.5">
-                      No rent evidence from the call. To clear the investor's 20% return at our opener the house must let for
-                      {' '}<b>{gbp(engine.investor?.rent_needed_pcm)} a month</b>. Check what similar houses let for before call two.
+                      To clear the investor's 20% return at our opener the house must let for
+                      {' '}<b>{gbp(engine.investor?.rent_needed_pcm)} a month</b>.
                     </div>
                   )}
                   {!noRent && typeof o.rent_pcm === 'number' && (
-                    <div className="text-[11px] text-[#6B7280] mt-0.5">Rent used: {gbp(o.rent_pcm)} a month, the agent's own figure from the call.</div>
+                    <div className="text-[11px] text-[#6B7280] mt-0.5">
+                      Rent used: {gbp(o.rent_pcm)} a month
+                      {engine.investor?.rent_source === 'stated_on_call'
+                        ? ', the agent\'s own figure from the call.'
+                        : ', the median of nearby lets at the same bedroom count.'}
+                    </div>
+                  )}
+                  {(engine.investor?.rent_comps?.length ?? 0) > 0 && (
+                    <div className="text-[11px] text-[#374151] mt-0.5">
+                      Letting nearby:{' '}
+                      {engine.investor!.rent_comps!.map((c) =>
+                        `${String(c.address ?? '').split(',')[0]} ${gbp(c.pcm)} (${c.bedrooms ?? '?'} bed, ${Math.round(Number(c.distance_m ?? 0))}m)`,
+                      ).join(' · ')}
+                    </div>
                   )}
                 </div>
               );

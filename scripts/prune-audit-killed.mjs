@@ -118,6 +118,14 @@ if (emptyContacts.length) {
   // and say why, or a History redial coaches numbers whose deal is gone.
   const MONEY_KEYS = ['offer_open', 'offer_ceiling', 'ladder', 'offer_ladder',
     'property_worth', 'worth_after_bed', 'comp_evidence']
+  // Hugo, 2026-08-15: "wipe the stale address snapshot off a contact when its
+  // property is deleted, so this cannot silently come back." The address keys
+  // are the fossil that makes a dead branch look dealable: a card with an
+  // address on it reads as a card with a house behind it. Discovery cards are
+  // left alone, their address points at a LIVE Rightmove listing on the
+  // scraper, not at a brrr row, so wiping it would blank a working card.
+  const ADDRESS_KEYS = ['property_address', 'property_url', 'property_street',
+    'properties_count', 'bedrooms', 'property_type', 'days_on_market', 'asking_price']
   let stripped = 0
   for (const id of emptyContacts) {
     const { data: row } = await db.from('wk_contacts')
@@ -125,10 +133,13 @@ if (emptyContacts.length) {
     if (!row || (row.custom_fields ?? {}).lead_type !== 'estate_agent') continue
     const cf = { ...(row.custom_fields ?? {}) }
     for (const k of MONEY_KEYS) delete cf[k]
+    if (cf.source !== 'discovery_pool') {
+      for (const k of ADDRESS_KEYS) delete cf[k]
+    }
     cf.valuation_notes = 'the auditor withdrew the deal behind this branch; do not quote figures'
     const { error: e2 } = await db.from('wk_contacts').update({ custom_fields: cf }).eq('id', id)
     if (!e2) stripped += 1
   }
-  say(`  stripped stale money fields from ${stripped} emptied branch contacts`)
+  say(`  stripped stale money and address snapshots from ${stripped} emptied branch contacts`)
 }
 say('done')

@@ -171,28 +171,43 @@ export default async function handler(req: Request): Promise<Response> {
     typedNotes ? `THE CALLER'S TYPED NOTES:\n${typedNotes}` : '',
   ].join('\n');
 
-  // 1600, not 900: a long call plus six quotes overran the first cap, the
-  // JSON came back truncated, and the parse failure read as a mystery error.
-  const raw = await callLLM(MODEL, SYSTEM_EXTRACT, [{ role: 'user', content: user }], 1600);
-  if (!raw) return Response.json({ error: 'The reader did not answer. Try again.' }, { status: 502 });
+  // NEVER FAILS, by construction. Hugo, 2026-08-15, after one blank answer:
+  // "make this solid so it never fails." Three attempts at the reader (a
+  // blank reply and an unparseable reply both just try again), and if all
+  // three come back useless the extraction degrades to EMPTY rather than
+  // erroring: an empty survey still reaches the engine, whose photo-condition
+  // fallback prices most houses anyway. The reader failing must never stand
+  // between Hugo and the engine's answer.
+  const parseExtraction = (raw: string): Extraction | null => {
+    try {
+      const m = raw.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(m ? m[0] : raw) as Partial<Extraction>;
+      return {
+        condition_band: BANDS.includes(String(parsed.condition_band)) ? String(parsed.condition_band) : 'unknown',
+        works_needed: (parsed.works_needed ?? []).map(String).filter((w) => WORKS.includes(w)),
+        flags: (parsed.flags ?? []).map(String),
+        floor_area_sqm: typeof parsed.floor_area_sqm === 'number' && parsed.floor_area_sqm > 10
+          ? parsed.floor_area_sqm : null,
+        rent_pcm: typeof parsed.rent_pcm === 'number' && parsed.rent_pcm >= 200 && parsed.rent_pcm <= 5000
+          ? Math.round(parsed.rent_pcm) : null,
+        heard: (parsed.heard ?? []).map(String).slice(0, 6),
+      };
+    } catch {
+      console.warn('[fetch-ballpark] unparseable extraction:', raw.slice(0, 400));
+      return null;
+    }
+  };
 
-  let heard: Extraction;
-  try {
-    const m = raw.match(/\{[\s\S]*\}/);
-    const parsed = JSON.parse(m ? m[0] : raw) as Partial<Extraction>;
-    heard = {
-      condition_band: BANDS.includes(String(parsed.condition_band)) ? String(parsed.condition_band) : 'unknown',
-      works_needed: (parsed.works_needed ?? []).map(String).filter((w) => WORKS.includes(w)),
-      flags: (parsed.flags ?? []).map(String),
-      floor_area_sqm: typeof parsed.floor_area_sqm === 'number' && parsed.floor_area_sqm > 10
-        ? parsed.floor_area_sqm : null,
-      rent_pcm: typeof parsed.rent_pcm === 'number' && parsed.rent_pcm >= 200 && parsed.rent_pcm <= 5000
-        ? Math.round(parsed.rent_pcm) : null,
-      heard: (parsed.heard ?? []).map(String).slice(0, 6),
-    };
-  } catch {
-    console.warn('[fetch-ballpark] unparseable extraction:', raw.slice(0, 400));
-    return Response.json({ error: 'Could not read the extraction. Try again.' }, { status: 502 });
+  let heard: Extraction | null = null;
+  for (let attempt = 0; attempt < 3 && !heard; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    const raw = await callLLM(MODEL, SYSTEM_EXTRACT, [{ role: 'user', content: user }], 1600);
+    if (raw) heard = parseExtraction(raw);
+  }
+  if (!heard) {
+    console.warn('[fetch-ballpark] reader gave nothing after 3 attempts, degrading to empty survey');
+    heard = { condition_band: 'unknown', works_needed: [], flags: ['reader_unavailable'],
+      floor_area_sqm: null, rent_pcm: null, heard: [] };
   }
 
   // ---- ask the engine --------------------------------------------------
