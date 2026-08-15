@@ -52,7 +52,15 @@ interface EngineAnswer {
     rent_needed_pcm?: number;
     rent_source?: string | null;
     rent_comps?: Array<{ address?: string; pcm?: number; bedrooms?: number | null; distance_m?: number | null }>;
+    rent_area?: {
+      pcm?: number; p25?: number; p75?: number; n?: number;
+      outcode?: string; bedrooms?: number; evidence?: string;
+    } | null;
   };
+  evidence?: Array<{
+    address?: string; price?: number; date?: string;
+    distance_m?: number | string | null; floor_area_sqm?: number | string | null;
+  }>;
 }
 
 interface FetchResult {
@@ -188,6 +196,26 @@ export default function BallparkModal({ propertyId, address, onClose }: {
             </div>
             {engine.why && <div className="text-[11px] text-[#374151] mt-1">{engine.why}</div>}
 
+            {/* The whole evidence pack, on the screen. Hugo 2026-08-15: "it
+                should bring all the comparables as well ... so we know
+                everything is there and then all you have to do is the second
+                call." */}
+            {(engine.evidence?.length ?? 0) > 0 && (
+              <div className="mt-2">
+                <div className="text-[11px] font-bold text-[#374151] mb-0.5">Sold nearby, the evidence</div>
+                <ul className="space-y-0.5">
+                  {engine.evidence!.map((c, i) => (
+                    <li key={i} className="text-[11px] text-[#374151]">
+                      {String(c.address ?? '').split(',')[0]} went for <b>{gbp(Number(c.price))}</b>
+                      {c.floor_area_sqm ? ` · ${c.floor_area_sqm} sqm` : ''}
+                      {c.distance_m != null ? ` · ${Math.round(Number(c.distance_m))}m away` : ''}
+                      {c.date ? ` · ${String(c.date).slice(0, 7)}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Hugo 2026-08-15: "when we are fetching the ballpark, that is
                 where the investor return has to be calculated, because that
                 is how we decide if we move forward or not." Same maths as the
@@ -220,10 +248,12 @@ export default function BallparkModal({ propertyId, address, onClose }: {
                   )}
                   {!noRent && typeof o.rent_pcm === 'number' && (
                     <div className="text-[11px] text-[#6B7280] mt-0.5">
-                      Rent used: {gbp(o.rent_pcm)} a month
+                      Rent used: <b>{gbp(o.rent_pcm)} a month</b>
                       {engine.investor?.rent_source === 'stated_on_call'
                         ? ', the agent\'s own figure from the call.'
-                        : ', the median of nearby lets at the same bedroom count.'}
+                        : engine.investor?.rent_source === 'area_model' && engine.investor.rent_area
+                          ? `, the ${engine.investor.rent_area.outcode} going rate for a ${engine.investor.rent_area.bedrooms} bed (${engine.investor.rent_area.n} live to-rent listings, ${gbp(engine.investor.rent_area.p25)} to ${gbp(engine.investor.rent_area.p75)}). Confirm on the call.`
+                          : ', the median of nearby lets at the same bedroom count.'}
                     </div>
                   )}
                   {(engine.investor?.rent_comps?.length ?? 0) > 0 && (
