@@ -91,6 +91,14 @@ export const MANAGER_DEFAULTS = {
  *  fan-out into the Anthropic API is how a sweep starts collecting 429s. */
 export const SWEEP_CONCURRENCY = 4;
 
+/** How long before a FAILED assessment is tried again on an unchanged deal.
+ *
+ *  Thirty minutes: long enough that a model having a bad minute does not turn
+ *  into a retry loop against the daily cap, short enough that a deal is not
+ *  stuck showing a fallback for the rest of the day. A refusal is normal
+ *  operation, but a refusal that sticks forever is a card nobody can work. */
+export const RETRY_REFUSAL_MINUTES = 30;
+
 // ---------------------------------------------------------------------------
 // pure: the hash
 // ---------------------------------------------------------------------------
@@ -166,7 +174,8 @@ function stableStringify(v: unknown): string {
 // pure: when to spend money
 // ---------------------------------------------------------------------------
 
-export type AssessReason = 'new_state' | 'forced_daily' | 'unchanged' | 'too_soon';
+export type AssessReason =
+  | 'new_state' | 'forced_daily' | 'retry_refusal' | 'unchanged' | 'too_soon';
 
 /** Should this deal be assessed right now?
  *
@@ -178,6 +187,9 @@ export function shouldAssess(args: {
   hash: string;
   lastHash: string | null;
   lastAssessedAt: string | null;
+  /** True when the last attempt FELL BACK rather than producing an
+   *  instruction. See RETRY_REFUSAL_MINUTES for why this exists. */
+  lastWasRefusal?: boolean;
   mode: 'event' | 'full';
   now: Date;
   minSeconds?: number;
@@ -194,6 +206,18 @@ export function shouldAssess(args: {
   }
 
   if (lastHash !== hash) return { assess: true, why: 'new_state' };
+
+  // A REFUSAL IS NOT AN ANSWER, so it must not dedupe like one.
+  //
+  // Found on the live board 2026-08-15: the most urgent deal in the business
+  // read "No instruction on file yet" because its one assessment came back as
+  // unparseable JSON. The hash matched from then on, so the sweep skipped it as
+  // "unchanged" and it would have kept that non-instruction until something
+  // happened to the house or the 20 hour force came round. The card that most
+  // needs a human is exactly the one that must not be left holding a fallback.
+  if (args.lastWasRefusal && sinceMs > RETRY_REFUSAL_MINUTES * 60_000) {
+    return { assess: true, why: 'retry_refusal' };
+  }
 
   if (mode === 'full' && sinceMs > FORCE_REASSESS_HOURS * 3_600_000) {
     return { assess: true, why: 'forced_daily' };
@@ -239,7 +263,8 @@ function ukParts(d: Date): { hour: number; minute: number; day: string } {
 
 export interface LogRow {
   id?: string;
-  property_id: string;
+  /** NULL for sweep-level events that are nobody's deal in particular. */
+  property_id: string | null;
   contact_id?: string | null;
   kind: 'assessment' | 'fallback_refused' | 'action_executed' | 'action_blocked' | 'human_note';
   trigger?: Trigger | null;
@@ -504,19 +529,55 @@ export interface SweepResult {
 /** How many assessments have been paid for since midnight UK. */
 export async function spentToday(sb: Sb, now: Date): Promise<number> {
   const midnight = ukMidnightIso(now);
-  const { count } = await (sb.from('wk_deal_manager_log') as any)
-    .select('id', { count: 'exact', head: true })
+  // NOT `head: true`. A head request answers with the count in a Content-Range
+  // header, and on the edge runtime that header does not survive back to the
+  // client: `count` came through as null and spentToday read 0 with 40 real
+  // assessments on the table for that day. Measured 2026-08-15, and it is the
+  // second time this cap has quietly read zero, so it is worth being blunt
+  // about: A DAILY CAP THAT CANNOT COUNT IS NOT A CAP.
+  //
+  // A counted select with limit 1 returns the same number in the body, costs
+  // one row, and works everywhere.
+  const { count, error } = await (sb.from('wk_deal_manager_log') as any)
+    .select('id', { count: 'exact' })
     .eq('kind', 'assessment')
-    .gte('created_at', midnight);
-  return count ?? 0;
+    .gte('created_at', midnight)
+    .limit(1);
+  if (error || count === null || count === undefined) {
+    // Fail CLOSED: if we cannot tell what has been spent, assume the cap is
+    // gone rather than spending against a number we do not have.
+    console.warn('[deal-manager-run] could not count today\'s spend', error?.message);
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return count;
 }
 
+/** The exact UTC instant of midnight tonight, UK time.
+ *
+ *  THE NAIVE VERSION WAS WRONG AND THE CAP WAS THE THING IT BROKE. It returned
+ *  `${ukDay}T00:00:00Z`, treating a UK date as if it were a UTC one. Measured
+ *  on the live board at 23:14 UTC, which is 00:14 on the NEXT day in British
+ *  Summer Time: it produced a boundary an hour in the FUTURE, so the query
+ *  counted nothing and `spentToday` read 0 with 58 assessments on the table.
+ *  A daily cap that silently reads zero is not a cap.
+ *
+ *  So the offset is asked for rather than assumed. On the two days a year the
+ *  clocks change this can be an hour out for the part of the day either side of
+ *  the transition, which is a rounding error on a budget and not worth a date
+ *  library to avoid. */
 function ukMidnightIso(now: Date): string {
   const { day } = ukParts(now);
-  // Good enough for a daily budget: the UK is never more than an hour off UTC,
-  // so an hour of slack at the boundary cannot overspend a 250 cap.
-  return `${day}T00:00:00.000Z`;
+  const offset = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', timeZoneName: 'longOffset',
+  }).formatToParts(now).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+00:00';
+  // "GMT+01:00" in summer, "GMT" or "GMT+00:00" in winter.
+  const sign = offset.replace('GMT', '').trim() || '+00:00';
+  const t = Date.parse(`${day}T00:00:00${sign}`);
+  return Number.isNaN(t) ? `${day}T00:00:00.000Z` : new Date(t).toISOString();
 }
+
+/** Exported so the boundary can be checked without a database in front of it. */
+export const ukDayStartIso = ukMidnightIso;
 
 /** One pass over the board.
  *
@@ -551,7 +612,10 @@ export async function sweep(
     // Fail closed and LOUDLY, but exactly once: a cap that logged per deal
     // would flood the very history it is trying to protect.
     await logEvent(sb, {
-      property_id: '00000000-0000-0000-0000-000000000000',
+      // NULL, not a placeholder uuid. This event is about the sweep, not about
+      // any one house, and the all-zeroes id used here first failed the foreign
+      // key silently, so the cap fired and said nothing at all.
+      property_id: null,
       kind: 'fallback_refused',
       trigger: args.mode === 'full' ? 'morning_sweep' : 'sweep',
       source: 'fallback',
@@ -581,6 +645,7 @@ export async function sweep(
       hash,
       lastHash: last?.state_hash ?? null,
       lastAssessedAt: last?.created_at ?? null,
+      lastWasRefusal: last?.kind === 'fallback_refused',
       mode: args.mode,
       now: args.now,
       minSeconds: args.minSeconds,

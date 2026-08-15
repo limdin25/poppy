@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   shouldAssess, shouldRunFullSweep, FORCE_REASSESS_HOURS, MANAGER_DEFAULTS,
+  RETRY_REFUSAL_MINUTES, ukDayStartIso,
 } from '../api/lib/deal-manager-run';
 
 const NOW = new Date('2026-08-15T14:00:00Z');
@@ -151,6 +152,76 @@ describe('the full sweep runs once a day, in the morning, UK time', () => {
     // Silence is the failure mode we refuse. A corrupt timestamp must not
     // switch the morning sweep off permanently.
     expect(shouldRunFullSweep(bstMorning, 'not a date')).toBe(true);
+  });
+});
+
+describe('a refusal is not an answer, so it must not dedupe like one', () => {
+  // Found on the live board 2026-08-15, in a screenshot rather than a test:
+  // the MOST URGENT deal in the business read "No instruction on file yet"
+  // because its one assessment came back as unparseable JSON. The hash matched
+  // from then on, so every later sweep skipped it as "unchanged". The card that
+  // most needs a human is exactly the one that must not be stuck holding a
+  // fallback.
+
+  it('tries a failed assessment again once the retry gap has passed', () => {
+    const r = shouldAssess({
+      hash: 'abc', lastHash: 'abc', lastAssessedAt: ago(1),
+      lastWasRefusal: true, mode: 'event', now: NOW,
+    });
+    expect(r).toEqual({ assess: true, why: 'retry_refusal' });
+  });
+
+  it('does not retry it immediately, so a bad minute is not a retry loop', () => {
+    const r = shouldAssess({
+      hash: 'abc', lastHash: 'abc',
+      lastAssessedAt: new Date(NOW.getTime() - 5 * 60_000).toISOString(),
+      lastWasRefusal: true, mode: 'event', now: NOW,
+    });
+    expect(r.assess).toBe(false);
+    expect(r.why).toBe('unchanged');
+  });
+
+  it('leaves a SUCCESSFUL assessment deduped, which is the whole saving', () => {
+    const r = shouldAssess({
+      hash: 'abc', lastHash: 'abc', lastAssessedAt: ago(4),
+      lastWasRefusal: false, mode: 'event', now: NOW,
+    });
+    expect(r).toEqual({ assess: false, why: 'unchanged' });
+  });
+
+  it('waits half an hour', () => {
+    expect(RETRY_REFUSAL_MINUTES).toBe(30);
+  });
+});
+
+describe('the day the cap counts is a UK day, not a UTC one', () => {
+  // MEASURED ON THE LIVE BOARD 2026-08-15 at 23:14 UTC, which is 00:14 the next
+  // day in British Summer Time. The naive version built the boundary as
+  // `${ukDay}T00:00:00Z`, treating a UK date as a UTC one, so it landed an hour
+  // in the FUTURE, the query matched nothing, and spentToday read 0 with 58
+  // assessments sitting in the table. A daily cap that silently reads zero is
+  // not a cap, it is a decoration.
+
+  it('gives the right instant an hour after UK midnight in summer', () => {
+    expect(ukDayStartIso(new Date('2026-08-15T23:14:00Z'))).toBe('2026-08-15T23:00:00.000Z');
+  });
+
+  it('gives yesterday evening UTC for a summer afternoon', () => {
+    expect(ukDayStartIso(new Date('2026-08-15T14:00:00Z'))).toBe('2026-08-14T23:00:00.000Z');
+  });
+
+  it('agrees with UTC in winter, when there is no offset', () => {
+    expect(ukDayStartIso(new Date('2026-12-15T14:00:00Z'))).toBe('2026-12-15T00:00:00.000Z');
+  });
+
+  it('is never in the future, which was the whole bug', () => {
+    for (const iso of [
+      '2026-08-15T23:14:00Z', '2026-08-15T00:30:00Z', '2026-06-21T22:59:00Z',
+      '2026-12-31T23:59:00Z', '2026-01-01T00:01:00Z',
+    ]) {
+      const now = new Date(iso);
+      expect(Date.parse(ukDayStartIso(now)), iso).toBeLessThanOrEqual(now.getTime());
+    }
   });
 });
 

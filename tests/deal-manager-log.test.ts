@@ -84,6 +84,35 @@ describe('who can read it, and who can write it', () => {
   });
 });
 
+describe('a sweep-level event has no house, and still has to be visible', () => {
+  // Found by TESTING the budget cap rather than trusting it, 2026-08-15. The
+  // cap fired perfectly and then wrote nothing, because its row carried a
+  // placeholder property_id of all zeroes and the foreign key refused it.
+  // logEvent never throws by design, so the one thing the plan calls out as
+  // needing to be LOUD was completely silent.
+  const SYS = readFileSync(
+    resolve(root, 'supabase/migrations/20260816000001_deal_log_system_events.sql'),
+    'utf8',
+  );
+
+  it('lets property_id be null', () => {
+    expect(SYS).toMatch(/alter column property_id drop not null/);
+  });
+
+  it('says in the schema what a null means', () => {
+    expect(SYS).toMatch(/comment on column public\.wk_deal_manager_log\.property_id/);
+    expect(SYS).toContain('NULL means the event is about the sweep itself');
+  });
+
+  it('can be read on its own when the board has stopped moving', () => {
+    expect(SYS).toMatch(/wk_deal_manager_log_system_idx[\s\S]*?where property_id is null/);
+  });
+
+  it('has no long dashes', () => {
+    expect(SYS).not.toMatch(/[\u2013\u2014\u2018\u2019\u201c\u201d\u2026]/);
+  });
+});
+
 describe('the cockpit read', () => {
   it('is security definer with the staff gate INSIDE it', () => {
     // SECURITY DEFINER bypasses RLS, so the predicate is the only door.
@@ -149,6 +178,6 @@ describe('the cockpit read', () => {
 describe('house rules', () => {
   it('has no long dashes and no curly punctuation', () => {
     // Hugo, 2026-07-27: "no long dashes ever, we don't use."
-    expect(SQL).not.toMatch(/[–—‘’“”…]/);
+    expect(SQL).not.toMatch(/[\u2013\u2014\u2018\u2019\u201c\u201d\u2026]/);
   });
 });
