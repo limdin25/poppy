@@ -67,6 +67,16 @@ What he must come away with:
 - What it would let for
 - Who he spoke to, and an email address
 
+And one thing he **leaves behind on every call**, first or second: our email,
+with a standing brief. *Anything that comes in needing plenty of work, or where
+the price has to come down, send it straight to me and I'll come back to you the
+same day.* Two things only, because that is what a negotiator can spot, and said
+after the email he sends on the call has landed so our address is in front of
+them. It is not their mailing list, which is every house on Rightmove and is a
+brush-off. This is the only part of a call that still pays when the house does
+not: most branches have nothing today, and every one of them gets a scruffy one
+eventually.
+
 A live AI coach listens and prompts him. The checklist is **house-aware**: it
 only shows questions the machine could not already answer for that house, so
 a well-documented listing gets a short call.
