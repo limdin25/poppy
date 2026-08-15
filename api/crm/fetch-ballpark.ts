@@ -228,6 +228,18 @@ export default async function handler(req: Request): Promise<Response> {
         },
         floor_area_sqm: heard.floor_area_sqm,
         rent_pcm: heard.rent_pcm,
+        // THE DEEP LOOK. Hugo, 2026-08-15: "the machine has to go to the
+        // server and really dig into everything." The nightly screen reads
+        // three photographs of a listing that may carry seventeen; on a
+        // ballpark fetch the engine re-reads EVERY photograph with the call
+        // as context, and reports when that disagrees with the overnight
+        // read. It costs a few seconds and it only ever runs on a house a
+        // human has already spent four minutes on.
+        deep: true,
+        call_notes: [
+          transcript ? `WHAT THE AGENT SAID ON THE CALL:\n${transcript}` : '',
+          typedNotes ? `THE CALLER'S TYPED NOTES:\n${typedNotes}` : '',
+        ].filter(Boolean).join('\n\n').slice(0, 6000) || null,
       }),
     });
     engine = await res.json() as Record<string, unknown>;

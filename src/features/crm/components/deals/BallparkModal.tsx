@@ -57,6 +57,20 @@ interface EngineAnswer {
   gdv_basis?: string;
   condition_source?: string;
   why?: string;
+  /** The ballpark's own fresh look at the house: every photo, plus the call. */
+  deep?: {
+    photos_read?: number;
+    condition_band?: string;
+    confidence?: string;
+    works_needed?: string[];
+    issues?: string[];
+    error?: string;
+    comparison?: {
+      nightly?: { condition_band?: string; photos_read?: number } | null;
+      band_gap?: number | null;
+      disagrees?: boolean;
+    };
+  } | null;
   investor?: {
     at_open?: InvestorCase;
     at_ceiling?: InvestorCase;
@@ -214,6 +228,34 @@ export default function BallparkModal({ propertyId, address, onClose }: {
               {' '}{engine.comps_used} sold comps, {engine.comps_tier} evidence. Asking {gbp(engine.asking)}.
             </div>
             {engine.why && <div className="text-[11px] text-[#374151] mt-1">{engine.why}</div>}
+
+            {/* What the fresh look at every photograph found. */}
+            {engine.deep?.photos_read != null && (
+              <div className={`mt-2 rounded-[8px] p-2 border ${engine.deep.comparison?.disagrees ? 'bg-[#FFFBEB] border-[#F59E0B]/40' : 'bg-[#F6F7F9] border-[#E5E7EB]'}`}>
+                <div className="text-[11px] font-bold text-[#374151]">
+                  Fresh look at the house: {engine.deep.photos_read} photos read
+                  {engine.deep.comparison?.nightly?.photos_read != null && (
+                    <span className="font-normal text-[#6B7280]"> (the overnight scan saw {engine.deep.comparison.nightly.photos_read})</span>
+                  )}
+                </div>
+                <div className="text-[11px] text-[#1F2937]">
+                  Condition <b>{engine.deep.condition_band}</b>
+                  {engine.deep.confidence && <> ({engine.deep.confidence} confidence)</>}
+                  {(engine.deep.works_needed?.length ?? 0) > 0 && (
+                    <> · works seen: {engine.deep.works_needed!.join(', ')}</>
+                  )}
+                </div>
+                {(engine.deep.issues?.length ?? 0) > 0 && (
+                  <div className="text-[11px] text-[#B45309]">Flagged: {engine.deep.issues!.join(', ')}</div>
+                )}
+                {engine.deep.comparison?.disagrees && (
+                  <div className="text-[11px] text-[#B45309] mt-0.5">
+                    This disagrees with the overnight read ({engine.deep.comparison.nightly?.condition_band}).
+                    Two readings this far apart mean nobody understands this house yet. Treat the figure with care.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* The whole evidence pack, on the screen. Hugo 2026-08-15: "it
                 should bring all the comparables as well ... so we know
