@@ -118,6 +118,15 @@ export interface Qualification {
   still_available?: boolean | null;
   occupancy?: string | null;            // vacant / tenanted (+ tenancy details)
   condition_notes?: string | null;
+  // The four below arrived 2026-08-15 with the house-aware checklist. The
+  // script had asked about water and size since 8b and the answers had
+  // NOWHERE TO LIVE except free text; rent decides the investor's 20% ROI at
+  // the ballpark; the rejected offer is the course's single best question
+  // (the Harvey call: "the last offer that they rejected though was 175").
+  water?: string | null;                // dry? leaks, ceiling staining, roof
+  floor_area?: string | null;           // sqm the AGENT stated, when the machine has none
+  rent_estimate?: string | null;        // "what would it let for" pcm
+  rejected_offer?: string | null;       // any offer rejected, and at what level
   why_selling?: string | null;
   motivation?: string | null;           // how motivated/urgent the vendor is
   chain?: string | null;
@@ -143,6 +152,10 @@ export const QUALIFICATION_QUESTIONS: Array<{ key: keyof Qualification; question
   { key: 'still_available', question: 'Is the property still available?' },
   { key: 'occupancy', question: 'Vacant or tenanted? (tenancy details if tenanted)' },
   { key: 'condition_notes', question: 'What condition is it in / what works are needed?' },
+  { key: 'water', question: 'Is it dry? Any leaks, ceiling staining, roof trouble?' },
+  { key: 'floor_area', question: 'Floor area in sqm, if the agent has the particulars' },
+  { key: 'rent_estimate', question: 'What would it let for, per month?' },
+  { key: 'rejected_offer', question: 'Has any offer been rejected, and at what level?' },
   { key: 'interest_level', question: 'How much interest — viewings / offers so far?' },
   { key: 'fallen_through', question: 'Has a sale ever fallen through on it?' },
   { key: 'why_selling', question: 'Why is the vendor selling?' },

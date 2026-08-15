@@ -52,6 +52,10 @@ interface ListingRow {
   /** The next-step brief the brain wrote after the last call on this house.
    *  Null on a property nobody has rung yet, which renders as nothing. */
   brief: NextStepBrief | null;
+  /** The size the machine resolved overnight (advert text, EPC or floor
+   *  plan). Null when nothing could read it, which is exactly when the card
+   *  shows Pedro the floor-area question. */
+  floor_area_sqm: number | null;
   /** Hugo's own instruction, pinned above the brief. */
   pinned_note: string | null;
 }

@@ -19,12 +19,27 @@ import { useQuery } from '@tanstack/react-query';
 import { ExternalLink, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
+import { dealConditionBand } from '../../../../../api/lib/brrr-deal-facts';
 import { usePropertyListings, type PropertyComp, type PropertyListing } from '../../hooks/usePropertyListings';
 import NextStepCard from '@/core/property/NextStepCard';
 
-/** The 16 questions, mirroring QUALIFICATION_QUESTIONS in api/lib/brrr.ts so a
- *  human call and an AI call record the same facts under the same keys. */
-const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> = [
+/** The questions, mirroring QUALIFICATION_QUESTIONS in api/lib/brrr.ts so a
+ *  human call and an AI call record the same facts under the same keys.
+ *
+ *  HOUSE-AWARE since 2026-08-15. Hugo, on yesterday's average call doubling
+ *  to ~4 minutes: "are we asking information that does not matter?" A
+ *  question the machine has already answered for THIS house is hidden
+ *  (`knownWhen`), and what is known is stated in the strip above instead, so
+ *  Pedro reads it out rather than asking for it. Only HIGH-confidence
+ *  machine answers hide a question; anything doubtful stays on the card for
+ *  a human to confirm. */
+const QUESTIONS: Array<{
+  key: string;
+  label: string;
+  only?: 'flat' | 'house';
+  /** Returns the machine's answer when it already has one; truthy = hide. */
+  knownWhen?: (l: PropertyListing) => string | null;
+}> = [
   // The figure comes FIRST now. It was question 15 of 16, and on the first day
   // of real calls not one outcome was logged all day, so the only number any
   // branch gave (Alan Cooper, 140k) survived nowhere but in Pedro's head. It is
@@ -33,7 +48,15 @@ const QUESTIONS: Array<{ key: string; label: string; only?: 'flat' | 'house' }> 
   { key: 'offer_reaction', label: 'How did the offer land?' },
   { key: 'still_available', label: 'Still available?' },
   { key: 'occupancy', label: 'Vacant or tenanted?' },
-  { key: 'condition_notes', label: 'Condition: roof, leaks, damp, boiler, electrics' },
+  { key: 'condition_notes', label: 'The big four: roof, damp, electrics, boiler' },
+  { key: 'water', label: 'Is it dry? Leaks, ceiling staining?' },
+  { key: 'rejected_offer', label: 'Any offer rejected? At what level?' },
+  { key: 'rent_estimate', label: 'What would it let for (pcm)?' },
+  {
+    key: 'floor_area',
+    label: 'Floor area (sqm), off their particulars',
+    knownWhen: (l) => (Number(l.floor_area_sqm) > 0 ? `${Number(l.floor_area_sqm)} sqm` : null),
+  },
   { key: 'why_selling', label: 'Why are they selling?' },
   { key: 'interest_level', label: 'Viewings or offers so far?' },
   { key: 'fallen_through', label: 'Has a sale fallen through before?' },
@@ -222,8 +245,24 @@ export default function PropertiesPane({
 
   const isFlat = /flat|apartment|maisonette/i.test(selected?.property_type ?? '');
   const isHouse = !isFlat && !!selected?.property_type;
+  // A question the machine has already answered for THIS house is not asked
+  // again: it moves into the "Already known" strip so Pedro states it instead.
+  const knownFacts = useMemo(() => {
+    if (!selected) return [] as Array<{ label: string; value: string }>;
+    const out: Array<{ label: string; value: string }> = [];
+    for (const q of QUESTIONS) {
+      const v = q.knownWhen?.(selected);
+      if (v) out.push({ label: q.label, value: v });
+    }
+    // The photo eye's condition read, stated but NEVER hiding the big four:
+    // a photograph cannot see a boiler's age or a damp course.
+    const band = dealConditionBand({ deal: selected.deal });
+    if (band) out.push({ label: 'Condition (listing photos)', value: band });
+    return out;
+  }, [selected]);
   const visibleQuestions = QUESTIONS.filter((q) =>
-    !q.only || (q.only === 'flat' && !isHouse) || (q.only === 'house' && !isFlat),
+    (!q.only || (q.only === 'flat' && !isHouse) || (q.only === 'house' && !isFlat))
+    && !(q.knownWhen && selected && q.knownWhen(selected)),
   );
 
   async function submit(outcome: string) {
@@ -440,6 +479,14 @@ export default function PropertiesPane({
 
           {/* The checklist */}
           <div className="border-b border-[#E5E7EB] px-3 py-2">
+            {knownFacts.length > 0 && (
+              <div className="mb-1.5 rounded-[6px] bg-[#F3F7F0] px-2 py-1.5">
+                <span className="text-[10px] font-bold text-[#2E7D43]">Already known, do not ask:</span>{' '}
+                <span className="text-[11px] text-[#374151]">
+                  {knownFacts.map((f) => `${f.value} (${f.label.toLowerCase().split(',')[0].split(' (')[0]})`).join(' · ')}
+                </span>
+              </div>
+            )}
             <Label>What you learned{isFlat ? ' (flat)' : isHouse ? ' (house)' : ''}</Label>
             <div className="mt-1.5 space-y-1.5">
               {visibleQuestions.map((q) => (
