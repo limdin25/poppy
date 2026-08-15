@@ -14,6 +14,21 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
 
+interface InvestorCase {
+  total_in?: number;
+  sdlt?: number;
+  refi_loan?: number;
+  left_in?: number;
+  bmv?: number | null;
+  rent_pcm?: number | null;
+  net_pcm?: number | null;
+  roi?: number | null;
+  gross_yield?: number | null;
+  flags?: string[];
+  gates?: { bmv_ok?: boolean; roi_ok?: boolean };
+  sellable?: boolean;
+}
+
 interface EngineAnswer {
   ok?: boolean;
   reason?: string;
@@ -30,6 +45,11 @@ interface EngineAnswer {
   comps_used?: number;
   gdv_basis?: string;
   why?: string;
+  investor?: {
+    at_open?: InvestorCase;
+    at_ceiling?: InvestorCase;
+    rent_needed_pcm?: number;
+  };
 }
 
 interface FetchResult {
@@ -161,6 +181,43 @@ export default function BallparkModal({ propertyId, address, onClose }: {
               {' '}{engine.comps_used} sold comps, {engine.comps_tier} evidence. Asking {gbp(engine.asking)}.
             </div>
             {engine.why && <div className="text-[11px] text-[#374151] mt-1">{engine.why}</div>}
+
+            {/* Hugo 2026-08-15: "when we are fetching the ballpark, that is
+                where the investor return has to be calculated, because that
+                is how we decide if we move forward or not." Same maths as the
+                course's BRR sheet, computed on the engine, read here. */}
+            {engine.investor?.at_open && (() => {
+              const o = engine.investor.at_open!;
+              const c = engine.investor.at_ceiling;
+              const noRent = (o.flags ?? []).includes('no_rent_evidence');
+              const pct = (v?: number | null) => (typeof v === 'number' ? `${(v * 100).toFixed(1)}%` : '?');
+              const good = !noRent && o.gates?.roi_ok === true;
+              return (
+                <div className={`mt-2 rounded-[8px] p-2 border ${good ? 'bg-[#F0FDF4] border-[#16A34A]/30' : 'bg-[#FFFBEB] border-[#F59E0B]/40'}`}>
+                  <div className="text-[11px] font-bold text-[#374151] mb-0.5">The investor's case (BRR sheet, all buying costs in)</div>
+                  <div className="text-[11px] text-[#1F2937]">
+                    At our opener: all-in {gbp(o.total_in)}, refinance {gbp(o.refi_loan)},
+                    {' '}<b>money left in {gbp(o.left_in)}</b>
+                    {typeof o.roi === 'number' && <> · ROI {pct(o.roi)}{o.gates?.roi_ok ? ' (clears 20%)' : ' (below the 20% gate)'}</>}
+                    {(o.left_in ?? 1) <= 0 && <> · all the money comes back out</>}
+                  </div>
+                  {c && (
+                    <div className="text-[11px] text-[#6B7280]">
+                      At our ceiling: money left in {gbp(c.left_in)}{typeof c.roi === 'number' && <> · ROI {pct(c.roi)}</>}
+                    </div>
+                  )}
+                  {noRent && (
+                    <div className="text-[11px] text-[#B45309] mt-0.5">
+                      No rent evidence from the call. To clear the investor's 20% return at our opener the house must let for
+                      {' '}<b>{gbp(engine.investor?.rent_needed_pcm)} a month</b>. Check what similar houses let for before call two.
+                    </div>
+                  )}
+                  {!noRent && typeof o.rent_pcm === 'number' && (
+                    <div className="text-[11px] text-[#6B7280] mt-0.5">Rent used: {gbp(o.rent_pcm)} a month, the agent's own figure from the call.</div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 

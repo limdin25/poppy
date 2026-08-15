@@ -56,11 +56,12 @@ const SYSTEM_EXTRACT = [
   `2. condition_band is exactly one of: ${BANDS.join(', ')}. turnkey = walk-in ready. cosmetic = decoration and carpets. modernisation = dated kitchen or bathroom, needs bringing up to date. full_refurb = everything needs doing. derelict = a shell, uninhabitable. unknown = the call did not establish it.`,
   `3. works_needed lists only works the agent CONFIRMED, from exactly this vocabulary: ${WORKS.join(', ')}. An agent saying the boiler is old means boiler. An agent saying the roof leaks or there is staining on ceilings means roof or damp. Say nothing the agent did not.`,
   '4. floor_area_sqm only if the agent stated a size on the call (convert sq ft to sq m by multiplying by 0.0929). Otherwise null.',
+  '4b. rent_pcm only if the agent stated what the house would let for, per calendar month, in pounds. A weekly figure times 52 over 12. Otherwise null.',
   '5. heard: up to 6 short verbatim quotes from the AGENT that justify what you extracted, so a human can check every fact against the agent\'s own words.',
   '6. Long dashes, curly quotes and ellipsis characters are forbidden in your output.',
   '',
   'Return ONLY a JSON object, no prose, no code fences:',
-  '{"condition_band": "...", "works_needed": [...], "flags": [], "floor_area_sqm": null, "heard": ["..."]}',
+  '{"condition_band": "...", "works_needed": [...], "flags": [], "floor_area_sqm": null, "rent_pcm": null, "heard": ["..."]}',
 ].join('\n');
 
 const money = (n?: number | null) =>
@@ -71,6 +72,7 @@ interface Extraction {
   works_needed: string[];
   flags: string[];
   floor_area_sqm: number | null;
+  rent_pcm: number | null;
   heard: string[];
 }
 
@@ -95,15 +97,26 @@ export default async function handler(req: Request): Promise<Response> {
   if (!body.propertyId) return Response.json({ error: 'propertyId required' }, { status: 400 });
 
   // ---- the house -------------------------------------------------------
+  // The board hands over the brrr row's own id (that is what wk_property_links
+  // projects as property_id); the ENGINE speaks Rightmove ids, which live in
+  // source_property_id. Mixing those two up was the launch-day "unknown
+  // property" bug: the route asked brrr_properties for a column it does not
+  // even have.
   const { data: props } = await supabase
     .from('brrr_properties')
-    .select('id, property_id, address, asking_price, price_text, bedrooms, property_type,'
+    .select('id, source_property_id, address, asking_price, price_text, bedrooms, property_type,'
       + ' floor_area_sqm, agent_name, status, qualification, deal, brief, pinned_note, wk_contact_id')
-    .eq('property_id', body.propertyId)
-    .order('updated_at', { ascending: false })
+    .eq('id', body.propertyId)
     .limit(1);
   const prop = props?.[0];
   if (!prop) return Response.json({ error: 'unknown property' }, { status: 404 });
+  if (!prop.source_property_id) {
+    return Response.json({
+      ok: false,
+      reason: 'no_engine_id',
+      detail: 'This property has no engine id on file, so the engine cannot price it.',
+    }, { status: 200 });
+  }
 
   // ---- hear the call ---------------------------------------------------
   // Newest outbound call to this branch that actually has a transcript: the
@@ -171,6 +184,8 @@ export default async function handler(req: Request): Promise<Response> {
       flags: (parsed.flags ?? []).map(String),
       floor_area_sqm: typeof parsed.floor_area_sqm === 'number' && parsed.floor_area_sqm > 10
         ? parsed.floor_area_sqm : null,
+      rent_pcm: typeof parsed.rent_pcm === 'number' && parsed.rent_pcm >= 200 && parsed.rent_pcm <= 5000
+        ? Math.round(parsed.rent_pcm) : null,
       heard: (parsed.heard ?? []).map(String).slice(0, 6),
     };
   } catch {
@@ -187,13 +202,14 @@ export default async function handler(req: Request): Promise<Response> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-ingest-secret': secret },
       body: JSON.stringify({
-        property_id: prop.property_id,
+        property_id: prop.source_property_id,
         survey: {
           condition_band: heard.condition_band === 'unknown' ? '' : heard.condition_band,
           works_needed: heard.works_needed,
           flags: heard.flags,
         },
         floor_area_sqm: heard.floor_area_sqm,
+        rent_pcm: heard.rent_pcm,
       }),
     });
     engine = await res.json() as Record<string, unknown>;
@@ -223,6 +239,7 @@ export default async function handler(req: Request): Promise<Response> {
     condition_band: heard.condition_band,
     works_needed: heard.works_needed.join(', '),
     ...(heard.floor_area_sqm ? { floor_area_heard_sqm: String(heard.floor_area_sqm) } : {}),
+    ...(heard.rent_pcm ? { rent_heard_pcm: String(heard.rent_pcm) } : {}),
     ballpark_at: nowIso,
   };
   const newDeal = {
