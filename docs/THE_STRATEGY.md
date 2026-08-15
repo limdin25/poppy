@@ -45,9 +45,38 @@ Then hard excludes: no auctions (see section 6), no flats, no leasehold,
 £40k to £200k, crime cap, one property per branch, and no branch rung in the
 last 14 days.
 
-**Ranked by** the size of the discount, then by motivated-seller wording in
-the agent's own advert (sold as seen, cash buyers only, probate, must be
-sold, in need of), then by price cuts. **Top 150 branches a night.**
+**Ranked by how hard the call will be, easiest first.** Changed 2026-08-15,
+and it was the single worst thing about the old list.
+
+The screen used to rank on the raw discount and read no condition at all. Take
+two houses both asking £85,000 into a £100,000 median:
+
+| Work needed | Most we can pay | Talk-down required |
+|---|---|---|
+| £15,000 | £73,800 | **13%** |
+| £30,000 | £61,200 | **28%** |
+
+The old ranking put the second one **first**, and 28% is exactly the lowball
+the course spends a module telling you never to make. The top of Pedro's list
+was systematically the part he could not close.
+
+Now: the condition band is read from the **advert's own words** (free, no
+photos, no floor plan), priced through the rate card, and the list is ordered
+by the **talk-down the deal actually requires**, then by motivated-seller
+wording, then by price cuts.
+
+**Measured before the threshold was set** (492 branches): the required
+talk-down runs from **minus 32% to 48%, median 10.2%**. A negative number means
+we could pay *more* than they are asking and it still works. A 25% cap drops
+only **8 of 492**, so be honest about it: the value is in the **ordering**, not
+the cut. It is not tightened to 15%, which would throw away 29% of a pool that
+is already the binding constraint on 150 calls a night.
+
+A guessed refurb can therefore **reorder** the list or **drop** an impossible
+house. It can never let one in: the 15% gate above is still built from two
+hard facts and nothing else.
+
+**Top 150 branches a night.**
 
 ---
 
@@ -96,10 +125,26 @@ expensive.
    this reads all of them.
 3. **Compares the two reads** and warns on screen when they disagree by two
    condition bands or more, because that is a house nobody understands yet.
-4. **Prices the works** from the line-item rate card, always at the low end,
-   at our own crew's labour rate.
+4. **Prices the works twice.** The **trade rate** sets the offer; our own
+   crew's rate is the **budget the builder is handed**. See section 4.
 5. **Re-checks the comparables** to the course standard and **estimates the
    rent**.
+6. **Uses the two facts the desk cannot know**, both captured on call one and
+   both, until 2026-08-15, thrown away:
+   - **The done-up sale the agent quoted.** The course calls this the best
+     question on the call and it is: same street, same stock, finished
+     condition, which is exactly what the Land Registry cannot tell us. It is
+     believed in **one direction only**. Lower than our figure, we take theirs.
+     Higher, it is recorded and changes nothing, because the witness is the
+     person selling us the house and believing one sentence upward is how
+     Orion Way reached £293,000.
+   - **Any offer the vendor has already refused.** Their floor. If it sits
+     above our ceiling the ballpark says so in plain English. It can kill a
+     deal and it can never lift our number.
+
+Both travel to the engine as **numbers, not prose**. Anything inside the call
+notes goes only to the photo-reading model and is money-redacted first, so
+"number 12 went for £118k" was arriving as "number 12 went for [price removed]".
 
 ---
 
@@ -110,9 +155,21 @@ capital all returns on refinance.** The discount is the consequence, not the
 aim, which is why a house needing heavy work gets a deeper offer
 automatically.
 
+**The refurb that sets the price is the TRADE rate, not our crew's.** Changed
+2026-08-15 on Hugo's "the offer is reading too high". TMV = GDV minus refurb,
+so taking the cheapest possible cost and offering as though it were certain
+made every offer too generous, pound for pound. The course is explicit the
+other way: *"you'd rather be a bit more over than under."*
+
+The crew rate has not gone; it has changed job. It is the **budget we hand the
+builder** ("this is our budget, tell us what you can do around it"), which is a
+negotiating position rather than a forecast. **The gap between the two is our
+cushion**, and it is why deals do not stick on the shelf. Both numbers are on
+the ballpark screen so nobody can mistake one for the other.
+
 ```
-GDV        what it is worth done up, from gold or strong comps only
-TMV        GDV minus (refurb + 5% contingency)
+GDV        what it is worth done up, from gold, strong or fair comps
+TMV        GDV minus (refurb at the TRADE rate + 5% contingency)
 
 OPEN AT    the LOWER of:  the all-money-out price
                           TMV x 0.75
@@ -172,8 +229,16 @@ the bigger house sells for less locally.
 **Money is computed on the engine and nowhere else.** The CRM reads figures
 and refuses to derive them.
 
-**Only gold or strong comparables may carry a figure.** Gold is 6 months and
-400m, strong is 12 months and 400m.
+**The quarter mile is fixed. The age is what gives.** Gold is 6 months at
+400m, strong is 12 months at 400m, **fair is 24 months at 400m and is now
+accepted, labelled "weaker" on screen**. Changed 2026-08-15 because the list
+that produces the call accepts 24 months, so a house could pass the screen,
+cost Pedro a four-minute call, and then refuse to price.
+
+Closing that needed a change inside the comparable picker, not a filter on its
+answer: it widens the **radius** to 800m *before* it widens the age, so
+"a quarter mile, whatever the age" was not expressible. **800m evidence is
+still refused.**
 
 ---
 
@@ -185,8 +250,23 @@ Honesty here is worth more than a tidy document.
   fall-throughs, but the table only started on 12 August and no price has
   moved in it yet. "Reduced three times" becomes real in a few weeks.
 - **Floor area is unknown on about two thirds of properties**, which is the
-  main reason we can fully value only a small share of the stock. This is
-  the bottleneck on how many offers we can put forward, not call volume.
+  main reason we can fully value only a small share of the stock. Improving
+  as of 2026-08-15: the advert itself publishes a size on roughly a quarter
+  of listings and the browserless read now takes it.
+- **The ballpark still does not run the second-brain auditor.** The nightly
+  gate does. The auditor needs a current-market value the ballpark never
+  computes, and one of its rules kills outright when that is missing, so
+  wiring it naively would refuse every ballpark. Deliberately left until it
+  can be tested against real deals rather than assumed safe.
+- **The national list is not yet what the nightly scrapes.** 305 towns are
+  resolved and verified (187,914 live listings against the 40,252 we hold),
+  but they drive the browserless reader only. 305 searches through the old
+  browser path is about four hours inside a window that ends at 06:10.
+- **A sold comparable is never checked for condition.** The Land Registry
+  publishes no such field, so a wreck that sold cheap on the subject's own
+  street quietly drags the end value down and nothing detects it. The only
+  defence is the price-per-square-metre outlier test, which fires at 40%
+  below the local rate. Partly unfixable, and worth knowing.
 - **No investor list, no compliance, no builder on the roster, and no house
   has been viewed.** Known, and outside this document.
 
@@ -212,6 +292,29 @@ separate faults: the ballpark now reads every photo, and the rate card had
 **no painting line at all in any band**, which made every offer in the
 system too generous. Corrected, the works are £15,194 and the offer moved
 from 15% under asking to 25% under.
+
+**The 16,681 houses nobody could ring.** `no_agent_phone` was the single
+biggest refusal in the pipeline, bigger than auction, tenanted and
+no-floor-plan **combined**, and it had been treated as a fact of life for
+weeks. It was never a parsing bug: those listings had no phone AND no agency
+name AND no description, because **the detail page had simply never been
+fetched**. That needed a browser, which needed a residential proxy, and the
+proxy had been dead since 11 August. An elaborate workaround was built to
+recover agency names from Zoopla instead; it recovered **three** phones,
+because its own input needed the same dead proxy.
+
+Measured 2026-08-15: **Rightmove answers a plain GET from the server in about
+0.3 seconds**, no browser and no proxy, and the whole listing is inlined in the
+page. 39 of 40 sampled dead listings came back complete. The **search results
+page carries the agent's phone on every single row**, so new stock now arrives
+with a number attached and the refusal cannot happen again.
+
+Two traps inside it, both worth remembering: the blob was renamed to
+`window.__PAGE_MODEL` with **two** underscores, so the old reader matched
+nothing at all; and it is **flattened**, every value being an index into an
+array, so parsing it the obvious way returns a tree of integers and no phone
+number. The lesson is the first one though: **a refusal that large deserved
+somebody asking why, not a workaround.**
 
 **Pendennis Street.** Asking £135,000 where the same kind of house nearby
 sold at £103,000, sitting on Pedro's list as a deal, because the old path
