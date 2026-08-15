@@ -25,6 +25,8 @@ import PropertyLinkChips from '../components/shared/PropertyLinkChips';
 import BriefLine from '../components/shared/BriefLine';
 import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
 import TodayPanel from '../components/deals/TodayPanel';
+import BallparkModal from '../components/deals/BallparkModal';
+import { callModeForStep } from '../lib/nextStep';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
 
@@ -77,6 +79,7 @@ export default function PipelinesPage() {
     return res;
   };
   const [editing, setEditing] = useState<Contact | null>(null);
+  const [ballparkFor, setBallparkFor] = useState<{ propertyId: string; address: string | null } | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const [smsTo, setSmsTo] = useState<Contact | null>(null);
@@ -359,6 +362,29 @@ export default function PipelinesPage() {
                           pinnedNote={deal?.pinned_note}
                           className="mt-1"
                         />
+                        {/* Hugo 2026-08-15: "after the first call ... a button
+                            to fetch the ballpark." Property cards still in
+                            discovery only: once the band is confirmed the step
+                            flips to Offer call and the button retires itself. */}
+                        {deal && callModeForStep(c.customFields?.next_step) === 'discovery' && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBallparkFor({ propertyId: deal.property_id, address: deal.address });
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.stopPropagation();
+                                setBallparkFor({ propertyId: deal.property_id, address: deal.address });
+                              }
+                            }}
+                            className="inline-block mt-1 text-[10px] font-bold text-[#3C5A87] bg-[#EDF2F9] hover:bg-[#DFE8F4] rounded-[6px] px-1.5 py-0.5 cursor-pointer"
+                          >
+                            Fetch ballpark
+                          </span>
+                        )}
                         {/* Hugo 2026-08-12: the card says what to do next, and
                             hovering or clicking the tag explains the step and
                             hands over the message to send. Property deals only,
@@ -531,6 +557,14 @@ export default function PipelinesPage() {
           information, the next steps." It does now: his pinned note and the
           brain's brief open with the card, above the Notes box, drawn by the
           same NextStepCard Pedro reads in the dialer. */}
+      {ballparkFor && (
+        <BallparkModal
+          propertyId={ballparkFor.propertyId}
+          address={ballparkFor.address}
+          onClose={() => setBallparkFor(null)}
+        />
+      )}
+
       <EditContactModal
         contact={editing}
         onClose={() => setEditing(null)}

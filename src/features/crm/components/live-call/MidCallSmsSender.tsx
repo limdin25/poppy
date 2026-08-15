@@ -23,7 +23,7 @@ import FollowupPromptModal from '../followups/FollowupPromptModal';
 import { useActiveCallCtx } from './ActiveCallContext';
 import { useResolvedFromLine } from '../../hooks/useResolvedFromLine';
 import { DEAL_STAGES } from '../templates/dealProcessSteps';
-import { offerSentFields } from '../../lib/nextStep';
+import { callModeForStep, offerSentFields } from '../../lib/nextStep';
 
 type Channel = 'sms' | 'whatsapp' | 'email';
 
@@ -374,7 +374,11 @@ export default function MidCallSmsSender({
       // before, so nothing could chase an offer or count one. Best effort by
       // design: the email has already gone, and a failed patch must never read
       // back as "your email did not send".
-      if (isPropertyCall && channel === 'email' && offerHouse?.offerPrice) {
+      // ONLY on an offer-stage call. This used to fire on ANY property email,
+      // so the call-one files chase stamped offer_sent_at with a figure nobody
+      // had ever said, and the card flipped into offer mode for good.
+      if (isPropertyCall && channel === 'email' && offerHouse?.offerPrice
+        && callModeForStep(currentContact?.customFields?.next_step) === 'offer') {
         const fields = {
           ...(currentContact?.customFields ?? {}),
           ...offerSentFields(offerHouse.offerPrice, new Date().toISOString()),
@@ -480,7 +484,10 @@ export default function MidCallSmsSender({
         </div>
       )}
 
-      {isPropertyCall && (
+      {/* Offer calls only. On a discovery call this button used to sit one
+          click from putting our figure in writing, which is the one thing
+          call one must never do. */}
+      {isPropertyCall && callModeForStep(currentContact?.customFields?.next_step) === 'offer' && (
         <div className="mb-2">
           <button
             type="button"
@@ -495,7 +502,7 @@ export default function MidCallSmsSender({
             )}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            {drafting ? 'Writing the offer…' : 'Write the offer with AI'}
+            {drafting ? 'Writing the offer...' : 'Write the offer with AI'}
           </button>
           <p className="text-[10px] text-[#6B7280] mt-1 leading-snug">
             Reads this listing, these figures and what the agent said on the call. It writes the

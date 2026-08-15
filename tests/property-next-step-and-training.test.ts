@@ -58,10 +58,17 @@ describe('the property call pane', () => {
     expect(SENDER).toMatch(/DEAL_STAGES\.flatMap/);
   });
 
-  it('has an AI drafter, and it is property only', () => {
+  it('has an AI drafter, and it only appears on an OFFER-stage call', () => {
     expect(SENDER).toMatch(/data-testid="ai-draft-offer"/);
-    expect(SENDER).toMatch(/\{isPropertyCall && \(/);
+    // 2026-08-15: on a discovery call this button was one click from putting
+    // our figure in writing. It must be gated on the call mode, not merely on
+    // the call being a property call.
+    expect(SENDER).toMatch(/isPropertyCall && callModeForStep\(currentContact\?\.customFields\?\.next_step\) === 'offer' && \(/);
     expect(SENDER).toMatch(/\/api\/crm\/draft-offer-email/);
+  });
+
+  it('only stamps offer_sent on an offer-stage email', () => {
+    expect(SENDER).toMatch(/channel === 'email' && offerHouse\?\.offerPrice\s*\n\s*&& callModeForStep\(currentContact\?\.customFields\?\.next_step\) === 'offer'/);
   });
 });
 

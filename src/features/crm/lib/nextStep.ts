@@ -47,11 +47,19 @@ export function stepForOutcome(outcome: string): StepTag | '' | null {
     case 'figure_obtained':
     case 'qualified':
       return STEP.homework;
-    // Alive, but the branch has not given a number yet. Ring them back.
+    // The branch has our ballpark and is deciding. Chase them for the answer.
     case 'deciding':
+      return STEP.chase;
+    // Ring them back, but it says NOTHING about where the deal is. These used
+    // to map to Chase the agent, and Chase is an offer-mode step, so pressing
+    // "Call back" on a first call flipped the card into offer mode: script
+    // pane titled CALL 2, offer email in the Email tab, figure armed on the
+    // strip. The exact failure the two-call split exists to prevent, from a
+    // button Pedro presses all day. Leave the tag alone and the card keeps
+    // the stage it was really on.
     case 'follow_up':
     case 'callback':
-      return STEP.chase;
+      return null;
     // Never reached anybody, so the first call has still not happened.
     case 'no_answer':
       return STEP.call;
