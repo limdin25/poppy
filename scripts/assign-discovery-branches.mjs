@@ -114,12 +114,28 @@ async function main() {
 
   // Already queued: one branch, one card, never duplicates.
   const queued = new Set()
+  let discoveryPending = 0
   {
     const { data } = await db.from('wk_dialer_queue')
       .select('contact_id').eq('campaign_id', campaign.id)
       .in('status', ['pending', 'dialing'])
-    for (const q of data ?? []) queued.add(q.contact_id)
+    const ids = (data ?? []).map((q) => q.contact_id)
+    for (const id of ids) queued.add(id)
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data: cs } = await db.from('wk_contacts')
+        .select('id, custom_fields').in('id', ids.slice(i, i + 200))
+      for (const c of cs ?? []) {
+        if (c.custom_fields?.source === 'discovery_pool') discoveryPending++
+      }
+    }
   }
+
+  // --count is a TARGET, not an increment. "Keep the circle by adding 150 new
+  // every night" must never mean a growing backlog on a day Pedro dials fewer:
+  // a branch queued today and dialled in three weeks is a stale card and a
+  // wasted slot in the pool. Top up to the target and stop.
+  const toAdd = Math.max(0, COUNT - discoveryPending)
+  say(`  discovery already pending: ${discoveryPending}; topping up by ${toAdd} to reach ${COUNT}`)
 
   // BELOW the priced deals, always: everything here goes under the current
   // minimum pending priority.
@@ -133,7 +149,7 @@ async function main() {
   let taken = 0
 
   for (const branch of pool) {
-    if (taken >= COUNT) break
+    if (taken >= toAdd) break
     const existing = contactsByPhone.get(branch.phone)
     if (existing?.do_not_call) { skipped.dnc++; continue }
     if (existing && existing.owner_agent_id && existing.owner_agent_id !== agent.id) {
@@ -202,10 +218,10 @@ async function main() {
   say('')
   say(`  queued          : ${taken} discovery branch(es), all BELOW the priced deals`)
   say(`  held back       : called within the window ${skipped.called}, owned by another agent ${skipped.owned_elsewhere}, do-not-call ${skipped.dnc}, already queued ${skipped.queued}`)
-  if (taken < COUNT) {
+  if (taken < toAdd) {
     // A silent shortfall reads as "covered everything". Say it in capitals:
     // this is the number that tells Hugo the pool is running thin.
-    say(`  SHORTFALL: wanted ${COUNT}, found ${taken}. The pool is running thin; widen the scrape or shorten the redial window.`)
+    say(`  SHORTFALL: wanted ${toAdd} more, found ${taken}. The pool is running thin; widen the scrape or shorten the redial window.`)
   }
   if (!APPLY) say('  Dry run. Nothing written. Add --apply to do it for real.')
 }
