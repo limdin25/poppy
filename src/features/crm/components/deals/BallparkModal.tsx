@@ -44,6 +44,7 @@ interface EngineAnswer {
   comps_tier?: string;
   comps_used?: number;
   gdv_basis?: string;
+  condition_source?: string;
   why?: string;
   investor?: {
     at_open?: InvestorCase;
@@ -144,6 +145,9 @@ export default function BallparkModal({ propertyId, address, onClose }: {
             <div className="text-[11px] font-bold text-[#374151] mb-1">What the call said</div>
             <div className="text-[12px] text-[#1F2937]">
               Condition: <b>{heard.condition_band}</b>
+              {engine?.condition_source === 'listing_photos' && (
+                <span className="text-[#6B7280]"> (from the listing photos, the call did not establish it)</span>
+              )}
               {heard.works_needed.length > 0 && <> · works: {heard.works_needed.join(', ')}</>}
               {heard.floor_area_sqm != null && <> · size stated: {heard.floor_area_sqm} sqm</>}
             </div>

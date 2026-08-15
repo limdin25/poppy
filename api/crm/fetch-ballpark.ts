@@ -220,6 +220,14 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: `Could not reach the engine: ${String(e).slice(0, 120)}` }, { status: 502 });
   }
 
+  // The engine may have priced the condition from the LISTING PHOTOS (its
+  // own high-confidence eye read, the same evidence every nightly priced
+  // deal ships on) when the call never established it. Reflect that back so
+  // the preview says where the band came from.
+  if (engine.ok && engine.condition_source === 'listing_photos') {
+    heard.condition_band = String(engine.refurb_band ?? heard.condition_band);
+  }
+
   // A refusal is the homework's honest answer, passed through with the facts
   // so Hugo can see WHY (condition unknown, needs a builder, comps below
   // standard) next to what the agent actually said.
@@ -240,6 +248,7 @@ export default async function handler(req: Request): Promise<Response> {
   const mergedQual = {
     ...qual,
     condition_band: heard.condition_band,
+    condition_source: String(engine.condition_source ?? 'call'),
     works_needed: heard.works_needed.join(', '),
     ...(heard.floor_area_sqm ? { floor_area_heard_sqm: String(heard.floor_area_sqm) } : {}),
     ...(heard.rent_pcm ? { rent_heard_pcm: String(heard.rent_pcm) } : {}),
