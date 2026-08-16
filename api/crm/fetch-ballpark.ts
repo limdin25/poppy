@@ -244,10 +244,18 @@ export default async function handler(req: Request): Promise<Response> {
     }
   };
 
+  // THE THINKING BUDGET IS WHAT KEEPS THIS ROUTE ALIVE. This is an edge
+  // function with a hard ~25 second ceiling, and claude-sonnet-5 left to
+  // think freely over a 12 minute transcript spent 20+ seconds before a word
+  // of answer: one slow attempt plus one retry and the whole route died as a
+  // 504 in Hugo's hands (Paterson Road, 16 Aug). Extraction is mechanical
+  // language work, so the thinking is capped low and the answer keeps the
+  // rest of the budget.
   let heard: Extraction | null = null;
   for (let attempt = 0; attempt < 3 && !heard; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
-    const raw = await callLLM(MODEL, SYSTEM_EXTRACT, [{ role: 'user', content: user }], 1600);
+    const raw = await callLLM(MODEL, SYSTEM_EXTRACT, [{ role: 'user', content: user }], 2600,
+      { thinkingBudget: 1024 });
     if (raw) heard = parseExtraction(raw);
   }
   if (!heard) {

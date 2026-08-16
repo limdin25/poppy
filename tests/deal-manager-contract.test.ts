@@ -185,6 +185,17 @@ describe('the fallback IS the product as it stands today', () => {
     expect(v.instruction.length).toBeGreaterThan(10)
     expect(v.who).toBe('PEDRO')
   })
+
+  it('never suggests holding through an unanswered reply', () => {
+    // Orion Way, 16 Aug: the vendors' written rejection was ON the card, the
+    // model happened to be silent, and the primary button said "Hold, nothing
+    // today". The fallback now picks a reply-shaped action the stage allows.
+    const v = fallbackVerdict(stateWith({
+      messages: [{ id: 'm', direction: 'inbound', created_at: hoursAgo(2), channel: 'email', body: 'Rejected, they want closer to asking.' }],
+    }))
+    expect(v.action).toBe('reply_with_counter')
+    expect(allowedActions('Offer sent')).toContain('reply_with_counter')
+  })
 })
 
 describe('attention that code is certain about', () => {

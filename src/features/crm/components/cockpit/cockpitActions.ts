@@ -120,6 +120,7 @@ export const PRIMARY_BUTTON_FOR: Record<string, CockpitAction> = {
   book_builder: 'book_builder',
   chase_video_for_builder: 'draft_video_email',
   // Offer sent
+  reply_with_counter: 'draft_counter_reply',
   chase_the_answer: 'draft_follow_up_email',
   // Offer accepted
   assemble_investor_pack: 'assemble_investor_pack',

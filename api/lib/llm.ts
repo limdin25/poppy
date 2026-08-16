@@ -112,6 +112,13 @@ export async function callLLM(
   systemPrompt: string,
   messages: LLMMessage[],
   maxTokens = 1024,
+  /** Anthropic only. claude-sonnet-5 THINKS before it answers, thinking and
+   *  answer share max_tokens, and unbounded thinking is how the deal brain
+   *  went silent six times in seven and how fetch-ballpark blew the 25 second
+   *  edge ceiling into a 504. `thinkingBudget` caps the thinking portion
+   *  (must be under maxTokens, so the answer always has room). Omit to keep a
+   *  caller's existing behaviour byte for byte. */
+  opts?: { thinkingBudget?: number },
 ): Promise<string> {
   let resolvedModel = normalizeModel(model);
   let provider = getProvider(resolvedModel);
@@ -137,6 +144,9 @@ export async function callLLM(
   }
 
   if (provider === 'anthropic') {
+    const thinking = opts?.thinkingBudget && opts.thinkingBudget < maxTokens
+      ? { thinking: { type: 'enabled', budget_tokens: Math.max(1024, opts.thinkingBudget) } }
+      : {};
     const callAnthropic = (m: string) => fetch(`${getBaseUrl('anthropic')}/v1/messages`, {
       method: 'POST',
       headers: {
@@ -144,7 +154,7 @@ export async function callLLM(
         'x-api-key': apiKey!,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({ model: m, max_tokens: maxTokens, system: systemPrompt, messages: msgs }),
+      body: JSON.stringify({ model: m, max_tokens: maxTokens, system: systemPrompt, messages: msgs, ...thinking }),
     });
     let res = await callAnthropic(resolvedModel);
     if (!res.ok && resolvedModel !== DEFAULT_MODEL) {

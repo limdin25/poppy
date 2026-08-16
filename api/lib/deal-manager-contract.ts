@@ -55,7 +55,12 @@ export const ACTIONS_BY_STAGE: Record<string, string[]> = {
   'Ready for call 2': ['make_offer_call', 'chase_email_reply', 'rebook_followup'],
   'Ballpark agreed': ['send_offer_email', 'chase_written_confirmation'],
   'Needs viewing': ['book_builder', 'chase_video_for_builder', 'escalate_hugo'],
-  'Offer sent': ['chase_the_answer', 'hold'],
+  // reply_with_counter: the branch answered our offer with a no or a number,
+  // and the reply IS a money move, so it maps to the counter button whose
+  // stress test runs decideCounter and the ceiling fences before anything is
+  // written. Added 16 Aug: the vendors rejected Orion Way in writing and the
+  // brain had no action that could order the reply.
+  'Offer sent': ['reply_with_counter', 'chase_the_answer', 'hold'],
   'Offer accepted': ['assemble_investor_pack', 'chase_written_acceptance'],
   'Sent to investor': ['chase_investor', 'hold'],
   'Deal closed': ['hold'],
@@ -172,9 +177,21 @@ export function fallbackVerdict(state: DealState): ManagerVerdict {
   const instruction = state.pinnedNote?.trim()
     || state.brief.doNow[0]
     || 'No instruction on file yet. Open the deal and decide the next step.';
+
+  // THE FALLBACK MUST NEVER SUGGEST HOLDING THROUGH AN UNANSWERED REPLY.
+  // Seen on Orion Way, 16 Aug: the vendors' rejection was on the card, the
+  // model happened to be silent, and the primary button read "Hold, nothing
+  // today". A branch that wrote to us gets a reply-shaped action if the stage
+  // allows one; 'hold' is only ever the answer when nothing is waiting.
+  const legal = allowedActions(state.board.column);
+  const action = state.writing.replySinceBrief
+    ? (['reply_with_counter', 'chase_email_reply', 'chase_the_answer']
+      .find((a) => legal.includes(a)) ?? 'hold')
+    : 'hold';
+
   return {
     attention: state.followups.overdue ? 70 : state.clock.stale ? 50 : 20,
-    action: 'hold',
+    action,
     who: 'PEDRO',
     instruction,
     flags: deterministicFlags(state),

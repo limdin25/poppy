@@ -227,8 +227,13 @@ describe('there is ONE brain, and both callers use it', () => {
     // spent the lot thinking and the text block never arrived. The fences all
     // behaved (every one fell back to the brief and logged model_silent), but
     // a brain that is silent six times out of seven is not a brain.
-    expect(BRAIN).toMatch(/DEAL_MANAGER_MAX_TOKENS = 2000/);
+    expect(BRAIN).toMatch(/DEAL_MANAGER_MAX_TOKENS = 3500/);
     expect(BRAIN).not.toMatch(/\], 700\)/);
+    // The 16 Aug evening completion of the same fix: the thinking portion is
+    // BUDGETED below max_tokens, so however rich the deal, the answer always
+    // has room. Orion Way went model_silent twice at an uncapped 2000.
+    expect(BRAIN).toMatch(/DEAL_MANAGER_THINKING = 2500/);
+    expect(BRAIN).toMatch(/thinkingBudget: DEAL_MANAGER_THINKING/);
   });
 
   it('speaks in orders, not essays (Hugo, 16 Aug: "small texts")', () => {

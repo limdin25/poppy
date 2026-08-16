@@ -47,8 +47,18 @@ export const DEAL_MANAGER_MODEL = 'claude-sonnet-5';
  *  brain, so the budget is the thing to fix.
  *
  *  It costs nothing to raise. Output tokens are billed as produced, not as
- *  reserved, and the answer is still 2 to 4 sentences. */
-export const DEAL_MANAGER_MAX_TOKENS = 2000;
+ *  reserved, and the answer is still 2 to 4 sentences.
+ *
+ *  RAISED AGAIN AND CAPPED PROPERLY ON 2026-08-16 EVENING. With transcripts
+ *  in the state, the richest deal (Orion Way: 12 minute call, pinned ladder,
+ *  a written rejection) went model_silent twice in a row at 2000, 22 seconds
+ *  of thinking and no text. The real fix is DEAL_MANAGER_THINKING: the
+ *  thinking portion is budgeted BELOW max_tokens, so the answer always has
+ *  room, whatever the deal looks like. */
+export const DEAL_MANAGER_MAX_TOKENS = 3500;
+
+/** Hard ceiling on the thinking portion. The answer keeps the difference. */
+export const DEAL_MANAGER_THINKING = 2500;
 
 export const DEAL_MANAGER_SYSTEM = [
   'You manage a property deal-sourcing pipeline. For ONE deal you decide how badly it needs a human today and what that human should do.',
@@ -104,6 +114,7 @@ export async function assess(state: DealState): Promise<{
     out = await callLLM(
       DEAL_MANAGER_MODEL, DEAL_MANAGER_SYSTEM,
       [{ role: 'user', content: dealManagerPrompt(state) }], DEAL_MANAGER_MAX_TOKENS,
+      { thinkingBudget: DEAL_MANAGER_THINKING },
     );
   } catch (e) {
     return { verdict: fallbackVerdict(state), source: 'fallback', refused: `model_error: ${String(e).slice(0, 120)}` };
