@@ -121,6 +121,13 @@ const PIPELINE_ID = 'c2022b21-7a79-4203-90dd-5b06b46eef11'   // Default workspac
 // so this works without changing who owns the number.
 const CALLER_ID_NUMBER_ID = '1a04cead-c768-46f4-8434-3ef94de7b6e3'   // +447462167894
 
+// How far under its like-for-like local sold median a house must be advertised
+// before it is worth a call. THE SAME 0.15 AS send_to_elsie.MIN_LOCAL_DISCOUNT
+// on the engine, and it is written here as well ON PURPOSE: this script queues
+// from rows that engine may never have judged, so it cannot inherit the rule by
+// assuming everything upstream was screened. See the gate below.
+const MIN_LOCAL_DISCOUNT = 0.15
+
 const money = (n) => {
   const v = parseFloat(String(n ?? ''))
   return Number.isFinite(v) && v > 0 ? `£${Math.round(v).toLocaleString('en-GB')}` : '-'
@@ -436,12 +443,43 @@ async function main() {
     ? properties.filter((p) => p.deal?.pursue === true || p.deal?.pursue === 'true')
     : properties
   // Only gold and strong evidence reaches him. See meetsEvidenceStandard above.
-  const usable = pursued.filter(meetsEvidenceStandard)
-  const belowStandard = pursued.length - usable.length
+  const withEvidence = pursued.filter(meetsEvidenceStandard)
+  const belowStandard = pursued.length - withEvidence.length
   if (belowStandard > 0) {
     const tiers = belowStandardByTier(pursued)
     say(`  evidence standard    : ${belowStandard} listing(s) held back, below gold/strong `
       + `(${Object.entries(tiers).map(([t, n]) => `${n} ${t}`).join(', ')})`)
+  }
+
+  // THE DISCOUNT, RE-CHECKED AT THE LAST GATE BEFORE PEDRO SEES IT.
+  //
+  // Hugo, 2026-08-16, having found three houses in the dialer at 10.5%, 6.7%
+  // and 3.0% under their like-for-like local median against a rule of 15%:
+  // "make sure this never ever happens again."
+  //
+  // The engine's own gate (send_to_elsie.MIN_LOCAL_DISCOUNT) is correct and
+  // refuses exactly these. But it only guards the moment of PUSHING, and this
+  // script queues from `brrr_properties`, which still holds rows written
+  // BEFORE that gate existed on 2026-08-15. A rule added at the front door did
+  // nothing about what was already inside, and this script had no discount
+  // check of its own at all.
+  //
+  // So the measured number now travels on the deal blob and is re-checked
+  // here. A MISSING stamp is a REFUSAL, not a pass: unverified is not the same
+  // as fine, and treating it as fine is precisely how those three got in. The
+  // historical rows stay out until something measures them, which is the
+  // intended outcome rather than a side effect.
+  const usable = withEvidence.filter((p) => {
+    const d = Number(p.deal?.local_discount_pct)
+    return Number.isFinite(d) && d >= MIN_LOCAL_DISCOUNT
+  })
+  const belowDiscount = withEvidence.length - usable.length
+  if (belowDiscount > 0) {
+    const unmeasured = withEvidence.filter(
+      (p) => !Number.isFinite(Number(p.deal?.local_discount_pct))).length
+    say(`  discount rule        : ${belowDiscount} listing(s) held back `
+      + `(${unmeasured} never measured, ${belowDiscount - unmeasured} under `
+      + `${Math.round(MIN_LOCAL_DISCOUNT * 100)}% of their like-for-like local median)`)
   }
   const allBranches = groupByBranch(usable)
 

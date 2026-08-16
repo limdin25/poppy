@@ -45,6 +45,35 @@ Then hard excludes: no auctions (see section 6), no flats, no leasehold,
 £40k to £200k, crime cap, one property per branch, and no branch rung in the
 last 14 days.
 
+### The rule is checked again at the door, and unverified is a refusal
+
+Added 2026-08-16 after Hugo audited the dialer and found four leads that should
+never have been in it (10.5%, 6.7% and 3.0% under, plus one house that had left
+our listing table).
+
+The engine's own gate was correct and had always worked. But **it only guarded
+the moment a property was pushed to the CRM**, and the script that fills Pedro's
+queue read from a table still holding rows written before that gate existed. It
+had no discount check of its own at all. A rule added at the front door did
+nothing about what was already inside the house.
+
+So the measured discount now **travels** with the deal (`local_discount_pct`),
+and **both** assign scripts re-check it as the last thing before a queue row is
+written. **A missing measurement is a refusal, not a pass.** Treating "we never
+measured it" as "probably fine" is exactly how those four got in front of him.
+
+**What that audit actually exposed.** Once every property in the CRM was
+measured where it stood, only **52 of 181 met the 15% rule**. The median was
+9.4% and the worst was asking **46.7% above** its own local median. Hugo's
+instinct about the queue was right on a far larger scale than the four he could
+see. `tests/queue-discount-rule.test.ts` pins the fence, including that both
+scripts report how many they held back, because a silent filter is how you find
+out months later that the queue has been quietly empty.
+
+**The 14-day cooldown is separate and untouched.** A branch that spoke to us
+stays off the call list for a fortnight. The follow-up round Hugo runs from the
+CRM contacts side is a different path and is not governed by this rule.
+
 **Ranked by how hard the call will be, easiest first.** Changed 2026-08-15,
 and it was the single worst thing about the old list.
 

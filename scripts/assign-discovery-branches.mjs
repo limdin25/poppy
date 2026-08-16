@@ -61,6 +61,12 @@ const APPLY = process.argv.includes('--apply')
 const COUNT = parseInt(arg('count', '150'), 10)
 const POOL_PATH = arg('pool', '/root/scraper/exports/discovery_pool.json')
 
+// How far under its like-for-like local sold median a house must be advertised
+// before it is worth a call. The same 0.15 as discovery_pool.MIN_DISCOUNT and
+// send_to_elsie.MIN_LOCAL_DISCOUNT. Repeated here deliberately: this is the last
+// gate before Pedro, and a gate that trusts its input is not a gate.
+const MIN_LOCAL_DISCOUNT = 0.15
+
 // The same identities the priced path uses. REFUSED rather than created here:
 // if either is missing something is badly wrong and a discovery run must not
 // be the thing that invents a second Pedro.
@@ -72,8 +78,31 @@ const say = (s) => console.log(s)
 async function main() {
   say(`Discovery-first assign. ${APPLY ? 'APPLY' : 'DRY RUN'}, target ${COUNT} branches.`)
 
-  const pool = JSON.parse(readFileSync(POOL_PATH, 'utf8'))
-  say(`  pool: ${pool.length} branches from ${POOL_PATH}`)
+  const rawPool = JSON.parse(readFileSync(POOL_PATH, 'utf8'))
+
+  // THE DISCOUNT, RE-CHECKED HERE TOO, even though discovery_pool.py already
+  // screens on it. Hugo, 2026-08-16: "make sure this never ever happens again."
+  //
+  // The pool file is not evidence, it is a file. It can be stale, it can be
+  // half-written if a run was killed, and it can be hand-edited. Re-reading the
+  // number it carries costs nothing and means the last gate before Pedro
+  // depends on a value rather than on a promise that some earlier step checked
+  // one. A MISSING discount is a REFUSAL: unverified is not the same as fine,
+  // and that assumption is exactly how three houses at 10.5%, 6.7% and 3.0%
+  // under reached his dialer on the priced side.
+  const pool = rawPool.filter((b) => {
+    const d = Number(b?.property?.discount)
+    return Number.isFinite(d) && d >= MIN_LOCAL_DISCOUNT
+  })
+  const dropped = rawPool.length - pool.length
+  say(`  pool: ${pool.length} branches from ${POOL_PATH}`
+    + (dropped ? `  (${dropped} refused here: no measured discount, or under `
+      + `${Math.round(MIN_LOCAL_DISCOUNT * 100)}%)` : ''))
+  if (!pool.length) {
+    console.error('REFUSING: not one branch in the pool carries a discount at or '
+      + 'over the rule. That is a broken pool, not an empty night.')
+    process.exit(2)
+  }
 
   const { data: agent } = await db.from('profiles')
     .select('id, name').ilike('email', AGENT_EMAIL).maybeSingle()
