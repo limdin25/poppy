@@ -91,8 +91,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }, { onConflict: 'key' });
     }
 
+    // The per-deal reasons are diagnostic weight the every-2-minutes caller
+    // does not need; ?debug=1 (still behind CRON_SECRET) returns them.
+    const wantsDebug = (req.url ?? '').includes('debug=1');
+    const { decisions, ...summary } = result;
     res.statusCode = 200;
-    res.end(JSON.stringify({ ok: true, ...result }));
+    res.end(JSON.stringify({ ok: true, ...summary, ...(wantsDebug ? { decisions } : {}) }));
   } catch (e) {
     // Even a total failure leaves the product exactly as it was: the cockpit
     // reads the log, the log simply has nothing new in it, and every card shows

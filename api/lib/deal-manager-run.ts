@@ -535,6 +535,17 @@ export interface SweepResult {
   capped: boolean;
   failed: number;
   spentToday: number;
+  /** Why each considered deal was or was not assessed. Always collected (it
+   *  is thirteen small objects); the cron only RETURNS it on ?debug=1. */
+  decisions?: Array<{
+    propertyId: string;
+    address: string | null;
+    why: string;
+    hash: string;
+    lastHash: string | null;
+    lastKind: string | null;
+    lastAt: string | null;
+  }>;
 }
 
 /** How many assessments have been paid for since midnight UK. */
@@ -654,6 +665,7 @@ export async function sweep(
   // ---- decide who gets looked at, before spending anything -------------
   let deduped = 0;
   const due: Array<{ bundle: DealBundle; hash: string }> = [];
+  const decisions: NonNullable<SweepResult['decisions']> = [];
   for (const { bundle, hash } of ranked) {
     if (due.length >= Math.min(batch, Math.max(0, cap - spent))) break;
     const last = priorities.get(bundle.state.propertyId) ?? null;
@@ -665,6 +677,18 @@ export async function sweep(
       mode: args.mode,
       now: args.now,
       minSeconds: args.minSeconds,
+    });
+    // Kept per property so the cron's ?debug=1 can say WHY each deal was or
+    // was not looked at. Built after an evening spent inferring this from the
+    // outside while a written rejection sat behind a "deduped: 13".
+    decisions.push({
+      propertyId: bundle.state.propertyId,
+      address: bundle.state.address,
+      why: decision.why,
+      hash,
+      lastHash: last?.state_hash ?? null,
+      lastKind: last?.kind ?? null,
+      lastAt: last?.created_at ?? null,
     });
     if (decision.assess) due.push({ bundle, hash });
     else deduped += 1;
@@ -712,5 +736,5 @@ export async function sweep(
 
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
 
-  return { ...base, assessed, deduped, failed };
+  return { ...base, assessed, deduped, failed, decisions };
 }
