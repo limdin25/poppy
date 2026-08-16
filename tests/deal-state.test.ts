@@ -121,6 +121,24 @@ describe('the reply-after-brief gap, which is the one that cost money', () => {
   })
 })
 
+describe("Hugo's own figures are on the file", () => {
+  it('counts figures in the pinned note as legitimately on file', () => {
+    // Orion Way, 16 Aug: the offer actually with the vendor (96,375) and the
+    // ladder Hugo ruled lived only in the pinned note, so the brain was
+    // forbidden from naming the very numbers Hugo decided.
+    const s = buildDealState(base({
+      property: {
+        ...base().property,
+        pinned_note: 'Hold at £96,375. If they counter: one step to £99,588 max. Never past £102,800.',
+      },
+    }))
+    for (const n of [96375, 99588, 102800]) {
+      expect(s.money.figuresOnFile).toContain(n)
+    }
+    expect(figuresAreOnFile('Reply holding at 96,375.', s)).toBe(true)
+  })
+})
+
 describe('the brain has ears: the last conversation rides on the state', () => {
   // Paterson Road, 16 Aug: a 12 minute recorded discovery call with Pedro's
   // note "call back monday", and the brain ordered a Sunday re-ring to re-ask

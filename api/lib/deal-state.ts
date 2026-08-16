@@ -283,6 +283,14 @@ export function buildDealState(input: DealStateInput): DealState {
     asking, gdv, tmv, open, ceiling, refurb,
     num(p.viewing_quote),
     ...ladder.map(num),
+    // HUGO'S OWN FIGURES COUNT AS ON FILE. Found on Orion Way, 16 Aug: the
+    // offer actually put to the vendor (96,375) and the ladder Hugo decided
+    // (99,588 / 102,800) lived only in the pinned note, while the engine's
+    // file held an older band, so the brain was forbidden from naming the
+    // very numbers Hugo had ruled. A figure in the pinned note is a decision,
+    // not an invention. Naming is all this unlocks: SENDING a figure is still
+    // gated by the stress test and the ceiling fences.
+    ...figuresIn(p.pinned_note ?? ''),
   ].filter((n): n is number => n !== null);
 
   // ---- the brief ------------------------------------------------------

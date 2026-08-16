@@ -64,7 +64,10 @@ export const ACTIONS_BY_STAGE: Record<string, string[]> = {
   'Offer accepted': ['assemble_investor_pack', 'chase_written_acceptance'],
   'Sent to investor': ['chase_investor', 'hold'],
   'Deal closed': ['hold'],
-  Nurturing: ['chase_the_answer', 'rebook_followup', 'hold'],
+  // reply_with_counter here too: Orion Way was parked in Nurturing when the
+  // vendors' written rejection arrived, and the one action that answers a
+  // rejection was not legal in the one column the deal actually sat in.
+  Nurturing: ['reply_with_counter', 'chase_the_answer', 'rebook_followup', 'hold'],
 };
 
 /** Allowed from ANY stage: the card's column disagrees with the evidence. */
