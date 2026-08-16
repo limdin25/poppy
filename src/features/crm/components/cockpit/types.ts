@@ -70,6 +70,11 @@ export interface CockpitDeal {
   money: {
     asking: number | null; gdv: number | null; tmv: number | null;
     open: number | null; ceiling: number | null; refurb: number | null;
+    /** The engine's own label: the works cost is a stand-in, nobody has read
+     *  the condition. A provisional band never ships in an offer. */
+    refurbAssumed: boolean;
+    /** The ceiling Hugo WROTE in the pinned note. His ruling governs. */
+    pinnedCeiling: number | null;
     compsTier: string | null; figuresOnFile: number[];
   };
   checklist: { answered: number; total: number; missing: string[] };

@@ -21,10 +21,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, ShieldAlert, X } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
+import { useAuth } from '../../lib/useCrmAuth';
+import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import StressTestList from './StressTestList';
 import { COCKPIT_ACTIONS, confirmSentence, type CockpitAction } from './cockpitActions';
 import { useCockpitAction } from '../../hooks/useCockpit';
 import type { CockpitDeal, StressReport } from './types';
+
+/** The actions where money changes hands or a figure is committed to, so the
+ *  approval shows the breakdown. Hugo, 16 Aug: "the AI decides, but I approve
+ *  ... and then it shows me the breakdown of how much money gonna make." */
+const MONEY_GATE_ACTIONS: CockpitAction[] = [
+  'fetch_ballpark', 'draft_offer_email', 'draft_counter_reply', 'move_stage',
+];
 
 interface Props {
   deal: CockpitDeal;
@@ -41,6 +50,7 @@ interface Props {
 export default function ActionConfirmDialog({ deal, action, stages, onCancel, onCommitted, onCall }: Props) {
   const spec = COCKPIT_ACTIONS[action];
   const { run } = useCockpitAction();
+  const { isAdmin } = useAuth();
 
   const [report, setReport] = useState<StressReport | null>(null);
   const [checking, setChecking] = useState(true);
@@ -209,6 +219,51 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
                 {report.counter.position === 'raise' ? 'We can move' : `The answer is to ${report.counter.position}`}
               </strong>{' '}
               {report.counter.reason}
+            </div>
+          )}
+
+          {/* THE MONEY IF THIS GOES THROUGH. Admin only, same boundary as the
+              calculator in the calls drawer: Pedro executes, Hugo approves
+              with the breakdown in front of him. Every figure is READ off the
+              file; the one subtraction is labelled for what it leaves out. */}
+          {isAdmin && MONEY_GATE_ACTIONS.includes(action)
+            && (deal.money.gdv !== null || deal.money.open !== null) && (
+            <div className="rounded-md border border-border bg-white px-2.5 py-2" data-testid="cockpit-money-breakdown">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
+                The money if this goes through
+              </span>
+              <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11.5px]">
+                {([
+                  ['Asking', deal.money.asking],
+                  ['Buy at', report?.counter?.newOffer ?? deal.money.open],
+                  ['Walk away above', deal.money.pinnedCeiling ?? deal.money.ceiling],
+                  ['Works', deal.money.refurb],
+                  ['Worth today', deal.money.tmv],
+                  ['Done up', deal.money.gdv],
+                ] as const).map(([k, v]) => (
+                  <div key={k} className="contents">
+                    <dt className="text-ink-subtle">{k}</dt>
+                    <dd className="text-ink tabular-nums">{v === null || v === undefined ? 'not on file' : gbpShort(v)}</dd>
+                  </div>
+                ))}
+                {deal.money.gdv !== null
+                  && (report?.counter?.newOffer ?? deal.money.ceiling) !== null && (
+                  <div className="contents">
+                    <dt className="font-semibold text-ink">The gap</dt>
+                    <dd className="font-semibold text-ink tabular-nums">
+                      {gbpShort(deal.money.gdv
+                        - (report?.counter?.newOffer ?? deal.money.ceiling ?? 0)
+                        - (deal.money.refurb ?? 0))}
+                      <span className="ml-1 font-normal text-[10px] text-ink-subtle">before finance, fees and stamp duty</span>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              {deal.money.refurbAssumed && (
+                <p className="mt-1 text-[10.5px] text-[#B45309]">
+                  The works figure is a stand-in, nobody has read the condition yet. The ballpark prices the real works.
+                </p>
+              )}
             </div>
           )}
 
