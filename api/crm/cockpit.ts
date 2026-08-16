@@ -101,9 +101,23 @@ export default async function handler(req: Request): Promise<Response> {
 
     // Every stage a human may move this card to, named by the server so the
     // client never holds a copy of the board.
-    const { data: cols } = await (supabase.from('wk_pipeline_columns') as unknown as {
-      select: (c: string) => { order: (c: string) => Promise<{ data: Array<{ id: string; name: string; sort_order: number }> | null }> };
-    }).select('id, name, sort_order').order('sort_order');
+    //
+    // SCOPED TO ONE PIPELINE, and that is not fussiness. `Not interested`
+    // exists on BOTH the property board and the HeyPubli creators board, so
+    // filtering by name alone offered two of them and one of those would have
+    // moved a house onto a completely different business's board. Caught in a
+    // screenshot: sixteen options where there should have been fifteen.
+    const { data: allCols } = await (supabase.from('wk_pipeline_columns') as unknown as {
+      select: (c: string) => { order: (c: string) => Promise<{ data: Array<{ id: string; name: string; sort_order: number; pipeline_id: string }> | null }> };
+    }).select('id, name, sort_order, pipeline_id').order('sort_order');
+
+    // The property board is the one carrying the funnel columns. Found by a
+    // column name that exists nowhere else, rather than by a hardcoded id.
+    const propertyPipelineId = (allCols ?? [])
+      .find((c) => c.name === 'Ballpark agreed')?.pipeline_id ?? null;
+    const cols = (allCols ?? []).filter((c) =>
+      PROPERTY_STAGES.includes(c.name)
+      && (propertyPipelineId === null || c.pipeline_id === propertyPipelineId));
 
     return Response.json({
       managerEnabled: on,
@@ -112,7 +126,7 @@ export default async function handler(req: Request): Promise<Response> {
       state: bundle.state,
       log: log.map(shapeLogEntry),
       timeline,
-      stages: (cols ?? []).filter((c) => PROPERTY_STAGES.includes(c.name)),
+      stages: cols,
       reports,
       allowedActions: allowedActions(bundle.state.board.column),
       actions: COCKPIT_ACTIONS.map((a) => ({

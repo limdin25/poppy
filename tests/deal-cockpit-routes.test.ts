@@ -97,6 +97,31 @@ describe('THE MACHINE NEVER MOVES A CARD', () => {
   });
 });
 
+describe('the stage picker cannot move a house onto another business\'s board', () => {
+  // Caught in a screenshot on 2026-08-16: the picker offered SIXTEEN stages
+  // where there are fifteen. `Not interested` exists on the property board AND
+  // on the HeyPubli Creators board, so filtering columns by NAME alone offered
+  // both, and picking the wrong one would have moved a house onto a completely
+  // different business's pipeline.
+
+  it('scopes the stages to one pipeline, found by a column unique to it', () => {
+    expect(COCKPIT).toMatch(/c\.name === 'Ballpark agreed'/);
+    expect(COCKPIT).toMatch(/propertyPipelineId/);
+    expect(COCKPIT).toMatch(/c\.pipeline_id === propertyPipelineId/);
+  });
+
+  it('still filters by the property stage list as well', () => {
+    expect(COCKPIT).toMatch(/PROPERTY_STAGES\.includes\(c\.name\)/);
+  });
+
+  it('offers no VSL video-funnel column as somewhere to put a house', () => {
+    const list = COCKPIT.match(/const PROPERTY_STAGES = \[[\s\S]*?\];/)?.[0] ?? '';
+    for (const vsl of ['Rendering', 'Video sent', 'Watched video', 'Checkout started', 'Paid']) {
+      expect(list, vsl).not.toContain(vsl);
+    }
+  });
+});
+
 describe('THE AI NEVER SENDS ANYTHING', () => {
   // Guardrail 3: "The Manager drafts nothing and sends nothing. A human clicks
   // send, always." A call is placed by the browser's Twilio device and an

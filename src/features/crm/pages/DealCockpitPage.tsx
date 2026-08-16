@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, Gauge, History, ListChecks, CalendarDays } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
-import { useIsMobile } from '@/core/hooks/useMediaQuery';
+import { useIsMobile, useMediaQuery } from '@/core/hooks/useMediaQuery';
 import { useCockpitDeals, useCockpitDeal, useCockpitCalendar } from '../hooks/useCockpit';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import CockpitQueue from '../components/cockpit/CockpitQueue';
@@ -33,6 +33,9 @@ export default function DealCockpitPage() {
   const [params, setParams] = useSearchParams();
   const selectedId = params.get('deal');
   const isMobile = useIsMobile();
+  // At xl the history has its own column, so offering it as a tab as well
+  // shows the same thing twice side by side.
+  const historyHasItsOwnColumn = useMediaQuery('(min-width: 1280px)');
   const { openDialerPro } = useDialerProModal();
 
   const { deals, setAside, managerEnabled, generatedAt, loading, error, reload } = useCockpitDeals();
@@ -83,6 +86,7 @@ export default function DealCockpitPage() {
   }, [reload, reloadDetail, ordered, selectedId, select]);
 
   const deal = detail?.deal ?? null;
+  const view = tab === 'history' && historyHasItsOwnColumn ? 'deal' : tab;
 
   const columnShell = 'flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-soft';
   const columnHeader = 'flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2.5';
@@ -173,14 +177,14 @@ export default function DealCockpitPage() {
 
         {/* ---- the deal, and on md the history behind a tab ---- */}
         <section
-          className={cn(columnShell, isMobile && !selectedId && tab !== 'calendar' && 'hidden')}
+          className={cn(columnShell, isMobile && !selectedId && view !== 'calendar' && 'hidden')}
           data-testid="cockpit-centre"
         >
           <div className={columnHeader}>
             <div className="flex items-center gap-1.5" data-testid="cockpit-view-tabs">
               {([
                 ['deal', 'Do it', ListChecks],
-                ['history', 'History', History],
+                ...(historyHasItsOwnColumn ? [] : [['history', 'History', History] as const]),
                 ['calendar', 'Calendar', CalendarDays],
               ] as const).map(([k, label, Icon]) => (
                 <button
@@ -189,7 +193,7 @@ export default function DealCockpitPage() {
                   onClick={() => setTab(k)}
                   className={cn(
                     'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium',
-                    tab === k ? 'bg-brand-50 text-brand' : 'text-ink-muted hover:bg-elevated',
+                    view === k ? 'bg-brand-50 text-brand' : 'text-ink-muted hover:bg-elevated',
                   )}
                 >
                   <Icon className="w-3 h-3" />{label}
@@ -197,7 +201,7 @@ export default function DealCockpitPage() {
               ))}
             </div>
 
-            {isMobile && (selectedId || tab === 'calendar') && (
+            {isMobile && (selectedId || view === 'calendar') && (
               <button
                 type="button"
                 onClick={() => select(null)}
@@ -209,7 +213,7 @@ export default function DealCockpitPage() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-hidden">
-            {tab === 'calendar' ? (
+            {view === 'calendar' ? (
               <div className="h-full overflow-y-auto">
                 <CockpitCalendar
                   items={calendar.items}
@@ -232,7 +236,7 @@ export default function DealCockpitPage() {
               <p className="px-4 py-8 text-center text-[12px] text-ink-subtle">
                 That deal could not be opened.
               </p>
-            ) : tab === 'history' ? (
+            ) : view === 'history' ? (
               <div className="h-full overflow-y-auto">
                 <CockpitTimeline entries={detail?.timeline ?? []} loading={detailLoading} />
               </div>
