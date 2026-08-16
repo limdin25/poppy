@@ -269,12 +269,22 @@ export function buildDealState(input: DealStateInput): DealState {
   );
   const lastInbound = messages.find((m) => m.direction === 'inbound') ?? null;
   const lastOutbound = messages.find((m) => m.direction === 'outbound') ?? null;
-  // The reply-after-brief test. A brief with no timestamp cannot be newer than
-  // anything, so any inbound counts: the safe wrong answer is "look at it".
+  // The reply-is-waiting test: their last message is newer than BOTH the brief
+  // and our last outbound. The brief-only compare was a trap measured live on
+  // 2026-08-16: briefs are written by the per-house outcome press, which is
+  // almost never used (2 presses across 208 houses, every brief NULL), so
+  // "newer than a null brief" meant ANY inbound ever, forever, and one old
+  // email would have pinned a wiped branch into the cockpit for good. An
+  // inbound we have since written back to is answered, not waiting. If neither
+  // timestamp exists the inbound still counts: the safe wrong answer is "look
+  // at it".
+  const answeredAt = Math.max(
+    briefWrittenAt ? Date.parse(briefWrittenAt) : 0,
+    lastOutbound?.created_at ? Date.parse(lastOutbound.created_at) : 0,
+  );
   const replySinceBrief = Boolean(
     lastInbound?.created_at
-    && (!briefWrittenAt
-      || Date.parse(lastInbound.created_at) > Date.parse(briefWrittenAt)),
+    && Date.parse(lastInbound.created_at) > answeredAt,
   );
 
   // ---- follow-ups -----------------------------------------------------

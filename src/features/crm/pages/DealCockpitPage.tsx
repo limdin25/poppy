@@ -60,13 +60,34 @@ export default function DealCockpitPage() {
     [deals],
   );
 
+  // One card per BRANCH: the selected house may be a card's focus house or one
+  // riding along in `others`, and either way the card (and its house list) is
+  // the same one.
+  const branchCard = useMemo(
+    () => ordered.find((d) =>
+      d.propertyId === selectedId
+      || (d.others ?? []).some((o) => o.propertyId === selectedId)) ?? null,
+    [ordered, selectedId],
+  );
+  const houses = useMemo(
+    () => (branchCard
+      ? [
+        { propertyId: branchCard.propertyId, address: branchCard.address, attention: branchCard.attention },
+        ...(branchCard.others ?? []),
+      ]
+      : []),
+    [branchCard],
+  );
+
   // ---- the cyborg part: two keys per deal ------------------------------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       if (pending) return;
-      const i = ordered.findIndex((d) => d.propertyId === selectedId);
+      // Index by CARD: a switched-to sub-house still counts as its branch card.
+      const i = ordered.findIndex((d) => d.propertyId === selectedId
+        || (d.others ?? []).some((o) => o.propertyId === selectedId));
       if (e.key === 'j') { e.preventDefault(); select(ordered[Math.min(i + 1, ordered.length - 1)]?.propertyId ?? null); }
       if (e.key === 'k') { e.preventDefault(); select(ordered[Math.max(i - 1, 0)]?.propertyId ?? null); }
       if (e.key === 'r') { e.preventDefault(); void reload(); }
@@ -80,7 +101,8 @@ export default function DealCockpitPage() {
     void reload();
     void reloadDetail();
     // Advance to the next deal on its own, so a whole day is two keys each.
-    const i = ordered.findIndex((d) => d.propertyId === selectedId);
+    const i = ordered.findIndex((d) => d.propertyId === selectedId
+      || (d.others ?? []).some((o) => o.propertyId === selectedId));
     const next = ordered[i + 1];
     if (next) select(next.propertyId);
   }, [reload, reloadDetail, ordered, selectedId, select]);
@@ -162,16 +184,18 @@ export default function DealCockpitPage() {
               waiting on a decision; a branch nobody has reached is a phone
               number for the dialer. Saying so out loud beats silently dropping
               four cards in five and leaving somebody to wonder. */}
-          {setAside && (setAside.calling_list + setAside.never_spoke + setAside.closed_door) > 0 && (
+          {setAside && (setAside.calling_list + setAside.never_spoke + setAside.closed_door + (setAside.off_board ?? 0)) > 0 && (
             <div className="flex-shrink-0 border-t border-border px-3 py-2 text-[10px] leading-snug text-ink-subtle">
+              {/* Counts BRANCHES, matching what Hugo counts on the pipeline. */}
               Not shown:{' '}
               {[
                 setAside.calling_list + setAside.never_spoke > 0
-                  && `${setAside.calling_list + setAside.never_spoke} waiting to be rung`,
+                  && `${setAside.calling_list + setAside.never_spoke} branches waiting to be rung`,
+                (setAside.off_board ?? 0) > 0 && `${setAside.off_board} taken off the board`,
                 setAside.closed_door > 0 && `${setAside.closed_door} said no`,
                 setAside.finished > 0 && `${setAside.finished} done`,
               ].filter(Boolean).join(', ')}
-              . Those live in the calling list.
+              .
             </div>
           )}
         </section>
@@ -251,6 +275,8 @@ export default function DealCockpitPage() {
             ) : (
               <CockpitCommandPanel
                 deal={deal}
+                houses={houses}
+                onSelectHouse={select}
                 reports={detail?.reports ?? {}}
                 busy={pending}
                 onRequest={(a) => {

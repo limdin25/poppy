@@ -46,14 +46,22 @@ const CHECKLIST_WORDS: Record<string, string> = {
   best_price_indicated: 'best price hinted at',
 };
 
-export default function CockpitCommandPanel({ deal, reports, busy, onRequest }: {
+export default function CockpitCommandPanel({ deal, houses, onSelectHouse, reports, busy, onRequest }: {
   deal: CockpitDeal;
+  /** Every live house this BRANCH holds, focus first. One card per branch is
+   *  the rule (Hugo, 16 Aug: 15 deals on the pipeline, 35 in the cockpit), so
+   *  the switcher lives here instead of extra cards existing. */
+  houses?: Array<{ propertyId: string; address: string | null; attention: number }>;
+  onSelectHouse?: (propertyId: string) => void;
   reports: Record<string, StressReport>;
   busy: string | null;
   onRequest: (action: CockpitAction) => void;
 }) {
   const [showComps, setShowComps] = useState(false);
   const [showWhole, setShowWhole] = useState(false);
+  // Hugo, 16 Aug: "I don't want to know so much details if it's not needed."
+  // The order is the page; the working sits behind this fold.
+  const [showDetail, setShowDetail] = useState(false);
 
   // The one normaliser, keyed on the branch phone exactly as the dialer does.
   // Deliberately NOT asking for withdrawn listings: a house the auditor pulled
@@ -68,6 +76,18 @@ export default function CockpitCommandPanel({ deal, reports, busy, onRequest }: 
   const buttons = buttonsFor(deal);
   const primary = primaryButtonFor(deal.action);
   const needsHugo = deal.who === 'HUGO' || deal.flags.includes('blocked_needs_hugo');
+
+  // A reveal never leaves the building: with the working behind the fold now,
+  // the Comparisons button opens the fold and the comps in one press. Anything
+  // else goes to the gate.
+  const request = (a: CockpitAction) => {
+    if (COCKPIT_ACTIONS[a].kind === 'reveal') {
+      setShowDetail(true);
+      setShowComps(true);
+      return;
+    }
+    onRequest(a);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -94,7 +114,28 @@ export default function CockpitCommandPanel({ deal, reports, busy, onRequest }: 
           </div>
         </div>
 
-        {/* THEY REPLIED. Above the brief, unclamped, because the brief was
+        {/* the branch's other live houses, chips not cards */}
+        {(houses?.length ?? 0) > 1 && (
+          <div className="flex flex-wrap gap-1.5" data-testid="cockpit-house-switcher">
+            {houses!.map((h) => (
+              <button
+                key={h.propertyId}
+                type="button"
+                onClick={() => onSelectHouse?.(h.propertyId)}
+                className={cn(
+                  'max-w-[220px] truncate rounded-full border px-2.5 py-1 text-[11px]',
+                  h.propertyId === deal.propertyId
+                    ? 'border-brand bg-brand-50 font-semibold text-brand'
+                    : 'border-border bg-white text-ink-muted hover:bg-elevated',
+                )}
+              >
+                {h.address ?? 'Unnamed house'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* THEY REPLIED. Above the order, unclamped, because the order was
             written before they wrote and that inversion is the whole point. */}
         {deal.repliedSinceBrief && (
           <ReplyBlock preview={deal.lastInboundPreview} at={deal.lastInboundAt} full />
@@ -108,16 +149,45 @@ export default function CockpitCommandPanel({ deal, reports, busy, onRequest }: 
           </div>
         )}
 
-        {/* the instruction */}
-        <div className="rounded-md border border-border bg-elevated px-2.5 py-2">
+        {/* THE ORDER IS THE PAGE. Hugo, 16 Aug: "just tell exactly what the
+            intelligence is asking us to do for the next step", "small texts".
+            One big sentence, one big button, everything else behind the fold. */}
+        <div className="rounded-lg border border-border bg-elevated px-3 py-2.5" data-testid="cockpit-order">
           <Label>Do this next</Label>
-          <p className="mt-0.5 text-[12.5px] leading-snug text-ink">{deal.instruction}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[9.5px] text-ink-subtle">
+          <p className="mt-1 text-[15px] font-semibold leading-snug text-ink">{deal.instruction}</p>
+          <button
+            type="button"
+            onClick={() => request(primary)}
+            disabled={busy !== null}
+            data-testid="cockpit-primary-action"
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-[12.5px] font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+          >
+            {busy === primary
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : (() => { const I = COCKPIT_ACTIONS[primary].icon; return <I className="w-4 h-4" />; })()}
+            {COCKPIT_ACTIONS[primary].label}
+          </button>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[9.5px] text-ink-subtle">
             <span>{deal.source === 'manager' ? 'Written by the deal brain' : 'From the brief on the file'}</span>
             {deal.stale && <span>Something has changed since this was written</span>}
-            {deal.evidence.length > 0 && <span>Based on: {deal.evidence.join(', ')}</span>}
           </div>
         </div>
+
+        {/* the working, out of the way until asked for */}
+        <button
+          type="button"
+          onClick={() => setShowDetail((v) => !v)}
+          data-testid="cockpit-detail-toggle"
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-muted hover:text-ink"
+        >
+          {showDetail ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          The detail
+        </button>
+
+        {showDetail && (<div className="space-y-3" data-testid="cockpit-detail">
+        {deal.evidence.length > 0 && (
+          <p className="text-[10.5px] text-ink-subtle">Based on: {deal.evidence.join(', ')}</p>
+        )}
 
         {/* Hugo's own words, and the deterministic brief, both borrowed */}
         <NextStepCard brief={deal.brief as never} pinnedNote={deal.pinnedNote} />
@@ -245,6 +315,7 @@ export default function CockpitCommandPanel({ deal, reports, busy, onRequest }: 
             </div>
           </dl>
         )}
+        </div>)}
       </div>
 
       {/* ---- never scrolls away ----
@@ -261,7 +332,7 @@ export default function CockpitCommandPanel({ deal, reports, busy, onRequest }: 
               <button
                 key={a}
                 type="button"
-                onClick={() => onRequest(a)}
+                onClick={() => request(a)}
                 disabled={busy !== null}
                 data-testid={`cockpit-action-${a}`}
                 data-blocked={blocked ? '1' : '0'}

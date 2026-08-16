@@ -231,6 +231,23 @@ describe('there is ONE brain, and both callers use it', () => {
     expect(BRAIN).not.toMatch(/\], 700\)/);
   });
 
+  it('speaks in orders, not essays (Hugo, 16 Aug: "small texts")', () => {
+    // "just tell exactly what the intelligence is asking us to do for next
+    // step ... the brain has to run the show". The instruction is an order of
+    // at most 2 short sentences, and the prompt carries worked examples of the
+    // shape so the model copies it.
+    expect(BRAIN).toMatch(/an ORDER, not an explanation/);
+    expect(BRAIN).toMatch(/at most 2 short sentences and under 40 words/);
+    expect(BRAIN).toContain('Send it for call two, the ballpark is 62,000');
+    expect(BRAIN).toContain('Reply with the counter at 99,000');
+    // The backstop when it rambles anyway lives in the contract, tightened
+    // from 600 with the same change. A bumped prompt re-judges the board.
+    const contract = read('api/lib/deal-manager-contract.ts');
+    expect(contract).toMatch(/instruction\.length > 320/);
+    expect(contract).toMatch(/export const PROMPT_VERSION = 2/);
+    expect(read('api/lib/deal-manager-run.ts')).toMatch(/promptVersion: PROMPT_VERSION/);
+  });
+
   it('is told the three things it got wrong on real data', () => {
     // Found by reading the first live assessments rather than by guessing.
     // Plain English, not field names: it was writing "still_available,

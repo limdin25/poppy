@@ -78,6 +78,15 @@ export interface CockpitDeal {
   pack: { compsCount: number; rentComp: boolean; floorplans: boolean };
   allowedActions: string[];
   stateHash: string;
+
+  /** ONE CARD PER BRANCH. When the branch holds more than one live house, the
+   *  card is the highest-attention one and the rest ride along here; the
+   *  client switches between them without a second card existing. List
+   *  responses only. */
+  others?: Array<{
+    propertyId: string; address: string | null;
+    attention: number; column: string | null;
+  }>;
 }
 
 export interface CockpitListResponse {
@@ -85,10 +94,11 @@ export interface CockpitListResponse {
   generatedAt: string;
   deals: CockpitDeal[];
   /** What was deliberately kept OUT, and why, so nobody wonders where the
-   *  other hundred and forty cards went. */
+   *  other hundred and forty cards went. Counts BRANCHES, not houses, so the
+   *  arithmetic matches what Hugo counts on the pipeline board. */
   setAside: {
     calling_list: number; never_spoke: number;
-    closed_door: number; finished: number;
+    closed_door: number; finished: number; off_board: number;
   };
 }
 

@@ -98,6 +98,20 @@ describe('the reply-after-brief gap, which is the one that cost money', () => {
     expect(s.writing.replySinceBrief).toBe(true)
   })
 
+  it('an inbound we have since written back to is answered, not waiting', () => {
+    // Measured 2026-08-16: briefs are NULL on all 208 houses (the outcome
+    // press that writes them is almost never used), so a brief-only compare
+    // made ANY inbound count forever. Our own later outbound closes it.
+    const s = buildDealState(base({
+      property: { ...base().property, brief: null },
+      messages: [
+        { id: 'm1', direction: 'inbound', created_at: hoursAgo(20) },
+        { id: 'm2', direction: 'outbound', created_at: hoursAgo(2) },
+      ],
+    }))
+    expect(s.writing.replySinceBrief).toBe(false)
+  })
+
   it('an outbound message of ours is not a reply', () => {
     const s = buildDealState(base({
       messages: [{ id: 'm1', direction: 'outbound', created_at: hoursAgo(2) }],

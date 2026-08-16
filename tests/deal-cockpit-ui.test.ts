@@ -337,3 +337,56 @@ describe('house style', () => {
     }
   });
 });
+
+describe('the brain runs the show: one order, one button, one card per branch', () => {
+  // Hugo, 16 Aug: "there are only 15 deals pedro called on the pipeline but on
+  // cockpit looks like there are 35 ... keep simple and to the point ... the
+  // brain has to run the show". The order is the hero, the working folds away,
+  // and a branch holding six houses is ONE card with a house switcher.
+
+  it('leads with the order and puts the primary button right under it', () => {
+    expect(PANEL).toMatch(/data-testid="cockpit-order"/);
+    expect(PANEL).toMatch(/data-testid="cockpit-primary-action"/);
+    // The hero renders before the detail fold in source order, so the first
+    // thing on the panel is the order, not the working.
+    expect(PANEL.indexOf('cockpit-order')).toBeLessThan(PANEL.indexOf('cockpit-detail-toggle'));
+  });
+
+  it('folds the working away, closed by default', () => {
+    expect(PANEL).toMatch(/data-testid="cockpit-detail-toggle"/);
+    expect(PANEL).toMatch(/const \[showDetail, setShowDetail\] = useState\(false\)/);
+    // The brief, the money and the checklist all live INSIDE the fold.
+    const fold = PANEL.slice(PANEL.indexOf('cockpit-detail-toggle'));
+    for (const inner of ['NextStepCard', 'OfferStrip', 'checklist.missing', 'cockpit-comparisons-toggle']) {
+      expect(fold, inner).toContain(inner);
+    }
+  });
+
+  it('a reveal opens the fold instead of dying against the page filter', () => {
+    expect(PANEL).toMatch(/kind === 'reveal'/);
+    expect(PANEL).toMatch(/setShowDetail\(true\);\s*\n\s*setShowComps\(true\)/);
+  });
+
+  it('one card per branch: the row leads with the office and lists its houses', () => {
+    const QUEUE = read(`${COCKPIT_DIR}/CockpitQueue.tsx`);
+    expect(QUEUE).toMatch(/deal\.contactName \?\? deal\.address/);
+    expect(QUEUE).toMatch(/more \{deal\.others!\.length === 1 \? 'house' : 'houses'\}/);
+    // A switched-to sub-house still lights up its branch card.
+    expect(QUEUE).toMatch(/\(d\.others \?\? \[\]\)\.some/);
+  });
+
+  it('the panel gets the house switcher and the page wires it', () => {
+    expect(PANEL).toMatch(/data-testid="cockpit-house-switcher"/);
+    expect(PAGE).toMatch(/houses=\{houses\}/);
+    expect(PAGE).toMatch(/onSelectHouse=\{select\}/);
+    // j/k and auto-advance index by CARD, not by house, or the keys strand on
+    // a sub-house.
+    expect(PAGE.match(/\(d\.others \?\? \[\]\)\.some\(\(o\) => o\.propertyId === selectedId\)/g)?.length ?? 0)
+      .toBeGreaterThanOrEqual(2);
+  });
+
+  it('the footer counts branches, in words', () => {
+    expect(PAGE).toMatch(/branches waiting to be rung/);
+    expect(PAGE).toMatch(/taken off the board/);
+  });
+});

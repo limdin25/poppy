@@ -135,6 +135,9 @@ test.describe('the cockpit', () => {
       if (/\/api\/|\/functions\/v1\//.test(r.url())) calls += 1;
     });
 
+    // The working sits behind "The detail" since 16 Aug, so open the fold
+    // first. Both are pure reveals and neither may touch the network.
+    await page.getByTestId('cockpit-detail-toggle').click();
     await page.getByTestId('cockpit-comparisons-toggle').click();
     await expect(page.getByTestId('cockpit-comparisons')).toBeVisible();
     await page.waitForTimeout(1_000);

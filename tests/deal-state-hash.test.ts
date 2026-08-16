@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildDealState, type DealStateInput } from '../api/lib/deal-state';
 import { stateHash, hashableState } from '../api/lib/deal-manager-run';
+import { PROMPT_VERSION } from '../api/lib/deal-manager-contract';
 
 const NOW = new Date('2026-08-15T14:00:00Z');
 
@@ -69,6 +70,12 @@ describe('time passing on its own is not a change', () => {
     // a corrected typo in a threaded reply reads as a new fact.
     const json = JSON.stringify(hashableState(state()));
     expect(json).not.toMatch(/lastInboundPreview/);
+  });
+
+  it('carries the prompt version, so a rewritten brain re-judges the board', () => {
+    // Added 2026-08-16 with the order-voice rewrite: without this a new prompt
+    // sits invisible behind the dedupe until each deal changes on its own.
+    expect(hashableState(state()).promptVersion).toBe(PROMPT_VERSION);
   });
 });
 

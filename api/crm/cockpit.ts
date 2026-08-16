@@ -149,18 +149,53 @@ export default async function handler(req: Request): Promise<Response> {
   // this route, 144 were a dial nobody answered and 35 were a real deal. See
   // api/lib/cockpit-filter.ts for the whole count.
   const kept: typeof bundles = [];
-  const setAside = { calling_list: 0, never_spoke: 0, closed_door: 0, finished: 0 };
+  const asideContacts: Record<string, Set<string>> = {
+    calling_list: new Set(), never_spoke: new Set(), closed_door: new Set(),
+    finished: new Set(), off_board: new Set(),
+  };
+  const keptContacts = new Set<string>();
   for (const b of bundles) {
     const decision = isCockpitDeal(b.state);
-    if (decision.inCockpit) kept.push(b);
-    else if (decision.why in setAside) setAside[decision.why as keyof typeof setAside] += 1;
+    if (decision.inCockpit) {
+      kept.push(b);
+      keptContacts.add(b.contactId);
+    } else if (decision.why in asideContacts) {
+      asideContacts[decision.why].add(b.contactId);
+    }
   }
 
-  const deals = kept
+  const shaped = kept
     .map((bundle) => shapeDeal(bundle, latest.get(bundle.state.propertyId) ?? null, now))
     .sort((a, b) => b.attention - a.attention
       || (b.hoursSinceTouch ?? 0) - (a.hoursSinceTouch ?? 0)
       || String(a.address).localeCompare(String(b.address)));
+
+  // ONE CARD PER BRANCH, NOT PER HOUSE. Hugo, 2026-08-16: "there are only 15
+  // deals pedro called on the pipeline but on cockpit looks like there are
+  // 35". The conversation is with the branch and the pipeline card is the
+  // branch, so a branch holding several live houses is one card whose focus
+  // house is the highest-attention one; the rest ride along as `others` and
+  // the client switches between them without a second card existing.
+  const byContact = new Map<string, (typeof shaped)[number] & {
+    others: Array<{ propertyId: string; address: string | null; attention: number; column: string | null }>;
+  }>();
+  for (const d of shaped) {
+    const existing = byContact.get(d.contactId);
+    if (!existing) byContact.set(d.contactId, { ...d, others: [] });
+    else existing.others.push({
+      propertyId: d.propertyId, address: d.address, attention: d.attention, column: d.column,
+    });
+  }
+  const deals = [...byContact.values()];
+
+  // The footer's arithmetic has to match what Hugo counts on the pipeline, so
+  // set-aside counts BRANCHES, not houses, and a branch with any card in the
+  // cockpit is not set aside at all.
+  const setAside = Object.fromEntries(
+    Object.entries(asideContacts).map(([why, ids]) => [
+      why, [...ids].filter((id) => !keptContacts.has(id)).length,
+    ]),
+  ) as { calling_list: number; never_spoke: number; closed_door: number; finished: number; off_board: number };
 
   return Response.json({
     managerEnabled: on,

@@ -96,9 +96,12 @@ function QueueRow({ deal, selected, onSelect }: {
           <AttentionChip score={deal.attention} />
 
           <div className="min-w-0 flex-1">
+            {/* THE CARD IS THE BRANCH. The conversation is with the office,
+                and the pipeline card Hugo counts is the office, so the row
+                leads with its name; the houses sit underneath. */}
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[13px] font-semibold text-ink truncate">
-                {deal.address ?? 'Unnamed property'}
+                {deal.contactName ?? deal.address ?? 'Unnamed property'}
               </span>
               {deal.column && (
                 <span className="text-[10px] text-ink-muted flex-shrink-0 truncate">
@@ -106,6 +109,16 @@ function QueueRow({ deal, selected, onSelect }: {
                 </span>
               )}
             </div>
+            {deal.contactName && deal.address && (
+              <p className="text-[11px] text-ink-muted truncate">
+                {deal.address}
+                {(deal.others?.length ?? 0) > 0 && (
+                  <span className="text-ink-subtle">
+                    {' '}and {deal.others!.length} more {deal.others!.length === 1 ? 'house' : 'houses'}
+                  </span>
+                )}
+              </p>
+            )}
 
             <p className="text-[12px] text-[#374151] mt-0.5 line-clamp-2">{deal.instruction}</p>
 
@@ -167,7 +180,9 @@ export default function CockpitQueue({ deals, selectedId, onSelect }: {
           <QueueRow
             key={d.propertyId}
             deal={d}
-            selected={d.propertyId === selectedId}
+            // A switched-to sub-house still lights up its branch card.
+            selected={d.propertyId === selectedId
+              || (d.others ?? []).some((o) => o.propertyId === selectedId)}
             onSelect={() => onSelect(d.propertyId)}
           />
         ))}

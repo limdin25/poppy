@@ -14,6 +14,14 @@
 // was somewhere below the fold.
 //
 // THE RULE: the cockpit is where a CONVERSATION is waiting on a decision.
+//
+// AMENDED 2026-08-16 evening, Hugo again: "there are only 15 deals pedro
+// called on the pipeline but on cockpit looks like there are 35". The 14 Aug
+// board wipe deliberately nulled 59 columns, and the old rule-7 fallback
+// (spoken to but no column = show it) resurrected exactly those branches. So
+// the board is the curated truth now: no column means NOT in the cockpit,
+// with the same two exceptions as everything else (they wrote to us, or a
+// follow-up is overdue).
 
 import { describe, it, expect } from 'vitest';
 import { buildDealState, type DealStateInput } from '../api/lib/deal-state';
@@ -118,18 +126,29 @@ describe('a conversation waiting on a decision is a deal', () => {
     expect(isCockpitDeal(state({ column: 'Ballpark agreed', calls: [SPOKE] })).inCockpit).toBe(true);
   });
 
-  it('lets in a branch spoken to yesterday that nobody has given a column', () => {
-    // 22 of the 35 real deals on the board were exactly this. Dropping them
-    // because the board is untidy would hide the newest work in the business.
+  it('keeps OUT a branch spoken to that a human took off the board', () => {
+    // The reversal of the original rule 7. The 14 Aug wipe nulled 59 columns
+    // on purpose, and the old fallback put ~25 of those houses straight back
+    // on the screen (one Glasgow office contributed six on its own). Off the
+    // board means off the cockpit.
     const d = isCockpitDeal(state({ column: null, calls: [{ ...SPOKE, hoursAgo: 20 }] }));
-    expect(d.inCockpit).toBe(true);
-    expect(d.why).toBe('recent_conversation');
+    expect(d.inCockpit).toBe(false);
+    expect(d.why).toBe('off_board');
+    expect(d.reason).toContain('board');
   });
 
-  it('counts a long undispositioned call as a conversation', () => {
-    // Nobody listens to a voicemail greeting for four minutes.
-    const d = isCockpitDeal(state({ column: null, calls: [{ duration_sec: 240 }] }));
+  it('keeps a column this file has never heard of, because a human made it', () => {
+    const d = isCockpitDeal(state({ column: 'Waiting on probate', calls: [SPOKE] }));
     expect(d.inCockpit).toBe(true);
+    expect(d.why).toBe('live_column');
+  });
+
+  it('a long undispositioned call still cannot outrank being off the board', () => {
+    // Nobody listens to a voicemail greeting for four minutes, so this IS a
+    // conversation, but with no column it stays out all the same.
+    const d = isCockpitDeal(state({ column: null, calls: [{ duration_sec: 240 }] }));
+    expect(d.inCockpit).toBe(false);
+    expect(d.why).toBe('off_board');
   });
 
   it('does not count a ten second undispositioned call', () => {

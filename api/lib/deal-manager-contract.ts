@@ -22,6 +22,19 @@
 import type { DealState } from './deal-state.js';
 import { figuresAreOnFile } from './deal-state.js';
 
+/** The version of the brain's prompt (DEAL_MANAGER_SYSTEM in deal-brain.ts).
+ *  Folded into the state hash by deal-manager-run.ts, so bumping it makes
+ *  every cached assessment look stale and the whole board is re-judged on the
+ *  next sweep. Bump it whenever the prompt changes in a way the cards should
+ *  reflect; without the bump, a rewrite sits invisible until each deal happens
+ *  to change on its own. It lives here, not beside the prompt, because the
+ *  hash module must never import the LLM.
+ *
+ *  v2, 2026-08-16: the instruction became an ORDER, 2 short sentences max
+ *  (Hugo: "small texts... just tell exactly what the intelligence is asking
+ *  us to do"). */
+export const PROMPT_VERSION = 2;
+
 /** The pipeline, spelled out. A stage may only produce the actions that stage
  *  already allows, which is what "without changing the process" means in code.
  *  An action outside the list is a validation error, and a validation error
@@ -104,7 +117,11 @@ export function validateVerdict(raw: unknown, state: DealState): ValidationResul
   if (!instruction) {
     return { ok: false, reason: 'no_instruction', detail: 'the instruction was empty' };
   }
-  if (instruction.length > 600) {
+  // 320, not 600: Hugo, 16 Aug, "small texts, I don't want to know so much
+  // details". The instruction is an order of at most 2 short sentences; the
+  // model is told so in as many words, and this is the backstop when it
+  // rambles anyway. Detail belongs in `evidence`, which the history renders.
+  if (instruction.length > 320) {
     return { ok: false, reason: 'instruction_too_long', detail: `${instruction.length} characters` };
   }
 

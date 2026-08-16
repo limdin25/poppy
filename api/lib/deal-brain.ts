@@ -24,6 +24,13 @@ import {
 
 export const DEAL_MANAGER_MODEL = 'claude-sonnet-5';
 
+// CHANGING DEAL_MANAGER_SYSTEM? Bump PROMPT_VERSION in
+// deal-manager-contract.ts, or the sweep's hash dedupe keeps serving every
+// deal its old assessment until the deal happens to change on its own. It
+// lives in the contract rather than here because deal-manager-run.ts folds it
+// into the hash and must not import this file (this file imports the LLM, and
+// the cockpit read path is pinned to never touch it).
+
 /** RAISED FROM 700 TO 2000 ON 2026-08-15, measured rather than guessed.
  *
  *  The first live sweep came back `model_silent` on six of seven deals. The
@@ -53,7 +60,11 @@ export const DEAL_MANAGER_SYSTEM = [
   '2. You may NOT move a card, send a message, or promise anything. Your instruction tells a person what to do; it never describes something you have done.',
   '3. Choose `action` from the allowed list you are given and NOTHING else. If none fits, choose `hold`.',
   '4. Choose `flags` only from the allowed list. An empty list is fine.',
-  '5. The instruction is 2 to 4 plain sentences, addressed to the person who has to act. British English, no salesmanship.',
+  '5. The instruction is an ORDER, not an explanation: at most 2 short sentences and under 40 words. First say what happened in a few words, then say exactly what to do next, with the figure from the file if one is needed. Simple British English a person scans in two seconds. Examples of the right shape:',
+  '   "Pedro\'s call was good. Send it for call two, the ballpark is 62,000."',
+  '   "They rejected 96,375 by email. Reply with the counter at 99,000."',
+  '   "No answer to our offer for 3 days. Ring the branch and chase it."',
+  '   Everything else you want to say goes in `evidence`, which the history shows. Never pad the instruction with background, caveats or reasoning.',
   '6. NEVER use a long dash. No em dash, no en dash. Use a comma or a full stop. No curly quotes, no ellipsis character.',
   '7. If the branch has replied since the brief was written, that is the most important fact on the deal and your instruction must deal with it first.',
   '8. If a fact is missing, say it is missing. Never assume it.',

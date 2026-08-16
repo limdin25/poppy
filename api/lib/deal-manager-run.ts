@@ -37,7 +37,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildDealState, type DealState, type DealStateInput } from './deal-state.js';
-import { baselineAttention, deterministicFlags, fallbackVerdict } from './deal-manager-contract.js';
+import { baselineAttention, deterministicFlags, fallbackVerdict, PROMPT_VERSION } from './deal-manager-contract.js';
 import { matchBuildersForOutcode, type BuilderRow } from './builder-match.js';
 import { outcodeOf } from './brrr-deal-facts.js';
 import { isCockpitDeal } from './cockpit-filter.js';
@@ -111,6 +111,9 @@ export const RETRY_REFUSAL_MINUTES = 30;
  *  enough to make the hash move on a typo. */
 export function hashableState(state: DealState): Record<string, unknown> {
   return {
+    // Not a fact about the deal: a fact about the brain. A new prompt means
+    // every old assessment was written by a different judge, so it re-runs.
+    promptVersion: PROMPT_VERSION,
     status: state.status,
     column: state.board.column,
     movedAt: state.board.movedAt,

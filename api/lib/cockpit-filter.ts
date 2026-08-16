@@ -27,6 +27,20 @@
 // THE RULE IN ONE LINE: the cockpit is where a CONVERSATION is waiting on a
 // decision. Everything else is a phone number waiting to be rung, and that is
 // the dialer's job, on the cadence in scripts/lib/redial-policy.mjs.
+//
+// SECOND LESSON, 2026-08-16 evening. The first version of this filter had a
+// fallback: spoken to but no column, show it anyway, "the board is untidy".
+// Hugo looked at the list and said there were 15 deals on the pipeline and 35
+// in the cockpit. He was right again, and the reason is that on 14 Aug he had
+// asked for a clean CRM and 59 cards were deliberately taken OFF the board
+// (column nulled, history kept). The fallback resurrected exactly the branches
+// he had wiped: 14 no-column branches carrying ~25 houses, six of them behind
+// one Glasgow office. So THE BOARD IS THE CURATED TRUTH. A card with no column
+// is off the board because a human took it off, and a real new conversation
+// always lands a column (a qualified outcome auto-moves the card, and the
+// dialer disposition moves it too). No column means not here, full stop, with
+// the same two exceptions as everything else: a branch that wrote to us, and
+// an overdue follow-up.
 
 import type { DealState } from './deal-state.js';
 
@@ -57,9 +71,9 @@ export const LIVE_COLUMNS = [
 export type CockpitVerdict =
   | 'branch_replied'
   | 'live_column'
-  | 'recent_conversation'
   | 'overdue_followup'
   | 'never_spoke'
+  | 'off_board'
   | 'calling_list'
   | 'closed_door'
   | 'finished';
@@ -136,7 +150,21 @@ export function isCockpitDeal(state: DealState): CockpitDecision {
     };
   }
 
-  // ---- 5. A deal that has finished ---------------------------------------
+  // ---- 5. Not on the board. A human took it off, or never put it on. ---
+  //
+  // This used to be a fallback that let no-column branches IN, and it was
+  // wrong: the 14 Aug board wipe nulled 59 columns on purpose, and the
+  // fallback put ~25 of those houses straight back on Hugo's screen. The
+  // board is curated by hand now, so off the board means off the cockpit.
+  if (!column) {
+    return {
+      inCockpit: false,
+      why: 'off_board',
+      reason: 'Not on the pipeline board. A card off the board was taken off on purpose.',
+    };
+  }
+
+  // ---- 6. A deal that has finished ---------------------------------------
   if (column === 'Deal closed') {
     return {
       inCockpit: false,
@@ -145,7 +173,7 @@ export function isCockpitDeal(state: DealState): CockpitDecision {
     };
   }
 
-  // ---- 6. A live deal, wherever it is on the board ---------------------
+  // ---- 7. A live deal on the board ---------------------------------------
   if (LIVE_COLUMNS.includes(column)) {
     return {
       inCockpit: true,
@@ -154,15 +182,12 @@ export function isCockpitDeal(state: DealState): CockpitDecision {
     };
   }
 
-  // ---- 7. Spoken to, but nobody has given it a column yet --------------
-  //
-  // Real and common: 22 of the 35 live deals on the board the day this was
-  // written had a conversation on file and no column. Dropping them because
-  // the board is untidy would hide the newest work in the business.
+  // A column this file has never heard of: a human made it and parked the
+  // card there, so it is board-curated work. Keep it.
   return {
     inCockpit: true,
-    why: 'recent_conversation',
-    reason: 'Somebody has spoken to this branch and the card has no column yet.',
+    why: 'live_column',
+    reason: `On the board in ${column}.`,
   };
 }
 
