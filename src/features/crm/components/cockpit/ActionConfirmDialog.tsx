@@ -92,6 +92,13 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
           setSubject(res.draft.subject ?? '');
           setBody(res.draft.body ?? '');
         }
+        // The callback slot the brain read off Pedro's call note, prefilled
+        // in local wall-clock for the datetime input. Editable either way.
+        if (res.suggestedDueAt && !dueAt) {
+          const t = new Date(res.suggestedDueAt);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          setDueAt(`${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}T${pad(t.getHours())}:${pad(t.getMinutes())}`);
+        }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : 'Could not run the checks');
       } finally {
@@ -320,9 +327,33 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
             </label>
           )}
 
-          {action === 'book_followup' && (
+          {/* THE APPROVAL DESK. The machine already ran the homework; the
+              gate shows what came back and the callback slot it read off the
+              call, prefilled. One press: band armed, card moved, Pedro
+              booked, and the deal leaves the cockpit until the callback. */}
+          {action === 'fetch_ballpark' && deal.ballpark?.ran && (
+            <div className="rounded-md border border-border bg-elevated px-2.5 py-2 text-[11.5px] text-ink" data-testid="cockpit-ballpark-result">
+              {deal.ballpark.ok ? (
+                <>
+                  <strong className="font-semibold">I ran the ballpark.</strong>{' '}
+                  Works {gbpShort(deal.ballpark.refurb ?? 0)}, open at {gbpShort(deal.ballpark.open ?? 0)},
+                  worth {gbpShort(deal.ballpark.gdv ?? 0)} done up on {deal.ballpark.tier ?? 'ungraded'} comps.
+                  The ceiling stays in the room.
+                </>
+              ) : (
+                <>
+                  <strong className="font-semibold">The engine will not put a figure on this yet.</strong>{' '}
+                  {deal.ballpark.refusalDetail || deal.ballpark.refusal}
+                </>
+              )}
+            </div>
+          )}
+
+          {(action === 'book_followup' || action === 'fetch_ballpark') && (
             <label className="block">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">When</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
+                {action === 'fetch_ballpark' ? 'Book Pedro to ring back' : 'When'}
+              </span>
               <input
                 type="datetime-local"
                 value={dueAt}

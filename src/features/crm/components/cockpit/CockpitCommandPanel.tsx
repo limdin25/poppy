@@ -18,7 +18,7 @@ import CompGroup from '../shared/CompGroup';
 import OfferStrip from '../live-call/OfferStrip';
 import { usePropertyListings } from '../../hooks/usePropertyListings';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
-import { AttentionChip, FlagPills, ReplyBlock } from './CockpitQueue';
+import { AttentionChip, ConfidenceChip, FlagPills, ReplyBlock } from './CockpitQueue';
 import { COCKPIT_ACTIONS, buttonsFor, primaryButtonFor, type CockpitAction } from './cockpitActions';
 import type { CockpitDeal, StressReport } from './types';
 
@@ -168,6 +168,7 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
             {COCKPIT_ACTIONS[primary].label}
           </button>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[9.5px] text-ink-subtle">
+            <ConfidenceChip confidence={deal.confidence} />
             <span>{deal.source === 'manager' ? 'Written by the deal brain' : 'From the brief on the file'}</span>
             {deal.stale && <span>Something has changed since this was written</span>}
           </div>

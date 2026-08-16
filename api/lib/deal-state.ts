@@ -79,6 +79,10 @@ export interface DealStateInput {
     note?: string | null;
     transcript?: string | null;
   } | null;
+  /** What the machine's own ballpark run came back with, stored by the sweep.
+   *  Refusals included: "the engine refuses a figure on this evidence" is a
+   *  result, not an absence. */
+  ballparkPreview?: Record<string, unknown> | null;
   /** Every message in and out on this branch's contacts, newest first. */
   messages?: Array<{
     id: string;
@@ -166,6 +170,22 @@ export interface DealState {
     durationSec: number | null;
     note: string | null;
     transcript: string;
+  } | null;
+  /** The homework the MACHINE already did: the sweep's ballpark run. When
+   *  `ran` and `ok`, the decision is to CONFIRM these numbers, never to ask
+   *  a human to go and fetch them. When `ran` and not `ok`, the refusal is
+   *  the honest result and the cure goes in the next call. */
+  ballpark: {
+    ran: boolean;
+    ok: boolean;
+    at: string | null;
+    open: number | null;
+    ceiling: number | null;
+    gdv: number | null;
+    refurb: number | null;
+    tier: string | null;
+    refusal: string | null;
+    refusalDetail: string | null;
   } | null;
   writing: {
     lastInboundAt: string | null;
@@ -328,6 +348,32 @@ export function buildDealState(input: DealStateInput): DealState {
     }
     : null;
 
+  // ---- the machine's own homework -------------------------------------
+  const bp = input.ballparkPreview ?? null;
+  const bpEngine = (bp && typeof bp.engine === 'object' ? bp.engine : null) as Record<string, unknown> | null;
+  const ballpark = bp
+    ? {
+      ran: true,
+      ok: bp.ok === true,
+      at: (bp.at as string | null) ?? null,
+      open: num(bpEngine?.open),
+      ceiling: num(bpEngine?.ceiling),
+      gdv: num(bpEngine?.gdv),
+      refurb: num(bpEngine?.refurb),
+      tier: (bpEngine?.comps_tier as string | null) ?? null,
+      refusal: bp.ok === true ? null : String(bp.reason ?? 'refused'),
+      refusalDetail: bp.ok === true ? null : String(bp.detail ?? '').slice(0, 300) || null,
+    }
+    : null;
+  // The machine's own run put these numbers on the table, so the brain may
+  // NAME them ("I ran the ballpark: open 65,157"). The ceiling fences still
+  // keep the walk-away out of anything outbound.
+  if (ballpark?.ok) {
+    for (const n of [ballpark.open, ballpark.ceiling, ballpark.gdv, ballpark.refurb]) {
+      if (n !== null) figuresOnFile.push(n);
+    }
+  }
+
   // ---- writing --------------------------------------------------------
   const messages = [...(input.messages ?? [])].sort(
     (a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')),
@@ -412,6 +458,7 @@ export function buildDealState(input: DealStateInput): DealState {
       lastNote: lastNoted ? String(lastNoted.agent_note).trim() : null,
     },
     conversation,
+    ballpark,
     writing: {
       lastInboundAt: lastInbound?.created_at ?? null,
       lastOutboundAt: lastOutbound?.created_at ?? null,

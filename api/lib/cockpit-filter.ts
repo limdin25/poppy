@@ -72,6 +72,7 @@ export type CockpitVerdict =
   | 'branch_replied'
   | 'live_column'
   | 'overdue_followup'
+  | 'scheduled'
   | 'never_spoke'
   | 'off_board'
   | 'calling_list'
@@ -118,7 +119,22 @@ export function isCockpitDeal(state: DealState): CockpitDecision {
     };
   }
 
-  // ---- 3. Somebody spoke to them and they said no ----------------------
+  // ---- 3. Decided and booked: the work has a TIME now ------------------
+  //
+  // Hugo, 16 Aug: "I click confirm, it goes to Pedro for the callback, and
+  // it goes away from the cockpit." A deal whose next follow-up sits in the
+  // FUTURE, with nothing else waiting, is not a decision, it is an
+  // appointment. It comes back the moment the follow-up is due (rule 2) or
+  // the branch writes (rule 1).
+  if (state.followups.nextDueAt && !state.followups.overdue) {
+    return {
+      inCockpit: false,
+      why: 'scheduled',
+      reason: 'Approved and booked. It comes back when the callback is due or the branch writes.',
+    };
+  }
+
+  // ---- 4. Somebody spoke to them and they said no ----------------------
   if (CLOSED_DOOR_COLUMNS.includes(column)) {
     return {
       inCockpit: false,

@@ -308,10 +308,15 @@ describe('there is ONE brain, and both callers use it', () => {
 
   it('unbreakable pins from the 16 Aug audits', () => {
     const ballparkRoute = read('api/crm/fetch-ballpark.ts');
+    const ballparkLib = read('api/lib/ballpark.ts');
     // THE MONEY BUG: the ballpark apply wrote the band as offer.min, nothing
     // reads min, readers fell back to open = max, and the dialer showed the
     // WALK-AWAY as the OPENING offer. The band always carries `open` now.
-    expect(ballparkRoute).toMatch(/offer: \{ open, min: open, max: ceiling, ladder \}/);
+    // The apply moved into the lib (so the sweep can run the homework); the
+    // route must delegate to it rather than keep its own copy.
+    expect(ballparkLib).toMatch(/offer: \{ open, min: open, max: ceiling, ladder \}/);
+    expect(ballparkRoute).toMatch(/runBallparkPreview|applyBallpark/);
+    expect(ballparkRoute).not.toMatch(/offer: \{ min/);
     // And the route is Node with a minute, not edge with 25 seconds: three
     // model reads of a 12 minute transcript plus an engine call 504'd twice
     // in Hugo's hands.

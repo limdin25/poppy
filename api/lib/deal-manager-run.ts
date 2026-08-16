@@ -151,6 +151,11 @@ export function hashableState(state: DealState): Record<string, unknown> {
     pack: { ...state.pack },
     // The line itself, not the minutes approaching it.
     stale: state.clock.stale,
+    // The machine's own homework arriving IS an event: the next sweep must
+    // re-judge the deal into "confirm these numbers".
+    ballpark: state.ballpark
+      ? { ok: state.ballpark.ok, at: state.ballpark.at, open: state.ballpark.open, refusal: state.ballpark.refusal }
+      : null,
   };
 }
 
@@ -281,6 +286,7 @@ export interface LogRow {
   who?: string | null;
   attention?: number | null;
   instruction?: string | null;
+  confidence?: string | null;
   flags?: string[];
   evidence?: string[];
   board_column?: string | null;
@@ -347,6 +353,7 @@ interface CockpitRow {
   messages: DealStateInput['messages'];
   followups: DealStateInput['followups'];
   last_conversation: DealStateInput['lastConversation'];
+  ballpark_preview: DealStateInput['ballparkPreview'];
 }
 
 function bundleFrom(row: CockpitRow, builders: BuilderRow[], now: Date): DealBundle {
@@ -384,6 +391,7 @@ function bundleFrom(row: CockpitRow, builders: BuilderRow[], now: Date): DealBun
     messages: row.messages ?? [],
     followups: row.followups ?? [],
     lastConversation: row.last_conversation ?? null,
+    ballparkPreview: row.ballpark_preview ?? null,
     builderMatches: matches,
     now,
   });
@@ -512,6 +520,7 @@ export async function assessAndLog(
     who: result.verdict.who,
     attention: Math.max(result.verdict.attention, baselineAttention(bundle.state)),
     instruction: result.verdict.instruction,
+    confidence: result.verdict.confidence ?? null,
     flags: [...new Set([...result.verdict.flags, ...deterministicFlags(bundle.state)])],
     evidence: result.verdict.evidence,
     board_column: bundle.state.board.column,

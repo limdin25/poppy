@@ -44,8 +44,12 @@ import { figuresAreOnFile } from './deal-state.js';
  *  business. You have to decide for me." The instruction is a decision, never
  *  a question handed back; who=HUGO only for what Hugo alone can physically
  *  produce. Plus refurbAssumed (a provisional band never climbs and never
- *  ships) and pinnedCeiling (Hugo's written ruling governs). */
-export const PROMPT_VERSION = 4;
+ *  ships) and pinnedCeiling (Hugo's written ruling governs).
+ *  v5, 2026-08-16 late: THE APPROVAL DESK. The machine runs the ballpark
+ *  itself (ballpark-runner cron); when `ballpark.ran` the decision is
+ *  confirm_ballpark presenting the numbers and the callback, never an order
+ *  to go and fetch them. Verdicts carry `confidence`. */
+export const PROMPT_VERSION = 5;
 
 /** The pipeline, spelled out. A stage may only produce the actions that stage
  *  already allows, which is what "without changing the process" means in code.
@@ -56,7 +60,10 @@ export const ACTIONS_BY_STAGE: Record<string, string[]> = {
   // discovery call, extracts the facts, asks the engine, and arms call two.
   // Added 2026-08-16 when the brain, blind to the transcript, kept ordering
   // another discovery call instead of the pricing that should follow one.
-  'Discovery done, evaluating': ['get_the_ballpark', 'wait_for_engine', 'chase_missing_fact', 'escalate_hugo'],
+  // confirm_ballpark: the machine ALREADY ran the homework (ballpark-runner)
+  // and the decision is to confirm those numbers and book Pedro's callback.
+  // get_the_ballpark remains the order while the run has not happened yet.
+  'Discovery done, evaluating': ['confirm_ballpark', 'get_the_ballpark', 'wait_for_engine', 'chase_missing_fact', 'escalate_hugo'],
   'Ready for call 2': ['make_offer_call', 'chase_email_reply', 'rebook_followup'],
   'Ballpark agreed': ['send_offer_email', 'chase_written_confirmation'],
   'Needs viewing': ['book_builder', 'chase_video_for_builder', 'escalate_hugo'],
@@ -94,6 +101,10 @@ export interface ManagerVerdict {
   instruction: string;
   flags: string[];
   evidence: string[];
+  /** How sure the brain is of its decision (Hugo, 16 Aug: "how confident are
+   *  you on that?"). Optional and lenient: an unknown value becomes null
+   *  rather than a refusal, because confidence is information, not a fence. */
+  confidence: 'high' | 'medium' | 'low' | null;
 }
 
 export type ValidationResult =
@@ -171,9 +182,12 @@ export function validateVerdict(raw: unknown, state: DealState): ValidationResul
 
   const evidence = Array.isArray(v.evidence) ? v.evidence.map(String) : [];
 
+  const conf = String(v.confidence ?? '').toLowerCase();
+  const confidence = conf === 'high' || conf === 'medium' || conf === 'low' ? conf : null;
+
   return {
     ok: true,
-    verdict: { attention: Math.round(attention), action, who, instruction, flags, evidence },
+    verdict: { attention: Math.round(attention), action, who, instruction, flags, evidence, confidence },
   };
 }
 
@@ -204,6 +218,7 @@ export function fallbackVerdict(state: DealState): ManagerVerdict {
     instruction,
     flags: deterministicFlags(state),
     evidence: ['brief.do_now', 'pinned_note'],
+    confidence: null,
   };
 }
 

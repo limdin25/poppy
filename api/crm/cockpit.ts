@@ -152,7 +152,7 @@ export default async function handler(req: Request): Promise<Response> {
   const kept: typeof bundles = [];
   const asideContacts: Record<string, Set<string>> = {
     calling_list: new Set(), never_spoke: new Set(), closed_door: new Set(),
-    finished: new Set(), off_board: new Set(),
+    finished: new Set(), off_board: new Set(), scheduled: new Set(),
   };
   const keptContacts = new Set<string>();
   for (const b of bundles) {
@@ -196,7 +196,7 @@ export default async function handler(req: Request): Promise<Response> {
     Object.entries(asideContacts).map(([why, ids]) => [
       why, [...ids].filter((id) => !keptContacts.has(id)).length,
     ]),
-  ) as { calling_list: number; never_spoke: number; closed_door: number; finished: number; off_board: number };
+  ) as { calling_list: number; never_spoke: number; closed_door: number; finished: number; off_board: number; scheduled: number };
 
   return Response.json({
     managerEnabled: on,
@@ -254,6 +254,7 @@ function shapeDeal(bundle: Bundle, assessment: LogRow | null, now: Date) {
     action: assessment?.action ?? fallback.action,
     who: assessment?.who ?? fallback.who,
     instruction: assessment?.instruction ?? fallback.instruction,
+    confidence: (assessment?.confidence as 'high' | 'medium' | 'low' | null) ?? null,
     evidence: assessment?.evidence ?? fallback.evidence,
     source: (assessment?.source ?? 'fallback') as 'manager' | 'fallback',
     assessedAt: assessment?.created_at ?? null,
@@ -273,6 +274,9 @@ function shapeDeal(bundle: Bundle, assessment: LogRow | null, now: Date) {
     followups: state.followups,
     builder: state.builder,
     pack: state.pack,
+    // The machine's own homework, so the gate can show "I ran the ballpark:
+    // these numbers" instead of running anything live.
+    ballpark: state.ballpark,
     allowedActions: allowedActions(state.board.column),
     // Included so the client can tell a genuinely fresh instruction from one
     // written before the last thing that happened, without recomputing a hash

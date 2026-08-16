@@ -45,6 +45,8 @@ export interface CockpitDeal {
   action: string;
   who: Who;
   instruction: string;
+  /** How sure the brain is of its decision. Null on fallback briefs. */
+  confidence: 'high' | 'medium' | 'low' | null;
   evidence: string[];
   source: 'manager' | 'fallback';
   assessedAt: string | null;
@@ -81,6 +83,13 @@ export interface CockpitDeal {
   followups: { nextDueAt: string | null; overdue: boolean; note: string | null };
   builder: { matches: number; booked: boolean; viewingAt: string | null; quote: number | null };
   pack: { compsCount: number; rentComp: boolean; floorplans: boolean };
+  /** The machine's own homework: the stored ballpark run, refusals included. */
+  ballpark: {
+    ran: boolean; ok: boolean; at: string | null;
+    open: number | null; ceiling: number | null; gdv: number | null;
+    refurb: number | null; tier: string | null;
+    refusal: string | null; refusalDetail: string | null;
+  } | null;
   allowedActions: string[];
   stateHash: string;
 
@@ -104,6 +113,8 @@ export interface CockpitListResponse {
   setAside: {
     calling_list: number; never_spoke: number;
     closed_door: number; finished: number; off_board: number;
+    /** Approved and booked: waiting on a callback time, not on a decision. */
+    scheduled: number;
   };
 }
 
@@ -194,5 +205,8 @@ export interface CockpitActionResponse {
   /** Set when the action has to be finished by the browser (a call, a send). */
   execute?: { how: 'client'; via: string; payload: Record<string, unknown> };
   draft?: { subject: string; body: string };
+  /** On the ballpark gate: the callback slot read from Pedro's call note,
+   *  prefilled so one press books him. */
+  suggestedDueAt?: string;
   logEntry?: DealLogEntry;
 }

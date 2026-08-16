@@ -156,7 +156,12 @@ export default async function handler(req: Request): Promise<Response> {
         return Response.json({ ok: withDraft.ok, report: withDraft, draft });
       }
     }
-    return Response.json({ ok: report.ok, report, draft });
+    // The approval desk: on the ballpark button the gate shows the callback
+    // slot the brain read off the call, prefilled, so one press books Pedro.
+    const suggestedDueAt = action === 'fetch_ballpark'
+      ? suggestCallbackAt(state.calls.lastNote ?? state.conversation?.note ?? null, now)
+      : undefined;
+    return Response.json({ ok: report.ok, report, draft, suggestedDueAt });
   }
 
   // ---- refused ----------------------------------------------------------
@@ -311,7 +316,9 @@ export default async function handler(req: Request): Promise<Response> {
         const res = await fetch(`${origin}/api/crm/fetch-ballpark`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
-          body: JSON.stringify({ propertyId: state.propertyId, apply: true }),
+          // dueAt books Pedro's callback in the same press: approve once, the
+          // band is armed, the card moves, and the callback is on his queue.
+          body: JSON.stringify({ propertyId: state.propertyId, apply: true, dueAt: body.dueAt ?? null }),
         });
         const json = await res.json().catch(() => ({})) as Record<string, unknown>;
         if (!res.ok) {
@@ -482,4 +489,49 @@ async function fetchDraft(
 
 function emptyReport(action: CockpitAction) {
   return { action, ok: true, level: 'pass' as const, blocked: [], warned: [], checks: [] };
+}
+
+/** The callback slot Pedro agreed on the call, read from his own note.
+ *
+ *  Deterministic and deliberately modest: it recognises a weekday name (or
+ *  tomorrow/today) in the note and proposes 09:30 UK that day, "monday" on a
+ *  Monday meaning NEXT Monday. Anything it cannot read returns tomorrow at
+ *  09:30, and the human edits the prefill either way. Never a parse of times
+ *  like "half two", because a wrong booked time is worse than a default.
+ */
+export function suggestCallbackAt(note: string | null, now: Date): string {
+  const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const text = (note ?? '').toLowerCase();
+  // Work in UK wall-clock, then emit ISO.
+  const ukNowStr = now.toLocaleString('en-GB', { timeZone: 'Europe/London' });
+  const [d, m, rest] = ukNowStr.split('/');
+  const y = rest.slice(0, 4);
+  const ukToday = new Date(`${y}-${m}-${d}T00:00:00`);
+  let addDays = 1;
+  if (/\btoday\b/.test(text)) addDays = 0;
+  else if (/\btomorrow\b/.test(text)) addDays = 1;
+  else {
+    const named = DAYS.findIndex((day) => text.includes(day));
+    if (named >= 0) {
+      const delta = (named - ukToday.getDay() + 7) % 7;
+      addDays = delta === 0 ? 7 : delta;
+    }
+  }
+  const due = new Date(ukToday.getTime() + addDays * 86_400_000);
+  due.setHours(9, 30, 0, 0);
+  // The Date above is built in the server's zone but represents a UK wall
+  // time; convert by asking what UTC instant shows 09:30 in London that day.
+  const iso = new Date(due.getTime() - offsetMsAt(due)).toISOString();
+  return iso;
+}
+
+/** London's UTC offset at a given wall-clock date, in milliseconds. */
+function offsetMsAt(d: Date): number {
+  const s = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', timeZoneName: 'longOffset',
+  }).format(d);
+  const m = s.match(/GMT([+-]\d{2}):(\d{2})/);
+  if (!m) return 0;
+  const sign = m[1].startsWith('-') ? -1 : 1;
+  return sign * ((Math.abs(Number(m[1])) * 60 + Number(m[2])) * 60_000);
 }

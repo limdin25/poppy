@@ -28,6 +28,21 @@ export function AttentionChip({ score, big }: { score: number; big?: boolean }) 
   );
 }
 
+/** How sure the brain is. Hugo, 16 Aug: "how confident are you on that?" */
+export function ConfidenceChip({ confidence }: { confidence: 'high' | 'medium' | 'low' | null }) {
+  if (!confidence) return null;
+  const tone = confidence === 'high'
+    ? 'bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]'
+    : confidence === 'medium'
+      ? 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]'
+      : 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]';
+  return (
+    <span className={`text-[9.5px] font-medium border rounded-full px-1.5 py-0.5 ${tone}`} data-testid="cockpit-confidence">
+      {confidence} confidence
+    </span>
+  );
+}
+
 export function FlagPills({ flags, className }: { flags: string[]; className?: string }) {
   if (!flags.length) return null;
   return (
@@ -127,6 +142,7 @@ function QueueRow({ deal, selected, onSelect }: {
             )}
 
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <ConfidenceChip confidence={deal.confidence} />
               <FlagPills flags={deal.flags} />
               <span className="text-[9.5px] text-ink-subtle inline-flex items-center gap-0.5">
                 <Clock className="w-2.5 h-2.5" />

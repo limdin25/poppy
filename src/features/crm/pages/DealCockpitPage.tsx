@@ -184,11 +184,12 @@ export default function DealCockpitPage() {
               waiting on a decision; a branch nobody has reached is a phone
               number for the dialer. Saying so out loud beats silently dropping
               four cards in five and leaving somebody to wonder. */}
-          {setAside && (setAside.calling_list + setAside.never_spoke + setAside.closed_door + (setAside.off_board ?? 0)) > 0 && (
+          {setAside && (setAside.calling_list + setAside.never_spoke + setAside.closed_door + (setAside.off_board ?? 0) + (setAside.scheduled ?? 0)) > 0 && (
             <div className="flex-shrink-0 border-t border-border px-3 py-2 text-[10px] leading-snug text-ink-subtle">
               {/* Counts BRANCHES, matching what Hugo counts on the pipeline. */}
               Not shown:{' '}
               {[
+                (setAside.scheduled ?? 0) > 0 && `${setAside.scheduled} booked for callbacks`,
                 setAside.calling_list + setAside.never_spoke > 0
                   && `${setAside.calling_list + setAside.never_spoke} branches waiting to be rung`,
                 (setAside.off_board ?? 0) > 0 && `${setAside.off_board} taken off the board`,

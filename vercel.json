@@ -127,6 +127,12 @@
     },
     "api/script-call.ts": {
       "includeFiles": "src/core/content/property-call-script.html"
+    },
+    "api/crm/fetch-ballpark.ts": {
+      "maxDuration": 60
+    },
+    "api/cron/ballpark-runner.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -193,6 +199,10 @@
     {
       "path": "/api/cron/deal-sweep",
       "schedule": "*/2 6-20 * * *"
+    },
+    {
+      "path": "/api/cron/ballpark-runner",
+      "schedule": "*/5 6-20 * * *"
     },
     {
       "path": "/api/cron/heypubli-pipeline-sync",
