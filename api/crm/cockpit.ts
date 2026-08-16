@@ -108,17 +108,22 @@ export default async function handler(req: Request): Promise<Response> {
     // filtering by name alone offered two of them and one of those would have
     // moved a house onto a completely different business's board. Caught in a
     // screenshot: sixteen options where there should have been fifteen.
-    const { data: allCols } = await (supabase.from('wk_pipeline_columns') as unknown as {
-      select: (c: string) => { order: (c: string) => Promise<{ data: Array<{ id: string; name: string; sort_order: number; pipeline_id: string }> | null }> };
+    const { data: allCols, error: colsErr } = await (supabase.from('wk_pipeline_columns') as unknown as {
+      select: (c: string) => { order: (c: string) => Promise<{ data: Array<{ id: string; name: string; sort_order: number; pipeline_id: string }> | null; error: { message: string } | null }> };
     }).select('id, name, sort_order, pipeline_id').order('sort_order');
+
+    // A FAILED read offers NO stages, never an unscoped list. Ignoring the
+    // error here used to leave propertyPipelineId null, which turned the
+    // pipeline filter off and reopened the wrong-board move this scoping
+    // exists to prevent (16 Aug audit, silent-failure class).
+    if (colsErr) console.error('[cockpit] stages read failed', colsErr.message);
 
     // The property board is the one carrying the funnel columns. Found by a
     // column name that exists nowhere else, rather than by a hardcoded id.
     const propertyPipelineId = (allCols ?? [])
       .find((c) => c.name === 'Ballpark agreed')?.pipeline_id ?? null;
-    const cols = (allCols ?? []).filter((c) =>
-      PROPERTY_STAGES.includes(c.name)
-      && (propertyPipelineId === null || c.pipeline_id === propertyPipelineId));
+    const cols = colsErr || propertyPipelineId === null ? [] : (allCols ?? []).filter((c) =>
+      PROPERTY_STAGES.includes(c.name) && c.pipeline_id === propertyPipelineId);
 
     return Response.json({
       managerEnabled: on,

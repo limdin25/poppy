@@ -18,7 +18,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
-import { offerRange, gbpShort, ladderText, upliftRefurb } from '../../../../api/lib/brrr-offer';
+import { offerRange, gbpShort, ladderText, upliftRefurb, readDealMoney } from '../../../../api/lib/brrr-offer';
 import {
   dealStrategy, dealBmvBand, dealConditionBand, dealReasonLine,
   type BmvBand,
@@ -188,29 +188,16 @@ export function compText(c: Record<string, unknown>): string {
   ].filter(Boolean).join(', ');
 }
 
-/** What the property is worth today, out of either deal shape.
- *  valuation.py returns deal.cmv = { estimate, confidence, ... }; the old
- *  browser Comps page sent a bare number. One helper so the two callers here
- *  cannot drift apart. */
+/** Worth today, out of either deal shape. THE ONE READER decides
+ *  (readDealMoney in api/lib/brrr-offer.ts); this is a convenience wrapper
+ *  because half the callers here want a number, not a null. */
 function cmvOf(deal: Record<string, unknown> | null | undefined): number {
-  const c = deal?.cmv;
-  const n = typeof c === 'object' && c !== null
-    ? Number((c as Record<string, unknown>).estimate)
-    : Number(c);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+  return readDealMoney({ deal }).cmv ?? 0;
 }
 
-/** What it is worth with the extra bedroom. The engine already computes this as
- *  `gdv`, by running the whole comparables pipeline a second time over beds+1
- *  sold comps: it is not an estimate on top of an estimate. Written as a sibling
- *  of cmvOf, and for the same reason, because both deal shapes are live in the
- *  wild and two readers of the same field is how they drift. */
+/** Worth done up (the engine's gdv, computed over beds+1 sold comps). */
 function gdvOf(deal: Record<string, unknown> | null | undefined): number {
-  const g = deal?.gdv;
-  const n = typeof g === 'object' && g !== null
-    ? Number((g as Record<string, unknown>).estimate)
-    : Number(g);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+  return readDealMoney({ deal }).gdv ?? 0;
 }
 
 interface Options {
@@ -332,7 +319,10 @@ export function usePropertyListings(phone: string | null | undefined, opts?: Opt
         ...r,
         offerMin: band.min,
         offerMax: band.max,
-        ladder: ladderText(deal, band, isAuction),
+        // No engine band means NO ladder sentence: the %-of-asking fallback is
+        // dead (16 Aug), so an unpriced house has band {0,0} and saying
+        // "an amount to be discussed" out loud is worse than saying nothing.
+        ladder: band.max > 0 ? ladderText(deal, band, isAuction) : '',
         confidence: str(cmvObj?.confidence ?? deal.cmv_confidence) || 'unknown',
         evidence,
         comps,
@@ -384,8 +374,11 @@ export function scriptTokensFor(l: PropertyListing | null | undefined): Record<s
     property_worth: cmvOf(l.deal) > 0
       ? `${gbpShort(cmvOf(l.deal))}${l.confidence !== 'unknown' ? ` (${l.confidence} confidence)` : ''}`
       : 'not established',
-    offer_open: gbpShort(l.offerMin),
-    offer_ceiling: gbpShort(l.offerMax),
+    // Empty when the engine has not priced the house, NEVER a dash: these are
+    // read aloud, and the coach/interpolator skip blanks while an empty string
+    // still overwrites the previous property's figures on a mid-call switch.
+    offer_open: l.offerMin > 0 ? gbpShort(l.offerMin) : '',
+    offer_ceiling: l.offerMax > 0 ? gbpShort(l.offerMax) : '',
     ladder: l.ladder,
     // What it is worth once the kitchen becomes a bedroom. This is the whole
     // buying thesis, and until 2026-08-11 it never reached the contact, so
@@ -423,29 +416,21 @@ export function scriptTokensFor(l: PropertyListing | null | undefined): Record<s
  *  our costing to the seller. */
 export function offerHouseFor(l: PropertyListing | null | undefined) {
   if (!l) return null;
+  const m = readDealMoney({ asking_price: l.asking_price, deal: l.deal });
   return {
     address: l.address,
     askingPrice: l.asking_price,
     offerPrice: l.offerMin > 0 ? l.offerMin : null,
-    gdv: cmvOf(l.deal) > 0 ? cmvOf(l.deal) : null,
-    refurb: refurbOf(l.deal),
+    // THE CEILING TRAVELS. Before 16 Aug this payload had no ceiling at all,
+    // so draft-offer-email's counter fence ran against null and was no fence;
+    // and the key named `gdv` was filled with the CURRENT value (cmv), so the
+    // model was told a done-up worth that was actually today's worth.
+    ceiling: m.ceiling,
+    gdv: m.gdv,
+    refurb: m.refurb,
     beds: l.bedrooms,
     propertyType: l.property_type,
     reasonLine: l.reasonLine || null,
     strategy: l.strategy,
   };
-}
-
-/** The engine files refurb in a couple of shapes across versions. 0 when it
- *  said nothing, which the drafter reads as "leave that line out". */
-function refurbOf(deal: Record<string, unknown> | null | undefined): number | null {
-  if (!deal) return null;
-  for (const key of ['refurb', 'refurb_budget', 'refurb_cost']) {
-    const raw = deal[key];
-    const n = typeof raw === 'object' && raw !== null
-      ? Number((raw as Record<string, unknown>).estimate)
-      : Number(raw);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return null;
 }

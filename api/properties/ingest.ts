@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { toE164 } from '../lib/brrr.js';
+import { readDealMoney } from '../lib/brrr-offer.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -138,11 +139,52 @@ export default async function handler(req: Request): Promise<Response> {
     const { data, error } = await supabase
       .from('brrr_properties')
       .upsert(row, { onConflict: 'source,source_property_id' })
-      .select('id, status')
+      .select('id, status, wk_contact_id')
       .single();
 
     if (error) {
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+    }
+
+    // A RE-PRICE REFRESHES THE PHONE-CALL TOKENS (16 Aug audit). The nightly
+    // engine rewrites deal, but the figures the coach and the script read live
+    // on wk_contacts.custom_fields, so until the assign script's --refresh
+    // happened to run, Pedro could be coached on yesterday's band. REFRESH
+    // ONLY: a contact that carries no money keys is a discovery-stage branch
+    // (assign-discovery-branches leaves them off on purpose so call one can
+    // never quote a figure), and this must never introduce them. Best effort:
+    // the property is already filed, so a token failure logs and moves on.
+    if (!killed && data.wk_contact_id) {
+      try {
+        const { data: c } = await supabase
+          .from('wk_contacts').select('custom_fields').eq('id', data.wk_contact_id).maybeSingle();
+        const cf = ((c as { custom_fields?: Record<string, string> } | null)?.custom_fields
+          ?? {}) as Record<string, string>;
+        const hasMoney = Boolean((cf.offer_open ?? '').trim() || (cf.ladder ?? '').trim()
+          || (cf.offer_ladder ?? '').trim());
+        // ONE BRANCH, MANY HOUSES. The tokens on the contact belong to the
+        // branch's HEADLINE listing; refreshing them from a different house's
+        // re-price would put the wrong house's figures on the call.
+        const sameHouse = Boolean((cf.property_address ?? '').trim()
+          && String(body.address ?? '').trim()
+          && (cf.property_address ?? '').trim() === String(body.address ?? '').trim());
+        if (hasMoney && sameHouse) {
+          const m = readDealMoney({ asking_price: askingPrice, deal });
+          const gbp = (n: number) => `£${Math.round(n).toLocaleString('en-GB')}`;
+          const fields: Record<string, string> = { ...cf };
+          fields.offer_open = m.open ? gbp(m.open) : '';
+          fields.offer_ceiling = m.ceiling ? gbp(m.ceiling) : '';
+          fields.ladder = m.ceiling
+            ? (m.ladder.length > 1 ? m.ladder.map(gbp).join(', then ') : `${gbp(m.open ?? m.ceiling)}, up to ${gbp(m.ceiling)}`)
+            : '';
+          if (m.cmv) fields.property_worth = `${gbp(m.cmv)}${m.cmvConfidence ? ` (${m.cmvConfidence} confidence)` : ''}`;
+          if (m.gdv) fields.worth_after_bed = `${gbp(m.gdv)} as a ${(parseInt(String(body.bedrooms || ''), 10) || 0) + 1} bed`;
+          await supabase.from('wk_contacts')
+            .update({ custom_fields: fields }).eq('id', data.wk_contact_id);
+        }
+      } catch (e) {
+        console.warn('[ingest] token refresh failed', String(e).slice(0, 160));
+      }
     }
 
     // Ingest NEVER starts a call. The AI property qualifier was retired on

@@ -19,7 +19,10 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { offerRange, fmtGBP, gbpShort, ladderText, BEDROOM_UPLIFT_REFURB, upliftRefurb } from '../api/lib/brrr-offer'
+import {
+  offerRange, fmtGBP, gbpShort, ladderText, BEDROOM_UPLIFT_REFURB, upliftRefurb,
+  readDealMoney, countComps,
+} from '../api/lib/brrr-offer'
 
 const root = resolve(__dirname, '..')
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8')
@@ -57,7 +60,7 @@ describe('offerRange — the valuation engine wins', () => {
 
   it('treats a zero or missing offer_max as no engine figure at all', () => {
     const band = offerRange({ asking_price: 200000, deal: { offer_max: 0 } }, PCT)
-    expect(band).toEqual({ min: 140000, max: 150000 }) // percentage fallback
+    expect(band).toEqual({ min: 0, max: 0 }) // no figure, never a fabricated one
   })
 
   // The shape valuation.py actually emits. Everything above tests the FLAT
@@ -97,26 +100,24 @@ describe('offerRange — the valuation engine wins', () => {
   })
 })
 
-describe('offerRange — the percentage fallback', () => {
-  it('is a percentage of ASKING when no valuation was sent', () => {
-    const band = offerRange({ asking_price: 200000, deal: {} }, PCT)
-    expect(band).toEqual({ min: 140000, max: 150000 })
-  })
-
-  it('NEVER exceeds the asking price', () => {
-    // The one invariant that matters. Both percentages are of asking and both
-    // are below 100, so this holds for any asking price.
-    for (const asking of [50_000, 99_950, 150_000, 275_000, 1_200_000]) {
-      const band = offerRange({ asking_price: asking }, PCT)
-      expect(band.max).toBeLessThan(asking)
-      expect(band.min).toBeLessThanOrEqual(band.max)
+describe('offerRange — THE %-OF-ASKING FALLBACK IS DEAD (16 Aug 2026)', () => {
+  // It used to fabricate a band at 70-75% of asking when the engine had not
+  // priced the house. A silent fallback that produces a plausible number is
+  // more dangerous than one that produces none: 157 properties reached
+  // Pedro's screen quoting a percentage of the asking price while a real
+  // valuation sat underneath. No figure on file now means {0, 0}, which
+  // every formatter renders honestly and every send fence refuses.
+  it('no engine band means NO band, whatever the asking price', () => {
+    for (const asking of [50_000, 200_000, 1_200_000]) {
+      expect(offerRange({ asking_price: asking, deal: {} }, PCT)).toEqual({ min: 0, max: 0 })
     }
   })
 
-  it('defaults to 70/75 when settings have not loaded yet', () => {
-    // The admin page renders before its settings fetch resolves and passes null.
-    expect(offerRange({ asking_price: 200000 }, null)).toEqual({ min: 140000, max: 150000 })
-    expect(offerRange({ asking_price: 200000 })).toEqual({ min: 140000, max: 150000 })
+  it('the settings knobs are accepted and ignored, so no caller breaks', () => {
+    expect(offerRange({ asking_price: 200000 }, { offer_low_pct: 10, offer_high_pct: 99 }))
+      .toEqual({ min: 0, max: 0 })
+    expect(offerRange({ asking_price: 200000 }, null)).toEqual({ min: 0, max: 0 })
+    expect(offerRange({ asking_price: 200000 })).toEqual({ min: 0, max: 0 })
   })
 
   it('survives a missing, null or unparseable asking price without NaN', () => {
@@ -128,8 +129,16 @@ describe('offerRange — the percentage fallback', () => {
     }
   })
 
-  it('accepts a numeric string asking price (the ingest route may not have parsed it)', () => {
-    expect(offerRange({ asking_price: '200000' }, PCT)).toEqual({ min: 140000, max: 150000 })
+  it('no percentage maths on the asking price survives anywhere in the module', () => {
+    const src = read('api/lib/brrr-offer.ts')
+    expect(src).not.toMatch(/asking\s*\*\s*(highPct|lowPct)/)
+    expect(src).not.toMatch(/offer_(high|low)_pct\s*\?\?/)
+  })
+
+  it('the assign script twin dropped its copy of the fallback too', () => {
+    const src = read('scripts/assign-properties-to-pedro-houses.mjs')
+    expect(src).not.toMatch(/asking_price\)\s*\*\s*(highPct|lowPct)/)
+    expect(src).not.toMatch(/\*\s*(high|low)Pct\s*\/\s*100/)
   })
 })
 
@@ -305,5 +314,133 @@ describe('the Python twin the scraper imports stays in step', () => {
 
   it('names its canon, so whoever edits it knows to edit both', () => {
     expect(py).toMatch(/the Python twin of api\/lib\/brrr-offer\.ts/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE ONE MONEY READER (16 Aug 2026)
+// ---------------------------------------------------------------------------
+// Before readDealMoney, the same fact was read by hand in eight places that
+// disagreed: the dialer read refurb.estimate while the deal state read
+// refurb.low, the offer email got the CURRENT value under the key named gdv,
+// and four comp counts existed of which the one Pedro says aloud was not the
+// canon. These tests pin both the reads and the adoption.
+
+describe('readDealMoney — every money fact, one reader, both shapes', () => {
+  const NESTED = {
+    offer: { open: 56500, max: 60900, ladder: [56500, 58000, 60900] },
+    cmv: { estimate: 81224, confidence: 'high', comps: 5 },
+    gdv: { estimate: 106688 },
+    tmv: 84000,
+    refurb: { low: 13840, basis: 'provisional' },
+    comps_tier: 'strong',
+  }
+
+  it('reads the nested engine shape', () => {
+    const m = readDealMoney({ asking_price: 75000, deal: NESTED })
+    expect(m.open).toBe(56500)
+    expect(m.ceiling).toBe(60900)
+    expect(m.ladder).toEqual([56500, 58000, 60900])
+    expect(m.cmv).toBe(81224)
+    expect(m.cmvConfidence).toBe('high')
+    expect(m.gdv).toBe(106688)
+    expect(m.tmv).toBe(84000)
+    expect(m.refurb).toBe(13840)
+    expect(m.refurbAssumed).toBe(true)
+    expect(m.compsTier).toBe('strong')
+    expect(m.compsCount).toBe(5)
+    expect(m.asking).toBe(75000)
+  })
+
+  it('reads the old flat shape (offer_min / offer_max / bare cmv)', () => {
+    const m = readDealMoney({ deal: { offer_min: 108000, offer_max: 119500, cmv: 130000, gdv: 150000, refurb: 10000, ladder: [108000, 119500] } })
+    expect(m.open).toBe(108000)
+    expect(m.ceiling).toBe(119500)
+    expect(m.cmv).toBe(130000)
+    expect(m.gdv).toBe(150000)
+    expect(m.refurb).toBe(10000)
+    expect(m.refurbAssumed).toBe(false)
+    expect(m.ladder).toEqual([108000, 119500])
+  })
+
+  it('reports a bad row RAW: an open above the ceiling is not clamped away', () => {
+    // The stress test's open_within_ceiling check has to be able to SEE the
+    // contradiction. offerRange clamps for display; the reader never does.
+    const m = readDealMoney({ deal: { offer: { open: 130000, max: 119500 } } })
+    expect(m.open).toBe(130000)
+    expect(m.ceiling).toBe(119500)
+    // And a row with a max but no open has NO opener, never the ceiling as one:
+    // treating the walk-away as the opener is the exact 16 Aug money bug.
+    expect(readDealMoney({ deal: { offer: { max: 96000 } } }).open).toBeNull()
+  })
+
+  it('reads every refurb spelling the wild has used', () => {
+    expect(readDealMoney({ deal: { refurb: { estimate: 9000 } } }).refurb).toBe(9000)
+    expect(readDealMoney({ deal: { refurb_budget: 8000 } }).refurb).toBe(8000)
+    expect(readDealMoney({ deal: { refurb_cost: 7000 } }).refurb).toBe(7000)
+  })
+
+  it('nulls mean the engine did not say, never a guess', () => {
+    const m = readDealMoney({ deal: {} })
+    expect(m.open).toBeNull()
+    expect(m.ceiling).toBeNull()
+    expect(m.cmv).toBeNull()
+    expect(m.gdv).toBeNull()
+    expect(m.refurb).toBeNull()
+    expect(m.ladder).toEqual([])
+    expect(m.compsCount).toBe(0)
+  })
+
+  it('counts comps by the canon chain: cmv.comps, n_used, audit included, evidence rows', () => {
+    expect(countComps({ cmv: { comps: 5 } })).toBe(5)
+    expect(countComps({ cmv: { n_used: 3 } })).toBe(3)
+    expect(countComps({ cmv: { audit: [{ included: true }, { included: false }, { included: true }] } })).toBe(2)
+    expect(countComps({ evidence: [{}, {}] })).toBe(2)
+    expect(countComps({})).toBe(0)
+  })
+
+  it('compCount in next-step-brief DELEGATES here, it is not a second counter', () => {
+    const src = read('api/lib/next-step-brief.ts')
+    expect(src).toMatch(/return countComps\(deal\)/)
+  })
+})
+
+describe('single-reader adoption: nobody reads the blob by hand any more', () => {
+  it('the dialer hook, the offer strip, the snapshot drawer and the admin page all import it', () => {
+    for (const p of [
+      'src/features/crm/hooks/usePropertyListings.ts',
+      'src/features/crm/components/live-call/OfferStrip.tsx',
+      'src/features/crm/components/calls/DealSnapshotDrawer.tsx',
+      'src/features/admin/pages/PropertiesPage.tsx',
+      'api/lib/deal-state.ts',
+      'api/crm/property-outcome.ts',
+      'api/properties/ingest.ts',
+      'api/lib/ballpark.ts',
+    ]) {
+      expect(read(p), p).toMatch(/readDealMoney/)
+    }
+  })
+
+  it('the offer email payload carries the ceiling and the REAL done-up value', () => {
+    // Before 16 Aug offerHouseFor sent cmv under the key named gdv and no
+    // ceiling at all, so draft-offer-email's counter fence ran against null.
+    const src = read('src/features/crm/hooks/usePropertyListings.ts')
+    expect(src).toMatch(/ceiling: m\.ceiling/)
+    expect(src).toMatch(/gdv: m\.gdv/)
+    expect(src).not.toMatch(/gdv: cmvOf/)
+  })
+
+  it('one ladder key: every writer writes `ladder`, none writes offer_ladder', () => {
+    for (const p of ['api/lib/ballpark.ts', 'scripts/assign-properties-to-pedro-houses.mjs']) {
+      expect(read(p), p).not.toMatch(/offer_ladder:/)
+    }
+  })
+
+  it('property_worth means worth TODAY everywhere, done-up lives in worth_after_bed', () => {
+    // ballpark.ts used to write the engine GDV into property_worth, so the
+    // coach read a done-up value out loud as "worth today".
+    const ballpark = read('api/lib/ballpark.ts')
+    expect(ballpark).not.toMatch(/property_worth: `\$\{money\(Number\(engine\.gdv\)\)/)
+    expect(ballpark).toMatch(/worth_after_bed: `\$\{money\(Number\(engine\.gdv\)\)/)
   })
 })

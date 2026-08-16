@@ -278,10 +278,10 @@ describe('the screen and the coach say the same thing', () => {
   })
 
   it('the coach can still find the ladder after the agent switches property', () => {
-    // The dialer writes custom_fields.ladder when the agent picks a different
-    // listing mid-call; the assign script writes offer_ladder. Reading only one
-    // meant the rungs vanished the moment he changed house.
-    expect(COACH).toMatch(/f\('offer_ladder'\) \|\| f\('ladder'\)/)
+    // ONE ladder key: `ladder`, written by every writer since 16 Aug. The
+    // legacy `offer_ladder` on older contacts is read second, so a fresh
+    // mid-call refresh always beats the stale assign-time value.
+    expect(COACH).toMatch(/f\('ladder'\) \|\| f\('offer_ladder'\)/)
   })
 
   it('the opener is word for word the same', () => {

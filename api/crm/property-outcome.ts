@@ -33,6 +33,7 @@ import {
 import { notifyBusinessOwner } from '../lib/notify.js';
 import { parseSpokenPrice } from '../lib/price-feedback.js';
 import { dealConditionBand, outcodeOf } from '../lib/brrr-deal-facts.js';
+import { readDealMoney } from '../lib/brrr-offer.js';
 import { buildNextStepBrief, briefToText } from '../lib/next-step-brief.js';
 
 export const config = { runtime: 'edge' };
@@ -202,12 +203,8 @@ export default async function handler(req: Request): Promise<Response> {
     const asking = Number(property.asking_price) || null;
     const spoken = parseSpokenPrice(saidText, asking);
     const deal = (property.deal ?? {}) as Record<string, any>;
-    const nested = (v: unknown): number | null => {
-      const n = typeof v === 'object' && v !== null
-        ? Number((v as Record<string, unknown>).estimate)
-        : Number(v);
-      return Number.isFinite(n) && n > 0 ? n : null;
-    };
+    // THE ONE READER (brrr-offer.ts) decides what the blob says.
+    const m = readDealMoney({ deal });
     await supabase.from('brrr_price_feedback').insert({
       property_id: propertyId,
       wk_call_id: body.wk_call_id || null,
@@ -216,13 +213,11 @@ export default async function handler(req: Request): Promise<Response> {
       said_price: spoken.price,
       said_parse_note: spoken.reason ?? null,
       asking_price: asking,
-      cmv: nested(deal.cmv),
-      cmv_confidence: (deal.cmv && typeof deal.cmv === 'object'
-        ? String((deal.cmv as Record<string, unknown>).confidence ?? '')
-        : String(deal.cmv_confidence ?? '')) || null,
-      gdv: nested(deal.gdv),
-      offer_open: nested(deal.offer?.open) ?? nested(deal.offer_min),
-      offer_max: nested(deal.offer?.max) ?? nested(deal.offer_max),
+      cmv: m.cmv,
+      cmv_confidence: m.cmvConfidence,
+      gdv: m.gdv,
+      offer_open: m.open,
+      offer_max: m.ceiling,
       // WHERE and WHAT CONDITION, frozen with the rest. A single national
       // median cannot be acted on; by outcode and by condition band it says
       // which of the two estimates is drifting and where. The condition read

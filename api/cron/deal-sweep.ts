@@ -91,6 +91,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }, { onConflict: 'key' });
     }
 
+    // THE HEARTBEAT. The deadman (api/cron/system-deadman.ts) reads this
+    // stamp; without one, a sweep that stops running is indistinguishable
+    // from a quiet board. Stamped only after a successful run, best effort.
+    await supabase.from('platform_settings').upsert({
+      key: 'deal_sweep_last_ok_at',
+      value: JSON.stringify({ at: now.toISOString() }),
+    }, { onConflict: 'key' }).then(undefined, () => undefined);
+
     // The per-deal reasons are diagnostic weight the every-2-minutes caller
     // does not need; ?debug=1 (still behind CRON_SECRET) returns them.
     const wantsDebug = (req.url ?? '').includes('debug=1');

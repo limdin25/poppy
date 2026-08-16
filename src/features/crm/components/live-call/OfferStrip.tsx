@@ -31,7 +31,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, ArrowRight, ChevronDown, ChevronRight } from 'lucide-react';
-import { gbpShort } from '../../../../../api/lib/brrr-offer';
+import { gbpShort, readDealMoney } from '../../../../../api/lib/brrr-offer';
 import type { PropertyListing } from '../../hooks/usePropertyListings';
 import { resolveStage } from '../templates/dealProcessSteps';
 import { callModeForStep } from '../../lib/nextStep';
@@ -86,12 +86,8 @@ export default function OfferStrip({ listing, total = 0, nextStep, startCollapse
 
   const conf = CONFIDENCE[listing.confidence] ?? CONFIDENCE.unknown;
   const noValuation = !listing.offerMax;
-  // valuation.py nests this: deal.cmv = { estimate, low, high, audit }. The old
-  // flow flattened it to a bare number, so read both.
-  const cmvRaw = listing.deal?.cmv as unknown;
-  const cmv = typeof cmvRaw === 'object' && cmvRaw !== null
-    ? Number((cmvRaw as Record<string, unknown>).estimate) || 0
-    : Number(cmvRaw) || 0;
+  // THE ONE READER decides what the deal blob says (both shapes).
+  const cmv = readDealMoney({ deal: listing.deal }).cmv ?? 0;
 
   // A withdrawn deal wears none of this. The auditor rejected the valuation,
   // and "STRONG DEAL, needs a full refurb" sitting under "valuation rejected"

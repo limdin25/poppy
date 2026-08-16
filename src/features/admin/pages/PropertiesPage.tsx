@@ -7,7 +7,7 @@ import { useAdminApi, useAdminMutation } from '../hooks/useAdminApi'
 // The SAME offer maths the dial cron and Pedro's dialer use. Pure module, safe
 // to import into the browser (api/lib/brrr.ts itself is not — it builds a
 // Supabase client at import time).
-import { offerRange, upliftRefurb } from '../../../../api/lib/brrr-offer'
+import { offerRange, upliftRefurb, readDealMoney } from '../../../../api/lib/brrr-offer'
 import type { Calibration } from '../../../../api/lib/price-feedback'
 import type { NextStepBrief } from '../../../../api/lib/next-step-brief'
 import { outcodeOf } from '../../../../api/lib/brrr-deal-facts'
@@ -617,25 +617,22 @@ export default function PropertiesPage() {
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(() => {
                 const band = offerRange(selected, settings)
-                // valuation.py NESTS its answer: deal.gdv = {estimate, ...},
-                // deal.stack = {total_in, verdict}, deal.rent = {estimate}.
-                // These tiles read the flat keys the retired browser Comps page
-                // used to send, so every property the scraper itself ingested
-                // rendered a dash: parseFloat("[object Object]") is NaN. Same
-                // nesting fault as the offer band, three copies of which were
-                // fixed on 2026-08-10 and this one was missed.
+                // Money facts through THE ONE READER (brrr-offer.ts); the
+                // non-money engine extras (rent, stack) still read both shapes
+                // by hand here until they join it.
+                const m = readDealMoney(selected)
                 const nested = (v: unknown, key = 'estimate') =>
                   v && typeof v === 'object' ? (v as Record<string, unknown>)[key] : v
                 const uplift = upliftRefurb(selected.bedrooms)
                 return [
                   ['Asking', selected.price_text || gbp(selected.asking_price)],
                   ['AI offer range', `${gbp(band.min)}-${gbp(band.max)}`],
-                  ['Worth today', gbp(nested(selected.deal?.cmv))],
-                  [`As a ${(selected.bedrooms ?? 0) + 1} bed`, gbp(nested(selected.deal?.gdv))],
+                  ['Worth today', gbp(m.cmv)],
+                  [`As a ${(selected.bedrooms ?? 0) + 1} bed`, gbp(m.gdv)],
                   ['Refurb budget', uplift ? gbp(uplift.budget) : 'no figure'],
                   ['Rent /mo', gbp(nested(selected.deal?.rent))],
                   ['Cash needed', gbp(nested(selected.deal?.stack, 'total_in') ?? selected.deal?.total_cash)],
-                  ['Comps', String(selected.comps?.length ?? 0)],
+                  ['Comps', String(m.compsCount || (selected.comps?.length ?? 0))],
                 ] as Array<[string, string]>
               })().map(([label, value]) => (
                 <div key={label} className="rounded-lg border border-border p-2.5">
@@ -658,12 +655,10 @@ export default function PropertiesPage() {
                 const num = (v: unknown) => parseFloat(String(v ?? '')) || 0
                 const nested = (v: unknown, key = 'estimate') =>
                   v && typeof v === 'object' ? (v as Record<string, unknown>)[key] : v
-                // Falling back to the ASKING price as "market value" is the
-                // exact failure the valuation engine exists to prevent: it
-                // prices off what the agent wants rather than what the house is
-                // worth. It happened silently on every scraper-ingested property
-                // because deal.cmv is an object here, not a number.
-                const cmv = num(nested(selected.deal?.cmv))
+                // Worth-today through THE ONE READER. The asking-price
+                // fallback below is a visible, editable calculator default,
+                // not a silent read, which is why it survives.
+                const cmv = readDealMoney(selected).cmv ?? 0
                 return (
                   <DealCalculator
                     defaultPurchase={band.max}

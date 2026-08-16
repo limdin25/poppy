@@ -1246,6 +1246,16 @@ export default async function handler(
       await sendEmail(to, `Daily agent reports — ${dateKey}`, html);
     } catch (e) {
       console.error('[daily-report] email failed:', e);
+      // The reports are written and saved, but claiming ok:true when the
+      // email died meant a dead Resend key looked like a delivered report
+      // every evening (16 Aug audit). A 502 turns the cron run red.
+      res.status(502).json({
+        ok: false,
+        date: dateKey,
+        error: `reports saved but the email failed: ${String(e).slice(0, 160)}`,
+        reports: [...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
+      });
+      return;
     }
   }
 

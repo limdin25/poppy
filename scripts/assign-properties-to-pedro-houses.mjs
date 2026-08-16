@@ -65,7 +65,7 @@ const arg = (n, d) => {
 const APPLY = process.argv.includes('--apply')
 // --refresh re-reads branches Pedro ALREADY has and rewrites the saved facts.
 // Needed because those facts are not a display detail: the live AI coach reads
-// offer_open, offer_ceiling and offer_ladder off the contact, so a valuation
+// offer_open, offer_ceiling and ladder off the contact, so a valuation
 // that arrives (or a maths fix) after the branch was queued never reaches the
 // call unless something rewrites them. Without this the only way to correct a
 // queued branch is to unpick it by hand.
@@ -333,11 +333,11 @@ async function callHistoryByPhone(phones) {
  *  scriptTokensFor() in src/features/crm/hooks/usePropertyListings.ts — the
  *  dialer refreshes these when the agent switches property mid-call, this sets
  *  the opening state. */
-function factsFor(branch, headline, settings) {
+function factsFor(branch, headline, _settings) {
+  // _settings kept for the callers' sake; the %-of-asking knobs it carried
+  // are dead (16 Aug), the band is engine-only now.
   const deal = headline.deal ?? {}
   const num = (v) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0 }
-  const lowPct = settings.offer_low_pct ?? 70
-  const highPct = settings.offer_high_pct ?? 75
 
   // valuation.py NESTS its answer: deal.offer = { open, max, ladder, flags },
   // deal.cmv = { estimate, confidence, ... }. The old browser Comps page
@@ -354,11 +354,13 @@ function factsFor(branch, headline, settings) {
   const cmv = cmvObj ? num(cmvObj.estimate) : num(deal.cmv)
   const cmvConf = cmvObj ? cmvObj.confidence : deal.cmv_confidence
 
-  const engineMax = num(offer.max) || num(deal.offer_max) || num(deal.offer_price)
-  const max = engineMax > 0 ? engineMax : Math.round(num(headline.asking_price) * highPct / 100)
-  const minRaw = engineMax > 0
-    ? (num(offer.open) || num(deal.offer_min))
-    : Math.round(num(headline.asking_price) * lowPct / 100)
+  // THE %-OF-ASKING FALLBACK IS DEAD (16 Aug, same cut as offerRange in
+  // api/lib/brrr-offer.ts). No engine band means max = 0, the money tokens
+  // below are written EMPTY, and the coach and the script skip blanks. A
+  // fabricated band read down the phone is worse than no figure at all.
+  const engineMax = num(offer.max) || num(offer.ceiling) || num(deal.offer_max) || num(deal.offer_price)
+  const max = engineMax
+  const minRaw = num(offer.open) || num(deal.offer_min)
   const min = minRaw > 0 && minRaw <= max ? minRaw : max
   const ladderSrc = Array.isArray(offer.ladder) ? offer.ladder : deal.ladder
   const ladder = Array.isArray(ladderSrc) ? ladderSrc.map(num).filter((n) => n > 0) : []
@@ -396,9 +398,14 @@ function factsFor(branch, headline, settings) {
     worth_after_bed: gdv > 0
       ? `${money(gdv)} as a ${(parseInt(String(headline.bedrooms ?? ''), 10) || 0) + 1} bed`
       : 'not established',
-    offer_open: money(min),
-    offer_ceiling: money(max),
-    offer_ladder: ladder.length > 1 ? ladder.map(money).join(', then ') : `${money(min)}, up to ${money(max)}`,
+    // Empty when there is no engine band, never a fabricated figure. The key
+    // is `ladder`, the ONE ladder key (16 Aug): the dialer writes `ladder`,
+    // the script templates read [ladder], and the coach prefers it.
+    offer_open: min > 0 ? money(min) : '',
+    offer_ceiling: max > 0 ? money(max) : '',
+    ladder: max > 0
+      ? (ladder.length > 1 ? ladder.map(money).join(', then ') : `${money(min)}, up to ${money(max)}`)
+      : '',
     // ONE renderer, in scripts/lib/comp-evidence.mjs. The engine moved
     // deal.evidence from sentences to comp ROWS, and the .join() that used to
     // live here printed "[object Object] · [object Object]" onto the contact,

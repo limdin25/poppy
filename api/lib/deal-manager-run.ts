@@ -425,9 +425,13 @@ export async function loadCockpitStates(
     (sb.rpc as any)('wk_deal_cockpit_rows', { p_limit: opts.limit ?? 200 }),
     loadBuilders(sb),
   ]);
+  // THROW, never an empty list. A broken query that returns [] is
+  // indistinguishable from a quiet board: the cockpit would show "nothing
+  // waiting" and the sweep would judge nothing, both wearing a green tick
+  // (16 Aug audit, silent-failure class). A thrown error 500s the page and
+  // reddens the cron, which is the truth.
   if (error) {
-    console.warn('[deal-manager-run] cockpit rows failed', error.message);
-    return [];
+    throw new Error(`wk_deal_cockpit_rows failed: ${error.message}`);
   }
   return ((data ?? []) as CockpitRow[]).map((r) => bundleFrom(r, builders, opts.now));
 }
@@ -450,12 +454,15 @@ export async function latestAssessments(
 ): Promise<Map<string, LogRow>> {
   const out = new Map<string, LogRow>();
   if (!propertyIds.length) return out;
-  const { data } = await (sb.from('wk_deal_manager_log') as any)
+  const { data, error } = await (sb.from('wk_deal_manager_log') as any)
     .select('*')
     .in('property_id', propertyIds)
     .in('kind', ['assessment', 'fallback_refused'])
     .order('created_at', { ascending: false })
     .limit(propertyIds.length * 4);
+  // Loud, not a silent all-fallback board (every card would quietly show its
+  // deterministic brief as if the brain had never spoken).
+  if (error) throw new Error(`wk_deal_manager_log read failed: ${error.message}`);
   for (const row of (data ?? []) as LogRow[]) {
     if (!out.has(row.property_id)) out.set(row.property_id, row);
   }

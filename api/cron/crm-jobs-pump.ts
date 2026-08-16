@@ -44,8 +44,13 @@ export default async function handler(req: Request): Promise<Response> {
     call('wk-dialer-tick', {}),
   ]);
 
-  return new Response(JSON.stringify({ jobs, tick }), {
-    status: 200,
+  // A downstream failure is a FAILED cron run, not a green one. This route
+  // returned 200 whatever happened, which blindfolded the whole CRM job
+  // pipeline: a dead worker looked identical to a quiet minute in the Vercel
+  // cron dashboard (16 Aug audit).
+  const ok = jobs.ok && tick.ok;
+  return new Response(JSON.stringify({ ok, jobs, tick }), {
+    status: ok ? 200 : 502,
     headers: { 'Content-Type': 'application/json' },
   });
 }

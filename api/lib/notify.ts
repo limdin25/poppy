@@ -20,11 +20,15 @@ export async function notifyBusinessOwner(
   event: NotifyEvent,
   data: NotifyData,
 ): Promise<{ sent: string[] }> {
-  const { data: settings } = await supabase
+  // maybeSingle, and the error is SAID: .single() errors on a business with
+  // no settings row, and swallowing that made every such owner's alerts die
+  // silently forever (16 Aug audit).
+  const { data: settings, error: settingsErr } = await supabase
     .from('notification_settings')
     .select('*')
     .eq('business_id', businessId)
-    .single();
+    .maybeSingle();
+  if (settingsErr) console.error('[notify] settings read failed:', settingsErr.message);
 
   const sent: string[] = [];
 
@@ -76,11 +80,12 @@ async function fanOutToDestinations(
   data: NotifyData,
   sent: string[],
 ): Promise<void> {
-  const { data: dests } = await supabase
+  const { data: dests, error: destsErr } = await supabase
     .from('notification_destinations')
     .select('type, destination, enabled')
     .eq('business_id', businessId)
     .eq('enabled', true);
+  if (destsErr) console.error('[notify] destinations read failed:', destsErr.message);
   if (!dests?.length) return;
 
   const seen = new Set<string>();
@@ -117,7 +122,7 @@ async function getSmsFromNumber(businessId: string): Promise<string | null> {
     .eq('business_id', businessId)
     .eq('type', 'voice')
     .eq('status', 'connected')
-    .single();
+    .maybeSingle();
 
   return (data?.config as Record<string, string> | null)?.phone ?? null;
 }
@@ -129,7 +134,7 @@ async function getWhatsAppAccountId(businessId: string): Promise<string | null> 
     .eq('business_id', businessId)
     .eq('type', 'whatsapp')
     .eq('status', 'connected')
-    .single();
+    .maybeSingle();
 
   return data?.unipile_account_id ?? null;
 }

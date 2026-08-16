@@ -36,7 +36,7 @@
 // The confidence level is about OUR EVIDENCE, not about how the call felt. It
 // answers one question: how sure can Hugo be that this instruction is right?
 
-import { offerRange, ladderText, fmtGBP, type OfferPercents } from './brrr-offer.js';
+import { offerRange, ladderText, fmtGBP, countComps, readDealMoney, type OfferPercents } from './brrr-offer.js';
 import {
   dealStrategy, dealBmvBand, conditionClause, pluckString,
 } from './brrr-deal-facts.js';
@@ -275,13 +275,8 @@ function confidenceFor(input: BriefInput, band: { min: number; max: number }) {
  *  the first thing this brain got wrong on real data (checked against Welwyn
  *  Park Road, 2026-08-14). */
 export function compCount(deal: Record<string, unknown> | null | undefined): number {
-  const d = deal ?? {};
-  const cmv = (d.cmv && typeof d.cmv === 'object' ? d.cmv : {}) as Record<string, unknown>;
-  const counted = Number(cmv.comps ?? cmv.n_used ?? 0);
-  if (Number.isFinite(counted) && counted > 0) return counted;
-  const audit = Array.isArray(cmv.audit) ? cmv.audit.filter((a) => (a as Record<string, unknown>)?.included === true) : [];
-  if (audit.length) return audit.length;
-  return Array.isArray(d.evidence) ? d.evidence.length : 0;
+  // Delegates to the canon in brrr-offer.ts so there is exactly one counter.
+  return countComps(deal);
 }
 
 /** Why this is worth keeping, in the engine's own terms. Read, never argued. */
@@ -302,8 +297,7 @@ function whyFor(input: BriefInput, band: { min: number; max: number }): string[]
   // a worse second version of it, so it wins and the fallback below only runs
   // when the property arrived without it.
   const engineWhy = typeof deal.why === 'string' ? deal.why.trim() : '';
-  const cmv = (deal.cmv && typeof deal.cmv === 'object' ? deal.cmv : {}) as Record<string, unknown>;
-  const worth = Number(cmv.estimate) || Number(deal.cmv) || 0;
+  const worth = readDealMoney({ deal }).cmv ?? 0;
   const asking = Number(input.property.asking_price) || 0;
 
   if (engineWhy) {
@@ -329,8 +323,9 @@ function whyFor(input: BriefInput, band: { min: number; max: number }): string[]
     if (compsNote) {
       out.push(`Evidence: ${compsNote}.`);
     } else {
+      const cmvObj = (deal.cmv && typeof deal.cmv === 'object' ? deal.cmv : {}) as Record<string, unknown>;
       const rows = [
-        ...(Array.isArray(cmv.audit) ? cmv.audit as Array<Record<string, unknown>> : [])
+        ...(Array.isArray(cmvObj.audit) ? cmvObj.audit as Array<Record<string, unknown>> : [])
           .filter((a) => a.included === true),
         ...(Array.isArray(deal.evidence) ? deal.evidence as Array<Record<string, unknown>> : [])
           .filter((e) => typeof e === 'object' && e !== null),

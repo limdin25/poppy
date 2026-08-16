@@ -622,11 +622,16 @@ export async function processAnsweredBrrrCall(
   // as a cash backup land in the Monitoring column (no email — they're not
   // actionable today, just worth watching for a fall-through).
   if (outcome === 'not_qualified' && qualification.next_step === 'monitor_backup') {
-    await pushPropertyToPipeline(property as BrrrProperty, qualification).catch(() => null);
+    await pushPropertyToPipeline(property as BrrrProperty, qualification).catch((e) =>
+      console.error('[brrr] monitor-backup pipeline push failed', property.id, String(e).slice(0, 200)));
   }
 
   if (outcome === 'qualified') {
-    await pushPropertyToPipeline(property as BrrrProperty, qualification).catch(() => null);
+    // LOUD. A qualified deal that never reaches the pipeline is a house
+    // somebody said yes to and nobody ever saw again; `.catch(() => null)`
+    // here made that invisible (16 Aug audit, silent-failure class).
+    await pushPropertyToPipeline(property as BrrrProperty, qualification).catch((e) =>
+      console.error('[brrr] QUALIFIED deal pipeline push FAILED', property.id, String(e).slice(0, 200)));
     if (PIPELINE_BUSINESS_ID) {
       notifyBusinessOwner(PIPELINE_BUSINESS_ID, 'call', {
         title: `Property qualified: ${property.address || property.source_property_id}`,

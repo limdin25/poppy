@@ -19,6 +19,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { callLLM } from './llm.js';
 import { QUALIFICATION_QUESTIONS } from './brrr.js';
 import { buildNextStepBrief } from './next-step-brief.js';
+import { readDealMoney } from './brrr-offer.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Sb = SupabaseClient<any, any, any>;
@@ -338,12 +339,20 @@ export async function applyBallpark(
       .slice(0, 3)
       .map((c) => `${String(c.address ?? '').split(',')[0]} went for ${money(Number(c.price))} (${String(c.date ?? '')}, ${c.distance_m ?? '?'}m away)`)
       .join('; ');
+    // ONE MEANING PER KEY (16 Aug audit): `property_worth` is worth TODAY
+    // everywhere (the coach reads it out as "worth today"), and the done-up
+    // value lives in `worth_after_bed`. This writer used to put the engine's
+    // GDV into property_worth, so the coach told Pedro a house was worth
+    // today what it would only be worth AFTER the works. And the ladder key
+    // is `ladder`, the one the dialer writes and the script templates read.
+    const worthToday = readDealMoney({ deal: prop.deal as Record<string, unknown> | null }).cmv;
     const fields = {
       ...(((contact as { custom_fields?: Record<string, string> } | null)?.custom_fields ?? {}) as Record<string, string>),
       offer_open: money(open),
       offer_ceiling: money(ceiling),
-      offer_ladder: ladder.length > 1 ? ladder.map(money).join(', then ') : `${money(open)}, up to ${money(ceiling)}`,
-      property_worth: `${money(Number(engine.gdv))} done up (${String(engine.comps_tier)} comps, ${String(engine.comps_used)} sold nearby)`,
+      ladder: ladder.length > 1 ? ladder.map(money).join(', then ') : `${money(open)}, up to ${money(ceiling)}`,
+      ...(worthToday ? { property_worth: `${money(worthToday)} today` } : {}),
+      worth_after_bed: `${money(Number(engine.gdv))} done up (${String(engine.comps_tier)} comps, ${String(engine.comps_used)} sold nearby)`,
       comp_evidence: evidence || 'see the deal drawer',
       valuation_notes: `Ballpark confirmed ${nowIso.slice(0, 10)} from call one: condition ${heard.condition_band}, refurb ${money(Number(engine.refurb))} at the low end, ${String(engine.comps_tier)} evidence.`,
       next_step: 'Offer call',

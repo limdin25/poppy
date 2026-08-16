@@ -21,10 +21,14 @@ export default async function handler(req: Request) {
 
   const checks = await Promise.all([
     checkService('Supabase (Database)', async () => {
-      await supabaseAdmin.from('businesses').select('id').limit(1)
+      // supabase-js never throws; it RETURNS {error}. Ignoring it made this
+      // tile permanently green even with the database down (16 Aug audit).
+      const { error } = await supabaseAdmin.from('businesses').select('id').limit(1)
+      if (error) throw new Error(error.message)
     }),
     checkService('Supabase (Auth)', async () => {
-      await supabaseAdmin.auth.getUser(jwt)
+      const { error } = await supabaseAdmin.auth.getUser(jwt)
+      if (error) throw new Error(error.message)
     }),
     checkService('Retell AI', async () => {
       const res = await fetch('https://api.retellai.com/v2/agent', {

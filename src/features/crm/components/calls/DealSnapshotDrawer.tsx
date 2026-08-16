@@ -18,7 +18,7 @@
 //      not the caller's; the dialer itself stays clean of this maths.
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ExternalLink, X } from 'lucide-react';
-import { gbpShort } from '../../../../../api/lib/brrr-offer';
+import { gbpShort, readDealMoney } from '../../../../../api/lib/brrr-offer';
 import { computeDeal, money } from '@/core/lib/dealMaths';
 import { useAuth } from '../../lib/useCrmAuth';
 import { usePropertyListings } from '../../hooks/usePropertyListings';
@@ -58,7 +58,8 @@ export default function DealSnapshotDrawer({ contact, call, agentName, stageName
   }, [listings, pickedId]);
 
   const deal = (selected?.deal ?? {}) as Record<string, unknown>;
-  const cmv = numOf(deal.cmv);
+  // THE ONE READER decides worth-today; rent is not a money-reader fact yet.
+  const cmv = readDealMoney({ deal }).cmv ?? 0;
   const rent = numOf(deal.rent);
   const stack = (deal.stack && typeof deal.stack === 'object')
     ? deal.stack as Record<string, unknown> : null;

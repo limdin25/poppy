@@ -39,60 +39,141 @@ export interface OfferSubject {
   deal?: Record<string, unknown> | null;
 }
 
-const DEFAULT_LOW_PCT = 70;
-const DEFAULT_HIGH_PCT = 75;
-
 function num(v: unknown): number {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
   return isFinite(n) ? n : 0;
 }
 
+// ---------------------------------------------------------------------------
+// THE ONE MONEY READER
+// ---------------------------------------------------------------------------
+//
+// Every money fact on a deal, read in ONE place. Before this existed the same
+// fact was read by hand in eight places that disagreed: the dialer read
+// refurb.estimate while the deal state read refurb.low, the offer email was
+// sent the CURRENT value under the key named `gdv`, the deal state had no
+// flat-shape fallback for the band, and four different comp counts existed of
+// which the one Pedro says out loud was not the canon. Two places deciding one
+// fact is the bug this codebase keeps having; this is the fix for the class.
+//
+// READ, NEVER DERIVED. Nulls mean the engine did not say, and a null renders
+// as "not on file", never as a guess.
+
+/** Every money fact on a deal. Null / empty means the engine did not say. */
+export interface DealMoney {
+  asking: number | null;
+  /** The opening offer. deal.offer.open, or the old flat offer_min. */
+  open: number | null;
+  /** The most we may ever pay. deal.offer.max (or ceiling / flat offer_max /
+   *  offer_price). Never said out loud, never put in writing. */
+  ceiling: number | null;
+  /** The climb, open upwards. Empty when the engine sent none. */
+  ladder: number[];
+  /** Worth TODAY, from same-bed sold comps. deal.cmv. */
+  cmv: number | null;
+  cmvConfidence: string | null;
+  /** Worth DONE UP (after the works / the extra bedroom). deal.gdv. */
+  gdv: number | null;
+  /** True market value where the engine files one separately. deal.tmv. */
+  tmv: number | null;
+  /** The works cost. refurb.low is the engine's planning figure. */
+  refurb: number | null;
+  /** True when the works cost is a STAND-IN (refurb.basis 'provisional'):
+   *  nobody has read the condition, a default holds the seat. A band priced
+   *  on a stand-in may rank deals; it may never leave the building. */
+  refurbAssumed: boolean;
+  compsTier: string | null;
+  /** How many sold comparables the valuation actually stands on. */
+  compsCount: number;
+}
+
+const obj = (v: unknown): Record<string, unknown> =>
+  (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {});
+const orNull = (n: number): number | null => (n > 0 ? n : null);
+
+export function readDealMoney(subject: OfferSubject): DealMoney {
+  const deal = obj(subject.deal);
+  const offer = obj(deal.offer);
+  const cmv = obj(deal.cmv);
+  const gdv = obj(deal.gdv);
+  const refurb = obj(deal.refurb);
+
+  // TWO SHAPES, both real: valuation.py nests (deal.offer = {open, max,
+  // ladder}), the old browser flow flattened (offer_min / offer_max /
+  // offer_price). Reading only one is how 157 properties showed a percentage
+  // of the asking price while a real valuation sat in the row underneath.
+  const ceiling = num(offer.max) || num(offer.ceiling) || num(deal.offer_max) || num(deal.offer_price);
+  // RAW, never clamped and never defaulted to the ceiling: an open above the
+  // max, or a row with a max and no open, is a BAD ROW the stress test must
+  // be able to see (open_within_ceiling / offer_on_file). offerRange clamps
+  // for display; this reports what the engine actually said.
+  const open = num(offer.open) || num(deal.offer_min);
+
+  const ladderSrc = Array.isArray(offer.ladder) ? offer.ladder : deal.ladder;
+  const ladder = (Array.isArray(ladderSrc) ? ladderSrc : []).map(num).filter((n) => n > 0);
+
+  return {
+    asking: orNull(num(subject.asking_price)),
+    open: orNull(open),
+    ceiling: orNull(ceiling),
+    ladder,
+    cmv: orNull(num(cmv.estimate) || num(deal.cmv)),
+    cmvConfidence: String(cmv.confidence ?? deal.cmv_confidence ?? '').trim() || null,
+    gdv: orNull(num(gdv.estimate) || num(deal.gdv)),
+    tmv: orNull(num(deal.tmv)),
+    // The engine's planning figure is refurb.low; older shapes carried
+    // estimate, a bare number, or refurb_budget / refurb_cost.
+    refurb: orNull(num(refurb.low) || num(refurb.estimate) || num(deal.refurb)
+      || num(obj(deal.refurb_budget).estimate) || num(deal.refurb_budget)
+      || num(obj(deal.refurb_cost).estimate) || num(deal.refurb_cost)),
+    refurbAssumed: String(refurb.basis ?? '') === 'provisional',
+    compsTier: String(deal.comps_tier ?? '').trim() || null,
+    compsCount: countComps(deal),
+  };
+}
+
+/** How many sold comparables the valuation stands on. THREE places, all live
+ *  in the table: valuation.py writes cmv.comps (a count) and deal.evidence
+ *  (the rows); the older shape wrote cmv.n_used with the rows under
+ *  cmv.audit. Reading only one is how a house with three sold comps 400m
+ *  away reported "no sold comparables on file" (Welwyn Park Road, 14 Aug).
+ *  The canon; next-step-brief's compCount delegates here. */
+export function countComps(deal: Record<string, unknown> | null | undefined): number {
+  const d = obj(deal);
+  const cmv = obj(d.cmv);
+  const counted = Number(cmv.comps ?? cmv.n_used ?? 0);
+  if (Number.isFinite(counted) && counted > 0) return counted;
+  const audit = Array.isArray(cmv.audit)
+    ? cmv.audit.filter((a) => (a as Record<string, unknown>)?.included === true) : [];
+  if (audit.length) return audit.length;
+  return Array.isArray(d.evidence) ? d.evidence.length : 0;
+}
+
 /**
  * The band we are allowed to talk in: open at `min`, never pass `max`.
  *
- * Settings are optional and nullable because the admin page renders before its
- * settings fetch resolves; missing values fall back to 70/75, which is what
- * DEFAULT_BRRR_SETTINGS uses anyway.
+ * THE %-OF-ASKING FALLBACK IS DEAD (16 Aug audit). This used to fabricate a
+ * band at 70-75% of the asking price when the engine had not priced the house,
+ * and a silent fallback that produces a plausible number is more dangerous
+ * than one that produces none: 157 properties reached Pedro's screen showing
+ * a percentage of the asking price while a real valuation sat in the row
+ * underneath (Coniston Avenue NE31, 10 Aug), and a house with NO valuation
+ * got a confident-looking band nobody had computed. Now: no figure on file
+ * means {min: 0, max: 0}, which every formatter already renders honestly
+ * (gbpShort a dash, fmtGBP "an amount to be discussed") and every send fence
+ * refuses. The settings knobs are accepted and ignored so no caller breaks.
  */
 export function offerRange(
   property: OfferSubject,
-  s?: Partial<OfferPercents> | null,
+  _s?: Partial<OfferPercents> | null,
 ): { min: number; max: number } {
-  const deal = property.deal || {};
-
-  // Preferred: the valuation engine's own figures.
-  //
-  // TWO SHAPES, and both are real. valuation.py returns the offer NESTED, as
-  // deal.offer = { open, max, ladder, ... }. The Comps page in the browser
-  // used to flatten it to deal.offer_min / deal.offer_max before posting.
-  // Reading only the flat keys is how 157 properties reached Pedro's screen
-  // showing 70-75% of the ASKING PRICE while a real valuation sat in the row
-  // underneath: nothing errored, the fallback simply took over. Found on the
-  // live dialer 2026-08-10, Coniston Avenue NE31, which showed open £52,500
-  // against the engine's £56,500 and, worse, a walk-away of £56,250 against a
-  // true ceiling of £60,900. A silent fallback that produces a plausible
-  // number is more dangerous than one that produces none.
-  const nested = (deal.offer && typeof deal.offer === 'object'
-    ? deal.offer as Record<string, unknown>
-    : {});
-  const engineMax = num(nested.max) || num(deal.offer_max) || num(deal.offer_price);
-  if (engineMax > 0) {
-    const engineMin = num(nested.open) || num(deal.offer_min);
-    return {
-      min: Math.round(engineMin > 0 ? Math.min(engineMin, engineMax) : engineMax),
-      max: Math.round(engineMax),
-    };
-  }
-
-  // Fallback: a percentage of asking. Both percentages are of ASKING, which is
-  // itself a ceiling, so this can never exceed what the seller is asking for.
-  const asking = num(property.asking_price);
-  const highPct = s?.offer_high_pct ?? DEFAULT_HIGH_PCT;
-  const lowPct = s?.offer_low_pct ?? DEFAULT_LOW_PCT;
-  const max = Math.round(asking * highPct / 100);
-  let min = Math.round(asking * lowPct / 100);
-  if (!min || min > max) min = max;
-  return { min, max };
+  const m = readDealMoney(property);
+  if (m.ceiling === null) return { min: 0, max: 0 };
+  // Clamped FOR DISPLAY: the band may never show an opener above its own
+  // ceiling. The raw contradiction stays visible on readDealMoney.open, where
+  // the stress test blocks it as a bad row.
+  const min = m.open !== null ? Math.min(m.open, m.ceiling) : m.ceiling;
+  return { min: Math.round(min), max: Math.round(m.ceiling) };
 }
 
 /** Money for reading aloud. Falls back to words, not "£0" or "£NaN", because

@@ -2388,12 +2388,14 @@ serve(async (req: Request) => {
               leadFactLines.push(`Worth after the kitchen becomes a bedroom: ${f('worth_after_bed')}. This is why we are buying it.`);
             }
             if (f('offer_open')) leadFactLines.push(`OPEN AT this figure, say this one number: ${f('offer_open')}`);
-            // Two keys on purpose. The assign script writes `offer_ladder`, but
-            // scriptTokensFor() in the dialer writes `ladder` when the agent
-            // switches property mid-call, so reading only the first meant the
-            // coach silently lost the ladder the moment he changed listing and
-            // had no idea what the rungs were for the rest of the call.
-            const ladder = f('offer_ladder') || f('ladder');
+            // ONE ladder key: `ladder` (16 Aug). Every writer (assign script,
+            // ballpark apply, the dialer's mid-call refresh) writes `ladder`
+            // now; `offer_ladder` is the legacy key still sitting on older
+            // contacts, read second so a fresh mid-call refresh always wins.
+            // Reading offer_ladder FIRST was the bug: the dialer merges its
+            // tokens over the contact, so the stale assign-time ladder beat
+            // the fresh one for the rest of the call.
+            const ladder = f('ladder') || f('offer_ladder');
             if (ladder) leadFactLines.push(`Climb this ladder, one rung at a time: ${ladder}`);
             if (f('offer_ceiling')) {
               leadFactLines.push(

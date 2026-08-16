@@ -23,6 +23,7 @@
 // that miscount is exactly how Welwyn Park Road reported "no sold comparables
 // on file" beside a real valuation.
 import { compCount } from './next-step-brief.js';
+import { readDealMoney } from './brrr-offer.js';
 
 /** Everything that can be true about a deal, gathered from the tables. */
 export interface DealStateInput {
@@ -302,17 +303,21 @@ export function buildDealState(input: DealStateInput): DealState {
   const deal = p.deal ?? null;
 
   // ---- money, all READ, none derived ---------------------------------
-  const asking = num(p.asking_price);
-  const gdv = num(dig(deal, 'gdv', 'estimate'));
-  const tmv = num(dig(deal, 'tmv'));
-  const open = num(dig(deal, 'offer', 'open'));
-  const ceiling = num(dig(deal, 'offer', 'max')) ?? num(dig(deal, 'offer', 'ceiling'));
-  const refurb = num(dig(deal, 'refurb', 'low')) ?? num(dig(deal, 'refurb'));
-  const ladder = (dig(deal, 'offer', 'ladder') as unknown[] | null) ?? [];
+  // ONE reader (brrr-offer.ts readDealMoney), because hand-rolled reads here
+  // had no flat-shape fallback for the band and read refurb.low while the
+  // dialer read refurb.estimate: same deal, different numbers (16 Aug audit).
+  const money = readDealMoney({ asking_price: p.asking_price, deal });
+  const asking = money.asking;
+  const gdv = money.gdv;
+  const tmv = money.tmv;
+  const open = money.open;
+  const ceiling = money.ceiling;
+  const refurb = money.refurb;
+  const ladder = money.ladder;
   const figuresOnFile = [
     asking, gdv, tmv, open, ceiling, refurb,
     num(p.viewing_quote),
-    ...ladder.map(num),
+    ...ladder,
     // HUGO'S OWN FIGURES COUNT AS ON FILE. Found on Orion Way, 16 Aug: the
     // offer actually put to the vendor (96,375) and the ladder Hugo decided
     // (99,588 / 102,800) lived only in the pinned note, while the engine's
@@ -435,9 +440,9 @@ export function buildDealState(input: DealStateInput): DealState {
     },
     money: {
       asking, gdv, tmv, open, ceiling, refurb,
-      refurbAssumed: String(dig(deal, 'refurb', 'basis') ?? '') === 'provisional',
+      refurbAssumed: money.refurbAssumed,
       pinnedCeiling: pinnedCeilingIn(p.pinned_note ?? ''),
-      compsTier: (dig(deal, 'comps_tier') as string | null) ?? null,
+      compsTier: money.compsTier,
       figuresOnFile,
     },
     brief: {

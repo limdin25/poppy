@@ -98,6 +98,9 @@ export interface OfferHouse {
   address?: string | null;
   askingPrice?: number | null;
   offerPrice?: number | null;
+  /** The most we may ever pay. The draft endpoint's counter fence runs
+   *  against this; without it the fence ran against null and was no fence. */
+  ceiling?: number | null;
   gdv?: number | null;
   refurb?: number | null;
   beds?: number | null;
