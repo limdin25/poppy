@@ -543,7 +543,11 @@ async function fetchDraft(
  *  to, or null if the board has no such column (the caller decides whether
  *  that is a refusal). */
 async function moveCardTo(sb: Sb, contactId: string, columnName: string): Promise<string | null> {
-  const from = (sb.from as unknown) as (t: string) => {
+  // NOTE the bind: extracting `sb.from` as a bare function detaches `this`,
+  // and SupabaseClient.from reads this.rest internally, so the first press of
+  // Send to Lost died with "Cannot read properties of undefined (reading
+  // 'rest')" (Hugo, live, 16 Aug). Methods stay on their object.
+  const from = sb.from.bind(sb) as unknown as (t: string) => {
     select: (c: string) => {
       eq: (c: string, v: string) => {
         maybeSingle: () => Promise<{ data: Record<string, unknown> | null }>;

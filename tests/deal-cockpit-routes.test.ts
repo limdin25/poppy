@@ -106,6 +106,10 @@ describe('THE MACHINE NEVER MOVES A CARD', () => {
     const helper = ACTION.match(/async function moveCardTo[\s\S]*?\n\}/)?.[0] ?? '';
     expect(helper).toMatch(/eq\('pipeline_id', pipelineId\)/);
     expect(helper).toMatch(/'Ballpark agreed'/);
+    // And the client method stays BOUND: a detached sb.from loses `this` and
+    // dies at runtime reading this.rest, which is how the first live press of
+    // Send to Lost failed (16 Aug).
+    expect(helper).toMatch(/sb\.from\.bind\(sb\)/);
   });
 
   it('no assessment can reach it: the AI has no move_stage to choose', () => {
