@@ -73,13 +73,35 @@ export async function getModelForAgent(businessId: string, agentId?: string | nu
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
-/** Fix known-bad / legacy model ids so the API doesn't reject them. */
+/** Fix known-bad / legacy model ids so the API doesn't reject them.
+ *
+ *  The claude ids come from FREE-TEXT settings fields (per-agent, per-business,
+ *  per-campaign, platform-wide), so a typo must degrade to the default, never
+ *  reach the API as a mystery string. */
 function normalizeModel(model: string): string {
   if (!model) return DEFAULT_MODEL;
   // Common typo: "claude-4.6-sonnet" → "claude-sonnet-4-6"
   if (/^claude-\d/.test(model)) return DEFAULT_MODEL;
+  if (model.startsWith('claude') && !/^claude-(haiku|sonnet|opus|fable)-\d/.test(model)) {
+    return DEFAULT_MODEL;
+  }
   return model;
 }
+
+/** Models that THINK before answering by default, with thinking and answer
+ *  sharing one token pot. Left unbounded this is the repo's worst production
+ *  failure class, found three separate times on 2026-08-16: the deal brain
+ *  went silent six times in seven, "Fetch the ballpark" 504'd in Hugo's
+ *  hands, and an audit found three more interactive routes carrying the same
+ *  bomb (one with a 300-token pot that thinking alone can eat). */
+const THINKS_BY_DEFAULT = /^claude-(haiku|sonnet|opus|fable)-([5-9]|\d{2,})/;
+
+/** The class-wide immunity: when the model thinks by default and the caller
+ *  set no explicit budget, the pot is GROWN by a fixed thinking allowance and
+ *  thinking is capped to that allowance, so the answer always keeps every
+ *  token the caller asked for. Callers that pass opts.thinkingBudget keep
+ *  their exact semantics. */
+const AUTO_THINKING_ALLOWANCE = 1536;
 
 /**
  * One turn's content. A plain string is the common case; the block form exists
@@ -144,8 +166,20 @@ export async function callLLM(
   }
 
   if (provider === 'anthropic') {
-    const thinking = opts?.thinkingBudget && opts.thinkingBudget < maxTokens
-      ? { thinking: { type: 'enabled', budget_tokens: Math.max(1024, opts.thinkingBudget) } }
+    let potTokens = maxTokens;
+    let budget = opts?.thinkingBudget && opts.thinkingBudget < maxTokens
+      ? Math.max(1024, opts.thinkingBudget)
+      : null;
+    if (budget === null && THINKS_BY_DEFAULT.test(resolvedModel)) {
+      // The caller sized maxTokens for the ANSWER, before thinking models
+      // existed. Grow the pot by the allowance and cap thinking to it, so the
+      // answer keeps every token the caller asked for. Output tokens are
+      // billed as produced, so an unused allowance costs nothing.
+      budget = AUTO_THINKING_ALLOWANCE;
+      potTokens = maxTokens + AUTO_THINKING_ALLOWANCE;
+    }
+    const thinking = budget !== null
+      ? { thinking: { type: 'enabled', budget_tokens: budget } }
       : {};
     const callAnthropic = (m: string) => fetch(`${getBaseUrl('anthropic')}/v1/messages`, {
       method: 'POST',
@@ -154,7 +188,7 @@ export async function callLLM(
         'x-api-key': apiKey!,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({ model: m, max_tokens: maxTokens, system: systemPrompt, messages: msgs, ...thinking }),
+      body: JSON.stringify({ model: m, max_tokens: potTokens, system: systemPrompt, messages: msgs, ...thinking }),
     });
     let res = await callAnthropic(resolvedModel);
     if (!res.ok && resolvedModel !== DEFAULT_MODEL) {

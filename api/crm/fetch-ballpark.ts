@@ -37,12 +37,20 @@
 // comps below standard) comes back as a plain answer, not an error: the
 // refusal IS the homework result, and it tells Hugo what is missing.
 
+import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
 import { QUALIFICATION_QUESTIONS } from '../lib/brrr.js';
 import { buildNextStepBrief } from '../lib/next-step-brief.js';
 
-export const config = { runtime: 'edge' };
+// NODE, NOT EDGE, SINCE 2026-08-16. This route runs up to three model reads
+// of a 12 minute transcript plus an engine round trip, and on the edge
+// runtime's ~25 second ceiling that came back to Hugo as a bare 504 twice in
+// one evening. Node's maxDuration gives it a full minute. The repo trap
+// (memory, 13 Aug): a web-style handler without the edge config is silently
+// ignored and HANGS, so the export at the bottom is a Node (req, res)
+// adapter around the unchanged web handler.
+export const config = { maxDuration: 60 };
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -96,7 +104,7 @@ interface Extraction {
   heard: string[];
 }
 
-export default async function handler(req: Request): Promise<Response> {
+async function handleWeb(req: Request): Promise<Response> {
   if (req.method !== 'POST') return Response.json({ error: 'POST only' }, { status: 405 });
 
   // Same door as the Deal Manager: a signed-in CRM agent or admin.
@@ -349,7 +357,13 @@ export default async function handler(req: Request): Promise<Response> {
   };
   const newDeal = {
     ...((prop.deal ?? {}) as Record<string, unknown>),
-    offer: { min: open, max: ceiling, ladder },
+    // `open`, NEVER `min`. This shipped as `{ min, max, ladder }` and nothing
+    // in the repo reads `offer.min`: the band readers want `offer.open`, and
+    // with it absent they fell back to `open = max`, so THE DIALER SHOWED THE
+    // WALK-AWAY CEILING AS THE OPENING OFFER and the coach read it out.
+    // Found by the 16 Aug money audit. `min` is kept as an alias one release
+    // so nothing that grew a read of it in the meantime breaks.
+    offer: { open, min: open, max: ceiling, ladder },
     reprice: { ...engine, heard, at: nowIso, call_id: heardCallId },
   };
 
@@ -422,4 +436,24 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   return Response.json({ ok: true, applied: true, heard, engine, heardCallId }, { status: 200 });
+}
+
+// The Node adapter. Vercel's Node runtime carries the fetch globals, so the
+// web handler above runs unchanged; this just buffers the body in and streams
+// the Response back out.
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (v !== undefined) headers[k] = Array.isArray(v) ? v.join(',') : String(v);
+  }
+  const out = await handleWeb(new Request(`http://internal${req.url ?? '/'}`, {
+    method: req.method,
+    headers,
+    body: chunks.length ? Buffer.concat(chunks) : undefined,
+  }));
+  res.statusCode = out.status;
+  out.headers.forEach((v, k) => res.setHeader(k, v));
+  res.end(Buffer.from(await out.arrayBuffer()));
 }

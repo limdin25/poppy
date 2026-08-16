@@ -306,6 +306,31 @@ describe('there is ONE brain, and both callers use it', () => {
     expect(read('api/lib/deal-timeline.ts')).toMatch(/satelliteContactIds/);
   });
 
+  it('unbreakable pins from the 16 Aug audits', () => {
+    const ballparkRoute = read('api/crm/fetch-ballpark.ts');
+    // THE MONEY BUG: the ballpark apply wrote the band as offer.min, nothing
+    // reads min, readers fell back to open = max, and the dialer showed the
+    // WALK-AWAY as the OPENING offer. The band always carries `open` now.
+    expect(ballparkRoute).toMatch(/offer: \{ open, min: open, max: ceiling, ladder \}/);
+    // And the route is Node with a minute, not edge with 25 seconds: three
+    // model reads of a 12 minute transcript plus an engine call 504'd twice
+    // in Hugo's hands.
+    expect(ballparkRoute).toMatch(/maxDuration: 60/);
+    expect(ballparkRoute).not.toMatch(/runtime: 'edge'/);
+    expect(ballparkRoute).toMatch(/IncomingMessage, res: ServerResponse/);
+
+    // THE CLASS FIX: any thinking-by-default model gets an automatic thinking
+    // allowance ON TOP of the caller's answer budget, so no present or future
+    // caller can go model_silent or blow a runtime ceiling by default.
+    const llm = read('api/lib/llm.ts');
+    expect(llm).toMatch(/THINKS_BY_DEFAULT/);
+    expect(llm).toMatch(/AUTO_THINKING_ALLOWANCE/);
+    expect(llm).toMatch(/maxTokens \+ AUTO_THINKING_ALLOWANCE/);
+    // And a typo'd claude model id from a free-text settings field degrades
+    // to the default instead of reaching the API.
+    expect(llm).toMatch(/claude-\(haiku\|sonnet\|opus\|fable\)-/);
+  });
+
   it('is told the three things it got wrong on real data', () => {
     // Found by reading the first live assessments rather than by guessing.
     // Plain English, not field names: it was writing "still_available,
