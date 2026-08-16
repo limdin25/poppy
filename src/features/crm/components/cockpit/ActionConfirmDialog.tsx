@@ -144,7 +144,10 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
         requestId: requestId.current,
         ...(isEmail ? { draft: { subject, body, kind: spec.draftKind } } : {}),
         ...(note ? { note } : {}),
-        ...(dueAt ? { dueAt } : {}),
+        // datetime-local carries NO timezone; sent raw, Postgres read it as
+        // UTC, and Hugo's 10:31 UK booking landed at 11:31 UK (17 Aug, Grove
+        // Avenue). new Date() parses it as local wall time; the ISO is true.
+        ...(dueAt ? { dueAt: new Date(dueAt).toISOString() } : {}),
         ...(columnId ? { columnId } : {}),
       });
 
