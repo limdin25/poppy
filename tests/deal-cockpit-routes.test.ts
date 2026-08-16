@@ -345,6 +345,10 @@ describe('there is ONE brain, and both callers use it', () => {
     expect(ballparkLib).toMatch(/offer: \{ open, min: open, max: ceiling, ladder \}/);
     expect(ballparkRoute).toMatch(/runBallparkPreview|applyBallpark/);
     expect(ballparkRoute).not.toMatch(/offer: \{ min/);
+    // THE PRESS APPLIES THE STORED HOMEWORK (17 Aug, Grove Avenue 504): the
+    // runner already priced the deal into ballpark_preview; approving must
+    // use it, not redo ~45s of hearing through the cockpit's 25s edge proxy.
+    expect(ballparkRoute).toMatch(/await storedFreshPreview\(body\.propertyId\)\s*\n?\s*\?\? await runBallparkPreview/);
     // And the route is Node with a minute, not edge with 25 seconds: three
     // model reads of a 12 minute transcript plus an engine call 504'd twice
     // in Hugo's hands.

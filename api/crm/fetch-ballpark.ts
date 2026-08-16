@@ -19,7 +19,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
-import { runBallparkPreview, applyBallpark } from '../lib/ballpark.js';
+import { runBallparkPreview, applyBallpark, type BallparkPreview } from '../lib/ballpark.js';
 
 export const config = { maxDuration: 60 };
 
@@ -27,6 +27,42 @@ const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+
+/** The machine's stored homework, if it is still fresh.
+ *
+ *  THE PRESS MUST NOT REDO THE HOMEWORK (17 Aug, Grove Avenue, a live 504 in
+ *  Hugo's hands). The ballpark-runner cron already heard the call and priced
+ *  the deal into brrr_properties.ballpark_preview; re-running the whole thing
+ *  on approve takes ~45s, and the cockpit's press arrives through an EDGE
+ *  route with a ~25s ceiling, so the approval desk's own button timed out on
+ *  the work it had already done. Fresh means no substantial call has connected
+ *  since the preview was taken (same staleness rule the runner uses); anything
+ *  newer, or no stored preview at all, falls through to the live run. */
+async function storedFreshPreview(propertyId: string): Promise<BallparkPreview | null> {
+  const { data: prop } = await supabase
+    .from('brrr_properties')
+    .select('ballpark_preview, wk_contact_id')
+    .eq('id', propertyId)
+    .maybeSingle();
+  const preview = (prop as { ballpark_preview?: BallparkPreview | null } | null)?.ballpark_preview ?? null;
+  if (!preview || !preview.at) return null;
+
+  const contactId = (prop as { wk_contact_id?: string | null } | null)?.wk_contact_id ?? null;
+  if (contactId) {
+    const { data: calls } = await supabase
+      .from('wk_calls')
+      .select('started_at, duration_sec')
+      .eq('contact_id', contactId)
+      .eq('direction', 'outbound')
+      .order('started_at', { ascending: false })
+      .limit(5);
+    const newerConversation = ((calls ?? []) as Array<{ started_at: string | null; duration_sec: number | null }>)
+      .some((c) => (c.duration_sec ?? 0) >= 45
+        && c.started_at && Date.parse(c.started_at) > Date.parse(preview.at!));
+    if (newerConversation) return null;
+  }
+  return preview;
+}
 
 async function handleWeb(req: Request): Promise<Response> {
   if (req.method !== 'POST') return Response.json({ error: 'POST only' }, { status: 405 });
@@ -48,7 +84,8 @@ async function handleWeb(req: Request): Promise<Response> {
   catch { return Response.json({ error: 'bad json' }, { status: 400 }); }
   if (!body.propertyId) return Response.json({ error: 'propertyId required' }, { status: 400 });
 
-  const preview = await runBallparkPreview(supabase, body.propertyId);
+  const preview = await storedFreshPreview(body.propertyId)
+    ?? await runBallparkPreview(supabase, body.propertyId);
 
   // The same status contract the modal has always read: a refusal with facts
   // is 200 (it is the homework's honest answer), nothing-to-build-from is

@@ -340,7 +340,10 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
               {deal.ballpark.ok ? (
                 <>
                   <strong className="font-semibold">I ran the ballpark.</strong>{' '}
-                  Works {gbpShort(deal.ballpark.refurb ?? 0)}, open at {gbpShort(deal.ballpark.open ?? 0)},
+                  {deal.ballpark.refurb
+                    ? `Works ${gbpShort(deal.ballpark.refurb)}, open`
+                    : 'No works cost recorded. Open'}{' '}
+                  at {gbpShort(deal.ballpark.open ?? 0)},
                   worth {gbpShort(deal.ballpark.gdv ?? 0)} done up on {deal.ballpark.tier ?? 'ungraded'} comps.
                   The ceiling stays in the room.
                 </>
