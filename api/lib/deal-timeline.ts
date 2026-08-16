@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { LogRow } from './deal-manager-run.js';
+import { satelliteContactIds } from './satellite-contacts.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Sb = SupabaseClient<any, any, any>;
@@ -69,7 +70,16 @@ const SIGNED_FOR_SECONDS = 600;
  *  so the split is deliberate and the caller owns it. */
 export async function buildDealTimeline(
   sb: Sb,
-  args: { contactId: string | null; log: LogRow[]; limit?: number },
+  args: {
+    contactId: string | null;
+    /** The branch's email, when it has one: it unlocks the SATELLITES, other
+     *  people at the same office whose replies land on their own auto-created
+     *  contacts. Lexi's rejection of the Orion Way offer lived on hers for two
+     *  days while this timeline said nothing had come in. */
+    contactEmail?: string | null;
+    log: LogRow[];
+    limit?: number;
+  },
 ): Promise<TimelineEntry[]> {
   const out: TimelineEntry[] = [];
 
@@ -94,9 +104,12 @@ export async function buildDealTimeline(
   }
 
   if (args.contactId) {
+    const satellites = await satelliteContactIds(sb, {
+      id: args.contactId, email: args.contactEmail ?? null,
+    });
     const [calls, messages] = await Promise.all([
       loadCalls(sb, args.contactId),
-      loadMessages(sb, args.contactId),
+      loadMessages(sb, [args.contactId, ...satellites]),
     ]);
     out.push(...calls, ...messages);
   }
@@ -186,10 +199,10 @@ async function loadCalls(sb: Sb, contactId: string): Promise<TimelineEntry[]> {
   });
 }
 
-async function loadMessages(sb: Sb, contactId: string): Promise<TimelineEntry[]> {
+async function loadMessages(sb: Sb, contactIds: string[]): Promise<TimelineEntry[]> {
   const { data } = await (sb.from('wk_sms_messages') as any)
     .select('id, created_at, direction, channel, subject, body')
-    .eq('contact_id', contactId)
+    .in('contact_id', contactIds)
     .order('created_at', { ascending: false })
     .limit(60);
 

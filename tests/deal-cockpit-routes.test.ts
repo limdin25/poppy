@@ -272,6 +272,31 @@ describe('there is ONE brain, and both callers use it', () => {
     expect(contract).toMatch(/'get_the_ballpark'/);
   });
 
+  it('sees the whole office, not just the named contact (Lexi\'s rejection)', () => {
+    // Orion Way, 16 Aug: lexi@ddmresidential.co.uk rejected the offer and the
+    // deal said "no reply", because inbound routing files unknown senders onto
+    // twin contacts and the branch card had no email. Messages now include
+    // SATELLITES: same company domain, no properties of their own.
+    const sql = read('supabase/migrations/20260816000003_satellite_email_contacts.sql');
+    const ts = read('api/lib/satellite-contacts.ts');
+
+    // The freemail lists are the same list in two languages. Drift here means
+    // the brain and the timeline disagree about whose emails belong to a deal.
+    const tsList = [...ts.matchAll(/'([a-z0-9.-]+\.[a-z.]+)'/g)].map((m) => m[1]);
+    const sqlBlock = sql.match(/not in \(([\s\S]*?)\)/)?.[1] ?? '';
+    const sqlList = [...sqlBlock.matchAll(/'([a-z0-9.-]+\.[a-z.]+)'/g)].map((m) => m[1]);
+    expect(tsList.length).toBeGreaterThan(5);
+    expect(new Set(sqlList)).toEqual(new Set(tsList));
+
+    // Same-domain contacts holding properties are sibling BRANCHES, never
+    // merged, in both implementations.
+    expect(sql).toMatch(/not exists \(\s*select 1 from brrr_properties pb where pb\.wk_contact_id = c2\.id/);
+    expect(ts).toMatch(/brrr_properties/);
+
+    // And the timeline actually uses the rule.
+    expect(read('api/lib/deal-timeline.ts')).toMatch(/satelliteContactIds/);
+  });
+
   it('is told the three things it got wrong on real data', () => {
     // Found by reading the first live assessments rather than by guessing.
     // Plain English, not field names: it was writing "still_available,

@@ -96,6 +96,7 @@ export default async function handler(req: Request): Promise<Response> {
     // That split is deliberate and it lives here rather than inside the merge.
     const timeline = await buildDealTimeline(supabase, {
       contactId: bundle.contactId,
+      contactEmail: bundle.email,
       log,
     });
 
