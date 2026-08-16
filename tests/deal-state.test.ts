@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildDealState, figuresIn, figuresAreOnFile, STALE_HOURS, CHECKLIST_KEYS,
-  type DealStateInput,
+  TRANSCRIPT_CAP, type DealStateInput,
 } from '../api/lib/deal-state'
 
 const NOW = new Date('2026-08-14T18:00:00Z')
@@ -118,6 +118,41 @@ describe('the reply-after-brief gap, which is the one that cost money', () => {
     }))
     expect(s.writing.replySinceBrief).toBe(false)
     expect(s.writing.lastOutboundAt).toBe(hoursAgo(2))
+  })
+})
+
+describe('the brain has ears: the last conversation rides on the state', () => {
+  // Paterson Road, 16 Aug: a 12 minute recorded discovery call with Pedro's
+  // note "call back monday", and the brain ordered a Sunday re-ring to re-ask
+  // everything, because the checklist was never typed up and the checklist was
+  // all it could see.
+  it('carries the transcript, the note and the timing', () => {
+    const s = buildDealState(base({
+      calls: [{ id: 'k1', created_at: hoursAgo(48), duration_sec: 744, agent_note: 'call back monday' }],
+      lastConversation: {
+        call_id: 'k1', at: hoursAgo(48), duration_sec: 744, note: 'call back monday',
+        transcript: 'Pedro: Is it still available?\nBranch: Yes, that one is still available.',
+      },
+    }))
+    expect(s.conversation?.transcript).toContain('still available')
+    expect(s.conversation?.note).toBe('call back monday')
+    expect(s.calls.lastNote).toBe('call back monday')
+  })
+
+  it('is null when no call was recorded, never an empty pretence', () => {
+    const s = buildDealState(base({ lastConversation: { transcript: '   ' } }))
+    expect(s.conversation).toBeNull()
+  })
+
+  it('trims a marathon from the FRONT, keeping the answers and the close', () => {
+    const line = 'Branch: some early small talk here.\n'
+    const tail = 'Branch: our vendor would take ninety.'
+    const s = buildDealState(base({
+      lastConversation: { transcript: line.repeat(400) + tail },
+    }))
+    expect(s.conversation!.transcript.length).toBeLessThanOrEqual(TRANSCRIPT_CAP + 40)
+    expect(s.conversation!.transcript).toContain('ninety')
+    expect(s.conversation!.transcript).toContain('(start of call trimmed)')
   })
 })
 

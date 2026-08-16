@@ -65,7 +65,20 @@ export interface DealStateInput {
     direction?: string | null;
     disposition?: string | null;
     duration_sec?: number | null;
+    /** Pedro's own words about the call. "call back monday" is an
+     *  appointment, and it lives nowhere else. */
+    agent_note?: string | null;
   }>;
+  /** The newest call to this branch that has a transcript, whole. This is what
+   *  gives the brain ears: without it the checklist is all it can see, and an
+   *  unlogged 12 minute discovery call reads as "nothing was ever gathered". */
+  lastConversation?: {
+    call_id?: string | null;
+    at?: string | null;
+    duration_sec?: number | null;
+    note?: string | null;
+    transcript?: string | null;
+  } | null;
   /** Every message in and out on this branch's contacts, newest first. */
   messages?: Array<{
     id: string;
@@ -131,7 +144,19 @@ export interface DealState {
     connected: number;
     lastConnectedAt: string | null;
     hoursSinceConnected: number | null;
+    /** Pedro's note on the newest call that has one. "call back monday" is an
+     *  appointment the brain must respect, and it lives nowhere else. */
+    lastNote: string | null;
   };
+  /** What was actually SAID on the newest recorded call, capped. Ground truth:
+   *  a question answered in here is answered, whether or not anybody filled
+   *  the checklist in afterwards. Null when no call has a transcript. */
+  conversation: {
+    at: string | null;
+    durationSec: number | null;
+    note: string | null;
+    transcript: string;
+  } | null;
   writing: {
     lastInboundAt: string | null;
     lastOutboundAt: string | null;
@@ -196,6 +221,17 @@ function isConnectedCall(k: { disposition?: string | null; duration_sec?: number
  *  Three working days: long enough not to nag, short enough that a deal
  *  cannot quietly die in Ready for call 2. */
 export const STALE_HOURS = 72;
+
+/** A 12 minute discovery call transcribes to about 8,000 characters, so this
+ *  keeps a whole normal call. A marathon is trimmed from the FRONT: the greeting
+ *  and hold music small talk go, the answers and the close stay. */
+export const TRANSCRIPT_CAP = 9_000;
+
+function capTranscript(text: string): string {
+  const t = text.trim();
+  if (t.length <= TRANSCRIPT_CAP) return t;
+  return '(start of call trimmed)\n' + t.slice(t.length - TRANSCRIPT_CAP);
+}
 
 /** The condition and motivation questions the call is supposed to establish.
  *  Missing ones become blockers, never assumptions. */
@@ -262,6 +298,17 @@ export function buildDealState(input: DealStateInput): DealState {
   const lastCall = calls[0] ?? null;
   const connectedCalls = calls.filter(isConnectedCall);
   const lastConnected = connectedCalls[0] ?? null;
+  const lastNoted = calls.find((k) => String(k.agent_note ?? '').trim() !== '') ?? null;
+
+  const convo = input.lastConversation ?? null;
+  const conversation = convo && String(convo.transcript ?? '').trim()
+    ? {
+      at: convo.at ?? null,
+      durationSec: convo.duration_sec ?? null,
+      note: (convo.note ?? '').trim() || null,
+      transcript: capTranscript(String(convo.transcript)),
+    }
+    : null;
 
   // ---- writing --------------------------------------------------------
   const messages = [...(input.messages ?? [])].sort(
@@ -342,7 +389,9 @@ export function buildDealState(input: DealStateInput): DealState {
       connected: connectedCalls.length,
       lastConnectedAt: lastConnected?.created_at ?? null,
       hoursSinceConnected: hoursBetween(lastConnected?.created_at, now),
+      lastNote: lastNoted ? String(lastNoted.agent_note).trim() : null,
     },
+    conversation,
     writing: {
       lastInboundAt: lastInbound?.created_at ?? null,
       lastOutboundAt: lastOutbound?.created_at ?? null,

@@ -105,6 +105,7 @@ export const COCKPIT_ACTIONS: Record<CockpitAction, ActionSpec> = {
  *  judge, never the machine's to correct. */
 export const PRIMARY_BUTTON_FOR: Record<string, CockpitAction> = {
   // Discovery done, evaluating
+  get_the_ballpark: 'fetch_ballpark',
   wait_for_engine: 'hold',
   chase_missing_fact: 'call_branch',
   escalate_hugo: 'escalate_hugo',

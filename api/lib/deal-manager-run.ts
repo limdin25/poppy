@@ -131,6 +131,11 @@ export function hashableState(state: DealState): Record<string, unknown> {
       count: state.calls.count,
       lastAt: state.calls.lastAt,
       lastOutcome: state.calls.lastOutcome,
+      // Short, human-typed, and load-bearing: "call back monday" changing to
+      // "offered 90k, call thursday" is a real change of instruction. The
+      // TRANSCRIPT is deliberately NOT hashed: it is fixed once the call ends
+      // and already represented by lastAt.
+      lastNote: state.calls.lastNote,
     },
     writing: {
       lastInboundAt: state.writing.lastInboundAt,
@@ -341,6 +346,7 @@ interface CockpitRow {
   calls: DealStateInput['calls'];
   messages: DealStateInput['messages'];
   followups: DealStateInput['followups'];
+  last_conversation: DealStateInput['lastConversation'];
 }
 
 function bundleFrom(row: CockpitRow, builders: BuilderRow[], now: Date): DealBundle {
@@ -377,6 +383,7 @@ function bundleFrom(row: CockpitRow, builders: BuilderRow[], now: Date): DealBun
     calls: row.calls ?? [],
     messages: row.messages ?? [],
     followups: row.followups ?? [],
+    lastConversation: row.last_conversation ?? null,
     builderMatches: matches,
     now,
   });

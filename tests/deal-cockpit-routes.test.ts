@@ -244,8 +244,32 @@ describe('there is ONE brain, and both callers use it', () => {
     // from 600 with the same change. A bumped prompt re-judges the board.
     const contract = read('api/lib/deal-manager-contract.ts');
     expect(contract).toMatch(/instruction\.length > 320/);
-    expect(contract).toMatch(/export const PROMPT_VERSION = 2/);
+    // The number itself bumps freely; what is pinned is that it exists and is
+    // folded into the hash, so a prompt rewrite can never sit invisible.
+    expect(contract).toMatch(/export const PROMPT_VERSION = \d+/);
     expect(read('api/lib/deal-manager-run.ts')).toMatch(/promptVersion: PROMPT_VERSION/);
+  });
+
+  it('has ears: the transcript is ground truth, a callback is an appointment, the process is two calls', () => {
+    // Paterson Road, 16 Aug. A 12 minute recorded discovery call, Pedro's own
+    // note saying "call back monday", and the brain ordered a Sunday re-ring
+    // to re-ask all twelve questions, because the checklist was never typed up
+    // and the checklist was all it could see.
+    expect(BRAIN).toMatch(/THE TRANSCRIPT IS THE GROUND TRUTH/);
+    expect(BRAIN).toMatch(/NEVER order anyone to ring and re-ask something the transcript already answers/);
+    expect(BRAIN).toMatch(/A CALLBACK PROMISE IS AN APPOINTMENT/);
+    expect(BRAIN).toMatch(/THE PROCESS IS TWO CALLS WITH HOMEWORK IN BETWEEN/);
+    // The ears themselves: the RPC ships the note and the transcript, the
+    // state carries them, and the contract lets the brain order the homework.
+    const ears = read('supabase/migrations/20260816000002_cockpit_hears_the_call.sql');
+    expect(ears).toMatch(/'agent_note', k\.agent_note/);
+    expect(ears).toMatch(/wk_live_transcripts/);
+    expect(ears).toMatch(/'transcript', tx\.lines/);
+    const state = read('api/lib/deal-state.ts');
+    expect(state).toMatch(/conversation:/);
+    expect(state).toMatch(/TRANSCRIPT_CAP/);
+    const contract = read('api/lib/deal-manager-contract.ts');
+    expect(contract).toMatch(/'get_the_ballpark'/);
   });
 
   it('is told the three things it got wrong on real data', () => {

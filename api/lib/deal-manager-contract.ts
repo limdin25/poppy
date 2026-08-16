@@ -32,15 +32,26 @@ import { figuresAreOnFile } from './deal-state.js';
  *
  *  v2, 2026-08-16: the instruction became an ORDER, 2 short sentences max
  *  (Hugo: "small texts... just tell exactly what the intelligence is asking
- *  us to do"). */
-export const PROMPT_VERSION = 2;
+ *  us to do").
+ *  v3, 2026-08-16 evening: the brain got ears. The transcript of the newest
+ *  recorded call is ground truth, a callback note is an appointment, and the
+ *  two-call process (discovery, then get_the_ballpark, then call two at the
+ *  agreed time) is spelled out. Found on Paterson Road: it ordered Pedro to
+ *  re-ring on a Sunday and re-ask twelve questions he had spent twelve
+ *  recorded minutes asking, because the checklist was never typed up and the
+ *  checklist was all it could see. */
+export const PROMPT_VERSION = 3;
 
 /** The pipeline, spelled out. A stage may only produce the actions that stage
  *  already allows, which is what "without changing the process" means in code.
  *  An action outside the list is a validation error, and a validation error
  *  means fall back to the brief. The Manager cannot invent a step. */
 export const ACTIONS_BY_STAGE: Record<string, string[]> = {
-  'Discovery done, evaluating': ['wait_for_engine', 'chase_missing_fact', 'escalate_hugo'],
+  // get_the_ballpark IS the homework of the two-call process: it hears the
+  // discovery call, extracts the facts, asks the engine, and arms call two.
+  // Added 2026-08-16 when the brain, blind to the transcript, kept ordering
+  // another discovery call instead of the pricing that should follow one.
+  'Discovery done, evaluating': ['get_the_ballpark', 'wait_for_engine', 'chase_missing_fact', 'escalate_hugo'],
   'Ready for call 2': ['make_offer_call', 'chase_email_reply', 'rebook_followup'],
   'Ballpark agreed': ['send_offer_email', 'chase_written_confirmation'],
   'Needs viewing': ['book_builder', 'chase_video_for_builder', 'escalate_hugo'],
