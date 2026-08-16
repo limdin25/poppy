@@ -42,6 +42,7 @@ import {
   COCKPIT_ACTIONS, type CockpitAction,
 } from '../lib/deal-stress-test.js';
 import { dealReasonLine } from '../lib/brrr-deal-facts.js';
+import { effectiveCeiling } from '../lib/counter-position.js';
 import { notifyDeal } from '../lib/deal-notify.js';
 
 export const config = { runtime: 'edge' };
@@ -104,6 +105,18 @@ export default async function handler(req: Request): Promise<Response> {
   // phase 'record': the browser did its half, file what happened
   // -----------------------------------------------------------------------
   if (body.phase === 'record') {
+    // THE THREE ROADS. Hugo, 16 Aug: "after the first call you have three
+    // options: reply the email (rare), lost, or ready for call two." A reply
+    // that actually went out moves the card to Waiting on their answer, so
+    // the desk clears and the board says where the deal really is. Behind the
+    // human press only (this phase runs after the browser sent), and only
+    // from the columns where the email IS the reply on price; a call-one
+    // email never moves a card.
+    if (action === 'send_email' && body.outcome?.ok !== false
+      && bundle.contactId
+      && ['Offer sent', 'Nurturing'].includes((state.board.column ?? '').trim())) {
+      await moveCardTo(supabase, bundle.contactId, 'Waiting on their answer');
+    }
     await logEvent(supabase, {
       property_id: state.propertyId,
       contact_id: bundle.contactId,
@@ -311,14 +324,43 @@ export default async function handler(req: Request): Promise<Response> {
         break;
       }
 
+      // ---- "Send to Lost": one press closes a door -----------------------
+      // Still a human press through the gate, so the machine-never-moves rule
+      // holds. The destination is not picked because there is only one: the
+      // branch's own pipeline's Not interested column, the cockpit's existing
+      // closed door.
+      case 'mark_lost': {
+        if (!bundle.contactId) {
+          return Response.json({
+            ok: false, report, refused: 'no_contact',
+            detail: 'This house has no branch record to close.',
+          });
+        }
+        const moved = await moveCardTo(supabase, bundle.contactId, 'Not interested');
+        if (!moved) {
+          return Response.json({
+            ok: false, report, refused: 'no_lost_column',
+            detail: 'There is no Not interested column on this board to send it to.',
+          });
+        }
+        result = { from: state.board.column, to: 'Not interested' };
+        break;
+      }
+
       case 'fetch_ballpark': {
         const origin = new URL(req.url).origin;
+        // THE CALLBACK IS NOT OPTIONAL. Confirming a ballpark books Pedro and
+        // takes the card off the desk; without a follow-up the card would sit
+        // in the cockpit as an already-made decision. No date from the human
+        // means the one the brain read off the call note, or tomorrow 09:30.
+        const dueAt = body.dueAt
+          || suggestCallbackAt(state.calls.lastNote ?? state.conversation?.note ?? null, now);
         const res = await fetch(`${origin}/api/crm/fetch-ballpark`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
           // dueAt books Pedro's callback in the same press: approve once, the
           // band is armed, the card moves, and the callback is on his queue.
-          body: JSON.stringify({ propertyId: state.propertyId, apply: true, dueAt: body.dueAt ?? null }),
+          body: JSON.stringify({ propertyId: state.propertyId, apply: true, dueAt }),
         });
         const json = await res.json().catch(() => ({})) as Record<string, unknown>;
         if (!res.ok) {
@@ -446,7 +488,12 @@ async function fetchDraft(
     ? {
       askingPrice: state.money.asking,
       offerPrice: state.money.open,
-      ceiling: state.money.ceiling,
+      // THE SAME CAP THE STRESS TEST USED. Hugo's pinned ruling overrides the
+      // engine's band in either direction; sending the engine ceiling alone
+      // is how the gate approved a counter the draft then refused (DDM,
+      // 16 Aug: "we are not able to improve our offer" against an ordered
+      // counter at the pinned ladder).
+      ceiling: effectiveCeiling(state.money.ceiling, state.money.pinnedCeiling),
       gdv: state.money.gdv,
       refurb: state.money.refurb,
     }
@@ -485,6 +532,52 @@ async function fetchDraft(
   } catch {
     return null;
   }
+}
+
+/** Move a branch card to a named column ON ITS OWN PIPELINE. Scoped because
+ *  `Not interested` exists on the HeyPubli board too, and an unscoped name
+ *  match once offered to move a house onto a different business's board. Only
+ *  the column is written: wk_contacts_stage_move_stamp (20260727000006)
+ *  stamps stage_moved_* and logs the timeline itself on every column change,
+ *  and it overwrites anything a caller sets. Returns the column id it moved
+ *  to, or null if the board has no such column (the caller decides whether
+ *  that is a refusal). */
+async function moveCardTo(sb: Sb, contactId: string, columnName: string): Promise<string | null> {
+  const from = (sb.from as unknown) as (t: string) => {
+    select: (c: string) => {
+      eq: (c: string, v: string) => {
+        maybeSingle: () => Promise<{ data: Record<string, unknown> | null }>;
+        eq: (c2: string, v2: string) => { maybeSingle: () => Promise<{ data: Record<string, unknown> | null }> };
+      };
+    };
+    update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<unknown> };
+  };
+  const { data: contact } = await from('wk_contacts')
+    .select('pipeline_column_id').eq('id', contactId).maybeSingle();
+  const currentColId = (contact?.pipeline_column_id as string | null) ?? null;
+
+  let pipelineId: string | null = null;
+  if (currentColId) {
+    const { data: cur } = await from('wk_pipeline_columns')
+      .select('pipeline_id').eq('id', currentColId).maybeSingle();
+    pipelineId = (cur?.pipeline_id as string | undefined) ?? null;
+  }
+  if (!pipelineId) {
+    // Off the board: fall back to the property pipeline, found by a column
+    // name that exists nowhere else (same trick as cockpit.ts).
+    const { data: bp } = await from('wk_pipeline_columns')
+      .select('pipeline_id').eq('name', 'Ballpark agreed').maybeSingle();
+    pipelineId = (bp?.pipeline_id as string | undefined) ?? null;
+  }
+  if (!pipelineId) return null;
+
+  const { data: col } = await from('wk_pipeline_columns')
+    .select('id').eq('pipeline_id', pipelineId).eq('name', columnName).maybeSingle();
+  const toId = (col?.id as string | undefined) ?? null;
+  if (!toId || toId === currentColId) return toId;
+
+  await from('wk_contacts').update({ pipeline_column_id: toId }).eq('id', contactId);
+  return toId;
 }
 
 function emptyReport(action: CockpitAction) {

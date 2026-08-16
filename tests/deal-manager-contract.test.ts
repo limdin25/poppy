@@ -101,8 +101,10 @@ describe('the action fence: code decides moves', () => {
   })
 
   it('an unknown column allows only the universal actions', () => {
-    expect(allowedActions('Some New Column').sort()).toEqual(['flag_mismatch', 'hold'])
-    expect(allowedActions(null).sort()).toEqual(['flag_mismatch', 'hold'])
+    // close_lost is universal on purpose: a deal can die anywhere, and Hugo's
+    // three-roads law needs the lost road to always exist.
+    expect(allowedActions('Some New Column').sort()).toEqual(['close_lost', 'flag_mismatch', 'hold'])
+    expect(allowedActions(null).sort()).toEqual(['close_lost', 'flag_mismatch', 'hold'])
   })
 
   it('every stage in the pipeline has a closed action list', () => {

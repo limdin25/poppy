@@ -32,7 +32,7 @@
 import {
   CHECKLIST_KEYS, figuresIn, figuresAreOnFile, STALE_HOURS, type DealState,
 } from './deal-state.js';
-import { decideCounter, respectsCeiling, type CounterDecision } from './counter-position.js';
+import { decideCounter, respectsCeiling, effectiveCeiling, type CounterDecision } from './counter-position.js';
 import { streetOf } from './next-step-brief.js';
 
 export type CheckLevel = 'pass' | 'warn' | 'block';
@@ -56,6 +56,7 @@ export const COCKPIT_ACTIONS = [
   'book_followup',
   'compare_comps',
   'move_stage',
+  'mark_lost',
   'fetch_ballpark',
   'assemble_investor_pack',
   'escalate_hugo',
@@ -88,6 +89,11 @@ export const ACTION_EXECUTION: Record<CockpitAction, { by: 'server' | 'client' |
   // press, and the AI has no path to it. Hugo, 2026-08-16: "if the action
   // needed is to move pipeline we can do from the cockpit."
   move_stage: { by: 'server', via: 'wk_contacts.pipeline_column_id, the same write the board makes' },
+  // "Send to Lost" is move_stage with the destination decided: the branch's own
+  // pipeline's Not interested column, which is already the cockpit's closed
+  // door. Hugo, 16 Aug: "seems like it's not a good deal, there should be a
+  // button there, send to the lost pipeline column."
+  mark_lost: { by: 'server', via: 'wk_contacts.pipeline_column_id -> the Not interested column' },
   fetch_ballpark: { by: 'server', via: 'POST /api/crm/fetch-ballpark' },
   assemble_investor_pack: { by: 'server', via: 'the completeness gate, then a notification' },
   escalate_hugo: { by: 'server', via: 'wk_notifications insert, drained by notify-drain' },
@@ -107,6 +113,7 @@ export const ACTION_LABEL: Record<CockpitAction, string> = {
   book_followup: 'Book the follow up',
   compare_comps: 'Show the comparisons',
   move_stage: 'Move the stage',
+  mark_lost: 'Send to Lost',
   fetch_ballpark: 'Fetch the ballpark',
   assemble_investor_pack: 'Check the investor pack',
   escalate_hugo: 'Send it to Hugo',
@@ -486,12 +493,13 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
     // ---- they came back on price --------------------------------------
     case 'draft_counter_reply': {
       needEmail();
-      // HUGO'S WRITTEN CEILING GOVERNS. The engine prices the house; Hugo
-      // prices the appetite, and when his pinned note says "never past
-      // 102,800" that ruling outranks an engine band computed on older
-      // assumptions. Highest of the two, because his note is only ever
-      // written to authorise more than the machine would.
-      const cap = Math.max(state.money.ceiling ?? 0, state.money.pinnedCeiling ?? 0) || null;
+      // HUGO'S WRITTEN CEILING GOVERNS, in either direction. The engine
+      // prices the house; Hugo prices the appetite, and his pinned ruling
+      // outranks an engine band computed on older assumptions whether it
+      // authorises more or allows less. One function owns the answer, and the
+      // draft route is fed the same one, so the two fences cannot disagree
+      // (they did, on DDM, 16 Aug).
+      const cap = effectiveCeiling(state.money.ceiling, state.money.pinnedCeiling);
       const decision = decideCounter({
         ceiling: cap,
         currentOffer: input.counter?.currentOffer ?? state.money.open,
@@ -605,6 +613,24 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
       if (state.followups.nextDueAt) {
         out.push(warn('not_double_booked', 'There is already a follow up on this branch',
           `One is due at ${state.followups.nextDueAt}.`, ['followups.nextDueAt']));
+      }
+      break;
+    }
+
+    // ---- closing the door on purpose -------------------------------------
+    case 'mark_lost': {
+      // Warn, never block: deciding a deal is not a deal is exactly the
+      // judgement that stays with the human. The warnings exist so a card
+      // deep in the money end is not killed by a slip of the finger.
+      const col = (state.board.column ?? '').trim();
+      if (FIGURE_ALREADY_PUT_TO_THEM.includes(col)) {
+        out.push(warn('losing_a_money_stage_deal', 'A figure has already been put to this branch',
+          `This card is in ${col}. Sending it to Lost closes a conversation where our number is on the table.`,
+          ['board.column']));
+      }
+      if (state.writing.replySinceBrief) {
+        out.push(warn('losing_with_unread_reply', 'The branch has written to us and nobody has answered',
+          'Read what they said before closing the door on it.', ['writing.replySinceBrief']));
       }
       break;
     }

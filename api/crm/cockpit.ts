@@ -152,11 +152,11 @@ export default async function handler(req: Request): Promise<Response> {
   const kept: typeof bundles = [];
   const asideContacts: Record<string, Set<string>> = {
     calling_list: new Set(), never_spoke: new Set(), closed_door: new Set(),
-    finished: new Set(), off_board: new Set(), scheduled: new Set(),
+    finished: new Set(), off_board: new Set(), scheduled: new Set(), waiting_reply: new Set(),
   };
   const keptContacts = new Set<string>();
   for (const b of bundles) {
-    const decision = isCockpitDeal(b.state);
+    const decision = isCockpitDeal(b.state, now);
     if (decision.inCockpit) {
       kept.push(b);
       keptContacts.add(b.contactId);
@@ -196,7 +196,7 @@ export default async function handler(req: Request): Promise<Response> {
     Object.entries(asideContacts).map(([why, ids]) => [
       why, [...ids].filter((id) => !keptContacts.has(id)).length,
     ]),
-  ) as { calling_list: number; never_spoke: number; closed_door: number; finished: number; off_board: number; scheduled: number };
+  ) as { calling_list: number; never_spoke: number; closed_door: number; finished: number; off_board: number; scheduled: number; waiting_reply: number };
 
   return Response.json({
     managerEnabled: on,
@@ -214,8 +214,9 @@ export default async function handler(req: Request): Promise<Response> {
  *  be offering to break the board. */
 const PROPERTY_STAGES = [
   'Booked', 'Discovery done, evaluating', 'Ready for call 2', 'Ballpark agreed',
-  'Needs viewing', 'Offer sent', 'Offer accepted', 'Sent to investor',
-  'Deal closed', 'Follow up', 'Voicemail', 'No pickup', 'Not interested', 'Nurturing',
+  'Needs viewing', 'Offer sent', 'Waiting on their answer', 'Offer accepted',
+  'Sent to investor', 'Deal closed', 'Follow up', 'Voicemail', 'No pickup',
+  'Not interested', 'Nurturing',
 ];
 
 // ---------------------------------------------------------------------------

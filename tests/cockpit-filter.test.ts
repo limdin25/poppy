@@ -25,8 +25,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildDealState, type DealStateInput } from '../api/lib/deal-state';
+import { readFileSync } from 'node:fs';
 import {
   isCockpitDeal, cockpitDeals, CALLING_LIST_COLUMNS, CLOSED_DOOR_COLUMNS, LIVE_COLUMNS,
+  WAITING_COLUMN,
 } from '../api/lib/cockpit-filter';
 
 const NOW = new Date('2026-08-16T14:00:00Z');
@@ -36,6 +38,7 @@ function state(opts: {
   column?: string | null;
   calls?: Array<{ disposition?: string | null; duration_sec?: number | null; hoursAgo?: number }>;
   inboundHoursAgo?: number;
+  outboundHoursAgo?: number;
   briefWrittenHoursAgo?: number;
   followupDueHoursAgo?: number;
 } = {}) {
@@ -59,10 +62,16 @@ function state(opts: {
       disposition: k.disposition ?? null,
       duration_sec: k.duration_sec ?? 0,
     })),
-    messages: opts.inboundHoursAgo === undefined ? [] : [{
-      id: 'm1', created_at: iso(opts.inboundHoursAgo), direction: 'inbound',
-      channel: 'email', body: 'We accept.',
-    }],
+    messages: [
+      ...(opts.inboundHoursAgo === undefined ? [] : [{
+        id: 'm1', created_at: iso(opts.inboundHoursAgo), direction: 'inbound',
+        channel: 'email', body: 'We accept.',
+      }]),
+      ...(opts.outboundHoursAgo === undefined ? [] : [{
+        id: 'm2', created_at: iso(opts.outboundHoursAgo), direction: 'outbound',
+        channel: 'email', body: 'Our reply.',
+      }]),
+    ],
     followups: opts.followupDueHoursAgo === undefined ? [] : [{
       id: 'f1', due_at: iso(opts.followupDueHoursAgo), status: 'pending', note: 'ring back',
     }],
@@ -213,5 +222,58 @@ describe('the shape of the thing', () => {
   it('never puts a column in two lists at once', () => {
     for (const c of CALLING_LIST_COLUMNS) expect(LIVE_COLUMNS).not.toContain(c);
     for (const c of CLOSED_DOOR_COLUMNS) expect(LIVE_COLUMNS).not.toContain(c);
+    expect(LIVE_COLUMNS).not.toContain(WAITING_COLUMN);
+  });
+});
+
+describe('waiting on their answer: we replied, the ball is in their court', () => {
+  // Hugo, 16 Aug, on DDM: "So I replied it. So why still on the list if you
+  // replied?" After the counter goes out there is nothing to decide until
+  // they answer, so the card waits off the desk in its own column.
+
+  it('a freshly answered card is off the desk', () => {
+    const d = isCockpitDeal(
+      state({ column: WAITING_COLUMN, calls: [SPOKE], outboundHoursAgo: 2 }), NOW,
+    );
+    expect(d.inCockpit).toBe(false);
+    expect(d.why).toBe('waiting_reply');
+  });
+
+  it('comes back the moment they write', () => {
+    const d = isCockpitDeal(
+      state({ column: WAITING_COLUMN, calls: [SPOKE], outboundHoursAgo: 24, inboundHoursAgo: 1 }), NOW,
+    );
+    expect(d.inCockpit).toBe(true);
+    expect(d.why).toBe('branch_replied');
+  });
+
+  it('comes back as a chase after four days of silence', () => {
+    const d = isCockpitDeal(
+      state({ column: WAITING_COLUMN, calls: [SPOKE], outboundHoursAgo: 100 }), NOW,
+    );
+    expect(d.inCockpit).toBe(true);
+    expect(d.reason).toMatch(/[Cc]hase/);
+  });
+
+  it('a booked follow-up still wins: the card is scheduled, not waiting', () => {
+    const d = isCockpitDeal(
+      state({ column: WAITING_COLUMN, calls: [SPOKE], outboundHoursAgo: 2, followupDueHoursAgo: -48 }), NOW,
+    );
+    expect(d.inCockpit).toBe(false);
+    expect(d.why).toBe('scheduled');
+  });
+
+  it('the column name is the same string everywhere it is written', () => {
+    // The migration creates it, cockpit-action moves cards into it, the
+    // contract gives it an action list, and the stage picker offers it. One
+    // typo in any of them and the exit silently stops existing.
+    for (const file of [
+      'supabase/migrations/20260816000005_waiting_on_their_answer.sql',
+      'api/crm/cockpit-action.ts',
+      'api/lib/deal-manager-contract.ts',
+      'api/crm/cockpit.ts',
+    ]) {
+      expect(readFileSync(file, 'utf8'), file).toContain(`'${WAITING_COLUMN}'`);
+    }
   });
 });

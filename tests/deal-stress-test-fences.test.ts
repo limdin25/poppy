@@ -31,11 +31,15 @@ describe('it borrows the fences rather than rebuilding them', () => {
     // "A model asked 'should we go up?' finds a reason to say yes." The
     // decision is made in counter-position.ts and nowhere else.
     expect(SRC).toMatch(/import \{ decideCounter, respectsCeiling[\s\S]*?\} from '\.\/counter-position\.js'/);
-    // Since 16 Aug the cap the decision respects is the HIGHER of the
-    // engine's ceiling and the one Hugo wrote in the pinned note: the engine
-    // prices the house, Hugo prices the appetite.
+    // Since 16 Aug the cap comes from ONE function, effectiveCeiling: Hugo's
+    // pinned ruling overrides the engine in EITHER direction (the first
+    // version was Math.max, which silently kept the engine's higher number
+    // when Hugo had ruled lower). The draft route is fed the same cap by
+    // cockpit-action.ts, so the two fences cannot disagree again (DDM,
+    // 16 Aug: the gate approved a counter the draft then refused).
     expect(SRC).toContain('respectsCeiling(decision, cap)');
-    expect(SRC).toMatch(/Math\.max\(state\.money\.ceiling \?\? 0, state\.money\.pinnedCeiling \?\? 0\)/);
+    expect(SRC).toContain('effectiveCeiling(state.money.ceiling, state.money.pinnedCeiling)');
+    expect(SRC).not.toMatch(/Math\.max\(state\.money\.ceiling/);
   });
 
   it('gets the street from next-step-brief', () => {

@@ -51,6 +51,13 @@ export const CALLING_LIST_COLUMNS = ['Voicemail', 'No pickup'];
 /** Parked because somebody spoke and said no. Not a deal, not a dial. */
 export const CLOSED_DOOR_COLUMNS = ['Not interested'];
 
+/** We answered them in writing and the ball is in their court. Hugo, 16 Aug:
+ *  "I replied. So why still on the list?" The card sits here off the desk
+ *  until they write back (rule 1), a follow-up comes due (rule 2), or the
+ *  silence runs past WAITING_HOURS, at which point it returns as a chase. */
+export const WAITING_COLUMN = 'Waiting on their answer';
+export const WAITING_HOURS = 96;
+
 /** Where a live deal can sit. Everything from the first real conversation to
  *  the money, plus the two holding columns that still mean somebody is
  *  working it. */
@@ -73,6 +80,7 @@ export type CockpitVerdict =
   | 'live_column'
   | 'overdue_followup'
   | 'scheduled'
+  | 'waiting_reply'
   | 'never_spoke'
   | 'off_board'
   | 'calling_list'
@@ -94,7 +102,7 @@ export interface CockpitDecision {
  *  card, including the card being parked, because an unread reply is the one
  *  thing that was provably costing money.
  */
-export function isCockpitDeal(state: DealState): CockpitDecision {
+export function isCockpitDeal(state: DealState, now: Date = new Date()): CockpitDecision {
   const column = (state.board.column ?? '').trim();
 
   // ---- 1. THEY WROTE TO US. Nothing outranks this. -------------------
@@ -131,6 +139,30 @@ export function isCockpitDeal(state: DealState): CockpitDecision {
       inCockpit: false,
       why: 'scheduled',
       reason: 'Approved and booked. It comes back when the callback is due or the branch writes.',
+    };
+  }
+
+  // ---- 3b. We replied, the ball is in their court ----------------------
+  //
+  // Hugo, 16 Aug, on DDM: "So I replied it. So why still on the list?" After
+  // the counter goes out there is nothing to decide until they answer, so
+  // the card waits here off the desk. Rule 1 brings it back the moment they
+  // write; four days of silence brings it back as a chase, because a counter
+  // nobody answers is not a closed conversation, it is a stalled one.
+  if (column === WAITING_COLUMN) {
+    const sentAt = state.writing.lastOutboundAt ? Date.parse(state.writing.lastOutboundAt) : NaN;
+    const hoursQuiet = Number.isFinite(sentAt) ? (now.getTime() - sentAt) / 3_600_000 : 0;
+    if (hoursQuiet > WAITING_HOURS) {
+      return {
+        inCockpit: true,
+        why: 'live_column',
+        reason: `We replied ${Math.round(hoursQuiet / 24)} days ago and they have gone quiet. Chase it.`,
+      };
+    }
+    return {
+      inCockpit: false,
+      why: 'waiting_reply',
+      reason: 'We answered them. It comes back when they write or after four days of silence.',
     };
   }
 
@@ -208,6 +240,6 @@ export function isCockpitDeal(state: DealState): CockpitDecision {
 }
 
 /** The cockpit list, in one call. */
-export function cockpitDeals<T extends { state: DealState }>(all: readonly T[]): T[] {
-  return all.filter((d) => isCockpitDeal(d.state).inCockpit);
+export function cockpitDeals<T extends { state: DealState }>(all: readonly T[], now: Date = new Date()): T[] {
+  return all.filter((d) => isCockpitDeal(d.state, now).inCockpit);
 }

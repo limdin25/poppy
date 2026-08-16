@@ -65,8 +65,12 @@ describe('THE MACHINE NEVER MOVES A CARD', () => {
   // words while code and humans decide money and moves. Hugo, 2026-08-16: "if
   // the action needed is to move pipeline we can do from the cockpit."
   //
-  // So there is exactly ONE pipeline write here, it is `move_stage`, and it can
-  // only be reached by a human pressing a button and picking a stage.
+  // So every pipeline write here sits behind a human press: `move_stage` (the
+  // human picks the stage), `mark_lost` (the destination is fixed: the board's
+  // own Not interested), and the record phase after a SENT reply (the fixed
+  // Waiting on their answer). Hugo's three roads, 16 Aug: "after the first
+  // call you have three options: reply the email, lost, or ready for call
+  // two", and each press lands the card in its road's column.
 
   it('the read-only route and the sweep write no column at all', () => {
     for (const src of [COCKPIT, RUN, SWEEP]) {
@@ -74,14 +78,34 @@ describe('THE MACHINE NEVER MOVES A CARD', () => {
     }
   });
 
-  it('the action route writes a column in exactly one place, and it is move_stage', () => {
-    // Exactly one mention in the whole file, and it is the update itself.
-    const writes = ACTION.match(/pipeline_column_id/g) ?? [];
-    expect(writes.length).toBe(1);
+  it('the action route writes a column in exactly two call sites: move_stage and moveCardTo', () => {
+    const writes = ACTION.match(/update\(\{ pipeline_column_id/g) ?? [];
+    expect(writes.length).toBe(2);
     const moveCase = ACTION.match(/case 'move_stage': \{[\s\S]*?break;\n      \}/)?.[0] ?? '';
     expect(moveCase).toMatch(/pipeline_column_id: body\.columnId/);
     // It refuses rather than guessing when the human has not picked one.
     expect(moveCase).toMatch(/refused: 'no_stage'/);
+  });
+
+  it('moveCardTo runs behind exactly two presses: Send to Lost and a sent reply', () => {
+    const calls = ACTION.match(/await moveCardTo\(/g) ?? [];
+    expect(calls.length).toBe(2);
+    // The lost press has a fixed destination, never a machine-chosen one.
+    const lostCase = ACTION.match(/case 'mark_lost': \{[\s\S]*?break;\n      \}/)?.[0] ?? '';
+    expect(lostCase).toMatch(/moveCardTo\(supabase, bundle\.contactId, 'Not interested'\)/);
+    // The reply move happens in the RECORD phase, after the browser actually
+    // sent, so a failed send can never move a card.
+    const recordPhase = ACTION.match(/if \(body\.phase === 'record'\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
+    expect(recordPhase).toMatch(/moveCardTo\(supabase, bundle\.contactId, 'Waiting on their answer'\)/);
+    expect(recordPhase).toMatch(/body\.outcome\?\.ok !== false/);
+    // And only from the columns where the email IS the reply on price.
+    expect(recordPhase).toMatch(/\['Offer sent', 'Nurturing'\]/);
+  });
+
+  it('moveCardTo is scoped to the contact\'s own pipeline', () => {
+    const helper = ACTION.match(/async function moveCardTo[\s\S]*?\n\}/)?.[0] ?? '';
+    expect(helper).toMatch(/eq\('pipeline_id', pipelineId\)/);
+    expect(helper).toMatch(/'Ballpark agreed'/);
   });
 
   it('no assessment can reach it: the AI has no move_stage to choose', () => {

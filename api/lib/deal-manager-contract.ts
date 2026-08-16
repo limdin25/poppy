@@ -48,8 +48,12 @@ import { figuresAreOnFile } from './deal-state.js';
  *  v5, 2026-08-16 late: THE APPROVAL DESK. The machine runs the ballpark
  *  itself (ballpark-runner cron); when `ballpark.ran` the decision is
  *  confirm_ballpark presenting the numbers and the callback, never an order
- *  to go and fetch them. Verdicts carry `confidence`. */
-export const PROMPT_VERSION = 5;
+ *  to go and fetch them. Verdicts carry `confidence`.
+ *  v6, 2026-08-16: THE THREE ROADS. After call one a deal goes exactly one
+ *  of three ways (reply to an email, lost, or ready for call two), close_lost
+ *  became universal so the brain can order a door shut (Hunters: "mark the
+ *  deal dead" had no button), and Waiting on their answer joined the board. */
+export const PROMPT_VERSION = 6;
 
 /** The pipeline, spelled out. A stage may only produce the actions that stage
  *  already allows, which is what "without changing the process" means in code.
@@ -80,10 +84,18 @@ export const ACTIONS_BY_STAGE: Record<string, string[]> = {
   // vendors' written rejection arrived, and the one action that answers a
   // rejection was not legal in the one column the deal actually sat in.
   Nurturing: ['reply_with_counter', 'chase_the_answer', 'rebook_followup', 'hold'],
+  // Where a card sits after WE answered in writing (the send moves it here).
+  // Mostly it is off the desk; when it surfaces, it is because they wrote
+  // back or went quiet too long, and those are the only plays.
+  'Waiting on their answer': ['reply_with_counter', 'chase_the_answer', 'rebook_followup', 'hold'],
 };
 
-/** Allowed from ANY stage: the card's column disagrees with the evidence. */
-export const UNIVERSAL_ACTIONS = ['flag_mismatch', 'hold'] as const;
+/** Allowed from ANY stage. flag_mismatch and hold because a wrong column or a
+ *  quiet day can happen anywhere; close_lost because a deal can die anywhere
+ *  (offer accepted elsewhere, vendor refuses forever) and Hugo's three-roads
+ *  law needs the lost road to always exist: "after the first call you have
+ *  three options: reply the email, lost, or ready for call two." */
+export const UNIVERSAL_ACTIONS = ['flag_mismatch', 'hold', 'close_lost'] as const;
 
 /** Closed list. A flag outside it is a validation error. */
 export const FLAGS = [

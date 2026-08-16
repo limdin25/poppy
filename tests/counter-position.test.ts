@@ -5,7 +5,7 @@
 // pulling, and a number said out loud on a property deal cannot be unsaid.
 
 import { describe, it, expect } from 'vitest'
-import { decideCounter, respectsCeiling } from '../api/lib/counter-position'
+import { decideCounter, respectsCeiling, effectiveCeiling } from '../api/lib/counter-position'
 
 const strong = { evidenceTier: 'strong' as const }
 
@@ -134,5 +134,28 @@ describe('it never throws', () => {
 
   it('treats zero and negative as absent', () => {
     expect(decideCounter({ ceiling: 0, theirFigure: 95000, ...strong }).code).toBe('no_ceiling')
+  })
+})
+
+describe('effectiveCeiling: Hugo\'s written ruling governs, in either direction', () => {
+  // Found live on DDM, 16 Aug: the stress test used Math.max while the draft
+  // route used the engine alone, so the gate approved a counter the draft
+  // refused. One function owns the cap now, and pinned OVERRIDES rather than
+  // maxes: a note can lower the appetite as well as raise it.
+  it('a pinned ruling above the engine authorises more', () => {
+    expect(effectiveCeiling(96375, 102800)).toBe(102800)
+  })
+
+  it('a pinned ruling below the engine lowers the cap, never Math.max', () => {
+    expect(effectiveCeiling(111500, 90000)).toBe(90000)
+  })
+
+  it('no pinned ruling means the engine band stands', () => {
+    expect(effectiveCeiling(68345, null)).toBe(68345)
+  })
+
+  it('no ceiling anywhere is null, never a guess', () => {
+    expect(effectiveCeiling(null, null)).toBeNull()
+    expect(effectiveCeiling(0, undefined)).toBeNull()
   })
 })

@@ -350,10 +350,17 @@ export async function applyBallpark(
     };
     await sb.from('wk_contacts').update({ custom_fields: fields }).eq('id', prop.wk_contact_id);
 
-    // The board move: looked up by name, skipped in silence if absent. The
-    // band on the card is the point; the column is presentation.
-    const { data: col } = await sb
-      .from('wk_pipeline_columns').select('id').eq('name', 'Ready for call 2').maybeSingle();
+    // The board move: looked up by name ON THE PROPERTY PIPELINE (the one
+    // that owns 'Ballpark agreed', same trick as cockpit.ts, because column
+    // names repeat across boards), skipped in silence if absent. The band on
+    // the card is the point; the column is presentation. The stage_move
+    // trigger stamps the history itself.
+    const { data: anchor } = await sb
+      .from('wk_pipeline_columns').select('pipeline_id').eq('name', 'Ballpark agreed').maybeSingle();
+    const pipelineId = (anchor as { pipeline_id?: string } | null)?.pipeline_id ?? null;
+    let colQuery = sb.from('wk_pipeline_columns').select('id').eq('name', 'Ready for call 2');
+    if (pipelineId) colQuery = colQuery.eq('pipeline_id', pipelineId);
+    const { data: col } = await colQuery.maybeSingle();
     if ((col as { id?: string } | null)?.id) {
       await sb.from('wk_contacts')
         .update({ pipeline_column_id: (col as { id: string }).id })

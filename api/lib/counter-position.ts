@@ -115,6 +115,20 @@ export function decideCounter(input: CounterInput): CounterDecision {
   };
 }
 
+/** THE ONE CEILING. Hugo's written ruling in the pinned note OVERRIDES the
+ *  engine's band, in EITHER direction: "up to 102,800" authorises more than an
+ *  engine ceiling of 96,375, and "never past 90,000" lowers one of 111,500.
+ *  Not Math.max, which was the first version and was wrong: it silently kept
+ *  the engine's higher number when Hugo had ruled lower.
+ *
+ *  Found live on DDM, 16 Aug: the stress test approved the counter at Hugo's
+ *  pinned ladder while the draft route, fed only the engine ceiling, wrote
+ *  "we are not able to improve our offer". Two fences, two answers. Every
+ *  caller that needs a cap goes through here now, so they cannot disagree. */
+export function effectiveCeiling(engine: number | null | undefined, pinned: number | null | undefined): number | null {
+  return num(pinned) ?? num(engine);
+}
+
 /** THE INVARIANT, checkable on its own: a decision may never propose paying
  *  more than the ceiling. Called by the tests and by the email route before
  *  anything is written, because one wrong number here is a deal that loses

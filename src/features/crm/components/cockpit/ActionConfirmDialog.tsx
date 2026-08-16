@@ -126,7 +126,11 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
   const firstBlock = report?.checks.find((c) => c.level === 'block') ?? null;
   const warned = (report?.warned.length ?? 0) > 0;
   const needsStage = action === 'move_stage' && !columnId;
-  const canCommit = !checking && !committing && !blocked && !needsStage
+  // Confirming a ballpark ALWAYS books Pedro's callback, or the card would
+  // sit on the desk as an already-made decision. The field arrives prefilled
+  // from the call note; it can be edited, never cleared.
+  const needsDue = action === 'fetch_ballpark' && !dueAt;
+  const canCommit = !checking && !committing && !blocked && !needsStage && !needsDue
     && (!warned || acknowledged);
 
   const commit = useCallback(async () => {
@@ -357,9 +361,15 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
               <input
                 type="datetime-local"
                 value={dueAt}
+                required={action === 'fetch_ballpark'}
                 onChange={(e) => setDueAt(e.target.value)}
                 className="mt-0.5 w-full rounded-md border border-border bg-white px-2 py-1.5 text-[12px] text-ink"
               />
+              {needsDue && (
+                <span className="mt-0.5 block text-[10.5px] text-[#B45309]">
+                  Pick when Pedro rings back. Confirming books the callback and takes the card off the desk.
+                </span>
+              )}
             </label>
           )}
 

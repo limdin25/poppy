@@ -115,6 +115,8 @@ export interface CockpitListResponse {
     closed_door: number; finished: number; off_board: number;
     /** Approved and booked: waiting on a callback time, not on a decision. */
     scheduled: number;
+    /** We replied in writing; the ball is in their court. */
+    waiting_reply?: number;
   };
 }
 

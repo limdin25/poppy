@@ -21,7 +21,7 @@
 import {
   Phone, Mail, FileText, HardHat, CalendarClock, Scale, PackageCheck,
   AlertTriangle, StickyNote, PauseCircle, MessageSquareReply, Send,
-  MoveRight, Calculator,
+  MoveRight, Calculator, Ban,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -38,6 +38,7 @@ export type CockpitAction =
   | 'book_followup'
   | 'compare_comps'
   | 'move_stage'
+  | 'mark_lost'
   | 'fetch_ballpark'
   | 'assemble_investor_pack'
   | 'escalate_hugo'
@@ -88,6 +89,10 @@ export const COCKPIT_ACTIONS: Record<CockpitAction, ActionSpec> = {
   book_followup: { label: 'Book the follow up', kind: 'server', icon: CalendarClock, commitVerb: 'Book it' },
   compare_comps: { label: 'Comparisons', kind: 'reveal', icon: Scale, commitVerb: 'Show them' },
   move_stage: { label: 'Move the stage', kind: 'stage', icon: MoveRight, commitVerb: 'Move it' },
+  // Hugo, 16 Aug: "seems like it's not a good deal, there should be a button
+  // there, send to the lost pipeline column." One press, the card lands in
+  // Not interested and leaves the cockpit.
+  mark_lost: { label: 'Send to Lost', kind: 'server', icon: Ban, commitVerb: 'Send it to Lost' },
   fetch_ballpark: { label: 'Fetch the ballpark', kind: 'server', icon: Calculator, commitVerb: 'Price it' },
   assemble_investor_pack: {
     label: 'Check the investor pack', kind: 'server', icon: PackageCheck, commitVerb: 'Check it',
@@ -131,6 +136,9 @@ export const PRIMARY_BUTTON_FOR: Record<string, CockpitAction> = {
   // Any stage
   flag_mismatch: 'escalate_hugo',
   hold: 'hold',
+  // The brain ordering a door shut ("offer accepted elsewhere, mark the deal
+  // dead") points at the button that actually shuts it.
+  close_lost: 'mark_lost',
 };
 
 /** The button an instruction points at, or a safe one if the action is unknown.
@@ -163,6 +171,7 @@ export function buttonsFor(deal: { action: string; allowedActions: string[] }): 
     'draft_follow_up_email' as CockpitAction,
     'compare_comps' as CockpitAction,
     'move_stage' as CockpitAction,
+    'mark_lost' as CockpitAction,
     'book_followup' as CockpitAction,
     'add_note' as CockpitAction,
   ])];
@@ -176,6 +185,9 @@ export function confirmSentence(
 ): string {
   const where = deal.address ?? 'this property';
   const who = deal.contactName ?? 'the branch';
+  if (action === 'mark_lost') {
+    return `Move ${where} to Not interested and close the card.`;
+  }
   switch (COCKPIT_ACTIONS[action].kind) {
     case 'call':
       return `Ring ${who}${deal.branchPhone ? ` on ${deal.branchPhone}` : ''} about ${where}.`;
