@@ -15,6 +15,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   decideRedial, redialModeFromArgv, SPOKE_TO_A_HUMAN, NOBODY_ANSWERED, REDIAL_MIN_GAP_HOURS,
+  VOICEMAIL_DAILY_ATTEMPTS,
+  VOICEMAIL_WEEKLY_GAP_HOURS,
+  voicemailGapHours
 } from '../scripts/lib/redial-policy.mjs'
 
 const root = resolve(__dirname, '..')
@@ -192,5 +195,63 @@ describe('the assign script actually applies the policy', () => {
     expect(start).toBeGreaterThan(0)
     expect(end).toBeGreaterThan(start)
     expect(src.slice(start, end)).not.toMatch(/wk_dialer_queue/)
+  })
+})
+
+describe('the voicemail cadence: three daily tries, then weekly', () => {
+  // Hugo, 2026-08-16: "voicemail should go to the end of the calling list,
+  // every day for maybe three days, and then again back in one week."
+  //
+  // The point is not to give up on a silent office, it is to stop one eating a
+  // slot every single day forever while offices nobody has tried wait behind
+  // it. Before this, `--redial-unanswered` retried on a flat 20 hours however
+  // many times it had already failed.
+  const H = 3600000
+  const now = Date.now()
+  const tryAt = (attempts, hoursAgo) => decideRedial({
+    lastCallAt: new Date(now - hoursAgo * H).toISOString(),
+    lastOutcome: 'Voicemail',
+    mode: 'unanswered',
+    nowMs: now,
+    unansweredAttempts: attempts,
+  })
+
+  it('waits the ordinary gap for the first three tries', () => {
+    expect(tryAt(1, 10).queue).toBe(false)
+    expect(tryAt(1, 22).queue).toBe(true)
+    expect(tryAt(2, 22).queue).toBe(true)
+  })
+
+  it('drops to weekly once three tries have gone unanswered', () => {
+    expect(tryAt(3, 22).queue).toBe(false)
+    expect(tryAt(3, 22).reason).toContain('weekly')
+    expect(tryAt(3, 24 * 8).queue).toBe(true)
+  })
+
+  it('stays weekly however many times it has failed', () => {
+    expect(tryAt(9, 24 * 3).queue).toBe(false)
+    expect(tryAt(9, 24 * 8).queue).toBe(true)
+  })
+
+  it('says how many silent tries there have been, so the queue log reads', () => {
+    expect(tryAt(2, 30).reason).toContain('2 silent')
+  })
+
+  it('leaves a branch that ANSWERED alone, whatever the count', () => {
+    // The cadence is about silence. An office that gave a real answer is held
+    // by the two-week cooldown, not by this.
+    const spoke = decideRedial({
+      lastCallAt: new Date(now - 30 * H).toISOString(),
+      lastOutcome: 'Discovery done, evaluating',
+      mode: 'unanswered', nowMs: now, unansweredAttempts: 0,
+    })
+    expect(spoke.queue).toBe(false)
+  })
+
+  it('holds the numbers Hugo asked for', () => {
+    expect(VOICEMAIL_DAILY_ATTEMPTS).toBe(3)
+    expect(VOICEMAIL_WEEKLY_GAP_HOURS).toBe(7 * 24)
+    expect(voicemailGapHours(0)).toBe(REDIAL_MIN_GAP_HOURS)
+    expect(voicemailGapHours(3)).toBe(VOICEMAIL_WEEKLY_GAP_HOURS)
   })
 })

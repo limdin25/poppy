@@ -84,6 +84,51 @@ export interface CockpitListResponse {
   managerEnabled: boolean;
   generatedAt: string;
   deals: CockpitDeal[];
+  /** What was deliberately kept OUT, and why, so nobody wonders where the
+   *  other hundred and forty cards went. */
+  setAside: {
+    calling_list: number; never_spoke: number;
+    closed_door: number; finished: number;
+  };
+}
+
+/** One thing that happened on a deal: a call with its recording, an email
+ *  either way, a button pressed, or the machine's own reasoning. */
+export interface TimelineEntry {
+  id: string;
+  at: string;
+  kind: 'call' | 'email_in' | 'email_out' | 'sms_in' | 'sms_out'
+    | 'assessment' | 'fallback_refused'
+    | 'action_executed' | 'action_blocked' | 'human_note';
+  title: string;
+  body: string | null;
+  durationSec?: number | null;
+  outcome?: string | null;
+  recordingUrl?: string | null;
+  transcript?: Array<{ speaker: string; body: string }> | null;
+  subject?: string | null;
+  attention?: number | null;
+  action?: string | null;
+  who?: Who | null;
+  flags?: string[];
+  evidence?: string[];
+  refusedReason?: string | null;
+  checks?: StressCheck[] | null;
+  blocked?: boolean;
+  source?: string | null;
+}
+
+export interface CalendarItem {
+  id: string;
+  kind: 'followup' | 'viewing';
+  at: string;
+  overdue: boolean;
+  title: string;
+  note: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  propertyId: string | null;
+  address: string | null;
 }
 
 export interface DealLogEntry {
@@ -111,6 +156,11 @@ export interface CockpitDealResponse {
   generatedAt: string;
   deal: CockpitDeal;
   log: DealLogEntry[];
+  /** The whole file: calls with recordings, emails, presses, reasoning. */
+  timeline: TimelineEntry[];
+  /** Every stage a human may move this card to. The server is the authority;
+   *  the client holds no copy of the board. */
+  stages: Array<{ id: string; name: string; sort_order: number }>;
   reports: Record<string, StressReport>;
   allowedActions: string[];
   actions: Array<{ action: string; label: string; executedBy: 'server' | 'client' | 'none' }>;

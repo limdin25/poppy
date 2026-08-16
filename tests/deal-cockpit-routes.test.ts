@@ -23,6 +23,7 @@ const BRAIN = read('api/lib/deal-brain.ts');
 const COCKPIT = read('api/crm/cockpit.ts');
 const RUN = read('api/lib/deal-manager-run.ts');
 const SWEEP = read('api/cron/deal-sweep.ts');
+const ACTION = read('api/crm/cockpit-action.ts');
 const COCKPIT_FILES = { COCKPIT, RUN, SWEEP };
 
 describe('the call history bug, pinned', () => {
@@ -58,23 +59,39 @@ describe('the call history bug, pinned', () => {
   });
 });
 
-describe('THE AI NEVER MOVES A CARD', () => {
-  // AI_DEAL_MANAGER_PLAN guardrail 2: "The Manager's route has no code path
-  // that touches pipeline_column_id. Stage moves stay with the outcome route
-  // and human drags. stage_mismatch is a flag for Hugo, never a correction."
+describe('THE MACHINE NEVER MOVES A CARD', () => {
+  // AI_DEAL_MANAGER_PLAN guardrail 2, read precisely. The rule was never "no
+  // card ever moves from the cockpit", it was that the AI decides attention and
+  // words while code and humans decide money and moves. Hugo, 2026-08-16: "if
+  // the action needed is to move pipeline we can do from the cockpit."
   //
-  // Hugo asked for "a seamless pipeline that moves automatically as we
-  // execute", and it does: the button calls the route that already moves the
-  // card. What must never happen is the machine moving one on its own.
+  // So there is exactly ONE pipeline write here, it is `move_stage`, and it can
+  // only be reached by a human pressing a button and picking a stage.
 
-  for (const [name, src] of Object.entries(COCKPIT_FILES)) {
-    it(`${name} never writes a pipeline column`, () => {
-      expect(src).not.toMatch(/pipeline_column_id[\s\S]{0,80}?\.update\(/);
-      expect(src).not.toMatch(/\.update\([\s\S]{0,120}?pipeline_column_id/);
-    });
-  }
+  it('the read-only route and the sweep write no column at all', () => {
+    for (const src of [COCKPIT, RUN, SWEEP]) {
+      expect(src).not.toMatch(/pipeline_column_id/);
+    }
+  });
 
-  it('leaves the one place cards do move exactly where it was', () => {
+  it('the action route writes a column in exactly one place, and it is move_stage', () => {
+    // Exactly one mention in the whole file, and it is the update itself.
+    const writes = ACTION.match(/pipeline_column_id/g) ?? [];
+    expect(writes.length).toBe(1);
+    const moveCase = ACTION.match(/case 'move_stage': \{[\s\S]*?break;\n      \}/)?.[0] ?? '';
+    expect(moveCase).toMatch(/pipeline_column_id: body\.columnId/);
+    // It refuses rather than guessing when the human has not picked one.
+    expect(moveCase).toMatch(/refused: 'no_stage'/);
+  });
+
+  it('no assessment can reach it: the AI has no move_stage to choose', () => {
+    // The contract is the closed list of what the model may pick. move_stage is
+    // deliberately not in it, so the only route to a pipeline write is a press.
+    const contract = read('api/lib/deal-manager-contract.ts');
+    expect(contract).not.toMatch(/move_stage/);
+  });
+
+  it('leaves the one place cards move on an outcome exactly where it was', () => {
     const outcome = read('api/crm/property-outcome.ts');
     expect(outcome).toMatch(/pipeline_column_id/);
   });

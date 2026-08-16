@@ -29,13 +29,16 @@ import type { CockpitDeal, StressReport } from './types';
 interface Props {
   deal: CockpitDeal;
   action: CockpitAction;
+  /** Every stage a human may move this card to. From the server: the client
+   *  holds no copy of the board. */
+  stages: Array<{ id: string; name: string }>;
   onCancel: () => void;
   onCommitted: () => void;
   /** Opens the CRM's one call room over the cockpit and dials. */
   onCall: (contactId: string) => void;
 }
 
-export default function ActionConfirmDialog({ deal, action, onCancel, onCommitted, onCall }: Props) {
+export default function ActionConfirmDialog({ deal, action, stages, onCancel, onCommitted, onCall }: Props) {
   const spec = COCKPIT_ACTIONS[action];
   const { run } = useCockpitAction();
 
@@ -49,6 +52,7 @@ export default function ActionConfirmDialog({ deal, action, onCancel, onCommitte
   const [body, setBody] = useState('');
   const [note, setNote] = useState('');
   const [dueAt, setDueAt] = useState('');
+  const [columnId, setColumnId] = useState('');
   // So a draft that lands late never overwrites what somebody has started
   // typing. Same rule PropertyEmailPane already keeps.
   const touched = useRef(false);
@@ -104,7 +108,9 @@ export default function ActionConfirmDialog({ deal, action, onCancel, onCommitte
   const blocked = report ? !report.ok : false;
   const firstBlock = report?.checks.find((c) => c.level === 'block') ?? null;
   const warned = (report?.warned.length ?? 0) > 0;
-  const canCommit = !checking && !committing && !blocked && (!warned || acknowledged);
+  const needsStage = action === 'move_stage' && !columnId;
+  const canCommit = !checking && !committing && !blocked && !needsStage
+    && (!warned || acknowledged);
 
   const commit = useCallback(async () => {
     setCommitting(true);
@@ -118,6 +124,7 @@ export default function ActionConfirmDialog({ deal, action, onCancel, onCommitte
         ...(isEmail ? { draft: { subject, body, kind: spec.draftKind } } : {}),
         ...(note ? { note } : {}),
         ...(dueAt ? { dueAt } : {}),
+        ...(columnId ? { columnId } : {}),
       });
 
       // A refusal is HTTP 200. It is the gate working, not an error.
@@ -153,7 +160,7 @@ export default function ActionConfirmDialog({ deal, action, onCancel, onCommitte
     } finally {
       setCommitting(false);
     }
-  }, [run, deal.propertyId, deal.contactId, action, isEmail, subject, body, note, dueAt, spec.draftKind, onCommitted, onCall]);
+  }, [run, deal.propertyId, deal.contactId, action, isEmail, subject, body, note, dueAt, columnId, spec.draftKind, onCommitted, onCall]);
 
   // Escape cancels. The commit button never takes autofocus.
   useEffect(() => {
@@ -232,6 +239,30 @@ export default function ActionConfirmDialog({ deal, action, onCancel, onCommitte
                 />
               </label>
             </div>
+          )}
+
+          {/* MOVING A CARD, BY HAND. The stages come from the server, and the
+              one it is in now is marked so nobody moves it to where it
+              already is. */}
+          {action === 'move_stage' && (
+            <label className="block">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">
+                Move it to
+              </span>
+              <select
+                value={columnId}
+                onChange={(e) => setColumnId(e.target.value)}
+                data-testid="cockpit-stage-picker"
+                className="mt-0.5 w-full rounded-md border border-border bg-white px-2 py-1.5 text-[12px] text-ink"
+              >
+                <option value="">Pick a stage</option>
+                {stages.map((s) => (
+                  <option key={s.id} value={s.id} disabled={s.name === deal.column}>
+                    {s.name}{s.name === deal.column ? ' (it is here now)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
 
           {action === 'book_followup' && (

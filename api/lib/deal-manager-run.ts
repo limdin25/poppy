@@ -40,6 +40,7 @@ import { buildDealState, type DealState, type DealStateInput } from './deal-stat
 import { baselineAttention, deterministicFlags, fallbackVerdict } from './deal-manager-contract.js';
 import { matchBuildersForOutcode, type BuilderRow } from './builder-match.js';
 import { outcodeOf } from './brrr-deal-facts.js';
+import { isCockpitDeal } from './cockpit-filter.js';
 
 /** Why an assessment ran. Mirrors the CHECK on wk_deal_manager_log.trigger. */
 export type Trigger =
@@ -626,7 +627,12 @@ export async function sweep(
     return { ...base, capped: true };
   }
 
-  const bundles = await loadCockpitStates(sb, { limit: 400, now: args.now });
+  // ONLY DEALS. A branch nobody has reached is a phone number for the dialer,
+  // and paying a model to write an instruction about it is paying to be told
+  // "ring them", which the calling list already knows. On the live board this
+  // is the difference between assessing 179 and assessing 35.
+  const all = await loadCockpitStates(sb, { limit: 400, now: args.now });
+  const bundles = all.filter((b) => isCockpitDeal(b.state).inCockpit);
   base.considered = bundles.length;
 
   const priorities = await latestAssessments(sb, bundles.map((b) => b.state.propertyId));

@@ -16,14 +16,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, Gauge, PanelRightOpen, ListChecks } from 'lucide-react';
+import { RefreshCw, Gauge, History, ListChecks, CalendarDays } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { useIsMobile } from '@/core/hooks/useMediaQuery';
-import { useCockpitDeals, useCockpitDeal } from '../hooks/useCockpit';
+import { useCockpitDeals, useCockpitDeal, useCockpitCalendar } from '../hooks/useCockpit';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import CockpitQueue from '../components/cockpit/CockpitQueue';
 import CockpitCommandPanel from '../components/cockpit/CockpitCommandPanel';
-import CockpitLogColumn from '../components/cockpit/CockpitLogColumn';
+import CockpitTimeline from '../components/cockpit/CockpitTimeline';
+import CockpitCalendar from '../components/cockpit/CockpitCalendar';
 import ActionConfirmDialog from '../components/cockpit/ActionConfirmDialog';
 import { COCKPIT_ACTIONS, type CockpitAction } from '../components/cockpit/cockpitActions';
 import { NOTHING_WAITING, BRAIN_OFF_NOTE, BRAIN_ON_NOTE } from '../lib/dealDay';
@@ -34,12 +35,13 @@ export default function DealCockpitPage() {
   const isMobile = useIsMobile();
   const { openDialerPro } = useDialerProModal();
 
-  const { deals, managerEnabled, generatedAt, loading, error, reload } = useCockpitDeals();
+  const { deals, setAside, managerEnabled, generatedAt, loading, error, reload } = useCockpitDeals();
   const { data: detail, loading: detailLoading, reload: reloadDetail } = useCockpitDeal(selectedId);
+  const calendar = useCockpitCalendar(30);
 
   const [pending, setPending] = useState<CockpitAction | null>(null);
   // md to xl, where the history shares the centre column with the deal.
-  const [tab, setTab] = useState<'deal' | 'history'>('deal');
+  const [tab, setTab] = useState<'deal' | 'history' | 'calendar'>('deal');
 
   const select = useCallback((propertyId: string | null) => {
     setParams((p) => {
@@ -81,7 +83,6 @@ export default function DealCockpitPage() {
   }, [reload, reloadDetail, ordered, selectedId, select]);
 
   const deal = detail?.deal ?? null;
-  const showLogTab = tab === 'history';
 
   const columnShell = 'flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-soft';
   const columnHeader = 'flex flex-shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2.5';
@@ -151,16 +152,37 @@ export default function DealCockpitPage() {
               <CockpitQueue deals={ordered} selectedId={selectedId} onSelect={select} />
             )}
           </div>
+
+          {/* WHAT IS NOT HERE, AND WHY. The cockpit is where a conversation is
+              waiting on a decision; a branch nobody has reached is a phone
+              number for the dialer. Saying so out loud beats silently dropping
+              four cards in five and leaving somebody to wonder. */}
+          {setAside && (setAside.calling_list + setAside.never_spoke + setAside.closed_door) > 0 && (
+            <div className="flex-shrink-0 border-t border-border px-3 py-2 text-[10px] leading-snug text-ink-subtle">
+              Not shown:{' '}
+              {[
+                setAside.calling_list + setAside.never_spoke > 0
+                  && `${setAside.calling_list + setAside.never_spoke} waiting to be rung`,
+                setAside.closed_door > 0 && `${setAside.closed_door} said no`,
+                setAside.finished > 0 && `${setAside.finished} done`,
+              ].filter(Boolean).join(', ')}
+              . Those live in the calling list.
+            </div>
+          )}
         </section>
 
         {/* ---- the deal, and on md the history behind a tab ---- */}
         <section
-          className={cn(columnShell, isMobile && !selectedId && 'hidden')}
+          className={cn(columnShell, isMobile && !selectedId && tab !== 'calendar' && 'hidden')}
           data-testid="cockpit-centre"
         >
           <div className={columnHeader}>
-            <div className="flex items-center gap-1.5 xl:hidden" data-testid="cockpit-view-tabs">
-              {([['deal', 'Do it', ListChecks], ['history', 'History', PanelRightOpen]] as const).map(([k, label, Icon]) => (
+            <div className="flex items-center gap-1.5" data-testid="cockpit-view-tabs">
+              {([
+                ['deal', 'Do it', ListChecks],
+                ['history', 'History', History],
+                ['calendar', 'Calendar', CalendarDays],
+              ] as const).map(([k, label, Icon]) => (
                 <button
                   key={k}
                   type="button"
@@ -174,8 +196,8 @@ export default function DealCockpitPage() {
                 </button>
               ))}
             </div>
-            <span className="hidden text-[13px] font-semibold text-ink xl:inline">The deal</span>
-            {isMobile && selectedId && (
+
+            {isMobile && (selectedId || tab === 'calendar') && (
               <button
                 type="button"
                 onClick={() => select(null)}
@@ -187,7 +209,16 @@ export default function DealCockpitPage() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-hidden">
-            {!selectedId ? (
+            {tab === 'calendar' ? (
+              <div className="h-full overflow-y-auto">
+                <CockpitCalendar
+                  items={calendar.items}
+                  overdue={calendar.overdue}
+                  loading={calendar.loading}
+                  onOpen={(id) => { select(id); }}
+                />
+              </div>
+            ) : !selectedId ? (
               <p className="px-4 py-8 text-center text-[12px] text-ink-subtle">
                 Pick a deal on the left.
               </p>
@@ -201,9 +232,9 @@ export default function DealCockpitPage() {
               <p className="px-4 py-8 text-center text-[12px] text-ink-subtle">
                 That deal could not be opened.
               </p>
-            ) : showLogTab ? (
-              <div className="h-full overflow-y-auto xl:hidden">
-                <CockpitLogColumn log={detail?.log ?? []} loading={detailLoading} />
+            ) : tab === 'history' ? (
+              <div className="h-full overflow-y-auto">
+                <CockpitTimeline entries={detail?.timeline ?? []} loading={detailLoading} />
               </div>
             ) : (
               <CockpitCommandPanel
@@ -225,12 +256,12 @@ export default function DealCockpitPage() {
           <div className={columnHeader}>
             <span className="text-[13px] font-semibold text-ink">History</span>
             <span className="text-[11px] text-ink-subtle">
-              {detail?.log.length ?? 0}
+              {detail?.timeline.length ?? 0}
             </span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {selectedId ? (
-              <CockpitLogColumn log={detail?.log ?? []} loading={detailLoading} />
+              <CockpitTimeline entries={detail?.timeline ?? []} loading={detailLoading} />
             ) : (
               <p className="px-4 py-8 text-center text-[12px] text-ink-subtle">
                 The history of whichever deal you pick, and why every move was made.
@@ -244,6 +275,7 @@ export default function DealCockpitPage() {
         <ActionConfirmDialog
           deal={deal}
           action={pending}
+          stages={detail?.stages ?? []}
           onCancel={() => setPending(null)}
           onCommitted={afterCommit}
           onCall={(contactId) => openDialerPro(contactId, { scriptKey: 'property_call', autoDial: true })}

@@ -42,7 +42,7 @@ import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { phoneTail9, groupByBranch, headlineProperty } from './lib/property-branches.mjs'
-import { decideRedial, redialModeFromArgv, REDIAL_MIN_GAP_HOURS } from './lib/redial-policy.mjs'
+import { decideRedial, redialModeFromArgv, REDIAL_MIN_GAP_HOURS, NOBODY_ANSWERED } from './lib/redial-policy.mjs'
 import { meetsEvidenceStandard, belowStandardByTier } from './lib/evidence-standard.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -296,13 +296,28 @@ async function callHistoryByPhone(phones) {
     calls.push(...(data ?? []))
   }
   // Ordered newest first, so the first row seen for a contact is its last call.
+  //
+  // The SILENT TRIES are counted across every call to the branch, not just the
+  // last one, because that is what the voicemail cadence runs on: three daily
+  // attempts and then weekly. An office rung five times without ever answering
+  // must not keep a daily slot in front of offices nobody has tried at all.
   for (const c of calls) {
     const phone = phoneOf.get(c.contact_id)
-    if (!phone || out.has(phone)) continue
-    out.set(phone, {
-      lastCallAt: c.started_at ?? null,
-      lastOutcome: c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null,
-    })
+    if (!phone) continue
+    const outcome = c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null
+    const existing = out.get(phone)
+    // A call with no outcome pressed counts as unanswered: nothing says
+    // otherwise, and that is the same reading decideRedial already takes.
+    const silent = !outcome || NOBODY_ANSWERED.has(outcome)
+    if (!existing) {
+      out.set(phone, {
+        lastCallAt: c.started_at ?? null,
+        lastOutcome: outcome,
+        unansweredAttempts: silent ? 1 : 0,
+      })
+    } else if (silent) {
+      existing.unansweredAttempts += 1
+    }
   }
   return out
 }

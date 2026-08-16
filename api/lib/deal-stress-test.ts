@@ -55,6 +55,8 @@ export const COCKPIT_ACTIONS = [
   'book_builder',
   'book_followup',
   'compare_comps',
+  'move_stage',
+  'fetch_ballpark',
   'assemble_investor_pack',
   'escalate_hugo',
   'add_note',
@@ -81,6 +83,12 @@ export const ACTION_EXECUTION: Record<CockpitAction, { by: 'server' | 'client' |
   book_builder: { by: 'server', via: 'brrr_properties.assigned_builder_id + viewing_at' },
   book_followup: { by: 'server', via: 'wk_contact_followups insert' },
   compare_comps: { by: 'none', via: 'a reveal in the cockpit, nothing leaves' },
+  // A HUMAN moving a card, from the cockpit instead of by dragging it on the
+  // board. The machine still never moves one: this only ever runs behind a
+  // press, and the AI has no path to it. Hugo, 2026-08-16: "if the action
+  // needed is to move pipeline we can do from the cockpit."
+  move_stage: { by: 'server', via: 'wk_contacts.pipeline_column_id, the same write the board makes' },
+  fetch_ballpark: { by: 'server', via: 'POST /api/crm/fetch-ballpark' },
   assemble_investor_pack: { by: 'server', via: 'the completeness gate, then a notification' },
   escalate_hugo: { by: 'server', via: 'wk_notifications insert, drained by notify-drain' },
   add_note: { by: 'server', via: 'a human_note row on the log' },
@@ -98,6 +106,8 @@ export const ACTION_LABEL: Record<CockpitAction, string> = {
   book_builder: 'Book the builder',
   book_followup: 'Book the follow up',
   compare_comps: 'Show the comparisons',
+  move_stage: 'Move the stage',
+  fetch_ballpark: 'Fetch the ballpark',
   assemble_investor_pack: 'Check the investor pack',
   escalate_hugo: 'Send it to Hugo',
   add_note: 'Write a note',
@@ -536,6 +546,41 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
       if (state.followups.nextDueAt) {
         out.push(warn('not_double_booked', 'There is already a follow up on this branch',
           `One is due at ${state.followups.nextDueAt}.`, ['followups.nextDueAt']));
+      }
+      break;
+    }
+
+    // ---- moving a card, by hand ------------------------------------------
+    case 'move_stage': {
+      if (!state.board.column) {
+        out.push(warn('no_column_yet', 'This card has no column at all',
+          'Moving it will give it one for the first time.', ['board.column']));
+      }
+      // A stage is a claim about where the deal has got to, and the money
+      // stages are claims the file has to support. Warn, never block: the
+      // human moving it can see something the file does not know yet, and that
+      // is exactly when somebody moves a card by hand.
+      if (state.calls.connected === 0) {
+        out.push(warn('moving_an_unspoken_deal', 'Nobody has actually spoken to this branch',
+          'There is no connected call on file, so any stage past discovery is a guess.',
+          ['calls.connected']));
+      }
+      break;
+    }
+
+    // ---- asking the engine to price the work -----------------------------
+    case 'fetch_ballpark': {
+      const missing = state.checklist.missing.filter((k) =>
+        k === 'condition_notes' || k === 'condition_band' || k === 'water');
+      if (missing.length) {
+        out.push(warn('ballpark_needs_condition', 'The condition answers are not all on file',
+          `The engine prices the works from what the branch said. Still missing: ${inWords(missing)}.`,
+          ['checklist.missing']));
+      }
+      if (state.calls.connected === 0) {
+        out.push(block('ballpark_needs_a_call', 'Nobody has spoken to this branch yet',
+          'The ballpark is priced off what the branch said on the phone, and no call has connected.',
+          ['calls.connected']));
       }
       break;
     }

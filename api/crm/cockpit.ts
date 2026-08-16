@@ -22,6 +22,8 @@ import { createClient } from '@supabase/supabase-js';
 import { baselineAttention, deterministicFlags, fallbackVerdict, allowedActions } from '../lib/deal-manager-contract.js';
 import { stateHash, loadCockpitStates, latestAssessments, dealLog, type LogRow } from '../lib/deal-manager-run.js';
 import { stressAll, COCKPIT_ACTIONS, ACTION_LABEL, ACTION_EXECUTION } from '../lib/deal-stress-test.js';
+import { isCockpitDeal } from '../lib/cockpit-filter.js';
+import { buildDealTimeline } from '../lib/deal-timeline.js';
 
 export const config = { runtime: 'edge' };
 
@@ -88,12 +90,29 @@ export default async function handler(req: Request): Promise<Response> {
       now,
     });
 
+    // THE WHOLE FILE, not just what the machine thought. The log rows come
+    // through the CALLER's client so RLS keeps Hugo's escalation lane off
+    // Pedro's screen; the calls and recordings need the service role to sign.
+    // That split is deliberate and it lives here rather than inside the merge.
+    const timeline = await buildDealTimeline(supabase, {
+      contactId: bundle.contactId,
+      log,
+    });
+
+    // Every stage a human may move this card to, named by the server so the
+    // client never holds a copy of the board.
+    const { data: cols } = await (supabase.from('wk_pipeline_columns') as unknown as {
+      select: (c: string) => { order: (c: string) => Promise<{ data: Array<{ id: string; name: string; sort_order: number }> | null }> };
+    }).select('id, name, sort_order').order('sort_order');
+
     return Response.json({
       managerEnabled: on,
       generatedAt: now.toISOString(),
       deal: shapeDeal(bundle, latest.get(propertyId) ?? null, now),
       state: bundle.state,
       log: log.map(shapeLogEntry),
+      timeline,
+      stages: (cols ?? []).filter((c) => PROPERTY_STAGES.includes(c.name)),
       reports,
       allowedActions: allowedActions(bundle.state.board.column),
       actions: COCKPIT_ACTIONS.map((a) => ({
@@ -108,18 +127,46 @@ export default async function handler(req: Request): Promise<Response> {
   const bundles = await loadCockpitStates(supabase, { limit: 400, now });
   const latest = await latestAssessments(caller, bundles.map((b) => b.state.propertyId));
 
-  const deals = bundles
+  // THE COCKPIT IS WHERE A CONVERSATION IS WAITING ON A DECISION.
+  //
+  // Everything else is a phone number waiting to be rung, and that is the
+  // dialer's job on the cadence in scripts/lib/redial-policy.mjs. Measured on
+  // the live board the day this filter was written: of 179 properties reaching
+  // this route, 144 were a dial nobody answered and 35 were a real deal. See
+  // api/lib/cockpit-filter.ts for the whole count.
+  const kept: typeof bundles = [];
+  const setAside = { calling_list: 0, never_spoke: 0, closed_door: 0, finished: 0 };
+  for (const b of bundles) {
+    const decision = isCockpitDeal(b.state);
+    if (decision.inCockpit) kept.push(b);
+    else if (decision.why in setAside) setAside[decision.why as keyof typeof setAside] += 1;
+  }
+
+  const deals = kept
     .map((bundle) => shapeDeal(bundle, latest.get(bundle.state.propertyId) ?? null, now))
-    // A deal nobody needs to do anything about is not somebody's day. The
-    // threshold is the same one TodayPanel already uses.
-    .filter((d) => d.attention > 10 || d.flags.length)
     .sort((a, b) => b.attention - a.attention
       || (b.hoursSinceTouch ?? 0) - (a.hoursSinceTouch ?? 0)
-      || String(a.address).localeCompare(String(b.address)))
-    .slice(0, 60);
+      || String(a.address).localeCompare(String(b.address)));
 
-  return Response.json({ managerEnabled: on, generatedAt: now.toISOString(), deals });
+  return Response.json({
+    managerEnabled: on,
+    generatedAt: now.toISOString(),
+    deals,
+    // Said out loud rather than silently dropped, so nobody has to wonder where
+    // the other hundred and forty went.
+    setAside,
+  });
 }
+
+/** The board columns a property deal can actually be in. The pipeline table
+ *  also holds the VSL video funnel's columns (Rendering, Video sent, Watched
+ *  video and the rest), and offering those as somewhere to move a house would
+ *  be offering to break the board. */
+const PROPERTY_STAGES = [
+  'Booked', 'Discovery done, evaluating', 'Ready for call 2', 'Ballpark agreed',
+  'Needs viewing', 'Offer sent', 'Offer accepted', 'Sent to investor',
+  'Deal closed', 'Follow up', 'Voicemail', 'No pickup', 'Not interested', 'Nurturing',
+];
 
 // ---------------------------------------------------------------------------
 // shaping

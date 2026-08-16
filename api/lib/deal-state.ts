@@ -122,6 +122,15 @@ export interface DealState {
     lastAt: string | null;
     lastOutcome: string | null;
     hoursSinceLast: number | null;
+    /** How many of those calls were an actual CONVERSATION, as opposed to a
+     *  voicemail or a phone nobody picked up.
+     *
+     *  This is the difference between a deal and a dial. A branch rung four
+     *  times with four voicemails has no deal on it, and it belongs in the
+     *  calling list rather than in front of somebody deciding things. */
+    connected: number;
+    lastConnectedAt: string | null;
+    hoursSinceConnected: number | null;
   };
   writing: {
     lastInboundAt: string | null;
@@ -165,6 +174,22 @@ export interface DealState {
     /** Nothing has happened for long enough that the silence IS the problem. */
     stale: boolean;
   };
+}
+
+/** The board columns that mean NOBODY ACTUALLY SPOKE. A call dispositioned
+ *  into one of these is a dial, not a conversation. */
+export const NO_CONVERSATION_COLUMNS = ['Voicemail', 'No pickup', 'Not interested'];
+
+/** Did this call reach a human?
+ *
+ *  The disposition is the honest answer where there is one, because it is what
+ *  the agent said happened after the call ended. Where a call was never
+ *  dispositioned, a minute of talking is taken as a conversation: nobody
+ *  listens to a voicemail greeting for sixty seconds. */
+function isConnectedCall(k: { disposition?: string | null; duration_sec?: number | null }): boolean {
+  const d = (k.disposition ?? '').trim();
+  if (d) return !NO_CONVERSATION_COLUMNS.includes(d);
+  return (k.duration_sec ?? 0) >= 60;
 }
 
 /** How long a deal may sit with nobody touching it before it is stale.
@@ -235,6 +260,8 @@ export function buildDealState(input: DealStateInput): DealState {
     (a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')),
   );
   const lastCall = calls[0] ?? null;
+  const connectedCalls = calls.filter(isConnectedCall);
+  const lastConnected = connectedCalls[0] ?? null;
 
   // ---- writing --------------------------------------------------------
   const messages = [...(input.messages ?? [])].sort(
@@ -302,6 +329,9 @@ export function buildDealState(input: DealStateInput): DealState {
       lastAt: lastCall?.created_at ?? null,
       lastOutcome: lastCall?.disposition ?? null,
       hoursSinceLast: hoursBetween(lastCall?.created_at, now),
+      connected: connectedCalls.length,
+      lastConnectedAt: lastConnected?.created_at ?? null,
+      hoursSinceConnected: hoursBetween(lastConnected?.created_at, now),
     },
     writing: {
       lastInboundAt: lastInbound?.created_at ?? null,

@@ -9,9 +9,17 @@
 // THE TWO RULES, ENFORCED STRUCTURALLY (tests/deal-cockpit-routes.test.ts)
 // ---------------------------------------------------------------------------
 //
-//   THIS FILE NEVER WRITES A PIPELINE COLUMN. Cards move because
-//   api/crm/property-outcome.ts moves them when a human presses an outcome,
-//   exactly as they did before any of this existed.
+//   THE MACHINE NEVER MOVES A CARD. There is no path from an assessment to a
+//   pipeline write: the only one that exists is `move_stage`, which runs behind
+//   a human press, through the gate, with the stage that human picked. It is
+//   the same column write the board makes when you drag a card, so the two can
+//   never disagree. Everything else that moves a card still moves it through
+//   api/crm/property-outcome.ts, exactly as before.
+//
+//   Hugo, 2026-08-16: "if the action needed is to move pipeline we can do from
+//   the cockpit." The rule was never "no card ever moves from here", it was
+//   "the AI decides attention and words, code and humans decide money and
+//   moves".
 //
 //   THIS FILE NEVER SENDS ANYTHING. A call is placed by the browser's Twilio
 //   device and an email by the wk-email-send edge function. For those two the
@@ -49,6 +57,8 @@ interface Body {
   dueAt?: string;
   note?: string;
   builderId?: string;
+  /** For move_stage: the wk_pipeline_columns row the human picked. */
+  columnId?: string;
   counter?: { theirFigure?: number | null; currentOffer?: number | null };
   outcome?: { ok: boolean; ref?: string; error?: string };
   requestId?: string;
@@ -267,6 +277,50 @@ export default async function handler(req: Request): Promise<Response> {
           status: 'pending',
         });
         result = { dueAt: body.dueAt };
+        break;
+      }
+
+      // ---- A HUMAN moving a card, from here instead of the board ---------
+      //
+      // THE RULE STILL HOLDS. The machine never moves a card: there is no path
+      // from an assessment to this line, only from a press, through the gate,
+      // with the stage the human picked. It writes the same column the board
+      // writes when you drag one, so the two cannot disagree.
+      case 'move_stage': {
+        if (!body.columnId) {
+          return Response.json({
+            ok: false, report, refused: 'no_stage',
+            detail: 'Pick which stage it moves to.',
+          });
+        }
+        if (!bundle.contactId) {
+          return Response.json({
+            ok: false, report, refused: 'no_contact',
+            detail: 'This house has no branch record to move.',
+          });
+        }
+        await (supabase.from('wk_contacts') as unknown as {
+          update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => Promise<unknown> };
+        }).update({ pipeline_column_id: body.columnId }).eq('id', bundle.contactId);
+        result = { from: state.board.column, toColumnId: body.columnId };
+        break;
+      }
+
+      case 'fetch_ballpark': {
+        const origin = new URL(req.url).origin;
+        const res = await fetch(`${origin}/api/crm/fetch-ballpark`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+          body: JSON.stringify({ propertyId: state.propertyId, apply: true }),
+        });
+        const json = await res.json().catch(() => ({})) as Record<string, unknown>;
+        if (!res.ok) {
+          return Response.json({
+            ok: false, report, refused: 'ballpark_failed',
+            detail: String(json.error ?? 'The engine could not price this one.'),
+          });
+        }
+        result = json;
         break;
       }
 

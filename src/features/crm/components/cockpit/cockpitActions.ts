@@ -21,6 +21,7 @@
 import {
   Phone, Mail, FileText, HardHat, CalendarClock, Scale, PackageCheck,
   AlertTriangle, StickyNote, PauseCircle, MessageSquareReply, Send,
+  MoveRight, Calculator,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -36,6 +37,8 @@ export type CockpitAction =
   | 'book_builder'
   | 'book_followup'
   | 'compare_comps'
+  | 'move_stage'
+  | 'fetch_ballpark'
   | 'assemble_investor_pack'
   | 'escalate_hugo'
   | 'add_note'
@@ -46,7 +49,7 @@ export type CockpitAction =
  *   email  a draft is fetched, edited, then sent by the browser
  *   server one POST, done
  *   reveal nothing leaves the building, it just expands */
-export type ActionKind = 'call' | 'email' | 'server' | 'reveal';
+export type ActionKind = 'call' | 'email' | 'server' | 'reveal' | 'stage';
 
 export interface ActionSpec {
   label: string;
@@ -84,6 +87,8 @@ export const COCKPIT_ACTIONS: Record<CockpitAction, ActionSpec> = {
   book_builder: { label: 'Book the builder', kind: 'server', icon: HardHat, commitVerb: 'Book them' },
   book_followup: { label: 'Book the follow up', kind: 'server', icon: CalendarClock, commitVerb: 'Book it' },
   compare_comps: { label: 'Comparisons', kind: 'reveal', icon: Scale, commitVerb: 'Show them' },
+  move_stage: { label: 'Move the stage', kind: 'stage', icon: MoveRight, commitVerb: 'Move it' },
+  fetch_ballpark: { label: 'Fetch the ballpark', kind: 'server', icon: Calculator, commitVerb: 'Price it' },
   assemble_investor_pack: {
     label: 'Check the investor pack', kind: 'server', icon: PackageCheck, commitVerb: 'Check it',
   },
@@ -140,7 +145,16 @@ export function buttonsFor(deal: { action: string; allowedActions: string[] }): 
   const rest = deal.allowedActions
     .map(primaryButtonFor)
     .filter((a) => a !== primary);
-  return [...new Set([primary, ...rest, 'compare_comps' as CockpitAction, 'add_note' as CockpitAction])];
+  // Comparisons, moving the stage and writing a note are always on offer.
+  // Hugo, 2026-08-16: "the cockpit is a place where I don't even have to leave
+  // from there." A button that is only there when the AI happens to suggest it
+  // is a button somebody has to go and find somewhere else.
+  return [...new Set([
+    primary, ...rest,
+    'compare_comps' as CockpitAction,
+    'move_stage' as CockpitAction,
+    'add_note' as CockpitAction,
+  ])];
 }
 
 /** The one sentence the gate opens with. Present tense, and it names the thing
@@ -158,6 +172,8 @@ export function confirmSentence(
       return `Send this email to ${deal.branchEmail ?? 'the branch'} about ${where}.`;
     case 'reveal':
       return `Show the sold comparables behind the valuation on ${where}.`;
+    case 'stage':
+      return `Move ${where} to a different stage on the board.`;
     default:
       return `${COCKPIT_ACTIONS[action].label} on ${where}.`;
   }

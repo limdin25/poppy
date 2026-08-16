@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import type {
-  CockpitDealResponse, CockpitListResponse, CockpitActionResponse,
+  CockpitDealResponse, CockpitListResponse, CockpitActionResponse, CalendarItem,
 } from '../components/cockpit/types';
 
 async function crmFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -51,6 +51,7 @@ export function useCockpitDeals() {
 
   return {
     deals: data?.deals ?? [],
+    setAside: data?.setAside ?? null,
     managerEnabled: Boolean(data?.managerEnabled),
     generatedAt: data?.generatedAt ?? null,
     loading, error, reload: load,
@@ -109,6 +110,7 @@ export function useCockpitAction() {
     dueAt?: string;
     note?: string;
     builderId?: string;
+    columnId?: string;
     counter?: { theirFigure?: number | null; currentOffer?: number | null };
     outcome?: { ok: boolean; ref?: string; error?: string };
     requestId?: string;
@@ -125,4 +127,33 @@ export function useCockpitAction() {
   }, []);
 
   return { run, busy };
+}
+
+
+/** Everything with a time on it, across every deal. */
+export function useCockpitCalendar(days = 30) {
+  const [items, setItems] = useState<CalendarItem[]>([]);
+  const [overdue, setOverdue] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await crmFetch<{ items: CalendarItem[]; overdue: number }>(
+        `/api/crm/cockpit-calendar?days=${days}`,
+      );
+      setItems(res.items ?? []);
+      setOverdue(res.overdue ?? 0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the calendar');
+    } finally {
+      setLoading(false);
+    }
+  }, [days]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  return { items, overdue, loading, error, reload: load };
 }

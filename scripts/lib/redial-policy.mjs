@@ -61,6 +61,25 @@ export const REDIAL_MIN_GAP_HOURS = 20
  *  offices that never picked up. */
 export const SPOKEN_BRANCH_COOLDOWN_HOURS = 14 * 24
 
+/** THE VOICEMAIL CADENCE.
+ *
+ *  Hugo, 2026-08-16: "voicemail should go to the end of the calling list, every
+ *  day for maybe three days, and then again back in one week."
+ *
+ *  So an office nobody has reached is tried on three consecutive days, and if
+ *  it is still silent after that it drops to weekly. The point is not to give
+ *  up on it, it is to stop a branch that never answers eating a slot every
+ *  single day forever while offices nobody has tried wait behind it.
+ *
+ *  Attempts are counted as calls where NOBODY ANSWERED, not calls in total. */
+export const VOICEMAIL_DAILY_ATTEMPTS = 3
+export const VOICEMAIL_WEEKLY_GAP_HOURS = 7 * 24
+
+/** How long to wait before ringing a silent office again. */
+export function voicemailGapHours(attempts = 0, minGapHours = REDIAL_MIN_GAP_HOURS) {
+  return attempts >= VOICEMAIL_DAILY_ATTEMPTS ? VOICEMAIL_WEEKLY_GAP_HOURS : minGapHours
+}
+
 /**
  * Decide whether a branch should be put on the dialer queue.
  *
@@ -85,6 +104,9 @@ export function decideRedial({
   mode = 'never',
   nowMs,
   minGapHours = REDIAL_MIN_GAP_HOURS,
+  /** How many times we have rung this branch WITHOUT reaching anybody. Drives
+   *  the voicemail cadence: daily for the first three, weekly after that. */
+  unansweredAttempts = 0,
 } = {}) {
   const called = lastCallAt ? new Date(lastCallAt).getTime() : NaN
   if (!Number.isFinite(called)) {
@@ -127,10 +149,22 @@ export function decideRedial({
   if (lastOutcome && !NOBODY_ANSWERED.has(lastOutcome)) {
     return { queue: false, back: false, reason: `they gave a real answer ${ago}${said}` }
   }
-  if (hours < minGapHours) {
-    return { queue: false, back: false, reason: `called ${ago}${said}, too soon to try again` }
+  // THE CADENCE. Three daily tries, then weekly, so a branch that never picks
+  // up cannot hold a slot in front of offices nobody has tried at all.
+  const gap = voicemailGapHours(unansweredAttempts, minGapHours)
+  if (hours < gap) {
+    const wait = gap >= VOICEMAIL_WEEKLY_GAP_HOURS ? 'on the weekly cadence now' : 'too soon to try again'
+    return {
+      queue: false,
+      back: false,
+      reason: `called ${ago}${said}, ${unansweredAttempts} silent ${unansweredAttempts === 1 ? 'try' : 'tries'}, ${wait}`,
+    }
   }
-  return { queue: true, back: true, reason: `nobody answered ${ago}${said}` }
+  return {
+    queue: true,
+    back: true,
+    reason: `nobody answered ${ago}${said} (${unansweredAttempts} silent so far)`,
+  }
 }
 
 /** The mode named by the command line. Kept here so the flag names and the
