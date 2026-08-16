@@ -132,6 +132,13 @@ const MONEY_ACTIONS: CockpitAction[] = [
   'draft_offer_email', 'draft_counter_reply', 'assemble_investor_pack',
 ];
 
+/** Where a figure has legitimately been put to this branch already, so an
+ *  email may refer to it. Before this, our numbers are homework, not an offer. */
+export const FIGURE_ALREADY_PUT_TO_THEM = [
+  'Ballpark agreed', 'Needs viewing', 'Offer sent', 'Offer accepted',
+  'Sent to investor', 'Deal closed', 'Renegotiate',
+];
+
 /** Which board columns each money action belongs to. A card in the wrong column
  *  is a live, ordinary event (that is what the `stage_mismatch` flag is for),
  *  so everything not listed here only ever warns. */
@@ -491,6 +498,31 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
     // ---- the chase ----------------------------------------------------
     case 'draft_follow_up_email': {
       needEmail();
+
+      // A CHASE BEFORE THE OFFER STAGE MAY NOT CARRY A FIGURE.
+      //
+      // Caught on the live board 2026-08-16: a follow-up on a house still in
+      // "Discovery done, evaluating", where call two had not happened and no
+      // offer had ever been made, came back saying "Our offer of GBP 151,072
+      // still stands". Two things wrong with that in one sentence: it puts a
+      // figure in writing before the homework, which is exactly what the two
+      // call process exists to prevent, and it claims an offer that was never
+      // made.
+      //
+      // The first fence is that cockpit-action.ts no longer SHOWS the figures
+      // to the draft before that stage. This is the second, on the text a
+      // human actually edited, because that is the version that gets sent.
+      if (!FIGURE_ALREADY_PUT_TO_THEM.includes((state.board.column ?? '').trim())) {
+        const named = figuresIn(text);
+        if (named.length) {
+          out.push(block('follow_up_before_the_offer', 'This names a figure and no offer has been made yet',
+            `It mentions ${named.map(gbp).join(' and ')}, and this house is in `
+            + `${state.board.column || 'no column'}, before any figure has been put to them. `
+            + 'A chase is not the place to open the price.',
+            ['board.column']));
+        }
+      }
+
       if (state.brief.blockers.length === 0) {
         out.push(warn('blocker_known', 'There is nothing specific to chase',
           'The brief lists no blocker, so this will read as a generic nudge.',

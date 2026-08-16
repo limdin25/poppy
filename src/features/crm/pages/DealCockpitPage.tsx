@@ -132,6 +132,7 @@ export default function DealCockpitPage() {
         className="
           grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3
           md:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] md:overflow-hidden
+          md:grid-rows-[minmax(0,1fr)]
           xl:grid-cols-[minmax(300px,360px)_minmax(0,1fr)_minmax(320px,400px)]
         "
       >
@@ -212,7 +213,14 @@ export default function DealCockpitPage() {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden">
+          {/* flex flex-col, NOT a plain block. The command panel's root is
+              `flex-1`, and flex-1 inside a block parent is inert: its height
+              falls back to its content, the inner scroller never gets a bounded
+              height, and the action bar renders 800px below the bottom of the
+              screen with nothing able to scroll to it. That is exactly what
+              happened on 2026-08-16, and it is why the whole page read as
+              broken. */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {view === 'calendar' ? (
               <div className="h-full overflow-y-auto">
                 <CockpitCalendar

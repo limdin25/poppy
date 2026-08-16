@@ -145,14 +145,22 @@ export function buttonsFor(deal: { action: string; allowedActions: string[] }): 
   const rest = deal.allowedActions
     .map(primaryButtonFor)
     .filter((a) => a !== primary);
-  // Comparisons, moving the stage and writing a note are always on offer.
-  // Hugo, 2026-08-16: "the cockpit is a place where I don't even have to leave
-  // from there." A button that is only there when the AI happens to suggest it
-  // is a button somebody has to go and find somewhere else.
+  // THE ALWAYS-ON SET. Hugo, 2026-08-16: "I cannot make calls from the
+  // cockpit", and he was right: RINGING A BRANCH only appeared when the AI
+  // happened to name it, so on a deal where the instruction was "chase the
+  // reply" there was no way to pick up the phone without leaving the page.
+  //
+  // Ringing, writing, looking, moving and noting are the things a person may
+  // decide to do about any deal at any moment, whatever the machine thinks.
+  // The stress test is what says whether a given one is a good idea, not the
+  // absence of the button.
   return [...new Set([
     primary, ...rest,
+    'call_branch' as CockpitAction,
+    'draft_follow_up_email' as CockpitAction,
     'compare_comps' as CockpitAction,
     'move_stage' as CockpitAction,
+    'book_followup' as CockpitAction,
     'add_note' as CockpitAction,
   ])];
 }

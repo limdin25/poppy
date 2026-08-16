@@ -271,6 +271,47 @@ describe('house style', () => {
     expect(grid.indexOf('md:grid-cols-')).toBeLessThan(grid.indexOf('xl:grid-cols-'));
   });
 
+  it('THE FLEX CHAIN IS UNBROKEN, which is what made the page unusable', () => {
+    // 2026-08-16, Hugo: "I cannot click anything, I cannot scroll down, I
+    // cannot make calls from the cockpit."
+    //
+    // MEASURED on the live page at a 700px viewport: the command panel was
+    // 1220px tall inside a 586px box and could NOT scroll, so the action bar
+    // rendered at y=1393, eight hundred pixels below the bottom of the screen,
+    // with nothing able to reach it. Every button existed. None was reachable.
+    //
+    // The cause was one word. The wrapper around the panel was a BLOCK div,
+    // and the panel's root is `flex-1`. flex-1 inside a block parent is inert,
+    // so the panel's height fell back to its content and the inner scroller
+    // never got a bounded height to scroll within.
+    //
+    // Every ancestor of a scroller has to be a flex column that can shrink.
+    // This test walks that chain, because a screenshot at a tall viewport hid
+    // it and the e2e only ever asserted the columns were VISIBLE.
+    const wrapper = PAGE.match(/<div className="flex min-h-0 flex-1 flex-col overflow-hidden">/);
+    expect(wrapper, 'the panel wrapper must be a flex column, not a block').toBeTruthy();
+
+    // The grid row is constrained too, or a grid item sizes to its content.
+    expect(PAGE).toContain('md:grid-rows-[minmax(0,1fr)]');
+
+    // And the panel's own root still expects to be a flex child.
+    expect(PANEL).toMatch(/<div className="flex min-h-0 flex-1 flex-col">/);
+    // with its scroller and its action bar as siblings, so the bar never
+    // scrolls away and never falls off the bottom.
+    expect(PANEL).toMatch(/min-h-0 flex-1 overflow-y-auto[\s\S]*?data-testid="cockpit-command"/);
+    expect(PANEL).toMatch(/flex-shrink-0[\s\S]*?data-testid="cockpit-actions"/);
+  });
+
+  it('offers the things a person may do about ANY deal, not only what the AI named', () => {
+    // The second half of the same complaint: ringing a branch only appeared
+    // when the machine happened to suggest it, so on a deal whose instruction
+    // was "chase the reply" there was no way to pick up the phone at all.
+    const buttons = buttonsFor({ action: 'chase_email_reply', allowedActions: ['chase_email_reply'] });
+    for (const always of ['call_branch', 'draft_follow_up_email', 'compare_comps', 'move_stage', 'book_followup', 'add_note']) {
+      expect(buttons, always).toContain(always);
+    }
+  });
+
   it('carries min-h-0, without which the columns silently scroll the page', () => {
     expect(PAGE).toMatch(/grid min-h-0 flex-1/);
     expect(PAGE).toMatch(/flex min-h-0 flex-col overflow-hidden/);

@@ -407,6 +407,44 @@ async function fetchDraft(
 ): Promise<{ subject: string; body: string } | null> {
   const { state } = bundle;
   const origin = new URL(req.url).origin;
+
+  // ---- WHICH DRAFTS ARE ALLOWED TO SEE MONEY AT ALL --------------------
+  //
+  // Caught on the live board 2026-08-16, walking the flow as a user. A
+  // follow-up draft on Paterson Road, a house sitting in "Discovery done,
+  // evaluating" where call two had NOT happened and no offer had ever been
+  // made, came back saying "Our offer of GBP 151,072 still stands".
+  //
+  // The draft route was not at fault: it strips our figures out of the brief
+  // with externalDoNow() precisely to stop this. THIS function handed it
+  // `offerPrice` directly, whatever stage the deal was at, so the model was
+  // told not to re-open the price while being shown the price. As
+  // next-step-brief.ts puts it: that is not a fence, it is a hope.
+  //
+  // So the figures are simply not sent unless a figure has legitimately been
+  // put to this branch already. A number the model was never given is a number
+  // it cannot put in an email, and an email cannot be unsent.
+  const FIGURE_HAS_BEEN_PUT_TO_THEM = [
+    'Ballpark agreed', 'Needs viewing', 'Offer sent', 'Offer accepted',
+    'Sent to investor', 'Deal closed', 'Renegotiate',
+  ];
+  const kind = body.draft?.kind ?? '';
+  // An offer or a counter IS the conversation about price, so those carry the
+  // figures by definition. Everything else has to have earned them.
+  const alwaysMoney = kind === 'offer' || kind === 'counter_reply';
+  const mayNameAFigure = alwaysMoney
+    || FIGURE_HAS_BEEN_PUT_TO_THEM.includes((state.board.column ?? '').trim());
+
+  const money = mayNameAFigure
+    ? {
+      askingPrice: state.money.asking,
+      offerPrice: state.money.open,
+      ceiling: state.money.ceiling,
+      gdv: state.money.gdv,
+      refurb: state.money.refurb,
+    }
+    : {};
+
   try {
     const res = await fetch(`${origin}/api/crm/draft-offer-email`, {
       method: 'POST',
@@ -416,11 +454,7 @@ async function fetchDraft(
         agentName: bundle.contactName,
         house: {
           address: state.address,
-          askingPrice: state.money.asking,
-          offerPrice: state.money.open,
-          ceiling: state.money.ceiling,
-          gdv: state.money.gdv,
-          refurb: state.money.refurb,
+          ...money,
           reasonLine: dealReasonLine({ deal: {} }, []),
         },
         context: {
@@ -429,7 +463,10 @@ async function fetchDraft(
           pinnedNote: state.pinnedNote,
           step: state.brief.step,
           theirFigure: body.counter?.theirFigure ?? null,
-          currentOffer: body.counter?.currentOffer ?? state.money.open,
+          // Same rule: a follow-up before the offer stage is not shown what we
+          // would pay, because it has no business mentioning it.
+          currentOffer: mayNameAFigure
+            ? (body.counter?.currentOffer ?? state.money.open) : null,
           evidenceTier: state.money.compsTier,
         },
       }),

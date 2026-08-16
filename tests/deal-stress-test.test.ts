@@ -242,6 +242,47 @@ describe('the reply on price is decided in code', () => {
   });
 });
 
+describe('a chase before the offer stage may not carry a figure', () => {
+  // Found on the live board 2026-08-16 by walking the flow as a user, not by a
+  // test. A follow-up draft on a house still in "Discovery done, evaluating",
+  // where call two had not happened and NO OFFER HAD EVER BEEN MADE, came back
+  // saying "Our offer of GBP 151,072 still stands".
+  //
+  // Two things wrong in one sentence: it puts a figure in writing before the
+  // homework, which is what the two-call process exists to prevent, and it
+  // claims an offer that never existed.
+
+  it('blocks a chase naming our opener while the deal is still in discovery', () => {
+    const s = state({}, { columnName: 'Discovery done, evaluating' });
+    const r = stressTest({
+      state: s, action: 'draft_follow_up_email', ...base,
+      draft: { subject: 'Update', body: 'Our offer of GBP 88,000 still stands.' },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.blocked).toContain('follow_up_before_the_offer');
+    expect(r.checks.find((c) => c.id === 'follow_up_before_the_offer')?.detail)
+      .toContain('before any figure has been put to them');
+  });
+
+  it('allows the same words once the ballpark has actually been agreed', () => {
+    const s = state({}, { columnName: 'Ballpark agreed' });
+    const r = stressTest({
+      state: s, action: 'draft_follow_up_email', ...base,
+      draft: { subject: 'Update', body: 'Our offer of GBP 88,000 still stands.' },
+    });
+    expect(r.blocked).not.toContain('follow_up_before_the_offer');
+  });
+
+  it('leaves a chase with no figure alone at any stage', () => {
+    const s = state({}, { columnName: 'Discovery done, evaluating' });
+    const r = stressTest({
+      state: s, action: 'draft_follow_up_email', ...base,
+      draft: { subject: 'Update', body: 'Just chasing an update on this one when you have a moment.' },
+    });
+    expect(r.ok).toBe(true);
+  });
+});
+
 describe('a long dash never leaves the building', () => {
   it('blocks an em dash and an en dash', () => {
     for (const dash of ['—', '–']) {
