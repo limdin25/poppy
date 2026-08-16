@@ -31,7 +31,11 @@ describe('it borrows the fences rather than rebuilding them', () => {
     // "A model asked 'should we go up?' finds a reason to say yes." The
     // decision is made in counter-position.ts and nowhere else.
     expect(SRC).toMatch(/import \{ decideCounter, respectsCeiling[\s\S]*?\} from '\.\/counter-position\.js'/);
-    expect(SRC).toContain('respectsCeiling(decision, state.money.ceiling)');
+    // Since 16 Aug the cap the decision respects is the HIGHER of the
+    // engine's ceiling and the one Hugo wrote in the pinned note: the engine
+    // prices the house, Hugo prices the appetite.
+    expect(SRC).toContain('respectsCeiling(decision, cap)');
+    expect(SRC).toMatch(/Math\.max\(state\.money\.ceiling \?\? 0, state\.money\.pinnedCeiling \?\? 0\)/);
   });
 
   it('gets the street from next-step-brief', () => {

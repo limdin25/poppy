@@ -121,6 +121,32 @@ describe('the reply-after-brief gap, which is the one that cost money', () => {
   })
 })
 
+describe('the provisional refurb and the written ceiling', () => {
+  it('reads the engine\'s own provisional label', () => {
+    const s = buildDealState(base({
+      property: {
+        ...base().property,
+        deal: { ...(base().property.deal ?? {}), refurb: { low: 6891, basis: 'provisional' } },
+      },
+    }))
+    expect(s.money.refurbAssumed).toBe(true)
+    expect(buildDealState(base()).money.refurbAssumed).toBe(false)
+  })
+
+  it('finds the ceiling Hugo wrote, and never mistakes the asking price for it', () => {
+    // Orion Way's real note: quotes the ASKING (110k, the number we must
+    // never pay) alongside the ruling. Only ceiling phrases count.
+    const s = buildDealState(base({
+      property: {
+        ...base().property,
+        pinned_note: 'Asking: £110k, our offer £96,375. One step to £99,588 max. Never past £102,800.',
+      },
+    }))
+    expect(s.money.pinnedCeiling).toBe(102800)
+    expect(buildDealState(base()).money.pinnedCeiling).toBeNull()
+  })
+})
+
 describe("Hugo's own figures are on the file", () => {
   it('counts figures in the pinned note as legitimately on file', () => {
     // Orion Way, 16 Aug: the offer actually with the vendor (96,375) and the

@@ -39,8 +39,13 @@ import { figuresAreOnFile } from './deal-state.js';
  *  agreed time) is spelled out. Found on Paterson Road: it ordered Pedro to
  *  re-ring on a Sunday and re-ask twelve questions he had spent twelve
  *  recorded minutes asking, because the checklist was never typed up and the
- *  checklist was all it could see. */
-export const PROMPT_VERSION = 3;
+ *  checklist was all it could see.
+ *  v4, 2026-08-16 night: THE BRAIN DECIDES. Hugo: "I want the AI to run the
+ *  business. You have to decide for me." The instruction is a decision, never
+ *  a question handed back; who=HUGO only for what Hugo alone can physically
+ *  produce. Plus refurbAssumed (a provisional band never climbs and never
+ *  ships) and pinnedCeiling (Hugo's written ruling governs). */
+export const PROMPT_VERSION = 4;
 
 /** The pipeline, spelled out. A stage may only produce the actions that stage
  *  already allows, which is what "without changing the process" means in code.

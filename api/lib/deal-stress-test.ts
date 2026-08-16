@@ -297,13 +297,17 @@ function universalChecks(input: StressInput): StressCheck[] {
     // A new fence, and the reason it is needed: the walk-away IS on the file,
     // so figuresAreOnFile would wave it straight through. THE_STRATEGY: "The
     // ceiling is never said out loud." He climbs towards it and stops dead.
-    if (state.money.ceiling !== null
-      && named.map((n) => Math.round(n)).includes(Math.round(state.money.ceiling))) {
-      out.push(block('ceiling_not_in_writing', 'This puts our maximum in writing',
-        `${gbp(state.money.ceiling)} is the most we would ever pay for this house. `
-        + 'Once a branch has that in an email there is no negotiation left, only that number. '
-        + 'Say a figure below it, or say no figure at all.',
-        ['money.ceiling']));
+    // BOTH ceilings stay out of writing: the engine's band AND the one Hugo
+    // wrote in the pinned note, which is the real walk-away when they differ.
+    for (const cap of [state.money.ceiling, state.money.pinnedCeiling]) {
+      if (cap !== null && named.map((n) => Math.round(n)).includes(Math.round(cap))) {
+        out.push(block('ceiling_not_in_writing', 'This puts our maximum in writing',
+          `${gbp(cap)} is the most we would ever pay for this house. `
+          + 'Once a branch has that in an email there is no negotiation left, only that number. '
+          + 'Say a figure below it, or say no figure at all.',
+          ['money.ceiling']));
+        break;
+      }
     }
   }
 
@@ -464,6 +468,17 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
           `The comparables are ${tier || 'not graded'}, and we normally want gold or strong before making an offer.`,
           ['money.compsTier']));
       }
+      // A FIRST OFFER PRICED ON A STAND-IN NEVER GOES OUT. The engine says so
+      // itself: refurb.basis 'provisional' means nobody has read the
+      // condition, a default is holding the seat, and offering off it is the
+      // exact sin the 13 Aug rebuild exists to prevent. The ballpark (which
+      // hears the call and prices the real works) is the way through.
+      if (state.money.refurbAssumed) {
+        out.push(block('refurb_is_real', 'The works cost behind this offer is a stand-in',
+          'Nobody has read the condition of this house, so the refurbishment in this price is a placeholder, not a survey. '
+          + 'Fetch the ballpark first: it prices the works from what the branch said on the call.',
+          ['money.refurbAssumed']));
+      }
       flagChecklistGaps();
       break;
     }
@@ -471,17 +486,29 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
     // ---- they came back on price --------------------------------------
     case 'draft_counter_reply': {
       needEmail();
+      // HUGO'S WRITTEN CEILING GOVERNS. The engine prices the house; Hugo
+      // prices the appetite, and when his pinned note says "never past
+      // 102,800" that ruling outranks an engine band computed on older
+      // assumptions. Highest of the two, because his note is only ever
+      // written to authorise more than the machine would.
+      const cap = Math.max(state.money.ceiling ?? 0, state.money.pinnedCeiling ?? 0) || null;
       const decision = decideCounter({
-        ceiling: state.money.ceiling,
+        ceiling: cap,
         currentOffer: input.counter?.currentOffer ?? state.money.open,
         theirFigure: input.counter?.theirFigure ?? null,
         evidenceTier: state.money.compsTier,
       });
-      if (!respectsCeiling(decision, state.money.ceiling)) {
+      if (!respectsCeiling(decision, cap)) {
         out.push(block('counter_respects_ceiling', 'That reply would take us past our maximum',
           'The position worked out here pays more than the ceiling on this house, so it cannot go.',
           ['money.ceiling']));
-      } else if (decision.position === 'raise') {
+      }
+      if (state.money.refurbAssumed) {
+        out.push(warn('refurb_is_real', 'The works cost behind this position is a stand-in',
+          'Nobody has read the condition, so hold the line rather than climb: the ballpark prices the real works first.',
+          ['money.refurbAssumed']));
+      }
+      if (respectsCeiling(decision, cap) && decision.position === 'raise') {
         out.push(pass('counter_position', 'We can move on this one', decision.reason,
           ['money.ceiling', 'money.compsTier']));
       } else {

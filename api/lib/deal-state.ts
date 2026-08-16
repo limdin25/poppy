@@ -117,6 +117,16 @@ export interface DealState {
     open: number | null;
     ceiling: number | null;
     refurb: number | null;
+    /** TRUE when the engine says the works cost is a STAND-IN, not a survey:
+     *  `deal.refurb.basis === 'provisional'` means nobody has read the
+     *  condition and a default is holding the seat until the call. A band
+     *  priced on a stand-in may rank deals; it may never leave the building
+     *  in an offer. Hugo, 16 Aug: "the refurb hardcoded, this is wrong". */
+    refurbAssumed: boolean;
+    /** A ceiling Hugo has WRITTEN in the pinned note ("never past 102,800").
+     *  His ruling outranks the engine's band: the engine prices the house,
+     *  Hugo prices the appetite. Null when the note names none. */
+    pinnedCeiling: number | null;
     compsTier: string | null;
     /** Every figure that is legitimately on this deal's file. The fence in
      *  section 5 checks the Manager's words against exactly this list. */
@@ -379,6 +389,8 @@ export function buildDealState(input: DealStateInput): DealState {
     },
     money: {
       asking, gdv, tmv, open, ceiling, refurb,
+      refurbAssumed: String(dig(deal, 'refurb', 'basis') ?? '') === 'provisional',
+      pinnedCeiling: pinnedCeilingIn(p.pinned_note ?? ''),
       compsTier: (dig(deal, 'comps_tier') as string | null) ?? null,
       figuresOnFile,
     },
@@ -471,6 +483,35 @@ export function figuresIn(text: string): number[] {
     out.push(n);
   }
   return out;
+}
+
+/** The ceiling Hugo has WRITTEN in the pinned note, if any.
+ *
+ *  Deliberately narrow: only a figure that follows an explicit ceiling phrase
+ *  counts ("never past 102,800", "no more than X", "max", "maximum",
+ *  "ceiling", "never above", "up to"). Taking the biggest figure in the note
+ *  would be catastrophic: Orion Way's note also quotes the ASKING price of
+ *  110,000, which is precisely the number we must never pay. Several matches
+ *  take the HIGHEST, because a ladder note names its cap more than once
+ *  ("one step to 99,588 max ... never past 102,800") and the final rung is
+ *  the ruling.
+ */
+export function pinnedCeilingIn(note: string): number | null {
+  if (!note.trim()) return null;
+  const re = /(?:never\s+(?:past|above|over)|no\s+more\s+than|max(?:imum)?(?:\s+of)?|ceiling(?:\s+(?:of|at|is))?|up\s+to)[:\s]*(?:GBP|£)?\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,9})/gi;
+  let best: number | null = null;
+  for (const m of note.matchAll(re)) {
+    const n = Number(m[1].replace(/,/g, ''));
+    if (Number.isFinite(n) && n >= 1000 && (best === null || n > best)) best = n;
+  }
+  // "one step to 99,588 max": the figure comes BEFORE the word. Catch that
+  // shape too, same phrase list, same highest-wins rule.
+  const re2 = /(?:GBP|£)?\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,9})\s*(?:max(?:imum)?|ceiling|top|absolute\s+limit)\b/gi;
+  for (const m of note.matchAll(re2)) {
+    const n = Number(m[1].replace(/,/g, ''));
+    if (Number.isFinite(n) && n >= 1000 && (best === null || n > best)) best = n;
+  }
+  return best;
 }
 
 /** Is every figure in this text already on the deal's file?

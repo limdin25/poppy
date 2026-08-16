@@ -210,7 +210,11 @@ describe('there is ONE brain, and both callers use it', () => {
     // A moved prompt that quietly changed is a moved prompt that produces
     // different instructions, and nobody would know which change did it.
     for (const line of [
-      'WHAT YOU DECIDE: attention, and words. Nothing else.',
+      // "attention, and words. Nothing else" became "YOU DECIDE, THEY PRESS"
+      // on 16 Aug at Hugo's direct order: "I want the AI to run the business.
+      // You have to decide for me." The MECHANICAL law is unchanged and still
+      // pinned below: the brain may not move a card or send anything.
+      'YOU DECIDE, THEY PRESS',
       'NEVER name a figure that is not already in the state you are given',
       'You may NOT move a card, send a message, or promise anything',
       'NEVER use a long dash',
