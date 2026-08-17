@@ -18,7 +18,7 @@
 // an acknowledgement, because judgement stays with the human.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, ShieldAlert, X } from 'lucide-react';
+import { Loader2, ShieldAlert, ShieldCheck, X } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '../../lib/useCrmAuth';
@@ -60,6 +60,11 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
 
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  // Where the email is actually going, resolved by the server, with the
+  // evidence for it when it did not come off the branch card itself.
+  const [sendTo, setSendTo] = useState<string | null>(null);
+  const [sendToEvidence, setSendToEvidence] = useState<string | null>(null);
+  const [willAttachProof, setWillAttachProof] = useState(false);
   const [note, setNote] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [columnId, setColumnId] = useState('');
@@ -88,6 +93,9 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
         });
         if (!alive) return;
         setReport(res.report);
+        setSendTo(res.sendTo ?? null);
+        setSendToEvidence(res.sendToEvidence ?? null);
+        setWillAttachProof(res.willAttachProof === true);
         if (res.draft && !touched.current) {
           setSubject(res.draft.subject ?? '');
           setBody(res.draft.body ?? '');
@@ -286,8 +294,27 @@ export default function ActionConfirmDialog({ deal, action, stages, onCancel, on
             <div className="space-y-2">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">To</span>
-                <p className="text-[12px] text-ink">{deal.branchEmail ?? 'no address on file'}</p>
+                <p className="text-[12px] text-ink" data-testid="cockpit-send-to">
+                  {sendTo ?? deal.branchEmail ?? 'no address on file'}
+                </p>
+                {/* WHERE THE ADDRESS CAME FROM. Shown whenever it did not come
+                    off the branch card, because an offer emailed to the wrong
+                    branch is worse than one not sent. */}
+                {sendToEvidence && (
+                  <p className="mt-0.5 rounded border border-[#A7F3D0] bg-[#ECFDF5] px-1.5 py-1 text-[10.5px] text-[#047857]">
+                    {sendToEvidence}
+                  </p>
+                )}
               </div>
+              {willAttachProof && (
+                <div
+                  className="flex items-center gap-1.5 rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1.5 text-[11px] text-[#1D4ED8]"
+                  data-testid="cockpit-attachment"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                  Our proof of funds goes with this email. The link is minted when you press send and dies in an hour.
+                </div>
+              )}
               <label className="block">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">Subject</span>
                 <input

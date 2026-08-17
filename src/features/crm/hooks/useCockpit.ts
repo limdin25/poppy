@@ -52,6 +52,7 @@ export function useCockpitDeals() {
   return {
     deals: data?.deals ?? [],
     setAside: data?.setAside ?? null,
+    callingListQueued: data?.callingListQueued ?? null,
     managerEnabled: Boolean(data?.managerEnabled),
     generatedAt: data?.generatedAt ?? null,
     loading, error, reload: load,

@@ -35,7 +35,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
-import { stripInventedHouseNumber } from '../lib/draft-guards.js';
+import { stripInventedHouseNumber, fixGreeting } from '../lib/draft-guards.js';
 import { decideCounter, respectsCeiling } from '../lib/counter-position.js';
 import { externalDoNow } from '../lib/next-step-brief.js';
 
@@ -71,6 +71,13 @@ interface Body {
   agencyName?: string | null;
   fromName?: string | null;
   companyName?: string | null;
+  /** THE PERSON THIS EMAIL IS ADDRESSED TO, and the address it goes to.
+   *  A draft bound for the branch opened "Hi Pedro" on 17 Aug because the
+   *  pinned note mentioned Pedro; the recipient is a fact the caller knows and
+   *  must pass, never something to infer from an internal instruction.
+   *  fixGreeting() takes the greeting back if the model ignores it. */
+  recipientName?: string | null;
+  recipientEmail?: string | null;
   /** WHICH email. Two now, and the difference is the whole two-call process:
    *
    *   'video_request'  call one. NO figure of ours, ever. It exists so the
@@ -199,6 +206,7 @@ const SYSTEM_FOLLOW_UP = [
   '1. NEVER invent a number. Every figure you may use is given to you. If the blocker does not need a figure, do not put one in at all.',
   '2. NEVER promise something we have not got, and never quote a balance, a company, a bank or a date that is not in the facts below. If a proof of funds is attached you say so and explain it. If one is NOT attached, say only that it is being sent and when.',
   '3. NEVER re-open the price. If our offer is mentioned it is only to remind them what is on the table, in the words we already used.',
+  '3a. YOU ARE WRITING TO THE ESTATE AGENT NAMED AS THE RECIPIENT, nobody else. Address them and only them. The blocker text and the internal notes may mention our own people by name ("send it to Pedro to forward to Lucy"); those are instructions to US, never the person you are writing to, and their names must never appear in the greeting. If you are given no recipient name, open with "Hello,".',
   '4. Answer the blocker in the FIRST two sentences. An estate agent reads one paragraph.',
   '4a. Write the address EXACTLY as you are given it. NEVER add a house number, a flat number or a postcode that is not there. Most listings do not publish a house number and a wrong one goes to the branch selling that exact house.',
   '4b. IF a proof of funds is attached to this email, and only then, EXPLAIN IT in its own short paragraph, using the facts you are given and no others. Cover, in this order and in plain sentences: that the money is held under OUR OWN company, named, and that the statement is a certified copy from its bank on the date given; that it sits across several company accounts, which is why there is more than one balance on it; the total available; that the account numbers, sort codes and IBANs are hidden for security, which is normal on a document sent by email and does not affect what it proves; and how the purchase completes. An agent who does not understand the document will not pass it to the vendor.',
@@ -560,11 +568,13 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const finish = (s: string) => stripInventedHouseNumber(clean(s), h.address);
+  // The greeting is fixed on the BODY only: a subject line never says hello.
+  const finishBody = (s: string) => fixGreeting(finish(s), body.recipientName);
 
   return new Response(
     JSON.stringify({
       subject: finish(subject),
-      body: finish(emailBody),
+      body: finishBody(emailBody),
       usedTranscript: !!transcript,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },

@@ -27,9 +27,11 @@
 // Nothing is written to any contact here. This is a read.
 
 import { createClient } from '@supabase/supabase-js';
-import {
-  searchableStreet, agencySlug, type BranchEmail,
-} from '../lib/branch-email-match.js';
+// THE LOOKUP ITSELF LIVES IN api/lib/branch-email-lookup.ts since 17 Aug, so
+// the cockpit's email gate resolves the same address this route offers. It used
+// to say "there is no email address for this branch" on a deal where this route
+// was happily returning one.
+import { findBranchEmails } from '../lib/branch-email-lookup.js';
 
 export const config = { runtime: 'edge' };
 
@@ -70,72 +72,7 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const street = searchableStreet(body.street);
-  const slug = agencySlug(body.agency);
-  const found = new Map<string, BranchEmail>();
-
-  // 1. They wrote to us about this house.
-  if (street.length >= 4) {
-    const { data: msgs } = await supabase
-      .from('wk_sms_messages')
-      .select('contact_id, subject, body, created_at, direction')
-      .eq('channel', 'email')
-      .eq('direction', 'inbound')
-      .or(`subject.ilike.%${street}%,body.ilike.%${street}%`)
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    const ids = [...new Set((msgs ?? []).map((m) => m.contact_id).filter(Boolean))];
-    if (ids.length) {
-      const { data: people } = await supabase
-        .from('wk_contacts')
-        .select('id, email')
-        .in('id', ids)
-        .not('email', 'is', null);
-      const emailById = new Map((people ?? []).map((p) => [p.id, String(p.email)]));
-      for (const m of msgs ?? []) {
-        const email = emailById.get(m.contact_id);
-        if (!email || found.has(email)) continue;
-        const subject = String(m.subject ?? '').trim();
-        const when = m.created_at ? String(m.created_at) : null;
-        found.set(email, {
-          email,
-          source: 'wrote_about_house',
-          when,
-          reason: subject
-            ? `They emailed you about ${street}, subject "${subject}"`
-            : `They emailed you about ${street}`,
-        });
-      }
-    }
-  }
-
-  // 2. The domain is the agency's. Only worth asking when the name is long
-  //    enough to mean something: a three-letter slug matches half the internet.
-  if (slug.length >= 4) {
-    const { data: byDomain } = await supabase
-      .from('wk_contacts')
-      .select('email, updated_at')
-      .not('email', 'is', null)
-      .ilike('email', `%@%${slug}%`)
-      .limit(10);
-    for (const row of byDomain ?? []) {
-      const email = String(row.email ?? '').trim().toLowerCase();
-      if (!email || found.has(email)) continue;
-      found.set(email, {
-        email,
-        source: 'domain_match',
-        when: row.updated_at ? String(row.updated_at) : null,
-        reason: 'The address is on this agency\'s domain, but nobody has written to us about this house from it',
-      });
-    }
-  }
-
-  const order = { wrote_about_house: 0, domain_match: 1 } as const;
-  const emails = [...found.values()]
-    .sort((a, b) => order[a.source] - order[b.source]
-      || String(b.when ?? '').localeCompare(String(a.when ?? '')))
-    .slice(0, 4);
+  const emails = await findBranchEmails(supabase, { street: body.street, agency: body.agency });
 
   return Response.json({ emails });
 }

@@ -44,6 +44,8 @@ import {
 import { dealReasonLine } from '../lib/brrr-deal-facts.js';
 import { effectiveCeiling } from '../lib/counter-position.js';
 import { notifyDeal } from '../lib/deal-notify.js';
+import { bestBranchEmail, firstNameFromEmail } from '../lib/branch-email-lookup.js';
+import { needsProofOfFunds, signProofOfFunds } from '../lib/proof-of-funds.js';
 
 export const config = { runtime: 'edge' };
 
@@ -137,6 +139,11 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ ok: body.outcome?.ok !== false, report: emptyReport(action) });
   }
 
+  // WHERE AN EMAIL WOULD GO. Resolved before the checks run, because "is
+  // there an address to send to" is one of the checks, and the branch contact
+  // having none does not mean we do not know one.
+  const sendTo = await resolveSendTo(supabase, bundle);
+
   // -----------------------------------------------------------------------
   // THE STRESS TEST. Always, before anything else, for every phase.
   // -----------------------------------------------------------------------
@@ -144,7 +151,7 @@ export default async function handler(req: Request): Promise<Response> {
     state,
     action,
     draft: body.draft ?? null,
-    contactEmail: bundle.email,
+    contactEmail: sendTo.email,
     contactPhone: bundle.phone,
     builderMatches: bundle.builderMatches,
     dueAt: body.dueAt ?? null,
@@ -157,16 +164,26 @@ export default async function handler(req: Request): Promise<Response> {
     // A draft is fetched here too, so the text the checks ran against is the
     // text the human is about to read, not a different one written later.
     let draft: { subject: string; body: string } | undefined;
+    // THE ATTACHMENT AND THE ADDRESS, both shown before anything is sent. The
+    // proof of funds is named but NOT linked here: the signed url is minted at
+    // press time so it is fresh and never sits in a browser longer than the
+    // send takes.
+    const attach = needsProofOfFunds({ brief: { blockers: state.brief.blockers, doNow: state.brief.doNow }, pinnedNote: state.pinnedNote });
+    const emailExtras = {
+      sendTo: sendTo.email,
+      sendToEvidence: sendTo.evidence,
+      willAttachProof: attach,
+    };
     if (body.draft?.kind) {
-      draft = await fetchDraft(req, jwt, bundle, body) ?? undefined;
+      draft = await fetchDraft(req, jwt, bundle, body, sendTo) ?? undefined;
       if (draft) {
         // Re-run against the words that actually came back.
         const withDraft = stressTest({
           state, action, draft: { ...draft, kind: body.draft.kind },
-          contactEmail: bundle.email, contactPhone: bundle.phone,
+          contactEmail: sendTo.email, contactPhone: bundle.phone,
           builderMatches: bundle.builderMatches, counter: body.counter ?? null, now,
         });
-        return Response.json({ ok: withDraft.ok, report: withDraft, draft });
+        return Response.json({ ok: withDraft.ok, report: withDraft, draft, ...emailExtras });
       }
     }
     // The approval desk: on the ballpark button the gate shows the callback
@@ -174,7 +191,7 @@ export default async function handler(req: Request): Promise<Response> {
     const suggestedDueAt = action === 'fetch_ballpark'
       ? suggestCallbackAt(state.calls.lastNote ?? state.conversation?.note ?? null, now)
       : undefined;
-    return Response.json({ ok: report.ok, report, draft, suggestedDueAt });
+    return Response.json({ ok: report.ok, report, draft, suggestedDueAt, ...emailExtras });
   }
 
   // ---- refused ----------------------------------------------------------
@@ -221,7 +238,7 @@ export default async function handler(req: Request): Promise<Response> {
           },
         });
 
-      case 'send_email':
+      case 'send_email': {
         if (!body.draft?.subject || !body.draft?.body) {
           return Response.json({
             ok: false, report,
@@ -229,18 +246,38 @@ export default async function handler(req: Request): Promise<Response> {
             detail: 'There is no subject or message to send.',
           });
         }
+        // THE PROOF OF FUNDS TRAVELS WITH THE EMAIL, exactly as it does from
+        // the pipeline modal. Only when the deal actually asked for it: the
+        // document carries account numbers, so it is never attached
+        // speculatively. The signed link is minted HERE, seconds before the
+        // browser posts the send, and dies in an hour.
+        let attachment: { url: string; name: string } | null = null;
+        if (needsProofOfFunds({
+          brief: { blockers: state.brief.blockers, doNow: state.brief.doNow },
+          pinnedNote: state.pinnedNote,
+        })) {
+          const proof = await signProofOfFunds(supabase);
+          if (proof.available && proof.url) {
+            attachment = { url: proof.url, name: proof.filename ?? 'Proof of funds.pdf' };
+          }
+        }
         return await recordAndAnswer(supabase, {
           state, bundle, action, actorId, report,
           execute: {
             how: 'client' as const, via: 'wk-email-send',
             payload: {
               contact_id: bundle.contactId,
-              to_email: bundle.email,
+              // The resolved address, not the branch row's empty one.
+              to_email: sendTo.email,
               subject: body.draft.subject,
               body: body.draft.body,
+              ...(attachment
+                ? { attachment_url: attachment.url, attachment_name: attachment.name }
+                : {}),
             },
           },
         });
+      }
 
       // ---- proxied to the route that already carries the fences ---------
       case 'draft_video_email':
@@ -453,6 +490,7 @@ async function recordAndAnswer(sb: Sb, args: {
  *  comes back here as a refusal. */
 async function fetchDraft(
   req: Request, jwt: string, bundle: Bundle, body: Body,
+  sendTo?: { email: string | null; recipientName: string | null },
 ): Promise<{ subject: string; body: string } | null> {
   const { state } = bundle;
   const origin = new URL(req.url).origin;
@@ -506,6 +544,13 @@ async function fetchDraft(
       body: JSON.stringify({
         kind: body.draft?.kind,
         agentName: bundle.contactName,
+        // WHO THE EMAIL IS ADDRESSED TO. Hugo, 17 Aug: a draft bound for
+        // leanne@movewithzest.co.uk opened "Hi Pedro", because the pinned note
+        // said the statement goes "to Pedro to forward to Lucy" and the model
+        // followed the note into the greeting. The recipient is a fact, not
+        // something to infer from an internal instruction.
+        recipientName: sendTo?.recipientName ?? null,
+        recipientEmail: sendTo?.email ?? null,
         house: {
           address: state.address,
           ...money,
@@ -532,6 +577,33 @@ async function fetchDraft(
   } catch {
     return null;
   }
+}
+
+/** WHO THIS EMAIL GOES TO, resolved the same way the pipeline modal resolves
+ *  it. Hugo, 17 Aug, same deal on two screens: the pipeline offered
+ *  leanne@movewithzest.co.uk with the evidence for it, and the cockpit's gate
+ *  said "there is no email address for this branch" and refused to send.
+ *
+ *  The branch contact's own address always wins (a saved address is a decision
+ *  somebody made). Only when it has none is the lookup consulted, and the
+ *  evidence travels with the address so the human sees WHERE it came from
+ *  before pressing send. Never written back onto the contact from here. */
+async function resolveSendTo(sb: Sb, bundle: Bundle): Promise<{
+  email: string | null; evidence: string | null; recipientName: string | null;
+}> {
+  const own = (bundle.email ?? '').trim();
+  if (own) {
+    return { email: own, evidence: null, recipientName: firstNameFromEmail(own) };
+  }
+  const found = await bestBranchEmail(sb, {
+    street: bundle.state.address, agency: bundle.contactName,
+  });
+  if (!found) return { email: null, evidence: null, recipientName: null };
+  return {
+    email: found.email,
+    evidence: found.reason,
+    recipientName: firstNameFromEmail(found.email),
+  };
 }
 
 /** Move a branch card to a named column ON ITS OWN PIPELINE. Scoped because

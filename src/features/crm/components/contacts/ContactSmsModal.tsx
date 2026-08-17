@@ -32,6 +32,7 @@ import { useSmsV2 } from '../../store/SmsV2Store';
 import { useContactPersistence } from '../../hooks/useContactPersistence';
 import { interpolateTemplate } from '../../lib/interpolateTemplate';
 import FollowupPromptModal from '../followups/FollowupPromptModal';
+import { needsProofOfFunds } from '../../../../../api/lib/proof-of-funds';
 import type { Contact } from '../../types';
 
 type Channel = 'sms' | 'whatsapp' | 'email';
@@ -145,17 +146,12 @@ const CHANNEL_LABEL: Record<Channel, string> = {
 
 /** Does this deal hang on us proving we have the money?
  *
- *  Matched on the brief's own words rather than guessed, so the statement is
- *  never attached to a branch that did not ask for it. A bank statement is not
- *  something to send speculatively. */
-export function needsProofOfFunds(deal?: EmailDeal | null): boolean {
-  const text = [
-    ...(deal?.brief?.blockers ?? []),
-    ...(deal?.brief?.do_now ?? []),
-    deal?.pinnedNote ?? '',
-  ].join(' ');
-  return /proof of fund|pof\b|evidence of fund|proof of cash/i.test(text);
-}
+ *  THE RULE LIVES IN api/lib/proof-of-funds.ts since 17 Aug, because the
+ *  cockpit needs the same answer and a rule inside a React component is a rule
+ *  only the browser can ask. Imported and re-exported so existing importers
+ *  keep working while there is exactly one copy of the words that match.
+ */
+export { needsProofOfFunds };
 
 export default function ContactSmsModal({
   contact,

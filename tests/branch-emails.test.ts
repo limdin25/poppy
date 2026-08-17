@@ -18,7 +18,13 @@ import { resolve } from 'node:path'
 import { searchableStreet, agencySlug } from '../api/lib/branch-email-match'
 
 const root = resolve(__dirname, '..')
-const ROUTE = readFileSync(resolve(root, 'api/crm/branch-emails.ts'), 'utf8')
+// THE LOOKUP MOVED TO api/lib/branch-email-lookup.ts on 17 Aug so the cockpit
+// could resolve the same address the pipeline modal offers (they disagreed on
+// Welwyn Park Road: one had leanne@movewithzest.co.uk, the other said the
+// branch had no address at all). The rules below are unchanged; they are just
+// pinned where they now live. ROUTE stays for the auth and shape pins.
+const ROUTE = readFileSync(resolve(root, 'api/lib/branch-email-lookup.ts'), 'utf8')
+  + readFileSync(resolve(root, 'api/crm/branch-emails.ts'), 'utf8')
 const SHAPE = readFileSync(resolve(root, 'api/lib/branch-email-match.ts'), 'utf8')
 
 describe('the part of the street worth searching for', () => {

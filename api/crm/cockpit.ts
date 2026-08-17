@@ -23,6 +23,7 @@ import { baselineAttention, deterministicFlags, fallbackVerdict, allowedActions 
 import { stateHash, loadCockpitStates, latestAssessments, dealLog, type LogRow } from '../lib/deal-manager-run.js';
 import { stressAll, COCKPIT_ACTIONS, ACTION_LABEL, ACTION_EXECUTION } from '../lib/deal-stress-test.js';
 import { isCockpitDeal } from '../lib/cockpit-filter.js';
+import { bestBranchEmail } from '../lib/branch-email-lookup.js';
 import { buildDealTimeline } from '../lib/deal-timeline.js';
 
 export const config = { runtime: 'edge' };
@@ -82,9 +83,19 @@ export default async function handler(req: Request): Promise<Response> {
       latestAssessments(caller, [propertyId]),
     ]);
 
+    // THE ADDRESS WE ACTUALLY HOLD, resolved the same way the pipeline modal
+    // and the gate resolve it. Without this every email button on the deal
+    // reported "there is no email address for this branch" while the pipeline
+    // was happily offering leanne@movewithzest.co.uk (Hugo, 17 Aug).
+    const resolvedEmail = (bundle.email ?? '').trim()
+      || (await bestBranchEmail(supabase, {
+        street: bundle.state.address, agency: bundle.contactName,
+      }))?.email
+      || null;
+
     const reports = stressAll({
       state: bundle.state,
-      contactEmail: bundle.email,
+      contactEmail: resolvedEmail,
       contactPhone: bundle.phone,
       builderMatches: bundle.builderMatches,
       now,
@@ -128,7 +139,9 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({
       managerEnabled: on,
       generatedAt: now.toISOString(),
-      deal: shapeDeal(bundle, latest.get(propertyId) ?? null, now),
+      // branchEmail carries the RESOLVED address so the drawer shows what the
+      // gate will use, not the branch row's empty field.
+      deal: { ...shapeDeal(bundle, latest.get(propertyId) ?? null, now), branchEmail: resolvedEmail },
       state: bundle.state,
       log: log.map(shapeLogEntry),
       timeline,
@@ -203,6 +216,21 @@ export default async function handler(req: Request): Promise<Response> {
     ]),
   ) as { calling_list: number; never_spoke: number; closed_door: number; finished: number; off_board: number; scheduled: number; waiting_reply: number };
 
+  // THE CALLING LIST IS THE DIALER QUEUE, counted from the queue itself.
+  //
+  // Hugo, 17 Aug: "you said 164 discovery branches, but the dialer says 168 on
+  // the queue. Come on." He was right to bite. The footer used to count
+  // branches that hold a HOUSE and have not been reached, which on the live
+  // board was 97, while Pedro's actual queue held 168 rows, most of them
+  // discovery branches with no priced house on file at all. Two numbers for
+  // one idea. The number Pedro works from is the queue, so that is the number
+  // the footer shows.
+  const { count: queued } = await (supabase.from('wk_dialer_queue') as unknown as {
+    select: (c: string, o: { count: 'exact'; head: true }) => {
+      eq: (c: string, v: string) => Promise<{ count: number | null }>;
+    };
+  }).select('id', { count: 'exact', head: true }).eq('status', 'pending');
+
   return Response.json({
     managerEnabled: on,
     generatedAt: now.toISOString(),
@@ -210,6 +238,7 @@ export default async function handler(req: Request): Promise<Response> {
     // Said out loud rather than silently dropped, so nobody has to wonder where
     // the other hundred and forty went.
     setAside,
+    callingListQueued: queued ?? null,
   });
 }
 

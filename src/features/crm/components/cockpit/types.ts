@@ -118,6 +118,10 @@ export interface CockpitListResponse {
     /** We replied in writing; the ball is in their court. */
     waiting_reply?: number;
   };
+  /** How many branches are actually pending in Pedro's dialer queue. THE
+   *  calling-list number, counted from the queue itself so the cockpit footer
+   *  and the dialer can never show two different totals for one idea. */
+  callingListQueued?: number | null;
 }
 
 /** One thing that happened on a deal: a call with its recording, an email
@@ -210,5 +214,14 @@ export interface CockpitActionResponse {
   /** On the ballpark gate: the callback slot read from Pedro's call note,
    *  prefilled so one press books him. */
   suggestedDueAt?: string;
+  /** WHERE AN EMAIL WOULD GO, resolved server-side: the branch contact's own
+   *  address, or the one we already hold for that branch with the evidence for
+   *  it (an inbound email makes its own contact, so a branch card can look
+   *  address-less while we have been writing to them for days). */
+  sendTo?: string | null;
+  sendToEvidence?: string | null;
+  /** True when this deal's own words ask for proof of funds, so the send will
+   *  carry the statement. The signed link is minted at press time. */
+  willAttachProof?: boolean;
   logEntry?: DealLogEntry;
 }

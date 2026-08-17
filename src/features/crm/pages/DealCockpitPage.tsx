@@ -38,7 +38,7 @@ export default function DealCockpitPage() {
   const historyHasItsOwnColumn = useMediaQuery('(min-width: 1280px)');
   const { openDialerPro } = useDialerProModal();
 
-  const { deals, setAside, managerEnabled, generatedAt, loading, error, reload } = useCockpitDeals();
+  const { deals, setAside, callingListQueued, managerEnabled, generatedAt, loading, error, reload } = useCockpitDeals();
   const { data: detail, loading: detailLoading, reload: reloadDetail } = useCockpitDeal(selectedId);
   const calendar = useCockpitCalendar(30);
 
@@ -191,8 +191,16 @@ export default function DealCockpitPage() {
               {[
                 (setAside.scheduled ?? 0) > 0 && `${setAside.scheduled} booked for callbacks`,
                 (setAside.waiting_reply ?? 0) > 0 && `${setAside.waiting_reply} waiting on their answer`,
-                setAside.calling_list + setAside.never_spoke > 0
-                  && `${setAside.calling_list + setAside.never_spoke} branches waiting to be rung`,
+                // ONE NUMBER FOR THE CALLING LIST, and it is the dialer
+                // queue's own. This used to count branches that hold a house
+                // and have not been reached (97 on the live board) while
+                // Pedro's queue held 168 rows, most of them discovery branches
+                // with no priced house at all. Hugo, 17 Aug: "the dialer says
+                // 168 on the queue. Come on."
+                (callingListQueued ?? 0) > 0
+                  ? `${callingListQueued} branches in Pedro's calling list`
+                  : setAside.calling_list + setAside.never_spoke > 0
+                    && `${setAside.calling_list + setAside.never_spoke} branches waiting to be rung`,
                 (setAside.off_board ?? 0) > 0 && `${setAside.off_board} taken off the board`,
                 setAside.closed_door > 0 && `${setAside.closed_door} said no`,
                 setAside.finished > 0 && `${setAside.finished} done`,

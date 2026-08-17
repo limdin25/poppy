@@ -16,7 +16,10 @@ import type { NextStepBrief } from '../api/lib/next-step-brief'
 const root = resolve(__dirname, '..')
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8')
 
-const ROUTE = read('api/crm/proof-of-funds.ts')
+// THE RULE AND THE SIGNING MOVED TO api/lib/proof-of-funds.ts on 17 Aug so the
+// cockpit's email gate could attach the same document the pipeline modal does.
+// Every rule below is unchanged, pinned where it now lives.
+const ROUTE = read('api/lib/proof-of-funds.ts') + read('api/crm/proof-of-funds.ts')
 const SEND = read('supabase/functions/wk-email-send/index.ts')
 
 const brief = (over: Partial<NextStepBrief>): NextStepBrief => ({
@@ -77,7 +80,7 @@ describe('the document itself never leaks', () => {
 
   it('the link dies, and within the hour', () => {
     expect(ROUTE).toMatch(/TTL_SECONDS = 60 \* 60/)
-    expect(ROUTE).toMatch(/createSignedUrl\(path, TTL_SECONDS\)/)
+    expect(ROUTE).toMatch(/createSignedUrl\(path, PROOF_TTL_SECONDS\)/)
   })
 
   it('staff only, decided by the database and not by this file', () => {

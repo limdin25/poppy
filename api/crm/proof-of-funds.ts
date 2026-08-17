@@ -27,6 +27,10 @@
 // a statement from three months ago, and replacing it must not need a deploy.
 
 import { createClient } from '@supabase/supabase-js';
+// THE RULE AND THE SIGNING LIVE IN api/lib/proof-of-funds.ts since 17 Aug, so
+// the cockpit's email gate can attach the same document this route hands the
+// pipeline modal. It had neither.
+import { signProofOfFunds, PROOF_TTL_SECONDS } from '../lib/proof-of-funds.js';
 
 export const config = { runtime: 'edge' };
 
@@ -34,16 +38,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
-
-const BUCKET = 'proof-of-funds';
-/** One hour: Hugo reads it, then Resend fetches it when he presses send. */
-const TTL_SECONDS = 60 * 60;
-
-interface Pointer {
-  path?: string;
-  filename?: string;
-  dated?: string;
-}
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'GET') {
@@ -64,43 +58,11 @@ export default async function handler(req: Request): Promise<Response> {
   const { data: allowed } = await caller.rpc('wk_is_agent_or_admin');
   if (!allowed) return Response.json({ error: 'CRM access required' }, { status: 403 });
 
-  const { data: row } = await supabase
-    .from('platform_settings')
-    .select('value')
-    .eq('key', 'proof_of_funds')
-    .maybeSingle();
-
-  let pointer: Pointer = {};
-  try {
-    pointer = JSON.parse(String(row?.value ?? '{}')) as Pointer;
-  } catch {
-    pointer = {};
+  const proof = await signProofOfFunds(supabase);
+  if (!proof.available) {
+    // No document on file is a normal state (200); a signing failure is not.
+    const status = proof.reason === 'No proof of funds has been uploaded yet.' ? 200 : 502;
+    return Response.json({ available: false, reason: proof.reason }, { status });
   }
-
-  const path = String(pointer.path ?? '').trim();
-  // No document on file is a normal state, not an error: the email still
-  // writes and sends, it just goes without the attachment. Saying so plainly
-  // beats a 500 that reads as "the email is broken".
-  if (!path) {
-    return Response.json({ available: false, reason: 'No proof of funds has been uploaded yet.' });
-  }
-
-  const { data: signed, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrl(path, TTL_SECONDS);
-
-  if (error || !signed?.signedUrl) {
-    return Response.json(
-      { available: false, reason: error?.message ?? 'Could not sign the document.' },
-      { status: 502 },
-    );
-  }
-
-  return Response.json({
-    available: true,
-    url: signed.signedUrl,
-    filename: pointer.filename || path,
-    dated: pointer.dated ?? null,
-    expires_in: TTL_SECONDS,
-  });
+  return Response.json({ ...proof, expires_in: PROOF_TTL_SECONDS });
 }
