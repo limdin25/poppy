@@ -80,6 +80,30 @@ describe('one proof-of-funds rule, both surfaces', () => {
   });
 });
 
+describe('the statement\'s own total is a figure the email may quote', () => {
+  // The figure fence blocked the entire proof-of-funds email on 17 Aug for
+  // naming GBP 102,071. That figure is not about the house, so it is not on the
+  // deal file, but it IS written on the document being attached and it is
+  // stored on the proof-of-funds record (total_gbp). Refusing it made the one
+  // email the deal was waiting on impossible to send from the cockpit.
+  it('the lib reports the total and the gate allows exactly that figure', () => {
+    expect(read('api/lib/proof-of-funds.ts')).toMatch(/totalGbp/);
+    const action = read('api/crm/cockpit-action.ts');
+    expect(action).toMatch(/const extraFigures = proof\?\.totalGbp \? \[proof\.totalGbp\] : null/);
+    expect(action).toMatch(/extraFigures,/);
+  });
+
+  it('the allowance is per-email, never a widening of the deal file', () => {
+    const stress = read('api/lib/deal-stress-test.ts');
+    expect(stress).toMatch(/extraFigures\?: number\[\] \| null/);
+    // Both fences honour it: "not on the file" and "no offer made yet".
+    expect(stress).toMatch(/\.\.\.\(input\.extraFigures \?\? \[\]\)/);
+    expect(stress).toMatch(/const extras = \(input\.extraFigures \?\? \[\]\)/);
+    // The deal state itself is untouched: figuresOnFile stays about the house.
+    expect(read('api/lib/deal-state.ts')).not.toMatch(/total_gbp|proof_of_funds/);
+  });
+});
+
 describe('the email is addressed to the person it is sent to', () => {
   it('takes back a greeting that names one of ours', () => {
     // The exact failure: a draft bound for Leanne opened "Hi Pedro,".
@@ -111,6 +135,10 @@ describe('the email is addressed to the person it is sent to', () => {
     expect(read('api/crm/draft-offer-email.ts')).toMatch(/recipientName/);
     expect(read('api/crm/draft-offer-email.ts')).toMatch(/fixGreeting\(finish\(s\), body\.recipientName\)/);
     expect(read('api/crm/cockpit-action.ts')).toMatch(/recipientName: sendTo\?\.recipientName/);
+    // And the NAME reaches the model's facts, not just its rules: a rule about
+    // a name is useless without the name, which is why a told-to-address-the-
+    // recipient draft still opened "Hello,".
+    expect(read('api/crm/draft-offer-email.ts')).toMatch(/THE PERSON YOU ARE WRITING TO/);
   });
 });
 

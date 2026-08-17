@@ -503,8 +503,16 @@ export default async function handler(req: Request): Promise<Response> {
     body.companyName ? `Buying company: ${body.companyName}` : null,
   ].filter(Boolean).join('\n') : '';
 
+  // WHO IT IS ADDRESSED TO, in the facts and not only in the rules, because a
+  // rule about a name is useless without the name. Missing it is why a draft
+  // that had been told "address the recipient" still opened "Hello," (17 Aug).
+  const recipientLine = body.recipientName
+    ? `THE PERSON YOU ARE WRITING TO (greet them by this name and nobody else): ${body.recipientName}`
+    : 'You have no recipient name, so open with "Hello,".';
+
   const user = isCounterReply ? [
     'THEY HAVE COME BACK ON PRICE. Here is what was decided and everything you may say:',
+    recipientLine,
     counterFacts,
     '',
     transcript
@@ -513,6 +521,7 @@ export default async function handler(req: Request): Promise<Response> {
   ].join('\n') : [
     isVideoRequest ? 'THE HOUSE (facts only, and NO price of any kind goes in this email):' : 'THE HOUSE AND THE NUMBERS:',
     isVideoRequest ? videoFacts : facts,
+    recipientLine,
     '',
     isFollowUp
       ? dealState

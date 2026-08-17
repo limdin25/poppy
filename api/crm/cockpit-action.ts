@@ -144,6 +144,18 @@ export default async function handler(req: Request): Promise<Response> {
   // having none does not mean we do not know one.
   const sendTo = await resolveSendTo(supabase, bundle);
 
+  // OUR OWN PROOF OF FUNDS, when this deal's words ask for it. Resolved before
+  // the checks too, because the total written on the statement is a figure the
+  // email carrying it must be allowed to quote: the figure fence blocked the
+  // whole proof-of-funds email on 17 Aug for naming GBP 102,071, which is not a
+  // figure about the house but is exactly what the attached document shows.
+  const wantsProof = needsProofOfFunds({
+    brief: { blockers: state.brief.blockers, doNow: state.brief.doNow },
+    pinnedNote: state.pinnedNote,
+  });
+  const proof = wantsProof ? await signProofOfFunds(supabase) : null;
+  const extraFigures = proof?.totalGbp ? [proof.totalGbp] : null;
+
   // -----------------------------------------------------------------------
   // THE STRESS TEST. Always, before anything else, for every phase.
   // -----------------------------------------------------------------------
@@ -156,6 +168,7 @@ export default async function handler(req: Request): Promise<Response> {
     builderMatches: bundle.builderMatches,
     dueAt: body.dueAt ?? null,
     counter: body.counter ?? null,
+    extraFigures,
     now,
   });
 
@@ -168,11 +181,10 @@ export default async function handler(req: Request): Promise<Response> {
     // proof of funds is named but NOT linked here: the signed url is minted at
     // press time so it is fresh and never sits in a browser longer than the
     // send takes.
-    const attach = needsProofOfFunds({ brief: { blockers: state.brief.blockers, doNow: state.brief.doNow }, pinnedNote: state.pinnedNote });
     const emailExtras = {
       sendTo: sendTo.email,
       sendToEvidence: sendTo.evidence,
-      willAttachProof: attach,
+      willAttachProof: Boolean(proof?.available),
     };
     if (body.draft?.kind) {
       draft = await fetchDraft(req, jwt, bundle, body, sendTo) ?? undefined;
@@ -181,7 +193,8 @@ export default async function handler(req: Request): Promise<Response> {
         const withDraft = stressTest({
           state, action, draft: { ...draft, kind: body.draft.kind },
           contactEmail: sendTo.email, contactPhone: bundle.phone,
-          builderMatches: bundle.builderMatches, counter: body.counter ?? null, now,
+          builderMatches: bundle.builderMatches, counter: body.counter ?? null,
+          extraFigures, now,
         });
         return Response.json({ ok: withDraft.ok, report: withDraft, draft, ...emailExtras });
       }
@@ -251,16 +264,9 @@ export default async function handler(req: Request): Promise<Response> {
         // document carries account numbers, so it is never attached
         // speculatively. The signed link is minted HERE, seconds before the
         // browser posts the send, and dies in an hour.
-        let attachment: { url: string; name: string } | null = null;
-        if (needsProofOfFunds({
-          brief: { blockers: state.brief.blockers, doNow: state.brief.doNow },
-          pinnedNote: state.pinnedNote,
-        })) {
-          const proof = await signProofOfFunds(supabase);
-          if (proof.available && proof.url) {
-            attachment = { url: proof.url, name: proof.filename ?? 'Proof of funds.pdf' };
-          }
-        }
+        const attachment = proof?.available && proof.url
+          ? { url: proof.url, name: proof.filename ?? 'Proof of funds.pdf' }
+          : null;
         return await recordAndAnswer(supabase, {
           state, bundle, action, actorId, report,
           execute: {

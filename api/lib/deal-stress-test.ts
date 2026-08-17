@@ -196,6 +196,18 @@ export interface StressInput {
   dueAt?: string | null;
   /** For draft_counter_reply. */
   counter?: { theirFigure?: number | null; currentOffer?: number | null } | null;
+  /** FIGURES THIS EMAIL MAY QUOTE THAT ARE NOT ABOUT THE HOUSE.
+   *
+   *  Exactly one thing uses it today: the total on our own proof of funds,
+   *  when the statement travels with the email. On 17 Aug the figure fence
+   *  blocked the whole proof-of-funds email because GBP 102,071 is not a deal
+   *  figure. It is not a price, it is not ours to negotiate with, and it is
+   *  written on the document being attached, so refusing to let the email say
+   *  it made the one email the deal was waiting on impossible to send.
+   *
+   *  Deliberately a caller-supplied allowance rather than a widening of
+   *  figuresOnFile: it is true of THIS email, not of the deal. */
+  extraFigures?: number[] | null;
   /** Passed in, never read off the wall clock, so tests are stable. */
   now: Date;
 }
@@ -288,9 +300,12 @@ function universalChecks(input: StressInput): StressCheck[] {
   // what a HUMAN typed, which is the version that actually reaches the branch.
   if (text) {
     const named = figuresIn(text);
-    if (!figuresAreOnFile(text, state)) {
-      const orphans = named.filter((n) => !state.money.figuresOnFile
-        .map((f) => Math.round(f)).includes(Math.round(n)));
+    const allowed = [
+      ...state.money.figuresOnFile,
+      ...(input.extraFigures ?? []),
+    ].map((f) => Math.round(f));
+    if (named.some((n) => !allowed.includes(Math.round(n)))) {
+      const orphans = named.filter((n) => !allowed.includes(Math.round(n)));
       out.push(block('figures_on_file', 'A figure in this is not on the deal file',
         `This names ${orphans.map(gbp).join(' and ')}, which is not a figure the engine has for this house. `
         + 'Every number that goes to a branch has to come off the file, because a number said out loud cannot be unsaid.',
@@ -548,7 +563,10 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
       // to the draft before that stage. This is the second, on the text a
       // human actually edited, because that is the version that gets sent.
       if (!FIGURE_ALREADY_PUT_TO_THEM.includes((state.board.column ?? '').trim())) {
-        const named = figuresIn(text);
+        // Our own bank balance is not opening the price: it is the document the
+        // branch asked for. Anything genuinely about the house still blocks.
+        const extras = (input.extraFigures ?? []).map((n) => Math.round(n));
+        const named = figuresIn(text).filter((n) => !extras.includes(Math.round(n)));
         if (named.length) {
           out.push(block('follow_up_before_the_offer', 'This names a figure and no offer has been made yet',
             `It mentions ${named.map(gbp).join(' and ')}, and this house is in `

@@ -25,6 +25,12 @@ export interface ProofOfFunds {
   url?: string;
   filename?: string;
   dated?: string | null;
+  /** The total on the statement. A REAL FIGURE ON FILE, and the email that
+   *  carries the document has to be allowed to say it: the figure fence blocked
+   *  the whole proof-of-funds email on 17 Aug because 102,071 is not a figure
+   *  about the HOUSE. It is not a price and it is not ours to negotiate with,
+   *  it is what the attached document shows. */
+  totalGbp?: number | null;
   reason?: string;
 }
 
@@ -58,23 +64,25 @@ export async function signProofOfFunds(sb: Sb): Promise<ProofOfFunds> {
   const { data: row } = await sb
     .from('platform_settings').select('value').eq('key', 'proof_of_funds').maybeSingle();
 
-  let pointer: { path?: string; filename?: string; dated?: string } = {};
+  let pointer: { path?: string; filename?: string; dated?: string; total_gbp?: number } = {};
   try { pointer = JSON.parse(String((row as { value?: string } | null)?.value ?? '{}')); }
   catch { pointer = {}; }
 
   const path = String(pointer.path ?? '').trim();
+  const totalGbp = Number(pointer.total_gbp) > 0 ? Number(pointer.total_gbp) : null;
   if (!path) {
     return { available: false, reason: 'No proof of funds has been uploaded yet.' };
   }
 
   const { data: signed, error } = await sb.storage.from(BUCKET).createSignedUrl(path, PROOF_TTL_SECONDS);
   if (error || !signed?.signedUrl) {
-    return { available: false, reason: error?.message ?? 'Could not sign the document.' };
+    return { available: false, reason: error?.message ?? 'Could not sign the document.', totalGbp };
   }
   return {
     available: true,
     url: signed.signedUrl,
     filename: pointer.filename || path,
     dated: pointer.dated ?? null,
+    totalGbp,
   };
 }
