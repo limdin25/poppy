@@ -62,3 +62,30 @@ export function fixGreeting(text: string, recipientName?: string | null): string
   lines[i] = want ? `${m[1]} ${want},` : 'Hello,';
   return lines.join('\n');
 }
+
+/**
+ * Take the figures out of an internal note before a model reads it.
+ *
+ * The line directly above this one's first use said it best: "forbidding a
+ * model to mention a number while showing it the number is a hope, not a
+ * fence." `do_now` was already stripped; the pinned note was handed over
+ * verbatim under the label "internal, never quote it".
+ *
+ * Hugo's note on Welwyn Park Road carries four figures (the rejected offer,
+ * the offer ready to go, the done-up value and the refinance limit). The model
+ * quoted one into a proof-of-funds email, and because on that deal the offer
+ * IS the walk-away, two money fences fired and the email could not be sent at
+ * all (17 Aug). The instruction is what the model needs from a note ("the
+ * agent wants a bank statement, decide today"); the numbers are ours.
+ *
+ * Every figure the email may legitimately name still reaches the model as a
+ * structured fact, gated by the stage, so nothing that should be sayable
+ * becomes unsayable.
+ */
+export function redactFigures(text: string): string {
+  return String(text ?? '')
+    .replace(/[£$]\s?\d[\d,.]*\s?(?:k|m)?\b/gi, 'a figure')
+    .replace(/\bGBP\s?\d[\d,.]*\b/gi, 'a figure')
+    .replace(/\b\d{2,3},\d{3}\b/g, 'a figure')
+    .replace(/\b\d+\s?k\b/gi, 'a figure');
+}

@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { needsProofOfFunds } from '../api/lib/proof-of-funds';
 import { firstNameFromEmail } from '../api/lib/branch-email-lookup';
-import { fixGreeting } from '../api/lib/draft-guards';
+import { fixGreeting, redactFigures } from '../api/lib/draft-guards';
 
 const root = resolve(__dirname, '..');
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
@@ -139,6 +139,29 @@ describe('the email is addressed to the person it is sent to', () => {
     // a name is useless without the name, which is why a told-to-address-the-
     // recipient draft still opened "Hello,".
     expect(read('api/crm/draft-offer-email.ts')).toMatch(/THE PERSON YOU ARE WRITING TO/);
+  });
+});
+
+describe('an internal note never hands a model our figures', () => {
+  // The comment directly above the do_now stripper says it: "forbidding a
+  // model to mention a number while showing it the number is a hope, not a
+  // fence." The pinned note was still going over verbatim, and on Welwyn Park
+  // Road the model quoted the offer out of it into a proof-of-funds email.
+  // Because the offer on that deal IS the walk-away, two money fences fired
+  // and the email could not be sent at all.
+  it('redacts money and keeps the instruction', () => {
+    const note = 'Our offer: GBP 103,600 (ready to go). Worth 140k done up. '
+      + 'Agent will not put it forward without proof of funds, decide today.';
+    const out = redactFigures(note);
+    expect(out).not.toMatch(/103,600|140k/);
+    expect(out).toContain('without proof of funds, decide today');
+    expect(redactFigures('at \u00a396,375 they said no')).not.toMatch(/96,375/);
+  });
+
+  it('the drafter redacts the pinned note and the blockers', () => {
+    const src = read('api/crm/draft-offer-email.ts');
+    expect(src).toMatch(/redactFigures\(c\.pinnedNote\)/);
+    expect(src).toMatch(/redactFigures\(b\)/);
   });
 });
 

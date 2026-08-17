@@ -35,7 +35,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
-import { stripInventedHouseNumber, fixGreeting } from '../lib/draft-guards.js';
+import { stripInventedHouseNumber, fixGreeting, redactFigures } from '../lib/draft-guards.js';
 import { decideCounter, respectsCeiling } from '../lib/counter-position.js';
 import { externalDoNow } from '../lib/next-step-brief.js';
 
@@ -444,8 +444,12 @@ export default async function handler(req: Request): Promise<Response> {
   }
   const dealState = [
     c.step ? `The step this branch is on: ${c.step}` : null,
+    // The blocker is the whole point of the email, so it is shown in full, but
+    // its figures go the same way the note's do: a blocker that reads "the
+    // agent will not put GBP 103,600 forward without proof of funds" is a
+    // blocker whether or not the model can see the number.
     blockers.length
-      ? `WHAT IS HOLDING IT UP (this is what the email is FOR, answer it first):\n${blockers.map((b) => `- ${b}`).join('\n')}`
+      ? `WHAT IS HOLDING IT UP (this is what the email is FOR, answer it first):\n${blockers.map((b) => `- ${redactFigures(b)}`).join('\n')}`
       : 'Nothing specific is recorded as holding it up. Write a short, friendly chase asking where it stands.',
     // OUR OWN FIGURES ARE STRIPPED OUT BEFORE THE MODEL SEES THEM.
     //
@@ -461,7 +465,10 @@ export default async function handler(req: Request): Promise<Response> {
     externalDoNow(c.doNow).filter(Boolean).length
       ? `WHAT WE HAVE ALREADY DECIDED TO DO (say only the parts that concern THEM):\n${externalDoNow(c.doNow).map((d) => `- ${d}`).join('\n')}`
       : null,
-    c.pinnedNote ? `OUR OWN NOTE on this deal (internal, never quote it):\n${c.pinnedNote}` : null,
+    // SAME FENCE FOR THE PINNED NOTE. It was handed over verbatim under the
+    // label "never quote it", which is the hope the comment above warns about:
+    // the model duly quoted a figure out of it into a proof-of-funds email.
+    c.pinnedNote ? `OUR OWN NOTE on this deal (internal, never quote it):\n${redactFigures(c.pinnedNote)}` : null,
     proofFacts || null,
   ].filter(Boolean).join('\n\n');
 
