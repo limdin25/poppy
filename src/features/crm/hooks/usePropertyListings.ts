@@ -59,6 +59,12 @@ interface ListingRow {
   floor_area_sqm: number | null;
   /** Hugo's own instruction, pinned above the brief. */
   pinned_note: string | null;
+  /** The machine's homework after call one (api/lib/ballpark.ts shape:
+   *  { ok, heard, engine, at }). Null until the ballpark runner has heard the
+   *  call. The BAND in it never reaches the card from here, that is
+   *  applyBallpark's job behind a human press; this row exists so the room
+   *  can show the sold EVIDENCE and say "the homework is ready". */
+  ballpark_preview: Record<string, unknown> | null;
 }
 
 /** One sold comparable behind the valuation, ready to read out loud.
@@ -127,6 +133,49 @@ export interface PropertyListing extends ListingRow {
   /** One line of why this is a deal. Empty string when there is nothing
    *  honest to say, which the strip renders as nothing at all. */
   reasonLine: string;
+  /** The ballpark homework exists and priced this house (preview ok AND the
+   *  engine said ok). The room uses it to offer the arm button on an unarmed
+   *  call-two card. Never carries the figures themselves. */
+  ballparkReady: boolean;
+}
+
+/** The sold comparables inside a ballpark preview, as sentences an agent can
+ *  read out loud. Raw sold price and date, same rule as the nested-audit
+ *  sentences above: Pedro says these to someone who can check them.
+ *
+ *  This is the LAST evidence fallback: a discovery-lane card has deal = {}
+ *  by design, so before this the panel said "no sold comparables on file"
+ *  while four good comps sat in ballpark_preview (Friars Close, 18 Aug). */
+export function ballparkEvidenceSentences(
+  preview: Record<string, unknown> | null | undefined,
+): string[] {
+  const engine = (preview?.engine && typeof preview.engine === 'object')
+    ? preview.engine as Record<string, unknown> : null;
+  const rows = Array.isArray(engine?.evidence) ? engine.evidence as unknown[] : [];
+  return rows
+    .filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null)
+    .filter((r) => Number(r.price) > 0)
+    .slice(0, 4)
+    .map((r) => {
+      const addr = str(r.address).split(',')[0].trim();
+      const sqm = Number(r.floor_area_sqm);
+      const dist = Number(r.distance_m);
+      const bits = [
+        Number.isFinite(sqm) && sqm > 0 ? `${Math.round(sqm)} sqm` : '',
+        Number.isFinite(dist) && dist >= 0 && str(r.distance_m) !== '' ? `${Math.round(dist)}m away` : '',
+        str(r.date).slice(0, 10),
+      ].filter(Boolean).join(', ');
+      return `${addr} sold for ${gbpShort(Number(r.price))}${bits ? ` (${bits})` : ''}`;
+    })
+    .filter((s) => s.length > 12);
+}
+
+/** True when the homework has run and the engine priced the house. */
+export function ballparkIsReady(preview: Record<string, unknown> | null | undefined): boolean {
+  if (preview?.ok !== true) return false;
+  const engine = (preview.engine && typeof preview.engine === 'object')
+    ? preview.engine as Record<string, unknown> : null;
+  return engine?.ok === true;
 }
 
 /** The engine's flag codes, in words an agent can use on the phone.
@@ -312,11 +361,16 @@ export function usePropertyListings(phone: string | null | undefined, opts?: Opt
         ...comps.filter((c) => c.when === 'today'),
         ...comps.filter((c) => c.when === 'after'),
       ].map((c) => c.text);
+      // The ballpark homework's comps, for the card the deal has not reached
+      // yet (discovery lane, deal = {}). Facts only, sold prices of OTHER
+      // houses, so showing them breaks no call-one rule.
+      const previewEvidence = ballparkEvidenceSentences(r.ballpark_preview);
       const evidence = flatEvidence.length > 0 ? flatEvidence.slice(0, 3)
         : compEvidence.length > 0 ? compEvidence.slice(0, 3)
           : nestedEvidence.length > 0 ? nestedEvidence
-            : nUsed > 0 ? [`${nUsed} sold comparables nearby put it at ${gbpShort(cmvOf(deal))}`]
-              : [];
+            : previewEvidence.length > 0 ? previewEvidence
+              : nUsed > 0 ? [`${nUsed} sold comparables nearby put it at ${gbpShort(cmvOf(deal))}`]
+                : [];
       return {
         ...r,
         offerMin: band.min,
@@ -344,6 +398,7 @@ export function usePropertyListings(phone: string | null | undefined, opts?: Opt
         bmvBand: dealBmvBand(r),
         conditionBand: dealConditionBand(r),
         reasonLine: dealReasonLine(r, evidence),
+        ballparkReady: ballparkIsReady(r.ballpark_preview),
       };
     }).filter((l) => includeWithdrawn || !l.withdrawn);
   }, [q.data, includeWithdrawn]);

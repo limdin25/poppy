@@ -168,7 +168,13 @@ export default function BallparkModal({ propertyId, address, onClose }: {
     try {
       const r = await callApi(propertyId, true);
       setResult(r);
-      if (r.applied) void qc.invalidateQueries({ queryKey: ['property-links'] });
+      if (r.applied) {
+        void qc.invalidateQueries({ queryKey: ['property-links'] });
+        // The dialer room reads its card from this one. Without it, arming
+        // from the room left the banner and the empty slots on screen until
+        // a full reload (18 Aug, the room gained its own arm button).
+        void qc.invalidateQueries({ queryKey: ['property-listings'] });
+      }
     } catch {
       setResult({ error: 'Could not reach the server. Try again.' });
     } finally {

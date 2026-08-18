@@ -41,6 +41,7 @@ import DialerRightTabs from './DialerRightTabs';
 import OfferStrip from './OfferStrip';
 import PropertiesPane from './PropertiesPane';
 import NextStepPanel from '../shared/NextStepPanel';
+import BallparkModal from '../deals/BallparkModal';
 import { callModeForCard } from '../../lib/nextStep';
 import { spokeWhenPhrase, propertyOpenerLine } from '../../lib/spokeWhen';
 import { useBranchLastCall } from '../../hooks/useBranchLastCall';
@@ -97,6 +98,11 @@ export default function PropertyCallRoom({
 }: PropertyCallRoomProps) {
   const { listings } = usePropertyListings(contact?.phone);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  // The unarmed-call-2 banner's own press. Hugo, 18 Aug, tired, on Friars
+  // Close: "still not fetching and not even know comparables". The only
+  // fetch/apply button lived on the pipeline board; this mounts the SAME
+  // modal (same endpoint, same confirm press) in the room he is actually in.
+  const [ballparkOpen, setBallparkOpen] = useState(false);
   const handleSelectProperty = useCallback((id: string) => setSelectedPropertyId(id), []);
 
   // A new branch is a different agency, so the old selection is not merely
@@ -305,14 +311,30 @@ export default function PropertyCallRoom({
               data-testid="unarmed-call2-warning"
             >
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-              <span>
-                <b>No confirmed figures on this card.</b> This is the call 2
-                script but the ballpark was never applied, so the money slots
-                below are empty. Do not invent a number: get the facts, say the
-                director is still pricing it, and book the callback. Figures are
-                armed from the cockpit ballpark.
+              <span className="flex-1">
+                <b>No confirmed figures on this card.</b>{' '}
+                {selectedListing?.ballparkReady
+                  ? 'The homework is ready: review it and arm the figures before you say a number.'
+                  : 'This is the call 2 script but the ballpark was never applied, so the money slots below are empty. Do not invent a number: get the facts, say the director is still pricing it, and book the callback.'}
               </span>
+              {selectedListing && (
+                <button
+                  type="button"
+                  onClick={() => setBallparkOpen(true)}
+                  data-testid="arm-ballpark-button"
+                  className="flex-shrink-0 self-center rounded-[7px] bg-[#3C5A87] px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-[#31486D]"
+                >
+                  {selectedListing.ballparkReady ? 'Review and arm the figures' : 'Fetch the ballpark'}
+                </button>
+              )}
             </div>
+          )}
+          {ballparkOpen && selectedListing && (
+            <BallparkModal
+              propertyId={selectedListing.id}
+              address={selectedListing.address}
+              onClose={() => setBallparkOpen(false)}
+            />
           )}
           <div className="min-h-0 flex-1">
             <DialerScriptPane

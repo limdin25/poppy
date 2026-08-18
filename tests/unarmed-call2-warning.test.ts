@@ -43,4 +43,26 @@ describe('the unarmed call 2 warning', () => {
   it('tells him what to do, not just what is wrong', () => {
     expect(ROOM).toContain('Do not invent a number')
   })
+
+  // 18 Aug, second round, Hugo: "still not fetching and not even know
+  // comparables, cant see." The audit: the preview was correct and the
+  // endpoint fast, but the only fetch/apply button lived on the pipeline
+  // board. The banner is now the button.
+  it('carries the arm button and mounts the SAME modal the board uses', () => {
+    expect(ROOM).toContain('data-testid="arm-ballpark-button"')
+    expect(ROOM).toContain("from '../deals/BallparkModal'")
+    expect(ROOM).toContain('<BallparkModal')
+  })
+
+  it('labels the press by whether the homework is ready', () => {
+    expect(ROOM).toContain('Review and arm the figures')
+    expect(ROOM).toContain('Fetch the ballpark')
+    expect(ROOM).toContain('ballparkReady')
+  })
+
+  it('applying from the room refreshes the room, not just the board', () => {
+    const modal = readFileSync(
+      resolve(root, 'src/features/crm/components/deals/BallparkModal.tsx'), 'utf8')
+    expect(modal).toContain("queryKey: ['property-listings']")
+  })
 })
