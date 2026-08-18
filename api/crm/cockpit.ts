@@ -18,9 +18,11 @@
 // GET /api/crm/cockpit?propertyId=x  -> one deal, its history, and every
 //                                       button's stress test
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { baselineAttention, deterministicFlags, fallbackVerdict, allowedActions } from '../lib/deal-manager-contract.js';
-import { stateHash, loadCockpitStates, latestAssessments, dealLog, type LogRow } from '../lib/deal-manager-run.js';
+import {
+  stateHash, loadCockpitStates, latestAssessments, latestHandMoves, dealLog, type LogRow,
+} from '../lib/deal-manager-run.js';
 import { stressAll, COCKPIT_ACTIONS, ACTION_LABEL, ACTION_EXECUTION } from '../lib/deal-stress-test.js';
 import { isCockpitDeal } from '../lib/cockpit-filter.js';
 import { bestBranchEmail } from '../lib/branch-email-lookup.js';
@@ -32,7 +34,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 /** One flag returns the product to what it was. Unreadable means OFF. */
-async function managerEnabled(sb: ReturnType<typeof createClient>): Promise<boolean> {
+async function managerEnabled(sb: SupabaseClient<any, any, any>): Promise<boolean> {
   try {
     const { data } = await sb
       .from('platform_settings').select('value').eq('key', 'deal_manager').maybeSingle();
@@ -78,9 +80,13 @@ export default async function handler(req: Request): Promise<Response> {
     const bundle = bundles.find((b) => b.state.propertyId === propertyId);
     if (!bundle) return Response.json({ error: 'unknown property' }, { status: 404 });
 
-    const [log, latest] = await Promise.all([
+    const [log, latest, blocked] = await Promise.all([
       dealLog(caller, propertyId, 60),
       latestAssessments(caller, [propertyId]),
+      // The CALLER's client on purpose: the function answers only for someone
+      // who is already allowed in the CRM, and an admin never needs it because
+      // the real row is readable.
+      blockedOnHugo(caller, [propertyId]),
     ]);
 
     // THE ADDRESS WE ACTUALLY HOLD, resolved the same way the pipeline modal
@@ -141,7 +147,10 @@ export default async function handler(req: Request): Promise<Response> {
       generatedAt: now.toISOString(),
       // branchEmail carries the RESOLVED address so the drawer shows what the
       // gate will use, not the branch row's empty field.
-      deal: { ...shapeDeal(bundle, latest.get(propertyId) ?? null, now), branchEmail: resolvedEmail },
+      deal: {
+        ...shapeDeal(bundle, latest.get(propertyId) ?? null, now, blocked.get(propertyId) ?? null),
+        branchEmail: resolvedEmail,
+      },
       state: bundle.state,
       log: log.map(shapeLogEntry),
       timeline,
@@ -158,7 +167,15 @@ export default async function handler(req: Request): Promise<Response> {
   // the prioritised list
   // -----------------------------------------------------------------------
   const bundles = await loadCockpitStates(supabase, { limit: 400, now });
-  const latest = await latestAssessments(caller, bundles.map((b) => b.state.propertyId));
+  const propertyIds = bundles.map((b) => b.state.propertyId);
+  const [latest, blocked, handMoved] = await Promise.all([
+    latestAssessments(caller, propertyIds),
+    blockedOnHugo(caller, propertyIds),
+    // A card a human moved by hand is off the desk. Read with the CALLER's
+    // client, like the other two, so an agent's board and an admin's board are
+    // each judged on what that person is allowed to see.
+    latestHandMoves(caller, propertyIds),
+  ]);
 
   // THE COCKPIT IS WHERE A CONVERSATION IS WAITING ON A DECISION.
   //
@@ -171,10 +188,13 @@ export default async function handler(req: Request): Promise<Response> {
   const asideContacts: Record<string, Set<string>> = {
     calling_list: new Set(), never_spoke: new Set(), closed_door: new Set(),
     finished: new Set(), off_board: new Set(), scheduled: new Set(), waiting_reply: new Set(),
+    moved_by_hand: new Set(),
   };
   const keptContacts = new Set<string>();
   for (const b of bundles) {
-    const decision = isCockpitDeal(b.state, now);
+    const decision = isCockpitDeal(b.state, now, {
+      handMovedAt: handMoved.get(b.state.propertyId) ?? null,
+    });
     if (decision.inCockpit) {
       kept.push(b);
       keptContacts.add(b.contactId);
@@ -184,7 +204,10 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const shaped = kept
-    .map((bundle) => shapeDeal(bundle, latest.get(bundle.state.propertyId) ?? null, now))
+    .map((bundle) => shapeDeal(
+      bundle, latest.get(bundle.state.propertyId) ?? null, now,
+      blocked.get(bundle.state.propertyId) ?? null,
+    ))
     .sort((a, b) => b.attention - a.attention
       || (b.hoursSinceTouch ?? 0) - (a.hoursSinceTouch ?? 0)
       || String(a.address).localeCompare(String(b.address)));
@@ -214,7 +237,10 @@ export default async function handler(req: Request): Promise<Response> {
     Object.entries(asideContacts).map(([why, ids]) => [
       why, [...ids].filter((id) => !keptContacts.has(id)).length,
     ]),
-  ) as { calling_list: number; never_spoke: number; closed_door: number; finished: number; off_board: number; scheduled: number; waiting_reply: number };
+  ) as {
+    calling_list: number; never_spoke: number; closed_door: number; finished: number;
+    off_board: number; scheduled: number; waiting_reply: number; moved_by_hand: number;
+  };
 
   // THE CALLING LIST IS THE DIALER QUEUE, counted from the queue itself.
   //
@@ -239,7 +265,75 @@ export default async function handler(req: Request): Promise<Response> {
     // the other hundred and forty went.
     setAside,
     callingListQueued: queued ?? null,
+    machine: await machineHealth(supabase, now),
   });
+}
+
+/** Is the machine that fills the calling list actually running.
+ *
+ *  THE ALERT EXISTED AND NOBODY SAW IT (2026-08-17). The overnight pipeline
+ *  failed three nights in a row, the dead man's switch fired correctly, and it
+ *  fired by EMAIL. Meanwhile the cockpit, the screen Hugo opens every morning,
+ *  looked completely normal while Pedro worked a two day old list that nothing
+ *  was refilling.
+ *
+ *  So the same fact is put where the work happens. It is read from the same
+ *  stamps the dead man's switch reads, never from a second source of truth.
+ *
+ *  Never fatal, and never green by accident: a failed read reports unknown
+ *  rather than healthy, because "we could not check" and "it is fine" are
+ *  different answers and only one of them is safe to show as a tick.
+ */
+async function machineHealth(sb: SupabaseClient<any, any, any>, now: Date): Promise<{
+  ok: boolean | null; problems: string[];
+}> {
+  try {
+    const { data, error } = await (sb.from('platform_settings') as unknown as {
+      select: (c: string) => { in: (c: string, v: string[]) => Promise<{
+        data: Array<{ key: string; value: string }> | null;
+        error: { message: string } | null;
+      }> };
+    }).select('key, value').in('key', ['vps_overnight_last_ok_at', 'deal_sweep_last_ok_at']);
+    if (error) return { ok: null, problems: [] };
+
+    // platform_settings.value is a TEXT column holding JSON, not jsonb, so it
+    // arrives as a string and has to be parsed. Reading it as an object gives
+    // undefined for every field and the banner then reports a healthy machine
+    // as "never reported in", which is how this was caught: the first live
+    // response said the overnight had never run on a day it ran at 23:30.
+    // api/cron/system-deadman.ts parses it the same way.
+    const parse = (s: string | undefined): { at?: string; stage?: string } => {
+      try { return JSON.parse(String(s ?? '{}')) as { at?: string; stage?: string }; }
+      catch { return {}; }
+    };
+    const by = new Map((data ?? []).map((r) => [r.key, parse(r.value)]));
+    const problems: string[] = [];
+
+    const vps = by.get('vps_overnight_last_ok_at');
+    const vpsAt = vps?.at ? Date.parse(String(vps.at)) : NaN;
+    const vpsStage = String(vps?.stage ?? '');
+    const vpsAgeH = Number.isNaN(vpsAt) ? null : (now.getTime() - vpsAt) / 3_600_000;
+    if (vpsAgeH === null) {
+      problems.push('The overnight machine has never reported in.');
+    } else if (vpsAgeH > 26) {
+      problems.push(`The overnight machine has not run for ${Math.round(vpsAgeH)} hours. Pedro's list is not being refilled.`);
+    } else if (vpsStage !== 'complete' && vpsAgeH > 8) {
+      problems.push(`Last night's run died part way, at "${vpsStage || 'unknown'}". No new houses reached Pedro.`);
+    }
+
+    const sweepAt = by.get('deal_sweep_last_ok_at')?.at;
+    const sweepAgeMin = sweepAt ? (now.getTime() - Date.parse(String(sweepAt))) / 60_000 : null;
+    // Only inside the hours the sweep cron actually runs (*/2 6-20 UTC), or a
+    // healthy overnight silence would show as a fault every morning.
+    const hourUtc = now.getUTCHours();
+    if (hourUtc >= 6 && hourUtc <= 20 && sweepAgeMin !== null && sweepAgeMin > 30) {
+      problems.push(`The deal brain has not judged anything for ${Math.round(sweepAgeMin)} minutes.`);
+    }
+
+    return { ok: problems.length === 0, problems };
+  } catch {
+    return { ok: null, problems: [] };
+  }
 }
 
 /** The board columns a property deal can actually be in. The pipeline table
@@ -259,7 +353,53 @@ const PROPERTY_STAGES = [
 
 type Bundle = Awaited<ReturnType<typeof loadCockpitStates>>[number];
 
-function shapeDeal(bundle: Bundle, assessment: LogRow | null, now: Date) {
+/** Which of these deals are waiting on Hugo, and since when.
+ *
+ *  WHY THIS EXISTS, and why it is a separate call rather than a column on the
+ *  log read. wk_deal_manager_log_read hides rows flagged blocked_needs_hugo
+ *  from anyone who is not an admin, which is right: Hugo's escalation lane
+ *  holds his money reasoning and his proof of funds. But hiding the order left
+ *  NOTHING in its place, so Pedro's cockpit silently fell back to the
+ *  deterministic brief and printed "Hold, nothing today" on the best deal on
+ *  the board (Zest Hull, 17 Aug, the card Hugo screenshotted).
+ *
+ *  The RPC is SECURITY DEFINER and deliberately returns a property id and a
+ *  timestamp and nothing else. Pedro learns that the deal is alive and not his
+ *  move. He does not learn why.
+ *
+ *  Never fatal: if this call fails the cockpit is exactly what it was before
+ *  the function existed.
+ */
+async function blockedOnHugo(
+  // The loose client type deal-manager-run.ts already uses. NOT
+  // `ReturnType<typeof createClient>`: unparameterised, that resolves to a
+  // client whose schema is `never`, so passing a real client to it is a type
+  // error. It is the one shape behind every type error in api/ today.
+  sb: SupabaseClient<any, any, any>, propertyIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!propertyIds.length) return out;
+  try {
+    const { data, error } = await (sb as unknown as {
+      rpc: (fn: string, args: Record<string, unknown>) => Promise<{
+        data: Array<{ property_id: string; since: string }> | null;
+        error: { message: string } | null;
+      }>;
+    }).rpc('wk_deals_blocked_on_hugo', { p_property_ids: propertyIds });
+    if (error) {
+      console.error('[cockpit] blocked-on-Hugo read failed', error.message);
+      return out;
+    }
+    for (const row of data ?? []) out.set(row.property_id, row.since);
+  } catch (e) {
+    console.error('[cockpit] blocked-on-Hugo read threw', String(e).slice(0, 120));
+  }
+  return out;
+}
+
+function shapeDeal(
+  bundle: Bundle, assessment: LogRow | null, now: Date, blockedSince?: string | null,
+) {
   const { state } = bundle;
   const fallback = fallbackVerdict(state);
   const hash = stateHash(state);
@@ -274,6 +414,18 @@ function shapeDeal(bundle: Bundle, assessment: LogRow | null, now: Date) {
   // wrong. It still renders, marked, because a slightly old instruction beats
   // a blank card and the sweep catches up within two minutes.
   const stale = Boolean(assessment && assessment.state_hash !== hash);
+
+  // WAITING ON HUGO, AND THE READER CANNOT SEE THE ORDER THAT SAYS SO.
+  //
+  // Only ever true for a non-admin, because an admin reads the real row and
+  // `assessment` is the newer one. It is set when the newest decision on the
+  // deal is Hugo's AND the newest row this caller can read is older than it,
+  // which is precisely the case where the card would otherwise show a stale
+  // brief and a "Hold, nothing today" button on a live deal.
+  const hiddenOrder = Boolean(
+    blockedSince
+    && (!assessment || Date.parse(assessment.created_at ?? '') < Date.parse(blockedSince)),
+  );
 
   return {
     propertyId: state.propertyId,
@@ -294,6 +446,10 @@ function shapeDeal(bundle: Bundle, assessment: LogRow | null, now: Date) {
     source: (assessment?.source ?? 'fallback') as 'manager' | 'fallback',
     assessedAt: assessment?.created_at ?? null,
     stale,
+    /** The deal is alive and the next move is Hugo's, told to a reader who is
+     *  not allowed to see the order itself. The UI shows a "Hugo is on this
+     *  one" card instead of an instruction, and drops the Hold button. */
+    blockedOnHugo: hiddenOrder ? { since: blockedSince as string } : null,
 
     flags: [...new Set([...(assessment?.flags ?? []), ...deterministicFlags(state)])],
 

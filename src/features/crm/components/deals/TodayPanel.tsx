@@ -69,9 +69,11 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
         <div>
           <h2 className="text-[14px] font-semibold text-[#1A1A1A]">Today</h2>
           <p className="text-[11px] text-[#6B7280]">
-            {managerOn
-              ? BRAIN_ON_NOTE
-              : BRAIN_OFF_NOTE}
+            {/* Never claim the brain is off before the answer is in: this
+                request is slow, and the default-false flag had the panel
+                printing "the deal brain is off" for the whole load while the
+                brain was on (seen live, 2026-08-17). */}
+            {loading ? 'Reading the day...' : managerOn ? BRAIN_ON_NOTE : BRAIN_OFF_NOTE}
           </p>
         </div>
         <button

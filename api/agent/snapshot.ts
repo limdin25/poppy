@@ -63,12 +63,15 @@ export default async function handler(req: Request): Promise<Response> {
         .single();
       if (!agent) return new Response(JSON.stringify({ error: 'Agent not found' }), { status: 404 });
 
+      // The dynamic select string defeats supabase-js's query parser, so the
+      // row type degrades to a parser error; the shape is known here.
+      const agentRow = agent as unknown as Record<string, unknown>;
       const dbCfg: Record<string, unknown> = {};
-      for (const f of DB_FIELDS) dbCfg[f] = (agent as Record<string, unknown>)[f];
+      for (const f of DB_FIELDS) dbCfg[f] = agentRow[f];
 
       const retellCfg: Record<string, unknown> = {};
-      if ((agent as Record<string, unknown>).retell_agent_id) {
-        const r = await fetch(`https://api.retellai.com/get-agent/${(agent as Record<string, unknown>).retell_agent_id}`, {
+      if (agentRow.retell_agent_id) {
+        const r = await fetch(`https://api.retellai.com/get-agent/${agentRow.retell_agent_id}`, {
           headers: { Authorization: `Bearer ${RETELL_API_KEY}` },
         });
         if (r.ok) {

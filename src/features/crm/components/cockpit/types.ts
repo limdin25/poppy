@@ -53,6 +53,11 @@ export interface CockpitDeal {
   /** The instruction was written against a state that has since moved. Still
    *  shown, because a slightly old instruction beats a blank card. */
   stale: boolean;
+  /** Set only for a reader who is NOT allowed to see the current order: the
+   *  newest decision on this deal is Hugo's and RLS hides it. The panel shows
+   *  a "Hugo is on this one" card instead of an instruction, and no Hold
+   *  button. Always null for an admin, who reads the real order. */
+  blockedOnHugo: { since: string } | null;
 
   flags: string[];
 
@@ -117,11 +122,18 @@ export interface CockpitListResponse {
     scheduled: number;
     /** We replied in writing; the ball is in their court. */
     waiting_reply?: number;
+    /** A human pressed Move the stage. Hugo, 17 Aug: "when I move a lead to a
+     *  pipeline column, that's it." Off the desk, still on the board. */
+    moved_by_hand?: number;
   };
   /** How many branches are actually pending in Pedro's dialer queue. THE
    *  calling-list number, counted from the queue itself so the cockpit footer
    *  and the dialer can never show two different totals for one idea. */
   callingListQueued?: number | null;
+  /** Is the machine that fills the calling list actually running. `ok: null`
+   *  means the check itself could not run, which is deliberately NOT the same
+   *  as healthy: a tick nobody earned is worse than no tick. */
+  machine?: { ok: boolean | null; problems: string[] } | null;
 }
 
 /** One thing that happened on a deal: a call with its recording, an email
@@ -223,5 +235,8 @@ export interface CockpitActionResponse {
   /** True when this deal's own words ask for proof of funds, so the send will
    *  carry the statement. The signed link is minted at press time. */
   willAttachProof?: boolean;
+  /** Where the card lands if this press goes through: the gate shows it and
+   *  offers the dropdown, instead of the card moving behind the human's back. */
+  afterMove?: { suggested: string | null; current: string | null };
   logEntry?: DealLogEntry;
 }

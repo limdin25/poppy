@@ -59,6 +59,11 @@ const REFUSAL_WORDS: Record<string, string> = {
   bad_who: 'It named somebody who is not on the list.',
   not_an_object: 'It did not answer with an object.',
   budget_capped: 'The day\'s assessment budget is spent, so every card is showing its brief.',
+  // Not a stand-down: the assessment was USED, with one contradiction corrected.
+  // It shares this column because that is where the reason travels, and it is
+  // worth seeing rather than tidying away silently.
+  hold_with_who_hugo_became_escalate_hugo:
+    'It said hold and also said Hugo has to act, so the order was pointed at Hugo instead of at nothing.',
 };
 
 function when(iso: string): string {

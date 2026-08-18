@@ -19,6 +19,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
 import { offerRange, gbpShort, ladderText, upliftRefurb, readDealMoney } from '../../../../api/lib/brrr-offer';
+import { phoneTail } from '../../../../api/lib/phone-match';
 import {
   dealStrategy, dealBmvBand, dealConditionBand, dealReasonLine,
   type BmvBand,
@@ -209,11 +210,12 @@ interface Options {
 
 export function usePropertyListings(phone: string | null | undefined, opts?: Options) {
   const includeWithdrawn = opts?.includeWithdrawn === true;
-  const digits = (phone ?? '').replace(/\D/g, '');
-  const enabled = digits.length >= 9;
+  // Same last-9 rule the RPC matches on (api/lib/phone-match.ts).
+  const tail = phoneTail(phone);
+  const enabled = tail !== '';
 
   const q = useQuery({
-    queryKey: ['property-listings', digits.slice(-9)],
+    queryKey: ['property-listings', tail],
     enabled,
     staleTime: 60_000,
     queryFn: async (): Promise<ListingRow[]> => {
@@ -354,6 +356,88 @@ export function usePropertyListings(phone: string | null | undefined, opts?: Opt
   };
 }
 
+/** Which house a branch is ringing US about.
+ *
+ *  WHY IT IS NOT listings[0] (2026-08-18). Outbound, the list is sorted
+ *  best-deal-first and the top one is the right one to open on: Pedro chose to
+ *  ring this branch and the best deal is why. Inbound, he did not choose
+ *  anything. They are ringing back about whatever was last discussed, which on
+ *  a branch with eleven listings is almost never the one with the biggest
+ *  margin.
+ *
+ *  So: the house named on the contact wins. custom_fields.property_address is
+ *  written back on every outbound property call from the listing the agent had
+ *  selected (see PropertyCallRoom), which makes it the record of what was last
+ *  actually talked about. Then the most recently rung house. Then the best
+ *  deal, which is the old behaviour and the honest answer when we have never
+ *  spoken to them.
+ *
+ *  Matched on the address string because that is what the write-back stores.
+ *  Compared loosely (case and punctuation folded) so "14 Orchard Terrace," and
+ *  "14 Orchard Terrace" are one house. */
+export function defaultInboundListingId(
+  listings: readonly PropertyListing[],
+  customFields: Record<string, string> | null | undefined,
+): string | null {
+  if (listings.length === 0) return null;
+  const fold = (s: string | null | undefined) =>
+    (s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const lastTalkedAbout = fold(customFields?.property_address);
+  if (lastTalkedAbout) {
+    const named = listings.find((l) => fold(l.address) === lastTalkedAbout);
+    if (named) return named.id;
+  }
+  const rung = listings
+    .filter((l) => l.last_call_at)
+    .sort((a, b) => String(b.last_call_at).localeCompare(String(a.last_call_at)))[0];
+  if (rung) return rung.id;
+  return listings[0].id;
+}
+
+/** The house facts a DISCOVERY branch carries on the contact itself.
+ *
+ *  WHY THIS EXISTS (2026-08-17, Hugo mid-shift: "property details disappeared
+ *  from the script").
+ *
+ *  The property tokens are supposed to come from the listing the agent picked
+ *  in the Houses panel, because one agency lists many houses and the contact
+ *  cannot speak for all of them. That is right for the PRICED lane. But the
+ *  discovery lane, live since 15 Aug, deliberately creates no brrr_properties
+ *  row at all: call one never says a figure, so there is nothing to price and
+ *  nothing to file. So the Houses panel is empty, no listing is selected, and
+ *  the script rendered its raw brackets: Pedro was being asked to read
+ *  "Hi, I'm calling about the property on [property_street]" out loud.
+ *
+ *  Measured that morning: 147 of the 151 branches in his queue are discovery
+ *  branches with no house row, so this was nearly the whole list.
+ *
+ *  The facts ARE on the contact, written by assign-discovery-branches.mjs for
+ *  exactly this purpose. This reads them, and ONLY the ones a first call may
+ *  use.
+ *
+ *  THE MONEY IS NOT HERE, and that is structural rather than careful. A
+ *  discovery contact is never given offer_open, offer_ceiling, ladder,
+ *  property_worth, worth_after_bed or comp_evidence, so there is no figure on
+ *  the card to leak into a call-one script even by accident. This function
+ *  cannot return one because it never reads those keys.
+ */
+export function discoveryScriptTokensFor(
+  customFields: Record<string, string> | null | undefined,
+): Record<string, string> {
+  const f = customFields ?? {};
+  const addr = f.property_address ?? '';
+  if (!addr) return {};
+  return {
+    property_address: addr,
+    property_street: f.property_street || addr.split(',')[0]?.trim() || addr,
+    asking_price: f.asking_price ?? '',
+    bedrooms: f.bedrooms ?? '',
+    property_type: (f.property_type ?? '').toLowerCase(),
+    days_on_market: f.days_on_market ?? '',
+    agency: f.agency ?? '',
+  };
+}
+
 /** The script's [tokens] for one listing. Kept next to the maths so the words
  *  on screen and the words the agent reads can never use different figures. */
 export function scriptTokensFor(l: PropertyListing | null | undefined): Record<string, string> {
@@ -363,7 +447,9 @@ export function scriptTokensFor(l: PropertyListing | null | undefined): Record<s
     property_address: addr,
     // "Bedford Street, Coventry, West Midlands, CV1" -> "Bedford Street".
     property_street: addr.split(',')[0]?.trim() || addr,
-    asking_price: l.price_text || gbpShort(l.asking_price),
+    // Empty when the listing carries no price, NEVER gbpShort's dash: this is
+    // read aloud, and a blank renders as an obvious unfilled slot instead.
+    asking_price: l.price_text || (Number(l.asking_price) > 0 ? gbpShort(l.asking_price) : ''),
     bedrooms: l.bedrooms != null ? String(l.bedrooms) : '',
     property_type: (l.property_type ?? '').toLowerCase(),
     days_on_market: l.days_on_market ?? '',
@@ -418,6 +504,10 @@ export function offerHouseFor(l: PropertyListing | null | undefined) {
   if (!l) return null;
   const m = readDealMoney({ asking_price: l.asking_price, deal: l.deal });
   return {
+    // brrr_properties.id, so the email drafter can read the distilled
+    // checklist (what the branch already answered on the phone) for THIS
+    // house rather than writing blind to it.
+    propertyId: l.id,
     address: l.address,
     askingPrice: l.asking_price,
     offerPrice: l.offerMin > 0 ? l.offerMin : null,

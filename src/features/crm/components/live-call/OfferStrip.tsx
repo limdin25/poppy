@@ -63,19 +63,30 @@ interface Props {
    *  everywhere else." Absent on every non-property caller, and the line simply
    *  is not drawn. */
   nextStep?: string | null;
+  /** The branch card's own fields, so a confirmed ballpark (`offer_open`)
+   *  opens call two even if a later outcome knocked the step back. One switch,
+   *  one answer, everywhere on screen. */
+  branchFields?: Record<string, string> | null;
+  /** The room's already-computed call mode, which also weighs the card's
+   *  board column. Passed by PropertyCallRoom so every pane shows the same
+   *  call; absent (DealSnapshotDrawer, Call history) the strip derives its
+   *  own from the fields, exactly as before. */
+  callMode?: 'discovery' | 'offer';
   /** Start folded to the one-line header. The dialer passes this so the script
    *  owns the screen; Call history leaves it open. */
   startCollapsed?: boolean;
 }
 
-export default function OfferStrip({ listing, total = 0, nextStep, startCollapsed = false }: Props) {
+export default function OfferStrip({
+  listing, total = 0, nextStep, branchFields, callMode, startCollapsed = false,
+}: Props) {
   const [open, setOpen] = useState(!startCollapsed);
   const step = resolveStage(nextStep);
   // Two calls, never one (2026-08-13). On a DISCOVERY call no number of ours
   // is ever said, so the band must not read as an instruction. The figures
   // stay visible, they are the homework and the coach checks against them,
   // but the wording flips to "call 2 only". Same switch the script pane uses.
-  const discovery = callModeForStep(nextStep) === 'discovery';
+  const discovery = (callMode ?? callModeForStep(nextStep, branchFields)) === 'discovery';
   if (!listing) {
     return (
       <div className="border-b border-[#E5E7EB] bg-[#FAFAF8] px-4 py-2.5 text-[12px] text-[#9CA3AF]">

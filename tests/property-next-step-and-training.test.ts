@@ -29,6 +29,10 @@ const stripComments = (s: string) =>
 const TABS = stripComments(read('src/features/crm/components/live-call/DialerRightTabs.tsx'));
 const SENDER = stripComments(read('src/features/crm/components/live-call/MidCallSmsSender.tsx'));
 const PAGE = stripComments(read('src/features/crm/dialer-pro/DialerProPage.tsx'));
+// The property room moved out of DialerProPage into its own component on
+// 2026-08-18, so the INBOUND call screen mounts the same room Pedro dials from.
+// These pins follow the code; what they assert is unchanged.
+const ROOM = stripComments(read('src/features/crm/components/live-call/PropertyCallRoom.tsx'));
 const STRIP = stripComments(read('src/features/crm/components/live-call/OfferStrip.tsx'));
 const OUTCOME = stripComments(read('api/crm/property-outcome.ts'));
 const ASSIGN = read('scripts/assign-properties-to-pedro-houses.mjs');
@@ -62,13 +66,15 @@ describe('the property call pane', () => {
     expect(SENDER).toMatch(/data-testid="ai-draft-offer"/);
     // 2026-08-15: on a discovery call this button was one click from putting
     // our figure in writing. It must be gated on the call mode, not merely on
-    // the call being a property call.
-    expect(SENDER).toMatch(/isPropertyCall && callModeForStep\(currentContact\?\.customFields\?\.next_step\) === 'offer' && \(/);
+    // the call being a property call. The room's computed mode (step +
+    // ballpark + board column) wins when passed; the fields derivation is
+    // the fallback for mounts outside the room.
+    expect(SENDER).toMatch(/isPropertyCall && \(callMode \?\? callModeForStep\(currentContact\?\.customFields\?\.next_step, currentContact\?\.customFields\)\) === 'offer' && \(/);
     expect(SENDER).toMatch(/\/api\/crm\/draft-offer-email/);
   });
 
   it('only stamps offer_sent on an offer-stage email', () => {
-    expect(SENDER).toMatch(/channel === 'email' && offerHouse\?\.offerPrice\s*\n\s*&& callModeForStep\(currentContact\?\.customFields\?\.next_step\) === 'offer'/);
+    expect(SENDER).toMatch(/channel === 'email' && offerHouse\?\.offerPrice\s*\n\s*&& \(callMode \?\? callModeForStep\(currentContact\?\.customFields\?\.next_step, currentContact\?\.customFields\)\) === 'offer'/);
   });
 });
 
@@ -140,8 +146,8 @@ describe('the next step, written and shown', () => {
 
   it('is on the strip, on the card, and in the left column', () => {
     expect(STRIP).toMatch(/data-testid="offer-strip-next-step"/);
-    expect(PAGE).toMatch(/<NextStepPanel/);
-    expect(PAGE).toMatch(/nextStep=\{contact\?\.customFields\?\.next_step/);
+    expect(ROOM).toMatch(/<NextStepPanel/);
+    expect(ROOM).toMatch(/const nextStep = contact\?\.customFields\?\.next_step/);
   });
 
   it('records an offer that has gone out, with the figure and the date', () => {
@@ -339,8 +345,28 @@ describe('the post-call review', () => {
 
 describe('the script and the coach follow the step', () => {
   it('the coach reads the step off the branch card', () => {
-    expect(COACH).toMatch(/custom_fields\?\.next_step/);
+    expect(COACH).toMatch(/coachFields\.next_step/);
     expect(COACH).toMatch(/PROPERTY_STEP_PROMPT/);
+  });
+
+  it('the coach never unlearns a confirmed ballpark', () => {
+    // Mirror of callModeForStep (2026-08-18): no_answer demotes next_step to
+    // 'Discovery call', so without this the coach walked Pedro through the
+    // cold opener while the script pane showed call two. Promote-only.
+    expect(COACH).toMatch(/COACH_OFFER_STEPS/);
+    expect(COACH).toMatch(/coachOpenFigure > 0/);
+    expect(COACH).toMatch(/\? 'Offer call'/);
+  });
+
+  it('the coach reads the board column too, same set as callModeForCard', () => {
+    // On the first real card both other signals were dead (step demoted,
+    // ballpark string blanked); the column was the only one left. Drift-pin
+    // the set against the client one in nextStep.ts.
+    expect(COACH).toMatch(/COACH_CALL2_COLUMNS/);
+    for (const name of ['Ready for call 2', 'Ballpark agreed', 'Needs viewing', 'Offer sent', 'Waiting on their answer', 'Offer accepted']) {
+      expect(COACH).toContain(`'${name}'`);
+    }
+    expect(COACH).toMatch(/columnSaysCall2/);
   });
 
   it('every step the coach knows about is a real step', () => {

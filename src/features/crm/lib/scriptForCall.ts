@@ -55,6 +55,34 @@ export function scriptFromLandingPath(landingPath: string | null | undefined): S
   return script === 'property_call' ? 'property_call' : null;
 }
 
+/** The script a CONTACT calls for, read off the contact itself.
+ *
+ *  Hugo, 2026-08-18, pressing the phone icon on a Ready-for-call-2 property
+ *  card on the pipeline board and getting the 2-Minute Audit reviews pitch:
+ *  "all we see is the old business script. This is unacceptable. We tried to
+ *  fix this so many times."
+ *
+ *  He had. The cockpit's Call button passes script 'property_call' explicitly,
+ *  and every OTHER Call button in the CRM (pipeline board, inbox, contacts,
+ *  contact detail, follow-up banner) passes nothing, so the dialer modal fell
+ *  back to 'cold_call'. Fixing buttons one at a time is how it stayed broken:
+ *  each fix left four more.
+ *
+ *  So the rule moves to the one fact every road shares: the contact. Every
+ *  property branch carries custom_fields.lead_type = 'estate_agent', written
+ *  by the assign scripts and re-stamped by the call room itself (measured
+ *  2026-08-18: 1,073 of 1,073 contacts with property fields have it). A lead
+ *  that carries it gets the property script whichever button was pressed.
+ *
+ *  Null means "this contact says nothing", so the caller keeps its default.
+ *  Deliberately NOT 'vsl_close' ever: that script belongs to one lead the
+ *  funnel opened a room for, never to a contact as a standing fact. */
+export function scriptForContactFields(
+  fields: Record<string, unknown> | null | undefined,
+): ScriptKey | null {
+  return fields?.lead_type === 'estate_agent' ? 'property_call' : null;
+}
+
 export function scriptForCall({
   openedWith,
   openedForContactId,

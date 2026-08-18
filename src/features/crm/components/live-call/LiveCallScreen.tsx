@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   MicOff,
   PhoneOff,
@@ -21,12 +21,17 @@ import MidCallSmsSender from './MidCallSmsSender';
 import ContactMetaCompact from './ContactMetaCompact';
 import CallTimeline from './CallTimeline';
 import PostCallPanel from './PostCallPanel';
+import PropertyCallRoom from './PropertyCallRoom';
+import BranchSearchPanel from './BranchSearchPanel';
 import EditContactModal from '../contacts/EditContactModal';
 import type { Contact } from '../../types';
 import { supabase } from '@/integrations/supabase/browser';
+import { findByPhone, samePhone } from '../../../../../api/lib/phone-match';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { useCurrentAgent } from '../../hooks/useCurrentAgent';
 import { useDialerCampaigns } from '../../hooks/useDialerCampaigns';
+import { usePropertyListings } from '../../hooks/usePropertyListings';
+import { useAgentDefaultScript } from '../../hooks/useAgentDefaultScript';
 import {
   formatDuration,
   formatPence,
@@ -61,19 +66,135 @@ export default function LiveCallScreen() {
 
   // Preview mode (PR 10): no active call, but agent opened the room for
   // a specific contact from the inbox. Use that contact instead of the
-  // active call's contact. When neither is set, fall back to first
-  // contact (legacy direct-dial case).
+  // active call's contact.
   const isPreview = phase === 'idle' && previewContactId !== null;
-  const contact =
-    store.contacts.find((c) =>
-      isPreview ? c.id === previewContactId : c.id === call?.contactId
-    ) ?? store.contacts[0] ?? null;
+
+  // The branch Pedro picked out of the search, when the caller's number
+  // matched nothing. It outranks everything: he has just told us who this is.
+  const [pickedContact, setPickedContact] = useState<Contact | null>(null);
+  useEffect(() => { setPickedContact(null); }, [call?.startedAt]);
+
+  // WHO IS ON THE PHONE.
+  //
+  // The `?? store.contacts[0]` that used to close this expression is gone
+  // (2026-08-18). On an inbound call from an unmatched number the id is a
+  // synthetic 'inbound-<sid>', so the find missed and the room showed the FIRST
+  // LEAD IN THE STORE: an unrelated person's name, stage, tags and SMS box,
+  // while somebody else was talking. It survives only for the legacy
+  // no-call-no-preview case it was written for.
+  //
+  // The phone match is by last 9 digits (api/lib/phone-match.ts), the same rule
+  // the property RPCs use. Exact string equality is why a branch we rang that
+  // morning came back as an unknown caller: Twilio says '+447380308316' and the
+  // lead is filed as '07380308316'.
+  const matchedContact = useMemo(() => {
+    if (isPreview) return store.contacts.find((c) => c.id === previewContactId) ?? null;
+    if (call?.contactId) {
+      const byId = store.contacts.find((c) => c.id === call.contactId);
+      if (byId) return byId;
+    }
+    if (call?.phone) {
+      return findByPhone(store.contacts, call.phone, (c) => c.phone) ?? null;
+    }
+    return null;
+  }, [isPreview, previewContactId, call?.contactId, call?.phone, store.contacts]);
+
+  const contact = pickedContact
+    ?? matchedContact
+    ?? (phase === 'idle' && !isPreview ? store.contacts[0] ?? null : null);
 
   const contactFirstName = contact?.name?.trim().split(/\s+/)[0] ?? '';
 
+  // Is this a property call? Three ways in, because each one alone has a hole:
+  // houses on file for the caller's number (the normal case), the lead flagged
+  // as an estate agent (a branch whose houses were all sold or withdrawn), or
+  // an unidentified caller on the line of an agent whose whole job is houses.
+  // That last clause is Hugo's instruction of 2026-08-18: the right script in
+  // front of Pedro even when he has to search for the branch.
+  const { listings } = usePropertyListings(contact?.phone ?? call?.phone);
+  const agentDefaultScript = useAgentDefaultScript();
+  const isPropertyCall =
+    listings.length > 0
+    || contact?.customFields?.lead_type === 'estate_agent'
+    || (agentDefaultScript === 'property_call' && !contact);
+
+  // File the call against the branch he picked, so the outcome he presses
+  // afterwards lands on the deal instead of nowhere.
+  //
+  // script_key travels with it when the branch really is a property one. The
+  // coach rebuilds its context from the database on every utterance and reads
+  // that column to decide whether it is listening to a property call: without
+  // it a searched branch would be coached as though it were a plumber lead.
+  const pickBranch = useCallback((picked: Contact, hasHouses: boolean) => {
+    setPickedContact(picked);
+    const callId = call?.callId;
+    if (!callId) return;
+    const isProperty = hasHouses || picked.customFields?.lead_type === 'estate_agent';
+    void supabase
+      .from('wk_calls')
+      .update(isProperty
+        ? { contact_id: picked.id, script_key: 'property_call' }
+        : { contact_id: picked.id })
+      .eq('id', callId);
+  }, [call?.callId]);
+
+  // COL 1's top card. One definition, used by the four-column layout below and
+  // handed to the property room as its header, so the two cannot drift.
+  const rangFromAnotherLine =
+    !!contact && !!call?.phone && !samePhone(contact.phone, call.phone);
+  const contactCard = contact ? (
+    <div className="px-4 py-3 border-b border-[#E5E7EB]">
+      <div className="flex items-center gap-2">
+        <div className="text-[16px] font-bold text-[#1A1A1A]">{contact.name}</div>
+        {contact.isHot && (
+          <span
+            className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{ background: '#FEF2F2', color: '#EF4444' }}
+          >
+            <Flame className="w-3 h-3" /> HOT
+          </span>
+        )}
+        <button
+          onClick={() => setEditing(contact)}
+          className="ml-auto p-1 rounded hover:bg-[#F3F3EE] text-[#6B7280] hover:text-[#1A1A1A]"
+          title="Edit lead"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      {/* Owner name + website beside the company name (Hugo 2026-07-26). */}
+      <ContactIdentity
+        owner={contact.customFields?.owner_name}
+        website={contact.customFields?.website}
+        layout="stack"
+        size="sm"
+        className="mt-0.5 space-y-0.5"
+      />
+      <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
+      {/* They rang from a different line to the one we hold, which is normal
+          for a branch: the switchboard is what the scraper found, the
+          negotiator has a direct line. Worth saying, because the number on the
+          card is not the number on the phone. */}
+      {rangFromAnotherLine && (
+        <div className="text-[11px] text-[#8a6d1a] tabular-nums mt-0.5">
+          Rang from {call?.phone}
+        </div>
+      )}
+      <div className="text-[11px] text-[#9CA3AF] mt-0.5">
+        Added {formatRelativeTime(contact.createdAt)}
+      </div>
+      {/* Phase 6 (Hugo 2026-04-30): compact meta — pipeline + tags
+          + last-contact side-by-side, frees vertical space for the
+          timeline below SMS. */}
+      <div className="mt-2">
+        <ContactMetaCompact contact={contact} />
+      </div>
+    </div>
+  ) : null;
+
   if (!fullScreen) return null;
 
-  if (!contact) {
+  if (!contact && !isPropertyCall) {
     return (
       <div className="fixed inset-0 z-[200] bg-[#F3F3EE] flex flex-col">
         <header className="h-14 flex items-center px-5 gap-3 flex-shrink-0 bg-white border-b border-[#E5E7EB]">
@@ -232,7 +353,7 @@ export default function LiveCallScreen() {
           {/* Preview mode: agent can dial the lead from inside the call
               room without bouncing back to the inbox. Closing the room
               uses closeCallRoom() instead of fullScreen toggle. */}
-          {isPreview && (
+          {isPreview && contact && (
             <button
               onClick={() => void startCall(contact.id)}
               className="flex items-center gap-1.5 bg-[#3C5A87] hover:bg-[#3C5A87]/90 text-white px-3 py-1.5 rounded-[10px] text-[12px] font-semibold shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
@@ -284,12 +405,40 @@ export default function LiveCallScreen() {
         </div>
       </header>
 
-      {/* Resizable 4-column body (Hugo 2026-04-26):
+      {/* A property call gets the SAME room the dialer opens (2026-08-18):
+          offer band pinned above the property script, the Houses panel, the
+          coach. Pedro: "the transition of hey elsie from dialer to when I
+          answer an incoming call is very different and its difficult to find
+          information." Everything else keeps the four columns below. */}
+      {isPropertyCall ? (
+        <div
+          className="flex-1 overflow-hidden"
+          style={{ paddingTop: 'var(--followup-banner-h, 0px)' }}
+          data-testid="inbound-property-room"
+        >
+          <PropertyCallRoom
+            contact={contact}
+            contactHeader={contactCard}
+            emptyState={
+              <BranchSearchPanel callerPhone={call?.phone ?? ''} onPick={pickBranch} />
+            }
+            currentCallId={call?.callId ?? null}
+            callConnected={phase === 'in_call'}
+            liveDurationSec={durationSec}
+            agentFirstName={myFirstName ?? ''}
+            campaignId={call?.campaignId ?? null}
+            pipelineId={callPipelineId}
+            direction="inbound"
+            autoSaveId="livecall-houses-layout-v1"
+          />
+        </div>
+      ) : contact ? (
+      /* Resizable 4-column body (Hugo 2026-04-26):
             COL 1 — contact context (name, stage, KV, sticky notes)
             COL 2 — live transcript + AI coach (vertical resize inside)
             COL 3 — call script (admin-edited via /smsv2/settings)
             COL 4 — glossary (click-to-expand, admin-edited via Settings)
-          autoSaveId bumped to v2 so old 3-col widths don't bleed in. */}
+          autoSaveId bumped to v2 so old 3-col widths don't bleed in. */
       <ResizablePanelGroup
         direction="horizontal"
         autoSaveId="smsv2-live-call-layout-v2"
@@ -298,44 +447,7 @@ export default function LiveCallScreen() {
       >
         {/* COL 1 — lead context */}
         <ResizablePanel defaultSize={20} minSize={14} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#E5E7EB]">
-            <div className="flex items-center gap-2">
-              <div className="text-[16px] font-bold text-[#1A1A1A]">{contact.name}</div>
-              {contact.isHot && (
-                <span
-                  className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                  style={{ background: '#FEF2F2', color: '#EF4444' }}
-                >
-                  <Flame className="w-3 h-3" /> HOT
-                </span>
-              )}
-              <button
-                onClick={() => setEditing(contact)}
-                className="ml-auto p-1 rounded hover:bg-[#F3F3EE] text-[#6B7280] hover:text-[#1A1A1A]"
-                title="Edit lead"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {/* Owner name + website beside the company name (Hugo 2026-07-26). */}
-            <ContactIdentity
-              owner={contact.customFields?.owner_name}
-              website={contact.customFields?.website}
-              layout="stack"
-              size="sm"
-              className="mt-0.5 space-y-0.5"
-            />
-            <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
-            <div className="text-[11px] text-[#9CA3AF] mt-0.5">
-              Added {formatRelativeTime(contact.createdAt)}
-            </div>
-            {/* Phase 6 (Hugo 2026-04-30): compact meta — pipeline + tags
-                + last-contact side-by-side, frees vertical space for the
-                timeline below SMS. */}
-            <div className="mt-2">
-              <ContactMetaCompact contact={contact} />
-            </div>
-          </div>
+          {contactCard}
 
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[12px]">
             {/* Mid-call SMS sender (Hugo 2026-04-26): templated send without
@@ -403,6 +515,7 @@ export default function LiveCallScreen() {
           <TerminologyPane contactId={contact?.id} />
         </ResizablePanel>
       </ResizablePanelGroup>
+      ) : null}
 
       <EditContactModal
         contact={editing}

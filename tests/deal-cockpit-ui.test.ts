@@ -204,7 +204,10 @@ describe('exactly one component can commit anything', () => {
   });
 
   it('a warning asks rather than blocks, because judgement stays with the human', () => {
-    expect(DIALOG).toMatch(/warned && !blocked \? `\$\{spec\.commitVerb\} anyway`/);
+    // commitVerbFor, not spec.commitVerb, since 17 Aug: "Send it to Hugo"
+    // reads as nonsense to Hugo, so an admin sees "Put it on my list". Only
+    // the words change; the same press does the same thing.
+    expect(DIALOG).toMatch(/warned && !blocked \? `\$\{commitVerbFor\(action, isAdmin\)\} anyway`/);
     expect(DIALOG).toMatch(/acknowledged/);
   });
 

@@ -24,7 +24,8 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     if (req.method !== 'POST') return ok({});
 
-    const payload = await req.json().catch(() => ({} as any));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload = await req.json().catch(() => ({})) as any;
     if (payload?.event !== 'call_inbound') return ok({});
 
     const fromNumber: string | undefined = payload?.call_inbound?.from_number;

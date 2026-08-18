@@ -470,3 +470,73 @@ describe('the property script belongs to the campaign, not to one lead', () => {
     expect(chooser).toMatch(/if \(openedWith !== 'vsl_close'\) return 'cold_call'/)
   })
 })
+
+describe('call two opens as the callback it is, never as a cold call', () => {
+  const html = read(PROP_HTML)
+  const at = (needle: string) => html.indexOf(needle)
+
+  // Hugo, 2026-08-18, watching Jones & Chapman (Ready for call 2, ballpark
+  // confirmed at 153,000) open on "Is that one still available?": "on call
+  // number two that we make the call directly from the pipeline, it should
+  // not open the first script, this is a callback."
+
+  it('THE FIX: the cold opener and the intro are inside call1, so the offer view hides them', () => {
+    // The wrapper used to open at stage 3, leaving stages 1 and 2 visible in
+    // BOTH modes: every call two still opened on the cold opener, whatever
+    // the pane header said. That was the whole bug.
+    expect(at('<div class="call1">')).toBeGreaterThan(-1)
+    expect(at('<div class="call1">')).toBeLessThan(at('1. Is it still available'))
+    const callOne = html.slice(at('<div class="call1">'), at('</div><!-- /call1 -->'))
+    expect(callOne).toMatch(/Is that one still available\?/)
+    expect(callOne).toMatch(/who am I speaking to\?/)
+  })
+
+  it('the callback opener is real tokens, filled from call one', () => {
+    // "[their name]" was not a token at all (the space defeats the fill), so
+    // it rendered literally on Pedro's screen, on the one line that opens
+    // call two.
+    expect(html).not.toMatch(/\[their name\]/)
+    const callTwo = html.slice(at('<div class="call2">'), at('</div><!-- /call2 -->'))
+    expect(callTwo).toMatch(
+      /Hi \[branch_contact_name\], it's Pedro from Unico\. We spoke \[spoke_when\] about \[property_street\]\./)
+  })
+
+  it('the doc-head knows which call it is on', () => {
+    expect(html).toMatch(/<h1 class="call1">Ringing the agent about \[property_address\]<\/h1>/)
+    expect(html).toMatch(/<h1 class="call2">Ringing \[branch_contact_name\] back about \[property_address\]<\/h1>/)
+    expect(html).toMatch(/This is the callback, not a cold call\./)
+  })
+
+  it('the call-one close thanks them by the name he wrote down', () => {
+    const callOne = html.slice(at('<div class="call1">'), at('</div><!-- /call1 -->'))
+    expect(callOne).toMatch(/thanks for your time \[branch_contact_name\]\./)
+  })
+
+  it('every phrasing around the two tokens has a collapse rule', () => {
+    // interpolateScript collapses these exact phrasings when the value is
+    // missing; any other wording would leave a brown bracket in the first
+    // words out of Pedro's mouth.
+    const INTERP = read('src/features/crm/lib/interpolateScript.ts')
+    const phrases = [
+      'Hi [branch_contact_name],',
+      'thanks for your time [branch_contact_name].',
+      'Ringing [branch_contact_name] back',
+      'We spoke [spoke_when] about',
+    ]
+    for (const phrase of phrases) {
+      expect(INTERP).toContain(phrase)
+    }
+    // And the script uses no OTHER phrasing around them, so the collapses
+    // cover every occurrence.
+    const nameCount = html.split('[branch_contact_name]').length - 1
+    const nameCovered =
+      (html.split('Hi [branch_contact_name],').length - 1) +
+      (html.split('thanks for your time [branch_contact_name].').length - 1) +
+      (html.split('Ringing [branch_contact_name] back').length - 1)
+    expect(nameCount).toBeGreaterThan(0)
+    expect(nameCovered).toBe(nameCount)
+    const whenCount = html.split('[spoke_when]').length - 1
+    expect(whenCount).toBeGreaterThan(0)
+    expect(html.split('We spoke [spoke_when] about').length - 1).toBe(whenCount)
+  })
+})

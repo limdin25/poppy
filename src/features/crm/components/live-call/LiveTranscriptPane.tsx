@@ -31,6 +31,12 @@ interface Props {
    *  answers a money moment in ~200ms instead of the model path's 4.5 to 7
    *  seconds. Off by default, so no plumber call changes. */
   isPropertyCall?: boolean;
+  /** Property calls only: the first blue line of the property script for THIS
+   *  call, built by PropertyCallRoom from the same facts the script pane is
+   *  filled with. When set it IS the opener card. Without it the card used to
+   *  read the PLUMBER opener at an estate agent ("Hi, quick one: is that
+   *  Jones and Chapman?"), on call one and call two alike. */
+  propertyOpener?: string;
 }
 
 interface LiveTranscriptRow {
@@ -124,7 +130,7 @@ function pickFiller(): string {
   return BUYTIME_FILLERS[Math.floor(Math.random() * BUYTIME_FILLERS.length)];
 }
 
-export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false }: Props) {
+export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, propertyOpener }: Props) {
   const { aiCoach } = useKillSwitch();
   const store = useSmsV2();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -159,6 +165,11 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
   // all. Mirror src/core/content/one-call-script.html's opener line, greeting
   // by the OWNER's first name and their BUSINESS (contact.name is the company).
   const opener = useMemo(() => {
+    // A property call brings its own opener, built by PropertyCallRoom from
+    // the script's real first line (callback on call two, availability on
+    // call one). Everything below is the plumber script's opener and must
+    // never be read at an estate agent.
+    if (propertyOpener) return propertyOpener;
     const c = store.getContact(contactId);
     const cf = c?.customFields ?? {};
     const ownerFirst =
@@ -182,7 +193,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     const me = (agentFirstName ?? '').trim() || 'there';
     return `Hi, it's ${me} here, have you got a quick minute?`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactId, agentFirstName, store]);
+  }, [contactId, agentFirstName, store, propertyOpener]);
   // ?demo=1 in the URL keeps the legacy mock transcript reachable for
   // internal demos / Storybook screenshots. Default behaviour: show an
   // explicit empty state instead, so production calls never surface mock

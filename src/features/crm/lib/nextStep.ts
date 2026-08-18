@@ -77,12 +77,79 @@ export function stepForOutcome(outcome: string): StepTag | '' | null {
  *  figure; the offer view from 'Offer call' onward. Unknown, missing or
  *  mid-homework steps are DISCOVERY, because the safe wrong answer is the one
  *  with no money section on the screen. */
-export function callModeForStep(step?: string | null): 'discovery' | 'offer' {
+export function callModeForStep(
+  step?: string | null,
+  /** The branch card's own fields. A confirmed ballpark lives here as
+   *  `offer_open`, written by applyBallpark alongside the step. */
+  fields?: Record<string, string> | null,
+): 'discovery' | 'offer' {
   const s = (step ?? '').trim();
   const offerSteps = new Set<string>([
     STEP.offerCall, STEP.offer, STEP.chase, STEP.viewing, STEP.writing, 'Renegotiate',
   ]);
-  return offerSteps.has(s) ? 'offer' : 'discovery';
+  if (offerSteps.has(s)) return 'offer';
+
+  // A CONFIRMED BALLPARK IS NEVER UNLEARNED.
+  //
+  // Hugo, 2026-08-18: "the callback script for the 2nd call where we mention
+  // the ballpark and if accepted we book a viewing is not there at all."
+  //
+  // It was there, in stage 6, and Pedro had seen it once. Measured across 1,073
+  // property branches: next_step was 'Discovery call' on 814, absent on 256 and
+  // 'Offer call' on ONE. Part of that is that the ballpark rarely succeeded
+  // (fixed by the call listener and the house filing), and part is this: the
+  // step is the only thing that opens call two, and an outcome can knock it
+  // back. `no_answer` writes 'Discovery call', so a branch with an AGREED
+  // figure that simply did not pick up was demoted to call one, and Pedro rang
+  // back reading the discovery script at a branch waiting for a number.
+  //
+  // So the ballpark itself is the second signal, and it only ever promotes: a
+  // branch with no figure on file cannot reach call two by this route, which
+  // keeps the protection that pressing "Call back" on a first call must not
+  // arm the money.
+  const openFigure = Number(String(fields?.offer_open ?? '').replace(/[^0-9.]/g, ''));
+  if (Number.isFinite(openFigure) && openFigure > 0) return 'offer';
+  return 'discovery';
+}
+
+/** Board columns that mean the discovery call has already happened, so the
+ *  next conversation with this branch is call two.
+ *
+ *  Mirrors PROPERTY_STAGES in api/crm/cockpit.ts (drift-pinned by a test):
+ *  these are the stages from "the ballpark is set" onward. The earlier stages
+ *  ('Booked', 'Discovery done, evaluating', 'Nurturing', 'Follow up') and the
+ *  no-contact ones ('Voicemail', 'No pickup', 'Not interested') say nothing
+ *  about which call is next, so they promote nothing. */
+export const CALL2_COLUMNS = new Set<string>([
+  'Ready for call 2', 'Ballpark agreed', 'Needs viewing',
+  'Offer sent', 'Waiting on their answer', 'Offer accepted',
+]);
+
+/** callModeForStep plus the card's own board column.
+ *
+ *  Hugo 2026-08-18, after Jones & Chapman: "on call number two that we make
+ *  the call directly from the pipeline, it should not open the first script,
+ *  this is a callback." The column IS his instruction: a card he or the brain
+ *  has put in 'Ready for call 2' opens on call two even when the step tag was
+ *  knocked back by a no_answer, or the money fields are missing because the
+ *  card was dragged there by hand. With no money on file the offer view shows
+ *  its STOP guard and empty slots, which is honest; the discovery script at a
+ *  branch waiting for our number is not.
+ *
+ *  PROMOTE-ONLY, like the offer_open signal inside callModeForStep: a column
+ *  can arm the offer view, no column ever demotes it.
+ *
+ *  The board's own Fetch-ballpark button (PipelinesPage) deliberately keeps
+ *  plain callModeForStep, so a Ready-for-call-2 card without money keeps the
+ *  button that fetches the money. */
+export function callModeForCard(
+  step?: string | null,
+  fields?: Record<string, string> | null,
+  columnName?: string | null,
+): 'discovery' | 'offer' {
+  if (callModeForStep(step, fields) === 'offer') return 'offer';
+  if (columnName && CALL2_COLUMNS.has(columnName.trim())) return 'offer';
+  return 'discovery';
 }
 
 /** The custom_fields patch for a deal whose offer has just gone out by email.

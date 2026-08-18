@@ -14,6 +14,7 @@ import { Phone, PhoneOff } from 'lucide-react';
 import type { Call as TwilioCall } from '@twilio/voice-sdk';
 import { addIncomingCallListener } from '@/integrations/twilio/voice-browser';
 import { useSmsV2 } from '../../store/SmsV2Store';
+import { findByPhone } from '../../../../../api/lib/phone-match';
 
 // The ring is synthesised with Web Audio rather than shipped as a file.
 //
@@ -141,8 +142,17 @@ export default function IncomingCallModal() {
 
   const fromParam = incoming.parameters?.['From'] ?? '';
   const phone = typeof fromParam === 'string' ? fromParam : '';
-  const matched = phone ? contacts.find((c) => c.phone === phone) : undefined;
+  // The server already matched this caller and passes its answer down on the
+  // TwiML; the phone match is the fallback. It compares the last 9 digits
+  // (api/lib/phone-match.ts) rather than the whole string, which is why a
+  // branch filed as "0191 625 0242" used to ring as an unknown caller.
+  const serverContactId = incoming.customParameters?.get('contactId') || null;
+  const matched = serverContactId
+    ? contacts.find((c) => c.id === serverContactId) ?? findByPhone(contacts, phone, (c) => c.phone)
+    : findByPhone(contacts, phone, (c) => c.phone);
   const displayName = matched?.name ?? 'Unknown caller';
+  // What they last spoke to us about, so he knows the call before he takes it.
+  const lastHouse = matched?.customFields?.property_address ?? '';
 
   const accept = () => {
     if (accepting) return; // a second press cancels nothing, it just confuses
@@ -178,6 +188,11 @@ export default function IncomingCallModal() {
             </div>
             <div className="text-[17px] font-semibold text-[#1A1A1A]">{displayName}</div>
             <div className="text-[14px] text-[#6B7280] tabular-nums mt-1">{phone || 'No caller ID'}</div>
+            {lastHouse && (
+              <div className="mt-1 text-center text-[12px] leading-snug text-[#8a6d1a]" data-testid="incoming-last-house">
+                Last spoke about {lastHouse}
+              </div>
+            )}
             <div className="text-[12px] text-[#9CA3AF] mt-1">
               {accepting ? 'connecting…' : 'ringing…'}
             </div>

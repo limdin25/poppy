@@ -40,7 +40,9 @@ export default async function handler(req: Request): Promise<Response> {
     agentId: a.id,
     label: phoneByAgent[a.id] ? formatPhone(phoneByAgent[a.id]) : (a.name || 'Voice line'),
   }));
-  const apptAgents = ((apptsRes.data || []) as Array<{ agent_id: string | null; conversation: { agent_id: string | null } | null }>).map((p) => ({
+  // supabase-js types the joined `conversation` as an array; at runtime a
+  // to-one join is an object, hence the through-unknown cast.
+  const apptAgents = ((apptsRes.data || []) as unknown as Array<{ agent_id: string | null; conversation: { agent_id: string | null } | null }>).map((p) => ({
     agent_id: p.agent_id ?? p.conversation?.agent_id ?? null,
   }));
 

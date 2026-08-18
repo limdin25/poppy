@@ -38,6 +38,8 @@ import { callLLM } from '../lib/llm.js';
 import { stripInventedHouseNumber, fixGreeting, redactFigures } from '../lib/draft-guards.js';
 import { decideCounter, respectsCeiling } from '../lib/counter-position.js';
 import { externalDoNow } from '../lib/next-step-brief.js';
+import { companyFactsBlock, asksWhoWeAre } from '../lib/company-facts.js';
+import { heardFactsBlock } from '../lib/deal-state.js';
 
 export const config = { runtime: 'edge' };
 
@@ -51,6 +53,12 @@ const MODEL = 'claude-sonnet-5';
 interface Body {
   /** wk_calls.id of the call this offer follows, when there is one. */
   callId?: string | null;
+  /** brrr_properties.id, when the caller knows it. Unlocks the distilled
+   *  checklist: what the branch has ALREADY answered across every call, each
+   *  with the quote it came from. Added 2026-08-18, Pearson Street: the call
+   *  said the floor plan was on the advert, the EPC was online and an offer
+   *  had just been accepted, and the email asked for all three anyway. */
+  propertyId?: string | null;
   /** Everything the strip already has on screen. Figures only, no prose. */
   house?: {
     address?: string | null;
@@ -118,6 +126,38 @@ interface Body {
     evidenceTier?: string | null;
     /** What we last put to them. */
     currentOffer?: number | null;
+    /** THE EMAIL THREAD, oldest first, capped by the state builder. Added
+     *  2026-08-17: a reply that has not read the thread is not a reply. The
+     *  Zest draft re-negotiated a price the branch had already agreed to put
+     *  forward, because the writer had never seen what she wrote. */
+    thread?: Array<{
+      at?: string | null;
+      direction?: 'inbound' | 'outbound';
+      subject?: string | null;
+      body?: string;
+    }> | null;
+    /** Pedro's note off the last call, and the transcript of the newest
+     *  recorded one, so the writer knows what was AGREED, not only what was
+     *  emailed. */
+    callNote?: string | null;
+    callTranscript?: string | null;
+    /** True when the press attaches our proof of funds to THIS email. Decided
+     *  by the cockpit route, which signs the document; the writer must say so
+     *  and explain it, or the branch gets a mystery attachment. */
+    attachingProof?: boolean;
+    /** THE BRAIN'S LIVE ORDER on this deal, in its own words.
+     *
+     *  Hugo, 17 Aug, on Stanks Drive: the card said "Keeley's email asks for
+     *  company registration details. Reply with them today", and the draft
+     *  under it read "I wanted to follow up and see where things stand". The
+     *  writer was fed `brief.doNow` and `brief.blockers`, the DETERMINISTIC
+     *  brief, which on that card was empty, while the actual decision lived in
+     *  the assessment and never travelled. The decider and the executor were
+     *  reading two different files again. */
+    order?: string | null;
+    /** Whom the branch should reply to, so an email that answers "what is your
+     *  telephone number" has one. Per-agent, never a constant. */
+    us?: { person?: string | null; email?: string | null; phone?: string | null };
   };
 }
 
@@ -151,8 +191,14 @@ const SYSTEM_VIDEO = [
   'HARD RULES.',
   '1. NEVER put a price, an offer, a figure or a range in this email. Not ours, not theirs, not the asking price. If you are tempted, leave it out.',
   '2. NEVER invent a fact. Everything you may use is given to you. If the transcript is empty, do not pretend a conversation happened.',
-  '3. Ask for a video walkthrough in plain words, and say why: our builder prices the works off it, so nobody has to travel. Offer the easy version, a phone walk round while they are next there, and say they do not need to be in it.',
-  '4. If the floor plan or the full EPC came up as missing on the call, ask for those in the same breath. Never invent that they are missing.',
+  // Pearson Street, 18 Aug. Amy said the floor plan was on the advert at 12:05,
+  // refused the walkthrough at 12:06 because an offer had just been accepted,
+  // and at 12:08 our email asked for the walkthrough, the floor plan and the
+  // EPC. She then answered all three a second time, out loud, patiently. Hugo,
+  // listening to the recording beside the email: "the call didn't hear."
+  '3. Ask for a video walkthrough in plain words, and say why: our builder prices the works off it, so nobody has to travel. Offer the easy version, a phone walk round while they are next there, and say they do not need to be in it. UNLESS the call shows they have already said no to a video or a walkthrough: then do not ask again, not even softened. One refusal on the phone answered the question.',
+  '4. Ask for the floor plan or the full EPC ONLY if the call says they are missing. If the agent said either one is on the advert, on the listing or online, DO NOT ask for it; you may say we will take what we need from the advert. If the call says nothing about them either way, leave them out. Never invent that something is missing.',
+  '4a. IF THE CALL SAYS AN OFFER HAS ALREADY BEEN ACCEPTED on this property, or it is sold subject to contract, the email changes job completely. Ask for NOTHING: no video, no floor plan, no EPC, no viewing. Say two things instead, warmly and briefly: if anything changes with the accepted offer, please come straight back to us, we are a cash buyer and can complete in 4 to 6 weeks; and please send over anything else on their books that needs work or where the price has to come down, we will answer the same day.',
   '5. Say who we are in one line: a cash buyer, a limited company, no mortgage and no chain. Nothing else about us.',
   '6. SHORT. Under 150 words. This is an admin email that has to be readable on a phone in ten seconds, not a pitch.',
   '7. British English. Warm, plain, no salesmanship, no flattery, no exclamation marks.',
@@ -203,15 +249,26 @@ const SYSTEM_FOLLOW_UP = [
   'WHAT IT IS FOR. There is exactly ONE thing holding this deal up. You are told what it is. The whole email exists to move that one thing, and nothing else.',
   '',
   'HARD RULES.',
+  // THE ONE HUGO CAUGHT ON STANKS DRIVE, 17 Aug. Keeley had written asking for
+  // seven specific things so she could put us on the branch's database, and the
+  // draft under her email said "I wanted to follow up and see where things
+  // stand". A reply that answers nothing they asked is not a reply, it is a
+  // nudge with their name at the top, and it teaches a helpful branch that
+  // writing to us is a waste of their morning.
+  '0. IF THEY HAVE WRITTEN TO US, ANSWER WHAT THEY ASKED, FIRST, AND ANSWER ALL OF IT. You are given the email thread. Read their newest message and deal with every question in it, in the order they asked, before anything of ours. If they asked for several things, a short labelled list is better than a paragraph, because they are filling a form in. Only answer from the facts you are given: anything they asked that you have not been given, say plainly that it is coming rather than inventing it.',
+  '0a. YOU ARE ALSO GIVEN THE DECISION SOMEBODY HAS ALREADY MADE about this deal, and what was said on the last call. The decision tells you what this email is FOR. Never contradict it, never re-open something the call settled, and never ask them again for something the call already answered.',
+  '0e. IF THE FACTS OR THE CALL SAY AN OFFER HAS ALREADY BEEN ACCEPTED on this house, or the sale is agreed to someone else, do not chase, do not ask for documents, viewings or figures. The email is two things, short and warm: if anything changes with the accepted offer, come straight back to us, we are a cash buyer and can complete in 4 to 6 weeks; and please send over anything else on their books that needs work or where the price has to come down.',
   '1. NEVER invent a number. Every figure you may use is given to you. If the blocker does not need a figure, do not put one in at all.',
   '2. NEVER promise something we have not got, and never quote a balance, a company, a bank or a date that is not in the facts below. If a proof of funds is attached you say so and explain it. If one is NOT attached, say only that it is being sent and when.',
+  '2a. NEVER offer to produce a bigger, different or updated proof of funds because somebody thinks the total on it is too low. The facts tell you how the purchase completes, and that is the answer: say it in one plain sentence. The statement is not the whole of what we buy with, so a total under our offer is how we buy and not a shortfall. Do not apologise for it and do not call it a gap.',
   '3. NEVER re-open the price. If our offer is mentioned it is only to remind them what is on the table, in the words we already used.',
   '3a. YOU ARE WRITING TO THE ESTATE AGENT NAMED AS THE RECIPIENT, nobody else. Address them and only them. The blocker text and the internal notes may mention our own people by name ("send it to Pedro to forward to Lucy"); those are instructions to US, never the person you are writing to, and their names must never appear in the greeting. If you are given no recipient name, open with "Hello,".',
   '4. Answer the blocker in the FIRST two sentences. An estate agent reads one paragraph.',
   '4a. Write the address EXACTLY as you are given it. NEVER add a house number, a flat number or a postcode that is not there. Most listings do not publish a house number and a wrong one goes to the branch selling that exact house.',
   '4b. IF a proof of funds is attached to this email, and only then, EXPLAIN IT in its own short paragraph, using the facts you are given and no others. Cover, in this order and in plain sentences: that the money is held under OUR OWN company, named, and that the statement is a certified copy from its bank on the date given; that it sits across several company accounts, which is why there is more than one balance on it; the total available; that the account numbers, sort codes and IBANs are hidden for security, which is normal on a document sent by email and does not affect what it proves; and how the purchase completes. An agent who does not understand the document will not pass it to the vendor.',
   '4c. The company on the statement will NOT be the trading name they know us by from the phone call. Write it as OURS, "our company X" or "held under our company X", so it plainly belongs to us. NEVER write it in a way that could read as a third party, a client, an investor or somebody else\'s money.',
-  '5. Ask ONE clear question at the end, the one that moves it on, and make it easy to answer in a line.',
+  '4d. IF THEY HAVE ASKED WHO WE ARE (company name, registered address, company number, our details for their database, budget, what we buy, where we buy), you are given those facts. Write them EXACTLY as given, never a word of them from memory, and never leave one out because it seems dull: this is a branch putting us on their list so they send us stock, which is the whole point of being on it. If a detail is not in the facts, say we will send it on rather than guessing.',
+  '5. Ask ONE clear question at the end, the one that moves it on, and make it easy to answer in a line. If this email is ANSWERING their questions rather than chasing them, the closing line is the standing ask instead: keep us in mind for anything that needs plenty of work or where the price has to come down.',
   '6. Never write "subject to survey". Our condition is always "subject to our builder going round to view it and price the works".',
   '7. SHORT. Under 160 words, or under 220 when a proof of funds has to be explained.',
   '8. British English. Plain, warm, direct, no salesmanship, no flattery, no exclamation marks, no chasing tone.',
@@ -240,18 +297,43 @@ const SYSTEM_FOLLOW_UP = [
 // out. `follow_up` is explicitly forbidden from re-opening it (rule 3 there),
 // which is why it could not answer Lexi.
 const SYSTEM_COUNTER = [
-  'You write one email: a cash buyer replying to an estate agent who has come back on price.',
+  'You write one email: a cash buyer replying to an estate agent about the price on a house.',
   '',
   'THE DECISION HAS ALREADY BEEN MADE and you are told what it is. You are writing it, not reaching it. Never argue with it, never soften it into a maybe, and never hint that a different number might be possible.',
   '',
   'HARD RULES.',
+  '0. READ THE THREAD AND ANSWER IT. You are given the email thread and what the deal is waiting on. Your email is a REPLY to the newest message from them: answer what it actually asks before anything else. Match where the deal really is. If the file says the branch has ALREADY agreed to put our figure forward and is waiting on something (a document, a confirmation), this email CONFIRMS the figure and supplies the thing they are waiting on. It does not re-negotiate, does not say "best and final", and does not read like a stand off with someone who is trying to help us.',
+  '0b. IF A PROOF OF FUNDS IS ATTACHED to this email you are told so in the facts, and you MUST mention it, BRIEFLY. Hugo, 17 Aug: "no need to over explain." Two or three sentences at most: it is attached, whose company holds it and the total, and HOW THE PURCHASE COMPLETES, written in the words of the completion facts you are given. Never apologise for the statement total being below the offer and never present the funding structure as a weakness: it is simply how we buy. An attachment the email never mentions is a mystery document nobody forwards to a vendor; an attachment explained at essay length is a lecture nobody reads.',
+  // THE ONE THAT COST US A DAY ON ZEST HULL, 17 Aug. The branch wrote back that
+  // the statement total was under the offer, so our own machine agreed with her,
+  // ordered a replacement statement, and drafted a reply that never mentioned
+  // the funding structure our previous email had already spelled out. There is
+  // no missing money. Answering as though there is teaches the branch we cannot
+  // afford the house we have just offered on.
+  '0c. IF THEY HAVE QUESTIONED OUR PROOF OF FUNDS, or said the total on it does not cover our offer, THAT IS THE FIRST THING YOUR EMAIL ANSWERS, before a word about price. The facts you are given say how the purchase completes: put that in one plain sentence, exactly as the facts describe it, and say our earlier email set it out. A statement total under our offer is how we buy, not a shortfall. NEVER apologise for it, never call it a gap or a difference, never agree to send a bigger or updated statement, and never suggest we could raise the balance. Then ask them plainly to put the offer to the vendor.',
+  // HUGO'S OWN WORDS, 18 Aug, reading a draft that answered Leanne at Zest with
+  // "we are happy to arrange a viewing" followed by a restatement of our
+  // maximum: "That's not the right one. It says you should say hi, yes we can
+  // arrange a viewing, that's not a problem. HOWEVER, can you just confirm that
+  // we are within the ballpark? I don't want to waste your time and our time if
+  // the numbers are not within the ballpark that the vendor might be able to
+  // accept."
+  //
+  // He is right twice over. A viewing costs us a builder's day, so agreeing to
+  // one before anybody has said the figure is in the right area spends real
+  // money on a deal that may be dead. And restating our maximum in the same
+  // breath hands the branch our ceiling in writing for nothing: after that
+  // there is no negotiation left, only that number. The ask costs nothing, it
+  // is friendly, and it is the question that actually moves the deal.
+  '0d. IF THEY WANT A VIEWING, ACCESS OR A SURVEY BEFORE THEY WILL PUT OUR OFFER TO THE VENDOR: say yes, plainly and without conditions, in one short sentence. Then ask them, in the SAME email, to confirm the figure already with them is in the ballpark the vendor might accept, and say why you are asking: neither of us wants to waste a visit if the number is nowhere near. NEVER repeat our figure in this email, and never say it is our maximum. They already have it, so restating it adds nothing and puts our ceiling in writing. Say nothing about a survey: our visit is our builder going round to view and price the works, which IS the viewing.',
+  '0f. IF THE FACTS OR THE THREAD SAY AN OFFER HAS ALREADY BEEN ACCEPTED on this house from someone else, there is no negotiation left to have. Do not counter, do not restate our position. Say, short and warm: if anything changes with the accepted offer, come straight back to us, we are a cash buyer and can complete in 4 to 6 weeks; and please send over anything else on their books that needs work or where the price has to come down.',
   '1. NEVER name a figure other than the ones you are given. No arithmetic, no splitting the difference, no "around" a number, no hinting at a range.',
   '2. If the decision is HOLD or PASS you may not put ANY offer figure in the email. Say plainly that we cannot improve it and why, in our own words.',
   '3. If the decision is RAISE, name the new figure once, exactly as given, and say it is subject to our builder going round to view and price the works. NEVER "subject to survey".',
   '4. When the new figure is our maximum, say so plainly and without apology, so their next answer is a yes or a no rather than another round.',
   '5. Never blame the vendor, never lecture them about the market, and never explain our margin. One or two sentences on WHY the number is where it is, based on condition and the cost of the works.',
   '6. Thank them for coming back to us. They did us a favour by answering.',
-  '7. Leave the door open on a hold or a pass: if the position changes, we would still be interested.',
+  '7. Leave the door open on a hold or a pass: if the position changes, we would still be interested. THEN, on a hold or a pass ONLY, close with the standing ask, in ONE sentence: please keep us in mind for anything else on your books, we are cash buyers and always interested in any property that needs work and could go at a discount. (Hugo, 17 Aug 2026: "keep an eye out, if a future property comes across, think of us as a cash buyer, any property that needs to be redone and can go at a discount." A branch that says no to one house is a branch that will list the next one, and this sentence is how they remember to ring us first.) Never add it to an email that confirms an agreed figure or is mid negotiation: there it reads like we are already walking away.',
   '8. SHORT. Under 180 words.',
   '9. British English. Plain, warm, direct, no salesmanship, no flattery, no exclamation marks.',
   '10. NEVER use a long dash. No em dash, no en dash, anywhere. Use a comma or a full stop. No curly quotes, no ellipsis character.',
@@ -332,6 +414,33 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
+  // WHAT THE BRANCH HAS ALREADY TOLD US, distilled by the call listener with
+  // the quote each answer came from. The transcript above is one call and is
+  // capped; this is every call, in twelve lines. An email that asks for
+  // something these lines already answer is the email Hugo read on Pearson
+  // Street, minutes after Amy had answered it out loud.
+  let heardFacts = '';
+  if (body.propertyId) {
+    try {
+      const { data: prop, error } = await supabase
+        .from('brrr_properties')
+        .select('qualification')
+        .eq('id', body.propertyId)
+        .maybeSingle();
+      if (error) console.warn('[draft-email] checklist read failed', error.message);
+      heardFacts = heardFactsBlock(
+        (prop?.qualification ?? null) as Record<string, unknown> | null,
+      );
+    } catch (e) {
+      // The email still writes; it just writes without the distilled answers,
+      // which is where every draft stood before 2026-08-18.
+      console.warn('[draft-email] checklist read crashed', String(e));
+    }
+  }
+  const heardBlock = heardFacts
+    ? `WHAT THE BRANCH HAS ALREADY ANSWERED, across every call, with their own words. NEVER ask for anything this list already answers, and never contradict it:\n${heardFacts}`
+    : '';
+
   const facts = [
     ['Address', h.address],
     ['Asking price', gbp(h.askingPrice)],
@@ -400,10 +509,32 @@ export default async function handler(req: Request): Promise<Response> {
   // same platform_settings row the attachment itself comes from. They are never
   // written here: replacing the statement updates the wording with it, and a
   // model that is given a total cannot invent one.
+  // UN-GATED FROM isFollowUp (2026-08-17). The statement travels with whatever
+  // email the press attaches it to, and on Zest Hull that was a reply on
+  // price: the attachment went, the body never mentioned it, and the agent
+  // would have opened a mystery document. The explicit `attachingProof` flag
+  // from the cockpit route is authoritative; the wording regex stays as the
+  // fallback for the follow_up path that predates the flag.
+  const attachingNow = c.attachingProof === true
+    || (isFollowUp && /proof of fund|pof\b|evidence of fund/i.test(
+      [...blockers, ...(c.doNow ?? []), c.pinnedNote ?? ''].join(' '),
+    ));
+
+  // THEY HAVE COME BACK ABOUT THE DOCUMENT ITSELF (2026-08-17).
+  //
+  // A reply that answers "your proof of funds does not cover your offer" needs
+  // the completion facts whether or not the document is travelling a second
+  // time, and until now it only got them when something was being attached. So
+  // the one email that had to explain the structure was the one email written
+  // without it. The wording still comes from the settings row and is never
+  // written in this file: replacing the statement replaces the explanation.
+  const theyQueriedTheProof = isCounterReply && (c.thread ?? []).some(
+    (m) => m.direction === 'inbound' && /proof of fund|pof\b|evidence of fund|short of|does not cover|do not cover|doesn't cover|below the offer|less than the offer/i
+      .test(String(m.body ?? '')),
+  );
+
   let proofFacts = '';
-  if (isFollowUp && /proof of fund|pof\b|evidence of fund/i.test(
-    [...blockers, ...(c.doNow ?? []), c.pinnedNote ?? ''].join(' '),
-  )) {
+  if (attachingNow || theyQueriedTheProof) {
     try {
       const { data: pofRow } = await supabase
         .from('platform_settings')
@@ -414,7 +545,9 @@ export default async function handler(req: Request): Promise<Response> {
       if (p.path) {
         const total = Number(p.total_gbp);
         proofFacts = [
-          'THE PROOF OF FUNDS IS ATTACHED TO THIS EMAIL. Explain it, using ONLY these facts:',
+          attachingNow
+            ? 'THE PROOF OF FUNDS IS ATTACHED TO THIS EMAIL. Explain it, using ONLY these facts:'
+            : 'THEY ARE QUESTIONING THE PROOF OF FUNDS WE HAVE ALREADY SENT THEM. Answer them from these facts and no others, and never offer to produce a different document:',
           `- The document: a certified copy of the ${String(p.bank ?? 'bank')} balance sheets, dated ${String(p.dated ?? '')}`,
           // "OUR company", never a bare name. Hugo, 2026-08-14: "you can say
           // under our company." The entity on the statement is not the trading
@@ -444,6 +577,11 @@ export default async function handler(req: Request): Promise<Response> {
   }
   const dealState = [
     c.step ? `The step this branch is on: ${c.step}` : null,
+    // THE DECISION, ABOVE THE BRIEF. The brief is deterministic and is often
+    // empty; the order is what a person is actually being told to do today, and
+    // until 17 Aug it never reached the writer at all. Figures redacted the
+    // same way everything else internal is: the order may name our ceiling.
+    c.order ? `WHAT WE HAVE DECIDED TO DO ABOUT THIS DEAL (this email is that decision, carried out):\n${redactFigures(c.order)}` : null,
     // The blocker is the whole point of the email, so it is shown in full, but
     // its figures go the same way the note's do: a blocker that reads "the
     // agent will not put GBP 103,600 forward without proof of funds" is a
@@ -517,25 +655,92 @@ export default async function handler(req: Request): Promise<Response> {
     ? `THE PERSON YOU ARE WRITING TO (greet them by this name and nobody else): ${body.recipientName}`
     : 'You have no recipient name, so open with "Hello,".';
 
+  // THE THREAD, rendered the way a person would read it. This is what the
+  // email is REPLYING TO, and until 2026-08-17 the counter writer never saw
+  // it: it was handed the figures and the decision, and wrote a hardball
+  // "best and final" to a branch that had already agreed to put the offer
+  // forward and was waiting on a document. Hugo: "the brain is not checking
+  // all the emails exchanged... is just writing a random email."
+  const threadBlock = (c.thread ?? []).filter((m) => String(m.body ?? '').trim()).map((m) => {
+    const who = m.direction === 'inbound' ? 'THEM' : 'US';
+    const when = m.at ? ` (${String(m.at).slice(0, 10)})` : '';
+    const subj = m.subject ? ` [${m.subject}]` : '';
+    return `${who}${when}${subj}:\n${String(m.body).trim()}`;
+  }).join('\n---\n');
+
+  // What was AGREED on the phone, which outranks tone: an email can contradict
+  // a call without anyone lying, and the branch remembers the call.
+  const callBlock = [
+    c.callNote ? `PEDRO'S NOTE OFF THE LAST CALL: ${c.callNote}` : null,
+    c.callTranscript
+      ? `THE LAST RECORDED CALL (use the useful parts, ignore the rest):\n${String(c.callTranscript).slice(-3500)}`
+      : null,
+  ].filter(Boolean).join('\n\n');
+
+  // WHO WE ARE, when they have asked. Read off THEIR words in the thread, so a
+  // branch that never asked is never sent a paragraph about us.
+  const theyAskedWhoWeAre = (c.thread ?? []).some(
+    (m) => m.direction === 'inbound' && asksWhoWeAre(String(m.body ?? '')),
+  ) || asksWhoWeAre(String(c.order ?? ''));
+  const whoWeAre = theyAskedWhoWeAre
+    ? companyFactsBlock({
+      person: c.us?.person ?? body.fromName ?? null,
+      email: c.us?.email ?? null,
+      phone: c.us?.phone ?? null,
+    })
+    : '';
+
   const user = isCounterReply ? [
     'THEY HAVE COME BACK ON PRICE. Here is what was decided and everything you may say:',
     recipientLine,
     counterFacts,
     '',
-    transcript
-      ? `WHAT WAS SAID ON THE LAST CALL (use the useful parts):\n${transcript}`
-      : 'There is no transcript for this one.',
-  ].join('\n') : [
+    threadBlock
+      ? `THE EMAIL THREAD SO FAR, oldest first. Your email ANSWERS the newest message from THEM, so read it properly:\n${threadBlock}`
+      : 'There is no email thread on file for this one.',
+    '',
+    blockers.length
+      ? `WHAT THE DEAL IS ACTUALLY WAITING ON (answer this, do not re-open what is already agreed):\n${blockers.map((b) => `- ${redactFigures(b)}`).join('\n')}`
+      : null,
+    heardBlock || null,
+    proofFacts || null,
+    whoWeAre || null,
+    '',
+    callBlock
+      || (transcript
+        ? `WHAT WAS SAID ON THE LAST CALL (use the useful parts):\n${transcript}`
+        : 'There is no transcript for this one.'),
+  ].filter((x) => x !== null).join('\n') : [
     isVideoRequest ? 'THE HOUSE (facts only, and NO price of any kind goes in this email):' : 'THE HOUSE AND THE NUMBERS:',
     isVideoRequest ? videoFacts : facts,
     recipientLine,
     '',
+    // The distilled answers ride on EVERY kind except address_only (which asks
+    // for nothing, so there is nothing for them to stop it asking for).
+    !isAddressOnly && heardBlock ? heardBlock : null,
     isFollowUp
       ? dealState
       : transcript
         ? `WHAT WAS SAID ON THE CALL (use the useful parts, ignore the rest):\n${transcript}`
         : 'THERE IS NO TRANSCRIPT for this one. Write the email without referring to a conversation.',
-  ].join('\n');
+    // THE THREAD AND THE CALL, ON THE FOLLOW-UP TOO (2026-08-17).
+    //
+    // Both were already being sent by the cockpit and both were thrown away
+    // here for every kind except counter_reply. That is the third sighting of
+    // this exact fault: the thread loaded and dropped in buildDealState, the
+    // proof-of-funds facts gated to the wrong kind, and now the whole
+    // conversation dropped on the one kind whose job is to answer it. Hugo, on
+    // Stanks Drive: "the prospect has asked us some questions, the draft
+    // doesn't say anything about the reply."
+    //
+    // Call one's email is excluded on purpose: it goes out minutes after the
+    // call, there is no thread yet, and its own fences keep it to one ask.
+    !isVideoRequest && threadBlock
+      ? `THE EMAIL THREAD SO FAR, oldest first. THEIR NEWEST MESSAGE IS WHAT YOU ARE ANSWERING:\n${threadBlock}`
+      : null,
+    !isVideoRequest && isFollowUp && callBlock ? callBlock : null,
+    !isVideoRequest ? (whoWeAre || null) : null,
+  ].filter((x) => x !== null && x !== '').join('\n');
 
   const out = await callLLM(
     MODEL,

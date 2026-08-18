@@ -78,16 +78,25 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'callId required' }), { status: 400 });
   }
 
-  const { data } = await supabase
+  // THE COLUMNS ARE `body` AND `ts`. This asked for `text, created_at`, which
+  // do not exist on wk_live_transcripts, so PostgREST refused the whole query,
+  // `data` came back null, and EVERY call review since this route shipped was
+  // written as though the call had never happened, then told the human the call
+  // was too short to review. Third sighting of this exact mistake: the same
+  // wrong column list broke every offer email (draft-offer-email.ts:328) and
+  // the same fix applies. An error is logged now rather than silently becoming
+  // "nothing was said".
+  const { data, error } = await supabase
     .from('wk_live_transcripts')
-    .select('speaker, text, created_at')
+    .select('speaker, body, ts')
     .eq('call_id', body.callId)
-    .order('created_at', { ascending: true })
+    .order('ts', { ascending: true })
     .limit(400);
+  if (error) console.warn('[call-review] transcript read failed', error.message);
 
   const lines = (data ?? [])
-    .map((r: { speaker?: string | null; text?: string | null }) =>
-      `${(r.speaker ?? 'other').toUpperCase()}: ${(r.text ?? '').trim()}`)
+    .map((r: { speaker?: string | null; body?: string | null }) =>
+      `${(r.speaker ?? 'other').toUpperCase()}: ${(r.body ?? '').trim()}`)
     .filter((l) => l.length > 8);
 
   // A call with four lines in it is a wrong number or a receptionist, and a

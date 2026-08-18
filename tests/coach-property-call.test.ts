@@ -30,13 +30,17 @@ const COACH = read('supabase/functions/wk-voice-transcription/index.ts')
 const MINT = read('supabase/functions/wk-calls-create/index.ts')
 const MACHINE = read('src/features/crm/dialer-pro/useDialerMachine.ts')
 const MIGRATION = read('supabase/migrations/20260809000004_property_call_script_key.sql')
-const PAGE = read('src/features/crm/dialer-pro/DialerProPage.tsx')
+// The house selection and the coach write-back moved out of the dialer page and
+// into the room BOTH directions mount on 2026-08-18, so this reads the room.
+const ROOM = read('src/features/crm/components/live-call/PropertyCallRoom.tsx')
 
 describe('the coach knows it is a property call', () => {
   it('still fetches script_key, and reads the new value from it', () => {
-    expect(COACH).toMatch(
-      /select\('id, ai_coach_enabled, agent_id, contact_id, current_stage, campaign_id, script_key'\)/)
-    expect(COACH).toMatch(/const isPropertyCall = \(call\.script_key as string \| null\) === 'property_call';/)
+    const select = COACH.match(/\.select\('id, ai_coach_enabled[^']*'\)/)?.[0] ?? ''
+    for (const col of ['id', 'ai_coach_enabled', 'agent_id', 'contact_id',
+      'current_stage', 'campaign_id', 'script_key']) {
+      expect(select, col).toContain(col)
+    }
   })
 
   it('isCloseCall is untouched, so a property call can never take the close branch', () => {
@@ -102,10 +106,10 @@ describe('the coach is told the right facts about the right thing', () => {
   it('the selected property is written to the DATABASE, not just the screen', () => {
     // The coach cannot see the browser. Without this write it coaches the
     // headline property while the agent talks about a different one.
-    expect(PAGE).toMatch(/scriptTokensFor\(selectedListing\)/)
-    expect(PAGE).toMatch(/from\('wk_contacts'\)\s*\n?\s*\.update\(\{ custom_fields: merged \}\)/)
+    expect(ROOM).toMatch(/scriptTokensFor\(selectedListing\)/)
+    expect(ROOM).toMatch(/from\('wk_contacts'\)\s*\n?\s*\.update\(\{ custom_fields: merged \}\)/)
     // Merged, never replaced: custom_fields also holds the agency and owner.
-    expect(PAGE).toMatch(/\.\.\.\(row\?\.custom_fields \?\? \{\}\), \.\.\.facts/)
+    expect(ROOM).toMatch(/\.\.\.\(row\?\.custom_fields \?\? \{\}\), \.\.\.facts/)
   })
 })
 
@@ -239,6 +243,12 @@ describe('the screen and the coach say the same thing', () => {
       'Their figure, never ours',
       'Lock the next step',
       'Call two, the offer',
+      // Added 18 Aug. Hugo: "the callback script for the 2nd call where we
+      // mention the ballpark and if accepted we book a viewing is not there at
+      // all." It was not: stage 6 ended by handing off to the director, and the
+      // one step that turns an agreed figure into a visit had no words on any
+      // of the three surfaces.
+      'They said yes to the figure. Book the builder.',
     ]
     expect(COACH.slice(COACH.indexOf('const PROPERTY_STAGE_ORDER'), COACH.indexOf('PROPERTY_AGENT_SCRIPT_MD')))
       .toContain(beats.join("',\n  '"))
@@ -300,5 +310,18 @@ describe('the screen and the coach say the same thing', () => {
   it('both say do not book a viewing', () => {
     expect(html).toMatch(/do <b>not<\/b> book/i)
     expect(md).toMatch(/Ask, do not book/i)
+  })
+})
+
+describe('a confirmed ballpark is never unlearned by the write-back', () => {
+  it('an empty figure never blanks a confirmed one', () => {
+    // Flicking to an unpriced sibling listing writes offer_open:'' by design
+    // (the coach must not carry one house's figure onto another), but an
+    // empty string overwriting the branch's agreed figures written by
+    // applyBallpark silently demoted the deal to the discovery script on the
+    // next open. The three applyBallpark money keys are guarded; everything
+    // else still overwrites, including to empty.
+    expect(ROOM).toMatch(/\['offer_open', 'offer_ceiling', 'ladder'\] as const/)
+    expect(ROOM).toMatch(/if \(!facts\[k\] && existing\[k\]\) delete facts\[k\]/)
   })
 })

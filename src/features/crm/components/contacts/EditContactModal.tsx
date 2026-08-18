@@ -7,6 +7,7 @@ import { useFollowups } from '../../hooks/useFollowups';
 import { useAgentDirectory } from '../../hooks/useAgentDirectory';
 import NextStepCard from '@/core/property/NextStepCard';
 import type { NextStepBrief } from '../../../../../api/lib/next-step-brief';
+import { orderedStep, type DealOrder } from '../../lib/dealOrder';
 
 interface Props {
   contact: Contact | null;
@@ -29,10 +30,14 @@ interface Props {
    */
   brief?: NextStepBrief | null;
   pinnedNote?: string | null;
+  /** The brain's newest judgement, from the wk_deal_orders RPC. When fresher
+   *  than the brief it leads the card, or Hugo's screenshot repeats: the
+   *  modal opened on "Ring Doug" days after the branch had replied. */
+  order?: DealOrder | null;
 }
 
 export default function EditContactModal({
-  contact, onClose, onSave, agents, brief, pinnedNote,
+  contact, onClose, onSave, agents, brief, pinnedNote, order,
 }: Props) {
   // The MOCK_AGENTS fallback that used to live here was worse than cosmetic:
   // 7 of the 10 call sites passed no `agents`, so the Owner dropdown offered
@@ -117,8 +122,31 @@ export default function EditContactModal({
               only: the brief is rewritten after every call and the pinned note
               is edited on the house itself, so an editable copy here would be a
               second version of both. Draws nothing on a lead with no house. */}
-          {(brief || pinnedNote) && (
+          {(brief || pinnedNote || order) && (
             <div className="-mx-5 -mt-5 border-b border-[#E5E7EB]">
+              {(() => {
+                // The brain's order leads when it is the freshest word, so the
+                // modal can never open on an instruction the cockpit has
+                // already overtaken (Hugo, 17 Aug: it opened on "Ring Doug"
+                // days after the branch had replied).
+                const step = orderedStep(brief, order);
+                if (step?.kind !== 'order' && step?.kind !== 'hugo') return null;
+                return (
+                  <div
+                    className={
+                      step.kind === 'hugo'
+                        ? 'px-5 py-2.5 text-[12px] font-medium bg-[#FFF7ED] text-[#C2410C] border-b border-[#FED7AA]'
+                        : 'px-5 py-2.5 text-[12px] font-medium bg-[#F5F1FB] text-[#4C3A78] border-b border-[#E4DBF5]'
+                    }
+                    data-testid="modal-deal-order"
+                  >
+                    <span className="block text-[9.5px] font-bold uppercase tracking-wider opacity-70">
+                      {step.kind === 'hugo' ? 'Waiting on Hugo' : 'Do this next, from the deal brain'}
+                    </span>
+                    {step.text}
+                  </div>
+                );
+              })()}
               <NextStepCard brief={brief} pinnedNote={pinnedNote} />
             </div>
           )}

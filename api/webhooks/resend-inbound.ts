@@ -55,7 +55,10 @@ async function verifySvix(rawBody: string, headers: Headers): Promise<boolean> {
   const secretB64 = RESEND_WEBHOOK_SECRET.replace(/^whsec_/, '');
   const keyBytes = base64ToBytes(secretB64);
   const key = await crypto.subtle.importKey(
-    'raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    // TS 5.7 types Uint8Array over ArrayBufferLike, which importKey no longer
+    // accepts (and the DOM's BufferSource name is absent from the node lib the
+    // deploy checks against); the bytes are ArrayBuffer-backed at runtime.
+    'raw', keyBytes.buffer as ArrayBuffer, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${rawBody}`));
   const expected = bytesToBase64(new Uint8Array(sig));

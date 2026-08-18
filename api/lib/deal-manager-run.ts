@@ -449,6 +449,41 @@ export async function loadDealBundle(
  *
  *  Pass the CALLER's client, not the service role, when this feeds a page: RLS
  *  is what keeps Hugo's escalation lane out of Pedro's history column. */
+/** When a HUMAN last moved each card's stage by hand, from the press log.
+ *
+ *  Hugo, 17 Aug: "when I move a lead to a pipeline column, that's it." The
+ *  cockpit sets those cards aside, and this is the only honest source for it:
+ *  `wk_contacts.stage_moved_at` moves on every column write including the
+ *  machine's own (a call outcome moves a card into "Discovery done,
+ *  evaluating"), so hiding on that would hide the deals the cockpit exists for.
+ *  A press row is unambiguous: a person clicked Move the stage.
+ *
+ *  Never throws. A press log that cannot be read means no card is set aside,
+ *  which shows too MUCH rather than too little, and the desk erring towards
+ *  visible is the safe direction. */
+export async function latestHandMoves(
+  sb: Sb, propertyIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!propertyIds.length) return out;
+  try {
+    const { data } = await (sb.from('wk_deal_manager_log') as any)
+      .select('property_id, created_at')
+      .in('property_id', propertyIds)
+      .eq('kind', 'action_executed')
+      .eq('action', 'move_stage')
+      .eq('source', 'human')
+      .order('created_at', { ascending: false })
+      .limit(propertyIds.length * 2);
+    for (const row of (data ?? []) as Array<{ property_id: string; created_at: string }>) {
+      if (!out.has(row.property_id)) out.set(row.property_id, row.created_at);
+    }
+  } catch (e) {
+    console.warn('[deal-manager-run] could not read hand moves', String(e).slice(0, 160));
+  }
+  return out;
+}
+
 export async function latestAssessments(
   sb: Sb, propertyIds: string[],
 ): Promise<Map<string, LogRow>> {
@@ -496,8 +531,17 @@ export async function assessAndLog(
     bundle: DealBundle;
     trigger: Trigger;
     hash: string;
+    // `confidence` was missing from this shape while the body read
+    // result.verdict.confidence 30 lines below, so the log column was written
+    // from a property TypeScript believed did not exist. It worked at runtime
+    // because the real verdict carries it, which is exactly why nothing ever
+    // noticed: nothing type checked api/ until 2026-08-17 (see tsconfig.api.json).
     assess: (s: DealState) => Promise<{
-      verdict: { attention: number; action: string; who: string; instruction: string; flags: string[]; evidence: string[] };
+      verdict: {
+        attention: number; action: string; who: string; instruction: string;
+        flags: string[]; evidence: string[];
+        confidence?: 'high' | 'medium' | 'low' | null;
+      };
       source: 'manager' | 'fallback';
       refused?: string;
     }>;

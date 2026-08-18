@@ -1,4 +1,4 @@
-import { parsePhoneNumber, isValidPhoneNumber, isPossiblePhoneNumber, getNumberType, CountryCode, PhoneNumberType } from 'libphonenumber-js'
+import { parsePhoneNumber, isValidPhoneNumber, isPossiblePhoneNumber, getNumberType, type CountryCode, type PhoneNumberType } from 'libphonenumber-js'
 
 export type LineType =
   | 'MOBILE'

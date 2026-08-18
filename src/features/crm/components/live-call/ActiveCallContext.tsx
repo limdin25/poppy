@@ -12,6 +12,28 @@ import {
 } from '@/integrations/twilio/voice-browser';
 import { startCallOrchestration, type StartCallResult } from '../../lib/startCallOrchestration';
 import { isSpeedDialerOn } from '../../lib/speedDialer';
+import { findByPhone, samePhone } from '../../../../../api/lib/phone-match';
+
+/** The wk_calls row wk-voice-twiml-incoming wrote for the call now ringing.
+ *
+ *  ONLY the fallback path: the id normally arrives on the TwiML as a custom
+ *  parameter, which is exact. This exists for legs already in the air when a
+ *  deploy lands. It cannot key on the browser leg's CallSid, because Twilio
+ *  gives the <Client> child leg a different SID to the parent PSTN call that
+ *  the webhook logged, so it matches on the caller and the clock instead. */
+async function findInboundCallRow(fromPhone: string): Promise<string | null> {
+  if (!fromPhone) return null;
+  const since = new Date(Date.now() - 120_000).toISOString();
+  const { data } = await supabase
+    .from('wk_calls')
+    .select('id, from_e164')
+    .eq('direction', 'inbound')
+    .gte('started_at', since)
+    .order('started_at', { ascending: false })
+    .limit(10);
+  const row = (data ?? []).find((r) => samePhone(r.from_e164 as string | null, fromPhone));
+  return (row?.id as string | undefined) ?? null;
+}
 
 export type CallPhase = 'idle' | 'placing' | 'in_call' | 'post_call';
 
@@ -331,23 +353,51 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
   // We morph into the live-call screen only AFTER call.accept() fires,
   // by listening for the SDK's 'accept' event. If the agent declines,
   // the modal calls call.reject() and we never run this setup.
+  //
+  // WHO IS CALLING AND WHICH wk_calls ROW (2026-08-18). Both now ride on the
+  // TwiML as <Parameter> children of <Client>, so the browser inherits the
+  // server's own answer instead of guessing:
+  //
+  //   wkCallId   the row wk-voice-twiml-incoming already inserted. It was
+  //              never passed, so callId stayed null on every inbound call and
+  //              with it went the live transcript, the AI coach, the call
+  //              timeline and any outcome the agent pressed.
+  //   contactId  the server's tolerant phone match.
+  //
+  // The local match is the fallback for legs already in flight when this
+  // deploys, and it matches on the last 9 digits (api/lib/phone-match.ts).
+  // Exact string equality is why a branch filed as '07380308316' never matched
+  // Twilio's '+447380308316' and arrived as an unknown caller.
   useEffect(() => {
     const unsubscribe = addIncomingCallListener((call) => {
       const fromParam = call.parameters?.['From'] ?? '';
       const callSid = call.parameters?.['CallSid'] ?? '';
       const phone = typeof fromParam === 'string' ? fromParam : '';
+      const custom = call.customParameters;
+      const wkCallId = custom?.get('wkCallId') || null;
+      const serverContactId = custom?.get('contactId') || null;
 
       call.on('accept', () => {
-        const matched = phone
-          ? store.contacts.find((c) => c.phone === phone)
-          : undefined;
+        const matched = serverContactId
+          ? store.contacts.find((c) => c.id === serverContactId)
+            ?? findByPhone(store.contacts, phone, (c) => c.phone)
+          : findByPhone(store.contacts, phone, (c) => c.phone);
         setCall({
-          contactId: matched?.id ?? `inbound-${callSid || Date.now()}`,
+          contactId: serverContactId ?? matched?.id ?? `inbound-${callSid || Date.now()}`,
           contactName: matched?.name ?? 'Inbound caller',
           phone,
           startedAt: Date.now(),
-          callId: null,
+          callId: wkCallId,
         });
+        // Older TwiML, still in the air during a deploy: find the row the
+        // webhook wrote by its caller and its age. Cheap, once, and it is the
+        // difference between a coached call and a silent one.
+        if (!wkCallId) {
+          void (async () => {
+            const id = await findInboundCallRow(phone);
+            if (id) setCall((cur) => (cur && cur.phone === phone ? { ...cur, callId: id } : cur));
+          })();
+        }
         activeTwilioCallRef.current = call;
         setPhase('in_call');
         setFullScreen(true);

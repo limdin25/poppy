@@ -71,7 +71,10 @@ type AutoSendChannel = (typeof AUTO_SEND_CHANNELS)[number];
  *  with a reason instead of failing at send time. Email rides Resend, which is
  *  a platform service rather than a paired channel. */
 async function workspaceChannels(
-  db: ReturnType<typeof createClient>,
+  // The service client below, typed the way every other deal route types it:
+  // ReturnType<typeof createClient> resolves to a different generic
+  // instantiation than the client actually built at module load.
+  db: typeof supabase,
 ): Promise<{ sms: boolean; whatsapp: boolean; email: boolean }> {
   const [sms, wa] = await Promise.all([
     db.from('wk_numbers').select('id', { count: 'exact', head: true })

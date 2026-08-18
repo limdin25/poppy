@@ -176,3 +176,50 @@ describe('trade-neutral script tokens', () => {
     expect(out).toContain('13 of 89')
   })
 })
+
+describe('callback tokens: call two opens on the name and the day', () => {
+  const branch = { name: 'Jones & Chapman', customFields: {} };
+
+  it('fills [branch_contact_name] and [spoke_when] from extra', () => {
+    const out = interpolateScript(
+      'Hi [branch_contact_name], we spoke [spoke_when] about the house.',
+      branch,
+      { branch_contact_name: 'Guy', spoke_when: 'yesterday' },
+    );
+    expect(out).toBe('Hi Guy, we spoke yesterday about the house.');
+  });
+
+  it('no name on file: every greeting collapses instead of a brown bracket', () => {
+    const tpl = 'Hi [branch_contact_name], hello. ' +
+      'That is great, thanks for your time [branch_contact_name]. ' +
+      'Ringing [branch_contact_name] back about the house.';
+    const out = interpolateScript(tpl, branch, { spoke_when: 'yesterday' });
+    expect(out).toBe('Hi, hello. That is great, thanks for your time. Ringing them back about the house.');
+    // An empty string counts as missing, exactly like every other token.
+    const out2 = interpolateScript('Hi [branch_contact_name], hello.', branch, { branch_contact_name: '' });
+    expect(out2).toBe('Hi, hello.');
+  });
+
+  it('no prior call on record: "We spoke about" still reads true', () => {
+    const out = interpolateScript(
+      'We spoke [spoke_when] about [property_street].',
+      branch,
+      { property_street: 'Friars Close' },
+    );
+    expect(out).toBe('We spoke about Friars Close.');
+  });
+
+  it('a filled value defeats the collapse, byte for byte', () => {
+    const out = interpolateScript(
+      'Hi [branch_contact_name], we spoke [spoke_when] about it.',
+      branch,
+      { branch_contact_name: 'Guy', spoke_when: 'on Friday' },
+    );
+    expect(out).toBe('Hi Guy, we spoke on Friday about it.');
+  });
+
+  it('outside the collapse phrasings, a missing token is still a visible brown slot', () => {
+    const out = interpolateScript('Ask for [branch_contact_name] at the desk.', branch);
+    expect(out).toBe('Ask for <span class="ph">[branch_contact_name]</span> at the desk.');
+  });
+});

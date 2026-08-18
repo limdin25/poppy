@@ -19,13 +19,26 @@ import OfferStrip from '../live-call/OfferStrip';
 import { usePropertyListings } from '../../hooks/usePropertyListings';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import { AttentionChip, ConfidenceChip, FlagPills, ReplyBlock } from './CockpitQueue';
-import { COCKPIT_ACTIONS, buttonsFor, primaryButtonFor, type CockpitAction } from './cockpitActions';
+import { COCKPIT_ACTIONS, buttonsFor, primaryButtonFor, labelFor, type CockpitAction } from './cockpitActions';
+import { useAuth } from '../../lib/useCrmAuth';
 import type { CockpitDeal, StressReport } from './types';
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
     <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{children}</span>
   );
+}
+
+/** A day and a time in London, for the one place an agent is told how long a
+ *  deal has been sitting with Hugo. Never throws on a bad string: the card is
+ *  more useful with a missing date than not rendered at all. */
+function whenShort(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'earlier';
+  return d.toLocaleString('en-GB', {
+    timeZone: 'Europe/London', day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
 /** Plain English for the checklist keys, so "condition_band" never reaches a
@@ -57,6 +70,10 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
   busy: string | null;
   onRequest: (action: CockpitAction) => void;
 }) {
+  // Only for the WORDS on the escalate button: "Send it to Hugo" reads as
+  // nonsense to Hugo. The action, the checks and the notification are the same
+  // whoever presses it.
+  const { isAdmin } = useAuth();
   const [showComps, setShowComps] = useState(false);
   const [showWhole, setShowWhole] = useState(false);
   // Hugo, 16 Aug: "I don't want to know so much details if it's not needed."
@@ -105,9 +122,21 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
                 <span className="text-[11px] text-ink-muted">{deal.contactName}</span>
               )}
               {deal.column && (
-                <span className="text-[10px] rounded-full border border-border px-1.5 py-0.5 text-ink-muted">
+                /* Hugo, 17 Aug: "everywhere we are on the CRM we know which
+                   stage the lead is and we can change it." The stage was dead
+                   text on the one screen built for acting on a deal; it now
+                   opens the same Move the stage gate as the button, so every
+                   move is still a human press through the checks. */
+                <button
+                  type="button"
+                  onClick={() => request('move_stage')}
+                  data-testid="cockpit-stage-chip"
+                  title="Change the stage"
+                  className="inline-flex items-center gap-0.5 text-[10px] rounded-full border border-border px-1.5 py-0.5 text-ink-muted hover:border-brand hover:text-brand"
+                >
                   {deal.column}
-                </span>
+                  <ChevronDown className="h-2.5 w-2.5 opacity-60" />
+                </button>
               )}
               <FlagPills flags={deal.flags} />
             </div>
@@ -152,6 +181,28 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
         {/* THE ORDER IS THE PAGE. Hugo, 16 Aug: "just tell exactly what the
             intelligence is asking us to do for the next step", "small texts".
             One big sentence, one big button, everything else behind the fold. */}
+        {deal.blockedOnHugo ? (
+          /* HUGO HAS THIS ONE, AND THIS READER MAY NOT SEE WHY.
+             The order exists and is correct; it is hidden by the RLS policy
+             that keeps Hugo's escalation lane off an agent's screen. Before
+             this card, hiding it left the panel showing a stale brief and a
+             button reading "Hold, nothing today" on a live deal (Zest Hull,
+             17 Aug, the card Hugo screenshotted). An agent now learns that the
+             deal is alive and not his move, and nothing else. */
+          <div
+            className="rounded-lg border border-[#FDBA74] bg-[#FFF7ED] px-3 py-2.5"
+            data-testid="cockpit-blocked-on-hugo"
+          >
+            <Label>Waiting on Hugo</Label>
+            <p className="mt-1 text-[15px] font-semibold leading-snug text-[#7C2D12]">
+              Hugo is on this one. There is nothing for you to do here today.
+            </p>
+            <p className="mt-1.5 text-[11px] text-[#9A3412]">
+              With him since {whenShort(deal.blockedOnHugo.since)}. The deal is live, it is
+              not stuck on a call. Ring the branch below only if you have a reason of your own.
+            </p>
+          </div>
+        ) : (
         <div className="rounded-lg border border-border bg-elevated px-3 py-2.5" data-testid="cockpit-order">
           <Label>Do this next</Label>
           <p className="mt-1 text-[15px] font-semibold leading-snug text-ink">{deal.instruction}</p>
@@ -165,7 +216,7 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
             {busy === primary
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : (() => { const I = COCKPIT_ACTIONS[primary].icon; return <I className="w-4 h-4" />; })()}
-            {COCKPIT_ACTIONS[primary].label}
+            {labelFor(primary, isAdmin)}
           </button>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[9.5px] text-ink-subtle">
             <ConfidenceChip confidence={deal.confidence} />
@@ -173,6 +224,7 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
             {deal.stale && <span>Something has changed since this was written</span>}
           </div>
         </div>
+        )}
 
         {/* the working, out of the way until asked for */}
         <button
@@ -337,7 +389,7 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
                 disabled={busy !== null}
                 data-testid={`cockpit-action-${a}`}
                 data-blocked={blocked ? '1' : '0'}
-                title={blocked ? report?.checks.find((c) => c.level === 'block')?.title : spec.label}
+                title={blocked ? report?.checks.find((c) => c.level === 'block')?.title : labelFor(a, isAdmin)}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium transition-colors disabled:opacity-50',
                   isPrimary
@@ -352,7 +404,7 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
                 {busy === a
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   : <Icon className="w-3.5 h-3.5" />}
-                {spec.label}
+                {labelFor(a, isAdmin)}
                 {blocked && <span className="text-[9.5px]">checks</span>}
               </button>
             );

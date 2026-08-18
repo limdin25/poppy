@@ -135,20 +135,29 @@ function QueueRow({ deal, selected, onSelect }: {
               </p>
             )}
 
-            <p className="text-[12px] text-[#374151] mt-0.5 line-clamp-2">{deal.instruction}</p>
+            {/* The row must not preview an order this reader is not allowed to
+                see. Without this it showed the stale brief underneath, which is
+                how "Hold, nothing today" reached the queue as well as the panel. */}
+            {deal.blockedOnHugo ? (
+              <p className="text-[12px] text-[#9A3412] mt-0.5 font-medium">
+                Hugo is on this one. Nothing for you today.
+              </p>
+            ) : (
+              <p className="text-[12px] text-[#374151] mt-0.5 line-clamp-2">{deal.instruction}</p>
+            )}
 
             {deal.repliedSinceBrief && (
               <ReplyBlock preview={deal.lastInboundPreview} />
             )}
 
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-              <ConfidenceChip confidence={deal.confidence} />
+              {!deal.blockedOnHugo && <ConfidenceChip confidence={deal.confidence} />}
               <FlagPills flags={deal.flags} />
               <span className="text-[9.5px] text-ink-subtle inline-flex items-center gap-0.5">
                 <Clock className="w-2.5 h-2.5" />
                 {hoursAgo(deal.hoursSinceTouch)}
               </span>
-              {deal.stale && (
+              {deal.stale && !deal.blockedOnHugo && (
                 <span
                   className="text-[9.5px] text-ink-subtle"
                   title="Something has happened since this instruction was written. The sweep catches up within two minutes."

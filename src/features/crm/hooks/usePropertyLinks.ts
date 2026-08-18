@@ -18,6 +18,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
+import { phoneTail } from '../../../../api/lib/phone-match';
 import type { NextStepBrief } from '../../../../api/lib/next-step-brief';
 
 export interface PropertyLink {
@@ -39,12 +40,12 @@ export interface PropertyLink {
   branch_contact_name: string | null;
 }
 
-/** The last 9 digits of a phone, or '' when there are not 9 to take. Exported
- *  so callers key their lookups with exactly the same rule the RPC matches on. */
-export function phoneTail(phone: string | null | undefined): string {
-  const digits = (phone ?? '').replace(/\D/g, '');
-  return digits.length >= 9 ? digits.slice(-9) : '';
-}
+/** The last 9 digits of a phone, or '' when there are not 9 to take.
+ *
+ *  Re-exported (it used to be defined here) so the existing callers keep their
+ *  import, while the rule itself lives in ONE place beside samePhone, where the
+ *  inbound call screen reads it too. See api/lib/phone-match.ts. */
+export { phoneTail };
 
 /**
  * @param phones every branch number on screen. Order and duplicates do not

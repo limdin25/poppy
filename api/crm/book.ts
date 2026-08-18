@@ -38,7 +38,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   let raw: Record<string, unknown>;
-  try { raw = await req.json(); } catch { return json(400, { error: 'Invalid JSON' }); }
+  try { raw = await req.json() as Record<string, unknown>; } catch { return json(400, { error: 'Invalid JSON' }); }
   const args = (raw.args ?? raw) as { name?: string; phone?: string; when?: string; notes?: string };
   const call = (raw as { call?: { from_number?: string; to_number?: string } }).call;
 

@@ -90,11 +90,19 @@ interface Props {
   /** wk_calls.id of the live or last call, so the draft can read what the
    *  estate agent actually said. */
   offerCallId?: string | null;
+  /** The room's already-computed call mode (step + ballpark + board column),
+   *  so the offer-sent stamp and the AI-draft button agree with the script
+   *  pane. Absent, both fall back to deriving it from the contact's fields,
+   *  exactly as before. */
+  callMode?: 'discovery' | 'offer';
 }
 
 /** Only the figures. The draft endpoint is told never to invent one, and this
  *  is the whole set it is allowed to use. */
 export interface OfferHouse {
+  /** brrr_properties.id, so the drafter can read the distilled checklist for
+   *  this house (what the branch already answered, with quotes). */
+  propertyId?: string | null;
   address?: string | null;
   askingPrice?: number | null;
   offerPrice?: number | null;
@@ -127,6 +135,7 @@ export default function MidCallSmsSender({
   isPropertyCall = false,
   offerHouse = null,
   offerCallId = null,
+  callMode,
 }: Props) {
   const { pushToast, columns, patchContact, contacts } = useSmsV2();
   const currentContact = contacts.find((c) => c.id === contactId);
@@ -254,6 +263,7 @@ export default function MidCallSmsSender({
         },
         body: JSON.stringify({
           callId: offerCallId,
+          propertyId: offerHouse?.propertyId ?? null,
           house: offerHouse,
           agentName: currentContact?.customFields?.owner_name ?? null,
           agencyName: contactName,
@@ -387,7 +397,7 @@ export default function MidCallSmsSender({
       // so the call-one files chase stamped offer_sent_at with a figure nobody
       // had ever said, and the card flipped into offer mode for good.
       if (isPropertyCall && channel === 'email' && offerHouse?.offerPrice
-        && callModeForStep(currentContact?.customFields?.next_step) === 'offer') {
+        && (callMode ?? callModeForStep(currentContact?.customFields?.next_step, currentContact?.customFields)) === 'offer') {
         const fields = {
           ...(currentContact?.customFields ?? {}),
           ...offerSentFields(offerHouse.offerPrice, new Date().toISOString()),
@@ -496,7 +506,7 @@ export default function MidCallSmsSender({
       {/* Offer calls only. On a discovery call this button used to sit one
           click from putting our figure in writing, which is the one thing
           call one must never do. */}
-      {isPropertyCall && callModeForStep(currentContact?.customFields?.next_step) === 'offer' && (
+      {isPropertyCall && (callMode ?? callModeForStep(currentContact?.customFields?.next_step, currentContact?.customFields)) === 'offer' && (
         <div className="mb-2">
           <button
             type="button"

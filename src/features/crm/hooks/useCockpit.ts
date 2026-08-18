@@ -53,6 +53,7 @@ export function useCockpitDeals() {
     deals: data?.deals ?? [],
     setAside: data?.setAside ?? null,
     callingListQueued: data?.callingListQueued ?? null,
+    machine: data?.machine ?? null,
     managerEnabled: Boolean(data?.managerEnabled),
     generatedAt: data?.generatedAt ?? null,
     loading, error, reload: load,
@@ -114,7 +115,14 @@ export function useCockpitAction() {
     columnId?: string;
     counter?: { theirFigure?: number | null; currentOffer?: number | null };
     outcome?: { ok: boolean; ref?: string; error?: string };
+    /** Where the card goes after a successful send: a column id, an explicit
+     *  null for "leave it where it is", or absent for the default road. */
+    afterColumnId?: string | null;
     requestId?: string;
+    /** Hugo deliberately putting our maximum in writing on a best and final.
+     *  Honoured only for an admin, decided on the server from the caller's own
+     *  token, never from this flag. */
+    finalOffer?: boolean;
   }): Promise<CockpitActionResponse> => {
     setBusy(body.action);
     try {

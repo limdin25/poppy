@@ -103,8 +103,21 @@ describe('the action fence: code decides moves', () => {
   it('an unknown column allows only the universal actions', () => {
     // close_lost is universal on purpose: a deal can die anywhere, and Hugo's
     // three-roads law needs the lost road to always exist.
-    expect(allowedActions('Some New Column').sort()).toEqual(['close_lost', 'flag_mismatch', 'hold'])
-    expect(allowedActions(null).sort()).toEqual(['close_lost', 'flag_mismatch', 'hold'])
+    //
+    // escalate_hugo joined them 2026-08-17. A deal can be blocked on the one
+    // thing only Hugo can produce from any column, and while it was legal in
+    // only two, the brain had no verb for "this one is Hugo's" in the rest and
+    // fell through to `hold`. That is how the best deal on the board came to
+    // read "Hold, nothing today" while eight assessments in a row said "Email
+    // Pedro your bank statement". See tests/cockpit-hold-is-not-a-dustbin.
+    // reply_to_their_email joined them 17 Aug, for the same reason one column
+    // over: a branch can write to us at ANY stage, and one wrote during
+    // discovery asking for our registration details. The legal verbs there were
+    // the ballpark, a chase for a missing fact, escalate and hold, so the card
+    // read "reply with them today" above a button reading "Send it to Hugo".
+    const universal = ['close_lost', 'escalate_hugo', 'flag_mismatch', 'hold', 'reply_to_their_email']
+    expect(allowedActions('Some New Column').sort()).toEqual(universal)
+    expect(allowedActions(null).sort()).toEqual(universal)
   })
 
   it('every stage in the pipeline has a closed action list', () => {

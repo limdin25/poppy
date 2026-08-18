@@ -23,6 +23,10 @@ import StageMoveChip from '../components/shared/StageMoveChip';
 import NextStepChip from '../components/shared/NextStepChip';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
 import BriefLine from '../components/shared/BriefLine';
+import DealPulseChip from '../components/shared/DealPulseChip';
+import { useDealPulse } from '../hooks/useDealPulse';
+import { useDealOrders } from '../hooks/useDealOrders';
+import { orderedStep } from '../lib/dealOrder';
 import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
 import TodayPanel from '../components/deals/TodayPanel';
 import BallparkModal from '../components/deals/BallparkModal';
@@ -110,6 +114,20 @@ export default function PipelinesPage() {
     [contacts]
   );
   const channelStatus = useContactChannelStatus(contactIds);
+
+  // Hugo 2026-08-17: "the actions that I'm taking on the cockpit are not
+  // reflecting fully on the pipelines." What last happened to each deal, from
+  // the same two streams the cockpit reads, so the card and the cockpit can
+  // never tell two stories. Property cards only; a plumber lead has no deal
+  // log and renders nothing.
+  const dealPulses = useDealPulse(contactIds);
+
+  // Hugo 2026-08-17, two screenshots of one deal: "DDM are contradicting on
+  // pipeline against cockpit." The brain's newest judgement per branch, via
+  // the wk_deal_orders RPC (never a raw select on the log: RLS would silently
+  // serve an agent an OLDER instruction). Newest-wins against the brief
+  // inside BriefLine.
+  const dealOrders = useDealOrders(contactIds);
 
   // PR 107: per-card follow-up countdown. Single page-level setNow
   // interval so we don't run a timer per card.
@@ -297,6 +315,11 @@ export default function PipelinesPage() {
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {cards.map((c) => {
                   const deal = dealFor(c);
+                  const order = dealOrders.get(c.id) ?? null;
+                  // What the instruction line will actually say, decided once
+                  // here so the stage tag below can stand down when the brain
+                  // has the freshest word.
+                  const shownStep = orderedStep(deal?.brief, order);
                   // Who Pedro asks for, off the call checklist, written onto the
                   // card by api/crm/property-outcome.ts. On a house lead this
                   // REPLACES the owner + website pair: Hugo, 2026-08-14, "the
@@ -360,6 +383,7 @@ export default function PipelinesPage() {
                         <BriefLine
                           brief={deal?.brief}
                           pinnedNote={deal?.pinned_note}
+                          order={order}
                           className="mt-1"
                         />
                         {/* Hugo 2026-08-15: "after the first call ... a button
@@ -388,8 +412,13 @@ export default function PipelinesPage() {
                         {/* Hugo 2026-08-12: the card says what to do next, and
                             hovering or clicking the tag explains the step and
                             hands over the message to send. Property deals only,
-                            fed by custom_fields.next_step. */}
-                        <NextStepChip
+                            fed by custom_fields.next_step.
+                            Hugo 2026-08-17: the tag STANDS DOWN when the brain
+                            has the freshest word. "Renegotiate" beside "hold
+                            at 96,375" was two deciders on one card; when the
+                            order line above is the brain's, the order IS the
+                            next step. */}
+                        {shownStep?.kind !== 'order' && <NextStepChip
                           value={c.customFields?.next_step ?? c.customFields?.deal_stage}
                           className="mt-1"
                           deal={{
@@ -401,11 +430,22 @@ export default function PipelinesPage() {
                             branchStatedFigure: c.customFields?.branch_stated_figure,
                           }}
                           onOpenInbox={() => navigate(`/admin/crm/inbox?contact=${c.id}`)}
-                        />
+                        />}
                         {/* Hugo 2026-07-27: the board must always say where this
                             card last moved and who moved it — including the
                             moves the video funnel makes on its own. */}
                         <StageMoveChip contact={c} size="xs" className="mt-1" />
+                        {/* Hugo 2026-08-17: what the cockpit last did to this
+                            deal, or that the branch has replied, on the card
+                            itself. Newest wins; a reply clicks through to the
+                            inbox. */}
+                        {isProperty && (
+                          <DealPulseChip
+                            pulse={dealPulses.get(c.id)}
+                            onOpenInbox={() => navigate(`/admin/crm/inbox?contact=${c.id}`)}
+                            className="mt-1"
+                          />
+                        )}
                         {c.dealValuePence && (
                           <div className="text-[11px] font-semibold text-[#3C5A87] tabular-nums mt-1">
                             {formatPence(c.dealValuePence)}
@@ -571,6 +611,7 @@ export default function PipelinesPage() {
         onSave={save}
         brief={editing ? dealFor(editing)?.brief : null}
         pinnedNote={editing ? dealFor(editing)?.pinned_note : null}
+        order={editing ? dealOrders.get(editing.id) ?? null : null}
       />
 
       {/* Hugo 2026-08-14: "I don't want a static template, I want the AI brain
@@ -586,6 +627,7 @@ export default function PipelinesPage() {
             onClose={() => { setSmsTo(null); setSmsChannel(null); }}
             defaultChannel={smsChannel}
             deal={d ? {
+              propertyId: d.property_id,
               brief: d.brief,
               pinnedNote: d.pinned_note,
               address: d.address,

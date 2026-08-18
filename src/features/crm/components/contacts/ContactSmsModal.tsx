@@ -128,6 +128,9 @@ interface Props {
 }
 
 export interface EmailDeal {
+  /** brrr_properties.id, so the drafter can read the distilled checklist
+   *  (what the branch already answered on the phone, with quotes). */
+  propertyId?: string | null;
   brief?: NextStepBrief | null;
   pinnedNote?: string | null;
   address?: string | null;
@@ -297,6 +300,7 @@ export default function ContactSmsModal({
         },
         body: JSON.stringify({
           kind: 'follow_up',
+          propertyId: deal.propertyId ?? null,
           house: {
             address: deal.address ?? null,
             askingPrice: deal.brief?.asking ?? null,

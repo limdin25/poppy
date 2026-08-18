@@ -528,6 +528,7 @@ const PROPERTY_STAGE_ORDER = [
   'Their figure, never ours',
   'Lock the next step',
   'Call two, the offer',
+  'They said yes to the figure. Book the builder.',
 ];
 
 /** The words on the agent's screen, as markdown, for the AGENT'S CALL SCRIPT
@@ -604,6 +605,15 @@ Push back once, with a comp: "The one that sold on the same street went for less
 "Let me speak to Hugo and come back to you" is a lever used LATER, not an opener: when a real figure has been banked, when they ask for something formal, or when pushed for a commitment the agent cannot give.
 If asked "is that your best?": "It's where we'd start. If there's a number that gets it done quickly, tell me what it is and I'll put it to Hugo today."
 Close: ask them to put the figure to the vendor, and book the ring-back. Hugo follows up in writing, subject to our builder going round.
+
+## 7. They said yes to the figure. Book the builder.
+You are on this stage when they say "that's about right", "I think the vendor would look at that", "leave it with me, I'll put it forward", or they name a figure at or under the ladder. Anything softer is still stage 6: go back and climb.
+OUR BUILDER IS THE VIEWING. We never view a property ourselves, so this is the only visit we make and it is what turns a figure into an offer.
+Say it as the normal next step: "That's good to hear. The next thing on our side is quick: we send our own builder round to look at it and price the work up properly. That's the only visit we make, and it's what turns this into a firm offer."
+Get a DAY, not "sometime next week": "When would suit for access? He's flexible, and he only needs half an hour."
+Agree who he meets and who holds the keys: "And who does he meet there, you or someone at the branch? Is it keys from you, or is the vendor in?"
+Repeat the booking back: "So that's [day] for the builder, and once he's been I'll come straight back to you with it in writing."
+NOT on this stage: no formal offer, no figure in writing yet, no survey, no viewing for ourselves, and never the walk-away figure.
 Then the standing brief, last thing before the goodbye and however the money went: "same as I said last time, anything else that lands needing plenty of work, or where they've got to sell quick and the price has to come down, send it straight to me and I'll come back to you the same day."`;
 
 /** WHAT THIS PARTICULAR CALL IS FOR.
@@ -1662,7 +1672,7 @@ serve(async (req: Request) => {
     // call script and substitute the contact's first name into it (PR 8).
     const { data: call } = await supa
       .from('wk_calls')
-      .select('id, ai_coach_enabled, agent_id, contact_id, current_stage, campaign_id, script_key')
+      .select('id, ai_coach_enabled, agent_id, contact_id, current_stage, campaign_id, script_key, direction')
       .eq('twilio_call_sid', callSid)
       .maybeSingle();
 
@@ -1716,8 +1726,19 @@ serve(async (req: Request) => {
     // inbound_track = agent, outbound_track = caller. Earlier code had this
     // inverted, which caused Hugo's recent test to label the caller's voice
     // as "You" (agent) in the transcript pane (2026-04-26 evidence).
+    //
+    // IT NOW READS THE DIRECTION (2026-08-18), because inbound calls reached
+    // this function for the first time that day: wk-voice-twiml-incoming had
+    // never started a transcription, so the docs' "other way around" case was
+    // unreachable and the code assumed outbound. On an ANSWERED INBOUND CALL
+    // the parent leg is the caller, so the fixed mapping would have filed every
+    // word the estate agent said as Pedro's own, coached him on his own
+    // sentences, and advanced the script stage when THEY read a line.
     const track = (params.Track ?? '').toLowerCase();
-    const speaker: 'caller' | 'agent' = track.startsWith('outbound') ? 'caller' : 'agent';
+    const parentLegIsAgent = call.direction !== 'inbound';
+    const speaker: 'caller' | 'agent' = track.startsWith('outbound')
+      ? (parentLegIsAgent ? 'caller' : 'agent')
+      : (parentLegIsAgent ? 'agent' : 'caller');
 
     // Persist transcript line ONLY for finalized chunks. Hugo
     // 2026-04-28: "Interim chunks for coach only — keep transcript
@@ -2187,9 +2208,44 @@ serve(async (req: Request) => {
           // Which STEP of the deal process this branch is on, so a chase call
           // is not coached as a first call (Hugo 2026-08-12). Unknown or
           // missing step appends nothing at all.
+          //
+          // A CONFIRMED BALLPARK IS NEVER UNLEARNED, mirror of callModeForStep
+          // in src/features/crm/lib/nextStep.ts (2026-08-18). no_answer writes
+          // next_step 'Discovery call', so a branch with an agreed figure that
+          // simply did not pick up was demoted, and the coach walked Pedro
+          // through the cold opener at a branch waiting for our number while
+          // the script pane showed call two. Promote-only: an offer-side step
+          // is never replaced, and a branch with no figure on file cannot
+          // reach the offer overlay this way.
+          const coachFields = contactData?.custom_fields ?? {};
+          const rawStep = isPropertyCall ? (coachFields.next_step ?? '').trim() : '';
+          const COACH_OFFER_STEPS = new Set([
+            'Offer call', 'Email the offer', 'Chase the agent',
+            'Book the viewing', 'Get it in writing', 'Renegotiate',
+          ]);
+          const coachOpenFigure = Number(String(coachFields.offer_open ?? '').replace(/[^0-9.]/g, ''));
+          // The card's own board column is the third promote-only vote,
+          // mirror of CALL2_COLUMNS in src/features/crm/lib/nextStep.ts.
+          // Needed in real life, not in theory: on the first card this
+          // shipped for (Jones & Chapman, 18 Aug) the step tag had been
+          // demoted by a no_answer AND the ballpark string had been blanked,
+          // so the column was the only signal left saying call two.
+          const COACH_CALL2_COLUMNS = new Set([
+            'Ready for call 2', 'Ballpark agreed', 'Needs viewing',
+            'Offer sent', 'Waiting on their answer', 'Offer accepted',
+          ]);
+          let columnSaysCall2 = false;
+          if (isPropertyCall && pipelineColumnId && !COACH_OFFER_STEPS.has(rawStep)) {
+            const { data: colName } = await supa
+              .from('wk_pipeline_columns').select('name').eq('id', pipelineColumnId).maybeSingle();
+            columnSaysCall2 = COACH_CALL2_COLUMNS.has(
+              (((colName as { name?: string } | null)?.name) ?? '').trim());
+          }
           const propertyStep = isPropertyCall
-            ? (contactData?.custom_fields?.next_step ?? '').trim()
-            : '';
+            && !COACH_OFFER_STEPS.has(rawStep)
+            && ((Number.isFinite(coachOpenFigure) && coachOpenFigure > 0) || columnSaysCall2)
+            ? 'Offer call'
+            : rawStep;
           const stepOverlay = PROPERTY_STEP_PROMPT[propertyStep] ?? '';
           const STEP_HEADER = 'THIS IS NOT THE FIRST CALL TO THIS BRANCH. Everything below OVERRIDES the six beats above wherever they disagree.';
           const propertyPrompt = isPropertyCall && stepOverlay

@@ -42,9 +42,12 @@ async function findUserByEmail(email: string): Promise<string | null> {
   for (let page = 1; page <= 20; page++) {
     const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 200 });
     if (error || !data?.users?.length) return null;
-    const hit = data.users.find((u) => (u.email || '').toLowerCase() === target);
+    // gotrue's own typings collapse users to never under this tsconfig; the
+    // wire shape is stable.
+    const users = data.users as Array<{ id: string; email?: string | null }>;
+    const hit = users.find((u) => (u.email || '').toLowerCase() === target);
     if (hit) return hit.id;
-    if (data.users.length < 200) return null;
+    if (users.length < 200) return null;
   }
   return null;
 }

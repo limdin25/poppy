@@ -38,7 +38,7 @@ export default function DealCockpitPage() {
   const historyHasItsOwnColumn = useMediaQuery('(min-width: 1280px)');
   const { openDialerPro } = useDialerProModal();
 
-  const { deals, setAside, callingListQueued, managerEnabled, generatedAt, loading, error, reload } = useCockpitDeals();
+  const { deals, setAside, callingListQueued, machine, managerEnabled, generatedAt, loading, error, reload } = useCockpitDeals();
   const { data: detail, loading: detailLoading, reload: reloadDetail } = useCockpitDeal(selectedId);
   const calendar = useCockpitCalendar(30);
 
@@ -148,6 +148,21 @@ export default function DealCockpitPage() {
         </div>
       )}
 
+      {/* THE MACHINE IS BROKEN, SAID ON THE SCREEN SOMEBODY OPENS.
+          The dead man's switch already caught the overnight failing three
+          nights running, and it said so by email. Nobody saw it, and Pedro
+          worked a two day old list that nothing was refilling. The alert is
+          worth nothing if it does not appear where the work is. */}
+      {(machine?.problems.length ?? 0) > 0 && (
+        <div
+          data-testid="cockpit-machine-broken"
+          className="flex-shrink-0 border-b border-[#FCA5A5] bg-[#FEF2F2] px-4 py-2 text-[12px] text-[#991B1B]"
+        >
+          <span className="font-semibold">The machine needs attention. </span>
+          {machine?.problems.join(' ')}
+        </div>
+      )}
+
       {/* ---- the grid ---- */}
       <div
         data-testid="cockpit-grid"
@@ -184,12 +199,16 @@ export default function DealCockpitPage() {
               waiting on a decision; a branch nobody has reached is a phone
               number for the dialer. Saying so out loud beats silently dropping
               four cards in five and leaving somebody to wonder. */}
-          {setAside && (setAside.calling_list + setAside.never_spoke + setAside.closed_door + (setAside.off_board ?? 0) + (setAside.scheduled ?? 0) + (setAside.waiting_reply ?? 0)) > 0 && (
+          {setAside && (setAside.calling_list + setAside.never_spoke + setAside.closed_door + (setAside.off_board ?? 0) + (setAside.scheduled ?? 0) + (setAside.waiting_reply ?? 0) + (setAside.moved_by_hand ?? 0)) > 0 && (
             <div className="flex-shrink-0 border-t border-border px-3 py-2 text-[10px] leading-snug text-ink-subtle">
               {/* Counts BRANCHES, matching what Hugo counts on the pipeline. */}
               Not shown:{' '}
               {[
                 (setAside.scheduled ?? 0) > 0 && `${setAside.scheduled} booked for callbacks`,
+                // Moved by hand: off the desk on purpose, still on the board in
+                // the column it was moved to. Counted here because nothing
+                // re-surfaces it on its own.
+                (setAside.moved_by_hand ?? 0) > 0 && `${setAside.moved_by_hand} you moved on the board`,
                 (setAside.waiting_reply ?? 0) > 0 && `${setAside.waiting_reply} waiting on their answer`,
                 // ONE NUMBER FOR THE CALLING LIST, and it is the dialer
                 // queue's own. This used to count branches that hold a house

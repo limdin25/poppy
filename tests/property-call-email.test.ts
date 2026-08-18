@@ -110,8 +110,14 @@ describe('the three fences between a model and a price in writing', () => {
     // Every fact comes off the row, so replacing the statement updates the
     // wording with it. None of them may be hardcoded here.
     expect(DRAFT).not.toMatch(/Airbrick|Revolut|102,071|bridging facility/)
-    // And it only describes an attachment the deal actually asked for.
-    expect(DRAFT).toMatch(/if \(isFollowUp && \/proof of fund/)
+    // And it only describes an attachment that is actually going: either the
+    // cockpit route said so explicitly (it is the one that signs the document),
+    // or the follow_up wording asked for it. Widened 2026-08-17 from
+    // follow_up-only: the statement was attached to a reply on price whose
+    // body never mentioned it, because the description was gated to one kind
+    // while the attachment was decided per press.
+    expect(DRAFT).toMatch(/c\.attachingProof === true/)
+    expect(DRAFT).toMatch(/isFollowUp && \/proof of fund/)
   })
 })
 
@@ -203,8 +209,18 @@ describe('the tab, and who can see it', () => {
   })
 
   it('knows which of the two calls it is on', () => {
-    expect(PANE).toMatch(/callModeForStep\(nextStep\) === 'offer'/)
-    expect(read('src/features/crm/dialer-pro/DialerProPage.tsx')).toMatch(/nextStep=\{contact\?\.customFields\?\.next_step/)
+    // The room's computed mode (step + ballpark + board column) wins when
+    // passed; deriving from the fields is the fallback for other mounts.
+    expect(PANE).toMatch(/\(callMode \?\? callModeForStep\(nextStep, branchFields\)\) === 'offer'/)
+    // The room both directions mount reads the step ONCE, computes ONE mode
+    // and hands the same value to the strip, the script and this tab, so they
+    // cannot disagree about which of the two calls is on screen.
+    const ROOM = read('src/features/crm/components/live-call/PropertyCallRoom.tsx')
+    expect(ROOM).toMatch(/const nextStep = contact\?\.customFields\?\.next_step \?\? contact\?\.customFields\?\.deal_stage/)
+    expect(ROOM).toMatch(/nextStep=\{nextStep\}/)
+    expect(ROOM).toMatch(/callMode=\{callMode\}/)
+    const TABS_SRC = read('src/features/crm/components/live-call/DialerRightTabs.tsx')
+    expect(TABS_SRC).toMatch(/callMode=\{callMode\}/)
   })
 })
 

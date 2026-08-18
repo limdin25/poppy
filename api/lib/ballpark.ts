@@ -29,9 +29,13 @@ const ENGINE_URL = process.env.SCRAPER_REPRICE_URL || 'https://scraper.heyelsie.
 
 // The rate card's whole vocabulary. Anything else the model might say is not
 // priceable and must not be invented into the survey.
-export const BANDS = ['turnkey', 'cosmetic', 'modernisation', 'full_refurb', 'derelict', 'unknown'];
-export const WORKS = ['kitchen', 'bathroom', 'rewire', 'replaster', 'boiler', 'flooring', 'garden',
-  'full_strip_out', 'roof', 'windows', 'damp', 'structural'];
+//
+// MOVED to api/lib/condition-vocab.ts, which has no imports, so the dialer can
+// name a band without dragging the LLM wrapper and its Supabase client into the
+// browser bundle. Re-exported here because half the repo already imports them
+// from this file.
+export { BANDS, WORKS } from './condition-vocab.js';
+import { BANDS, WORKS } from './condition-vocab.js';
 
 const SYSTEM_EXTRACT = [
   'You read the transcript of a phone call between our caller and a UK estate agent about one house, plus the caller\'s typed notes, and you extract ONLY what the agent actually said about the property\'s condition and size.',
@@ -114,6 +118,44 @@ const parseExtraction = (raw: string): Extraction | null => {
   }
 };
 
+/** The newest outbound call to this branch that actually has words in it.
+ *
+ *  EXPORTED AND SHARED. `api/lib/call-extract.ts` reads the same transcript for
+ *  the checklist, and a second copy of this is how one wrong column list came
+ *  to exist in three files: the columns are `body` and `ts`, and asking for
+ *  `text, created_at` is a PostgREST error, not an empty result, so the call
+ *  silently reads as though it never happened.
+ *
+ *  A broken read is logged rather than swallowed, for the same reason. */
+export async function readNewestTranscript(
+  sb: Sb, contactId: string, opts: { cap?: number; scanCalls?: number } = {},
+): Promise<{ text: string; callId: string | null }> {
+  const { data: calls } = await sb
+    .from('wk_calls')
+    .select('id, started_at')
+    .eq('contact_id', contactId)
+    .eq('direction', 'outbound')
+    .order('started_at', { ascending: false })
+    .limit(opts.scanCalls ?? 5);
+
+  for (const c of (calls ?? []) as Array<{ id: string }>) {
+    const { data: lines, error } = await sb
+      .from('wk_live_transcripts')
+      .select('speaker, body, ts')
+      .eq('call_id', c.id)
+      .order('ts', { ascending: true })
+      .limit(300);
+    if (error) console.warn('[transcript] read failed', error.message);
+    const text = ((lines ?? []) as Array<{ speaker?: string | null; body?: string | null }>)
+      .map((r) => `${(r.speaker ?? 'other').toUpperCase()}: ${(r.body ?? '').trim()}`)
+      .filter((l) => l.length > 8)
+      .join('\n')
+      .slice(0, opts.cap ?? 14_000);
+    if (text.length > 200) return { text, callId: c.id };
+  }
+  return { text: '', callId: null };
+}
+
 type PropRow = {
   id: string; source_property_id: string | null; address: string | null;
   asking_price: number | null; price_text: string | null; bedrooms: number | null;
@@ -132,7 +174,9 @@ async function loadProp(sb: Sb, propertyId: string): Promise<PropRow | null> {
       + ' wk_contact_id, human_agent_id')
     .eq('id', propertyId)
     .limit(1);
-  return (data?.[0] as PropRow | undefined) ?? null;
+  // The multi-line select string defeats supabase-js's query parser, so the
+  // inferred row is a parser error; PropRow is the real shape.
+  return (data?.[0] as unknown as PropRow | undefined) ?? null;
 }
 
 /** Hear the call, extract the facts, ask the engine. WRITES NOTHING. */
@@ -148,31 +192,12 @@ export async function runBallparkPreview(sb: Sb, propertyId: string): Promise<Ba
   }
 
   // ---- hear the call: newest outbound call with a transcript ------------
-  let transcript = '';
-  let heardCallId: string | null = null;
-  if (prop.wk_contact_id) {
-    const { data: calls } = await sb
-      .from('wk_calls')
-      .select('id, started_at')
-      .eq('contact_id', prop.wk_contact_id)
-      .eq('direction', 'outbound')
-      .order('started_at', { ascending: false })
-      .limit(5);
-    for (const c of (calls ?? []) as Array<{ id: string }>) {
-      const { data: lines } = await sb
-        .from('wk_live_transcripts')
-        .select('speaker, body, ts')
-        .eq('call_id', c.id)
-        .order('ts', { ascending: true })
-        .limit(300);
-      const text = ((lines ?? []) as Array<{ speaker?: string | null; body?: string | null }>)
-        .map((r) => `${(r.speaker ?? 'other').toUpperCase()}: ${(r.body ?? '').trim()}`)
-        .filter((l) => l.length > 8)
-        .join('\n')
-        .slice(0, 14_000);
-      if (text.length > 200) { transcript = text; heardCallId = c.id; break; }
-    }
-  }
+  // ONE READER, exported, because api/lib/call-extract.ts needs exactly the
+  // same thing and a second copy is how the `speaker, text, created_at` bug
+  // came to exist in three files at once.
+  const { text: transcript, callId: heardCallId } = prop.wk_contact_id
+    ? await readNewestTranscript(sb, prop.wk_contact_id)
+    : { text: '', callId: null };
 
   // EVERYTHING Pedro typed, driven off QUALIFICATION_QUESTIONS so a new
   // checklist question reaches the engine automatically.

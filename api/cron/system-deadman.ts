@@ -26,7 +26,7 @@
 // outage (it still respects the re-alarm gap unless ?force=1). An untested
 // alarm is not an alarm.
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export const config = { runtime: 'edge' };
 
@@ -35,6 +35,10 @@ const REALARM_GAP_MS = 30 * 60 * 1000;
 const SWEEP_STALE_MIN = 30;
 const DRAIN_STALE_MIN = 15;
 const VPS_STALE_HOURS = 26;
+/** How long a pulse may sit on a stage that is not "complete" before the run
+ *  is treated as dead. A healthy night runs well under six hours and the round
+ *  loop hard-stops at six, so eight is a dead run rather than a slow one. */
+const VPS_STARTED_STALE_HOURS = 8;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -59,7 +63,9 @@ async function sendAlarmEmail(subject: string, html: string): Promise<boolean> {
   }
 }
 
-type Sb = ReturnType<typeof createClient>;
+// Loose on purpose, see the note in api/crm/cockpit-action.ts: the
+// unparameterised ReturnType resolves to a client whose schema is `never`.
+type Sb = SupabaseClient<any, any, any>;
 
 async function settingStamp(sb: Sb, key: string): Promise<{ at: number | null; extra: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -157,6 +163,25 @@ export default async function handler(req: Request): Promise<Response> {
       name: 'VPS overnight',
       detail: `last pulse ${Math.round(vpsAgeH ?? 0)} hours ago${vps.extra ? ` (stage: ${vps.extra})` : ''}`,
       consequence: 'no new houses scraped, no re-pricing, Pedro dials yesterday\'s queue',
+    });
+  } else if (vpsAgeH !== null && vps.extra !== 'complete' && vpsAgeH > VPS_STARTED_STALE_HOURS) {
+    // A RUN THAT STARTS AND DIES KEEPS THE HEARTBEAT FRESH, which is the hole
+    // this branch closes (2026-08-17).
+    //
+    // The pipeline pulses "started" the moment it begins, so the age check
+    // above is satisfied for a full 26 hours by a run that was killed at 02:13.
+    // The overnight failed three nights running (OOM, then the 8h timeout, then
+    // a mid-flight edit) and the last night of it looked healthy from here,
+    // because a stamp had landed at 23:30 and nothing asked whether the run had
+    // ever got to the end.
+    //
+    // A healthy run pulses "started", then "assign done", then "complete", and
+    // takes well under six hours. So a stamp still reading anything other than
+    // "complete" after eight is a dead run, not a slow one.
+    problems.push({
+      name: 'VPS overnight died part way',
+      detail: `stuck at stage "${vps.extra ?? 'unknown'}" for ${Math.round(vpsAgeH)} hours`,
+      consequence: 'the scrape, the re-pricing or the branch assign never finished, so nothing new reached Pedro',
     });
   }
 

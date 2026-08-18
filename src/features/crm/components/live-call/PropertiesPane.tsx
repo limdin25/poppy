@@ -15,12 +15,15 @@
 // reachable from a plumber dial.
 
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { ExternalLink, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { gbpShort } from '../../../../../api/lib/brrr-offer';
 import { dealConditionBand } from '../../../../../api/lib/brrr-deal-facts';
+// The engine's own vocabulary, from the one file that holds it and imports
+// nothing, so naming a band here cannot drag the server side into the bundle.
+import { BANDS } from '../../../../../api/lib/condition-vocab';
 import { usePropertyListings, type PropertyListing } from '../../hooks/usePropertyListings';
+import { useBranchLastCall } from '../../hooks/useBranchLastCall';
 import NextStepCard from '@/core/property/NextStepCard';
 import CompGroup from '../shared/CompGroup';
 
@@ -40,6 +43,10 @@ const QUESTIONS: Array<{
   only?: 'flat' | 'house';
   /** Returns the machine's answer when it already has one; truthy = hide. */
   knownWhen?: (l: PropertyListing) => string | null;
+  /** A fixed vocabulary, rendered as a dropdown instead of a free text box.
+   *  Only for keys the ENGINE reads as an exact word: a typo in one of those
+   *  is not a wrong note, it is a refusal to price the house. */
+  options?: readonly string[];
 }> = [
   // The figure comes FIRST now. It was question 15 of 16, and on the first day
   // of real calls not one outcome was logged all day, so the only number any
@@ -50,6 +57,17 @@ const QUESTIONS: Array<{
   { key: 'still_available', label: 'Still available?' },
   { key: 'occupancy', label: 'Vacant or tenanted?' },
   { key: 'condition_notes', label: 'The big four: roof, damp, electrics, boiler' },
+  // THE ONE KEY WITH NO INPUT UNTIL 18 Aug. `condition_band` is on the twelve
+  // and the engine prices off it, and the only way it could ever be set was
+  // the ballpark reader on a human pressing Confirm. So the checklist could
+  // never be completed by a person, and the card said "0 of 12" on a call where
+  // Pedro had established the condition perfectly well. The call listener fills
+  // it from the transcript now; this is how a human corrects it.
+  {
+    key: 'condition_band',
+    label: 'Condition, in one word (the engine prices off this)',
+    options: BANDS,
+  },
   { key: 'water', label: 'Is it dry? Leaks, ceiling staining?' },
   // Sits above the rejected offer because that is the order the script asks
   // them in, and because it is the more valuable of the two: a done-up sale on
@@ -182,50 +200,17 @@ export default function PropertiesPane({
   // "did we ring this number" record, the same one the redial blacklist
   // reads, so the WHEN and the outcome come from there; the property and the
   // figure come from the RPC when a listing still carries them.
-  const phoneKey = (contactPhone ?? '').replace(/\s+/g, '');
-  const lastCallQ = useQuery({
-    queryKey: ['branch-last-call', phoneKey, currentCallId ?? ''],
-    enabled: phoneKey.length >= 9,
-    staleTime: 60_000,
-    queryFn: async () => {
-      let q = supabase
-        .from('wk_calls')
-        .select('id, started_at, disposition_column_id, agent_note')
-        .eq('to_e164', phoneKey)
-        .eq('direction', 'outbound')
-        .not('started_at', 'is', null)
-        .order('started_at', { ascending: false })
-        .limit(1);
-      // The live call already has a wk_calls row; the banner is about the
-      // time BEFORE this one.
-      if (currentCallId) q = q.neq('id', currentCallId);
-      const { data, error } = await q;
-      if (error) throw new Error(error.message);
-      const row = data?.[0];
-      if (!row) return null;
-      let outcome = '';
-      if (row.disposition_column_id) {
-        const { data: col } = await supabase
-          .from('wk_pipeline_columns')
-          .select('name')
-          .eq('id', row.disposition_column_id)
-          .maybeSingle();
-        outcome = col?.name ?? '';
-      }
-      return {
-        at: row.started_at as string,
-        outcome,
-        note: (row.agent_note ?? '').trim(),
-      };
-    },
-  });
+  // The query itself lives in useBranchLastCall (either direction, last 9
+  // digits, excluding the live call) because the call-two opener reads the
+  // same record: "we spoke yesterday" and this banner must never disagree.
+  const { lastCall } = useBranchLastCall(contactPhone, currentCallId);
 
   const priorCall = useMemo(() => {
     const called = listings.filter((l) => l.last_call_at);
     const latest = called.length === 0 ? null
       : [...called].sort((a, b) =>
         String(b.last_call_at).localeCompare(String(a.last_call_at)))[0];
-    const wk = lastCallQ.data ?? null;
+    const wk = lastCall;
     if (!wk && !latest) return null;
     const figure = latest
       ? String((latest.qualification as Record<string, unknown> | null)?.best_price_indicated ?? '').trim()
@@ -237,7 +222,7 @@ export default function PropertiesPane({
       figure,
       note: (latest?.last_call_summary || wk?.note || '').trim(),
     };
-  }, [listings, lastCallQ.data]);
+  }, [listings, lastCall]);
 
   /** What earlier calls on this house already answered. */
   const priorAnswers = useMemo(() => {
@@ -498,6 +483,22 @@ export default function PropertiesPane({
               {visibleQuestions.map((q) => (
                 <label key={q.key} className="block">
                   <span className="text-[10.5px] font-medium text-[#6B7280]">{q.label}</span>
+                  {q.options ? (
+                    <select
+                      value={answers[q.key] ?? ''}
+                      onChange={(e) => setAnswers((a) => ({ ...a, [q.key]: e.target.value }))}
+                      data-testid={`property-q-${q.key}`}
+                      className="mt-0.5 w-full rounded border border-[#E5E7EB] bg-white px-2 py-1 text-[12px] text-[#1A1A1A] focus:border-[#3C5A87] focus:outline-none"
+                    >
+                      {/* Blank means "not asked this time", which the route
+                          merges over rather than wiping. Same rule as every
+                          other field on this card. */}
+                      <option value="">
+                        {priorAnswers[q.key] ? `on file: ${priorAnswers[q.key]}` : 'not established'}
+                      </option>
+                      {q.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
                   <input
                     value={answers[q.key] ?? ''}
                     onChange={(e) => setAnswers((a) => ({ ...a, [q.key]: e.target.value }))}
@@ -509,6 +510,7 @@ export default function PropertiesPane({
                     placeholder={priorAnswers[q.key] ?? ''}
                     className="mt-0.5 w-full rounded border border-[#E5E7EB] px-2 py-1 text-[12px] text-[#1A1A1A] placeholder:text-[#C4C7CC] focus:border-[#3C5A87] focus:outline-none"
                   />
+                  )}
                 </label>
               ))}
               <label className="block">

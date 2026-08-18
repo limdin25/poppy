@@ -1,0 +1,35 @@
+{
+  // THE SERVERLESS BACKEND HAD NO TYPE CHECKING AT ALL UNTIL 2026-08-17.
+  //
+  // tsconfig.app.json includes only "src" and tsconfig.node.json only
+  // "vite.config.ts", so `tsc -b` at the root walked straight past every file
+  // in api/. That is the whole money path: the deal brain, the offer maths,
+  // the stress test, the crons. Vercel bundles these with esbuild, which
+  // strips types without checking them, so a type error there did not fail a
+  // build, it shipped.
+  //
+  // Found by writing `SupabaseLike` in api/crm/cockpit.ts, a type that does
+  // not exist anywhere in the repo, and watching `npx tsc -b --force` pass.
+  //
+  // NOT strict, deliberately. Under "strict": true this reports 46 errors,
+  // nearly all of them supabase-js generic noise rather than defects, and a
+  // check that cries wolf is a check nobody runs. Non-strict still catches the
+  // class that actually ships bugs: names that do not exist, wrong argument
+  // counts, misspelled properties, bad imports.
+  //
+  // Run it with: npm run typecheck:api
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["node"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": false
+  },
+  "include": ["api"]
+}

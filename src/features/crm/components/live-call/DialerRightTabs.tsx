@@ -60,6 +60,16 @@ interface Props {
   /** custom_fields.next_step: decides whether the Email tab writes call one's
    *  video request or call two's offer. Property calls only. */
   nextStep?: string | null;
+  /** The branch card's fields, forwarded to the Email tab so a confirmed
+   *  ballpark decides the call mode the same way everywhere. */
+  branchFields?: Record<string, string> | null;
+  /** The room's already-computed call mode (step + ballpark + board column).
+   *  Forwarded to the Email tab and the SMS box so every pane in the room
+   *  shows the same call. Absent on non-property mounts. */
+  callMode?: 'discovery' | 'offer';
+  /** The first blue line of the property script for THIS call, so the coach's
+   *  opener card reads the property opener instead of the plumber one. */
+  propertyOpener?: string;
   /** Who Pedro is speaking to at the branch, off the Houses checklist, so the
    *  email opens with a name instead of "Hi". */
   agentPersonName?: string | null;
@@ -80,6 +90,9 @@ export default function DialerRightTabs({
   showHouses,
   offerHouse,
   nextStep,
+  branchFields,
+  callMode,
+  propertyOpener,
   agentPersonName,
 }: Props) {
   // A property call opens on the Coach and stays there, because the houses
@@ -127,6 +140,7 @@ export default function DialerRightTabs({
             // the coach can answer a money moment locally, without waiting for
             // the model. Never true on a plumber call.
             isPropertyCall={showHouses === true}
+            propertyOpener={showHouses === true ? propertyOpener : undefined}
           />
         )}
         {tab === 'email' && showHouses && (
@@ -139,6 +153,8 @@ export default function DialerRightTabs({
             currentCallId={currentCallId}
             offerHouse={offerHouse}
             nextStep={nextStep}
+            branchFields={branchFields}
+            callMode={callMode}
           />
         )}
         {tab === 'calculator' && <SalesCalculatorPane />}
@@ -157,6 +173,7 @@ export default function DialerRightTabs({
             showHouses={showHouses}
             currentCallId={currentCallId}
             offerHouse={offerHouse}
+            callMode={callMode}
           />
         )}
       </div>
@@ -166,7 +183,7 @@ export default function DialerRightTabs({
 
 function MessagesTab({
   contactId, contactName, contactPhone, contactEmail, ownerName, agentFirstName, campaignId, pipelineId, messages,
-  showHouses, currentCallId, offerHouse,
+  showHouses, currentCallId, offerHouse, callMode,
 }: Props & { messages: CrmMessage[] }) {
   // Hugo 2026-07-27: "under message put option to send video there as well."
   // Same component as the contact pane — its send guards are module-scoped, so
@@ -207,6 +224,7 @@ function MessagesTab({
           isPropertyCall={isPropertyCall}
           offerHouse={offerHouse ?? null}
           offerCallId={currentCallId ?? null}
+          callMode={callMode}
         />
       </div>
       {/* History below. Hugo 2026-08-12: "the SMS history should be on the right

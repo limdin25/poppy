@@ -121,6 +121,37 @@ export const ACTION_LABEL: Record<CockpitAction, string> = {
   hold: 'Hold, nothing today',
 };
 
+/** Where the card lands if this press goes through, or null when it stays put.
+ *
+ *  Hugo, 2026-08-17: "when you send an email it shows the suggested column of
+ *  the pipeline where it should go after the email is sent, and also gives me
+ *  the drop down if I wanna choose a different one." Until then the move was
+ *  real but invisible: the press moved the card and the human found out from
+ *  the board.
+ *
+ *  This is a MIRROR of what the executions already do, never a second decider:
+ *  the three-roads move in cockpit-action's record phase, mark_lost's fixed
+ *  door, and the move fetch-ballpark's own route makes. If one of those
+ *  changes, this changes with it, and tests/cockpit-after-move.test.ts pins
+ *  the pairing. The draft actions answer as send_email does, because the gate
+ *  opens on the draft and the press it leads to is the send: showing "no move"
+ *  on the draft and then moving on the send is the same lie one screen
+ *  earlier. Call-one emails never move a card, by the standing rule. */
+export function suggestedMoveFor(
+  action: CockpitAction, currentColumn: string | null,
+): string | null {
+  if (action === 'mark_lost') return 'Not interested';
+  if (action === 'fetch_ballpark') return 'Ready for call 2';
+  const emailish: CockpitAction[] = [
+    'send_email', 'draft_offer_email', 'draft_follow_up_email', 'draft_counter_reply',
+  ];
+  if (emailish.includes(action)
+    && ['Offer sent', 'Nurturing'].includes((currentColumn ?? '').trim())) {
+    return 'Waiting on their answer';
+  }
+  return null;
+}
+
 /** The actions that put words in front of an estate agent in writing. */
 const WRITES_TO_THE_BRANCH: CockpitAction[] = [
   'draft_video_email', 'draft_address_only_email', 'draft_offer_email',
@@ -151,7 +182,12 @@ export const FIGURE_ALREADY_PUT_TO_THEM = [
  *  so everything not listed here only ever warns. */
 const STAGE_FOR_MONEY_ACTION: Record<string, string[]> = {
   draft_offer_email: ['Ballpark agreed', 'Needs viewing', 'Offer sent', 'Renegotiate'],
-  draft_counter_reply: ['Offer sent', 'Ballpark agreed', 'Renegotiate', 'Offer accepted'],
+  // Nurturing and Waiting on their answer joined 2026-08-17, matching the
+  // contract: reply_with_counter was made legal there on 16 Aug (Orion Way's
+  // written rejection arrived while the card sat in Nurturing) and the brain
+  // duly orders it, but this list was never widened, so the very button the
+  // order pointed at was refused by the stage fence in those two columns.
+  draft_counter_reply: ['Offer sent', 'Ballpark agreed', 'Renegotiate', 'Offer accepted', 'Nurturing', 'Waiting on their answer'],
   assemble_investor_pack: ['Offer accepted', 'Sent to investor'],
 };
 
@@ -208,6 +244,28 @@ export interface StressInput {
    *  Deliberately a caller-supplied allowance rather than a widening of
    *  figuresOnFile: it is true of THIS email, not of the deal. */
   extraFigures?: number[] | null;
+  /** HUGO DELIBERATELY MAKING THE CEILING THE OFFER ("best and final").
+   *
+   *  The ceiling normally never goes in writing, because once a branch has our
+   *  maximum there is no negotiation left. That rule is right and it stays the
+   *  default.
+   *
+   *  But it made a best-and-final email IMPOSSIBLE, and sometimes that email is
+   *  the correct move. Zest Hull, 17 Aug: the ladder is [97,125 / 100,363 /
+   *  103,600], Hugo's own pinned note says "Our offer: GBP 103,600 (ready to
+   *  go)", and the branch is holding it pending proof of funds. The number the
+   *  deal is waiting on IS the top rung, so every draft tripped the fence and
+   *  the send button could never light up. He hit it live: "I am not able to
+   *  send the email, button is inactive."
+   *
+   *  So the fence becomes a WARNING only when a human deliberately says this is
+   *  the final offer, AND that human is an admin. It is never available to an
+   *  agent, and never on by default. `isAdmin` is resolved on the SERVER from
+   *  the caller's own token, never sent by the browser, or the override would
+   *  be a checkbox anybody could tick. */
+  finalOfferInWriting?: boolean;
+  /** Server-resolved. See finalOfferInWriting. */
+  isAdmin?: boolean;
   /** Passed in, never read off the wall clock, so tests are stable. */
   now: Date;
 }
@@ -321,13 +379,22 @@ function universalChecks(input: StressInput): StressCheck[] {
     // ceiling is never said out loud." He climbs towards it and stops dead.
     // BOTH ceilings stay out of writing: the engine's band AND the one Hugo
     // wrote in the pinned note, which is the real walk-away when they differ.
+    // A DELIBERATE best-and-final downgrades it to a warning, for an admin
+    // only. See StressInput.finalOfferInWriting for why this exists at all.
+    const finalOffer = Boolean(input.finalOfferInWriting && input.isAdmin);
     for (const cap of [state.money.ceiling, state.money.pinnedCeiling]) {
       if (cap !== null && named.map((n) => Math.round(n)).includes(Math.round(cap))) {
-        out.push(block('ceiling_not_in_writing', 'This puts our maximum in writing',
-          `${gbp(cap)} is the most we would ever pay for this house. `
-          + 'Once a branch has that in an email there is no negotiation left, only that number. '
-          + 'Say a figure below it, or say no figure at all.',
-          ['money.ceiling']));
+        out.push(finalOffer
+          ? warn('ceiling_not_in_writing', 'This is a best and final, and it says so',
+            `${gbp(cap)} is the most we would ever pay for this house, and this email puts it in writing. `
+            + 'That is the decision: the branch will have our maximum and there is no climb left afterwards, '
+            + 'only a yes or a no. Nothing below this number can be offered on this house again.',
+            ['money.ceiling'])
+          : block('ceiling_not_in_writing', 'This puts our maximum in writing',
+            `${gbp(cap)} is the most we would ever pay for this house. `
+            + 'Once a branch has that in an email there is no negotiation left, only that number. '
+            + 'Say a figure below it, or say no figure at all.',
+            ['money.ceiling']));
         break;
       }
     }
@@ -576,9 +643,16 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
         }
       }
 
-      if (state.brief.blockers.length === 0) {
+      // A BRANCH THAT HAS WRITTEN TO US IS SOMETHING SPECIFIC.
+      //
+      // This read `brief.blockers` and nothing else, so on Stanks Drive it
+      // warned "there is nothing specific to chase" on a card whose whole
+      // reason for existing was Keeley's email asking us seven questions. The
+      // brief is deterministic and usually empty; an unanswered inbound is a
+      // fact, and it is the subject of the email being written.
+      if (state.brief.blockers.length === 0 && !state.writing.replySinceBrief) {
         out.push(warn('blocker_known', 'There is nothing specific to chase',
-          'The brief lists no blocker, so this will read as a generic nudge.',
+          'The brief lists no blocker and they have not written, so this will read as a generic nudge.',
           ['brief.blockers']));
       }
       break;
@@ -623,7 +697,21 @@ function actionChecks(input: StressInput): { checks: StressCheck[]; counter?: Co
 
     // ---- the diary ----------------------------------------------------
     case 'book_followup': {
-      const due = input.dueAt ? Date.parse(input.dueAt) : NaN;
+      // TWO DIFFERENT PROBLEMS, AND THEY USED TO WEAR ONE MESSAGE.
+      //
+      // A dialog that opens before anybody has picked a time has no time, not
+      // a time in the past, and telling somebody their time "has already
+      // passed" when they have not chosen one is how a working button looks
+      // broken. Hugo hit exactly that on Barrie Crescent, with a perfectly
+      // good date in the box (the client half of the fault is that the check
+      // never re-ran when he changed it).
+      const raw = String(input.dueAt ?? '').trim();
+      if (!raw) {
+        out.push(block('due_picked', 'No time has been picked yet',
+          'Choose when this follow up is due.', []));
+        break;
+      }
+      const due = Date.parse(raw);
       if (!Number.isFinite(due) || due <= now.getTime()) {
         out.push(block('due_in_future', 'That time has already passed',
           'A follow up has to be booked for a time that has not happened yet.', []));

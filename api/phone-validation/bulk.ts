@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { validatePhone, ValidationResult } from '../lib/phone-validation.js'
+import { validatePhone, type ValidationResult } from '../lib/phone-validation.js'
 import { enrichResults } from '../lib/phone-enrich.js'
 import { checkSmsDeliverability } from '../lib/twilio-lookup.js'
 import { requireAdminNode } from '../lib/require-admin.js'

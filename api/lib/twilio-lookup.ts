@@ -138,7 +138,7 @@ async function cacheRead(e164s: string[]): Promise<Map<string, LtiResult>> {
         { headers: supabaseHeaders(key) },
       )
       if (!res.ok) continue
-      const rows: Array<{ e164: string; lti_type: string | null; carrier_name: string | null; checked_at: string }> = await res.json()
+      const rows = await res.json() as Array<{ e164: string; lti_type: string | null; carrier_name: string | null; checked_at: string }>
       for (const row of rows) {
         if (new Date(row.checked_at).getTime() < cutoff) continue
         map.set(row.e164, { lti_type: row.lti_type, carrier_name: row.carrier_name, ok: true })

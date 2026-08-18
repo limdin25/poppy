@@ -78,11 +78,16 @@ describe('THE MACHINE NEVER MOVES A CARD', () => {
     }
   });
 
-  it('the action route writes a column in exactly two call sites: move_stage and moveCardTo', () => {
+  it('the action route writes a column in exactly two call sites: moveCardTo and moveCardToId', () => {
+    // It was three until 17 Aug evening, when move_stage stopped writing the
+    // column itself and went through moveCardToId like everything else. That
+    // was not tidying: the helper returns the column's NAME, and the name is
+    // what decides whether the move also books Pedro's callback. It also
+    // refuses a stale id from a dialog left open on a deleted column.
     const writes = ACTION.match(/update\(\{ pipeline_column_id/g) ?? [];
     expect(writes.length).toBe(2);
     const moveCase = ACTION.match(/case 'move_stage': \{[\s\S]*?break;\n      \}/)?.[0] ?? '';
-    expect(moveCase).toMatch(/pipeline_column_id: body\.columnId/);
+    expect(moveCase).toMatch(/moveCardToId\(supabase, bundle\.contactId, body\.columnId\)/);
     // It refuses rather than guessing when the human has not picked one.
     expect(moveCase).toMatch(/refused: 'no_stage'/);
   });
@@ -94,16 +99,21 @@ describe('THE MACHINE NEVER MOVES A CARD', () => {
     const lostCase = ACTION.match(/case 'mark_lost': \{[\s\S]*?break;\n      \}/)?.[0] ?? '';
     expect(lostCase).toMatch(/moveCardTo\(supabase, bundle\.contactId, 'Not interested'\)/);
     // The reply move happens in the RECORD phase, after the browser actually
-    // sent, so a failed send can never move a card.
+    // sent, so a failed send can never move a card. Since 17 Aug pm the
+    // destination is the human's pick from the gate's dropdown; the default
+    // road (Waiting on their answer, from the two reply columns only) lives in
+    // suggestedMoveFor and is pinned in tests/cockpit-after-move.test.ts.
     const recordPhase = ACTION.match(/if \(body\.phase === 'record'\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
-    expect(recordPhase).toMatch(/moveCardTo\(supabase, bundle\.contactId, 'Waiting on their answer'\)/);
+    expect(recordPhase).toMatch(/moveCardTo\(supabase, bundle\.contactId, road\)/);
     expect(recordPhase).toMatch(/body\.outcome\?\.ok !== false/);
-    // And only from the columns where the email IS the reply on price.
-    expect(recordPhase).toMatch(/\['Offer sent', 'Nurturing'\]/);
+    // The human's pick moves by id, and an explicit null is a veto: the card
+    // stays put even where the default road would have moved it.
+    expect(recordPhase).toMatch(/moveCardToId\(supabase, bundle\.contactId, body\.afterColumnId\)/);
+    expect(recordPhase).toMatch(/body\.afterColumnId === null/);
   });
 
   it('moveCardTo is scoped to the contact\'s own pipeline', () => {
-    const helper = ACTION.match(/async function moveCardTo[\s\S]*?\n\}/)?.[0] ?? '';
+    const helper = ACTION.match(/async function moveCardTo\(sb[\s\S]*?\n\}/)?.[0] ?? '';
     expect(helper).toMatch(/eq\('pipeline_id', pipelineId\)/);
     expect(helper).toMatch(/'Ballpark agreed'/);
     // And the client method stays BOUND: a detached sb.from loses `this` and
@@ -271,10 +281,13 @@ describe('there is ONE brain, and both callers use it', () => {
   it('speaks in orders, not essays (Hugo, 16 Aug: "small texts")', () => {
     // "just tell exactly what the intelligence is asking us to do for next
     // step ... the brain has to run the show". The instruction is an order of
-    // at most 2 short sentences, and the prompt carries worked examples of the
+    // at most 3 short sentences (the third says what happens AFTER, added
+    // 17 Aug on Hugo's "reply and stop? reply and call back with the
+    // ballpark? what is it?"), and the prompt carries worked examples of the
     // shape so the model copies it.
     expect(BRAIN).toMatch(/an ORDER, not an explanation/);
-    expect(BRAIN).toMatch(/at most 2 short sentences and under 40 words/);
+    expect(BRAIN).toMatch(/at most 3 short sentences and under 55 words/);
+    expect(BRAIN).toMatch(/ALWAYS SAY WHAT HAPPENS AFTER/);
     expect(BRAIN).toContain('Send it for call two, the ballpark is 62,000');
     expect(BRAIN).toContain('Reply with the counter at 99,000');
     // The backstop when it rambles anyway lives in the contract, tightened

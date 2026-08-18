@@ -133,6 +133,9 @@
     },
     "api/cron/ballpark-runner.ts": {
       "maxDuration": 300
+    },
+    "api/cron/call-listener.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -203,6 +206,10 @@
     {
       "path": "/api/cron/ballpark-runner",
       "schedule": "*/5 6-20 * * *"
+    },
+    {
+      "path": "/api/cron/call-listener",
+      "schedule": "*/5 6-21 * * *"
     },
     {
       "path": "/api/cron/heypubli-pipeline-sync",

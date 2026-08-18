@@ -102,6 +102,30 @@ export const COCKPIT_ACTIONS: Record<CockpitAction, ActionSpec> = {
   hold: { label: 'Hold, nothing today', kind: 'server', icon: PauseCircle, commitVerb: 'Hold it' },
 };
 
+/** WHAT THE BUTTON SAYS TO THE PERSON READING IT.
+ *
+ *  Hugo, 2026-08-17, signed in as an admin and looking at a card whose primary
+ *  button said "Send it to Hugo": "what is it send to Hugo, I am Hugo logged in
+ *  as everyone."
+ *
+ *  He is right that the words were written for one reader. `escalate_hugo`
+ *  means "this one is the boss's, put it on his list", which reads correctly to
+ *  Pedro and reads as nonsense to the boss. The action does not change, only
+ *  the sentence: pressing it as an admin still raises the notification and
+ *  still writes the history row, which is what makes the deal visibly HIS
+ *  rather than sitting unclaimed in the queue.
+ *
+ *  Labels for everything else are untouched. */
+export function labelFor(action: CockpitAction, isAdmin: boolean): string {
+  if (isAdmin && action === 'escalate_hugo') return 'Put it on my list';
+  return COCKPIT_ACTIONS[action].label;
+}
+
+export function commitVerbFor(action: CockpitAction, isAdmin: boolean): string {
+  if (isAdmin && action === 'escalate_hugo') return 'Put it on my list';
+  return COCKPIT_ACTIONS[action].commitVerb;
+}
+
 /** Every action the AI is allowed to intend, mapped to the button that does it.
  *
  *  Total by test against ACTIONS_BY_STAGE + UNIVERSAL_ACTIONS. `wait_for_engine`
@@ -134,6 +158,9 @@ export const PRIMARY_BUTTON_FOR: Record<string, CockpitAction> = {
   // Sent to investor
   chase_investor: 'draft_follow_up_email',
   // Any stage
+  // The ordinary answer to an ordinary question. NOT draft_counter_reply,
+  // which is the money reply behind decideCounter and the ceiling fences.
+  reply_to_their_email: 'draft_follow_up_email',
   flag_mismatch: 'escalate_hugo',
   hold: 'hold',
   // The brain ordering a door shut ("offer accepted elsewhere, mark the deal

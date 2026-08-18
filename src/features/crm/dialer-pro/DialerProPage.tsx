@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom';
 import {
   Phone, PhoneOff, Mic, MicOff, Pause as PauseIcon, Play, Square,
   SkipForward, Flame, Maximize2, Minus,
-  MessageSquare, FileText, PhoneForwarded, Hash, Circle, Home,
+  MessageSquare, FileText, PhoneForwarded, Hash, Circle,
   ChevronDown, Voicemail, Pencil} from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
@@ -24,12 +24,10 @@ import type { Campaign } from '@/features/crm/caller-pad/types';
 
 import DialerScriptPane, { type ScriptKey } from '@/features/crm/components/live-call/DialerScriptPane';
 import { scriptForCall, scriptFromLandingPath } from '@/features/crm/lib/scriptForCall';
-import { callModeForStep } from '@/features/crm/lib/nextStep';
 import DialerRightTabs from '@/features/crm/components/live-call/DialerRightTabs';
 import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaCompact';
 import CallTimeline from '@/features/crm/components/live-call/CallTimeline';
-import PropertiesPane from '@/features/crm/components/live-call/PropertiesPane';
-import NextStepPanel from '@/features/crm/components/shared/NextStepPanel';
+import PropertyCallRoom from '@/features/crm/components/live-call/PropertyCallRoom';
 import KnowledgeCheckpoint from '@/features/crm/components/live-call/KnowledgeCheckpoint';
 import CallReviewCard from '@/features/crm/components/live-call/CallReviewCard';
 
@@ -45,8 +43,6 @@ import { useCurrentAgent } from '@/features/crm/hooks/useCurrentAgent';
 import { useSmsV2 } from '@/features/crm/store/SmsV2Store';
 import { useContactPersistence } from '@/features/crm/hooks/useContactPersistence';
 import EditableName from '@/features/crm/components/contacts/EditableName';
-import OfferStrip from '@/features/crm/components/live-call/OfferStrip';
-import { usePropertyListings, scriptTokensFor, offerHouseFor } from '@/features/crm/hooks/usePropertyListings';
 import { useDialerMachine } from './useDialerMachine';
 import { useQueuePro } from './useQueuePro';
 import type { QueueLead } from './types';
@@ -476,48 +472,10 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
     try { sessionStorage.setItem('dialer_calls_since_check', '0'); } catch { /* ignore */ }
   }, []);
 
-  // The SMS fold-out that used to sit here moved to the Messages tab on the
-  // right, beside the message history it belongs with (Hugo 2026-08-12: "the
-  // SMS history should be on the right hand side, on the messages with the
-  // history"). Its space in this column is now the next step.
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
-  const { listings: houseListings } = usePropertyListings(
-    isHousesCall ? contact?.phone : null,
-  );
-  const selectedListing = useMemo(
-    () => houseListings.find((l) => l.id === selectedPropertyId) ?? houseListings[0] ?? null,
-    [houseListings, selectedPropertyId],
-  );
-  const housesTotal = houseListings.length;
-  const handleSelectProperty = useCallback((id: string) => setSelectedPropertyId(id), []);
-  // A new lead is a different agency, so the old selection is not merely stale,
-  // it is another branch's house with another branch's numbers.
-  useEffect(() => { setSelectedPropertyId(null); }, [activeContactId]);
-
-  // Push the selected property's figures onto the CONTACT.
-  //
-  // The live coach is driven by Twilio, not the browser: it rebuilds its whole
-  // context from the database on every caller utterance and cannot see what is
-  // on screen. Without this write the coach would coach the headline property
-  // while the agent talks about the third one down, naming the wrong opening
-  // figure out loud. Same reason wk_calls.script_key exists at all.
-  const syncedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!isHousesCall || !selectedListing || !activeContactId) return;
-    const key = `${activeContactId}:${selectedListing.id}`;
-    if (syncedRef.current === key) return;   // only on a real change
-    syncedRef.current = key;
-    const facts = scriptTokensFor(selectedListing);
-    void (async () => {
-      // Merge, never replace: custom_fields also holds who owns the lead, the
-      // agency name and anything an admin typed by hand.
-      const { data: row } = await supabase
-        .from('wk_contacts').select('custom_fields').eq('id', activeContactId).maybeSingle();
-      const merged = { ...(row?.custom_fields ?? {}), ...facts, lead_type: 'estate_agent' };
-      await supabase.from('wk_contacts')
-        .update({ custom_fields: merged }).eq('id', activeContactId);
-    })();
-  }, [isHousesCall, selectedListing, activeContactId]);
+  // The house selection, the offer strip, the property script and the coach
+  // write-back all moved into PropertyCallRoom on 2026-08-18, so the room Pedro
+  // dials from and the room he answers into are the same component and cannot
+  // drift apart again. Nothing about them changed in the move.
 
   // The lead on the phone, through the same batched hook every other surface
   // uses, with a list of one.
@@ -867,6 +825,51 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
     }
   }, [state.currentLead, state.currentCallId, onToast]);
 
+  // COL 1's top card, handed to whichever room renders. It stays in this file
+  // because it is the DIALER's idea of who is on the phone: the name is
+  // editable inline, and "Next in queue" only means anything where there is a
+  // queue. The inbound room passes its own.
+  const contactHeader = contact ? (
+    <div className="px-4 py-3 border-b border-[#E5E7EB]">
+      <div className="flex items-center gap-2">
+        <div className="text-[16px] font-bold text-[#1A1A1A]"><EditableName value={contact.name} onSave={(n) => renameContact(contact.id, n)} className="text-[16px] font-bold" /></div>
+        {contact.isHot && (
+          <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FEF2F2', color: '#EF4444' }}>
+            <Flame className="w-3 h-3" /> HOT
+          </span>
+        )}
+        {/* Hugo 2026-07-27: edit the lead from here — name, the
+            person's name, email, phone — without leaving the call. */}
+        <button
+          onClick={() => setEditing(contact)}
+          data-testid="dialer-edit-contact"
+          title="Edit this lead — name, person, email, phone"
+          className="ml-auto p-1 rounded text-[#6B7280] hover:text-[#3C5A87] hover:bg-[#EEF2F8] flex-shrink-0"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      {/* Owner name + website beside the company name, everywhere
+          (Hugo 2026-07-26) — explicit "not available" when missing. */}
+      <ContactIdentity
+        owner={contact.customFields?.owner_name}
+        website={contact.customFields?.website}
+        layout="stack"
+        size="sm"
+        className="mt-0.5 space-y-0.5"
+      />
+      <div className="flex items-center gap-2 mt-0.5">
+        <span className="text-[12px] text-[#6B7280] tabular-nums">{contact.phone}</span>
+        <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} />
+        <AgentChip agentId={contact.ownerAgentId} size="xs" className="ml-auto" />
+      </div>
+      {!isLive && !state.currentLead && (
+        <div className="text-[10px] text-[#9CA3AF] mt-1">Next in queue</div>
+      )}
+      <div className="mt-2"><ContactMetaCompact contact={contact} /></div>
+    </div>
+  ) : null;
+
   return (
     <div className="relative h-full flex flex-col bg-[#F3F3EE]">
       {/* Toast stack */}
@@ -883,98 +886,44 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
         </div>
       )}
 
-      {/* ─── BACKGROUND: 4-column call room (always mounted, sticky) ─── */}
+      {/* ─── BACKGROUND: the call room (always mounted, sticky) ─── */}
       <div className="flex-1 overflow-hidden">
+        {isHousesCall ? (
+          /* The property room, the SAME component the inbound call screen
+             mounts (2026-08-18). Pedro: "the transition of hey elsie from
+             dialer to when I answer an incoming call is very different". It was,
+             because all of this lived in this file and nowhere else. */
+          <PropertyCallRoom
+            contact={contact}
+            contactHeader={contactHeader}
+            currentCallId={state.currentCallId}
+            callConnected={state.phase === 'connected'}
+            liveDurationSec={liveDuration}
+            agentFirstName={agentFirstName}
+            campaignId={camp?.id ?? null}
+            pipelineId={camp?.pipelineId ?? null}
+            direction="outbound"
+            autoSaveId="dialer-pro-houses-layout-v1"
+          />
+        ) : (
         <ResizablePanelGroup
           direction="horizontal"
-          /* A property call carries the whole house panel in COL 1, so it gets
-             its own saved widths. The plumber room keeps v4 and every width
-             Pedro and Marr have already dragged into place. isHousesCall is
-             fixed for the life of the page (scriptForCall returns
-             property_call for every lead once the room opened on it), so this
-             never swaps under a live call. */
-          autoSaveId={isHousesCall ? 'dialer-pro-houses-layout-v1' : 'dialer-pro-call-layout-v4'}
+          /* The plumber room keeps v4 and every width Pedro and Marr have
+             already dragged into place. */
+          autoSaveId="dialer-pro-call-layout-v4"
           className="h-full"
         >
-          {/* COL 1: contact, SMS history, and on a property call the house */}
-          <ResizablePanel defaultSize={isHousesCall ? 32 : 22} minSize={16} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
+          {/* COL 1: contact + call timeline */}
+          <ResizablePanel defaultSize={22} minSize={16} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
             {contact ? (
               <>
-                <div className="px-4 py-3 border-b border-[#E5E7EB]">
-                  <div className="flex items-center gap-2">
-                    <div className="text-[16px] font-bold text-[#1A1A1A]"><EditableName value={contact.name} onSave={(n) => renameContact(contact.id, n)} className="text-[16px] font-bold" /></div>
-                    {contact.isHot && (
-                      <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FEF2F2', color: '#EF4444' }}>
-                        <Flame className="w-3 h-3" /> HOT
-                      </span>
-                    )}
-                    {/* Hugo 2026-07-27: edit the lead from here — name, the
-                        person's name, email, phone — without leaving the call. */}
-                    <button
-                      onClick={() => setEditing(contact)}
-                      data-testid="dialer-edit-contact"
-                      title="Edit this lead — name, person, email, phone"
-                      className="ml-auto p-1 rounded text-[#6B7280] hover:text-[#3C5A87] hover:bg-[#EEF2F8] flex-shrink-0"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  {/* Owner name + website beside the company name, everywhere
-                      (Hugo 2026-07-26) — explicit "not available" when missing. */}
-                  <ContactIdentity
-                    owner={contact.customFields?.owner_name}
-                    website={contact.customFields?.website}
-                    layout="stack"
-                    size="sm"
-                    className="mt-0.5 space-y-0.5"
-                  />
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[12px] text-[#6B7280] tabular-nums">{contact.phone}</span>
-                    <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} />
-                    <AgentChip agentId={contact.ownerAgentId} size="xs" className="ml-auto" />
-                  </div>
-                  {!isLive && !state.currentLead && (
-                    <div className="text-[10px] text-[#9CA3AF] mt-1">Next in queue</div>
-                  )}
-                  <div className="mt-2"><ContactMetaCompact contact={contact} /></div>
+                {contactHeader}
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[12px]">
+                  {/* Keypad moved to a button on the dialer card; the SMS /
+                      WhatsApp / Email send box moved to the Messages tab on
+                      the right. COL 1 is now the contact context + timeline. */}
+                  <CallTimeline callId={state.currentCallId} />
                 </div>
-                {isHousesCall ? (
-                  <>
-                    {/* What to do with this one next, where the SMS fold-out
-                        used to be. Hugo 2026-08-12: the SMS history moved to
-                        the Messages tab on the right, next to the message
-                        history it belongs with, and the next step took its
-                        place because it is what he needs before he dials. */}
-                    <NextStepPanel
-                      value={contact.customFields?.next_step ?? contact.customFields?.deal_stage}
-                    />
-                    {/* The house, underneath it, scrolling on its own so the
-                        contact header and the SMS strip stay put.
-                        Still called Houses: the coach, the training questions
-                        and the daily report all tell Pedro to write the figure
-                        down "in the Houses tab", and those words have to point
-                        at something he can see. */}
-                    <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[#E5E7EB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF] flex-shrink-0">
-                      <Home className="w-3 h-3" />
-                      <span>Houses</span>
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-hidden" data-testid="dialer-houses-panel">
-                      <PropertiesPane
-                        contactPhone={contact.phone}
-                        selectedPropertyId={selectedPropertyId}
-                        onSelectProperty={handleSelectProperty}
-                        currentCallId={state.currentCallId}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[12px]">
-                    {/* Keypad moved to a button on the dialer card; the SMS /
-                        WhatsApp / Email send box moved to the Messages tab on
-                        the right. COL 1 is now the contact context + timeline. */}
-                    <CallTimeline callId={state.currentCallId} />
-                  </div>
-                )}
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
@@ -987,20 +936,9 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
 
           <ResizableHandle withHandle />
 
-          {/* COL 2 — Sales script: editable (admin), lean, read live.
-              On a property call the offer band is PINNED above it, because the
-              moment those three figures scroll off screen is the moment an
-              agent guesses at them. */}
-          <ResizablePanel defaultSize={isHousesCall ? 40 : 48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
+          {/* COL 2 — Sales script: editable (admin), lean, read live. */}
+          <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
             <div className="flex h-full flex-col">
-              {isHousesCall && (
-                <OfferStrip
-                  listing={selectedListing}
-                  total={housesTotal}
-                  nextStep={contact?.customFields?.next_step ?? contact?.customFields?.deal_stage}
-                  startCollapsed
-                />
-              )}
               <div className="min-h-0 flex-1">
                 {/* key= forces a clean remount on a script switch. Without it the
                     pane's srcDoc changes while its captured template/docReady state
@@ -1011,8 +949,6 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                   key={paneScriptKey}
                   contact={contact}
                   scriptKey={paneScriptKey}
-                  extraTokens={isHousesCall ? scriptTokensFor(selectedListing) : undefined}
-                  callMode={isHousesCall ? callModeForStep(contact?.customFields?.next_step) : undefined}
                 />
               </div>
             </div>
@@ -1020,12 +956,8 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
 
           <ResizableHandle withHandle />
 
-          {/* COL 3 — Right tabs. Normally Coach / Calculator / Objections /
-              Messages. On a property call: Coach and Messages only, because
-              the Calculator sells websites and the Objections answer plumber
-              objections, and it opens on the Coach and stays there now that the
-              house panel is in COL 1. */}
-          <ResizablePanel defaultSize={isHousesCall ? 28 : 30} minSize={16} className="overflow-hidden">
+          {/* COL 3 — Right tabs: Coach / Calculator / Objections / Messages. */}
+          <ResizablePanel defaultSize={30} minSize={16} className="overflow-hidden">
             <DialerRightTabs
               contactId={activeContactId ?? undefined}
               contactName={contact?.name}
@@ -1038,21 +970,10 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               currentCallId={state.currentCallId}
               callConnected={state.phase === 'connected'}
               liveDurationSec={liveDuration}
-              showHouses={isHousesCall}
-              offerHouse={isHousesCall ? offerHouseFor(selectedListing) : null}
-              // Which of the two calls this is, so the Email tab writes the
-              // video request on a discovery call and the offer on call two.
-              // Same field the script pane and the offer strip read.
-              nextStep={contact?.customFields?.next_step ?? contact?.customFields?.deal_stage}
-              // Who he is speaking to at the branch, off the Houses checklist,
-              // so the email opens with their name.
-              agentPersonName={
-                (selectedListing?.qualification as Record<string, unknown> | null | undefined)
-                  ?.branch_contact_name as string | undefined
-              }
             />
           </ResizablePanel>
         </ResizablePanelGroup>
+        )}
       </div>
 
       {/* The room locks here, between two calls, until the answer is right. */}

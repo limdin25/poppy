@@ -129,6 +129,69 @@ describe('our maximum is never put in writing', () => {
     });
     expect(r.ok).toBe(true);
   });
+
+  // ---- the deliberate best and final, added 2026-08-17 -------------------
+  //
+  // Hugo, live: "I am not able to send the email, button is inactive." On Zest
+  // Hull the ladder is [97,125 / 100,363 / 103,600] and the branch is holding
+  // 103,600 pending proof of funds, so the number the deal is waiting on IS the
+  // ceiling and every draft tripped the fence. A best-and-final email was
+  // impossible to send at all, which is a real move the process needs.
+  describe('a deliberate best and final, by Hugo only', () => {
+    const finalDraft = {
+      subject: 'Welwyn Park Road',
+      body: 'Our position is GBP 96,000 and we cannot go beyond it.',
+    };
+
+    it('an ADMIN who ticks it gets a warning instead of a block', () => {
+      const r = stressTest({
+        state: state(), action: 'draft_offer_email', ...base,
+        draft: finalDraft, finalOfferInWriting: true, isAdmin: true,
+      });
+      expect(r.blocked).not.toContain('ceiling_not_in_writing');
+      expect(r.warned).toContain('ceiling_not_in_writing');
+    });
+
+    it('AN AGENT TICKING IT CHANGES NOTHING', () => {
+      // The whole safety of this override. isAdmin is resolved on the server
+      // from the caller's own token, so an agent posting finalOffer:true is
+      // simply refused.
+      const r = stressTest({
+        state: state(), action: 'draft_offer_email', ...base,
+        draft: finalDraft, finalOfferInWriting: true, isAdmin: false,
+      });
+      expect(r.blocked).toContain('ceiling_not_in_writing');
+    });
+
+    it('an admin who does NOT tick it is still blocked', () => {
+      // Never on by default. Putting our maximum in writing has to be a
+      // decision somebody made, not a thing that happens.
+      const r = stressTest({
+        state: state(), action: 'draft_offer_email', ...base,
+        draft: finalDraft, isAdmin: true,
+      });
+      expect(r.blocked).toContain('ceiling_not_in_writing');
+    });
+
+    it('says out loud what agreeing to it costs', () => {
+      const r = stressTest({
+        state: state(), action: 'draft_offer_email', ...base,
+        draft: finalDraft, finalOfferInWriting: true, isAdmin: true,
+      });
+      const check = r.checks.find((c) => c.id === 'ceiling_not_in_writing');
+      expect(check?.detail).toMatch(/no climb left/);
+    });
+
+    it('does NOT wave through a figure that is not on the file', () => {
+      // The override is about the ceiling rule only. Every other fence stands.
+      const r = stressTest({
+        state: state(), action: 'draft_offer_email', ...base,
+        draft: { subject: 'Offer', body: 'We can do GBP 96,000, maybe 99,999.' },
+        finalOfferInWriting: true, isAdmin: true,
+      });
+      expect(r.blocked).toContain('figures_on_file');
+    });
+  });
 });
 
 describe('call one\'s email can never carry a figure', () => {

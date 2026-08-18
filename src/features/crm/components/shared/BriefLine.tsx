@@ -12,9 +12,10 @@
 // generated one. Renders nothing at all when there is neither, so plumber
 // leads and every other non-property card are untouched.
 
-import { ArrowRight, Pin } from 'lucide-react';
+import { ArrowRight, Pin, Sparkles } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import type { NextStepBrief } from '../../../../../api/lib/next-step-brief';
+import { orderedStep, type DealOrder } from '../../lib/dealOrder';
 
 /** The first instruction out of a pinned note Hugo typed by hand.
  *
@@ -41,12 +42,16 @@ const VERDICT_CLS: Record<string, string> = {
 export interface BriefLineProps {
   brief?: NextStepBrief | null;
   pinnedNote?: string | null;
+  /** The brain's newest judgement, from the wk_deal_orders RPC. When it is
+   *  fresher than the brief it IS the instruction line: Hugo, 17 Aug, "DDM
+   *  are contradicting on pipeline against cockpit." */
+  order?: DealOrder | null;
   className?: string;
 }
 
-export default function BriefLine({ brief, pinnedNote, className }: BriefLineProps) {
+export default function BriefLine({ brief, pinnedNote, order, className }: BriefLineProps) {
   const pinned = pinnedInstruction(pinnedNote);
-  const step = brief?.do_now?.[0] ?? null;
+  const step = orderedStep(brief, order);
   if (!pinned && !step) return null;
 
   return (
@@ -57,7 +62,26 @@ export default function BriefLine({ brief, pinnedNote, className }: BriefLinePro
           <span className="line-clamp-2">{pinned}</span>
         </div>
       )}
-      {step && (
+      {step?.kind === 'hugo' && (
+        /* The newest judgement is Hugo's private lane. Never the stale brief
+           in its place: the reader learns the deal is alive and whose move it
+           is, and nothing else. Same words as the cockpit card. */
+        <div className="flex items-start gap-1 rounded bg-[#FFF7ED] px-1.5 py-1 text-[10px] leading-snug text-[#C2410C]">
+          <ArrowRight className="mt-[2px] h-2.5 w-2.5 flex-shrink-0" />
+          <span>Hugo is on this one</span>
+        </div>
+      )}
+      {step?.kind === 'order' && (
+        <div
+          className="flex items-start gap-1 text-[10px] leading-snug text-[#374151]"
+          data-testid="brief-line-order"
+          title={step.confidence ? `The deal brain, ${step.confidence} confidence` : 'The deal brain'}
+        >
+          <Sparkles className="mt-[3px] h-2.5 w-2.5 flex-shrink-0 text-[#7C5CBF]" />
+          <span className="line-clamp-3">{step.text}</span>
+        </div>
+      )}
+      {step?.kind === 'brief' && (
         <div className="flex items-start gap-1 text-[10px] leading-snug text-[#374151]">
           {brief?.verdict && (
             <span
@@ -70,7 +94,7 @@ export default function BriefLine({ brief, pinnedNote, className }: BriefLinePro
             </span>
           )}
           <ArrowRight className="mt-[3px] h-2.5 w-2.5 flex-shrink-0 text-[#3C5A87]" />
-          <span className="line-clamp-2">{step}</span>
+          <span className="line-clamp-2">{step.text}</span>
         </div>
       )}
     </div>

@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useState } from 'react';
+import { supabase } from '@/integrations/supabase/browser';
 import type { ScriptKey } from '@/features/crm/components/live-call/DialerScriptPane';
+import { scriptForContactFields } from '@/features/crm/lib/scriptForCall';
 
 interface DialerProModalState {
   isOpen: boolean;
@@ -43,14 +45,40 @@ export function DialerProModalProvider({ children }: { children: React.ReactNode
 
   const openDialerPro = useCallback(
     (contactId: string, opts?: { pipelineColumnId?: string; scriptKey?: ScriptKey; autoDial?: boolean }) => {
-      setState({
+      const openWith = (scriptKey: ScriptKey) => setState({
         isOpen: true,
         isMinimized: false,
         contactId,
         pipelineColumnId: opts?.pipelineColumnId ?? null,
-        scriptKey: opts?.scriptKey ?? 'cold_call',
+        scriptKey,
         autoDial: opts?.autoDial ?? true,
       });
+      // A button that names a script knows better than the contact (the
+      // cockpit says property_call, the video funnel says vsl_close).
+      if (opts?.scriptKey) { openWith(opts.scriptKey); return; }
+      // THE CONTACT DECIDES (2026-08-18). Every unlabelled Call button used to
+      // fall straight to cold_call, so the phone icon on a property card
+      // opened the reviews sales script on an estate agent, again (pipeline
+      // board, inbox, contacts, contact detail, follow-up banner: none name a
+      // script). Resolved BEFORE the room opens, not after: the room stamps
+      // wk_calls.script_key at dial time, and the coach and the daily report
+      // grade off that stamp, so a script that flips after the dial has
+      // already poisoned both. The lookup is one indexed select and the modal
+      // opens when it lands; on any failure the old default stands.
+      void (async () => {
+        let scriptKey: ScriptKey = 'cold_call';
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data } = await (supabase.from('wk_contacts' as any) as any)
+            .select('custom_fields')
+            .eq('id', contactId)
+            .maybeSingle();
+          scriptKey = scriptForContactFields(data?.custom_fields) ?? 'cold_call';
+        } catch {
+          // The contact could not be read, so the old default stands.
+        }
+        openWith(scriptKey);
+      })();
     },
     [],
   );

@@ -58,7 +58,10 @@ function filenameForMime(mime: string): string {
 async function transcribe(audioBase64: string, mime: string, apiKey: string): Promise<string | null> {
   const bytes = base64ToBytes(audioBase64);
   const form = new FormData();
-  form.append('file', new Blob([bytes], { type: mime }), filenameForMime(mime));
+  // TS 5.7 types Uint8Array over ArrayBufferLike, which no longer satisfies
+  // Blob's part type (and BlobPart itself is absent from the node lib Vercel
+  // checks against); the bytes are a plain ArrayBuffer-backed array at runtime.
+  form.append('file', new Blob([bytes.buffer as ArrayBuffer], { type: mime }), filenameForMime(mime));
   form.append('model', 'whisper-1');
   form.append('language', 'en');
 

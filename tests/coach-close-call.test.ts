@@ -109,8 +109,14 @@ describe('COLD CALLS ARE UNTOUCHED', () => {
   })
 
   it('the coach still reads the call row it always read, plus the one new column', () => {
-    expect(COACH).toMatch(
-      /select\('id, ai_coach_enabled, agent_id, contact_id, current_stage, campaign_id, script_key'\)/)
+    // Asserted column by column, not as one exact string: `direction` joined
+    // the list on 2026-08-18 with the inbound call room, and a pin on the whole
+    // literal fails on an addition that breaks nothing.
+    const select = COACH.match(/\.select\('id, ai_coach_enabled[^']*'\)/)?.[0] ?? ''
+    for (const col of ['id', 'ai_coach_enabled', 'agent_id', 'contact_id',
+      'current_stage', 'campaign_id', 'script_key']) {
+      expect(select, col).toContain(col)
+    }
   })
 })
 

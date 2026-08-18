@@ -1,6 +1,6 @@
 import { parsePhoneNumber } from 'libphonenumber-js'
 import { carrier as metaCarrier, geocoder as metaGeocoder } from 'libphonenumber-geo-carrier'
-import { nanpaPrefixTypeToLineType, ValidationResult } from './phone-validation.js'
+import { nanpaPrefixTypeToLineType, type ValidationResult } from './phone-validation.js'
 
 // Supabase PostgREST caps responses at 1000 rows; each NPA-NXX has up to 11 rows (base + 10 blocks)
 const PAIRS_PER_REQUEST = 90
@@ -47,7 +47,7 @@ async function nanpaBatchLookup(
         failed_lookups += chunk.length
         return
       }
-      const rows: NanpaRow[] = await res.json()
+      const rows = await res.json() as NanpaRow[]
       for (const row of rows) {
         map.set(`${row.npa}:${row.nxx}:${row.thousands}`, row)
       }

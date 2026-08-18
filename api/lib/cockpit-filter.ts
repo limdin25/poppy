@@ -79,6 +79,7 @@ export type CockpitVerdict =
   | 'branch_replied'
   | 'live_column'
   | 'overdue_followup'
+  | 'moved_by_hand'
   | 'scheduled'
   | 'waiting_reply'
   | 'never_spoke'
@@ -102,8 +103,55 @@ export interface CockpitDecision {
  *  card, including the card being parked, because an unread reply is the one
  *  thing that was provably costing money.
  */
-export function isCockpitDeal(state: DealState, now: Date = new Date()): CockpitDecision {
+export function isCockpitDeal(
+  state: DealState,
+  now: Date = new Date(),
+  /** When a HUMAN last moved this card's stage by hand from the cockpit, off
+   *  the press log. Passed in rather than read here, so this file stays pure
+   *  and the rule stays testable with a fixture. */
+  opts: { handMovedAt?: string | null } = {},
+): CockpitDecision {
   const column = (state.board.column ?? '').trim();
+
+  // ---- 0. A HUMAN MOVED IT. THAT IS THE ANSWER. ------------------------
+  //
+  // Hugo, 17 Aug: "When I move a lead to a pipeline column, that's it. If I'm
+  // in the cockpit and I move to a column, it goes away from the cockpit." He
+  // said it twice, the second time rejecting a version that booked Pedro's
+  // callback along with the move: "it is not obliged to book the time for the
+  // follow up." So the move alone clears the card, with no time on it and no
+  // second press.
+  //
+  // IT SITS ABOVE THE UNREAD-REPLY RULE, AND ONLY JUST. Rule 1 exists because
+  // an unanswered reply was provably costing money, so the only thing allowed
+  // to outrank it is a person who has SEEN it: a hand move happens with the
+  // card and its reply on the screen. Hence the comparison rather than a flat
+  // hide. A message that lands AFTER the move falls through to rule 1 and the
+  // card comes straight back, and an overdue follow-up falls through to rule 2.
+  //
+  // WHY THE PRESS AND NOT THE COLUMN. `wk_contacts.stage_moved_at` changes on
+  // every column write and most of them are the machine's: a discovery call
+  // outcome moves a card into "Discovery done, evaluating", and hiding on that
+  // stamp would hide the exact deal the cockpit exists to price. Only a human
+  // pressing Move the stage counts, so this arrives from the press log.
+  //
+  // SAID OUT LOUD, because it is Hugo's call and not the machine's: a card set
+  // aside this way has no time on it, so nothing re-surfaces it on its own. It
+  // is on the board in the column he chose, and the cockpit footer counts it.
+  if (opts.handMovedAt) {
+    const movedTs = Date.parse(opts.handMovedAt);
+    const inboundTs = state.writing.lastInboundAt ? Date.parse(state.writing.lastInboundAt) : 0;
+    const theyWroteSince = inboundTs > movedTs;
+    if (Number.isFinite(movedTs) && !theyWroteSince && !state.followups.overdue) {
+      return {
+        inCockpit: false,
+        why: 'moved_by_hand',
+        reason: column
+          ? `You moved this to ${column} by hand. It comes back if they write or a follow up comes due.`
+          : 'You moved this by hand. It comes back if they write or a follow up comes due.',
+      };
+    }
+  }
 
   // ---- 1. THEY WROTE TO US. Nothing outranks this. -------------------
   //
@@ -239,7 +287,15 @@ export function isCockpitDeal(state: DealState, now: Date = new Date()): Cockpit
   };
 }
 
-/** The cockpit list, in one call. */
-export function cockpitDeals<T extends { state: DealState }>(all: readonly T[], now: Date = new Date()): T[] {
-  return all.filter((d) => isCockpitDeal(d.state, now).inCockpit);
+/** The cockpit list, in one call. `handMovedAt` is looked up per property when
+ *  the caller has the press log to hand; without it the hand-move rule simply
+ *  never fires, which is the old behaviour. */
+export function cockpitDeals<T extends { state: DealState }>(
+  all: readonly T[],
+  now: Date = new Date(),
+  handMovedAt?: (state: DealState) => string | null | undefined,
+): T[] {
+  return all.filter((d) => isCockpitDeal(
+    d.state, now, { handMovedAt: handMovedAt?.(d.state) ?? null },
+  ).inCockpit);
 }

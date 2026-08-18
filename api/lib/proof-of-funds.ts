@@ -31,6 +31,13 @@ export interface ProofOfFunds {
    *  about the HOUSE. It is not a price and it is not ours to negotiate with,
    *  it is what the attached document shows. */
   totalGbp?: number | null;
+  /** HOW THE PURCHASE COMPLETES, in Hugo's own words off the same settings row
+   *  ("company accounts together with a bridging facility"). Surfaced
+   *  2026-08-17 for the second reader: without it, a statement total below the
+   *  offer read as an arithmetic hole and the reader blocked the very email
+   *  the deal was waiting on. The £1,529 gap is the funding structure, not a
+   *  mistake. */
+  fundingNote?: string | null;
   reason?: string;
 }
 
@@ -64,19 +71,23 @@ export async function signProofOfFunds(sb: Sb): Promise<ProofOfFunds> {
   const { data: row } = await sb
     .from('platform_settings').select('value').eq('key', 'proof_of_funds').maybeSingle();
 
-  let pointer: { path?: string; filename?: string; dated?: string; total_gbp?: number } = {};
+  let pointer: {
+    path?: string; filename?: string; dated?: string; total_gbp?: number;
+    funding_note?: string;
+  } = {};
   try { pointer = JSON.parse(String((row as { value?: string } | null)?.value ?? '{}')); }
   catch { pointer = {}; }
 
   const path = String(pointer.path ?? '').trim();
   const totalGbp = Number(pointer.total_gbp) > 0 ? Number(pointer.total_gbp) : null;
+  const fundingNote = String(pointer.funding_note ?? '').trim() || null;
   if (!path) {
     return { available: false, reason: 'No proof of funds has been uploaded yet.' };
   }
 
   const { data: signed, error } = await sb.storage.from(BUCKET).createSignedUrl(path, PROOF_TTL_SECONDS);
   if (error || !signed?.signedUrl) {
-    return { available: false, reason: error?.message ?? 'Could not sign the document.', totalGbp };
+    return { available: false, reason: error?.message ?? 'Could not sign the document.', totalGbp, fundingNote };
   }
   return {
     available: true,
@@ -84,5 +95,6 @@ export async function signProofOfFunds(sb: Sb): Promise<ProofOfFunds> {
     filename: pointer.filename || path,
     dated: pointer.dated ?? null,
     totalGbp,
+    fundingNote,
   };
 }

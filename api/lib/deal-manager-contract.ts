@@ -52,8 +52,43 @@ import { figuresAreOnFile } from './deal-state.js';
  *  v6, 2026-08-16: THE THREE ROADS. After call one a deal goes exactly one
  *  of three ways (reply to an email, lost, or ready for call two), close_lost
  *  became universal so the brain can order a door shut (Hunters: "mark the
- *  deal dead" had no button), and Waiting on their answer joined the board. */
-export const PROMPT_VERSION = 6;
+ *  deal dead" had no button), and Waiting on their answer joined the board.
+ *  v7, 2026-08-17: HOLD STOPS BEING THE DUSTBIN. escalate_hugo is universal,
+ *  rule 3b forbids hold when the instruction is an order, and hold with
+ *  who=HUGO is repaired to escalate_hugo instead of being thrown away. Found
+ *  on Zest Hull: eight correct assessments in a row ("Email Pedro your bank
+ *  statement", who=HUGO) all rendered as "Hold, nothing today", because the
+ *  one verb that fitted was not legal in Nurturing.
+ *  v8, 2026-08-17: THREE ROADS AFTER CALL TWO as well (rule 20). Hugo: "after
+ *  2nd call same thing, tell us if lost and or we should book a builder."
+ *  book_builder joined 'Ballpark agreed'; it had been legal only in Needs
+ *  viewing, and nothing moves a card there on its own, so the builder road was
+ *  unreachable from the column deals actually land in.
+ *  v9, 2026-08-17 evening: THE BRIDGE IS HOW WE BUY (rules 21 and 22). Zest
+ *  Hull again: the branch wrote back that our proof of funds fell short of the
+ *  103,600 offer, and the brain agreed with her and ordered Hugo to produce a
+ *  replacement statement covering the full amount. Our own email had explained
+ *  the structure two paragraphs earlier, company accounts plus a bridging
+ *  facility, and the brain never saw that sentence because the thread cap cut
+ *  it off mid word. The cap is fixed in deal-state.ts; these rules are the
+ *  other half, so a brain that CAN see our email is also told the money in it
+ *  was never short.
+ *  v10, 2026-08-17 night: AND THEN WHAT (rules 20b, 20c). Hugo, on Stanks
+ *  Drive: "it doesn't tell me what should I do next. Should we just reply and
+ *  stop? Reply and wait, reply and call back on a second call and put the
+ *  ballpark. What is it?" Every order that ends in a reply, an email or a call
+ *  now names the step after it, and `reply_to_their_email` became a universal
+ *  action because a branch asking us seven questions during discovery could
+ *  only be filed under escalate_hugo: the card read "reply with them today"
+ *  above a blue button reading "Send it to Hugo".
+ *  v11, 2026-08-18: A VIEWING IS NEVER FREE (rule 20d). Zest asked for a
+ *  viewing before putting our offer to the vendor and the draft agreed to it
+ *  while restating our maximum, which spends a builder's day on a figure
+ *  nobody has said is close AND puts our ceiling in writing. Hugo: "yes we can
+ *  arrange a viewing, that's not a problem. However can you just confirm that
+ *  we are within the ballpark? I don't want to waste your time and our time."
+ *  Both halves, and never our figure again. */
+export const PROMPT_VERSION = 11;
 
 /** The pipeline, spelled out. A stage may only produce the actions that stage
  *  already allows, which is what "without changing the process" means in code.
@@ -69,7 +104,16 @@ export const ACTIONS_BY_STAGE: Record<string, string[]> = {
   // get_the_ballpark remains the order while the run has not happened yet.
   'Discovery done, evaluating': ['confirm_ballpark', 'get_the_ballpark', 'wait_for_engine', 'chase_missing_fact', 'escalate_hugo'],
   'Ready for call 2': ['make_offer_call', 'chase_email_reply', 'rebook_followup'],
-  'Ballpark agreed': ['send_offer_email', 'chase_written_confirmation'],
+  // THE THREE ROADS AFTER CALL TWO (2026-08-17). Hugo: "after 2nd call same
+  // thing, tell us if lost and or we should book a builder."
+  //
+  // Call two ends with a figure agreed, and from there a deal goes exactly one
+  // of three ways: the offer goes out, a builder goes round to price the work
+  // properly first, or it is lost. `close_lost` is universal so the third road
+  // always exists; `book_builder` was legal ONLY in Needs viewing, and nothing
+  // moves a card into Needs viewing on its own, so the builder road was
+  // unreachable from the column deals actually land in.
+  'Ballpark agreed': ['send_offer_email', 'book_builder', 'chase_written_confirmation'],
   'Needs viewing': ['book_builder', 'chase_video_for_builder', 'escalate_hugo'],
   // reply_with_counter: the branch answered our offer with a no or a number,
   // and the reply IS a money move, so it maps to the counter button whose
@@ -94,8 +138,38 @@ export const ACTIONS_BY_STAGE: Record<string, string[]> = {
  *  quiet day can happen anywhere; close_lost because a deal can die anywhere
  *  (offer accepted elsewhere, vendor refuses forever) and Hugo's three-roads
  *  law needs the lost road to always exist: "after the first call you have
- *  three options: reply the email, lost, or ready for call two." */
-export const UNIVERSAL_ACTIONS = ['flag_mismatch', 'hold', 'close_lost'] as const;
+ *  three options: reply the email, lost, or ready for call two."
+ *
+ *  escalate_hugo joined them on 2026-08-17, and it is the reason Hugo saw
+ *  "Hold, nothing today" on the best deal on the board. Zest Hull sat in
+ *  Nurturing with the offer placed and the branch refusing to put it to the
+ *  vendors without proof of funds. The brain worked that out correctly eight
+ *  times running and wrote the right order every time ("Email Pedro your bank
+ *  statement"), but escalate_hugo was legal in only two columns and Nurturing
+ *  was not one of them, so the one verb that fitted was unavailable and the
+ *  decision fell through to `hold`. The order said do something; the button
+ *  said do nothing.
+ *
+ *  A deal can be blocked on the one thing only Hugo can produce from ANY
+ *  column, so the verb for it belongs here. */
+export const UNIVERSAL_ACTIONS = [
+  'flag_mismatch', 'hold', 'close_lost', 'escalate_hugo',
+  // ANSWER THEIR EMAIL. Universal because a branch can write at ANY stage, and
+  // on 17 Aug one wrote during discovery: Keeley at Reeds Rains asked us for
+  // seven registration details so she could put us on their list. The legal
+  // verbs in "Discovery done, evaluating" were the ballpark, a chase for a
+  // missing fact, escalate and hold, so the brain wrote the right order,
+  // "reply with them today", and had to file it under escalate_hugo. Hugo read
+  // a card that said reply today above a blue button that said Send it to
+  // Hugo. Third time an action was missing from the one column the deal was
+  // sitting in (Nurturing/escalate_hugo, Ballpark agreed/book_builder).
+  //
+  // `reply_with_counter` is NOT this verb: that one is the money reply and its
+  // button runs decideCounter and the ceiling fences. This is the ordinary
+  // answer to an ordinary question, and it maps to the follow-up draft, which
+  // may not name a figure outside the columns where one has been put to them.
+  'reply_to_their_email',
+] as const;
 
 /** Closed list. A flag outside it is a validation error. */
 export const FLAGS = [
@@ -120,7 +194,11 @@ export interface ManagerVerdict {
 }
 
 export type ValidationResult =
-  | { ok: true; verdict: ManagerVerdict }
+  /** `repaired` names a contradiction that was corrected rather than refused.
+   *  Present only when something was changed; the caller records it so a
+   *  pattern of the same repair is visible instead of being invisibly tidied
+   *  away every two minutes. */
+  | { ok: true; verdict: ManagerVerdict; repaired?: string }
   | { ok: false; reason: string; detail: string };
 
 /** Every action legal for this deal right now. */
@@ -186,6 +264,40 @@ export function validateVerdict(raw: unknown, state: DealState): ValidationResul
     return { ok: false, reason: 'long_dash', detail: 'the instruction contains a long dash' };
   }
 
+  // "HOLD, NOTHING TODAY" AND "HUGO DOES IT" CANNOT BOTH BE TRUE (2026-08-17).
+  //
+  // Hugo, looking at the Zest Hull card: "a lot of the time it's not taking the
+  // AI, the brain... it says hold nothing for today. Well the answer should be
+  // send the email."
+  //
+  // He was right, and the card was worse than he knew. The brain had decided
+  // correctly, eight assessments in a row, that the offer of 103,600 was with
+  // the branch and she would not put it to the vendors without proof of funds,
+  // and each time it wrote the order "Email Pedro your bank statement" and set
+  // who=HUGO. But it also set action=hold, because escalate_hugo was not legal
+  // in Nurturing, and hold's button reads "Hold, nothing today".
+  //
+  // `hold` means there is no move on this deal today. `who: HUGO` means the
+  // next move is Hugo's. They contradict each other, so one of them is wrong,
+  // and the instruction text says which: it is an order, addressed to Hugo.
+  //
+  // REPAIRED, NOT REFUSED, and the difference matters. `assess` does not retry:
+  // a refusal throws the whole assessment away and falls back to the brief, so
+  // refusing this would have replaced a correct order with a blank card. That
+  // is the fault Hugo was already looking at. The instruction is the valuable
+  // part and it is kept exactly as written; only the verb is corrected, and the
+  // correction is recorded so a pattern of it is visible in the log.
+  //
+  // Narrow on purpose. hold with who=PEDRO or who=NOBODY is left alone: a deal
+  // whose next move is a callback already booked for Monday is an HONEST hold,
+  // and inventing work for it would be the opposite mistake.
+  let repaired: string | undefined;
+  let finalAction = action;
+  if (action === 'hold' && who === 'HUGO') {
+    finalAction = 'escalate_hugo';
+    repaired = 'hold_with_who_hugo_became_escalate_hugo';
+  }
+
   const flags = Array.isArray(v.flags) ? v.flags.map(String) : [];
   const badFlag = flags.find((f) => !(FLAGS as readonly string[]).includes(f));
   if (badFlag) {
@@ -199,7 +311,11 @@ export function validateVerdict(raw: unknown, state: DealState): ValidationResul
 
   return {
     ok: true,
-    verdict: { attention: Math.round(attention), action, who, instruction, flags, evidence, confidence },
+    repaired,
+    verdict: {
+      attention: Math.round(attention), action: finalAction, who, instruction,
+      flags, evidence, confidence,
+    },
   };
 }
 

@@ -197,6 +197,20 @@ export interface DealState {
      *  the agent" seven hours later. */
     replySinceBrief: boolean;
     lastInboundPreview: string | null;
+    /** THE CONVERSATION ITSELF, oldest first, capped. Added 2026-08-17 after
+     *  Hugo caught a "best and final" draft that answered none of what the
+     *  branch had actually written: the full thread was loaded from the
+     *  database on every sweep and then thrown away right here, so the email
+     *  writer only ever saw a 400-character preview of the newest message.
+     *  An email that does not answer the thread is not a reply, it is a
+     *  broadcast. NOT in the hash (already represented by lastInboundAt /
+     *  lastOutboundAt). */
+    thread: Array<{
+      at: string | null;
+      direction: 'inbound' | 'outbound';
+      subject: string | null;
+      body: string;
+    }>;
   };
   followups: {
     nextDueAt: string | null;
@@ -208,6 +222,13 @@ export interface DealState {
     answered: number;
     total: number;
     missing: string[];
+    /** WHAT THE BRANCH ACTUALLY SAID, one line per answered key, each with the
+     *  agent's own words where the call listener recorded them. Added
+     *  2026-08-18: the state carried only the COUNT, so the brain knew "5 of
+     *  12" while the answers themselves ("offer just accepted, no longer
+     *  available") sat unread in the qualification blob. Distilled facts
+     *  survive transcript caps and old calls; the transcript alone does not. */
+    heard: string[];
   };
   builder: {
     matches: number;
@@ -258,6 +279,36 @@ export const STALE_HOURS = 72;
  *  and hold music small talk go, the answers and the close stay. */
 export const TRANSCRIPT_CAP = 9_000;
 
+/** How much of the email thread rides on the state: the six newest messages,
+ *  each capped. Sized for the email WRITER, which needs to answer what was
+ *  said, not to archive it.
+ *
+ *  RAISED FROM 900 TO 2,400 ON 2026-08-17, measured rather than guessed.
+ *
+ *  Our own offer email on Welwyn Park Road is 1,029 characters, and the
+ *  sentence that says HOW THE PURCHASE COMPLETES ("these company accounts
+ *  together with a bridging facility") starts at character 875. At 900 the
+ *  brain read our own email as ending mid word, "The purchase completes us",
+ *  so the only thing it could see about money was a statement total of 102,071
+ *  under an offer of 103,600. It duly believed the branch's complaint that the
+ *  funds fell short and ordered Hugo to produce a bigger statement, on a deal
+ *  where we had already explained the bridge in writing.
+ *
+ *  The tail of an email is where the terms live: the funding structure, the
+ *  condition, the one question we asked. Cutting it is not trimming, it is
+ *  deleting the part that matters. 2,400 keeps a long offer email whole, and
+ *  six of them is still a quarter of the transcript cap. */
+export const THREAD_MESSAGES = 6;
+export const THREAD_BODY_CAP = 2_400;
+
+/** Cut, and SAY it was cut. A truncation nobody can see reads as the whole
+ *  message, which is how a half sentence became a fact about our money. */
+function capBody(text: string): string {
+  const t = text.trim();
+  if (t.length <= THREAD_BODY_CAP) return t;
+  return `${t.slice(0, THREAD_BODY_CAP)}\n(the rest of this message is not shown)`;
+}
+
 function capTranscript(text: string): string {
   const t = text.trim();
   if (t.length <= TRANSCRIPT_CAP) return t;
@@ -275,6 +326,45 @@ export const CHECKLIST_KEYS = [
   // ballpark now actually reads.
   'rejected_offer', 'agent_comparable', 'rent_estimate', 'best_price_indicated',
 ] as const;
+
+/** Where the call listener files each answer's evidence quote, inside
+ *  `qualification`. Defined HERE because deal-state owns the checklist
+ *  vocabulary and call-extract already imports it; call-extract re-exports it
+ *  so its own callers are unchanged. Underscored so no checklist key can ever
+ *  collide with it. */
+export const HEARD_KEY = '_heard';
+
+/** The branch's answers, rendered for a model: one line per answered checklist
+ *  key, with the quote the call listener stored beside it when there is one.
+ *
+ *  Hugo, 2026-08-18, listening to the Pearson Street recording next to the
+ *  email that went out: "If there is a floor plan, why would you ask for the
+ *  floor plan on the email? And also the EPC, she also mentioned the EPC. So
+ *  the call didn't hear." Amy had said, on the call, that the floor plan was
+ *  on the advert, that the EPC was online, and that an offer had just been
+ *  accepted; the email asked for a walkthrough, the floor plan and the EPC.
+ *  The distilled answers existed by then and reached NOTHING that writes.
+ *
+ *  This is the one renderer both the brain and the email writer read, so what
+ *  the call established cannot again be known by half the system. Returns ''
+ *  when nothing has been answered, so callers can drop the block cleanly. */
+export function heardFactsBlock(
+  qualification: Record<string, unknown> | null | undefined,
+): string {
+  const q = qualification ?? {};
+  const heard = (q[HEARD_KEY] ?? {}) as Record<string, { quote?: string | null }>;
+  const lines: string[] = [];
+  for (const key of CHECKLIST_KEYS) {
+    const v = String(q[key] ?? '').trim();
+    if (!v) continue;
+    const quote = String(heard[key]?.quote ?? '').trim();
+    const label = key.replace(/_/g, ' ');
+    lines.push(quote
+      ? `- ${label}: ${v} (they said: "${quote.slice(0, 200)}")`
+      : `- ${label}: ${v}`);
+  }
+  return lines.join('\n');
+}
 
 const hoursBetween = (from: string | null | undefined, to: Date): number | null => {
   if (!from) return null;
@@ -403,6 +493,18 @@ export function buildDealState(input: DealStateInput): DealState {
     && Date.parse(lastInbound.created_at) > answeredAt,
   );
 
+  // The conversation itself, oldest first so it reads the way a person reads a
+  // thread. Six newest messages, each capped: enough to answer what was
+  // actually said, small enough that a chatty branch cannot blow the prompt.
+  const thread = messages.slice(0, THREAD_MESSAGES).reverse()
+    .filter((m) => String(m.body ?? '').trim())
+    .map((m) => ({
+      at: m.created_at ?? null,
+      direction: (m.direction === 'inbound' ? 'inbound' : 'outbound') as 'inbound' | 'outbound',
+      subject: m.subject ?? null,
+      body: capBody(String(m.body)),
+    }));
+
   // ---- follow-ups -----------------------------------------------------
   const live = (input.followups ?? []).filter(
     (f) => f.status === 'pending' || f.status === 'snoozed' || !f.status,
@@ -471,6 +573,7 @@ export function buildDealState(input: DealStateInput): DealState {
       lastInboundPreview: lastInbound?.body
         ? String(lastInbound.body).trim().slice(0, 400)
         : null,
+      thread,
     },
     followups: {
       nextDueAt: nextFollowup?.due_at ?? null,
@@ -482,6 +585,7 @@ export function buildDealState(input: DealStateInput): DealState {
       answered: CHECKLIST_KEYS.length - missing.length,
       total: CHECKLIST_KEYS.length,
       missing: [...missing],
+      heard: heardFactsBlock(q).split('\n').filter(Boolean),
     },
     builder: {
       matches: (input.builderMatches ?? []).length,
@@ -521,10 +625,31 @@ export function buildDealState(input: DealStateInput): DealState {
  *  first time this was written: the branch's own number is exactly the kind
  *  the Manager must not repeat as an instruction.
  */
+/** A NUMBER THAT IS AN IDENTIFIER IS NOT MONEY.
+ *
+ *  Our Companies House number is 11197856, eight digits, and on 17 Aug an email
+ *  that correctly answered a branch's request for our registration details was
+ *  blocked twice over: "This names GBP 11,197,856, which is not a figure the
+ *  engine has for this house" and "this names a figure and no offer has been
+ *  made yet". Both fences were working exactly as designed on a number that is
+ *  not a price and never can be.
+ *
+ *  Deliberately narrow, and deliberately BARE DIGITS ONLY. A company number
+ *  carries no commas, so "company number 103,600" is left alone and still
+ *  caught: the fence's real job, stopping a model putting an invented price in
+ *  front of a branch, loses nothing.
+ */
+const IDENTIFIER_NUMBERS =
+  /\b(?:compan(?:y|ies)(?:\s+house)?|registration|registered)\s*(?:number|no\.?|#)?\s*:?\s*\d{4,9}\b/gi;
+
+export function scrubIdentifiers(text: string): string {
+  return String(text ?? '').replace(IDENTIFIER_NUMBERS, ' ');
+}
+
 export function figuresIn(text: string): number[] {
   const out: number[] = [];
   const re = /(GBP|£)?\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,9})/gi;
-  for (const m of text.matchAll(re)) {
+  for (const m of scrubIdentifiers(text).matchAll(re)) {
     const hasCurrency = Boolean(m[1]);
     const raw = m[2].replace(/,/g, '');
     const n = Number(raw);

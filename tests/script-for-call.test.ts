@@ -10,8 +10,12 @@
 // every test started from a clean dialer window, so the one piece of state that
 // outlives a call was never exercised.
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { scriptForCall, scriptFromLandingPath } from '../src/features/crm/lib/scriptForCall'
+import { scriptForCall, scriptFromLandingPath, scriptForContactFields } from '../src/features/crm/lib/scriptForCall'
+
+const read = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8')
 
 const WATCHED_LEAD = 'contact-watched-the-video'
 const COLD_LEAD = 'contact-never-heard-of-us'
@@ -170,5 +174,45 @@ describe('the property call belongs to the CAMPAIGN, not to one lead', () => {
         currentLeadContactId,
       })).not.toBe('property_call')
     }
+  })
+})
+
+describe('the CONTACT decides: an estate agent gets the property script from ANY button', () => {
+  // Hugo, 2026-08-18, pressing the phone icon on a Ready-for-call-2 card on
+  // the pipeline board and reading the 2-Minute Audit reviews pitch over an
+  // estate agent's name: "all we see is the old business script. This is
+  // unacceptable. We tried to fix this so many times."
+  //
+  // The cockpit's Call button named the script; the pipeline board, inbox,
+  // contacts page, contact detail and follow-up banner named nothing and fell
+  // to cold_call. The rule now lives on the one fact every road shares.
+  it('an estate agent contact calls for the property script', () => {
+    expect(scriptForContactFields({ lead_type: 'estate_agent' })).toBe('property_call')
+  })
+
+  it('everyone else says nothing, so the old default stands byte-identically', () => {
+    expect(scriptForContactFields(null)).toBe(null)
+    expect(scriptForContactFields(undefined)).toBe(null)
+    expect(scriptForContactFields({})).toBe(null)
+    expect(scriptForContactFields({ lead_type: 'plumber' })).toBe(null)
+    expect(scriptForContactFields({ owner_name: 'Doug' })).toBe(null)
+  })
+
+  it('never vsl_close: that script belongs to one lead, not to a contact', () => {
+    expect(scriptForContactFields({ lead_type: 'vsl_close' })).toBe(null)
+  })
+
+  it('the dialer modal resolves the script off the contact BEFORE it opens', () => {
+    // Before the room opens, not after: the room stamps wk_calls.script_key at
+    // dial time, and the coach and the daily report grade off that stamp. A
+    // script that flips after the dial has already poisoned both.
+    const ctx = read('src/features/crm/layout/DialerProModalContext.tsx')
+    expect(ctx).toMatch(/scriptForContactFields/)
+    // The explicit script still wins (cockpit says property_call, funnel says
+    // vsl_close), and the lookup only runs when no script was named.
+    expect(ctx).toMatch(/if \(opts\?\.scriptKey\) \{ openWith\(opts\.scriptKey\); return; \}/)
+    // The old hard default is gone: no button falls straight to cold_call
+    // without asking the contact first.
+    expect(ctx).not.toMatch(/scriptKey: opts\?\.scriptKey \?\? 'cold_call'/)
   })
 })

@@ -62,6 +62,19 @@ function phoneVariants(raw: string): { e164: string; digits: string; variants: s
   return { e164, digits, variants };
 }
 
+// The last 9 digits, the rule the property RPCs match branches on. Mirror of
+// api/lib/phone-match.ts (Deno cannot import api/), pinned by
+// tests/inbound-property-room.test.ts.
+//
+// The variants above cover the formats we WRITE. They do not cover the ones the
+// scraper wrote: "0191 625 0242" is a real branch number in wk_contacts and it
+// equals none of trimmed / +E164 / digits for a caller of "+441916250242". So a
+// branch Pedro rang that morning could ring back and land as nobody.
+function phoneTail(raw: string): string {
+  const digits = (raw ?? '').replace(/[^0-9]/g, '');
+  return digits.length >= 9 ? digits.slice(-9) : '';
+}
+
 const CALLBACK_TAG = 'called-back';
 const CALLBACK_WINDOW_DAYS = 30;
 
@@ -145,15 +158,34 @@ serve(async (req: Request) => {
     // URL points at this function — repointing a CRM number's inbound URL
     // here is a go-live step, not a code dependency.
     let contactId: string | null = null;
+    let contactIsEstateAgent = false;
     try {
       const { variants: fromVariants } = phoneVariants(from);
-      const { data: contactRow } = await supabase
+      let { data: contactRow } = await supabase
         .from('wk_contacts')
-        .select('id, pipeline_column_id')
+        .select('id, pipeline_column_id, custom_fields')
         .in('phone', fromVariants)
         .limit(1)
         .maybeSingle();
+      // Nothing on the exact formats: try the last 9 digits, which is how
+      // every other part of the product decides two numbers are the same
+      // branch. Second query rather than first because the exact match uses
+      // the index and answers for almost every caller.
+      if (!contactRow?.id) {
+        const tail = phoneTail(from);
+        if (tail) {
+          const { data: byTail } = await supabase
+            .from('wk_contacts')
+            .select('id, pipeline_column_id, custom_fields')
+            .like('phone', `%${tail}`)
+            .limit(1)
+            .maybeSingle();
+          contactRow = byTail;
+        }
+      }
       if (contactRow?.id) {
+        contactIsEstateAgent =
+          (contactRow.custom_fields as Record<string, unknown> | null)?.lead_type === 'estate_agent';
         contactId = contactRow.id as string;
         const since = new Date(Date.now() - CALLBACK_WINDOW_DAYS * 86_400_000).toISOString();
         const { data: droppedCall } = await supabase
@@ -223,9 +255,37 @@ serve(async (req: Request) => {
       }
     }
 
-    // Best-effort log into wk_calls
+    // THE CALL RECORD. Its id now travels to the browser (see the <Client>
+    // parameters below), so an answered inbound call is a real call: live
+    // transcript, AI coach, call timeline, and an outcome the agent presses
+    // that files against the deal. Until 2026-08-18 none of that worked,
+    // because the browser was never told which row this was.
+    //
+    // ai_coach_enabled by the same three-part rule wk-calls-create applies on
+    // an outbound dial: the workspace master flag, the live-coach flag, and a
+    // key to run it with. wk-voice-transcription enforces it again anyway.
+    //
+    // script_key='property_call' when the caller is an estate agent, or the
+    // coach treats a branch like a plumber lead: no property prompt, no
+    // property objections, and none of the email or name capture that the
+    // Houses panel and the daily report are built on.
+    let wkCallId: string | null = null;
+    let aiCoachEnabled = false;
     try {
-      await supabase.from('wk_calls').insert({
+      const { data: ai } = await supabase
+        .from('wk_ai_settings')
+        .select('ai_enabled, live_coach_enabled, openai_api_key')
+        .limit(1)
+        .maybeSingle();
+      aiCoachEnabled = Boolean(
+        ai?.ai_enabled && ai?.live_coach_enabled
+        && (Deno.env.get('OPENAI_API_KEY') || ai?.openai_api_key),
+      );
+    } catch (e) {
+      console.warn('[wk-voice-twiml-incoming] ai settings read failed (coach off):', e);
+    }
+    try {
+      const { data: inserted, error: insErr } = await supabase.from('wk_calls').insert({
         twilio_call_sid: callSid,
         agent_id: agentId,
         contact_id: contactId,
@@ -235,7 +295,11 @@ serve(async (req: Request) => {
         from_e164: from,
         to_e164: to,
         started_at: new Date().toISOString(),
-      });
+        ai_coach_enabled: aiCoachEnabled,
+        script_key: contactIsEstateAgent ? 'property_call' : null,
+      }).select('id').single();
+      if (insErr) throw new Error(insErr.message);
+      wkCallId = (inserted?.id as string | undefined) ?? null;
     } catch (e) {
       console.warn('wk_calls insert failed (continuing):', e);
     }
@@ -252,6 +316,39 @@ serve(async (req: Request) => {
     // <Record> → wk-voicemail-transcribe) when DialCallStatus is not
     // 'completed'/'answered' on an inbound leg.
     if (agentClientIdentity) {
+      // The live coach, on an answered inbound call. Same <Start><Transcription>
+      // the outbound TwiML injects, with ONE deliberate difference: the track
+      // labels are the other way round. On an outbound call the parent leg is
+      // the agent's browser, so its inbound track is the agent. Here the parent
+      // leg IS the caller, so labelling it 'agent' would have the coach believe
+      // Pedro said everything the branch said, and coach him on his own words.
+      const transcription = aiCoachEnabled ? [
+        `<Start>`,
+        `  <Transcription`,
+        `    statusCallbackUrl="${escapeXml(`${PUBLIC_FN_BASE}/wk-voice-transcription`)}"`,
+        `    statusCallbackMethod="POST"`,
+        `    track="both_tracks"`,
+        `    languageCode="en-GB"`,
+        `    enableAutomaticPunctuation="true"`,
+        `    profanityFilter="false"`,
+        `    speechModel="telephony"`,
+        `    inboundTrackLabel="caller"`,
+        `    outboundTrackLabel="agent"`,
+        `    partialResults="${Deno.env.get('COACH_PARTIAL_RESULTS') === '0' ? 'false' : 'true'}"`,
+        `  />`,
+        `</Start>`,
+      ].join('\n') : '';
+      if (aiCoachEnabled) {
+        // Warm the pod before Twilio fires the first chunk at it.
+        void fetch(`${PUBLIC_FN_BASE}/wk-voice-transcription?warmup=1`, { method: 'GET' })
+          .catch(() => null);
+      }
+      // WHAT THE BROWSER IS TOLD. <Parameter> children of <Client> arrive as
+      // call.customParameters in the Voice SDK. The child leg has its own
+      // CallSid, so the browser has no other way to find the row logged above,
+      // and it had none until now: callId was hardcoded null on every inbound
+      // call, which is what left the coach, the transcript and every outcome
+      // button dead on a call somebody actually answered.
       const dial = [
         `<Dial answerOnBridge="true" timeout="25"`,
         `      record="record-from-answer-dual"`,
@@ -259,10 +356,16 @@ serve(async (req: Request) => {
         `      recordingStatusCallbackEvent="completed"`,
         `      action="${escapeXml(statusUrl)}"`,
         `      method="POST">`,
-        `  <Client>${escapeXml(agentClientIdentity)}</Client>`,
+        `  <Client>`,
+        `    <Identity>${escapeXml(agentClientIdentity)}</Identity>`,
+        wkCallId ? `    <Parameter name="wkCallId" value="${escapeXml(wkCallId)}"/>` : '',
+        contactId ? `    <Parameter name="contactId" value="${escapeXml(contactId)}"/>` : '',
+        contactIsEstateAgent ? `    <Parameter name="scriptKey" value="property_call"/>` : '',
+        `  </Client>`,
         `</Dial>`,
-      ].join('\n');
-      const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n${dial}\n</Response>`;
+      ].filter((s) => s.length > 0).join('\n');
+      const body = [transcription, dial].filter((s) => s.length > 0).join('\n');
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n${body}\n</Response>`;
       return new Response(twiml, {
         status: 200,
         headers: { 'Content-Type': 'text/xml' },

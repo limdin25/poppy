@@ -47,6 +47,11 @@ export const SCRIPT_TEXT_TOKENS = [
   'property_type', 'days_on_market', 'agency', 'property_worth',
   'worth_after_bed',
   'offer_open', 'offer_ceiling', 'ladder', 'comp_evidence', 'valuation_notes',
+  // Call two opens as a callback (Hugo 2026-08-18): the name written down on
+  // call one and when that call happened, in words ("yesterday", "on Friday").
+  // Both arrive via `extra` only, computed in PropertyCallRoom from wk_calls
+  // and the listing checklist, and are NEVER persisted to custom_fields.
+  'branch_contact_name', 'spoke_when',
 ] as const;
 
 const PH_OPEN = '<span class="ph">';
@@ -150,6 +155,22 @@ export function interpolateScript(
     // lead (most locksmiths, no Companies House match) puts a raw bracket in
     // the FIRST words out of the agent's mouth.
     html = html.split('Hi, is that [owner_first]?').join('Hi, is that [business_name]?');
+  }
+
+  // No name written down on call one - collapse the greeting instead of
+  // putting a brown bracket in the first words out of Pedro's mouth. Same
+  // pattern as [owner_first] above. These three phrasings are the ONLY ones
+  // the property script may use around the token (pinned by a test), so the
+  // collapses cover every occurrence.
+  if (textTokens['[branch_contact_name]'] == null) {
+    html = html.split('Hi [branch_contact_name],').join('Hi,');
+    html = html.split('thanks for your time [branch_contact_name].').join('thanks for your time.');
+    html = html.split('Ringing [branch_contact_name] back').join('Ringing them back');
+  }
+  // No prior call on record (or an unparseable timestamp) - "We spoke about
+  // the house" still reads true on a call-two screen, "[spoke_when]" does not.
+  if (textTokens['[spoke_when]'] == null) {
+    html = html.split('We spoke [spoke_when] about').join('We spoke about');
   }
 
   for (const [token, value] of Object.entries(textTokens)) {

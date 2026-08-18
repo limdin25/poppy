@@ -52,6 +52,13 @@ interface Props {
   offerHouse?: OfferHouse | null;
   /** custom_fields.next_step, which decides call one or call two. */
   nextStep?: string | null;
+  /** The branch card's own fields, so a confirmed ballpark (`offer_open`)
+   *  opens call two even if a later outcome knocked the step back. One switch,
+   *  one answer, everywhere on screen. */
+  branchFields?: Record<string, string> | null;
+  /** The room's already-computed call mode (step + ballpark + board column).
+   *  Absent, the pane derives its own from the fields, exactly as before. */
+  callMode?: 'discovery' | 'offer';
 }
 
 /** Who the email comes from. Pedro says this company on every property call
@@ -80,7 +87,12 @@ export function videoRequestTemplate(opts: {
       '',
       'When you get a minute, could you send over a video walkthrough of it? Even a quick walk round on your phone next time you are there is perfect, and you do not need to be in it. Our builder prices the works off the video, which is how we can move quickly without dragging anyone out to a viewing.',
       '',
-      'If the floor plan or the full EPC are on file, those two are useful as well.',
+      // Self-qualifying on purpose: this template cannot read the call, so the
+      // ask carries its own condition. On Pearson Street the old wording ("if
+      // they are on file, those two are useful") went out minutes after the
+      // agent had said the floor plan was on the advert, and she had to answer
+      // it a second time.
+      'If the floor plan and the full EPC are not already on the advert, could you send those over too?',
       '',
       `We are a cash buyer, a limited company, no mortgage and no chain, so once we have had a proper look I will come back to you with something you can put to the vendor.`,
       '',
@@ -139,10 +151,12 @@ export default function PropertyEmailPane({
   currentCallId,
   offerHouse,
   nextStep,
+  branchFields,
+  callMode,
 }: Props) {
   const { pushToast, patchContact } = useSmsV2();
   const persist = useContactPersistence();
-  const isOfferCall = callModeForStep(nextStep) === 'offer';
+  const isOfferCall = (callMode ?? callModeForStep(nextStep, branchFields)) === 'offer';
 
   const [email, setEmail] = useState(contactEmail ?? '');
   const [subject, setSubject] = useState('');
@@ -206,6 +220,9 @@ export default function PropertyEmailPane({
         body: JSON.stringify({
           kind: isOfferCall ? 'offer' : askKind === 'video' ? 'video_request' : 'address_only',
           callId: currentCallId ?? null,
+          // The distilled checklist for this house, so the draft cannot ask
+          // for something an earlier call already answered.
+          propertyId: offerHouse?.propertyId ?? null,
           house: offerHouse ?? {},
           agentName: agentPersonName ?? null,
           agencyName: contactName ?? null,
@@ -261,6 +278,26 @@ export default function PropertyEmailPane({
   }, [currentCallId, draft]);
 
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+
+  // 3b. The address, typed by PEDRO. Pearson Street, 18 Aug: the agent spelled
+  // her address out letter by letter over a bad line, the coach never filed a
+  // captured_email event, so the auto-draft never fired and the call-blind
+  // TEMPLATE went out, asking for a walkthrough she had refused two minutes
+  // earlier and a floor plan she had said was on the advert. A hand-typed
+  // address is the same signal as a heard one: the send is imminent, and there
+  // is a live call worth writing from. Fires only on the TRANSITION to a valid
+  // address during a live call, so a contact whose email was already on file
+  // does not draft the moment the pane mounts on a young call.
+  const prevValidRef = useRef(valid);
+  useEffect(() => {
+    const was = prevValidRef.current;
+    prevValidRef.current = valid;
+    if (was || !valid) return;
+    if (!currentCallId) return;
+    if (drafted.current || touched.current) return;
+    drafted.current = true;
+    void draft(true);
+  }, [valid, currentCallId, draft]);
   // No lead on screen is a real state in this room (between calls, empty
   // queue). The pane still draws, so Pedro can read the email he is about to
   // send before the lead lands; only the send is held back.

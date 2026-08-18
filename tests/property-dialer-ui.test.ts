@@ -20,6 +20,14 @@ const read = (p: string) => readFileSync(resolve(root, p), 'utf8')
 
 const TABS = read('src/features/crm/components/live-call/DialerRightTabs.tsx')
 const PAGE = read('src/features/crm/dialer-pro/DialerProPage.tsx')
+// THE PROPERTY ROOM MOVED, 2026-08-18. Everything Pedro sees on a house call
+// (the next step, the Houses panel, the offer strip, the script) came out of
+// DialerProPage into its own component, so the INBOUND call screen can mount
+// exactly the same room. Pedro: "the transition of hey elsie from dialer to
+// when I answer an incoming call is very different", and it was, because all of
+// it lived in the dialer page and nowhere else. These pins follow the code:
+// what is asserted has not changed, only which file holds it.
+const ROOM = read('src/features/crm/components/live-call/PropertyCallRoom.tsx')
 const STRIP = read('src/features/crm/components/live-call/OfferStrip.tsx')
 const META = read('src/features/crm/components/live-call/ContactMetaCompact.tsx')
 const HOOK = read('src/features/crm/hooks/usePropertyListings.ts')
@@ -66,8 +74,11 @@ describe('the house sits in the left column, under the next step', () => {
     // Hugo's words: "move that to the left-hand side where it's written SMS
     // history appears here once a call connects... below that you put the
     // house details."
-    expect(PAGE).toMatch(/<PropertiesPane/)
+    expect(ROOM).toMatch(/<PropertiesPane/)
+    // The gate is the component boundary now: the page mounts the property room
+    // only on a houses call, and the plumber branch cannot reach it.
     expect(PAGE).toMatch(/\{isHousesCall \? \(/)
+    expect(PAGE).toMatch(/<PropertyCallRoom/)
     // And the plumber room keeps the plain timeline it has always had.
     expect(PAGE).toMatch(/<CallTimeline callId=\{state\.currentCallId\} \/>/)
   })
@@ -86,22 +97,25 @@ describe('the house sits in the left column, under the next step', () => {
   })
 
   it('what to do next sits where the SMS fold-out used to be', () => {
-    expect(PAGE).toMatch(/<NextStepPanel/)
-    expect(PAGE).toMatch(/customFields\?\.next_step/)
+    expect(ROOM).toMatch(/<NextStepPanel/)
+    expect(`${PAGE}${ROOM}`).toMatch(/customFields\?\.next_step/)
   })
 
   it('keeps the word Houses on screen, because the coach says it out loud', () => {
     // instantCoach, the training questions and the daily report all tell Pedro
     // to write the figure "in the Houses tab". Those words have to point at
     // something he can still see.
-    expect(PAGE).toMatch(/data-testid="dialer-houses-panel"/)
-    expect(PAGE).toMatch(/<span>Houses<\/span>/)
+    expect(ROOM).toMatch(/data-testid="dialer-houses-panel"/)
+    expect(ROOM).toMatch(/<span>Houses<\/span>/)
   })
 
   it('the property room has its own saved column widths', () => {
     // COL 1 now carries the whole house panel, so it opens wider. The plumber
     // room keeps v4 and every width already dragged into place.
-    expect(PAGE).toMatch(/autoSaveId=\{isHousesCall \? 'dialer-pro-houses-layout-v1' : 'dialer-pro-call-layout-v4'\}/)
+    // One id per room, and the plumber room keeps v4 and every width already
+    // dragged into place.
+    expect(PAGE).toMatch(/autoSaveId="dialer-pro-houses-layout-v1"/)
+    expect(PAGE).toMatch(/autoSaveId="dialer-pro-call-layout-v4"/)
   })
 
   it('the rail is folded away on arrival in the call room', () => {
@@ -116,12 +130,47 @@ describe('the offer band is pinned above the script', () => {
   it('renders in COL 2, outside the script pane, gated on houses mode', () => {
     // In a tab it can be scrolled away or never opened. Above the script it
     // cannot. That is the entire design decision.
-    expect(PAGE).toMatch(/\{isHousesCall && \(\s*\n?\s*<OfferStrip/)
-    expect(PAGE.indexOf('<OfferStrip')).toBeLessThan(PAGE.indexOf('<DialerScriptPane'))
+    expect(ROOM).toMatch(/<OfferStrip/)
+    expect(ROOM.indexOf('<OfferStrip')).toBeLessThan(ROOM.indexOf('<DialerScriptPane'))
   })
 
   it('the script is only given property tokens on a property call', () => {
-    expect(PAGE).toMatch(/extraTokens=\{isHousesCall \? scriptTokensFor\(selectedListing\) : undefined\}/)
+    // Still gated on isHousesCall, and still undefined otherwise. What changed
+    // 2026-08-17 is the fallback INSIDE the property branch, below.
+    // The room only ever renders on a property call, so the gate is the mount
+    // itself; inside it, a branch with no house still gets no property tokens.
+    expect(ROOM).toMatch(/extraTokens=\{selectedListing/)
+    expect(PAGE).toMatch(/\{isHousesCall \? \(/)
+  })
+
+  it('a discovery branch fills the script from the contact, not a house', () => {
+    // Hugo mid-shift, 17 Aug: "property details disappeared from the script."
+    // The tokens come from the house picked in the Houses panel, and a
+    // DISCOVERY branch has no house row at all by design, so the script showed
+    // its raw brackets. Measured that morning: 147 of the 151 branches in the
+    // queue were discovery branches, so this was nearly the whole list.
+    expect(ROOM).toMatch(/scriptTokensFor\(selectedListing\)/)
+    expect(ROOM).toMatch(/discoveryScriptTokensFor\(contact\?\.customFields\)/)
+    // A picked house still wins.
+    expect(ROOM.indexOf('scriptTokensFor(selectedListing)'))
+      .toBeLessThan(ROOM.indexOf('discoveryScriptTokensFor(contact?.customFields)'))
+  })
+
+  it('the discovery fallback CANNOT carry a figure of ours', () => {
+    // Call one never says a number. The discovery contact is never given the
+    // money keys, and this function never reads them, so the rule holds
+    // structurally rather than by anyone remembering it.
+    const HOOK = readFileSync('src/features/crm/hooks/usePropertyListings.ts', 'utf8')
+    const fn = HOOK.slice(
+      HOOK.indexOf('export function discoveryScriptTokensFor'),
+      HOOK.indexOf('export function scriptTokensFor'),
+    )
+    for (const money of ['offer_open', 'offer_ceiling', 'ladder', 'property_worth',
+      'worth_after_bed', 'comp_evidence']) {
+      expect(fn).not.toContain(`${money}:`)
+    }
+    // And it refuses outright when there is no address to talk about.
+    expect(fn).toMatch(/if \(!addr\) return \{\}/)
   })
 
   it('names the ceiling as the thing never to say', () => {
@@ -179,7 +228,7 @@ describe('the offer band is pinned above the script', () => {
     expect(STRIP).toMatch(/data-testid="offer-strip-toggle"/)
     // The dialer folds it, Call history does not: there the deal IS the thing
     // being read, and the drawer would open on a header and nothing else.
-    expect(PAGE).toMatch(/startCollapsed/)
+    expect(ROOM).toMatch(/startCollapsed/)
     expect(read('src/features/crm/components/calls/DealSnapshotDrawer.tsx')).not.toMatch(/startCollapsed/)
     // Collapsed, not one figure of ours is on screen. The ceiling and the
     // ladder live inside the folded half, never in the header row.
@@ -190,7 +239,8 @@ describe('the offer band is pinned above the script', () => {
   it('selecting a different house clears when the LEAD changes', () => {
     // A new lead is a different agency. Carrying the old selection over would
     // put another branch's asking price in front of the agent.
-    expect(PAGE).toMatch(/useEffect\(\(\) => \{ setSelectedPropertyId\(null\); \}, \[activeContactId\]\)/)
+    // Keyed on the contact the room is showing, which is the same lead.
+    expect(ROOM).toMatch(/useEffect\(\(\) => \{ setSelectedPropertyId\(null\); \}, \[contact\?\.id\]\)/)
   })
 })
 
@@ -265,7 +315,13 @@ describe('the browser reads properties through the gated RPC, never the table', 
 
   it('will not query on a phone too short to identify a branch', () => {
     // right(digits, 9) on a 3-digit number would tail-match half the table.
-    expect(HOOK).toMatch(/digits\.length >= 9/)
+    // The floor moved into the ONE phone-matching rule (api/lib/phone-match.ts)
+    // on 2026-08-18, shared by the browser, the API routes and the RPC, after
+    // Pedro: "everytime somebody calls me it doesnt show the property I am
+    // inquiring about". The hook asks that helper instead of re-deriving it.
+    expect(HOOK).toMatch(/phoneTail\(phone\)/)
+    expect(HOOK).toMatch(/const enabled = tail !== ''/)
+    expect(read('api/lib/phone-match.ts')).toMatch(/d\.length >= 9 \? d\.slice\(-9\) : ''/)
   })
 
   it('uses the shared offer maths rather than its own', () => {
@@ -366,5 +422,30 @@ describe('scriptTokensFor — what actually lands in the script', () => {
     }
     // The band is Pedro's judgement, not a thing to say to an estate agent.
     expect(fn).toMatch(/Never say the band out loud/)
+  })
+})
+
+describe('the callback facts reach the script and the opener card', () => {
+  // Hugo 2026-08-18: "the script has to be dynamic of the days that we spoke
+  // to the person." The two tokens are computed in the room (wk_calls + the
+  // Houses checklist) and ride into BOTH fill paths as extra tokens only, so
+  // the custom_fields write-back can never persist them.
+  it('both fill paths carry the name and the spoke-when', () => {
+    expect(ROOM).toMatch(/\{ \.\.\.scriptTokensFor\(selectedListing\), branch_contact_name: branchContactName, spoke_when: spokeWhen \}/)
+    expect(ROOM).toMatch(/\{ \.\.\.discoveryScriptTokensFor\(contact\?\.customFields\), branch_contact_name: branchContactName, spoke_when: spokeWhen \}/)
+  })
+
+  it('the spoke-when reads the call record, never the voicemails', () => {
+    expect(ROOM).toMatch(/useBranchLastCall\(contact\?\.phone, currentCallId\)/)
+    expect(ROOM).toMatch(/spokeWhenPhrase\(lastSpoke\?\.at \?\? selectedListing\?\.last_call_at \?\? null\)/)
+  })
+
+  it('the coach opener card reads the property opener, both rooms, both calls', () => {
+    // Before this the card showed the PLUMBER opener at estate agents
+    // ("Hi, quick one: is that Jones and Chapman?"), call one and two alike.
+    expect(ROOM).toMatch(/propertyOpener=\{propertyOpener\}/)
+    expect(TABS).toMatch(/propertyOpener=\{showHouses === true \? propertyOpener : undefined\}/)
+    const COACH_PANE = read('src/features/crm/components/live-call/LiveTranscriptPane.tsx')
+    expect(COACH_PANE).toMatch(/if \(propertyOpener\) return propertyOpener/)
   })
 })
