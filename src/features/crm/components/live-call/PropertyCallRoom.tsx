@@ -29,7 +29,7 @@
 // the deal itself and is identical in both directions.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Home, PhoneIncoming } from 'lucide-react';
+import { AlertTriangle, Home, PhoneIncoming } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import {
   ResizablePanelGroup,
@@ -288,6 +288,29 @@ export default function PropertyCallRoom({
               <span>
                 <b>They rang you.</b> Pick up where you left off, never as a cold call.
                 Thank them for calling back, then take it from the step below.
+              </span>
+            </div>
+          )}
+          {/* Call 2 script with NO armed figures. Found 2026-08-18 on Friars
+              Close: the card sat in "Ready for call 2" (the disposition put it
+              there) while the ballpark was never applied, so Pedro opened THE
+              OFFER script and every money slot was a raw empty bracket. The
+              offer strip's own warning exists but starts folded, so nothing on
+              screen said stop. One line above the script, same pattern as the
+              inbound banner; keyed to the SAME tokens the script fills from,
+              so it shows exactly when the slots are empty. */}
+          {callMode === 'offer' && !(openerTokens.offer_open ?? '').trim() && (
+            <div
+              className="flex items-start gap-2 border-b border-[#EBD9B4] bg-[#FDF3E3] px-3 py-2 text-[11.5px] leading-snug text-[#9A6B1E]"
+              data-testid="unarmed-call2-warning"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              <span>
+                <b>No confirmed figures on this card.</b> This is the call 2
+                script but the ballpark was never applied, so the money slots
+                below are empty. Do not invent a number: get the facts, say the
+                director is still pricing it, and book the callback. Figures are
+                armed from the cockpit ballpark.
               </span>
             </div>
           )}
