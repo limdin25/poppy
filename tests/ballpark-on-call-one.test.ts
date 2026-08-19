@@ -113,3 +113,56 @@ describe('the graders agree with the script, or Pedro gets marked down for obeyi
     expect(review).toMatch(/saying NO number of ours is the correct call, not a miss/)
   })
 })
+
+describe('the engine payload: every fact the call won actually reaches the valuation', () => {
+  // 2026-08-19. Oundle Road B44, the house Pedro had already floated a number
+  // on. The branch read the EPC floor area out loud on call one, the extractor
+  // caught it, the row stored it under `heard`, and the valuation still said
+  // "size-blind median of 3 comps (no floor area on the subject)".
+  //
+  // The cause was the SHAPE of this request. reprice() takes the condition
+  // survey as one argument and every size or money fact as its own, and the
+  // Flask route reads each of those off the TOP LEVEL of the body. We posted
+  // them nested inside `survey`, and named the works list `works` where the
+  // engine reads `works_needed`. No error, no warning: the engine defaulted
+  // every missing argument to None and priced the house as though nobody had
+  // ever rung the branch.
+  //
+  // Cost on that one house: a ballpark of GBP 161,500 opening and GBP 171,000
+  // walk-away, against a true GBP 128,802 and GBP 145,572 once the 74 sqm was
+  // read. Pedro had already said the wrong number to the agent.
+  const lib = read('api/lib/ballpark.ts')
+  const body = lib.slice(lib.indexOf('body: JSON.stringify({'), lib.indexOf('engine = await res.json()'))
+  const survey = body.slice(body.indexOf('survey: {'), body.indexOf('}', body.indexOf('survey: {')))
+
+  it('sends the condition survey under the keys refurb_model reads', () => {
+    expect(survey).toMatch(/condition_band:/)
+    expect(survey).toMatch(/works_needed:/)
+    // `works` is the name that silently threw the confirmed works list away.
+    expect(survey).not.toMatch(/\bworks:/)
+  })
+
+  it('keeps the survey to the condition, and nothing else', () => {
+    // Anything else in here is a fact the engine will never look at.
+    for (const stray of ['floor_area_sqm', 'rent_pcm', 'agent_comp_price', 'agent_comp_note', 'rejected_offer']) {
+      expect(survey).not.toMatch(new RegExp(`${stray}:`))
+    }
+  })
+
+  it('sends every size and money fact at the top level, where the route reads them', () => {
+    const flat = body.slice(body.indexOf('},', body.indexOf('survey: {')))
+    for (const fact of ['floor_area_sqm', 'rent_pcm', 'agent_comp_price', 'agent_comp_note', 'rejected_offer']) {
+      expect(flat).toMatch(new RegExp(`${fact}:`))
+    }
+  })
+
+  it('prefers the size the agent said over the size on the listing', () => {
+    expect(body).toMatch(/floor_area_sqm: heard\.floor_area_sqm \?\? prop\.floor_area_sqm \?\? null/)
+  })
+
+  it('extracts all five facts, so none of them can be dropped upstream instead', () => {
+    for (const fact of ['floor_area_sqm', 'rent_pcm', 'agent_comp_price', 'agent_comp_note', 'rejected_offer']) {
+      expect(lib).toMatch(new RegExp(`${fact}: `))
+    }
+  })
+})

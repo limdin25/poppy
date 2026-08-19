@@ -256,14 +256,36 @@ export async function runBallparkPreview(
       headers: { 'Content-Type': 'application/json', 'x-ingest-secret': secret },
       body: JSON.stringify({
         property_id: prop.source_property_id,
+        // THE SHAPE IS THE ENGINE'S, AND IT IS NOT NEGOTIABLE (19 Aug).
+        //
+        // reprice() takes the condition survey as one argument and every money
+        // or size fact as its OWN argument, and app.py reads each of them off
+        // the TOP LEVEL of this body. This writer used to post all of them
+        // nested inside `survey`, and to call the works list `works` when the
+        // engine reads `works_needed`. Nothing threw. The engine simply never
+        // saw them and priced the house as if the call had never happened,
+        // while `heard` in the row showed the facts sitting right there.
+        //
+        // Measured on Oundle Road B44, the house Pedro had already opened at:
+        // the branch gave us 74 sqm on the call, the engine priced a size-blind
+        // median of comps 12 to 23% bigger, and the ballpark came out at
+        // GBP 161,500 / GBP 171,000 against a true GBP 128,802 / GBP 145,572.
+        // GBP 25,000 of ceiling, on one misplaced key.
+        //
+        // condition_band was the ONE key in the right place, which is why the
+        // note read "condition heard on the call" beside "no floor area on the
+        // subject" on a call where the agent read the floor area out loud.
         survey: {
           condition_band: heard.condition_band,
-          works: heard.works_needed,
-          floor_area_sqm: heard.floor_area_sqm ?? prop.floor_area_sqm ?? null,
-          rent_pcm: heard.rent_pcm,
-          agent_comp_price: heard.agent_comp_price,
-          rejected_offer: heard.rejected_offer,
+          works_needed: heard.works_needed,
         },
+        // The agent's own figure beats anything we inferred; the listing's is
+        // the fallback. Sent flat, where the engine actually looks.
+        floor_area_sqm: heard.floor_area_sqm ?? prop.floor_area_sqm ?? null,
+        rent_pcm: heard.rent_pcm,
+        agent_comp_price: heard.agent_comp_price,
+        agent_comp_note: heard.agent_comp_note,
+        rejected_offer: heard.rejected_offer,
         // The engine re-reads EVERY photograph with the call as context on a
         // deep pass; it only ever runs on a house a human has spent time on.
         // The mid-call button passes fast:true and skips it: the branch is
