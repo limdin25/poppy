@@ -8,11 +8,15 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-type Provider = 'anthropic' | 'openai' | 'xai';
+type Provider = 'anthropic' | 'openai' | 'xai' | 'openrouter';
 
 function getProvider(model: string): Provider {
   if (model.startsWith('claude')) return 'anthropic';
   if (model.startsWith('grok')) return 'xai';
+  // OpenRouter ids are namespaced ("deepseek/deepseek-v4-pro-0813",
+  // "qwen/qwen3.8-max"): the slash is the tell. Added 19 Aug when Hugo moved
+  // the deal brain off Sonnet: "get DeepSeek or Qwen through OpenRouter."
+  if (model.includes('/')) return 'openrouter';
   return 'openai';
 }
 
@@ -24,6 +28,7 @@ async function getApiKey(provider: Provider): Promise<string> {
     anthropic: { env: 'ANTHROPIC_API_KEY', db: 'anthropic_api_key' },
     openai: { env: 'OPENAI_API_KEY', db: 'openai_api_key' },
     xai: { env: 'XAI_API_KEY', db: 'grok_api_key' },
+    openrouter: { env: 'OPENROUTER_API_KEY', db: 'openrouter_api_key' },
   };
   const { env, db } = envMap[provider];
 
@@ -45,6 +50,7 @@ async function getApiKey(provider: Provider): Promise<string> {
 function getBaseUrl(provider: Provider): string {
   if (provider === 'anthropic') return 'https://api.anthropic.com';
   if (provider === 'xai') return 'https://api.x.ai';
+  if (provider === 'openrouter') return 'https://openrouter.ai/api';
   return 'https://api.openai.com';
 }
 
@@ -203,27 +209,58 @@ export async function callLLM(
     return firstText(data.content);
   }
 
-  const res = await fetch(`${getBaseUrl(provider)}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: resolvedModel,
-      max_tokens: maxTokens,
-      // Flattened: this branch is the fallback provider and takes a different
-      // image shape. See the LLMBlock comment above.
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...msgs.map((m) => ({ role: m.role, content: flattenToText(m.content) })),
-      ],
-    }),
-  });
+  const callChat = (extra: Record<string, unknown>) =>
+    fetch(`${getBaseUrl(provider)}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: resolvedModel,
+        // OpenRouter hosts hybrid reasoners (DeepSeek v4, Qwen 3.x) whose
+        // thinking shares the pot with the answer, same failure class as the
+        // Anthropic branch above. Headroom keeps the answer alive; the VPS
+        // learnt this on qwen3.7 the hard way (empty answers that look like
+        // blindness).
+        max_tokens: provider === 'openrouter' ? maxTokens + 4096 : maxTokens,
+        // Flattened: this branch is the fallback provider and takes a
+        // different image shape. See the LLMBlock comment above.
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...msgs.map((m) => ({ role: m.role, content: flattenToText(m.content) })),
+        ],
+        ...extra,
+      }),
+    });
+  let res = await callChat({});
   if (!res.ok) {
     console.error(`[llm] ${provider} error: ${res.status} ${await res.text()}`);
     return '';
   }
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content || '';
+  let data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+  let text = data.choices?.[0]?.message?.content || '';
+  // A reasoning model that spent the whole pot thinking answers with empty
+  // content. One retry with reasoning off gets the words instead of silence.
+  if (!text.trim() && provider === 'openrouter') {
+    console.warn(`[llm] ${resolvedModel} returned empty content; retrying with reasoning disabled`);
+    res = await callChat({ reasoning: { enabled: false } });
+    if (res.ok) {
+      data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+      text = data.choices?.[0]?.message?.content || '';
+    }
+  }
+  // OpenRouter out of credit (402) or otherwise silent = fall back to the
+  // default Claude model rather than a blank verdict. Found live 19 Aug: the
+  // account's five dollars were already spent, so the brain would have gone
+  // quiet the moment it switched. With this, DeepSeek serves whenever the
+  // account is funded and Sonnet covers every gap, no redeploy either way.
+  if (!text.trim() && provider === 'openrouter') {
+    const anth = await getApiKey('anthropic');
+    if (anth) {
+      console.warn(`[llm] ${resolvedModel} unavailable; falling back to ${DEFAULT_MODEL}`);
+      return callLLM(DEFAULT_MODEL, systemPrompt, messages, maxTokens, opts);
+    }
+  }
+  return text;
 }

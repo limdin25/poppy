@@ -12,13 +12,97 @@
 // for seven hours while a fresh offer was about to go out blind.
 
 import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Mail, Clock, AlarmClock, ChevronRight } from 'lucide-react';
+import { RefreshCw, Mail, Clock, AlarmClock, ChevronRight, ChevronDown, MoveUpRight } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
+import { formatRelativeTime } from '../../data/helpers';
 import {
   FLAG_LABEL, FLAG_TONE, attentionTone, hoursAgo, NOTHING_WAITING,
   BRAIN_OFF_NOTE, BRAIN_ON_NOTE,
 } from '../../lib/dealDay';
+
+interface MoveRow {
+  id: string;
+  contact_id: string;
+  title: string | null;
+  body: string | null;
+  ts: string;
+}
+
+/** The movement log. Hugo, 19 Aug, pointing at the Today header: "the
+ *  information I want there is the log of everything that has been moved,
+ *  when I expand: what has been moved, and where, and why." The rows come
+ *  from wk_activities kind 'stage_moved', which the stage-move trigger has
+ *  stamped on every column change since 27 Jul: card, from, to, who (or
+ *  "moved automatically"), when. Nothing here is computed; it is the record
+ *  read back. */
+function MovesLog() {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<MoveRow[]>([]);
+  const [names, setNames] = useState<Map<string, string>>(new Map());
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    void (async () => {
+      const { data } = await supabase
+        .from('wk_activities')
+        .select('id, contact_id, title, body, ts')
+        .eq('kind', 'stage_moved')
+        .order('ts', { ascending: false })
+        .limit(50);
+      const moves = (data ?? []) as MoveRow[];
+      setRows(moves);
+      const ids = [...new Set(moves.map((m) => m.contact_id))];
+      if (ids.length) {
+        const { data: cs } = await supabase
+          .from('wk_contacts').select('id, name').in('id', ids);
+        setNames(new Map(((cs ?? []) as Array<{ id: string; name: string | null }>)
+          .map((c) => [c.id, c.name ?? 'Unnamed'])));
+      }
+      setLoaded(true);
+    })();
+  }, [open, loaded]);
+
+  return (
+    <div className="border-t border-[#E5E7EB]" data-testid="moves-log">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-1.5 px-4 py-2.5 text-left hover:bg-[#F9FAFB]"
+      >
+        {open ? <ChevronDown className="w-3.5 h-3.5 text-[#9CA3AF]" /> : <ChevronRight className="w-3.5 h-3.5 text-[#9CA3AF]" />}
+        <MoveUpRight className="w-3.5 h-3.5 text-[#3C5A87]" />
+        <span className="text-[12px] font-semibold text-[#1A1A1A]">What moved, where, and why</span>
+        <span className="text-[10px] text-[#9CA3AF] ml-auto">last 50 moves</span>
+      </button>
+      {open && (
+        <ul className="divide-y divide-[#F3F4F6] max-h-72 overflow-y-auto">
+          {!loaded && (
+            <li className="px-4 py-3 text-[11px] text-[#9CA3AF]">Reading the log...</li>
+          )}
+          {loaded && rows.length === 0 && (
+            <li className="px-4 py-3 text-[11px] text-[#9CA3AF] italic">No moves recorded yet.</li>
+          )}
+          {rows.map((m) => (
+            <li key={m.id} className="px-4 py-2">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11.5px] font-semibold text-[#1A1A1A] truncate">
+                  {names.get(m.contact_id) ?? 'Unnamed'}
+                </span>
+                <span className="text-[10px] text-[#9CA3AF] flex-shrink-0 ml-auto">
+                  {formatRelativeTime(m.ts)}
+                </span>
+              </div>
+              <div className="text-[11px] text-[#374151]">{m.title}</div>
+              {m.body && <div className="text-[10.5px] text-[#6B7280]">{m.body}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 interface TodayItem {
   propertyId: string;
@@ -175,6 +259,8 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
           </li>
         ))}
       </ul>
+
+      <MovesLog />
     </div>
   );
 }

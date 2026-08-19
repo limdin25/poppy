@@ -122,6 +122,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         );
         let ok: boolean;
         let reason: string | undefined;
+        let detail: string | undefined;
         if (!hasFreshOk) {
           const preview = await runBallparkPreview(supabase, s.propertyId);
           const { error } = await supabase
@@ -131,10 +132,43 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           if (error) throw new Error(error.message);
           ok = preview.ok === true;
           reason = preview.reason;
+          detail = preview.detail;
         } else {
           ok = true;
         }
         ran += 1;
+
+        // "Whenever it's no good, you move to Not interested" (Hugo, 19 Aug).
+        // Only on a HARD refusal about the DEAL itself, never on plumbing
+        // (engine unreachable, nothing heard yet), and the reason is written
+        // on the card so a human can disagree and drag it back.
+        const DEAD_REASONS = new Set([
+          'cannot_value', 'comps_below_standard', 'condition_unknown',
+          'unpriceable_works',
+        ]);
+        const hardDead = !ok && reason !== undefined
+          && (DEAD_REASONS.has(reason) || reason.startsWith('excluded_'));
+        if (hardDead && b.contactId) {
+          const { data: anchor } = await supabase
+            .from('wk_pipeline_columns').select('pipeline_id').eq('name', 'Ballpark agreed').maybeSingle();
+          const pipelineId = (anchor as { pipeline_id?: string } | null)?.pipeline_id ?? null;
+          let colQ = supabase.from('wk_pipeline_columns').select('id').eq('name', 'Not interested');
+          if (pipelineId) colQ = colQ.eq('pipeline_id', pipelineId);
+          const { data: col } = await colQ.maybeSingle();
+          if ((col as { id?: string } | null)?.id) {
+            await supabase.from('wk_contacts').update({
+              pipeline_column_id: (col as { id: string }).id,
+            }).eq('id', b.contactId);
+            const { data: c } = await supabase
+              .from('wk_contacts').select('custom_fields').eq('id', b.contactId).maybeSingle();
+            await supabase.from('wk_contacts').update({
+              custom_fields: {
+                ...(((c as { custom_fields?: Record<string, string> } | null)?.custom_fields ?? {})),
+                deal_reason: `Machine, ${new Date().toISOString().slice(0, 10)}: the engine refused to price this (${reason}). ${String(detail ?? '').slice(0, 200)}`,
+              },
+            }).eq('id', b.contactId);
+          }
+        }
 
         // THE AUTOMATIC PRESS. applyBallpark re-reads the stored preview
         // path via its caller normally; here we apply the property's stored

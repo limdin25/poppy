@@ -262,7 +262,12 @@ describe('there is ONE brain, and both callers use it', () => {
     ]) {
       expect(BRAIN).toContain(line);
     }
-    expect(BRAIN).toContain("DEAL_MANAGER_MODEL = 'claude-sonnet-5'");
+    // 19 Aug, Hugo: "Sonnet is too expensive, get DeepSeek or Qwen through
+    // OpenRouter, the smartest one." Env-dialable, DeepSeek flagship default,
+    // and callLLM falls back to the default Claude model whenever OpenRouter
+    // is out of credit or silent, so the brain can never go quiet over money.
+    expect(BRAIN).toContain(
+      "DEAL_MANAGER_MODEL = process.env.DEAL_BRAIN_MODEL || 'deepseek/deepseek-v4-pro-0813'");
   });
 
   it('gives the model room to think before it answers', () => {

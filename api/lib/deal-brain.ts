@@ -22,7 +22,13 @@ import {
   deterministicFlags, FLAGS, type ManagerVerdict,
 } from './deal-manager-contract.js';
 
-export const DEAL_MANAGER_MODEL = 'claude-sonnet-5';
+// Hugo, 19 Aug: "Sonnet is too expensive, get DeepSeek or Qwen through
+// OpenRouter, the smartest one." DeepSeek's newest flagship, about 70%
+// cheaper than Sonnet per token. The env var is the dial back: set
+// DEAL_BRAIN_MODEL=claude-sonnet-5 and the brain is on Sonnet again; if the
+// OpenRouter key ever vanishes, callLLM itself falls back to the default
+// Claude model rather than going silent.
+export const DEAL_MANAGER_MODEL = process.env.DEAL_BRAIN_MODEL || 'deepseek/deepseek-v4-pro-0813';
 
 // CHANGING DEAL_MANAGER_SYSTEM? Bump PROMPT_VERSION in
 // deal-manager-contract.ts, or the sweep's hash dedupe keeps serving every
