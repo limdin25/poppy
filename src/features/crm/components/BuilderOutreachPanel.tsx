@@ -22,7 +22,23 @@ interface OutreachRow {
   confirmed_at: string | null;
   error: string | null;
   brrr_builders: { name: string; phone: string | null } | null;
-  brrr_properties: { address: string | null; wk_contact_id: string | null } | null;
+  brrr_properties: {
+    address: string | null; wk_contact_id: string | null; viewing_at?: string | null;
+  } | null;
+}
+
+/** "Fri 21 Aug 2:00pm", UK wall time, empty when there is no slot on file. */
+function viewingLabel(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const date = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/London',
+  }).format(d);
+  const time = new Intl.DateTimeFormat('en-GB', {
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Europe/London',
+  }).format(d).replace(/\s/g, '').toLowerCase();
+  return `${date} at ${time}`;
 }
 
 const BLOCKED_WORDS: Record<string, string> = {
@@ -54,6 +70,47 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const json = await res.json().catch(() => ({})) as T & { error?: string };
   if (!res.ok) throw new Error(json.error ?? `Request failed (${res.status})`);
   return json;
+}
+
+/** Which house and slot a builder's thread belongs to, for the surfaces that
+ *  need the FACTS rather than a chip: the inbox fills an approved template's
+ *  blanks from this when the 24h window is shut. Null on any non-builder
+ *  thread, and null rather than a guess when nothing is on file. */
+export function useBuilderDeal(contactId: string | null): {
+  address: string; viewingLabel: string; branchContactId: string | null;
+} | null {
+  const [deal, setDeal] = useState<
+    { address: string; viewingLabel: string; branchContactId: string | null } | null
+  >(null);
+
+  useEffect(() => {
+    if (!contactId) { setDeal(null); return; }
+    let alive = true;
+    void (async () => {
+      try {
+        const { rows } = await adminFetch<{ rows: OutreachRow[] }>(
+          `/api/admin/builder-outreach?contact_id=${encodeURIComponent(contactId)}`,
+        );
+        if (!alive) return;
+        const row = rows.find((r) => r.status === 'confirmed')
+          ?? rows.find((r) => r.status === 'sent' || r.status === 'replied')
+          ?? rows[0] ?? null;
+        const address = row?.brrr_properties?.address ?? '';
+        setDeal(address
+          ? {
+            address,
+            viewingLabel: viewingLabel(row?.brrr_properties?.viewing_at ?? undefined),
+            branchContactId: row?.brrr_properties?.wk_contact_id ?? null,
+          }
+          : null);
+      } catch {
+        if (alive) setDeal(null);
+      }
+    })();
+    return () => { alive = false; };
+  }, [contactId]);
+
+  return deal;
 }
 
 /** The other half of "they stick together": on the BUILDER's thread, a line

@@ -52,6 +52,7 @@ import CallTranscriptModal from '../components/calls/CallTranscriptModal';
 import { useSmsTemplates } from '../hooks/useSmsTemplates';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { interpolateTemplate } from '../lib/interpolateTemplate';
+import { prefillTemplateVars } from '../lib/waTemplates';
 import { supabase } from '@/integrations/supabase/browser';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact, CallRecord, ActivityEvent } from '../types';
@@ -59,7 +60,7 @@ import LeadIdentity, { isPropertyLead, askForName } from '../components/shared/L
 import { DEAL_STAGES } from '../components/templates/dealProcessSteps';
 import BriefLine from '../components/shared/BriefLine';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
-import { BuilderConfirmInboxButton, BuilderThreadBanner } from '../components/BuilderOutreachPanel';
+import { BuilderConfirmInboxButton, BuilderThreadBanner, useBuilderDeal } from '../components/BuilderOutreachPanel';
 import BuilderChip from '../components/shared/BuilderChip';
 import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
 import InboundMedia from '../components/InboundMedia';
@@ -770,6 +771,11 @@ export default function InboxPage() {
   // A house thread, so the property templates apply and the reviews-era ones
   // are noise.
   const activeIsProperty = isPropertyLead(activeContact?.customFields, !!activeDeal);
+  // A builder's thread knows which house and slot it belongs to, which is what
+  // fills an approved template's blanks when the 24h window is shut.
+  const builderDeal = useBuilderDeal(
+    activeContact?.customFields?.lead_type === 'builder' ? activeContact.id : null,
+  );
   const activeJourney = activeContactId ? journeyByContact.get(activeContactId) ?? null : null;
   const timeline = useContactTimeline(activeContact?.id ?? '', activeContact?.phone);
   // PR 50 (Hugo 2026-04-27): SMS source is wk_sms_messages now.
@@ -1028,12 +1034,15 @@ export default function InboxPage() {
     const person =
       (activeContact?.customFields?.owner_name ?? '').trim() ||
       (activeContact?.name ?? '').trim();
-    const first = person.split(/\s+/)[0] ?? '';
-    const vars: Record<string, string> = {};
-    for (const n of new Set([...tpl.body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) => m[1]))) {
-      vars[n] = n === '1' ? first : '';
-    }
-    setMetaVars(vars);
+    // A builder's thread knows the house and the slot it is about, so the
+    // blanks arrive filled in. Outside the 24h window a template IS the
+    // message, and retyping an address by hand is how the wrong one is sent.
+    setMetaVars(prefillTemplateVars(tpl.body, {
+      person: person.split(/\s+/)[0] ?? '',
+      address: builderDeal?.address ?? activeDeal?.address ?? '',
+      viewingTime: builderDeal?.viewingLabel ?? '',
+      sender: agentFirstName,
+    }));
   };
 
   const send = async () => {

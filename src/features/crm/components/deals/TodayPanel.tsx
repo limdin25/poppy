@@ -12,7 +12,7 @@
 // for seven hours while a fresh offer was about to go out blind.
 
 import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Mail, Clock, AlarmClock, ChevronRight, ChevronDown, MoveUpRight } from 'lucide-react';
+import { RefreshCw, Clock, AlarmClock, ChevronRight, ChevronDown, MoveUpRight } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { formatRelativeTime } from '../../data/helpers';
@@ -224,14 +224,13 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
 
                   <p className="text-[12px] text-[#374151] mt-0.5">{it.instruction}</p>
 
-                  {/* What they actually said, because the instruction above was
-                      written before they said it. */}
-                  {it.repliedSinceBrief && it.lastInboundPreview && (
-                    <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-[#7F1D1D] bg-[#FEF2F2] border border-[#FECACA] rounded-md px-2 py-1.5">
-                      <Mail className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                      <span className="line-clamp-2">{it.lastInboundPreview}</span>
-                    </div>
-                  )}
+                  {/* The inbound email preview used to sit here. Removed by
+                      Hugo, 19 Aug: the raw first two lines of an agent's email
+                      are nearly always the mortgage-partner footer or a "view
+                      in browser" header, so the box told him nothing and cost
+                      him two lines a row. The "They replied" flag below still
+                      says a reply is waiting; the email itself is one click
+                      away in the deal. */}
 
                   <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                     {it.flags.map((f) => (

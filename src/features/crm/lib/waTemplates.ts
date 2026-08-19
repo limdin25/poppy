@@ -24,6 +24,47 @@ export function extractTemplateVars(body: string): string[] {
   return seen;
 }
 
+/** What we know that could fill a blank in an approved template. */
+export interface TemplateFacts {
+  /** The person we are writing TO, first name only. */
+  person?: string;
+  /** The property the message is about. */
+  address?: string;
+  /** The viewing, already worded ("Friday 21 August at 2:00pm"). */
+  viewingTime?: string;
+  /** Who is signing it, our side. */
+  sender?: string;
+}
+/**
+ * Fill an approved template's blanks from what the thread already knows.
+ *
+ * Meta templates are numbered, not named, so {{1}} means nothing on its own.
+ * The words immediately BEFORE the blank do carry the meaning, and they are
+ * the same words in every template we write: "this is {{n}}" is us, "at {{n}}"
+ * is the property, "on {{n}}" is the time. Hugo, 2026-08-20, on sending the
+ * morning confirmation by hand outside the 24 hour window: the picker has to
+ * arrive filled in, or every send is a copy and paste of the address.
+ *
+ * Anything unrecognised is left EMPTY rather than guessed: a blank box is a
+ * question, a wrong address is a builder at the wrong house.
+ */
+export function prefillTemplateVars(body: string, facts: TemplateFacts): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const n of extractTemplateVars(body)) {
+    const at = body.indexOf(`{{${n}}}`);
+    const before = (at >= 0 ? body.slice(Math.max(0, at - 30), at) : '').toLowerCase();
+    let value = '';
+    if (/\b(this is|from|regards,?)\s*$/.test(before)) value = facts.sender ?? '';
+    else if (/\bat\s*$/.test(before)) value = facts.address ?? '';
+    else if (/\b(on|for)\s*$/.test(before)) value = facts.viewingTime ?? '';
+    // The old rule, kept for every template that predates this: {{1}} with no
+    // recognisable lead-in is the person being written to.
+    else if (n === '1') value = facts.person ?? '';
+    out[n] = value;
+  }
+  return out;
+}
+
 /** Meta's template name rules: lowercase letters, digits, underscores. */
 export function slugTemplateName(raw: string): string {
   return raw

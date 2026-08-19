@@ -10,7 +10,7 @@ import {
   blockedReasonFor, inviteVars, renderPreview, ukDay,
   INVITE_TEMPLATE_TEXT, MORNING_TEMPLATE_TEXT, VIEWING_BOOKED_COLUMN,
 } from '../api/lib/builder-outreach.js';
-import { templateProblem, extractTemplateVars } from '../src/features/crm/lib/waTemplates.js';
+import { templateProblem, extractTemplateVars, prefillTemplateVars } from '../src/features/crm/lib/waTemplates.js';
 
 const SRC = readFileSync('api/lib/builder-outreach.ts', 'utf8');
 
@@ -37,15 +37,18 @@ describe('the invite template', () => {
 describe('the 8am morning confirmation', () => {
   it('passes the same validation, and Meta will not take a trailing variable', () => {
     expect(templateProblem('builder_viewing_morning', MORNING_TEMPLATE_TEXT)).toBeNull();
-    expect(extractTemplateVars(MORNING_TEMPLATE_TEXT)).toEqual(['1', '2']);
-    // The lesson from 20 Aug: a body ending on "{{2}}?" was REJECTED, so this
-    // one closes on a word.
+    // The lesson from 20 Aug: a body ending on a blank was REJECTED by Meta
+    // even with punctuation after it, so this one closes on a word.
     expect(MORNING_TEMPLATE_TEXT.trim().endsWith('.')).toBe(true);
     expect(/\{\{\d+\}\}\W*$/.test(MORNING_TEMPLATE_TEXT.trim())).toBe(false);
   });
-  it('reads as a person texting on the day', () => {
-    const body = renderPreview(MORNING_TEMPLATE_TEXT, { '1': 'Dave', '2': 'Oundle Road' });
-    expect(body).toBe('Good morning Dave, just want to confirm we are still good for the viewing today at Oundle Road. Thanks.');
+  it('NEVER greets by name: the roster holds companies, not people', () => {
+    // Hugo, 2026-08-20: "we cannot have the name". "Good morning MH Building &
+    // Roofing Services Ltd" is a mail merge, not a message.
+    expect(extractTemplateVars(MORNING_TEMPLATE_TEXT)).toEqual(['1']);
+    expect(MORNING_TEMPLATE_TEXT).toContain('Good morning, just want to confirm');
+    const body = renderPreview(MORNING_TEMPLATE_TEXT, { '1': 'Oundle Road' });
+    expect(body).toBe('Good morning, just want to confirm we are still good for the viewing today at Oundle Road. Thanks.');
   });
   it('the day is UK wall time, so a late-evening viewing is not tomorrow', () => {
     // 23:30 UTC on 20 Aug is 00:30 on the 21st in London (BST).
@@ -130,5 +133,40 @@ describe('pins on the send and confirm paths', () => {
   });
   it('only UK mobiles are drafted: WhatsApp cannot reach a landline', () => {
     expect(SRC).toMatch(/isUkMobile/);
+  });
+});
+
+describe('sending a template by hand when the 24h window is shut', () => {
+  it('fills the blanks from the thread, so nobody retypes an address', () => {
+    // Hugo, 2026-08-20: by Friday the builder has not written in 24 hours, so
+    // the approved template IS the message and the picker has to arrive
+    // filled in. Meaning comes from the words before the blank, because a
+    // Meta template numbers its variables and names nothing.
+    const vars = prefillTemplateVars(MORNING_TEMPLATE_TEXT, {
+      person: 'Dave', address: 'Oundle Road, Birmingham', viewingTime: 'Friday at 2:00pm', sender: 'Pedro',
+    });
+    expect(vars).toEqual({ '1': 'Oundle Road, Birmingham' });
+  });
+
+  it('reads all three roles out of the invite template', () => {
+    const vars = prefillTemplateVars(INVITE_TEMPLATE_TEXT, {
+      person: 'Dave', address: '12 High St', viewingTime: 'Friday at 2:00pm', sender: 'Pedro',
+    });
+    expect(vars).toEqual({ '1': 'Pedro', '2': '12 High St', '3': 'Friday at 2:00pm' });
+  });
+
+  it('leaves an unrecognised blank EMPTY rather than guessing', () => {
+    // A blank box is a question. A wrong address is a builder at the wrong
+    // house, so nothing is invented to fill a gap.
+    const vars = prefillTemplateVars('Your reference is {{1}} and the code is {{2}}.', {
+      person: 'Dave', address: '12 High St',
+    });
+    expect(vars['2']).toBe('');
+  });
+
+  it('keeps the old behaviour for templates that predate the rule', () => {
+    // {{1}} with no lead-in is still the person being written to.
+    expect(prefillTemplateVars('Hi {{1}}, quick question about your listing.', { person: 'Dave' }))
+      .toEqual({ '1': 'Dave' });
   });
 });

@@ -340,10 +340,14 @@ export async function sentToday(sb: Sb): Promise<number> {
 
 /** The morning-of nudge, sent at 8am UK on the day of the viewing (Hugo,
  *  2026-08-20: "the morning of the visit you say hi good morning just wanna
- *  confirm we are still good for the viewing today"). {{1}} builder name,
- *  {{2}} the address. Kept VERBATIM in sync with the Meta template. */
+ *  confirm we are still good for the viewing today").
+ *
+ *  NO NAME IN IT, on purpose. The roster holds the COMPANY ("MH Building &
+ *  Roofing Services Ltd"), never the person who answers the phone, so a
+ *  greeting built from it reads like a mail merge to the one human we want
+ *  to sound human to. {{1}} is the address and nothing else. */
 export const MORNING_TEMPLATE_TEXT =
-  'Good morning {{1}}, just want to confirm we are still good for the viewing today at {{2}}. Thanks.';
+  'Good morning, just want to confirm we are still good for the viewing today at {{1}}. Thanks.';
 
 /** The board column a confirmed builder moves the branch card into. Renamed
  *  from 'Needs viewing' on 19 Aug; a card here means a builder is booked. */
@@ -376,14 +380,13 @@ export async function sendMorningReminders(
 
   const { data: rows } = await sb
     .from('brrr_builder_outreach')
-    .select('id, property_id, contact_id, morning_sent_at, brrr_builders(name), brrr_properties(address, viewing_at, assigned_builder_id)')
+    .select('id, property_id, contact_id, morning_sent_at, brrr_properties(address, viewing_at, assigned_builder_id)')
     .eq('status', 'confirmed')
     .is('morning_sent_at', null)
     .limit(100);
 
   for (const raw of ((rows ?? []) as Array<Record<string, unknown>>)) {
     const prop = raw.brrr_properties as { address?: string; viewing_at?: string } | null;
-    const builder = raw.brrr_builders as { name?: string } | null;
     const contactId = raw.contact_id as string | null;
     if (!prop?.viewing_at || !contactId) { out.skipped += 1; continue; }
     if (ukDay(new Date(prop.viewing_at)) !== today) { out.skipped += 1; continue; }
@@ -398,10 +401,7 @@ export async function sendMorningReminders(
       .eq('contact_id', contactId).eq('tag', 'do-not-text').maybeSingle();
     if (dnt) { out.skipped += 1; continue; }
 
-    const vars = {
-      '1': String(builder?.name ?? 'there').split(' ')[0],
-      '2': String(prop.address ?? '').trim(),
-    };
+    const vars = { '1': String(prop.address ?? '').trim() };
     const body = renderPreview(MORNING_TEMPLATE_TEXT, vars);
 
     // Stamp BEFORE the wire call: a lost response must not re-send at 8:05.
