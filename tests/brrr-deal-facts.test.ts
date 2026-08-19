@@ -202,6 +202,17 @@ describe('the outcode, for the calibration report', () => {
     expect(outcodeOf('Preston Old Road, Blackpool, Lancashire, FY3, FY3 9QX')).toBe('FY3')
   })
 
+  it('reads a postcode folded into the town part (found live 2026-08-19)', () => {
+    // The first Ballpark-agreed deal: Rightmove wrote town and postcode as one
+    // comma part, and the whole-part tests filed a real B44 under "unknown".
+    expect(outcodeOf('Oundle Road, Kingstanding, Birmingham B44 8EP')).toBe('B44')
+    expect(outcodeOf('Willows End, Scraptoft Leicester LE7 9TT')).toBe('LE7')
+    // A bare trailing outcode without the inward half stays unmatched inside a
+    // part: "FY3" alone could be a building name abbreviation, so only the
+    // full unambiguous postcode is read out of a folded part.
+    expect(outcodeOf('Something Road, Town B44')).toBeNull()
+  })
+
   it('accepts an address that only carries the outcode', () => {
     expect(outcodeOf('Morfa Gardens, Coundon, Coventry, CV6')).toBe('CV6')
     expect(outcodeOf('Coniston Avenue, Hebburn, NE31')).toBe('NE31')

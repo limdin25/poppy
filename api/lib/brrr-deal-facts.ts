@@ -216,6 +216,14 @@ export function outcodeOf(address: string | null | undefined): string | null {
     if (!p) continue;
     if (FULL_POSTCODE.test(p)) return p.replace(/\s+/g, '').slice(0, -3);
     if (OUTCODE_ONLY.test(p)) return p;
+    // Rightmove-style addresses fold town and postcode into ONE comma part
+    // ("Oundle Road, Kingstanding, Birmingham B44 8EP"), which the two
+    // whole-part tests above can never match. Found live on 2026-08-19: the
+    // first Ballpark-agreed deal reported "no readable outcode" over a
+    // perfectly good B44. A trailing full postcode inside the part is
+    // unambiguous, so read it; anything looser stays a null, never a guess.
+    const trailing = p.match(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}$/);
+    if (trailing) return trailing[1];
   }
   return null;
 }
