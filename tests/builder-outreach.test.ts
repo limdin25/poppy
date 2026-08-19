@@ -7,8 +7,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import {
   OUTREACH_DEFAULTS, loadOutreachSettingsFrom, viewingTimeLabel,
-  blockedReasonFor, inviteVars, renderPreview,
-  INVITE_TEMPLATE_TEXT, VIEWING_BOOKED_COLUMN,
+  blockedReasonFor, inviteVars, renderPreview, ukDay,
+  INVITE_TEMPLATE_TEXT, MORNING_TEMPLATE_TEXT, VIEWING_BOOKED_COLUMN,
 } from '../api/lib/builder-outreach.js';
 import { templateProblem, extractTemplateVars } from '../src/features/crm/lib/waTemplates.js';
 
@@ -31,6 +31,32 @@ describe('the invite template', () => {
     expect(body).toContain('this is Pedro');
     expect(body).toContain('give us a quote at 12 High Street, Wigan');
     expect(body).not.toContain('{{');
+  });
+});
+
+describe('the 8am morning confirmation', () => {
+  it('passes the same validation, and Meta will not take a trailing variable', () => {
+    expect(templateProblem('builder_viewing_morning', MORNING_TEMPLATE_TEXT)).toBeNull();
+    expect(extractTemplateVars(MORNING_TEMPLATE_TEXT)).toEqual(['1', '2']);
+    // The lesson from 20 Aug: a body ending on "{{2}}?" was REJECTED, so this
+    // one closes on a word.
+    expect(MORNING_TEMPLATE_TEXT.trim().endsWith('.')).toBe(true);
+    expect(/\{\{\d+\}\}\W*$/.test(MORNING_TEMPLATE_TEXT.trim())).toBe(false);
+  });
+  it('reads as a person texting on the day', () => {
+    const body = renderPreview(MORNING_TEMPLATE_TEXT, { '1': 'Dave', '2': 'Oundle Road' });
+    expect(body).toBe('Good morning Dave, just want to confirm we are still good for the viewing today at Oundle Road. Thanks.');
+  });
+  it('the day is UK wall time, so a late-evening viewing is not tomorrow', () => {
+    // 23:30 UTC on 20 Aug is 00:30 on the 21st in London (BST).
+    expect(ukDay(new Date('2026-08-20T23:30:00Z'))).toBe('2026-08-21');
+    expect(ukDay(new Date('2026-08-20T09:00:00Z'))).toBe('2026-08-20');
+  });
+  it('stamps before sending, so a lost response cannot double-text at 8:05', () => {
+    const stampAt = SRC.indexOf('morning_sent_at: new Date().toISOString()');
+    const sendAt = SRC.indexOf('ContentSid: sid');
+    expect(stampAt).toBeGreaterThan(-1);
+    expect(sendAt).toBeGreaterThan(stampAt);
   });
 });
 

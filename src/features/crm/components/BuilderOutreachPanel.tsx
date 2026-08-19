@@ -164,21 +164,28 @@ export function BuilderConfirmInboxButton({ contactId }: { contactId: string }) 
   );
 }
 
+interface RosterBuilder { id: string; name: string; phone: string | null; coverage: string[] }
+
 export default function BuilderOutreachPanel({ propertyId }: { propertyId: string }) {
   const [rows, setRows] = useState<OutreachRow[]>([]);
+  const [roster, setRoster] = useState<RosterBuilder[]>([]);
+  const [assignedId, setAssignedId] = useState<string>('');
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const { rows: got } = await adminFetch<{ rows: OutreachRow[] }>(
-        `/api/admin/builder-outreach?property_id=${encodeURIComponent(propertyId)}`,
-      );
-      setRows(got);
+      const got = await adminFetch<{
+        rows: OutreachRow[]; roster: RosterBuilder[]; assignedBuilderId: string | null;
+      }>(`/api/admin/builder-outreach?property_id=${encodeURIComponent(propertyId)}`);
+      setRows(got.rows);
+      setRoster(got.roster ?? []);
+      setAssignedId(got.assignedBuilderId ?? '');
     } catch {
       // Non-admins (agents) get a 403; the panel simply stays empty for them.
       setRows([]);
+      setRoster([]);
     }
   }, [propertyId]);
 
@@ -201,9 +208,29 @@ export default function BuilderOutreachPanel({ propertyId }: { propertyId: strin
     }
   };
 
-  if (!rows.length) return null;
+  const assign = async (builderId: string) => {
+    setBusy('assign');
+    setNote(null);
+    try {
+      const out = await adminFetch<{ ok: boolean; warning?: string | null }>(
+        '/api/admin/builder-outreach',
+        { method: 'POST', body: JSON.stringify({ action: 'assign', property_id: propertyId, builder_id: builderId }) },
+      );
+      setNote(out.warning ?? 'Builder assigned to this viewing.');
+      await load();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // The panel exists whenever there is a roster to pick from, not only once
+  // invites have been drafted: hand-picking is a first-class way in.
+  if (!rows.length && !roster.length) return null;
 
   const live = rows.filter((r) => r.status !== 'skipped');
+  const assignedName = roster.find((b) => b.id === assignedId)?.name ?? '';
 
   return (
     <div className="rounded-md border border-border bg-white" data-testid="builder-outreach-panel">
@@ -216,7 +243,7 @@ export default function BuilderOutreachPanel({ propertyId }: { propertyId: strin
         <HardHat className="w-3.5 h-3.5 text-amber-600" />
         Builder invites
         <span className="ml-auto text-[11px] font-normal text-ink-muted">
-          {live.filter((r) => r.status === 'confirmed').length ? 'builder confirmed'
+          {assignedName ? `${assignedName} is going`
             : live.filter((r) => r.status === 'sent' || r.status === 'replied').length
               ? `${live.filter((r) => r.status === 'sent' || r.status === 'replied').length} out`
               : `${live.filter((r) => r.status === 'draft').length} waiting for your press`}
@@ -225,6 +252,38 @@ export default function BuilderOutreachPanel({ propertyId }: { propertyId: strin
       {open && (
         <div className="space-y-1.5 border-t border-border p-2">
           {note && <p className="text-[11px] text-amber-700">{note}</p>}
+
+          {/* WHO IS GOING TO THIS HOUSE. Hugo, 2026-08-20: he wanted to say it
+              himself, not only let a WhatsApp reply decide it. Picking here
+              books the builder, moves the card to Viewing booked and puts the
+              chip on it, exactly like the confirm press does. */}
+          {roster.length > 0 && (
+            <div className="rounded border border-border bg-surface px-2 py-1.5">
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-ink-subtle">
+                Who is going to this house
+              </label>
+              <select
+                data-testid="builder-assign-select"
+                disabled={busy !== null}
+                value={assignedId}
+                onChange={(e) => { if (e.target.value) void assign(e.target.value); }}
+                className="mt-1 w-full rounded border border-border bg-white px-1.5 py-1 text-[11.5px] text-ink"
+              >
+                <option value="">Pick a builder from the roster</option>
+                {roster.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {b.coverage?.length ? ` (${b.coverage.join(', ')})` : ''}
+                  </option>
+                ))}
+              </select>
+              {assignedName && (
+                <p className="mt-1 text-[10.5px] text-emerald-700">
+                  {assignedName} is booked onto this viewing.
+                </p>
+              )}
+            </div>
+          )}
           {rows.map((r) => (
             <div key={r.id} className="rounded border border-border p-2" data-testid={`builder-outreach-row-${r.id}`}>
               <div className="flex items-center gap-2">

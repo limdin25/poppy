@@ -8,7 +8,8 @@
 // That is the one thing that must hold whether the deal brain is on or off,
 // and it is what the e2e test asserts by reading data-attention off each row.
 
-import { Mail, Clock, AlarmClock, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { Mail, Clock, AlarmClock, ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { attentionTone, hoursAgo, sortFlags, FLAG_LABEL, FLAG_TONE, URGENT_AT } from '../../lib/dealDay';
 import DealFactsBlock, { factsFromCockpit } from '../deals/DealFactsBlock';
@@ -93,15 +94,34 @@ function QueueRow({ deal, selected, onSelect }: {
   deal: CockpitDeal; selected: boolean; onSelect: () => void;
 }) {
   const urgent = deal.attention >= URGENT_AT;
+  // COLLAPSED BY DEFAULT. Hugo, 2026-08-20, looking at the list: "make sure
+  // this is not expandable, you know, I mean you can expand it, but normally
+  // initially only if we click to expand, otherwise it's always minimized."
+  // A row shrinks to who and where; the instruction, the reply, the six deal
+  // facts and the flags live behind the chevron. Selecting a deal (the row
+  // click) is deliberately NOT the same gesture as expanding it, so opening a
+  // card on the right no longer means scrolling past everything else.
+  const [expanded, setExpanded] = useState(false);
   return (
-    <li>
+    <li className="relative">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        data-testid="cockpit-row-expand"
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Collapse this deal' : 'Expand this deal'}
+        className="absolute right-1 top-2 z-10 grid h-6 w-6 place-items-center rounded text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-ink"
+      >
+        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      </button>
       <button
         type="button"
         onClick={onSelect}
         data-testid="cockpit-row"
         data-attention={deal.attention}
+        data-expanded={expanded ? '1' : '0'}
         className={cn(
-          'w-full text-left px-3 py-3 transition-colors border-l-[3px]',
+          'w-full text-left px-3 py-3 pr-8 transition-colors border-l-[3px]',
           // Urgency is the rail colour, selection is the fill, so the two
           // never fight over the same edge.
           urgent ? 'border-l-[#DC2626]' : 'border-l-transparent',
@@ -139,48 +159,66 @@ function QueueRow({ deal, selected, onSelect }: {
             {/* The row must not preview an order this reader is not allowed to
                 see. Without this it showed the stale brief underneath, which is
                 how "Hold, nothing today" reached the queue as well as the panel. */}
-            {deal.blockedOnHugo ? (
-              <p className="text-[12px] text-[#9A3412] mt-0.5 font-medium">
-                Hugo is on this one. Nothing for you today.
-              </p>
-            ) : (
-              <p className="text-[12px] text-[#374151] mt-0.5 line-clamp-2">{deal.instruction}</p>
-            )}
-
-            {deal.repliedSinceBrief && (
-              <ReplyBlock preview={deal.lastInboundPreview} />
-            )}
-
-            {/* Hugo 2026-08-19: the deal in six lines on the queue row too,
-                same block as the board, so a wrong number is visible before
-                anything is opened. */}
-            {!deal.blockedOnHugo && (
-              <DealFactsBlock
-                facts={factsFromCockpit(deal)}
-                asking={deal.money.asking}
-                compact
-              />
-            )}
-
-            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-              {!deal.blockedOnHugo && <ConfidenceChip confidence={deal.confidence} />}
-              <FlagPills flags={deal.flags} />
-              <span className="text-[9.5px] text-ink-subtle inline-flex items-center gap-0.5">
-                <Clock className="w-2.5 h-2.5" />
-                {hoursAgo(deal.hoursSinceTouch)}
-              </span>
-              {deal.stale && !deal.blockedOnHugo && (
-                <span
-                  className="text-[9.5px] text-ink-subtle"
-                  title="Something has happened since this instruction was written. The sweep catches up within two minutes."
-                >
-                  written before the last change
+            {/* Collapsed, a row still says the two things that decide whether
+                to open it: how long it has been, and that they wrote. */}
+            {!expanded && (
+              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                {deal.repliedSinceBrief && (
+                  <span className="inline-flex items-center gap-0.5 rounded-full border border-[#FECACA] bg-[#FEF2F2] px-1.5 py-0.5 text-[9.5px] font-medium text-[#B91C1C]">
+                    <Mail className="h-2.5 w-2.5" /> They replied
+                  </span>
+                )}
+                <span className="text-[9.5px] text-ink-subtle inline-flex items-center gap-0.5">
+                  <Clock className="w-2.5 h-2.5" />
+                  {hoursAgo(deal.hoursSinceTouch)}
                 </span>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
 
-          <ChevronRight className="w-4 h-4 text-[#D1D5DB] flex-shrink-0 mt-2" />
+            {expanded && (
+              <>
+                {deal.blockedOnHugo ? (
+                  <p className="text-[12px] text-[#9A3412] mt-0.5 font-medium">
+                    Hugo is on this one. Nothing for you today.
+                  </p>
+                ) : (
+                  <p className="text-[12px] text-[#374151] mt-0.5">{deal.instruction}</p>
+                )}
+
+                {deal.repliedSinceBrief && (
+                  <ReplyBlock preview={deal.lastInboundPreview} />
+                )}
+
+                {/* Hugo 2026-08-19: the deal in six lines on the queue row too,
+                    same block as the board, so a wrong number is visible before
+                    anything is opened. */}
+                {!deal.blockedOnHugo && (
+                  <DealFactsBlock
+                    facts={factsFromCockpit(deal)}
+                    asking={deal.money.asking}
+                    compact
+                  />
+                )}
+
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  {!deal.blockedOnHugo && <ConfidenceChip confidence={deal.confidence} />}
+                  <FlagPills flags={deal.flags} />
+                  <span className="text-[9.5px] text-ink-subtle inline-flex items-center gap-0.5">
+                    <Clock className="w-2.5 h-2.5" />
+                    {hoursAgo(deal.hoursSinceTouch)}
+                  </span>
+                  {deal.stale && !deal.blockedOnHugo && (
+                    <span
+                      className="text-[9.5px] text-ink-subtle"
+                      title="Something has happened since this instruction was written. The sweep catches up within two minutes."
+                    >
+                      written before the last change
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </button>
     </li>

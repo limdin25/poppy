@@ -34,6 +34,8 @@ export interface OutreachSettings {
   /** Twilio Content sid (HX...) of the approved viewing-invite template. */
   invite_sid: string;
   followup_sid: string;
+  /** The 8am morning-of-the-viewing confirmation. */
+  morning_sid: string;
 }
 
 export const OUTREACH_DEFAULTS: OutreachSettings = {
@@ -43,6 +45,7 @@ export const OUTREACH_DEFAULTS: OutreachSettings = {
   max_new_builders: 8,
   invite_sid: '',
   followup_sid: '',
+  morning_sid: '',
 };
 
 /** What Pedro (or whoever presses send) signs the invite as. */
@@ -335,9 +338,116 @@ export async function sentToday(sb: Sb): Promise<number> {
   return count ?? 0;
 }
 
+/** The morning-of nudge, sent at 8am UK on the day of the viewing (Hugo,
+ *  2026-08-20: "the morning of the visit you say hi good morning just wanna
+ *  confirm we are still good for the viewing today"). {{1}} builder name,
+ *  {{2}} the address. Kept VERBATIM in sync with the Meta template. */
+export const MORNING_TEMPLATE_TEXT =
+  'Good morning {{1}}, just want to confirm we are still good for the viewing today at {{2}}. Thanks.';
+
 /** The board column a confirmed builder moves the branch card into. Renamed
  *  from 'Needs viewing' on 19 Aug; a card here means a builder is booked. */
 export const VIEWING_BOOKED_COLUMN = 'Viewing booked';
+
+/** Today's date in UK wall time, as YYYY-MM-DD. */
+export function ukDay(at: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(at);
+}
+
+/**
+ * The 8am reminder to every builder confirmed onto a viewing happening today.
+ *
+ * Only CONFIRMED builders, only the day itself, and only once: the send is
+ * stamped on the outreach row (`morning_sent_at`), so a re-run or a second
+ * cron beat cannot text a builder twice before breakfast.
+ */
+export async function sendMorningReminders(
+  sb: Sb,
+  now: Date = new Date(),
+): Promise<{ sent: number; skipped: number; errors: string[] }> {
+  const out = { sent: 0, skipped: 0, errors: [] as string[] };
+  const settings = await loadOutreachSettings(sb);
+  const sid = settings.morning_sid;
+  if (!/^HX[0-9a-f]{32}$/i.test(sid)) {
+    out.errors.push('morning template not approved yet');
+    return out;
+  }
+  const today = ukDay(now);
+
+  const { data: rows } = await sb
+    .from('brrr_builder_outreach')
+    .select('id, property_id, contact_id, morning_sent_at, brrr_builders(name), brrr_properties(address, viewing_at, assigned_builder_id)')
+    .eq('status', 'confirmed')
+    .is('morning_sent_at', null)
+    .limit(100);
+
+  for (const raw of ((rows ?? []) as Array<Record<string, unknown>>)) {
+    const prop = raw.brrr_properties as { address?: string; viewing_at?: string } | null;
+    const builder = raw.brrr_builders as { name?: string } | null;
+    const contactId = raw.contact_id as string | null;
+    if (!prop?.viewing_at || !contactId) { out.skipped += 1; continue; }
+    if (ukDay(new Date(prop.viewing_at)) !== today) { out.skipped += 1; continue; }
+
+    const { data: contact } = await sb
+      .from('wk_contacts').select('phone').eq('id', contactId).maybeSingle();
+    const phone = String((contact as { phone?: string } | null)?.phone ?? '');
+    if (!isUkMobile(phone)) { out.skipped += 1; continue; }
+
+    const { data: dnt } = await sb
+      .from('wk_contact_tags').select('tag')
+      .eq('contact_id', contactId).eq('tag', 'do-not-text').maybeSingle();
+    if (dnt) { out.skipped += 1; continue; }
+
+    const vars = {
+      '1': String(builder?.name ?? 'there').split(' ')[0],
+      '2': String(prop.address ?? '').trim(),
+    };
+    const body = renderPreview(MORNING_TEMPLATE_TEXT, vars);
+
+    // Stamp BEFORE the wire call: a lost response must not re-send at 8:05.
+    await (sb.from('brrr_builder_outreach') as any)
+      .update({ morning_sent_at: new Date().toISOString() })
+      .eq('id', raw.id as string);
+
+    const { data: pending } = await (sb.from('wk_sms_messages') as any).insert({
+      contact_id: contactId, direction: 'outbound', channel: 'whatsapp',
+      body, from_e164: WHATSAPP_SENDER_E164(), to_e164: phone, status: 'sending',
+    }).select('id').single();
+
+    const acc = process.env.TWILIO_ACCOUNT_SID ?? '';
+    const tok = process.env.TWILIO_AUTH_TOKEN ?? '';
+    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${acc}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${acc}:${tok}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        To: `whatsapp:${phone}`,
+        From: `whatsapp:${WHATSAPP_SENDER_E164()}`,
+        ContentSid: sid,
+        ContentVariables: JSON.stringify(vars),
+        StatusCallback: `${process.env.SUPABASE_URL}/functions/v1/wk-sms-status`,
+      }).toString(),
+    });
+    if (!resp.ok) {
+      const errText = (await resp.text()).slice(0, 200);
+      out.errors.push(errText);
+      if (pending?.id) {
+        await (sb.from('wk_sms_messages') as any).update({ status: 'failed' }).eq('id', pending.id);
+      }
+      continue;
+    }
+    const sent = await resp.json() as { sid?: string };
+    if (pending?.id) {
+      await (sb.from('wk_sms_messages') as any).update({
+        twilio_sid: sent.sid ?? null, external_id: sent.sid ?? null, status: sent.sid ? 'sent' : 'queued',
+      }).eq('id', pending.id);
+    }
+    out.sent += 1;
+  }
+  return out;
+}
 
 /**
  * A human pressed "Builder confirmed": book the builder onto the property,
@@ -358,13 +468,40 @@ export async function confirmBuilder(
   const r = row as { id: string; property_id: string; builder_id: string; contact_id: string | null; status: string };
   if (r.status === 'confirmed') return { ok: true };
 
+  await (sb.from('brrr_builder_outreach') as any)
+    .update({ status: 'confirmed', confirmed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', r.id);
+  return assignBuilderToProperty(sb, r.property_id, r.builder_id, actorId);
+}
+
+/**
+ * Put a builder on a house, with or without an invite behind it.
+ *
+ * Hugo, 2026-08-20: "I don't see the option that can tag which builder will go
+ * to which property. Should be an option there." So the pairing is a plain
+ * human choice from the roster, not only the tail of a WhatsApp conversation:
+ * a builder rung on the phone, or one Hugo already knows, is assigned the same
+ * way and gets the same chip, the same bell and the same board move.
+ */
+export async function assignBuilderToProperty(
+  sb: Sb,
+  propertyId: string,
+  builderId: string,
+  actorId: string,
+): Promise<{ ok: boolean; warning?: string; error?: string }> {
+  const r = { property_id: propertyId, builder_id: builderId };
+
   const nowIso = new Date().toISOString();
   await (sb.from('brrr_properties') as any)
     .update({ assigned_builder_id: r.builder_id })
     .eq('id', r.property_id);
+  // An invite already sent to this builder follows the assignment, so the
+  // panel and the chip cannot disagree about who is going.
   await (sb.from('brrr_builder_outreach') as any)
     .update({ status: 'confirmed', confirmed_at: nowIso, updated_at: nowIso })
-    .eq('id', r.id);
+    .eq('property_id', r.property_id)
+    .eq('builder_id', r.builder_id)
+    .in('status', ['draft', 'approved', 'sent', 'replied']);
 
   const { data: prop } = await sb
     .from('brrr_properties')

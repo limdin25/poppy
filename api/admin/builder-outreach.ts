@@ -10,7 +10,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
-import { sendOutreachRow, confirmBuilder } from '../lib/builder-outreach.js';
+import { sendOutreachRow, confirmBuilder, assignBuilderToProperty } from '../lib/builder-outreach.js';
 
 export const config = { maxDuration: 60 };
 
@@ -58,12 +58,48 @@ async function handleWeb(req: Request): Promise<Response> {
     }
     const { data, error } = await q;
     if (error) return Response.json({ error: error.message }, { status: 500 });
-    return Response.json({ rows: data ?? [] });
+
+    // The roster, so the panel can offer "which builder goes to this house"
+    // as a plain choice (Hugo, 2026-08-20). Only on the property view, and
+    // only active builders; who is ASSIGNED comes back separately so the
+    // picker can show the current answer rather than guess it.
+    let roster: Array<{ id: string; name: string; phone: string | null; coverage: string[] }> = [];
+    let assignedBuilderId: string | null = null;
+    if (propertyId) {
+      const [{ data: builders }, { data: prop }] = await Promise.all([
+        sb.from('brrr_builders').select('id, name, phone, coverage').eq('active', true).order('name'),
+        sb.from('brrr_properties').select('assigned_builder_id').eq('id', propertyId).maybeSingle(),
+      ]);
+      roster = (builders ?? []) as typeof roster;
+      assignedBuilderId = (prop as { assigned_builder_id?: string | null } | null)?.assigned_builder_id ?? null;
+    }
+    return Response.json({ rows: data ?? [], roster, assignedBuilderId });
   }
 
   if (req.method === 'POST') {
-    let body: { action?: string; id?: string };
-    try { body = await req.json() as { action?: string; id?: string }; } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
+    let body: { action?: string; id?: string; property_id?: string; builder_id?: string };
+    try {
+      body = await req.json() as { action?: string; id?: string; property_id?: string; builder_id?: string };
+    } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+    // Hand-picking who goes: property + builder, no invite needed behind it.
+    if (body.action === 'assign') {
+      const propertyId = (body.property_id ?? '').trim();
+      const builderId = (body.builder_id ?? '').trim();
+      if (!propertyId || !builderId) {
+        return Response.json({ error: 'property_id and builder_id required' }, { status: 400 });
+      }
+      const result = await assignBuilderToProperty(sb, propertyId, builderId, admin.id);
+      if (!result.ok) return Response.json({ error: result.error ?? 'Assign refused.' }, { status: 409 });
+      await sb.from('admin_audit_log').insert({
+        admin_email: admin.email,
+        action: 'builder_assign',
+        target_type: 'brrr_property',
+        metadata: { property_id: propertyId, builder_id: builderId },
+      });
+      return Response.json({ ok: true, warning: result.warning ?? null });
+    }
+
     const id = (body.id ?? '').trim();
     if (!id) return Response.json({ error: 'id required' }, { status: 400 });
 
