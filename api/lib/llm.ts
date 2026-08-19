@@ -224,6 +224,11 @@ export async function callLLM(
         // learnt this on qwen3.7 the hard way (empty answers that look like
         // blindness).
         max_tokens: provider === 'openrouter' ? maxTokens + 4096 : maxTokens,
+        // Reasoning OFF by default: measured 19 Aug on the brain-sized
+        // prompt, DeepSeek v4 pro takes 32s thinking and 4.7s not, and the
+        // edge routes have a ~25s ceiling. The deterministic contract around
+        // the brain is the safety, not the model's soliloquy.
+        ...(provider === 'openrouter' ? { reasoning: { enabled: false } } : {}),
         // Flattened: this branch is the fallback provider and takes a
         // different image shape. See the LLMBlock comment above.
         messages: [
@@ -233,23 +238,13 @@ export async function callLLM(
         ...extra,
       }),
     });
-  let res = await callChat({});
+  const res = await callChat({});
   if (!res.ok) {
     console.error(`[llm] ${provider} error: ${res.status} ${await res.text()}`);
     return '';
   }
-  let data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-  let text = data.choices?.[0]?.message?.content || '';
-  // A reasoning model that spent the whole pot thinking answers with empty
-  // content. One retry with reasoning off gets the words instead of silence.
-  if (!text.trim() && provider === 'openrouter') {
-    console.warn(`[llm] ${resolvedModel} returned empty content; retrying with reasoning disabled`);
-    res = await callChat({ reasoning: { enabled: false } });
-    if (res.ok) {
-      data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-      text = data.choices?.[0]?.message?.content || '';
-    }
-  }
+  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const text = data.choices?.[0]?.message?.content || '';
   // OpenRouter out of credit (402) or otherwise silent = fall back to the
   // default Claude model rather than a blank verdict. Found live 19 Aug: the
   // account's five dollars were already spent, so the brain would have gone
