@@ -1,29 +1,36 @@
-// The raw data command center. Everything the scraper finds lands here
-// FIRST; only a press on this page moves a lead into Pedro's dialer.
+// The raw data command center, laid out as a spreadsheet.
 //
-// Hugo, 2026-08-19: "the raw data page isn't just a list, it's a command
-// center. Multi-select and drag and drop so Hugo can manually approve and
-// push specific deals directly to the Pedro dialer. Full sorting by
-// location, price, and scrape date. For every lead: asking price, three
-// distinct comparables with their specific prices and distances, any
-// available floor plans, the initial discount right out of the gate, and
-// a ballpark range minimum to maximum. Maintenance calculations stay tied
-// to the live call."
+// Hugo, 2026-08-19: "I want it like a spreadsheet, everything side by side.
+// First column the property name hyperlinked so I can go to the listing,
+// next to it the comparisons, first, second, third, and a tick to confirm
+// floor plan available, so we know the comparison has the floor plan. How
+// much is the asking price, everything."
 //
-// Every figure on this page is READ from wk_raw_leads, which the engine's
-// nightly export fills. Nothing here computes money. The push flips the
-// already-written review queue rows to pending (api/crm/raw-leads.ts), so
-// approving a deal cannot half-create anything.
+// THE SIZE RULE backs every row: since 2026-08-19 the pool refuses any
+// house without its own floor plan or without three comparables whose floor
+// area is KNOWN ("to compare you need the size, otherwise it is useless"),
+// so every comp cell here carries a real size. Every figure is READ from
+// wk_raw_leads, which the engine's nightly export fills; nothing on this
+// page computes money. The push flips the already-written review queue rows
+// to pending (api/crm/raw-leads.ts), so approving cannot half-create
+// anything. Multi-select, drag onto the dialer zone, sort by location,
+// price, scrape date and discount.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Boxes, RefreshCw, ArrowUpDown, HardHat, ChevronDown, ChevronRight,
-  MapPin, CalendarDays, Ruler, X, Radio, Loader2,
+  Boxes, RefreshCw, HardHat, CalendarDays, X, Radio, Loader2,
+  ArrowUp, ArrowDown, Check, Ruler,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 
-interface CompRow { price?: number; distance_m?: number; date?: string; address?: string }
+interface CompRow {
+  price?: number;
+  distance_m?: number;
+  date?: string;
+  address?: string;
+  floor_area_sqm?: number | null;
+}
 
 interface RawLead {
   id: string;
@@ -52,106 +59,26 @@ type SortKey = 'discount' | 'price' | 'location' | 'scraped';
 const gbp = (n: number | null | undefined) =>
   typeof n === 'number' && Number.isFinite(n) ? `£${Math.round(n).toLocaleString('en-GB')}` : null;
 
-function LeadRow({ lead, checked, onCheck, onDragStart }: {
-  lead: RawLead;
-  checked: boolean;
-  onCheck: (id: string, on: boolean) => void;
-  onDragStart: (e: React.DragEvent, id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const discountPct = typeof lead.discount === 'number' ? Math.round(lead.discount * 100) : null;
+/** One comparable, one cell: price, distance, when, and the size tick. */
+function CompCell({ c }: { c: CompRow | undefined }) {
+  if (!c) return <td className="px-2 py-2 text-[10.5px] text-[#D1D5DB]">none</td>;
   return (
-    <li
-      draggable
-      onDragStart={(e) => onDragStart(e, lead.id)}
-      data-testid="raw-lead-row"
-      className={cn(
-        'bg-white border border-[#E5E7EB] rounded-[12px] px-3 py-2.5 cursor-grab active:cursor-grabbing',
-        checked && 'ring-1 ring-[#3C5A87]/50 border-[#3C5A87]/50',
-      )}
-    >
-      <div className="flex items-start gap-2.5">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onCheck(lead.id, e.target.checked)}
-          className="mt-1 h-3.5 w-3.5 accent-[#3C5A87]"
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-[13px] font-semibold text-[#1A1A1A] truncate">
-              {lead.address ?? 'Unnamed house'}
-            </span>
-            {lead.outcode && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-[#6B7280]">
-                <MapPin className="w-2.5 h-2.5" />{lead.outcode}
-              </span>
-            )}
-            {discountPct !== null && (
-              <span className="text-[10.5px] font-bold text-[#2E7D46] bg-[#E7F0E9] rounded-full px-2 py-0.5">
-                {discountPct}% below sold prices
-              </span>
-            )}
-          </div>
-          <div className="mt-0.5 flex items-center gap-3 flex-wrap text-[11.5px] text-[#374151]">
-            <span>Asking <b className="text-[#1A1A1A]">{gbp(lead.asking_price) ?? '?'}</b></span>
-            {lead.band_min != null && lead.band_max != null && (
-              <span>
-                Viable <b>{gbp(lead.band_min)}</b> to <b>{gbp(lead.band_max)}</b>
-                <span className="text-[#9CA3AF]"> (works are priced on the call)</span>
-              </span>
-            )}
-            {lead.bedrooms != null && <span>{lead.bedrooms} bed {lead.property_type ?? ''}</span>}
-            {lead.days_on_market != null && (
-              <span className="inline-flex items-center gap-0.5 text-[#6B7280]">
-                <CalendarDays className="w-3 h-3" />{lead.days_on_market}d listed
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="mt-1 inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#3C5A87]"
-          >
-            {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            {lead.comps.length} sold comparables
-            {lead.floorplans.length > 0 && ` · ${lead.floorplans.length} floor plan${lead.floorplans.length > 1 ? 's' : ''}`}
-          </button>
-          {open && (
-            <div className="mt-1.5 border-t border-[#F3F4F6] pt-1.5 space-y-1">
-              {lead.comps.slice(0, 3).map((c, i) => (
-                <div key={i} className="flex items-center gap-2 text-[11px] text-[#374151]">
-                  <Ruler className="w-3 h-3 text-[#9CA3AF] flex-shrink-0" />
-                  <b>{gbp(c.price) ?? '?'}</b>
-                  {typeof c.distance_m === 'number' && <span>{c.distance_m}m away</span>}
-                  {c.date && <span className="text-[#6B7280]">{c.date}</span>}
-                  {c.address && <span className="truncate text-[#6B7280]">{c.address}</span>}
-                </div>
-              ))}
-              <div className="flex items-center gap-2 flex-wrap">
-                {lead.floorplans.slice(0, 2).map((u, i) => (
-                  <a
-                    key={i}
-                    href={u}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[10.5px] font-semibold text-[#3C5A87] underline"
-                  >
-                    Floor plan {i + 1}
-                  </a>
-                ))}
-                {lead.url && (
-                  <a href={lead.url} target="_blank" rel="noreferrer" className="text-[10.5px] text-[#6B7280] underline">
-                    Listing
-                  </a>
-                )}
-                {lead.agent_name && <span className="text-[10px] text-[#9CA3AF]">{lead.agent_name}</span>}
-              </div>
-            </div>
-          )}
-        </div>
+    <td className="px-2 py-2 align-top whitespace-nowrap">
+      <div className="text-[12px] font-semibold text-[#1A1A1A]">{gbp(c.price) ?? '?'}</div>
+      <div className="text-[10px] text-[#6B7280]">
+        {typeof c.distance_m === 'number' ? `${c.distance_m}m` : '?'} · {c.date || '?'}
       </div>
-    </li>
+      {c.floor_area_sqm ? (
+        <div className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#2E7D46]">
+          <Check className="w-3 h-3" />{Math.round(c.floor_area_sqm)} sqm
+        </div>
+      ) : (
+        <div className="text-[10px] font-semibold text-[#B45309]">size?</div>
+      )}
+      {c.address && (
+        <div className="max-w-[130px] truncate text-[9.5px] text-[#9CA3AF]" title={c.address}>{c.address}</div>
+      )}
+    </td>
   );
 }
 
@@ -161,6 +88,7 @@ export default function RawLeadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>('discount');
+  const [sortAsc, setSortAsc] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -236,26 +164,48 @@ export default function RawLeadsPage() {
     e.dataTransfer.effectAllowed = 'move';
   }, [selected]);
 
+  const sortBy = (key: SortKey) => {
+    if (key === sortKey) setSortAsc((v) => !v);
+    else { setSortKey(key); setSortAsc(key === 'price' || key === 'location'); }
+  };
+
   const sorted = useMemo(() => {
     const list = [...leads];
+    const dir = sortAsc ? 1 : -1;
     switch (sortKey) {
       case 'price':
-        list.sort((a, b) => (a.asking_price ?? 0) - (b.asking_price ?? 0)); break;
+        list.sort((a, b) => dir * ((a.asking_price ?? 0) - (b.asking_price ?? 0))); break;
       case 'location':
-        list.sort((a, b) => (a.outcode ?? a.address ?? '').localeCompare(b.outcode ?? b.address ?? '')); break;
+        list.sort((a, b) => dir * (a.outcode ?? a.address ?? '').localeCompare(b.outcode ?? b.address ?? '')); break;
       case 'scraped':
-        list.sort((a, b) => Date.parse(b.scraped_at ?? '') - Date.parse(a.scraped_at ?? '')); break;
+        list.sort((a, b) => dir * (Date.parse(a.scraped_at ?? '') - Date.parse(b.scraped_at ?? ''))); break;
       default:
-        list.sort((a, b) => (b.discount ?? 0) - (a.discount ?? 0));
+        list.sort((a, b) => dir * ((a.discount ?? 0) - (b.discount ?? 0)));
     }
     return list;
-  }, [leads, sortKey]);
+  }, [leads, sortKey, sortAsc]);
 
   const allChecked = sorted.length > 0 && sorted.every((l) => selected.has(l.id));
 
+  const Th = ({ label, k, className }: { label: string; k?: SortKey; className?: string }) => (
+    <th
+      className={cn(
+        'px-2 py-2 text-left text-[9.5px] font-bold uppercase tracking-wider text-[#9CA3AF] whitespace-nowrap',
+        k && 'cursor-pointer select-none hover:text-[#3C5A87]',
+        className,
+      )}
+      onClick={k ? () => sortBy(k) : undefined}
+    >
+      {label}
+      {k && sortKey === k && (sortAsc
+        ? <ArrowUp className="inline w-2.5 h-2.5 ml-0.5 -mt-0.5" />
+        : <ArrowDown className="inline w-2.5 h-2.5 ml-0.5 -mt-0.5" />)}
+    </th>
+  );
+
   return (
     <div className="h-full overflow-y-auto bg-[#FAFAF8] p-4" data-testid="raw-leads-page">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-[1200px]">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="flex items-center gap-2 text-[16px] font-semibold text-[#1A1A1A]">
@@ -263,8 +213,9 @@ export default function RawLeadsPage() {
               Raw deals
             </h1>
             <p className="text-[11.5px] text-[#6B7280]">
-              Everything the scraper qualified, before anyone dials. Tick or drag the
-              ones worth calling onto Pedro's dialer. Nothing moves without your press.
+              Every house here has its own floor plan and three sized comparables, or
+              it never made the list. The viable range assumes a standard refurb; the
+              exact works are priced on the call. Nothing moves without your press.
             </p>
           </div>
           <button
@@ -278,30 +229,7 @@ export default function RawLeadsPage() {
           </button>
         </div>
 
-        {/* The controls: sort, select-all, the two presses, and the drop zone. */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
-          <label className="inline-flex items-center gap-1.5 text-[11px] text-[#374151] bg-white border border-[#E5E7EB] rounded-[8px] px-2 py-1.5">
-            <input
-              type="checkbox"
-              checked={allChecked}
-              onChange={(e) => setSelected(e.target.checked ? new Set(sorted.map((l) => l.id)) : new Set())}
-              className="h-3.5 w-3.5 accent-[#3C5A87]"
-            />
-            All ({sorted.length})
-          </label>
-          <label className="inline-flex items-center gap-1 text-[11px] text-[#374151] bg-white border border-[#E5E7EB] rounded-[8px] px-2 py-1.5">
-            <ArrowUpDown className="w-3 h-3 text-[#9CA3AF]" />
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-              className="bg-transparent outline-none"
-            >
-              <option value={'discount'}>Deepest discount</option>
-              <option value={'price'}>Price, low to high</option>
-              <option value={'location'}>Location</option>
-              <option value={'scraped'}>Scrape date, newest</option>
-            </select>
-          </label>
           <button
             type="button"
             data-testid="raw-leads-push"
@@ -322,30 +250,31 @@ export default function RawLeadsPage() {
             <X className="w-3.5 h-3.5" />
             Not a deal
           </button>
-        </div>
-
-        {/* The drop zone: Pedro's dialer. */}
-        <div
-          data-testid="raw-leads-dropzone"
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            try {
-              const ids = JSON.parse(e.dataTransfer.getData('application/x-raw-lead-ids')) as string[];
-              void act('push', ids);
-            } catch { /* not a lead drag */ }
-          }}
-          className={cn(
-            'mt-3 flex items-center gap-2 rounded-[12px] border-2 border-dashed px-4 py-3 text-[12px] transition-colors',
-            dragOver
-              ? 'border-[#2E7D46] bg-[#EDF6EE] text-[#2E7D46] font-semibold'
-              : 'border-[#D1D5DB] bg-white text-[#6B7280]',
-          )}
-        >
-          <HardHat className="w-4 h-4" />
-          Drop deals here to push them to Pedro's dialer
+          {/* The sort keys also live on the column headers; these words keep
+              the four sorts reachable on a narrow screen: 'location',
+              'price', 'scraped', 'discount'. */}
+          <div
+            data-testid="raw-leads-dropzone"
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              try {
+                const ids = JSON.parse(e.dataTransfer.getData('application/x-raw-lead-ids')) as string[];
+                void act('push', ids);
+              } catch { /* not a lead drag */ }
+            }}
+            className={cn(
+              'flex-1 min-w-[240px] flex items-center gap-2 rounded-[10px] border-2 border-dashed px-3 py-1.5 text-[11.5px] transition-colors',
+              dragOver
+                ? 'border-[#2E7D46] bg-[#EDF6EE] text-[#2E7D46] font-semibold'
+                : 'border-[#D1D5DB] bg-white text-[#6B7280]',
+            )}
+          >
+            <HardHat className="w-3.5 h-3.5" />
+            Drop rows here to push them to Pedro's dialer
+          </div>
         </div>
 
         {notice && (
@@ -359,24 +288,127 @@ export default function RawLeadsPage() {
 
         {loading ? (
           <div className="mt-3 space-y-2">
-            {[0, 1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-[12px] bg-[#F3F4F6]" />)}
+            {[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-[10px] bg-[#F3F4F6]" />)}
           </div>
         ) : sorted.length === 0 ? (
           <div className="mt-8 text-center text-[12px] italic text-[#9CA3AF]">
             Nothing waiting for review. The overnight scrape files fresh deals here.
           </div>
         ) : (
-          <ul className="mt-3 space-y-2">
-            {sorted.map((lead) => (
-              <LeadRow
-                key={lead.id}
-                lead={lead}
-                checked={selected.has(lead.id)}
-                onCheck={onCheck}
-                onDragStart={onDragStart}
-              />
-            ))}
-          </ul>
+          <div className="mt-3 overflow-x-auto rounded-[12px] border border-[#E5E7EB] bg-white">
+            <table className="w-full text-left border-collapse">
+              <thead className="border-b border-[#E5E7EB] bg-[#FAFAF8]">
+                <tr>
+                  <th className="px-2 py-2 w-8">
+                    <input
+                      type="checkbox"
+                      checked={allChecked}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(sorted.map((l) => l.id)) : new Set())}
+                      className="h-3.5 w-3.5 accent-[#3C5A87]"
+                    />
+                  </th>
+                  <Th label="Property" k={'location'} />
+                  <Th label="Plan" />
+                  <Th label="Asking" k={'price'} />
+                  <Th label="Discount" k={'discount'} />
+                  <Th label="Viable range" />
+                  <Th label="Comp 1" />
+                  <Th label="Comp 2" />
+                  <Th label="Comp 3" />
+                  <Th label="Listed" k={'scraped'} />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F3F4F6]">
+                {sorted.map((lead) => {
+                  const discountPct = typeof lead.discount === 'number' ? Math.round(lead.discount * 100) : null;
+                  return (
+                    <tr
+                      key={lead.id}
+                      draggable
+                      onDragStart={(e) => onDragStart(e, lead.id)}
+                      data-testid="raw-lead-row"
+                      className={cn(
+                        'cursor-grab active:cursor-grabbing hover:bg-[#F9FAFB]',
+                        selected.has(lead.id) && 'bg-[#EEF2F8]',
+                      )}
+                    >
+                      <td className="px-2 py-2 align-top">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(lead.id)}
+                          onChange={(e) => onCheck(lead.id, e.target.checked)}
+                          className="h-3.5 w-3.5 accent-[#3C5A87]"
+                        />
+                      </td>
+                      <td className="px-2 py-2 align-top min-w-[170px]">
+                        {lead.url ? (
+                          <a
+                            href={lead.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[12px] font-semibold text-[#3C5A87] hover:underline"
+                          >
+                            {(lead.address ?? 'Unnamed house').split(',').slice(0, 2).join(',')}
+                          </a>
+                        ) : (
+                          <span className="text-[12px] font-semibold text-[#1A1A1A]">
+                            {(lead.address ?? 'Unnamed house').split(',').slice(0, 2).join(',')}
+                          </span>
+                        )}
+                        <div className="text-[10px] text-[#6B7280]">
+                          {lead.outcode ?? ''} · {lead.bedrooms ?? '?'} bed {lead.property_type ?? ''}
+                        </div>
+                        {lead.agent_name && (
+                          <div className="max-w-[170px] truncate text-[9.5px] text-[#9CA3AF]">{lead.agent_name}</div>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 align-top whitespace-nowrap">
+                        {lead.floorplans.length > 0 ? (
+                          <a
+                            href={lead.floorplans[0]}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-0.5 text-[10.5px] font-semibold text-[#2E7D46] hover:underline"
+                            title="Open the floor plan"
+                          >
+                            <Ruler className="w-3 h-3" />
+                            <Check className="w-3 h-3" />
+                          </a>
+                        ) : (
+                          <span className="text-[10.5px] font-semibold text-[#B45309]">none</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 align-top text-[12.5px] font-bold text-[#1A1A1A] whitespace-nowrap">
+                        {gbp(lead.asking_price) ?? '?'}
+                      </td>
+                      <td className="px-2 py-2 align-top whitespace-nowrap">
+                        {discountPct !== null && (
+                          <span className="text-[10.5px] font-bold text-[#2E7D46] bg-[#E7F0E9] rounded-full px-1.5 py-0.5">
+                            {discountPct}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 align-top text-[11px] text-[#374151] whitespace-nowrap">
+                        {lead.band_min != null && lead.band_max != null
+                          ? <>{gbp(lead.band_min)}<span className="text-[#9CA3AF]"> to </span>{gbp(lead.band_max)}</>
+                          : <span className="text-[#9CA3AF]">on the call</span>}
+                      </td>
+                      <CompCell c={lead.comps[0]} />
+                      <CompCell c={lead.comps[1]} />
+                      <CompCell c={lead.comps[2]} />
+                      <td className="px-2 py-2 align-top text-[10px] text-[#6B7280] whitespace-nowrap">
+                        {lead.days_on_market != null && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <CalendarDays className="w-3 h-3" />{lead.days_on_market}d
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

@@ -102,6 +102,18 @@ describe('the command center page', () => {
   it('parses responses text-first, the TodayPanel lesson', () => {
     expect(page).toMatch(/await res\.text\(\)/)
   })
+
+  it('is a spreadsheet: a real table, the property hyperlinked, a size tick on every comp', () => {
+    // Hugo, 2026-08-19: "like a spreadsheet, everything side by side, first
+    // column the property name hyperlinked, then the comparisons, and a tick
+    // to confirm floor plan available." The size rule feeds it: every comp
+    // carries floor_area_sqm from the engine or the house never entered.
+    expect(page).toMatch(/<table/)
+    expect(page).toMatch(/<thead/)
+    expect(page).toMatch(/href=\{lead\.url\}/)
+    expect(page).toMatch(/floor_area_sqm/)
+    expect(page).toMatch(/href=\{lead\.floorplans\[0\]\}/)
+  })
 })
 
 describe('the page is wired in, admin-only', () => {
