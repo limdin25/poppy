@@ -169,3 +169,68 @@ describe('the assign scripts: review mode, and the raw payload rides along', () 
     expect(disc).not.toMatch(/MIN_LOCAL_DISCOUNT = 0\.15/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// The seven comparable rules (2026-08-19).
+//
+// Hugo, after the Fontaine comparables audit, pasting the course's own
+// checklist back: "build it but make sure ai does all this as well before send
+// to my raw list ... make sure all of this is rock solid."
+//
+// The engine (comp_gate.py) is the only thing that DECIDES. These tests pin
+// the three places the answer has to survive: the assign script must refuse a
+// lead that did not clear all seven, the column must exist to hold the
+// receipt, and the tab must show it rather than implying it.
+
+describe('the seven comparable rules reach the raw tab', () => {
+  const disc = read('scripts/assign-discovery-branches.mjs')
+  const page = read('src/features/crm/pages/RawLeadsPage.tsx')
+  const mig = read('supabase/migrations/20260820000006_raw_leads_comp_checks.sql')
+
+  const SEVEN = ['street_first', 'recent_enough', 'photographs', 'condition',
+    'sizes', 'own_street', 'on_market']
+
+  it('the assign script names all seven rules and refuses anything short', () => {
+    // The same discipline the discount already has: the pool file is not
+    // evidence, it is a file. A last gate that trusts its input is not a gate.
+    for (const rule of SEVEN) expect(disc).toContain(rule)
+    expect(disc).toMatch(/gatePassed/)
+    expect(disc).toMatch(/checks\.length !== SEVEN\.length/)
+    expect(disc).toMatch(/did not clear all seven/)
+  })
+
+  it('an unchecked lead is refused, never waved through', () => {
+    // A pool file written by an older engine carries no comp_checks at all.
+    // Unchecked is not the same as fine.
+    expect(disc).toMatch(/Array\.isArray\(p\?\.comp_checks\) \? p\.comp_checks : \[\]/)
+  })
+
+  it('the receipt rides into the raw lead row, read never derived', () => {
+    expect(disc).toMatch(/comp_checks: Array\.isArray\(p\.comp_checks\)/)
+    expect(disc).toMatch(/market_comps: p\.market_comps/)
+    expect(disc).toMatch(/market_ceiling: p\.market_ceiling/)
+  })
+
+  it('the column exists and defaults to empty, not to a pass', () => {
+    expect(mig).toMatch(/comp_checks jsonb not null default '\[\]'::jsonb/)
+    expect(mig).toMatch(/market_comps/)
+    expect(mig).toMatch(/market_ceiling/)
+  })
+
+  it('the tab shows a dot per rule with the evidence on hover', () => {
+    expect(page).toMatch(/RULE_LABELS/)
+    for (const rule of SEVEN) expect(page).toContain(rule)
+    expect(page).toMatch(/RulesCell/)
+    expect(page).toMatch(/lead\.comp_checks/)
+  })
+
+  it('a lead filed before the gate existed says so instead of showing ticks', () => {
+    // Seven quiet greens nobody earned is worse than no answer at all.
+    expect(page).toMatch(/not checked/)
+  })
+
+  it('the labels are the seven rules in Hugo\'s own order', () => {
+    const order = [...page.matchAll(/\['(\w+)', '/g)].map((m) => m[1])
+    expect(order.slice(0, 7)).toEqual(SEVEN)
+  })
+})

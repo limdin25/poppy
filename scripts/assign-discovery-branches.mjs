@@ -101,14 +101,36 @@ async function main() {
   // one. A MISSING discount is a REFUSAL: unverified is not the same as fine,
   // and that assumption is exactly how three houses at 10.5%, 6.7% and 3.0%
   // under reached his dialer on the priced side.
+  //
+  // THE SEVEN COMPARABLE RULES ARE RE-CHECKED HERE FOR THE SAME REASON.
+  // Hugo, 2026-08-19: "make sure ai does all this as well before send to my
+  // raw list ... make sure all of this is rock solid." comp_gate.py in the
+  // engine is what DECIDES; this reads its receipt and refuses anything that
+  // does not carry seven answered rules with every one of them ok. A pool file
+  // written by an older engine has no comp_checks at all, and that is a
+  // refusal too: unchecked is not the same as fine.
+  const SEVEN = ['street_first', 'recent_enough', 'photographs', 'condition',
+    'sizes', 'own_street', 'on_market']
+  const gatePassed = (p) => {
+    const checks = Array.isArray(p?.comp_checks) ? p.comp_checks : []
+    if (checks.length !== SEVEN.length) return false
+    const seen = new Set(checks.filter((c) => c && c.ok === true).map((c) => c.rule))
+    return SEVEN.every((r) => seen.has(r))
+  }
+
+  let droppedGate = 0
   const pool = rawPool.filter((b) => {
     const d = Number(b?.property?.discount)
-    return Number.isFinite(d) && d >= MIN_LOCAL_DISCOUNT
+    if (!(Number.isFinite(d) && d >= MIN_LOCAL_DISCOUNT)) return false
+    if (!gatePassed(b?.property)) { droppedGate++; return false }
+    return true
   })
-  const dropped = rawPool.length - pool.length
+  const dropped = rawPool.length - pool.length - droppedGate
   say(`  pool: ${pool.length} branches from ${POOL_PATH}`
     + (dropped ? `  (${dropped} refused here: no measured discount, or under `
-      + `${Math.round(MIN_LOCAL_DISCOUNT * 100)}%)` : ''))
+      + `${Math.round(MIN_LOCAL_DISCOUNT * 100)}%)` : '')
+    + (droppedGate ? `  (${droppedGate} refused here: did not clear all seven `
+      + `comparable rules)` : ''))
   if (!pool.length) {
     console.error('REFUSING: not one branch in the pool carries a discount at or '
       + 'over the rule. That is a broken pool, not an empty night.')
@@ -281,6 +303,12 @@ async function main() {
         // property, we cannot make comparisons"), so these arrive filled.
         floor_area_sqm: p.subject_floor_area_sqm ?? null,
         area_source: p.area_source ?? null,
+        // The receipt for the seven rules, one row each, exactly as the
+        // engine answered them. Read never derived: nothing in the browser
+        // or in this script decides whether a rule passed.
+        comp_checks: Array.isArray(p.comp_checks) ? p.comp_checks : [],
+        market_comps: p.market_comps ?? null,
+        market_ceiling: p.market_ceiling ?? null,
         status: 'pending_review',
       }, { onConflict: 'property_id' })
       if (rawErr) say(`  raw-lead upsert failed for ${facts.property_street}: ${rawErr.message}`)

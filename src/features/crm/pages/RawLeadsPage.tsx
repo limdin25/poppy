@@ -32,6 +32,13 @@ interface CompRow {
   floor_area_sqm?: number | null;
 }
 
+/** One of the seven course rules, answered by the engine. Never derived here. */
+interface CompCheck {
+  rule: string;
+  ok: boolean;
+  detail: string;
+}
+
 interface RawLead {
   id: string;
   property_id: string;
@@ -53,8 +60,22 @@ interface RawLead {
   scraped_at: string | null;
   floor_area_sqm: number | null;
   area_source: string | null;
+  comp_checks: CompCheck[];
+  market_comps: number | null;
+  market_ceiling: number | null;
   status: string;
 }
+
+/** The seven rules, in the order Hugo wrote them, with a short label each. */
+const RULE_LABELS: Array<[string, string]> = [
+  ['street_first', 'Postcode, then the street, then the quarter mile'],
+  ['recent_enough', 'Sold inside a year (six months ideal, two years dead)'],
+  ['photographs', 'Every comparable has photographs'],
+  ['condition', 'Condition judged from those photographs'],
+  ['sizes', 'Square metres known, on the house and the comparables'],
+  ['own_street', 'The street, not just the radius'],
+  ['on_market', 'What is on the market, not only what sold'],
+];
 
 /** Where the subject's size came from, in one word Hugo recognises. */
 const AREA_SOURCE_LABEL: Record<string, string> = {
@@ -88,6 +109,51 @@ function CompCell({ c }: { c: CompRow | undefined }) {
       {c.address && (
         <div className="max-w-[130px] truncate text-[9.5px] text-[#9CA3AF]" title={c.address}>{c.address}</div>
       )}
+    </td>
+  );
+}
+
+/** Seven dots, one per rule, each one hoverable for the evidence behind it.
+ *
+ *  Hugo, 2026-08-19: "make sure all of this is rock solid." A lead only
+ *  reaches this table if the engine answered all seven, so these are normally
+ *  seven greens. The point is that the EVIDENCE is one hover away, and that a
+ *  lead filed before the gate existed says "not checked" rather than showing
+ *  seven quiet ticks nobody earned. */
+function RulesCell({ checks }: { checks: CompCheck[] }) {
+  const byRule = new Map((checks ?? []).map((c) => [c.rule, c]));
+  if (!checks?.length) {
+    return (
+      <td className="px-2 py-2 align-top whitespace-nowrap">
+        <span className="text-[10px] font-semibold text-[#B45309]" title="Filed before the comparable rules were enforced">
+          not checked
+        </span>
+      </td>
+    );
+  }
+  const failed = RULE_LABELS.filter(([r]) => byRule.get(r)?.ok !== true).length;
+  return (
+    <td className="px-2 py-2 align-top whitespace-nowrap">
+      <div className="flex items-center gap-[3px]">
+        {RULE_LABELS.map(([rule, label], i) => {
+          const c = byRule.get(rule);
+          const ok = c?.ok === true;
+          return (
+            <span
+              key={rule}
+              title={`${i + 1}. ${label}\n${c?.detail ?? 'not answered'}`}
+              className={cn(
+                'inline-block h-[9px] w-[9px] rounded-full',
+                ok ? 'bg-[#2E7D46]' : 'bg-[#B45309]',
+              )}
+            />
+          );
+        })}
+      </div>
+      <div className={cn('mt-0.5 text-[9.5px] font-semibold',
+        failed ? 'text-[#B45309]' : 'text-[#2E7D46]')}>
+        {failed ? `${7 - failed}/7` : 'all 7'}
+      </div>
     </td>
   );
 }
@@ -318,6 +384,7 @@ export default function RawLeadsPage() {
                     />
                   </th>
                   <Th label="Property" k={'location'} />
+                  <Th label="7 rules" />
                   <Th label="Plan" />
                   <Th label="Size" />
                   <Th label="Asking" k={'price'} />
@@ -373,6 +440,7 @@ export default function RawLeadsPage() {
                           <div className="max-w-[170px] truncate text-[9.5px] text-[#9CA3AF]">{lead.agent_name}</div>
                         )}
                       </td>
+                      <RulesCell checks={lead.comp_checks} />
                       <td className="px-2 py-2 align-top whitespace-nowrap">
                         {lead.floorplans.length > 0 ? (
                           <a
