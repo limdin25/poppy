@@ -241,7 +241,9 @@ describe('the screen and the coach say the same thing', () => {
       'Ask for the two minutes',
       'The discovery questions',
       'Their figure, never ours',
-      'Lock the next step',
+      // Renamed 19 Aug: the system check (the ballpark button) joined the
+      // stage, same day the ballpark question moved onto call one.
+      'Check the system, then lock the next step',
       'Call two, the offer',
       // Added 18 Aug. Hugo: "the callback script for the 2nd call where we
       // mention the ballpark and if accepted we book a viewing is not there at
@@ -257,10 +259,18 @@ describe('the screen and the coach say the same thing', () => {
     for (const b of beats) expect(html).toContain(b)
   })
 
-  it('BOTH teach the two-call rule: no number of ours on a first call', () => {
-    expect(COACH).toMatch(/NEVER SAYS A NUMBER OF OUR OWN ON A FIRST CALL/)
-    expect(md).toMatch(/NEVER\nSAYS A NUMBER OF OUR OWN ON CALL ONE|NEVER SAYS A NUMBER OF OUR OWN ON CALL ONE/)
-    expect(html).toMatch(/never say a number of our own on call one/i)
+  it('BOTH teach the call-one money law: the panel sentence is the only number of ours', () => {
+    // Rewritten 2026-08-19 when the ballpark question moved onto call one.
+    // The law is the same on every surface: the ONLY first-call figure is
+    // the one the green panel prices from THIS call, read word for word and
+    // framed as not an offer. A number from the agent's head is still the
+    // thing the coach fires a card at.
+    expect(COACH).toMatch(/says a number of OUR OWN exactly one way/)
+    expect(COACH).toMatch(/Any OTHER number of ours, invented, remembered or rounded, fire a card/)
+    expect(md).toMatch(/THE ONLY NUMBER OF OURS ON CALL ONE is the one the green ballpark panel/)
+    expect(md).toMatch(/from the agent's head, never/)
+    expect(html).toMatch(/The only number of ours you may say on call one/)
+    expect(html).toMatch(/From your head: never/)
     // And the approved deflection is the same sentence on both surfaces.
     expect(COACH).toMatch(/have to take back/)  // \' escaped in source
     expect(html).toMatch(/a number I'd have to take back/)

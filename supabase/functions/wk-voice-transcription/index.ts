@@ -526,7 +526,7 @@ const PROPERTY_STAGE_ORDER = [
   'Ask for the two minutes',
   'The discovery questions',
   'Their figure, never ours',
-  'Lock the next step',
+  'Check the system, then lock the next step',
   'Call two, the offer',
   'They said yes to the figure. Book the builder.',
 ];
@@ -538,8 +538,10 @@ const PROPERTY_AGENT_SCRIPT_MD = `# Ringing the agent about a house
 A real person at a real company, working with the director, who is a cash buyer.
 TWO CALLS. CALL ONE IS DISCOVERY: the facts, what sold done up on the street,
 what has been rejected, THEIR figure if they will give one, the video and the
-measurements, the email address, and a booked time to ring back. THE AGENT NEVER
-SAYS A NUMBER OF OUR OWN ON CALL ONE. Call two is the offer call, made only
+measurements, the email address, the system check, and a booked time to ring
+back. THE ONLY NUMBER OF OURS ON CALL ONE is the one the green ballpark panel
+prices during the call, read word for word at stage 5, framed as not an offer;
+from the agent's head, never. Call two is the offer call, made only
 after the homework, with the director's confirmed figure. Do NOT make a formal
 offer on either call. NEVER view a property and never book one: our builder
 views it and prices the refurb at the same time. One question at a time.
@@ -584,7 +586,8 @@ A figure THEY say is worth more than any figure we could float. Write it down wo
 If they push for OUR number: "Honestly, I don't want to give you a number I'd have to take back. Let me do the work properly, what's sold, what the work costs, and I'll come back to you tomorrow with something you can actually put to the vendor." That is the whole answer, on every first call.
 If they cannot disclose: "No, and I wouldn't ask you to. Roughly though, are they wedded to the asking price, or is there room? You don't have to give me a number."
 
-## 5. Lock the next step
+## 5. Check the system, then lock the next step
+THE SYSTEM CHECK first (new, Hugo 2026-08-19). He presses the green Get the ballpark button; while it prices this call he says: "give me one second, I'm just checking my system here. I'm not making an offer, if we ever got that far I'd want our builder round it first. I just want to see if this one's even in our range." If the panel gives a figure he reads its sentence word for word, ONE number then silence, no climbing today. If the panel refuses, no money is said at all: "the director prices every deal himself", and straight on.
 "Is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it?" Ask this on EVERY call. The builder prices the refurb off the video before anyone travels.
 "What's the best email for you anyway? My director will want to come back to you directly with a couple of questions on it, and I'd rather it came to you than the general inbox." Ask this on EVERY call. Never hang up without the email address: every offer goes out by email, so a call with no email cannot become an offer.
 IF THEY REFUSE THE VIDEO, THAT CHANGES NOTHING ABOUT THE EMAIL. The video is a bonus, the address is the call. Say "no bother at all" and go straight to the email ask with the word "anyway" in it. Never argue for the video, never ask twice, and never let a no on the video cost you the address. If they will not give a personal address, take the branch inbox and say you will put their name in the subject.
@@ -696,15 +699,15 @@ const PROPERTY_SCRIPT_PROMPT = [
   '',
   '',
   'THIS IS A TWO CALL PROCESS AND YOU MUST COACH THE RIGHT CALL.',
-  'CALL ONE is DISCOVERY: the facts, what sold done up on the street, offers and rejections, the measurements, THEIR figure if they will give one, the video, THE EMAIL ADDRESS, and a booked time to ring back. THE AGENT NEVER SAYS A NUMBER OF OUR OWN ON A FIRST CALL: no figure, no range, no "around". If they start to, fire a card that stops them, with the approved line: "I don\'t want to give you a number I\'d have to take back, let me do the homework and come back to you tomorrow." CALL TWO is the offer call, made after the homework with the director\'s confirmed figure: there, and only there, the ballpark question is the job. A WHICH CALL THIS IS block appears below when the deal step is known; without one, treat the call as a FIRST call.',
+  'CALL ONE is DISCOVERY: the facts, what sold done up on the street, offers and rejections, the measurements, THEIR figure if they will give one, the video, THE EMAIL ADDRESS, the system check, and a booked time to ring back. ON A FIRST CALL the agent says a number of OUR OWN exactly one way (new, Hugo 2026-08-19): pressing the Get the ballpark button and reading the panel\'s sentence word for word, "if I was to come in around X, would I be in the ballpark, or am I a million miles off", always framed as not an offer, always after the condition questions. Hearing that sentence is CORRECT, do not flag it. Any OTHER number of ours, invented, remembered or rounded, fire a card that stops them, with the approved line: "I don\'t want to give you a number I\'d have to take back, let me do the homework and come back to you tomorrow." After the ballpark lands: ONE number then silence, no climbing on call one, never the top of the band. CALL TWO is the offer call, made after the homework with the director\'s confirmed figure: the ladder and the real negotiation live there. A WHICH CALL THIS IS block appears below when the deal step is known; without one, treat the call as a FIRST call.',
   'On every call: a figure out of the BRANCH\'S mouth is the prize, and a call that ends without a booked ring-back time has not worked, however pleasant it was.',
   '',
   'THE SIX BEATS, forward-only order',
   '1. Is it still available',
   '2. Ask for the two minutes',
   '3. The discovery questions (empty, needs work, why selling, what sold done up on the street, offers and rejections, time on market, measurements, tenure)',
-  '4. Their figure, never ours (call one never floats OUR number)',
-  '5. Lock the next step (video walkthrough, THE EMAIL ADDRESS, builder, callback time)',
+  '4. Their figure, never ours (theirs FIRST, always; ours only afterwards, via the system check)',
+  '5. Check the system, then lock the next step (the ballpark button and its one sentence, video walkthrough, THE EMAIL ADDRESS, builder, callback time)',
   '6. Call two, the offer (ONLY after the homework, with the director\'s confirmed figure)',
   '',
   'NEVER MENTION, none of it exists on this call:',

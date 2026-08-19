@@ -72,7 +72,7 @@ export default async function handler(req: Request): Promise<Response> {
       .order('due_at', { ascending: true })
       .limit(300),
     sb.from('brrr_properties')
-      .select('id, address, viewing_at, wk_contact_id, assigned_builder_id')
+      .select('id, address, viewing_at, viewing_notes, wk_contact_id, assigned_builder_id')
       .not('viewing_at', 'is', null)
       .lte('viewing_at', until)
       .order('viewing_at', { ascending: true })
@@ -83,7 +83,8 @@ export default async function handler(req: Request): Promise<Response> {
     id: string; contact_id: string; due_at: string; note: string | null;
   }>;
   const views = (viewings ?? []) as Array<{
-    id: string; address: string | null; viewing_at: string; wk_contact_id: string | null;
+    id: string; address: string | null; viewing_at: string; viewing_notes: string | null;
+    wk_contact_id: string | null;
   }>;
 
   // One read for the names and the houses these hang off, rather than one per
@@ -139,7 +140,9 @@ export default async function handler(req: Request): Promise<Response> {
       at: v.viewing_at,
       overdue: Date.parse(v.viewing_at) < now.getTime(),
       title: 'Builder viewing',
-      note: null,
+      // The agent's booking note. Pedro's first booking arrived with the
+      // note stripped and the card told nobody anything (2026-08-19).
+      note: v.viewing_notes,
       contactId: v.wk_contact_id,
       contactName: v.wk_contact_id ? nameById.get(v.wk_contact_id) ?? null : null,
       propertyId: v.id,

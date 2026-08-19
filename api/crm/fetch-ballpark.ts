@@ -79,13 +79,23 @@ async function handleWeb(req: Request): Promise<Response> {
   const { data: allowed } = await caller.rpc('wk_is_agent_or_admin');
   if (!allowed) return Response.json({ error: 'CRM access required' }, { status: 403 });
 
-  let body: { propertyId?: string; apply?: boolean; dueAt?: string };
-  try { body = await req.json() as { propertyId?: string; apply?: boolean; dueAt?: string }; }
+  let body: { propertyId?: string; apply?: boolean; dueAt?: string; live?: boolean };
+  try { body = await req.json() as { propertyId?: string; apply?: boolean; dueAt?: string; live?: boolean }; }
   catch { return Response.json({ error: 'bad json' }, { status: 400 }); }
   if (!body.propertyId) return Response.json({ error: 'propertyId required' }, { status: 400 });
 
-  const preview = await storedFreshPreview(body.propertyId)
-    ?? await runBallparkPreview(supabase, body.propertyId);
+  // `live` is the mid-call button on call one (Hugo, 19 Aug: "a button that
+  // he presses and the ballpark appears after reading whatever was said on
+  // the call"). The stored-preview shortcut is WRONG mid-call: the current
+  // call has no duration_sec yet, so last night's homework would look fresh
+  // and the panel would price a conversation that has not happened. Force
+  // the live listen, and skip the deep photo pass so the answer lands while
+  // the branch is still on the phone; the runner's post-call re-run does
+  // the full-depth version before anything is armed.
+  const preview = body.live
+    ? await runBallparkPreview(supabase, body.propertyId, { fast: true })
+    : await storedFreshPreview(body.propertyId)
+      ?? await runBallparkPreview(supabase, body.propertyId);
 
   // The same status contract the modal has always read: a refusal with facts
   // is 200 (it is the homework's honest answer), nothing-to-build-from is

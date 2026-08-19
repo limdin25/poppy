@@ -10,6 +10,8 @@ import {
   SkipForward,
   Phone,
   ArrowLeft,
+  HardHat,
+  Loader2,
   type LucideIcon,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
@@ -18,6 +20,119 @@ import { useActiveCallCtx } from './ActiveCallContext';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { isSpeedDialerOn, subscribeSpeedDialer } from '../../lib/speedDialer';
 import FollowupPromptModal from '../followups/FollowupPromptModal';
+import { usePropertyListings } from '../../hooks/usePropertyListings';
+import { ukInputToIso, ukLabel } from '../../lib/ukTime';
+import { supabase } from '@/integrations/supabase/browser';
+
+/** The builder viewing, booked right where the call ends.
+ *
+ *  Hugo, 2026-08-19: "build a calendar next to the call disposition. If you
+ *  book a builder we can add the date there right after the call. UK time.
+ *  And it reflects on the cockpit's calendar." Property calls only. The time
+ *  is typed as UK wall time whatever zone the agent sits in (Pedro is in the
+ *  Philippines), and the note travels with the booking so the calendar card
+ *  is not a bare time: his first booking saved without the note and the
+ *  card told nobody anything. */
+function BuilderViewingBox({ propertyOptions, quickNote }: {
+  propertyOptions: Array<{ id: string; address: string | null }>;
+  quickNote: string;
+}) {
+  const [propId, setPropId] = useState(propertyOptions[0]?.id ?? '');
+  useEffect(() => {
+    if (!propId && propertyOptions[0]?.id) setPropId(propertyOptions[0].id);
+  }, [propertyOptions, propId]);
+  const [dueLocal, setDueLocal] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    if (!propId || !dueLocal || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error('Not signed in');
+      const iso = ukInputToIso(dueLocal);
+      const res = await fetch('/api/crm/book-viewing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        // The quick note is the fallback: Pedro types the booking words
+        // there first, and losing them was the whole bug.
+        body: JSON.stringify({ propertyId: propId, at: iso, note: note.trim() || quickNote.trim() || null }),
+      });
+      const raw = await res.text();
+      let json: { ok?: boolean; error?: string };
+      try { json = JSON.parse(raw) as typeof json; } catch { json = { error: `HTTP ${res.status}` }; }
+      if (!res.ok || !json.ok) throw new Error(json.error ?? 'Could not book it');
+      setSavedAt(iso);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not book it');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (savedAt) {
+    return (
+      <div
+        className="mt-5 rounded-[12px] border border-[#BBD4BE] bg-[#EDF6EE] px-3 py-2.5 text-[12px] text-[#1A3A24]"
+        data-testid="builder-viewing-booked"
+      >
+        <HardHat className="inline w-3.5 h-3.5 mr-1 -mt-0.5 text-[#2E7D46]" />
+        Builder viewing booked for <b>{ukLabel(savedAt)}</b> UK. It is on the cockpit
+        calendar, note included. Hugo sorts out which builder goes.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-5 rounded-[12px] border border-[#E5E7EB] bg-white p-3" data-testid="builder-viewing-box">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#9CA3AF] font-semibold mb-2">
+        <HardHat className="w-3.5 h-3.5 text-[#3C5A87]" />
+        Book the builder viewing (UK time)
+      </div>
+      {propertyOptions.length > 1 && (
+        <select
+          value={propId}
+          onChange={(e) => setPropId(e.target.value)}
+          className="w-full mb-2 px-2 py-1.5 text-[12px] border border-[#E5E5E5] rounded-[8px] bg-white"
+        >
+          {propertyOptions.map((p) => (
+            <option key={p.id} value={p.id}>{(p.address ?? 'Unnamed house').split(',')[0]}</option>
+          ))}
+        </select>
+      )}
+      <div className="flex gap-2">
+        <input
+          type="datetime-local"
+          value={dueLocal}
+          onChange={(e) => setDueLocal(e.target.value)}
+          data-testid="builder-viewing-when"
+          className="flex-1 px-2 py-1.5 text-[12px] border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30"
+        />
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!propId || !dueLocal || saving}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold bg-[#3C5A87] text-white rounded-[8px] hover:bg-[#3C5A87]/90 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <HardHat className="w-3.5 h-3.5" />}
+          Book it
+        </button>
+      </div>
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Note for the calendar (your quick note is used if this stays empty)"
+        className="w-full mt-2 px-2 py-1.5 text-[12px] border border-[#E5E5E5] rounded-[8px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30"
+      />
+      {error && <div className="mt-1.5 text-[11px] text-[#EF4444]">{error}</div>}
+    </div>
+  );
+}
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Sparkles,
@@ -130,6 +245,13 @@ export default function PostCallPanel() {
   const nextId = store.queue[0];
   const nextContact = nextId ? store.getContact(nextId) : undefined;
 
+  // The builder viewing box, property calls only. The contact the call was
+  // about knows whether this is a house conversation (lead_type is stamped
+  // by the property room) and which houses hang off the branch.
+  const endedContact = call?.contactId ? store.getContact(call.contactId) : undefined;
+  const isPropertyCall = endedContact?.customFields?.lead_type === 'estate_agent';
+  const { listings } = usePropertyListings(isPropertyCall ? endedContact?.phone : null);
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-5 py-3 border-b border-[#E5E7EB] flex items-center gap-2">
@@ -233,6 +355,13 @@ export default function PostCallPanel() {
             className="w-full px-3 py-2 text-[13px] bg-white border border-[#E5E5E5] rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30 focus:border-[#3C5A87]"
           />
         </div>
+
+        {isPropertyCall && listings.length > 0 && (
+          <BuilderViewingBox
+            propertyOptions={listings.map((l) => ({ id: l.id, address: l.address }))}
+            quickNote={quickNote}
+          />
+        )}
 
         {/* Empty-state hint when no pipeline columns are hydrated yet. The
             most common cause is a fresh workspace before useHydratePipelineColumns
@@ -341,6 +470,7 @@ export default function PostCallPanel() {
             columnName={col.name}
             suggestedHoursAhead={suggestedHours}
             callId={call.callId}
+            initialNote={quickNote}
             onSaved={() => {
               const colId = pendingFollowupColId;
               setPendingFollowupColId(null);

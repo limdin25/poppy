@@ -179,8 +179,16 @@ async function loadProp(sb: Sb, propertyId: string): Promise<PropRow | null> {
   return (data?.[0] as unknown as PropRow | undefined) ?? null;
 }
 
-/** Hear the call, extract the facts, ask the engine. WRITES NOTHING. */
-export async function runBallparkPreview(sb: Sb, propertyId: string): Promise<BallparkPreview> {
+/** Hear the call, extract the facts, ask the engine. WRITES NOTHING.
+ *
+ *  `fast` skips the engine's deep photo pass. It exists for ONE caller: the
+ *  mid-call button on call one (Hugo, 19 Aug: press it while the branch is
+ *  still on the phone). The photos do not change during a call and the deep
+ *  pass is most of the 45 seconds; the runner's post-call re-run keeps
+ *  deep:true, so the figures that ARM the deal always had the full look. */
+export async function runBallparkPreview(
+  sb: Sb, propertyId: string, opts: { fast?: boolean } = {},
+): Promise<BallparkPreview> {
   const nowIso = new Date().toISOString();
   const prop = await loadProp(sb, propertyId);
   if (!prop) return { ok: false, reason: 'unknown_property', detail: 'No such property.', at: nowIso };
@@ -264,7 +272,9 @@ export async function runBallparkPreview(sb: Sb, propertyId: string): Promise<Ba
         },
         // The engine re-reads EVERY photograph with the call as context on a
         // deep pass; it only ever runs on a house a human has spent time on.
-        deep: true,
+        // The mid-call button passes fast:true and skips it: the branch is
+        // on the phone NOW, and the runner re-does the full pass after.
+        deep: !opts.fast,
         call_notes: [
           transcript ? `WHAT THE AGENT SAID ON THE CALL:\n${transcript}` : '',
           typedNotes ? `THE CALLER'S TYPED NOTES:\n${typedNotes}` : '',

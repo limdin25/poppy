@@ -39,6 +39,7 @@ import {
 import DialerScriptPane from './DialerScriptPane';
 import DialerRightTabs from './DialerRightTabs';
 import OfferStrip from './OfferStrip';
+import BallparkOnCallPanel from './BallparkOnCallPanel';
 import PropertiesPane from './PropertiesPane';
 import NextStepPanel from '../shared/NextStepPanel';
 import BallparkModal from '../deals/BallparkModal';
@@ -296,6 +297,16 @@ export default function PropertyCallRoom({
                 Thank them for calling back, then take it from the step below.
               </span>
             </div>
+          )}
+          {/* The ballpark button, call one only. Hugo, 2026-08-19: "we need a
+              button there that Pedro presses, very clear button on the top,
+              and then give us the ballpark when Pedro is ready." Discovery
+              mode is exactly the mode with no armed figures, so the only
+              number Pedro can say on call one is the one this panel prices
+              from the call itself. Keyed by listing so switching houses
+              never shows one house's figure beside another's script. */}
+          {callMode === 'discovery' && selectedListing && (
+            <BallparkOnCallPanel key={selectedListing.id} propertyId={selectedListing.id} />
           )}
           {/* Call 2 script with NO armed figures. Found 2026-08-18 on Friars
               Close: the card sat in "Ready for call 2" (the disposition put it

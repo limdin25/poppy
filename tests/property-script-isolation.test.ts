@@ -233,18 +233,23 @@ describe('two calls: discovery first, the offer only after the homework', () => 
 
   // Rewritten 2026-08-13. The one-call version had Pedro float a figure built
   // on a guessed refurb on the first dial; three of those turned into formal
-  // offers in a single week. Call one is now discovery with NO number of ours,
-  // and the money lives on call two with the director's confirmed figure.
+  // offers in a single week. Call one became discovery with NO number of ours.
+  // Amended 2026-08-19: the course's own "Offer Without Offering" lesson puts
+  // the ballpark question ON the first call, and Hugo ordered it back, SAFELY:
+  // the only number of ours on call one is the one the green panel prices
+  // mid-call from THIS call's transcript, read word for word. From Pedro's
+  // head: still never. The ladder and the negotiation still live on call two.
   it('says so at the top, before any stage', () => {
     expect(html).toMatch(/TWO CALL process/)
-    expect(html).toMatch(/never say a number of our own on call one/i)
+    expect(html).toMatch(/The only number of ours you may say on call one is the one the green\s+ballpark panel prices DURING the call/)
+    expect(html).toMatch(/From your head: never/)
     expect(html).toMatch(/CALL TWO is the offer call/)
   })
 
   it('THE STRUCTURAL FIX: discovery and their-figure come before the money, which is call two', () => {
     const three = at('3. The discovery questions')
     const theirs = at('4. Their figure, never ours')
-    const lock = at('5. Lock the next step')
+    const lock = at('5. Check the system, then lock the next step')
     const money = at('6. Call two, the offer')
     for (const [label, i] of Object.entries({ three, theirs, lock, money })) {
       expect(`${label} present`).toBe(i > -1 ? `${label} present` : `${label} MISSING`)
@@ -302,11 +307,25 @@ describe('two calls: discovery first, the offer only after the homework', () => 
     expect(coach).toMatch(/has there ever been a leak in there/)
   })
 
-  it('call one never floats our figure, and has the take-back line for when they push', () => {
+  it('call one carries no money tokens: the only figure is the one the panel prices mid-call', () => {
+    // Hugo, 2026-08-19: the ballpark question moved onto call one, on a
+    // button ("let me check my system here, I'm not making an offer"). The
+    // FENCE survives the move on purpose: call one still has no [offer_open],
+    // because the number lives in the BallparkOnCallPanel result, which can
+    // only exist after the system has heard THIS call. No press, no figure,
+    // and a stale band from last night can never be read out as today's.
     const callOne = html.slice(at('<div class="call1">'), at('</div><!-- /call1 -->'))
     expect(callOne).not.toMatch(/\[offer_open\]/)
     expect(callOne).not.toMatch(/\[offer_ceiling\]/)
     expect(callOne).toMatch(/I don't want to give you a number I'd have to take back/)
+    // The system check is in the script, with the not-an-offer framing and
+    // the discipline that keeps it a ballpark, not a negotiation.
+    expect(callOne).toMatch(/Get the ballpark/)
+    expect(callOne).toMatch(/checking my system/)
+    expect(callOne).toMatch(/million miles off/)
+    expect(callOne).toMatch(/I'm not making an offer/)
+    expect(callOne).toMatch(/no\s+negotiating today/)
+    expect(callOne).toMatch(/Never let a ballpark be minuted as an offer/)
   })
 
   it('the money panel and the ladder live inside call two only', () => {

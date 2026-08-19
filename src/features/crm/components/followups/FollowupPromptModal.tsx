@@ -12,6 +12,7 @@ import ReactDOM from 'react-dom';
 import { Bell, Save, Loader2, X, Sparkles } from 'lucide-react';
 import { useFollowups } from '../../hooks/useFollowups';
 import { supabase } from '@/integrations/supabase/browser';
+import { ukInputToIso, isoToUkInput, ukHour } from '../../lib/ukTime';
 
 interface Props {
   open: boolean;
@@ -25,6 +26,12 @@ interface Props {
   suggestedHoursAhead?: number;
   /** Optional active call id to associate the follow-up with. */
   callId?: string | null;
+  /** Prefill for the note. Pedro typed "Booked for Viewing - Aug 21 2026 at
+   *  2pm" into the post-call quick note and the follow-up saved with an
+   *  EMPTY note, so the calendar card showed nothing (his screenshot,
+   *  2026-08-19). The quick note now arrives here as the starting text; he
+   *  can still edit or replace it. */
+  initialNote?: string;
   onSaved?: () => void;
 }
 
@@ -36,26 +43,15 @@ const PRESETS: { label: string; hours: number }[] = [
   { label: '1 week', hours: 24 * 7 },
 ];
 
-function tomorrowMorningISO(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setHours(9, 0, 0, 0);
-  return toLocalIsoForInput(d);
-}
+// ALL TIMES ARE UK WALL TIME (src/features/crm/lib/ukTime.ts). Pedro books
+// callbacks from the Philippines: "ring me Thursday at 10" out of a branch's
+// mouth is 10am LONDON, and reading the input in the browser's own zone
+// saved it eight hours out.
 
-function toLocalIsoForInput(d: Date): string {
-  // <input type="datetime-local" /> wants `YYYY-MM-DDTHH:mm` in LOCAL
-  // time (no timezone suffix). The browser then sends back the same
-  // local format which we reinterpret as local time on save.
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function localInputToIso(localValue: string): string {
-  // Parse the local-time string the browser hands back. Treat as local
-  // time, convert to UTC ISO for storage.
-  const d = new Date(localValue);
-  return d.toISOString();
+function tomorrowMorningUk(): string {
+  // Tomorrow, London's idea of tomorrow, at 09:00 London.
+  const tomorrow = isoToUkInput(new Date(Date.now() + 86_400_000));
+  return `${tomorrow.slice(0, 10)}T09:00`;
 }
 
 export default function FollowupPromptModal({
@@ -67,6 +63,7 @@ export default function FollowupPromptModal({
   columnName,
   suggestedHoursAhead = 24,
   callId = null,
+  initialNote = '',
   onSaved,
 }: Props) {
   const { create, error: hookError } = useFollowups();
@@ -79,11 +76,11 @@ export default function FollowupPromptModal({
   useEffect(() => {
     if (open) {
       const d = new Date(Date.now() + suggestedHoursAhead * 60 * 60 * 1000);
-      setDueLocal(toLocalIsoForInput(d));
-      setNote('');
+      setDueLocal(isoToUkInput(d));
+      setNote(initialNote);
       setAssessError(null);
     }
-  }, [open, suggestedHoursAhead]);
+  }, [open, suggestedHoursAhead, initialNote]);
 
   // Hugo, 2026-08-14: "ai brain do assessment as well and write note." Reads
   // the deal brief (if there is one), Hugo's pinned note and the last few
@@ -115,26 +112,26 @@ export default function FollowupPromptModal({
 
   const applyPreset = (p: (typeof PRESETS)[number]) => {
     if (p.label === 'Tomorrow 9am') {
-      setDueLocal(tomorrowMorningISO());
+      setDueLocal(tomorrowMorningUk());
     } else {
       const d = new Date(Date.now() + p.hours * 60 * 60 * 1000);
-      setDueLocal(toLocalIsoForInput(d));
+      setDueLocal(isoToUkInput(d));
     }
   };
 
   const submit = async () => {
     if (!dueLocal || submitting) return;
     // PR 109 (Hugo 2026-04-28): warn if the picked time falls outside
-    // working hours (10 AM – 7 PM local). Confirm-only — agent can still
+    // working hours (10 AM – 7 PM, UK). Confirm-only — agent can still
     // proceed if intentional. Skip path is unaffected; this only fires
     // on the explicit Save path.
-    const due = new Date(localInputToIso(dueLocal));
-    const hour = due.getHours();
+    const dueIso = ukInputToIso(dueLocal);
+    const hour = ukHour(dueIso);
     const outsideHours = hour < 10 || hour >= 19;
     if (outsideHours) {
       const ok = window.confirm(
-        `This is outside working hours (10 AM – 7 PM).\n\n` +
-          `You picked ${due.toLocaleString()}.\n\n` +
+        `This is outside UK working hours (10 AM to 7 PM).\n\n` +
+          `You picked ${dueLocal.replace('T', ' ')} UK time.\n\n` +
           `Are you sure you want to schedule this follow-up?`
       );
       if (!ok) return;
@@ -145,7 +142,7 @@ export default function FollowupPromptModal({
         contact_id: contactId,
         column_id: columnId,
         call_id: callId,
-        due_at: localInputToIso(dueLocal),
+        due_at: dueIso,
         note: note.trim() || null,
       });
       if (result) {
@@ -185,7 +182,7 @@ export default function FollowupPromptModal({
         <div className="space-y-3">
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#525252] mb-1.5">
-              Due
+              Due (UK time)
             </label>
             <input
               type="datetime-local"
