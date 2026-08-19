@@ -63,6 +63,13 @@ const arg = (n, d) => {
   return hit ? hit.slice(n.length + 3) : d
 }
 const APPLY = process.argv.includes('--apply')
+// --review is the raw data command center (Hugo, 2026-08-19: "everything now
+// hits a dedicated raw data tab in the CRM first"). Queue rows are written
+// with status 'review', which the dialer never selects, and the headline
+// house's display payload is upserted into wk_raw_leads. Hugo's press on
+// /admin/crm/raw-leads flips review to pending. Without --review the script
+// behaves exactly as it always did.
+const REVIEW = process.argv.includes('--review')
 // --refresh re-reads branches Pedro ALREADY has and rewrites the saved facts.
 // Needed because those facts are not a display detail: the live AI coach reads
 // offer_open, offer_ceiling and ladder off the contact, so a valuation
@@ -595,14 +602,59 @@ async function main() {
     // branches come first. A redial goes underneath the lot.
     const { data: already } = await db.from('wk_dialer_queue')
       .select('id').eq('campaign_id', campaignId).eq('contact_id', contact.id)
-      .in('status', ['pending', 'dialing']).limit(1)
+      .in('status', ['pending', 'dialing', 'review']).limit(1)
     if (already && already.length) { say(`  SKIP ${label}: already in the queue`); continue }
 
     await db.from('wk_dialer_queue').insert({
       campaign_id: campaignId, contact_id: contact.id,
-      status: 'pending',
+      status: REVIEW ? 'review' : 'pending',
       priority: back ? minPriority - 1 - i : maxPriority + (branches.length - i),
     })
+
+    if (REVIEW) {
+      // The raw tab's display row for the branch's headline house. Every
+      // figure is READ off the engine's deal: band from offer.open/max,
+      // evidence comps from reprice.evidence. The discount vs sold prices is
+      // the same arithmetic the card badge already does on engine numbers.
+      const h = headlineProperty(branch.properties)
+      const deal = h?.deal ?? {}
+      const offer = deal.offer ?? {}
+      const evidence = (deal.reprice?.evidence ?? []).slice(0, 3).map((e) => ({
+        price: e.price ?? null,
+        distance_m: e.distance_m ?? null,
+        date: e.date ?? null,
+        address: e.address ?? null,
+      }))
+      const soldPrices = (deal.reprice?.evidence ?? [])
+        .map((e) => Number(e.price)).filter((n) => Number.isFinite(n) && n > 0)
+        .sort((a, b) => a - b)
+      const soldMedian = soldPrices.length
+        ? (soldPrices.length % 2
+          ? soldPrices[(soldPrices.length - 1) / 2]
+          : (soldPrices[soldPrices.length / 2 - 1] + soldPrices[soldPrices.length / 2]) / 2)
+        : null
+      const { error: rawErr } = await db.from('wk_raw_leads').upsert({
+        property_id: `brrr:${h.id}`,
+        contact_id: contact.id,
+        kind: 'priced',
+        address: h.address ?? null,
+        outcode: String(h.address ?? '').match(/\b([A-Z]{1,2}\d[A-Z0-9]?)\s*\d[A-Z]{2}\b/i)?.[1]?.toUpperCase() ?? null,
+        asking_price: h.asking_price ?? null,
+        discount: soldMedian && h.asking_price ? Number((1 - h.asking_price / soldMedian).toFixed(4)) : null,
+        band_min: offer.open ?? null,
+        band_max: offer.max ?? null,
+        comps: evidence,
+        floorplans: [],
+        url: h.listing_url ?? null,
+        bedrooms: h.bedrooms ?? null,
+        property_type: h.property_type ?? null,
+        agent_name: branch.agency ?? null,
+        days_on_market: Number(h.days_on_market) || null,
+        scraped_at: h.created_at ?? null,
+        status: 'pending_review',
+      }, { onConflict: 'property_id' })
+      if (rawErr) say(`  raw-lead upsert failed for ${label}: ${rawErr.message}`)
+    }
     queued++
     say(`  ${String(i + 1).padStart(3)}. ${label} — ${branch.properties.length} listing(s), queued${back ? ` at the back (${reason})` : ''}`)
   }

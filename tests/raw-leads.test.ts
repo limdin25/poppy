@@ -139,7 +139,7 @@ describe('the assign scripts: review mode, and the raw payload rides along', () 
   })
 
   it('the discovery re-check floor moved with the pool: 20 percent, not 15', () => {
-    expect(disc).toMatch(/MIN_DISCOUNT = 0\.2/)
-    expect(disc).not.toMatch(/MIN_DISCOUNT = 0\.15/)
+    expect(disc).toMatch(/MIN_LOCAL_DISCOUNT = 0\.20/)
+    expect(disc).not.toMatch(/MIN_LOCAL_DISCOUNT = 0\.15/)
   })
 })

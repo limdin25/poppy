@@ -58,6 +58,13 @@ const arg = (n, d) => {
   return hit ? hit.slice(n.length + 3) : d
 }
 const APPLY = process.argv.includes('--apply')
+// --review is the raw data command center (Hugo, 2026-08-19: "everything now
+// hits a dedicated raw data tab in the CRM first"). Queue rows are written
+// with status 'review', which the dialer never selects, and the display
+// payload is upserted into wk_raw_leads. Hugo's press on /admin/crm/raw-leads
+// flips review to pending. Without --review the script behaves exactly as it
+// always did.
+const REVIEW = process.argv.includes('--review')
 const COUNT = parseInt(arg('count', '150'), 10)
 const POOL_PATH = arg('pool', '/root/scraper/exports/discovery_pool.json')
 
@@ -151,7 +158,7 @@ async function main() {
   {
     const { data } = await db.from('wk_dialer_queue')
       .select('contact_id').eq('campaign_id', campaign.id)
-      .in('status', ['pending', 'dialing'])
+      .in('status', ['pending', 'dialing', 'review'])
     const ids = (data ?? []).map((q) => q.contact_id)
     for (const id of ids) queued.add(id)
     for (let i = 0; i < ids.length; i += 200) {
@@ -243,8 +250,36 @@ async function main() {
 
     await db.from('wk_dialer_queue').insert({
       campaign_id: campaign.id, contact_id: contactId,
-      status: 'pending', priority: nextPriority--,
+      status: REVIEW ? 'review' : 'pending', priority: nextPriority--,
     })
+
+    if (REVIEW) {
+      // The display payload for the raw tab, straight from the engine's own
+      // export: discount, three like-for-like comps, floor plans and the
+      // pre-call viable band all arrive computed, never derived here. Old
+      // pool files without the new fields still file cleanly with blanks.
+      const { error: rawErr } = await db.from('wk_raw_leads').upsert({
+        property_id: String(p.property_id ?? ''),
+        contact_id: contactId,
+        kind: 'discovery',
+        address: p.address ?? null,
+        outcode: String(p.address ?? '').match(/\b([A-Z]{1,2}\d[A-Z0-9]?)\s*\d[A-Z]{2}\b/i)?.[1]?.toUpperCase() ?? null,
+        asking_price: p.price ?? null,
+        discount: p.discount ?? null,
+        band_min: p.band_min ?? null,
+        band_max: p.band_max ?? null,
+        comps: p.comps3 ?? [],
+        floorplans: p.floorplans ?? [],
+        url: p.url ?? null,
+        bedrooms: p.bedrooms ?? null,
+        property_type: p.property_type ?? null,
+        agent_name: branch.agency ?? null,
+        days_on_market: Number(p.days_on_market) || null,
+        scraped_at: p.scraped_at ?? null,
+        status: 'pending_review',
+      }, { onConflict: 'property_id' })
+      if (rawErr) say(`  raw-lead upsert failed for ${facts.property_street}: ${rawErr.message}`)
+    }
     taken++
   }
 

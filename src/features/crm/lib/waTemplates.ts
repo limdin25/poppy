@@ -62,8 +62,13 @@ export function templateProblem(name: string, body: string): string | null {
     }
   }
   const trimmed = body.trim();
-  if (/^\{\{\s*\d+\s*\}\}/.test(trimmed) || /\{\{\s*\d+\s*\}\}$/.test(trimmed)) {
-    return 'Meta rejects templates that start or end with a variable. Add words around it.';
+  // Meta ignores trailing punctuation when it applies this rule: a body ending
+  // "on {{3}}?" was rejected live on 2026-08-20 (subCode 2388299, "Variables
+  // can't be at the start or end"). So the test strips punctuation first, and
+  // the fix is a closing WORD ("Thanks."), not a question mark.
+  const bare = trimmed.replace(/^[^\w{]+/, '').replace(/[^\w}]+$/, '');
+  if (/^\{\{\s*\d+\s*\}\}/.test(bare) || /\{\{\s*\d+\s*\}\}$/.test(bare)) {
+    return 'Meta rejects templates that start or end with a variable (punctuation after it does not count). Add a word around it.';
   }
   return null;
 }
