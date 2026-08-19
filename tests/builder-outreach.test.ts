@@ -24,11 +24,12 @@ describe('the invite template', () => {
     expect(/\}\}$/.test(INVITE_TEMPLATE_TEXT)).toBe(false);
   });
   it('renders the preview a human reads before approving', () => {
+    // Hugo's own wording, 2026-08-20: "we need something simpler."
     const body = renderPreview(INVITE_TEMPLATE_TEXT, {
       '1': 'Pedro', '2': '12 High Street, Wigan', '3': 'Thursday 21 August at 2:30pm',
     });
-    expect(body).toContain('this is Pedro from Unico Property Group');
-    expect(body).toContain('12 High Street, Wigan');
+    expect(body).toContain('this is Pedro');
+    expect(body).toContain('give us a quote at 12 High Street, Wigan');
     expect(body).not.toContain('{{');
   });
 });

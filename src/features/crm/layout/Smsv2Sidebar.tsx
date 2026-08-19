@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Gauge,
+  Boxes,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useIsMobile } from '@/core/hooks/useMediaQuery';
@@ -55,6 +56,9 @@ const NAV_ITEMS: NavItem[] = [
   // first-class user of the cockpit, and Hugo's escalation lane is kept off
   // his screen by RLS rather than by hiding the page.
   { label: 'Cockpit', path: '/admin/crm/cockpit', icon: Gauge },
+  // The raw data command center: scraped deals wait HERE for Hugo's press
+  // before they reach Pedro (2026-08-19). Admin only, the tab IS the filter.
+  { label: 'Raw deals', path: '/admin/crm/raw-leads', icon: Boxes, adminOnly: true },
   { label: 'Dashboard', path: '/admin/crm/dashboard', icon: LayoutDashboard, adminOnly: true },
   { label: 'Dialer', path: '/admin/crm/dialer-pro', icon: Radio },
   { label: 'Inbox', path: '/admin/crm/inbox', icon: MessageSquare },

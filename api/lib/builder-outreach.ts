@@ -54,7 +54,7 @@ export const OUTREACH_SENDER_NAME = 'Pedro';
  *  preview a human reads before approving. {{1}} sender, {{2}} address,
  *  {{3}} viewing date and time. */
 export const INVITE_TEMPLATE_TEXT =
-  'Hi there, this is {{1}} from Unico Property Group. We buy and refurbish houses in your area and we are looking for local builders for our upcoming projects. We have a property at {{2}} with a viewing booked for {{3}}. Would you like to come along, take a look and give us a rough price for the refurb? If it works out there is regular work on similar projects. Reply YES and I will send you the details.';
+  "Hi there, this is {{1}}. We buy and refurbish houses in your area, and I'm looking for a builder, are you able to visit and give us a quote at {{2}} on {{3}}?";
 
 export function loadOutreachSettingsFrom(raw: unknown): OutreachSettings {
   let parsed: Partial<OutreachSettings> = {};

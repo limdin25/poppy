@@ -62,10 +62,14 @@ const COUNT = parseInt(arg('count', '150'), 10)
 const POOL_PATH = arg('pool', '/root/scraper/exports/discovery_pool.json')
 
 // How far under its like-for-like local sold median a house must be advertised
-// before it is worth a call. The same 0.15 as discovery_pool.MIN_DISCOUNT and
-// send_to_elsie.MIN_LOCAL_DISCOUNT. Repeated here deliberately: this is the last
-// gate before Pedro, and a gate that trusts its input is not a gate.
-const MIN_LOCAL_DISCOUNT = 0.15
+// before it is worth a call. The same value as discovery_pool.MIN_DISCOUNT.
+// Repeated here deliberately: this is the last gate before Pedro, and a gate
+// that trusts its input is not a gate. RAISED 0.15 -> 0.20 on 2026-08-19,
+// Hugo: "move from a 10% minimum discount to a 20% minimum discount right
+// from the jump. No filler, just high conviction deals." Measured before the
+// move: the pool held 272 houses at 20%+, comfortably above the 200-a-day
+// baseline he set as the condition.
+const MIN_LOCAL_DISCOUNT = 0.20
 
 // The same identities the priced path uses. REFUSED rather than created here:
 // if either is missing something is badly wrong and a discovery run must not
