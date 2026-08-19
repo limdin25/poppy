@@ -21,6 +21,23 @@ import { supabase } from '@/integrations/supabase/browser';
 import { phoneTail } from '../../../../api/lib/phone-match';
 import type { NextStepBrief } from '../../../../api/lib/next-step-brief';
 
+/** The deal in six read facts, projected by the RPC from the armed deal or,
+ *  in discovery, from the ballpark homework. Hugo, 19 Aug: "I wanna see right
+ *  away if there's a mistake before I open anything." Every figure is the
+ *  engine's; nothing here is derived. */
+export interface DealFacts {
+  worth?: number;
+  confidence?: string;
+  open?: number;
+  ceiling?: number;
+  tier?: string;
+  refurb?: number;
+  condition?: string;
+  why?: string;
+  /** 'deal' = armed figures. 'ballpark' = homework, not yet armed. */
+  source?: 'deal' | 'ballpark';
+}
+
 export interface PropertyLink {
   phone_tail: string;
   property_id: string;
@@ -38,6 +55,7 @@ export interface PropertyLink {
   agent_name: string | null;
   /** Who Pedro spoke to at the branch, off the call checklist. */
   branch_contact_name: string | null;
+  facts: DealFacts | null;
 }
 
 /** The last 9 digits of a phone, or '' when there are not 9 to take.

@@ -18,12 +18,25 @@
 // LOOP-PROOF by construction: a deal is run when it has NO preview, or when
 // a NEWER connected call exists than the preview it has. Storing a preview
 // does not itself make the deal eligible again.
+//
+// AUTOMATIC SINCE 19 Aug, brain on or off. Hugo, watching 36 discovery-done
+// branches sit unarmed behind a press: "the ballpark should be fetched
+// automatically and moved automatically." So: any cockpit deal whose
+// discovery call is DONE (a connected call to hear), with NO armed band and
+// no fresh preview, gets the homework, and an OK answer is APPLIED at once
+// (band on the card, tokens for the phone, board to Ready for call 2), which
+// is exactly the press a human made before. Refusals are stored and arm
+// nothing. Columns where auto-arming would resurrect or disturb a
+// conversation (Not interested, Offer sent, Waiting on their answer, Offer
+// accepted) are never touched. The off-switch is `auto_ballpark: false` in
+// the deal_manager platform setting; the BRAIN switch no longer gates the
+// homework, because the homework is deterministic and the brain is not.
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { loadCockpitStates, latestAssessments } from '../lib/deal-manager-run.js';
 import { isCockpitDeal } from '../lib/cockpit-filter.js';
-import { runBallparkPreview } from '../lib/ballpark.js';
+import { runBallparkPreview, applyBallpark } from '../lib/ballpark.js';
 
 export const config = { maxDuration: 300 };
 
@@ -43,47 +56,106 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   );
 
   try {
-    // Same kill switch as the sweep: manager off means the machine does no
-    // homework on its own.
+    // The homework's OWN switch (default on). The brain switch no longer
+    // gates it: the sweep's LLM being off is no reason the deterministic
+    // fetch-and-arm should sit idle.
     const { data: row } = await supabase
       .from('platform_settings').select('value').eq('key', 'deal_manager').maybeSingle();
-    let enabled = false;
-    try { enabled = (JSON.parse(String(row?.value ?? '{}')) as { enabled?: boolean }).enabled === true; }
-    catch { enabled = false; }
-    if (!enabled) {
+    let autoOn = true;
+    try {
+      const cfg = JSON.parse(String(row?.value ?? '{}')) as { auto_ballpark?: boolean };
+      autoOn = cfg.auto_ballpark !== false;
+    } catch { autoOn = true; }
+    if (!autoOn) {
       res.statusCode = 200;
-      res.end(JSON.stringify({ ok: true, skipped: 'manager_off' }));
+      res.end(JSON.stringify({ ok: true, skipped: 'auto_ballpark_off' }));
       return;
     }
 
     const now = new Date();
     const all = await loadCockpitStates(supabase, { limit: 400, now });
     const deals = all.filter((b) => isCockpitDeal(b.state).inCockpit);
+    // Still read so an explicit brain ask (confirm_ballpark) is never missed,
+    // but the brain is no longer REQUIRED to nominate a deal.
     const latest = await latestAssessments(supabase, deals.map((b) => b.state.propertyId));
 
+    // Auto-arming one of these would resurrect a dead branch or trample a
+    // conversation already past the ballpark. Fetching is harmless; applying
+    // is not, so the whole deal is skipped.
+    const NO_AUTO = new Set([
+      'Not interested', 'Offer sent', 'Waiting on their answer',
+      'Offer accepted', 'Deal closed',
+    ]);
+
     const wanting = deals.filter((b) => {
-      const action = latest.get(b.state.propertyId)?.action ?? '';
-      if (action !== 'get_the_ballpark' && action !== 'confirm_ballpark') return false;
-      const bp = b.state.ballpark;
-      if (!bp) return true;
+      const s = b.state;
+      if (NO_AUTO.has(s.board.column ?? '')) return false;
+      // Nothing to hear = nothing to price. The discovery call IS the input.
+      if (!s.calls.lastConnectedAt) return false;
+      // Already armed: the band is on the card, homework done its job.
+      if (s.money.open || s.money.ceiling) return false;
+      const asked = latest.get(s.propertyId)?.action ?? '';
+      const bp = s.ballpark;
+      if (!bp || !bp.at) return true;
       // A newer conversation than the homework means the homework is stale.
-      const lastCall = b.state.calls.lastConnectedAt;
-      return Boolean(lastCall && bp.at && Date.parse(lastCall) > Date.parse(bp.at));
+      const fresh = Date.parse(s.calls.lastConnectedAt) <= Date.parse(bp.at);
+      if (!fresh) return true;
+      // Fresh preview already stored: re-touch it only when it is OK and
+      // unapplied (arm it now), or the brain explicitly asks again.
+      if (bp.ok) return true;
+      return asked === 'get_the_ballpark' || asked === 'confirm_ballpark';
     });
 
     let ran = 0;
     let failed = 0;
-    const results: Array<{ propertyId: string; ok: boolean; reason?: string }> = [];
+    let armed = 0;
+    const results: Array<{ propertyId: string; ok: boolean; reason?: string; armed?: boolean }> = [];
     for (const b of wanting.slice(0, PER_RUN)) {
       try {
-        const preview = await runBallparkPreview(supabase, b.state.propertyId);
-        const { error } = await supabase
-          .from('brrr_properties')
-          .update({ ballpark_preview: preview as unknown as Record<string, unknown> })
-          .eq('id', b.state.propertyId);
-        if (error) throw new Error(error.message);
+        const s = b.state;
+        // A fresh OK preview that never got its press is applied as-is; only
+        // a missing or stale one costs a new engine run.
+        const bp = s.ballpark;
+        const hasFreshOk = Boolean(
+          bp && bp.ok && bp.at && s.calls.lastConnectedAt
+          && Date.parse(s.calls.lastConnectedAt) <= Date.parse(bp.at),
+        );
+        let ok: boolean;
+        let reason: string | undefined;
+        if (!hasFreshOk) {
+          const preview = await runBallparkPreview(supabase, s.propertyId);
+          const { error } = await supabase
+            .from('brrr_properties')
+            .update({ ballpark_preview: preview as unknown as Record<string, unknown> })
+            .eq('id', s.propertyId);
+          if (error) throw new Error(error.message);
+          ok = preview.ok === true;
+          reason = preview.reason;
+        } else {
+          ok = true;
+        }
         ran += 1;
-        results.push({ propertyId: b.state.propertyId, ok: preview.ok, reason: preview.reason });
+
+        // THE AUTOMATIC PRESS. applyBallpark re-reads the stored preview
+        // path via its caller normally; here we apply the property's stored
+        // preview, which the write above just refreshed.
+        let didArm = false;
+        if (ok) {
+          const { data: fresh } = await supabase
+            .from('brrr_properties').select('ballpark_preview').eq('id', s.propertyId).maybeSingle();
+          const stored = (fresh as { ballpark_preview?: Record<string, unknown> | null } | null)?.ballpark_preview;
+          if (stored && (stored as { ok?: boolean }).ok === true) {
+            const applied = await applyBallpark(
+              supabase, s.propertyId,
+              stored as unknown as Parameters<typeof applyBallpark>[2],
+              { dueAt: null },
+            );
+            didArm = applied.ok === true;
+            if (!applied.ok) console.error('[ballpark-runner] apply failed', s.propertyId, applied.error);
+          }
+        }
+        if (didArm) armed += 1;
+        results.push({ propertyId: s.propertyId, ok, reason, armed: didArm });
       } catch (e) {
         failed += 1;
         console.error('[ballpark-runner] failed', b.state.propertyId, String(e).slice(0, 160));
@@ -91,7 +163,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
 
     res.statusCode = failed > 0 && ran === 0 ? 500 : 200;
-    res.end(JSON.stringify({ ok: failed === 0, wanting: wanting.length, ran, failed, results }));
+    res.end(JSON.stringify({ ok: failed === 0, wanting: wanting.length, ran, armed, failed, results }));
   } catch (e) {
     console.error('[ballpark-runner] failed:', e);
     res.statusCode = 500;

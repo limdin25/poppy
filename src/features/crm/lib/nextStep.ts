@@ -80,7 +80,7 @@ export function stepForOutcome(outcome: string): StepTag | '' | null {
 export function callModeForStep(
   step?: string | null,
   /** The branch card's own fields. A confirmed ballpark lives here as
-   *  `offer_open`, written by applyBallpark alongside the step. */
+   *  `ballpark_confirmed_at`, written by applyBallpark alongside the step. */
   fields?: Record<string, string> | null,
 ): 'discovery' | 'offer' {
   const s = (step ?? '').trim();
@@ -93,22 +93,20 @@ export function callModeForStep(
   //
   // Hugo, 2026-08-18: "the callback script for the 2nd call where we mention
   // the ballpark and if accepted we book a viewing is not there at all."
+  // `no_answer` writes 'Discovery call', so a branch with an AGREED figure
+  // that simply did not pick up was demoted to call one, and Pedro rang back
+  // reading the discovery script at a branch waiting for a number. The
+  // ballpark is the second signal, and it only ever promotes.
   //
-  // It was there, in stage 6, and Pedro had seen it once. Measured across 1,073
-  // property branches: next_step was 'Discovery call' on 814, absent on 256 and
-  // 'Offer call' on ONE. Part of that is that the ballpark rarely succeeded
-  // (fixed by the call listener and the house filing), and part is this: the
-  // step is the only thing that opens call two, and an outcome can knock it
-  // back. `no_answer` writes 'Discovery call', so a branch with an AGREED
-  // figure that simply did not pick up was demoted to call one, and Pedro rang
-  // back reading the discovery script at a branch waiting for a number.
-  //
-  // So the ballpark itself is the second signal, and it only ever promotes: a
-  // branch with no figure on file cannot reach call two by this route, which
-  // keeps the protection that pressing "Call back" on a first call must not
-  // arm the money.
-  const openFigure = Number(String(fields?.offer_open ?? '').replace(/[^0-9.]/g, ''));
-  if (Number.isFinite(openFigure) && openFigure > 0) return 'offer';
+  // THE SIGNAL IS THE CONFIRMATION STAMP, NEVER BARE offer_open (19 Aug,
+  // Pedro at 09:30: "the script is now property call 2, i cannot call the new
+  // leads"). offer_open is written by the nightly assign for every PRICED
+  // branch before anyone has rung it (the band is Pedro's homework on call
+  // one), and the room sync re-stamps it whenever a priced house is merely
+  // selected. Promoting on it flipped the whole fresh queue to call two the
+  // first night the machine ran. `ballpark_confirmed_at` is written by
+  // applyBallpark alone, the one place a ballpark is actually confirmed.
+  if ((fields?.ballpark_confirmed_at ?? '').trim()) return 'offer';
   return 'discovery';
 }
 

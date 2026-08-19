@@ -381,6 +381,11 @@ export async function applyBallpark(
       comp_evidence: evidence || 'see the deal drawer',
       valuation_notes: `Ballpark confirmed ${nowIso.slice(0, 10)} from call one: condition ${heard.condition_band}, refurb ${money(Number(engine.refurb))} at the low end, ${String(engine.comps_tier)} evidence.`,
       next_step: 'Offer call',
+      // The ONE signal callModeForStep promotes to call two on. Bare
+      // offer_open cannot be it: the nightly assign stamps a band on every
+      // priced branch before anyone has rung it (19 Aug, the whole fresh
+      // queue opened on call two).
+      ballpark_confirmed_at: nowIso,
     };
     await sb.from('wk_contacts').update({ custom_fields: fields }).eq('id', prop.wk_contact_id);
 

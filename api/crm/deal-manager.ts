@@ -18,9 +18,9 @@
 // POST /api/crm/deal-manager { propertyId } -> assess one deal
 
 import { createClient } from '@supabase/supabase-js';
-import { buildDealState, type DealState, type DealStateInput } from '../lib/deal-state.js';
 import { fallbackVerdict, baselineAttention, deterministicFlags } from '../lib/deal-manager-contract.js';
 import { assess } from '../lib/deal-brain.js';
+import { loadCockpitStates, loadDealBundle } from '../lib/deal-manager-run.js';
 
 // The prompt and the assessment moved to api/lib/deal-brain.ts on 2026-08-15,
 // unchanged, so the Node cron (api/cron/deal-sweep.ts) can use the same brain
@@ -48,73 +48,14 @@ async function managerEnabled(): Promise<boolean> {
   }
 }
 
-/** Gather everything Layer 1 needs for one property. */
-async function loadState(propertyId: string, now: Date): Promise<DealState | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: property } = await (supabase.from('brrr_properties') as any)
-    .select('id, address, status, asking_price, bedrooms, deal, brief, pinned_note,'
-      + ' qualification, assigned_builder_id, viewing_at, viewing_quote, updated_at, wk_contact_id')
-    .eq('id', propertyId).maybeSingle();
-  if (!property) return null;
-  const prop = property as DealStateInput['property'] & { wk_contact_id?: string | null };
-
-  let contact: DealStateInput['contact'] = null;
-  let columnName: string | null = null;
-  let calls: DealStateInput['calls'] = [];
-  let messages: DealStateInput['messages'] = [];
-  let followups: DealStateInput['followups'] = [];
-
-  if (prop.wk_contact_id) {
-    const [{ data: c }, { data: msgs }, { data: fups }, { data: cls }] = await Promise.all([
-      supabase.from('wk_contacts')
-        .select('id, name, phone, email, pipeline_column_id, custom_fields, stage_moved_at, last_contact_at')
-        .eq('id', prop.wk_contact_id).maybeSingle(),
-      supabase.from('wk_sms_messages')
-        .select('id, created_at, direction, channel, subject, body')
-        .eq('contact_id', prop.wk_contact_id)
-        .order('created_at', { ascending: false }).limit(30),
-      supabase.from('wk_contact_followups')
-        .select('id, due_at, note, status')
-        .eq('contact_id', prop.wk_contact_id),
-      // wk_calls HAS NO `disposition` COLUMN. The outcome of a call is
-      // disposition_column_id, the board column the agent dropped it into, so
-      // the name has to be resolved by a lookup.
-      //
-      // Selecting a column that does not exist is not a null, it is an error:
-      // PostgREST refuses the whole query, supabase-js puts it in `error`, and
-      // `cls ?? []` quietly became an empty list. From the day this route
-      // shipped until 2026-08-15 EVERY deal came back with no call history at
-      // all, so `clock.lastTouchAt` never counted a phone call and a branch
-      // rung an hour ago could look untouched for three days.
-      supabase.from('wk_calls')
-        .select('id, created_at, direction, disposition_column_id, duration_sec')
-        .eq('contact_id', prop.wk_contact_id)
-        .order('created_at', { ascending: false }).limit(20),
-    ]);
-    contact = c ?? null;
-    messages = msgs ?? [];
-    followups = fups ?? [];
-
-    // One read of a small table gives both the card's column and every call's
-    // outcome, instead of one query per call.
-    const { data: cols } = await supabase.from('wk_pipeline_columns').select('id, name');
-    const columnById = new Map((cols ?? []).map((k) => [k.id as string, k.name as string]));
-
-    calls = (cls ?? []).map((k) => ({
-      id: k.id,
-      created_at: k.created_at,
-      direction: k.direction,
-      disposition: k.disposition_column_id
-        ? columnById.get(k.disposition_column_id as string) ?? null
-        : null,
-      duration_sec: k.duration_sec,
-    }));
-
-    if (c?.pipeline_column_id) columnName = columnById.get(c.pipeline_column_id) ?? null;
-  }
-
-  return buildDealState({ property: prop, contact, columnName, calls, messages, followups, now });
-}
+// The per-property loader that used to live here walked the pool one deal at
+// a time: up to 400 properties x 5 queries each, serially, on every page
+// load. Under 100 deals it looked fine; the day the pool grew past a few
+// hundred the function blew Vercel's time limit and the Today panel showed
+// Pedro a Vercel crash page as "Unexpected token 'A'" (19 Aug). The batched
+// loader (ONE wk_deal_cockpit_rows RPC) had existed in deal-manager-run.ts
+// since the cockpit shipped; this route just predated it. It is the only
+// loader now, so the route and the cockpit can never disagree about a deal.
 
 export default async function handler(req: Request): Promise<Response> {
   const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
@@ -138,8 +79,9 @@ export default async function handler(req: Request): Promise<Response> {
     catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
     if (!body.propertyId) return Response.json({ error: 'propertyId required' }, { status: 400 });
 
-    const state = await loadState(body.propertyId, now);
-    if (!state) return Response.json({ error: 'unknown property' }, { status: 404 });
+    const bundle = await loadDealBundle(supabase, body.propertyId, now);
+    if (!bundle) return Response.json({ error: 'unknown property' }, { status: 404 });
+    const state = bundle.state;
 
     const result = on
       ? await assess(state)
@@ -153,18 +95,14 @@ export default async function handler(req: Request): Promise<Response> {
   // Manager switched off. That ordering IS the fifth gap closed: the nightly
   // assign script orders the queue once, and during the day overdue
   // follow-ups, fresh branch replies and booked call-twos all compete.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: live } = await (supabase.from('brrr_properties') as any)
-    .select('id, address, status, asking_price, bedrooms, deal, brief, pinned_note,'
-      + ' qualification, assigned_builder_id, viewing_at, viewing_quote, updated_at, wk_contact_id')
-    .in('status', ['new', 'call_queued', 'qualified', 'figure_obtained', 'deciding'])
-    .not('wk_contact_id', 'is', null)
-    .limit(400);
-
-  const states: DealState[] = [];
-  for (const p of (live ?? []) as Array<{ id: string }>) {
-    const s = await loadState(p.id, now);
-    if (s) states.push(s);
+  let states;
+  try {
+    states = (await loadCockpitStates(supabase, { limit: 400, now })).map((b) => b.state);
+  } catch (e) {
+    // loadCockpitStates throws rather than returning [], on purpose. Answer
+    // in JSON so the panel prints the sentence instead of choking on a crash
+    // page.
+    return Response.json({ error: String(e instanceof Error ? e.message : e).slice(0, 300) }, { status: 500 });
   }
 
   const ranked = states

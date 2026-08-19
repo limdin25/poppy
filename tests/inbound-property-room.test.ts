@@ -126,8 +126,14 @@ describe('ONE room, dialled or answered', () => {
     // script, this is a callback." The column IS the instruction.
     expect(callModeForCard(STEP.call, {}, 'Ready for call 2')).toBe('offer')
     expect(callModeForCard(undefined, null, 'Ballpark agreed')).toBe('offer')
-    // A confirmed ballpark still promotes on its own, column or no column.
-    expect(callModeForCard(STEP.call, { offer_open: '£153,000' }, null)).toBe('offer')
+    // A CONFIRMED ballpark still promotes on its own, column or no column.
+    // The signal is the confirmation stamp applyBallpark writes. Bare
+    // offer_open must NOT promote: the nightly assign stamps a band on every
+    // priced branch before anyone has rung it, and promoting on it flipped
+    // Pedro's whole fresh queue to the call 2 script (19 Aug, 09:30, live).
+    expect(callModeForCard(STEP.call, { ballpark_confirmed_at: '2026-08-18T12:00:00Z' }, null)).toBe('offer')
+    expect(callModeForCard(STEP.call, { offer_open: '£153,000' }, null)).toBe('discovery')
+    expect(callModeForCard(STEP.call, { offer_open: '£153,000', ballpark_confirmed_at: '' }, null)).toBe('discovery')
     // A column that says nothing about which call is next promotes nothing.
     expect(callModeForCard(STEP.call, {}, 'Nurturing')).toBe('discovery')
     expect(callModeForCard(STEP.call, {}, 'Voicemail')).toBe('discovery')

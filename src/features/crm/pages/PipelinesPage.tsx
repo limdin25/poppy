@@ -30,6 +30,7 @@ import { orderedStep } from '../lib/dealOrder';
 import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
 import TodayPanel from '../components/deals/TodayPanel';
 import BallparkModal from '../components/deals/BallparkModal';
+import DealFactsBlock from '../components/deals/DealFactsBlock';
 import { callModeForStep } from '../lib/nextStep';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
@@ -377,6 +378,17 @@ export default function PipelinesPage() {
                           links={propertiesByPhone.get(phoneTail(c.phone))}
                           className="mt-1"
                         />
+                        {/* Hugo 2026-08-19: the deal in six lines, before
+                            anybody opens anything. Asking, percent below
+                            market (red when the asking is ABOVE the worth),
+                            the band, comps tier, confidence, refurb, why. */}
+                        {deal && (
+                          <DealFactsBlock
+                            facts={deal.facts}
+                            asking={deal.asking_price}
+                            compact
+                          />
+                        )}
                         {/* Hugo 2026-08-14: what to do with this one, on the
                             card, before anybody clicks anything. The whole
                             brief opens with the card. */}

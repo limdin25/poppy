@@ -48,9 +48,18 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
       const res = await fetch('/api/crm/deal-manager', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const json = await res.json() as {
-        today?: TodayItem[]; managerEnabled?: boolean; error?: string;
-      };
+      // Read text first: a Vercel timeout answers with a PLAIN-TEXT crash
+      // page, and res.json() on it printed "Unexpected token 'A'" at Hugo
+      // (19 Aug). A non-JSON body becomes a human sentence instead.
+      const raw = await res.text();
+      let json: { today?: TodayItem[]; managerEnabled?: boolean; error?: string };
+      try {
+        json = JSON.parse(raw) as typeof json;
+      } catch {
+        throw new Error(res.status === 504
+          ? 'The server took too long building the day. Refresh to try again.'
+          : `The server answered with an error (HTTP ${res.status}). Refresh to try again.`);
+      }
       if (!res.ok) throw new Error(json.error ?? 'Could not load the day');
       setItems(json.today ?? []);
       setManagerOn(Boolean(json.managerEnabled));

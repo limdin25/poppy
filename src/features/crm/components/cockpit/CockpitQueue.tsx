@@ -11,6 +11,7 @@
 import { Mail, Clock, AlarmClock, ChevronRight } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { attentionTone, hoursAgo, sortFlags, FLAG_LABEL, FLAG_TONE, URGENT_AT } from '../../lib/dealDay';
+import DealFactsBlock, { factsFromCockpit } from '../deals/DealFactsBlock';
 import type { CockpitDeal } from './types';
 
 export function AttentionChip({ score, big }: { score: number; big?: boolean }) {
@@ -148,6 +149,17 @@ function QueueRow({ deal, selected, onSelect }: {
 
             {deal.repliedSinceBrief && (
               <ReplyBlock preview={deal.lastInboundPreview} />
+            )}
+
+            {/* Hugo 2026-08-19: the deal in six lines on the queue row too,
+                same block as the board, so a wrong number is visible before
+                anything is opened. */}
+            {!deal.blockedOnHugo && (
+              <DealFactsBlock
+                facts={factsFromCockpit(deal)}
+                asking={deal.money.asking}
+                compact
+              />
             )}
 
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
