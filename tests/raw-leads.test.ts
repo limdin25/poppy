@@ -103,6 +103,20 @@ describe('the command center page', () => {
     expect(page).toMatch(/await res\.text\(\)/)
   })
 
+  it('the SUBJECT has its own size column, source named, or the comparison is rubbish', () => {
+    // Hugo, 2026-08-19, seeing sized comps beside an unsized house: "if we
+    // don't know the size of our property, we cannot make comparisons, so
+    // we cannot use it." The pool refuses unsized subjects; the sheet shows
+    // the number and where it came from (plan, advert, rooms).
+    expect(page).toMatch(/lead\.floor_area_sqm/)
+    expect(page).toMatch(/AREA_SOURCE_LABEL/)
+    const mig = read('supabase/migrations/20260819000005_raw_leads_subject_size.sql')
+    expect(mig).toMatch(/floor_area_sqm/)
+    expect(mig).toMatch(/area_source/)
+    const disc2 = read('scripts/assign-discovery-branches.mjs')
+    expect(disc2).toMatch(/floor_area_sqm: p\.subject_floor_area_sqm/)
+  })
+
   it('is a spreadsheet: a real table, the property hyperlinked, a size tick on every comp', () => {
     // Hugo, 2026-08-19: "like a spreadsheet, everything side by side, first
     // column the property name hyperlinked, then the comparisons, and a tick

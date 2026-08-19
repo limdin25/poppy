@@ -51,8 +51,18 @@ interface RawLead {
   agent_name: string | null;
   days_on_market: number | null;
   scraped_at: string | null;
+  floor_area_sqm: number | null;
+  area_source: string | null;
   status: string;
 }
+
+/** Where the subject's size came from, in one word Hugo recognises. */
+const AREA_SOURCE_LABEL: Record<string, string> = {
+  listing: 'advert',
+  floorplan: 'plan',
+  text: 'advert',
+  description: 'rooms',
+};
 
 type SortKey = 'discount' | 'price' | 'location' | 'scraped';
 
@@ -309,6 +319,7 @@ export default function RawLeadsPage() {
                   </th>
                   <Th label="Property" k={'location'} />
                   <Th label="Plan" />
+                  <Th label="Size" />
                   <Th label="Asking" k={'price'} />
                   <Th label="Discount" k={'discount'} />
                   <Th label="Viable range" />
@@ -376,6 +387,20 @@ export default function RawLeadsPage() {
                           </a>
                         ) : (
                           <span className="text-[10.5px] font-semibold text-[#B45309]">none</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 align-top whitespace-nowrap">
+                        {lead.floor_area_sqm ? (
+                          <>
+                            <span className="inline-flex items-center gap-0.5 text-[11.5px] font-semibold text-[#2E7D46]">
+                              <Check className="w-3 h-3" />{Math.round(lead.floor_area_sqm)} sqm
+                            </span>
+                            {lead.area_source && (
+                              <div className="text-[9px] text-[#9CA3AF]">{AREA_SOURCE_LABEL[lead.area_source] ?? lead.area_source}</div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-[10.5px] font-semibold text-[#B45309]">size?</span>
                         )}
                       </td>
                       <td className="px-2 py-2 align-top text-[12.5px] font-bold text-[#1A1A1A] whitespace-nowrap">

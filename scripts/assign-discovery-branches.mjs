@@ -276,6 +276,11 @@ async function main() {
         agent_name: branch.agency ?? null,
         days_on_market: Number(p.days_on_market) || null,
         scraped_at: p.scraped_at ?? null,
+        // The subject's own size and where it came from. The pool refuses
+        // unsized houses (Hugo, 19 Aug: "if we don't know the size of our
+        // property, we cannot make comparisons"), so these arrive filled.
+        floor_area_sqm: p.subject_floor_area_sqm ?? null,
+        area_source: p.area_source ?? null,
         status: 'pending_review',
       }, { onConflict: 'property_id' })
       if (rawErr) say(`  raw-lead upsert failed for ${facts.property_street}: ${rawErr.message}`)
