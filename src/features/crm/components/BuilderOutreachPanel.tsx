@@ -22,6 +22,7 @@ interface OutreachRow {
   confirmed_at: string | null;
   error: string | null;
   brrr_builders: { name: string; phone: string | null } | null;
+  brrr_properties: { address: string | null; wk_contact_id: string | null } | null;
 }
 
 const BLOCKED_WORDS: Record<string, string> = {
@@ -53,6 +54,58 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const json = await res.json().catch(() => ({})) as T & { error?: string };
   if (!res.ok) throw new Error(json.error ?? `Request failed (${res.status})`);
   return json;
+}
+
+/** The other half of "they stick together": on the BUILDER's thread, a line
+ *  saying which deal they belong to, clicking through to the branch thread.
+ *  The branch card carries the matching BuilderChip, so the pair point at
+ *  each other. Renders nothing before an invite exists. */
+export function BuilderThreadBanner({ contactId, onOpenContact }: {
+  contactId: string;
+  onOpenContact?: (branchContactId: string) => void;
+}) {
+  const [row, setRow] = useState<OutreachRow | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const { rows } = await adminFetch<{ rows: OutreachRow[] }>(
+          `/api/admin/builder-outreach?contact_id=${encodeURIComponent(contactId)}`,
+        );
+        if (!alive) return;
+        setRow(
+          rows.find((r) => r.status === 'confirmed')
+          ?? rows.find((r) => r.status === 'sent' || r.status === 'replied')
+          ?? null,
+        );
+      } catch {
+        if (alive) setRow(null);
+      }
+    })();
+    return () => { alive = false; };
+  }, [contactId]);
+
+  if (!row?.brrr_properties?.address) return null;
+  const branchId = row.brrr_properties.wk_contact_id;
+  const confirmed = row.status === 'confirmed';
+
+  return (
+    <button
+      type="button"
+      data-testid="builder-thread-banner"
+      disabled={!branchId || !onOpenContact}
+      onClick={() => { if (branchId && onOpenContact) onOpenContact(branchId); }}
+      title={branchId ? 'Open the deal this builder belongs to' : undefined}
+      className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10.5px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-default"
+    >
+      <HardHat className="h-3 w-3 flex-shrink-0" />
+      <span className="truncate">
+        {confirmed ? 'Confirmed for the viewing at ' : 'Invited to the viewing at '}
+        {row.brrr_properties.address}
+      </span>
+    </button>
+  );
 }
 
 /** The inbox's one-press confirm, shown on a builder's thread. Confirming

@@ -59,7 +59,8 @@ import LeadIdentity, { isPropertyLead, askForName } from '../components/shared/L
 import { DEAL_STAGES } from '../components/templates/dealProcessSteps';
 import BriefLine from '../components/shared/BriefLine';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
-import { BuilderConfirmInboxButton } from '../components/BuilderOutreachPanel';
+import { BuilderConfirmInboxButton, BuilderThreadBanner } from '../components/BuilderOutreachPanel';
+import BuilderChip from '../components/shared/BuilderChip';
 import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
 import InboundMedia from '../components/InboundMedia';
 import AgentChip from '../components/shared/AgentChip';
@@ -1698,7 +1699,21 @@ export default function InboxPage() {
               <div className="mt-1 space-y-1">
                 <PropertyLinkChips links={[activeDeal]} />
                 <BriefLine brief={activeDeal.brief} pinnedNote={activeDeal.pinned_note} />
+                {/* Hugo 2026-08-20: the confirmed builder sticks to the deal,
+                    here as on the board. Click opens the builder's thread. */}
+                <BuilderChip
+                  builder={activeDeal.builder}
+                  onOpenThread={(id) => setSearchParams({ contact: id })}
+                />
               </div>
+            )}
+            {/* The mirror on the builder's own thread: which deal they belong
+                to, clicking back to the branch. */}
+            {activeContact.customFields?.lead_type === 'builder' && (
+              <BuilderThreadBanner
+                contactId={activeContact.id}
+                onOpenContact={(id) => setSearchParams({ contact: id })}
+              />
             )}
           </div>
           {/* A builder saying yes in this thread is confirmed with one press,

@@ -41,7 +41,7 @@ async function handleWeb(req: Request): Promise<Response> {
     const contactId = url.searchParams.get('contact_id') ?? '';
     let q = sb
       .from('brrr_builder_outreach')
-      .select('id, property_id, builder_id, contact_id, status, blocked_reason, body, sent_at, replied_at, confirmed_at, error, created_at, brrr_builders(name, phone)')
+      .select('id, property_id, builder_id, contact_id, status, blocked_reason, body, sent_at, replied_at, confirmed_at, error, created_at, brrr_builders(name, phone), brrr_properties(address, wk_contact_id)')
       .order('created_at', { ascending: true });
     if (propertyId) {
       q = q.eq('property_id', propertyId);

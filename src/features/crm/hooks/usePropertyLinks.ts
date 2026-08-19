@@ -56,6 +56,10 @@ export interface PropertyLink {
   /** Who Pedro spoke to at the branch, off the call checklist. */
   branch_contact_name: string | null;
   facts: DealFacts | null;
+  /** The CONFIRMED builder glued to this deal (assigned_builder_id is written
+   *  only by the confirm press). contact_id is the builder's own CRM thread,
+   *  so the chip can click through: the two threads point at each other. */
+  builder: { name?: string; phone?: string; viewing_at?: string; contact_id?: string } | null;
 }
 
 /** The last 9 digits of a phone, or '' when there are not 9 to take.

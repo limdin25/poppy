@@ -23,6 +23,7 @@ import StageMoveChip from '../components/shared/StageMoveChip';
 import NextStepChip from '../components/shared/NextStepChip';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
 import BriefLine from '../components/shared/BriefLine';
+import BuilderChip from '../components/shared/BuilderChip';
 import DealPulseChip from '../components/shared/DealPulseChip';
 import { useDealPulse } from '../hooks/useDealPulse';
 import { useDealOrders } from '../hooks/useDealOrders';
@@ -458,6 +459,13 @@ export default function PipelinesPage() {
                             className="mt-1"
                           />
                         )}
+                        {/* Hugo 2026-08-20: the confirmed builder sticks to
+                            the deal card, and clicking opens their thread. */}
+                        <BuilderChip
+                          builder={deal?.builder}
+                          onOpenThread={(id) => navigate(`/admin/crm/inbox?contact=${id}`)}
+                          className="mt-1"
+                        />
                         {c.dealValuePence && (
                           <div className="text-[11px] font-semibold text-[#3C5A87] tabular-nums mt-1">
                             {formatPence(c.dealValuePence)}
