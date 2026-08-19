@@ -166,3 +166,45 @@ describe('the engine payload: every fact the call won actually reaches the valua
     }
   })
 })
+
+describe('the ballpark hears every call, not just the last one', () => {
+  // 2026-08-19, same house. Pedro rang Oundle Road on 18 Aug and the branch
+  // read 74 sqm off the EPC. He rang back on 19 Aug to book the viewing. The
+  // re-price that evening read ONLY the viewing call, extracted "the agent
+  // made no statements about the property's condition, size or works", and
+  // handed the engine an empty survey on a house we had spent two calls
+  // qualifying. The process is deliberately two calls, so reading one call is
+  // structurally guaranteed to lose the survey the moment call two happens.
+  const lib = read('api/lib/ballpark.ts')
+
+  it('the preview reads the recent calls, and readNewestTranscript stays for its own callers', () => {
+    expect(lib).toMatch(/readRecentTranscripts\(sb, prop\.wk_contact_id\)/)
+    // Still exported: call-extract and the call listener want the newest call
+    // and only the newest call.
+    expect(lib).toMatch(/export async function readNewestTranscript/)
+    expect(lib).toMatch(/export async function readRecentTranscripts/)
+  })
+
+  it('labels the calls and puts them oldest first, so the newest fact can win', () => {
+    expect(lib).toMatch(/MOST RECENT CALL/)
+    expect(lib).toMatch(/EARLIER CALL/)
+    expect(lib).toMatch(/\[\.\.\.found\]\.reverse\(\)/)
+  })
+
+  it('heardCallId is still the NEWEST call, which is what the freshness check means', () => {
+    expect(lib).toMatch(/newestId: heardCallId/)
+    expect(lib).toMatch(/const newestId = found\[0\]\.id/)
+  })
+
+  it('the prompt reads every call and refuses to borrow another house on that branch', () => {
+    expect(lib).toMatch(/read them ALL/)
+    expect(lib).toMatch(/the most recent one wins/)
+    expect(lib).toMatch(/THAT BRANCH SELLS MANY HOUSES/)
+    expect(lib).toMatch(/plainly about a different address, ignore it/)
+  })
+
+  it('carries no long dash or curly punctuation into the prompt', () => {
+    const prompt = lib.slice(lib.indexOf('const SYSTEM_EXTRACT'), lib.indexOf("].join('\\n');"))
+    expect(prompt).not.toMatch(/[–—‘’“”…]/)
+  })
+})

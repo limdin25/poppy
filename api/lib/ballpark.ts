@@ -39,9 +39,11 @@ export { BANDS, WORKS } from './condition-vocab.js';
 import { BANDS, WORKS } from './condition-vocab.js';
 
 const SYSTEM_EXTRACT = [
-  'You read the transcript of a phone call between our caller and a UK estate agent about one house, plus the caller\'s typed notes, and you extract ONLY what the agent actually said about the property\'s condition and size.',
+  'You read the transcripts of one or more phone calls between our caller and a UK estate agent, plus the caller\'s typed notes, and you extract ONLY what the agent actually said about ONE named house: its condition and its size.',
   '',
   'HARD RULES.',
+  '0. THE CALLS ARE LABELLED AND IN ORDER, oldest first. Facts are usually won on the earliest call and the latest call is often only about arranging a viewing, so read them ALL: a size given on the first call still counts on the third. Where two calls contradict each other about the same fact, the most recent one wins.',
+  '0b. THAT BRANCH SELLS MANY HOUSES. Extract only what was said about the house named below. If a passage is plainly about a different address, ignore it completely rather than borrowing its condition or its size.',
   '1. NEVER guess. If the agent did not establish something, it is unknown or absent. An unpriced unknown is safe; a guessed answer costs real money on a real offer.',
   `2. condition_band is exactly one of: ${BANDS.join(', ')}. turnkey = walk-in ready. cosmetic = decoration and carpets. modernisation = dated kitchen or bathroom, needs bringing up to date. full_refurb = everything needs doing. derelict = a shell, uninhabitable. unknown = the call did not establish it.`,
   `3. works_needed lists only works the agent CONFIRMED, from exactly this vocabulary: ${WORKS.join(', ')}. An agent saying the boiler is old means boiler. An agent saying the roof leaks or there is staining on ceilings means roof or damp. Say nothing the agent did not.`,
@@ -150,6 +152,57 @@ export async function readNewestTranscript(
   return { text: '', callId: null };
 }
 
+/** EVERY recent call to this branch that has words in it, oldest first.
+ *
+ *  The ballpark cannot use readNewestTranscript, and 19 Aug is why. Pedro's
+ *  process is deliberately two calls: the branch answers the condition and
+ *  size questions on call one, and call two is the offer. Reading only the
+ *  newest call means that the moment call two happens, every fact won on call
+ *  one becomes invisible, and the next re-price silently reverts to guessing
+ *  the condition from the listing photographs.
+ *
+ *  On Oundle Road the branch read 74 sqm off the EPC on 18 Aug. The 19 Aug
+ *  re-run heard only the viewing-booking call, extracted "the agent made no
+ *  statements about the property's condition, size or works", and handed the
+ *  engine an empty survey on a house we had spent two calls qualifying.
+ *
+ *  ONE BRANCH SELLS MANY HOUSES, so this is not simply "read more". The
+ *  extraction prompt is told which house it is pricing and to ignore anything
+ *  said about a different one, and the calls are labelled and ordered so the
+ *  newest statement wins where two disagree. */
+export async function readRecentTranscripts(
+  sb: Sb, contactId: string, opts: { calls?: number; cap?: number } = {},
+): Promise<{ text: string; callIds: string[]; newestId: string | null }> {
+  const want = opts.calls ?? 3;
+  const { data: calls } = await sb
+    .from('wk_calls')
+    .select('id, started_at')
+    .eq('contact_id', contactId)
+    .eq('direction', 'outbound')
+    .order('started_at', { ascending: false })
+    .limit(Math.max(want * 2, 6));
+
+  const found: Array<{ id: string; startedAt: string | null; text: string }> = [];
+  for (const c of (calls ?? []) as Array<{ id: string; started_at: string | null }>) {
+    if (found.length >= want) break;
+    const { lines } = await readCallTranscript(sb as never, c.id, { limit: 300 });
+    const text = formatTranscript(lines, opts.cap ?? 14_000);
+    if (text.length > 200) found.push({ id: c.id, startedAt: c.started_at, text });
+  }
+  if (!found.length) return { text: '', callIds: [], newestId: null };
+
+  const newestId = found[0].id;
+  const oldestFirst = [...found].reverse();
+  const text = oldestFirst
+    .map((c, i) => {
+      const when = c.startedAt ? c.startedAt.slice(0, 10) : 'date unknown';
+      const label = i === oldestFirst.length - 1 ? 'MOST RECENT CALL' : `EARLIER CALL ${i + 1}`;
+      return `--- ${label} (${when}) ---\n${c.text}`;
+    })
+    .join('\n\n');
+  return { text, callIds: oldestFirst.map((c) => c.id), newestId };
+}
+
 type PropRow = {
   id: string; source_property_id: string | null; address: string | null;
   asking_price: number | null; price_text: string | null; bedrooms: number | null;
@@ -193,13 +246,14 @@ export async function runBallparkPreview(
     };
   }
 
-  // ---- hear the call: newest outbound call with a transcript ------------
-  // ONE READER, exported, because api/lib/call-extract.ts needs exactly the
-  // same thing and a second copy is how the `speaker, text, created_at` bug
-  // came to exist in three files at once.
-  const { text: transcript, callId: heardCallId } = prop.wk_contact_id
-    ? await readNewestTranscript(sb, prop.wk_contact_id)
-    : { text: '', callId: null };
+  // ---- hear the calls: EVERY recent one, not just the last -------------
+  // The facts are won on call one and the offer is made on call two, so the
+  // newest call alone throws away the whole survey the moment Pedro rings
+  // back. heardCallId stays the NEWEST call, because that is what the
+  // freshness check downstream means by "has anything happened since".
+  const { text: transcript, newestId: heardCallId } = prop.wk_contact_id
+    ? await readRecentTranscripts(sb, prop.wk_contact_id)
+    : { text: '', newestId: null };
 
   // EVERYTHING Pedro typed, driven off QUALIFICATION_QUESTIONS so a new
   // checklist question reaches the engine automatically.
@@ -224,7 +278,7 @@ export async function runBallparkPreview(
   const user = [
     `THE HOUSE: ${prop.address ?? 'unknown address'}, ${prop.bedrooms ?? '?'} bed ${prop.property_type ?? ''}.`,
     '',
-    transcript ? `THE CALL:\n${transcript}` : 'There is no transcript. Work from the typed notes only.',
+    transcript ? `THE CALLS:\n${transcript}` : 'There is no transcript. Work from the typed notes only.',
     '',
     typedNotes ? `THE CALLER'S TYPED NOTES:\n${typedNotes}` : '',
   ].join('\n');
