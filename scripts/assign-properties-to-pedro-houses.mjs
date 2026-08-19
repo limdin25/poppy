@@ -129,11 +129,14 @@ const PIPELINE_ID = 'c2022b21-7a79-4203-90dd-5b06b46eef11'   // Default workspac
 const CALLER_ID_NUMBER_ID = '1a04cead-c768-46f4-8434-3ef94de7b6e3'   // +447462167894
 
 // How far under its like-for-like local sold median a house must be advertised
-// before it is worth a call. THE SAME 0.15 AS send_to_elsie.MIN_LOCAL_DISCOUNT
+// before it is worth a call. THE SAME VALUE AS send_to_elsie.MIN_LOCAL_DISCOUNT
 // on the engine, and it is written here as well ON PURPOSE: this script queues
 // from rows that engine may never have judged, so it cannot inherit the rule by
 // assuming everything upstream was screened. See the gate below.
-const MIN_LOCAL_DISCOUNT = 0.15
+// RAISED 0.15 -> 0.20 on 2026-08-19, Hugo: "move from a 10% minimum discount
+// to a 20% minimum discount right from the jump. No filler, just high
+// conviction deals."
+const MIN_LOCAL_DISCOUNT = 0.20
 
 const money = (n) => {
   const v = parseFloat(String(n ?? ''))

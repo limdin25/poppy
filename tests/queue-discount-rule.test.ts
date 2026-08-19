@@ -37,8 +37,11 @@ describe('the discount rule is enforced where the queue row is written', () => {
     // These are the LAST gates before Pedro, and they queue from sources that
     // may never have been judged by the engine, so they cannot inherit the
     // rule by assuming everything upstream screened it.
+    // The VALUE moved 0.15 -> 0.20 on 2026-08-19 (Hugo: "20% minimum right
+    // from the jump, no filler"); the STRUCTURE this test defends is
+    // unchanged: the number lives in both scripts, at the last gate.
     for (const src of [priced, discovery]) {
-      expect(src).toMatch(/const MIN_LOCAL_DISCOUNT = 0\.15/)
+      expect(src).toMatch(/const MIN_LOCAL_DISCOUNT = 0\.20/)
     }
   })
 
