@@ -39,23 +39,26 @@ describe('the call history bug, pinned', () => {
   // rung anybody, `clock.lastTouchAt` ignored the phone entirely, and a branch
   // called an hour ago could read as untouched for three days.
 
-  it('never selects a bare `disposition` off wk_calls again', () => {
-    const select = MANAGER.match(/from\('wk_calls'\)[\s\S]{0,200}?\)/)?.[0] ?? '';
-    expect(select).toContain('disposition_column_id');
-    expect(select).not.toMatch(/[^_]disposition[,'\s]/);
+  // 19 Aug: the route's own per-property loader was DELETED. It walked up to
+  // 400 deals x 5 queries serially, blew Vercel's time limit as the pool
+  // grew, and the Today panel printed the crash page as "Unexpected token
+  // 'A'". The route now loads through loadCockpitStates, ONE
+  // wk_deal_cockpit_rows RPC, where the disposition lesson lives in SQL
+  // (join on wk_pipeline_columns, migration 20260816000004). These pins
+  // follow the lesson to where it moved.
+
+  it('the route reads no tables of its own for the day', () => {
+    expect(MANAGER).toContain('loadCockpitStates');
+    expect(MANAGER).toContain('loadDealBundle');
+    expect(MANAGER).not.toContain("from('wk_calls')");
+    expect(MANAGER).not.toContain("from('brrr_properties')");
   });
 
-  it('resolves the outcome to a board column name', () => {
-    // The outcome of a call IS the column the agent dropped it into, so the
-    // name needs a lookup rather than a column read.
-    expect(MANAGER).toContain('wk_pipeline_columns');
-    expect(MANAGER).toMatch(/columnById/);
-    expect(MANAGER).toMatch(/disposition: k\.disposition_column_id/);
-  });
-
-  it('reads the column table once, not once per call', () => {
-    const reads = MANAGER.match(/from\('wk_pipeline_columns'\)/g) ?? [];
-    expect(reads.length).toBe(1);
+  it('the RPC resolves the outcome to a board column name, never a bare disposition', () => {
+    const rpcSql = readFileSync(
+      resolve(root, 'supabase/migrations/20260816000004_ballpark_preview.sql'), 'utf8');
+    expect(rpcSql).toContain("'disposition', kcol.name");
+    expect(rpcSql).toMatch(/left join wk_pipeline_columns kcol on kcol\.id = k\.disposition_column_id/);
   });
 });
 
