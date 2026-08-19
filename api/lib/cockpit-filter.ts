@@ -66,7 +66,7 @@ export const LIVE_COLUMNS = [
   'Discovery done, evaluating',
   'Ready for call 2',
   'Ballpark agreed',
-  'Needs viewing',
+  'Viewing booked',
   'Offer sent',
   'Offer accepted',
   'Sent to investor',

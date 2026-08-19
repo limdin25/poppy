@@ -20,6 +20,7 @@ import { callLLM } from './llm.js';
 import { QUALIFICATION_QUESTIONS } from './brrr.js';
 import { buildNextStepBrief } from './next-step-brief.js';
 import { readDealMoney } from './brrr-offer.js';
+import { readCallTranscript, formatTranscript } from './call-transcript.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Sb = SupabaseClient<any, any, any>;
@@ -139,18 +140,11 @@ export async function readNewestTranscript(
     .limit(opts.scanCalls ?? 5);
 
   for (const c of (calls ?? []) as Array<{ id: string }>) {
-    const { data: lines, error } = await sb
-      .from('wk_live_transcripts')
-      .select('speaker, body, ts')
-      .eq('call_id', c.id)
-      .order('ts', { ascending: true })
-      .limit(300);
-    if (error) console.warn('[transcript] read failed', error.message);
-    const text = ((lines ?? []) as Array<{ speaker?: string | null; body?: string | null }>)
-      .map((r) => `${(r.speaker ?? 'other').toUpperCase()}: ${(r.body ?? '').trim()}`)
-      .filter((l) => l.length > 8)
-      .join('\n')
-      .slice(0, opts.cap ?? 14_000);
+    // The accurate after-call transcript when it exists, Twilio's realtime one
+    // when it does not. The homework runs long after the call, so it should
+    // never be reading the worse of the two.
+    const { lines } = await readCallTranscript(sb as never, c.id, { limit: 300 });
+    const text = formatTranscript(lines, opts.cap ?? 14_000);
     if (text.length > 200) return { text, callId: c.id };
   }
   return { text: '', callId: null };

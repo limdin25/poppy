@@ -89,9 +89,21 @@ describe('refusal detector', () => {
 })
 
 describe('the refusal travels to where automation reads it', () => {
-  it('wk-sms-incoming relays the flag to heypubli', () => {
-    const relay = incomingSrc.split("type: 'inbound_whatsapp'")[1]?.split('});')[0] ?? ''
-    expect(relay).toContain('refused')
+  // 2026-08-19: the per-message relay to heypubli was REMOVED with the
+  // Instagram method (the WhatsApp number became the builders and estate
+  // agents line). The refusal flag still parks Elsie's OWN automation (the
+  // ai_reply guard below), and the heypubli half of these pins stays because
+  // its webhook still exists for any other caller.
+  it('wk-sms-incoming no longer relays to heypubli at all', () => {
+    expect(incomingSrc).not.toContain("type: 'inbound_whatsapp'")
+    // The env may be named in the tombstone comment; reading it is the bug.
+    expect(incomingSrc).not.toContain("Deno.env.get('HEYPUBLI_URL')")
+  })
+
+  it("Elsie's own AI reply still refuses on a refusal", () => {
+    // The enqueue guard: refused is one of the conditions that stop the
+    // ai_reply job being queued at all.
+    expect(incomingSrc).toMatch(/!optOut && !refused/)
   })
 
   // Deliberately NOT do-not-text: that tag is the STOP contract and it locks a

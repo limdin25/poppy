@@ -806,7 +806,7 @@ async function fetchDraft(
   // put to this branch already. A number the model was never given is a number
   // it cannot put in an email, and an email cannot be unsent.
   const FIGURE_HAS_BEEN_PUT_TO_THEM = [
-    'Ballpark agreed', 'Needs viewing', 'Offer sent', 'Offer accepted',
+    'Ballpark agreed', 'Viewing booked', 'Offer sent', 'Offer accepted',
     'Sent to investor', 'Deal closed', 'Renegotiate',
   ];
   const kind = body.draft?.kind ?? '';

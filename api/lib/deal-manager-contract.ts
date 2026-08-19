@@ -110,11 +110,11 @@ export const ACTIONS_BY_STAGE: Record<string, string[]> = {
   // Call two ends with a figure agreed, and from there a deal goes exactly one
   // of three ways: the offer goes out, a builder goes round to price the work
   // properly first, or it is lost. `close_lost` is universal so the third road
-  // always exists; `book_builder` was legal ONLY in Needs viewing, and nothing
-  // moves a card into Needs viewing on its own, so the builder road was
-  // unreachable from the column deals actually land in.
+  // always exists. 'Viewing booked' (renamed from 'Needs viewing' on 19 Aug)
+  // is reached by the builder-confirm press in api/lib/builder-outreach.ts, so
+  // a card in it has a builder booked onto the viewing already.
   'Ballpark agreed': ['send_offer_email', 'book_builder', 'chase_written_confirmation'],
-  'Needs viewing': ['book_builder', 'chase_video_for_builder', 'escalate_hugo'],
+  'Viewing booked': ['book_builder', 'chase_video_for_builder', 'escalate_hugo'],
   // reply_with_counter: the branch answered our offer with a no or a number,
   // and the reply IS a money move, so it maps to the counter button whose
   // stress test runs decideCounter and the ceiling fences before anything is

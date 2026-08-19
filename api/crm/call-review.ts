@@ -17,6 +17,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
+import { readCallTranscript, formatTranscript } from '../lib/call-transcript.js';
 
 export const config = { runtime: 'edge' };
 
@@ -78,26 +79,16 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'callId required' }), { status: 400 });
   }
 
-  // THE COLUMNS ARE `body` AND `ts`. This asked for `text, created_at`, which
-  // do not exist on wk_live_transcripts, so PostgREST refused the whole query,
-  // `data` came back null, and EVERY call review since this route shipped was
-  // written as though the call had never happened, then told the human the call
-  // was too short to review. Third sighting of this exact mistake: the same
-  // wrong column list broke every offer email (draft-offer-email.ts:328) and
-  // the same fix applies. An error is logged now rather than silently becoming
-  // "nothing was said".
-  const { data, error } = await supabase
-    .from('wk_live_transcripts')
-    .select('speaker, body, ts')
-    .eq('call_id', body.callId)
-    .order('ts', { ascending: true })
-    .limit(400);
-  if (error) console.warn('[call-review] transcript read failed', error.message);
-
-  const lines = (data ?? [])
-    .map((r: { speaker?: string | null; body?: string | null }) =>
-      `${(r.speaker ?? 'other').toUpperCase()}: ${(r.body ?? '').trim()}`)
-    .filter((l) => l.length > 8);
+  // ONE reader owns this now (api/lib/call-transcript.ts), which is what stops
+  // the fourth sighting of the mistake this comment used to describe: the read
+  // asked for `text, created_at`, columns that do not exist, so PostgREST
+  // refused the whole query and EVERY call review was written as though the
+  // call had never happened, then told the human it was too short to review.
+  // The same wrong column list broke every offer email. Reviewing a finished
+  // call, it also prefers the accurate after-call transcript over Twilio's
+  // realtime one.
+  const { lines: rows } = await readCallTranscript(supabase as never, body.callId, { limit: 400 });
+  const lines = formatTranscript(rows, Number.MAX_SAFE_INTEGER).split('\n').filter(Boolean);
 
   // A call with four lines in it is a wrong number or a receptionist, and a
   // review of it would be invented rather than observed.

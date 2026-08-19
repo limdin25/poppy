@@ -288,7 +288,7 @@ moves a board column and never sends anything. Any figure the branch named is
 recorded as **theirs** (`branch_stated_figure`), never as a price we agreed.
 
 **The board, in order:** Discovery done evaluating → Ready for call 2 → Ballpark
-agreed → Needs viewing → Offer sent → Offer accepted → Sent to investor → Deal
+agreed → Viewing booked → Offer sent → Offer accepted → Sent to investor → Deal
 closed.
 
 ---

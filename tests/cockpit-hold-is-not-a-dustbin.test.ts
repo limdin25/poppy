@@ -253,10 +253,11 @@ describe('three roads after call two, not just after call one', () => {
   })
 
   it('the builder road was unreachable before, which is the bug', () => {
-    // book_builder was legal ONLY in Needs viewing, and nothing moves a card
-    // into Needs viewing on its own, so from the column deals actually land in
-    // the brain had no way to say "get a builder round first".
-    expect(ACTIONS_BY_STAGE['Needs viewing']).toContain('book_builder')
+    // book_builder was legal ONLY in the viewing column (then called Needs
+    // viewing, renamed Viewing booked 19 Aug), and nothing moved a card into
+    // it on its own, so from the column deals actually land in the brain had
+    // no way to say "get a builder round first".
+    expect(ACTIONS_BY_STAGE['Viewing booked']).toContain('book_builder')
     expect(PRIMARY_BUTTON_FOR.book_builder).toBe('book_builder')
   })
 

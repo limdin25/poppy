@@ -173,7 +173,7 @@ const MONEY_ACTIONS: CockpitAction[] = [
 /** Where a figure has legitimately been put to this branch already, so an
  *  email may refer to it. Before this, our numbers are homework, not an offer. */
 export const FIGURE_ALREADY_PUT_TO_THEM = [
-  'Ballpark agreed', 'Needs viewing', 'Offer sent', 'Offer accepted',
+  'Ballpark agreed', 'Viewing booked', 'Offer sent', 'Offer accepted',
   'Sent to investor', 'Deal closed', 'Renegotiate',
 ];
 
@@ -181,7 +181,7 @@ export const FIGURE_ALREADY_PUT_TO_THEM = [
  *  is a live, ordinary event (that is what the `stage_mismatch` flag is for),
  *  so everything not listed here only ever warns. */
 const STAGE_FOR_MONEY_ACTION: Record<string, string[]> = {
-  draft_offer_email: ['Ballpark agreed', 'Needs viewing', 'Offer sent', 'Renegotiate'],
+  draft_offer_email: ['Ballpark agreed', 'Viewing booked', 'Offer sent', 'Renegotiate'],
   // Nurturing and Waiting on their answer joined 2026-08-17, matching the
   // contract: reply_with_counter was made legal there on 16 Aug (Orion Way's
   // written rejection arrived while the card sat in Nurturing) and the brain

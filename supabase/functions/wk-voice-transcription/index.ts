@@ -2234,7 +2234,7 @@ serve(async (req: Request) => {
           // demoted by a no_answer AND the ballpark string had been blanked,
           // so the column was the only signal left saying call two.
           const COACH_CALL2_COLUMNS = new Set([
-            'Ready for call 2', 'Ballpark agreed', 'Needs viewing',
+            'Ready for call 2', 'Ballpark agreed', 'Viewing booked',
             'Offer sent', 'Waiting on their answer', 'Offer accepted',
           ]);
           let columnSaysCall2 = false;

@@ -40,6 +40,7 @@ import { decideCounter, respectsCeiling } from '../lib/counter-position.js';
 import { externalDoNow } from '../lib/next-step-brief.js';
 import { companyFactsBlock, asksWhoWeAre } from '../lib/company-facts.js';
 import { heardFactsBlock } from '../lib/deal-state.js';
+import { readCallTranscript, formatTranscript } from '../lib/call-transcript.js';
 
 export const config = { runtime: 'edge' };
 
@@ -391,22 +392,17 @@ export default async function handler(req: Request): Promise<Response> {
   // as though the call had never happened. Found 2026-08-14 while wiring the
   // call-one email, which is built from the same read. An error is logged now
   // rather than silently becoming "no transcript".
+  //
+  // THIS ONE RUNS MID-CALL, which is why it reads through the shared helper
+  // rather than the accurate table directly: the after-call transcript does
+  // not exist yet while Pedro is still on the phone, so the helper falls back
+  // to Twilio's realtime rows and the email drafts exactly as it does today.
+  // On a re-draft after the call it silently gets the better words.
   let transcript = '';
   if (body.callId) {
     try {
-      const { data, error } = await supabase
-        .from('wk_live_transcripts')
-        .select('speaker, body, ts')
-        .eq('call_id', body.callId)
-        .order('ts', { ascending: true })
-        .limit(200);
-      if (error) console.warn('[draft-email] transcript read failed', error.message);
-      transcript = (data ?? [])
-        .map((r: { speaker?: string | null; body?: string | null }) =>
-          `${(r.speaker ?? 'other').toUpperCase()}: ${(r.body ?? '').trim()}`)
-        .filter((l) => l.length > 8)
-        .join('\n')
-        .slice(0, 12_000);
+      const { lines } = await readCallTranscript(supabase as never, body.callId, { limit: 200 });
+      transcript = formatTranscript(lines, 12_000);
     } catch (e) {
       // A missing transcript is a normal case, not an error: the email still
       // writes. A BROKEN READ is not, so it is at least visible in the logs.

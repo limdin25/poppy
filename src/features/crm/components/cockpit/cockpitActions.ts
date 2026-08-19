@@ -146,7 +146,7 @@ export const PRIMARY_BUTTON_FOR: Record<string, CockpitAction> = {
   // Ballpark agreed
   send_offer_email: 'draft_offer_email',
   chase_written_confirmation: 'draft_follow_up_email',
-  // Needs viewing
+  // Viewing booked
   book_builder: 'book_builder',
   chase_video_for_builder: 'draft_video_email',
   // Offer sent

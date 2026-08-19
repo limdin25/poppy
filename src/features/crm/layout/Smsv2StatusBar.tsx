@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot, Bell, Circle, Mail, MessageSquare, Phone, PhoneOff, Trophy,
   Clapperboard, Eye, MousePointerClick, PlayCircle, PoundSterling, Send,
+  HardHat, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/core/lib/cn';
@@ -37,6 +38,11 @@ const KIND_ICON: Record<string, { Icon: typeof Bell; colour: string }> = {
   vsl_cta_click: { Icon: MousePointerClick, colour: 'text-[#F97316]' },
   vsl_checkout_start: { Icon: PoundSterling, colour: 'text-[#A855F7]' },
   vsl_paid: { Icon: PoundSterling, colour: 'text-[#16A34A]' },
+  // Builder outreach (2026-08-19): a builder replying wants an answer, a
+  // confirmed builder is the viewing sorted, an empty scrape needs a hand.
+  builder_reply: { Icon: HardHat, colour: 'text-[#F59E0B]' },
+  builder_confirmed: { Icon: CheckCircle2, colour: 'text-[#16A34A]' },
+  builder_scrape_empty: { Icon: AlertTriangle, colour: 'text-[#DC2626]' },
 };
 
 /** One shape for both bell sources so the popover renders a single sorted list. */

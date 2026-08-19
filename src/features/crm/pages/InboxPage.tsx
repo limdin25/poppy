@@ -59,6 +59,7 @@ import LeadIdentity, { isPropertyLead, askForName } from '../components/shared/L
 import { DEAL_STAGES } from '../components/templates/dealProcessSteps';
 import BriefLine from '../components/shared/BriefLine';
 import PropertyLinkChips from '../components/shared/PropertyLinkChips';
+import { BuilderConfirmInboxButton } from '../components/BuilderOutreachPanel';
 import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/usePropertyLinks';
 import InboundMedia from '../components/InboundMedia';
 import AgentChip from '../components/shared/AgentChip';
@@ -1700,6 +1701,12 @@ export default function InboxPage() {
               </div>
             )}
           </div>
+          {/* A builder saying yes in this thread is confirmed with one press,
+              which books them on the property and moves the branch card to
+              Viewing booked. Renders nothing on non-builder threads. */}
+          {activeContact.customFields?.lead_type === 'builder' && (
+            <BuilderConfirmInboxButton contactId={activeContact.id} />
+          )}
           {/* Stage selector — change stage from inbox */}
           <StageSelector
             value={activeContact.pipelineColumnId}

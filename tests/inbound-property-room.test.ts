@@ -149,7 +149,7 @@ describe('ONE room, dialled or answered', () => {
     for (const name of CALL2_COLUMNS) {
       expect(COCKPIT).toContain(`'${name}'`)
     }
-    for (const name of ['Ready for call 2', 'Ballpark agreed', 'Needs viewing', 'Offer sent', 'Waiting on their answer', 'Offer accepted']) {
+    for (const name of ['Ready for call 2', 'Ballpark agreed', 'Viewing booked', 'Offer sent', 'Waiting on their answer', 'Offer accepted']) {
       expect(CALL2_COLUMNS.has(name)).toBe(true)
     }
     expect(CALL2_COLUMNS.has('Discovery done, evaluating')).toBe(false)

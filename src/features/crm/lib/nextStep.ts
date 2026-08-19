@@ -119,7 +119,7 @@ export function callModeForStep(
  *  no-contact ones ('Voicemail', 'No pickup', 'Not interested') say nothing
  *  about which call is next, so they promote nothing. */
 export const CALL2_COLUMNS = new Set<string>([
-  'Ready for call 2', 'Ballpark agreed', 'Needs viewing',
+  'Ready for call 2', 'Ballpark agreed', 'Viewing booked',
   'Offer sent', 'Waiting on their answer', 'Offer accepted',
 ]);
 

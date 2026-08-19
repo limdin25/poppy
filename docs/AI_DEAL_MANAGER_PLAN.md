@@ -36,7 +36,7 @@ one-shot tool that fires once and forgets:
    at 00:30 on a house Pedro spoke about yesterday. The saved figures refresh,
    but nobody tells Pedro "this branch you already know just cut the price,
    ring them first."
-4. **The board past Ballpark agreed is unmanaged.** Needs viewing has a builder
+4. **The board past Ballpark agreed is unmanaged.** Viewing booked (formerly Needs viewing) has a builder
    roster that is empty and no VA. Offer accepted onward (the investor pack:
    numbers, three sold comps, one rent comp, photos, written acceptance) exists
    only as a paragraph in BRRR_STRATEGY.md. Nothing checks a pack is complete,
@@ -125,7 +125,7 @@ may only choose from the actions that stage already allows, for example:
 - Discovery done evaluating: `wait_for_engine`, `chase_missing_fact`, `escalate_hugo`
 - Ready for call 2: `make_offer_call`, `chase_email_reply`, `rebook_followup`
 - Ballpark agreed: `send_offer_email`, `chase_written_confirmation`
-- Needs viewing: `book_builder`, `chase_video_for_builder`, `escalate_hugo`
+- Viewing booked: `book_builder`, `chase_video_for_builder`, `escalate_hugo`
 - Offer sent: `chase_the_answer`, `hold`
 - Offer accepted: `assemble_investor_pack`, `chase_written_acceptance`
 - Any stage: `flag_mismatch` (the card's column disagrees with the evidence)
@@ -183,7 +183,7 @@ the Manager exists.
 | Homework overnight | reprice.py | unchanged, Manager re-assesses when figures refresh |
 | Ready for call 2 | brief says ring back | Manager chases the booked time, flags it going stale |
 | Ballpark agreed | Hugo emails the offer | Manager reminds, checks the email actually went, chases the reply |
-| Needs viewing | roster panel, by hand | Manager prompts the builder booking, chases the video the builder needs |
+| Viewing booked | roster panel, by hand | Manager prompts the builder booking, chases the video the builder needs |
 | Offer sent | nothing watches | Manager chases the answer on a clock, rebooks the follow-up |
 | Offer accepted | nothing exists | Manager runs the pack checklist (section 6) and chases each missing piece |
 | Sent to investor | nothing exists | Manager tracks reservation and exchange halves of the fee |
@@ -275,7 +275,7 @@ tests), plus one new e2e: a Manager-triggered call-one email with a figure in
 the state is still refused by the fence.
 
 **Phase 4, builder and investor pack.**
-The Needs viewing prompts and the pack gate.
+The Viewing booked prompts and the pack gate.
 *Exit test:* pack gate unit tests (every missing line blocks), and the first
 real deal packaged with every checklist line green.
 

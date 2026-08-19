@@ -83,6 +83,10 @@ interface ContactRow {
   custom_fields?: Record<string, string> | null;
 }
 
+/** The "HeyPubli" CRM agent (hello@heypubli.com). Retired-funnel threads are
+ *  only visible under "See as" this agent; see the filter in load(). */
+const HEYPUBLI_AGENT_ID = '79c01385-a4d7-463d-b0b4-1d348c68a737';
+
 export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; refetch: () => void } {
   const [threads, setThreads] = useState<InboxThread[]>([]);
   const [loading, setLoading] = useState(true);
@@ -255,6 +259,14 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
       if (seen.has(m.contact_id)) continue;
       seen.add(m.contact_id);
       const c = contactById.get(m.contact_id);
+      // 2026-08-19: the Instagram funnel is retired and its number became the
+      // builders and estate agents line, so creator threads are HIDDEN from
+      // the working inbox rather than deleted. History stays reachable the
+      // one place Hugo ever worked it: "See as: HeyPubli".
+      if (
+        (c?.custom_fields?.product ?? '') === 'heypubli'
+        && viewAsId !== HEYPUBLI_AGENT_ID
+      ) continue;
       const campaign = campaignByContact.get(m.contact_id);
       out.push({
         contactId: m.contact_id,

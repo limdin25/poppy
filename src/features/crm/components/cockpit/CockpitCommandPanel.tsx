@@ -14,6 +14,7 @@ import { useMemo, useState } from 'react';
 import { Loader2, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import NextStepCard from '@/core/property/NextStepCard';
+import BuilderOutreachPanel from '../BuilderOutreachPanel';
 import CompGroup from '../shared/CompGroup';
 import OfferStrip from '../live-call/OfferStrip';
 import { usePropertyListings } from '../../hooks/usePropertyListings';
@@ -336,6 +337,9 @@ export default function CockpitCommandPanel({ deal, houses, onSelectHouse, repor
             </div>
           )}
         </div>
+
+        {/* builder invites, drafted by the sweep, sent only by a press here */}
+        <BuilderOutreachPanel propertyId={deal.propertyId} />
 
         {/* the rest of the file, out of the way until wanted */}
         <button

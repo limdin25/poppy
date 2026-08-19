@@ -342,7 +342,7 @@ async function machineHealth(sb: SupabaseClient<any, any, any>, now: Date): Prom
  *  be offering to break the board. */
 const PROPERTY_STAGES = [
   'Booked', 'Discovery done, evaluating', 'Ready for call 2', 'Ballpark agreed',
-  'Needs viewing', 'Offer sent', 'Waiting on their answer', 'Offer accepted',
+  'Viewing booked', 'Offer sent', 'Waiting on their answer', 'Offer accepted',
   'Sent to investor', 'Deal closed', 'Follow up', 'Voicemail', 'No pickup',
   'Not interested', 'Nurturing',
 ];

@@ -122,17 +122,23 @@ describe('the three fences between a model and a price in writing', () => {
 })
 
 describe('the draft reads what was actually said', () => {
-  it('queries the columns wk_live_transcripts actually has', () => {
+  it('reads the transcript through the one shared reader, not its own query', () => {
     // It asked for `text, created_at`, which do not exist. PostgREST 400d, the
     // catch swallowed it, and every offer email since this endpoint shipped was
-    // written as though no call had happened.
-    expect(DRAFT).toMatch(/\.select\('speaker, body, ts'\)/)
-    expect(DRAFT).toMatch(/\.order\('ts'/)
+    // written as though no call had happened. There is now exactly one place
+    // that select can be got wrong, and this route is not it.
+    expect(DRAFT).toMatch(/readCallTranscript/)
+    expect(DRAFT).not.toMatch(/\.from\('wk_live_transcripts'\)/)
     expect(DRAFT).not.toMatch(/select\('speaker, text, created_at'\)/)
   })
 
-  it('says so in the logs instead of silently becoming "no transcript"', () => {
-    expect(DRAFT).toMatch(/transcript read failed/)
+  it('still drafts mid-call, when only the realtime transcript exists', () => {
+    // Pedro sends this WHILE the branch is on the phone. The accurate
+    // after-call transcript does not exist yet at that moment, so the reader
+    // must fall back rather than return nothing and draft a blind email.
+    const READER = read('api/lib/call-transcript.ts')
+    expect(READER).toMatch(/wk_live_transcripts/)
+    expect(READER).toMatch(/twilio_realtime/)
   })
 })
 

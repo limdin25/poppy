@@ -247,7 +247,7 @@ describe('the client never re-derives a deal, and never moves a card', () => {
     // No board column name as a string anywhere: the moment one appears, the
     // client has started deciding what a stage allows.
     for (const col of [
-      'Ready for call 2', 'Ballpark agreed', 'Needs viewing',
+      'Ready for call 2', 'Ballpark agreed', 'Viewing booked',
       'Offer sent', 'Offer accepted', 'Sent to investor',
     ]) {
       expect(allCockpitSource, col).not.toContain(`'${col}'`);

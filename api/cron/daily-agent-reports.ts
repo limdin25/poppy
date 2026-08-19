@@ -25,6 +25,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '../../src/integrations/resend/client.js';
+import { readCallTranscriptsBulk } from '../lib/call-transcript.js';
 
 export const config = { maxDuration: 300 };
 
@@ -1002,16 +1003,17 @@ export default async function handler(
 
     // Hydrate transcripts, dispositions and company names for the day.
     const ids = calls.map((c) => c.id);
-    const [{ data: lines }, { data: cols }, { data: contacts }] = await Promise.all([
-      supabase.from('wk_live_transcripts').select('call_id, speaker, body, ts').in('call_id', ids).order('ts'),
+    const [transcripts, { data: cols }, { data: contacts }] = await Promise.all([
+      // The accurate after-call transcript where one exists. The report GRADES
+      // Pedro on what he asked, so it must not mark him down for a question
+      // the realtime transcription garbled.
+      readCallTranscriptsBulk(supabase as never, ids),
       supabase.from('wk_pipeline_columns').select('id, name'),
       supabase.from('wk_contacts').select('id, name').in('id', calls.map((c) => c.contact_id).filter(Boolean) as string[]),
     ]);
     const byCall = new Map<string, Line[]>();
-    for (const l of lines ?? []) {
-      const arr = byCall.get(l.call_id) ?? [];
-      arr.push({ speaker: l.speaker, body: l.body });
-      byCall.set(l.call_id, arr);
+    for (const [callId, lines] of transcripts) {
+      byCall.set(callId, lines.map((l) => ({ speaker: l.speaker, body: l.body })));
     }
     const colName = new Map((cols ?? []).map((c) => [c.id, c.name as string]));
     const contactName = new Map((contacts ?? []).map((c) => [c.id, c.name as string]));

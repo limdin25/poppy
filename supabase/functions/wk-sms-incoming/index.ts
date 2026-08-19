@@ -564,31 +564,21 @@ serve(async (req: Request) => {
         }
       }
 
-      // 3e-0. EVERY inbound WhatsApp on the funnel's own number is heypubli
-      //     traffic, whatever the message says. Content-matching alone kept
-      //     missing people: Angelica messaged from a different number than her
-      //     form (07 Aug 2026, 10 invisible minutes), Bikramjit wrote "Your
-      //     post on Instagram." with no form words at all, and a +91 skip hid
-      //     eight Indian form-fills the night Hugo decided they get one polite
-      //     goodbye instead of nothing. Audited 07 Aug 2026: seven days of
-      //     WhatsApp on +447460035763 is 100 percent heypubli, so on this line
-      //     the number IS the product. The form regex stays as the net for any
-      //     second number that starts forwarding here before someone updates
-      //     the constant. Country policy (who gets a goodbye, who gets
-      //     onboarded) is heypubli's reply brain's call, never decided by
-      //     hiding a thread from it.
-      const HEYPUBLI_WA_E164 = '+447460035763';
-      // The "HeyPubli" CRM agent (hello@heypubli.com). Hugo works the funnel
-      // through "See as: HeyPubli", which scopes the inbox to contacts OWNED by
-      // this agent. A contact created by its own inbound message has no owner
-      // (line above sets null), so SM Omar Faruk was stamped, answered, chased
-      // by the drip, and still invisible in the one view Hugo actually uses
-      // (07 Aug 2026: "cant see. SM Omar Faruk"). Stamping and owning must
-      // travel together.
+      // 3e-0. The number STOPPED being the funnel's on 2026-08-19 (Hugo: the
+      //     WhatsApp becomes the business line for builders and estate
+      //     agents; the Instagram method is retired). The old rule "every
+      //     inbound WhatsApp on +447460035763 is heypubli" would stamp every
+      //     BUILDER as a creator, so it is gone. What remains is the lead-form
+      //     regex net: an actual Meta form-fill still gets stamped and owned,
+      //     because those forms exist independently of which number relays
+      //     them. Old creator numbers messaging in keep their existing stamp
+      //     (nothing un-stamps), stay hidden by the inbox filter, and are
+      //     do-not-text tagged by scripts/heypubli-shutoff.mjs, so the answer
+      //     is deliberate silence, not a builder pitch.
       const HEYPUBLI_AGENT_ID = '79c01385-a4d7-463d-b0b4-1d348c68a737';
       const isLeadFormMsg =
         Boolean(leadForm.firstName || leadForm.email) || /filled\s+(in|out)\s+your\s+form/i.test(body);
-      if (!msgErr && channel === 'whatsapp' && (toE164 === HEYPUBLI_WA_E164 || isLeadFormMsg)) {
+      if (!msgErr && channel === 'whatsapp' && isLeadFormMsg) {
         try {
           const { data: st } = await supa
             .from('wk_contacts')
@@ -610,70 +600,59 @@ serve(async (req: Request) => {
         }
       }
 
-      // 3e. heypubli funnel fan-out. Same pre-gate philosophy as the site demo
-      //     above: one cheap check (is this contact stamped as a heypubli lead?)
-      //     and only then a relay to heypubli, so Elsie's own traffic costs
-      //     nothing extra. heypubli uses the reply to stop its nurture drip
-      //     (an engaged lead gets a human/AI conversation, not template nudges),
-      //     to record opt-outs on its side too, and since 07 Aug 2026 to TRIGGER
-      //     its reply brain after a 20 to 45 second settle. Never fatal.
-      const HEYPUBLI_URL = Deno.env.get('HEYPUBLI_URL') ?? '';
-      const HEYPUBLI_WEBHOOK_SECRET = Deno.env.get('HEYPUBLI_WEBHOOK_SECRET') ?? '';
-      if (!msgErr && channel === 'whatsapp' && HEYPUBLI_URL && HEYPUBLI_WEBHOOK_SECRET) {
+      // 3e. The heypubli funnel fan-out lived here until 2026-08-19 (an HMAC
+      //     relay to HEYPUBLI_URL that TRIGGERED its reply brain per message).
+      //     Removed on purpose with the Instagram method: the reply brain must
+      //     never answer on this number again. The envs stay set and the
+      //     heypubli app is untouched; only the pipe is cut.
+
+      // 3f. A builder answering the viewing invite (2026-08-19). Flip their
+      //     outreach rows to replied and ring every admin's bell. RAW inserts:
+      //     this edge fn cannot import api/lib, so the kind string
+      //     'builder_reply' must stay identical to api/lib/builder-notify.ts.
+      if (!msgErr && channel === 'whatsapp') {
         try {
-          const { data: cRow } = await supa
+          const { data: bRow } = await supa
             .from('wk_contacts')
-            .select('custom_fields, phone')
+            .select('custom_fields, name')
             .eq('id', contactId)
             .maybeSingle();
-          const cf = (cRow?.custom_fields ?? {}) as Record<string, unknown>;
-          if (cf.product === 'heypubli') {
-            const relay = JSON.stringify({
-              type: 'inbound_whatsapp',
-              phone: cRow?.phone ?? fromE164,
-              body,
-              opt_out: optOut,
-              // A plain-English refusal parks HeyPubli's automation exactly
-              // like a STOP does, without the do-not-text tag a STOP carries.
-              refused,
-              twilio_sid: messageSid,
-            });
-            const keyData = new TextEncoder().encode(HEYPUBLI_WEBHOOK_SECRET);
-            const key = await crypto.subtle.importKey(
-              'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-            );
-            const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(relay));
-            const hex = Array.from(new Uint8Array(sig))
-              .map((b) => b.toString(16).padStart(2, '0')).join('');
-            // FIRE AND FORGET. This fetch used to be awaited inside the request
-            // Twilio is waiting on; Twilio times out around 15 seconds and
-            // RETRIES, which means duplicate inbound rows and a second shot at
-            // every automation. EdgeRuntime.waitUntil keeps the isolate alive
-            // after the TwiML is returned, so the relay still completes; the
-            // heypubli side answers 200 fast and does its settle pause after
-            // responding, so nothing here ever waits on a pause.
-            const relayPromise = fetch(`${HEYPUBLI_URL}/api/webhooks/whatsapp-inbound`, {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-                'x-funnel-signature': `sha256=${hex}`,
-              },
-              body: relay,
-              signal: AbortSignal.timeout(10000),
-            }).then(
-              (res) => {
-                if (!res.ok) console.error(`[wk-sms-incoming] heypubli relay ${res.status}`);
-              },
-              (e) => console.error('[wk-sms-incoming] heypubli relay failed (cron is the net)', e),
-            );
-            const runtime = (globalThis as unknown as {
-              EdgeRuntime?: { waitUntil(p: Promise<unknown>): void };
-            }).EdgeRuntime;
-            if (runtime?.waitUntil) runtime.waitUntil(relayPromise);
-            else await relayPromise;
+          const bcf = (bRow?.custom_fields ?? {}) as Record<string, unknown>;
+          if (bcf.lead_type === 'builder') {
+            const nowIso = new Date().toISOString();
+            await supa
+              .from('brrr_builder_outreach')
+              .update({ status: 'replied', replied_at: nowIso, updated_at: nowIso })
+              .eq('contact_id', contactId)
+              .eq('status', 'sent');
+            // Admin PROFILE ids: admin_users.id is its own random uuid, so the
+            // allowlist joins to profiles by email (the cockpit rule).
+            const ids = new Set<string>();
+            const { data: byRole } = await supa
+              .from('profiles').select('id').eq('workspace_role', 'admin');
+            for (const r of (byRole ?? []) as Array<{ id?: string }>) if (r.id) ids.add(r.id);
+            const { data: adminRows } = await supa
+              .from('admin_users').select('email').limit(50);
+            const emails = ((adminRows ?? []) as Array<{ email?: string }>)
+              .map((r) => String(r.email ?? '').trim()).filter(Boolean);
+            if (emails.length) {
+              const { data: byEmail } = await supa
+                .from('profiles').select('id').in('email', emails);
+              for (const r of (byEmail ?? []) as Array<{ id?: string }>) if (r.id) ids.add(r.id);
+            }
+            if (ids.size) {
+              await supa.from('wk_notifications').insert([...ids].map((agentId) => ({
+                agent_id: agentId,
+                contact_id: contactId,
+                kind: 'builder_reply',
+                title: `Builder replied: ${String(bRow?.name ?? 'a builder')}`.slice(0, 160),
+                body: `Answer the builder. They said: "${body.slice(0, 240)}"`,
+                link: `/admin/crm/contacts/${contactId}`,
+              })));
+            }
           }
         } catch (e) {
-          console.error('[wk-sms-incoming] heypubli fan-out threw (non-fatal)', e);
+          console.error('[wk-sms-incoming] builder reply hook threw (non-fatal)', e);
         }
       }
 

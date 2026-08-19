@@ -213,6 +213,7 @@ describe('rule 4: one transcript reader', () => {
   const BALLPARK = read('api/lib/ballpark.ts')
   const EXTRACT = read('api/lib/call-extract.ts')
   const REVIEW = read('api/crm/call-review.ts')
+  const TRANSCRIPT = read('api/lib/call-transcript.ts')
 
   it('ballpark exports it and call-extract imports it, rather than copying', () => {
     expect(BALLPARK).toMatch(/export async function readNewestTranscript/)
@@ -223,17 +224,36 @@ describe('rule 4: one transcript reader', () => {
   })
 
   it('every reader asks for the columns that exist', () => {
-    for (const [name, src] of [['ballpark', BALLPARK], ['call-review', REVIEW]] as const) {
+    // The read now lives in ONE place (api/lib/call-transcript.ts), which is
+    // the strongest form of this rule: there is a single select to get wrong.
+    // The wrong list may still appear in a WARNING comment, which is the point
+    // of writing it down. It may never appear in a select.
+    for (const [name, src] of [['call-transcript', TRANSCRIPT]] as const) {
       expect(src, name).toMatch(/\.select\('speaker, body, ts'\)/)
-      // The wrong list may appear in a WARNING comment, which is the point of
-      // writing it down. It may never appear in a select.
       expect(src, name).not.toMatch(/\.select\('speaker, text, created_at'\)/)
+    }
+    // And the callers must not have quietly grown their own copy back.
+    for (const [name, src] of [['ballpark', BALLPARK], ['call-review', REVIEW]] as const) {
+      expect(src, name).not.toMatch(/\.from\('wk_live_transcripts'\)/)
+      expect(src, name).toMatch(/readCallTranscript/)
     }
   })
 
   it('and says so when the read fails instead of reading it as silence', () => {
-    expect(REVIEW).toMatch(/transcript read failed/)
-    expect(BALLPARK).toMatch(/read failed/)
+    expect(TRANSCRIPT).toMatch(/read failed/)
+  })
+
+  it('prefers the accurate after-call transcript over the realtime one', () => {
+    // Twilio's realtime transcription is what the live coach needs and the
+    // worst thing to judge a finished deal on: measured 2026-08-18, 86% word
+    // agreement against AssemblyAI's 93%, and it drops magnitudes off spoken
+    // money. The accurate table must be read FIRST and the realtime one only
+    // as a fallback, or the swap achieves nothing.
+    const accurateAt = TRANSCRIPT.indexOf("from('wk_call_transcripts')")
+    const realtimeAt = TRANSCRIPT.indexOf("from('wk_live_transcripts')")
+    expect(accurateAt).toBeGreaterThan(-1)
+    expect(realtimeAt).toBeGreaterThan(-1)
+    expect(accurateAt).toBeLessThan(realtimeAt)
   })
 })
 

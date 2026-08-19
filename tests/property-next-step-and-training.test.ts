@@ -85,7 +85,9 @@ describe('the offer drafter', () => {
   });
 
   it('reads what was actually said on the call', () => {
-    expect(DRAFT).toMatch(/wk_live_transcripts/);
+    // Through the one shared reader, which prefers the accurate after-call
+    // transcript and falls back to Twilio's realtime rows mid-call.
+    expect(DRAFT).toMatch(/readCallTranscript/);
     expect(DRAFT).toMatch(/THERE IS NO TRANSCRIPT/);
   });
 
@@ -363,7 +365,7 @@ describe('the script and the coach follow the step', () => {
     // ballpark string blanked); the column was the only one left. Drift-pin
     // the set against the client one in nextStep.ts.
     expect(COACH).toMatch(/COACH_CALL2_COLUMNS/);
-    for (const name of ['Ready for call 2', 'Ballpark agreed', 'Needs viewing', 'Offer sent', 'Waiting on their answer', 'Offer accepted']) {
+    for (const name of ['Ready for call 2', 'Ballpark agreed', 'Viewing booked', 'Offer sent', 'Waiting on their answer', 'Offer accepted']) {
       expect(COACH).toContain(`'${name}'`);
     }
     expect(COACH).toMatch(/columnSaysCall2/);

@@ -16,6 +16,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { LogRow } from './deal-manager-run.js';
 import { satelliteContactIds } from './satellite-contacts.js';
+import { readCallTranscriptsBulk } from './call-transcript.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Sb = SupabaseClient<any, any, any>;
@@ -144,13 +145,14 @@ async function loadCalls(sb: Sb, contactId: string): Promise<TimelineEntry[]> {
 
   const ids = rows.map((r) => r.id);
 
-  const [{ data: recs }, { data: cols }, { data: lines }] = await Promise.all([
+  const [{ data: recs }, { data: cols }, saidByCall] = await Promise.all([
     (sb.from('wk_recordings') as any)
       .select('call_id, storage_path, status').in('call_id', ids),
     (sb.from('wk_pipeline_columns') as any).select('id, name'),
-    (sb.from('wk_live_transcripts') as any)
-      .select('call_id, speaker, body, ts').in('call_id', ids)
-      .order('ts', { ascending: true }).limit(4000),
+    // Accurate after-call transcript per call where one exists, Twilio's
+    // realtime rows where it does not. This feeds the cockpit brain, so it
+    // should be reading the best words available for each call.
+    readCallTranscriptsBulk(sb as never, ids, { limit: 4000 }),
   ]);
 
   const columnById = new Map(((cols ?? []) as Array<{ id: string; name: string }>)
@@ -161,12 +163,6 @@ async function loadCalls(sb: Sb, contactId: string): Promise<TimelineEntry[]> {
     if (r.storage_path) pathByCall.set(r.call_id, r.storage_path);
   }
 
-  const saidByCall = new Map<string, Array<{ speaker: string; body: string }>>();
-  for (const l of (lines ?? []) as Array<{ call_id: string; speaker: string; body: string }>) {
-    const list = saidByCall.get(l.call_id) ?? [];
-    list.push({ speaker: l.speaker, body: l.body });
-    saidByCall.set(l.call_id, list);
-  }
 
   // Sign every recording at once. Ten minutes is plenty to press play, and a
   // signed URL that has expired is better than a public bucket.
