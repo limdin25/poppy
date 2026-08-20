@@ -81,6 +81,11 @@ const COUNT = parseInt(arg('count', '150'), 10)
 // the blunt one; it is not what this is.
 const REDIAL_MODE = redialModeFromArgv(process.argv)
 const POOL_PATH = arg('pool', '/root/scraper/exports/discovery_pool.json')
+// Tonight's verdict on every house the engine reached one on, pass or fail.
+// Defaults to sitting beside the pool file, so --pool from another directory
+// picks up the matching verdicts rather than a stale set from somewhere else.
+const VERDICTS_PATH = arg('verdicts',
+  POOL_PATH.replace(/discovery_pool\.json$/, 'discovery_verdicts.json'))
 
 // How far under its like-for-like local sold median a house must be advertised
 // before it is worth a call. The same value as discovery_pool.MIN_DISCOUNT.
@@ -155,6 +160,61 @@ async function main() {
     console.error('REFUSING: not one branch in the pool carries a discount at or '
       + 'over the rule. That is a broken pool, not an empty night.')
     process.exit(2)
+  }
+
+  // ------------------------------------------------------------------
+  // WHAT PEDRO IS ALREADY HOLDING, RE-TESTED AGAINST TONIGHT'S NUMBERS.
+  // ------------------------------------------------------------------
+  //
+  // Hugo, 2026-08-20, looking at 5.3% and 6.7% houses on his agent's list:
+  // "this is unacceptable, why do we keep giving property to Pedro that
+  // doesn't have 20% discount at least."
+  //
+  // The 20 percent rule was never missing. It ran on every house being ADDED,
+  // here and in the engine, and it still does. The hole was that it only ever
+  // ran ONCE, on the night a house was queued. A house that went into the
+  // queue on 18 August, when the comparables were still wrong, sat there
+  // untouched while the engine was fixed twice underneath it. Pedro spent
+  // twenty minutes on Wootton Street, Bedworth and was arranging a builder,
+  // on a house that is 5.3 percent under, because the card was written before
+  // the road evidence existed.
+  //
+  // So every pending row is now re-tested every night. The engine writes a
+  // verdict for every house it reached one on (discovery_verdicts.json);
+  // anything it FAILED comes out of the queue before a single new branch is
+  // added.
+  //
+  // ABSENCE IS NOT A VERDICT, and this is the part that has to stay right. The
+  // seven-rule gate runs under a clock and never reaches most of the stock, so
+  // a house missing from tonight's file has not been judged and is left
+  // exactly where it is. Only an explicit failure removes anything.
+  let verdicts = null
+  try {
+    verdicts = JSON.parse(readFileSync(VERDICTS_PATH, 'utf8'))
+  } catch { /* no file tonight: re-testing is skipped, never guessed at */ }
+  if (verdicts && Array.isArray(verdicts.failed) && verdicts.failed.length) {
+    const failed = new Set(verdicts.failed.map(String))
+    const { data: pending } = await db.from('wk_dialer_queue')
+      .select('id, contact_id, wk_contacts!inner(custom_fields)')
+      .eq('status', 'pending')
+    const doomed = []
+    for (const row of pending ?? []) {
+      const url = row.wk_contacts?.custom_fields?.property_url ?? ''
+      const pid = String(url).match(/\/properties\/(\d+)/)?.[1]
+      if (pid && failed.has(pid)) doomed.push({ id: row.id, pid, url })
+    }
+    say(`  re-tested ${pending?.length ?? 0} houses already in the queue against `
+      + `tonight's verdicts: ${doomed.length} no longer qualify`)
+    for (const d of doomed) say(`    dropping ${d.pid}  ${d.url}`)
+    if (doomed.length && APPLY) {
+      for (let i = 0; i < doomed.length; i += 100) {
+        await db.from('wk_dialer_queue').delete()
+          .in('id', doomed.slice(i, i + 100).map((d) => d.id))
+      }
+      say(`  removed ${doomed.length} from the queue`)
+    }
+  } else {
+    say('  no verdicts file tonight, so nothing already queued was re-tested')
   }
 
   const { data: agent } = await db.from('profiles')
