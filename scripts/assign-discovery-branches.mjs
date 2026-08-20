@@ -38,7 +38,7 @@ import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { decideRedial } from './lib/redial-policy.mjs'
+import { decideRedial, redialModeFromArgv, NOBODY_ANSWERED } from './lib/redial-policy.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -66,6 +66,20 @@ const APPLY = process.argv.includes('--apply')
 // always did.
 const REVIEW = process.argv.includes('--review')
 const COUNT = parseInt(arg('count', '150'), 10)
+// WHO MAY BE RUNG AGAIN.   (wired up 2026-08-20)
+//
+// The policy has understood this since 2026-08-11 and this script never asked
+// it: it always ran the default, 'never', so a branch that went to voicemail
+// was treated exactly like one that told Pedro no. Hugo, needing volume and
+// with 192 branches on file where nobody had ever picked up: "hammer the
+// machine and give me more branches but of course must be solid".
+//
+// --redial-unanswered is the solid version of that. It re-deals ONLY offices
+// where nobody answered, on the cadence the policy already defines (three
+// daily tries, then weekly), and it will not touch an office that gave a real
+// answer of any kind, including "not interested". --redial-all exists and is
+// the blunt one; it is not what this is.
+const REDIAL_MODE = redialModeFromArgv(process.argv)
 const POOL_PATH = arg('pool', '/root/scraper/exports/discovery_pool.json')
 
 // How far under its like-for-like local sold median a house must be advertised
@@ -88,6 +102,12 @@ const say = (s) => console.log(s)
 
 async function main() {
   say(`Discovery-first assign. ${APPLY ? 'APPLY' : 'DRY RUN'}, target ${COUNT} branches.`)
+  // Said out loud because it changes who gets rung, and a run that quietly
+  // re-deals offices is exactly what Pedro complained about on 2026-08-11.
+  say(`  redial mode: ${REDIAL_MODE}${REDIAL_MODE === 'unanswered'
+    ? ' (offices where nobody picked up, on the voicemail cadence)'
+    : REDIAL_MODE === 'all' ? ' (EVERY called branch is back in play)'
+    : ' (a branch that has been called is not dealt again)'}`)
 
   const rawPool = JSON.parse(readFileSync(POOL_PATH, 'utf8'))
 
@@ -166,11 +186,28 @@ async function main() {
       .order('started_at', { ascending: false })
     for (const c of data ?? []) {
       const phone = phoneOf.get(c.contact_id)
-      if (!phone || history.has(phone)) continue
-      history.set(phone, {
-        lastCallAt: c.started_at ?? null,
-        lastOutcome: c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null,
-      })
+      if (!phone) continue
+      const outcome = c.disposition_column_id ? colName.get(c.disposition_column_id) ?? null : null
+      const seen = history.get(phone)
+      if (!seen) {
+        history.set(phone, {
+          lastCallAt: c.started_at ?? null,
+          lastOutcome: outcome,
+          // HOW MANY TIMES NOBODY PICKED UP, which drives the voicemail
+          // cadence: three daily tries, then weekly, so an office that never
+          // answers cannot hold a slot in front of one nobody has tried at
+          // all. Counted here because the rows arrive newest first and the
+          // run of silent calls is the leading part of that list. A null
+          // outcome counts as unanswered, the same as the policy treats it.
+          unansweredAttempts: (!outcome || NOBODY_ANSWERED.has(outcome)) ? 1 : 0,
+          _stillCounting: !outcome || NOBODY_ANSWERED.has(outcome),
+        })
+        continue
+      }
+      if (seen._stillCounting) {
+        if (!outcome || NOBODY_ANSWERED.has(outcome)) seen.unansweredAttempts += 1
+        else seen._stillCounting = false
+      }
     }
   }
 
@@ -218,7 +255,7 @@ async function main() {
       skipped.owned_elsewhere++; continue
     }
     if (existing && queued.has(existing.id)) { skipped.queued++; continue }
-    const verdict = decideRedial({ ...(history.get(branch.phone) ?? {}), nowMs })
+    const verdict = decideRedial({ ...(history.get(branch.phone) ?? {}), mode: REDIAL_MODE, nowMs })
     if (!verdict.queue) { skipped.called++; continue }
 
     const p = branch.property
