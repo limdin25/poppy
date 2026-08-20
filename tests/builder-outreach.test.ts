@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import {
   OUTREACH_DEFAULTS, loadOutreachSettingsFrom, viewingTimeLabel,
-  blockedReasonFor, inviteVars, renderPreview, ukDay,
+  blockedReasonFor, belowDiscountRule, inviteVars, renderPreview, ukDay,
   INVITE_TEMPLATE_TEXT, MORNING_TEMPLATE_TEXT, VIEWING_BOOKED_COLUMN,
 } from '../api/lib/builder-outreach.js';
 import { templateProblem, extractTemplateVars, prefillTemplateVars } from '../src/features/crm/lib/waTemplates.js';
@@ -75,7 +75,13 @@ describe('viewingTimeLabel', () => {
 
 describe('blockedReasonFor', () => {
   const settings = { ...OUTREACH_DEFAULTS, invite_sid: `HX${'0'.repeat(32)}` };
-  const prop = { id: 'p1', address: '12 High St, Wigan WN1 1AA', viewing_at: '2026-08-20T13:30:00Z' };
+  // A priced deal well clear of the rule, so these cases test the thing they
+  // are named after rather than tripping the discount gate below.
+  const priced = { offer: { open: 61_000, max: 68_400 }, reprice: { gdv: 140_000 } };
+  const prop = {
+    id: 'p1', address: '12 High St, Wigan WN1 1AA',
+    viewing_at: '2026-08-20T13:30:00Z', asking_price: 95_000, deal: priced,
+  };
   it('no viewing time blocks the draft, in words the panel shows verbatim', () => {
     expect(blockedReasonFor({ ...prop, viewing_at: null }, settings)).toBe('no_viewing_time');
     expect(blockedReasonFor({ ...prop, viewing_at: '' }, settings)).toBe('no_viewing_time');
@@ -86,6 +92,129 @@ describe('blockedReasonFor', () => {
   });
   it('both present means the draft may send', () => {
     expect(blockedReasonFor(prop, settings)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE FLOOR GATE
+// ---------------------------------------------------------------------------
+//
+// Hugo, 2026-08-20: "Nothing today refuses to send a builder to a house whose
+// known floor is above our ceiling." The fact was captured on call one, filled
+// in from the transcript, and printed on the ballpark screen. Nothing read it.
+describe('the vendor floor gate on a builder draft', () => {
+  const settings = { ...OUTREACH_DEFAULTS, invite_sid: `HX${'0'.repeat(32)}` };
+  const prop = {
+    id: 'p1', address: '12 High St, Wigan WN1 1AA',
+    viewing_at: '2026-08-20T13:30:00Z', asking_price: 95_000,
+  };
+  const ceiling68 = { offer: { open: 61_000, max: 68_400 }, reprice: { gdv: 140_000 } };
+
+  it('refuses the draft when the vendor has already turned down more than our ceiling', () => {
+    expect(blockedReasonFor(
+      { ...prop, deal: ceiling68, qualification: { rejected_offer: '72000' } },
+      settings,
+    )).toBe('floor_above_ceiling');
+  });
+
+  it('refuses at the ceiling too: our maximum cannot beat a refusal of our maximum', () => {
+    expect(blockedReasonFor(
+      { ...prop, deal: ceiling68, qualification: { rejected_offer: '68400' } },
+      settings,
+    )).toBe('floor_above_ceiling');
+  });
+
+  it('a refusal BELOW our ceiling is a deal, not a block', () => {
+    expect(blockedReasonFor(
+      { ...prop, deal: ceiling68, qualification: { rejected_offer: '64000' } },
+      settings,
+    )).toBeNull();
+  });
+
+  it('the floor is checked before the waits: it is the one reason that never clears itself', () => {
+    expect(blockedReasonFor(
+      { ...prop, viewing_at: null, deal: ceiling68, qualification: { rejected_offer: '72000' } },
+      settings,
+    )).toBe('floor_above_ceiling');
+  });
+
+  it('no rejected offer is a PASS: most houses have never had one', () => {
+    expect(blockedReasonFor({ ...prop, deal: ceiling68 }, settings)).toBeNull();
+    expect(blockedReasonFor({ ...prop, deal: ceiling68, qualification: {} }, settings)).toBeNull();
+    expect(blockedReasonFor(
+      { ...prop, deal: ceiling68, qualification: { rejected_offer: 'nothing turned down' } },
+      settings,
+    )).toBeNull();
+  });
+
+  it('no ceiling on file is a PASS: there is nothing to compare a floor against', () => {
+    // The FLOOR gate has nothing to say here and must stay quiet. It does not
+    // follow that the draft may send: since 2026-08-20 a house with no priced
+    // offer is refused by its own reason, which is the honest one. Asserting
+    // "not blocked by the floor" is what this test has always meant.
+    expect(blockedReasonFor(
+      { ...prop, deal: {}, qualification: { rejected_offer: '72000' } },
+      settings,
+    )).not.toBe('floor_above_ceiling');
+  });
+
+  it("Hugo's written maximum in the pinned note outranks the engine's ceiling, both ways", () => {
+    // He has ruled we may go to 75,000, so a refusal of 72,000 is workable.
+    expect(blockedReasonFor(
+      {
+        ...prop, deal: ceiling68, qualification: { rejected_offer: '72000' },
+        pinned_note: 'Roof is the whole story. Never past 75,000.',
+      },
+      settings,
+    )).toBeNull();
+    // And a ruling BELOW the engine's band blocks what the engine would allow.
+    expect(blockedReasonFor(
+      {
+        ...prop, deal: ceiling68, qualification: { rejected_offer: '64000' },
+        pinned_note: 'max 62,000 on this one, the street is soft.',
+      },
+      settings,
+    )).toBe('floor_above_ceiling');
+  });
+});
+
+describe('every road onto a house passes the same gate', () => {
+  // Three ways a builder gets spent: the invite send, the panel's hand-pick,
+  // and the cockpit's book_builder press. A gate on one of them is a gate on
+  // none of them.
+  it('the send path re-reads the floor rather than trusting a five-minute-old row', () => {
+    const floorAt = SRC.indexOf('const floorRefusal = await floorRefusalFor(sb, r.property_id)');
+    const twilioAt = SRC.indexOf('api.twilio.com/2010-04-01');
+    expect(floorAt).toBeGreaterThan(-1);
+    expect(twilioAt).toBeGreaterThan(floorAt);
+  });
+  it('confirm checks BEFORE it flips the status, so a refusal leaves the row alone', () => {
+    const checkAt = SRC.indexOf('const floorRefusal = await floorRefusalFor(sb, r.property_id)');
+    const flipAt = SRC.indexOf("status: 'confirmed', confirmed_at");
+    expect(checkAt).toBeGreaterThan(-1);
+    expect(flipAt).toBeGreaterThan(checkAt);
+  });
+  it('the hand-picked assign is gated before anything is written', () => {
+    const assignAt = SRC.indexOf('export async function assignBuilderToProperty');
+    const gateAt = SRC.indexOf('floorRefusalFor(sb, propertyId)');
+    const writeAt = SRC.indexOf('assigned_builder_id: r.builder_id');
+    expect(gateAt).toBeGreaterThan(assignAt);
+    expect(writeAt).toBeGreaterThan(gateAt);
+  });
+  it("the cockpit's book_builder press is gated too", () => {
+    const cockpit = readFileSync('api/crm/cockpit-action.ts', 'utf8');
+    const caseAt = cockpit.indexOf("case 'book_builder'");
+    const gateAt = cockpit.indexOf('floorRefusalFor(supabase, state.propertyId)');
+    const writeAt = cockpit.indexOf('assigned_builder_id: body.builderId');
+    expect(gateAt).toBeGreaterThan(caseAt);
+    expect(writeAt).toBeGreaterThan(gateAt);
+  });
+  it('the sweep selects the columns the gate needs, or it could never fire', () => {
+    const cron = readFileSync('api/cron/builder-outreach.ts', 'utf8');
+    const select = cron.match(/\.select\('id, address, viewing_at[^']*'\)/)?.[0] ?? '';
+    for (const col of ['deal', 'qualification', 'pinned_note', 'asking_price']) {
+      expect(select, col).toContain(col);
+    }
   });
 });
 
@@ -168,5 +297,73 @@ describe('sending a template by hand when the 24h window is shut', () => {
     // {{1}} with no lead-in is still the person being written to.
     expect(prefillTemplateVars('Hi {{1}}, quick question about your listing.', { person: 'Dave' }))
       .toEqual({ '1': 'Dave' });
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// THE DISCOUNT GATE. The last thing before somebody else's afternoon is spent.
+// ---------------------------------------------------------------------------
+//
+// Hugo, 2026-08-20: "we are booking viewings and wasting people's time and this
+// needs to stop now."
+//
+// Wootton Street, Bedworth is the case. Pedro spent twenty minutes on the phone
+// and the branch agreed to arrange a builder, on a house asking GBP 140,000
+// that its own road values at about GBP 148,000. That is 5.3 percent. The card
+// said 21.2 percent because it was written before the road evidence existed,
+// and every gate between the card and the builder was about the vendor's floor,
+// the viewing time and the Meta template. None of them asked whether the house
+// was still a deal.
+describe('the discount gate on a builder draft', () => {
+  const settings = { ...OUTREACH_DEFAULTS, invite_sid: `HX${'0'.repeat(32)}` };
+  const base = {
+    id: 'p1', address: 'Wootton Street, Bedworth CV12 9DX',
+    viewing_at: '2026-08-21T13:00:00Z',
+  };
+
+  it('refuses Wootton Street: 5.3 percent under is not a deal', () => {
+    expect(blockedReasonFor({
+      ...base, asking_price: 140_000,
+      deal: { offer: { open: 100_000, max: 118_000 }, reprice: { gdv: 147_818 } },
+    }, settings)).toBe('below_discount_rule');
+  });
+
+  it('refuses at the line too, because the rule is 20 percent or more', () => {
+    expect(blockedReasonFor({
+      ...base, asking_price: 160_000,
+      deal: { offer: { open: 100_000, max: 118_000 }, reprice: { gdv: 199_000 } },
+    }, settings)).toBe('below_discount_rule');
+  });
+
+  it('lets a real one through', () => {
+    expect(blockedReasonFor({
+      ...base, asking_price: 190_000,
+      deal: { offer: { open: 128_802, max: 145_572 }, reprice: { gdv: 276_111 } },
+    }, settings)).toBeNull();
+  });
+
+  it('a house with no priced offer is refused with its own reason', () => {
+    // The nine houses whose bands were withdrawn on 2026-08-20 because the
+    // valuation behind them was a size-blind median. No figure, no builder.
+    expect(blockedReasonFor({
+      ...base, asking_price: 149_999, deal: { reprice: { gdv: 214_984 } },
+    }, settings)).toBe('no_offer_on_file');
+  });
+
+  it('an UNVALUED house is not judged by the discount gate', () => {
+    // "We have not priced it" is not the same as "it is a bad deal". It still
+    // cannot send, but it must say the honest reason.
+    expect(blockedReasonFor({ ...base, asking_price: 140_000 }, settings))
+      .toBe('no_offer_on_file');
+    expect(belowDiscountRule({ ...base, asking_price: 140_000 })).toBe(false);
+  });
+
+  it('the floor still outranks it: a refused vendor is the older refusal', () => {
+    expect(blockedReasonFor({
+      ...base, asking_price: 140_000,
+      deal: { offer: { open: 100_000, max: 118_000 }, reprice: { gdv: 147_818 } },
+      qualification: { rejected_offer: '130000' },
+    }, settings)).toBe('floor_above_ceiling');
   });
 });

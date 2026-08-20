@@ -44,6 +44,17 @@ function viewingLabel(iso?: string | null): string {
 const BLOCKED_WORDS: Record<string, string> = {
   no_viewing_time: 'Waiting for the viewing time (book it on the call)',
   template_pending: 'Waiting for Meta to approve the template',
+  // Not a wait, a refusal: the vendor has already turned down more than our
+  // ceiling, so a builder would be pricing a house we cannot buy. It clears by
+  // correcting the rejected offer on the Houses tab, or by Hugo writing a
+  // bigger maximum in the pinned note.
+  floor_above_ceiling: 'They have already turned down more than our ceiling',
+  // The other refusal, added 2026-08-20 after Wootton Street, Bedworth: a
+  // twenty minute call, the branch agreeing to arrange a builder, and a house
+  // 5.3 percent under its own road. Every gate here was about the vendor, the
+  // time and the template; none asked whether it was still a deal.
+  below_discount_rule: 'Not a deal: under 20% below what the road sells for',
+  no_offer_on_file: 'No priced offer yet (usually the floor area is missing)',
 };
 
 const STATUS_STYLE: Record<string, string> = {

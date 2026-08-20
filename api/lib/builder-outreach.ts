@@ -20,6 +20,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { matchBuildersForOutcode, type BuilderRow } from './builder-match.js';
 import { outcodeOf } from './brrr-deal-facts.js';
+import { vendorFloorVerdict, readDealMoney } from './brrr-offer.js';
+import { pinnedCeilingIn } from './deal-state.js';
+import { effectiveCeiling } from './counter-position.js';
 import { isUkMobile } from './builder-scrape.js';
 import { notifyBuilderEvent, builderNotifyRecipients } from './builder-notify.js';
 
@@ -89,14 +92,79 @@ export interface OutreachProperty {
   address?: string | null;
   viewing_at?: string | null;
   wk_contact_id?: string | null;
+  /** The engine's figures, the call's answers, and Hugo's written ruling. All
+   *  optional, because a caller that does not select them gets the old
+   *  behaviour rather than a silent block: the floor gate only ever fires on
+   *  two numbers it can see. */
+  deal?: Record<string, unknown> | null;
+  qualification?: Record<string, unknown> | null;
+  pinned_note?: string | null;
+  /** The asking price, which is how a floor is judged credible for THIS house
+   *  rather than for whichever house on the branch the call was really about. */
+  asking_price?: number | string | null;
 }
 
-/** Why this draft cannot send yet, or null when it can. The strings are shown
- *  verbatim in the panel, so they are words, not codes. */
+/** The floor gate for one property row, with the ceiling resolved the way the
+ *  brain and the stress test resolve it: Hugo's pinned figure, else the
+ *  engine's. ONE resolution, used by both the draft gate and the press gate. */
+function floorVerdictFor(property: {
+  deal?: Record<string, unknown> | null;
+  qualification?: Record<string, unknown> | null;
+  pinned_note?: string | null;
+  asking_price?: number | string | null;
+}) {
+  const pinned = pinnedCeilingIn(String(property.pinned_note ?? ''));
+  const governing = effectiveCeiling(readDealMoney(property).ceiling, pinned);
+  return vendorFloorVerdict(property, governing);
+}
+
+/** The discount a house must show before anyone drives to it. The same 0.20
+ *  discovery_pool.MIN_DISCOUNT screens on and assign-discovery-branches.mjs
+ *  re-checks, applied at the last gate before a real person gives up an
+ *  afternoon. */
+export const MIN_DISCOUNT_FOR_BUILDER = 0.20;
+
+/** Is this house too dear to send anybody to, on the numbers we hold today?
+ *
+ *  READ, NEVER DERIVED, like everything else in brrr-offer: the value comes off
+ *  the engine's own valuation and the asking price off the row. A house with no
+ *  valuation on file is NOT judged here, because "we have not priced it" is not
+ *  the same as "it is a bad deal", and `no_offer_on_file` below is the check
+ *  that catches that case with a reason a human can act on. */
+export function belowDiscountRule(property: OutreachProperty): boolean {
+  const m = readDealMoney(property);
+  const worth = m.gdv ?? m.cmv;
+  if (!worth || !m.asking) return false;
+  return 1 - m.asking / worth < MIN_DISCOUNT_FOR_BUILDER;
+}
+
+/** Why this draft cannot send, or null when it can. The strings are codes the
+ *  panel turns into words.
+ *
+ *  THE TWO REFUSALS COME FIRST, and they are refusals rather than waits. A
+ *  missing viewing time and an unapproved template both clear on their own; a
+ *  vendor who has turned down more than our ceiling does not, and neither does
+ *  a house that is not a deal.
+ *
+ *  WHY THE DISCOUNT IS CHECKED HERE AT ALL (2026-08-20). Hugo: "we are booking
+ *  viewings and wasting people's time and this needs to stop now." Wootton
+ *  Street, Bedworth is the case. Pedro spent twenty minutes on the phone and
+ *  the branch agreed to arrange a builder, on a house that is 5.3 percent under
+ *  its own road. Its card said 21.2 percent because it was written before the
+ *  road evidence existed, and every gate between the card and the builder was
+ *  about the vendor's floor, the viewing time and the Meta template. Not one of
+ *  them asked whether the house was still a deal.
+ *
+ *  A builder giving up an afternoon is the most expensive thing this pipeline
+ *  spends, and it is somebody else's time rather than ours, so this is the
+ *  right place for the last check rather than the wrong one. */
 export function blockedReasonFor(
   property: OutreachProperty,
   settings: OutreachSettings,
 ): string | null {
+  if (floorVerdictFor(property).blocked) return 'floor_above_ceiling';
+  if (belowDiscountRule(property)) return 'below_discount_rule';
+  if (!readDealMoney(property).open) return 'no_offer_on_file';
   if (!String(property.viewing_at ?? '').trim()) return 'no_viewing_time';
   if (!/^HX[0-9a-f]{32}$/i.test(settings.invite_sid)) return 'template_pending';
   return null;
@@ -210,6 +278,46 @@ export async function draftOutreachForProperty(
   return { drafted, matched: matches.length };
 }
 
+/**
+ * The floor refusal for one house, as the sentence a human reads, or null.
+ *
+ * One small read, shared by every path that can put a builder on a property:
+ * the invite send, the panel's assign, and the cockpit's book_builder press.
+ * The draft's stored blocked_reason is refreshed by a five-minute sweep, so on
+ * its own it lets a press inside that window through; this re-reads the two
+ * numbers at the moment somebody spends the builder.
+ *
+ * A property that cannot be loaded is a PASS. Unknown is not a refusal here,
+ * and a database hiccup is the most unknown thing there is.
+ */
+export async function floorRefusalFor(sb: Sb, propertyId: string): Promise<string | null> {
+  const { data } = await sb
+    .from('brrr_properties')
+    .select('deal, qualification, pinned_note, asking_price')
+    .eq('id', propertyId)
+    .maybeSingle();
+  if (!data) return null;
+  const row = data as OutreachProperty;
+  const verdict = floorVerdictFor(row);
+  if (verdict.blocked) return verdict.reason;
+  // THE DISCOUNT, RE-READ AT THE MOMENT SOMEBODY SPENDS THE BUILDER.
+  //
+  // Same reasoning as the floor above it: the draft's stored blocked_reason is
+  // only refreshed every five minutes, and this is the last thing that happens
+  // before a real person is asked to drive somewhere. Wootton Street, Bedworth
+  // (2026-08-20) is why it is here as well as in blockedReasonFor.
+  if (belowDiscountRule(row)) {
+    const m = readDealMoney(row);
+    const worth = m.gdv ?? m.cmv ?? 0;
+    const pct = m.asking && worth ? Math.round((1 - m.asking / worth) * 100) : 0;
+    return `this house is only ${pct}% below what its road sells for, and the `
+      + `rule is ${Math.round(MIN_DISCOUNT_FOR_BUILDER * 100)}%. `
+      + 'Sending a builder would spend somebody\'s afternoon on a house we '
+      + 'cannot buy at this price.';
+  }
+  return null;
+}
+
 async function twilioGet(url: string): Promise<{ status: number; data: Record<string, unknown> | null }> {
   const sid = process.env.TWILIO_ACCOUNT_SID ?? '';
   const token = process.env.TWILIO_AUTH_TOKEN ?? '';
@@ -251,6 +359,17 @@ export async function sendOutreachRow(
     return { ok: false, status: r.status, error: `Already ${r.status}.` };
   }
   if (r.blocked_reason) return { ok: false, status: r.status, error: `Blocked: ${r.blocked_reason}.` };
+
+  // Re-read rather than trusting the row: the stored reason is only as fresh
+  // as the last sweep, and this is the moment the builder actually gets spent.
+  const floorRefusal = await floorRefusalFor(sb, r.property_id);
+  if (floorRefusal) {
+    await (sb.from('brrr_builder_outreach') as any)
+      .update({ blocked_reason: 'floor_above_ceiling', updated_at: new Date().toISOString() })
+      .eq('id', r.id);
+    return { ok: false, status: r.status, error: floorRefusal };
+  }
+
   if (!r.contact_id) return { ok: false, status: r.status, error: 'No contact on this row.' };
   if (!r.content_sid) return { ok: false, status: r.status, error: 'Blocked: template_pending.' };
 
@@ -468,6 +587,11 @@ export async function confirmBuilder(
   const r = row as { id: string; property_id: string; builder_id: string; contact_id: string | null; status: string };
   if (r.status === 'confirmed') return { ok: true };
 
+  // Checked BEFORE the status flips, so a refused confirm leaves the row
+  // exactly as it was rather than half-confirmed on a house we cannot buy.
+  const floorRefusal = await floorRefusalFor(sb, r.property_id);
+  if (floorRefusal) return { ok: false, error: floorRefusal };
+
   await (sb.from('brrr_builder_outreach') as any)
     .update({ status: 'confirmed', confirmed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', r.id);
@@ -482,6 +606,10 @@ export async function confirmBuilder(
  * human choice from the roster, not only the tail of a WhatsApp conversation:
  * a builder rung on the phone, or one Hugo already knows, is assigned the same
  * way and gets the same chip, the same bell and the same board move.
+ *
+ * REFUSED on a house whose known floor is at or above our ceiling, whichever
+ * way the builder was picked. A hand-picked builder costs exactly as much as
+ * one who answered an invite.
  */
 export async function assignBuilderToProperty(
   sb: Sb,
@@ -489,6 +617,9 @@ export async function assignBuilderToProperty(
   builderId: string,
   actorId: string,
 ): Promise<{ ok: boolean; warning?: string; error?: string }> {
+  const floorRefusal = await floorRefusalFor(sb, propertyId);
+  if (floorRefusal) return { ok: false, error: floorRefusal };
+
   const r = { property_id: propertyId, builder_id: builderId };
 
   const nowIso = new Date().toISOString();

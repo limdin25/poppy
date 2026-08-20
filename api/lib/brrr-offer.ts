@@ -97,6 +97,8 @@ export function readDealMoney(subject: OfferSubject): DealMoney {
   const cmv = obj(deal.cmv);
   const gdv = obj(deal.gdv);
   const refurb = obj(deal.refurb);
+  // The ballpark's own block. reprice.py writes gdv / tmv / cmv here.
+  const reprice = obj(deal.reprice);
 
   // TWO SHAPES, both real: valuation.py nests (deal.offer = {open, max,
   // ladder}), the old browser flow flattened (offer_min / offer_max /
@@ -117,10 +119,24 @@ export function readDealMoney(subject: OfferSubject): DealMoney {
     open: orNull(open),
     ceiling: orNull(ceiling),
     ladder,
-    cmv: orNull(num(cmv.estimate) || num(deal.cmv)),
+    // THREE SHAPES, all real, and the third was invisible until 2026-08-20.
+    //
+    // valuation.py nests (deal.cmv = {estimate}), the old browser flow
+    // flattened (deal.cmv), and reprice.py, the BALLPARK, writes its answer
+    // under deal.reprice. Measured the day this was found: 206 rows carry a
+    // flat deal.gdv and 22 carry deal.reprice.gdv, and those 22 are not a
+    // rounding error, they are every house Pedro has actually negotiated. So
+    // the one reader every money fact goes through returned gdv: null on
+    // exactly the houses that matter most, and any caller asking "what is this
+    // worth" got nothing while a real figure sat one key deeper.
+    //
+    // It surfaced because the builder gate compares the asking price to what
+    // the house is worth, and on a repriced house it silently compared against
+    // nothing and let everything through.
+    cmv: orNull(num(cmv.estimate) || num(deal.cmv) || num(reprice.cmv)),
     cmvConfidence: String(cmv.confidence ?? deal.cmv_confidence ?? '').trim() || null,
-    gdv: orNull(num(gdv.estimate) || num(deal.gdv)),
-    tmv: orNull(num(deal.tmv)),
+    gdv: orNull(num(gdv.estimate) || num(deal.gdv) || num(reprice.gdv)),
+    tmv: orNull(num(deal.tmv) || num(reprice.tmv)),
     // The engine's planning figure is refurb.low; older shapes carried
     // estimate, a bare number, or refurb_budget / refurb_cost.
     refurb: orNull(num(refurb.low) || num(refurb.estimate) || num(deal.refurb)
@@ -174,6 +190,170 @@ export function offerRange(
   // the stress test blocks it as a bad row.
   const min = m.open !== null ? Math.min(m.open, m.ceiling) : m.ceiling;
   return { min: Math.round(min), max: Math.round(m.ceiling) };
+}
+
+// ---------------------------------------------------------------------------
+// THE VENDOR'S FLOOR, AGAINST OUR CEILING
+// ---------------------------------------------------------------------------
+//
+// Hugo, 2026-08-20: "Nothing today refuses to send a builder to a house whose
+// known floor is above our ceiling. That is the one thing worth building."
+//
+// Every part of this fact already existed and none of it stopped anything. The
+// script asks it on call one ("has anything been turned down, and at what
+// level"), the call listener fills it in from the transcript with the quote
+// attached, and the ballpark prints "They already turned down GBP X". Then a
+// builder was sent anyway, because the only reader was a screen.
+//
+// READ, NEVER DERIVED, like every other money fact here. The floor is what the
+// agent said the vendor refused. The ceiling is deal.offer.max, which the
+// engine computed. This compares two numbers somebody else produced and
+// computes nothing.
+//
+// UNKNOWN IS A PASS, deliberately, and it is the opposite of the discount
+// gate's "unverified is a refusal". That rule guards a measurement we always
+// take. This is a fact that frequently does not exist: most of our stock has
+// had no offer on it at all, and refusing every house nobody has bid on would
+// close the pipeline rather than filter it.
+//
+// best_price_indicated is NOT a floor and is not read here. "They'd probably
+// take eighty" is a negotiating position an agent volunteers; a refusal is
+// something the vendor actually did.
+//
+// The engine's own `above_our_ceiling` flag is not trusted either. It is a
+// snapshot of the comparison at ballpark time, and a deal repriced afterwards
+// leaves it stale. The two live numbers are compared instead.
+
+/** A property, plus what the call established about it. */
+export interface FloorSubject extends OfferSubject {
+  qualification?: Record<string, unknown> | null;
+}
+
+export interface VendorFloorVerdict {
+  /** The highest figure the vendor is known to have turned down. */
+  floor: number | null;
+  /** The most we may ever pay. */
+  ceiling: number | null;
+  /** True only when both are known AND the floor is at or above the ceiling. */
+  blocked: boolean;
+  /** One sentence, shown to a human verbatim. Null when nothing is blocked. */
+  reason: string | null;
+}
+
+/** The same sanity band call-extract puts on a heard figure: outside it, the
+ *  number was misheard, and a misheard floor must never kill a real deal. */
+function rejectedFigure(v: unknown): number | null {
+  const m = String(v ?? '').replace(/,/g, '').match(/\d[\d.]*/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  if (!Number.isFinite(n) || n < 20_000 || n > 2_000_000) return null;
+  return Math.round(n);
+}
+
+/** Where the call listener files the quote behind each answer. Owned by
+ *  deal-state.HEARD_KEY; repeated here rather than imported because deal-state
+ *  imports THIS file and a cycle is worse than a pinned constant.
+ *  tests/brrr-offer.test.ts fails if the two ever disagree. */
+const HEARD = '_heard';
+
+/**
+ * The refused figure on file, or null.
+ *
+ * THE CHECKLIST WINS WHENEVER IT SAYS ANYTHING AT ALL, including something
+ * with no number in it. It is the live record of what the call established,
+ * it is the box a human can type in, and a typed answer is never overwritten
+ * by the machine (call-extract rule 1). So it is also the repair: a misheard
+ * "seventy thousand" is corrected there, which fixes the ballpark and this gate
+ * together instead of forcing past one of them.
+ *
+ * The engine's stored payload is the fallback only, for houses the ballpark
+ * priced before the checklist held the answer.
+ *
+ * ---------------------------------------------------------------------------
+ * TWO EVIDENCE RULES, AND THEY ARE NOT DECORATION
+ * ---------------------------------------------------------------------------
+ *
+ * Measured on the live table, 2026-08-20, on the 17 houses carrying an answer:
+ * 11 sat on a branch holding more than one house, 5 had a quote with no such
+ * figure anywhere in it, and 8 claimed a refusal MORE THAN 15% ABOVE THE
+ * ASKING PRICE. Enfield Road said "they have just declined 130" on a house
+ * asking 69,950. Five separate Blackpool houses carry the identical sentence
+ * "he's had enough of 132 which is rejected", because the call listener reads
+ * the BRANCH's newest call and writes it onto EVERY house that branch has on
+ * file. One vendor's refusal becomes five vendors' refusals.
+ *
+ * So a figure is only a floor when:
+ *
+ *   1. THE QUOTE CONTAINS IT. The listener stores the words the figure came
+ *      from. A quote that does not say the number did not produce it, whatever
+ *      the extraction wrote down. No quote at all (a human typed the answer)
+ *      passes: a person typing in the box is the evidence.
+ *   2. IT IS CREDIBLE AGAINST THIS HOUSE. A vendor may hold out slightly above
+ *      asking, so 15% over is allowed. A refusal of 130,000 on a house asking
+ *      69,950 is not a stubborn vendor, it is another house's number.
+ *
+ * Both rules fail towards NOT BLOCKING, because the cost of a wrong block is a
+ * real deal killed on somebody else's fact.
+ */
+export function vendorFloor(subject: FloorSubject): number | null {
+  const qual = subject.qualification ?? {};
+  const fromCall = String(qual.rejected_offer ?? '').trim();
+  const figure = fromCall
+    ? rejectedFigure(fromCall)
+    : rejectedFigure(obj(obj(obj(subject.deal).reprice).rejected_offer).price);
+  if (figure === null) return null;
+
+  // Rule 1: the words have to carry the number. Digits only on both sides, so
+  // "132" matches "132,000" and "GBP 132k" alike.
+  const quote = String(obj(qual[HEARD]).rejected_offer
+    ? obj(obj(qual[HEARD]).rejected_offer).quote ?? '' : '').trim();
+  if (quote) {
+    const said = quote.replace(/[^0-9]/g, '');
+    const full = String(figure);
+    const spoken = full.replace(/0+$/, '');
+    if (!said.includes(full) && !(spoken.length >= 2 && said.includes(spoken))) return null;
+  }
+
+  // Rule 2: credible for THIS house.
+  const asking = num(subject.asking_price);
+  if (asking > 0 && figure > asking * 1.15) return null;
+
+  return figure;
+}
+
+/**
+ * Is this a house we already know we cannot buy?
+ *
+ * Blocked at floor === ceiling as well as above it: a vendor who turned down
+ * exactly our maximum cannot be beaten by our maximum.
+ *
+ * `ceiling` is passed in rather than resolved here, because the ceiling that
+ * governs a deal is not always the engine's: a figure Hugo has WRITTEN in the
+ * pinned note outranks it everywhere else in the system, and the one function
+ * that resolves the two is effectiveCeiling in counter-position.ts. Callers
+ * hand the answer down; nothing decides it twice. Omitted, the engine's
+ * deal.offer.max is read, which is the right answer when nobody has pinned
+ * anything. Writing "max 78,000" in the pinned note is therefore also how a
+ * human overrules this gate: the deal gets a bigger ceiling, out in the open,
+ * where every other reader sees it too.
+ */
+export function vendorFloorVerdict(
+  subject: FloorSubject,
+  ceilingGoverning?: number | null,
+): VendorFloorVerdict {
+  const floor = vendorFloor(subject);
+  const ceiling = (typeof ceilingGoverning === 'number' && ceilingGoverning > 0)
+    ? Math.round(ceilingGoverning)
+    : readDealMoney(subject).ceiling;
+  if (floor === null || ceiling === null || floor < ceiling) {
+    return { floor, ceiling, blocked: false, reason: null };
+  }
+  return {
+    floor,
+    ceiling,
+    blocked: true,
+    reason: `They have already turned down ${fmtGBP(floor)} and the most we may pay is ${fmtGBP(ceiling)}, so a builder would be pricing a house we cannot buy.`,
+  };
 }
 
 /** Money for reading aloud. Falls back to words, not "£0" or "£NaN", because
