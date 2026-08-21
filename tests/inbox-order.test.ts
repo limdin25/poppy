@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { isThreadUnread, sortInboxRows, inboxSections } from '../src/features/crm/lib/inboxOrder';
+import {
+  isThreadUnread, sortInboxRows, inboxSections,
+  isAwaitingReply, waitingHours, sortWaitingRows,
+} from '../src/features/crm/lib/inboxOrder';
 
 // Hugo, 2026-08-06: "just make a normal inbox, last communication is always
 // on top... unless I press the filters". This superseded his 2026-07-28
@@ -165,5 +168,149 @@ describe('inboxSections', () => {
     ]));
     expect(sections.map((s) => s.key)).toEqual(['pinned', 'rest']);
     expect(sections[0].rows.map((r) => r.id)).toEqual(['call-pinned']);
+  });
+});
+
+// ===========================================================================
+// WAITING ON US. THE FORTY-ONE HOURS THAT COST A VIEWING.
+// ===========================================================================
+//
+// 2026-08-19, real timeline off wk_sms_messages:
+//   14:02  we send Lunar Builders the WhatsApp viewing invite
+//   14:04  Shakeel: "Yes, I'd be happy to come out... Could you please send me
+//          the full address and a little more information on the works?"
+//   ~14:20 somebody opens the thread. Nothing is sent.
+//   07:01 on the 21st, we send a confirmation that answers neither question
+//   07:44 "unfortunately I won't be able to make it today as I needed the full
+//          address in advance and didn't receive it in time"
+//
+// The inbox had stopped showing it as needing a reply at 14:20, because a
+// CLICK stamps lastReadAt. These tests are the fence.
+describe('the Lunar Builders 41 hours (2026-08-19)', () => {
+  const invite = '2026-08-19T14:02:00Z';
+  const question = '2026-08-19T14:04:00Z';
+  const glanced = '2026-08-19T14:20:00Z';
+  const now = new Date('2026-08-21T07:00:00Z');
+  const row = { lastInboundAt: question, lastOutboundAt: invite };
+
+  it('THE INCIDENT: the old rule called it read, the new rule calls it waiting', () => {
+    expect(isThreadUnread(row, glanced)).toBe(false);   // what shipped
+    expect(isAwaitingReply(row, now)).toBe(true);       // what should have
+  });
+
+  it('says 41 hours, not "a while"', () => {
+    expect(Math.round(waitingHours(row, now)!)).toBe(41);
+  });
+
+  it('a click cannot clear it: there is no read stamp to pass', () => {
+    // If somebody ever adds a third argument here, this stops compiling, which
+    // is the point.
+    expect(isAwaitingReply(row, now)).toBe(true);
+    expect(isAwaitingReply.length).toBeLessThanOrEqual(2);
+  });
+
+  it('the confirmation we did send does not count, because it came after', () => {
+    // 07:01 on the 21st IS newer than his question, so by then we had answered
+    // in the eyes of the rule. That is correct and it is why the fix is speed,
+    // not bookkeeping.
+    expect(isAwaitingReply({ ...row, lastOutboundAt: '2026-08-21T07:01:00Z' }, now)).toBe(false);
+  });
+});
+
+describe('the two builders nobody ever answered', () => {
+  const now = new Date('2026-08-21T15:00:00Z');
+  it('Four Oaks said "Yes I\'m coming Monday 24 August" and is waiting', () => {
+    expect(isAwaitingReply({
+      lastInboundAt: '2026-08-19T17:47:00Z', lastOutboundAt: '2026-08-19T14:46:00Z',
+    }, now)).toBe(true);
+  });
+  it('PSS Constructions likewise', () => {
+    expect(isAwaitingReply({
+      lastInboundAt: '2026-08-19T15:03:00Z', lastOutboundAt: '2026-08-19T14:46:00Z',
+    }, now)).toBe(true);
+  });
+});
+
+describe('what counts as having answered them', () => {
+  const now = new Date('2026-08-21T12:00:00Z');
+  const base = { lastInboundAt: '2026-08-21T09:00:00Z', lastOutboundAt: '2026-08-21T08:00:00Z' };
+
+  it('a reply on ANY channel counts: they WhatsApp, we email back', () => {
+    // The thread is per contact for exactly this reason.
+    expect(isAwaitingReply({ ...base, lastOutboundAt: '2026-08-21T09:30:00Z' }, now)).toBe(false);
+  });
+
+  it('ringing them back counts', () => {
+    expect(isAwaitingReply({ ...base, lastOutboundCallAt: '2026-08-21T09:30:00Z' }, now)).toBe(false);
+  });
+
+  it('a call BEFORE their message does not', () => {
+    expect(isAwaitingReply({ ...base, lastOutboundCallAt: '2026-08-21T08:30:00Z' }, now)).toBe(true);
+  });
+
+  it('a deliberate "Answered" press counts, and re-arms on the next message', () => {
+    expect(isAwaitingReply({ ...base, handledAt: '2026-08-21T09:30:00Z' }, now)).toBe(false);
+    // They wrote again afterwards: back on the list, no press required.
+    expect(isAwaitingReply({
+      ...base, lastInboundAt: '2026-08-21T10:00:00Z', handledAt: '2026-08-21T09:30:00Z',
+    }, now)).toBe(true);
+  });
+
+  it('a stale press does NOT suppress a newer message', () => {
+    expect(isAwaitingReply({ ...base, handledAt: '2026-08-21T08:30:00Z' }, now)).toBe(true);
+  });
+
+  it('nothing at all from them is not waiting', () => {
+    expect(isAwaitingReply({ lastOutboundAt: '2026-08-21T08:00:00Z' }, now)).toBe(false);
+    expect(isAwaitingReply({}, now)).toBe(false);
+    expect(isAwaitingReply({ lastInboundAt: 'not a date' }, now)).toBe(false);
+  });
+});
+
+describe('snooze', () => {
+  const now = new Date('2026-08-21T12:00:00Z');
+  const base = { lastInboundAt: '2026-08-21T09:00:00Z', lastOutboundAt: '2026-08-21T08:00:00Z' };
+
+  it('a live snooze puts it down', () => {
+    expect(isAwaitingReply({ ...base, snoozedUntil: '2026-08-21T18:00:00Z' }, now)).toBe(false);
+  });
+  it('an expired snooze brings it back on its own', () => {
+    expect(isAwaitingReply({ ...base, snoozedUntil: '2026-08-21T11:00:00Z' }, now)).toBe(true);
+  });
+  it('a message arriving DURING a snooze re-arms it immediately', () => {
+    expect(isAwaitingReply({
+      ...base, lastInboundAt: '2026-08-21T19:00:00Z', snoozedUntil: '2026-08-21T18:00:00Z',
+    }, new Date('2026-08-21T19:30:00Z'))).toBe(true);
+  });
+  it('waitingHours is null for anything not waiting', () => {
+    expect(waitingHours({ ...base, snoozedUntil: '2026-08-21T18:00:00Z' }, now)).toBeNull();
+  });
+});
+
+describe('sortWaitingRows: the longest wait at the top', () => {
+  const r = (id: string, lastInboundAt: string, pinnedAt: string | null = null) =>
+    ({ id, unread: true, pinnedAt, lastMessageAt: lastInboundAt, lastInboundAt });
+
+  it('puts 41 hours above 2 minutes, which recency gets exactly backwards', () => {
+    const out = sortWaitingRows([
+      r('fresh', '2026-08-21T14:58:00Z'),
+      r('lunar', '2026-08-19T14:04:00Z'),
+      r('week-old', '2026-08-08T09:00:00Z'),
+    ]);
+    expect(out.map((x) => x.id)).toEqual(['week-old', 'lunar', 'fresh']);
+  });
+
+  it('a pin still outranks the wait: it is a deliberate keep-this-in-front-of-me', () => {
+    const out = sortWaitingRows([
+      r('old', '2026-08-08T09:00:00Z'),
+      r('pinned-but-recent', '2026-08-21T14:00:00Z', '2026-08-21T10:00:00Z'),
+    ]);
+    expect(out[0].id).toBe('pinned-but-recent');
+  });
+
+  it('never mutates the input', () => {
+    const rows = [r('b', '2026-08-21T10:00:00Z'), r('a', '2026-08-08T10:00:00Z')];
+    sortWaitingRows(rows);
+    expect(rows.map((x) => x.id)).toEqual(['b', 'a']);
   });
 });

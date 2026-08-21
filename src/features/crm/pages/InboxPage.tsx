@@ -1298,7 +1298,12 @@ export default function InboxPage() {
                     className="sticky top-0 z-[1] px-3 py-1 bg-[#FAFAF7]/95 backdrop-blur-sm text-[9.5px] font-bold uppercase tracking-wider text-[#9CA3AF] flex items-center gap-1"
                   >
                     {sec.key === 'pinned' && <Pin style={{ width: 9, height: 9 }} />}
-                    {sec.key === 'pinned' ? 'Pinned' : sec.key === 'unread' ? 'Needs a reply' : 'Everything else'}
+                    {/* "Needs a reply" used to be the third case here and had
+                        been unreachable since the 2026-08-06 reorder. Removed
+                        2026-08-21: a label promising the one thing the inbox was
+                        getting wrong, which never rendered, was worse than none.
+                        The waiting pill is the honest version. */}
+                    {sec.key === 'pinned' ? 'Pinned' : 'Everything else'}
                     <span className="tabular-nums">{sec.rows.length}</span>
                   </div>,
                 ]
