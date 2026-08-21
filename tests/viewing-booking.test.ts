@@ -57,6 +57,12 @@ describe('the booking route', () => {
 
 describe('the disposition side', () => {
   const panel = read('src/features/crm/components/live-call/PostCallPanel.tsx')
+  // The form itself moved out of PostCallPanel on 2026-08-21 so the property
+  // room can show it DURING the call as well as after it. One component, two
+  // mounts: two copies of a booking form is how one of them quietly stops
+  // writing the note.
+  const box = read('src/features/crm/components/live-call/BuilderViewingBox.tsx')
+  const room = read('src/features/crm/components/live-call/PropertyCallRoom.tsx')
 
   it('shows the viewing box on property calls only', () => {
     expect(panel).toMatch(/isPropertyCall = endedContact\?\.customFields\?\.lead_type === 'estate_agent'/)
@@ -64,8 +70,33 @@ describe('the disposition side', () => {
   })
 
   it('converts the typed time as UK wall time and falls back to the quick note', () => {
-    expect(panel).toMatch(/ukInputToIso\(dueLocal\)/)
-    expect(panel).toMatch(/note: note\.trim\(\) \|\| quickNote\.trim\(\) \|\| null/)
+    expect(box).toMatch(/ukInputToIso\(dueLocal\)/)
+    expect(box).toMatch(/note: note\.trim\(\) \|\| quickNote\.trim\(\) \|\| null/)
+  })
+
+  // THE FIX FOR 21 AUGUST. Pedro booked two real viewings that day and typed
+  // both into the quick note instead of the box, because the box only appeared
+  // after the call, in the middle column, below the disposition grid:
+  //
+  //   Dourish & Day  "booked with the builder for the 26th of august 2026, at 2:30 PM"
+  //   Ben Rose       "Booked for friday at 2pm august 28, need to find a builder"
+  //
+  // Neither reached the property, so the builder sweep found two cards in
+  // Viewing booked with no date and refused to invite anybody. Hugo: "make
+  // viewing time always visible on the left side as well also disposition".
+  it('the booking box is in the property room COLUMN ONE, not only after the call', () => {
+    expect(room).toMatch(/import BuilderViewingBox from '\.\/BuilderViewingBox'/)
+    expect(room).toMatch(/<BuilderViewingBox/)
+  })
+
+  it('and the last disposition is on screen beside it, where the words landed', () => {
+    expect(room).toMatch(/data-testid="last-disposition-note"/)
+    expect(room).toMatch(/lastSpoke\?\.outcome \|\| lastSpoke\?\.note/)
+  })
+
+  it('ONE component, so the two mounts cannot drift apart', () => {
+    expect(panel).toMatch(/import BuilderViewingBox from '\.\/BuilderViewingBox'/)
+    expect(panel).not.toMatch(/function BuilderViewingBox\(/)
   })
 
   it('hands the quick note to the follow-up modal, the exact leak in Pedro\'s screenshot', () => {

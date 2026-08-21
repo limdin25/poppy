@@ -39,9 +39,11 @@ import {
 import DialerScriptPane from './DialerScriptPane';
 import DialerRightTabs from './DialerRightTabs';
 import OfferStrip from './OfferStrip';
-import BallparkOnCallPanel from './BallparkOnCallPanel';
 import PropertiesPane from './PropertiesPane';
 import NextStepPanel from '../shared/NextStepPanel';
+// The same box PostCallPanel uses. On screen for the whole call here,
+// because after the call was too late: see the note where it is rendered.
+import BuilderViewingBox from './BuilderViewingBox';
 import BallparkModal from '../deals/BallparkModal';
 import { callModeForCard } from '../../lib/nextStep';
 import { spokeWhenPhrase, propertyOpenerLine } from '../../lib/spokeWhen';
@@ -237,6 +239,44 @@ export default function PropertyCallRoom({
                 next step took its place because it is what he needs before he
                 dials. */}
             <NextStepPanel value={nextStep} />
+            {/* WHAT HE SAID LAST TIME, AND WHERE HE PUTS THE VIEWING.
+                (Hugo, 2026-08-21: "make viewing time always visible on the
+                left side as well also disposition ... left inside dialer.")
+
+                Both of these used to live only in PostCallPanel, in the middle
+                column, AFTER the call ended. On 21 August Pedro booked two
+                real viewings and typed both into the quick note instead of the
+                booking box, so neither reached the property and the builder
+                sweep refused to invite anybody: the approved template needs a
+                date and there was none to put in it.
+
+                So the box is on screen for the whole call now, above the
+                houses, and the last disposition note sits with it because that
+                is where the words "booked for friday at 2pm" actually landed. */}
+            <div className="px-4 pb-1 flex-shrink-0">
+              {(lastSpoke?.outcome || lastSpoke?.note) && (
+                <div
+                  className="mt-3 rounded-[10px] border border-[#E5E7EB] bg-[#FAFAF8] px-3 py-2"
+                  data-testid="last-disposition-note"
+                >
+                  <div className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold mb-1">
+                    Last disposition
+                  </div>
+                  {lastSpoke.outcome && (
+                    <div className="text-[12px] font-semibold text-[#1A1A1A]">{lastSpoke.outcome}</div>
+                  )}
+                  {lastSpoke.note && (
+                    <div className="text-[12px] text-[#4B5563] mt-0.5">{lastSpoke.note}</div>
+                  )}
+                </div>
+              )}
+              {listings.length > 0 && (
+                <BuilderViewingBox
+                  propertyOptions={listings.map((l) => ({ id: l.id, address: l.address }))}
+                  className="mt-3"
+                />
+              )}
+            </div>
             {/* The house, underneath it, scrolling on its own so the contact
                 header and the SMS strip stay put.
                 Still called Houses: the coach, the training questions and the
@@ -298,16 +338,14 @@ export default function PropertyCallRoom({
               </span>
             </div>
           )}
-          {/* The ballpark button, call one only. Hugo, 2026-08-19: "we need a
-              button there that Pedro presses, very clear button on the top,
-              and then give us the ballpark when Pedro is ready." Discovery
-              mode is exactly the mode with no armed figures, so the only
-              number Pedro can say on call one is the one this panel prices
-              from the call itself. Keyed by listing so switching houses
-              never shows one house's figure beside another's script. */}
-          {callMode === 'discovery' && selectedListing && (
-            <BallparkOnCallPanel key={selectedListing.id} propertyId={selectedListing.id} />
-          )}
+          {/* THE BALLPARK BUTTON IS GONE FROM CALL ONE. Hugo, 2026-08-20: call
+              one books the builder and fetches no prices and no ballpark. The
+              house is already proven 20% under size-and-street-tested comps
+              before it reaches the queue, so the only thing missing is the
+              cost of the work, and that is what the builder's visit is for.
+              BallparkOnCallPanel still exists and is still reachable from the
+              board (BallparkModal arms call two); it just no longer sits above
+              a script that now says there is no number of ours on this call. */}
           {/* Call 2 script with NO armed figures. Found 2026-08-18 on Friars
               Close: the card sat in "Ready for call 2" (the disposition put it
               there) while the ballpark was never applied, so Pedro opened THE
