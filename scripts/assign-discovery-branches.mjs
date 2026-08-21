@@ -38,7 +38,7 @@ import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { decideRedial, redialModeFromArgv, NOBODY_ANSWERED } from './lib/redial-policy.mjs'
+import { decideRedial, listedAtOf, redialModeFromArgv, NOBODY_ANSWERED } from './lib/redial-policy.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 for (const line of readFileSync(resolve(REPO, '.env'), 'utf8').split('\n')) {
@@ -114,6 +114,17 @@ async function main() {
     : REDIAL_MODE === 'all' ? ' (EVERY called branch is back in play)'
     : ' (a branch that has been called is not dealt again)'}`)
 
+  // THE FLOOR IN FORCE, SAID OUT LOUD ON EVERY RUN.   (2026-08-21)
+  //
+  // This script runs from a COPY at /root/elsie-assign on the VPS, and the copy
+  // is only as current as the last person who remembered to re-copy it. On
+  // 2026-08-21 the priced twin was found still carrying 0.15, two days after
+  // the floor moved to 0.20, and nothing anywhere said so: the test that pins
+  // the value reads the repo, and the repo was right. A number printed into the
+  // morning log every night is the cheapest possible way for a stale copy to
+  // announce itself, so it is printed whether it looks interesting or not.
+  say(`  minimum discount in force: ${Math.round(MIN_LOCAL_DISCOUNT * 100)}%`)
+
   const rawPool = JSON.parse(readFileSync(POOL_PATH, 'utf8'))
 
   // THE DISCOUNT, RE-CHECKED HERE TOO, even though discovery_pool.py already
@@ -188,10 +199,50 @@ async function main() {
   // seven-rule gate runs under a clock and never reaches most of the stock, so
   // a house missing from tonight's file has not been judged and is left
   // exactly where it is. Only an explicit failure removes anything.
+  //
+  // AND THE FILE ITSELF HAS TO BE ONE WE CAN ACT ON.   (2026-08-21)
+  //
+  // Two ways a verdicts file can be dangerous rather than merely useless, and
+  // both were live on 2026-08-21:
+  //
+  //   OLD SHAPE. The rule above ("absence is not a verdict") was added to the
+  //   engine on 2026-08-21 at 05:32. The file sitting in exports at the time
+  //   was written at 05:42 by a run that had started earlier and was still
+  //   holding the previous code in memory, so it carried the OLD behaviour:
+  //   33,734 houses marked failed, including every house whose comparables or
+  //   floor plan simply had not been fetched yet. Deleting queue rows against
+  //   that list is exactly the mistake the engine had just stopped making.
+  //   `not_judged` is the field the fixed engine always writes, so its absence
+  //   is a reliable "this file predates the fix".
+  //
+  //   STALE. A night where the pool builder was killed writes no file at all,
+  //   so yesterday's stays on disk and would be re-applied as though it were
+  //   tonight's answer. A verdict is about the day it was taken.
+  //
+  // Neither case is an error worth stopping the run for. Adding branches is the
+  // job; re-testing is the extra. So both skip the re-test, loudly, and the
+  // night still queues.
+  const VERDICTS_MAX_AGE_HOURS = 24
   let verdicts = null
   try {
     verdicts = JSON.parse(readFileSync(VERDICTS_PATH, 'utf8'))
   } catch { /* no file tonight: re-testing is skipped, never guessed at */ }
+  if (verdicts && !Object.prototype.hasOwnProperty.call(verdicts, 'not_judged')) {
+    say('  REFUSING to re-test: the verdicts file has no not_judged count, so it '
+      + 'was written before the engine learned that a house we had not read yet '
+      + 'is not a house that failed. Nothing was removed from the queue.')
+    verdicts = null
+  }
+  if (verdicts) {
+    const takenAt = new Date(String(verdicts.at ?? '')).getTime()
+    const ageHours = Number.isFinite(takenAt) ? (Date.now() - takenAt) / 3_600_000 : Infinity
+    if (!(ageHours <= VERDICTS_MAX_AGE_HOURS)) {
+      say(`  REFUSING to re-test: the verdicts file is ${Number.isFinite(ageHours)
+        ? `${Math.round(ageHours)}h old` : 'undated'}, and a verdict is about the `
+        + `day it was taken. Nothing was removed from the queue.`)
+      verdicts = null
+    }
+  }
   if (verdicts && Array.isArray(verdicts.failed) && verdicts.failed.length) {
     const failed = new Set(verdicts.failed.map(String))
     const { data: pending } = await db.from('wk_dialer_queue')
@@ -306,19 +357,46 @@ async function main() {
   const nowMs = Date.now()
   const skipped = { called: 0, owned_elsewhere: 0, dnc: 0, queued: 0 }
   let taken = 0
+  let reopened = 0
 
+  // TWO PASSES, AND THE ORDER OF THEM IS THE POINT.
+  //
+  // A branch we have rung before must never leapfrog one nobody has spoken to
+  // yet: that is the whole reason decideRedial returns `back`. Priorities here
+  // count DOWNWARDS from below the priced deals, so the only way to honour it
+  // is to place every fresh branch before any reopened one. Doing it as two
+  // passes over the same ranked pool keeps the ordering inside each group
+  // exactly as it was, which is what the pool's own ranking is for.
+  for (const pass of [false, true]) {
   for (const branch of pool) {
     if (taken >= toAdd) break
+    // Counted on the first pass only: the same branch is walked twice and a
+    // held-back branch counted twice reads as twice as many held back.
     const existing = contactsByPhone.get(branch.phone)
-    if (existing?.do_not_call) { skipped.dnc++; continue }
+    if (existing?.do_not_call) { if (!pass) skipped.dnc++; continue }
     if (existing && existing.owner_agent_id && existing.owner_agent_id !== agent.id) {
-      skipped.owned_elsewhere++; continue
+      if (!pass) skipped.owned_elsewhere++; continue
     }
-    if (existing && queued.has(existing.id)) { skipped.queued++; continue }
-    const verdict = decideRedial({ ...(history.get(branch.phone) ?? {}), mode: REDIAL_MODE, nowMs })
-    if (!verdict.queue) { skipped.called++; continue }
-
+    if (existing && queued.has(existing.id)) { if (!pass) skipped.queued++; continue }
     const p = branch.property
+    // A HOUSE LISTED SINCE WE LAST RANG REOPENS THE BRANCH.   (wired 2026-08-21)
+    //
+    // The policy has always known this rule and this script never handed it the
+    // date, so the rule was dead here. It is still the policy that decides: an
+    // office where a human answered waits the full fourteen days whatever it
+    // lists, an office that never picked up waits the ordinary twenty hours,
+    // and either way a reopened branch goes to the BACK of the queue behind the
+    // offices nobody has tried at all.
+    const verdict = decideRedial({
+      ...(history.get(branch.phone) ?? {}),
+      newestListedAt: listedAtOf(p, nowMs),
+      mode: REDIAL_MODE,
+      nowMs,
+    })
+    if (!verdict.queue) { if (!pass) skipped.called++; continue }
+    // Fresh branches on the first pass, reopened ones on the second.
+    if (verdict.back !== pass) continue
+    if (pass) reopened++
     const facts = {
       lead_type: 'estate_agent',
       source: 'discovery_pool',
@@ -412,9 +490,14 @@ async function main() {
     }
     taken++
   }
+  }
 
   say('')
   say(`  queued          : ${taken} discovery branch(es), all BELOW the priced deals`)
+  // `back` covers both ways a branch reopens (a house listed since we rang, and
+  // the voicemail cadence under --redial-unanswered), so the line says "rung
+  // before" rather than naming one of them and being wrong half the time.
+  say(`  of those        : ${taken - reopened} never rung before, ${reopened} rung before and reopened (queued behind the fresh ones)`)
   say(`  held back       : called within the window ${skipped.called}, owned by another agent ${skipped.owned_elsewhere}, do-not-call ${skipped.dnc}, already queued ${skipped.queued}`)
   if (taken < toAdd) {
     // A silent shortfall reads as "covered everything". Say it in capitals:

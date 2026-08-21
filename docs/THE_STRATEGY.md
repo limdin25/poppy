@@ -24,7 +24,7 @@ only hard facts:
 
 | Test | Why it is that number |
 |---|---|
-| Asking at least **15% under** the local sold median | Under this there is nothing to source: it is priced like its neighbours |
+| Asking at least **20% under** the local sold median | Under this there is nothing to source: it is priced like its neighbours. Raised from 15% on 2026-08-19, Hugo: *"20 percent minimum right from the jump, no filler, just high conviction deals."* |
 | Not more than **45% under** | Past this the cause is almost never a desperate vendor. It is a comp set that does not belong to the house |
 | At least **3 sold comps** | Fewer than three and one odd sale sets the price |
 | Within **400 metres** | The course's quarter mile |
@@ -42,8 +42,24 @@ condition read, no floor plan. Those were the three numbers that were wrong
 on Granton Avenue, so the screen routes around all of them.
 
 Then hard excludes: no auctions (see section 6), no flats, no leasehold,
-£40k to £200k, crime cap, one property per branch, and no branch rung in the
-last 14 days.
+£40k to £200k, crime cap, and one property per branch.
+
+**And a branch that has already been rung is held back.** Not for a set period:
+having been called is a reason NOT to deal a branch, and only two things reopen
+one. A house listed **since** we last rang, which is a new reason to ring rather
+than a repeat of the old one, subject to a wait that depends on what happened
+last time: **14 days** if a human answered (they have heard the pitch, and
+ringing them about a different door the next day reads as a call centre) and 20
+hours if nobody picked up. Or an explicit `--redial-unanswered`, which re-deals
+only the offices that never answered, on the cadence of three daily tries then
+weekly. Both land at the **back** of the queue, behind every office nobody has
+tried at all.
+
+⚠️ **The listed-since rule was dead on the discovery lane until 2026-08-21.**
+That script never handed the policy a listing date, so its default, "a branch
+that has been called is not dealt again", meant forever rather than a fortnight.
+On the night of 2026-08-20 it held back 17 of 62 pool branches on a run that
+queued 2 against a target of 250.
 
 ### The rule is checked again at the door, and unverified is a refusal
 
@@ -109,11 +125,45 @@ hard facts and nothing else.
 
 ---
 
-## 2. Call one: find out why it is cheap
+## 2. Call one: find out why it is cheap, then book the builder
 
 Pedro **never names a figure**. That is not a style choice, it is the
 structure: at this point nobody has priced the works, and a number said out
 loud cannot be unsaid.
+
+**And call one now ends by booking our builder in.** Hugo, 2026-08-20: *"we
+will book the builder call one and we won't fetch prices or ballpark."* The
+house only reaches his queue if it is already 20% or more below comparables
+that pass the size and street test, so the desk homework is done before he
+dials. The one thing nobody at a desk can know is what the work costs, and the
+builder answers that in half an hour. So the close of a first call is **a day
+for the builder and who holds the keys**, not a figure and not a callback.
+
+**And he no longer asks them for a figure either.** Hugo, same day: *"we don't
+need the figure any more to book the builder."* The old stage 4, *"what sort of
+figure would actually get it done?"*, is deleted from a first call, so call one
+is three beats and a close. A number the branch volunteers is still written
+down and still presses **Figure obtained**; going fishing for one before the
+visit only invites them to ask for ours. What has been **rejected**, and at
+what level, stays in the checklist: that is the floor that decides whether a
+builder may be sent at all.
+
+**The video is now asked for only when the builder is NOT going.** Hugo, same
+day: *"it says we will send the builder and at the same time asks for a video,
+not sure that makes sense."* It does not. The video existed for the world where
+nobody was going to the house, and asking a branch to film one we are sending a
+man to on Thursday reads as not believing our own booking. So it survives only
+where it still earns its place: the branch that will not grant access. **And
+the floor plan is never asked for at all**, we already hold it, a house cannot
+reach the queue without one because the size is read off it overnight.
+
+The **Get the ballpark** button that landed on call one on 19 August was
+withdrawn the next day and is off the screen. Every grader moved with it: a
+number of ours on a first call is a rule break again, on the live coach, the
+after-call review and the 5:30 report, and the report now counts
+`asked_for_the_builder_day` as the score of a first call. Booking **the
+builder** is never the banned viewing; what stays banned is Pedro viewing a
+house himself or booking the director in.
 
 What he must come away with:
 
@@ -124,6 +174,7 @@ What he must come away with:
   the vendor's floor and agents give it up readily
 - What it would let for
 - Who he spoke to, and an email address
+- **A day for the builder, and who holds the keys**
 
 And one thing he **leaves behind on every call**, first or second: our email,
 with a standing brief. *Anything that comes in needing plenty of work, or where
@@ -225,19 +276,58 @@ course's rule.
 
 ---
 
-## 5. Call two, and then the builder
+## 5. The builder, and then call two
 
-Pedro floats the number as a question, never an offer:
+**The order flipped on 2026-08-20.** The builder goes in first, off call one,
+and call two is the offer call made once his price is in. Pedro then floats
+the number as a question, never an offer:
 
-> "The next step our end is booking our builder in to price the works, but
-> before I set that up I don't want to waste your time or embarrass anyone
-> with a silly offer. So if we were to offer around X, am I in the ballpark
-> or a million miles off?"
+> "I've been through what's sold on the same streets and I've got the cost of
+> the work back. So if we were to offer around X, am I in the ballpark or a
+> million miles off?"
 
-He never makes a formal offer and never books a viewing himself. If they are
-in the ballpark, **the builder goes in and quotes inside our stated budget**,
-which is the whole point of taking the low end: the budget is what we hand
-him, not a prediction.
+He never makes a formal offer and never books a viewing for himself. The
+builder **quotes inside our stated budget**, which is the whole point of
+taking the low end: the budget is what we hand him, not a prediction.
+
+Stage 7 of the script survives as the fallback for the branch that would not
+let a builder in on call one, which is the only case where the old order
+still applies.
+
+### No builder goes to a house we already know we cannot buy
+
+Added 2026-08-20. Hugo: *"Nothing today refuses to send a builder to a house
+whose known floor is above our ceiling. That is the one thing worth building."*
+
+Every part of the fact already existed and none of it stopped anything. Call one
+asks what has been turned down and at what level, the call listener fills the
+answer in from the transcript with the quote beside it, and the ballpark prints
+*"They already turned down £X"*. The only reader was a screen. Now the three
+roads onto a house (the WhatsApp invite, the panel's hand-picked assign, and the
+cockpit's **Book the builder** press) all refuse when the refused figure is at or
+above the most we may pay. **At** as well as above: our maximum cannot beat a
+refusal of our maximum.
+
+Three things it deliberately does **not** do:
+
+- **Unknown is a pass.** Most houses have never had an offer on them, and the
+  discount gate's "unverified is a refusal" rule does not belong here. That rule
+  guards a measurement we always take.
+- **`best_price_indicated` is not a floor.** "They'd probably take eighty" is a
+  position an agent volunteers. A refusal is something the vendor did.
+- **It has no override button.** The repairs are the honest ones: correct the
+  figure on the Houses tab, which a machine answer never overwrites, or write
+  `max 78,000` in the pinned note, which outranks the engine's ceiling
+  everywhere else in the system too.
+
+**And the floor has to be evidenced, which is the half of this that was found in
+the data rather than designed.** Measured on the 17 houses carrying an answer:
+11 sat on a branch holding more than one house, 5 had a quote containing no such
+figure, and 8 claimed a refusal more than 15% above their own asking price. So a
+figure only counts as a floor when the stored quote actually says it, and when
+it is credible against **this** house. Without those two rules the gate would
+have blocked 10 houses today, most of them wrongly. With them it blocks 2, and
+both are genuinely unbuyable.
 
 ---
 
@@ -296,6 +386,16 @@ Honesty here is worth more than a tidy document.
   street quietly drags the end value down and nothing detects it. The only
   defence is the price-per-square-metre outlier test, which fires at 40%
   below the local rate. Partly unfixable, and worth knowing.
+- **The call listener writes a BRANCH's call onto every house that branch has
+  on file**, so one vendor's answer becomes several vendors' answers. Found
+  2026-08-20: five Blackpool properties, asking £85,000 to £139,950, each carry
+  the identical quote *"he's had enough of 132 which is rejected"*. It reads the
+  newest transcript for `wk_contact_id` and saves the result per property, and a
+  branch call covers whichever house came up, not the one being written to. The
+  floor gate now refuses a figure its own quote does not say, and one that is
+  more than 15% above the house's asking price, which contains the damage. It
+  does not fix it: the same leak is feeding the ballpark, the brain and the
+  emails, and only the listener can tell which house a sentence was about.
 - **No investor list, no compliance, no builder on the roster, and no house
   has been viewed.** Known, and outside this document.
 

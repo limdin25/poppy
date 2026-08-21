@@ -17,7 +17,8 @@ import {
   decideRedial, redialModeFromArgv, SPOKE_TO_A_HUMAN, NOBODY_ANSWERED, REDIAL_MIN_GAP_HOURS,
   VOICEMAIL_DAILY_ATTEMPTS,
   VOICEMAIL_WEEKLY_GAP_HOURS,
-  voicemailGapHours
+  voicemailGapHours,
+  listedAtOf
 } from '../scripts/lib/redial-policy.mjs'
 
 const root = resolve(__dirname, '..')
@@ -253,5 +254,125 @@ describe('the voicemail cadence: three daily tries, then weekly', () => {
     expect(VOICEMAIL_WEEKLY_GAP_HOURS).toBe(7 * 24)
     expect(voicemailGapHours(0)).toBe(REDIAL_MIN_GAP_HOURS)
     expect(voicemailGapHours(3)).toBe(VOICEMAIL_WEEKLY_GAP_HOURS)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE LISTED-SINCE RULE, AND THE LANE WHERE IT WAS DEAD.   (2026-08-21)
+//
+// decideRedial has understood since 2026-08-11 that a house a branch had not
+// listed when we last rang is a new reason to ring them. The DISCOVERY assign
+// script never handed it a date, so on that lane the rule could not fire at
+// all and a called branch was held back for ever rather than for a fortnight.
+// Measured on the night of 2026-08-20: 17 of 62 pool branches held back, on a
+// run that queued 2 against a target of 250.
+// ---------------------------------------------------------------------------
+describe('when a house went on the market', () => {
+  const NOW2 = Date.parse('2026-08-21T09:00:00Z')
+
+  it('is the scrape stamp less the days it has been listed', () => {
+    const at = listedAtOf(
+      { days_on_market: 10, scraped_at: '2026-08-21T00:00:00Z' }, NOW2)
+    expect(at).toBe('2026-08-11T00:00:00.000Z')
+  })
+
+  it('falls back to now when the scrape stamp is missing, not to the epoch', () => {
+    const at = listedAtOf({ days_on_market: 0 }, NOW2)
+    expect(Date.parse(at as string)).toBe(NOW2)
+  })
+
+  it('refuses to invent a date it cannot know', () => {
+    // Unknown must keep the old behaviour, which is that nothing reopens.
+    expect(listedAtOf({}, NOW2)).toBeNull()
+    expect(listedAtOf({ days_on_market: null }, NOW2)).toBeNull()
+    expect(listedAtOf({ days_on_market: 'soon' }, NOW2)).toBeNull()
+    expect(listedAtOf({ days_on_market: -1 }, NOW2)).toBeNull()
+    expect(listedAtOf({ days_on_market: 99999 }, NOW2)).toBeNull()
+  })
+
+  it('reopens an office that never picked up once the 20 hours are up', () => {
+    const v = decideRedial({
+      lastCallAt: new Date(NOW2 - 30 * 3_600_000).toISOString(),
+      lastOutcome: 'Voicemail',
+      newestListedAt: new Date(NOW2 - 2 * 3_600_000).toISOString(),
+      nowMs: NOW2,
+    })
+    expect(v.queue).toBe(true)
+    expect(v.back).toBe(true)          // behind the offices nobody has tried
+  })
+
+  it('still holds an office that ANSWERED for the full fourteen days', () => {
+    const spoke = (hoursSinceCall: number) => decideRedial({
+      lastCallAt: new Date(NOW2 - hoursSinceCall * 3_600_000).toISOString(),
+      lastOutcome: 'Not interested',
+      newestListedAt: new Date(NOW2 - 1 * 3_600_000).toISOString(),
+      nowMs: NOW2,
+    })
+    expect(spoke(13 * 24).queue).toBe(false)
+    expect(spoke(15 * 24).queue).toBe(true)
+  })
+
+  it('a house listed BEFORE we rang is not a new reason to ring', () => {
+    const v = decideRedial({
+      lastCallAt: new Date(NOW2 - 30 * 3_600_000).toISOString(),
+      lastOutcome: 'Voicemail',
+      newestListedAt: new Date(NOW2 - 40 * 3_600_000).toISOString(),
+      nowMs: NOW2,
+    })
+    expect(v.queue).toBe(false)
+  })
+})
+
+describe('the discovery assign script actually uses it', () => {
+  const src = read('scripts/assign-discovery-branches.mjs')
+
+  it('hands the policy a listing date instead of leaving the rule dead', () => {
+    expect(src).toContain('listedAtOf')
+    expect(src).toMatch(/newestListedAt:\s*listedAtOf\(p, nowMs\)/)
+  })
+
+  it('queues reopened branches BEHIND the ones nobody has rung', () => {
+    // Priorities count downwards here, so the only way to honour `back` is to
+    // place every fresh branch before any reopened one.
+    expect(src).toMatch(/for \(const pass of \[false, true\]\)/)
+    expect(src).toMatch(/verdict\.back !== pass/)
+  })
+
+  it('says how many were reopened, because a silent change of who gets rung is how the repeats happened', () => {
+    expect(src).toMatch(/rung before and reopened \(queued behind the fresh ones\)/)
+  })
+})
+
+describe('a verdicts file we cannot act on is refused, not obeyed', () => {
+  const src = read('scripts/assign-discovery-branches.mjs')
+
+  it('refuses one written before the engine learned that unread is not failed', () => {
+    // The file on disk on 2026-08-21 listed 33,734 houses as failed, including
+    // every house whose comparables had simply not been fetched yet.
+    expect(src).toContain("hasOwnProperty.call(verdicts, 'not_judged')")
+    expect(src).toMatch(/REFUSING to re-test/)
+  })
+
+  it('refuses a stale one, because a verdict is about the day it was taken', () => {
+    expect(src).toMatch(/VERDICTS_MAX_AGE_HOURS = 24/)
+  })
+
+  it('still queues branches when the re-test is skipped', () => {
+    // Adding branches is the job; re-testing is the extra. A bad verdicts file
+    // must not become an empty night.
+    expect(src).toMatch(/verdicts = null/)
+    expect(src).not.toMatch(/verdicts.*process\.exit/)
+  })
+})
+
+describe('the discount floor announces itself every night', () => {
+  it('both assign scripts print the value they are actually running', () => {
+    // The VPS runs COPIES. On 2026-08-21 the priced copy was still on 0.15,
+    // two days after the floor moved to 0.20, and nothing said so because the
+    // test that pins the value reads the repo and the repo was right.
+    for (const f of ['scripts/assign-discovery-branches.mjs',
+                     'scripts/assign-properties-to-pedro-houses.mjs']) {
+      expect(read(f)).toMatch(/minimum discount in force: \$\{Math\.round\(MIN_LOCAL_DISCOUNT \* 100\)\}%/)
+    }
   })
 })

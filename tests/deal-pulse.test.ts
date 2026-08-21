@@ -155,7 +155,18 @@ describe('the Today panel never lies while loading', () => {
   it('says it is reading, not that the brain is off, until the answer is in', () => {
     // Seen live 2026-08-17: the flag defaults to false, the request is slow,
     // and the panel printed "The deal brain is off" over a brain that was on.
+    // The panel gained a shut state on 2026-08-21, so there is a branch in
+    // front of this one now. What must stay true is the ORDER: loading is
+    // answered before the brain flag, never after it.
     const panel = readFileSync('src/features/crm/components/deals/TodayPanel.tsx', 'utf8')
-    expect(panel).toMatch(/loading \? 'Reading the day\.\.\.' : managerOn/)
+    expect(panel).toMatch(/loading \? 'Reading the day\.\.\.'\s*\n?\s*: managerOn/)
+  })
+
+  it('a shut panel says neither, because it has not asked yet', () => {
+    // Shut, nothing is fetched at all, so claiming the brain is on OR off
+    // would be the same lie in a different direction.
+    const panel = readFileSync('src/features/crm/components/deals/TodayPanel.tsx', 'utf8')
+    expect(panel).toMatch(/!open \? '[^']+'/)
+    expect(panel).toMatch(/if \(open\) void load\(\)/)
   })
 })

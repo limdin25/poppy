@@ -443,6 +443,16 @@ async function main() {
   say('')
   say(`Houses for Pedro  ${APPLY ? '*** APPLY ***' : '(dry run, nothing will be written)'}`)
   say('─'.repeat(64))
+  // THE FLOOR IN FORCE, SAID OUT LOUD ON EVERY RUN.   (2026-08-21)
+  //
+  // This script runs from a COPY at /root/elsie-assign on the VPS, and the copy
+  // is only as current as the last person who remembered to re-copy it. On
+  // 2026-08-21 that copy was found still carrying 0.15, two days after the
+  // floor moved to 0.20, and nothing anywhere said so: the test that pins the
+  // value reads the repo, and the repo was right. A number printed into the
+  // morning log every night is the cheapest way for a stale copy to announce
+  // itself, so it is printed whether it looks interesting or not.
+  say(`  minimum discount in force: ${Math.round(MIN_LOCAL_DISCOUNT * 100)}%`)
 
   const agentId = await ensureAgent()
   const campaignId = await ensureCampaign(agentId)

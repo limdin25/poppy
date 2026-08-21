@@ -167,6 +167,44 @@ export function decideRedial({
   }
 }
 
+/**
+ * WHEN A HOUSE WENT ON THE MARKET, from the two facts a listing carries.
+ *
+ * Added 2026-08-21 to fix a real hole rather than as a nicety. `decideRedial`
+ * has understood since 2026-08-11 that a house a branch had NOT listed when we
+ * last rang is a new reason to ring them, and the priced lane feeds it that
+ * date. The DISCOVERY lane never did, so the rule could not fire there at all,
+ * and "a branch that has been called is not dealt again" meant forever rather
+ * than the fortnight the strategy document describes. Measured on the night of
+ * 2026-08-20: 17 of 62 pool branches were held back on that rule, on a night
+ * that queued 2 branches against a target of 250.
+ *
+ * Rightmove prints days on market, not a date, so the date is the scrape stamp
+ * less those days. Missing or implausible days gives NO date, which is the
+ * behaviour we already had: unknown never reopens a branch.
+ *
+ * ONE THING TO KNOW: a price cut RESETS Rightmove's displayed date, so a house
+ * whose price came down reads as newly listed. That is not a fault here, a cut
+ * is a genuine new reason to ring, and it is still bounded by the fourteen days
+ * a branch that spoke to a human is held for.
+ *
+ * @param property  a pool listing: {days_on_market, scraped_at}
+ * @param nowMs     Date.now() from the caller, so this stays pure
+ * @returns ISO timestamp, or null when it cannot be known
+ */
+export function listedAtOf(property, nowMs = Date.now()) {
+  // `Number(null)` and `Number('')` are both 0, which is a perfectly plausible
+  // "listed today" and would reopen every branch holding a listing we know
+  // nothing about. Unknown has to be refused before it is converted.
+  const raw = property?.days_on_market
+  if (raw === null || raw === undefined || String(raw).trim() === '') return null
+  const days = Number(raw)
+  if (!Number.isFinite(days) || days < 0 || days > 3650) return null
+  const scraped = new Date(String(property?.scraped_at ?? '')).getTime()
+  const base = Number.isFinite(scraped) ? scraped : nowMs
+  return new Date(base - days * 86_400_000).toISOString()
+}
+
 /** The mode named by the command line. Kept here so the flag names and the
  *  policy live together. `--unanswered-only` is the original spelling and still
  *  works: it always meant "only the offices that never picked up". */

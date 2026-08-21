@@ -116,11 +116,33 @@ interface TodayItem {
   hoursSinceTouch: number | null;
 }
 
-export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) => void }) {
+/** Where the open/shut choice is remembered, so a refresh does not undo it. */
+const OPEN_KEY = 'today-panel-open';
+
+/** `collapsible` shuts the whole panel and puts one line at the top of the
+ *  board instead. Hugo, 19 Aug, on the pipelines page: "I want only see the
+ *  pipeline." The cockpit passes nothing and is unchanged, because Today IS
+ *  that page. While it is shut nothing is fetched at all: /api/crm/deal-manager
+ *  is the slow request on this screen, and the board now paints without
+ *  waiting for it. */
+export default function TodayPanel(
+  { onOpen, collapsible = false }: { onOpen?: (propertyId: string) => void; collapsible?: boolean },
+) {
+  const [open, setOpen] = useState(() => {
+    if (!collapsible) return true;
+    try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; }
+  });
   const [items, setItems] = useState<TodayItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [managerOn, setManagerOn] = useState(false);
+
+  const toggle = () => {
+    setOpen((v) => {
+      try { localStorage.setItem(OPEN_KEY, v ? '0' : '1'); } catch { /* private mode */ }
+      return !v;
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,32 +176,49 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (open) void load(); }, [open, load]);
 
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-[14px] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E7EB]">
-        <div>
-          <h2 className="text-[14px] font-semibold text-[#1A1A1A]">Today</h2>
-          <p className="text-[11px] text-[#6B7280]">
-            {/* Never claim the brain is off before the answer is in: this
-                request is slow, and the default-false flag had the panel
-                printing "the deal brain is off" for the whole load while the
-                brain was on (seen live, 2026-08-17). */}
-            {loading ? 'Reading the day...' : managerOn ? BRAIN_ON_NOTE : BRAIN_OFF_NOTE}
-          </p>
-        </div>
+    <div className="bg-white border border-[#E5E7EB] rounded-[14px] overflow-hidden" data-testid="today-panel">
+      <div className={cn('flex items-center gap-3 px-4 py-3', open && 'border-b border-[#E5E7EB]')}>
         <button
           type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#3C5A87] hover:text-[#3C5A87]/80 disabled:opacity-50"
+          onClick={collapsible ? toggle : undefined}
+          className={cn('flex items-center gap-2 min-w-0 text-left', collapsible && 'flex-1')}
+          aria-expanded={open}
+          data-testid="today-toggle"
         >
-          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-          Refresh
+          {collapsible && (open
+            ? <ChevronDown className="w-4 h-4 text-[#9CA3AF] flex-shrink-0" />
+            : <ChevronRight className="w-4 h-4 text-[#9CA3AF] flex-shrink-0" />)}
+          <div className="min-w-0">
+            <h2 className="text-[14px] font-semibold text-[#1A1A1A]">Today</h2>
+            <p className="text-[11px] text-[#6B7280]">
+              {/* Never claim the brain is off before the answer is in: this
+                  request is slow, and the default-false flag had the panel
+                  printing "the deal brain is off" for the whole load while the
+                  brain was on (seen live, 2026-08-17). Shut, it has not been
+                  asked yet, so it says neither. */}
+              {!open ? 'Open to see what needs a person today.'
+                : loading ? 'Reading the day...'
+                : managerOn ? BRAIN_ON_NOTE : BRAIN_OFF_NOTE}
+            </p>
+          </div>
         </button>
+        {open && (
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-[#3C5A87] hover:text-[#3C5A87]/80 disabled:opacity-50"
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            Refresh
+          </button>
+        )}
       </div>
 
+      {open && (<>
       {error && (
         <div className="px-4 py-3 text-[12px] text-[#DC2626] bg-[#FEF2F2]">{error}</div>
       )}
@@ -260,6 +299,7 @@ export default function TodayPanel({ onOpen }: { onOpen?: (propertyId: string) =
       </ul>
 
       <MovesLog />
+      </>)}
     </div>
   );
 }
