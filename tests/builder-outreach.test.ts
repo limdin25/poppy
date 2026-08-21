@@ -212,10 +212,18 @@ describe('every road onto a house passes the same gate', () => {
   });
   it('the sweep selects the columns the gate needs, or it could never fire', () => {
     const cron = readFileSync('api/cron/builder-outreach.ts', 'utf8');
-    const select = cron.match(/\.select\('id, address, viewing_at[^']*'\)/)?.[0] ?? '';
-    for (const col of ['deal', 'qualification', 'pinned_note', 'asking_price']) {
+    // Anchored on brrr_properties rather than the exact column order, which
+    // changed on 2026-08-21 when source_property_id was added so the sweep can
+    // look up the measured discount a discovery house carries instead of a
+    // valuation it does not have.
+    const select = cron.match(/\.select\('id, source_property_id, address, viewing_at[^']*'\)/)?.[0] ?? '';
+    for (const col of ['deal', 'qualification', 'pinned_note', 'asking_price', 'source_property_id']) {
       expect(select, col).toContain(col);
     }
+    // And it must actually read the discount, or every discovery house is
+    // refused for want of proof it already has.
+    expect(cron).toContain('wk_raw_leads');
+    expect(cron).toContain('discount');
   });
 });
 
@@ -360,19 +368,43 @@ describe('the discount gate on a builder draft', () => {
     }, settings)).toBeNull();
   });
 
-  it('a house with no priced offer is refused with its own reason', () => {
-    // The nine houses whose bands were withdrawn on 2026-08-20 because the
-    // valuation behind them was a size-blind median. No figure, no builder.
+  it('a DISCOVERY house passes on its measured discount alone', () => {
+    // The fault this replaced, found hours after I wrote it. Call one books the
+    // builder and deliberately fetches no ballpark (Hugo, 20 Aug), so
+    // brrr_properties.deal is {} on exactly the houses that now reach a builder
+    // first. Demanding a priced OFFER blocked every one of them forever:
+    // Oxford Gardens (27%) and Stevenson Avenue (20%) both sat refused.
     expect(blockedReasonFor({
-      ...base, asking_price: 149_999, deal: { reprice: { gdv: 214_984 } },
-    }, settings)).toBe('no_offer_on_file');
+      ...base, asking_price: 190_000, deal: {}, discount: 0.27,
+    }, settings)).toBeNull();
+  });
+
+  it('and a discovery house UNDER the floor is still refused on that discount', () => {
+    expect(blockedReasonFor({
+      ...base, asking_price: 140_000, deal: {}, discount: 0.053,
+    }, settings)).toBe('below_discount_rule');
+  });
+
+  it('nothing at all is a refusal: no valuation and no discount', () => {
+    // An asking price on its own proves nothing. This is the shape the nine
+    // withdrawn bands left behind on 2026-08-20: a house we could not price.
+    expect(blockedReasonFor({
+      ...base, asking_price: 149_999, deal: {},
+    }, settings)).toBe('not_proven_a_deal');
+  });
+
+  it('a VALUED house still passes on its valuation, as it always did', () => {
+    expect(blockedReasonFor({
+      ...base, asking_price: 149_999,
+      deal: { offer: { open: 90_000, max: 105_000 }, reprice: { gdv: 214_984 } },
+    }, settings)).toBeNull();
   });
 
   it('an UNVALUED house is not judged by the discount gate', () => {
     // "We have not priced it" is not the same as "it is a bad deal". It still
     // cannot send, but it must say the honest reason.
     expect(blockedReasonFor({ ...base, asking_price: 140_000 }, settings))
-      .toBe('no_offer_on_file');
+      .toBe('not_proven_a_deal');
     expect(belowDiscountRule({ ...base, asking_price: 140_000 })).toBe(false);
   });
 

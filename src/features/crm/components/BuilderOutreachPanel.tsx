@@ -54,7 +54,7 @@ const BLOCKED_WORDS: Record<string, string> = {
   // 5.3 percent under its own road. Every gate here was about the vendor, the
   // time and the template; none asked whether it was still a deal.
   below_discount_rule: 'Not a deal: under the discount floor for what the road sells for',
-  no_offer_on_file: 'No priced offer yet (usually the floor area is missing)',
+  not_proven_a_deal: 'Nothing proves this is a deal yet: no valuation and no measured discount',
 };
 
 const STATUS_STYLE: Record<string, string> = {

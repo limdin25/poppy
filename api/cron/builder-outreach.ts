@@ -95,12 +95,28 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         // deal + qualification are here for the floor gate: a draft must not be
         // written for a house whose vendor has already turned down more than
         // our ceiling.
-        .select('id, address, viewing_at, wk_contact_id, builder_scraped_at, deal, qualification, pinned_note, asking_price')
+        .select('id, source_property_id, address, viewing_at, wk_contact_id, builder_scraped_at, deal, qualification, pinned_note, asking_price')
         .eq('wk_contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(10);
+      // THE MEASURED DISCOUNT, fetched alongside, because a discovery house
+      // has no valuation at all: call one books the builder and fetches no
+      // ballpark, so brrr_properties.deal is {} on exactly the houses that
+      // now reach this sweep first. wk_raw_leads.discount is the only proof
+      // they carry, and without it the gate below refuses every one of them.
+      const { data: rawLeads } = await sb
+        .from('wk_raw_leads')
+        .select('property_id, discount')
+        .in('property_id', ((props ?? []) as Array<{ source_property_id?: string }>)
+          .map((p) => String((p as { source_property_id?: string }).source_property_id ?? ''))
+          .filter(Boolean));
+      const discountOf = new Map(
+        ((rawLeads ?? []) as Array<{ property_id: string; discount: number | null }>)
+          .map((r) => [String(r.property_id), r.discount]),
+      );
       const rows = (props ?? []) as Array<{
         id: string; address: string | null; viewing_at: string | null;
+        source_property_id?: string | null;
         wk_contact_id: string | null; builder_scraped_at: string | null;
         deal: Record<string, unknown> | null;
         qualification: Record<string, unknown> | null;
@@ -147,7 +163,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         }
       }
 
-      const drafted = await draftOutreachForProperty(sb, property, settings);
+      const drafted = await draftOutreachForProperty(
+        sb,
+        { ...property, discount: discountOf.get(String(property.source_property_id ?? '')) ?? null },
+        settings,
+      );
       out.drafted += drafted.drafted;
       if (firstPass && !drafted.matched) {
         // Even after the scrape nobody on the roster covers this outcode.

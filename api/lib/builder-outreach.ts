@@ -102,6 +102,15 @@ export interface OutreachProperty {
   /** The asking price, which is how a floor is judged credible for THIS house
    *  rather than for whichever house on the branch the call was really about. */
   asking_price?: number | string | null;
+  /** The measured discount off the like-for-like local sold median, as a
+   *  fraction, from the discovery lane (wk_raw_leads.discount).
+   *
+   *  READ, NEVER DERIVED, and it is the ONLY proof a discovery house has.
+   *  Call one deliberately produces no ballpark (Hugo, 20 Aug: "we will book
+   *  the builder call one and we won't fetch prices or ballpark"), so
+   *  brrr_properties.deal is {} for exactly the houses that now reach a
+   *  builder first. */
+  discount?: number | string | null;
 }
 
 /** The floor gate for one property row, with the ceiling resolved the way the
@@ -131,16 +140,43 @@ export const MIN_DISCOUNT_FOR_BUILDER = 0.15;
 
 /** Is this house too dear to send anybody to, on the numbers we hold today?
  *
- *  READ, NEVER DERIVED, like everything else in brrr-offer: the value comes off
- *  the engine's own valuation and the asking price off the row. A house with no
- *  valuation on file is NOT judged here, because "we have not priced it" is not
- *  the same as "it is a bad deal", and `no_offer_on_file` below is the check
- *  that catches that case with a reason a human can act on. */
+ *  READ, NEVER DERIVED, like everything else in brrr-offer. TWO sources, and
+ *  which one exists tells you which lane the house came down:
+ *
+ *    priced lane      deal.gdv / deal.cmv, and the asking price on the row
+ *    discovery lane   the measured discount, because there IS no valuation
+ *
+ *  A house with neither is not judged here. "We have not priced it" is not the
+ *  same as "it is a bad deal", and notProvenADeal below is the check that
+ *  catches that case with a reason a human can act on. */
 export function belowDiscountRule(property: OutreachProperty): boolean {
+  const measured = Number(property.discount ?? NaN);
+  if (Number.isFinite(measured) && measured > 0) {
+    return measured < MIN_DISCOUNT_FOR_BUILDER;
+  }
   const m = readDealMoney(property);
   const worth = m.gdv ?? m.cmv;
   if (!worth || !m.asking) return false;
   return 1 - m.asking / worth < MIN_DISCOUNT_FOR_BUILDER;
+}
+
+/** Have we any evidence at all that this house is worth a builder's afternoon?
+ *
+ *  WHY THIS REPLACED `no_offer_on_file` (2026-08-21, hours after I wrote it).
+ *  That check demanded a priced OFFER, which was right under the old two-call
+ *  process and is wrong under the one running now: call one books the builder
+ *  and deliberately fetches no ballpark, so every discovery house arrives here
+ *  with deal = {} and would have been blocked forever. Oxford Gardens (27
+ *  percent) and Stevenson Avenue (20 percent) are both real deals and both sat
+ *  blocked behind it.
+ *
+ *  So the question is not "is there an offer" but "can we prove anything": a
+ *  valuation OR a measured discount. Neither is still a refusal. */
+export function notProvenADeal(property: OutreachProperty): boolean {
+  const measured = Number(property.discount ?? NaN);
+  if (Number.isFinite(measured) && measured > 0) return false;
+  const m = readDealMoney(property);
+  return !(m.gdv ?? m.cmv) || !m.asking;
 }
 
 /** Why this draft cannot send, or null when it can. The strings are codes the
@@ -169,7 +205,7 @@ export function blockedReasonFor(
 ): string | null {
   if (floorVerdictFor(property).blocked) return 'floor_above_ceiling';
   if (belowDiscountRule(property)) return 'below_discount_rule';
-  if (!readDealMoney(property).open) return 'no_offer_on_file';
+  if (notProvenADeal(property)) return 'not_proven_a_deal';
   if (!String(property.viewing_at ?? '').trim()) return 'no_viewing_time';
   if (!/^HX[0-9a-f]{32}$/i.test(settings.invite_sid)) return 'template_pending';
   return null;
@@ -298,11 +334,21 @@ export async function draftOutreachForProperty(
 export async function floorRefusalFor(sb: Sb, propertyId: string): Promise<string | null> {
   const { data } = await sb
     .from('brrr_properties')
-    .select('deal, qualification, pinned_note, asking_price')
+    .select('source_property_id, deal, qualification, pinned_note, asking_price')
     .eq('id', propertyId)
     .maybeSingle();
   if (!data) return null;
-  const row = data as OutreachProperty;
+  // The measured discount, same reason as the sweep: a discovery house has no
+  // valuation to compare an asking price against, only this.
+  const spid = String((data as unknown as { source_property_id?: string }).source_property_id ?? '');
+  let discount: number | null = null;
+  if (spid) {
+    const { data: lead } = await sb
+      .from('wk_raw_leads').select('discount').eq('property_id', spid)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    discount = (lead as { discount?: number | null } | null)?.discount ?? null;
+  }
+  const row = { ...(data as unknown as OutreachProperty), discount };
   const verdict = floorVerdictFor(row);
   if (verdict.blocked) return verdict.reason;
   // THE DISCOUNT, RE-READ AT THE MOMENT SOMEBODY SPENDS THE BUILDER.
