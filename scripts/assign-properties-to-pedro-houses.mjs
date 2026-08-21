@@ -136,7 +136,26 @@ const CALLER_ID_NUMBER_ID = '1a04cead-c768-46f4-8434-3ef94de7b6e3'   // +4474621
 // RAISED 0.15 -> 0.20 on 2026-08-19, Hugo: "move from a 10% minimum discount
 // to a 20% minimum discount right from the jump. No filler, just high
 // conviction deals."
-const MIN_LOCAL_DISCOUNT = 0.20
+// LOWERED 0.20 -> 0.15 on 2026-08-21, Hugo: "make 15 to 45%". He raised it to
+// 0.20 two days earlier and this is a deliberate reversal, made on a
+// measurement rather than a feeling. Over the 7,114 houses that carry
+// comparables, a floor area, gold or strong evidence and a real per-square-metre
+// valuation, the bands are:
+//
+//     under 10%   5463      15 to 20%    431   <- what this reopens
+//     10 to 15%    540      20 to 45%    654   <- the whole list before today
+//                           over 45%      26   (refused: bad comps, not bargains)
+//
+// So it is a 66 percent increase in candidate houses, and on the observed
+// conversion (654 houses -> 62 branches after the seven rules and one house per
+// branch) it should be worth roughly 40 more branches.
+//
+// WHY IT DOES NOT DILUTE THE TOP OF PEDRO'S LIST. The queue is ranked
+// best-evidenced and most-motivated first, so a 15 to 19 percent house is
+// inserted BEHIND every 20 to 45 percent one. He still works the good ones
+// first; he stops running out at the bottom. That, and not the headline number,
+// is why this is safe to do.
+const MIN_LOCAL_DISCOUNT = 0.15
 
 const money = (n) => {
   const v = parseFloat(String(n ?? ''))

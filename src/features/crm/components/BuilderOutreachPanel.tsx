@@ -53,7 +53,7 @@ const BLOCKED_WORDS: Record<string, string> = {
   // twenty minute call, the branch agreeing to arrange a builder, and a house
   // 5.3 percent under its own road. Every gate here was about the vendor, the
   // time and the template; none asked whether it was still a deal.
-  below_discount_rule: 'Not a deal: under 20% below what the road sells for',
+  below_discount_rule: 'Not a deal: under the discount floor for what the road sells for',
   no_offer_on_file: 'No priced offer yet (usually the floor area is missing)',
 };
 

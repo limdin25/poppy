@@ -164,9 +164,19 @@ describe('the assign scripts: review mode, and the raw payload rides along', () 
     }
   })
 
-  it('the discovery re-check floor moved with the pool: 20 percent, not 15', () => {
-    expect(disc).toMatch(/MIN_LOCAL_DISCOUNT = 0\.20/)
-    expect(disc).not.toMatch(/MIN_LOCAL_DISCOUNT = 0\.15/)
+  it('the discovery re-check floor is whatever the pool screens on, and BOTH move together', () => {
+    // This used to pin 0.20 and forbid 0.15, which read as defending the rule
+    // and actually defended a number. The floor moved 0.15 -> 0.20 on
+    // 2026-08-19 and back to 0.15 on 2026-08-21 ("make 15 to 45%"), and a test
+    // written against the number has to be edited on every such move, which is
+    // exactly when a test stops being read and starts being silenced.
+    //
+    // What matters is that the two assign scripts agree with each other, so
+    // neither can drift while the other is corrected. The engine's own value
+    // lives in discovery_pool.py on the VPS, out of this repo's reach.
+    const floorOf = (src: string) => src.match(/const MIN_LOCAL_DISCOUNT = ([\d.]+)/)?.[1]
+    expect(floorOf(disc)).toBeDefined()
+    expect(floorOf(disc)).toBe(floorOf(priced))
   })
 })
 

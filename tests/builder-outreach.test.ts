@@ -7,7 +7,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import {
   OUTREACH_DEFAULTS, loadOutreachSettingsFrom, viewingTimeLabel,
-  blockedReasonFor, belowDiscountRule, inviteVars, renderPreview, ukDay,
+  blockedReasonFor, belowDiscountRule, MIN_DISCOUNT_FOR_BUILDER,
+  inviteVars, renderPreview, ukDay,
   INVITE_TEMPLATE_TEXT, MORNING_TEMPLATE_TEXT, VIEWING_BOOKED_COLUMN,
 } from '../api/lib/builder-outreach.js';
 import { templateProblem, extractTemplateVars, prefillTemplateVars } from '../src/features/crm/lib/waTemplates.js';
@@ -329,11 +330,27 @@ describe('the discount gate on a builder draft', () => {
     }, settings)).toBe('below_discount_rule');
   });
 
-  it('refuses at the line too, because the rule is 20 percent or more', () => {
+  it('refuses just under the line, wherever the line currently is', () => {
+    // Built from MIN_DISCOUNT_FOR_BUILDER rather than a hardcoded 20 or 15, so
+    // the case keeps testing the boundary through a floor change instead of
+    // silently becoming a test of the middle of the range. The floor moved
+    // 0.20 -> 0.15 on 2026-08-21 and this is the assertion that had to be
+    // rewritten rather than renumbered.
+    const asking = 160_000;
+    const justUnder = asking / (1 - (MIN_DISCOUNT_FOR_BUILDER - 0.01));
     expect(blockedReasonFor({
-      ...base, asking_price: 160_000,
-      deal: { offer: { open: 100_000, max: 118_000 }, reprice: { gdv: 199_000 } },
+      ...base, asking_price: asking,
+      deal: { offer: { open: 100_000, max: 118_000 }, reprice: { gdv: justUnder } },
     }, settings)).toBe('below_discount_rule');
+  });
+
+  it('lets one through that is exactly ON the line', () => {
+    const asking = 160_000;
+    const onTheLine = asking / (1 - MIN_DISCOUNT_FOR_BUILDER);
+    expect(blockedReasonFor({
+      ...base, asking_price: asking,
+      deal: { offer: { open: 100_000, max: 118_000 }, reprice: { gdv: onTheLine } },
+    }, settings)).toBeNull();
   });
 
   it('lets a real one through', () => {

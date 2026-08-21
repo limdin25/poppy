@@ -95,7 +95,27 @@ const VERDICTS_PATH = arg('verdicts',
 // from the jump. No filler, just high conviction deals." Measured before the
 // move: the pool held 272 houses at 20%+, comfortably above the 200-a-day
 // baseline he set as the condition.
-const MIN_LOCAL_DISCOUNT = 0.20
+//
+// LOWERED 0.20 -> 0.15 on 2026-08-21, Hugo: "make 15 to 45%". He raised it to
+// 0.20 two days earlier and this is a deliberate reversal, made on a
+// measurement rather than a feeling. Over the 7,114 houses that carry
+// comparables, a floor area, gold or strong evidence and a real per-square-metre
+// valuation, the bands are:
+//
+//     under 10%   5463      15 to 20%    431   <- what this reopens
+//     10 to 15%    540      20 to 45%    654   <- the whole list before today
+//                           over 45%      26   (refused: bad comps, not bargains)
+//
+// So it is a 66 percent increase in candidate houses, and on the observed
+// conversion (654 houses -> 62 branches after the seven rules and one house per
+// branch) it should be worth roughly 40 more branches.
+//
+// WHY IT DOES NOT DILUTE THE TOP OF PEDRO'S LIST. The queue is ranked
+// best-evidenced and most-motivated first, so a 15 to 19 percent house is
+// inserted BEHIND every 20 to 45 percent one. He still works the good ones
+// first; he stops running out at the bottom. That, and not the headline number,
+// is why this is safe to do.
+const MIN_LOCAL_DISCOUNT = 0.15
 
 // The same identities the priced path uses. REFUSED rather than created here:
 // if either is missing something is badly wrong and a discovery run must not

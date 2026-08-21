@@ -118,11 +118,16 @@ function floorVerdictFor(property: {
   return vendorFloorVerdict(property, governing);
 }
 
-/** The discount a house must show before anyone drives to it. The same 0.20
- *  discovery_pool.MIN_DISCOUNT screens on and assign-discovery-branches.mjs
- *  re-checks, applied at the last gate before a real person gives up an
- *  afternoon. */
-export const MIN_DISCOUNT_FOR_BUILDER = 0.20;
+/** The discount a house must show before anyone drives to it. The same value
+ *  discovery_pool.MIN_DISCOUNT screens on and both assign scripts re-check,
+ *  applied at the last gate before a real person gives up an afternoon.
+ *
+ *  MOVED WITH THE REST on 2026-08-21 (Hugo: "make 15 to 45%"). It has to track
+ *  the lead floor rather than sit above it: a house good enough to call is a
+ *  house good enough to price, and leaving this at 0.20 would have qualified
+ *  leads that could then never reach a viewing, which is a worse failure than
+ *  either number on its own. */
+export const MIN_DISCOUNT_FOR_BUILDER = 0.15;
 
 /** Is this house too dear to send anybody to, on the numbers we hold today?
  *
