@@ -1,9 +1,29 @@
 // The builder-outreach sweep. Every five minutes through the working day:
-// find every branch card sitting in 'Ballpark agreed', scrape local builders
+// find every branch card sitting in 'Viewing booked', scrape local builders
 // for that house's outcode (once per property, ever), and draft the WhatsApp
 // invites. Drafts wait for a human press unless auto_send is on in
 // platform_settings.builder_outreach, in which case unblocked drafts go out
 // here too, capped per UK day.
+//
+// THE TRIGGER MOVED FROM 'Ballpark agreed' TO 'Viewing booked' (2026-08-21).
+//
+// It had stopped firing entirely, and not because anything here was broken:
+// it was watching a door nobody uses any more. On 20 August the process
+// changed so that CALL ONE books the builder and names no figure (Hugo: "we
+// will book the builder call one and we won't fetch prices or ballpark"). The
+// script, the live coach, the after-call review and the 5:30 report all moved
+// with it. This cron did not, so it kept waiting for a ballpark to be agreed,
+// which is the step that had just been removed.
+//
+// Measured the morning it was noticed: 'Ballpark agreed' held ZERO branches
+// and had all day, while 'Viewing booked' held four that Pedro had put there
+// himself. One viewing had ever reached a builder, on 19 August, by hand.
+//
+// SAFE AGAINST THE CONFIRM PRESS, which is the obvious worry now the trigger
+// and the destination are the same column: confirming a builder moves the card
+// to 'Viewing booked' where it already is, and drafting is idempotent by the
+// unique (property_id, builder_id) key, so a card sitting in the column is
+// swept every five minutes and nothing happens twice.
 //
 // A cron rather than hooks in property-outcome/cockpit-action, because a
 // plain board DRAG never touches a server endpoint, and Places latency does
@@ -21,6 +41,7 @@ import { outcodeOf } from '../lib/brrr-deal-facts.js';
 import { scrapeBuildersForOutcode, upsertScrapedBuilders } from '../lib/builder-scrape.js';
 import {
   loadOutreachSettings, draftOutreachForProperty, sendOutreachRow, sentToday,
+  VIEWING_BOOKED_COLUMN,
 } from '../lib/builder-outreach.js';
 import { notifyBuilderEvent, builderNotifyRecipients } from '../lib/builder-notify.js';
 
@@ -47,15 +68,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     const settings = await loadOutreachSettings(sb);
 
-    // The property pipeline is found the way every reader finds it: the
-    // column named 'Ballpark agreed'.
+    // The property pipeline is found the way every reader finds it: by column
+    // name. VIEWING_BOOKED_COLUMN rather than a second copy of the string,
+    // because confirmBuilder already owns that name and the two must never
+    // drift apart: this sweep reads the column the confirm press writes to.
     const { data: col } = await sb
-      .from('wk_pipeline_columns').select('id').eq('name', 'Ballpark agreed')
+      .from('wk_pipeline_columns').select('id').eq('name', VIEWING_BOOKED_COLUMN)
       .limit(1).maybeSingle();
     const colId = (col as { id?: string } | null)?.id;
     if (!colId) {
       res.statusCode = 200;
-      res.end(JSON.stringify({ ...out, note: 'no Ballpark agreed column' }));
+      res.end(JSON.stringify({ ...out, note: `no ${VIEWING_BOOKED_COLUMN} column` }));
       return;
     }
 
@@ -69,13 +92,20 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     for (const contactId of contactIds) {
       const { data: props } = await sb
         .from('brrr_properties')
-        .select('id, address, viewing_at, wk_contact_id, builder_scraped_at')
+        // deal + qualification are here for the floor gate: a draft must not be
+        // written for a house whose vendor has already turned down more than
+        // our ceiling.
+        .select('id, address, viewing_at, wk_contact_id, builder_scraped_at, deal, qualification, pinned_note, asking_price')
         .eq('wk_contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(10);
       const rows = (props ?? []) as Array<{
         id: string; address: string | null; viewing_at: string | null;
         wk_contact_id: string | null; builder_scraped_at: string | null;
+        deal: Record<string, unknown> | null;
+        qualification: Record<string, unknown> | null;
+        pinned_note: string | null;
+        asking_price: number | null;
       }>;
       if (!rows.length) continue;
       // The deal being viewed is the one with the viewing; otherwise the
@@ -126,7 +156,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         await notifyBuilderEvent(sb, {
           kind: 'builder_scrape_empty', agentIds: admins, contactId,
           title: `No builders found for ${oc}`,
-          body: `${String(property.address ?? 'A property')} is in Ballpark agreed but no builder covers ${oc} and the Google search found none with a UK mobile. Add one on /admin/builders by hand.`,
+          body: `${String(property.address ?? 'A property')} is in ${VIEWING_BOOKED_COLUMN} but no builder covers ${oc} and the Google search found none with a UK mobile. Add one on /admin/builders by hand.`,
           link: '/admin/builders',
         });
       }
