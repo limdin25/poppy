@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import {
   OUTREACH_DEFAULTS, loadOutreachSettingsFrom, viewingTimeLabel,
   blockedReasonFor, belowDiscountRule, MIN_DISCOUNT_FOR_BUILDER,
-  inviteVars, renderPreview, ukDay,
+  inviteVars, renderPreview, ukDay, builderFacingAddress,
   INVITE_TEMPLATE_TEXT, MORNING_TEMPLATE_TEXT, VIEWING_BOOKED_COLUMN,
 } from '../api/lib/builder-outreach.js';
 import { templateProblem, extractTemplateVars, prefillTemplateVars } from '../src/features/crm/lib/waTemplates.js';
@@ -212,12 +212,18 @@ describe('every road onto a house passes the same gate', () => {
   });
   it('the sweep selects the columns the gate needs, or it could never fire', () => {
     const cron = readFileSync('api/cron/builder-outreach.ts', 'utf8');
-    // Anchored on brrr_properties rather than the exact column order, which
-    // changed on 2026-08-21 when source_property_id was added so the sweep can
-    // look up the measured discount a discovery house carries instead of a
-    // valuation it does not have.
-    const select = cron.match(/\.select\('id, source_property_id, address, viewing_at[^']*'\)/)?.[0] ?? '';
-    for (const col of ['deal', 'qualification', 'pinned_note', 'asking_price', 'source_property_id']) {
+    // Anchored on the columns rather than their ORDER, which the comment has
+    // claimed since 2026-08-21 while the regex still pinned two of them side
+    // by side. Adding viewing_address between address and viewing_at broke it
+    // the same day, which is the whole argument for not spelling out an order.
+    const select = cron.match(/\.select\('id, source_property_id,[^']*'\)/)?.[0] ?? '';
+    for (const col of [
+      'deal', 'qualification', 'pinned_note', 'asking_price', 'source_property_id',
+      // The address a builder can actually find. Without it the invite goes out
+      // naming a street, which is what Lunar Builders cancelled over.
+      'viewing_address',
+      'viewing_at',
+    ]) {
       expect(select, col).toContain(col);
     }
     // And it must actually read the discount, or every discovery house is
@@ -414,5 +420,93 @@ describe('the discount gate on a builder draft', () => {
       deal: { offer: { open: 100_000, max: 118_000 }, reprice: { gdv: 147_818 } },
       qualification: { rejected_offer: '130000' },
     }, settings)).toBe('floor_above_ceiling');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A BUILDER CANNOT BE SENT TO A STREET.   (2026-08-21)
+//
+// The invite to Lunar Builders read "...give us a quote at Oundle Road,
+// Kingstanding, Birmingham B44 8EP on Friday 21 August at 2:00pm?" Shakeel
+// agreed, and in the same breath asked for the full address. Nobody answered
+// him for 41 hours and he cancelled on the morning of the viewing: "I needed
+// the full address in advance and didn't receive it in time."
+//
+// Rightmove publishes no house number on 96.6% of adverts. The BRANCH does, in
+// the viewing confirmation email: "Re: 10, Stevenson Avenue, Farington,
+// Leyland, PR25 4GQ".
+// ---------------------------------------------------------------------------
+describe('the invite carries an address a builder can find', () => {
+  it('prefers the full address with the house number', () => {
+    expect(builderFacingAddress({
+      id: 'p1',
+      address: 'Stevenson Avenue, Farington, Leyland, PR25 4GQ',
+      viewing_address: '10, Stevenson Avenue, Farington, Leyland, PR25 4GQ',
+    })).toBe('10, Stevenson Avenue, Farington, Leyland, PR25 4GQ');
+  });
+
+  it('falls back to the street when the number is not known yet', () => {
+    // Oxford Gardens on the day: viewing booked, confirmation email not in.
+    expect(builderFacingAddress({
+      id: 'p2', address: 'Oxford Gardens, Stafford, ST16', viewing_address: null,
+    })).toBe('Oxford Gardens, Stafford, ST16');
+  });
+
+  it('puts it in the template variable the builder actually reads', () => {
+    const vars = inviteVars({
+      id: 'p3',
+      address: 'Stevenson Avenue, Farington, Leyland, PR25 4GQ',
+      viewing_address: '10, Stevenson Avenue, Farington, Leyland, PR25 4GQ',
+      viewing_at: '2026-08-28T13:00:00Z',
+    });
+    expect(vars['2']).toContain('10,');
+    expect(vars['3']).toContain('28 August');
+  });
+
+  it('never lets a blank full address blank out the invite', () => {
+    expect(builderFacingAddress({ id: 'p4', address: 'A Road, Town, AB1 2CD', viewing_address: '   ' }))
+      .toBe('A Road, Town, AB1 2CD');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A VIEWING WITH NO TIME ON IT MUST NOT FAIL IN SILENCE.   (2026-08-21)
+//
+// Pedro booked two viewings that morning and pressed Viewing booked on both.
+// He did not fill in the date box, which is a second step in the call room. The
+// sweep ran, scraped the builders, wrote eight drafts and blocked every one on
+// no_viewing_time. Nothing said a word. Hugo found it by looking at the board
+// and asking where his leads had gone.
+//
+// The date is the one thing here a machine must NOT invent: a guessed day sends
+// a real builder to a real house on the wrong afternoon, which is worse than
+// not sending him. So the fix is to break the silence, not to extract it.
+// ---------------------------------------------------------------------------
+describe('a booked viewing with no time asks a human for one', () => {
+  const cron = readFileSync('api/cron/builder-outreach.ts', 'utf8');
+
+  it('raises its own notification kind rather than reusing an unrelated one', () => {
+    expect(readFileSync('api/lib/builder-notify.ts', 'utf8'))
+      .toContain('builder_needs_viewing_time');
+    expect(cron).toContain("kind: 'builder_needs_viewing_time'");
+  });
+
+  it('only fires when builders are actually ready and waiting on the date', () => {
+    // No point asking for a time when nobody covers the outcode anyway.
+    expect(cron).toMatch(/drafted\.matched && !String\(property\.viewing_at \?\? ''\)\.trim\(\)/);
+  });
+
+  it('asks once per house, not every five minutes forever', () => {
+    // Keyed on firstPass, the same once-ever stamp the empty-roster notice uses.
+    expect(cron).toMatch(/!String\(property\.viewing_at \?\? ''\)\.trim\(\) && firstPass/);
+  });
+
+  it('the sweep counts it, so a silent backlog shows up in the response', () => {
+    expect(cron).toContain('needsTime');
+  });
+
+  it('the date is never guessed anywhere in the sweep', () => {
+    // If this ever fails somebody has taught it to invent an appointment.
+    expect(cron).not.toMatch(/viewing_at:\s*(new Date\(\)|addDays|guess)/);
   });
 });

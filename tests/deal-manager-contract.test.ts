@@ -257,3 +257,86 @@ describe('attention that code is certain about', () => {
     expect(baselineAttention(s)).toBe(100)
   })
 })
+
+// ---------------------------------------------------------------------------
+// A BOOKED VIEWING IS NOT A CLOSED DOOR.   (2026-08-21)
+//
+// The day it cost two deals. Pedro booked two viewings that morning and pressed
+// Viewing booked himself on both. At 12:25:39 the brain read Ben Rose, Leyland:
+// "Viewing is booked for Friday 28th at 2pm and the confirmation email is in.
+// Book one of the eight builders for that slot." At 12:28:40, same deal: "The
+// engine will not price this one off the evidence we have. Close it lost
+// today." The card went to Not interested and Hugo found it missing from the
+// column. Dourish & Day, Stafford went the same way with a viewing booked for
+// Wednesday the 26th at 2:30.
+//
+// A branch that has agreed to let a builder in has done the opposite of
+// shutting the door. Our own failure to price a house is not their refusal.
+// ---------------------------------------------------------------------------
+describe('the brain may not bin a viewing somebody booked', () => {
+  const lost = {
+    attention: 90,
+    action: 'close_lost',
+    who: 'PEDRO',
+    instruction: 'The engine will not price this one off the evidence we have. Close it lost today.',
+    flags: [],
+    evidence: [],
+  }
+
+  it('refuses close_lost when the viewing is still ahead of us', () => {
+    const r = validateVerdict(lost, stateWith({
+      property: {
+        id: 'p1', address: '10, Stevenson Avenue, Farington, Leyland, PR25 4GQ',
+        asking_price: 175000, viewing_at: '2026-08-28T13:00:00Z',
+      },
+      columnName: 'Viewing booked',
+      now: NOW,
+    }))
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toBe('close_lost_over_booked_viewing')
+  })
+
+  it('refuses it on the column alone, because the time is often not written down', () => {
+    // Both real cases had the column set by the agent's own press and an empty
+    // viewing_at, which is exactly why the column has to count on its own.
+    const r = validateVerdict(lost, stateWith({
+      property: { id: 'p2', address: 'Oxford Gardens, Stafford, ST16', asking_price: 190000 },
+      columnName: 'Viewing booked',
+      now: NOW,
+    }))
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toBe('close_lost_over_booked_viewing')
+  })
+
+  it('ALLOWS close_lost once the viewing is behind us', () => {
+    // By then somebody has actually been to the house, so the deal can die
+    // normally. Oundle Road is the real case: the builder cancelled on the day.
+    const r = validateVerdict(lost, stateWith({
+      property: {
+        id: 'p3', address: 'Oundle Road, Kingstanding, Birmingham B44 8EP',
+        asking_price: 190000, viewing_at: '2026-08-13T13:00:00Z',
+      },
+      columnName: 'Viewing booked',
+      now: NOW,
+    }))
+    expect(r.ok).toBe(true)
+  })
+
+  it('leaves every other verb legal in that column, including escalate_hugo', () => {
+    // This refuses a MACHINE killing an appointment, not a person deciding to,
+    // and it must not corner the brain into having nothing to say.
+    for (const action of ['book_builder', 'chase_video_for_builder', 'escalate_hugo', 'hold']) {
+      const r = validateVerdict({ ...lost, action, instruction: 'Do the thing today.' }, stateWith({
+        property: { id: 'p4', address: 'Oxford Gardens, Stafford, ST16', asking_price: 190000 },
+        columnName: 'Viewing booked',
+        now: NOW,
+      }))
+      expect(r.ok, `${action} must stay legal`).toBe(true)
+    }
+  })
+
+  it('does not touch close_lost anywhere else', () => {
+    const r = validateVerdict(lost, stateWith({ columnName: 'Offer sent', now: NOW }))
+    expect(r.ok).toBe(true)
+  })
+})

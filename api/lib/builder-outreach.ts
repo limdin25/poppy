@@ -90,6 +90,25 @@ export function viewingTimeLabel(viewingAt: string): string {
 export interface OutreachProperty {
   id: string;
   address?: string | null;
+  /** THE ADDRESS A BUILDER CAN ACTUALLY FIND, with the house number on it.
+   *
+   *  Added 2026-08-21 because the absence of it lost us a booking. Rightmove
+   *  publishes no house number on 96.6% of adverts, so `address` is a street
+   *  and a postcode: "Oundle Road, Kingstanding, Birmingham B44 8EP". The
+   *  invite that went to Lunar Builders carried exactly that. Shakeel replied
+   *  the same minute asking for the full address, nobody answered him for 41
+   *  hours, and he cancelled on the morning of the viewing saying he "needed
+   *  the full address in advance and didn't receive it in time".
+   *
+   *  The number is knowable: the BRANCH puts it in the viewing confirmation
+   *  email. Ben Rose's said "Re: 10, Stevenson Avenue, Farington, Leyland,
+   *  PR25 4GQ".
+   *
+   *  It is a SEPARATE field rather than a correction to `address`, because two
+   *  modules read the street as `address.split(',')[0]`
+   *  (api/lib/draft-guards.ts, api/lib/branch-email-match.ts) and a leading
+   *  "10, " would turn the street name into a house number for both. */
+  viewing_address?: string | null;
   viewing_at?: string | null;
   wk_contact_id?: string | null;
   /** The engine's figures, the call's answers, and Hugo's written ruling. All
@@ -211,10 +230,17 @@ export function blockedReasonFor(
   return null;
 }
 
+/** The address we put in front of a builder: the one with the house number on
+ *  it when we have it, and the street when we do not. See viewing_address. */
+export function builderFacingAddress(property: OutreachProperty): string {
+  const full = String(property.viewing_address ?? '').trim();
+  return full || String(property.address ?? '').trim();
+}
+
 export function inviteVars(property: OutreachProperty): Record<string, string> {
   return {
     '1': OUTREACH_SENDER_NAME,
-    '2': String(property.address ?? '').trim(),
+    '2': builderFacingAddress(property),
     '3': property.viewing_at ? viewingTimeLabel(property.viewing_at) : '',
   };
 }
@@ -550,13 +576,13 @@ export async function sendMorningReminders(
 
   const { data: rows } = await sb
     .from('brrr_builder_outreach')
-    .select('id, property_id, contact_id, morning_sent_at, brrr_properties(address, viewing_at, assigned_builder_id)')
+    .select('id, property_id, contact_id, morning_sent_at, brrr_properties(address, viewing_address, viewing_at, assigned_builder_id)')
     .eq('status', 'confirmed')
     .is('morning_sent_at', null)
     .limit(100);
 
   for (const raw of ((rows ?? []) as Array<Record<string, unknown>>)) {
-    const prop = raw.brrr_properties as { address?: string; viewing_at?: string } | null;
+    const prop = raw.brrr_properties as { address?: string; viewing_address?: string; viewing_at?: string } | null;
     const contactId = raw.contact_id as string | null;
     if (!prop?.viewing_at || !contactId) { out.skipped += 1; continue; }
     if (ukDay(new Date(prop.viewing_at)) !== today) { out.skipped += 1; continue; }
@@ -687,10 +713,10 @@ export async function assignBuilderToProperty(
 
   const { data: prop } = await sb
     .from('brrr_properties')
-    .select('id, address, wk_contact_id, viewing_at')
+    .select('id, address, viewing_address, wk_contact_id, viewing_at')
     .eq('id', r.property_id)
     .maybeSingle();
-  const p = prop as { address?: string | null; wk_contact_id?: string | null; viewing_at?: string | null } | null;
+  const p = prop as { address?: string | null; viewing_address?: string | null; wk_contact_id?: string | null; viewing_at?: string | null } | null;
   const { data: builder } = await sb
     .from('brrr_builders').select('name').eq('id', r.builder_id).maybeSingle();
   const builderName = String((builder as { name?: string } | null)?.name ?? 'The builder');

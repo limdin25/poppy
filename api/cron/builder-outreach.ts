@@ -62,7 +62,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   const out = {
     contacts: 0, scraped: 0, drafted: 0, autoSent: 0,
-    scrapeEmpty: 0, errors: [] as string[],
+    scrapeEmpty: 0, needsTime: 0, errors: [] as string[],
   };
 
   try {
@@ -95,7 +95,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         // deal + qualification are here for the floor gate: a draft must not be
         // written for a house whose vendor has already turned down more than
         // our ceiling.
-        .select('id, source_property_id, address, viewing_at, wk_contact_id, builder_scraped_at, deal, qualification, pinned_note, asking_price')
+        .select('id, source_property_id, address, viewing_address, viewing_at, wk_contact_id, builder_scraped_at, deal, qualification, pinned_note, asking_price')
         .eq('wk_contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -115,7 +115,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           .map((r) => [String(r.property_id), r.discount]),
       );
       const rows = (props ?? []) as Array<{
-        id: string; address: string | null; viewing_at: string | null;
+        id: string; address: string | null; viewing_address: string | null; viewing_at: string | null;
         source_property_id?: string | null;
         wk_contact_id: string | null; builder_scraped_at: string | null;
         deal: Record<string, unknown> | null;
@@ -169,6 +169,33 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         settings,
       );
       out.drafted += drafted.drafted;
+
+      // NOBODY CAN BE INVITED TO A VIEWING WITH NO TIME ON IT, AND THAT USED
+      // TO HAPPEN IN SILENCE.   (2026-08-21)
+      //
+      // Pedro booked two viewings that morning and pressed Viewing booked on
+      // both. He did not fill in the date box, which is a second step in the
+      // call room and easy to miss on a call that has just ended. So the sweep
+      // ran, scraped the builders, wrote eight drafts, and blocked every one of
+      // them on no_viewing_time. Nothing said a word: Hugo found it by looking
+      // at the board and asking where his leads had gone.
+      //
+      // The date is the ONE thing here a machine should not invent. A guessed
+      // day sends a real builder to a real house on the wrong afternoon, which
+      // is worse than not sending him. So the fix is not to extract it, it is
+      // to stop the silence: ask the person who took the call.
+      //
+      // Once per property, keyed on builder_scraped_at like the empty-roster
+      // notice, so a card parked in the column does not nag every five minutes.
+      if (drafted.matched && !String(property.viewing_at ?? '').trim() && firstPass) {
+        out.needsTime += 1;
+        await notifyBuilderEvent(sb, {
+          kind: 'builder_needs_viewing_time', agentIds: admins, contactId,
+          title: 'A viewing with no time on it, so no builder can be invited',
+          body: `${String(property.address ?? 'A property')} is in Viewing booked and ${drafted.matched} builder(s) are ready, but nothing can be sent until the date and time are on the house. Add them on the call card.`,
+          link: `/admin/crm/contacts/${contactId}`,
+        });
+      }
       if (firstPass && !drafted.matched) {
         // Even after the scrape nobody on the roster covers this outcode.
         // Told once, on the pass that scraped, not every five minutes.

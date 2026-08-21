@@ -13,7 +13,16 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Sb = SupabaseClient<any, any, any>;
 
-export type BuilderNotifyKind = 'builder_reply' | 'builder_confirmed' | 'builder_scrape_empty';
+export type BuilderNotifyKind =
+  | 'builder_reply'
+  | 'builder_confirmed'
+  | 'builder_scrape_empty'
+  // A card sat in Viewing booked with nobody able to be invited, because the
+  // date nobody wrote down is the one thing the invite cannot be sent without.
+  // Added 2026-08-21: two viewings Pedro booked that morning had the column
+  // set by his own press and viewing_at empty, so eight builders sat as
+  // blocked drafts and nothing said a word. Hugo found out by looking.
+  | 'builder_needs_viewing_time';
 
 /** Raise one builder notification for each admin. NEVER THROWS: failing to
  *  ring the bell must not undo the thing that was done. */

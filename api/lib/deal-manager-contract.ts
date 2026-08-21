@@ -207,6 +207,31 @@ export function allowedActions(columnName: string | null | undefined): string[] 
   return [...new Set([...stage, ...UNIVERSAL_ACTIONS])];
 }
 
+/** Is there an appointment at this house that has not happened yet?
+ *
+ *  Returns a human phrase for the refusal message, or null. TWO sources and
+ *  either is enough, because they fail in opposite directions: `viewingAt` is
+ *  the exact time but is only filled once something writes it, and the column
+ *  is set the moment the agent presses the outcome on the call. On 2026-08-21
+ *  both booked viewings had the column and neither had the time.
+ *
+ *  A viewing with no date recorded counts as ahead of us. That is deliberate:
+ *  "we do not know when it is" is a reason to leave the deal alone, not a
+ *  licence to bin it.
+ */
+export function viewingStillAhead(state: DealState, now: Date = new Date()): string | null {
+  const at = String(state?.builder?.viewingAt ?? '').trim();
+  if (at) {
+    const t = new Date(at).getTime();
+    // An unreadable date is treated as booked, same reasoning as above.
+    if (!Number.isFinite(t)) return 'date unreadable';
+    return t >= now.getTime() ? at : null;
+  }
+  return (state?.board?.column ?? '').trim() === 'Viewing booked'
+    ? 'the card is in Viewing booked and no time is recorded'
+    : null;
+}
+
 /** Check the Manager's answer against every fence.
  *
  *  Returns a reason rather than throwing, because the caller's response to any
@@ -231,6 +256,40 @@ export function validateVerdict(raw: unknown, state: DealState): ValidationResul
       ok: false, reason: 'action_not_allowed',
       detail: `${action || '(none)'} is not legal in ${state.board.column ?? '(no column)'}`,
     };
+  }
+
+  // ---- A BOOKED VIEWING IS NOT A CLOSED DOOR ---------------------------
+  //
+  // Added 2026-08-21, the day it cost us two deals. Pedro booked two viewings
+  // that morning and pressed Viewing booked himself on both. At 12:25 the
+  // brain read Ben Rose, Leyland and said "Viewing is booked for Friday 28th
+  // at 2pm and the confirmation email is in. Book one of the eight builders
+  // for that slot." Three minutes later, on the same deal, it said "The engine
+  // will not price this one off the evidence we have. Close it lost today",
+  // and the card went to Not interested. Dourish & Day, Stafford went the same
+  // way with a viewing booked for the 26th at 2:30. Hugo found them gone from
+  // the column and asked where they were.
+  //
+  // The brain's own rule 19 says what close_lost is for: "an offer accepted
+  // elsewhere, a vendor who will never meet our numbers, a branch that said
+  // no". Not one of those happened. WE could not price the house, and the
+  // brain treated our own failure as their refusal. A branch that has agreed
+  // to let a builder in has done the opposite of shutting the door.
+  //
+  // So the lost road is closed while a viewing is still ahead of us. Every
+  // other verb stays legal, including escalate_hugo, and a HUMAN can still
+  // move the card by hand: this refuses a machine killing an appointment, not
+  // a person deciding to. Once the viewing is behind us the deal can die
+  // normally, because by then somebody has actually been to the house.
+  if (action === 'close_lost') {
+    const booked = viewingStillAhead(state);
+    if (booked) {
+      return {
+        ok: false,
+        reason: 'close_lost_over_booked_viewing',
+        detail: `a viewing is booked (${booked}); our failure to price a house is not the branch turning us down`,
+      };
+    }
   }
 
   const who = String(v.who ?? '').trim() as (typeof WHO)[number];
