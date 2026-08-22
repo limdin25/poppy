@@ -1,0 +1,40 @@
+{
+  "w1": {
+    "days": 5,
+    "calls": 442,
+    "span": 134215.957,
+    "idle": 74859.644,
+    "worked": 59356.312999999995,
+    "talk": 44004,
+    "connected": 287,
+    "conversations": 209,
+    "dispo": {
+      "No pickup": 16,
+      "Voicemail": 210,
+      "Discovery done, evaluating": 38,
+      "Not interested": 76,
+      "Offer sent": 16,
+      "Follow up": 1
+    }
+  },
+  "w2": {
+    "days": 5,
+    "calls": 400,
+    "span": 138881.658,
+    "idle": 66397.172,
+    "worked": 72484.486,
+    "talk": 55237,
+    "connected": 289,
+    "conversations": 208,
+    "dispo": {
+      "Not interested": 49,
+      "Follow up": 17,
+      "Discovery done, evaluating": 44,
+      "Voicemail": 174,
+      "No pickup": 10,
+      "Ready for call 2": 17,
+      "Ballpark agreed": 1,
+      "Viewing booked": 2
+    }
+  }
+}
