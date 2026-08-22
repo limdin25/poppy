@@ -10,6 +10,7 @@ import {
   blockedReasonFor, belowDiscountRule, MIN_DISCOUNT_FOR_BUILDER,
   inviteVars, renderPreview, ukDay, builderFacingAddress,
   INVITE_TEMPLATE_TEXT, MORNING_TEMPLATE_TEXT, VIEWING_BOOKED_COLUMN,
+  needsMoreBuilders, nextRadiusM,
 } from '../api/lib/builder-outreach.js';
 import { templateProblem, extractTemplateVars, prefillTemplateVars } from '../src/features/crm/lib/waTemplates.js';
 
@@ -508,5 +509,85 @@ describe('a booked viewing with no time asks a human for one', () => {
   it('the date is never guessed anywhere in the sweep', () => {
     // If this ever fails somebody has taught it to invent an appointment.
     expect(cron).not.toMatch(/viewing_at:\s*(new Date\(\)|addDays|guess)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Going and finding MORE builders, added 2026-08-22.
+//
+// Hugo: "Stevenson Avenue, if not reply then need to find more builders."
+// Three were invited on 21 August, three were chased, not one replied, and the
+// viewing was on the 28th. Before this the house had had its three chances and
+// there was no fourth, because the scrape runs once per property ever.
+// ---------------------------------------------------------------------------
+describe('needsMoreBuilders', () => {
+  const now = new Date('2026-08-22T12:00:00Z');
+  const old = '2026-08-21T14:10:00Z';   // yesterday, well past the grace period
+  const fresh = '2026-08-22T11:30:00Z'; // half an hour ago
+
+  it('THE STEVENSON AVENUE CASE: three invited, nobody replied, so widen', () => {
+    const v = needsMoreBuilders([
+      { status: 'sent', sent_at: old, replied_at: null },
+      { status: 'sent', sent_at: old, replied_at: null },
+      { status: 'sent', sent_at: old, replied_at: null },
+    ], { assigned: false, now });
+    expect(v.need).toBe(true);
+    expect(v.reason).toContain('none replied');
+  });
+
+  it('a booked builder ends the search', () => {
+    expect(needsMoreBuilders(
+      [{ status: 'sent', sent_at: old, replied_at: null }],
+      { assigned: true, now },
+    ).need).toBe(false);
+  });
+
+  it('somebody TALKING to us stops a second wave', () => {
+    expect(needsMoreBuilders([
+      { status: 'sent', sent_at: old, replied_at: null },
+      { status: 'replied', sent_at: old, replied_at: old },
+    ], { assigned: false, now }).need).toBe(false);
+  });
+
+  it('but a DECLINE is not engagement, which is why declined is its own status', () => {
+    const v = needsMoreBuilders([
+      { status: 'declined', sent_at: old, replied_at: old },
+      { status: 'sent', sent_at: old, replied_at: null },
+    ], { assigned: false, now });
+    expect(v.need).toBe(true);
+  });
+
+  it('gives the invited builders a working day before going over their heads', () => {
+    expect(needsMoreBuilders(
+      [{ status: 'sent', sent_at: fresh, replied_at: null }],
+      { assigned: false, now },
+    ).need).toBe(false);
+  });
+
+  it('nothing sent is not silence, it is the invite sweep not having run', () => {
+    expect(needsMoreBuilders([], { assigned: false, now }).need).toBe(false);
+    expect(needsMoreBuilders(
+      [{ status: 'draft', sent_at: null, replied_at: null }],
+      { assigned: false, now },
+    ).need).toBe(false);
+  });
+});
+
+describe('nextRadiusM', () => {
+  const ladder = [10_000, 20_000, 40_000];
+
+  it('goes out one ring at a time', () => {
+    expect(nextRadiusM(10_000, ladder)).toBe(20_000);
+    expect(nextRadiusM(20_000, ladder)).toBe(40_000);
+  });
+
+  it('an unknown current radius starts at the first ring', () => {
+    expect(nextRadiusM(null, ladder)).toBe(10_000);
+    expect(nextRadiusM(undefined, ladder)).toBe(10_000);
+  });
+
+  it('THE LADDER ENDS, and null is an answer a person has to be told', () => {
+    expect(nextRadiusM(40_000, ladder)).toBeNull();
+    expect(nextRadiusM(99_000, ladder)).toBeNull();
   });
 });

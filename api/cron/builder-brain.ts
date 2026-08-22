@@ -8,9 +8,15 @@
 //
 //   1. answers    a human replied to a query, so the builder gets their answer
 //   2. replies    a builder spoke last, so the brain answers them
-//   3. confirm    nobody has agreed and the viewing is close, so chase
+//   3. chase      the viewing is close and somebody never answered the invite
+//   3b. widen     nobody answered at all, so go a ring further out and invite
+//                 more builders (Hugo: "Stevenson Avenue, if not reply then
+//                 need to find more builders")
 //   4. escalate   the viewing is nearly here with no builder, so tell a human
-//   5. report     nothing, deliberately: every hole is already a query or a bell
+//
+// Every hole ends as a question on Hugo's and Pedro's WhatsApp, so there is
+// deliberately no report pass: a summary nobody is obliged to read is how the
+// last three builders were lost.
 //
 // WHY A CRON AND NOT A WEBHOOK HOOK. The invite sweep next door explains half
 // of it (a board drag touches no endpoint). The other half is that a builder
@@ -34,7 +40,13 @@ import {
 import {
   loadOutreachSettings, assignBuilderToProperty, viewingTimeLabel,
   builderFacingAddress, renderPreview, FOLLOWUP_TEMPLATE_TEXT,
+  draftOutreachForProperty, sendOutreachRow, sentToday,
+  needsMoreBuilders, nextRadiusM,
 } from '../lib/builder-outreach.js';
+import {
+  scrapeBuildersForOutcode, upsertScrapedBuilders, WIDENING_RADII_M,
+} from '../lib/builder-scrape.js';
+import { outcodeOf } from '../lib/brrr-deal-facts.js';
 import { sendWhatsApp, windowOpen, templateApproval } from '../lib/whatsapp-send.js';
 import { raiseQuery, markApplied, type OpsQueryKind } from '../lib/ops-query.js';
 import { loadOpsContacts, unreachable } from '../lib/ops-contacts.js';
@@ -95,6 +107,17 @@ async function propertyFor(sb: Sb, propertyId: string) {
   return data as any;
 }
 
+/** The measured discount off the local sold median, from the discovery lane.
+ *  READ, NEVER DERIVED, and on a discovery house it is the only proof of a deal
+ *  that exists. */
+async function discountFor(sb: Sb, sourcePropertyId: string | null): Promise<number | null> {
+  if (!sourcePropertyId) return null;
+  const { data } = await sb
+    .from('wk_raw_leads').select('discount').eq('property_id', sourcePropertyId)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  return (data as { discount?: number | null } | null)?.discount ?? null;
+}
+
 async function builderNameFor(sb: Sb, builderId: string): Promise<string> {
   const { data } = await sb.from('brrr_builders').select('name').eq('id', builderId).maybeSingle();
   return String((data as { name?: string } | null)?.name ?? 'the builder');
@@ -133,6 +156,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const now = new Date();
   const out = {
     answered: 0, replied: 0, confirmed: 0, chased: 0, asked: 0, skipped: 0,
+    widened: 0, newBuilders: 0, invited: 0,
     errors: [] as string[],
   };
 
@@ -362,15 +386,22 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     // -----------------------------------------------------------------------
     const { data: upcoming } = await sb
       .from('brrr_properties')
-      .select('id, address, viewing_address, viewing_at, wk_contact_id, assigned_builder_id')
+      // deal/qualification/pinned_note/asking_price ride along for the floor
+      // gate inside draftOutreachForProperty: a widened search must not invite
+      // a second wave of builders to a house we cannot buy.
+      .select('id, source_property_id, address, viewing_address, viewing_at, wk_contact_id, assigned_builder_id, builder_scrape_radius_m, deal, qualification, pinned_note, asking_price')
       .gte('viewing_at', now.toISOString())
       .lte('viewing_at', new Date(now.getTime() + LOOKAHEAD_MS).toISOString())
       .limit(30);
 
     for (const raw of ((upcoming ?? []) as Array<Record<string, unknown>>)) {
       const p = raw as {
-        id: string; address: string | null; viewing_address: string | null;
+        id: string; source_property_id: string | null;
+        address: string | null; viewing_address: string | null;
         viewing_at: string; wk_contact_id: string | null; assigned_builder_id: string | null;
+        builder_scrape_radius_m: number | null;
+        deal: Record<string, unknown> | null; qualification: Record<string, unknown> | null;
+        pinned_note: string | null; asking_price: number | null;
       };
       const label = viewingTimeLabel(p.viewing_at);
       const address = builderFacingAddress(p as any);
@@ -440,6 +471,87 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             out.errors.push(`chase: ${sentMsg.error}`);
             await (sb.from('brrr_builder_outreach') as any).update({ chase_sent_at: null }).eq('id', r.id);
           }
+        }
+      }
+
+      // PASS 3b: NOBODY ANSWERED, SO GO AND FIND MORE BUILDERS.
+      //
+      // Hugo, 2026-08-22: "Stevenson Avenue, if not reply then need to find
+      // more builders." Three were invited on 21 August, three were chased,
+      // not one replied, and the viewing is on the 28th. Before this, that
+      // house had had its three chances and there was no fourth: the scrape
+      // runs once per property ever, which is the right guard against
+      // re-spending the Places budget and the wrong answer to silence.
+      //
+      // It goes OUT a ring rather than searching the same circle again, which
+      // would only find the same men. When the ladder runs out, that is said
+      // to a person rather than retried quietly.
+      const more = needsMoreBuilders(all, { assigned: false, now });
+      if (more.need) {
+        const oc = outcodeOf(String(p.address ?? ''));
+        const next = nextRadiusM(p.builder_scrape_radius_m ?? settings.radius_m, WIDENING_RADII_M);
+        if (oc && next) {
+          try {
+            // Stamped BEFORE the search, the same rule the first scrape
+            // follows: a Places outage must not turn into a widening loop that
+            // re-spends every two minutes.
+            await (sb.from('brrr_properties') as any)
+              .update({ builder_scrape_radius_m: next }).eq('id', p.id);
+            const found = await scrapeBuildersForOutcode(oc, {
+              radiusM: next, cap: settings.max_new_builders,
+            });
+            const applied = await upsertScrapedBuilders(sb, oc, found, settings.max_new_builders);
+            // THE MEASURED DISCOUNT HAS TO TRAVEL WITH THE HOUSE.
+            //
+            // Caught on the first live widening, before it cost anything. A
+            // discovery house has no valuation at all (call one books the
+            // builder and fetches no ballpark), so brrr_properties.deal is {}
+            // and wk_raw_leads.discount is the ONLY proof it carries. Without
+            // it, blockedReasonFor answers 'not_proven_a_deal' and every new
+            // invite is written blocked. Stevenson Avenue is 20.37 percent
+            // under its own road and all three widened drafts were refused.
+            // The invite sweep next door already fetches this; the widening
+            // had to as well.
+            const drafted = await draftOutreachForProperty(
+              sb, { ...(p as any), discount: await discountFor(sb, p.source_property_id) }, settings,
+            );
+            out.widened += 1;
+            out.newBuilders += applied.inserted;
+
+            if (settings.auto_send && drafted.drafted) {
+              const already = await sentToday(sb);
+              const room = Math.max(0, settings.daily_cap - already);
+              if (room) {
+                const { data: sendable } = await sb
+                  .from('brrr_builder_outreach')
+                  .select('id')
+                  .eq('property_id', p.id)
+                  .eq('status', 'draft')
+                  .is('blocked_reason', null)
+                  .limit(room);
+                for (const rowRef of ((sendable ?? []) as Array<{ id: string }>)) {
+                  const posted = await sendOutreachRow(sb, rowRef.id);
+                  if (posted.ok) out.invited += 1;
+                  else if (posted.error) out.errors.push(`widened send: ${posted.error.slice(0, 120)}`);
+                }
+              }
+            }
+            if (!applied.inserted) {
+              out.errors.push(`widened ${oc} to ${next / 1000}km and found nobody new`);
+            }
+          } catch (e) {
+            out.errors.push(`widen ${oc}: ${String(e).slice(0, 120)}`);
+          }
+        } else if (oc && !next) {
+          // The ladder is exhausted. This is the honest end of the search.
+          await ask(sb, 'no_builder_for_viewing', {
+            propertyId: p.id,
+            subject: address,
+            question:
+              `Nobody has replied about ${address} for ${label}, and I have now searched 40km around ${oc} `
+              + `and invited everyone I can find (${all.length} in total). `
+              + 'Do you know a builder who covers that area? Reply with a name and number and I will invite them.',
+          }, out);
         }
       }
 

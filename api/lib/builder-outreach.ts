@@ -562,6 +562,93 @@ export const FOLLOWUP_TEMPLATE_TEXT =
 export const MORNING_TEMPLATE_TEXT =
   'Good morning, just want to confirm we are still good for the viewing today at {{1}}. Thanks.';
 
+// ---------------------------------------------------------------------------
+// Finding MORE builders when the first lot go quiet
+// ---------------------------------------------------------------------------
+//
+// Hugo, 2026-08-22: "Stevenson Avenue, if not reply then need to find more
+// builders."
+//
+// He is describing the hole the whole pipeline had. The scrape runs ONCE per
+// property, ever (brrr_properties.builder_scraped_at, and that guard is right:
+// it stops a Places outage re-spending the budget every five minutes). So a
+// house whose three invited builders all ignore the message had exactly three
+// chances and then nothing, for ever, in silence. Stevenson Avenue is the live
+// case: three invited on 21 August, three chased, not one reply, and a viewing
+// on the 28th.
+//
+// The answer is not to re-scrape the same circle, which would find the same
+// three men. It is to go OUT one ring at a time, on the ladder the first search
+// already walks, and only when the ones we have are genuinely not coming.
+
+/** How long the invited builders get before we go looking for more.
+ *
+ *  Eight hours is a working day. Shorter reads as panic and puts a second wave
+ *  of strangers on a house one of the first three may still be thinking about;
+ *  much longer and a viewing booked for the day after tomorrow is already lost.
+ *  Deliberately NOT tied to the chase, which only fires inside 72 hours of the
+ *  viewing: a house booked ten days out that nobody answers should be widening
+ *  on day one, not on day seven. */
+export const TOPUP_AFTER_MS = 8 * 60 * 60 * 1000;
+
+export interface TopUpRow {
+  status: string;
+  sent_at: string | null;
+  replied_at: string | null;
+}
+
+/**
+ * Should this house go looking for more builders?
+ *
+ * PURE, so the rule can be argued with in a test rather than in production.
+ * Four noes and a yes, and each no is a different kind of "not yet":
+ *
+ *   booked          somebody is coming, the search is over
+ *   engaged         somebody is TALKING to us, and a second wave now would
+ *                   have two conversations about one afternoon
+ *   nothing sent    the invite sweep has not run yet, so there is nothing to
+ *                   have gone quiet
+ *   too soon        the newest invite is younger than the grace period
+ *
+ * A builder who declined is NOT engagement. That distinction is the reason
+ * 'declined' was added to the status set: without it, five men saying no looked
+ * exactly like five men thinking about it.
+ */
+export function needsMoreBuilders(
+  rows: TopUpRow[],
+  opts: { assigned: boolean; now?: Date },
+): { need: boolean; reason: string } {
+  const now = opts.now ?? new Date();
+  if (opts.assigned) return { need: false, reason: 'a builder is booked' };
+
+  const live = rows.filter((r) => r.status === 'sent' || r.status === 'replied');
+  if (!live.length) return { need: false, reason: 'nothing has been sent yet' };
+
+  const engaged = rows.some((r) => r.replied_at && r.status !== 'declined');
+  if (engaged) return { need: false, reason: 'a builder is already talking to us' };
+
+  const newest = live
+    .map((r) => (r.sent_at ? new Date(r.sent_at).getTime() : 0))
+    .reduce((a, b) => Math.max(a, b), 0);
+  if (!newest) return { need: false, reason: 'nothing has been sent yet' };
+  if (now.getTime() - newest < TOPUP_AFTER_MS) {
+    return { need: false, reason: 'the invites are still fresh' };
+  }
+  return { need: true, reason: `${live.length} invited, none replied` };
+}
+
+/**
+ * The next ring out, or null when there is no ring left.
+ *
+ * Null is a real answer and the caller must say it out loud: "we have searched
+ * 40km around this postcode and there is nobody" is a fact for a person, not a
+ * reason to keep quietly widening until a builder is two hours away.
+ */
+export function nextRadiusM(currentM: number | null | undefined, ladder: number[]): number | null {
+  const current = Number(currentM ?? 0);
+  return ladder.find((r) => r > current) ?? null;
+}
+
 /** The board column a confirmed builder moves the branch card into. Renamed
  *  from 'Needs viewing' on 19 Aug; a card here means a builder is booked. */
 export const VIEWING_BOOKED_COLUMN = 'Viewing booked';

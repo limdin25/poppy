@@ -323,12 +323,21 @@ export async function raiseQuery(args: RaiseArgs): Promise<RaiseResult> {
 }
 
 /**
- * A staff member just messaged us, so the window is open: send anything that
- * was waiting on it.
+ * A staff member just messaged us, so the window is open: send the question
+ * that was waiting on it.
  *
  * This is the second half of Hugo's design. The template said "we have a
  * query"; their reply, whatever it says, is the key that unlocks free-form, and
  * the question follows within seconds rather than at the next cron beat.
+ *
+ * ONE AT A TIME, OLDEST FIRST, and that limit is the whole usability of this
+ * thing. Three questions were queued for Hugo within an hour of it going live
+ * (a house number, a builder's question about the works, and nobody replying on
+ * Stevenson Avenue). Firing all three at his first "hi" gives him three
+ * questions and one reply slot: whatever he typed next would be filed against
+ * the oldest and the other two would sit there looking answered-adjacent and
+ * unanswered. Sending one means his answer chains into the next question by
+ * itself, which is how a person has three conversations by text.
  */
 export async function openWindowFor(
   sb: Sb,
@@ -338,11 +347,12 @@ export async function openWindowFor(
   const out = { sent: 0, errors: [] as string[] };
   const { data: pings } = await sb
     .from('wk_ops_query_pings')
-    .select('id, query_id, phone, name, contact_id, wk_ops_queries(id, question, status)')
+    .select('id, query_id, phone, name, contact_id, created_at, wk_ops_queries(id, question, status)')
     .eq('phone', phone)
     .is('question_sent_at', null)
     .not('template_sent_at', 'is', null)
-    .limit(10);
+    .order('created_at', { ascending: true })
+    .limit(5);
 
   for (const raw of ((pings ?? []) as Array<Record<string, unknown>>)) {
     const q = raw.wk_ops_queries as { id: string; question: string; status: string } | null;
@@ -355,13 +365,15 @@ export async function openWindowFor(
     const sent = await sendWhatsApp(sb, {
       contactId, toE164: String(raw.phone), body: q.question,
     });
-    if (sent.ok) out.sent += 1;
-    else {
-      out.errors.push(sent.error ?? 'send failed');
-      await (sb.from('wk_ops_query_pings') as any)
-        .update({ question_sent_at: null, error: (sent.error ?? '').slice(0, 300) })
-        .eq('id', raw.id as string);
+    if (sent.ok) {
+      out.sent += 1;
+      // One question, then stop. The next one goes out when this is answered.
+      break;
     }
+    out.errors.push(sent.error ?? 'send failed');
+    await (sb.from('wk_ops_query_pings') as any)
+      .update({ question_sent_at: null, error: (sent.error ?? '').slice(0, 300) })
+      .eq('id', raw.id as string);
   }
   return out;
 }
