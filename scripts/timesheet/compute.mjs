@@ -1,10 +1,46 @@
 // Pedro's week: rebuild the same numbers the July timesheet used.
-// Day = first call to last call. Call end = started_at + duration_sec (never ended_at).
-// Gaps under 10 min count as work. Gaps over 10 min are idle.
+// Day = first call to last call. Gaps under 10 min count as work, over 10 min are idle.
+//
+// How long a call lasted, in priority order. Getting this wrong charges a man
+// for time he spent on the phone, so it is spelled out:
+//   1. duration_sec when it is set. Always trusted.
+//   2. duration_sec null and status 'failed': length ZERO. Every such row this
+//      week had an ended_at exactly on the next rounded hour (3609 to 3889 sec),
+//      which is a sweeper stamping stuck rows, not a real call.
+//   3. duration_sec null and any other status: ended_at minus started_at. These
+//      are real, and short (3 to 71 sec). Mostly inbound call-backs, which the
+//      dialer never writes a duration_sec for.
+// Then overlapping calls are MERGED before gaps are measured. Without the merge a
+// zero-length row landing in the middle of a live call moves the "end of the last
+// call" backwards, and the rest of that live conversation is scored as idle.
 import fs from 'fs';
 
 const RAW = JSON.parse(fs.readFileSync(new URL('./pedro-calls.json', import.meta.url), 'utf8'));
 const IDLE_THRESHOLD = 10 * 60; // seconds
+
+function callLength(c) {
+  if (c.duration_sec != null) return c.duration_sec;
+  if (c.status === 'failed') return 0;
+  if (!c.ended_at) return 0;
+  const wall = (new Date(c.ended_at) - new Date(c.started_at)) / 1000;
+  return wall > 0 && wall < IDLE_THRESHOLD ? wall : 0;
+}
+function callEnd(c) {
+  return new Date(c.started_at).getTime() + callLength(c) * 1000;
+}
+// Merge overlapping call intervals into continuous blocks of time on the phone.
+function mergeBlocks(calls) {
+  const iv = calls
+    .map((c) => [new Date(c.started_at).getTime(), callEnd(c)])
+    .sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const [s, e] of iv) {
+    if (out.length && s <= out[out.length - 1][1]) {
+      out[out.length - 1][1] = Math.max(out[out.length - 1][1], e);
+    } else out.push([s, e]);
+  }
+  return out;
+}
 
 function londonDay(iso) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -28,30 +64,29 @@ for (const c of RAW) {
 const days = [];
 for (const [d, calls] of [...byDay.entries()].sort()) {
   calls.sort((a, b) => new Date(a.started_at) - new Date(b.started_at));
-  const start = new Date(calls[0].started_at);
-  const last = calls[calls.length - 1];
-  const end = new Date(new Date(last.started_at).getTime() + (last.duration_sec || 0) * 1000);
+  const blocks = mergeBlocks(calls);
+  const start = new Date(blocks[0][0]);
+  const end = new Date(blocks[blocks.length - 1][1]);
   const span = (end - start) / 1000;
 
   let idle = 0;
   const gaps = [];
-  for (let i = 1; i < calls.length; i++) {
-    const prev = calls[i - 1];
-    const prevEnd = new Date(prev.started_at).getTime() + (prev.duration_sec || 0) * 1000;
-    const gap = (new Date(calls[i].started_at).getTime() - prevEnd) / 1000;
+  for (let i = 1; i < blocks.length; i++) {
+    const prevEnd = blocks[i - 1][1];
+    const gap = (blocks[i][0] - prevEnd) / 1000;
     if (gap > IDLE_THRESHOLD) {
       idle += gap;
       gaps.push({
         from: londonClock(new Date(prevEnd).toISOString()),
-        to: londonClock(calls[i].started_at),
+        to: londonClock(new Date(blocks[i][0]).toISOString()),
         mins: Math.round(gap / 60),
       });
     }
   }
 
-  const talk = calls.reduce((s, c) => s + (c.duration_sec || 0), 0);
-  const connected = calls.filter((c) => (c.duration_sec || 0) >= 20);
-  const conversations = calls.filter((c) => (c.duration_sec || 0) >= 45);
+  const talk = calls.reduce((s, c) => s + callLength(c), 0);
+  const connected = calls.filter((c) => callLength(c) >= 20);
+  const conversations = calls.filter((c) => callLength(c) >= 45);
   const dispo = {};
   for (const c of calls) if (c.disposition) dispo[c.disposition] = (dispo[c.disposition] || 0) + 1;
 
@@ -67,7 +102,7 @@ for (const [d, calls] of [...byDay.entries()].sort()) {
     talk,
     connected: connected.length,
     conversations: conversations.length,
-    longest: calls.reduce((m, c) => Math.max(m, c.duration_sec || 0), 0),
+    longest: calls.reduce((m, c) => Math.max(m, callLength(c)), 0),
     gaps,
     dispo,
   });

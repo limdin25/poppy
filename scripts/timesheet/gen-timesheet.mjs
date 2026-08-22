@@ -23,16 +23,20 @@ const NOTES = { '2026-08-10': 8, '2026-08-11': 16, '2026-08-12': 7, '2026-08-13'
 const TEXTS = { '2026-08-14': 8, '2026-08-17': 11, '2026-08-18': 33, '2026-08-19': 2, '2026-08-20': 3, '2026-08-21': 2, '2026-08-22': 4 };
 const UNIQUE = { last: { dialled: 295, spoken: 186 }, this: { dialled: 242, spoken: 159 } };
 // Every wk_calls row for his account in the window, by status. Nothing is filtered out.
+// [label, count, direction, did it connect]. The flags drive the sentences under
+// the table, so never infer them by reading the label text.
 const STATUSES = [
-  ['Calls you dialled that connected', 378, 'out'],
-  ['Calls that came in to you and connected', 29, 'in'],
-  ['Calls you dialled that failed to connect', 18, 'out'],
-  ['Calls in to you that failed to connect', 8, 'in'],
-  ['Rang out, nobody answered, dialled by you', 3, 'out'],
-  ['Rang out, nobody answered, incoming', 1, 'in'],
-  ['Cancelled before it connected', 1, 'in'],
+  ['Calls you dialled that connected', 378, 'out', true],
+  ['Calls that came in to you and connected', 29, 'in', true],
+  ['Calls you dialled that failed to connect', 18, 'out', false],
+  ['Calls in to you that failed to connect', 8, 'in', false],
+  ['Rang out, nobody answered, dialled by you', 3, 'out', false],
+  ['Rang out, nobody answered, incoming', 1, 'in', false],
+  ['Cancelled before it connected', 1, 'in', false],
 ];
 const LAST_WEEK_PAID_H = 28.19; // what actually went out for 10 to 14 Aug
+const VOICEMAIL_SEC = 7934; // time spent reaching answerphones this week, all of it paid as work
+const BEFORE_FIX_H = 30.58; // the total before the zero-length-inbound bug was fixed
 
 const pick = ([a, b]) => DAYS.filter((d) => d.date >= a && d.date <= b);
 const sum = (sel, k) => sel.reduce((t, d) => t + d[k], 0);
@@ -150,7 +154,7 @@ const DAY_NOTES = {
     { fair: true, text: 'You stayed on until 19:24, the latest finish of the week.' },
   ],
   '2026-08-18': [
-    { fair: true, text: 'Your best day since you started. 9h 22m on shift with only 46 minutes of stops in the whole day, and 7h 06m of that was live talk time.' },
+    { fair: true, text: 'Your best day since you started. 9h 22m on shift with one single stop over 10 minutes in the entire day, and 7h 06m of it was live talk time.' },
     { fair: true, text: '31 offices reached discovery done, more than the whole of the week before put together.' },
   ],
   '2026-08-19': [
@@ -163,7 +167,7 @@ const DAY_NOTES = {
   ],
   '2026-08-21': [
     { fair: false, text: 'Only 14 calls and the phone went quiet at 11:52. This is the day that pulled the week down.' },
-    { fair: true, text: 'Two viewings booked out of those 14 calls. Low volume, but it converted.' },
+    { fair: true, text: 'Two viewings booked out of those 14 calls, and the longest call of the whole week sits here at 23 minutes. Low volume, but it converted.' },
   ],
   '2026-08-22': [
     { fair: false, text: 'Three long stops, 79, 82 and 92 minutes. Between 11:28 and 16:20 there were 4h 52m of clock and 27 minutes of calling inside it.' },
@@ -294,8 +298,10 @@ ${STYLE.replace('</style>', `
           </tbody>
         </table>
       </div>
-      <div class="note fair"><strong>Calls that never connected still count.</strong> All ${STATUSES.filter(([k]) => !/that connected/.test(k)).reduce((t, [, v]) => t + v, 0)} of them are in your total and in your working time. A call that fails or rings out is still you doing the work.</div>
-      <div class="note fair"><strong>Calls coming in to you count too.</strong> ${STATUSES.filter(([, , dir]) => dir === 'in').reduce((t, [, v]) => t + v, 0)} of this week's calls were people ringing you, and they are counted exactly the same as the ones you dialled.</div>
+      <div class="note fair"><strong>Time spent reaching a voicemail is working time, never idle.</strong> ${B.dispo['Voicemail'] || 0} of your calls this week went to voicemail. Every second of them, ${hm(VOICEMAIL_SEC)} in total, is inside your paid working time. Idle is only ever measured in the <em>gaps between</em> calls, so dialling a number and getting an answerphone can never count against you. The same goes for a number that rings out or a call that fails.</div>
+      <div class="note fair"><strong>Calls that never connected still count.</strong> All ${STATUSES.filter(([, , , ok]) => !ok).reduce((t, [, v]) => t + v, 0)} of them are in your total and in your working time. A call that fails or rings out is still you doing the work.</div>
+      <div class="note fair"><strong>Calls coming in to you count too.</strong> ${STATUSES.filter(([, , dir]) => dir === 'in').reduce((t, [, v]) => t + v, 0)} of this week's calls were people ringing your number back, and they are counted exactly the same as the ones you dialled.</div>
+      <div class="note fair"><strong>A correction, in your favour.</strong> The first version of this page had a fault. Calls coming in to you are saved without a length, so the system read them as lasting zero seconds, and when one of them landed in the middle of a long call it made the rest of that real conversation look like a stop. It has been fixed by measuring from the true end of whatever you were on. All ${week.reduce((t, d) => t + d.gaps.length, 0)} stops on this page were rechecked afterwards and not one second of a live call is counted as idle. It moved ${Math.round((paidHours - BEFORE_FIX_H) * 60)} minutes back to you.</div>
       <div class="note fair"><strong>One account, checked.</strong> Every call is read from your calling account, pedro at hostunico dot com. Your old sales account has zero calls this week, so nothing of yours is sitting somewhere unpaid.</div>
       <div class="note"><strong>Today is counted up to ${CUTOFF}.</strong> That was your last call when this page was prepared. If you carry on this evening those calls go onto next week's page. They are not thrown away.</div>
     </div>
@@ -348,7 +354,7 @@ ${STYLE.replace('</style>', `
     <div class="panel flat">
       <h3>Put simply</h3>
       <p>You made ${A.calls - B.calls} fewer calls than last week but spent <strong>${hm(B.talk - A.talk)} more time actually talking to people</strong>, and your working time inside the shift went up from ${hm(A.worked)} to ${hm(B.worked)}. Your idle went down from ${Math.round((100 * A.idle) / A.span)} percent of the shift to ${Math.round((100 * B.idle) / B.span)} percent. The average conversation went from ${(A.talk / A.conversations / 60).toFixed(1)} minutes to ${(B.talk / B.conversations / 60).toFixed(1)} minutes, which is the number that matters most: you are getting further into the conversation before they hang up.</p>
-      <p>The weak spots are Wednesday, Friday and today. Wednesday had ten separate stops over 10 minutes. Friday was 14 calls, finished 11:52. Today has three stops of 79, 82 and 92 minutes. Tuesday shows what a full day looks like: 8h 36m of working time with 46 minutes of stops in the whole day.</p>
+      <p>The weak spots are Wednesday, Friday and today. Wednesday had ten separate stops over 10 minutes. Friday was 14 calls, finished 11:52. Today has three stops of 79, 82 and 92 minutes. Tuesday shows what a full day looks like: 8h 49m of working time and one single stop over 10 minutes in the whole day.</p>
       <p>The other side of that: <strong>all 4 viewings booked this week came off Friday and Saturday</strong>, the two lowest volume days. Fewer calls, better calls.</p>
     </div>
   </section>
