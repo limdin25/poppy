@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import {
   normaliseUkPhone, isUkMobile, filterBuilderCandidates, planRosterChanges,
+  WIDENING_RADII_M, DEFAULT_RADIUS_M,
   type PlaceCandidate, type ScrapedBuilder,
 } from '../api/lib/builder-scrape.js';
 
@@ -111,5 +112,34 @@ describe('the geography rules are pinned in the source', () => {
     expect(SRC).toMatch(/from '\.\/uk-places\.js'/);
     expect(SRC).toMatch(/isTrader/);
     expect(SRC).toMatch(/NON_TRADER/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Widening, added 2026-08-22.
+//
+// Hugo: "if you don't find in this exact location, expand a bit further."
+// A postcode with no builder inside 10km is a rural outcode, not a place with
+// no builders, and the failure it caused before was silent: a viewing sat in
+// the column with nobody invited and no reason given.
+// ---------------------------------------------------------------------------
+describe('the search widens rather than giving up', () => {
+  it('goes outwards, never inwards', () => {
+    const sorted = [...WIDENING_RADII_M].sort((a, b) => a - b);
+    expect(WIDENING_RADII_M).toEqual(sorted);
+    expect(new Set(WIDENING_RADII_M).size).toBe(WIDENING_RADII_M.length);
+  });
+
+  it('starts on the doorstep and stops before a builder is an hour away', () => {
+    expect(WIDENING_RADII_M[0]).toBe(DEFAULT_RADIUS_M);
+    expect(WIDENING_RADII_M[WIDENING_RADII_M.length - 1]).toBeLessThanOrEqual(40_000);
+  });
+
+  it('the first hit wins: one builder nearby beats eight far away', () => {
+    expect(SRC).toMatch(/if \(builders\.length\) return \{ builders, radiusM, tried \}/);
+  });
+
+  it('a radius already wider than the settings start is not searched twice', () => {
+    expect(SRC).toMatch(/WIDENING_RADII_M\.filter\(\(r\) => r > start\)/);
   });
 });

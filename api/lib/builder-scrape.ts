@@ -232,6 +232,48 @@ export async function scrapeBuildersForOutcode(
   return out;
 }
 
+/** The radii tried, in order, when the first one finds nobody.
+ *
+ *  Hugo, 2026-08-22: "if you don't find in this exact location, expand a bit
+ *  further." Which is right, and it is also the only honest thing to do: a
+ *  postcode with no builder inside 10km is not a postcode with no builders, it
+ *  is a rural outcode. Stevenson Avenue in Leyland found three at 10km; a
+ *  Cornish outcode would find none and the viewing would sit there with nobody
+ *  invited and no reason given.
+ *
+ *  It stops at 40km on purpose. Beyond that a "local builder" is a man with an
+ *  hour's drive each way for a free quote, and the honest answer becomes "there
+ *  is nobody near this house", which is a fact a person should hear rather than
+ *  a search we quietly keep widening. */
+export const WIDENING_RADII_M = [10_000, 20_000, 40_000];
+
+/**
+ * The scrape that widens until it finds somebody.
+ *
+ * Each pass is a full Nearby Search, so the wider ones cost more, which is why
+ * it stops the moment it has anything at all rather than the moment it has
+ * `cap`. A single builder at 10km beats eight at 40km: he is the one who will
+ * actually turn up.
+ *
+ * Returns the radius that worked so the caller can record it. Nobody at any
+ * radius returns an empty list and a null radius, which the caller turns into
+ * a notification rather than silence.
+ */
+export async function scrapeBuildersWidening(
+  outcode: string,
+  opts: { startRadiusM?: number; cap?: number } = {},
+): Promise<{ builders: ScrapedBuilder[]; radiusM: number | null; tried: number[] }> {
+  const start = opts.startRadiusM ?? DEFAULT_RADIUS_M;
+  const radii = [start, ...WIDENING_RADII_M.filter((r) => r > start)];
+  const tried: number[] = [];
+  for (const radiusM of radii) {
+    tried.push(radiusM);
+    const builders = await scrapeBuildersForOutcode(outcode, { radiusM, cap: opts.cap });
+    if (builders.length) return { builders, radiusM, tried };
+  }
+  return { builders: [], radiusM: null, tried };
+}
+
 /** Apply a scrape to the roster. Returns what changed, for the cron's log. */
 export async function upsertScrapedBuilders(
   sb: Sb,

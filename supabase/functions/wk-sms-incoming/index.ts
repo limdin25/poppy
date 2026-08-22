@@ -401,6 +401,67 @@ serve(async (req: Request) => {
         .update({ last_contact_at: new Date().toISOString() })
         .eq('id', contactId);
 
+      // 3a-ops. THIS IS ONE OF OURS, NOT A LEAD.   (2026-08-22)
+      //
+      //     Hugo, on the builder booking: "you have my WhatsApp, and you have
+      //     Pedro's. I want you to contact us every time via WhatsApp every
+      //     time you need something." So the automation now messages the two of
+      //     them, and the moment it does, their answers arrive HERE, on the
+      //     builders line, looking exactly like inbound lead traffic.
+      //
+      //     Everything below this block is written for a lead: the STOP tag,
+      //     callback attribution, the demo-site generator, the lead-form stamp,
+      //     the builder-reply hook and the sales AI. Every one of them is wrong
+      //     for Hugo answering a question, and one of them (the AI) would text
+      //     him a pitch. So an ops number returns HERE, with the message saved
+      //     in the thread and nothing else touched.
+      //
+      //     The routing itself lives in api/crm/ops-reply.ts because a Deno
+      //     edge function cannot import api/lib, and the query lifecycle is
+      //     shared, tested TypeScript. This end only has to recognise the
+      //     number, which is one settings row and a nine-digit compare (a
+      //     number stored as 07863..., +447863... or 447863... is one person).
+      try {
+        const { data: opsRow } = await supa
+          .from('platform_settings').select('value').eq('key', 'ops_contacts').maybeSingle();
+        let opsPhones: string[] = [];
+        try {
+          const raw = (opsRow as { value?: unknown } | null)?.value;
+          const parsed = (typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw ?? {})) as {
+            enabled?: boolean; contacts?: Array<{ phone?: string }>;
+          };
+          if (parsed.enabled !== false) {
+            opsPhones = (parsed.contacts ?? [])
+              .map((c) => String(c?.phone ?? '').replace(/\D/g, '').slice(-9))
+              .filter((p) => p.length === 9);
+          }
+        } catch { /* a malformed settings row must not eat inbound messages */ }
+        const fromTail = fromE164.replace(/\D/g, '').slice(-9);
+        if (fromTail.length === 9 && opsPhones.includes(fromTail)) {
+          if (APP_URL && SITE_REPLY_KEY) {
+            const res = await fetch(`${APP_URL}/api/crm/ops-reply`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', authorization: `Bearer ${SITE_REPLY_KEY}` },
+              body: JSON.stringify({ phone: fromE164, body, contact_id: contactId }),
+            });
+            console.log(`[wk-sms-incoming] ops reply from ${fromE164}: ${res.status}`);
+          } else {
+            console.error('[wk-sms-incoming] ops number messaged but APP_URL is not set');
+          }
+          return new Response(TWIML_OK, {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+          });
+        }
+      } catch (e) {
+        // Non-fatal, but it does NOT fall through to the lead path: an ops
+        // number whose routing failed is still not a lead. The catch only
+        // covers the settings read, and a failure there means we could not
+        // tell, in which case the old behaviour (treat as a lead) is what the
+        // rest of this function already does.
+        console.error('[wk-sms-incoming] ops routing threw (non-fatal)', e);
+      }
+
       // 3b. Opt-out: a STOP-keyword reply tags the contact 'do-not-text' so
       //     wk-sms-broadcast excludes them from every future blast. Twilio
       //     also blocks at carrier level for toll-free; this keeps our own

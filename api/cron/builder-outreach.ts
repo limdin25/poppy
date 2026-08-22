@@ -38,7 +38,8 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { outcodeOf } from '../lib/brrr-deal-facts.js';
-import { scrapeBuildersForOutcode, upsertScrapedBuilders } from '../lib/builder-scrape.js';
+import { scrapeBuildersWidening, upsertScrapedBuilders } from '../lib/builder-scrape.js';
+import { raiseQuery } from '../lib/ops-query.js';
 import {
   loadOutreachSettings, draftOutreachForProperty, sendOutreachRow, sentToday,
   VIEWING_BOOKED_COLUMN,
@@ -153,11 +154,21 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           update(v: Record<string, unknown>): { eq(k: string, v: string): PromiseLike<unknown> };
         }).update({ builder_scraped_at: new Date().toISOString() }).eq('id', property.id);
         try {
-          const scraped = await scrapeBuildersForOutcode(oc, {
-            radiusM: settings.radius_m, cap: settings.max_new_builders,
+          // WIDENS WHEN THE DOORSTEP IS EMPTY (Hugo, 2026-08-22: "if you don't
+          // find in this exact location, expand a bit further"). 10km, then
+          // 20, then 40, stopping at the first radius that finds anybody. The
+          // radius that worked is recorded on the house, because an outcode
+          // that needed 40km is worth knowing next time.
+          const scraped = await scrapeBuildersWidening(oc, {
+            startRadiusM: settings.radius_m, cap: settings.max_new_builders,
           });
-          const applied = await upsertScrapedBuilders(sb, oc, scraped, settings.max_new_builders);
+          const applied = await upsertScrapedBuilders(sb, oc, scraped.builders, settings.max_new_builders);
           out.scraped += applied.inserted + applied.extended;
+          if (scraped.radiusM) {
+            await (sb.from('brrr_properties') as never as {
+              update(v: Record<string, unknown>): { eq(k: string, v: string): PromiseLike<unknown> };
+            }).update({ builder_scrape_radius_m: scraped.radiusM }).eq('id', property.id);
+          }
         } catch (e) {
           out.errors.push(`scrape ${oc}: ${String(e).slice(0, 120)}`);
         }
@@ -195,6 +206,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           body: `${String(property.address ?? 'A property')} is in Viewing booked and ${drafted.matched} builder(s) are ready, but nothing can be sent until the date and time are on the house. Add them on the call card.`,
           link: `/admin/crm/contacts/${contactId}`,
         });
+        // AND ON WHATSAPP, because the bell was already ringing on 21 August
+        // and Hugo still found this by looking at the board himself. A bell is
+        // a thing you have to be looking at; this is the missing fact going to
+        // the two people who can supply it.
+        await raiseQuery({
+          sb, kind: 'viewing_time_missing', propertyId: property.id,
+          subject: String(property.address ?? 'a property'),
+          question:
+            `${String(property.address ?? 'A property')} is in Viewing booked and ${drafted.matched} ${drafted.matched === 1 ? 'builder is' : 'builders are'} ready to be invited, `
+            + 'but nobody wrote down the date. What day and time is the viewing, UK time? Reply here and I will send the invites.',
+        });
       }
       if (firstPass && !drafted.matched) {
         // Even after the scrape nobody on the roster covers this outcode.
@@ -205,6 +227,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           title: `No builders found for ${oc}`,
           body: `${String(property.address ?? 'A property')} is in ${VIEWING_BOOKED_COLUMN} but no builder covers ${oc} and the Google search found none with a UK mobile. Add one on /admin/builders by hand.`,
           link: '/admin/builders',
+        });
+        // The search widened to 40km and still found nobody, so there is
+        // nothing left for the machine to try. That is a fact for a person,
+        // not a quieter retry.
+        await raiseQuery({
+          sb, kind: 'no_builder_for_viewing', propertyId: property.id,
+          subject: String(property.address ?? oc),
+          question:
+            `${String(property.address ?? 'A property')} has a viewing but I cannot find a single builder near ${oc}, `
+            + 'even searching 40km out. Do you know anyone who covers that area? Reply with a name and number and I will invite them.',
         });
       }
 

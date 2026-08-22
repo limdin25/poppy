@@ -39,6 +39,11 @@ export interface OutreachSettings {
   followup_sid: string;
   /** The 8am morning-of-the-viewing confirmation. */
   morning_sid: string;
+  /** The opener the machine sends HUGO AND PEDRO when it needs something and
+   *  their 24 hour window is shut. Not a builder-facing template at all; it
+   *  lives here because this is the one settings row the whole builder pipeline
+   *  already reads, and a second row would be a second thing to forget. */
+  query_sid: string;
 }
 
 export const OUTREACH_DEFAULTS: OutreachSettings = {
@@ -49,6 +54,7 @@ export const OUTREACH_DEFAULTS: OutreachSettings = {
   invite_sid: '',
   followup_sid: '',
   morning_sid: '',
+  query_sid: '',
 };
 
 /** What Pedro (or whoever presses send) signs the invite as. */
@@ -533,6 +539,17 @@ export async function sentToday(sb: Sb): Promise<number> {
     .gte('sent_at', ukMidnight.toISOString());
   return count ?? 0;
 }
+
+/** The nudge for a builder who never answered the invite at all, kept VERBATIM
+ *  in step with the Meta template `builder_viewing_followup`
+ *  (HX8268482987e2eb9381a41894861e426b). {{1}} address, {{2}} the slot.
+ *
+ *  A cold builder's window never opened, so this HAS to be a template: a
+ *  free-form chase would be accepted by Twilio, return a sid, and never arrive.
+ *  Sent once, by api/cron/builder-brain.ts, and only when a viewing is close
+ *  enough for the answer to still be useful. */
+export const FOLLOWUP_TEMPLATE_TEXT =
+  'Hi there, just following up from Unico Property Group about the viewing at {{1}} on {{2}}. Are you able to make it? A quick yes or no is fine, and if the time does not work we can look at another slot. Thanks.';
 
 /** The morning-of nudge, sent at 8am UK on the day of the viewing (Hugo,
  *  2026-08-20: "the morning of the visit you say hi good morning just wanna
