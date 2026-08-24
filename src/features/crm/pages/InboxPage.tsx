@@ -66,6 +66,7 @@ import { usePropertyLinks, phoneTail, type PropertyLink } from '../hooks/useProp
 import InboundMedia from '../components/InboundMedia';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
+import DealTagChip from '../components/shared/DealTagChip';
 import MessageBody from '../components/shared/MessageBody';
 import { CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
@@ -1387,6 +1388,20 @@ export default function InboxPage() {
                       size="sm"
                       isCreatorLead={r.isCreatorLead}
                     />
+                    {/* WHICH HOUSE THIS THREAD IS ABOUT (Hugo, 2026-08-24:
+                        "all card you need to tag which deal is whatsapp
+                        conversation for"). A builder replying "yeah Wednesday
+                        works" was unattributable in the list: same grey row as
+                        a plumber lead, and you had to open it and read back to
+                        find out which house they meant. The chip prints the
+                        deal for a branch and the invited house for a builder,
+                        both decided by dealTagFor() so every screen agrees. */}
+                    <DealTagChip
+                      customFields={r.customFields}
+                      deal={dealForPhone(r.phone)}
+                      size="xs"
+                      data-testid={`inbox-deal-tag-${r.id}`}
+                    />
                     <AgentChip agentId={r.ownerAgentId} size="xs" />
                     <CalcChip calcAt={r.vsl?.calcAt} count={r.vsl?.calcCount} />
                     {r.campaignName && (
@@ -1686,9 +1701,19 @@ export default function InboxPage() {
               .join('')
               .slice(0, 2)}
           </div>
-          <div className="flex-1">
-            <div className="text-[14px] font-semibold text-[#1A1A1A]">
+          <div className="flex-1 min-w-0">
+            <div className="text-[14px] font-semibold text-[#1A1A1A] flex items-center gap-2 min-w-0">
               <EditableName value={activeContact.name} onSave={(n) => renameContact(activeContact.id, n)} className="text-[14px] font-semibold" />
+              {/* The house, beside the name, in the open thread as well as in
+                  the list. The builder banner below carries the whole deal and
+                  clicks through to the branch; this is the one-glance version
+                  that is on screen while you are typing a reply. */}
+              <DealTagChip
+                customFields={activeContact.customFields}
+                deal={activeDeal}
+                size="sm"
+                data-testid="inbox-thread-deal-tag"
+              />
             </div>
             {/* Same rule as the cards: a creator has no business and no
                 website, so the gap markers are noise on them and information

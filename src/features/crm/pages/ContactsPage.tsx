@@ -10,6 +10,7 @@ import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
 import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
+import DealTagChip from '../components/shared/DealTagChip';
 import CalcChip from '../components/shared/CalcChip';
 import { useContactVslPages, lastAutoMove } from '../hooks/useContactVslPages';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
@@ -362,6 +363,17 @@ export default function ContactsPage() {
                       size="sm"
                       className="mt-0.5"
                     />
+                    {/* Which deal, on this list too (Hugo, 2026-08-24). A
+                        builder here was a bare company name with no house
+                        against it, and the Property column beside it reads
+                        custom_fields.property_address which a builder does not
+                        have. Same chip and same derivation as the inbox. */}
+                    <DealTagChip
+                      customFields={c.customFields}
+                      size="xs"
+                      className="mt-0.5"
+                      data-testid={`contacts-deal-tag-${c.id}`}
+                    />
                   </td>
                   <td className="px-2 py-2.5 text-[#6B7280] tabular-nums">{c.phone}</td>
                   <td className="px-2 py-2.5">
@@ -375,8 +387,14 @@ export default function ContactsPage() {
                     <AgentChip agentId={c.ownerAgentId} variant="text" size="sm" />
                     <CalcChip calcAt={vslByContact.get(c.id)?.calcAt} count={vslByContact.get(c.id)?.calcCount} />
                   </td>
-                  <td className="px-2 py-2.5 text-[#6B7280] max-w-[220px] truncate" title={c.customFields?.property_address ?? ''}>
-                    {c.customFields?.property_address || '—'}
+                  {/* A builder carries the house on builder_property, not on
+                      property_address, so this column read a dash next to a
+                      chip naming the street. */}
+                  <td
+                    className="px-2 py-2.5 text-[#6B7280] max-w-[220px] truncate"
+                    title={c.customFields?.property_address || c.customFields?.builder_property || ''}
+                  >
+                    {c.customFields?.property_address || c.customFields?.builder_property || '—'}
                   </td>
                   <td className="px-2 py-2.5 max-w-[200px]">
                     {(() => {
