@@ -437,7 +437,7 @@ export async function applyBallpark(
   if (prop.wk_contact_id) {
     const { data: contact } = await sb
       .from('wk_contacts')
-      .select('id, email, custom_fields')
+      .select('id, email, custom_fields, pipeline_column_id')
       .eq('id', prop.wk_contact_id)
       .maybeSingle();
     const evidence = ((engine.evidence as Array<Record<string, unknown>> | undefined) ?? [])
@@ -477,10 +477,32 @@ export async function applyBallpark(
     const { data: anchor } = await sb
       .from('wk_pipeline_columns').select('pipeline_id').eq('name', 'Ballpark agreed').maybeSingle();
     const pipelineId = (anchor as { pipeline_id?: string } | null)?.pipeline_id ?? null;
+
+    // A CARD IN 'Viewing booked' STAYS THERE.   (2026-08-24)
+    //
+    // The refusal path had the same hole and it is the same damage: 'Viewing
+    // booked' is the ONLY column the builder sweep looks at, so moving a card
+    // out of it stops the builder ever being invited to a viewing a branch has
+    // already agreed to. Wharfedale Road, Corby and New Mill Road, Brockholes
+    // both left that way on 22 August, priced successfully, and their nine
+    // invite drafts have been frozen ever since.
+    //
+    // Arming is still right and still happens: the band, the tokens and the
+    // brief are all written above. Only the column is held, and the comment
+    // below already says why that is safe. The viewing comes first, the offer
+    // call comes after the builder has priced the work.
+    const currentColId = (contact as { pipeline_column_id?: string | null } | null)?.pipeline_column_id ?? null;
+    let holdForViewing = false;
+    if (currentColId) {
+      const { data: nowCol } = await sb
+        .from('wk_pipeline_columns').select('name').eq('id', currentColId).maybeSingle();
+      holdForViewing = (nowCol as { name?: string } | null)?.name === 'Viewing booked';
+    }
+
     let colQuery = sb.from('wk_pipeline_columns').select('id').eq('name', 'Ready for call 2');
     if (pipelineId) colQuery = colQuery.eq('pipeline_id', pipelineId);
     const { data: col } = await colQuery.maybeSingle();
-    if ((col as { id?: string } | null)?.id) {
+    if (!holdForViewing && (col as { id?: string } | null)?.id) {
       await sb.from('wk_contacts')
         .update({ pipeline_column_id: (col as { id: string }).id })
         .eq('id', prop.wk_contact_id);

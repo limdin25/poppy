@@ -255,13 +255,35 @@ export function renderPreview(template: string, vars: Record<string, string>): s
   return template.replace(/\{\{(\d+)\}\}/g, (_m, n: string) => vars[n] ?? '');
 }
 
+/** The street the tag says, short enough to read as a chip: "Windsor Road,
+ *  Buxton" out of "Windsor Road, Buxton, Derbyshire, SK17 7NS". */
+export function houseTag(address: string | null | undefined): string {
+  const parts = String(address ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return '';
+  return parts.slice(0, 2).join(', ').slice(0, 60);
+}
+
 /** The builder's row in wk_contacts, created on first contact. lead_type is
- *  what the inbox, the coach and wk-sms-incoming branch on. */
+ *  what the inbox, the coach and wk-sms-incoming branch on.
+ *
+ *  WHICH HOUSE, ON THE CARD ITSELF (Hugo, 2026-08-24: "write a tag on the
+ *  cards saying which properties, so it's always matched"). The invite names
+ *  the address and the inbox thread has a banner, but the contact RECORD said
+ *  nothing: a builder in a list, in search, or in the dialer was a bare
+ *  company name with no house against it. So the address goes on in two
+ *  places, because they are read by different screens: `builder_property` in
+ *  custom_fields for anything reading fields, and a real tag row for the chip
+ *  the lists render.
+ *
+ *  A builder can be invited to more than one house, so the tag is ADDED, never
+ *  swapped, and the unique (contact_id, tag) key makes a repeat a no-op. */
 export async function ensureBuilderContact(
   sb: Sb,
   builder: { id: string; name: string; phone: string },
   ownerAgentId: string | null,
+  house?: { address: string | null },
 ): Promise<string | null> {
+  const tag = houseTag(house?.address);
   const national = builder.phone.replace(/^\+44/, '0');
   const { data: existing } = await sb
     .from('wk_contacts')
@@ -271,11 +293,17 @@ export async function ensureBuilderContact(
     .maybeSingle();
   if (existing?.id) {
     const cf = ((existing as { custom_fields?: Record<string, unknown> }).custom_fields ?? {});
-    if (cf.lead_type !== 'builder') {
+    if (cf.lead_type !== 'builder' || (tag && cf.builder_property !== tag)) {
       await (sb.from('wk_contacts') as any)
-        .update({ custom_fields: { ...cf, lead_type: 'builder', builder_id: builder.id } })
+        .update({
+          custom_fields: {
+            ...cf, lead_type: 'builder', builder_id: builder.id,
+            ...(tag ? { builder_property: tag } : {}),
+          },
+        })
         .eq('id', existing.id);
     }
+    await tagBuilderHouse(sb, existing.id as string, tag);
     return existing.id as string;
   }
   const { data: created, error } = await (sb.from('wk_contacts') as any)
@@ -283,12 +311,26 @@ export async function ensureBuilderContact(
       name: builder.name,
       phone: builder.phone,
       owner_agent_id: ownerAgentId,
-      custom_fields: { lead_type: 'builder', builder_id: builder.id },
+      custom_fields: {
+        lead_type: 'builder', builder_id: builder.id,
+        ...(tag ? { builder_property: tag } : {}),
+      },
     })
     .select('id')
     .single();
   if (error) { console.error('[builder-outreach] contact create failed', error.message); return null; }
-  return (created as { id: string } | null)?.id ?? null;
+  const id = (created as { id: string } | null)?.id ?? null;
+  if (id) await tagBuilderHouse(sb, id, tag);
+  return id;
+}
+
+/** The chip. Silent on failure: a missing tag is cosmetic and must never stop
+ *  an invite going out. */
+export async function tagBuilderHouse(sb: Sb, contactId: string, tag: string): Promise<void> {
+  if (!tag) return;
+  const { error } = await (sb.from('wk_contact_tags') as any)
+    .upsert({ contact_id: contactId, tag }, { onConflict: 'contact_id,tag', ignoreDuplicates: true });
+  if (error) console.error('[builder-outreach] tag failed', contactId, error.message);
 }
 
 /**
@@ -321,6 +363,7 @@ export async function draftOutreachForProperty(
   for (const b of matches) {
     const contactId = await ensureBuilderContact(
       sb, { id: b.id, name: b.name, phone: String(b.phone) }, admins[0] ?? null,
+      { address: builderFacingAddress(property) },
     );
     const { error } = await (sb.from('brrr_builder_outreach') as any).upsert({
       property_id: property.id,

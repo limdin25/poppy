@@ -36,6 +36,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { loadCockpitStates, latestAssessments } from '../lib/deal-manager-run.js';
 import { isCockpitDeal } from '../lib/cockpit-filter.js';
+import { viewingStillAhead } from '../lib/deal-manager-contract.js';
 import { runBallparkPreview, applyBallpark } from '../lib/ballpark.js';
 
 export const config = { maxDuration: 300 };
@@ -109,6 +110,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     let ran = 0;
     let failed = 0;
     let armed = 0;
+    /** Deals the engine refused that were NOT binned, because a builder is
+     *  going to that house. Counted rather than silent: a run that keeps five
+     *  of them is a run worth looking at. */
+    let keptBooked = 0;
     const results: Array<{ propertyId: string; ok: boolean; reason?: string; armed?: boolean }> = [];
     for (const b of wanting.slice(0, PER_RUN)) {
       try {
@@ -148,7 +153,29 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         ]);
         const hardDead = !ok && reason !== undefined
           && (DEAD_REASONS.has(reason) || reason.startsWith('excluded_'));
-        if (hardDead && b.contactId) {
+
+        // A BOOKED VIEWING IS NOT A CLOSED DOOR, HERE TOO.   (2026-08-24)
+        //
+        // The deal brain was given this fence on 21 August, the day it binned
+        // Ben Rose and Dourish & Day with viewings booked. This cron, which
+        // moves cards on its own every five minutes, never got it, and on 24
+        // August it did the same thing four times in one afternoon: Pedro
+        // booked Bluestone Newport, Davies Craddock Llanelli, Andrew Craig
+        // South Shields and Denise White Buxton, and every one of them was in
+        // Not interested within five minutes of him pressing Viewing booked.
+        //
+        // The branch had agreed to let our builder in. What actually happened
+        // is that OUR engine could not price the house, which is our failure
+        // and not their refusal, and the card leaving the column is not a
+        // tidy-up: the builder sweep only looks at Viewing booked, so all 26
+        // invite drafts froze and no builder was ever invited.
+        //
+        // Same rule as the brain's: while a viewing is still ahead of us the
+        // machine may not close the deal. A human dragging the card is
+        // untouched. Once the viewing is behind us it can die normally.
+        const bookedAhead = hardDead ? viewingStillAhead(s) : null;
+        if (bookedAhead) keptBooked += 1;
+        if (hardDead && !bookedAhead && b.contactId) {
           const { data: anchor } = await supabase
             .from('wk_pipeline_columns').select('pipeline_id').eq('name', 'Ballpark agreed').maybeSingle();
           const pipelineId = (anchor as { pipeline_id?: string } | null)?.pipeline_id ?? null;
@@ -197,7 +224,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
 
     res.statusCode = failed > 0 && ran === 0 ? 500 : 200;
-    res.end(JSON.stringify({ ok: failed === 0, wanting: wanting.length, ran, armed, failed, results }));
+    res.end(JSON.stringify({ ok: failed === 0, wanting: wanting.length, ran, armed, keptBooked, failed, results }));
   } catch (e) {
     console.error('[ballpark-runner] failed:', e);
     res.statusCode = 500;

@@ -10,7 +10,7 @@ import {
   blockedReasonFor, belowDiscountRule, MIN_DISCOUNT_FOR_BUILDER,
   inviteVars, renderPreview, ukDay, builderFacingAddress,
   INVITE_TEMPLATE_TEXT, MORNING_TEMPLATE_TEXT, VIEWING_BOOKED_COLUMN,
-  needsMoreBuilders, nextRadiusM,
+  needsMoreBuilders, nextRadiusM, houseTag,
 } from '../api/lib/builder-outreach.js';
 import { templateProblem, extractTemplateVars, prefillTemplateVars } from '../src/features/crm/lib/waTemplates.js';
 
@@ -589,5 +589,73 @@ describe('nextRadiusM', () => {
   it('THE LADDER ENDS, and null is an answer a person has to be told', () => {
     expect(nextRadiusM(40_000, ladder)).toBeNull();
     expect(nextRadiusM(99_000, ladder)).toBeNull();
+  });
+});
+
+// NOTHING MAY TAKE A CARD OUT OF 'Viewing booked' BUT A PERSON.   (2026-08-24)
+//
+// The sweep that invites builders looks at exactly one column. So a card
+// leaving that column is not a tidy-up, it is the builder never being invited
+// to a viewing a branch has already agreed to, and it happens in silence: the
+// drafts sit there, blocked, and the board looks fine.
+//
+// It has now happened twice by two different roads, and both are pinned here.
+//
+//   REFUSAL PATH. On 24 August Pedro booked four viewings (Bluestone Newport,
+//   Davies Craddock Llanelli, Andrew Craig South Shields, Denise White Buxton)
+//   and every one was in 'Not interested' within five minutes, moved by
+//   ballpark-runner because the engine could not price the house. The deal
+//   brain was fenced against exactly this on 21 August; the cron never was.
+//   Our failure to value a house is not the branch turning us down.
+//
+//   SUCCESS PATH. applyBallpark moves a priced card to 'Ready for call 2'
+//   unconditionally, which took Wharfedale Road, Corby and New Mill Road,
+//   Brockholes out of the column on 22 August with nine drafts between them.
+//   Arming the band is right; moving the card while a builder is still due at
+//   the house is not.
+describe('a booked viewing survives the machine', () => {
+  const RUNNER = readFileSync('api/cron/ballpark-runner.ts', 'utf8');
+  const BALLPARK = readFileSync('api/lib/ballpark.ts', 'utf8');
+
+  it('the ballpark cron asks the same question the deal brain asks', () => {
+    expect(RUNNER).toContain('viewingStillAhead');
+    expect(RUNNER).toMatch(/from '\.\.\/lib\/deal-manager-contract\.js'/);
+  });
+
+  it('a hard refusal cannot bin a card with a viewing still ahead', () => {
+    // The guard sits between the refusal and the write, not after it.
+    const guard = RUNNER.indexOf('const bookedAhead');
+    const move = RUNNER.indexOf("eq('name', 'Not interested')");
+    expect(guard).toBeGreaterThan(-1);
+    expect(move).toBeGreaterThan(guard);
+    expect(RUNNER).toContain('if (hardDead && !bookedAhead && b.contactId)');
+  });
+
+  it('arming a band does not drag the card off the builder sweep', () => {
+    expect(BALLPARK).toContain('holdForViewing');
+    expect(BALLPARK).toContain("=== 'Viewing booked'");
+    expect(BALLPARK).toContain('if (!holdForViewing &&');
+  });
+});
+
+describe('which house a builder belongs to, on the card', () => {
+  it('the tag is the street and the town, short enough to read as a chip', () => {
+    expect(houseTag('Windsor Road, Buxton, Derbyshire, SK17 7NS')).toBe('Windsor Road, Buxton');
+    expect(houseTag('Lisle Road, South Shields, NE34 6DQ')).toBe('Lisle Road, South Shields');
+  });
+
+  it('no address is no tag, never a half-written one', () => {
+    expect(houseTag(null)).toBe('');
+    expect(houseTag('  ')).toBe('');
+  });
+
+  it('the builder-facing address is what gets tagged, house number and all', () => {
+    // The same string the invite puts in front of the builder, so the chip on
+    // the card and the message he received cannot say different houses.
+    expect(SRC).toContain('{ address: builderFacingAddress(property) }');
+  });
+
+  it('a builder on two houses keeps both tags', () => {
+    expect(SRC).toContain("onConflict: 'contact_id,tag', ignoreDuplicates: true");
   });
 });

@@ -20,6 +20,11 @@ bridge
 # HeyPubli is a separate business on its own Vercel project (heypubli-app).
 # It only ever lived in this repo for convenience. Elsie must not ship it.
 /heypubli
+# Local scrape dumps, 12GB of them on 24 Aug 2026. Untracked, so .gitignore
+# never saw them, and a prod deploy quietly started uploading SIX GIGABYTES
+# before anyone noticed. Anchored, because it is a repo-root folder and a bare
+# `exports` would also match anything named exports inside src.
+/exports
 # Symlink into the local scraper folder (the one-copy strategy doc). The
 # target does not exist inside the upload, and Vercel refuses the build on a
 # dangling symlink.
