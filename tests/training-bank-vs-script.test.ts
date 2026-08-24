@@ -95,7 +95,10 @@ const PINS: Pin[] = [
     id: 'obj_who_views_it',
     mustTeach: [],
     inScript: [/builder/i, /remotely|across the country/i],
-    inCoach: [/NEVER VIEW A PROPERTY/],
+    // Reworded 2026-08-20: the agent still never views a house, but our
+    // builder does and booking him is now the close of call one, so the
+    // coach's line names both halves.
+    inCoach: [/THE AGENT NEVER VIEWS A PROPERTY, BUT OUR BUILDER DOES/],
     // We never send Pedro to a viewing. If the script ever says we do, this
     // answer is wrong and so is the coach.
     mustNotTeach: [/YOU:[^<]*I will come and (see|view) it/i],

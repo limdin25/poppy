@@ -143,8 +143,13 @@ describe('the script itself', () => {
     expect(html).toMatch(/Never ask a flat about subsidence/i)
   })
 
-  it('tells him NOT to book a viewing or make a formal offer', () => {
-    expect(html).toMatch(/do <b>not<\/b> book/i)
+  it('books the BUILDER, and still never a viewing for himself or a formal offer', () => {
+    // Changed 2026-08-20 (Hugo: "we book the builder on call one and we do not
+    // fetch prices or ballpark"). The old pin was a blanket "do not book",
+    // which is now the opposite of the job: the builder's day IS the close.
+    // What survives is the fence that was always the point, no viewing for
+    // himself and no offer of his own.
+    expect(html).toMatch(/Do not book a viewing for <b>yourself<\/b>/i)
     expect(html).toMatch(/not authorised to make a formal offer/i)
   })
 
@@ -240,57 +245,90 @@ describe('two calls: discovery first, the offer only after the homework', () => 
   // mid-call from THIS call's transcript, read word for word. From Pedro's
   // head: still never. The ladder and the negotiation still live on call two.
   it('says so at the top, before any stage', () => {
-    expect(html).toMatch(/TWO CALL process/)
-    expect(html).toMatch(/The only number of ours you may say on call one is the one the green\s+ballpark panel prices DURING the call/)
-    expect(html).toMatch(/From your head: never/)
+    // Rewritten 2026-08-20. The ballpark button came off call one the day
+    // after it went on: the house is already proven 20% under size-and-street
+    // tested comps before it reaches the queue, so call one closes on the
+    // builder's day and says no number of ours at all.
+    expect(html).toMatch(/CALL ONE ENDS WITH A DAY FOR THE BUILDER/)
+    expect(html).toMatch(/no\s+ballpark button any more/)
+    expect(html).toMatch(/NO NUMBER OF OURS on call one/)
     expect(html).toMatch(/CALL TWO is the offer call/)
   })
 
-  it('THE STRUCTURAL FIX: discovery and their-figure come before the money, which is call two', () => {
-    const three = at('3. The discovery questions')
-    const theirs = at('4. Their figure, never ours')
-    const lock = at('5. Check the system, then lock the next step')
-    const money = at('6. Call two, the offer')
-    for (const [label, i] of Object.entries({ three, theirs, lock, money })) {
+  it('THE STRUCTURAL FIX: discovery, then the builder, and the money LAST on call two', () => {
+    // Stage 4 ("Their figure, never ours") was deleted on 2026-08-20: Hugo,
+    // "we don't need the figure any more to book the builder". So call one is
+    // three beats and a close, and no money question of any kind lives in it.
+    const three = at('3. The six things only they know')
+    const book = at('4. Book the builder in. This is the close.')
+    const money = at('5. Call two, the offer')
+    for (const [label, i] of Object.entries({ three, book, money })) {
       expect(`${label} present`).toBe(i > -1 ? `${label} present` : `${label} MISSING`)
     }
-    expect(three).toBeLessThan(theirs)
-    expect(theirs).toBeLessThan(lock)
-    expect(lock).toBeLessThan(money)   // <- the whole point: the money is LAST, on call two
+    expect(html).not.toContain('Their figure, never ours')
+    expect(three).toBeLessThan(book)
+    expect(book).toBeLessThan(money)   // <- the whole point: the money is LAST, on call two
   })
+
+  // The stage-3 slice used to end at "4. Their figure, never ours", a heading
+  // deleted on 2026-08-20. indexOf returned -1 and slice(x, -1) silently means
+  // "to the end of the file", so every assertion below was really scanning the
+  // whole script, objection panels and call two included. It is bounded to the
+  // real next heading now, which is what makes the removals below provable.
+  const stage3 = () => html.slice(at('3. The six things only they know'),
+                                  at('4. Book the builder in. This is the close.'))
 
   it('the discovery stage asks the questions that price the deal', () => {
-    const stage3 = html.slice(at('3. The discovery questions'), at('4. Their figure, never ours'))
-    expect(stage3).toMatch(/vacant, or is there a tenant/)
-    expect(stage3).toMatch(/what sort of condition/)
-    expect(stage3).toMatch(/why they're selling/)
-    // The two added 2026-08-13: the done-up street sale, and the size.
-    expect(stage3).toMatch(/sold recently that was done up/)
-    expect(stage3).toMatch(/floor area on it, or the room measurements/)
-    expect(stage3).toMatch(/freehold or leasehold/)
-    expect(stage3).toMatch(/Years left on the lease/)
-    expect(stage3).toMatch(/Never ask a house about service charges/)
-    expect(stage3).toMatch(/Never ask a flat about subsidence/)
+    const s = stage3()
+    expect(s).toMatch(/vacant, or is there a tenant/)
+    expect(s).toMatch(/what sort of condition/)
+    expect(s).toMatch(/why they're selling/)
+    // Added 2026-08-13: the done-up street sale. The size question survives but
+    // only as a conditional extra, it is asked when the card still wants it.
+    expect(s).toMatch(/sold recently that was done up/)
+    expect(s).toMatch(/floor area on it, or the room measurements/)
+    expect(s).toMatch(/freehold or leasehold/)
+    expect(s).toMatch(/Years left on the lease/)
+    expect(s).toMatch(/Never ask a house about service charges/)
+    expect(s).toMatch(/Never ask a flat about subsidence/)
+    // And the two that carry the deal: motivation and the rejected offer.
+    expect(s).toMatch(/Are they in any sort of hurry/)
+    expect(s).toMatch(/has anything been turned down/)
   })
 
-  it('condition is a conversation, never one question and a tick', () => {
-    // Hugo, 2026-08-14: "on the script need to make sure to ask what type of
-    // work, discuss a bit, make clear." "It needs a bit of work" covers a five
-    // grand tidy-up and a forty grand strip-out, and the gap between those two
-    // IS the offer, so the one question has to become four.
-    const stage3 = html.slice(at('3. The discovery questions'), at('4. Their figure, never ours'))
-    expect(stage3).toMatch(/what sort of thing are we talking/)
-    expect(stage3).toMatch(/cosmetic/)
-    expect(stage3).toMatch(/full refurb/)
-    expect(stage3).toMatch(/the roof, any damp, the electrics and the boiler/)
-    expect(stage3).toMatch(/priced the work up/)
-    // WATER, ASKED SEPARATELY AND ON EVERY HOUSE. Hugo 2026-08-14: "very
-    // important on the prompts to find out if there is any leaking, any roof
-    // problems." It was one word inside "the big four", which is not the same
-    // as asking. Water is what turns a 15k refurb into a 40k one and it never
-    // shows in a photograph.
-    // The script wraps its lines, so these are matched on normalised text.
-    const flat = stage3.replace(/\s+/g, ' ')
+  // Rewritten 2026-08-24. Hugo, after listening back to three days of calls:
+  // "I think we should go for just quick hop, find out the motivation, book an
+  // appointment, get the builder to go to the place, put an offer."
+  //
+  // The 2026-08-14 rule (condition is four questions, not one) was right about
+  // the DIFFERENCE mattering and wrong about who to ask. Measured over 43 real
+  // conversations, the branch answered the big four, the kitchen and bathroom
+  // age, the glazing and the cost of the work with "I don't know, you'd need a
+  // survey" almost every time, and that stretch of the call is where two
+  // branches hung up mid-question. They are the builder's job now. The single
+  // question Hugo demanded on 2026-08-14 that DID keep earning is water, so
+  // that one survives verbatim.
+  it('condition is ONE question now, and the builder gets the rest', () => {
+    const s = stage3()
+    // GONE from the questions he reads aloud.
+    expect(s).not.toMatch(/what sort of thing are we talking/)
+    expect(s).not.toMatch(/the roof, any damp, the electrics and the boiler/)
+    expect(s).not.toMatch(/How old are the kitchen and the bathroom/)
+    expect(s).not.toMatch(/windows double glazed/)
+    expect(s).not.toMatch(/priced the work up/)
+    // Kept: the headline, and the one nudge when they hedge.
+    expect(s).toMatch(/ready to move into or does it need work/)
+    expect(s.replace(/\s+/g, ' ')).toMatch(/live in it while the work's being done, or is it a shell/)
+    // And the rule is written down, so nobody adds them back by feel.
+    expect(s).toMatch(/only if the branch can answer it and our\s+builder cannot/)
+  })
+
+  it('WATER survives the cut, on every house', () => {
+    // Hugo 2026-08-14: "very important on the prompts to find out if there is
+    // any leaking, any roof problems." It stays because it is the one condition
+    // question branches answer straight out, and water is what turns a 15k
+    // refurb into a 40k one. The script wraps, so match on normalised text.
+    const flat = stage3().replace(/\s+/g, ' ')
     expect(flat).toMatch(/Any leaks, anything coming in, any staining on the ceilings/)
     expect(flat).toMatch(/What's the roof like, has it been done or is it the original/)
     expect(flat).toMatch(/has anyone been up on it/)
@@ -298,34 +336,59 @@ describe('two calls: discovery first, the offer only after the homework', () => 
     // And the rule that stops him flinching at the answer.
     expect(flat).toMatch(/not a reason to walk away, it is the reason the price comes down/)
     expect(flat).toMatch(/ASK THIS ON EVERY SINGLE HOUSE/)
-    // And the same dig reaches the coach, or it grades a call against wording
-    // Pedro is no longer reading.
+    // The coach must agree, or it grades a call against wording Pedro is no
+    // longer reading. It also has to know NOT to coach the dropped questions.
     const coach = read('supabase/functions/wk-voice-transcription/index.ts')
-    expect(coach).toMatch(/what sort of thing are we talking/)
-    expect(coach).toMatch(/is NOT an answer/)
     expect(coach).toMatch(/Any leaks, anything coming in, any staining on the ceilings/)
     expect(coach).toMatch(/has there ever been a leak in there/)
+    expect(coach).toMatch(/NEVER COACH A DROPPED QUESTION/)
   })
 
-  it('call one carries no money tokens: the only figure is the one the panel prices mid-call', () => {
-    // Hugo, 2026-08-19: the ballpark question moved onto call one, on a
-    // button ("let me check my system here, I'm not making an offer"). The
-    // FENCE survives the move on purpose: call one still has no [offer_open],
-    // because the number lives in the BallparkOnCallPanel result, which can
-    // only exist after the system has heard THIS call. No press, no figure,
-    // and a stale band from last night can never be read out as today's.
+  it('an offered appointment is TAKEN, never pushed back behind the questions', () => {
+    // The counted mistake of 2026-08-20 to 24: six branches offered to book him
+    // in inside the first minute, he answered "before I book, let me ask some
+    // questions first" every time, and two of those calls died on the line
+    // before the booking came back round.
+    const flat = html.replace(/\s+/g, ' ')
+    expect(flat).toMatch(/IF THEY OFFER YOU THE APPOINTMENT, TAKE IT THERE AND THEN/)
+    expect(flat).toMatch(/Never talk a branch out of booking you in/)
+    // A panel of its own, in his words.
+    expect(flat).toMatch(/Would you like me to book you in for a viewing\?" TAKE IT/)
+    // The coach fires on it live, and the report counts it as a rule break.
+    const coach = read('supabase/functions/wk-voice-transcription/index.ts')
+    expect(coach).toMatch(/IF THE BRANCH OFFERS AN APPOINTMENT, HE TAKES IT THERE AND THEN/)
+    const report = read('api/cron/daily-agent-reports.ts')
+    expect(report).toMatch(/deflected_an_offered_viewing/)
+  })
+
+  it('he is told to have the listing open, because saying otherwise cost calls', () => {
+    // "I'm actually looking at a spreadsheet" was said on at least seven calls
+    // in three days. One branch called his questions ridiculous; another put
+    // him on hold and mocked him to a colleague with the line still open.
+    const flat = html.replace(/\s+/g, ' ')
+    expect(flat).toMatch(/Have the listing open on Rightmove before you dial/)
+    expect(flat).toMatch(/Never say "I'm looking at a spreadsheet" out loud/)
+    const report = read('api/cron/daily-agent-reports.ts')
+    expect(report).toMatch(/I'm looking at a spreadsheet/)
+  })
+
+  it('call one carries NO figure of ours at all, and closes on the builder', () => {
+    // 2026-08-20. The 19 August button lasted one day. Hugo: call one books
+    // the builder and fetches no prices and no ballpark. So the fence is back
+    // to its strongest form, no number of ours from any source, and the close
+    // is a day for the builder and the keys.
     const callOne = html.slice(at('<div class="call1">'), at('</div><!-- /call1 -->'))
     expect(callOne).not.toMatch(/\[offer_open\]/)
     expect(callOne).not.toMatch(/\[offer_ceiling\]/)
+    expect(callOne).not.toMatch(/Get the ballpark/)
+    expect(callOne).not.toMatch(/checking my system/)
     expect(callOne).toMatch(/I don't want to give you a number I'd have to take back/)
-    // The system check is in the script, with the not-an-offer framing and
-    // the discipline that keeps it a ballpark, not a negotiation.
-    expect(callOne).toMatch(/Get the ballpark/)
-    expect(callOne).toMatch(/checking my system/)
-    expect(callOne).toMatch(/million miles off/)
-    expect(callOne).toMatch(/I'm not making an offer/)
-    expect(callOne).toMatch(/no\s+negotiating today/)
-    expect(callOne).toMatch(/Never let a ballpark be minuted as an offer/)
+    // And he no longer fishes for THEIRS either (20 Aug).
+    expect(callOne).not.toMatch(/what sort of figure do you think would actually get it done/i)
+    expect(callOne).toMatch(/You do not need a figure to book the builder/)
+    expect(callOne).toMatch(/When would suit for access/)
+    expect(callOne).toMatch(/who does he meet there/)
+    expect(callOne).toMatch(/Book the builder viewing/)
   })
 
   it('the money panel and the ladder live inside call two only', () => {
@@ -403,6 +466,10 @@ describe('the standing brief: our email left on every call', () => {
 describe('we never view a property, our builder does', () => {
   const html = read(PROP_HTML)
 
+  // The video ask went CONDITIONAL on 2026-08-20 (Hugo: "it says we'll send
+  // the builder and at the same time asks for a video, not sure that makes
+  // sense"). It survives for the branch that will not let a builder in, which
+  // is exactly the viewing-wall panel this checks.
   it('answers the viewing wall with the builder, and asks for a video', () => {
     expect(html).toMatch(/subject to our builder going round/)
     expect(html).toMatch(/video walkthrough/)
@@ -426,9 +493,12 @@ describe('we never view a property, our builder does', () => {
     expect(html).not.toMatch(/then we'll get in and see it/)
   })
 
-  it('still refuses to book anything', () => {
-    expect(html).toMatch(/do <b>not<\/b> book/)
-    expect(html).toMatch(/book nothing/)
+  it('books the builder and nothing else', () => {
+    // The one appointment we make is the builder's. "Shall I book you in for a
+    // viewing?" is now answered yes, in his name, which is why the old blanket
+    // refusal came out on 2026-08-20.
+    expect(html).toMatch(/Not me personally, but yes please for our builder/)
+    expect(html).toMatch(/You never view a property yourself/)
   })
 })
 

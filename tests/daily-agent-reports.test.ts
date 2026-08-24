@@ -548,6 +548,62 @@ describe('property days are graded against the property business', () => {
     expect(r.asked_tenure).toBe(1)
   })
 
+  // Added 2026-08-24. Over 20 to 24 August six branches offered to book him in
+  // inside the first minute and he answered "before I book, let me ask some
+  // questions first" every single time. Two of those calls then died on the
+  // line before the booking came back round, so a day that was being handed
+  // over was simply lost. It is a rule break now, and it needs the two speakers
+  // IN ORDER, which pconv cannot express.
+  const turns = (lines: Array<[speaker: string, body: string]>) => ({
+    id: 'p9', started_at: '2026-08-24T13:00:00Z', duration_sec: 300, status: 'completed',
+    disposition: null, company: 'Dourish & Day', script_key: 'property_call',
+    lines: lines.map(([speaker, body]) => ({ speaker, body })),
+  })
+
+  it('counts an offered appointment that got pushed away', async () => {
+    const { propertyScriptCheck } = await load()
+    // Their words, then his, in the order they were really said.
+    for (const [offer, defer] of [
+      ["yes, it's still available. Would you like me to get you in a viewing?",
+        'Okay, before we schedule a viewing with you I would like to ask a couple of questions first.'],
+      ["that's still available and would you like to view it?",
+        "Before we do it, I'd like to ask first a couple of questions about the property."],
+      ['It is still available yes. Would you like to view?',
+        "Before I actually schedule a viewing I'm hoping to get a few information for our decision making."],
+      ['140 yes, that is still available. Would you like to book in a viewing?',
+        'Before I book an viewing for that property, can I ask you a couple of questions?'],
+    ]) {
+      const r = propertyScriptCheck([turns([['caller', offer], ['agent', defer]])] as never)
+      expect(`${defer.slice(0, 30)} => ${r.deflected_an_offered_viewing}`)
+        .toBe(`${defer.slice(0, 30)} => 1`)
+    }
+  })
+
+  it('does NOT count it when he takes the day, or when they never offered', async () => {
+    const { propertyScriptCheck } = await load()
+    // He said yes. This is the whole point of the change.
+    const took = propertyScriptCheck([turns([
+      ['caller', 'Would you like me to get you booked in for the viewing now?'],
+      ['agent', "Yes please, that'd be great. What have you got? It's our builder who comes round."],
+    ])] as never)
+    expect(took.deflected_an_offered_viewing).toBe(0)
+
+    // He asked questions first, but nobody had offered him anything, so there
+    // was no day to lose and nothing to report.
+    const noOffer = propertyScriptCheck([turns([
+      ['caller', 'Hello, sales.'],
+      ['agent', 'Before I book anything, can I ask you a couple of questions about it?'],
+    ])] as never)
+    expect(noOffer.deflected_an_offered_viewing).toBe(0)
+
+    // Order matters: a deferral BEFORE the offer is him getting there first.
+    const wrongOrder = propertyScriptCheck([turns([
+      ['agent', 'Before we schedule a viewing, can I ask a couple of questions first?'],
+      ['caller', 'Of course. Would you like me to book you in afterwards?'],
+    ])] as never)
+    expect(wrongOrder.deflected_an_offered_viewing).toBe(0)
+  })
+
   it('the offer without offering counts as a float, not a formal offer', async () => {
     const { propertyScriptCheck } = await load()
     const r = propertyScriptCheck([pconv([
@@ -688,8 +744,12 @@ describe('property days are graded against the property business', () => {
     expect(cron).toMatch(/never coach anyone off a mangled name/i)
   })
 
-  it('the property grade is figures out of branches, and the Houses tab must be used', () => {
-    expect(cron).toMatch(/figure out of the branch'?s mouth is the score/i)
+  it('the property grade is the builder day, then figures, and the Houses tab must be used', () => {
+    // Changed 2026-08-20 with Hugo's rule: call one closes by booking the
+    // builder, so that is what a first call is graded on. A figure out of the
+    // branch is still banked wherever it comes.
+    expect(cron).toMatch(/the builder's day is the score that matters/i)
+    expect(cron).toMatch(/asked_for_the_builder_day/)
     expect(cron).toMatch(/houses_outcomes_logged/)
     expect(cron).toMatch(/figures out of branches/) // the email headline
   })

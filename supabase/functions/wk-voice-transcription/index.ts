@@ -524,11 +524,10 @@ const CLOSE_CALL_CONTEXT = [
 const PROPERTY_STAGE_ORDER = [
   'Is it still available',
   'Ask for the two minutes',
-  'The discovery questions',
-  'Their figure, never ours',
-  'Check the system, then lock the next step',
+  'The six things only they know',
+  'Book the builder in. This is the close.',
   'Call two, the offer',
-  'They said yes to the figure. Book the builder.',
+  'The builder still has not been. Get him in.',
 ];
 
 /** The words on the agent's screen, as markdown, for the AGENT'S CALL SCRIPT
@@ -536,20 +535,27 @@ const PROPERTY_STAGE_ORDER = [
 const PROPERTY_AGENT_SCRIPT_MD = `# Ringing the agent about a house
 
 A real person at a real company, working with the director, who is a cash buyer.
-TWO CALLS. CALL ONE IS DISCOVERY: the facts, what sold done up on the street,
-what has been rejected, THEIR figure if they will give one, the video and the
-measurements, the email address, the system check, and a booked time to ring
-back. THE ONLY NUMBER OF OURS ON CALL ONE is the one the green ballpark panel
-prices during the call, read word for word at stage 5, framed as not an offer;
-from the agent's head, never. Call two is the offer call, made only
-after the homework, with the director's confirmed figure. Do NOT make a formal
-offer on either call. NEVER view a property and never book one: our builder
-views it and prices the refurb at the same time. One question at a time.
+TWO CALLS. CALL ONE IS DISCOVERY AND IT CLOSES BY BOOKING OUR BUILDER (Hugo,
+2026-08-20): the facts, what sold done up on the street, what has been rejected,
+the video and the measurements, the email address, and A DAY FOR OUR BUILDER
+to go round and price the work. HE DOES NOT ASK THEM WHAT FIGURE WOULD GET IT
+DONE ANY MORE: that stage is gone from a first call. A number they volunteer is
+banked, a number he goes fishing for is not asked for. NO NUMBER OF
+OURS IS SAID ON CALL ONE AT ALL: not from his head, not from a system, and
+there is no ballpark button any more. Call two is the offer call, made once the
+builder has priced the work, with the director's confirmed figure. Do NOT make
+a formal offer on either call. The agent NEVER views a property himself: our
+builder is the viewing, he prices the refurb while he is there, and booking HIM
+in is the goal, not a breach. One question at a time.
 
 ## 1. Is it still available
 "Hi, hello. I'm calling about the property on {{property_street}}, the {{bedrooms}} bed {{property_type}}. Is that one still available?"
 Then stop. Nothing else.
 If sold or under offer: "Ah, fair enough. Would the vendor consider backup offers at all?"
+
+## IF THE BRANCH OFFERS AN APPOINTMENT, HE TAKES IT THERE AND THEN
+Hugo, 2026-08-24. Branches offer a viewing inside the first minute all the time ("would you like me to book you in?", "I can get you booked in", "would you like to view it?"). The moment you hear that, coach him to SAY YES AND TAKE THE DAY, before any question. "Yes please, that'd be great, what have you got? It's our builder who comes round, he prices the work while he's there." Then the six questions afterwards.
+If he answers an offered appointment with "before I book, let me ask a few questions first", fire a card IMMEDIATELY: "Take the day first, then ask. Say yes and get it in the diary." This is a counted mistake, not a theory: over three days six branches offered first, he deflected all six, and two of those calls died on the line before the booking came back round. A booked day cannot be lost to a bad line. Never coach him to talk a branch out of booking him in.
 
 ## 2. Ask for the two minutes
 "Oh lovely. I'm Pedro by the way, who am I speaking to?" Take their name and use it for the rest of the call.
@@ -559,49 +565,45 @@ If asked who is calling: "It's Pedro. I work with Hugo, our director, at Unico. 
 If asked what company: "Unico. We're a small property company, the director Hugo buys with cash and I do the legwork for him." Only if they press for the legal detail: "Full name's Ulinc Unico Group Limited, company number 11197856. Registered office is 483 Green Lanes in London, N13 4BS."
 If asked cash or mortgage: "Cash. No mortgage, no chain, nothing to sell."
 
-## 3. The discovery questions
-The whole job of call one. Conversational, not a form.
+## 3. The six things only they know
+THE CALL IS SHORT NOW (Hugo, 2026-08-24). It was sixteen questions and ran fifteen to twenty minutes. The rule that decides what survives: ask it only if the BRANCH can answer it and OUR BUILDER cannot. Kitchens, bathrooms, boilers, wiring, windows and the cost of the work have all moved to the builder, because he is the one who can actually tell us and because branches answer every one of them with "I don't know, you'd need a survey".
+NEVER COACH A DROPPED QUESTION. Do not fire a card asking about the big four, the age of the kitchen or bathroom, double glazing, or whether anybody has priced the work up. Those are the builder's job now, and a card asking for one is coaching the agent back into the long call.
+The six, in order, about three minutes:
 "Is it vacant, or is there a tenant in?" If tenanted: staying or leaving, and what rent.
-"And what sort of condition is it in, ready to move into or does it need work?"
-"It needs a bit of work" is NOT an answer and must never be accepted: that sentence covers a 5k tidy-up and a 40k strip-out, and the difference is the offer. Dig, one question at a time:
-"When you say it needs work, what sort of thing are we talking? Is it more cosmetic, kitchen, bathroom, carpets, decorating, or is it a proper full refurb?" If they hedge: "Could someone live in it while the work's being done, or is it a shell?"
-"And how are the big four, the roof, any damp, the electrics and the boiler? Have any of them been done?" One at a time, a rewire, boiler, roof or damp course are thousands each and none show in photos.
-"And is it dry? Any leaks, anything coming in, any staining on the ceilings? What's the roof like, has it been done or is it the original?" ASK ON EVERY HOUSE, even an immaculate one. Water is what turns a 15k refurb into a 40k one and a photograph never shows it. Never accept "I think it's fine": push once with "has anyone been up on it?" and "has there ever been a leak in there, even one that's been sorted?". A leak is NOT a reason to walk away, it is the reason the price comes down, so never react to it and never say what it will cost us.
-"How old are the kitchen and the bathroom? And are the windows double glazed?"
-"Has anybody been round and priced the work up? What sort of number did they come back with?"
-If they say it is down to personal preference: "No, course. I mean more the boring stuff, like the boiler, the electrics, the roof, any damp?"
-"Do you know why they're selling?" Then: in a hurry, and is there an onward chain.
-"Has anything on that street sold recently that was done up? What did it actually go for?" The most valuable question on the page: the done-up value from the person who sells that street.
-"Has it had much interest? Any offers so far, and has anything been turned down?" A rejected offer is the floor. And has a sale ever fallen through.
-"How long's it been on with you? And has the price come down at all?"
-"Have you got the floor area on it, or the room measurements?" Ask whenever the listing has no floor plan.
+"And what sort of condition is it in, ready to move into or does it need work?" ONE question now, not four. You want the headline only, liveable or a shell. One nudge if they hedge: "Could someone live in it while the work's being done, or is it a shell?" Then move on.
+"And is it dry? Any leaks, anything coming in, any staining on the ceilings? What's the roof like, has it been done or is it the original?" ASK ON EVERY HOUSE, even an immaculate one. This one survived the cut because water is what turns a 15k refurb into a 40k one, a photograph never shows it, and the branch will often say straight out. Never accept "I think it's fine": push once with "has anyone been up on it?" and "has there ever been a leak in there, even one that's been sorted?". A leak is NOT a reason to walk away, it is the reason the price comes down, so never react to it and never say what it will cost us.
+"Do you know why they're selling? Are they in any sort of hurry?" MOTIVATION IS THE POINT OF THE CALL (Hugo, 2026-08-24) and it is the one thing our builder can never find out. Do not let "they're moving" stand: coach the follow-up. Onward chain, found somewhere already, probate, divorce, a landlord getting out. Each of those is a reason a price moves.
+"How long's it been on with you? And has the price come down at all?" The same question asked of the branch instead of the vendor.
+"Has anything on that street sold recently that was done up? What did it actually go for?" The done-up value from the person who sells that street.
+"Has it had much interest? Any offers so far, and has anything been turned down?" A rejected offer is the floor, so always get the LEVEL: "roughly what did the one they turned down come in at?". And has a sale ever fallen through.
 "Is it freehold or leasehold?"
+Two ten-second extras, only when they apply: "And roughly what would it let for round there?" and "Have you got the floor area on it?" (that one only if the size is still missing).
 FLAT only: years left on the lease, service charge, ground rent, major works, cladding or EWS1.
 HOUSE only: confirm freehold, structural issues, extensions signed off.
 Never ask a house about service charges or a lease unless they say it is leasehold. Never ask a flat about subsidence unless they raise it.
 
-## 4. Their figure, never ours
-"Is there a figure the vendor has in mind that would actually get it done? What sort of figure do you think would actually get it done?" Said lightly. Then be quiet: whoever speaks first loses this bit.
-A figure THEY say is worth more than any figure we could float. Write it down word for word.
-If they push for OUR number: "Honestly, I don't want to give you a number I'd have to take back. Let me do the work properly, what's sold, what the work costs, and I'll come back to you tomorrow with something you can actually put to the vendor." That is the whole answer, on every first call.
-If they cannot disclose: "No, and I wouldn't ask you to. Roughly though, are they wedded to the asking price, or is there room? You don't have to give me a number."
-
-## 5. Check the system, then lock the next step
-THE SYSTEM CHECK first (new, Hugo 2026-08-19). He presses the green Get the ballpark button; while it prices this call he says: "give me one second, I'm just checking my system here. I'm not making an offer, if we ever got that far I'd want our builder round it first. I just want to see if this one's even in our range." If the panel gives a figure he reads its sentence word for word, ONE number then silence, no climbing today. If the panel refuses, no money is said at all: "the director prices every deal himself", and straight on.
-"Is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it?" Ask this on EVERY call. The builder prices the refurb off the video before anyone travels.
+## 4. Book the builder in. This is the close.
+THE DAY FOR THE BUILDER IS THE CLOSE OF CALL ONE (Hugo, 2026-08-20). No system check, no ballpark, no figure of ours: the house was already checked against what sold on that street before it reached the screen, so the only thing missing is the cost of the work.
+AND HE NO LONGER ASKS THEM FOR A FIGURE EITHER (Hugo, 2026-08-20: "we don't need the figure any more to book the builder"). The old stage 4, "what sort of figure would get it done", is GONE from a first call. If the branch volunteers a number, bank it word for word and carry on; never coach the agent to go fishing for one before the visit.
+If they push for OUR number: "Honestly, I don't want to give you a number I'd have to take back. Our builder goes round, prices the work properly, and then you get a figure you can actually put to the vendor. That's why I'd rather get him in this week." "Right, that's everything I need on the phone. So the next thing our side is quick: we send our own builder round to have a proper look and price the work up. That's the only visit we make, and it's what turns this into a firm offer rather than me guessing at you. When would suit for access?"
+GET A DAY, not "sometime next week", and pin a window down to a time.
+"And who does he meet there, you or someone at the branch? Is it keys from you, or is the vendor in?"
+Repeat it back: "Perfect, so that's the builder booked in for then. Once he's been I'll come straight back to you with where we are."
+If they ask what we are offering before letting a builder in: "That's the honest answer to it: I can't give you a proper number until he's been. I'm not going to throw a figure at you and then drop it after he's seen the roof. Half an hour of his time and you get a real one." No number, not even roughly.
+If they need to ask the vendor about access, get the day he rings back. If they will not book anything today, carry on with the video, the email and the standing brief and book the ring-back.
+THE VIDEO IS ONLY ASKED FOR WHEN NO BUILDER DAY WAS AGREED (Hugo, 2026-08-20). If the day is booked, do NOT coach the video: asking a branch to film a house we are sending a man to sounds like we do not believe our own booking. If they would not book anything: "Is there any chance you could send me a video walkthrough of it? Or even just FaceTime me round it?" That is the only look we get at that house. NEVER coach asking for the floor plan: we already have it, a house cannot reach the queue without one, and the size is read off it overnight. The full EPC is worth one line only when the size or the boiler is still missing.
 "What's the best email for you anyway? My director will want to come back to you directly with a couple of questions on it, and I'd rather it came to you than the general inbox." Ask this on EVERY call. Never hang up without the email address: every offer goes out by email, so a call with no email cannot become an offer.
 IF THEY REFUSE THE VIDEO, THAT CHANGES NOTHING ABOUT THE EMAIL. The video is a bonus, the address is the call. Say "no bother at all" and go straight to the email ask with the word "anyway" in it. Never argue for the video, never ask twice, and never let a no on the video cost you the address. If they will not give a personal address, take the branch inbox and say you will put their name in the subject.
 THEN SEND IT WHILE THEY ARE STILL ON THE PHONE, whatever they said about the video. As soon as they say the address: "Brilliant, I'm sending you one now so you've got my address. Can you just tell me it's landed before I let you go?" If they said yes to the video the email asks for it; if they said no, he presses "No video, just my address" and it is two lines that ask for nothing. The address types itself into the Email tab the moment they say it, the email is already written, so this is one press of Send. An email they watched arrive is an email that gets answered, and it gives them our address to send the video back to.
 "Before I let you go, have you got anything else stuck? Anything in a chain that's dragging, or a sale that's fallen through where cash would sort it?"
 THE STANDING BRIEF, on every call: "And you've got my email there now, so do me a favour and keep me in mind. Anything that comes in needing plenty of work, or where the vendor has to move quick and the price has to come down, send it straight to me and I'll come back to you the same day." Two things only, needs plenty of work and the price has to come down, said lightly and once. It is a brief sent DIRECTLY to him, not their mailing list, and the reason they should bother is that we are cash, no chain, and answer the same day.
-"And when it comes to it, we'd get our builder round to have a look and price the work up." Ask, do not book.
-"Right, that's everything I need. I'll do the homework on it properly tonight. What's a realistic time for me to ring you back, tomorrow or is it better later in the week?" Never end the call without an agreed callback time. The booked callback IS call two.
+"So that's the builder in on that day, and I'll ring you the day before just to confirm he's on his way. Is this the best number for you?" Never end the call without a time: the confirmation call if the builder is booked, a day to ring back about access if he is not.
 "That's great, thanks for your time. Speak to you then."
 Then wait. Do not hang up on your own closing line.
 
-## 6. Call two, the offer
+## 5. Call two, the offer
 ONLY after the homework, with the director's confirmed figures on screen. Open: "Hi, it's Pedro from Unico, we spoke about {{property_street}}. I said I'd do the homework and come back to you, so here I am."
-The offer without offering, said as one breath: "I've had a proper look at this one. I've been through what's sold on the same streets and worked out roughly what it'd cost us to put it right. I can't get near what you're asking, and I don't want to waste your time or embarrass anyone with a silly offer. But if we were to offer around {{offer_open}}, am I in the ballpark, or am I a million miles off?"
+The offer without offering, said as one breath: "I've had a proper look at this one. I've been through what's sold on the same streets and I've got the cost of the work back. I can't get near what you're asking, and I don't want to waste your time or embarrass anyone with a silly offer. But if we were to offer around {{offer_open}}, am I in the ballpark, or am I a million miles off?" If our builder has already been round, say so, it is the strongest thing on the call.
 "If we were to offer", never "I'd like to offer". Then be quiet. Let the silence do the work.
 Climb the ladder ONE rung at a time, and only in exchange for something they have given you.
 Push back once, with a comp: "The one that sold on the same street went for less than that and it didn't need the work this one needs. What would they actually take?"
@@ -609,13 +611,13 @@ Push back once, with a comp: "The one that sold on the same street went for less
 If asked "is that your best?": "It's where we'd start. If there's a number that gets it done quickly, tell me what it is and I'll put it to Hugo today."
 Close: ask them to put the figure to the vendor, and book the ring-back. Hugo follows up in writing, subject to our builder going round.
 
-## 7. They said yes to the figure. Book the builder.
-You are on this stage when they say "that's about right", "I think the vendor would look at that", "leave it with me, I'll put it forward", or they name a figure at or under the ladder. Anything softer is still stage 6: go back and climb.
+## 6. The builder still has not been. Get him in.
+Skip this stage if the builder already went: since 2026-08-20 he is booked on call one. This is for the branch that would not book a visit first time. It is easiest right after they soften: "that's about right", "I think the vendor would look at that", "leave it with me, I'll put it forward", or they name a figure at or under the ladder. Anything softer is still stage 6: go back and climb.
 OUR BUILDER IS THE VIEWING. We never view a property ourselves, so this is the only visit we make and it is what turns a figure into an offer.
 Say it as the normal next step: "That's good to hear. The next thing on our side is quick: we send our own builder round to look at it and price the work up properly. That's the only visit we make, and it's what turns this into a firm offer."
 Get a DAY, not "sometime next week": "When would suit for access? He's flexible, and he only needs half an hour."
 Agree who he meets and who holds the keys: "And who does he meet there, you or someone at the branch? Is it keys from you, or is the vendor in?"
-Repeat the booking back: "So that's [day] for the builder, and once he's been I'll come straight back to you with it in writing."
+Repeat the booking back: "So that's the builder booked in for then, and once he's been I'll come straight back to you with it in writing."
 NOT on this stage: no formal offer, no figure in writing yet, no survey, no viewing for ourselves, and never the walk-away figure.
 Then the standing brief, last thing before the goodbye and however the money went: "same as I said last time, anything else that lands needing plenty of work, or where they've got to sell quick and the price has to come down, send it straight to me and I'll come back to you the same day."`;
 
@@ -639,9 +641,11 @@ Then the standing brief, last thing before the goodbye and however the money wen
 const PROPERTY_STEP_PROMPT: Record<string, string> = {
   'Discovery call': [
     'WHICH CALL THIS IS: THE FIRST CALL to this branch. Discovery only.',
-    'THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN ON THIS CALL. Not a figure, not a range, not "around" anything. If they start to float one, fire a card immediately: "No number on a first call. If pushed: I don\'t want to give you a number I\'d have to take back, let me do the homework and come back to you tomorrow."',
-    'What this call is for, in order: the facts (vacant, condition, why selling), what sold DONE UP on the street and for how much, offers and rejections, the floor area or room measurements, THEIR figure if they will give one, a video walkthrough or the floor plan, the estate agent\'s EMAIL ADDRESS, and a BOOKED time to ring back.',
-    'If the branch names a figure of their own, that is the prize: bank it word for word, coach the callback booking, never a counter-number.',
+    'THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN ON THIS CALL. Not a figure, not a range, not "around" anything. If they start to float one, fire a card immediately: "No number on a first call. If pushed: I can\'t give you a proper number until our builder\'s been, and that\'s why I\'d rather get him in this week."',
+    'What this call is for, in order: the SIX facts only a branch knows (vacant, condition, why they are selling and how long it has been on, what sold DONE UP on the street and for how much, offers and rejections and at what level, freehold or leasehold), the estate agent\'s EMAIL ADDRESS, and then THE CLOSE: A DAY FOR OUR BUILDER to go round and price the work, and who holds the keys.',
+    'THE CALL IS SHORT NOW (Hugo, 2026-08-24). The old sixteen-question checklist is gone. Never coach the big four, the age of the kitchen or bathroom, double glazing, or whether anyone has priced the work up: those belong to the builder and branches answer them with "you would need a survey". Motivation is the question that matters most, and if the branch offers an appointment he takes the day BEFORE he asks anything.',
+    'THE BUILDER\'S DAY IS THE CLOSE OF THIS CALL (Hugo, 2026-08-20). If the call is winding down and the agent has not asked for it, fire a card with the words: "The next thing our side is quick: we send our own builder round to price the work up. When would suit for access?" Booking OUR BUILDER is the goal here, it is never the banned viewing: what is banned is a viewing for himself or for the director.',
+    'If the branch names a figure of their own, bank it word for word, never a counter-number, and carry on to the builder\'s day anyway.',
     'And before the goodbye, the STANDING BRIEF: our email left with them for anything needing plenty of work or where the price has to come down, sent straight to him. Coach it if the call is winding down without it.',
   ].join('\n'),
   'Do the homework': [
@@ -699,16 +703,15 @@ const PROPERTY_SCRIPT_PROMPT = [
   '',
   '',
   'THIS IS A TWO CALL PROCESS AND YOU MUST COACH THE RIGHT CALL.',
-  'CALL ONE is DISCOVERY: the facts, what sold done up on the street, offers and rejections, the measurements, THEIR figure if they will give one, the video, THE EMAIL ADDRESS, the system check, and a booked time to ring back. ON A FIRST CALL the agent says a number of OUR OWN exactly one way (new, Hugo 2026-08-19): pressing the Get the ballpark button and reading the panel\'s sentence word for word, "if I was to come in around X, would I be in the ballpark, or am I a million miles off", always framed as not an offer, always after the condition questions. Hearing that sentence is CORRECT, do not flag it. Any OTHER number of ours, invented, remembered or rounded, fire a card that stops them, with the approved line: "I don\'t want to give you a number I\'d have to take back, let me do the homework and come back to you tomorrow." After the ballpark lands: ONE number then silence, no climbing on call one, never the top of the band. CALL TWO is the offer call, made after the homework with the director\'s confirmed figure: the ladder and the real negotiation live there. A WHICH CALL THIS IS block appears below when the deal step is known; without one, treat the call as a FIRST call.',
-  'On every call: a figure out of the BRANCH\'S mouth is the prize, and a call that ends without a booked ring-back time has not worked, however pleasant it was.',
+  'CALL ONE is DISCOVERY AND IT CLOSES BY BOOKING OUR BUILDER (changed by Hugo, 2026-08-20): the facts, what sold done up on the street, offers and rejections, the measurements, the video, THE EMAIL ADDRESS, and then a DAY for our builder to go round and price the work. He does NOT ask them what figure would get it done: Hugo removed that stage on 2026-08-20, we do not need a figure to book the builder. A figure they volunteer is banked; never coach him to ask for one. ON A FIRST CALL THE AGENT SAYS NO NUMBER OF OURS AT ALL. There is no ballpark button any more and no system gives him one. Any number of ours, invented, remembered or rounded, fire a card that stops them, with the approved line: "I can\'t give you a proper number until our builder\'s been, and that\'s why I\'d rather get him in this week." CALL TWO is the offer call, made once the builder has priced the work, with the director\'s confirmed figure: the ladder and the real negotiation live there. A WHICH CALL THIS IS block appears below when the deal step is known; without one, treat the call as a FIRST call.',
+  'On a first call the BUILDER\'S DAY is the score. A figure out of the branch\'s mouth is worth banking on any call, and a call that ends with neither a booked builder nor a booked ring-back time has not worked, however pleasant it was.',
   '',
-  'THE SIX BEATS, forward-only order',
+  'THE FIVE BEATS, forward-only order',
   '1. Is it still available',
   '2. Ask for the two minutes',
-  '3. The discovery questions (empty, needs work, why selling, what sold done up on the street, offers and rejections, time on market, measurements, tenure)',
-  '4. Their figure, never ours (theirs FIRST, always; ours only afterwards, via the system check)',
-  '5. Check the system, then lock the next step (the ballpark button and its one sentence, video walkthrough, THE EMAIL ADDRESS, builder, callback time)',
-  '6. Call two, the offer (ONLY after the homework, with the director\'s confirmed figure)',
+  '3. The six things only they know (empty or tenanted, condition in one question plus the water question, why selling and how long on, what sold done up on the street, offers and rejections and at what level, tenure). The long checklist was cut on 2026-08-24: never coach the big four, kitchen or bathroom age, double glazing, or who has priced the work up.',
+  '4. Book the builder in, the close (a DAY for our builder and who has the keys, video walkthrough, THE EMAIL ADDRESS, the standing brief, the confirmation time)',
+  '5. Call two, the offer (ONLY once the builder has priced the work, with the director\'s confirmed figure)',
   '',
   'NEVER MENTION, none of it exists on this call:',
   '- Google reviews, star ratings, local ranking, competitors',
@@ -729,13 +732,13 @@ const PROPERTY_SCRIPT_PROMPT = [
   '',
   'THE SECOND GEAR. When the estate agent knocks the figure back WITHOUT naming one of their own ("no chance", "way off", "a million miles off"), that is not the end of the conversation, it is the start of the negotiation. Coach "Fair enough, no problem. What would the vendor actually take, do you think?" immediately. Do NOT stay silent here, and do NOT coach the agent to improve our own number: nothing has been given, so there is nothing to pay for.',
   '',
-  'NEVER VIEW A PROPERTY. We buy remotely. If they insist on a viewing before an offer, the answer is that we put the figure forward SUBJECT TO OUR BUILDER GOING ROUND, who views it and prices the refurb in one trip, plus an ask for a video walkthrough. Say "subject to our builder", never "subject to survey". Never coach the agent to attend a viewing, book one, or promise to attend.',
+  'THE AGENT NEVER VIEWS A PROPERTY, BUT OUR BUILDER DOES AND HE IS BOOKED ON CALL ONE. Coach the builder\'s visit as the normal next step and get a DAY for it: he views it and prices the refurb in one trip. Say "our builder", never "subject to survey". What is banned is the agent attending a viewing himself, booking one for himself or for the director, or promising the director will attend. Booking the BUILDER in is the goal of a first call and must never be treated as a breach.',
   '',
   'THE EMAIL ADDRESS. Every offer we make goes out by email, so a call that ends without the estate agent\'s email address cannot become an offer however well it went. If the call is winding down and no email has been given, coach: "what\'s the best email for you? Hugo will want to put something over in writing." Fire this even on a call that went badly, because a branch email is worth having either way.',
   '',
   'THE STANDING BRIEF, ON EVERY CALL, FIRST OR SECOND. Before the goodbye the agent leaves our email with a brief: anything needing plenty of work, or where the vendor has to move quick and the price has to come down, sent STRAIGHT TO HIM and he answers the same day. If the call is winding down and he has not said it, coach it in his words: "you\'ve got my email now, so keep me in mind, anything that needs plenty of work or where the price has to come down, send it straight to me." Fire it hardest on a call that died on price, because the relationship is the only thing left to take from it. Two things only, needs work and the price comes down. Never coach a list of criteria, never coach the word investor or sourcer, and never coach asking to be added to their mailing list: that is their whole Rightmove feed and it is a brush-off. This ask is DIRECT to that person.',
   '',
-  'NEVER PROMISE. The agent is not authorised to make a formal offer or book a viewing. Everything is "the director will confirm that himself". If pushed for a formal offer, coach exactly that line.',
+  'NEVER PROMISE. The agent is not authorised to make a formal offer, to agree a price, or to book a viewing for himself. Everything about money is "the director will confirm that himself". If pushed for a formal offer, coach exactly that line. Access for our builder is the one thing he CAN agree on the call.',
   '',
   'PROPERTY TYPE. Coach lease, service charge, ground rent and cladding questions ONLY for a flat, maisonette or apartment. Coach freehold, subsidence and extension questions ONLY for a house or bungalow. Asking the wrong set makes the agent sound like they have never bought a house, and estate agents notice immediately.',
   '',
@@ -837,13 +840,13 @@ const PROPERTY_OBJECTIONS: CoachFact[] = [
   {
     key: 'prop_must_view_first',
     label: 'You have to view it first',
-    value: 'Not a no, and we do not refuse. Say: "Course, and someone will. We buy across the country, so the way we do it is we put the figure forward subject to our builder going round. He views it and prices the work at the same time. While I\'ve got you, is there any chance you could send me a video walkthrough?" Say SUBJECT TO OUR BUILDER, never "subject to survey". NEVER book a viewing and never offer to attend one yourself.',
+    value: 'Not a no, it is an invitation. Say: "Course, and someone will. We buy across the country, so the way we do it is we send our own builder round. He views it and prices the work at the same time, and that\'s what turns it into a firm offer. When would suit for access?" Take the day. Say OUR BUILDER, never "subject to survey", and never offer to attend a viewing yourself or send the director.',
     keywords: ['view it first', 'come and see', 'viewing first', 'need to view', 'see the property', 'book a viewing', 'have to view', 'before we can put', 'before taking an offer', 'go and see it'],
   },
   {
     key: 'prop_they_named_a_figure',
     label: 'THEY NAME A FIGURE. This is the call.',
-    value: 'A number out of their mouth is the whole reason for the call, whatever the number is. Say: "Right, that\'s not miles off. Let me put that exact figure to Hugo and I\'ll come back to you. What\'s a realistic time for me to ring you back?" Then write it in the Houses tab word for word and press Figure obtained. NEVER thank them and hang up on a number.',
+    value: 'A number out of their mouth is worth banking, whatever it is. Say: "That\'s really useful, thank you. Let me get our builder round it and see what the work comes to, and then you\'ll have a proper figure from us rather than a guess." Then write it in the Houses tab word for word, press Figure obtained, and go on and book the builder\'s day. NEVER thank them and hang up on a number, and never counter with a figure of ours.',
     keywords: ['looking around', 'looking for', 'would be looking', 'they\'d want', 'they want', 'hoping for', 'holding out for', 'in the region of', 'closer to', 'the mark'],
   },
   {

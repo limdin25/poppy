@@ -189,8 +189,12 @@ describe('what the coach is forbidden to say', () => {
     expect(prompt).toMatch(/ONLY for a house/)
   })
 
-  it('forbids promising a formal offer or a viewing', () => {
-    expect(prompt).toMatch(/not authorised to make a formal offer or book a viewing/)
+  it('forbids promising a formal offer, or a viewing for himself', () => {
+    // Narrowed 2026-08-20: booking OUR BUILDER is the close of call one, so a
+    // blanket "never book a viewing" would have the coach firing cards at the
+    // agent for doing his job.
+    expect(prompt).toMatch(/not authorised to make a formal offer, to agree a price, or to book a viewing for himself/)
+    expect(prompt).toMatch(/Access for our builder is the one thing he CAN agree on the call/)
   })
 })
 
@@ -231,7 +235,7 @@ describe('the screen and the coach say the same thing', () => {
   const html = read('src/core/content/property-call-script.html')
   const md = COACH.slice(COACH.indexOf('const PROPERTY_AGENT_SCRIPT_MD'), COACH.indexOf('const PROPERTY_SCRIPT_PROMPT'))
 
-  it('the six beats match, in the same order', () => {
+  it('the five beats match, in the same order', () => {
     // Rewritten 2026-08-13 for the two-call process: discovery (stages 1-5,
     // never a number of ours) and the offer call (stage 6, the director's
     // confirmed figure). The stage order is shared by the script page, the
@@ -239,18 +243,22 @@ describe('the screen and the coach say the same thing', () => {
     const beats = [
       'Is it still available',
       'Ask for the two minutes',
-      'The discovery questions',
-      'Their figure, never ours',
-      // Renamed 19 Aug: the system check (the ballpark button) joined the
-      // stage, same day the ballpark question moved onto call one.
-      'Check the system, then lock the next step',
+      // Renamed 2026-08-24 when the sixteen-question checklist was cut to six
+      // (Hugo: "quick hop, find out the motivation, book an appointment").
+      // The name is shared byte for byte by the script page, the coach's beat
+      // tracker and the agent-script markdown, which is what this checks.
+      'The six things only they know',
+      // Stage 4 was "Their figure, never ours" and it is GONE, 20 Aug: Hugo,
+      // "we don't need the figure any more to book the builder". Pedro no
+      // longer asks what would get it done on a first call; a volunteered
+      // number is still banked, in a panel on the booking stage.
+      // The 19 Aug system check lasted a day; the builder's day is the close.
+      'Book the builder in. This is the close.',
       'Call two, the offer',
-      // Added 18 Aug. Hugo: "the callback script for the 2nd call where we
-      // mention the ballpark and if accepted we book a viewing is not there at
-      // all." It was not: stage 6 ended by handing off to the director, and the
-      // one step that turns an agreed figure into a visit had no words on any
-      // of the three surfaces.
-      'They said yes to the figure. Book the builder.',
+      // Was "They said yes to the figure. Book the builder." Since the builder
+      // is booked on call one, stage 7 is the fallback for the branch that
+      // would not let him in first time.
+      'The builder still has not been. Get him in.',
     ]
     expect(COACH.slice(COACH.indexOf('const PROPERTY_STAGE_ORDER'), COACH.indexOf('PROPERTY_AGENT_SCRIPT_MD')))
       .toContain(beats.join("',\n  '"))
@@ -259,27 +267,33 @@ describe('the screen and the coach say the same thing', () => {
     for (const b of beats) expect(html).toContain(b)
   })
 
-  it('BOTH teach the call-one money law: the panel sentence is the only number of ours', () => {
-    // Rewritten 2026-08-19 when the ballpark question moved onto call one.
-    // The law is the same on every surface: the ONLY first-call figure is
-    // the one the green panel prices from THIS call, read word for word and
-    // framed as not an offer. A number from the agent's head is still the
-    // thing the coach fires a card at.
-    expect(COACH).toMatch(/says a number of OUR OWN exactly one way/)
-    expect(COACH).toMatch(/Any OTHER number of ours, invented, remembered or rounded, fire a card/)
-    expect(md).toMatch(/THE ONLY NUMBER OF OURS ON CALL ONE is the one the green ballpark panel/)
-    expect(md).toMatch(/from the agent's head, never/)
-    expect(html).toMatch(/The only number of ours you may say on call one/)
-    expect(html).toMatch(/From your head: never/)
+  it('BOTH teach the call-one money law: no number of ours, from anywhere', () => {
+    // Rewritten 2026-08-20 when the ballpark came back OFF call one. The law
+    // is the same on every surface and it is now the simplest it has ever
+    // been: on a first call the agent says no figure of ours at all, and no
+    // button gives him one.
+    expect(COACH).toMatch(/ON A FIRST CALL THE AGENT SAYS NO NUMBER OF OURS AT ALL/)
+    expect(COACH).toMatch(/There is no ballpark button any more/)
+    expect(md).toMatch(/NO NUMBER OF\s+OURS IS SAID ON CALL ONE AT ALL/)
+    expect(html).toMatch(/You say NO NUMBER OF OURS on call one/)
+    expect(html).toMatch(/no\s+ballpark button any more/)
     // And the approved deflection is the same sentence on both surfaces.
-    expect(COACH).toMatch(/have to take back/)  // \' escaped in source
-    expect(html).toMatch(/a number I'd have to take back/)
+    expect(COACH).toMatch(/until our builder\\?'s been/)
+    expect(html).toMatch(/until our builder's been/)
+  })
+
+  it('BOTH close call one on the builder\'s day', () => {
+    expect(COACH).toMatch(/THE BUILDER\\?'S DAY IS THE CLOSE OF THIS CALL/)
+    expect(md).toMatch(/When would suit for access/)
+    expect(html).toMatch(/When would suit for access/)
+    // And the coach must not grade that booking as the banned viewing.
+    expect(COACH).toMatch(/Booking the BUILDER in is the goal of a first call and must never be treated as a breach/)
   })
 
   it('BOTH answer the viewing wall with the builder, never a survey', () => {
-    expect(COACH).toMatch(/subject to our builder going round/i)
-    expect(md).toMatch(/builder round to have a look/i)
-    expect(html).toMatch(/subject to our builder going round/)
+    expect(COACH).toMatch(/we send our own builder round/i)
+    expect(md).toMatch(/we send our own builder round/i)
+    expect(html).toMatch(/we send our own builder round/)
     // "subject to survey" may only ever appear as an instruction NOT to say it.
     expect(COACH).not.toMatch(/Say: "[^"]*subject to (a |an |the )?survey/i)
   })
@@ -317,9 +331,10 @@ describe('the screen and the coach say the same thing', () => {
     }
   })
 
-  it('both say do not book a viewing', () => {
-    expect(html).toMatch(/do <b>not<\/b> book/i)
-    expect(md).toMatch(/Ask, do not book/i)
+  it('both say book the builder, and never a viewing for himself', () => {
+    expect(html).toMatch(/Do not book a viewing for <b>yourself<\/b>/i)
+    expect(md).toMatch(/no viewing for ourselves/i)
+    expect(md).toMatch(/GET A DAY, not "sometime next week"/)
   })
 })
 

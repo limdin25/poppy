@@ -24,15 +24,20 @@ import { readFileSync } from 'node:fs'
 
 const read = (p: string) => readFileSync(p, 'utf8')
 
-describe('the room: the button exists on call one and only call one', () => {
+// WITHDRAWN 2026-08-20, ONE DAY LATER. Hugo: "we will book the builder call
+// one and we won't fetch prices or ballpark." The house is already proven 20%
+// under size-and-street-tested comps before it reaches Pedro's queue, so the
+// only thing missing on call one is the cost of the work, and the builder is
+// what answers that. The panel, the route and the lib all still exist and are
+// still used to ARM call two from the board; what is gone is the button above
+// the call-one script, and every grader that treated a first-call figure as
+// correct play.
+describe('the room: the button is OFF call one', () => {
   const room = read('src/features/crm/components/live-call/PropertyCallRoom.tsx')
 
-  it('mounts the panel in discovery mode with a selected house, keyed by listing', () => {
-    // Discovery mode is exactly the mode with no armed figures, and the key
-    // means switching houses can never show one house's figure beside
-    // another's script.
-    expect(room).toMatch(/callMode === 'discovery' && selectedListing && \(/)
-    expect(room).toMatch(/<BallparkOnCallPanel key=\{selectedListing\.id\} propertyId=\{selectedListing\.id\} \/>/)
+  it('does not mount the ballpark panel above the discovery script', () => {
+    expect(room).not.toMatch(/<BallparkOnCallPanel/)
+    expect(room).not.toMatch(/import BallparkOnCallPanel/)
   })
 })
 
@@ -91,26 +96,27 @@ describe('the lib: fast skips the deep photo pass, the runner keeps it', () => {
 })
 
 describe('the graders agree with the script, or Pedro gets marked down for obeying it', () => {
-  it('the live coach allows exactly the panel sentence and still stops invented numbers', () => {
+  it('the live coach stops EVERY number of ours on a first call', () => {
     const coach = read('supabase/functions/wk-voice-transcription/index.ts')
-    expect(coach).toMatch(/Hearing that sentence is CORRECT, do not flag it/)
-    expect(coach).toMatch(/Any OTHER number of ours, invented, remembered or rounded, fire a card/)
-    expect(coach).toMatch(/Check the system, then lock the next step/)
+    expect(coach).toMatch(/ON A FIRST CALL THE AGENT SAYS NO NUMBER OF OURS AT ALL/)
+    expect(coach).toMatch(/There is no ballpark button any more/)
+    expect(coach).not.toMatch(/Hearing that sentence is CORRECT, do not flag it/)
+    expect(coach).toMatch(/Book the builder in\. This is the close\./)
   })
 
-  it('the 5:30 report grades the approved first-call float as correct play', () => {
+  it('the 5:30 report grades a first-call figure as a rule break again', () => {
     const report = read('api/cron/daily-agent-reports.ts')
-    expect(report).toMatch(/a first-call figure said the approved way is CORRECT PLAY/)
-    // And the unframed number stays a rule break: the fence moved, it did
-    // not fall.
-    expect(report).toMatch(/is still the old rule break/)
+    expect(report).toMatch(/is a RULE BREAK again and should be zero/)
+    expect(report).toMatch(/was withdrawn by Hugo on 2026-08-20/)
+    expect(report).not.toMatch(/said the approved way is CORRECT PLAY/)
   })
 
-  it('the after-call review expects their figure first, then the system check', () => {
+  it('the after-call review expects the builder booked, and no figure asked for', () => {
     const review = read('api/crm/call-review.ts')
-    expect(review).toMatch(/Get THEIR figure first/)
-    expect(review).toMatch(/THE SYSTEM CHECK, then the money/)
-    expect(review).toMatch(/saying NO number of ours is the correct call, not a miss/)
+    expect(review).toMatch(/BOOK THE BUILDER/)
+    expect(review).toMatch(/saying none is correct play, never a miss/)
+    expect(review).not.toMatch(/Get THEIR figure first/)
+    expect(review).toMatch(/asking for it is not a step on a first call/)
   })
 })
 

@@ -375,6 +375,14 @@ const P_TENURE = /freehold|leasehold/i;
 // The two discovery questions added 2026-08-13 with the two-call process.
 const P_STREET_SOLD = /(anything|what|one)[^.?!]{0,40}(sold|gone|went)[^.?!]{0,40}(street|road|nearby)|(street|road)[^.?!]{0,30}sold[^.?!]{0,30}(recently|done up)|done up[^.?!]{0,40}(went|go|sold|achieve)|what did (it|that one|they) (go|sell|achieve)/i;
 const P_MEASUREMENTS = /floor ?area|square met|\bsq ?m\b|room (measurements|sizes)|floor ?plan/i;
+// THE BRANCH OFFERING THE APPOINTMENT, unprompted, usually in the first minute.
+// Their words, not ours, so this is matched on the CALLER side only.
+const P_THEY_OFFER_VIEWING =
+  /would you like[^.?!]{0,30}\b(views?|viewing|booked|book)\b|(can|could|shall|i'll|i will) [^.?!]{0,15}(get you (booked )?in|book you in|arrange (you )?a viewing)|get you booked in|arrange a viewing for you|do you want to (view|book)/i;
+// The agent pushing that offer away to run his questions first. This exact
+// sentence is why two bookings were lost on 2026-08-24.
+const P_DEFERS_THE_VIEWING =
+  /before (i|we) (actually )?(book|schedule|do|arrange)|before (we|i) (book|schedule|arrange)|(couple|few) of questions first|questions first|first (for|before) our decision making/i;
 /** Money in ASR text: "£62,000", "62k", "62 grand", "sixty two thousand". */
 const P_MONEY = /£ ?\d|\b\d{2,3}[.,]?\d{0,3} ?(k\b|grand|thousand)|\b(fifty|sixty|seventy|eighty|ninety|hundred)([- ]\w+)? (thousand|grand)/i;
 /** The offer WITHOUT offering: "if we were to offer around X, am I in the
@@ -419,6 +427,12 @@ const P_BRIEF_ASK = /keep (me|us) in mind|bear (me|us) in mind|keep an eye out|t
 const P_BRIEF_WHAT = /(needs?|needing|need)[^.?!]{0,25}(plenty of work|a lot of work|full refurb|proper refurb|doing up|work doing|refurb)|price[^.?!]{0,25}(has|have|needs?|got) to come down|(has|have|got) to (sell|move) (quick|fast)|below (the )?asking|discount/i;
 /** Offering subject to a builder rather than promising a viewing. */
 const P_SUBJECT_TO_BUILDER = /subject to (our|my|a) builder|builder (going|coming) round|builder[^.?!]{0,30}(view|quote|price)|send (our|my|a) builder/i;
+/** THE CLOSE OF CALL ONE since 2026-08-20 (Hugo: book the builder on call one,
+ *  no prices and no ballpark). Two parts, because either half alone is
+ *  something else: the VISIT (our builder comes and prices it) and the WHEN
+ *  (a day, access, keys). "when's a good time" on its own is the callback. */
+const P_BUILDER_VISIT = /(our|my|the|a) builder[^.?!]{0,40}(round|over|out|up there|come|call|look|view|price|see it|half an hour)|(send|get|bring|book|arrange)[^.?!]{0,20}builder/i;
+const P_BUILDER_WHEN = /when would suit|when'?s (good|best|convenient)|what (day|time)[^.?!]{0,30}(suit|work|good|free|best)|(have you got|what have you got|what'?s) free|access|keys?\b|who (does|would) he meet|sort (out )?(a|the) (day|time)/i;
 // Rule breaks. The deflections the script TEACHES must not count as breaks:
 // "nothing I've said today is a formal offer" contains "formal offer", and
 // "let me check Hugo's diary" is the correct viewing dodge.
@@ -496,6 +510,23 @@ export function propertyScriptCheck(calls: CallRow[], firstContactIds?: Set<stri
     // The new discovery questions.
     asked_what_sold_done_up_on_street: n((c) => any(c, P_STREET_SOLD)),
     asked_floor_area_or_measurements: n((c) => any(c, P_MEASUREMENTS)),
+    // RULE BREAK, added 2026-08-24. The branch offered to book him in and he
+    // pushed it away to run his questions first. Six times in three days, and
+    // twice the call died before the booking came back round, so a day that was
+    // being handed over was simply lost. Counted as a PAIR in call order: their
+    // offer, then his deferral after it. His deferral alone is not a break (the
+    // branch may never have offered), and their offer alone is not either (he
+    // may have taken it).
+    deflected_an_offered_viewing: n((c) => {
+      const lines = c.lines ?? [];
+      const offered = lines.findIndex(
+        (l) => l.speaker === 'caller' && P_THEY_OFFER_VIEWING.test(l.body ?? ''),
+      );
+      if (offered === -1) return false;
+      return lines.slice(offered + 1).some(
+        (l) => l.speaker === 'agent' && P_DEFERS_THE_VIEWING.test(l.body ?? ''),
+      );
+    }),
     // The opener and the intro.
     asked_availability: n((c) => any(c, P_AVAILABILITY)),
     said_who_we_are: n((c) => any(c, P_INTRO)),
@@ -528,6 +559,16 @@ export function propertyScriptCheck(calls: CallRow[], firstContactIds?: Set<stri
     agreed_callback_time: n((c) => any(c, P_CALLBACK)),
     asked_for_video_tour: n((c) => any(c, P_ASKS_FOR_VIDEO)),
     offered_subject_to_builder: n((c) => any(c, P_SUBJECT_TO_BUILDER)),
+    // THE SCORE OF CALL ONE from 2026-08-20. The house is already proven 20%
+    // under size-and-street-tested comps before it reaches the queue, so the
+    // only thing missing is the cost of the work: the call exists to get our
+    // builder a day. Both halves must be there, the visit and the when, so
+    // "our builder would price it" with no day asked for scores nothing.
+    asked_for_the_builder_day: n((c) => {
+      const lines = agentLines(c);
+      return lines.some((b) => P_BUILDER_VISIT.test(b))
+        && lines.some((b) => P_BUILDER_WHEN.test(b));
+    }),
     // THE STANDING BRIEF, on every call, first or second. Both halves have to
     // be there, the ask and what to send, and they are looked for in a window
     // of two consecutive agent turns rather than one line: the transcriber
@@ -567,8 +608,14 @@ export function propertyScriptCheck(calls: CallRow[], firstContactIds?: Set<stri
     // Rule breaks. All should be zero.
     made_formal_offer: n((c) =>
       agentLines(c).some((b) => P_FORMAL_OFFER.test(b) && !P_FORMAL_OFFER_DEFLECTION.test(b))),
+    // RULE BREAK: a viewing booked for HIMSELF. Booking our BUILDER in is the
+    // job of call one since 2026-08-20, so a line that names the builder is
+    // never this break, however it is phrased. Without that exception the
+    // report grades the new close ("shall I book the builder in for Thursday")
+    // as the thing the agent is banned from doing.
     booked_a_viewing: n((c) =>
-      agentLines(c).some((b) => P_BOOKS_VIEWING.test(b) && !P_VIEWING_DEFLECTION.test(b))),
+      agentLines(c).some((b) =>
+        P_BOOKS_VIEWING.test(b) && !P_VIEWING_DEFLECTION.test(b) && !/builder/i.test(b))),
     sourcer_or_course_talk: n((c) => any(c, P_SOURCER_TALK)),
   };
 }
@@ -618,13 +665,15 @@ async function housesTabStats(agentId: string, since: string, until: string): Pr
 
 const PROPERTY_SYSTEM = `You write the end-of-day coaching report for a UK property deal-sourcing caller. They ring estate agents about specific listed properties on behalf of a cash buyer: the company is Unico, the director is Hugo. Since 2026-08-13 the job is a TWO CALL process, and the single most important thing you grade is whether the right call got the right behaviour.
 
-CALL ONE, DISCOVERY (a branch rung for the first time): confirm it is available, work the fact checklist, ask what sold DONE UP on the same street and for how much, ask about offers and rejections, get the floor area or room measurements, ask for a video walkthrough, get THEIR figure if they will give one ("is there a figure the vendor has in mind that would actually get it done?"), get the agent's email address, and book a time to ring back. ON A FIRST CALL THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN: no figure, no range, no "around". The approved deflection when pushed is "I don't want to give you a number I'd have to take back, let me do the homework and come back to you tomorrow." A number of ours floated on a first call is a RULE BREAK and must be reported plainly, with the quote.
+THE CALL WAS CUT SHORT ON 2026-08-24 (Hugo). The sixteen-question checklist is gone. The rule now is: ask it only if the BRANCH can answer it and OUR BUILDER cannot. So the questions about the big four, the age of the kitchen and bathroom, double glazing, and whether anybody has priced the work up have all been REMOVED from the script, because the builder measures them properly and branches answered them with "you would need a survey". NEVER grade a caller down for skipping one of those, and never coach them back. What is left is six families: occupancy, condition (one question, plus the water question which survived on purpose), why they are selling and how long it has been on, what sold done up on the street, offers and rejections and at what level, and tenure. Motivation is the one that matters most.
 
-CALL TWO, THE OFFER CALL (a ring-back, after the homework): float the director's confirmed opening figure WITHOUT making a formal offer ("if we were to offer around X, am I in the ballpark or a million miles off?"), go quiet, get the branch to name a figure back, push back once with a comparable sale, climb the ladder one rung at a time, and push to get the figure to the vendor before any viewing. On THAT call the floated figure is the job, not a fault.
+CALL ONE, DISCOVERY, AND IT ENDS BY BOOKING OUR BUILDER (changed 2026-08-20 by Hugo: the builder gets booked on call one, and there is no price talk of ours and no ballpark on that call at all): confirm it is available, work the six fact families, ask what sold DONE UP on the same street and for how much, ask about offers and rejections, get the agent's email address, and then ASK FOR A DAY FOR OUR BUILDER to go round and price the work, plus who holds the keys. That booked day is the score of call one and it is counted as asked_for_the_builder_day: a first call that got the facts but never asked for the builder's day missed its own close, however friendly it was. ON A FIRST CALL THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN: no figure, no range, no "around", and there is no longer any system or panel that gives them one. The approved deflection when pushed is "I can't give you a proper number until our builder's been, and that's why I'd rather get him in this week." A number of ours floated on a first call is a RULE BREAK and must be reported plainly, with the quote.
+
+CALL TWO, THE OFFER CALL (a ring-back, made once the builder has priced the work): float the director's confirmed opening figure WITHOUT making a formal offer ("if we were to offer around X, am I in the ballpark or a million miles off?"), go quiet, get the branch to name a figure back, push back once with a comparable sale, climb the ladder one rung at a time, and push to get the figure to the vendor. On THAT call the floated figure is the job, not a fault. If the branch never let the builder in, getting him in is still the next step on that call.
 
 ON BOTH CALLS, THE STANDING BRIEF (from 2026-08-15): before the goodbye they leave our email with the branch and give them a brief for the future, anything needing plenty of work or where the price has to come down, sent straight to them and answered the same day. It is counted as left_the_standing_brief. It costs one sentence, it is what turns a dead call into a source of houses, and a call that ended without it is a missed step even if the call went well. Being added to the branch's own mailing list is NOT this: that list is every property on Rightmove and it is a brush-off.
 
-On both calls: "let me put that to Hugo" is a lever used late, never an opener. They must NEVER make a formal or binding offer, NEVER book a viewing (the director arranges those, and our builder is the viewer), never quote completion timescales, and never reveal or confirm their walk-away ceiling.
+On both calls: "let me put that to Hugo" is a lever used late, never an opener. They must NEVER make a formal or binding offer, never quote completion timescales, and never reveal or confirm their walk-away ceiling. On viewings, read the difference carefully: booking a visit for THEMSELVES or for the director is a rule break, and booking OUR BUILDER in to look at the house and price the work is the goal of call one. Never grade the builder's visit as a booked viewing.
 
 The agent reads this report themselves. Write it to be read by the person it is about.
 
@@ -634,10 +683,12 @@ Non-negotiable: you MUST report these explicitly if they appear anywhere in the 
 - Swearing or crude language by the agent. Quote it verbatim, name the agency and call_id, and say plainly that it is not acceptable on a business call.
 - Rudeness, arguing, talking over people, or pressuring a branch that has clearly said no.
 - A formal or binding offer, or agreeing a price as if it were final. Only the director can offer.
-- Booking or promising a viewing, or committing the director to a time.
+- Booking or promising a viewing for THEMSELVES or for the director, or committing the director to a time. The builder's own visit is not this and must never be flagged.
 - Inventing facts: funds, completion timescales, valuations, or company details. The company line is Unico (full name Ulinc Unico Group Limited) and anything beyond the approved details is the director's to share.
 - Saying or confirming the walk-away ceiling out loud.
 - A figure of ours floated on a FIRST call to a branch (the stats mark these): quote it and restate the rule, the homework comes before any number.
+- PUSHING AWAY AN OFFERED APPOINTMENT (counted as deflected_an_offered_viewing, added 2026-08-24). The branch said some version of "would you like me to book you in?" and the caller answered "before I book, let me ask a few questions first". That is now a rule break. A day in the diary cannot be lost to a bad line, a hang-up or a colleague picking up, and the questions can always be asked afterwards or on the confirmation call. Quote both sides, theirs and then his, and give the fix: say yes, take the day, then ask.
+- SAYING OUT LOUD THAT THEY HAVE NOT LOOKED AT THE LISTING ("I'm looking at a spreadsheet", "I'm not on the website"). It has cost whole calls: one branch called the questions ridiculous and another mocked the caller to a colleague with the line still open. Quote it and say plainly that the advert is open before the dial.
 Never leave one of these out because the day went well otherwise.
 
 Ground every point in what actually happened. Quote the agent's own words, and cite the agency name so they can find the call. Never invent a quote. The statistics are given to you and are correct. Never recompute them or contradict them.
@@ -650,8 +701,8 @@ Write in British English, plain language, second person ("you"). Never write a l
 
 **Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, any long gap with no calls. If a CORRECTION block appears at the top of this prompt, the FIRST thing in this section is that correction, said plainly and without excuses.
 **What worked**: up to three specific things, each with a quote or an agency name.
-**The grade**: the day as one funnel, on its own lines: dials, conversations, availability confirmed, money conversations opened, figures obtained from the branch, callbacks agreed with a time. Include how far into the call the money landed, because that is usually the answer. Then say plainly which step is losing the most. A figure out of the branch's mouth is the score that matters; a polite day of chat that never reaches the money is not a good day. If outcomes were not logged in the Houses tab, say so: the figures are the reason the calls happen and they must be written down where the director can see them.
-**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the fact checklist, what sold done up on the street, the floor area ask, asking THEM for a figure, the video ask, the email address, the standing brief left for future houses, the callback time, then the rule breaks (a figure of ours on a first call, formal offer, booked viewing, sourcer/course talk), which should all be zero. On ring-backs, grade the money conversation: the floated figure, the silence, the ladder. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
+**The grade**: the day as one funnel, on its own lines: dials, conversations, availability confirmed, builder days asked for, figures obtained from the branch, callbacks agreed with a time. Then say plainly which step is losing the most. On first calls the builder's day is the score that matters: a polite day of chat that never asks for it is not a good day, whatever else was learned. If outcomes were not logged in the Houses tab, say so: the bookings and the figures are the reason the calls happen and they must be written down where the director can see them.
+**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the six fact families, what sold done up on the street, the builder's day and the keys, the email address, the standing brief left for future houses, the callback time, then the rule breaks (a figure of ours on a first call, formal offer, a viewing booked for themselves, an offered appointment pushed away, sourcer/course talk), which should all be zero. On ring-backs, grade the money conversation: the floated figure, the silence, the ladder. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
 **Fix tomorrow**: every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
 **Tomorrow's one thing**: a single sentence naming the one change that would make the biggest difference.
 
@@ -724,12 +775,14 @@ Notes on the script counts:
 - NEVER STATE AN ABSOLUTE FROM ONE OF THESE COUNTS. Do not write "you never once asked", "you did not agree a single callback", or "X: 0" unless you have read the transcripts and confirmed it yourself. Write "I could only find two" and quote one of them. On 2026-08-10 this report told an agent he floated a figure 4 times when he did it 9 times, and that he agreed no callbacks on a day he agreed five, one at a named time. Being told you did not do something you did is how a coaching report loses its authority for good.
 - Where a count disagrees with what you can plainly read in the transcripts, the transcripts win. Say what you actually saw.
 - "discovery_calls" are conversations with branches rung for the FIRST time today; "offer_or_chase_calls" are ring-backs. They are graded oppositely.
-- "floated_our_figure_on_first_call" changed meaning on 2026-08-19: the system check now lives ON call one, so a first-call figure said the approved way is CORRECT PLAY, not a rule break. The approved way, all three parts: framed as not an offer ("I'm not making an offer" or "let me check my system here"), asked as the ballpark question ("would I be in the ballpark, or am I a million miles off"), one number then silence. A first-call figure WITHOUT that framing, or a second improved number in the same call, is still the old rule break: quote the words and give the deflection ("I don't want to give you a number I'd have to take back") as the fix. On a ring-back a floated figure was always correct play.
-- "asked_what_sold_done_up_on_street" and "asked_floor_area_or_measurements" are the two discovery questions added 2026-08-13. They are the highest-value questions on the call: the first prices the deal from the agent's own street, the second is what lets the homework check the comparables. Praise them when present, coach them when missing.
-- "floated_a_figure" is the offer-without-offering ("if we were to offer around X, am I in the ballpark"). On a RING-BACK it is the job. "asked_them_for_a_figure" is the other half of the money conversation and is right on EVERY call. "lead_named_figure" is the score: a number out of the branch's mouth.
+- "floated_our_figure_on_first_call" is a RULE BREAK again and should be zero. The 2026-08-19 exception (a ballpark button on call one, so a framed first-call figure counted as correct play) was withdrawn by Hugo on 2026-08-20: call one fetches no prices and no ballpark, and the button is gone from the screen. Any number of ours on a first call, however it was framed, gets quoted with the fix beside it ("I can't give you a proper number until our builder's been"). On a ring-back a floated figure is the job, not a fault.
+- "asked_for_the_builder_day" is the close of call one and the number to lead the script check with. Both halves have to be heard: the builder coming round to price the work, and a day, access or keys. Missing it is the biggest miss on a first call, ahead of any question in the checklist.
+- "asked_what_sold_done_up_on_street" is the highest-value question on the call: it prices the deal from the agent's own street. Praise it when present, coach it when missing.
+- "asked_floor_area_or_measurements" and "asked_for_video_tour" are NO LONGER expected on every call and must never be reported as a missed step on their own (Hugo, 2026-08-20). The floor plan we already hold, a house cannot reach the queue without one, so asking for it is a step backwards. The video is asked for ONLY when no builder day was agreed, because asking a branch to film a house we are sending a builder to reads as not believing our own booking. So: a call with a builder day and no video ask is a GOOD call. A call with NO builder day and no video ask is where the video is worth coaching.
+- "floated_a_figure" is the offer-without-offering ("if we were to offer around X, am I in the ballpark"). On a RING-BACK it is the job, and on a first call it is a rule break. "asked_them_for_a_figure" is a RING-BACK step only since 2026-08-20 (Hugo: "we don't need the figure any more to book the builder"), so on a first call it is neither required nor coached: do not tell a first-call day it was missed. "lead_named_figure" is a number out of the branch's mouth and is worth banking whenever it comes.
 - "pct_of_call_before_money" is the median share of the agent's turns that passed before the money question landed, across the calls that reached it. This is the most actionable number on the page. Under about 60% there is room to negotiate; up near 90% the figure goes in with nothing left of the call and the answer is always no. If it is high, lead with it.
 - "second_gear_after_a_no" out of "faced_a_no" is how often they kept going after the branch knocked the figure back, rather than thanking them and hanging up. This is where deals die.
-- "made_formal_offer", "booked_a_viewing" and "sourcer_or_course_talk" are rule breaks and should all be zero. The script's own deflection lines ("nothing I've said today is a formal offer", "let me check Hugo's diary") are correct play and are already excluded from those counts.
+- "made_formal_offer", "booked_a_viewing" and "sourcer_or_course_talk" are rule breaks and should all be zero. The script's own deflection lines ("nothing I've said today is a formal offer", "let me check Hugo's diary") are correct play and are already excluded from those counts. "booked_a_viewing" means a viewing for HIMSELF: any line naming the builder is excluded from it, because booking the builder in is the job.
 
 TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS (voicemails excluded):
 ${transcripts || '(no live conversations today)'}`;
