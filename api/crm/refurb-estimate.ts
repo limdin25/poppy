@@ -30,7 +30,27 @@ import {
   type ReadResult, type SectionAnswer,
 } from '../../src/features/crm/lib/refurbCard.js';
 
-export const config = { maxDuration: 60 };
+// 300, NOT 60, AND THAT IS NOT PADDING.
+//
+// Hugo hit a 504 on his first real use. Fourteen filled-in boxes is a long
+// transcript, and the reader answers with a line, a plain-English detail and a
+// verbatim quote for every job it finds. On claude-sonnet-5, which thinks
+// before it answers, one call can run well past a minute. `maxDuration: 60` was
+// copied from the shorter CRM routes without checking that.
+//
+// api/lib/llm.ts already carries the scar of this exact failure: "unbounded
+// thinking is how ... fetch-ballpark blew the 25 second edge ceiling into a
+// 504". The thinking here has been capped at the floor since the first version.
+// The remaining time is the answer itself, so the ceiling had to move.
+export const config = { maxDuration: 300 };
+
+/** Stop reading and answer honestly rather than letting the gateway kill us.
+ *
+ *  A 504 is the worst outcome available: the gateway answers with an HTML error
+ *  page, so the browser cannot even parse a reason out of it, and Pedro loses
+ *  everything he just dictated with nothing to act on. Leaving room to return a
+ *  real JSON error means he gets a sentence telling him what to do next. */
+const DEADLINE_MS = 270_000;
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -116,13 +136,23 @@ async function handleWeb(req: Request): Promise<Response> {
     transcript.slice(0, 24_000),
   ].filter(Boolean).join('\n');
 
-  // Three attempts, then an honest failure. This route must never answer with
-  // a made-up estimate: an empty result Pedro can see is recoverable, a
-  // confident wrong number is not.
+  // Up to three attempts, but ONLY while there is real time left. A retry
+  // started with forty seconds on the clock is not a retry, it is a 504 with
+  // extra steps, and Pedro loses everything he dictated.
+  //
+  // This route must never answer with a made-up estimate either: an empty
+  // result he can see is recoverable, a confident wrong number is not.
+  const started = Date.now();
+  const timeLeft = () => DEADLINE_MS - (Date.now() - started);
+
   let read: ReadResult | null = null;
-  for (let attempt = 0; attempt < 3 && !read; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 1200 * attempt));
-    const raw = await callLLM(MODEL, SYSTEM, [{ role: 'user', content: user }], 4000,
+  let attempts = 0;
+  // 70 seconds is roughly one unhurried read on a long transcript. Below that,
+  // starting another one is a coin flip we would lose.
+  while (!read && attempts < 3 && timeLeft() > 70_000) {
+    if (attempts > 0) await new Promise((r) => setTimeout(r, 1200 * attempts));
+    attempts++;
+    const raw = await callLLM(MODEL, SYSTEM, [{ role: 'user', content: user }], 3500,
       { thinkingBudget: 1024 });
     if (raw) {
       read = parseReadResult(raw);
@@ -130,9 +160,13 @@ async function handleWeb(req: Request): Promise<Response> {
     }
   }
   if (!read) {
+    const ranOut = timeLeft() <= 70_000;
+    console.warn(`[refurb-estimate] no read after ${attempts} attempt(s), ${Math.round((Date.now() - started) / 1000)}s elapsed`);
     return Response.json({
-      error: 'The reader could not make sense of that recording. Try again, or write the works out yourself.',
-    }, { status: 502 });
+      error: ranOut
+        ? 'That took too long to read, which usually means there is a lot of text. Everything you typed is still on the page. Try pressing the button again, and if it happens twice, shorten the longest boxes.'
+        : 'The reader could not make sense of that. Everything you typed is still on the page, so try the button again.',
+    }, { status: 504 });
   }
 
   // ---- the money, computed HERE and by no model -------------------------

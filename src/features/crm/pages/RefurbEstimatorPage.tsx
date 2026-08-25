@@ -131,7 +131,15 @@ export default function RefurbEstimatorPage() {
       const raw = await res.text();
       let json: Record<string, unknown>;
       try { json = JSON.parse(raw) as Record<string, unknown>; }
-      catch { throw new Error(`The server answered with an error (HTTP ${res.status}). Try again.`); }
+      catch {
+        // A gateway timeout answers with an HTML error page, so there is no
+        // reason to parse out of it. Saying "HTTP 504" to Pedro is useless, and
+        // his first fear is always that he has lost what he dictated, so the
+        // message answers that before anything else.
+        throw new Error(res.status === 504 || res.status === 502
+          ? 'That took too long to come back. Nothing you typed is lost, it is all still on this page. Press the button again.'
+          : `The server had a problem (HTTP ${res.status}). Nothing you typed is lost. Try the button again.`);
+      }
       if (!res.ok) throw new Error(String(json.error ?? `HTTP ${res.status}`));
       setResult(json as unknown as ApiResult);
       // The answer is below fourteen boxes, so it needs bringing into view.
@@ -329,6 +337,12 @@ export default function RefurbEstimatorPage() {
               ? <><Loader2 className="h-4 w-4 animate-spin" /> Reading it and pricing it up</>
               : <><Sparkles className="h-4 w-4" /> Generate the costs and the builder message</>}
           </button>
+          {busy && (
+            <p className="mt-2 text-center text-[11.5px] leading-relaxed text-[#6B7280]">
+              This takes up to a minute or so on a long one. Leave the page open,
+              nothing you typed can be lost.
+            </p>
+          )}
           {!enoughToPrice && (
             <p className="mt-2 text-center text-[11.5px] text-[#9CA3AF]">
               Fill in at least one part of the property first.
