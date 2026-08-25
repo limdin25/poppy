@@ -93,10 +93,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const already = new Set(
       ((done ?? []) as Row[])
         .filter((d) => {
+          // The cap is checked FIRST and regardless of whether the house has
+          // ever been read, because a house that fails outright writes a sweep
+          // count and no analysed_at. Checking analysed_at first is how Oxford
+          // Gardens was swept every ten minutes for ever.
+          if (Number(d.analysis_meta?.sweeps ?? 0) >= SWEEP_CAP) return true;
           if (!d.analysed_at) return false;
-          const readers = d.analysis_meta?.readers?.length ?? 0;
-          if (readers >= 2) return true;
-          return Number(d.analysis_meta?.sweeps ?? 0) >= SWEEP_CAP;
+          return (d.analysis_meta?.readers?.length ?? 0) >= 2;
         })
         .map((d) => d.property_id),
     );

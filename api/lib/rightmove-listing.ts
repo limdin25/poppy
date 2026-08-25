@@ -199,6 +199,23 @@ function hydrate(arr: unknown[], index: unknown, depth = 0): unknown {
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+/**
+ * A real picture on Rightmove's own media host, and nothing else.
+ *
+ * NOT PEDANTRY, A LIVE OUTAGE. Oxford Gardens, Stafford lists FOUR floor plans
+ * and the fourth is `https://my.giraffe360.com/3dflp/791x5j4`, a 3D tour page.
+ * Handed to a vision model as an image it fails the WHOLE request, so both
+ * readers died on that one property every single time it was swept, while every
+ * other house read fine. One bad URL in a list is not a degraded answer, it is
+ * no answer at all, so the list is filtered here rather than hoped about later.
+ *
+ * The host is pinned as well as the extension: these URLs come off a page we do
+ * not control and are handed to a third party to fetch.
+ */
+export function isImageUrl(url: string): boolean {
+  return /^https:\/\/media\.rightmove\.co\.uk\/[^\s"']+\.(jpe?g|png|gif|webp)$/i.test(url);
+}
 const num = (v: unknown): number | null =>
   (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
 
@@ -210,14 +227,17 @@ export function readPropertyData(pd: Record<string, unknown>, url: string): List
   for (const raw of rawPhotos) {
     const p = (raw ?? {}) as Record<string, unknown>;
     const full = str(p.url);
-    if (!full) continue;
+    // Same reason as the floor plans below: anything that is not a picture
+    // kills the whole vision request, not just its own slot.
+    if (!isImageUrl(full)) continue;
     const sizes = (p.resizedImageUrls ?? {}) as Record<string, unknown>;
+    const mid = str(sizes.size656x437) || str(sizes.size476x317);
     photos.push({
       url: full,
       // 656x437 first: big enough to see a tide mark, small enough to be
       // roughly 400 tokens. Falling back to the full size is fine, it just
       // costs more.
-      thumb: str(sizes.size656x437) || str(sizes.size476x317) || full,
+      thumb: isImageUrl(mid) ? mid : full,
       caption: str(p.caption) || null,
     });
     if (photos.length >= MAX_PHOTOS) break;
@@ -227,7 +247,7 @@ export function readPropertyData(pd: Record<string, unknown>, url: string): List
   for (const raw of (Array.isArray(pd.floorplans) ? pd.floorplans : [])) {
     const f = (raw ?? {}) as Record<string, unknown>;
     // The FULL size, deliberately. See MAX_FLOORPLANS.
-    if (str(f.url)) floorplans.push(str(f.url));
+    if (isImageUrl(str(f.url))) floorplans.push(str(f.url));
     if (floorplans.length >= MAX_FLOORPLANS) break;
   }
 

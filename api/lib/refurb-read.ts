@@ -401,13 +401,32 @@ export async function readProperty(
   }>;
   if (!good.length) {
     const ranOut = Date.now() - started >= DEADLINE_MS;
-    return {
-      ok: false,
-      ranOut,
-      error: ranOut
-        ? 'That took too long to read. Nothing you have confirmed is lost, it is all still on this page. Press the button again.'
-        : 'Neither reader could make sense of this property. Nothing you have confirmed is lost. Try the button again, and if it happens twice, fill the parts in yourself and price it from those.',
-    };
+    const error = ranOut
+      ? 'That took too long to read. Nothing you have confirmed is lost, it is all still on this page. Press the button again.'
+      : 'Neither reader could make sense of this property. Nothing you have confirmed is lost. Try the button again, and if it happens twice, fill the parts in yourself and price it from those.';
+
+    // A FAILURE HAS TO BE WRITTEN DOWN, or the sweep never stops paying for it.
+    // Oxford Gardens, Stafford failed both readers on every single run (one of
+    // its four "floor plans" was a 3D tour page, not a picture), and because a
+    // failed read wrote no row, the sweep's spend cap never counted it and it
+    // came back every ten minutes for ever. Four model calls a time.
+    if (opts.sweep) {
+      const prior = (stored?.analysis_meta ?? {}) as Record<string, unknown>;
+      const { error: writeErr } = await sb.from('brrr_refurb_assessments').upsert({
+        property_id: house.id,
+        ...(listing ? { listing, listing_fetched_at: new Date().toISOString() } : {}),
+        analysis_meta: {
+          ...prior,
+          sweeps: Number(prior.sweeps ?? 0) + 1,
+          lastError: error.slice(0, 200),
+          lastFailedAt: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'property_id' });
+      if (writeErr) console.warn('[refurb] failure write failed', writeErr.message);
+    }
+
+    return { ok: false, ranOut, error };
   }
 
   const inputs: MergeInput[] = good.map((g) => ({ reader: g.id, read: g.read }));

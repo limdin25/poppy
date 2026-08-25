@@ -21,7 +21,7 @@ import {
 } from '@/features/crm/lib/refurbAssessment';
 import { SECTIONS, estimate } from '@/features/crm/lib/refurbCard';
 import {
-  readPropertyData, rightmovePropertyId, sizeFromText, MAX_PHOTOS, MAX_FLOORPLANS,
+  readPropertyData, rightmovePropertyId, sizeFromText, isImageUrl, MAX_PHOTOS, MAX_FLOORPLANS,
 } from '../api/lib/rightmove-listing.js';
 
 const area = (id: string, over: Partial<ReadArea> = {}): ReadArea => ({
@@ -445,5 +445,51 @@ describe('finding how big the house actually is', () => {
       // which is a better answer than a plausible invented number.
       expect(sizeCandidates({ listingSqm: null, textSqm: null, reads: [] })).toEqual([]);
     });
+  });
+});
+
+describe('what is allowed to be sent to a vision model as a picture', () => {
+  // OXFORD GARDENS, STAFFORD, 2026-08-25. It lists four floor plans and the
+  // fourth is https://my.giraffe360.com/3dflp/791x5j4, a 3D tour PAGE. Handed
+  // to a vision model as an image it fails the WHOLE request, so BOTH readers
+  // died on that one property on every single sweep while every other house
+  // read fine. One bad URL in a list is not a degraded answer, it is no answer.
+
+  it('drops a 3D tour link that is pretending to be a floor plan', () => {
+    const l = readPropertyData({
+      floorplans: [
+        { url: 'https://media.rightmove.co.uk/property-floorplan/a/1/plan.png' },
+        { url: 'https://my.giraffe360.com/3dflp/791x5j4' },
+        { url: 'https://media.rightmove.co.uk/property-floorplan/b/1/plan2.jpeg' },
+      ],
+    }, 'u');
+    expect(l.floorplans).toEqual([
+      'https://media.rightmove.co.uk/property-floorplan/a/1/plan.png',
+      'https://media.rightmove.co.uk/property-floorplan/b/1/plan2.jpeg',
+    ]);
+  });
+
+  it('drops anything that is not a picture on Rightmove\'s own media host', () => {
+    expect(isImageUrl('https://media.rightmove.co.uk/property-photo/a/1/x.jpeg')).toBe(true);
+    expect(isImageUrl('https://media.rightmove.co.uk/dir/property-photo/a/1/x_max_656x437.jpeg')).toBe(true);
+    expect(isImageUrl('https://media.rightmove.co.uk/property-floorplan/a/1/x.PNG')).toBe(true);
+    // The real one that broke it, and its neighbours.
+    expect(isImageUrl('https://my.giraffe360.com/3dflp/791x5j4')).toBe(false);
+    expect(isImageUrl('https://media.rightmove.co.uk/brochure/a/1/x.pdf')).toBe(false);
+    expect(isImageUrl('https://www.youtube.com/watch?v=abc')).toBe(false);
+    // Never a host we do not control: these URLs come off a page we do not own
+    // and are handed to a third party to fetch.
+    expect(isImageUrl('https://evil.example.com/x.jpeg')).toBe(false);
+    expect(isImageUrl('')).toBe(false);
+  });
+
+  it('drops a photograph whose own URL is not a picture', () => {
+    const l = readPropertyData({
+      images: [
+        { url: 'https://media.rightmove.co.uk/property-photo/a/1/ok.jpeg' },
+        { url: 'https://my.giraffe360.com/tour/xyz' },
+      ],
+    }, 'u');
+    expect(l.photos.map((p) => p.url)).toEqual(['https://media.rightmove.co.uk/property-photo/a/1/ok.jpeg']);
   });
 });
