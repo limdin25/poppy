@@ -916,3 +916,32 @@ export async function assignBuilderToProperty(
 
   return { ok: true, warning };
 }
+
+/** Save the outreach settings. APPENDED AT THE END OF THIS FILE ON PURPOSE:
+ *  tests/builder-outreach.test.ts reads this module as source text and asserts
+ *  on the ORDER of statements inside sendOutreachRow, confirmBuilder,
+ *  assignBuilderToProperty and sendMorningReminders. Adding anything above them
+ *  moves those anchors relative to each other. Append, never insert.
+ *
+ *  MERGE, NEVER REPLACE. `query_sid` is not builder-facing at all: it drives the
+ *  whole ops-question lane (api/lib/ops-query.ts), and it lives in this row only
+ *  because this is the one settings row the pipeline already reads. A settings
+ *  screen that knows about invite_sid and writes the object wholesale would
+ *  silently blank it and every escalation to Hugo would stop going out.
+ *
+ *  `platform_settings.value` is a TEXT column holding JSON, not jsonb (see
+ *  api/crm/cockpit.ts), so it is stringified. Write an object and every future
+ *  read gets undefined for every field. */
+export async function saveOutreachSettings(
+  sb: Sb,
+  patch: Partial<OutreachSettings>,
+): Promise<OutreachSettings> {
+  const current = await loadOutreachSettings(sb);
+  const merged: OutreachSettings = { ...current, ...patch };
+  await (sb.from('platform_settings') as any).upsert({
+    key: 'builder_outreach',
+    value: JSON.stringify(merged),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'key' });
+  return merged;
+}

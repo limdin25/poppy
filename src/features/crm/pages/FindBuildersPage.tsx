@@ -25,6 +25,8 @@ import PropertyPicker, { type PickerProperty } from '../components/builders/Prop
 import HouseNumberBar from '../components/builders/HouseNumberBar';
 import BuilderTable, { type BuilderRow } from '../components/builders/BuilderTable';
 import SendReviewDialog from '../components/builders/SendReviewDialog';
+import OutreachSettingsPanel from '../components/builders/OutreachSettingsPanel';
+import { useAuth } from '@/features/crm/lib/useCrmAuth';
 
 interface HouseDetail extends PickerProperty {
   builderFacingAddress: string;
@@ -59,6 +61,27 @@ const BLOCKED_WORDS: Record<string, string> = {
 export default function FindBuildersPage() {
   const [params, setParams] = useSearchParams();
   const propertyId = params.get('propertyId');
+  const tab = params.get('tab') === 'settings' ? 'settings' : 'find';
+
+  // Settings is admin only, and it is HIDDEN rather than disabled: an agent
+  // should not be looking at a tab he cannot open. Same resolution as
+  // TemplatesPage, where an explicit workspace_role wins and the email
+  // allow-list is only the fallback.
+  const { user, loading: authLoading, isAdmin } = useAuth();
+  const [workspaceRole, setWorkspaceRole] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { setWorkspaceRole(null); return; }
+    let cancelled = false;
+    void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase.from('profiles' as any) as any)
+        .select('workspace_role').eq('id', user.id).maybeSingle();
+      if (!cancelled) setWorkspaceRole((data?.workspace_role as string | null) ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [authLoading, user]);
+  const canSeeSettings = workspaceRole === 'admin' || (workspaceRole === null && isAdmin);
 
   const [properties, setProperties] = useState<PickerProperty[]>([]);
   const [bundle, setBundle] = useState<Bundle | null>(null);
@@ -235,6 +258,35 @@ export default function FindBuildersPage() {
           </button>
         </div>
 
+        {canSeeSettings ? (
+          <div className="mb-3 flex gap-1">
+            {([['find', 'Find builders'], ['settings', 'Settings']] as const).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => {
+                  const next = new URLSearchParams(params);
+                  if (id === 'find') next.delete('tab'); else next.set('tab', id);
+                  setParams(next, { replace: true });
+                }}
+                className={cn(
+                  'rounded-[10px] px-3 py-1.5 text-[12px]',
+                  tab === id
+                    ? 'border border-[#E5E7EB] bg-white font-medium text-[#3C5A87] shadow-sm'
+                    : 'text-[#6B7280] hover:bg-black/[0.04]',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {tab === 'settings' && canSeeSettings ? (
+          <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-4">
+            <OutreachSettingsPanel />
+          </div>
+        ) : (
+        <>
         {missingNumbers > 0 ? (
           <div className="mb-3 flex items-center gap-2 rounded-[10px] border border-[#DC2626]/40 bg-[#FEF2F2] px-3 py-2">
             <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 text-[#DC2626]" />
@@ -365,6 +417,8 @@ export default function FindBuildersPage() {
             ) : null}
           </div>
         </div>
+        </>
+        )}
       </div>
 
       {bundle ? (

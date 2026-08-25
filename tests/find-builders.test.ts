@@ -206,3 +206,42 @@ describe('the manual press can reach further than the cron', () => {
     expect(SCRAPE).toMatch(/opts\.maxDetailCalls \?\? MAX_DETAIL_CALLS/);
   });
 });
+
+describe('the settings row finally has a screen', () => {
+  const SETTINGS = readFileSync('api/admin/builder-settings.ts', 'utf8');
+  const LIB = readFileSync('api/lib/builder-outreach.ts', 'utf8');
+  const PANEL = readFileSync('src/features/crm/components/builders/OutreachSettingsPanel.tsx', 'utf8');
+
+  it('is admin gated, unlike the rest of the desk', () => {
+    expect(SETTINGS).toMatch(/requireAdminAny/);
+  });
+
+  it('merges rather than replacing, so query_sid cannot be blanked', () => {
+    // query_sid drives the ops-question lane, not builders. A screen that only
+    // knows about invite_sid must not wipe it and stop every escalation.
+    expect(LIB).toMatch(/const merged: OutreachSettings = \{ \.\.\.current, \.\.\.patch \}/);
+  });
+
+  it('stringifies, because platform_settings.value is TEXT not jsonb', () => {
+    expect(LIB).toMatch(/value: JSON\.stringify\(merged\)/);
+  });
+
+  it('saveOutreachSettings is appended AFTER the order-pinned functions', () => {
+    // tests/builder-outreach.test.ts asserts on statement order inside those
+    // four. Inserting above any of them moves the anchors.
+    const save = LIB.indexOf('export async function saveOutreachSettings');
+    for (const fn of ['sendOutreachRow', 'confirmBuilder', 'assignBuilderToProperty', 'sendMorningReminders']) {
+      expect(save).toBeGreaterThan(LIB.indexOf(`export async function ${fn}`));
+    }
+  });
+
+  it('refuses a template id that is not HX-shaped', () => {
+    expect(SETTINGS).toMatch(/\^HX\[0-9a-f\]\{32\}\$/);
+  });
+
+  it('the panel is light mode and free of banned punctuation', () => {
+    expect(PANEL).not.toMatch(/\bdark:/);
+    expect(PANEL).not.toMatch(/[–—‘’“”…]/);
+    expect(SETTINGS).not.toMatch(/[–—‘’“”…]/);
+  });
+});
