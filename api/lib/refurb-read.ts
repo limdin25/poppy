@@ -111,6 +111,7 @@ const SYSTEM = [
   '  2. A SIZE WRITTEN IN THE ADVERT, for example "approximately 964 sq ft". Then `source` is "listing_text" and `quote` is the exact words.',
   '  3. NO TOTAL ANYWHERE. Many plans print only room by room dimensions. Then leave `sqm` null, `source` "none", and instead LIST THE ROOMS in `rooms` with their metric dimensions exactly as printed: [{"name":"Kitchen","m":[3.60,2.64]}]. Include every room on every floor. Do NOT add them up yourself and do NOT put the sum in `sqm`, because a room list leaves out the hall, the stairs and the walls and would understate the house by about a quarter. We do that sum ourselves, and we label it.',
   'NEVER estimate a floor area by eye, from the number of bedrooms, or from what a house like this usually is. A guessed size is worse than no size, because no size is priced as a typical terrace and says so.',
+  'The FLOOR AREA line in "THE HOUSE" below is our own note of what the website already told us. It is not the advert and it is not the plan, so never quote it back as `listing_text`. Only report a figure you found in the advert wording itself or printed on the plan.',
   '',
   'Long dashes, curly quotes and ellipsis characters are forbidden in your output. Use plain commas and full stops.',
   '',

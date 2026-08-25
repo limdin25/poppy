@@ -493,3 +493,30 @@ describe('what is allowed to be sent to a vision model as a picture', () => {
     expect(l.photos.map((p) => p.url)).toEqual(['https://media.rightmove.co.uk/property-photo/a/1/ok.jpeg']);
   });
 });
+
+describe('one button per number', () => {
+  it('shows a size once, however many places agree on it', () => {
+    // Oxford Gardens, Stafford: a reader quoted "FLOOR AREA: 85 square metres"
+    // as though it came off the advert, when that line is our OWN summary of
+    // Rightmove's size field handed to it at the top of the evidence. Same
+    // number twice is one answer, not two, and a list with 85 on it twice
+    // makes a man wonder which 85 he is meant to press.
+    const out = sizeCandidates({
+      listingSqm: 85,
+      textSqm: null,
+      reads: [{ sqm: 85, source: 'listing_text', quote: 'FLOOR AREA: 85 square metres', rooms: [] }],
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].source).toBe('listing_size');
+  });
+
+  it('still shows a genuinely different figure from the plan', () => {
+    // Same house: the plan says 73.7 and the website says 85. That is a real
+    // disagreement about a real house and he has to see both.
+    const out = sizeCandidates({
+      listingSqm: 85,
+      reads: [{ sqm: 74, source: 'floorplan_total', quote: 'Approximate total area 792 ft2 73.7 m2', rooms: [] }],
+    });
+    expect(out.map((c) => c.sqm)).toEqual([85, 74]);
+  });
+});

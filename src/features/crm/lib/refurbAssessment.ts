@@ -302,7 +302,21 @@ export function sizeCandidates(src: SizeSources): SizeCandidate[] {
     }
   }
 
-  return out;
+  // ONE BUTTON PER NUMBER. Two sources agreeing is not two answers, it is one
+  // answer twice, and a list with "85 sq m" on it twice makes a man wonder
+  // which 85 he is meant to press.
+  //
+  // It also clears up a real confusion seen on Oxford Gardens, Stafford: a
+  // reader quoted "FLOOR AREA: 85 square metres" as though it came off the
+  // advert, when that line is OUR OWN summary of Rightmove's size field, handed
+  // to it at the top of the evidence. Same number, higher-ranked source wins,
+  // and the echo disappears.
+  const seen = new Set<number>();
+  return out.filter((c) => {
+    if (seen.has(c.sqm)) return false;
+    seen.add(c.sqm);
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------------------
