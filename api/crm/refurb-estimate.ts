@@ -22,6 +22,7 @@
 // same reason api/crm/find-builders.ts gives at length. Pricing a refurb is his
 // job and admin-gating it is how the builder panel ended up blank for him.
 
+import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
 import {
@@ -75,7 +76,7 @@ const SYSTEM = [
   '{"band":"...","summary":"one or two plain sentences a non-builder would understand","items":[{"key":"...","where":"...","detail":"one line a builder can quote against","qty":1,"portion":1,"confidence":"seen","heard":"..."}],"unknowns":["..."]}',
 ].join('\n');
 
-export default async function handler(req: Request): Promise<Response> {
+async function handleWeb(req: Request): Promise<Response> {
   if (req.method !== 'POST') return Response.json({ error: 'POST only' }, { status: 405 });
   const gate = await requireAgent(req);
   if (gate !== true) return gate;
@@ -155,4 +156,35 @@ export default async function handler(req: Request): Promise<Response> {
     heard: read.items.map((i) => ({ key: i.key, heard: i.heard, confidence: i.confidence })),
     brief,
   });
+}
+
+// NODE, NOT EDGE, AND THAT IS WHY THIS ADAPTER EXISTS.
+//
+// The read can take 30 seconds or more, so this function needs `maxDuration`,
+// and `maxDuration` means a Node serverless function. A Node function is handed
+// `IncomingMessage`/`ServerResponse`, NOT the Web `Request`/`Response` that
+// `runtime: 'edge'` routes like api/crm/cockpit.ts get.
+//
+// Shipping it with a Web-style signature and a Node config is a 500 on every
+// call, `TypeError: req.headers.get is not a function`, thrown before the auth
+// check so it does not even 401. It typechecks perfectly, because the signature
+// is a promise about a runtime the config quietly opted out of. Caught in
+// production on 2026-08-25, five minutes after the first deploy.
+//
+// Same adapter, same reason, as api/crm/find-builders.ts.
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (v !== undefined) headers[k] = Array.isArray(v) ? v.join(',') : String(v);
+  }
+  const out = await handleWeb(new Request(`http://internal${req.url ?? '/'}`, {
+    method: req.method,
+    headers,
+    body: chunks.length ? Buffer.concat(chunks) : undefined,
+  }));
+  res.statusCode = out.status;
+  out.headers.forEach((v, k) => res.setHeader(k, v));
+  res.end(Buffer.from(await out.arrayBuffer()));
 }
