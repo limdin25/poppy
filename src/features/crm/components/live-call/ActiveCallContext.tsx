@@ -175,6 +175,19 @@ interface ActiveCallCtx {
   /** Toggle the active TwilioCall's mute. No-op if no live call. */
   toggleMute: () => void;
   /**
+   * Send ONE touch-tone (DTMF) down the live call.
+   *
+   * Hugo 2026-08-25: "during the call he's asking to press a number to move
+   * forward, but when we use the soft dialer there is no option to press any
+   * number." Switchboards open with "press 1 for sales, 2 for lettings" and
+   * the softphone had no way to answer that, so the call was dead on arrival.
+   *
+   * Accepts '0'-'9', '*', '#' and 'w' (Twilio's half-second pause). Returns
+   * the digit when it actually went out, null when there was no live call to
+   * send it on, so the UI can keep an honest "sent" history.
+   */
+  sendDigit: (digit: string) => string | null;
+  /**
    * Apply a pipeline-column outcome to the just-ended call.
    * Mutates store (contact stage + activity + tags + queue) and auto-loads
    * the next lead from the dialer queue.
@@ -242,6 +255,28 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
     // flips immediately even if a Call's stream isn't fully wired yet.
     setMuted(next);
   }, [muted, device.activeCall]);
+
+  // DTMF. Finding the Call to send it on follows the SAME rule as toggleMute,
+  // and for the same reason: an outbound dial exists ONLY in
+  // activeTwilioCallRef, because the SDK does not push device.connect() calls
+  // into its public `calls` array, while an inbound leg and a parallel-dial
+  // winner land in device.calls. Take whichever one exists, newest last.
+  const sendDigit = useCallback((digit: string): string | null => {
+    const all = getDeviceCalls();
+    const target =
+      activeTwilioCallRef.current ?? device.activeCall ?? all[all.length - 1] ?? null;
+    if (!target) {
+      console.info('[dtmf] no live Twilio call, digit not sent', digit);
+      return null;
+    }
+    try {
+      target.sendDigits(digit);
+      return digit;
+    } catch (e) {
+      console.warn('[dtmf] sendDigits failed', e);
+      return null;
+    }
+  }, [device.activeCall]);
 
   useEffect(() => {
     if (phase === 'in_call') {
@@ -649,6 +684,7 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
       },
       muted,
       toggleMute,
+      sendDigit,
       startCall,
       resumeFromBroadcast,
       enterDialingPlaceholder,
@@ -859,7 +895,7 @@ export function ActiveCallProvider({ children }: { children: ReactNode }) {
         }
       },
     };
-  }, [phase, call, fullScreen, muted, toggleMute, store, startCall, resumeFromBroadcast, enterDialingPlaceholder, previewContactId, lastEndedContactId]);
+  }, [phase, call, fullScreen, muted, toggleMute, sendDigit, store, startCall, resumeFromBroadcast, enterDialingPlaceholder, previewContactId, lastEndedContactId]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

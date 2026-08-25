@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Phone,
   PhoneOff,
@@ -7,9 +7,11 @@ import {
   Maximize2,
   Minus,
   X,
+  Hash,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import DialPad from './DialPad';
+import DtmfKeypad from '../../dialer-pro/controls/DtmfKeypad';
 import { useActiveCallCtx } from '../live-call/ActiveCallContext';
 import { useTwilioDevice } from '../../hooks/useTwilioDevice';
 import { useSpendLimit } from '../../hooks/useSpendLimit';
@@ -21,6 +23,9 @@ import { useCallerId } from '../../hooks/useCallerId';
 export default function Softphone() {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  // IVR keypad on the mid-call bar. Shut by default so the bar stays the
+  // size it was, opened by the # button the moment a menu answers.
+  const [keypadOpen, setKeypadOpen] = useState(false);
   const device = useTwilioDevice();
   const {
     phase,
@@ -32,8 +37,14 @@ export default function Softphone() {
     endCall,
     muted,
     toggleMute,
+    sendDigit,
     previewContactId,
   } = useActiveCallCtx();
+
+  // Never carry an open keypad out of a call into the next one.
+  useEffect(() => {
+    if (phase !== 'in_call') setKeypadOpen(false);
+  }, [phase]);
   const spend = useSpendLimit();
   const { agent: me } = useCurrentAgent();
   const { numbers, defaultId, setCallerId } = useCallerId();
@@ -120,10 +131,34 @@ export default function Softphone() {
           <div className="text-[14px] font-semibold text-[#1A1A1A]">{call?.contactName}</div>
           <div className="text-[12px] text-[#6B7280] tabular-nums">{call?.phone}</div>
         </div>
-        <div className="px-3 py-2 border-t border-[#E5E7EB] grid grid-cols-2 gap-1">
+
+        {/* IVR keypad. Hugo 2026-08-25: a switchboard that says "press 1 to
+            continue" used to end the call here, because the mid-call bar had
+            no keys on it. Tones go out on the live leg via Call.sendDigits. */}
+        {keypadOpen && (
+          <div
+            className="px-3 py-2 border-t border-[#E5E7EB] bg-[#F3F3EE]/50"
+            data-testid="softphone-dtmf-keypad"
+          >
+            <DtmfKeypad
+              enabled
+              onDigit={sendDigit}
+              callId={call?.callId ?? null}
+              size="compact"
+            />
+          </div>
+        )}
+
+        <div className="px-3 py-2 border-t border-[#E5E7EB] grid grid-cols-3 gap-1">
           {/* PR 110 (Hugo 2026-04-28): Hold + Xfer were rendered with no
               onClick — pure dead UI. PR 89 removed them from
               LiveCallScreen for the same reason. Removed here too. */}
+          <CallBtn
+            icon={<Hash className="w-4 h-4" />}
+            label="Keypad"
+            onClick={() => setKeypadOpen((v) => !v)}
+            active={keypadOpen}
+          />
           <CallBtn
             icon={muted ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
             label={muted ? 'Unmute' : 'Mute'}

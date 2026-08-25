@@ -6,6 +6,7 @@ import {
   Flame,
   Pencil,
   X,
+  Hash,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import {
@@ -23,6 +24,7 @@ import CallTimeline from './CallTimeline';
 import PostCallPanel from './PostCallPanel';
 import PropertyCallRoom from './PropertyCallRoom';
 import BranchSearchPanel from './BranchSearchPanel';
+import DtmfKeypad from '../../dialer-pro/controls/DtmfKeypad';
 import EditContactModal from '../contacts/EditContactModal';
 import type { Contact } from '../../types';
 import { supabase } from '@/integrations/supabase/browser';
@@ -48,10 +50,17 @@ export default function LiveCallScreen() {
     setFullScreen,
     muted,
     toggleMute,
+    sendDigit,
     previewContactId,
     closeCallRoom,
     startCall,
   } = useActiveCallCtx();
+  // IVR keypad, shut until the agent needs it. Closes itself when the call
+  // ends so it is never left hanging over the wrap-up screen.
+  const [keypadOpen, setKeypadOpen] = useState(false);
+  useEffect(() => {
+    if (phase !== 'in_call') setKeypadOpen(false);
+  }, [phase]);
   const store = useSmsV2();
   const { agent: me, firstName: myFirstName, talkRatioPercent } = useCurrentAgent();
   // Resolve the active call's pipeline_id so MidCallSmsSender's stage
@@ -269,6 +278,15 @@ export default function LiveCallScreen() {
               onClick={toggleMute}
               active={muted}
             />
+            {/* Keypad. Hugo 2026-08-25: a switchboard asking him to press a
+                number to go forward had nowhere to press it, on either the
+                softphone or in here. Sends real DTMF on the live leg. */}
+            <TopBtn
+              icon={<Hash className="w-4 h-4" />}
+              label="Keypad"
+              onClick={() => setKeypadOpen((v) => !v)}
+              active={keypadOpen}
+            />
             {/* PR 89 (Hugo 2026-04-27): Hold / Transfer / Note buttons
                 were rendered with no onClick \u2014 pure dead UI. Hold +
                 Transfer require Twilio routing changes (out of scope
@@ -395,6 +413,35 @@ export default function LiveCallScreen() {
           </button>
         </div>
       </header>
+
+      {/* The keypad itself, hanging under the top bar. The room is fixed, so
+          this positions against it and floats over the columns rather than
+          pushing them down mid-call. */}
+      {phase === 'in_call' && keypadOpen && (
+        <div
+          className="absolute top-14 left-5 z-[210] w-[210px] bg-white border border-[#E5E7EB] rounded-xl shadow-[0_10px_36px_rgba(0,0,0,0.18)] p-3"
+          data-testid="livecall-dtmf-keypad"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
+              Keypad
+            </span>
+            <button
+              onClick={() => setKeypadOpen(false)}
+              className="ml-auto p-0.5 text-[#9CA3AF] hover:text-[#1A1A1A] rounded"
+              title="Close keypad"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <DtmfKeypad
+            enabled
+            onDigit={sendDigit}
+            callId={call?.callId ?? null}
+            size="compact"
+          />
+        </div>
+      )}
 
       {/* A property call gets the SAME room the dialer opens (2026-08-18):
           offer band pinned above the property script, the Houses panel, the
