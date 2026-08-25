@@ -395,7 +395,7 @@ export default function RefurbEstimatorPage() {
             {houses.map((hh) => (
               <option key={hh.id} value={hh.id}>
                 {hh.viewingAddress || hh.address || 'Unnamed property'}
-                {hh.viewingAt ? ` — ${ukTime(hh.viewingAt)}` : ''}
+                {hh.viewingAt ? `, ${ukTime(hh.viewingAt)}` : ''}
                 {hh.analysedAt ? ' (started)' : ''}
               </option>
             ))}
