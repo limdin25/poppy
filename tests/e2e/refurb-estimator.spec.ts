@@ -85,6 +85,21 @@ test.describe('the refurb estimator', () => {
     await full.click({ position: { x: 5, y: 5 } })
     await expect(full).toBeHidden()
 
+    // SCROLLING TO A PART OF THE PROPERTY BRINGS ITS PHOTOGRAPH UP. Hugo: "we
+    // can scroll the website and then we can speak on the boxes or rewrite or
+    // confirm as we look on the photos." Only meaningful once a reading has put
+    // photographs against the sections, so it is skipped on an unread house.
+    await page.getByTestId('section-kitchen').scrollIntoViewIfNeeded()
+    const kitchenPhotos = await page.getByTestId('photos-kitchen').count()
+    if (kitchenPhotos > 0) {
+      await expect
+        .poll(() => stage.getAttribute('alt'), { timeout: 10_000 })
+        .toMatch(/Kitchen/i)
+      // And it is still stuck to the top of the window while he does it.
+      const stageBox = await stage.boundingBox()
+      expect(stageBox!.y).toBeLessThan(view.height / 2)
+    }
+
     // Every part of the property is on the page, whether or not anything has
     // read it. The checklist is the point: he can see what he has not looked at.
     await expect(page.getByTestId('section-kitchen')).toBeVisible()
