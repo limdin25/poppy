@@ -61,7 +61,29 @@ test.describe('the refurb estimator', () => {
     // The advert, fetched server side while he waited.
     const houseCard = page.getByTestId('house-card')
     await expect(houseCard).toBeVisible({ timeout: 60_000 })
-    await expect(houseCard.locator('img').first()).toBeVisible({ timeout: 30_000 })
+
+    // THE BIG PICTURE, STUCK TO THE TOP. Hugo: "the way the photo is on Zoopla,
+    // big, and the photo is always displayed on top. The way you put now I have
+    // to click on the photos and then takes me to an outside page, it's not good."
+    const stage = page.getByTestId('stage-photo')
+    await expect(stage).toBeVisible({ timeout: 30_000 })
+    const firstSrc = await stage.getAttribute('src')
+
+    // Picking another one swaps the big picture. It does NOT leave the page.
+    await page.getByTestId('stage-thumb-2').click()
+    await expect.poll(() => stage.getAttribute('src')).not.toBe(firstSrc)
+    expect(page.url()).toContain('/admin/crm/estimator')
+
+    // And it expands INSIDE the app, over the whole window.
+    await stage.click()
+    const full = page.getByTestId('stage-fullscreen')
+    await expect(full).toBeVisible()
+    const box = await full.boundingBox()
+    const view = page.viewportSize()!
+    expect(box!.width).toBeGreaterThanOrEqual(view.width - 2)
+    expect(box!.height).toBeGreaterThanOrEqual(view.height - 2)
+    await full.click({ position: { x: 5, y: 5 } })
+    await expect(full).toBeHidden()
 
     // Every part of the property is on the page, whether or not anything has
     // read it. The checklist is the point: he can see what he has not looked at.

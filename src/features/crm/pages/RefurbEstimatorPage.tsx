@@ -196,36 +196,56 @@ interface StageItem {
   thumb: string;
   kind: 'photo' | 'plan' | 'agent';
   label: string;
-  /** Which part of the property this picture belongs to, when anything knows. */
-  areaId: string | null;
+  /** Index into the listing photos, which is how the readers refer to them.
+   *  Null for floor plans and for photographs the agent took himself. */
+  photoIndex: number | null;
+  /** For an agent's own photograph: the part of the property he attached it to. */
+  agentAreaId: string | null;
 }
+
+/** Does this picture belong to that part of the property?
+ *
+ *  A PHOTOGRAPH BELONGS TO EVERY AREA THAT NAMED IT, not to the first one.
+ *  The first version kept a single owner per photograph and the kitchen ended
+ *  up with none: "Windows and doors" had listed photos 0,1,3,5,6,7,8,9,10,11
+ *  and got to photo 5 first, so scrolling to the kitchen left the front of the
+ *  house on screen. Greedy areas are normal (windows and contents are visible
+ *  in most rooms), so ownership is the wrong idea entirely. */
+const belongsTo = (item: StageItem, area: AreaAssessment): boolean =>
+  (item.photoIndex !== null && area.photos.includes(item.photoIndex))
+  || item.agentAreaId === area.id;
 
 /** Every picture of this house in one list, in the order he would look at
  *  them. THE PHOTOGRAPHS COME FIRST AND KEEP THEIR ORDER, because the AI
  *  answers refer to them by number and a plan slipped in front would shift
  *  every one of those references by one. */
 function buildStage(photos: ListingPhoto[], floorplans: string[], areas: AreaAssessment[]): StageItem[] {
-  const areaOf = new Map<number, { id: string; label: string }>();
-  for (const a of areas) {
-    for (const i of a.photos) if (!areaOf.has(i)) areaOf.set(i, { id: a.id, label: a.label });
+  // The caption names the MOST SPECIFIC part of the property that listed this
+  // photograph, not the first. "Windows and doors" and "What is left inside"
+  // routinely list ten photographs each because they are visible everywhere; a
+  // room that lists one has actually identified it.
+  const caption = new Map<number, string>();
+  for (const a of [...areas].sort((x, y) => x.photos.length - y.photos.length)) {
+    for (const i of a.photos) if (!caption.has(i)) caption.set(i, a.label);
   }
-  const out: StageItem[] = photos.map((p, i) => {
-    const owner = areaOf.get(i);
-    return {
-      url: p.url,
-      thumb: p.thumb,
-      kind: 'photo' as const,
-      label: owner ? `Photo ${i + 1}, ${owner.label}` : `Photo ${i + 1}`,
-      areaId: owner?.id ?? null,
-    };
-  });
+  const out: StageItem[] = photos.map((p, i) => ({
+    url: p.url,
+    thumb: p.thumb,
+    kind: 'photo' as const,
+    label: caption.get(i) ? `Photo ${i + 1}, ${caption.get(i)}` : `Photo ${i + 1}`,
+    photoIndex: i,
+    agentAreaId: null,
+  }));
   floorplans.forEach((f, i) => out.push({
-    url: f, thumb: f, kind: 'plan', areaId: null,
+    url: f, thumb: f, kind: 'plan', photoIndex: null, agentAreaId: null,
     label: floorplans.length > 1 ? `Floor plan ${i + 1}` : 'Floor plan',
   }));
   for (const a of areas) {
     for (const u of a.agentPhotos ?? []) {
-      out.push({ url: u, thumb: u, kind: 'agent', label: `Your photo, ${a.label}`, areaId: a.id });
+      out.push({
+        url: u, thumb: u, kind: 'agent', label: `Your photo, ${a.label}`,
+        photoIndex: null, agentAreaId: a.id,
+      });
     }
   }
   return out;
@@ -933,7 +953,7 @@ export default function RefurbEstimatorPage() {
                     // whatever he picked by hand alone.
                     if (followedArea.current === area.id) return;
                     followedArea.current = area.id;
-                    const first = stage.findIndex((s) => s.areaId === area.id);
+                    const first = stage.findIndex((s) => belongsTo(s, area));
                     if (first >= 0) setStageIndex(first);
                   }}
                   recording={dictation.activeId === area.id}
@@ -1014,8 +1034,8 @@ function AreaCard({
   /** The stage entries belonging to this part of the property, with the index
    *  they live at, so clicking one puts it on the big picture up top. */
   const mine = useMemo(
-    () => stage.map((s, i) => ({ s, i })).filter(({ s }) => s.areaId === area.id),
-    [stage, area.id],
+    () => stage.map((s, i) => ({ s, i })).filter(({ s }) => belongsTo(s, area)),
+    [stage, area],
   );
 
   // Scrolling this card into the middle of the screen brings its photograph up.
@@ -1027,9 +1047,11 @@ function AreaCard({
     if (!el || typeof IntersectionObserver === 'undefined') return;
     const io = new IntersectionObserver(
       (entries) => { if (entries[0]?.isIntersecting) onInView(); },
-      // A band across the middle of the screen: the card the eye is on, not
-      // whichever card happens to be touching the bottom edge.
-      { rootMargin: '-45% 0px -45% 0px', threshold: 0 },
+      // A band across the READABLE part of the screen, which is not the middle
+      // of it: the photo stage is stuck over roughly the top half, so a band at
+      // 50% sits behind the picture and picks whichever card is hidden under
+      // it. 58% to 75% is the strip of page he is actually looking at.
+      { rootMargin: '-58% 0px -25% 0px', threshold: 0 },
     );
     io.observe(el);
     return () => io.disconnect();
