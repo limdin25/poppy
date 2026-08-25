@@ -36,7 +36,12 @@
 // return anything from an area that is still false, so an estimate can only
 // ever be the sum of what somebody actually agreed to.
 
-import { CARD, SECTIONS, type LineKey, type WorkItem } from './refurbCard';
+// The `.js` extension is load-bearing and it is not a typo. This module is
+// imported by api/crm/refurb-estimate.ts, which Vercel type-checks under
+// node16 resolution, and node16 refuses an extensionless relative import.
+// Vite resolves it back to the .ts for the browser. Same reason and same shape
+// as src/core/site-demo/*, the other pair of modules both sides read.
+import { CARD, SECTIONS, type LineKey, type WorkItem } from './refurbCard.js';
 
 // ---------------------------------------------------------------------------
 // What a reader gives back
