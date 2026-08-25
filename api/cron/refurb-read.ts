@@ -40,6 +40,12 @@ export const config = { maxDuration: 300 };
  *  which is faster than anybody drives to a viewing. */
 const PER_RUN = 2;
 
+/** How many times the sweep will go back to a house that keeps coming back
+ *  with only one reader. Three is enough to ride out a rate limit and cheap
+ *  enough that a house which genuinely cannot be read twice costs about 30p
+ *  and then stops. */
+const SWEEP_CAP = 3;
+
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   res.setHeader('Content-Type', 'application/json');
 
@@ -69,11 +75,29 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     const { data: done } = await sb
       .from('brrr_refurb_assessments')
-      .select('property_id, analysed_at')
+      .select('property_id, analysed_at, analysis_meta')
       .in('property_id', houses.map((h) => h.id));
+
+    // A ONE-READER READING IS NOT A FINISHED READING. With a single reader the
+    // merge correctly refuses to mark anything as agreed, so every finding is
+    // "suspected" and the house prices at zero: it looks assessed and is worth
+    // nothing. Measured on the first ten real houses, six came back that way
+    // from a transient rate limit. So a house with fewer than two readers is
+    // picked up again, capped at SWEEP_CAP so a house that genuinely cannot get
+    // two readers cannot burn money every ten minutes for ever.
+    type Row = {
+      property_id: string;
+      analysed_at: string | null;
+      analysis_meta: { readers?: unknown[]; sweeps?: number } | null;
+    };
     const already = new Set(
-      ((done ?? []) as Array<{ property_id: string; analysed_at: string | null }>)
-        .filter((d) => d.analysed_at)
+      ((done ?? []) as Row[])
+        .filter((d) => {
+          if (!d.analysed_at) return false;
+          const readers = d.analysis_meta?.readers?.length ?? 0;
+          if (readers >= 2) return true;
+          return Number(d.analysis_meta?.sweeps ?? 0) >= SWEEP_CAP;
+        })
         .map((d) => d.property_id),
     );
 
@@ -85,7 +109,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     for (const house of todo.slice(0, PER_RUN)) {
       try {
-        const r = await readProperty(sb, house, { by: null });
+        const r = await readProperty(sb, house, { by: null, sweep: true });
         if (r.ok) out.read.push(house.address ?? house.id);
         else out.errors.push(`${house.address ?? house.id}: ${r.error ?? 'no reader answered'}`);
       } catch (e) {

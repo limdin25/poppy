@@ -349,7 +349,7 @@ export async function readProperty(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sb: any,
   house: HouseRow,
-  opts: { areas?: AreaAssessment[]; refresh?: boolean; by?: string | null } = {},
+  opts: { areas?: AreaAssessment[]; refresh?: boolean; by?: string | null; sweep?: boolean } = {},
 ): Promise<ReadOutcome> {
   const stored = await readAssessment(sb, house.id);
   const priorAreas = (opts.areas?.length ? opts.areas : stored?.areas) ?? blankAreas();
@@ -361,24 +361,43 @@ export async function readProperty(
 
   // Both readers at once. Sequentially this is two long vision calls back to
   // back and the gateway ceiling starts to matter; side by side it is one.
+  //
+  // EACH READER GETS A SECOND GO, and that is not belt and braces. Measured on
+  // the first ten real houses, 2026-08-25: six of them came back with only one
+  // reader, always Haiku, and re-running the same house immediately got both.
+  // So the failures were transient, a rate limit or an overload from the sweep
+  // firing four calls a minute, and `callLLM` answers those by logging and
+  // returning an empty string with no retry at all.
+  //
+  // A LOST READER IS NOT A HARMLESS LOSS. With one reader the merge correctly
+  // refuses to mark anything as agreed, so every finding becomes "suspected"
+  // and NOTHING gets priced. The house looks assessed and produces a zero. One
+  // cheap retry is the difference between a real answer and an empty one.
   const settled = await Promise.all(READERS.map(async (r) => {
-    try {
-      const raw = await callLLM(r.model, SYSTEM, [{ role: 'user', content: blocks }], 6000,
-        { thinkingBudget: 1024 });
-      const read = raw ? parseVisionRead(raw) : null;
-      if (!read && raw) console.warn(`[refurb] ${r.id} unparseable:`, raw.slice(0, 400));
-      return { id: r.id, model: r.model, read };
-    } catch (e) {
-      // ONE READER FAILING MUST NOT LOSE THE OTHER. It costs the vote, and the
-      // merge handles that by refusing to mark anything "agreed", so a single
-      // reader's findings all come back as suspected rather than as fact.
-      console.warn(`[refurb] ${r.id} threw`, String(e).slice(0, 200));
-      return { id: r.id, model: r.model, read: null };
+    let attempts = 0;
+    while (attempts < 2 && Date.now() - started < DEADLINE_MS - 60_000) {
+      attempts += 1;
+      try {
+        const raw = await callLLM(r.model, SYSTEM, [{ role: 'user', content: blocks }], 8000,
+          { thinkingBudget: 1024 });
+        const read = raw ? parseVisionRead(raw) : null;
+        if (read) return { id: r.id, model: r.model, read, attempts };
+        console.warn(`[refurb] ${r.id} attempt ${attempts} gave ${raw ? 'unparseable' : 'nothing'}`,
+          raw.slice(0, 300));
+      } catch (e) {
+        // ONE READER FAILING MUST NOT LOSE THE OTHER, and must not throw away
+        // the work the other one is doing right now.
+        console.warn(`[refurb] ${r.id} attempt ${attempts} threw`, String(e).slice(0, 200));
+      }
+      // A rate limit needs a moment, not another immediate hammer.
+      if (attempts < 2) await new Promise((res) => setTimeout(res, 2500));
     }
+    return { id: r.id, model: r.model, read: null, attempts };
   }));
 
   const good = settled.filter((s) => s.read) as Array<{
-    id: string; model: string; read: NonNullable<ReturnType<typeof parseVisionRead>>;
+    id: string; model: string; attempts: number;
+    read: NonNullable<ReturnType<typeof parseVisionRead>>;
   }>;
   if (!good.length) {
     const ranOut = Date.now() - started >= DEADLINE_MS;
@@ -407,7 +426,7 @@ export async function readProperty(
     reads: floorAreas,
   });
   const meta = {
-    readers: good.map((g) => ({ id: g.id, model: g.model })),
+    readers: good.map((g) => ({ id: g.id, model: g.model, attempts: g.attempts })),
     failed: settled.filter((s) => !s.read).map((s) => s.id),
     band: good[0].read.band ?? null,
     summary: good[0].read.summary ?? null,
@@ -418,6 +437,13 @@ export async function readProperty(
     floorplans: listing?.floorplans.length ?? 0,
     descriptionChars: listing?.description.length ?? 0,
     usedCall: Boolean(call.transcript || call.facts),
+    // How many times the unattended sweep has read this house. The sweep uses
+    // it as a spend cap: it will come back for a house that only got one
+    // reader, but not forever. A press on the screen is not counted, because a
+    // human asking for it again is a human deciding to spend it.
+    sweeps: opts.sweep
+      ? Number((stored?.analysis_meta as Record<string, unknown> | null)?.sweeps ?? 0) + 1
+      : Number((stored?.analysis_meta as Record<string, unknown> | null)?.sweeps ?? 0),
   };
 
   const { error } = await sb.from('brrr_refurb_assessments').upsert({
