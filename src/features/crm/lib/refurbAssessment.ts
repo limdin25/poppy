@@ -73,10 +73,41 @@ export interface ReadArea {
   works: ReadWork[];
 }
 
+/** One room as it is printed on a floor plan. Metres, because every UK plan
+ *  prints both and metres need no conversion. */
+export interface PlanRoom {
+  name: string;
+  /** [length, width] in metres. */
+  m: [number, number];
+}
+
+/** What a reader could find out about how big the house is.
+ *
+ *  THE TOTAL AND THE ROOMS ARE NOT THE SAME ANSWER and conflating them is the
+ *  trap this type exists to keep open. Measured on Whitworth Road, Portsmouth,
+ *  2026-08-25: the plan prints NO total, its five rooms add up to 56 square
+ *  metres, and Rightmove's own figure for the same house is 76. A room sum
+ *  leaves out the hall, the stairs, the landing and every wall, so using one as
+ *  "the size" prices the refurb about a quarter too small on every house whose
+ *  plan has no total on it. So a sum is offered, labelled, and never preferred
+ *  over a figure somebody actually printed. */
+export interface ReadFloorArea {
+  /** A total PRINTED on the plan or STATED in the advert. Never worked out. */
+  sqm: number | null;
+  /** Where that total was read. */
+  source: 'floorplan_total' | 'listing_text' | 'none';
+  /** The exact words or figure it was read from. */
+  quote: string;
+  /** Room dimensions off the plan, when there is no printed total. */
+  rooms: PlanRoom[];
+}
+
 export interface VisionRead {
   areas: ReadArea[];
   /** Things nobody can judge without standing in the house. */
   unknowns: string[];
+  /** How big it is, hunted on the floor plan and in the advert. */
+  floorArea?: ReadFloorArea;
   band?: string;
   summary?: string;
 }
@@ -132,12 +163,146 @@ export function parseVisionRead(raw: string): VisionRead | null {
     return {
       areas,
       unknowns: (Array.isArray(p.unknowns) ? p.unknowns : []).map((u) => clean(u, 200)).filter(Boolean).slice(0, 12),
+      floorArea: parseFloorArea(p.floorArea),
       band: typeof p.band === 'string' && BANDS.includes(p.band) ? p.band : undefined,
       summary: typeof p.summary === 'string' ? clean(p.summary, 600) : undefined,
     };
   } catch {
     return null;
   }
+}
+
+/** Believable for a house we would buy, and for one room of one. Outside these
+ *  it was a plot, a garden, a whole terrace or a misread digit. */
+const MIN_SQM = 25;
+const MAX_SQM = 400;
+const MIN_ROOM_M = 0.8;
+const MAX_ROOM_M = 25;
+
+function parseFloorArea(raw: unknown): ReadFloorArea | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const f = raw as Partial<ReadFloorArea>;
+  const n = Number(f.sqm);
+  const sqm = Number.isFinite(n) && n >= MIN_SQM && n <= MAX_SQM ? Math.round(n) : null;
+  const rooms: PlanRoom[] = (Array.isArray(f.rooms) ? f.rooms : [])
+    .map((r) => {
+      const dims = Array.isArray(r?.m) ? r.m.map(Number) : [];
+      return { name: clean(r?.name, 40) || 'Room', m: [dims[0], dims[1]] as [number, number] };
+    })
+    .filter((r) => r.m.every((d) => Number.isFinite(d) && d >= MIN_ROOM_M && d <= MAX_ROOM_M))
+    .slice(0, 20);
+  const source = (['floorplan_total', 'listing_text', 'none'] as const)
+    .includes(f.source as never) ? f.source! : 'none';
+  return { sqm, source: sqm ? source : 'none', quote: clean(f.quote, 160), rooms };
+}
+
+/** Add the rooms up. NET internal only: no hall, no stairs, no landing, no
+ *  walls, so it is always SMALLER than the figure an advert quotes and it is
+ *  never returned as "the size". Rounded to whole metres. */
+export function sumRoomArea(rooms: PlanRoom[]): number {
+  const total = rooms.reduce((t, r) => t + r.m[0] * r.m[1], 0);
+  return Math.round(total);
+}
+
+/** One offer of how big the house is, with where it came from attached. */
+export interface SizeCandidate {
+  sqm: number;
+  /** Ranked, most trustworthy first. */
+  source: 'listing_size' | 'floorplan_total' | 'advert_text' | 'floorplan_rooms';
+  /** What to put on a button, in Pedro's words. */
+  label: string;
+  /** The words or figures behind it. */
+  evidence: string;
+  /** Both readers found the same thing. */
+  agreed: boolean;
+}
+
+export interface SizeSources {
+  /** Rightmove's own sizings block. */
+  listingSqm?: number | null;
+  /** A figure written into the advert text, found by regex, with its words. */
+  textSqm?: { sqm: number; quote: string } | null;
+  /** What each reader found on the floor plan. */
+  reads?: (ReadFloorArea | undefined)[];
+}
+
+/**
+ * Every answer to "how big is it", best first, never merged into one number.
+ *
+ * The agent picks. That is deliberate and it is the same rule as everywhere
+ * else on this screen: a figure the machine chose silently is a figure nobody
+ * checked, and this one rescales every area-scaled line in the estimate.
+ */
+export function sizeCandidates(src: SizeSources): SizeCandidate[] {
+  const out: SizeCandidate[] = [];
+  const ok = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isFinite(n) && n >= MIN_SQM && n <= MAX_SQM;
+
+  if (ok(src.listingSqm)) {
+    out.push({
+      sqm: Math.round(src.listingSqm),
+      source: 'listing_size',
+      label: 'Rightmove\'s own figure for this house',
+      evidence: 'The size field on the advert.',
+      agreed: true,
+    });
+  }
+
+  const reads = (src.reads ?? []).filter(Boolean) as ReadFloorArea[];
+  const totals = reads.filter((r) => r.source === 'floorplan_total' && ok(r.sqm));
+  if (totals.length) {
+    // Two readers within a couple of metres are reading the same printed
+    // number. Further apart than that and one of them has misread it, so the
+    // smaller is offered: under-reading a size under-prices nothing, it just
+    // prices the house as smaller, and the agent can see both quotes.
+    const values = totals.map((t) => t.sqm!);
+    const agreed = values.length > 1 && Math.max(...values) - Math.min(...values) <= 3;
+    out.push({
+      sqm: Math.min(...values),
+      source: 'floorplan_total',
+      label: 'The total printed on the floor plan',
+      evidence: totals.map((t) => t.quote).filter(Boolean).join(' / ') || 'Read off the plan.',
+      agreed,
+    });
+  }
+
+  const stated = reads.filter((r) => r.source === 'listing_text' && ok(r.sqm));
+  if (src.textSqm && ok(src.textSqm.sqm)) {
+    out.push({
+      sqm: src.textSqm.sqm,
+      source: 'advert_text',
+      label: 'A size written in the advert text',
+      evidence: `"${src.textSqm.quote}"`,
+      agreed: stated.some((s) => Math.abs(s.sqm! - src.textSqm!.sqm) <= 3),
+    });
+  } else if (stated.length) {
+    out.push({
+      sqm: Math.min(...stated.map((s) => s.sqm!)),
+      source: 'advert_text',
+      label: 'A size written in the advert text',
+      evidence: stated.map((s) => s.quote).filter(Boolean).join(' / '),
+      agreed: stated.length > 1,
+    });
+  }
+
+  // A LAST RESORT, and only when nobody printed a figure anywhere, because it
+  // is not the size of the house and the button has to say so. See ReadFloorArea.
+  const withRooms = reads.filter((r) => r.rooms.length >= 3);
+  if (withRooms.length && !out.length) {
+    const sums = withRooms.map((r) => sumRoomArea(r.rooms)).filter(ok);
+    if (sums.length) {
+      const best = Math.max(...sums);
+      out.push({
+        sqm: best,
+        source: 'floorplan_rooms',
+        label: 'The rooms on the plan added up, so the real house is BIGGER',
+        evidence: `${withRooms[0].rooms.length} rooms add up to about ${best} square metres. That leaves out the hall, the stairs, the landing and the walls, which on a terrace is roughly another quarter again.`,
+        agreed: sums.length > 1 && Math.max(...sums) - Math.min(...sums) <= 5,
+      });
+    }
+  }
+
+  return out;
 }
 
 // ---------------------------------------------------------------------------

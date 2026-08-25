@@ -36,20 +36,32 @@ export interface ListingPhoto {
   caption: string | null;
 }
 
+/** A floor area found in the advert's own words. */
+export interface TextArea {
+  sqm: number;
+  /** The exact words it was read from, so a human can check it. */
+  quote: string;
+}
+
 export interface Listing {
   propertyId: string;
   url: string;
   photos: ListingPhoto[];
   floorplans: string[];
   keyFeatures: string[];
-  /** The agent's blurb, tags stripped. */
+  /** The agent's blurb, tags stripped. WHOLE, never truncated. */
   description: string;
   bedrooms: number | null;
   bathrooms: number | null;
   propertySubType: string | null;
   tenure: string | null;
-  /** Square metres off the listing's own sizings block, when it has one. */
+  /** Square metres off the listing's own sizings block, when it has one.
+   *  MEASURED 2026-08-25: 2 of the 8 houses booked for a viewing had none. */
   floorAreaSqm: number | null;
+  /** Square metres written into the advert text or the key features. The other
+   *  place a size hides when Rightmove's own field is empty: Llanelli says
+   *  "100m2 (1076 sqft)" in the blurb and carries no sizings block at all. */
+  textFloorArea: TextArea | null;
   fetchedAt: string;
 }
 
@@ -60,6 +72,62 @@ const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
  *  twice over, and it is the difference between a few pence and a few pounds
  *  on a property nobody may even buy. */
 export const MAX_PHOTOS = 24;
+
+/** Floor plans go to the model at FULL SIZE, unlike the photographs. The thing
+ *  being read off them is small printed text, and the 296x197 thumbnail
+ *  Rightmove offers is unreadable at any price. Four covers a house with a
+ *  ground floor, a first floor, a loft and a garden plan. */
+export const MAX_FLOORPLANS = 4;
+
+/** A square foot in square metres. Used only to convert a figure somebody else
+ *  wrote down, never to derive one. */
+const SQFT_TO_SQM = 0.09290304;
+
+/** Believable for a house we would buy. Anything outside it was a room, a plot,
+ *  a garden or a typo, and a wrong size silently rescales the whole estimate. */
+const MIN_SQM = 25;
+const MAX_SQM = 400;
+
+/**
+ * The floor area written into the advert's own words, or null.
+ *
+ * WHY THIS IS A REGEX AND NOT A MODEL. It is a number printed in the text. A
+ * regex either finds it or does not, and it can quote the words it found it in;
+ * a model can also produce a plausible number that was never there. The model
+ * is used for the FLOOR PLAN, where reading really is the job.
+ *
+ * Written against the eight houses booked for a viewing on 2026-08-25, whose
+ * real spellings were "100m2", "1076 sqft", "964 sq ft", "964 Sq. Ft" and
+ * "999 SQ.FT". Square feet are preferred when both appear, because an advert
+ * that gives both is quoting one converted figure and the imperial one is
+ * nearly always the original.
+ */
+export function sizeFromText(text: string): TextArea | null {
+  const hay = String(text ?? '');
+  const found: { sqm: number; quote: string; imperial: boolean }[] = [];
+
+  const push = (raw: string, quote: string, imperial: boolean) => {
+    const n = Number(raw.replace(/,/g, ''));
+    if (!Number.isFinite(n) || n <= 0) return;
+    const sqm = imperial ? n * SQFT_TO_SQM : n;
+    if (sqm < MIN_SQM || sqm > MAX_SQM) return;
+    found.push({ sqm: Math.round(sqm), quote: quote.trim().slice(0, 120), imperial });
+  };
+
+  // "1,076 sqft", "964 sq ft", "964 Sq. Ft", "999 SQ.FT", "1076 square feet"
+  for (const m of hay.matchAll(/([\d][\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*\.?\s*(?:ft|feet)|sqft|square\s*(?:ft|feet))/gi)) {
+    push(m[1], m[0], true);
+  }
+  // "100m2", "100 m²", "100 sq m", "100 sq. metres", "100 square metres"
+  for (const m of hay.matchAll(/([\d][\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*\.?\s*(?:m|metres?|meters?)\b|sqm\b|m2\b|m²)/gi)) {
+    push(m[1], m[0], false);
+  }
+
+  if (!found.length) return null;
+  const imperial = found.find((f) => f.imperial);
+  const pick = imperial ?? found[0];
+  return { sqm: pick.sqm, quote: pick.quote };
+}
 
 /** The numeric id in a Rightmove property URL, or null if it is not one. */
 export function rightmovePropertyId(url: string | null | undefined): string | null {
@@ -158,7 +226,9 @@ export function readPropertyData(pd: Record<string, unknown>, url: string): List
   const floorplans: string[] = [];
   for (const raw of (Array.isArray(pd.floorplans) ? pd.floorplans : [])) {
     const f = (raw ?? {}) as Record<string, unknown>;
+    // The FULL size, deliberately. See MAX_FLOORPLANS.
     if (str(f.url)) floorplans.push(str(f.url));
+    if (floorplans.length >= MAX_FLOORPLANS) break;
   }
 
   let sqm: number | null = null;
@@ -170,19 +240,28 @@ export function readPropertyData(pd: Record<string, unknown>, url: string): List
   const text = (pd.text ?? {}) as Record<string, unknown>;
   const tenure = (pd.tenure ?? {}) as Record<string, unknown>;
 
+  const keyFeatures = (Array.isArray(pd.keyFeatures) ? pd.keyFeatures : [])
+    .map((k) => plainText(String(k))).filter(Boolean).slice(0, 12);
+  // WHOLE. The cap is a runaway guard, not an editorial decision: 20,000 is
+  // three times the longest of the eight houses booked for a viewing on
+  // 2026-08-25 (Buxton, 6,539 characters). The first version of this cut at
+  // 6,000 and threw the end of Buxton's advert away, which is exactly where an
+  // agent puts "no central heating" and "sold as seen".
+  const description = plainText(str(text.description)).slice(0, 20_000);
+
   return {
     propertyId: String(pd.id ?? ''),
     url,
     photos,
     floorplans,
-    keyFeatures: (Array.isArray(pd.keyFeatures) ? pd.keyFeatures : [])
-      .map((k) => plainText(String(k))).filter(Boolean).slice(0, 12),
-    description: plainText(str(text.description)).slice(0, 6000),
+    keyFeatures,
+    description,
     bedrooms: num(pd.bedrooms),
     bathrooms: num(pd.bathrooms),
     propertySubType: str(pd.propertySubType) || null,
     tenure: str(tenure.tenureType).replace(/_/g, ' ').toLowerCase() || null,
     floorAreaSqm: sqm,
+    textFloorArea: sizeFromText(`${keyFeatures.join(' . ')} . ${description}`),
     fetchedAt: new Date().toISOString(),
   };
 }

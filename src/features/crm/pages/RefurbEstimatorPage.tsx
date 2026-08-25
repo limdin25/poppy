@@ -28,11 +28,12 @@
 // ../lib/refurbCard.ts. The two-reader merge lives in ../lib/refurbAssessment.ts.
 // This file is the screen and nothing else.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, Camera, Check, ChevronDown, ChevronRight, ClipboardCopy, Eye,
-  HardHat, Home, Loader2, Mic, Plus, PoundSterling, Search, Square, Trash2, X,
+  AlertTriangle, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCopy,
+  Eye, HardHat, Home, Loader2, Maximize2, Mic, Plus, PoundSterling, Ruler, Search,
+  Square, Trash2, X,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
@@ -40,7 +41,7 @@ import { useDictation } from '../lib/useDictation';
 import { CARD, SECTIONS, gbp, type Estimate, type LineKey } from '../lib/refurbCard';
 import {
   blankAreas, confirmedCount, verdictOf,
-  type AreaAssessment, type AreaVerdict, type AreaWork,
+  type AreaAssessment, type AreaVerdict, type AreaWork, type SizeCandidate,
 } from '../lib/refurbAssessment';
 
 interface HouseOption {
@@ -98,6 +99,8 @@ interface LoadedHouse {
   listing: Listing | null;
   call: { facts: string; transcript: string; calls: number };
   areas: AreaAssessment[];
+  /** Every answer to "how big is it", best first. He picks one. */
+  sizes: SizeCandidate[];
   analysedAt: string | null;
   analysisMeta: AnalysisMeta | null;
   confirmedAddress: string | null;
@@ -169,16 +172,203 @@ function Copy({ text, label }: { text: string; label: string }) {
   );
 }
 
-function Thumb({ photo, size = 'h-24 w-32' }: { photo: ListingPhoto; size?: string }) {
+// ---------------------------------------------------------------------------
+// The picture on top
+// ---------------------------------------------------------------------------
+//
+// Hugo, 2026-08-25, on the first version, which showed small thumbnails that
+// opened Rightmove in a new tab: "the way the photo is on Zoopla, you know,
+// big. And then as you touch the photos you can navigate the boxes to speak.
+// But the photo is always displayed on top. We can scroll the website and then
+// we can speak on the boxes or rewrite or confirm as we look on the photos.
+// The way you put now I have to click on the photos and then takes me to an
+// outside page, it's not good."
+//
+// So: one big picture, stuck to the top of the page, and it never leaves the
+// page. Scrolling down to a part of the property brings that part's photograph
+// up into it on its own, which is the whole point: he is looking at the kitchen
+// while he confirms the kitchen.
+
+interface StageItem {
+  url: string;
+  /** Small version for the strip. Same URL for floor plans and his own photos. */
+  thumb: string;
+  kind: 'photo' | 'plan' | 'agent';
+  label: string;
+  /** Which part of the property this picture belongs to, when anything knows. */
+  areaId: string | null;
+}
+
+/** Every picture of this house in one list, in the order he would look at
+ *  them. THE PHOTOGRAPHS COME FIRST AND KEEP THEIR ORDER, because the AI
+ *  answers refer to them by number and a plan slipped in front would shift
+ *  every one of those references by one. */
+function buildStage(photos: ListingPhoto[], floorplans: string[], areas: AreaAssessment[]): StageItem[] {
+  const areaOf = new Map<number, { id: string; label: string }>();
+  for (const a of areas) {
+    for (const i of a.photos) if (!areaOf.has(i)) areaOf.set(i, { id: a.id, label: a.label });
+  }
+  const out: StageItem[] = photos.map((p, i) => {
+    const owner = areaOf.get(i);
+    return {
+      url: p.url,
+      thumb: p.thumb,
+      kind: 'photo' as const,
+      label: owner ? `Photo ${i + 1}, ${owner.label}` : `Photo ${i + 1}`,
+      areaId: owner?.id ?? null,
+    };
+  });
+  floorplans.forEach((f, i) => out.push({
+    url: f, thumb: f, kind: 'plan', areaId: null,
+    label: floorplans.length > 1 ? `Floor plan ${i + 1}` : 'Floor plan',
+  }));
+  for (const a of areas) {
+    for (const u of a.agentPhotos ?? []) {
+      out.push({ url: u, thumb: u, kind: 'agent', label: `Your photo, ${a.label}`, areaId: a.id });
+    }
+  }
+  return out;
+}
+
+function PhotoStage({ items, index, onIndex, collapsed, onCollapse, footer }: {
+  items: StageItem[];
+  index: number;
+  onIndex: (i: number) => void;
+  collapsed: boolean;
+  onCollapse: (v: boolean) => void;
+  footer: React.ReactNode;
+}) {
+  const [full, setFull] = useState(false);
+  const current = items[index];
+  const strip = useRef<HTMLDivElement | null>(null);
+
+  // Keep the selected thumbnail in view when the page scrolls the picture for
+  // him. Without this the strip and the big picture disagree about where he is.
+  useEffect(() => {
+    const el = strip.current?.querySelector<HTMLElement>(`[data-strip="${index}"]`);
+    el?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  }, [index]);
+
+  if (!items.length) {
+    return <div className="sticky top-0 z-20 -mx-4 bg-[#F7F8FA] px-4 pb-2 pt-2">{footer}</div>;
+  }
+
   return (
-    <a href={photo.url} target="_blank" rel="noreferrer" className="block flex-shrink-0">
+    <>
+      <div className="sticky top-0 z-20 -mx-4 bg-[#F7F8FA] px-4 pb-2 pt-2">
+        <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
+          {!collapsed && (
+            <div className="relative bg-[#111827]">
+              {/* object-contain, not cover: a floor plan cropped to fill is a
+                  floor plan with its dimensions cut off. */}
+              <img
+                data-testid="stage-photo"
+                src={current.url}
+                alt={current.label}
+                className="mx-auto block h-[38vh] max-h-[380px] w-auto max-w-full object-contain"
+              />
+              <button
+                type="button"
+                data-testid="stage-prev"
+                onClick={() => onIndex((index - 1 + items.length) % items.length)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 p-2 text-white hover:bg-black/70"
+                aria-label="Previous photo"
+              ><ChevronLeft className="h-5 w-5" /></button>
+              <button
+                type="button"
+                data-testid="stage-next"
+                onClick={() => onIndex((index + 1) % items.length)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 p-2 text-white hover:bg-black/70"
+                aria-label="Next photo"
+              ><ChevronRight className="h-5 w-5" /></button>
+              <span className="absolute bottom-2 left-2 rounded-lg bg-black/55 px-2 py-1 text-[11.5px] font-semibold text-white">
+                {current.label} · {index + 1} of {items.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => setFull(true)}
+                className="absolute bottom-2 right-2 rounded-lg bg-black/55 p-1.5 text-white hover:bg-black/75"
+                aria-label="Make it full screen"
+              ><Maximize2 className="h-4 w-4" /></button>
+            </div>
+          )}
+
+          {/* the strip */}
+          <div ref={strip} className="flex gap-1.5 overflow-x-auto bg-white px-2 py-2">
+            {items.map((it, i) => (
+              <button
+                key={`${it.url}-${i}`}
+                type="button"
+                data-strip={i}
+                data-testid={`stage-thumb-${i}`}
+                onClick={() => onIndex(i)}
+                className={cn(
+                  'relative h-12 w-16 flex-shrink-0 overflow-hidden rounded-md border-2 transition-colors',
+                  i === index ? 'border-[#3C5A87]' : 'border-transparent opacity-70 hover:opacity-100',
+                )}
+              >
+                <img src={it.thumb} alt={it.label} loading="lazy" className="h-full w-full object-cover" />
+                {it.kind !== 'photo' && (
+                  <span className="absolute inset-x-0 bottom-0 bg-black/55 text-[8px] font-bold uppercase text-white">
+                    {it.kind === 'plan' ? 'plan' : 'yours'}
+                  </span>
+                )}
+              </button>
+            ))}
+            <button
+              type="button"
+              data-testid="stage-collapse"
+              onClick={() => onCollapse(!collapsed)}
+              className="ml-auto flex-shrink-0 self-center rounded-lg bg-[#F3F4F6] px-2 py-1.5 text-[11.5px] font-semibold text-[#374151]"
+            >
+              {collapsed ? 'Show the photo' : 'Hide the photo'}
+            </button>
+          </div>
+
+          {footer}
+        </div>
+      </div>
+
+      {full && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setFull(false)}
+          role="presentation"
+        >
+          <img src={current.url} alt={current.label} className="max-h-full max-w-full object-contain" />
+          <button
+            type="button"
+            onClick={() => setFull(false)}
+            className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white"
+            aria-label="Close"
+          ><X className="h-5 w-5" /></button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** A thumbnail that puts its picture on the stage. It is a BUTTON, never a
+ *  link: leaving the page for Rightmove is what Hugo asked to stop. */
+function Thumb({ item, onPick, size = 'h-24 w-32', active = false }: {
+  item: { url: string; thumb: string; label: string };
+  onPick: () => void;
+  size?: string;
+  active?: boolean;
+}) {
+  return (
+    <button type="button" onClick={onPick} className="block flex-shrink-0" title={item.label}>
       <img
-        src={photo.thumb}
-        alt={photo.caption ?? 'Property photo'}
+        src={item.thumb}
+        alt={item.label}
         loading="lazy"
-        className={cn('rounded-lg border border-[#E5E7EB] object-cover', size)}
+        className={cn(
+          'rounded-lg border-2 object-cover transition-colors',
+          active ? 'border-[#3C5A87]' : 'border-[#E5E7EB] hover:border-[#9CA3AF]',
+          size,
+        )}
       />
-    </a>
+    </button>
   );
 }
 
@@ -216,6 +406,14 @@ export default function RefurbEstimatorPage() {
   const [anchor, setAnchor] = useState(true);
   const [showAdvert, setShowAdvert] = useState(false);
   const [showCall, setShowCall] = useState(false);
+
+  /** Which picture is on the stage at the top, and whether the stage is open. */
+  const [stageIndex, setStageIndex] = useState(0);
+  const [stageCollapsed, setStageCollapsed] = useState(false);
+  /** A manual pick sticks until he scrolls into a DIFFERENT part of the
+   *  property. Without this the auto-follow fights him every time he picks a
+   *  photo while standing still on one section. */
+  const followedArea = useRef<string | null>(null);
 
   // ---- the dropdown ----------------------------------------------------
   useEffect(() => {
@@ -313,11 +511,18 @@ export default function RefurbEstimatorPage() {
     dictation.stop();
     setAnalysing(true); setError(null); setResult(null);
     try {
-      const r = await post<{ areas: AreaAssessment[]; analysisMeta: AnalysisMeta; analysedAt: string; listing: Listing | null }>({
-        action: 'analyse', propertyId: loaded.house.id, areas,
-      });
+      const r = await post<{
+        areas: AreaAssessment[]; analysisMeta: AnalysisMeta; analysedAt: string;
+        listing: Listing | null; sizes: SizeCandidate[];
+      }>({ action: 'analyse', propertyId: loaded.house.id, areas });
       setAreas(r.areas);
-      setLoaded((l) => (l ? { ...l, analysisMeta: r.analysisMeta, analysedAt: r.analysedAt, listing: r.listing ?? l.listing } : l));
+      setLoaded((l) => (l ? {
+        ...l,
+        analysisMeta: r.analysisMeta,
+        analysedAt: r.analysedAt,
+        listing: r.listing ?? l.listing,
+        sizes: r.sizes ?? l.sizes,
+      } : l));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -347,7 +552,11 @@ export default function RefurbEstimatorPage() {
 
   const done = confirmedCount(areas);
   const analysed = Boolean(loaded?.analysedAt);
-  const photos = loaded?.listing?.photos ?? [];
+  const photos = useMemo(() => loaded?.listing?.photos ?? [], [loaded]);
+  const stage = useMemo(
+    () => buildStage(photos, loaded?.house.floorplans ?? [], areas),
+    [photos, loaded, areas],
+  );
 
   // ---- the screen ------------------------------------------------------
   return (
@@ -419,6 +628,36 @@ export default function RefurbEstimatorPage() {
 
         {loaded && !loading && (
           <>
+            {/* ---- the picture, stuck to the top of everything below ---- */}
+            <PhotoStage
+              items={stage}
+              index={Math.min(stageIndex, Math.max(0, stage.length - 1))}
+              onIndex={setStageIndex}
+              collapsed={stageCollapsed}
+              onCollapse={setStageCollapsed}
+              footer={(
+                <div className="border-t border-[#F3F4F6] px-4 py-2.5">
+                  <div className="flex items-center justify-between text-[12px]">
+                    <span className="font-semibold text-[#1A1A1A]">
+                      <span data-testid="sections-done">{done}</span> of {SECTIONS.length} parts confirmed
+                    </span>
+                    <span className={cn('font-medium', done < SECTIONS.length ? 'text-[#B45309]' : 'text-[#166534]')}>
+                      {done < SECTIONS.length ? `${SECTIONS.length - done} to go` : 'All confirmed'}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[#F3F4F6]">
+                    <div
+                      className="h-full rounded-full bg-[#3C5A87] transition-all duration-300"
+                      style={{ width: `${(done / SECTIONS.length) * 100}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[10.5px] text-[#9CA3AF]">
+                    {saved ? 'Saved.' : 'Saving...'} Only confirmed parts get priced.
+                  </p>
+                </div>
+              )}
+            />
+
             {/* ---- the property ---- */}
             <div className="mt-3 rounded-2xl border border-[#E5E7EB] bg-white p-5" data-testid="house-card">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -474,6 +713,52 @@ export default function RefurbEstimatorPage() {
                   />
                 </div>
               </div>
+              {/* WHERE THE SIZE CAN BE FOUND. Three places, offered separately
+                  and never averaged into one number, because the floor area
+                  rescales every area-priced line in the estimate. */}
+              {loaded.sizes.length > 0 && (
+                <div className="mt-2.5 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-3" data-testid="size-candidates">
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <Ruler className="h-3.5 w-3.5 text-[#3C5A87]" />
+                    <p className="text-[11.5px] font-semibold uppercase tracking-wide text-[#6B7280]">
+                      Sizes we could find
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {loaded.sizes.map((c) => (
+                      <button
+                        key={`${c.source}-${c.sqm}`}
+                        type="button"
+                        data-testid={`size-${c.source}`}
+                        onClick={() => { setSqm(String(c.sqm)); setSizeConfirmed(false); }}
+                        className={cn(
+                          'block w-full rounded-lg border px-2.5 py-2 text-left transition-colors',
+                          String(c.sqm) === sqm
+                            ? 'border-[#3C5A87] bg-white'
+                            : 'border-[#E5E7EB] bg-white hover:border-[#9CA3AF]',
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[13px] font-bold text-[#1A1A1A]">{c.sqm} sq m</span>
+                          <span className="text-[11.5px] text-[#374151]">{c.label}</span>
+                          {c.agreed && (
+                            <span className="rounded-full bg-[#DCFCE7] px-1.5 py-[1px] text-[9px] font-bold uppercase text-[#166534]">
+                              both readers
+                            </span>
+                          )}
+                          {c.source === 'floorplan_rooms' && (
+                            <span className="rounded-full bg-[#FEF3C7] px-1.5 py-[1px] text-[9px] font-bold uppercase text-[#B45309]">
+                              a floor, not the size
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-[11px] leading-snug text-[#6B7280]">{c.evidence}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* The advert's own figure is not a fact until he agrees with it. */}
               <label className="mt-2 flex items-start gap-2 text-[12px] leading-relaxed text-[#374151]">
                 <input
@@ -485,9 +770,9 @@ export default function RefurbEstimatorPage() {
                 />
                 <span>
                   I have checked the size and the address are right.
-                  {loaded.house.listingFloorAreaSqm
-                    ? ` The advert says ${Math.round(loaded.house.listingFloorAreaSqm)} square metres.`
-                    : ' The advert does not give a size, so this is priced as a typical 88 square metre terrace unless you put one in.'}
+                  {loaded.sizes.length
+                    ? ''
+                    : ' Nothing on the advert or the floor plan gives a size, so this is priced as a typical 88 square metre terrace unless you put one in.'}
                 </span>
               </label>
 
@@ -536,32 +821,9 @@ export default function RefurbEstimatorPage() {
                 </div>
               )}
 
-              {/* every photo, once, at the top */}
-              {photos.length > 0 && (
-                <div className="mt-4">
-                  <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
-                    All {photos.length} photos from the advert
-                  </p>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {photos.map((p, i) => (
-                      <div key={p.url} className="relative">
-                        <Thumb photo={p} size="h-20 w-28" />
-                        <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-bold text-white">{i}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {loaded.house.floorplans.length > 0 && (
-                <div className="mt-3">
-                  <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-[#9CA3AF]">Floor plan</p>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {loaded.house.floorplans.map((f) => (
-                      <Thumb key={f} photo={{ url: f, thumb: f, caption: 'Floor plan' }} size="h-24 w-32" />
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* No thumbnail wall here any more: every picture is in the strip
+                  under the big one at the top of the page, which is where Hugo
+                  asked for them and where they stay while he scrolls. */}
               {!photos.length && (
                 <p className="mt-3 rounded-lg bg-[#FFFBEB] px-3 py-2 text-[12px] leading-relaxed text-[#78350F]">
                   No photos could be pulled off the advert for this one, so every part of the
@@ -620,26 +882,8 @@ export default function RefurbEstimatorPage() {
               )}
             </div>
 
-            {/* ---- the counter. Confirmed, not filled in. ---- */}
-            <div className="sticky top-0 z-10 mt-3 rounded-2xl border border-[#E5E7EB] bg-white/95 p-4 backdrop-blur">
-              <div className="flex items-center justify-between text-[12.5px]">
-                <span className="font-semibold text-[#1A1A1A]">
-                  <span data-testid="sections-done">{done}</span> of {SECTIONS.length} parts of the property confirmed
-                </span>
-                <span className={cn('font-medium', done < SECTIONS.length ? 'text-[#B45309]' : 'text-[#166534]')}>
-                  {done < SECTIONS.length ? `${SECTIONS.length - done} still to confirm` : 'All confirmed'}
-                </span>
-              </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
-                <div
-                  className="h-full rounded-full bg-[#3C5A87] transition-all duration-300"
-                  style={{ width: `${(done / SECTIONS.length) * 100}%` }}
-                />
-              </div>
-              <p className="mt-2 text-[11px] text-[#9CA3AF]">
-                {saved ? 'Saved.' : 'Saving...'} Only confirmed parts get priced.
-              </p>
-            </div>
+            {/* The counter lives inside the photo stage above, so there is only
+                ever one thing stuck to the top of the page. */}
 
             {dictation.error && (
               <div className="mt-3 flex gap-2.5 rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3.5">
@@ -654,7 +898,18 @@ export default function RefurbEstimatorPage() {
                 <AreaCard
                   key={area.id}
                   area={area}
-                  photos={photos}
+                  stage={stage}
+                  stageIndex={stageIndex}
+                  onPick={setStageIndex}
+                  onInView={() => {
+                    // Scrolling into a NEW part of the property brings its
+                    // photograph up on its own. Staying on the same one leaves
+                    // whatever he picked by hand alone.
+                    if (followedArea.current === area.id) return;
+                    followedArea.current = area.id;
+                    const first = stage.findIndex((s) => s.areaId === area.id);
+                    if (first >= 0) setStageIndex(first);
+                  }}
                   recording={dictation.activeId === area.id}
                   interim={dictation.interim}
                   micSupported={dictation.supported}
@@ -710,9 +965,14 @@ export default function RefurbEstimatorPage() {
 // One part of the property
 // ---------------------------------------------------------------------------
 
-function AreaCard({ area, photos, recording, interim, micSupported, onMic, onPatch }: {
+function AreaCard({
+  area, stage, stageIndex, onPick, onInView, recording, interim, micSupported, onMic, onPatch,
+}: {
   area: AreaAssessment;
-  photos: ListingPhoto[];
+  stage: StageItem[];
+  stageIndex: number;
+  onPick: (i: number) => void;
+  onInView: () => void;
   recording: boolean;
   interim: string;
   micSupported: boolean;
@@ -724,7 +984,30 @@ function AreaCard({ area, photos, recording, interim, micSupported, onMic, onPat
   const section = SECTIONS.find((s) => s.id === area.id);
   const verdict = verdictOf(area);
   const ui = VERDICT_UI[verdict];
-  const mine = area.photos.map((i) => photos[i]).filter(Boolean);
+
+  /** The stage entries belonging to this part of the property, with the index
+   *  they live at, so clicking one puts it on the big picture up top. */
+  const mine = useMemo(
+    () => stage.map((s, i) => ({ s, i })).filter(({ s }) => s.areaId === area.id),
+    [stage, area.id],
+  );
+
+  // Scrolling this card into the middle of the screen brings its photograph up.
+  // Hugo: "we can scroll the website and then we can speak on the boxes or
+  // rewrite or confirm as we look on the photos."
+  const card = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = card.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      (entries) => { if (entries[0]?.isIntersecting) onInView(); },
+      // A band across the middle of the screen: the card the eye is on, not
+      // whichever card happens to be touching the bottom edge.
+      { rootMargin: '-45% 0px -45% 0px', threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [onInView]);
 
   const setVerdict = (v: AreaVerdict) => onPatch((a) => ({
     ...a,
@@ -737,9 +1020,10 @@ function AreaCard({ area, photos, recording, interim, micSupported, onMic, onPat
 
   return (
     <div
+      ref={card}
       data-testid={`section-${area.id}`}
       className={cn(
-        'rounded-2xl border bg-white p-4 transition-colors',
+        'scroll-mt-[46vh] rounded-2xl border bg-white p-4 transition-colors',
         recording ? 'border-[#DC2626] ring-2 ring-[#FEE2E2]'
           : area.confirmed ? 'border-[#BBF7D0]' : 'border-[#E5E7EB]',
       )}
@@ -774,27 +1058,31 @@ function AreaCard({ area, photos, recording, interim, micSupported, onMic, onPat
         )}
       </div>
 
-      {/* the photos for THIS part of the property, right beside it */}
-      {(mine.length > 0 || area.agentPhotos.length > 0) && (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {mine.map((p) => <Thumb key={p.url} photo={p} />)}
-          {area.agentPhotos.map((u) => (
-            <div key={u} className="relative flex-shrink-0">
-              <Thumb photo={{ url: u, thumb: u, caption: 'Your photo' }} />
-              <span className="absolute left-1 top-1 rounded bg-[#3C5A87] px-1 text-[9px] font-bold text-white">yours</span>
-              <button
-                type="button"
-                onClick={() => onPatch((a) => ({ ...a, agentPhotos: a.agentPhotos.filter((x) => x !== u) }))}
-                className="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white"
-                aria-label="Remove this photo"
-              >
-                <X className="h-3 w-3" />
-              </button>
+      {/* The photos for THIS part of the property. Tapping one puts it on the
+          big picture at the top of the page. It never leaves the page. */}
+      {mine.length > 0 && (
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1" data-testid={`photos-${area.id}`}>
+          {mine.map(({ s, i }) => (
+            <div key={`${s.url}-${i}`} className="relative flex-shrink-0">
+              <Thumb item={s} onPick={() => onPick(i)} active={i === stageIndex} />
+              {s.kind === 'agent' && (
+                <>
+                  <span className="absolute left-1 top-1 rounded bg-[#3C5A87] px-1 text-[9px] font-bold text-white">yours</span>
+                  <button
+                    type="button"
+                    onClick={() => onPatch((a) => ({ ...a, agentPhotos: a.agentPhotos.filter((x) => x !== s.url) }))}
+                    className="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white"
+                    aria-label="Remove this photo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </>
+              )}
             </div>
           ))}
         </div>
       )}
-      {!mine.length && !area.agentPhotos.length && area.aiVerdict !== 'unknown' && (
+      {!mine.length && area.aiVerdict !== 'unknown' && (
         <p className="mt-2 text-[11.5px] italic text-[#9CA3AF]">
           No photo of this part of the property on the advert.
         </p>

@@ -47,7 +47,7 @@ import {
 } from '../../src/features/crm/lib/refurbCard.js';
 import {
   parseVisionRead, mergeReads, blankAreas, pricedWorks, worksToConfirm, toInspect,
-  verdictOf, type AreaAssessment, type MergeInput,
+  verdictOf, sizeCandidates, type AreaAssessment, type MergeInput,
 } from '../../src/features/crm/lib/refurbAssessment.js';
 
 // 300, NOT 60, AND THAT IS NOT PADDING.
@@ -155,10 +155,16 @@ const SYSTEM = [
   '`unknowns` is the honest half of the answer: things nobody can judge without standing in the house, specific to THIS house rather than a generic list.',
   '`band` is one of turnkey, cosmetic, modernisation, full_refurb, derelict, based on the whole picture.',
   '',
+  'HOW BIG IS THE HOUSE. This is a separate job and you must do it properly, because the floor area rescales every price we work out afterwards. Look in three places, in this order:',
+  '  1. A TOTAL PRINTED ON THE FLOOR PLAN. Plans often print one, as "Total area: approx. 76.0 sq m" or "1076 sq ft". If you find one, `floorArea.sqm` is that figure in square metres (divide square feet by 10.764), `source` is "floorplan_total" and `quote` is the exact printed words.',
+  '  2. A SIZE WRITTEN IN THE ADVERT, for example "approximately 964 sq ft". Then `source` is "listing_text" and `quote` is the exact words.',
+  '  3. NO TOTAL ANYWHERE. Many plans print only room by room dimensions. Then leave `sqm` null, `source` "none", and instead LIST THE ROOMS in `rooms` with their metric dimensions exactly as printed: [{"name":"Kitchen","m":[3.60,2.64]}]. Include every room on every floor. Do NOT add them up yourself and do NOT put the sum in `sqm`, because a room list leaves out the hall, the stairs and the walls and would understate the house by about a quarter. We do that sum ourselves, and we label it.',
+  'NEVER estimate a floor area by eye, from the number of bedrooms, or from what a house like this usually is. A guessed size is worse than no size, because no size is priced as a typical terrace and says so.',
+  '',
   'Long dashes, curly quotes and ellipsis characters are forbidden in your output. Use plain commas and full stops.',
   '',
   'Return ONLY a JSON object, no prose, no code fences:',
-  '{"band":"...","summary":"one or two plain sentences","areas":[{"id":"kitchen","verdict":"nothing","summary":"Nothing to do.","evidence":"units dated but sound, worktop intact, no water damage","basis":"photo","photos":[4,5],"works":[]}],"unknowns":["..."]}',
+  '{"band":"...","summary":"one or two plain sentences","areas":[{"id":"kitchen","verdict":"nothing","summary":"Nothing to do.","evidence":"units dated but sound, worktop intact, no water damage","basis":"photo","photos":[4,5],"works":[]}],"floorArea":{"sqm":null,"source":"none","quote":"","rooms":[{"name":"Kitchen","m":[3.6,2.64]}]},"unknowns":["..."]}',
 ].join('\n');
 
 // ---------------------------------------------------------------------------
@@ -275,11 +281,16 @@ function evidenceBlocks(
   }
   if (listing?.description) {
     parts.push([
-      'THE ADVERT ITSELF. Estate agents write these to sell, so treat "in need of modernisation"',
-      'as a selling phrase and not as evidence of work. A specific statement of fact ("no central',
-      'heating", "damp to the rear wall", "roof recently replaced") IS evidence.',
+      'THE ADVERT ITSELF, IN FULL. Read all of it, including the end: a size, "no central heating",',
+      '"sold as seen" and "cash buyers only" are usually in the last paragraph rather than the first.',
+      'Estate agents write these to sell, so treat "in need of modernisation" as a selling phrase and',
+      'not as evidence of work. A specific statement of fact ("no central heating", "damp to the rear',
+      'wall", "roof recently replaced", "964 sq ft") IS evidence.',
       '',
-      listing.description.slice(0, 4000),
+      // WHOLE, not a slice. The 4,000 character cut this replaces threw away
+      // the end of five of the eight live adverts, which is where an agent
+      // puts the size and the warnings.
+      listing.description,
     ].join('\n'));
   }
   if (call.facts) {
@@ -308,6 +319,22 @@ function evidenceBlocks(
   }
 
   const blocks: LLMBlock[] = [{ type: 'text', text: parts.join('\n\n') }];
+
+  // THE FLOOR PLAN GOES FIRST, and at full size. It is the only picture with
+  // words on it: it answers how big the house is, how the rooms sit together
+  // and whether there is a room to add. The first version of this route drew
+  // the plan on the screen and never showed it to a model at all.
+  if (listing?.floorplans.length) {
+    blocks.push({
+      type: 'text',
+      text: `THE FLOOR PLAN, ${listing.floorplans.length} page${listing.floorplans.length > 1 ? 's' : ''}.`
+        + ' Read the total floor area off it if one is printed. If none is printed, read out every'
+        + ' room and its metric dimensions instead, exactly as printed, into `floorArea.rooms`.',
+    });
+    for (const plan of listing.floorplans) {
+      blocks.push({ type: 'image', source: { type: 'url', url: plan } });
+    }
+  }
 
   if (listing?.photos.length) {
     blocks.push({
@@ -339,7 +366,8 @@ function evidenceBlocks(
 
   blocks.push({
     type: 'text',
-    text: 'Now answer for every part of the property. Remember: the default answer is "Nothing to do", and dated is not work.',
+    text: 'Now answer for every part of the property, and answer the floor area question from the plan and the advert.'
+      + ' Remember: the default answer is "Nothing to do", and dated is not work.',
   });
   return blocks;
 }
@@ -430,6 +458,13 @@ async function handleWeb(req: Request): Promise<Response> {
       ok: true,
       house: houseView(h, listing),
       listing,
+      // Before any reading has run there are still two places a size can be:
+      // Rightmove's own field and the advert text. The plan needs a model.
+      sizes: sizeCandidates({
+        listingSqm: listing?.floorAreaSqm ?? h.floor_area_sqm ?? null,
+        textSqm: listing?.textFloorArea ?? null,
+        reads: (stored?.analysis_meta?.floorAreas as never) ?? [],
+      }),
       call: { facts: call.facts, transcript: call.transcript.slice(0, 4000), calls: call.calls },
       areas: stored?.areas?.length ? stored.areas : blankAreas(),
       analysedAt: stored?.analysed_at ?? null,
@@ -527,14 +562,26 @@ async function handleWeb(req: Request): Promise<Response> {
   // Unknowns from every reader that answered, deduped, because "what nobody can
   // tell from here" is additive and each reader notices different ones.
   const unknowns = [...new Set(good.flatMap((g) => g.read.unknowns))].slice(0, 12);
+  // Kept raw, one per reader, so `sizeCandidates` can say whether they agreed
+  // and so re-opening the house does not need another paid reading to know how
+  // big it is.
+  const floorAreas = good.map((g) => g.read.floorArea).filter(Boolean);
+  const sizes = sizeCandidates({
+    listingSqm: listing?.floorAreaSqm ?? h.floor_area_sqm ?? null,
+    textSqm: listing?.textFloorArea ?? null,
+    reads: floorAreas,
+  });
   const meta = {
     readers: good.map((g) => ({ id: g.id, model: g.model })),
     failed: settled.filter((s) => !s.read).map((s) => s.id),
     band: good[0].read.band ?? null,
     summary: good[0].read.summary ?? null,
     unknowns,
+    floorAreas,
     seconds: Math.round((Date.now() - started) / 1000),
     photos: listing?.photos.length ?? 0,
+    floorplans: listing?.floorplans.length ?? 0,
+    descriptionChars: listing?.description.length ?? 0,
     usedCall: Boolean(call.transcript || call.facts),
   };
 
@@ -550,7 +597,9 @@ async function handleWeb(req: Request): Promise<Response> {
   }, { onConflict: 'property_id' });
   if (error) console.warn('[refurb] assessment write failed', error.message);
 
-  return Response.json({ ok: true, areas, analysisMeta: meta, analysedAt: new Date().toISOString(), listing });
+  return Response.json({
+    ok: true, areas, analysisMeta: meta, analysedAt: new Date().toISOString(), listing, sizes,
+  });
 }
 
 function houseView(h: HouseRow, listing: Listing | null) {

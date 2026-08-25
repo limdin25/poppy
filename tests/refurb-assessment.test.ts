@@ -16,11 +16,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseVisionRead, mergeReads, blankAreas, pricedWorks, worksToConfirm,
-  toInspect, verdictOf, confirmedCount, nothingToDo,
+  toInspect, verdictOf, confirmedCount, nothingToDo, sumRoomArea, sizeCandidates,
   type VisionRead, type AreaAssessment, type ReadArea,
 } from '@/features/crm/lib/refurbAssessment';
 import { SECTIONS, estimate } from '@/features/crm/lib/refurbCard';
-import { readPropertyData, rightmovePropertyId, MAX_PHOTOS } from '../api/lib/rightmove-listing.js';
+import {
+  readPropertyData, rightmovePropertyId, sizeFromText, MAX_PHOTOS, MAX_FLOORPLANS,
+} from '../api/lib/rightmove-listing.js';
 
 const area = (id: string, over: Partial<ReadArea> = {}): ReadArea => ({
   id,
@@ -280,6 +282,22 @@ describe('reading a Rightmove listing', () => {
     expect(l.description).not.toContain('<');
   });
 
+  it('reads the WHOLE description, because the size and the warnings are at the end', () => {
+    // The first version cut at 6,000 characters, which lost the end of 5 of the
+    // 8 live adverts. Buxton's is 6,539 and its last paragraph is where an
+    // agent writes "no central heating" and "sold as seen".
+    const long = 'Lovely home. '.repeat(700);   // about 9,100 characters
+    const l = readPropertyData({ text: { description: `<p>${long}</p>` } }, 'u');
+    expect(l.description.length).toBeGreaterThan(8_000);
+  });
+
+  it('caps how many floor plan pages it will hand a model', () => {
+    const l = readPropertyData({
+      floorplans: Array.from({ length: 9 }, (_, i) => ({ url: `https://media.rightmove.co.uk/plan-${i}.jpeg` })),
+    }, 'u');
+    expect(l.floorplans.length).toBe(MAX_FLOORPLANS);
+  });
+
   it('never writes a long dash into anything the builder will read', () => {
     // House rule, and this text ends up quoted into the builder message.
     const l = readPropertyData({
@@ -287,5 +305,145 @@ describe('reading a Rightmove listing', () => {
       text: { description: '<p>Sound but tired.</p>' },
     }, 'u');
     expect(`${l.keyFeatures.join(' ')} ${l.description}`).not.toMatch(/[—–…]/);
+  });
+});
+
+describe('finding how big the house actually is', () => {
+  // Hugo, 2026-08-25, checking the first version: "it reads the four plan and
+  // look for the size on the four plan and can look for the size on the
+  // descriptions as well." He was right that it did neither. Measured the same
+  // day: 2 of the 8 houses booked for a viewing carry NO size field at all, and
+  // one of those two prints "100m2 (1076 sqft)" in the advert text.
+
+  describe('the size written in the advert', () => {
+    it('reads the spellings the real adverts actually use', () => {
+      // Every one of these is verbatim off a live listing.
+      expect(sizeFromText('approx 1,076 sqft')?.sqm).toBe(100);
+      expect(sizeFromText('964 sq ft')?.sqm).toBe(90);
+      expect(sizeFromText('964 Sq. Ft')?.sqm).toBe(90);
+      expect(sizeFromText('999 SQ.FT of accommodation')?.sqm).toBe(93);
+      expect(sizeFromText('100m2')?.sqm).toBe(100);
+      expect(sizeFromText('about 93 sq m')?.sqm).toBe(93);
+      expect(sizeFromText('93 m²')?.sqm).toBe(93);
+    });
+
+    it('quotes the words it read it from, so a human can check it', () => {
+      expect(sizeFromText('extending to 964 sq ft in total')?.quote).toBe('964 sq ft');
+    });
+
+    it('prefers the imperial figure when the advert gives both', () => {
+      // "100m2 (1076 sqft)" is one measurement written twice, and the imperial
+      // one is nearly always the original the agent was given.
+      expect(sizeFromText('100m2 (1076 sqft)')?.sqm).toBe(100);
+    });
+
+    it('refuses a figure that cannot be a house', () => {
+      expect(sizeFromText('the garden extends to 0.4 acres')).toBeNull();
+      expect(sizeFromText('a 12 sq m box room')).toBeNull();      // a room, not a house
+      expect(sizeFromText('the site runs to 5000 sq m')).toBeNull();
+      expect(sizeFromText('no size given anywhere')).toBeNull();
+    });
+  });
+
+  describe('the floor plan', () => {
+    const rooms = [
+      { name: 'Kitchen', m: [3.60, 2.64] as [number, number] },
+      { name: 'Reception', m: [3.95, 3.08] as [number, number] },
+      { name: 'Reception', m: [3.20, 3.04] as [number, number] },
+      { name: 'Bedroom', m: [3.95, 3.08] as [number, number] },
+      { name: 'Bedroom', m: [3.95, 3.15] as [number, number] },
+    ];
+
+    it('adds the rooms up', () => {
+      // Whitworth Road, Portsmouth, read off the real plan.
+      expect(sumRoomArea(rooms)).toBe(56);
+    });
+
+    it('NEVER lets a room sum pass for the size of the house', () => {
+      // THE TRAP. Those same rooms sum to 56 and Rightmove says the house is
+      // 76, because a room sum has no hall, no stairs, no landing and no walls.
+      // Priced as 56 the whole refurb comes out about a quarter too small, so
+      // the sum is offered last, labelled, and never above a printed figure.
+      const out = sizeCandidates({
+        listingSqm: null,
+        reads: [{ sqm: null, source: 'none', quote: '', rooms }],
+      });
+      expect(out).toHaveLength(1);
+      expect(out[0].source).toBe('floorplan_rooms');
+      expect(out[0].label).toContain('BIGGER');
+      expect(out[0].evidence).toContain('hall');
+    });
+
+    it('drops the room sum entirely once a real total is on the plan', () => {
+      const out = sizeCandidates({
+        listingSqm: null,
+        reads: [{ sqm: 76, source: 'floorplan_total', quote: 'Total area: approx. 76.0 sq m', rooms }],
+      });
+      expect(out.map((c) => c.source)).toEqual(['floorplan_total']);
+      expect(out[0].sqm).toBe(76);
+    });
+
+    it('says when both readers read the same number off the plan', () => {
+      const out = sizeCandidates({
+        reads: [
+          { sqm: 76, source: 'floorplan_total', quote: '76.0 sq m', rooms: [] },
+          { sqm: 76, source: 'floorplan_total', quote: '76 sq m', rooms: [] },
+        ],
+      });
+      expect(out[0].agreed).toBe(true);
+    });
+
+    it('takes the SMALLER when the two readers disagree about the number', () => {
+      // One of them has misread a digit. Under-reading prices the house as
+      // smaller, which is the harmless direction, and both quotes are shown.
+      const out = sizeCandidates({
+        reads: [
+          { sqm: 76, source: 'floorplan_total', quote: '76 sq m', rooms: [] },
+          { sqm: 176, source: 'floorplan_total', quote: '176 sq m', rooms: [] },
+        ],
+      });
+      expect(out[0].sqm).toBe(76);
+      expect(out[0].agreed).toBe(false);
+      expect(out[0].evidence).toContain('176');
+    });
+
+    it('refuses a floor area a model invented out of range', () => {
+      const r = parseVisionRead(JSON.stringify({
+        areas: [{ id: 'kitchen', verdict: 'nothing', summary: 'Nothing to do.' }],
+        floorArea: { sqm: 4000, source: 'floorplan_total', quote: 'made up', rooms: [] },
+      }))!;
+      expect(r.floorArea?.sqm).toBeNull();
+      expect(r.floorArea?.source).toBe('none');
+    });
+
+    it('throws away a room whose dimensions cannot be a room', () => {
+      const r = parseVisionRead(JSON.stringify({
+        areas: [{ id: 'kitchen', verdict: 'nothing', summary: 'Nothing to do.' }],
+        floorArea: { sqm: null, source: 'none', quote: '', rooms: [
+          { name: 'Kitchen', m: [3.6, 2.64] },
+          { name: 'Nonsense', m: [300, 2] },
+        ] },
+      }))!;
+      expect(r.floorArea?.rooms.map((x) => x.name)).toEqual(['Kitchen']);
+    });
+  });
+
+  describe('the order they are offered in', () => {
+    it('puts Rightmove\'s own figure first and the room sum last', () => {
+      const out = sizeCandidates({
+        listingSqm: 76,
+        textSqm: { sqm: 90, quote: '964 sq ft' },
+        reads: [{ sqm: null, source: 'none', quote: '', rooms: [
+          { name: 'a', m: [4, 4] }, { name: 'b', m: [4, 4] }, { name: 'c', m: [4, 4] },
+        ] }],
+      });
+      expect(out.map((c) => c.source)).toEqual(['listing_size', 'advert_text']);
+    });
+
+    it('offers nothing at all rather than guessing when there is nothing to offer', () => {
+      // No size means the estimate prices it as a typical terrace AND SAYS SO,
+      // which is a better answer than a plausible invented number.
+      expect(sizeCandidates({ listingSqm: null, textSqm: null, reads: [] })).toEqual([]);
+    });
   });
 });
