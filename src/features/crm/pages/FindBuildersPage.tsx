@@ -24,9 +24,10 @@ import { supabase } from '@/integrations/supabase/browser';
 import PropertyPicker, { type PickerProperty } from '../components/builders/PropertyPicker';
 import HouseNumberBar from '../components/builders/HouseNumberBar';
 import BuilderTable, { type BuilderRow } from '../components/builders/BuilderTable';
-import SendReviewDialog from '../components/builders/SendReviewDialog';
+import SendReviewDialog, { type SendChannel } from '../components/builders/SendReviewDialog';
 import OutreachSettingsPanel from '../components/builders/OutreachSettingsPanel';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
+import { useActiveCallCtx } from '../components/live-call/ActiveCallContext';
 
 interface HouseDetail extends PickerProperty {
   builderFacingAddress: string;
@@ -42,6 +43,8 @@ interface LogLine { text: string }
 interface Bundle {
   property: HouseDetail;
   blockedReason: string | null;
+  blockedBySms: string | null;
+  smsDrafts: { opener: string; details: string };
   builders: BuilderRow[];
   sentToday: number;
   nextRadiusM: number | null;
@@ -93,6 +96,15 @@ export default function FindBuildersPage() {
   const [searching, setSearching] = useState(false);
   const [lastLog, setLastLog] = useState<LogLine[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [draftKind, setDraftKind] = useState<'opener' | 'details'>('opener');
+  const [calling, setCalling] = useState<string | null>(null);
+
+  // The softphone the whole CRM already uses, mounted by Smsv2Layout on every
+  // page. Dialling through it rather than a tel: link is what puts the call in
+  // wk_calls, records it, respects the spend limit and lands the transcript on
+  // the builder's own thread. openRoom is false on purpose: the one full-screen
+  // call room is /dialer-pro, and this is a list somebody is working down.
+  const { startCall } = useActiveCallCtx();
 
   /** Reads the body as text first: a scrape press can take twenty seconds and a
    *  gateway timeout answers HTML, which JSON.parse turns into a baffling
@@ -181,12 +193,85 @@ export default function FindBuildersPage() {
       return next;
     });
   };
+  // Mirrors canPick in BuilderTable: a DRAFTED row has not been written to, and
+  // treating it as sent is why nobody could tick a builder once the five-minute
+  // sweep had drafted him.
+  const ALREADY_SENT = new Set(['sent', 'replied', 'confirmed', 'declined', 'skipped']);
   const toggleAll = (on: boolean) => {
-    const pickable = (bundle?.builders ?? []).filter((b) => b.isMobile && !b.status).map((b) => b.id);
+    const pickable = (bundle?.builders ?? [])
+      .filter((b) => b.isMobile && !ALREADY_SENT.has(String(b.status ?? '')))
+      .map((b) => b.id);
     setSelected(on ? new Set(pickable) : new Set());
   };
 
-  const send = async (contentSid: string, vars: Record<string, string>) => {
+  /** Ring a builder. The contact record is made FIRST, because a call with no
+   *  contact id has nowhere to write itself: no wk_calls row, no thread, and no
+   *  outreach row for the outcome dropdown to land on afterwards. Landlines go
+   *  through this path too, which is the point of it. */
+  const ringBuilder = async (b: BuilderRow) => {
+    if (!propertyId || !b.phone || calling) return;
+    setCalling(b.id);
+    setError(null);
+    try {
+      const json = await call('/api/crm/find-builders', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'prepare', property_id: propertyId, builder_id: b.id }),
+      });
+      const contactId = String(json.contactId ?? '');
+      if (!contactId) throw new Error('Could not open a record for that builder.');
+      await startCall(contactId, b.phone, b.name, { openRoom: false });
+      // Refresh so the outcome dropdown has a row behind it the moment the call
+      // connects, rather than only after the next manual reload.
+      await loadHouse(propertyId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The call did not start.');
+    } finally {
+      setCalling(null);
+    }
+  };
+
+  /** What he said, saved on its own. Never bundled into the call itself: Hugo
+   *  asked for it to work "even after the call", so it is a plain write Pedro
+   *  can make an hour later. */
+  const saveOutcome = async (b: BuilderRow, outcome: string) => {
+    if (!propertyId || !outcome) return;
+    setError(null);
+    try {
+      await call('/api/crm/find-builders', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'call_outcome', property_id: propertyId, builder_id: b.id, outcome,
+        }),
+      });
+      await loadHouse(propertyId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save what he said.');
+    }
+  };
+
+  /** Text one builder from his own row, rather than ticking him and using the
+   *  bar at the bottom. After a phone call that bar is three presses away from
+   *  the man you are still thinking about. */
+  const textBuilder = async (b: BuilderRow, kind: 'opener' | 'details') => {
+    if (!propertyId) return;
+    // Make sure he has a contact and a row, or the send finds nothing to send.
+    try {
+      await call('/api/crm/find-builders', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'prepare', property_id: propertyId, builder_id: b.id }),
+      });
+    } catch { /* the send re-drafts anyway; a failure here is not worth a stop */ }
+    setSelected(new Set([b.id]));
+    setDraftKind(kind);
+    setReviewOpen(true);
+  };
+
+  const send = async (input: {
+    channel: SendChannel;
+    contentSid?: string;
+    vars?: Record<string, string>;
+    smsBody?: string;
+  }) => {
     if (!propertyId) return;
     setError(null);
     try {
@@ -194,7 +279,11 @@ export default function FindBuildersPage() {
         method: 'POST',
         body: JSON.stringify({
           action: 'send', property_id: propertyId,
-          builder_ids: [...selected], content_sid: contentSid, content_variables: vars,
+          builder_ids: [...selected],
+          channel: input.channel,
+          content_sid: input.contentSid ?? '',
+          content_variables: input.vars ?? {},
+          sms_body: input.smsBody ?? '',
         }),
       });
       const failed = ((json.results ?? []) as Array<{ name: string; ok: boolean; error?: string }>)
@@ -247,7 +336,7 @@ export default function FindBuildersPage() {
               <HardHat className="h-4 w-4 text-[#3C5A87]" /> Find builders
             </h1>
             <p className="mt-0.5 text-[11.5px] text-[#6B7280]">
-              Pick a house, find builders near it, read the message, then send.
+              Pick a house, find builders near it, ring them, then text the details.
             </p>
           </div>
           <button
@@ -347,15 +436,27 @@ export default function FindBuildersPage() {
                   onSave={saveHouseNumber}
                 />
 
-                {bundle.blockedReason ? (
+                {/* THE BLOCK IS SHOWN AS THE TEXT LANE SEES IT, because the
+                    text lane is the one that opens. The two differ by exactly
+                    one reason: template_pending has been the standing block on
+                    this whole pipeline, and it is a fact about a Meta template
+                    that a text does not have. Showing it as a house-level block
+                    told Pedro he could not contact anybody, on houses he could
+                    text in one press. */}
+                {bundle.blockedBySms ? (
                   <div className="rounded-[10px] border border-[#F59E0B] bg-[#FFFBEB] px-3 py-2 text-[11.5px] text-[#B45309]">
-                    {BLOCKED_WORDS[bundle.blockedReason] ?? bundle.blockedReason}
+                    {BLOCKED_WORDS[bundle.blockedBySms] ?? bundle.blockedBySms}
+                  </div>
+                ) : bundle.blockedReason === 'template_pending' ? (
+                  <div className="rounded-[10px] border border-[#E5E7EB] bg-[#FAFAF8] px-3 py-2 text-[11px] text-[#6B7280]">
+                    The WhatsApp opener is still waiting on Meta, so this house goes out by text. Ring the
+                    builder first and text him the details straight after.
                   </div>
                 ) : null}
 
                 <div className="flex flex-wrap gap-3 rounded-[10px] bg-[#FAFAF8] px-3 py-2 text-[11.5px] text-[#374151]">
                   <Stat n={bundle.property.coveringCount} label={`builders cover ${bundle.property.outcode ?? 'this area'}`} />
-                  <Stat n={bundle.property.mobileCount} label="can be messaged" />
+                  <Stat n={bundle.property.mobileCount} label="can be texted" />
                   <Stat n={bundle.property.invited} label="invited" />
                   <Stat n={bundle.property.replied} label="replied" />
                   <Stat n={bundle.property.confirmed} label="confirmed" tone={bundle.property.confirmed ? 'good' : undefined} />
@@ -398,13 +499,17 @@ export default function FindBuildersPage() {
                   selected={selected}
                   onToggle={toggle}
                   onToggleAll={toggleAll}
+                  onCall={(b) => void ringBuilder(b)}
+                  onText={(b, kind) => void textBuilder(b, kind)}
+                  onOutcome={(b, outcome) => void saveOutcome(b, outcome)}
+                  busyId={calling}
                 />
 
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     data-testid="find-builders-send"
                     disabled={!selected.size}
-                    onClick={() => setReviewOpen(true)}
+                    onClick={() => { setDraftKind('opener'); setReviewOpen(true); }}
                     className="rounded-[8px] bg-[#2E7D46] px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-40"
                   >
                     Write to {selected.size || ''} builder{selected.size === 1 ? '' : 's'}
@@ -433,6 +538,9 @@ export default function FindBuildersPage() {
           }}
           houseNumberKnown={bundle.property.houseNumberKnown}
           blockedReason={bundle.blockedReason}
+          blockedBySms={bundle.blockedBySms}
+          smsDrafts={bundle.smsDrafts}
+          initialDraft={draftKind}
           sentToday={bundle.sentToday}
           dailyCap={bundle.settings.daily_cap}
           onSend={send}

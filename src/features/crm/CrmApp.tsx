@@ -17,6 +17,9 @@ const RawLeadsPage = lazy(() => import('./pages/RawLeadsPage'))
 // builder route before this was admin-gated, which is why the cockpit's
 // builder panel has always been blank for him.
 const FindBuildersPage = lazy(() => import('./pages/FindBuildersPage'))
+// Pedro's walk-round refurb estimator. NOT admin gated, same reason as
+// FindBuildersPage: walking a house and pricing the work is his job.
+const RefurbEstimatorPage = lazy(() => import('./pages/RefurbEstimatorPage'))
 const ContactsPage = lazy(() => import('./pages/ContactsPage'))
 const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage'))
 const PipelinesPage = lazy(() => import('./pages/PipelinesPage'))
@@ -57,6 +60,14 @@ export default function CrmApp() {
             <Route path="cockpit" element={<DealCockpitPage />} />
             <Route path="raw-leads" element={<AdminOnlyRoute><RawLeadsPage /></AdminOnlyRoute>} />
             <Route path="find-builders" element={<FindBuildersPage />} />
+            {/* TWO PATHS, ONE PAGE, ON PURPOSE. `estimator` is where it
+                belongs. `inbox/estimator` is the URL Hugo asked for and sent
+                round, and `inbox` has no child routes, so without this line
+                his own link falls through the catch-all and lands silently on
+                the CRM home. Cheaper to answer both than to explain the
+                difference to whoever he forwards it to. */}
+            <Route path="estimator" element={<RefurbEstimatorPage />} />
+            <Route path="inbox/estimator" element={<RefurbEstimatorPage />} />
             <Route path="deal-process" element={<DealProcessPage />} />
             <Route path="dialer" element={<Navigate to="/admin/crm/dialer-pro" replace />} />
             <Route path="dialer-pro" element={<DialerProPage />} />

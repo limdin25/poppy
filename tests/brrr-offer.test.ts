@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   offerRange, fmtGBP, gbpShort, ladderText, BEDROOM_UPLIFT_REFURB, upliftRefurb,
-  readDealMoney, countComps,
+  readDealMoney, countComps, vendorFloor, vendorFloorVerdict,
 } from '../api/lib/brrr-offer'
 
 const root = resolve(__dirname, '..')
@@ -442,5 +442,154 @@ describe('single-reader adoption: nobody reads the blob by hand any more', () =>
     const ballpark = read('api/lib/ballpark.ts')
     expect(ballpark).not.toMatch(/property_worth: `\$\{money\(Number\(engine\.gdv\)\)/)
     expect(ballpark).toMatch(/worth_after_bed: `\$\{money\(Number\(engine\.gdv\)\)/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE VENDOR'S FLOOR
+// ---------------------------------------------------------------------------
+//
+// The cheapest fact on the call: what has already been turned down. It can kill
+// a deal and it can never lift our number, which is the same one-direction rule
+// the agent's done-up comparable lives by.
+describe('vendorFloor', () => {
+  it('reads the figure the call established', () => {
+    expect(vendorFloor({ qualification: { rejected_offer: '70000' } })).toBe(70_000)
+  })
+
+  it('reads a figure a human typed with pounds and commas', () => {
+    expect(vendorFloor({ qualification: { rejected_offer: '£72,500' } })).toBe(72_500)
+  })
+
+  it('falls back to the ballpark payload for houses priced before the checklist held it', () => {
+    expect(vendorFloor({ deal: { reprice: { rejected_offer: { price: 70_000 } } } })).toBe(70_000)
+  })
+
+  it('THE CHECKLIST WINS, so correcting a misheard figure is the repair', () => {
+    // A model hearing "seventy" where the agent said "sixty" is fixed on the
+    // Houses tab, not forced past: the corrected answer governs from then on.
+    expect(vendorFloor({
+      qualification: { rejected_offer: '60000' },
+      deal: { reprice: { rejected_offer: { price: 70_000 } } },
+    })).toBe(60_000)
+    // And "no offers" typed over a stale engine figure clears the floor.
+    expect(vendorFloor({
+      qualification: { rejected_offer: 'nothing has been turned down' },
+      deal: { reprice: { rejected_offer: { price: 70_000 } } },
+    })).toBeNull()
+  })
+
+  it('a misheard number outside the band is no floor at all', () => {
+    // "one one eight" arriving as 118 must never kill a deal.
+    expect(vendorFloor({ qualification: { rejected_offer: '118' } })).toBeNull()
+    expect(vendorFloor({ qualification: { rejected_offer: '9000000' } })).toBeNull()
+  })
+
+  it('nothing on file is null, never zero', () => {
+    expect(vendorFloor({})).toBeNull()
+    expect(vendorFloor({ qualification: {}, deal: {} })).toBeNull()
+  })
+})
+
+describe('vendorFloorVerdict', () => {
+  const deal = { offer: { open: 61_000, max: 68_400 } }
+
+  it('blocks when the floor is above the ceiling, and says both numbers out loud', () => {
+    const v = vendorFloorVerdict({ deal, qualification: { rejected_offer: '72000' } })
+    expect(v.blocked).toBe(true)
+    expect(v.floor).toBe(72_000)
+    expect(v.ceiling).toBe(68_400)
+    expect(v.reason).toContain('£72,000')
+    expect(v.reason).toContain('£68,400')
+  })
+
+  it('blocks at exactly the ceiling', () => {
+    expect(vendorFloorVerdict({ deal, qualification: { rejected_offer: '68400' } }).blocked).toBe(true)
+  })
+
+  it('passes below the ceiling: that is a negotiation, not a dead house', () => {
+    const v = vendorFloorVerdict({ deal, qualification: { rejected_offer: '64000' } })
+    expect(v.blocked).toBe(false)
+    expect(v.reason).toBeNull()
+  })
+
+  it('UNKNOWN IS A PASS, on either number', () => {
+    expect(vendorFloorVerdict({ deal }).blocked).toBe(false)
+    expect(vendorFloorVerdict({ deal: {}, qualification: { rejected_offer: '72000' } }).blocked).toBe(false)
+  })
+
+  it('the governing ceiling is passed in, so a pinned ruling can overrule it', () => {
+    expect(vendorFloorVerdict({ deal, qualification: { rejected_offer: '72000' } }, 75_000).blocked).toBe(false)
+    expect(vendorFloorVerdict({ deal, qualification: { rejected_offer: '64000' } }, 62_000).blocked).toBe(true)
+  })
+
+  it('never derives money: the reason quotes the two figures and computes none', () => {
+    const v = vendorFloorVerdict({ deal, qualification: { rejected_offer: '72000' } })
+    // No split-the-difference, no "try 70,200", nothing that is not on file.
+    expect(v.reason).not.toMatch(/£(?!72,000|68,400)[\d,]+/)
+  })
+})
+
+// The two evidence rules, each written from a row that is in the table today.
+describe('a floor has to be evidenced, or it kills real deals', () => {
+  it("the quote must contain the figure: five houses share one branch's sentence", () => {
+    // Nuttall Road FY, asking 85,000, carrying "he's had enough of 132 which is
+    // rejected" because the call listener writes a BRANCH's call onto every
+    // house that branch has on file. Four of its neighbours carry it too.
+    expect(vendorFloor({
+      asking_price: 85_000,
+      qualification: {
+        rejected_offer: '132000',
+        _heard: { rejected_offer: { quote: "he's had enough of 132 which is rejected" } },
+      },
+    })).toBeNull()
+  })
+
+  it('a quote with no figure in it did not produce the figure', () => {
+    // Premier Road SR3: answer 117,000, quote "I think that would still be too
+    // low." Westminster Avenue and Ford, Queensbury are the same shape.
+    expect(vendorFloor({
+      asking_price: 99_950,
+      qualification: {
+        rejected_offer: '117000',
+        _heard: { rejected_offer: { quote: 'I think that would still be too low.' } },
+      },
+    })).toBeNull()
+  })
+
+  it('a quote that says the figure in spoken shorthand still counts', () => {
+    // Lowther Street PR2: "We had an offer from for 110 uh on Monday from an
+    // investor that was rejected", stored as 110000. Real, and it must survive.
+    expect(vendorFloor({
+      asking_price: 123_000,
+      qualification: {
+        rejected_offer: '110000',
+        _heard: { rejected_offer: { quote: 'We had an offer for 110 on Monday from an investor that was rejected' } },
+      },
+    })).toBe(110_000)
+  })
+
+  it('NO quote at all is a pass: a human typing in the box is the evidence', () => {
+    expect(vendorFloor({ asking_price: 123_000, qualification: { rejected_offer: '110000' } })).toBe(110_000)
+  })
+
+  it('a refusal far above the asking price belongs to another house', () => {
+    // Enfield Road FY1: "they have just declined 130" on a house asking 69,950.
+    expect(vendorFloor({ asking_price: 69_950, qualification: { rejected_offer: '130000' } })).toBeNull()
+  })
+
+  it('a vendor holding out slightly above asking is believed', () => {
+    // Lincoln Road: 132,000 refused on a house asking 130,000. Stubborn, not
+    // impossible, and it means our 107,560 ceiling cannot buy it.
+    expect(vendorFloor({ asking_price: 130_000, qualification: { rejected_offer: '132000' } })).toBe(132_000)
+  })
+})
+
+describe('the heard-quote key is the one deal-state owns', () => {
+  it('brrr-offer reads the same key the call listener writes', () => {
+    // A cycle is not possible (deal-state imports brrr-offer), so the constant
+    // is repeated and pinned here instead.
+    expect(read('api/lib/deal-state.ts')).toMatch(/export const HEARD_KEY = '_heard'/)
+    expect(read('api/lib/brrr-offer.ts')).toMatch(/const HEARD = '_heard'/)
   })
 })

@@ -136,7 +136,19 @@ describe('the search widens rather than giving up', () => {
   });
 
   it('the first hit wins: one builder nearby beats eight far away', () => {
-    expect(SRC).toMatch(/if \(builders\.length\) return \{ builders, radiusM, tried \}/);
+    // Still true, and still the default. `minCount` was added 2026-08-25 so
+    // the Find builders desk can ask for thirty, but it defaults to 1, which
+    // is exactly this rule: the moment one name is in hand the ladder stops
+    // and no wider ring is paid for.
+    expect(SRC).toMatch(/const want = Math\.max\(1, opts\.minCount \?\? 1\)/);
+    expect(SRC).toMatch(/if \(byPhone\.size >= want\) break/);
+  });
+
+  it('a name found at 10km is not replaced by the same name found at 40km', () => {
+    // The wider ring re-finds everything the narrow one found. First sighting
+    // wins, so a builder stays at the tightest radius he appeared in and the
+    // nearest names are the ones kept.
+    expect(SRC).toMatch(/if \(!byPhone\.has\(b\.phoneE164\)\) byPhone\.set\(b\.phoneE164, b\)/);
   });
 
   it('a radius already wider than the settings start is not searched twice', () => {

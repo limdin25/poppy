@@ -30,12 +30,18 @@ import { createClient } from '@supabase/supabase-js';
 import {
   loadOutreachSettings,
   blockedReasonFor,
+  blockedReasonForChannel,
   builderFacingAddress,
   viewingTimeLabel,
   sentToday,
   nextRadiusM,
   draftOutreachForProperty,
   sendOutreachRow,
+  sendOutreachSms,
+  recordCallOutcome,
+  ensureBuilderContact,
+  inviteVars,
+  builderSmsBody,
   floorRefusalFor,
   VIEWING_BOOKED_COLUMN,
   type OutreachProperty,
@@ -45,6 +51,8 @@ import { matchBuildersForOutcode, type BuilderRow } from '../lib/builder-match.j
 import {
   isUkMobile,
   WIDENING_RADII_M,
+  TARGET_BUILDERS,
+  MAX_NEARBY_PAGES,
   scrapeBuildersWidening,
   scrapeBuildersForOutcode,
   upsertScrapedBuilders,
@@ -189,7 +197,16 @@ interface OutreachRow {
   replied_at: string | null;
   confirmed_at: string | null;
   error: string | null;
+  channel: string | null;
+  sms_sent_at: string | null;
+  whatsapp_sent_at: string | null;
+  call_outcome: string | null;
+  call_outcome_at: string | null;
 }
+
+const OUTREACH_COLUMNS =
+  'id, property_id, builder_id, contact_id, status, blocked_reason, sent_at, replied_at,'
+  + ' confirmed_at, error, channel, sms_sent_at, whatsapp_sent_at, call_outcome, call_outcome_at';
 
 const LIVE_STATUSES = new Set(['sent', 'replied', 'confirmed']);
 
@@ -217,7 +234,7 @@ async function handleWeb(req: Request): Promise<Response> {
 
     const { data: outreachRows } = await sb
       .from('brrr_builder_outreach')
-      .select('id, property_id, builder_id, contact_id, status, blocked_reason, sent_at, replied_at, confirmed_at, error')
+      .select(OUTREACH_COLUMNS)
       .in('property_id', houses.map((h) => h.id));
     const byProperty = new Map<string, OutreachRow[]>();
     for (const r of (outreachRows ?? []) as OutreachRow[]) {
@@ -266,6 +283,7 @@ async function handleWeb(req: Request): Promise<Response> {
     const rows = byProperty.get(house.id) ?? [];
     const rowByBuilder = new Map(rows.map((r) => [r.builder_id, r] as const));
 
+    const vars = inviteVars(prop);
     return Response.json({
       property: {
         ...summarise(house),
@@ -274,6 +292,17 @@ async function handleWeb(req: Request): Promise<Response> {
         assignedBuilderId: house.assigned_builder_id,
       },
       blockedReason: blockedReasonFor(prop, settings),
+      // The block as each channel actually sees it. They differ by exactly one
+      // reason, template_pending, and that one reason is why the text lane
+      // exists, so the screen has to be able to show both answers.
+      blockedBySms: blockedReasonForChannel(prop, settings, 'sms'),
+      // The two texts, rendered from the house's own facts, for Pedro to edit
+      // before he sends. Server-rendered so the words on the screen and the
+      // words on the wire come from one place.
+      smsDrafts: {
+        opener: builderSmsBody('opener', vars),
+        details: builderSmsBody('details', vars),
+      },
       builders: covering.map((b) => {
         const row = rowByBuilder.get(b.id);
         return {
@@ -291,6 +320,10 @@ async function handleWeb(req: Request): Promise<Response> {
           repliedAt: row?.replied_at ?? null,
           confirmedAt: row?.confirmed_at ?? null,
           error: row?.error ?? null,
+          smsSentAt: row?.sms_sent_at ?? null,
+          whatsappSentAt: row?.whatsapp_sent_at ?? null,
+          callOutcome: row?.call_outcome ?? null,
+          callOutcomeAt: row?.call_outcome_at ?? null,
         };
       }),
       settings: publicSettings(settings),
@@ -303,8 +336,9 @@ async function handleWeb(req: Request): Promise<Response> {
   if (req.method === 'POST') {
     let body: {
       action?: string; property_id?: string; number?: string;
-      builder_ids?: string[]; content_sid?: string;
+      builder_ids?: string[]; builder_id?: string; content_sid?: string;
       content_variables?: Record<string, string>;
+      channel?: string; sms_body?: string; outcome?: string;
     };
     try { body = await req.json() as typeof body; }
     catch { return Response.json({ error: 'bad json' }, { status: 400 }); }
@@ -318,9 +352,17 @@ async function handleWeb(req: Request): Promise<Response> {
     if (body.action === 'scrape' || body.action === 'widen') {
       return runScrape(sb, propertyId, body.action, who);
     }
+    if (body.action === 'prepare') {
+      return prepareBuilder(sb, propertyId, String(body.builder_id ?? ''), who);
+    }
+    if (body.action === 'call_outcome') {
+      return saveCallOutcome(sb, propertyId, String(body.builder_id ?? ''), String(body.outcome ?? ''), who);
+    }
     if (body.action === 'send') {
-      return sendInvites(sb, propertyId, body.builder_ids ?? [],
-        String(body.content_sid ?? ''), body.content_variables ?? {}, who);
+      const channel = body.channel === 'whatsapp' ? 'whatsapp' : 'sms';
+      return sendInvites(sb, propertyId, body.builder_ids ?? [], channel,
+        String(body.content_sid ?? ''), body.content_variables ?? {},
+        String(body.sms_body ?? ''), who);
     }
 
     return Response.json({ error: 'unknown action' }, { status: 400 });
@@ -449,13 +491,22 @@ async function sendInvites(
   sb: any,
   propertyId: string,
   builderIds: string[],
+  /** TEXT IS THE DEFAULT AND WHATSAPP IS THE OTHER ONE, which is the way round
+   *  Hugo asked for on 2026-08-25 and the way round that actually works: a cold
+   *  builder's WhatsApp window is shut, so the template lane is blocked on Meta
+   *  and the text lane is not blocked on anything. */
+  channel: 'sms' | 'whatsapp',
   contentSid: string,
   contentVariables: Record<string, string>,
+  smsBody: string,
   who: { id: string; email: string },
 ): Promise<Response> {
   if (!builderIds.length) return Response.json({ error: 'Pick at least one builder.' }, { status: 400 });
-  if (!/^HX[0-9a-f]{32}$/i.test(contentSid)) {
+  if (channel === 'whatsapp' && !/^HX[0-9a-f]{32}$/i.test(contentSid)) {
     return Response.json({ error: 'That message is not an approved WhatsApp template.' }, { status: 400 });
+  }
+  if (channel === 'sms' && !smsBody.trim()) {
+    return Response.json({ error: 'Write the text first.' }, { status: 400 });
   }
 
   const refusal = await floorRefusalFor(sb, propertyId);
@@ -483,7 +534,13 @@ async function sendInvites(
   // tag with them. Idempotent: existing rows are left alone.
   await draftOutreachForProperty(sb, prop, settings);
 
-  const blocked = blockedReasonFor(prop, { ...settings, invite_sid: contentSid });
+  // Re-derived with the chosen template substituted rather than cleared, so a
+  // hand-picked template unblocks template_pending and nothing else. On the
+  // text lane template_pending does not apply at all, which is the one and only
+  // difference between the two channels' gates.
+  const blocked = channel === 'sms'
+    ? blockedReasonForChannel(prop, settings, 'sms')
+    : blockedReasonFor(prop, { ...settings, invite_sid: contentSid });
   if (blocked) {
     return Response.json({ error: `Blocked: ${blocked}.` }, { status: 409 });
   }
@@ -506,18 +563,33 @@ async function sendInvites(
     const row = rowByBuilder.get(builderId);
     if (!row) { results.push({ builderId, name, ok: false, error: 'No invite could be prepared.' }); continue; }
 
-    await sb.from('brrr_builder_outreach')
-      .update({
-        content_sid: contentSid,
-        content_variables: contentVariables,
-        blocked_reason: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id)
-      .in('status', ['draft', 'approved']);
+    if (channel === 'whatsapp') {
+      await sb.from('brrr_builder_outreach')
+        .update({
+          content_sid: contentSid,
+          content_variables: contentVariables,
+          blocked_reason: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id)
+        .in('status', ['draft', 'approved']);
 
-    const sent = await sendOutreachRow(sb, row.id);
-    results.push({ builderId, name, ok: sent.ok, error: sent.ok ? undefined : sent.error });
+      const sent = await sendOutreachRow(sb, row.id);
+      // The channel stamps are written here rather than inside sendOutreachRow,
+      // which the crons also call and which is pinned line by line by
+      // tests/builder-outreach.test.ts. A tag being a moment late is nothing; a
+      // reordered send path is a real risk.
+      if (sent.ok) {
+        const now = new Date().toISOString();
+        await sb.from('brrr_builder_outreach')
+          .update({ channel: 'whatsapp', whatsapp_sent_at: now })
+          .eq('id', row.id);
+      }
+      results.push({ builderId, name, ok: sent.ok, error: sent.ok ? undefined : sent.error });
+    } else {
+      const sent = await sendOutreachSms(sb, row.id, smsBody, who.id);
+      results.push({ builderId, name, ok: sent.ok, error: sent.ok ? undefined : sent.error });
+    }
   }
 
   const good = results.filter((r) => r.ok).length;
@@ -525,17 +597,138 @@ async function sendInvites(
     admin_email: who.email,
     action: 'builder_outreach_send',
     target_type: 'brrr_property',
-    metadata: { property_id: propertyId, content_sid: contentSid, sent: good, tried: results.length },
+    metadata: {
+      property_id: propertyId, channel,
+      content_sid: channel === 'whatsapp' ? contentSid : null,
+      sent: good, tried: results.length,
+    },
   });
 
+  const word = channel === 'sms' ? 'Texted' : 'Sent to';
   return Response.json({
     ok: good > 0,
     sent: good,
     results,
     message: good === results.length
-      ? `Sent to ${good} builder${good === 1 ? '' : 's'}.`
-      : `Sent to ${good} of ${results.length}. The rest are listed below.`,
+      ? `${word} ${good} builder${good === 1 ? '' : 's'}.`
+      : `${word} ${good} of ${results.length}. The rest are listed below.`,
   });
+}
+
+/** Give one builder a contact record and an outreach row, so he can be RUNG.
+ *
+ *  WHY THIS IS NOT draftOutreachForProperty. That function is the WhatsApp
+ *  drafting sweep and it filters the roster down to UK mobiles, because
+ *  WhatsApp cannot reach a landline. Ringing one is exactly what a phone is
+ *  for, and a landline builder with no contact row has no id to dial, no thread
+ *  to write the call into, and nowhere to record what he said. On a thin
+ *  outcode the landlines are half the list.
+ *
+ *  NOTHING IS SENT HERE and nothing is gated on the money, deliberately.
+ *  Picking up the phone does not spend a builder's afternoon; a viewing
+ *  invitation does, and that still passes the floor gate at the moment of
+ *  sending. */
+async function prepareBuilder(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  propertyId: string,
+  builderId: string,
+  who: { id: string; email: string },
+): Promise<Response> {
+  if (!builderId) return Response.json({ error: 'builder_id required' }, { status: 400 });
+
+  const { data: houseRow } = await sb
+    .from('brrr_properties').select(PROPERTY_COLUMNS).eq('id', propertyId).maybeSingle();
+  if (!houseRow) return Response.json({ error: 'That house is not on file.' }, { status: 404 });
+  const house = houseRow as PropertyRow;
+  const discounts = await loadDiscounts(sb, [house]);
+  const prop = toOutreachProperty(house, discounts.get(String(house.source_property_id ?? '')));
+
+  const { data: builder } = await sb
+    .from('brrr_builders').select('id, name, phone').eq('id', builderId).maybeSingle();
+  const b = builder as { id: string; name: string; phone: string | null } | null;
+  if (!b?.phone) return Response.json({ error: 'That builder has no phone number.' }, { status: 400 });
+
+  // Owned by whoever pressed the button. An ownerless contact is one no agent's
+  // RLS lets them read, which is how a builder ends up invisible in the inbox
+  // of the person who rang him.
+  const contactId = await ensureBuilderContact(
+    sb, { id: b.id, name: b.name, phone: b.phone }, who.id,
+    { address: builderFacingAddress(prop) },
+  );
+  if (!contactId) return Response.json({ error: 'Could not open a record for that builder.' }, { status: 500 });
+
+  const settings = await loadOutreachSettings(sb);
+  const vars = inviteVars(prop);
+  await sb.from('brrr_builder_outreach').upsert({
+    property_id: propertyId,
+    builder_id: b.id,
+    contact_id: contactId,
+    status: 'draft',
+    blocked_reason: blockedReasonFor(prop, settings),
+    body: builderSmsBody('opener', vars),
+    content_variables: vars,
+  }, { onConflict: 'property_id,builder_id', ignoreDuplicates: true });
+
+  const { data: row } = await sb
+    .from('brrr_builder_outreach')
+    .select('id, contact_id')
+    .eq('property_id', propertyId).eq('builder_id', b.id).maybeSingle();
+
+  // An older row created before this builder had a contact would otherwise keep
+  // a null contact_id forever, and every send off it would fail with "No
+  // contact on this row".
+  if (row?.id && !row.contact_id) {
+    await sb.from('brrr_builder_outreach').update({ contact_id: contactId }).eq('id', row.id);
+  }
+
+  return Response.json({
+    ok: true,
+    contactId,
+    outreachId: (row as { id?: string } | null)?.id ?? null,
+    phone: b.phone,
+    name: b.name,
+  });
+}
+
+/** What the builder said on the phone. Hugo, 2026-08-25: "he can put the
+ *  drop-down outcome of the call, simple, even after the call."
+ *
+ *  "Even after the call" is the part that shapes it: this is a plain write on
+ *  the outreach row with no live-call context anywhere near it, so Pedro can
+ *  set it an hour later from a different screen. It never changes the row's
+ *  status, because "he says he is coming" and "we have told him where to go"
+ *  are different facts and collapsing them is how a house ends up with a
+ *  builder who was never sent an address. */
+async function saveCallOutcome(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  propertyId: string,
+  builderId: string,
+  outcome: string,
+  who: { id: string; email: string },
+): Promise<Response> {
+  if (!builderId) return Response.json({ error: 'builder_id required' }, { status: 400 });
+
+  const { data: row } = await sb
+    .from('brrr_builder_outreach')
+    .select('id')
+    .eq('property_id', propertyId).eq('builder_id', builderId).maybeSingle();
+  if (!row?.id) {
+    return Response.json({ error: 'Ring the builder first, then the outcome has somewhere to go.' }, { status: 404 });
+  }
+
+  const saved = await recordCallOutcome(sb, row.id as string, outcome, who.email);
+  if (!saved.ok) return Response.json({ error: saved.error }, { status: 400 });
+
+  await sb.from('admin_audit_log').insert({
+    admin_email: who.email,
+    action: 'builder_call_outcome',
+    target_type: 'brrr_property',
+    metadata: { property_id: propertyId, builder_id: builderId, outcome },
+  });
+
+  return Response.json({ ok: true });
 }
 
 /** Find builders near a house, or go out a ring and find more.
@@ -595,10 +788,19 @@ async function runScrape(
     });
   }
 
-  // A human is waiting at the screen and asked for more names, so this press
-  // reaches further down the paid tail than the cron's default.
-  const cap = Math.max(settings.max_new_builders, 12);
-  const maxDetailCalls = Math.min(2 * cap, 26);
+  // THIRTY NAMES, NOT EIGHT. Hugo, 2026-08-25: "every time when we fetch an
+  // area, let's fetch minimum 30 numbers for each property."
+  //
+  // The old press asked for a dozen off one Nearby page, which is how Buxton
+  // SK17 came back with two builders (one of them a landline) for a Wednesday
+  // viewing. Three pages is Google's own ceiling per search, and the detail
+  // budget is set so the paid tail can actually deliver the target rather than
+  // stopping halfway with a number that looks like a thin market.
+  //
+  // `max_new_builders` still wins if an admin has raised it above the target;
+  // it is the floor on this press, never the cap.
+  const cap = Math.max(settings.max_new_builders, TARGET_BUILDERS);
+  const maxDetailCalls = 2 * cap;
 
   const radiusToStamp = action === 'widen' ? next! : settings.radius_m;
   await sb.from('brrr_properties').update({
@@ -608,8 +810,17 @@ async function runScrape(
   }).eq('id', propertyId);
 
   const result = action === 'widen'
-    ? { builders: await scrapeBuildersForOutcode(oc, { radiusM: next!, cap, maxDetailCalls }), radiusM: next!, tried: [next!] }
-    : await scrapeBuildersWidening(oc, { startRadiusM: settings.radius_m, cap, maxDetailCalls });
+    ? {
+        builders: await scrapeBuildersForOutcode(oc, {
+          radiusM: next!, cap, maxDetailCalls, pages: MAX_NEARBY_PAGES,
+        }),
+        radiusM: next!,
+        tried: [next!],
+      }
+    : await scrapeBuildersWidening(oc, {
+        startRadiusM: settings.radius_m, cap, maxDetailCalls,
+        pages: MAX_NEARBY_PAGES, minCount: TARGET_BUILDERS,
+      });
 
   if (result.radiusM && result.radiusM !== radiusToStamp) {
     await sb.from('brrr_properties')
@@ -630,6 +841,7 @@ async function runScrape(
     scraped: result.builders,
     plan,
     mobiles: result.builders.filter((b) => isUkMobile(b.phoneE164)).length,
+    target: TARGET_BUILDERS,
   });
 
   await sb.from('admin_audit_log').insert({

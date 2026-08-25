@@ -25,6 +25,7 @@ import { pinnedCeilingIn } from './deal-state.js';
 import { effectiveCeiling } from './counter-position.js';
 import { isUkMobile } from './builder-scrape.js';
 import { notifyBuilderEvent, builderNotifyRecipients } from './builder-notify.js';
+import { toGsm7, smsSegments } from './sms-charset.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Sb = SupabaseClient<any, any, any>;
@@ -944,4 +945,293 @@ export async function saveOutreachSettings(
     updated_at: new Date().toISOString(),
   }, { onConflict: 'key' });
   return merged;
+}
+
+/* ------------------------------------------------------------------------ *
+ *  TEXT FIRST. Everything below is appended, and appended DELIBERATELY: the
+ *  tests above read this file as source text and assert statement ordering
+ *  inside sendOutreachRow, confirmBuilder, assignBuilderToProperty and
+ *  sendMorningReminders. Insert into the middle and the pins move.
+ *
+ *  Hugo, 2026-08-25: "we have to have SMS first ... from there he can call, he
+ *  can SMS ... then he can click to SMS and SMS the details."
+ *
+ *  WHY A TEXT BEATS THE TEMPLATE FOR A COLD BUILDER, which is not obvious and
+ *  is the whole reason this exists. A builder who has never messaged us has a
+ *  shut 24 hour WhatsApp window, so the only thing that can reach him is a
+ *  Meta-approved template: three fixed slots, no room for what the house
+ *  actually needs, and blocked outright until Meta answers. That is why
+ *  template_pending has been the standing block on this pipeline. A text has
+ *  no window, no approval and no slots. Pedro rings the builder, then sends
+ *  the address in his own words while the man is still holding the phone.
+ *
+ *  The WhatsApp lane is untouched. It is still there, still the crons' path,
+ *  and still the right tool once a builder has replied.
+ * ------------------------------------------------------------------------ */
+
+/** What happened when a human rang a builder. Short, because a dropdown Pedro
+ *  has to think about is a dropdown he leaves alone, and the point is that the
+ *  next person can see who has already been spoken to.
+ *
+ *  `id` is what lands in the column, `label` is what he reads, and `prompts`
+ *  marks the two answers where a text should obviously follow the call. */
+export const CALL_OUTCOMES: Array<{ id: string; label: string; prompts?: boolean }> = [
+  { id: 'coming', label: 'Coming to the viewing', prompts: true },
+  { id: 'wants_details', label: 'Wants the details by text', prompts: true },
+  { id: 'call_back', label: 'Call back later' },
+  { id: 'no_answer', label: 'No answer' },
+  { id: 'not_interested', label: 'Not interested' },
+  { id: 'wrong_number', label: 'Wrong number' },
+];
+
+export function isCallOutcome(id: string): boolean {
+  return CALL_OUTCOMES.some((o) => o.id === id);
+}
+
+/** The cold opener as a text. Same {{1}} {{2}} {{3}} as INVITE_TEMPLATE_TEXT
+ *  on purpose, so inviteVars() fills either channel and there is one place
+ *  that decides what a builder is told about a house.
+ *
+ *  Written in plain straight punctuation because it has to be: one long dash
+ *  or one curly apostrophe drops the segment from 160 characters to 70 and
+ *  turns a two-part text into a five-part one. sendOutreachSms rewrites the
+ *  body through toGsm7 anyway, but copy that needs rewriting is copy somebody
+ *  will eventually paste somewhere that does not rewrite it. */
+export const BUILDER_SMS_OPENER =
+  'Hi, this is {{1}} from Unico Property Group. We buy and refurbish houses in your area. '
+  + 'Are you free to meet me at {{2}} on {{3}} to look at the work and give me a price? Thanks.';
+
+/** The one Hugo asked for by name: what goes out straight after the call. */
+export const BUILDER_SMS_DETAILS =
+  'Hi, {{1}} from Unico Property Group, as promised. The address is {{2}} and I will meet you '
+  + 'there on {{3}}. Any problems, give me a ring on this number. Thanks.';
+
+export type BuilderSmsKind = 'opener' | 'details';
+
+export function builderSmsBody(kind: BuilderSmsKind, vars: Record<string, string>): string {
+  return renderPreview(kind === 'details' ? BUILDER_SMS_DETAILS : BUILDER_SMS_OPENER, vars);
+}
+
+/** Three segments of a cold text is already a long message to a stranger, and
+ *  past it somebody has pasted an essay into the box. */
+export const MAX_SMS_SEGMENTS = 3;
+
+/** The block reasons that apply to THIS channel.
+ *
+ *  Every gate carries over except one: template_pending is a fact about a
+ *  Meta-approved WhatsApp template, and a text does not have one. Leaving it
+ *  in would block the text lane for the exact reason the text lane exists.
+ *  The money gates (floor, discount, proven deal) and the no_viewing_time gate
+ *  apply to both, because they are facts about the house rather than the
+ *  wire. */
+export function blockedReasonForChannel(
+  property: OutreachProperty,
+  settings: OutreachSettings,
+  channel: 'sms' | 'whatsapp',
+): string | null {
+  const reason = blockedReasonFor(property, settings);
+  if (channel === 'sms' && reason === 'template_pending') return null;
+  return reason;
+}
+
+/** Which of our numbers a builder's text comes from.
+ *
+ *  The agent's own line first, so a builder ringing back reaches the person who
+ *  rang him and the reply lands in that agent's inbox. The workspace default is
+ *  the fallback.
+ *
+ *  UK NUMBERS ONLY, and that is not tidiness. A US toll-free line cannot text a
+ *  UK mobile at all (Twilio 21612, learned 2026-07-16), and it fails in a way
+ *  that reads as a successful send. */
+export async function resolveSmsFrom(sb: Sb, agentId: string | null): Promise<string> {
+  const usable = (n: { e164?: string; channel?: string; sms_enabled?: boolean; is_active?: boolean } | null) =>
+    !!n && n.channel === 'sms' && !!n.sms_enabled && !!n.is_active && String(n.e164 ?? '').startsWith('+44');
+
+  if (agentId) {
+    const { data: assigned } = await (sb.from('wk_number_agents') as any)
+      .select('is_primary, wk_numbers(e164, channel, sms_enabled, is_active)')
+      .eq('agent_id', agentId);
+    const rows = ((assigned ?? []) as Array<{
+      is_primary: boolean;
+      wk_numbers: { e164: string; channel: string; sms_enabled: boolean; is_active: boolean } | null;
+    }>).filter((r) => usable(r.wk_numbers));
+    if (rows.length) {
+      const primary = rows.find((r) => r.is_primary);
+      return (primary ?? rows[0]).wk_numbers!.e164;
+    }
+  }
+
+  const { data: nums } = await sb
+    .from('wk_numbers')
+    .select('e164, channel, sms_enabled, is_active')
+    .eq('sms_enabled', true)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true });
+  const first = ((nums ?? []) as Array<{ e164: string; channel: string; sms_enabled: boolean; is_active: boolean }>)
+    .find((n) => usable(n));
+  return first?.e164 ?? '';
+}
+
+/**
+ * Send one outreach row as a TEXT, with the body a human wrote.
+ *
+ * The gates are sendOutreachRow's gates in sendOutreachRow's order, minus the
+ * Meta approval check (there is no template) and plus the charset rewrite. In
+ * particular the floor is re-read here rather than trusted from the row, and
+ * the wk_sms_messages row goes in BEFORE the wire call so a retry after a lost
+ * response cannot double-text a stranger.
+ */
+export async function sendOutreachSms(
+  sb: Sb,
+  rowId: string,
+  rawBody: string,
+  agentId: string | null,
+): Promise<{ ok: boolean; status: string; error?: string }> {
+  const { data: row } = await sb
+    .from('brrr_builder_outreach')
+    .select('id, property_id, builder_id, contact_id, status, blocked_reason')
+    .eq('id', rowId)
+    .maybeSingle();
+  if (!row) return { ok: false, status: 'missing', error: 'No such outreach row.' };
+  const r = row as {
+    id: string; property_id: string; builder_id: string;
+    contact_id: string | null; status: string; blocked_reason: string | null;
+  };
+  if (r.status !== 'draft' && r.status !== 'approved') {
+    return { ok: false, status: r.status, error: `Already ${r.status}.` };
+  }
+  // template_pending is the one stored reason a text is entitled to ignore,
+  // and it is also the one that is nearly always sitting there.
+  if (r.blocked_reason && r.blocked_reason !== 'template_pending') {
+    return { ok: false, status: r.status, error: `Blocked: ${r.blocked_reason}.` };
+  }
+
+  const floorRefusal = await floorRefusalFor(sb, r.property_id);
+  if (floorRefusal) {
+    await (sb.from('brrr_builder_outreach') as any)
+      .update({ blocked_reason: 'floor_above_ceiling', updated_at: new Date().toISOString() })
+      .eq('id', r.id);
+    return { ok: false, status: r.status, error: floorRefusal };
+  }
+
+  if (!r.contact_id) return { ok: false, status: r.status, error: 'No contact on this row.' };
+
+  const { data: contact } = await sb
+    .from('wk_contacts').select('id, phone').eq('id', r.contact_id).maybeSingle();
+  const phone = String((contact as { phone?: string } | null)?.phone ?? '');
+  if (!isUkMobile(phone)) {
+    return { ok: false, status: r.status, error: 'This is a landline, so it can only be rung.' };
+  }
+
+  const { data: dnt } = await sb
+    .from('wk_contact_tags').select('tag')
+    .eq('contact_id', r.contact_id).eq('tag', 'do-not-text').maybeSingle();
+  if (dnt) return { ok: false, status: r.status, error: 'This builder opted out. Sending is blocked.' };
+
+  // The charset rewrite is the last thing before the wire and it is not
+  // optional: a curly apostrophe pasted in from anywhere flips the whole
+  // message to UCS-2 and the segment drops from 160 characters to 70.
+  const body = toGsm7(String(rawBody ?? '').trim());
+  if (!body) return { ok: false, status: r.status, error: 'There is nothing to send.' };
+  if (smsSegments(body) > MAX_SMS_SEGMENTS) {
+    return {
+      ok: false, status: r.status,
+      error: `That is ${smsSegments(body)} texts long. Keep it to ${MAX_SMS_SEGMENTS}.`,
+    };
+  }
+
+  const fromE164 = await resolveSmsFrom(sb, agentId);
+  if (!fromE164) {
+    return { ok: false, status: r.status, error: 'No UK text number is set up to send from.' };
+  }
+
+  const { data: pending } = await (sb.from('wk_sms_messages') as any).insert({
+    contact_id: r.contact_id, direction: 'outbound', channel: 'sms',
+    body, from_e164: fromE164, to_e164: phone, status: 'sending',
+  }).select('id').single();
+
+  const acc = process.env.TWILIO_ACCOUNT_SID ?? '';
+  const tok = process.env.TWILIO_AUTH_TOKEN ?? '';
+  const form = new URLSearchParams({
+    To: phone,
+    From: fromE164,
+    Body: body,
+    StatusCallback: `${process.env.SUPABASE_URL}/functions/v1/wk-sms-status`,
+  });
+  const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${acc}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${acc}:${tok}`).toString('base64')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: form.toString(),
+  });
+  if (!resp.ok) {
+    const errText = (await resp.text()).slice(0, 300);
+    if (pending?.id) {
+      await (sb.from('wk_sms_messages') as any).update({ status: 'failed' }).eq('id', pending.id);
+    }
+    await (sb.from('brrr_builder_outreach') as any)
+      .update({ status: 'failed', error: errText, updated_at: new Date().toISOString() })
+      .eq('id', r.id);
+    return { ok: false, status: 'failed', error: `Twilio ${resp.status}: ${errText}` };
+  }
+  const sent = await resp.json() as { sid?: string };
+  if (pending?.id) {
+    await (sb.from('wk_sms_messages') as any).update({
+      twilio_sid: sent.sid ?? null, external_id: sent.sid ?? null, status: sent.sid ? 'sent' : 'queued',
+    }).eq('id', pending.id);
+  }
+
+  const now = new Date().toISOString();
+  await (sb.from('brrr_builder_outreach') as any).update({
+    status: 'sent',
+    channel: 'sms',
+    body,
+    twilio_sid: sent.sid ?? null,
+    sms_sent_at: now,
+    // sent_at is "first contacted on anything" and the daily cap counts it, so
+    // it is only ever set, never moved. whatsapp_sent_at is left exactly as it
+    // was, which is what keeps the WhatsApp-contacted tag honest after a text.
+    ...(await firstContactStamp(sb, r.id, now)),
+    error: null,
+    updated_at: now,
+  }).eq('id', r.id);
+  return { ok: true, status: 'sent' };
+}
+
+/** `sent_at` on a row that has never been sent, and nothing on one that has.
+ *  Split out because getting it wrong is silent: moving sent_at forward on a
+ *  second message would quietly re-count that builder against today's cap. */
+async function firstContactStamp(
+  sb: Sb,
+  rowId: string,
+  now: string,
+): Promise<Record<string, string>> {
+  const { data } = await sb
+    .from('brrr_builder_outreach').select('sent_at').eq('id', rowId).maybeSingle();
+  return (data as { sent_at?: string | null } | null)?.sent_at ? {} : { sent_at: now };
+}
+
+/** Record what happened on the phone. Deliberately the only writer of
+ *  call_outcome, and deliberately not a status change: a builder who says he is
+ *  coming still has no invite sent, and pretending otherwise on the row is how
+ *  a house ends up with nobody actually told where to go. */
+export async function recordCallOutcome(
+  sb: Sb,
+  rowId: string,
+  outcome: string,
+  byEmail: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isCallOutcome(outcome)) return { ok: false, error: 'That is not one of the outcomes.' };
+  const { error } = await (sb.from('brrr_builder_outreach') as any)
+    .update({
+      call_outcome: outcome,
+      call_outcome_at: new Date().toISOString(),
+      call_outcome_by: byEmail || 'crm',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', rowId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }

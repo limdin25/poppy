@@ -18,6 +18,7 @@ import {
   Gauge,
   Boxes,
   HardHat,
+  Calculator,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useIsMobile } from '@/core/hooks/useMediaQuery';
@@ -62,6 +63,10 @@ const NAV_ITEMS: NavItem[] = [
   // Pedro's job and the old builder routes were admin-gated, which is exactly
   // why the cockpit's builder panel was silently blank for him.
   { label: 'Find builders', path: '/admin/crm/find-builders', icon: HardHat },
+  // Straight after Find builders, because it is the same afternoon's work: price
+  // the house off its Rightmove photos, then send that list to the builder you
+  // just found. Pricing a refurb is Pedro's job, so it is NOT adminOnly.
+  { label: 'Refurb estimator', path: '/admin/crm/estimator', icon: Calculator },
   // The raw data command center: scraped deals wait HERE for Hugo's press
   // before they reach Pedro (2026-08-19). Admin only, the tab IS the filter.
   { label: 'Raw deals', path: '/admin/crm/raw-leads', icon: Boxes, adminOnly: true },
