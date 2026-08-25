@@ -35,6 +35,7 @@ import { parseSpokenPrice } from '../lib/price-feedback.js';
 import { dealConditionBand, outcodeOf } from '../lib/brrr-deal-facts.js';
 import { readDealMoney } from '../lib/brrr-offer.js';
 import { buildNextStepBrief, briefToText } from '../lib/next-step-brief.js';
+import { addressFromAnswer } from '../lib/builder-brain.js';
 
 export const config = { runtime: 'edge' };
 
@@ -303,9 +304,45 @@ export default async function handler(req: Request): Promise<Response> {
     now: new Date(nowIso),
   });
 
+  // THE HOUSE NUMBER, ASKED ON THE CALL FROM 2026-08-25 (Hugo: "you need to get
+  // the house number"). Rightmove publishes one on 3.4% of adverts, so
+  // `address` is a street and a postcode, and a builder cannot be sent to a
+  // street: that is exactly how the Lunar Builders viewing was lost on 21
+  // August, Shakeel asking for the full address and cancelling 41 hours later
+  // without one.
+  //
+  // Two rules, both borrowed from api/crm/find-builders.ts rather than
+  // reinvented:
+  //   1. compose with addressFromAnswer, the SAME function the builder brain
+  //      uses on a WhatsApp answer, so a number typed here and a number sent by
+  //      WhatsApp produce a byte-identical address. Two spellings of one
+  //      address is two answers to "where is the viewing".
+  //   2. write `viewing_address` and NEVER `address`. draft-guards.ts and
+  //      branch-email-match.ts both read the street as address.split(',')[0],
+  //      so a leading "10, " would turn the street name into a house number for
+  //      both and branch email matching would stop matching.
+  //
+  // A number that is already on file is not overwritten by a blank, same merge
+  // rule as every other answer. An answer with no digit in it ("I'll find out")
+  // is dropped rather than stored, because a wrong address sends a builder to
+  // the wrong house.
+  const typedNumber = String(
+    (mergedQualification as Record<string, unknown>).house_number ?? '',
+  ).trim();
+  const viewingAddress = typedNumber
+    ? addressFromAnswer(typedNumber, String(property.address ?? ''))
+    : null;
+
   const { error: updErr } = await supabase
     .from('brrr_properties')
-    .update({ status: outcome, qualification: mergedQualification, notes, brief, updated_at: nowIso })
+    .update({
+      status: outcome,
+      qualification: mergedQualification,
+      notes,
+      brief,
+      ...(viewingAddress ? { viewing_address: viewingAddress } : {}),
+      updated_at: nowIso,
+    })
     .eq('id', propertyId);
   if (updErr) {
     return Response.json({ error: updErr.message }, { status: 500 });
@@ -471,6 +508,10 @@ export default async function handler(req: Request): Promise<Response> {
     // Handed straight back so the agent sees what the call produced without
     // waiting for a refetch, and so a test can read it off one request.
     brief,
+    // The address the builder will actually be sent, echoed so Pedro can see
+    // his "10" became "10, Oundle Road, Kingstanding, Birmingham B44 8EP"
+    // while the branch is still on the phone to correct it.
+    ...(viewingAddress ? { viewing_address: viewingAddress } : {}),
     ...(warning ? { warning } : {}),
     ...(boardWarning ? { board_warning: boardWarning } : {}),
   });

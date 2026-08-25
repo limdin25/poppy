@@ -247,7 +247,7 @@ describe('the screen and the coach say the same thing', () => {
       // (Hugo: "quick hop, find out the motivation, book an appointment").
       // The name is shared byte for byte by the script page, the coach's beat
       // tracker and the agent-script markdown, which is what this checks.
-      'The six things only they know',
+      'Three questions, then the address',
       // Stage 4 was "Their figure, never ours" and it is GONE, 20 Aug: Hugo,
       // "we don't need the figure any more to book the builder". Pedro no
       // longer asks what would get it done on a first call; a volunteered

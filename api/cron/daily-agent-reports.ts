@@ -381,6 +381,10 @@ const P_THEY_OFFER_VIEWING =
   /would you like[^.?!]{0,30}\b(views?|viewing|booked|book)\b|(can|could|shall|i'll|i will) [^.?!]{0,15}(get you (booked )?in|book you in|arrange (you )?a viewing)|get you booked in|arrange a viewing for you|do you want to (view|book)/i;
 // The agent pushing that offer away to run his questions first. This exact
 // sentence is why two bookings were lost on 2026-08-24.
+// THE HOUSE NUMBER (2026-08-25). Asked on every call, because Rightmove
+// publishes one on 3.4% of adverts and a builder cannot be sent to a street.
+const P_HOUSE_NUMBER =
+  /house number|number (is it|of the (house|property))|what number|which number|door number|full address/i;
 const P_DEFERS_THE_VIEWING =
   /before (i|we) (actually )?(book|schedule|do|arrange)|before (we|i) (book|schedule|arrange)|(couple|few) of questions first|questions first|first (for|before) our decision making/i;
 /** Money in ASR text: "£62,000", "62k", "62 grand", "sixty two thousand". */
@@ -532,11 +536,18 @@ export function propertyScriptCheck(calls: CallRow[], firstContactIds?: Set<stri
     said_who_we_are: n((c) => any(c, P_INTRO)),
     said_cash: n((c) => any(c, P_CASH)),
     asked_their_name: n((c) => any(c, P_ASKS_NAME)),
-    // The checklist, one number per fact family.
+    // THE THREE QUESTIONS (Hugo, 2026-08-25). Occupancy, condition, motivation.
     asked_occupancy: n((c) => any(c, P_OCCUPANCY)),
     asked_condition: n((c) => any(c, P_CONDITION)),
-    asked_interest: n((c) => any(c, P_INTEREST)),
     asked_why_selling: n((c) => any(c, P_MOTIVE)),
+    // THE HOUSE NUMBER, the answer with a deadline: without it the builder
+    // invite carries a street and a postcode, which is how the Lunar Builders
+    // viewing was lost on 21 August. Second only to the builder's day.
+    asked_house_number: n((c) => any(c, P_HOUSE_NUMBER)),
+    // OFF THE CALL since 2026-08-25, still counted so a branch volunteering one
+    // is visible, but NEVER to be reported as a missed step. The prompt below
+    // says so in as many words.
+    asked_interest: n((c) => any(c, P_INTEREST)),
     asked_time_on_market: n((c) => any(c, P_TIME_ON_MARKET)),
     asked_tenure: n((c) => any(c, P_TENURE)),
     // The money. Floating a figure and asking for theirs are different skills
@@ -665,9 +676,13 @@ async function housesTabStats(agentId: string, since: string, until: string): Pr
 
 const PROPERTY_SYSTEM = `You write the end-of-day coaching report for a UK property deal-sourcing caller. They ring estate agents about specific listed properties on behalf of a cash buyer: the company is Unico, the director is Hugo. Since 2026-08-13 the job is a TWO CALL process, and the single most important thing you grade is whether the right call got the right behaviour.
 
-THE CALL WAS CUT SHORT ON 2026-08-24 (Hugo). The sixteen-question checklist is gone. The rule now is: ask it only if the BRANCH can answer it and OUR BUILDER cannot. So the questions about the big four, the age of the kitchen and bathroom, double glazing, and whether anybody has priced the work up have all been REMOVED from the script, because the builder measures them properly and branches answered them with "you would need a survey". NEVER grade a caller down for skipping one of those, and never coach them back. What is left is six families: occupancy, condition (one question, plus the water question which survived on purpose), why they are selling and how long it has been on, what sold done up on the street, offers and rejections and at what level, and tenure. Motivation is the one that matters most.
+THE CALL IS THREE QUESTIONS AND THE HOUSE NUMBER (Hugo, 2026-08-25: "we wanna just get to the point, make a call, book the viewing"). The homework is already done before a house reaches the caller, so there is nothing to work out on the phone. The three: is it vacant or tenanted, ONE condition question ("I've had a look at the photos, is there anything else I should know, any damp or leaks, anything with the roof, the boiler, anything not working?"), and why are they selling and are they in a hurry. Then the house number. Then the builder's day.
 
-CALL ONE, DISCOVERY, AND IT ENDS BY BOOKING OUR BUILDER (changed 2026-08-20 by Hugo: the builder gets booked on call one, and there is no price talk of ours and no ballpark on that call at all): confirm it is available, work the six fact families, ask what sold DONE UP on the same street and for how much, ask about offers and rejections, get the agent's email address, and then ASK FOR A DAY FOR OUR BUILDER to go round and price the work, plus who holds the keys. That booked day is the score of call one and it is counted as asked_for_the_builder_day: a first call that got the facts but never asked for the builder's day missed its own close, however friendly it was. ON A FIRST CALL THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN: no figure, no range, no "around", and there is no longer any system or panel that gives them one. The approved deflection when pushed is "I can't give you a proper number until our builder's been, and that's why I'd rather get him in this week." A number of ours floated on a first call is a RULE BREAK and must be reported plainly, with the quote.
+THESE ARE OFF THE CALL AND MUST NEVER BE REPORTED AS A MISSED STEP: how long it has been on the market and whether the price came down (asked_time_on_market), the floor area (asked_floor_area_or_measurements), what it would let for, what sold done up on the street (asked_what_sold_done_up_on_street), offers and rejections (asked_interest), freehold or leasehold (asked_tenure), the big four, the age of the kitchen and bathroom, double glazing, and who has priced the work up. Those counters are still given to you so a branch VOLUNTEERING one is visible, and that is the only reason to mention them. A caller who skipped every one of them and got the three questions, the number and a booked day had a perfect call.
+
+THE HOUSE NUMBER IS THE NEW ONE AND IT MATTERS (asked_house_number). Rightmove publishes no house number on 96.6% of adverts, so what we hold is a street and a postcode, and a builder cannot be sent to a street. The invite to Lunar Builders on 21 August read "Oundle Road, Kingstanding, Birmingham B44 8EP"; Shakeel asked for the full address within the minute, nobody answered for 41 hours and he cancelled on the morning of the viewing. Missing it is the second biggest miss on a first call, behind only the builder's day. Report it plainly when it is missing.
+
+CALL ONE, DISCOVERY, AND IT ENDS BY BOOKING OUR BUILDER (changed 2026-08-20 by Hugo: the builder gets booked on call one, and there is no price talk of ours and no ballpark on that call at all): confirm it is available, ask the three questions, get THE HOUSE NUMBER, get the agent's email address, and then ASK FOR A DAY FOR OUR BUILDER to go round and price the work, plus who holds the keys. That booked day is the score of call one and it is counted as asked_for_the_builder_day: a first call that got the facts but never asked for the builder's day missed its own close, however friendly it was. ON A FIRST CALL THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN: no figure, no range, no "around", and there is no longer any system or panel that gives them one. The approved deflection when pushed is "I can't give you a proper number until our builder's been, and that's why I'd rather get him in this week." A number of ours floated on a first call is a RULE BREAK and must be reported plainly, with the quote.
 
 CALL TWO, THE OFFER CALL (a ring-back, made once the builder has priced the work): float the director's confirmed opening figure WITHOUT making a formal offer ("if we were to offer around X, am I in the ballpark or a million miles off?"), go quiet, get the branch to name a figure back, push back once with a comparable sale, climb the ladder one rung at a time, and push to get the figure to the vendor. On THAT call the floated figure is the job, not a fault. If the branch never let the builder in, getting him in is still the next step on that call.
 
@@ -702,7 +717,7 @@ Write in British English, plain language, second person ("you"). Never write a l
 **Today**: two or three sentences on how the day actually went. Cover pace as well as quality: dials, time actually on the phone, any long gap with no calls. If a CORRECTION block appears at the top of this prompt, the FIRST thing in this section is that correction, said plainly and without excuses.
 **What worked**: up to three specific things, each with a quote or an agency name.
 **The grade**: the day as one funnel, on its own lines: dials, conversations, availability confirmed, builder days asked for, figures obtained from the branch, callbacks agreed with a time. Then say plainly which step is losing the most. On first calls the builder's day is the score that matters: a polite day of chat that never asks for it is not a good day, whatever else was learned. If outcomes were not logged in the Houses tab, say so: the bookings and the figures are the reason the calls happen and they must be written down where the director can see them.
-**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the six fact families, what sold done up on the street, the builder's day and the keys, the email address, the standing brief left for future houses, the callback time, then the rule breaks (a figure of ours on a first call, formal offer, a viewing booked for themselves, an offered appointment pushed away, sourcer/course talk), which should all be zero. On ring-backs, grade the money conversation: the floated figure, the silence, the ladder. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
+**Script check**: go through the steps in order with the number for each: the availability opener, the intro (name, Unico, the word cash), their name taken, the three questions, the house number, the builder's day and the keys, the email address, the standing brief left for future houses, the callback time, then the rule breaks (a figure of ours on a first call, formal offer, a viewing booked for themselves, an offered appointment pushed away, sourcer/course talk), which should all be zero. On ring-backs, grade the money conversation: the floated figure, the silence, the ladder. Where a step is being missed, quote the words used instead. Praise the steps they are hitting; do not only list failures.
 **Fix tomorrow**: every genuine problem you found, most important first, each with the concrete words or action to use instead. Include the non-negotiables above here if they occurred.
 **Tomorrow's one thing**: a single sentence naming the one change that would make the biggest difference.
 

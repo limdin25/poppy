@@ -259,7 +259,7 @@ describe('two calls: discovery first, the offer only after the homework', () => 
     // Stage 4 ("Their figure, never ours") was deleted on 2026-08-20: Hugo,
     // "we don't need the figure any more to book the builder". So call one is
     // three beats and a close, and no money question of any kind lives in it.
-    const three = at('3. The six things only they know')
+    const three = at('3. Three questions, then the address')
     const book = at('4. Book the builder in. This is the close.')
     const money = at('5. Call two, the offer')
     for (const [label, i] of Object.entries({ three, book, money })) {
@@ -275,73 +275,102 @@ describe('two calls: discovery first, the offer only after the homework', () => 
   // "to the end of the file", so every assertion below was really scanning the
   // whole script, objection panels and call two included. It is bounded to the
   // real next heading now, which is what makes the removals below provable.
-  const stage3 = () => html.slice(at('3. The six things only they know'),
+  const stage3 = () => html.slice(at('3. Three questions, then the address'),
                                   at('4. Book the builder in. This is the close.'))
 
-  it('the discovery stage asks the questions that price the deal', () => {
+  // Rewritten 2026-08-25. Hugo, reading the script back: "I think we are
+  // because we just need to book a plumber, we don't want to annoy the agent...
+  // we wanna just get to the point, make a call, book the viewing."
+  //
+  // The cut is justified by what the machine already knows. A house only
+  // reaches Pedro's queue after it has been priced against what sold on that
+  // street at that size, so the price questions are asking a branch to confirm
+  // homework that is already done, and they are what makes the call long enough
+  // to get hung up on.
+  it('asks THREE questions and nothing else', () => {
     const s = stage3()
     expect(s).toMatch(/vacant, or is there a tenant/)
-    expect(s).toMatch(/what sort of condition/)
+    expect(s).toMatch(/anything else I should know about it/)
     expect(s).toMatch(/why they're selling/)
-    // Added 2026-08-13: the done-up street sale. The size question survives but
-    // only as a conditional extra, it is asked when the card still wants it.
-    expect(s).toMatch(/sold recently that was done up/)
-    expect(s).toMatch(/floor area on it, or the room measurements/)
-    expect(s).toMatch(/freehold or leasehold/)
-    expect(s).toMatch(/Years left on the lease/)
-    expect(s).toMatch(/Never ask a house about service charges/)
-    expect(s).toMatch(/Never ask a flat about subsidence/)
-    // And the two that carry the deal: motivation and the rejected offer.
     expect(s).toMatch(/Are they in any sort of hurry/)
-    expect(s).toMatch(/has anything been turned down/)
   })
 
-  // Rewritten 2026-08-24. Hugo, after listening back to three days of calls:
-  // "I think we should go for just quick hop, find out the motivation, book an
-  // appointment, get the builder to go to the place, put an offer."
-  //
-  // The 2026-08-14 rule (condition is four questions, not one) was right about
-  // the DIFFERENCE mattering and wrong about who to ask. Measured over 43 real
-  // conversations, the branch answered the big four, the kitchen and bathroom
-  // age, the glazing and the cost of the work with "I don't know, you'd need a
-  // survey" almost every time, and that stretch of the call is where two
-  // branches hung up mid-question. They are the builder's job now. The single
-  // question Hugo demanded on 2026-08-14 that DID keep earning is water, so
-  // that one survives verbatim.
-  it('condition is ONE question now, and the builder gets the rest', () => {
+  it('the price homework is OFF the call, because the machine already did it', () => {
     const s = stage3()
-    // GONE from the questions he reads aloud.
+    // Hugo, 2026-08-25: "we already have the numbers, you already done all the
+    // comparisons, no reason to do that."
+    expect(s).not.toMatch(/sold recently that was done up\? What did it actually go for/)
+    expect(s).not.toMatch(/has anything been turned down\?"/)
+    expect(s).not.toMatch(/How long's it been on with you/)
+    expect(s).not.toMatch(/floor area on it, or the room measurements\?"/)
+    expect(s).not.toMatch(/what would it let for round there/)
+    // "no asking if you freehold or leasehold because we can make an offer
+    // either way, we found out after the viewing."
+    expect(s).not.toMatch(/"Is it freehold or leasehold\?"/)
+    // The reason is written down, so nobody puts them back by feel.
+    expect(s.replace(/\s+/g, ' ')).toMatch(/We can buy it either way and we find the rest out after the viewing/)
+  })
+
+  it('condition is ONE question, and it says the photos have been looked at', () => {
+    const s = stage3()
+    const flat = s.replace(/\s+/g, ' ')
+    // The four-question version and everything the builder now measures.
     expect(s).not.toMatch(/what sort of thing are we talking/)
-    expect(s).not.toMatch(/the roof, any damp, the electrics and the boiler/)
+    expect(s).not.toMatch(/the roof, any damp, the electrics and the boiler\?"/)
     expect(s).not.toMatch(/How old are the kitchen and the bathroom/)
     expect(s).not.toMatch(/windows double glazed/)
     expect(s).not.toMatch(/priced the work up/)
-    // Kept: the headline, and the one nudge when they hedge.
-    expect(s).toMatch(/ready to move into or does it need work/)
-    expect(s.replace(/\s+/g, ' ')).toMatch(/live in it while the work's being done, or is it a shell/)
-    // And the rule is written down, so nobody adds them back by feel.
-    expect(s).toMatch(/only if the branch can answer it and our\s+builder cannot/)
-  })
-
-  it('WATER survives the cut, on every house', () => {
-    // Hugo 2026-08-14: "very important on the prompts to find out if there is
-    // any leaking, any roof problems." It stays because it is the one condition
-    // question branches answer straight out, and water is what turns a 15k
-    // refurb into a 40k one. The script wraps, so match on normalised text.
-    const flat = stage3().replace(/\s+/g, ' ')
-    expect(flat).toMatch(/Any leaks, anything coming in, any staining on the ceilings/)
-    expect(flat).toMatch(/What's the roof like, has it been done or is it the original/)
-    expect(flat).toMatch(/has anyone been up on it/)
+    // Hugo's own words for it: "I see the photos, but now I want to know,
+    // anything about any leaking, something that's not working?"
+    expect(flat).toMatch(/I've had a look at the photos so I've got a rough idea/)
+    expect(flat).toMatch(/Any damp or leaks, anything with the roof, the boiler, anything that's just not working/)
+    // Water is still named FIRST inside it, and the one light push survives.
     expect(flat).toMatch(/has there ever been a leak in there, even one that's been sorted/)
-    // And the rule that stops him flinching at the answer.
     expect(flat).toMatch(/not a reason to walk away, it is the reason the price comes down/)
-    expect(flat).toMatch(/ASK THIS ON EVERY SINGLE HOUSE/)
-    // The coach must agree, or it grades a call against wording Pedro is no
-    // longer reading. It also has to know NOT to coach the dropped questions.
+    // The coach agrees, or it grades a call against wording he is not reading.
     const coach = read('supabase/functions/wk-voice-transcription/index.ts')
-    expect(coach).toMatch(/Any leaks, anything coming in, any staining on the ceilings/)
+    expect(coach).toMatch(/anything that's just not working/)
     expect(coach).toMatch(/has there ever been a leak in there/)
     expect(coach).toMatch(/NEVER COACH A DROPPED QUESTION/)
+  })
+
+  it('THE HOUSE NUMBER is asked on every call, and lands somewhere', () => {
+    // Hugo, 2026-08-25: "you need to get the house number." Rightmove publishes
+    // one on 3.4% of adverts, and it has already cost a real viewing: Shakeel
+    // at Lunar Builders asked for the full address, waited 41 hours and
+    // cancelled on the morning.
+    const s = stage3()
+    const flat = s.replace(/\s+/g, ' ')
+    expect(s).toMatch(/3b\. The house number\. Every single call\./)
+    expect(flat).toMatch(/What's the house number\?/)
+    // The address is on screen at that moment, from the live tokens, so he can
+    // read the street back rather than guess at it.
+    expect(s).toContain('[property_address]')
+    expect(s).toContain('[property_street]')
+    expect(flat).toMatch(/A builder cannot be sent to a street/)
+
+    // A box to type it into, on the card he already has open.
+    const pane = read('src/features/crm/components/live-call/PropertiesPane.tsx')
+    expect(pane).toMatch(/key: 'house_number'/)
+    // And a key for it on the canonical checklist, so the ballpark sees it too.
+    expect(read('api/lib/brrr.ts')).toMatch(/house_number\?: string \| null/)
+
+    // THE POINT OF ALL OF IT: it becomes the address the builder is sent.
+    // Composed with the SAME function the builder brain uses on a WhatsApp
+    // answer, and written to viewing_address, NEVER to address.
+    const route = read('api/crm/property-outcome.ts')
+    expect(route).toMatch(/addressFromAnswer/)
+    expect(route).toMatch(/viewing_address: viewingAddress/)
+    // The bare `address` column, specifically. draft-guards.ts and
+    // branch-email-match.ts both read the street as address.split(',')[0], so a
+    // leading "10, " there would turn the street name into a house number for
+    // both and branch email matching would stop matching.
+    expect(route).not.toMatch(/(?<!viewing_)address: viewingAddress/)
+
+    // The coach and the report both chase it.
+    expect(read('supabase/functions/wk-voice-transcription/index.ts'))
+      .toMatch(/THE HOUSE NUMBER\. Every single call\./)
+    expect(read('api/cron/daily-agent-reports.ts')).toMatch(/asked_house_number/)
   })
 
   it('an offered appointment is TAKEN, never pushed back behind the questions', () => {
@@ -627,5 +656,50 @@ describe('call two opens as the callback it is, never as a cold call', () => {
     const whenCount = html.split('[spoke_when]').length - 1
     expect(whenCount).toBeGreaterThan(0)
     expect(html.split('We spoke [spoke_when] about').length - 1).toBe(whenCount)
+  })
+})
+
+// THE HOUSE NUMBER TYPED ON THE CALL BECOMES THE ADDRESS A BUILDER IS SENT.
+//
+// Hugo, 2026-08-25: "you need to get the house number." Rightmove publishes one
+// on 3.4% of adverts, so the invite carries a street and a postcode and nothing
+// else. That is not a theory: the Lunar Builders invite on 21 August read
+// "Oundle Road, Kingstanding, Birmingham B44 8EP", Shakeel asked for the full
+// address within the minute, nobody answered for 41 hours, and he cancelled on
+// the morning of the viewing.
+//
+// There are now TWO ways the number arrives, Pedro typing it on the call and a
+// builder being answered over WhatsApp, and they must produce the SAME string.
+// Two spellings of one address is two answers to "where is the viewing".
+describe('the number Pedro types and the number sent by WhatsApp compose identically', () => {
+  it('uses the builder brain s own composer, not a second one', async () => {
+    const { addressFromAnswer } = await import('../api/lib/builder-brain')
+    const street = 'Oundle Road, Kingstanding, Birmingham, B44 8EP'
+
+    // The normal answer: a bare number, glued onto the street we already hold.
+    expect(addressFromAnswer('10', street)).toBe('10, Oundle Road, Kingstanding, Birmingham, B44 8EP')
+    // A flat or a sub-number still works.
+    expect(addressFromAnswer('10a', street)).toBe('10a, Oundle Road, Kingstanding, Birmingham, B44 8EP')
+    // They read the whole thing out: taken as said, not doubled up.
+    expect(addressFromAnswer('10 Oundle Road, Kingstanding', street)).toBe('10 Oundle Road, Kingstanding')
+    // AND THE REFUSAL THAT MATTERS: "I'll find out" is not an address, and
+    // storing it would send a builder to a house that does not exist.
+    expect(addressFromAnswer('I will find out tomorrow', street)).toBeNull()
+    expect(addressFromAnswer('', street)).toBeNull()
+  })
+
+  it('the route drops a non-answer rather than writing it', () => {
+    const route = read('api/crm/property-outcome.ts')
+    // Only written when the composer returned something, so a null never
+    // overwrites an address a previous call already established.
+    expect(route).toMatch(/\.\.\.\(viewingAddress \? \{ viewing_address: viewingAddress \} : \{\}\)/)
+  })
+
+  it('echoes the composed address back so it can be corrected on the call', () => {
+    // Pedro says "10", the branch is still on the phone, and the reply shows
+    // him the full address the builder will get. A wrong street is fixable in
+    // that second and expensive an hour later.
+    expect(read('api/crm/property-outcome.ts'))
+      .toMatch(/\.\.\.\(viewingAddress \? \{ viewing_address: viewingAddress \} : \{\}\),\n\s*\.\.\.\(warning/)
   })
 })

@@ -118,6 +118,21 @@ export interface Qualification {
   still_available?: boolean | null;
   occupancy?: string | null;            // vacant / tenanted (+ tenancy details)
   condition_notes?: string | null;
+  /** THE HOUSE NUMBER, asked on every call from 2026-08-25 (Hugo: "you need to
+   *  get the house number").
+   *
+   *  Rightmove publishes no house number on 96.6% of adverts, so
+   *  brrr_properties.address is a street and a postcode and a builder cannot be
+   *  sent to it. It already cost a real viewing: the Lunar Builders invite on
+   *  21 August said "Oundle Road, Kingstanding, Birmingham B44 8EP", Shakeel
+   *  asked for the full address within the minute, nobody answered for 41 hours
+   *  and he cancelled on the morning.
+   *
+   *  Pedro types the number alone ("10"). property-outcome.ts composes it onto
+   *  the street with addressFromAnswer, the SAME function the builder brain
+   *  uses on a WhatsApp answer, and writes brrr_properties.viewing_address,
+   *  never `address`. */
+  house_number?: string | null;
   // The four below arrived 2026-08-15 with the house-aware checklist. The
   // script had asked about water and size since 8b and the answers had
   // NOWHERE TO LIVE except free text; rent decides the investor's 20% ROI at
@@ -163,6 +178,7 @@ export const QUALIFICATION_QUESTIONS: Array<{ key: keyof Qualification; question
   { key: 'occupancy', question: 'Vacant or tenanted? (tenancy details if tenanted)' },
   { key: 'condition_notes', question: 'What condition is it in / what works are needed?' },
   { key: 'water', question: 'Is it dry? Any leaks, ceiling staining, roof trouble?' },
+  { key: 'house_number', question: 'House number, so the builder can find the door' },
   { key: 'floor_area', question: 'Floor area in sqm, if the agent has the particulars' },
   { key: 'rent_estimate', question: 'What would it let for, per month?' },
   { key: 'agent_comparable', question: 'Anything on that street sold recently that was done up, and what did it go for?' },

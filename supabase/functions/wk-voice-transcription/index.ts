@@ -524,7 +524,7 @@ const CLOSE_CALL_CONTEXT = [
 const PROPERTY_STAGE_ORDER = [
   'Is it still available',
   'Ask for the two minutes',
-  'The six things only they know',
+  'Three questions, then the address',
   'Book the builder in. This is the close.',
   'Call two, the offer',
   'The builder still has not been. Get him in.',
@@ -565,19 +565,18 @@ If asked who is calling: "It's Pedro. I work with Hugo, our director, at Unico. 
 If asked what company: "Unico. We're a small property company, the director Hugo buys with cash and I do the legwork for him." Only if they press for the legal detail: "Full name's Ulinc Unico Group Limited, company number 11197856. Registered office is 483 Green Lanes in London, N13 4BS."
 If asked cash or mortgage: "Cash. No mortgage, no chain, nothing to sell."
 
-## 3. The six things only they know
-THE CALL IS SHORT NOW (Hugo, 2026-08-24). It was sixteen questions and ran fifteen to twenty minutes. The rule that decides what survives: ask it only if the BRANCH can answer it and OUR BUILDER cannot. Kitchens, bathrooms, boilers, wiring, windows and the cost of the work have all moved to the builder, because he is the one who can actually tell us and because branches answer every one of them with "I don't know, you'd need a survey".
-NEVER COACH A DROPPED QUESTION. Do not fire a card asking about the big four, the age of the kitchen or bathroom, double glazing, or whether anybody has priced the work up. Those are the builder's job now, and a card asking for one is coaching the agent back into the long call.
-The six, in order, about three minutes:
-"Is it vacant, or is there a tenant in?" If tenanted: staying or leaving, and what rent.
-"And what sort of condition is it in, ready to move into or does it need work?" ONE question now, not four. You want the headline only, liveable or a shell. One nudge if they hedge: "Could someone live in it while the work's being done, or is it a shell?" Then move on.
-"And is it dry? Any leaks, anything coming in, any staining on the ceilings? What's the roof like, has it been done or is it the original?" ASK ON EVERY HOUSE, even an immaculate one. This one survived the cut because water is what turns a 15k refurb into a 40k one, a photograph never shows it, and the branch will often say straight out. Never accept "I think it's fine": push once with "has anyone been up on it?" and "has there ever been a leak in there, even one that's been sorted?". A leak is NOT a reason to walk away, it is the reason the price comes down, so never react to it and never say what it will cost us.
-"Do you know why they're selling? Are they in any sort of hurry?" MOTIVATION IS THE POINT OF THE CALL (Hugo, 2026-08-24) and it is the one thing our builder can never find out. Do not let "they're moving" stand: coach the follow-up. Onward chain, found somewhere already, probate, divorce, a landlord getting out. Each of those is a reason a price moves.
-"How long's it been on with you? And has the price come down at all?" The same question asked of the branch instead of the vendor.
-"Has anything on that street sold recently that was done up? What did it actually go for?" The done-up value from the person who sells that street.
-"Has it had much interest? Any offers so far, and has anything been turned down?" A rejected offer is the floor, so always get the LEVEL: "roughly what did the one they turned down come in at?". And has a sale ever fallen through.
-"Is it freehold or leasehold?"
-Two ten-second extras, only when they apply: "And roughly what would it let for round there?" and "Have you got the floor area on it?" (that one only if the size is still missing).
+## 3. Three questions, then the address
+WE ARE BOOKING A BUILDER, NOT INTERVIEWING AN ESTATE AGENT (Hugo, 2026-08-25). The homework is already done: the house only reached the screen because the machine had priced it against what sold on that street at that size. So the call is THREE questions, then the house number, then the booking. Two minutes.
+NEVER COACH A DROPPED QUESTION, and never mark a call down for missing one. All of these are OFF the call: how long it has been on the market and whether the price dropped, the floor area (we hold it), what it would let for, what sold done up on the street, offers and rejections, freehold or leasehold, the big four, the age of the kitchen or bathroom, double glazing, and who has priced the work up. If the branch VOLUNTEERS one, bank it and carry on. Never go fishing for it.
+The three, in order:
+"Is it vacant, or is there a tenant in?" One follow-up if tenanted, staying or leaving, then move on.
+"I've had a look at the photos so I've got a rough idea. Is there anything else I should know about it? Any damp or leaks, anything with the roof, the boiler, anything that's just not working?" CONDITION IS ONE QUESTION NOW, ASKED LIKE A HUMAN. It used to be four and that stretch is where two branches hung up. The "I've had a look at the photos" half is not optional: it tells them he is a buyer who has done the basics. If they brush water off with "I think it's fine", coach ONE light push: "has there ever been a leak in there, even one that's been sorted?". Then stop. A leak is NOT a reason to walk away, it is the reason the price comes down, so never react to it and never say what it will cost us.
+"And do you know why they're selling? Are they in any sort of hurry?" MOTIVATION IS THE POINT OF THE CALL and it is the one thing our builder can never find out. Do not let "they're moving" stand: coach one follow-up. Onward chain, found somewhere already, probate, divorce, a landlord getting out.
+
+## 3b. THE HOUSE NUMBER. Every single call.
+"Last thing, just so I can get my builder to the right door. I've got it as {{property_street}}. What's the house number?"
+COACH THIS ON EVERY CALL AND TREAT MISSING IT AS A MISS, second only to the builder's day. Rightmove publishes no house number on 96.6% of adverts, so what we hold is a street and a postcode, and A BUILDER CANNOT BE SENT TO A STREET. On 21 August the invite to Lunar Builders read "Oundle Road, Kingstanding, Birmingham B44 8EP", Shakeel asked for the full address within the minute, nobody answered for 41 hours and he cancelled on the morning of the viewing.
+Branches give it up without a thought once he says it is for the builder. The number on its own is enough, "10" will do. If the agent is winding the call down without having asked, fire a card with those words in it. If the branch cannot see it, coach him to ask for it in the confirmation email. Never coach a guess at a number.
 FLAT only: years left on the lease, service charge, ground rent, major works, cladding or EWS1.
 HOUSE only: confirm freehold, structural issues, extensions signed off.
 Never ask a house about service charges or a lease unless they say it is leasehold. Never ask a flat about subsidence unless they raise it.
@@ -642,8 +641,8 @@ const PROPERTY_STEP_PROMPT: Record<string, string> = {
   'Discovery call': [
     'WHICH CALL THIS IS: THE FIRST CALL to this branch. Discovery only.',
     'THE AGENT MUST NEVER SAY A NUMBER OF OUR OWN ON THIS CALL. Not a figure, not a range, not "around" anything. If they start to float one, fire a card immediately: "No number on a first call. If pushed: I can\'t give you a proper number until our builder\'s been, and that\'s why I\'d rather get him in this week."',
-    'What this call is for, in order: the SIX facts only a branch knows (vacant, condition, why they are selling and how long it has been on, what sold DONE UP on the street and for how much, offers and rejections and at what level, freehold or leasehold), the estate agent\'s EMAIL ADDRESS, and then THE CLOSE: A DAY FOR OUR BUILDER to go round and price the work, and who holds the keys.',
-    'THE CALL IS SHORT NOW (Hugo, 2026-08-24). The old sixteen-question checklist is gone. Never coach the big four, the age of the kitchen or bathroom, double glazing, or whether anyone has priced the work up: those belong to the builder and branches answer them with "you would need a survey". Motivation is the question that matters most, and if the branch offers an appointment he takes the day BEFORE he asks anything.',
+    'What this call is for, in order: THREE questions (vacant or tenanted, one condition question, why they are selling and are they in a hurry), THE HOUSE NUMBER so the builder can find the door, the estate agent\'s EMAIL ADDRESS, and then THE CLOSE: A DAY FOR OUR BUILDER to go round and price the work, and who holds the keys.',
+    'THE CALL IS THREE QUESTIONS AND THE HOUSE NUMBER (Hugo, 2026-08-25). Occupancy, one condition question, why they are selling, then "what\'s the house number?", then book the builder. Everything else is off the call and must never be coached: time on market, floor area, rent, what sold done up on the street, offers and rejections, tenure, the big four, kitchen or bathroom age, double glazing, who priced the work up. Motivation is the question that matters most, THE HOUSE NUMBER is the one with a deadline because a builder cannot be sent to a street, and if the branch offers an appointment he takes the day BEFORE he asks anything.',
     'THE BUILDER\'S DAY IS THE CLOSE OF THIS CALL (Hugo, 2026-08-20). If the call is winding down and the agent has not asked for it, fire a card with the words: "The next thing our side is quick: we send our own builder round to price the work up. When would suit for access?" Booking OUR BUILDER is the goal here, it is never the banned viewing: what is banned is a viewing for himself or for the director.',
     'If the branch names a figure of their own, bank it word for word, never a counter-number, and carry on to the builder\'s day anyway.',
     'And before the goodbye, the STANDING BRIEF: our email left with them for anything needing plenty of work or where the price has to come down, sent straight to him. Coach it if the call is winding down without it.',
@@ -709,7 +708,7 @@ const PROPERTY_SCRIPT_PROMPT = [
   'THE FIVE BEATS, forward-only order',
   '1. Is it still available',
   '2. Ask for the two minutes',
-  '3. The six things only they know (empty or tenanted, condition in one question plus the water question, why selling and how long on, what sold done up on the street, offers and rejections and at what level, tenure). The long checklist was cut on 2026-08-24: never coach the big four, kitchen or bathroom age, double glazing, or who has priced the work up.',
+  '3. Three questions, then the address (empty or tenanted, ONE condition question, why they are selling), then THE HOUSE NUMBER. Cut to this on 2026-08-25: never coach time on market, floor area, rent, what sold done up on the street, offers and rejections, tenure, the big four, kitchen or bathroom age, double glazing, or who priced the work up. A branch cannot be marked down for not being asked.',
   '4. Book the builder in, the close (a DAY for our builder and who has the keys, video walkthrough, THE EMAIL ADDRESS, the standing brief, the confirmation time)',
   '5. Call two, the offer (ONLY once the builder has priced the work, with the director\'s confirmed figure)',
   '',

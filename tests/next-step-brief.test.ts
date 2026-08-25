@@ -346,8 +346,16 @@ describe('it is wired into the call, and it is the only brain that writes it', (
   it('writes a brief on the property after EVERY outcome', () => {
     expect(route).toMatch(/buildNextStepBrief\(/)
     // Written in the same update as the outcome, so a house can never carry a
-    // status from today's call and an instruction from last week's.
-    expect(route).toMatch(/update\(\{ status: outcome, qualification: mergedQualification, notes, brief/)
+    // status from today's call and an instruction from last week's. The call
+    // gained the house number on 2026-08-25, so the update went multi-line and
+    // viewing_address joined it conditionally; what this pins is that all of it
+    // is still ONE write.
+    const write = route.slice(route.indexOf(".from('brrr_properties')\n    .update({"));
+    for (const field of ['status: outcome', 'qualification: mergedQualification', 'notes,', 'brief,']) {
+      expect(`${field} in the outcome write`).toBe(
+        write.slice(0, 400).includes(field) ? `${field} in the outcome write` : `${field} MISSING`,
+      );
+    }
   })
 
   it('sends the brief to Hugo as the notification body', () => {

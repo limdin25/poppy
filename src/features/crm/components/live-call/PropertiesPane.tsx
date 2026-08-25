@@ -56,7 +56,18 @@ const QUESTIONS: Array<{
   { key: 'offer_reaction', label: 'How did the offer land?' },
   { key: 'still_available', label: 'Still available?' },
   { key: 'occupancy', label: 'Vacant or tenanted?' },
-  { key: 'condition_notes', label: 'The big four: roof, damp, electrics, boiler' },
+  { key: 'condition_notes', label: 'Anything else we should know? (leaks, roof, boiler)' },
+  // THE HOUSE NUMBER, 2026-08-25. Hugo: "you need to get the house number."
+  // Rightmove publishes one on 3.4% of adverts, so a builder invite carries a
+  // street and a postcode and nothing else. Shakeel at Lunar Builders asked for
+  // the full address within a minute of his invite on 21 August, waited 41
+  // hours, and cancelled on the morning of the viewing. The number alone is
+  // enough here: property-outcome.ts composes it onto the street and writes
+  // viewing_address, which is what every builder message reads.
+  //
+  // Sits third because it is asked at the end of the call and is the one answer
+  // with a deadline: the builder cannot be invited without it.
+  { key: 'house_number', label: 'HOUSE NUMBER (the builder needs the door)' },
   // THE ONE KEY WITH NO INPUT UNTIL 18 Aug. `condition_band` is on the twelve
   // and the engine prices off it, and the only way it could ever be set was
   // the ballpark reader on a human pressing Confirm. So the checklist could
@@ -69,34 +80,42 @@ const QUESTIONS: Array<{
     options: BANDS,
   },
   { key: 'water', label: 'Is it dry? Leaks, ceiling staining?' },
-  // Sits above the rejected offer because that is the order the script asks
-  // them in, and because it is the more valuable of the two: a done-up sale on
-  // the same street is a fact about the END value, which is the number every
-  // other number in the deal hangs off.
+  { key: 'why_selling', label: 'Why are they selling?' },
+  { key: 'motivation', label: 'How motivated?' },
+  { key: 'chain', label: 'Onward chain?' },
+  { key: 'video_walkthrough', label: 'Video walkthrough asked for?' },
+  { key: 'branch_contact_name', label: 'Who did you speak to?' },
+  { key: 'viewing_availability', label: 'Builder visit, easy to arrange?' },
+];
+
+/** THE BOXES FOR QUESTIONS WE NO LONGER ASK ON A CALL (Hugo, 2026-08-25).
+ *
+ *  "We already have the numbers, you already done all the comparisons, no
+ *  reason to do that." The call is three questions and the house number now, so
+ *  the card must not show fifteen boxes for it: a card that cannot be completed
+ *  is a card nobody completes, which is exactly what happened on day one.
+ *
+ *  They are NOT deleted. Every key stays in QUALIFICATION_QUESTIONS in
+ *  api/lib/brrr.ts, so the ballpark still reads any answer already stored
+ *  against a house (that read is driven off the canonical list, and starving it
+ *  is the bug fixed in project_ballpark_payload_bug). They simply stop being
+ *  asked for on a live call, and they open on demand for the rare call where a
+ *  branch volunteers one.
+ *
+ *  Tenure is here on purpose. Hugo: "no asking if you freehold or leasehold
+ *  because we can make an offer either way, we found out after the viewing." */
+const ASKED_ONLY_IF_OFFERED: Array<{ key: string; label: string; only?: 'flat' | 'house' }> = [
   { key: 'agent_comparable', label: 'Anything DONE UP sold on that street? What for?' },
   { key: 'rejected_offer', label: 'Any offer rejected? At what level?' },
   { key: 'rent_estimate', label: 'What would it let for (pcm)?' },
-  {
-    key: 'floor_area',
-    label: 'Floor area (sqm), off their particulars',
-    knownWhen: (l) => (Number(l.floor_area_sqm) > 0 ? `${Number(l.floor_area_sqm)} sqm` : null),
-  },
-  { key: 'why_selling', label: 'Why are they selling?' },
+  { key: 'floor_area', label: 'Floor area (sqm), off their particulars' },
   { key: 'interest_level', label: 'Viewings or offers so far?' },
   { key: 'fallen_through', label: 'Has a sale fallen through before?' },
-  { key: 'motivation', label: 'How motivated?' },
-  { key: 'chain', label: 'Onward chain?' },
   { key: 'tenure', label: 'Freehold or leasehold?' },
   { key: 'lease_years', label: 'Years left on the lease', only: 'flat' },
   { key: 'service_charge', label: 'Service charge', only: 'flat' },
   { key: 'ground_rent', label: 'Ground rent', only: 'flat' },
   { key: 'major_works', label: 'Major works / cladding', only: 'flat' },
-  // We never view a property: our builder does, and he prices the refurb while
-  // he is there. So the question is no longer "when can viewings happen" but
-  // whether we got the video that lets the builder quote without driving.
-  { key: 'video_walkthrough', label: 'Video walkthrough asked for?' },
-  { key: 'branch_contact_name', label: 'Who did you speak to?' },
-  { key: 'viewing_availability', label: 'Builder visit, easy to arrange?' },
 ];
 
 /** The end states of a property call, in the order they are worth.
@@ -254,6 +273,11 @@ export default function PropertiesPane({
   const visibleQuestions = QUESTIONS.filter((q) =>
     (!q.only || (q.only === 'flat' && !isHouse) || (q.only === 'house' && !isFlat))
     && !(q.knownWhen && selected && q.knownWhen(selected)),
+  );
+  // Same flat/house rule for the folded-away ones, so a house never offers a
+  // lease box even when the section is opened by hand.
+  const optionalQuestions = ASKED_ONLY_IF_OFFERED.filter((q) =>
+    !q.only || (q.only === 'flat' && !isHouse) || (q.only === 'house' && !isFlat),
   );
 
   async function submit(outcome: string) {
@@ -513,6 +537,36 @@ export default function PropertiesPane({
                   )}
                 </label>
               ))}
+              {/* THE QUESTIONS WE STOPPED ASKING, folded away (Hugo,
+                  2026-08-25). They are off the call, not out of the system: if
+                  a branch volunteers a rejected offer or a done-up sale it is
+                  still the most valuable thing said all day, and it must have
+                  somewhere to go. Closed by default so the card matches the
+                  three-question call. */}
+              {optionalQuestions.length > 0 && (
+                <details className="rounded border border-[#E5E7EB] bg-[#FAFAF9] px-2 py-1.5">
+                  <summary
+                    className="cursor-pointer text-[10.5px] font-semibold text-[#6B7280] select-none"
+                    data-testid="property-q-optional"
+                  >
+                    Not asked any more, open only if they volunteer it
+                  </summary>
+                  <div className="mt-1.5 space-y-1.5">
+                    {optionalQuestions.map((q) => (
+                      <label key={q.key} className="block">
+                        <span className="text-[10.5px] font-medium text-[#6B7280]">{q.label}</span>
+                        <input
+                          value={answers[q.key] ?? ''}
+                          onChange={(e) => setAnswers((a) => ({ ...a, [q.key]: e.target.value }))}
+                          placeholder={priorAnswers[q.key] ?? ''}
+                          data-testid={`property-q-${q.key}`}
+                          className="mt-0.5 w-full rounded border border-[#E5E7EB] px-2 py-1 text-[12px] text-[#1A1A1A] placeholder:text-[#C4C7CC] focus:border-[#3C5A87] focus:outline-none"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              )}
               <label className="block">
                 <span className="text-[10.5px] font-medium text-[#6B7280]">Anything else</span>
                 <textarea
