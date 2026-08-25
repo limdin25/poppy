@@ -112,7 +112,12 @@ describe('the dialer contact pane', () => {
     expect(dialer).toMatch(/<AgentChip agentId=\{contact\.ownerAgentId\}/)
   })
 
-  it('still shows the person and the website beside the company name', () => {
-    expect(dialer).toMatch(/<ContactIdentity/)
+  // Hugo, 2026-08-25: "there is Name not available / Website not available that
+  // shows everywhere even in the dialer but does nothing, it was from the
+  // google review project." The reviews product was killed on 2026-08-09, so
+  // the pair is gone and this pins it staying gone.
+  it('does not carry the dead owner and website markers', () => {
+    expect(dialer).not.toMatch(/<ContactIdentity/)
+    expect(dialer).not.toMatch(/not available/)
   })
 })

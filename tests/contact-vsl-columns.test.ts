@@ -30,10 +30,12 @@ const vslPage = (over: Record<string, unknown> = {}) =>
   }) as never
 
 describe('the Contacts page shows the person', () => {
-  it('renders ContactIdentity under the company name', () => {
-    // This was the ONLY lead surface in the CRM not doing so.
-    expect(contacts).toMatch(/<ContactIdentity/)
-    expect(contacts).toMatch(/owner=\{c\.customFields\?\.owner_name\}/)
+  // Was: "renders ContactIdentity under the company name". That pair was the
+  // reviews product's, where a plumber's missing website was the pitch, and it
+  // went with the product on 2026-08-25.
+  it('does not carry the dead owner and website markers', () => {
+    expect(contacts).not.toMatch(/<ContactIdentity/)
+    expect(contacts).not.toMatch(/not available/)
   })
 
   it('resolves the Owner column through the shared directory', () => {

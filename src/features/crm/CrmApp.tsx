@@ -13,6 +13,10 @@ const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 const DealProcessPage = lazy(() => import('./pages/DealProcessPage'))
 const DealCockpitPage = lazy(() => import('./pages/DealCockpitPage'))
 const RawLeadsPage = lazy(() => import('./pages/RawLeadsPage'))
+// NOT wrapped in AdminOnlyRoute: finding a builder is Pedro's job, and every
+// builder route before this was admin-gated, which is why the cockpit's
+// builder panel has always been blank for him.
+const FindBuildersPage = lazy(() => import('./pages/FindBuildersPage'))
 const ContactsPage = lazy(() => import('./pages/ContactsPage'))
 const ContactDetailPage = lazy(() => import('./pages/ContactDetailPage'))
 const PipelinesPage = lazy(() => import('./pages/PipelinesPage'))
@@ -52,6 +56,7 @@ export default function CrmApp() {
                 Templates in the menu (Hugo 2026-08-12), not a tab inside it. */}
             <Route path="cockpit" element={<DealCockpitPage />} />
             <Route path="raw-leads" element={<AdminOnlyRoute><RawLeadsPage /></AdminOnlyRoute>} />
+            <Route path="find-builders" element={<FindBuildersPage />} />
             <Route path="deal-process" element={<DealProcessPage />} />
             <Route path="dialer" element={<Navigate to="/admin/crm/dialer-pro" replace />} />
             <Route path="dialer-pro" element={<DialerProPage />} />

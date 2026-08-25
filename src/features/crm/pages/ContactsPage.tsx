@@ -8,7 +8,6 @@ import BulkUploadModal from '../components/contacts/BulkUploadModal';
 import ContactSmsModal from '../components/contacts/ContactSmsModal';
 import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
-import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
 import DealTagChip from '../components/shared/DealTagChip';
 import CalcChip from '../components/shared/CalcChip';
@@ -354,15 +353,6 @@ export default function ContactsPage() {
                         />
                       )}
                     </Link>
-                    {/* contact.name is the COMPANY. This page was the only lead
-                        surface not showing the person too. */}
-                    <ContactIdentity
-                      owner={c.customFields?.owner_name}
-                      website={c.customFields?.website}
-                      layout="inline"
-                      size="sm"
-                      className="mt-0.5"
-                    />
                     {/* Which deal, on this list too (Hugo, 2026-08-24). A
                         builder here was a bare company name with no house
                         against it, and the Property column beside it reads

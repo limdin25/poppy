@@ -37,7 +37,6 @@ import {
   formatPence,
   formatRelativeTime,
 } from '../../data/helpers';
-import ContactIdentity from '../shared/ContactIdentity';
 
 export default function LiveCallScreen() {
   const {
@@ -162,14 +161,6 @@ export default function LiveCallScreen() {
           <Pencil className="w-3.5 h-3.5" />
         </button>
       </div>
-      {/* Owner name + website beside the company name (Hugo 2026-07-26). */}
-      <ContactIdentity
-        owner={contact.customFields?.owner_name}
-        website={contact.customFields?.website}
-        layout="stack"
-        size="sm"
-        className="mt-0.5 space-y-0.5"
-      />
       <div className="text-[12px] text-[#6B7280] tabular-nums mt-0.5">{contact.phone}</div>
       {/* They rang from a different line to the one we hold, which is normal
           for a branch: the switchboard is what the scraper found, the

@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Gauge,
   Boxes,
+  HardHat,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useIsMobile } from '@/core/hooks/useMediaQuery';
@@ -56,6 +57,11 @@ const NAV_ITEMS: NavItem[] = [
   // first-class user of the cockpit, and Hugo's escalation lane is kept off
   // his screen by RLS rather than by hiding the page.
   { label: 'Cockpit', path: '/admin/crm/cockpit', icon: Gauge },
+  // Next to the cockpit because that is where a booked viewing lands and the
+  // next question is always "who is going to walk it". NOT adminOnly: this is
+  // Pedro's job and the old builder routes were admin-gated, which is exactly
+  // why the cockpit's builder panel was silently blank for him.
+  { label: 'Find builders', path: '/admin/crm/find-builders', icon: HardHat },
   // The raw data command center: scraped deals wait HERE for Hugo's press
   // before they reach Pedro (2026-08-19). Admin only, the tab IS the filter.
   { label: 'Raw deals', path: '/admin/crm/raw-leads', icon: Boxes, adminOnly: true },

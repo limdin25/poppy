@@ -12,7 +12,6 @@ import { VSL_SEQUENCE } from '../../../../api/lib/vsl-sequence';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { useSmsV2 } from '../store/SmsV2Store';
 import { useVideoScope } from '../lib/ViewAsContext';
-import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
 import FunnelLeadDrawer from '../components/funnel/FunnelLeadDrawer';
@@ -371,12 +370,6 @@ export default function VideoFunnelPage() {
                     <div className="text-[13px] font-bold text-[#1A1A1A] leading-tight">
                       {p.business_name}
                     </div>
-                    <ContactIdentity
-                      owner={p.wk_contacts?.owner_name || p.owner_first}
-                      website={p.wk_contacts?.website}
-                      layout="stack"
-                      size="xs"
-                    />
                     <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
                       <AgentChip agentId={p.agent_id} size="xs" />
                       <CalcChip calcAt={p.calc_at} count={p.calc_count} />

@@ -259,10 +259,12 @@ export default function PipelinesPage() {
         </select>
       </header>
 
-      {/* THE DAY, ABOVE THE BOARD. The board shows where every deal IS; this
-          shows which ones want a person today, ordered by code so it is right
-          even with the deal brain switched off. */}
+      {/* THE DAY, ABOVE THE BOARD, SHUT UNTIL ASKED FOR. The board shows where
+          every deal IS; this shows which ones want a person today. Hugo, 19
+          Aug: on this page he wants the board and nothing else, so it is one
+          collapsed line here and stays however he last left it. */}
       <TodayPanel
+        collapsible
         onOpen={(propertyId) => {
           const match = contacts.find((c) => dealFor(c)?.property_id === propertyId);
           if (match) setEditing(match);
@@ -358,9 +360,6 @@ export default function PipelinesPage() {
                         <LeadIdentity
                           isProperty={isProperty}
                           person={person}
-                          owner={c.customFields?.owner_name}
-                          website={c.customFields?.website}
-                          layout="stack"
                           size="xs"
                           className="mt-0.5"
                         />

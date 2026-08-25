@@ -2,9 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Phone, PhoneOutgoing, Play, FileText, X, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
-import { cn } from '@/core/lib/cn';
 import AgentChip from '../../components/shared/AgentChip';
-import { personName, websiteLabel } from '@/features/crm/lib/contactIdentity';
 import { useImpersonatedAgentId } from '@/features/crm/lib/ViewAsContext';
 import { signCallRecording } from '@/features/crm/hooks/useCalls';
 import CallTranscriptModal from '@/features/crm/components/calls/CallTranscriptModal';
@@ -197,13 +195,10 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
           <Phone className="w-3 h-3 text-[#9CA3AF] flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="font-medium text-[#1A1A1A] text-[11px] truncate">{call.contactName ?? call.contactPhone ?? 'Unknown'}</div>
-            {call.contactId && (
-              <>
-                <div className={cn('text-[10px] truncate', call.contactOwner ? 'text-[#6B7280]' : 'text-[#C4302B] italic')}>{personName(call.contactOwner)}</div>
-                <div className={cn('text-[10px] truncate', call.contactWebsite ? 'text-[#3C5A87]' : 'text-[#C4302B] italic')}>{websiteLabel(call.contactWebsite)}</div>
-                <AgentChip agentId={call.contactOwnerAgentId} size="xs" />
-              </>
-            )}
+            {/* The owner name and website lines were removed on 2026-08-25:
+                they came from the killed reviews product and were an italic
+                red "not available" on every property and builder row. */}
+            {call.contactId && <AgentChip agentId={call.contactOwnerAgentId} size="xs" />}
             <div className="text-[10px] text-[#9CA3AF] tabular-nums">{formatDuration(call.durationSec)} · {formatDate(call.startedAt)}</div>
           </div>
           {call.contactId && onRedial && (

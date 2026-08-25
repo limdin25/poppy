@@ -48,3 +48,6 @@ video/public/audio/voice/
 video/tts-env/
 video/node_modules/
 .tmp-run/
+
+# 12GB of scrape output, never the repo (2026-08-25)
+exports/

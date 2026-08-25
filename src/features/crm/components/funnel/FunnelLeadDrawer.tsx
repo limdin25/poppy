@@ -27,7 +27,6 @@ import { useSmsV2 } from '../../store/SmsV2Store';
 import { useContactPersistence } from '../../hooks/useContactPersistence';
 import { rowToContact, CONTACT_COLUMNS } from '../../hooks/useHydrateContacts';
 import { formatDateTime } from '../../data/helpers';
-import ContactIdentity from '../shared/ContactIdentity';
 import AgentChip from '../shared/AgentChip';
 import StageSelector from '../shared/StageSelector';
 import EditContactModal from '../contacts/EditContactModal';
@@ -347,13 +346,6 @@ export default function FunnelLeadDrawer({
           <div className="flex items-start justify-between gap-3 mb-1">
             <div className="min-w-0">
               <h2 className="text-[16px] font-black truncate">{page.business_name}</h2>
-              <ContactIdentity
-                owner={contact?.customFields?.owner_name ?? page.wk_contacts?.owner_name ?? page.owner_first}
-                website={contact?.customFields?.website ?? page.wk_contacts?.website}
-                layout="stack"
-                size="sm"
-                className="mt-0.5"
-              />
             </div>
             <button onClick={onClose} className="p-1 rounded hover:bg-[#F3F3EE] flex-shrink-0">
               <X className="w-4 h-4" />

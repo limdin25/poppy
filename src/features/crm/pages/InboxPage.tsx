@@ -67,6 +67,7 @@ import InboundMedia from '../components/InboundMedia';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
 import DealTagChip from '../components/shared/DealTagChip';
+import { dealTagFor } from '../lib/dealTag';
 import MessageBody from '../components/shared/MessageBody';
 import { CONTACT_COLUMNS } from '../hooks/useHydrateContacts';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
@@ -246,8 +247,18 @@ export default function InboxPage() {
   // onChange + no state, so typing did nothing. Now filters sidebarRows
   // by name / phone / last message body (case-insensitive).
   const [searchQuery, setSearchQuery] = useState('');
+  // ONE dropdown, two kinds of thing to filter by.
+  //
   // Hugo, 2026-07-29: "I should be able to see the inbox per campaign."
-  // 'all' (default) shows every thread; otherwise restricts to one campaign's.
+  // Hugo, 2026-08-24, looking at eight builders for four different houses all
+  // jumbled together: "instead of campaigns we have a drop down menu that we
+  // can select property ... because I can't see builder with Whitworth Road
+  // builder but I should have a dropdown to choose which builder for which
+  // property." Both are true and the filter row already has three rows of
+  // chips, so they share one control rather than becoming two.
+  //
+  // Encoded as 'all' | 'p:<address>' | 'c:<campaignId>' so it is one string in
+  // one <select> and one thing to put in the URL.
   const [campaignFilter, setCampaignFilter] = useState<string>('all');
 
   const renameContact = async (id: string, name: string) => {
@@ -477,10 +488,15 @@ export default function InboxPage() {
       }
     }
 
-    // Campaign filter — 'all' shows everything, otherwise restrict to threads
-    // tagged with the picked campaign id.
-    if (campaignFilter !== 'all') {
-      rows = rows.filter((r) => r.campaignId === campaignFilter);
+    // The one dropdown: 'all', a property, or a campaign. The property match
+    // uses dealTagFor, the same function the BUILDER chip on the row uses, so
+    // what you filter to is exactly what you can see on the rows.
+    if (campaignFilter.startsWith('p:')) {
+      const want = campaignFilter.slice(2);
+      rows = rows.filter((r) => dealTagFor({ customFields: r.customFields })?.full === want);
+    } else if (campaignFilter.startsWith('c:')) {
+      const want = campaignFilter.slice(2);
+      rows = rows.filter((r) => r.campaignId === want);
     }
 
     // PR 89: free-text search across name, phone, last message body.
@@ -505,6 +521,23 @@ export default function InboxPage() {
     }
     return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [inboxThreads]);
+
+  /** Every house that has conversations attached to it, with how many. Built
+   *  from the contacts rather than the threads because the house lives on
+   *  custom_fields, and counted so "Whitworth Road (4)" tells you there are
+   *  four builders on it before you pick it. */
+  const propertyOptions = useMemo(() => {
+    const byFull = new Map<string, { label: string; count: number }>();
+    for (const c of contacts) {
+      const tag = dealTagFor({ customFields: c.customFields });
+      if (!tag) continue;
+      const seen = byFull.get(tag.full);
+      if (seen) seen.count += 1;
+      else byFull.set(tag.full, { label: tag.label, count: 1 });
+    }
+    return Array.from(byFull, ([full, v]) => ({ full, ...v }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [contacts]);
 
   // Video + "waiting on you" decoration.
   //
@@ -1260,19 +1293,30 @@ export default function InboxPage() {
                 </>
               )}
             </div>
-            {campaignOptions.length > 0 && (
+            {(campaignOptions.length > 0 || propertyOptions.length > 0) && (
               <div className="flex items-center gap-1 min-w-0">
                 <Megaphone style={{ width: 11, height: 11 }} className="text-[#9CA3AF] flex-shrink-0" />
                 <select
                   data-testid="inbox-campaign-filter"
                   value={campaignFilter}
                   onChange={(e) => setCampaignFilter(e.target.value)}
-                  className="text-[10.5px] bg-[#F3F3EE] border-none rounded-full px-1.5 py-[3px] text-[#374151] font-medium max-w-[120px] truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
+                  className="text-[10.5px] bg-[#F3F3EE] border-none rounded-full px-1.5 py-[3px] text-[#374151] font-medium max-w-[150px] truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
                 >
-                  <option value="all">All campaigns</option>
-                  {campaignOptions.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  <option value="all">All conversations</option>
+                  {propertyOptions.length > 0 && (
+                    <optgroup label="Property">
+                      {propertyOptions.map((p) => (
+                        <option key={p.full} value={`p:${p.full}`}>{p.label} ({p.count})</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {campaignOptions.length > 0 && (
+                    <optgroup label="Campaign">
+                      {campaignOptions.map((c) => (
+                        <option key={c.id} value={`c:${c.id}`}>{c.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
             )}
@@ -1382,9 +1426,6 @@ export default function InboxPage() {
                     <LeadIdentity
                       isProperty={isPropertyLead(r.customFields, dealForPhone(r.phone) != null)}
                       person={askForName(r.customFields, dealForPhone(r.phone)?.branch_contact_name)}
-                      owner={r.owner}
-                      website={r.website}
-                      layout="inline"
                       size="sm"
                       isCreatorLead={r.isCreatorLead}
                     />
@@ -1721,9 +1762,6 @@ export default function InboxPage() {
             <LeadIdentity
               isProperty={isPropertyLead(activeContact.customFields, !!activeDeal)}
               person={askForName(activeContact.customFields, activeDeal?.branch_contact_name)}
-              owner={activeContact.customFields?.owner_name}
-              website={activeContact.customFields?.website}
-              layout="stack"
               size="sm"
               isCreatorLead={activeIsCreatorLead}
             />

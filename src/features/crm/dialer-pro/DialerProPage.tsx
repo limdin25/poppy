@@ -49,7 +49,6 @@ import type { QueueLead } from './types';
 import CallHistoryPro from './history/CallHistoryPro';
 import QueueManagerPro from './history/QueueManagerPro';
 import DtmfKeypad from './controls/DtmfKeypad';
-import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
@@ -849,15 +848,6 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
           <Pencil className="w-3.5 h-3.5" />
         </button>
       </div>
-      {/* Owner name + website beside the company name, everywhere
-          (Hugo 2026-07-26) — explicit "not available" when missing. */}
-      <ContactIdentity
-        owner={contact.customFields?.owner_name}
-        website={contact.customFields?.website}
-        layout="stack"
-        size="sm"
-        className="mt-0.5 space-y-0.5"
-      />
       <div className="flex items-center gap-2 mt-0.5">
         <span className="text-[12px] text-[#6B7280] tabular-nums">{contact.phone}</span>
         <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} />

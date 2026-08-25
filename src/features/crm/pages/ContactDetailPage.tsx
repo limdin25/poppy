@@ -24,7 +24,6 @@ import ContactFollowupScheduler from '../components/contacts/ContactFollowupSche
 import ContactSmsModal from '../components/contacts/ContactSmsModal';
 import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
-import ContactIdentity from '../components/shared/ContactIdentity';
 import AgentChip from '../components/shared/AgentChip';
 import CalcChip from '../components/shared/CalcChip';
 import { useContactFunnelStatus } from '../hooks/useContactFunnelStatus';
@@ -151,13 +150,6 @@ export default function ContactDetailPage() {
               </span>
             )}
           </div>
-          <ContactIdentity
-            owner={contact.customFields?.owner_name}
-            website={contact.customFields?.website}
-            layout="inline"
-            size="sm"
-            className="mt-0.5"
-          />
           <div className="text-[13px] text-[#6B7280] tabular-nums">{contact.phone}</div>
         </div>
         <div className="flex gap-2">

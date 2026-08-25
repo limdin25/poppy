@@ -183,7 +183,13 @@ export async function geocodeOutcode(outcode: string): Promise<{ lat: number; ln
  */
 export async function scrapeBuildersForOutcode(
   outcode: string,
-  opts: { radiusM?: number; cap?: number } = {},
+  /** `maxDetailCalls` overrides the paid-tail budget. The crons pass nothing
+   *  and keep the 14 they have always had; a human pressing Find builders is
+   *  waiting at the screen and asked for more names, so that press reaches
+   *  further. Google returns at most 20 raw results on one page and the trader
+   *  filter drops shops, so past roughly 26 lookups there is nothing left to
+   *  find without paying for a second page of worse-reviewed builders. */
+  opts: { radiusM?: number; cap?: number; maxDetailCalls?: number } = {},
 ): Promise<ScrapedBuilder[]> {
   if (!KEY()) { console.error('[builder-scrape] no Places key set'); return []; }
   const at = await geocodeOutcode(outcode);
@@ -210,7 +216,7 @@ export async function scrapeBuildersForOutcode(
   const out: ScrapedBuilder[] = [];
   let detailCalls = 0;
   for (const c of filterBuilderCandidates(rows)) {
-    if (out.length >= cap || detailCalls >= MAX_DETAIL_CALLS) break;
+    if (out.length >= cap || detailCalls >= (opts.maxDetailCalls ?? MAX_DETAIL_CALLS)) break;
     detailCalls += 1;
     const detail = await places('details', {
       place_id: c.placeId,
@@ -261,17 +267,69 @@ export const WIDENING_RADII_M = [10_000, 20_000, 40_000];
  */
 export async function scrapeBuildersWidening(
   outcode: string,
-  opts: { startRadiusM?: number; cap?: number } = {},
+  opts: { startRadiusM?: number; cap?: number; maxDetailCalls?: number } = {},
 ): Promise<{ builders: ScrapedBuilder[]; radiusM: number | null; tried: number[] }> {
   const start = opts.startRadiusM ?? DEFAULT_RADIUS_M;
   const radii = [start, ...WIDENING_RADII_M.filter((r) => r > start)];
   const tried: number[] = [];
   for (const radiusM of radii) {
     tried.push(radiusM);
-    const builders = await scrapeBuildersForOutcode(outcode, { radiusM, cap: opts.cap });
+    const builders = await scrapeBuildersForOutcode(outcode, {
+      radiusM, cap: opts.cap, maxDetailCalls: opts.maxDetailCalls,
+    });
     if (builders.length) return { builders, radiusM, tried };
   }
   return { builders: [], radiusM: null, tried };
+}
+
+/** What the search actually did, in sentences a person can read.
+ *
+ *  Hugo, 2026-08-24: "we see the log, we see everything, how many numbers for
+ *  that property." Pure, so it is tested rather than assembled inline in a
+ *  route, and so the same words appear whether the search ran from the page or
+ *  from the overnight cron.
+ *
+ *  It reports coverage EXTENSIONS separately from inserts on purpose. Extending
+ *  is how a builder 25 miles away quietly becomes "local" to an outcode for
+ *  every future house, forever, and that is worth seeing rather than hiding. */
+export interface ScrapeLogLine { text: string }
+
+export function scrapeLogLines(input: {
+  outcode: string;
+  tried: number[];
+  radiusM: number | null;
+  scraped: ScrapedBuilder[];
+  plan: RosterPlan;
+  mobiles: number;
+}): ScrapeLogLine[] {
+  const { outcode, tried, radiusM, scraped, plan, mobiles } = input;
+  const km = (m: number) => `${Math.round(m / 1000)}km`;
+  const lines: string[] = [];
+
+  if (!radiusM) {
+    lines.push(`Searched ${tried.map(km).join(', then ')} around ${outcode} and found nobody.`);
+    return lines.map((text) => ({ text }));
+  }
+
+  lines.push(
+    tried.length > 1
+      ? `Searched ${tried.slice(0, -1).map(km).join(', ')} with nothing, then found builders at ${km(radiusM)} around ${outcode}.`
+      : `Searched ${km(radiusM)} around ${outcode}.`,
+  );
+  lines.push(
+    `${scraped.length} builder${scraped.length === 1 ? '' : 's'} came back with a phone number.`
+    + ` ${mobiles} can be messaged on WhatsApp, ${scraped.length - mobiles} are landlines we can only ring.`,
+  );
+  if (plan.inserts.length) lines.push(`${plan.inserts.length} added to the roster.`);
+  if (plan.extendIds.length) {
+    lines.push(
+      `${plan.extendIds.length} were already on the roster and now also count as covering ${outcode}.`,
+    );
+  }
+  if (!plan.inserts.length && !plan.extendIds.length) {
+    lines.push('Nothing new: every one of them was already on the roster for this area.');
+  }
+  return lines.map((text) => ({ text }));
 }
 
 /** Apply a scrape to the roster. Returns what changed, for the cron's log. */

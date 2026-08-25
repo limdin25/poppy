@@ -42,6 +42,7 @@ import {
   COCKPIT_ACTIONS, suggestedMoveFor, type CockpitAction,
 } from '../lib/deal-stress-test.js';
 import { dealReasonLine } from '../lib/brrr-deal-facts.js';
+import { floorRefusalFor } from '../lib/builder-outreach.js';
 import { effectiveCeiling } from '../lib/counter-position.js';
 import { notifyDeal } from '../lib/deal-notify.js';
 import { bestBranchEmail, firstNameFromEmail } from '../lib/branch-email-lookup.js';
@@ -467,6 +468,15 @@ export default async function handler(req: Request): Promise<Response> {
           return Response.json({
             ok: false, report, refused: 'no_builder',
             detail: 'Pick which builder is going before booking one.',
+          });
+        }
+        // The third road onto a house, after the invite send and the panel's
+        // assign, and it gets the same gate: no builder prices a property whose
+        // vendor has already refused more than our ceiling.
+        const floorRefusal = await floorRefusalFor(supabase, state.propertyId);
+        if (floorRefusal) {
+          return Response.json({
+            ok: false, report, refused: 'floor_above_ceiling', detail: floorRefusal,
           });
         }
         await (supabase.from('brrr_properties') as unknown as {

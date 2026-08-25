@@ -11,60 +11,48 @@
 // heard by `api/lib/spoken-name.ts`). Two red "not available" markers on every
 // branch card told him nothing and buried the one line that matters.
 //
-// The owner/website pair still fires for every OTHER kind of lead, because the
-// same inbox served the reviews product where the website is the whole point.
+// UPDATE, 2026-08-25: the owner/website pair is gone for EVERY kind of lead,
+// not just property. Hugo, looking at an inbox where every builder row carried
+// two red lines: "there is Name not available / Website not available that
+// shows everywhere even in the dialer but does nothing, it was from the google
+// review project." He is right. That pair existed because a plumber's missing
+// website WAS the reviews pitch, and the reviews product was killed on
+// 2026-08-09. A builder scraped from Google Places has a company name and a
+// mobile and will never have either field, so the markers were red on every
+// row and meant nothing on any of them.
 //
-// This lives in one component because the rule was previously written into the
-// pipeline card only, so the inbox kept showing the red gap marker on the
-// same branch the board was already labelling "Ask for Doug".
-
-import ContactIdentity from './ContactIdentity';
+// What is left is the one line that earns its space: who to ask for when the
+// switchboard picks up. Everything else is silence.
 
 interface Props {
   /** True when this lead is an estate agency branch. */
   isProperty: boolean;
   /** The person to ask for on the phone, when the call captured one. */
   person?: string | null;
-  owner?: string | null;
-  website?: string | null;
-  layout?: 'inline' | 'stack';
   size?: 'xs' | 'sm';
   className?: string;
-  /** Creators are people, not businesses: they will never have a website, so
-   *  the gap markers are noise on them. Kept as its own flag rather than
+  /** Creators are people, not businesses. Kept as its own flag rather than
    *  folded into isProperty, because they are different businesses. */
   isCreatorLead?: boolean;
 }
 
 export default function LeadIdentity({
-  isProperty, person, owner, website,
-  layout = 'stack', size = 'sm', className, isCreatorLead = false,
+  isProperty, person, size = 'sm', className, isCreatorLead = false,
 }: Props) {
   if (isCreatorLead) return null;
 
-  if (isProperty) {
-    const name = (person ?? '').trim();
-    // No name yet is silence, NOT a red warning. It only means nobody has got
-    // past the switchboard yet, which is the normal state of a fresh branch.
-    if (!name) return null;
-    return (
-      <div
-        className={`truncate text-[${size === 'xs' ? 10 : 11}px] text-[#374151] ${className ?? ''}`}
-        title={name}
-      >
-        Ask for {name}
-      </div>
-    );
-  }
-
+  const name = (person ?? '').trim();
+  // No name yet is silence, NOT a red warning. It only means nobody has got
+  // past the switchboard yet, which is the normal state of a fresh branch, and
+  // it is the normal state of a builder forever.
+  if (!isProperty || !name) return null;
   return (
-    <ContactIdentity
-      owner={owner}
-      website={website}
-      layout={layout}
-      size={size}
-      className={className}
-    />
+    <div
+      className={`truncate text-[${size === 'xs' ? 10 : 11}px] text-[#374151] ${className ?? ''}`}
+      title={name}
+    >
+      Ask for {name}
+    </div>
   );
 }
 
