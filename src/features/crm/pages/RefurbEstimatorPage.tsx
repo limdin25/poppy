@@ -29,6 +29,7 @@
 // This file is the screen and nothing else.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCopy,
@@ -261,11 +262,13 @@ function PhotoStage({ items, index, onIndex, collapsed, onCollapse, footer }: {
             <div className="relative bg-[#111827]">
               {/* object-contain, not cover: a floor plan cropped to fill is a
                   floor plan with its dimensions cut off. */}
+              {/* Tapping the picture makes it full screen, in the app. */}
               <img
                 data-testid="stage-photo"
                 src={current.url}
                 alt={current.label}
-                className="mx-auto block h-[38vh] max-h-[380px] w-auto max-w-full object-contain"
+                onClick={() => setFull(true)}
+                className="mx-auto block h-[38vh] max-h-[380px] w-auto max-w-full cursor-zoom-in object-contain"
               />
               <button
                 type="button"
@@ -329,20 +332,43 @@ function PhotoStage({ items, index, onIndex, collapsed, onCollapse, footer }: {
         </div>
       </div>
 
-      {full && (
+      {/* FULL SCREEN IS A PORTAL ONTO document.body, and that is not tidiness.
+          `position: fixed` is measured against the nearest ancestor with a
+          transform, a filter or a backdrop-filter, and this page sits inside a
+          CRM shell that has them. Rendered in place, the overlay was pinned
+          inside the scrolling column instead of the window, which is Hugo's
+          "you can't see it". A portal has no ancestors to be trapped by. */}
+      {full && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          data-testid="stage-fullscreen"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4"
           onClick={() => setFull(false)}
           role="presentation"
         >
           <img src={current.url} alt={current.label} className="max-h-full max-w-full object-contain" />
+          <span className="absolute bottom-4 left-4 rounded-lg bg-white/15 px-2.5 py-1.5 text-[12.5px] font-semibold text-white">
+            {current.label}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onIndex((index - 1 + items.length) % items.length); }}
+            className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-white/15 p-2.5 text-white hover:bg-white/30"
+            aria-label="Previous photo"
+          ><ChevronLeft className="h-6 w-6" /></button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onIndex((index + 1) % items.length); }}
+            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-white/15 p-2.5 text-white hover:bg-white/30"
+            aria-label="Next photo"
+          ><ChevronRight className="h-6 w-6" /></button>
           <button
             type="button"
             onClick={() => setFull(false)}
-            className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white"
+            className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white hover:bg-white/30"
             aria-label="Close"
           ><X className="h-5 w-5" /></button>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
@@ -605,7 +631,7 @@ export default function RefurbEstimatorPage() {
               <option key={hh.id} value={hh.id}>
                 {hh.viewingAddress || hh.address || 'Unnamed property'}
                 {hh.viewingAt ? `, ${ukTime(hh.viewingAt)}` : ''}
-                {hh.analysedAt ? ' (started)' : ''}
+                {hh.analysedAt ? ' (read)' : ' (not read yet)'}
               </option>
             ))}
           </select>
@@ -838,12 +864,12 @@ export default function RefurbEstimatorPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="text-[14px] font-bold text-[#1A1A1A]">
-                    {analysed ? 'Read again' : 'Have it read'}
+                    {analysed ? 'Already read' : 'Not read yet'}
                   </h2>
                   <p className="mt-0.5 text-[12px] leading-relaxed text-[#6B7280]">
-                    Two AIs look at the photos, the advert and the call separately. Only what
-                    they BOTH see gets priced. Anything one of them saw on its own goes to the
-                    builder to confirm.
+                    {analysed
+                      ? 'Two AIs looked at the photos, the floor plan, the whole advert and the call separately. Only what they BOTH saw is priced. Anything one of them saw on its own goes to the builder to confirm. Read it again if you have added photos or notes.'
+                      : 'A house is read on its own within ten minutes of a viewing being booked for it, so this normally happens before you get here. Press if you do not want to wait.'}
                   </p>
                 </div>
                 <button
