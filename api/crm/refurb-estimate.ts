@@ -25,8 +25,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
 import {
-  cardVocabulary, estimate, builderBrief, parseReadResult,
-  type ReadResult,
+  cardVocabulary, estimate, builderBrief, parseReadResult, composeTranscript,
+  type ReadResult, type SectionAnswer,
 } from '../../src/features/crm/lib/refurbCard.js';
 
 export const config = { maxDuration: 60 };
@@ -80,14 +80,26 @@ export default async function handler(req: Request): Promise<Response> {
   const gate = await requireAgent(req);
   if (gate !== true) return gate;
 
-  let body: { transcript?: string; address?: string; floorAreaSqm?: number | null; includeBudget?: boolean };
+  let body: {
+    sections?: SectionAnswer[];
+    transcript?: string;
+    address?: string;
+    floorAreaSqm?: number | null;
+    includeBudget?: boolean;
+  };
   try { body = await req.json() as typeof body; }
   catch { return Response.json({ error: 'Bad JSON' }, { status: 400 }); }
 
-  const transcript = String(body.transcript ?? '').trim();
+  // Sections are the real input: one box per part of the property, labelled, so
+  // the reader can say WHERE each job is. `transcript` stays accepted for a
+  // caller that already has one blob of text.
+  const transcript = Array.isArray(body.sections) && body.sections.length
+    ? composeTranscript(body.sections)
+    : String(body.transcript ?? '').trim();
+
   if (transcript.length < 40) {
     return Response.json({
-      error: 'There is not enough here to price. Talk through the photographs room by room and try again.',
+      error: 'There is not enough here to price yet. Fill in a few more parts of the property and try again.',
     }, { status: 400 });
   }
 
@@ -95,7 +107,11 @@ export default async function handler(req: Request): Promise<Response> {
     body.address ? `THE HOUSE: ${body.address}` : 'THE HOUSE: address not given.',
     body.floorAreaSqm ? `FLOOR AREA: ${body.floorAreaSqm} square metres.` : '',
     '',
-    'WHAT HE SAID GOING THROUGH THE PHOTOGRAPHS:',
+    'WHAT HE SAID GOING THROUGH THE PHOTOGRAPHS, ONE PART OF THE PROPERTY AT A TIME.',
+    'The HEADINGS IN CAPITALS are which part he was looking at. Use them for `where` on',
+    'each job. A part of the property with no heading below is one he did not describe,',
+    'so say what you could not judge about it in `unknowns` rather than assuming it is fine.',
+    '',
     transcript.slice(0, 24_000),
   ].filter(Boolean).join('\n');
 

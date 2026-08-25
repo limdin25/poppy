@@ -13,7 +13,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   CARD, LABOUR_FACTOR, BASELINE_SQM, areaScale, cardVocabulary,
-  estimate, builderBrief, parseReadResult, type WorkItem,
+  estimate, builderBrief, parseReadResult, SECTIONS, composeTranscript,
+  missingSections, type WorkItem,
 } from '@/features/crm/lib/refurbCard';
 
 /** RATE_CARD in refurb_model.py, materials and trade labour, verbatim. */
@@ -94,6 +95,76 @@ describe('the vocabulary the reader is given', () => {
     for (const key of Object.keys(CARD)) {
       expect(vocab, `${key} is missing from the model's vocabulary`).toContain(key);
     }
+  });
+});
+
+describe('the checklist of property parts', () => {
+  // Hugo's whole reason for one box per part: "so he doesn't forget to look at
+  // anything on the property." These assertions are that promise.
+
+  it('covers the parts Hugo named out loud', () => {
+    const ids = SECTIONS.map((s) => s.id);
+    for (const want of ['bathroom', 'bedrooms', 'roof', 'garden', 'front']) {
+      expect(ids, `${want} is missing from the checklist`).toContain(want);
+    }
+  });
+
+  it('covers the parts nobody remembers to look at on their own', () => {
+    // The reason a checklist beats one empty box: these are what get forgotten.
+    const ids = SECTIONS.map((s) => s.id);
+    for (const want of ['electrics', 'heating', 'damp', 'gutters', 'contents']) {
+      expect(ids, `${want} is missing from the checklist`).toContain(want);
+    }
+  });
+
+  it('tells him what to look for in every single part', () => {
+    // "Describe the roof" is not a question a non-builder can answer.
+    for (const s of SECTIONS) {
+      expect(s.look.length, `${s.id} has no guidance`).toBeGreaterThan(30);
+    }
+  });
+
+  it('has no duplicate parts', () => {
+    expect(new Set(SECTIONS.map((s) => s.id)).size).toBe(SECTIONS.length);
+  });
+
+  it('names every part he has not looked at yet', () => {
+    const answers = SECTIONS.map((s) => ({ id: s.id, text: s.id === 'kitchen' ? 'Old and tired.' : '' }));
+    const missing = missingSections(answers);
+    expect(missing).toHaveLength(SECTIONS.length - 1);
+    expect(missing.map((s) => s.id)).not.toContain('kitchen');
+  });
+
+  it('does not count a box with a stray character in it as done', () => {
+    expect(missingSections([{ id: 'roof', text: ' a ' }]).map((s) => s.id)).toContain('roof');
+  });
+});
+
+describe('stitching the boxes together for the reader', () => {
+  it('labels each part so the reader knows where each job is', () => {
+    const t = composeTranscript([
+      { id: 'bathroom', text: 'Black mould above the bath, no fan.' },
+      { id: 'roof', text: 'Two slates missing.' },
+    ]);
+    expect(t).toContain('BATHROOM:');
+    expect(t).toContain('THE ROOF:');
+    expect(t).toContain('Black mould above the bath');
+  });
+
+  it('keeps the parts in walking order, not the order he filled them in', () => {
+    const t = composeTranscript([
+      { id: 'contents', text: 'Full of bin bags.' },
+      { id: 'front', text: 'Brickwork fine.' },
+    ]);
+    expect(t.indexOf('FRONT OF THE HOUSE')).toBeLessThan(t.indexOf('WHAT IS LEFT INSIDE'));
+  });
+
+  it('leaves empty boxes out entirely rather than sending blank headings', () => {
+    const t = composeTranscript([
+      { id: 'roof', text: 'Looks fine.' },
+      { id: 'garden', text: '   ' },
+    ]);
+    expect(t).not.toContain('GARDEN');
   });
 });
 

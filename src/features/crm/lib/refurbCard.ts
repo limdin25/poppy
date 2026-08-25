@@ -157,6 +157,73 @@ export function cardVocabulary(): string {
 }
 
 // ---------------------------------------------------------------------------
+// The parts of the property, one box each
+// ---------------------------------------------------------------------------
+//
+// Hugo, 2026-08-25: "It should be one box per room. Talk about the bathroom and
+// then there's a button where he can press the audio and he can speak and
+// explain about that part of the property, and then the bedroom. And then
+// another part is gonna say garden, front of the house, things like this. Now
+// there are many sections of the parts of the property, SO HE DOESN'T FORGET TO
+// LOOK AT ANYTHING on the property."
+//
+// That last clause is the whole reason this list exists and why it is a list
+// rather than one box. It is a checklist first and an input second. A man with
+// one empty box describes the kitchen and forgets the fuse board; a man with
+// thirteen labelled boxes sees the one he has not filled in.
+//
+// So the order is the order of the photographs on a listing, and every section
+// carries a `look` line, which is the specific thing to check. Pedro is not a
+// builder and "describe the roof" is not a question he can answer.
+
+export interface Section {
+  id: string;
+  label: string;
+  /** What to actually look for. Shown under the title, always. */
+  look: string;
+}
+
+export const SECTIONS: Section[] = [
+  { id: 'front',    label: 'Front of the house',   look: 'Brickwork, cracks, the state of the render or the paint, and how it looks against its neighbours.' },
+  { id: 'roof',     label: 'The roof',             look: 'Slates or tiles missing, is the ridge straight or sagging, any patched areas, and the chimney.' },
+  { id: 'gutters',  label: 'Gutters and drains',   look: 'Plants growing out of them, green or dark staining down the wall underneath, broken downpipes.' },
+  { id: 'windows',  label: 'Windows and doors',    look: 'Double glazed or single, misted units, rotten wooden frames, and the state of the front and back doors.' },
+  { id: 'hall',     label: 'Hallway and stairs',   look: 'Walls and ceiling, woodchip or artex, the stair carpet, and whether the doors are all there.' },
+  { id: 'living',   label: 'Living room',          look: 'Size, walls and ceiling, the floor, and anything odd like an old gas fire or a boarded up fireplace.' },
+  { id: 'kitchen',  label: 'Kitchen',              look: 'Age and style of the units, the worktop, whether the doors line up, extractor, and the floor.' },
+  { id: 'bathroom', label: 'Bathroom',             look: 'Does the suite match, cracked or stained, the tiles, black mould in the corners, and is there a fan.' },
+  { id: 'bedrooms', label: 'Bedrooms',             look: 'Go through them one at a time. Size, walls, ceiling, floor, and whether the small one takes a double.' },
+  { id: 'damp',     label: 'Damp and water',       look: 'Tide marks low on the walls, bubbling paint, salt, black patches, and water stains on ceilings.' },
+  { id: 'electrics',label: 'Fuse board and sockets', look: 'Old grey fuse box with fuse wire, or modern trip switches. Round pin or old looking sockets.' },
+  { id: 'heating',  label: 'Boiler and radiators', look: 'Combi boiler or an old back boiler behind a gas fire. Are there radiators in every room.' },
+  { id: 'garden',   label: 'Garden and outside',   look: 'Size, overgrown or concreted, the fences, sheds, and anything dumped out there.' },
+  { id: 'contents', label: 'What is left inside',  look: 'Furniture, carpets, bin bags. Roughly how many skips would it take to clear it.' },
+];
+
+export interface SectionAnswer { id: string; text: string }
+
+/** Stitch the filled-in sections into one labelled transcript for the reader.
+ *
+ *  LABELLED, not concatenated. The section headings are what let the reader put
+ *  `where` on every line, which is what makes the builder's list read room by
+ *  room instead of as one undifferentiated pile of jobs. */
+export function composeTranscript(answers: SectionAnswer[]): string {
+  const bySection = new Map(answers.map((a) => [a.id, (a.text ?? '').trim()]));
+  const parts: string[] = [];
+  for (const s of SECTIONS) {
+    const text = bySection.get(s.id);
+    if (text) parts.push(`${s.label.toUpperCase()}:\n${text}`);
+  }
+  return parts.join('\n\n');
+}
+
+/** Which parts he has not looked at yet. The checklist half of the feature. */
+export function missingSections(answers: SectionAnswer[]): Section[] {
+  const filled = new Set(answers.filter((a) => (a.text ?? '').trim().length > 2).map((a) => a.id));
+  return SECTIONS.filter((s) => !filled.has(s.id));
+}
+
+// ---------------------------------------------------------------------------
 // What the reader gives back
 // ---------------------------------------------------------------------------
 
