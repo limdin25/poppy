@@ -46,7 +46,8 @@ interface Bundle {
   blockedBySms: string | null;
   smsDrafts: { opener: string; details: string };
   builders: BuilderRow[];
-  sentToday: number;
+  sentToday: { total: number; automated: number; byPeople: number };
+  maxPerSend: number;
   nextRadiusM: number | null;
   settings: { radius_m: number; max_new_builders: number; daily_cap: number; auto_send: boolean; invite_sid: string };
 }
@@ -515,7 +516,9 @@ export default function FindBuildersPage() {
                     Write to {selected.size || ''} builder{selected.size === 1 ? '' : 's'}
                   </button>
                   <span className="text-[10.5px] text-[#6B7280]">
-                    {bundle.sentToday} of {bundle.settings.daily_cap} sent today
+                    {bundle.sentToday.total === 0
+                      ? 'Nothing sent to a builder today'
+                      : `${bundle.sentToday.total} sent to builders today`}
                   </span>
                 </div>
               </div>
@@ -542,7 +545,7 @@ export default function FindBuildersPage() {
           smsDrafts={bundle.smsDrafts}
           initialDraft={draftKind}
           sentToday={bundle.sentToday}
-          dailyCap={bundle.settings.daily_cap}
+          maxPerSend={bundle.maxPerSend ?? 10}
           onSend={send}
         />
       ) : null}

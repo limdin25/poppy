@@ -279,7 +279,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
 
       if (settings.auto_send) {
-        const already = await sentToday(sb);
+        const already = (await sentToday(sb)).total;
         if (already >= settings.daily_cap) continue;
         const { data: sendable } = await sb
           .from('brrr_builder_outreach')

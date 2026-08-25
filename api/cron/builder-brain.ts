@@ -557,7 +557,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             out.newBuilders += applied.inserted;
 
             if (settings.auto_send && drafted.drafted) {
-              const already = await sentToday(sb);
+              const already = (await sentToday(sb)).total;
               const room = Math.max(0, settings.daily_cap - already);
               if (room) {
                 const { data: sendable } = await sb

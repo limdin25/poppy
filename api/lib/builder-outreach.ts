@@ -573,16 +573,46 @@ export async function sendOutreachRow(
   return { ok: true, status: 'sent' };
 }
 
-/** Sends made today (UK day), for the auto-mode daily cap. */
-export async function sentToday(sb: Sb): Promise<number> {
+/** Sends made today (UK day). Information, not a gate on a human.
+ *
+ *  IT USED TO BE A GATE AND IT LOCKED THE WRONG PERSON OUT. Pedro, 17:58 on
+ *  2026-08-25, having found a builder himself and got him on the phone: "I found
+ *  a builder and im trying to send him the details via text but hey elsie doesnt
+ *  give me an option to send the text." The desk had refused him with "Only 0 of
+ *  today's 20 can still go out", and all twenty were WhatsApp invites the
+ *  automation had fired at 06:00 and 07:00 that morning, hours before he found
+ *  anybody. A cap built to stop a MACHINE looking like a spammer had spent
+ *  itself and then blocked the one human who had done the work.
+ *
+ *  `sent_by` is the CRM user who pressed send, and NULL means the machine. The
+ *  automation was retired the same day (tests/builder-automation-off.test.ts),
+ *  so the automated count is now a historical number and stays here only so the
+ *  desk can show what went out today. */
+export async function sentToday(sb: Sb): Promise<{ total: number; automated: number; byPeople: number }> {
   const now = new Date();
   const ukMidnight = new Date(`${new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(now)}T00:00:00`);
-  const { count } = await sb
+  const base = () => sb
     .from('brrr_builder_outreach')
     .select('id', { count: 'exact', head: true })
     .gte('sent_at', ukMidnight.toISOString());
-  return count ?? 0;
+  const [{ count: total }, { count: automated }] = await Promise.all([
+    base(),
+    base().is('sent_by', null),
+  ]);
+  return {
+    total: total ?? 0,
+    automated: automated ?? 0,
+    byPeople: (total ?? 0) - (automated ?? 0),
+  };
 }
+
+/** The most builders one press may message.
+ *
+ *  This is what REPLACED the daily cap on the desk, and it guards the real risk
+ *  there: the list is tickable, so a mis-click can pick a dozen. A daily total
+ *  guards nothing a human does, because a human types each message and reads it
+ *  back before it goes. Ten is more builders than any one house needs. */
+export const MAX_BUILDERS_PER_SEND = 10;
 
 /** The nudge for a builder who never answered the invite at all, kept VERBATIM
  *  in step with the Meta template `builder_viewing_followup`

@@ -34,6 +34,7 @@ import {
   builderFacingAddress,
   viewingTimeLabel,
   sentToday,
+  MAX_BUILDERS_PER_SEND,
   nextRadiusM,
   draftOutreachForProperty,
   sendOutreachRow,
@@ -290,6 +291,7 @@ async function handleWeb(req: Request): Promise<Response> {
       }),
       settings: publicSettings(settings),
       sentToday: await sentToday(sb),
+      maxPerSend: MAX_BUILDERS_PER_SEND,
       nextRadiusM: nextRadiusM(house.builder_scrape_radius_m ?? settings.radius_m, WIDENING_RADII_M),
       log: await loadLog(sb, house.id),
     });
@@ -475,13 +477,18 @@ async function sendInvites(
   if (refusal) return Response.json({ error: refusal }, { status: 409 });
 
   const settings = await loadOutreachSettings(sb);
-  const already = await sentToday(sb);
-  const room = Math.max(0, settings.daily_cap - already);
-  if (builderIds.length > room) {
+
+  // NO DAILY CAP ON A HUMAN. It used to be here and it locked Pedro out at
+  // 17:58 on 2026-08-25 with "Only 0 of today's 20 can still go out", when all
+  // twenty were invites the automation had fired at 06:00 and 07:00 that
+  // morning. He had found the builder himself and spoken to him. See sentToday
+  // in api/lib/builder-outreach.ts for the whole story.
+  //
+  // What is guarded instead is the real risk at a desk with tick boxes: one
+  // press messaging a dozen builders by mistake.
+  if (builderIds.length > MAX_BUILDERS_PER_SEND) {
     return Response.json({
-      error: room
-        ? `Only ${room} more can go out today and you picked ${builderIds.length}.`
-        : `Today's limit of ${settings.daily_cap} is used up. The rest can go tomorrow.`,
+      error: `That is ${builderIds.length} builders in one go. Send up to ${MAX_BUILDERS_PER_SEND} at a time.`,
     }, { status: 429 });
   }
 
@@ -544,12 +551,18 @@ async function sendInvites(
       if (sent.ok) {
         const now = new Date().toISOString();
         await sb.from('brrr_builder_outreach')
-          .update({ channel: 'whatsapp', whatsapp_sent_at: now })
+          // `sent_by` is what makes today's count able to tell a person from
+          // the machine, which is the whole reason Pedro is no longer blocked
+          // by invites a cron fired before he got out of bed.
+          .update({ channel: 'whatsapp', whatsapp_sent_at: now, sent_by: who.id })
           .eq('id', row.id);
       }
       results.push({ builderId, name, ok: sent.ok, error: sent.ok ? undefined : sent.error });
     } else {
       const sent = await sendOutreachSms(sb, row.id, smsBody, who.id);
+      if (sent.ok) {
+        await sb.from('brrr_builder_outreach').update({ sent_by: who.id }).eq('id', row.id);
+      }
       results.push({ builderId, name, ok: sent.ok, error: sent.ok ? undefined : sent.error });
     }
   }
