@@ -452,6 +452,10 @@ export function estimate(
 
 export const gbp = (n: number) => `£${Math.round(n).toLocaleString('en-GB')}`;
 
+/** One line on the builder's message that we are NOT pricing: either a job only
+ *  one reader saw, or a part of the house somebody has to stand in. */
+export interface BriefAsk { label: string; detail: string; where?: string }
+
 export interface BriefOpts {
   address: string;
   /** Anchor him at our figure. ON by default: Hugo leans that way and the
@@ -460,12 +464,31 @@ export interface BriefOpts {
   includeBudget?: boolean;
   budget?: number;
   unknowns?: string[];
+  /** Work we think is there but will not price. He confirms it and prices it. */
+  toConfirm?: BriefAsk[];
+  /** Parts of the property that need looking at physically. */
+  toInspect?: BriefAsk[];
 }
 
 /** The message for the builder. Simple on purpose. Hugo: "you wanna simplify
  *  for the builder, you don't wanna scare the builder." So it is a list of
  *  jobs in the order a builder does them, no jargon, no internal figures
- *  beyond the one budget line, and it asks for a price per item. */
+ *  beyond the one budget line, and it asks for a price per item.
+ *
+ *  IT NEVER SAYS WE HAVE NOT SEEN THE HOUSE. Hugo, 2026-08-25: "Do NOT tell the
+ *  builder that we have not viewed the property. Instead, ask the builder to
+ *  physically confirm any flagged items and provide an estimate for those items
+ *  where necessary." A buyer who admits he is guessing off photographs invites
+ *  a padded quote, and it changes nothing about what we actually want from him,
+ *  which is a price for the certain work and a look at the uncertain work.
+ *
+ *  THREE GROUPS, KEPT APART ON PURPOSE, because they are three different asks:
+ *    1. the work we are sure of, priced      -> "price this"
+ *    2. the work we are not sure of          -> "confirm it, then price it"
+ *    3. the parts nobody has been inside     -> "look at this and tell us"
+ *
+ *  EVERY FIGURE IS EXCLUDING VAT and no VAT is added anywhere. Hugo, same day:
+ *  "Prices must be shown EXCLUDING VAT. Do not add VAT." */
 export function builderBrief(lines: EstimateLine[], opts: BriefOpts): string {
   // The order of works from the course's own schedule: strip out first, then
   // the wet and hidden trades, then plaster, then the fit out, then decorating,
@@ -488,23 +511,41 @@ export function builderBrief(lines: EstimateLine[], opts: BriefOpts): string {
   const out: string[] = [];
   out.push(`Hi, we are looking at ${opts.address || 'a property'} and we would like a price for the work.`);
   out.push('');
-  out.push('This is what we think it needs:');
-  out.push('');
-  for (const l of ordered) {
-    const qty = l.units > 1 && Number.isInteger(l.units) ? ` (x${l.units})` : '';
-    out.push(`${ordered.indexOf(l) + 1}. ${l.label}${qty}. ${l.detail}`);
+  if (ordered.length) {
+    out.push('This is the work we need priced:');
+    out.push('');
+    for (let i = 0; i < ordered.length; i += 1) {
+      const l = ordered[i];
+      const qty = l.units > 1 && Number.isInteger(l.units) ? ` (x${l.units})` : '';
+      out.push(`${i + 1}. ${l.label}${qty}. ${l.detail}`);
+    }
+    out.push('');
   }
-  out.push('');
   if (opts.includeBudget && opts.budget) {
-    out.push(`Our budget for this is around ${gbp(opts.budget)} plus VAT, materials included. Tell us what you can do inside that.`);
+    out.push(`Our budget for this is around ${gbp(opts.budget)} excluding VAT, materials included. Tell us what you can do inside that.`);
+    out.push('');
+  }
+  if (opts.toConfirm?.length) {
+    out.push('These we would like you to check on site and then price, only if they are actually needed:');
+    for (const a of opts.toConfirm) {
+      out.push(`  - ${a.where ? `${a.where}: ` : ''}${a.label}. ${a.detail}`);
+    }
+    out.push('');
+  }
+  if (opts.toInspect?.length) {
+    out.push('And these need a proper look before anybody can put a figure on them. Please confirm what they need:');
+    for (const a of opts.toInspect) {
+      out.push(`  - ${a.where ? `${a.where}: ` : ''}${a.detail}`);
+    }
     out.push('');
   }
   if (opts.unknowns?.length) {
-    out.push('We have only seen photographs so far, so these are the things we could not tell:');
+    out.push('Worth checking while you are there:');
     for (const u of opts.unknowns) out.push(`  - ${u}`);
     out.push('');
   }
   out.push('Could you price it item by item rather than one figure for the lot, so we can see where the money goes?');
-  out.push('If we have missed anything or got something wrong, tell us, you know better than we do from photos.');
+  out.push('Please quote excluding VAT, and tell us separately if VAT applies.');
+  out.push('If we have missed anything or got something wrong, tell us, you are the one who will be doing it.');
   return out.join('\n');
 }
