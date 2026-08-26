@@ -93,8 +93,8 @@ export interface ScrapedBuilder {
 /**
  * A UK phone in E164, or null when it is not one.
  * Accepts "07123 456789", "+44 7123 456789", "0044...", "(01204) 55 55 55".
- * Landlines are kept: the roster's phone is also for CALLING a builder, and
- * the outreach engine separately restricts WhatsApp drafts to +447 mobiles.
+ * Landlines still PARSE here, because this is a general phone normaliser. They
+ * are dropped from the roster later by mobilesOnly(), which explains why.
  */
 export function normaliseUkPhone(raw: string | null | undefined): string | null {
   let s = String(raw ?? '').replace(/[^\d+]/g, '');
@@ -136,25 +136,33 @@ export function isUkMobile(e164: string | null | undefined): boolean {
  * Hugo, 2026-08-26: "we should scrape small businesses, not the big
  * corporations. Less than fifty reviews, zero reviews better."
  *
- * NO HARD CEILING, deliberately. AJM Home Improvements has 61 reviews and said
- * yes on the first call, so a cut at fifty would have thrown away one of the
- * six wins. Ranking gets the small ones dialled first without losing anyone,
- * and the roster cap does the rest.
+ * A HARD CEILING AT FIFTY, Hugo's call on 2026-08-26: "if they have more than a
+ * hundred reviews forget it. Focus on fifty and less, no matter if they have
+ * better reviews. We want the Jerry next door."
+ *
+ * The one thing it costs, recorded so nobody has to rediscover it: AJM Home
+ * Improvements has 61 reviews and said yes on the first call, so this rule
+ * would have excluded one of the six wins. Hugo was told and chose the ceiling
+ * anyway, because the other twenty over-fifty firms were switchboards.
  */
+export const MAX_ROSTER_REVIEWS = 50;
+
 export function filterBuilderCandidates(rows: PlaceCandidate[]): PlaceCandidate[] {
   return rows
     .filter((r) =>
       r.name
       && (r.businessStatus == null || r.businessStatus === 'OPERATIONAL')
       && isTrader(r.types)
-      && !NON_TRADER.test(r.name))
+      && !NON_TRADER.test(r.name)
+      && (r.reviews ?? 0) <= MAX_ROSTER_REVIEWS)
     // Fewest reviews first. A tie goes to the better-rated one, so "no reviews
     // at all" does not automatically outrank a good four-review trade.
     .sort((a, b) => (a.reviews ?? 0) - (b.reviews ?? 0) || (b.rating ?? 0) - (a.rating ?? 0));
 }
 
 /**
- * Mobiles first, because a man who answers his own phone does the work.
+ * MOBILES ONLY. A landline is not ranked below a mobile, it is not on the
+ * roster at all.
  *
  * THE SHARPEST SIGNAL IN THE WHOLE DATA SET, measured across the first two days
  * of real builder calls (25 to 26 August 2026):
@@ -163,13 +171,20 @@ export function filterBuilderCandidates(rows: PlaceCandidate[]): PlaceCandidate[
  *   every builder on a LANDLINE said no                      10 of 10
  *
  * A landline means an office, a receptionist and a switchboard, and behind it a
- * company that quotes commercial work off drawings. A mobile is the tradesman.
- * Review count barely separated the two groups; this does it cleanly.
+ * company that quotes commercial work off drawings: "press one for accounts"
+ * (Edenstone Homes), "is this for a private residence?" (Morspan), "we do
+ * councils, schools and the NHS" (D M Habens), "I'll email the QS" (A P Waters).
+ * A mobile is the man who turns up in a van.
  *
- * Stable: within mobiles and within landlines the review order above survives.
+ * Hugo, 2026-08-26: "not mobile first. Only mobile. We don't even want it if
+ * it's not mobile."
+ *
+ * Measured cost on the roster as it stood: 83 of 196 builders are landlines and
+ * are now excluded. The widening radius ladder is what makes that safe, because
+ * a thin outcode goes further out rather than taking an office.
  */
-export function mobilesFirst(rows: ScrapedBuilder[]): ScrapedBuilder[] {
-  return [...rows].sort((a, b) => Number(isUkMobile(b.phoneE164)) - Number(isUkMobile(a.phoneE164)));
+export function mobilesOnly(rows: ScrapedBuilder[]): ScrapedBuilder[] {
+  return rows.filter((r) => isUkMobile(r.phoneE164));
 }
 
 export interface RosterPlan {
@@ -363,7 +378,7 @@ export async function scrapeBuildersForOutcode(
       });
     }
   }
-  return mobilesFirst(out);
+  return mobilesOnly(out);
 }
 
 /** The radii tried, in order, when the first one finds nobody.

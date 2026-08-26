@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import {
-  normaliseUkPhone, isUkMobile, filterBuilderCandidates, mobilesFirst, planRosterChanges,
+  normaliseUkPhone, isUkMobile, filterBuilderCandidates, mobilesOnly, MAX_ROSTER_REVIEWS, planRosterChanges,
   WIDENING_RADII_M, DEFAULT_RADIUS_M,
   type PlaceCandidate, type ScrapedBuilder,
 } from '../api/lib/builder-scrape.js';
@@ -63,20 +63,22 @@ describe('filterBuilderCandidates', () => {
     // commercial only, or asked £150 up front.
     const rows = [
       cand({ name: 'Small Outfit', reviews: 5 }),
-      cand({ name: 'Established Builder', reviews: 220 }),
-      cand({ name: 'Mid Builder', reviews: 60 }),
+      cand({ name: 'Busier Builder', reviews: 45 }),
+      cand({ name: 'Mid Builder', reviews: 20 }),
     ];
     expect(filterBuilderCandidates(rows).map((r) => r.name))
-      .toEqual(['Small Outfit', 'Mid Builder', 'Established Builder']);
+      .toEqual(['Small Outfit', 'Mid Builder', 'Busier Builder']);
   });
 
-  it('keeps a big builder rather than capping reviews, because one of them said yes', () => {
-    // AJM Home Improvements has 61 reviews and agreed on the first call. A hard
-    // cut at fifty would have thrown away one of the six wins, so this ranks
-    // rather than excludes.
-    expect(filterBuilderCandidates([cand({ name: 'Big Builder', reviews: 220 })]))
-      .toHaveLength(1);
-    expect(SRC).not.toMatch(/max[-_]?reviews/i);
+  it('THROWS OUT anything over fifty reviews', () => {
+    // Hugo, 2026-08-26: "if they have more than a hundred reviews forget it.
+    // Focus on fifty and less, no matter if they have better reviews. We want
+    // the Jerry next door." The cost is recorded in the source: AJM Home
+    // Improvements has 61 and said yes, so this rule loses one of the six wins.
+    expect(MAX_ROSTER_REVIEWS).toBe(50);
+    expect(filterBuilderCandidates([cand({ name: 'Big Builder', reviews: 220 })])).toEqual([]);
+    expect(filterBuilderCandidates([cand({ name: 'Over The Line', reviews: 51 })])).toEqual([]);
+    expect(filterBuilderCandidates([cand({ name: 'Just Inside', reviews: 50 })])).toHaveLength(1);
   });
 
   it('breaks a review tie on the better rating, so no-reviews does not always win', () => {
@@ -88,33 +90,30 @@ describe('filterBuilderCandidates', () => {
       .toEqual(['Good Small Trade', 'Unrated']);
   });
 
-  describe('mobilesFirst', () => {
+  describe('mobilesOnly', () => {
     // THE SHARPEST SIGNAL MEASURED: every builder who agreed to attend answered
     // a mobile (6 of 6); every builder on a landline said no (10 of 10).
+    // Hugo, 2026-08-26: "not mobile first. Only mobile."
     const b = (name: string, phoneE164: string) =>
       ({ name, phoneE164, address: '', placeId: name, rating: null, reviews: null });
 
-    it('puts the man who answers his own phone at the top', () => {
-      const out = mobilesFirst([
+    it('keeps the man who answers his own phone and DROPS the switchboard', () => {
+      const out = mobilesOnly([
         b('Office Ltd', '+441234567890'),
         b('One Van Trade', '+447700900123'),
         b('Another Office', '+442012345678'),
         b('Second Trade', '+447700900456'),
       ]);
-      expect(out.map((x) => x.name))
-        .toEqual(['One Van Trade', 'Second Trade', 'Office Ltd', 'Another Office']);
+      expect(out.map((x) => x.name)).toEqual(['One Van Trade', 'Second Trade']);
     });
 
-    it('keeps the review order inside each group', () => {
-      const out = mobilesFirst([
-        b('Mobile A', '+447700900001'),
-        b('Mobile B', '+447700900002'),
-      ]);
+    it('keeps the order it was given, so the review ranking survives', () => {
+      const out = mobilesOnly([b('Mobile A', '+447700900001'), b('Mobile B', '+447700900002')]);
       expect(out.map((x) => x.name)).toEqual(['Mobile A', 'Mobile B']);
     });
 
-    it('never throws a landline away, it only ranks it', () => {
-      expect(mobilesFirst([b('Office Ltd', '+441234567890')])).toHaveLength(1);
+    it('would rather return nobody than an office', () => {
+      expect(mobilesOnly([b('Office Ltd', '+441234567890')])).toEqual([]);
     });
   });
   it('a missing business_status is kept (details differ across regions)', () => {

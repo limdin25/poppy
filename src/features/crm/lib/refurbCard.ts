@@ -468,6 +468,12 @@ export interface BriefOpts {
   toConfirm?: BriefAsk[];
   /** Parts of the property that need looking at physically. */
   toInspect?: BriefAsk[];
+  /** WHATSAPP GETS BOLD, SMS GETS PLAIN. The asterisks render as bold on
+   *  WhatsApp and as literal asterisks in a text message, which looks like a
+   *  mistake. Hugo, 2026-08-26: "make sure the message is customized for
+   *  WhatsApp and SMS, small friendly message." Defaults to WhatsApp because
+   *  that is where most builder threads live. */
+  channel?: 'whatsapp' | 'sms';
 }
 
 /** The message for the builder. Simple on purpose. Hugo: "you wanna simplify
@@ -557,7 +563,10 @@ export function builderBrief(lines: EstimateLine[], opts: BriefOpts): string {
   out.push('');
   out.push('If you find anything else that needs doing, *tell us and price it separately*.');
   out.push('Please quote *excluding VAT*, with VAT shown separately if it applies.');
-  return out.join('\n');
+  const text = out.join('\n');
+  // Bold on WhatsApp, plain in a text. The asterisks are emphasis markers, not
+  // punctuation, so a text message drops them entirely rather than showing them.
+  return opts.channel === 'sms' ? text.replace(/\*/g, '') : text;
 }
 
 /** Lower the first letter only, so "CO alarms" and "LVT" survive. */
