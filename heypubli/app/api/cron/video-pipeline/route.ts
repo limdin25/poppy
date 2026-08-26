@@ -32,6 +32,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { postsPerDayToday } from "@/lib/data/ramp";
 import {
   composeCaption,
   creatorTimeZone,
@@ -89,11 +90,20 @@ export async function GET(request: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
   const now = new Date();
-  // THE RAMP DIAL. Hugo moves 10 -> 20 -> 40 -> 50 by editing this one value in
-  // Vercel, never by a deploy. An absent or nonsense value falls back to three.
-  const postsPerDay = postsPerDayFromEnv(process.env.VIDEO_POSTS_PER_DAY);
+  // THE RAMP, off the calendar. 10 today, 20 tomorrow, 40, then 50 and it stays
+  // there. Nobody has to remember to turn a dial each morning, which is the
+  // whole point of "working without supervision".
+  //
+  // VIDEO_POSTS_PER_DAY still overrides it and wins instantly, because when the
+  // ramp has to STOP it has to stop within two minutes, not after a deploy.
+  const { postsPerDay, source: rampSource } = postsPerDayToday(
+    now,
+    process.env.VIDEO_POSTS_PER_DAY,
+    postsPerDayFromEnv,
+  );
   const report = {
     postsPerDay,
+    rampSource,
     enrolled: 0,
     rendersQueued: 0,
     postsScheduled: 0,
@@ -255,11 +265,20 @@ export async function GET(request: NextRequest) {
     .gte("scheduled_at", since);
   const postsBy = new Map<string, Date[]>();
   const takenInstants = new Map<string, Set<number>>();
+  // Which masters an account has ALREADY got queued. The cursor alone is not
+  // enough to prevent repeats: see the note on recentMasters below.
+  const recentMasters = new Map<string, Set<string>>();
   for (const p of (pipelinePosts ?? []) as Array<{
     profile_id: string;
     scheduled_at: string;
     status: string;
+    master_video_id: string | null;
   }>) {
+    if (p.master_video_id) {
+      const used = recentMasters.get(p.profile_id) ?? new Set<string>();
+      used.add(p.master_video_id);
+      recentMasters.set(p.profile_id, used);
+    }
     const at = new Date(p.scheduled_at);
     if (p.status !== "failed") {
       const list = postsBy.get(p.profile_id) ?? [];
@@ -314,11 +333,29 @@ export async function GET(request: NextRequest) {
       // Walk to the next position in the ring whose body is actually built.
       // Stopping at the cursor stranded the whole fleet behind one queued
       // render while 928 finished ones sat unused.
-      const playable = advanceToPlayable(s.next_seq, approved.length, (i) => {
+      //
+      // AND SKIP WHAT THIS ACCOUNT ALREADY HAS QUEUED. 26 Aug 2026, first live
+      // day: 31 accounts played the same master twice in a row and 61 repeated
+      // one inside a single lap. The cursor was right; relying on it alone was
+      // not. Two ticks that overlap, or one that fails to persist its cursor
+      // after inserting posts, both re-read the old position and schedule the
+      // same masters again. Reading what is actually on the schedule makes this
+      // idempotent no matter how the ticks interleave.
+      const mineAlready = recentMasters.get(s.profile_id) ?? new Set<string>();
+      const built = (i: number) => {
         const cand = approved[i];
         const r = cand ? renderByKey.get(`${cand.id}:${s.profile_id}`) : undefined;
         return !!r && r.status === "ready" && !!r.video_url;
-      });
+      };
+      // First choice: built AND not already queued today. Only when the account
+      // has been all the way round does it fall back to allowing a repeat,
+      // which at a dial above the library size is unavoidable and fine.
+      const playable =
+        advanceToPlayable(
+          s.next_seq,
+          approved.length,
+          (i) => built(i) && !mineAlready.has(approved[i].id),
+        ) ?? advanceToPlayable(s.next_seq, approved.length, built);
       if (!playable) {
         report.waitingOnRenders++;
         break;
@@ -344,6 +381,8 @@ export async function GET(request: NextRequest) {
       });
       mine.push(slot.at);
       postsBy.set(s.profile_id, mine);
+      mineAlready.add(m.id);
+      recentMasters.set(s.profile_id, mineAlready);
       // The cursor moves past what was just used. A master skipped because it
       // was still rendering comes back round on the next lap.
       s.next_seq = playable.cursor + 1;
@@ -358,7 +397,10 @@ export async function GET(request: NextRequest) {
     if (error) report.errors.push(`schedule: ${error.message}`);
     else report.postsScheduled = postRows.length;
   }
-  if (cursorMoved.size && !report.errors.length) {
+  // ALWAYS, even if something else in this tick errored. The posts are already
+  // inserted; not saving the cursor guarantees the next tick reschedules the
+  // same masters, which is exactly how the back-to-back repeats happened.
+  if (cursorMoved.size) {
     // Upsert rather than one UPDATE per account, same reason.
     const rows = [...cursorMoved.entries()].map(([profile_id, next_seq]) => {
       const st = stateBy.get(profile_id)!;

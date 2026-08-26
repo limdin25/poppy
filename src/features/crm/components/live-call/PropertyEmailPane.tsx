@@ -85,7 +85,20 @@ export function videoRequestTemplate(opts: {
       '',
       `Thanks for your time just now on ${opts.street}. As promised, here is my email so you have it.`,
       '',
-      'When you get a minute, could you send over a video walkthrough of it? Even a quick walk round on your phone next time you are there is perfect, and you do not need to be in it. Our builder prices the works off the video, which is how we can move quickly without dragging anyone out to a viewing.',
+      // TWO ASKS, NOT ONE, AND NEVER "no viewing needed".
+      //
+      // Hugo, 2026-08-26, reading what actually goes out: "the email below is
+      // wrong. Then also ask the builder so we covered from both sides."
+      //
+      // The old line promised "we can move quickly without dragging anyone out
+      // to a viewing", and then the very next day we ring the same branch and
+      // ask them to let our builder in. It talked us out of the thing the whole
+      // builder pipeline exists to do. Now it offers the branch a choice and we
+      // are covered whichever one they take: send the video, or let the builder
+      // come and look.
+      'When you get a minute, could you send over a video walkthrough of it? Even a quick walk round on your phone next time you are there is perfect, and you do not need to be in it. Our builder prices the works off it, so we can come back to you quickly.',
+      '',
+      'If a video is awkward, we can send our builder round to price it up instead. Just tell me a time that suits and I will book him in.',
       '',
       // Self-qualifying on purpose: this template cannot read the call, so the
       // ask carries its own condition. On Pearson Street the old wording ("if
