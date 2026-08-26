@@ -17,6 +17,7 @@ import GlobalToasts from '../store/GlobalToasts';
 import { useHydrateContacts } from '../hooks/useHydrateContacts';
 import { useHydratePipelineColumns } from '../hooks/useHydratePipelineColumns';
 import FollowupBanner from '../components/followups/FollowupBanner';
+import CallbackBanner from '../components/followups/CallbackBanner';
 import { DialerProModalProvider } from './DialerProModalContext';
 import DialerProModal from './DialerProModal';
 
@@ -86,6 +87,11 @@ export default function Smsv2Layout() {
                  reply box sat below the fold on every phone. */
               className="h-dvh flex flex-col bg-[#F3F3EE]"
             >
+              {/* Who came back to us — ALWAYS on screen, even when empty
+                  (Hugo 2026-08-26: "make visible always"). Above the follow-up
+                  banner because a builder who already rang beats a timer that
+                  says to ring someone. */}
+              <CallbackBanner />
               {/* Follow-up banner — above nav per Hugo */}
               <FollowupBanner />
               <ViewAsBanner />
