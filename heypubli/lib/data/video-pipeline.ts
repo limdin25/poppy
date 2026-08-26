@@ -211,27 +211,84 @@ export function composeCaption(
   const typed = (override ?? "").trim();
   if (typed.includes("#")) return typed;
   const body = typed || captionFor(masterSeq, variantIdx);
-  return `${body}\n\n${hashtagsFor(masterSeq, variantIdx).join(" ")}`;
+  return `${body}\n\n${tagsFor(masterSeq, variantIdx).join(" ")}`;
 }
 
-/** The daily base slots, in the creator's OWN local time.
+/**
+ * The tag block one account puts under one master: its two permanent place tags
+ * first, then whatever room is left filled from the general pool.
  *
- *  Hugo, 09 Aug 2026: "we have to post three videos per day per account. Of
- *  course the timing has to be different times like it is already." The two
- *  original hours are untouched, so no live account's existing posting times
- *  move; 15:00 is the new one, four hours either side of the other two, and
- *  every account still shifts all three by its own stagger minute.
+ * The place tags come FIRST and are never dropped. They are the only part of
+ * the block that says anything about this account specifically, and an account
+ * whose location tag appears on some posts and not others is not anchored to a
+ * place at all, which was the entire point of having one.
+ */
+export function tagsFor(masterSeq: number, variantIdx: number): string[] {
+  const geo = geoPackFor(variantIdx).tags;
+  const room = Math.max(0, MAX_HASHTAGS - geo.length);
+  const general = hashtagsFor(masterSeq, variantIdx)
+    .filter((t) => !geo.includes(t))
+    .slice(0, room);
+  return [...geo, ...general];
+}
+
+/** The window a creator posts inside, in their OWN local time.
  *
- *  The whole pipeline reads its posts-per-day from the LENGTH of this list, so
- *  a fourth hour is a one-line change and nothing else. */
-export const SLOT_HOURS = [11, 15, 19] as const;
+ *  This replaced three hardcoded hours (11:00, 15:00, 19:00). Hugo, 26 Aug
+ *  2026: the ramp goes 10 a day, then 20, then 40, then 50, and a list of
+ *  literal hours cannot carry fifty of anything. So the slots are DERIVED from
+ *  the count instead: spread evenly across the waking window, which is the only
+ *  rule that holds at 3 and at 50 alike.
+ *
+ *  08:00 to 23:00 is fifteen hours. At three a day that is a five hour gap; at
+ *  fifty it is eighteen minutes. Nobody posts while their audience is asleep,
+ *  which is the one thing the old hours got right and this keeps. */
+export const DAY_WINDOW_START_MIN = 8 * 60;
+export const DAY_WINDOW_END_MIN = 23 * 60;
 
-/** Names in SLOT_HOURS order, for the admin page. */
-const SLOT_NAMES = ["morning", "midday", "evening"] as const;
+/** Instagram's own publishing ceiling is 100 per account per 24 hours
+ *  (Content Publishing API). Fifty is Hugo's cap and half of theirs, so a
+ *  double-scheduled day still cannot get an account rate limited. */
+export const MAX_POSTS_PER_DAY = 50;
 
-/** How many pipeline posts an account gets in one local day. Derived, never
- *  typed twice: the cap and the slots cannot drift apart. */
-export const POSTS_PER_DAY = SLOT_HOURS.length;
+/** What the ramp starts at when nothing says otherwise. */
+export const DEFAULT_POSTS_PER_DAY = 3;
+
+/** Back-compat: the old constant, still the default the cron falls back to. */
+export const POSTS_PER_DAY = DEFAULT_POSTS_PER_DAY;
+
+/**
+ * The ramp dial. Hugo moves 10 -> 20 -> 40 -> 50 by changing one environment
+ * variable, never by a code change, because a deploy in the middle of a ramp is
+ * how you lose a day. Anything unparseable, out of range or absent falls back
+ * to the safe default rather than throwing: a bad value must slow the machine
+ * down, never stop it.
+ */
+export function postsPerDayFromEnv(raw: string | undefined | null): number {
+  // An env var that EXISTS but is empty is what Vercel hands back when the
+  // value is cleared, and Number("") is 0, not NaN. Left to the numeric path
+  // that clamps to 1 and the whole fleet quietly drops to one post a day.
+  const text = (raw ?? "").trim();
+  if (!text) return DEFAULT_POSTS_PER_DAY;
+  const n = Number(text);
+  if (!Number.isFinite(n)) return DEFAULT_POSTS_PER_DAY;
+  return Math.min(MAX_POSTS_PER_DAY, Math.max(1, Math.floor(n)));
+}
+
+/**
+ * The minute-of-day each of today's slots lands on, evenly spread across the
+ * waking window. The first slot is at the start of the window and the last one
+ * strictly inside it, so a slot can never spill into the small hours.
+ */
+export function dailySlotMinutes(postsPerDay: number): number[] {
+  const n = Math.min(MAX_POSTS_PER_DAY, Math.max(1, Math.floor(postsPerDay)));
+  const span = DAY_WINDOW_END_MIN - DAY_WINDOW_START_MIN;
+  if (n === 1) return [DAY_WINDOW_START_MIN + Math.round(span / 2)];
+  const step = span / n;
+  return Array.from({ length: n }, (_, i) =>
+    Math.round(DAY_WINDOW_START_MIN + i * step),
+  );
+}
 
 /** Minutes between two accounts' stagger offsets, over the same [0, 126)
  *  window either side of each slot hour.
@@ -253,6 +310,139 @@ export const POSTS_PER_DAY = SLOT_HOURS.length;
  *  point is second-level offsets, which needs the column to stop being minutes. */
 export const STAGGER_STEP_MIN = 1;
 export const STAGGER_SLOTS = 126;
+
+/**
+ * The SECOND-level half of the offset, which the minute grid on its own can no
+ * longer cover.
+ *
+ * At three posts a day, 126 minutes was plenty. At fifty a day across 74
+ * accounts the machine emits 3,700 posts a day, about two and a half every
+ * minute, so accounts sharing a minute stopped being an edge case and became
+ * the normal state. The file already flagged this as the next thing to fix and
+ * said what the fix was: stop measuring in minutes.
+ *
+ * The account's permanent look number picks its second, scattered rather than
+ * sequential so neighbouring enrolments do not land a second apart. 126 minutes
+ * x 60 seconds is 7,560 distinct instants, which is two orders of magnitude
+ * more accounts than exist.
+ */
+export function staggerSecondsFor(variantIdx: number): number {
+  // 37 is coprime with 60, so consecutive look numbers walk the whole minute
+  // before any second is reused.
+  return (((variantIdx * 37) % 60) + 60) % 60;
+}
+
+// ---- geo packs ---------------------------------------------------------------
+// Hugo, 26 Aug 2026: "one account always Manchester, Manchester life, another
+// account always North Carolina." One place per account, permanent, so an
+// account reads as a local page rather than as one of 74 identical AI feeds.
+//
+// TWO HONEST LIMITS, written down so nobody expects more of this than it gives.
+// Hashtags are a weak location signal on Reels; the algorithm mostly goes on
+// who actually watches. And Outstand's API carries no location field, so a real
+// Instagram place tag, which WOULD be a strong signal, is not available to us.
+// What this does buy is differentiation: 74 accounts all posting #AI look like
+// one network, and that is the risk this is really paid to reduce.
+
+export interface GeoPack {
+  /** Shown in the admin list, and usable in caption copy. */
+  readonly place: string;
+  /** Always applied, in full, to every post from the account that holds it. */
+  readonly tags: readonly string[];
+}
+
+export const GEO_PACKS: readonly GeoPack[] = [
+  { place: "Manchester", tags: ["#Manchester", "#ManchesterLife"] },
+  { place: "London", tags: ["#London", "#LondonLife"] },
+  { place: "Birmingham", tags: ["#Birmingham", "#BrumLife"] },
+  { place: "Leeds", tags: ["#Leeds", "#LeedsLife"] },
+  { place: "Glasgow", tags: ["#Glasgow", "#GlasgowLife"] },
+  { place: "Liverpool", tags: ["#Liverpool", "#LiverpoolLife"] },
+  { place: "Bristol", tags: ["#Bristol", "#BristolLife"] },
+  { place: "Newcastle", tags: ["#Newcastle", "#NewcastleLife"] },
+  { place: "Dublin", tags: ["#Dublin", "#DublinLife"] },
+  { place: "North Carolina", tags: ["#NorthCarolina", "#NCLife"] },
+  { place: "Texas", tags: ["#Texas", "#TexasLife"] },
+  { place: "Florida", tags: ["#Florida", "#FloridaLife"] },
+  { place: "California", tags: ["#California", "#CaliforniaLife"] },
+  { place: "Georgia", tags: ["#Georgia", "#AtlantaLife"] },
+  { place: "Ohio", tags: ["#Ohio", "#OhioLife"] },
+  { place: "Arizona", tags: ["#Arizona", "#PhoenixLife"] },
+  { place: "Michigan", tags: ["#Michigan", "#DetroitLife"] },
+  { place: "Colorado", tags: ["#Colorado", "#DenverLife"] },
+  { place: "New Jersey", tags: ["#NewJersey", "#JerseyLife"] },
+  { place: "Illinois", tags: ["#Illinois", "#ChicagoLife"] },
+  { place: "Washington", tags: ["#Washington", "#SeattleLife"] },
+  { place: "Tennessee", tags: ["#Tennessee", "#NashvilleLife"] },
+  { place: "Nevada", tags: ["#Nevada", "#VegasLife"] },
+  { place: "Toronto", tags: ["#Toronto", "#TorontoLife"] },
+  { place: "Vancouver", tags: ["#Vancouver", "#VancouverLife"] },
+  { place: "Calgary", tags: ["#Calgary", "#CalgaryLife"] },
+  { place: "Sydney", tags: ["#Sydney", "#SydneyLife"] },
+  { place: "Melbourne", tags: ["#Melbourne", "#MelbourneLife"] },
+  { place: "Brisbane", tags: ["#Brisbane", "#BrisbaneLife"] },
+  { place: "Perth", tags: ["#Perth", "#PerthLife"] },
+  { place: "Auckland", tags: ["#Auckland", "#AucklandLife"] },
+  { place: "Dubai", tags: ["#Dubai", "#DubaiLife"] },
+  { place: "Singapore", tags: ["#Singapore", "#SingaporeLife"] },
+  { place: "Manila", tags: ["#Manila", "#ManilaLife"] },
+  { place: "Cebu", tags: ["#Cebu", "#CebuLife"] },
+  { place: "Nairobi", tags: ["#Nairobi", "#NairobiLife"] },
+  { place: "Lagos", tags: ["#Lagos", "#LagosLife"] },
+  { place: "Mumbai", tags: ["#Mumbai", "#MumbaiLife"] },
+  { place: "Delhi", tags: ["#Delhi", "#DelhiLife"] },
+  { place: "Dhaka", tags: ["#Dhaka", "#DhakaLife"] },
+] as const;
+
+/**
+ * The pack an account holds, forever, from its permanent look number. Wraps
+ * once there are more accounts than places, which only costs two accounts the
+ * same city and never costs anyone a changing one. A pack that MOVED would be
+ * worse than no pack at all: the whole point is that this account is always
+ * that place.
+ */
+export function geoPackFor(variantIdx: number): GeoPack {
+  const n = GEO_PACKS.length;
+  return GEO_PACKS[(((variantIdx % n) + n) % n)];
+}
+
+/**
+ * WHICH MASTER AN ACCOUNT PLAYS NEXT, and the reason this function exists.
+ *
+ * The sequence used to be a straight line: play master 1, then 2, then 9, then
+ * nothing, forever. On 15 Aug 2026 that is exactly what happened. 94 of 108
+ * accounts reached seq 10, there is no master 10, the conductor found nothing
+ * and broke out of the loop, and the whole machine went quiet for eleven days
+ * without a single error anywhere. It was not broken. It had run out of
+ * material, and nothing said so.
+ *
+ * Hugo, 26 Aug 2026: "we're gonna be reusing the nine master clips in circles."
+ * So the line becomes a ring. Position 10 of a 9-master library is master 1
+ * again, and an account never runs dry.
+ *
+ * It matters that this WRAPS rather than resetting to 1 when it runs out: each
+ * account's cursor keeps climbing forever, which is what keeps the openings,
+ * the captions and the end cards moving even while the body repeats.
+ *
+ * Returns a 0-based index into the approved list, or null when there are no
+ * approved masters at all, which is a real state and the caller's to handle.
+ */
+export function masterIndexForCursor(
+  nextSeq: number,
+  approvedCount: number,
+): number | null {
+  if (approvedCount <= 0) return null;
+  const from0 = Math.max(0, Math.floor(nextSeq) - 1);
+  return from0 % approvedCount;
+}
+
+/** How many times an account has been all the way round the library. Zero on
+ *  the first pass. Worth reporting: it is the number that says how hard the
+ *  same footage is being reused, which no other figure in the system shows. */
+export function libraryLapsCompleted(nextSeq: number, approvedCount: number): number {
+  if (approvedCount <= 0) return 0;
+  return Math.floor(Math.max(0, Math.floor(nextSeq) - 1) / approvedCount);
+}
 
 /** Pick the color for a new account: the first family not held by any active
  *  account, or the least-held one once all 14 are taken. Deterministic given
@@ -337,8 +527,15 @@ export interface PostSlot {
   /** The exact instant the post goes out. */
   at: Date;
   /** Which of the day's slots this is, for the admin page. 'now' is the
-   *  kickoff post a brand new account gets the moment it connects. */
-  slot: "morning" | "midday" | "evening" | "now";
+   *  kickoff post a brand new account gets the moment it connects; everything
+   *  else is its position in the day, "s01" upward. Named hours ("morning")
+   *  died with the fixed three: there is no word for the thirty-first slot. */
+  slot: string;
+}
+
+/** The label for the nth slot of the day. Zero padded so they sort. */
+export function slotLabel(index: number): string {
+  return `s${String(index + 1).padStart(2, "0")}`;
 }
 
 /**
@@ -351,15 +548,24 @@ export function nextSlots(
   timeZone: string,
   staggerMin: number,
   count: number,
+  postsPerDay: number = DEFAULT_POSTS_PER_DAY,
+  staggerSec: number = 0,
 ): PostSlot[] {
   const out: PostSlot[] = [];
   const today = zoneParts(after, timeZone);
-  for (let dayOffset = 0; out.length < count && dayOffset < count + 3; dayOffset++) {
-    for (let s = 0; s < SLOT_HOURS.length && out.length < count; s++) {
-      const base = zonedTimeToUtc(today.y, today.m, today.d, SLOT_HOURS[s], 0, timeZone);
-      const at = new Date(base.getTime() + dayOffset * 86_400_000 + staggerMin * 60_000);
+  const minutes = dailySlotMinutes(postsPerDay);
+  const maxDays = Math.ceil(count / minutes.length) + 2;
+  for (let dayOffset = 0; out.length < count && dayOffset < maxDays; dayOffset++) {
+    for (let s = 0; s < minutes.length && out.length < count; s++) {
+      const base = zonedTimeToUtc(today.y, today.m, today.d, 0, minutes[s], timeZone);
+      const at = new Date(
+        base.getTime() +
+          dayOffset * 86_400_000 +
+          staggerMin * 60_000 +
+          staggerSec * 1_000,
+      );
       if (at.getTime() <= after.getTime()) continue;
-      out.push({ at, slot: SLOT_NAMES[s] });
+      out.push({ at, slot: slotLabel(s) });
     }
   }
   return out;
@@ -374,12 +580,20 @@ export function nextSlots(
  * and an account enrolled at noon gets what is left of today and the full three
  * from tomorrow.
  */
-export function todaySlots(now: Date, timeZone: string, staggerMin: number): PostSlot[] {
+export function todaySlots(
+  now: Date,
+  timeZone: string,
+  staggerMin: number,
+  postsPerDay: number = DEFAULT_POSTS_PER_DAY,
+  staggerSec: number = 0,
+): PostSlot[] {
   const today = zoneParts(now, timeZone);
-  return nextSlots(now, timeZone, staggerMin, POSTS_PER_DAY).filter((s) => {
-    const p = zoneParts(s.at, timeZone);
-    return p.y === today.y && p.m === today.m && p.d === today.d;
-  });
+  return nextSlots(now, timeZone, staggerMin, postsPerDay, postsPerDay, staggerSec).filter(
+    (s) => {
+      const p = zoneParts(s.at, timeZone);
+      return p.y === today.y && p.m === today.m && p.d === today.d;
+    },
+  );
 }
 
 /**
@@ -397,13 +611,63 @@ export function todaySlots(now: Date, timeZone: string, staggerMin: number): Pos
  * made, so somebody who connects at 21:00 sees their first video tonight
  * instead of waiting until 11:00 tomorrow.
  */
+/**
+ * ROTATION FILL: spread whatever is left of today's quota from RIGHT NOW to the
+ * end of the day, instead of waiting for fixed clock positions.
+ *
+ * Hugo, 26 Aug 2026: "it doesn't matter when we post, it just keep posting.
+ * In a posting rotation anytime, doesn't matter, just keep posting."
+ *
+ * The fixed grid throws away the part of the day that has already gone. An
+ * account at ten a day whose first five clock slots are in the past can only
+ * post five times today, so the fleet quietly runs at half the number on the
+ * dial every single day the dial is changed. This fills the runway that is
+ * actually left.
+ *
+ * The end of the posting window is still respected where there is any of it
+ * left, because posting to a sleeping audience is not the same as posting. When
+ * the window is already gone it falls back to the rest of the local day rather
+ * than returning nothing: Hugo's rule is keep posting, and a post at 23:40 is
+ * worth more than a post that never happened.
+ */
+export function rotationSlots(
+  now: Date,
+  timeZone: string,
+  count: number,
+  staggerSec: number = 0,
+): PostSlot[] {
+  if (count <= 0) return [];
+  const p = zoneParts(now, timeZone);
+  const nowMin = p.hh * 60 + p.mm;
+  // Two minutes of head start: the conductor runs every two minutes and a slot
+  // in the past is a slot the publisher fires immediately, all at once.
+  const start = nowMin + 2;
+  const windowEnd = DAY_WINDOW_END_MIN;
+  const end = start >= windowEnd - 10 ? Math.min(24 * 60 - 5, start + 200) : windowEnd;
+  const span = Math.max(1, end - start);
+  const step = count === 1 ? span / 2 : span / count;
+
+  const out: PostSlot[] = [];
+  for (let i = 0; i < count; i++) {
+    const minute = Math.round(start + i * step);
+    const at = new Date(
+      zonedTimeToUtc(p.y, p.m, p.d, 0, minute, timeZone).getTime() + staggerSec * 1000,
+    );
+    if (at.getTime() <= now.getTime()) continue;
+    out.push({ at, slot: slotLabel(i) });
+  }
+  return out;
+}
+
 export function todaySlotsWithKickoff(
   now: Date,
   timeZone: string,
   staggerMin: number,
   neverPosted: boolean,
+  postsPerDay: number = DEFAULT_POSTS_PER_DAY,
+  staggerSec: number = 0,
 ): PostSlot[] {
-  const slots = todaySlots(now, timeZone, staggerMin);
+  const slots = todaySlots(now, timeZone, staggerMin, postsPerDay, staggerSec);
   if (!neverPosted) return slots;
   return [{ at: now, slot: "now" }, ...slots.slice(1)];
 }

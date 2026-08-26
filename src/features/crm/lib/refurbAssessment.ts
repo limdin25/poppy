@@ -560,13 +560,28 @@ export function worksToConfirm(areas: AreaAssessment[]): BuilderAsk[] {
   return out;
 }
 
-/** The parts of the house that need somebody physically standing in them. */
+/** The parts of the house that need somebody physically standing in them.
+ *
+ *  `label` is EMPTY on purpose, and the detail is an instruction rather than a
+ *  finding. Two reasons, both from Hugo reading the message a builder would
+ *  actually receive, 2026-08-25:
+ *
+ *  1. Filling `label` with the area name produced "Gutters and drains: check
+ *     whether it needs gutters and drains", because the brief treats a label as
+ *     the name of a job off the rate card.
+ *  2. The model's own summary is written about PHOTOGRAPHS ("not clearly
+ *     visible in any photograph"), which is report language and also quietly
+ *     tells the builder we have not been inside. Hugo forbade both.
+ *
+ *  An inspect area is by definition one where we established nothing, so there
+ *  is nothing specific to tell him and saying so plainly is the honest line.
+ *  If the agent typed his own words about it, those win: he has actually looked. */
 export function toInspect(areas: AreaAssessment[]): BuilderAsk[] {
   return areas
     .filter((a) => a.confirmed && (a.inspect || verdictOf(a) === 'inspect'))
     .map((a) => ({
-      label: a.label,
-      detail: a.agentNote || a.summary || 'Please look at this and tell us what it needs.',
+      label: '',
+      detail: a.agentNote.trim() || 'check the condition and price anything that is genuinely needed.',
       where: a.label,
     }));
 }

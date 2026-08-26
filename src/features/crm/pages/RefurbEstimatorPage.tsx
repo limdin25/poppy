@@ -40,6 +40,7 @@ import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useDictation } from '../lib/useDictation';
 import { CARD, SECTIONS, gbp, type Estimate, type LineKey } from '../lib/refurbCard';
+import { smsSegments } from '../../../../api/lib/sms-charset';
 import {
   blankAreas, confirmedCount, verdictOf,
   type AreaAssessment, type AreaVerdict, type AreaWork, type SizeCandidate,
@@ -1587,9 +1588,20 @@ function Result({ result, address, anchor, setAnchor }: {
           data-testid="builder-brief"
           className="max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-[#F9FAFB] p-3.5 font-sans text-[12.5px] leading-relaxed text-[#374151]"
         >{result.brief}</pre>
-        <p className="mt-2 text-[11px] leading-relaxed text-[#9CA3AF]">
+        {/* THE LENGTH, ON SCREEN, BEFORE HE SENDS IT. Hugo, 2026-08-25: "the
+            report is too long to send via SMS to the builder." It was 4,445
+            characters, thirty two texts, and nothing on the page said so. */}
+        <p data-testid="brief-length" className="mt-2 text-[11px] text-[#6B7280]">
+          {result.brief.length} characters, {smsSegments(result.brief)} text
+          {smsSegments(result.brief) === 1 ? '' : 's'} if you send it by SMS.
+          {smsSegments(result.brief) > 6
+            ? ' Long for a text. WhatsApp it, or untick anything he does not need to price.'
+            : ''}
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-[#9CA3AF]">
           It does not tell him we have not been inside. It asks him to confirm the flagged items
           and price them, which is the same information without the discount he would price in.
+          The asterisks show as bold on WhatsApp.
         </p>
       </div>
     </div>

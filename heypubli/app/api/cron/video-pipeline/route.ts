@@ -20,7 +20,7 @@
 //   2. QUEUE RENDERS: for each account, the next few APPROVED masters in the
 //      sequence get a render row (master x profile unique, so re-runs are
 //      no-ops). The render worker drains these.
-//   3. SCHEDULE POSTS: while an account has fewer than POSTS_PER_DAY pipeline
+//   3. SCHEDULE POSTS: while an account has fewer than the day's quota of
 //      posts in its own local day and the NEXT master in its sequence is
 //      approved and rendered, create the scheduled_posts row at the next local
 //      slot (11:00/15:00/19:00 + the account's stagger, or RIGHT NOW if the
@@ -35,12 +35,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   composeCaption,
   creatorTimeZone,
-  POSTS_PER_DAY,
+  postsPerDayFromEnv,
+  staggerSecondsFor,
+  masterIndexForCursor,
   STAGGER_SLOTS,
   enrollmentOffsets,
   pickColorFamily,
   postsInLocalDay,
-  todaySlotsWithKickoff,
+  rotationSlots,
 } from "@/lib/data/video-pipeline";
 import type {
   CreatorVideoRender,
@@ -51,9 +53,12 @@ import type {
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-/** How many masters ahead of an account's pointer to keep rendered. Two days
- *  of buffer at three posts a day. */
-const RENDER_AHEAD = 2 * POSTS_PER_DAY;
+/** How many masters ahead of an account's pointer to keep built. Two days of
+ *  buffer at whatever the dial is set to, capped so that turning the dial to
+ *  fifty does not ask the worker for a hundred files per account in one tick. */
+function renderAhead(postsPerDay: number): number {
+  return Math.min(40, 2 * postsPerDay);
+}
 
 export async function GET(request: NextRequest) {
   const auth = request.headers.get("authorization");
@@ -67,7 +72,11 @@ export async function GET(request: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
   const now = new Date();
+  // THE RAMP DIAL. Hugo moves 10 -> 20 -> 40 -> 50 by editing this one value in
+  // Vercel, never by a deploy. An absent or nonsense value falls back to three.
+  const postsPerDay = postsPerDayFromEnv(process.env.VIDEO_POSTS_PER_DAY);
   const report = {
+    postsPerDay,
     enrolled: 0,
     rendersQueued: 0,
     postsScheduled: 0,
@@ -133,7 +142,6 @@ export async function GET(request: NextRequest) {
     .eq("status", "approved")
     .order("seq")) as { data: MasterVideo[] | null };
   const approved = (masters ?? []) as MasterVideo[];
-  const masterBySeq = new Map(approved.map((m) => [m.seq, m]));
 
   // PAGED on purpose: PostgREST caps a response at 1000 rows and this table
   // grows by creators x masters forever; an unpaged read here silently
@@ -155,8 +163,12 @@ export async function GET(request: NextRequest) {
     // A disconnected account renders nothing and schedules nothing; it picks
     // its sequence back up where it left off if the connection returns.
     if (!connectedIds.has(s.profile_id)) continue;
-    for (let seq = s.next_seq; seq < s.next_seq + RENDER_AHEAD; seq++) {
-      const m = masterBySeq.get(seq);
+    for (let seq = s.next_seq; seq < s.next_seq + renderAhead(postsPerDay); seq++) {
+      // The ring, not the line. Past the end of the library this comes back
+      // round to the first master instead of finding nothing, which is what
+      // silently stopped the whole machine on 15 Aug.
+      const idx = masterIndexForCursor(seq, approved.length);
+      const m = idx === null ? undefined : approved[idx];
       if (!m) continue;
       if (renderByKey.has(`${m.id}:${s.profile_id}`)) continue;
       const { error } = await db.from("creator_video_renders").insert({
@@ -249,14 +261,24 @@ export async function GET(request: NextRequest) {
     // "keep filling until the day is full" marched the sequence days ahead:
     // once today's slots were gone, every run scheduled more on ever later
     // days while today's count never moved. Today-only is self-limiting at
-    // POSTS_PER_DAY, and tomorrow's cron fills tomorrow.
-    const open = todaySlotsWithKickoff(now, tz, s.stagger_min, neverPosted).filter(
-      (slot) => !taken.has(slot.at.getTime()),
-    );
+    // the day's quota, and tomorrow's cron fills tomorrow.
+    // ROTATION, not a fixed grid. Hugo, 26 Aug 2026: "it doesn't matter when we
+    // post, it just keep posting." Whatever is left of today's quota is spread
+    // over the runway that actually remains, so an account never loses the part
+    // of the day that had already gone by the time the dial was turned up.
+    const doneToday = postsInLocalDay(now, tz, mine);
+    const wanted = Math.max(0, postsPerDay - doneToday);
+    const rotation = rotationSlots(now, tz, wanted, staggerSecondsFor(s.variant_idx));
+    const open = (
+      neverPosted ? [{ at: now, slot: "now" }, ...rotation.slice(1)] : rotation
+    ).filter((slot) => !taken.has(slot.at.getTime()));
     for (const slot of open) {
-      if (postsInLocalDay(now, tz, mine) >= POSTS_PER_DAY) break;
-      const m = masterBySeq.get(s.next_seq);
-      if (!m) break; // sequence exhausted; Hugo uploads more
+      if (postsInLocalDay(now, tz, mine) >= postsPerDay) break;
+      const idx = masterIndexForCursor(s.next_seq, approved.length);
+      const m = idx === null ? undefined : approved[idx];
+      // Only reachable with NOTHING approved at all. The sequence itself can no
+      // longer be exhausted, it loops.
+      if (!m) break;
       const render = renderByKey.get(`${m.id}:${s.profile_id}`);
       if (!render || render.status !== "ready" || !render.video_url) {
         report.waitingOnRenders++;
