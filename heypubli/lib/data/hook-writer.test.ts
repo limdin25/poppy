@@ -12,6 +12,18 @@ function reply(text: string, status = 200) {
     new Response(JSON.stringify({ content: [{ type: "text", text }] }), { status });
 }
 
+/** A 200 that spent its whole budget thinking and never wrote a line. */
+function thoughtItselfOut() {
+  return async () =>
+    new Response(
+      JSON.stringify({
+        content: [{ type: "thinking", thinking: "..." }],
+        stop_reason: "max_tokens",
+      }),
+      { status: 200 },
+    );
+}
+
 describe("writeHooks", () => {
   const saved = process.env.ANTHROPIC_API_KEY;
   beforeEach(() => {
@@ -75,6 +87,17 @@ describe("writeHooks", () => {
     const r = await writeHooks(5, [], reply(GOOD_LINE) as never);
     expect(r.ok).toBe(false);
     expect(r.error).toBe("no api key");
+  });
+
+  // The real failure, 26 Aug 2026. Sonnet thinks before it writes. Asked for 40
+  // openings on a 4,000 token budget it used every token thinking and returned
+  // a clean 200 with no text block. Reporting that as "ok, zero hooks" left the
+  // bank empty while every log line said success.
+  it("calls a truncated response a FAILURE, not an empty success", async () => {
+    const r = await writeHooks(40, [], thoughtItselfOut() as never);
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("truncated");
+    expect(r.kept).toBe(0);
   });
 
   it("survives a model that answers in prose", async () => {

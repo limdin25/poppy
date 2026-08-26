@@ -450,7 +450,16 @@ export default function RefurbEstimatorPage() {
   const [pricing, setPricing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PriceResult | null>(null);
-  const [anchor, setAnchor] = useState(true);
+  // OFF, AND IT USED TO BE ON. Hugo, 2026-08-26: "we should not put our price
+  // in there any more. Let them quote us."
+  //
+  // The evidence is a recording. At 13:35 Pedro texted Master Builder Services
+  // "our target budget is £2,479 + VAT". At 13:38 Rafael read it back down the
+  // phone, "wait a second, you have two and a half thousand for...", then said
+  // "I will never do something like this for free, £150 in advance" and "there
+  // will be no business unfortunately between us". He had been in at 13:12.
+  // Three minutes, and the only thing that changed was that he saw our number.
+  const [anchor, setAnchor] = useState(false);
   const [showAdvert, setShowAdvert] = useState(false);
   const [showCall, setShowCall] = useState(false);
 
@@ -1582,7 +1591,9 @@ function Result({ result, address, anchor, setAnchor }: {
             onChange={(e) => setAnchor(e.target.checked)}
             className="h-4 w-4 accent-[#3C5A87]"
           />
-          Put our budget on it, to anchor him at a price. Press Generate again after changing this.
+          Put our budget on it. <strong>Normally leave this off:</strong> a builder who
+          reads our figure before he has seen the house prices against it, or walks. Let him
+          quote first. Press Generate again after changing this.
         </label>
         <pre
           data-testid="builder-brief"

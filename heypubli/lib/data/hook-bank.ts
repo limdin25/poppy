@@ -152,8 +152,21 @@ export interface BankHook extends Hook {
 export function pickHook(
   bank: readonly BankHook[],
   usedIds: ReadonlySet<string>,
+  startOffset: number = 0,
 ): BankHook | null {
-  for (const h of bank) if (!usedIds.has(h.id)) return h;
+  if (!bank.length) return null;
+  // WHERE an account starts matters as much as the order.
+  //
+  // 26 Aug 2026, first live batch: six posts built in one minute and four of
+  // them opened with the same line. Every account walked the bank from the top,
+  // so they all drew hook 1, then hook 2, in lockstep. Unique per account is
+  // not the same as unique across the fleet, and the words are the part a human
+  // actually reads.
+  const from = ((Math.floor(startOffset) % bank.length) + bank.length) % bank.length;
+  for (let i = 0; i < bank.length; i++) {
+    const h = bank[(from + i) % bank.length];
+    if (!usedIds.has(h.id)) return h;
+  }
   return null;
 }
 

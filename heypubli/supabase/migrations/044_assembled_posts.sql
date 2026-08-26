@@ -34,7 +34,7 @@ alter table scheduled_posts
 -- is the query it runs on every tick, so it gets its own index.
 create index if not exists scheduled_posts_needing_assembly
   on scheduled_posts (scheduled_at)
-  where assembled_url is null and status = 'scheduled' and master_video_id is not null;
+  where assembled_url is null and status = 'pending' and master_video_id is not null;
 
 -- The janitor's queue: published posts whose file is still taking up disk.
 -- At 3,700 posts a day and 15MB a file that is 55GB a day, so this is not

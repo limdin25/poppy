@@ -114,8 +114,32 @@ export function isUkMobile(e164: string | null | undefined): boolean {
 /**
  * Keep only rows that can honestly go on the roster: operational, filed by
  * Google as a trade rather than a shop, and not a merchant or a multiple.
- * Ranked best-reviewed first, because the roster wants builders a branch and
- * an investor will take seriously.
+ *
+ * RANKED SMALLEST FIRST, AND IT USED TO BE THE EXACT OPPOSITE.
+ *
+ * This sorted best-reviewed first, on the reasoning that "the roster wants an
+ * established builder a branch will take seriously". Two days of real calls,
+ * 25 to 26 August 2026, said that reasoning was wrong. The big ones will not
+ * do the job we are asking:
+ *
+ *   Edenstone Homes (44 reviews)  a housebuilder, switchboard, "press one for
+ *                                 accounts"
+ *   Morspan Construction (19)     "is this for a private residence?"
+ *   D M Habens (2)                "we do councils, schools and the NHS"
+ *   A P Waters (17)               "I can email the QS to see"
+ *   Master Builder Services (56)  "£150 in advance, I will never do this free"
+ *
+ * while every builder who said YES was a one-van trade: JL Brickwork (16),
+ * Sycamore Carpentry (15), PZ Builders (13), CJS Builders (6), Everyday Home
+ * Improvements (4).
+ *
+ * Hugo, 2026-08-26: "we should scrape small businesses, not the big
+ * corporations. Less than fifty reviews, zero reviews better."
+ *
+ * NO HARD CEILING, deliberately. AJM Home Improvements has 61 reviews and said
+ * yes on the first call, so a cut at fifty would have thrown away one of the
+ * six wins. Ranking gets the small ones dialled first without losing anyone,
+ * and the roster cap does the rest.
  */
 export function filterBuilderCandidates(rows: PlaceCandidate[]): PlaceCandidate[] {
   return rows
@@ -124,7 +148,28 @@ export function filterBuilderCandidates(rows: PlaceCandidate[]): PlaceCandidate[
       && (r.businessStatus == null || r.businessStatus === 'OPERATIONAL')
       && isTrader(r.types)
       && !NON_TRADER.test(r.name))
-    .sort((a, b) => (b.reviews ?? 0) - (a.reviews ?? 0));
+    // Fewest reviews first. A tie goes to the better-rated one, so "no reviews
+    // at all" does not automatically outrank a good four-review trade.
+    .sort((a, b) => (a.reviews ?? 0) - (b.reviews ?? 0) || (b.rating ?? 0) - (a.rating ?? 0));
+}
+
+/**
+ * Mobiles first, because a man who answers his own phone does the work.
+ *
+ * THE SHARPEST SIGNAL IN THE WHOLE DATA SET, measured across the first two days
+ * of real builder calls (25 to 26 August 2026):
+ *
+ *   every builder who agreed to attend answered a MOBILE      6 of 6
+ *   every builder on a LANDLINE said no                      10 of 10
+ *
+ * A landline means an office, a receptionist and a switchboard, and behind it a
+ * company that quotes commercial work off drawings. A mobile is the tradesman.
+ * Review count barely separated the two groups; this does it cleanly.
+ *
+ * Stable: within mobiles and within landlines the review order above survives.
+ */
+export function mobilesFirst(rows: ScrapedBuilder[]): ScrapedBuilder[] {
+  return [...rows].sort((a, b) => Number(isUkMobile(b.phoneE164)) - Number(isUkMobile(a.phoneE164)));
 }
 
 export interface RosterPlan {
@@ -318,7 +363,7 @@ export async function scrapeBuildersForOutcode(
       });
     }
   }
-  return out;
+  return mobilesFirst(out);
 }
 
 /** The radii tried, in order, when the first one finds nobody.

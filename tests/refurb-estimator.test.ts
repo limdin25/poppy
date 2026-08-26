@@ -17,6 +17,8 @@ import {
   missingSections, type WorkItem,
 } from '@/features/crm/lib/refurbCard';
 import { smsSegments } from '../api/lib/sms-charset';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 /** RATE_CARD in refurb_model.py, materials and trade labour, verbatim. */
 const ENGINE_CARD: Record<string, [number, number]> = {
@@ -447,5 +449,29 @@ describe('the builder message', () => {
       + cardVocabulary()
       + Object.values(CARD).map((l) => l.label + l.when).join('');
     expect(all).not.toMatch(/[—–…‘’“”]/);
+  });
+});
+
+describe('our own budget stays off the builder message', () => {
+  // Hugo, 2026-08-26: "we should not put our price in there any more. Let them
+  // quote us." The evidence is a recording: at 13:35 the builder was texted
+  // "our target budget is £2,479 + VAT", at 13:38 he read it back down the
+  // phone and said "there will be no business unfortunately between us". He had
+  // agreed to come at 13:12.
+  const lines = estimate([item('kitchen', { detail: 'New kitchen.' })]).lines;
+
+  it('says nothing about money unless somebody deliberately turns it on', () => {
+    expect(builderBrief(lines, { address: '14 Test Road' })).not.toMatch(/£/);
+  });
+
+  it('still asks him to quote, and to quote excluding VAT', () => {
+    const msg = builderBrief(lines, { address: '14 Test Road' });
+    expect(msg).toContain('itemised prices');
+    expect(msg).toContain('excluding VAT');
+  });
+
+  it('is OFF by default on the screen', () => {
+    const page = readFileSync(resolve(__dirname, '../src/features/crm/pages/RefurbEstimatorPage.tsx'), 'utf8');
+    expect(page).toMatch(/const \[anchor, setAnchor\] = useState\(false\)/);
   });
 });

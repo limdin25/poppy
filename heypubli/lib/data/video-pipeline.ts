@@ -436,6 +436,35 @@ export function masterIndexForCursor(
   return from0 % approvedCount;
 }
 
+/**
+ * The next position in the ring whose body is actually BUILT.
+ *
+ * The scheduler used to stop the moment the master at the cursor had no ready
+ * render, which sounds cautious and is not. 26 Aug 2026: 928 finished bodies
+ * were sitting on disk and not one account could post, because every cursor
+ * happened to be parked on the one master approved ten minutes earlier and
+ * still in the render queue. One unbuilt video held up the whole fleet.
+ *
+ * Walking forward costs nothing. A master skipped now is not lost, the ring
+ * brings it back round on the next lap, by which time it is rendered.
+ *
+ * Gives up after a full lap, which is the honest "this account genuinely has
+ * nothing to play" and is the only case the caller should treat as blocked.
+ */
+export function advanceToPlayable(
+  startCursor: number,
+  approvedCount: number,
+  isReady: (index: number) => boolean,
+): { cursor: number; index: number } | null {
+  if (approvedCount <= 0) return null;
+  for (let step = 0; step < approvedCount; step++) {
+    const cursor = startCursor + step;
+    const index = masterIndexForCursor(cursor, approvedCount);
+    if (index !== null && isReady(index)) return { cursor, index };
+  }
+  return null;
+}
+
 /** How many times an account has been all the way round the library. Zero on
  *  the first pass. Worth reporting: it is the number that says how hard the
  *  same footage is being reused, which no other figure in the system shows. */

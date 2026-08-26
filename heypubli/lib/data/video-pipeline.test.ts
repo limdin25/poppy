@@ -26,6 +26,7 @@ import {
   tagsFor,
   masterIndexForCursor,
   libraryLapsCompleted,
+  advanceToPlayable,
   rotationSlots,
   todaySlots,
   todaySlotsWithKickoff,
@@ -317,6 +318,38 @@ describe("the library is a ring, not a line", () => {
     // at ten a day on nine masters an account laps the library every day
     expect(libraryLapsCompleted(1 + 10 * 7, 9)).toBe(7);
     expect(libraryLapsCompleted(5, 0)).toBe(0);
+  });
+});
+
+describe("advanceToPlayable", () => {
+  // 26 Aug 2026: 928 finished bodies on disk and not one account could post,
+  // because every cursor sat on the one master approved minutes earlier and
+  // still rendering. One unbuilt video held up the whole fleet.
+  const allReady = () => true;
+
+  it("takes the master at the cursor when it is built", () => {
+    expect(advanceToPlayable(3, 11, allReady)).toEqual({ cursor: 3, index: 2 });
+  });
+
+  it("walks past an unbuilt master instead of stopping the account", () => {
+    // index 9 is the freshly approved one, still queued
+    const ready = (i: number) => i !== 9;
+    expect(advanceToPlayable(10, 11, ready)).toEqual({ cursor: 11, index: 10 });
+  });
+
+  it("wraps round the end while it is walking", () => {
+    // only index 0 is built; the cursor starts near the end of the lap
+    const ready = (i: number) => i === 0;
+    expect(advanceToPlayable(10, 11, ready)).toEqual({ cursor: 12, index: 0 });
+  });
+
+  it("gives up after ONE lap rather than spinning forever", () => {
+    expect(advanceToPlayable(1, 11, () => false)).toBeNull();
+    expect(advanceToPlayable(999, 9, () => false)).toBeNull();
+  });
+
+  it("says nothing to play when nothing is approved", () => {
+    expect(advanceToPlayable(1, 0, allReady)).toBeNull();
   });
 });
 

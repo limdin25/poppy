@@ -158,6 +158,34 @@ describe("pickHook", () => {
     expect(used.size).toBe(200);
   });
 
+  // The live failure, 26 Aug 2026: four of six posts built in one minute
+  // carried the same opening, because every account walked the bank from row
+  // one in lockstep.
+  it("starts each account somewhere else in the bank", () => {
+    const big: BankHook[] = Array.from({ length: 50 }, (_, i) => ({ id: `h${i}`, ...good }));
+    const firsts = [0, 7, 19, 33].map((off) => pickHook(big, new Set(), off)?.id);
+    expect(new Set(firsts).size).toBe(4);
+    expect(pickHook(big, new Set(), 7)?.id).toBe("h7");
+  });
+
+  it("wraps past the end rather than falling off it", () => {
+    const three: BankHook[] = ["a", "b", "c"].map((id) => ({ id, ...good }));
+    expect(pickHook(three, new Set(), 5)?.id).toBe("c");
+    expect(pickHook(three, new Set(["c"]), 5)?.id).toBe("a");
+  });
+
+  it("still uses every line once before any line twice, from any start", () => {
+    const big: BankHook[] = Array.from({ length: 40 }, (_, i) => ({ id: `h${i}`, ...good }));
+    const used = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const h = pickHook(big, used, 13);
+      expect(h).not.toBeNull();
+      expect(used.has(h!.id)).toBe(false);
+      used.add(h!.id);
+    }
+    expect(used.size).toBe(40);
+  });
+
   it("says so when the account has used everything, rather than repeating", () => {
     expect(pickHook(bank, new Set(["a", "b", "c"]))).toBeNull();
     expect(pickHook([], new Set())).toBeNull();

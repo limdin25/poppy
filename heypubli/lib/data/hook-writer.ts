@@ -93,11 +93,17 @@ export async function writeHooks(
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 4000,
+        // Sonnet emits a thinking block before any text. At 4,000 with a batch
+        // of 40 it spent the WHOLE budget thinking and returned a response with
+        // no text block at all: a clean 200, zero hooks, and nothing anywhere
+        // saying why. The budget has to cover the reasoning AND the output.
+        max_tokens: 16000,
         system: SYSTEM,
         messages: [{ role: "user", content: user }],
       }),
-      signal: AbortSignal.timeout(90_000),
+      // A thinking model on a 16k budget takes minutes, not seconds. 90s cut
+      // every real batch off mid-thought and reported it as a network failure.
+      signal: AbortSignal.timeout(240_000),
     });
   } catch (e) {
     return {
@@ -112,11 +118,28 @@ export async function writeHooks(
     return { ok: false, hooks: [], asked: count, kept: 0, error: `api ${res.status}` };
   }
 
-  const json = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+  const json = (await res.json()) as {
+    content?: Array<{ type: string; text?: string }>;
+    stop_reason?: string;
+  };
   const text = (json.content ?? [])
     .filter((b) => b.type === "text")
     .map((b) => b.text ?? "")
     .join("");
+
+  // Ran out of room before writing anything. This is NOT "the model wrote
+  // nothing useful", it is "the model never got to write", and calling it a
+  // success with zero hooks is how the bank silently stays empty while every
+  // log line says ok.
+  if (!text.trim() && json.stop_reason === "max_tokens") {
+    return {
+      ok: false,
+      hooks: [],
+      asked: count,
+      kept: 0,
+      error: "truncated before any output, ask for a smaller batch",
+    };
+  }
 
   // The model is asked not to use this punctuation and mostly does not, but one
   // curly apostrophe would fail every hook in the batch on a rule that is

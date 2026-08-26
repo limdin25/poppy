@@ -38,6 +38,7 @@ import {
   postsPerDayFromEnv,
   staggerSecondsFor,
   masterIndexForCursor,
+  advanceToPlayable,
   STAGGER_SLOTS,
   enrollmentOffsets,
   pickColorFamily,
@@ -60,6 +61,22 @@ function renderAhead(postsPerDay: number): number {
   return Math.min(40, 2 * postsPerDay);
 }
 
+/**
+ * WHAT ONE TICK IS ALLOWED TO DO.
+ *
+ * The conductor ran every 2 minutes against 18 accounts at 3 posts a day and
+ * finished in a blink. At 108 accounts and a dial of 10 the same code tries
+ * roughly two thousand inserts in one invocation, blows the 120 second function
+ * limit, and dies having committed a random fraction of them: FUNCTION_
+ * INVOCATION_TIMEOUT, no report, no idea how far it got.
+ *
+ * Budgets make a tick finish. Whatever is left is simply the next tick's work,
+ * and there is another one in two minutes. Slower to fill, but it always
+ * finishes and it always says what it did.
+ */
+const MAX_RENDER_INSERTS_PER_TICK = 60;
+const MAX_POST_INSERTS_PER_TICK = 120;
+
 export async function GET(request: NextRequest) {
   const auth = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -81,6 +98,11 @@ export async function GET(request: NextRequest) {
     rendersQueued: 0,
     postsScheduled: 0,
     waitingOnRenders: 0,
+    // True when a budget stopped this tick early. Not an error: the next tick
+    // picks it up. It IS worth seeing, because a tick that is always capped
+    // means the fleet is growing faster than the cron can fill it.
+    cappedRenders: false,
+    cappedPosts: false,
     errors: [] as string[],
   };
 
@@ -159,24 +181,29 @@ export async function GET(request: NextRequest) {
   const renderByKey = new Map(renders.map((r) => [`${r.master_id}:${r.profile_id}`, r]));
 
   const connectedIds = new Set((connections ?? []).map((c) => c.profile_id));
+  const renderRows: Record<string, unknown>[] = [];
   for (const s of stateBy.values()) {
     // A disconnected account renders nothing and schedules nothing; it picks
     // its sequence back up where it left off if the connection returns.
     if (!connectedIds.has(s.profile_id)) continue;
+    if (renderRows.length >= MAX_RENDER_INSERTS_PER_TICK) {
+      report.cappedRenders = true;
+      break;
+    }
     for (let seq = s.next_seq; seq < s.next_seq + renderAhead(postsPerDay); seq++) {
-      // The ring, not the line. Past the end of the library this comes back
-      // round to the first master instead of finding nothing, which is what
-      // silently stopped the whole machine on 15 Aug.
+      if (renderRows.length >= MAX_RENDER_INSERTS_PER_TICK) {
+        report.cappedRenders = true;
+        break;
+      }
       const idx = masterIndexForCursor(seq, approved.length);
       const m = idx === null ? undefined : approved[idx];
       if (!m) continue;
-      if (renderByKey.has(`${m.id}:${s.profile_id}`)) continue;
-      const { error } = await db.from("creator_video_renders").insert({
+      const key = `${m.id}:${s.profile_id}`;
+      if (renderByKey.has(key)) continue;
+      renderRows.push({
         master_id: m.id,
         profile_id: s.profile_id,
         color_family: s.color_family,
-        // The worker recomputes and records the real seed; this is a
-        // placeholder the row is born with.
         seed: "pending",
         status: "queued",
         attempts: 0,
@@ -185,19 +212,19 @@ export async function GET(request: NextRequest) {
         claimed_at: null,
         rendered_at: null,
       });
-      if (error) {
-        if (!error.message.includes("duplicate")) {
-          report.errors.push(`queue m${seq} ${s.profile_id}: ${error.message}`);
-        }
-        continue;
-      }
-      renderByKey.set(`${m.id}:${s.profile_id}`, {
-        master_id: m.id,
-        profile_id: s.profile_id,
-        status: "queued",
-      } as CreatorVideoRender);
-      report.rendersQueued++;
+      renderByKey.set(key, { master_id: m.id, profile_id: s.profile_id, status: "queued" } as CreatorVideoRender);
     }
+  }
+
+  // ONE insert, not sixty. Every round trip to Supabase from a Vercel function
+  // measured 1.4 to 3 seconds, so sixty sequential inserts alone blew the 120
+  // second limit before a single post was scheduled.
+  if (renderRows.length) {
+    const { error } = await db
+      .from("creator_video_renders")
+      .upsert(renderRows, { onConflict: "master_id,profile_id", ignoreDuplicates: true });
+    if (error) report.errors.push(`queue renders: ${error.message}`);
+    else report.rendersQueued = renderRows.length;
   }
 
   // ---- 3. SCHEDULE POSTS ---------------------------------------------------
@@ -244,6 +271,8 @@ export async function GET(request: NextRequest) {
     takenInstants.set(p.profile_id, taken);
   }
 
+  const postRows: Record<string, unknown>[] = [];
+  const cursorMoved = new Map<string, number>();
   for (const s of stateBy.values()) {
     const profile = profileBy.get(s.profile_id);
     if (!profile || profile.suspended_at) continue;
@@ -272,28 +301,40 @@ export async function GET(request: NextRequest) {
     const open = (
       neverPosted ? [{ at: now, slot: "now" }, ...rotation.slice(1)] : rotation
     ).filter((slot) => !taken.has(slot.at.getTime()));
+    if (postRows.length >= MAX_POST_INSERTS_PER_TICK) {
+      report.cappedPosts = true;
+      break;
+    }
     for (const slot of open) {
+      if (postRows.length >= MAX_POST_INSERTS_PER_TICK) {
+        report.cappedPosts = true;
+        break;
+      }
       if (postsInLocalDay(now, tz, mine) >= postsPerDay) break;
-      const idx = masterIndexForCursor(s.next_seq, approved.length);
-      const m = idx === null ? undefined : approved[idx];
-      // Only reachable with NOTHING approved at all. The sequence itself can no
-      // longer be exhausted, it loops.
-      if (!m) break;
-      const render = renderByKey.get(`${m.id}:${s.profile_id}`);
-      if (!render || render.status !== "ready" || !render.video_url) {
+      // Walk to the next position in the ring whose body is actually built.
+      // Stopping at the cursor stranded the whole fleet behind one queued
+      // render while 928 finished ones sat unused.
+      const playable = advanceToPlayable(s.next_seq, approved.length, (i) => {
+        const cand = approved[i];
+        const r = cand ? renderByKey.get(`${cand.id}:${s.profile_id}`) : undefined;
+        return !!r && r.status === "ready" && !!r.video_url;
+      });
+      if (!playable) {
         report.waitingOnRenders++;
         break;
       }
-      const { error } = await db.from("scheduled_posts").insert({
+      const m = approved[playable.index];
+      const render = renderByKey.get(`${m.id}:${s.profile_id}`)!;
+      postRows.push({
         profile_id: s.profile_id,
         brand_id: brand.id,
         media_type: "reel",
+        // The plain body render. The assembler worker overwrites this with the
+        // finished file; if it never gets there, this still posts.
         media_url: render.video_url,
         // Hugo's own caption on the master wins; otherwise every account gets
-        // its own machine-written one, and either way its own 1 to 4 hashtags
-        // (unique per account per video, Hugo, 08 Aug 2026: "every caption
-        // should be unique"). This is the same function /admin/videos shows
-        // him before he approves, so what he read is what goes out.
+        // its own machine-written one, and either way its own place tags plus
+        // 1 to 4 general ones.
         caption: composeCaption(m.seq, s.variant_idx, m.caption),
         scheduled_at: slot.at.toISOString(),
         status: "pending",
@@ -301,31 +342,38 @@ export async function GET(request: NextRequest) {
         instagram_options: null,
         master_video_id: m.id,
       });
-      if (error) {
-        // The partial unique index (one post per master per account, ever)
-        // turns the crashed-between-insert-and-advance case into this exact
-        // error: the post EXISTS, only the pointer is stale. Treat it as
-        // already-scheduled and advance, or the account stalls forever.
-        if (!/duplicate|unique/i.test(error.message)) {
-          report.errors.push(`schedule m${m.seq} ${s.profile_id}: ${error.message}`);
-          break;
-        }
-      } else {
-        mine.push(slot.at);
-        postsBy.set(s.profile_id, mine);
-        report.postsScheduled++;
-      }
-      const nextSeq = s.next_seq + 1;
-      const { error: advErr } = await db
-        .from("creator_video_state")
-        .update({ next_seq: nextSeq })
-        .eq("profile_id", s.profile_id);
-      if (advErr) {
-        report.errors.push(`advance ${s.profile_id}: ${advErr.message}`);
-        break;
-      }
-      s.next_seq = nextSeq;
+      mine.push(slot.at);
+      postsBy.set(s.profile_id, mine);
+      // The cursor moves past what was just used. A master skipped because it
+      // was still rendering comes back round on the next lap.
+      s.next_seq = playable.cursor + 1;
+      cursorMoved.set(s.profile_id, s.next_seq);
     }
+  }
+
+  // Two bulk writes instead of two per post. At 1.4 to 3 seconds a round trip,
+  // the per-post version could not finish a tick before the function died.
+  if (postRows.length) {
+    const { error } = await db.from("scheduled_posts").insert(postRows);
+    if (error) report.errors.push(`schedule: ${error.message}`);
+    else report.postsScheduled = postRows.length;
+  }
+  if (cursorMoved.size && !report.errors.length) {
+    // Upsert rather than one UPDATE per account, same reason.
+    const rows = [...cursorMoved.entries()].map(([profile_id, next_seq]) => {
+      const st = stateBy.get(profile_id)!;
+      return {
+        profile_id,
+        next_seq,
+        color_family: st.color_family,
+        stagger_min: st.stagger_min,
+        variant_idx: st.variant_idx,
+      };
+    });
+    const { error } = await db
+      .from("creator_video_state")
+      .upsert(rows, { onConflict: "profile_id" });
+    if (error) report.errors.push(`advance cursors: ${error.message}`);
   }
 
   return NextResponse.json({ ok: true, ...report });

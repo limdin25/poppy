@@ -74,7 +74,11 @@ async function db(path, init = {}) {
     headers: { ...H, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
   });
   if (!res.ok) throw new Error(`${path} -> ${res.status} ${await res.text()}`);
-  return res.status === 204 ? null : res.json();
+  // PostgREST answers a plain insert with 201 and an EMPTY body unless asked for
+  // a representation. Calling .json() on that throws "Unexpected end of JSON
+  // input", which surfaced as every post failing for no stated reason.
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
 }
 
 // ---- ingredients -------------------------------------------------------------
@@ -146,7 +150,22 @@ async function claimHook(profileId) {
   const used = await db(`hook_uses?select=hook_id&profile_id=eq.${profileId}&limit=100000`);
   const usedIds = new Set(used.map((u) => u.hook_id));
   const bank = await db('hook_lines?select=id,beat1,beat2,beat3&retired_at=is.null&order=created_at&limit=2000');
-  for (const h of bank) {
+  if (!bank.length) return null;
+
+  // EVERY ACCOUNT STARTS SOMEWHERE ELSE IN THE BANK.
+  //
+  // Walking it from the top was right for one account and wrong for a fleet:
+  // 74 accounts all walked from the top, so they all drew hook 1, then hook 2,
+  // and six posts built in the same minute carried four copies of one line.
+  // That is precisely the clustering the whole system exists to avoid, and it
+  // is worse than a repeated video because the words are what a person reads.
+  //
+  // The offset is derived from the account, so it is stable: an account keeps
+  // its own place in the bank across restarts, and still sees every line once
+  // before it sees any line twice.
+  const offset = mix(profileId) % bank.length;
+  const ordered = [...bank.slice(offset), ...bank.slice(0, offset)];
+  for (const h of ordered) {
     if (usedIds.has(h.id)) continue;
     try {
       await db('hook_uses', {
@@ -237,7 +256,7 @@ async function buildTick(pool) {
   const until = new Date(Date.now() + LOOKAHEAD_MIN * 60_000).toISOString();
   const rows = await db(
     'scheduled_posts?select=id,profile_id,master_video_id,scheduled_at' +
-      '&assembled_url=is.null&status=eq.scheduled&master_video_id=not.is.null' +
+      '&assembled_url=is.null&status=eq.pending&master_video_id=not.is.null' +
       `&scheduled_at=lte.${until}&order=scheduled_at&limit=${LIMIT}`,
   );
   if (!rows.length) return 0;
