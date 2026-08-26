@@ -1073,33 +1073,52 @@ export function blockedReasonForChannel(
  *  UK NUMBERS ONLY, and that is not tidiness. A US toll-free line cannot text a
  *  UK mobile at all (Twilio 21612, learned 2026-07-16), and it fails in a way
  *  that reads as a successful send. */
+type NumberRow = {
+  e164?: string; channel?: string; sms_enabled?: boolean;
+  is_active?: boolean; voice_enabled?: boolean;
+};
+
 export async function resolveSmsFrom(sb: Sb, agentId: string | null): Promise<string> {
-  const usable = (n: { e164?: string; channel?: string; sms_enabled?: boolean; is_active?: boolean } | null) =>
+  const usable = (n: NumberRow | null) =>
     !!n && n.channel === 'sms' && !!n.sms_enabled && !!n.is_active && String(n.e164 ?? '').startsWith('+44');
+
+  const COLS = 'e164, channel, sms_enabled, is_active, voice_enabled';
 
   if (agentId) {
     const { data: assigned } = await (sb.from('wk_number_agents') as any)
-      .select('is_primary, wk_numbers(e164, channel, sms_enabled, is_active)')
+      .select(`is_primary, wk_numbers(${COLS})`)
       .eq('agent_id', agentId);
-    const rows = ((assigned ?? []) as Array<{
-      is_primary: boolean;
-      wk_numbers: { e164: string; channel: string; sms_enabled: boolean; is_active: boolean } | null;
-    }>).filter((r) => usable(r.wk_numbers));
+    const rows = ((assigned ?? []) as Array<{ is_primary: boolean; wk_numbers: NumberRow | null }>)
+      .filter((r) => usable(r.wk_numbers));
     if (rows.length) {
       const primary = rows.find((r) => r.is_primary);
-      return (primary ?? rows[0]).wk_numbers!.e164;
+      return (primary ?? rows[0]).wk_numbers!.e164!;
     }
   }
 
+  // THE FALLBACK MUST BE ABLE TO TAKE A CALL, and that is not a nicety.
+  //
+  // Every builder message ends "give me a ring on this number". Pedro's live
+  // login had no number assigned to it, so this fell through to the oldest SMS
+  // number in the workspace, +447576558278, whose voice goes to the Elsie AI
+  // receptionist. Jordan Lee of JL Brickwork rang it back twice on 2026-08-26
+  // and told Pedro at 15:40 exactly what happened:
+  //
+  //   "I tried phoning your number back and it sounded like a dodgy AI thing
+  //    and I'm getting loads of weird text software... that just led us to
+  //    believe it's not genuine."
+  //
+  // He nearly walked off a booked viewing over it. So a number that cannot
+  // ring a human is the LAST resort here, never the first.
   const { data: nums } = await sb
     .from('wk_numbers')
-    .select('e164, channel, sms_enabled, is_active')
+    .select(COLS)
     .eq('sms_enabled', true)
     .eq('is_active', true)
     .order('created_at', { ascending: true });
-  const first = ((nums ?? []) as Array<{ e164: string; channel: string; sms_enabled: boolean; is_active: boolean }>)
-    .find((n) => usable(n));
-  return first?.e164 ?? '';
+  const all = ((nums ?? []) as NumberRow[]).filter((n) => usable(n));
+  const answerable = all.find((n) => n.voice_enabled);
+  return (answerable ?? all[0])?.e164 ?? '';
 }
 
 /**

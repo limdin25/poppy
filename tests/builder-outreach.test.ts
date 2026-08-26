@@ -659,3 +659,33 @@ describe('which house a builder belongs to, on the card', () => {
     expect(SRC).toContain("onConflict: 'contact_id,tag', ignoreDuplicates: true");
   });
 });
+
+describe('the number a builder is told to ring back', () => {
+  // Jordan Lee of JL Brickwork, on the phone to Pedro at 15:40 on 2026-08-26,
+  // explaining why he had decided not to attend a viewing he had confirmed:
+  //
+  //   "I tried phoning your number back and it sounded like a dodgy AI thing
+  //    and I'm getting loads of weird text software... that just led us to
+  //    believe it's not genuine."
+  //
+  // Every builder message ends "give me a ring on this number". Pedro's live
+  // login had no number assigned, so resolveSmsFrom fell through to the oldest
+  // SMS number in the workspace, whose voice routes to the Elsie AI
+  // receptionist. Twilio's own log has Jordan hitting it twice.
+  const OUT = readFileSync('api/lib/builder-outreach.ts', 'utf8');
+
+  it('prefers a number that can actually take a call', () => {
+    const fn = OUT.slice(OUT.indexOf('export async function resolveSmsFrom'));
+    expect(fn).toMatch(/answerable\s*=\s*all\.find\(\(n\) => n\.voice_enabled\)/);
+    expect(fn).toMatch(/return \(answerable \?\? all\[0\]\)/);
+  });
+
+  it('asks for voice_enabled when it reads the numbers, or it cannot choose', () => {
+    expect(OUT).toMatch(/const COLS = 'e164, channel, sms_enabled, is_active, voice_enabled'/);
+  });
+
+  it('keeps the agents own line first, which is the whole point', () => {
+    const fn = OUT.slice(OUT.indexOf('export async function resolveSmsFrom'));
+    expect(fn.indexOf('wk_number_agents')).toBeLessThan(fn.indexOf('const { data: nums }'));
+  });
+});
