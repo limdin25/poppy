@@ -26,8 +26,11 @@ import HouseNumberBar from '../components/builders/HouseNumberBar';
 import BuilderTable, { type BuilderRow } from '../components/builders/BuilderTable';
 import SendReviewDialog, { type SendChannel } from '../components/builders/SendReviewDialog';
 import OutreachSettingsPanel from '../components/builders/OutreachSettingsPanel';
+import BuilderBoard from '../components/builders/BuilderBoard';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useActiveCallCtx } from '../components/live-call/ActiveCallContext';
+import { useBuilderBoard } from '../hooks/useBuilderBoard';
+import type { BoardCard, BuilderStage } from '../lib/builderBoard';
 
 interface HouseDetail extends PickerProperty {
   builderFacingAddress: string;
@@ -65,7 +68,9 @@ const BLOCKED_WORDS: Record<string, string> = {
 export default function FindBuildersPage() {
   const [params, setParams] = useSearchParams();
   const propertyId = params.get('propertyId');
-  const tab = params.get('tab') === 'settings' ? 'settings' : 'find';
+  const rawTab = params.get('tab');
+  const tab: 'find' | 'board' | 'settings' =
+    rawTab === 'settings' ? 'settings' : rawTab === 'board' ? 'board' : 'find';
 
   // Settings is admin only, and it is HIDDEN rather than disabled: an agent
   // should not be looking at a tab he cannot open. Same resolution as
@@ -328,6 +333,48 @@ export default function FindBuildersPage() {
     [properties],
   );
 
+  // The board. Loaded only while its tab is open, because it reads every
+  // builder on every live house and the Find tab does not need any of it.
+  const board = useBuilderBoard(tab === 'board');
+
+  /** Ringing and texting from a board card land on the SAME house the card
+   *  belongs to, whichever house the Find tab happens to have selected. The
+   *  card is a builder-for-a-house, so the house is never ambiguous. */
+  const boardRing = useCallback(async (card: BoardCard) => {
+    if (!card.builderPhone) { setError('No number on that builder.'); return; }
+    try {
+      const json = await call('/api/crm/find-builders', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'prepare', property_id: card.propertyId, builder_id: card.builderId }),
+      });
+      const contactId = String(json.contactId ?? card.contactId ?? '');
+      if (!contactId) throw new Error('Could not open a record for that builder.');
+      await startCall(contactId, card.builderPhone, card.builderName, { openRoom: false });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The call did not start.');
+    }
+  }, [call, startCall]);
+
+  /** Texting hands over to the Find tab with that house already picked and the
+   *  builder already ticked, so the draft, the segment count and the house
+   *  number warning are the ones that were already built and tested. */
+  const boardText = useCallback((card: BoardCard) => {
+    const next = new URLSearchParams(params);
+    next.set('propertyId', card.propertyId);
+    next.delete('tab');
+    setParams(next, { replace: false });
+    setSelected(new Set([card.builderId]));
+    setDraftKind(card.addressSentAt ? 'opener' : 'details');
+    setReviewOpen(true);
+  }, [params, setParams]);
+
+  const openHouseFromBoard = useCallback((id: string) => {
+    const next = new URLSearchParams(params);
+    next.set('propertyId', id);
+    next.delete('tab');
+    setParams(next, { replace: false });
+  }, [params, setParams]);
+
   return (
     <div className="h-full overflow-y-auto bg-[#FAFAF8] p-4" data-testid="find-builders-page">
       <div className="mx-auto max-w-[1200px]">
@@ -348,9 +395,14 @@ export default function FindBuildersPage() {
           </button>
         </div>
 
-        {canSeeSettings ? (
-          <div className="mb-3 flex gap-1">
-            {([['find', 'Find builders'], ['settings', 'Settings']] as const).map(([id, label]) => (
+        {/* The board is on the SAME page as the dialling, per Hugo: "maybe on
+            the same place where he calls the builder, a kanban view there."
+            Everyone sees it; only Settings stays admin-only. */}
+        <div className="mb-3 flex gap-1">
+          {(canSeeSettings
+            ? ([['find', 'Find builders'], ['board', 'Coordination'], ['settings', 'Settings']] as const)
+            : ([['find', 'Find builders'], ['board', 'Coordination']] as const)
+          ).map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => {
@@ -369,12 +421,40 @@ export default function FindBuildersPage() {
               </button>
             ))}
           </div>
-        ) : null}
 
         {tab === 'settings' && canSeeSettings ? (
           <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-4">
             <OutreachSettingsPanel />
           </div>
+        ) : tab === 'board' ? (
+          <>
+            {board.error ? (
+              <div className="mb-3 rounded-[10px] border border-[#DC2626]/40 bg-[#FEF2F2] px-3 py-2 text-[11.5px] text-[#DC2626]">
+                {board.error}
+              </div>
+            ) : null}
+            {board.notice ? (
+              <div className="mb-3 rounded-[10px] border border-[#BBD4BE] bg-[#EDF6EE] px-3 py-2 text-[11.5px] text-[#2E7D46]">
+                {board.notice}
+              </div>
+            ) : null}
+            {board.loading ? (
+              <div className="space-y-2">
+                {[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse rounded-[16px] bg-[#F3F4F6]" />)}
+              </div>
+            ) : (
+              <BuilderBoard
+                houses={board.houses}
+                busy={board.loading}
+                onMove={(c: BoardCard, s: BuilderStage) => { board.clearMessages(); void board.move(c, s); }}
+                onSave={(c: BoardCard, patch) => { board.clearMessages(); void board.save(c, patch as Record<string, unknown>); }}
+                onRing={(c: BoardCard) => { void boardRing(c); }}
+                onText={boardText}
+                onOpenHouse={openHouseFromBoard}
+                onRefresh={board.reload}
+              />
+            )}
+          </>
         ) : (
         <>
         {missingNumbers > 0 ? (
