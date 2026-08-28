@@ -1,31 +1,24 @@
 {
   "w1": {
-    "days": 5,
-    "calls": 442,
-    "span": 134215.957,
-    "idle": 73797.51699999999,
-    "worked": 60418.44,
-    "talk": 44004,
-    "connected": 287,
-    "conversations": 209,
-    "dispo": {
-      "No pickup": 16,
-      "Voicemail": 210,
-      "Discovery done, evaluating": 38,
-      "Not interested": 76,
-      "Offer sent": 16,
-      "Follow up": 1
-    }
+    "days": 0,
+    "calls": 0,
+    "span": 0,
+    "idle": 0,
+    "worked": 0,
+    "talk": 0,
+    "connected": 0,
+    "conversations": 0,
+    "dispo": {}
   },
   "w2": {
     "days": 5,
     "calls": 400,
-    "span": 138881.658,
-    "idle": 64717.68899999999,
-    "worked": 74163.96900000001,
-    "talk": 55237,
-    "connected": 289,
-    "conversations": 208,
+    "span": 138914.57200000001,
+    "idle": 64616.111,
+    "worked": 74298.46100000001,
+    "talk": 56119.881,
+    "connected": 308,
+    "conversations": 218,
     "dispo": {
       "Not interested": 49,
       "Follow up": 17,
