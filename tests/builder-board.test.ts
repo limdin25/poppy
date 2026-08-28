@@ -13,6 +13,7 @@ import { readFileSync } from 'fs';
 import {
   STAGES, STAGE_IDS, isBuilderStage, alertsFor, verdictFor, orderHouses,
   orderCards, cardsInStage, bookedOther, clashingHouses, countdown, money,
+  reportedButNotMarked,
   type BoardCard, type BoardHouse, type BuilderStage,
 } from '../src/features/crm/lib/builderBoard';
 
@@ -28,6 +29,7 @@ function card(over: Partial<BoardCard> = {}): BoardCard {
     comeBackAt: null, comeBackNote: null, attendedAt: null,
     quoteAmount: null, quoteNote: null, chargesAmount: null,
     addressSentAt: null, lastInboundAt: null, lastInboundBody: '', lastOutboundAt: null,
+    reportedAt: null, mediaCount: 0, mediaMessageIds: [],
     ...over,
   };
 }
@@ -402,5 +404,114 @@ describe('the route books through the one function that owns the booking', () =>
 
   it('answers a refusal with HTTP 200 and a sentence, matching the cockpit', () => {
     expect(API).toMatch(/res\.status\(200\)\.json\(\{ ok: false, refusal/);
+  });
+});
+
+describe('the builder went and sent photographs, and the board could not see either', () => {
+  // Hugo, reading the first build: "Lisle looks its already done and builder
+  // send photo via whatsapp. Please see what you missed and learn."
+  //
+  // JL BRICKWORK walked 81 Lisle Road on 26 August and at 15:14 the next day
+  // sent TEN PHOTOGRAPHS on WhatsApp, then his written findings three minutes
+  // later. The board had him in Coming, on a viewing two days past, saying he
+  // "said yes but is not booked in".
+  //
+  // WHAT WAS MISSED: eleven inbound rows with an EMPTY BODY. An empty body is
+  // not an empty message. Each carried a media url. Reading only the text of a
+  // conversation made the ten most valuable messages we have ever received look
+  // like blank lines.
+  const jl = () => card({
+    builderName: 'JL BRICKWORK', stage: 'coming', addressSentAt: '2026-08-25T17:01:00Z',
+    reportedAt: '2026-08-27T14:14:00Z', mediaCount: 10,
+    mediaMessageIds: ['m1', 'm2'], lastInboundBody: 'The bathroom does not have a vent',
+  });
+  const past = { viewingAt: '2026-08-26T15:30:00Z' };
+
+  it('counts him as having reported back', () => {
+    expect(reportedButNotMarked(jl())).toBe(true);
+  });
+
+  it('says so first, above every other flag', () => {
+    const c = jl();
+    const a = alertsFor(c, house([c], past), NOW);
+    expect(a[0].kind).toBe('reported');
+    expect(a[0].tone).toBe('stop');
+    expect(a[0].text).toBe('He came back after the viewing with 10 photos. Read it and mark him Been.');
+  });
+
+  it('stops the lane calling a man who did the job "not booked in"', () => {
+    const c = jl();
+    expect(verdictFor(house([c], past), NOW).line)
+      .toBe('JL BRICKWORK went and sent 10 photos, mark him Been');
+  });
+
+  it('does NOT move him to Been by itself', () => {
+    // Same rule as the refurb estimator: never invent, state the evidence, let
+    // the person confirm. A message after a viewing is very good evidence he
+    // attended. It is not proof, and a board that quietly marks men as attended
+    // is a board nobody can trust about the ones who did not.
+    expect(jl().stage).toBe('coming');
+    expect(jl().attendedAt).toBeNull();
+  });
+
+  it('goes quiet the moment somebody marks him Been', () => {
+    const c = { ...jl(), stage: 'been' as BuilderStage, attendedAt: '2026-08-26T16:30:00Z' };
+    expect(reportedButNotMarked(c)).toBe(false);
+    expect(alertsFor(c, house([c], past), NOW).some((x) => x.kind === 'reported')).toBe(false);
+    expect(verdictFor(house([c], past), NOW).state).toBe('done');
+  });
+
+  it('stops nagging about the address of a house he plainly found', () => {
+    const c = { ...jl(), addressSentAt: null };
+    expect(alertsFor(c, house([c], past), NOW).some((x) => x.kind === 'no_address')).toBe(false);
+  });
+
+  it('handles one photo without saying "1 photos"', () => {
+    const c = { ...jl(), mediaCount: 1 };
+    expect(alertsFor(c, house([c], past), NOW)[0].text).toContain('with 1 photo.');
+  });
+
+  it('still speaks up when he reported with no pictures at all', () => {
+    const c = { ...jl(), mediaCount: 0, mediaMessageIds: [] };
+    expect(alertsFor(c, house([c], past), NOW)[0].text)
+      .toBe('He came back after the viewing. Read it and mark him Been.');
+  });
+
+  it('ignores a man who has been written off', () => {
+    expect(reportedButNotMarked({ ...jl(), stage: 'no' })).toBe(false);
+  });
+});
+
+describe('the RPC surfaces the pictures, not just the words', () => {
+  const SQL = readFileSync('supabase/migrations/20260828000002_builder_board_reported.sql', 'utf8');
+
+  it('derives when he came back after the viewing', () => {
+    expect(SQL).toMatch(/m\.created_at > h\.viewing_at/);
+  });
+
+  it('counts the media files and hands back their message ids', () => {
+    expect(SQL).toMatch(/sum\(cardinality\(m\.media_urls\)\)/);
+    expect(SQL).toMatch(/array_agg\(m\.id order by m\.created_at\)/);
+  });
+
+  it('describes a media-only message instead of returning an empty string', () => {
+    // The bug in one line: eleven rows whose body was '' were read as nothing.
+    expect(SQL).toMatch(/Sent a photo/);
+    expect(SQL).toMatch(/'Sent ' \|\| cardinality\(m\.media_urls\) \|\| ' photos'/);
+  });
+
+  it('stores none of it', () => {
+    expect(SQL).not.toMatch(/add column .*reported_at/i);
+    expect(SQL).not.toMatch(/add column .*media_count/i);
+  });
+});
+
+describe('the drawer draws what he sent back', () => {
+  const DRAWER = readFileSync('src/features/crm/components/builders/BuilderCardDrawer.tsx', 'utf8');
+
+  it('reuses InboundMedia, which already does the Twilio auth dance', () => {
+    // The media url 401s without our credentials, so an <img src> cannot work.
+    expect(DRAWER).toMatch(/import InboundMedia from '\.\.\/InboundMedia'/);
+    expect(DRAWER).toMatch(/<InboundMedia key=\{id\} messageId=\{id\}/);
   });
 });

@@ -71,6 +71,13 @@ export interface BoardCard {
   lastInboundAt: string | null;
   lastInboundBody: string;
   lastOutboundAt: string | null;
+  /** He came back AFTER the viewing. Strong evidence he went, never proof. */
+  reportedAt: string | null;
+  /** Pictures he sent us. An empty body with media on it is not an empty
+   *  message, and treating it as one is exactly what hid JL Brickwork's ten
+   *  photographs of 81 Lisle Road. */
+  mediaCount: number;
+  mediaMessageIds: string[];
 }
 
 export interface BoardHouse {
@@ -88,6 +95,7 @@ export interface BoardHouse {
 // ---------------------------------------------------------------------------
 
 export type AlertKind =
+  | 'reported'
   | 'no_address'
   | 'unanswered'
   | 'wrong_day'
@@ -106,10 +114,31 @@ export interface Alert {
  *  ignore the flag that matters. */
 const NEEDS_ADDRESS: BuilderStage[] = ['coming', 'booked'];
 
+/** He came back after the viewing and nobody has marked him as having gone.
+ *  First, above everything: this is the whole point of inviting him. */
+export function reportedButNotMarked(card: BoardCard): boolean {
+  return Boolean(card.reportedAt) && card.stage !== 'been' && card.stage !== 'no';
+}
+
 export function alertsFor(card: BoardCard, house: BoardHouse, now: number = Date.now()): Alert[] {
   const out: Alert[] = [];
 
-  if (NEEDS_ADDRESS.includes(card.stage) && !card.addressSentAt) {
+  // JL Brickwork walked 81 Lisle Road and sent ten photographs and a written
+  // condition report the next day. The board had him in Coming, on a viewing
+  // two days past, saying he "said yes but is not booked in".
+  if (reportedButNotMarked(card)) {
+    out.push({
+      kind: 'reported',
+      tone: 'stop',
+      text: card.mediaCount > 0
+        ? `He came back after the viewing with ${card.mediaCount} photo${card.mediaCount > 1 ? 's' : ''}. Read it and mark him Been.`
+        : 'He came back after the viewing. Read it and mark him Been.',
+    });
+  }
+
+  // A man who reported back plainly found the house, so nagging about the
+  // address would be the board arguing with the evidence in front of it.
+  if (NEEDS_ADDRESS.includes(card.stage) && !card.addressSentAt && !card.reportedAt) {
     out.push({
       kind: 'no_address',
       tone: 'stop',
@@ -196,6 +225,24 @@ export function verdictFor(house: BoardHouse, now: number = Date.now()): HouseVe
       line: quoted.length > 0
         ? `${been[0].builderName} walked it, ${money(quoted[0].quoteAmount as number)}`
         : `${been[0].builderName} walked it, no price back yet`,
+    };
+  }
+
+  // Somebody came back after the viewing and nobody has marked him as gone.
+  // Ranked above every stage, because a man who did the job outranks a board
+  // column that says he did not. Hugo, reading the first build: "Lisle looks
+  // its already done and builder send photo via whatsapp."
+  const reported = house.cards.filter(reportedButNotMarked);
+  if (reported.length > 0) {
+    const r = reported[0];
+    return {
+      state: 'at_risk',
+      builderName: r.builderName,
+      hoursAway,
+      urgent: false,
+      line: r.mediaCount > 0
+        ? `${r.builderName} went and sent ${r.mediaCount} photos, mark him Been`
+        : `${r.builderName} came back after the viewing, mark him Been`,
     };
   }
 

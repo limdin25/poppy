@@ -167,6 +167,7 @@ interface Row {
   quote_amount: string | number | null; quote_note: string | null;
   charges_amount: string | number | null; address_sent_at: string | null;
   last_inbound_at: string | null; last_inbound_body: string | null; last_outbound_at: string | null;
+  reported_at: string | null; media_count: number | string | null; media_message_ids: string[] | null;
 }
 
 /** One row per builder-per-house comes back flat; the board wants it by house. */
@@ -211,6 +212,9 @@ function group(rows: Row[]) {
       lastInboundAt: r.last_inbound_at,
       lastInboundBody: r.last_inbound_body ?? '',
       lastOutboundAt: r.last_outbound_at,
+      reportedAt: r.reported_at,
+      mediaCount: Number(r.media_count ?? 0) || 0,
+      mediaMessageIds: Array.isArray(r.media_message_ids) ? r.media_message_ids : [],
     });
   }
   return [...byHouse.values()];

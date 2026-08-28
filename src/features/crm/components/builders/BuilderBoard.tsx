@@ -25,12 +25,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, CalendarClock, Check, ChevronDown, ChevronRight, GripVertical,
-  Loader2, MapPinOff, MessageSquare, Phone, RefreshCw,
+  Images, Loader2, MapPinOff, MessageSquare, Phone, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import {
   STAGES, alertsFor, verdictFor, orderHouses, cardsInStage, bookedOther,
-  clashingHouses, countdown, ukWhen, money,
+  clashingHouses, countdown, ukWhen, money, reportedButNotMarked,
   type BoardCard, type BoardHouse, type BuilderStage, type HouseState,
 } from '../../lib/builderBoard';
 import BuilderCardDrawer, { type CardPatch } from './BuilderCardDrawer';
@@ -232,6 +232,7 @@ export default function BuilderBoard({
                             onRing={() => onRing(c)}
                             onText={() => onText(c)}
                             onOpen={() => setOpenId(c.outreachId)}
+                            onBeen={() => onMove(c, 'been')}
                           />
                         ))}
                       </div>
@@ -282,7 +283,7 @@ export default function BuilderBoard({
 }
 
 function Card({
-  card, house, clash, dragging, onDragStart, onDragEnd, onRing, onText, onOpen,
+  card, house, clash, dragging, onDragStart, onDragEnd, onRing, onText, onOpen, onBeen,
 }: {
   card: BoardCard;
   house: BoardHouse;
@@ -293,6 +294,7 @@ function Card({
   onRing: () => void;
   onText: () => void;
   onOpen: () => void;
+  onBeen: () => void;
 }) {
   const alerts = alertsFor(card, house);
   const stop = alerts.find((a) => a.tone === 'stop');
@@ -338,6 +340,14 @@ function Card({
         </p>
       )}
 
+      {/* An empty body with pictures on it is not an empty message. Ten of
+          these were invisible on the first build. */}
+      {card.mediaCount > 0 && (
+        <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-[#3C5A87]">
+          <Images className="h-3 w-3" /> {card.mediaCount} photo{card.mediaCount > 1 ? 's' : ''} from him
+        </p>
+      )}
+
       {card.comeBackAt && (
         <p className="mt-1 text-[10px] text-[#6B7280] flex items-center gap-1">
           <CalendarClock className="w-3 h-3" /> {ukWhen(card.comeBackAt)}
@@ -363,6 +373,16 @@ function Card({
         <button onClick={onText} title="Text him" className="p-1 rounded hover:bg-[#3C5A87]/10 text-[#3C5A87]">
           <MessageSquare className="w-3 h-3" />
         </button>
+        {reportedButNotMarked(card) && (
+          <button
+            onClick={onBeen}
+            data-testid="builder-card-been"
+            title="He went. Mark him Been."
+            className="ml-auto rounded bg-[#047857] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-white hover:bg-[#065F46]"
+          >
+            Been
+          </button>
+        )}
       </div>
     </div>
   );

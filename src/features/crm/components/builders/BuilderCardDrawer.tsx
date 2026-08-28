@@ -24,6 +24,7 @@
 import { useState } from 'react';
 import { AlertTriangle, CalendarClock, MessageSquare, Phone, X } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
+import InboundMedia from '../InboundMedia';
 import { ukInputToIso, isoToUkInput } from '../../lib/ukTime';
 import { alertsFor, STAGES, ukWhen, money, type BoardCard, type BoardHouse, type BuilderStage } from '../../lib/builderBoard';
 
@@ -143,6 +144,24 @@ export default function BuilderCardDrawer({
               <p className="rounded-lg bg-[#F3F3EE] px-2 py-1.5 text-[11.5px] leading-relaxed text-[#4B5563]">
                 {card.lastInboundBody}
               </p>
+            </Field>
+          ) : null}
+
+          {/* What he sent back from the house. This is the deliverable of the
+              whole builder operation, and on the first build it was invisible:
+              the ten photographs JL Brickwork sent of 81 Lisle Road are stored
+              as messages with an EMPTY BODY and a media url, so anything
+              reading only the text saw ten blank lines. */}
+          {card.mediaMessageIds.length > 0 ? (
+            <Field
+              label={`What he sent back (${card.mediaCount} photo${card.mediaCount > 1 ? 's' : ''})`}
+              hint="Tap one to see it full size."
+            >
+              <div className="space-y-1.5" data-testid="drawer-photos">
+                {card.mediaMessageIds.map((id) => (
+                  <InboundMedia key={id} messageId={id} count={1} tone="light" />
+                ))}
+              </div>
             </Field>
           ) : null}
 
