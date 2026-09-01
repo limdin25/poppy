@@ -26,6 +26,18 @@ function uuidOrNull(value: string | null | undefined): string | null {
 }
 
 /**
+ * Canonical form for wk_contacts.email. Empty becomes null (so the unique
+ * index allows many leads with no address). Case is folded because the unique
+ * index is case-sensitive and "Jim@Firm.com" vs "jim@firm.com" would otherwise
+ * look saved in the modal and then bounce on a later edit.
+ */
+export function normalizeContactEmail(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim().toLowerCase();
+  return cleaned.length === 0 ? null : cleaned;
+}
+
+/**
  * Strips fields whose values look like mock IDs (non-UUID strings) so they
  * never land in a Supabase update against a uuid column. Operates on the
  * known UUID-typed wk_contacts columns: pipeline_column_id, owner_agent_id.
@@ -106,14 +118,16 @@ export function useContactPersistence(): ContactPersistAPI {
       if (!isRealContactId(contactId)) return true;
       const cleaned = sanitizeUuidFields(patch);
       if ('email' in cleaned) {
-        (cleaned as Record<string, unknown>).email =
-          (cleaned as Record<string, unknown>).email || null;
+        (cleaned as Record<string, unknown>).email = normalizeContactEmail(
+          (cleaned as Record<string, unknown>).email as string | null | undefined
+        );
       }
       if (Object.keys(cleaned).length === 0) return true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.from('wk_contacts' as any) as any)
+      const { data, error } = await (supabase.from('wk_contacts' as any) as any)
         .update(cleaned)
-        .eq('id', contactId);
+        .eq('id', contactId)
+        .select('id');
       if (error) {
         console.warn('[contact-persist] patchContact failed:', error.message);
         if (error.message?.includes('wk_contacts_email_uniq'))
@@ -121,6 +135,14 @@ export function useContactPersistence(): ContactPersistAPI {
         if (error.message?.includes('wk_contacts_phone_uniq'))
           return 'This phone number is already used by another contact';
         return 'Save failed';
+      }
+      // RLS that fails USING returns 200 and zero rows. The inbox can SELECT
+      // an unassigned lead via the participation policy, but UPDATE still
+      // needs owner/admin. Without this check the modal toasted Saved and
+      // the email was gone on reopen.
+      const rows = Array.isArray(data) ? data : data ? [data] : [];
+      if (rows.length === 0) {
+        return 'Save did not land on this lead';
       }
       return true;
     },
@@ -184,7 +206,7 @@ export function useContactPersistence(): ContactPersistAPI {
       .insert({
         name: input.name,
         phone: input.phone,
-        email: input.email || null,
+        email: normalizeContactEmail(input.email),
         owner_agent_id: owner,
         pipeline_column_id: pipelineColumnId,
         custom_fields: input.customFields ?? {},
