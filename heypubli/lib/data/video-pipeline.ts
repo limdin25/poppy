@@ -715,3 +715,27 @@ export function postsInLocalDay(now: Date, timeZone: string, scheduledAts: Date[
     return p.y === today.y && p.m === today.m && p.d === today.d;
   }).length;
 }
+
+/**
+ * THE QUOTA COUNTER, and why counting the calendar day was not enough.
+ *
+ * 26 Aug 2026, first live day: accounts were handed 41, 55, even 118 posts
+ * against a quota of 10. The cause was a gap between two rules that each looked
+ * right. rotationSlots, once the evening window had closed, placed its slots a
+ * few hours out, which can land after local midnight. postsInLocalDay then did
+ * not count those, because they belong to tomorrow. So the quota never filled,
+ * and a cron running every two minutes kept topping the account up, all night.
+ *
+ * Counting from local midnight FORWARD, with no upper bound, closes it: a post
+ * that spilled past midnight still counts against the day that created it, so
+ * the quota fills exactly once.
+ */
+export function postsCountingForward(
+  now: Date,
+  timeZone: string,
+  scheduledAts: Date[],
+): number {
+  const t = zoneParts(now, timeZone);
+  const localMidnight = zonedTimeToUtc(t.y, t.m, t.d, 0, 0, timeZone).getTime();
+  return scheduledAts.filter((at) => at.getTime() >= localMidnight).length;
+}

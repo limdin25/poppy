@@ -1,12 +1,10 @@
-// Rebuilds /timesheet for Pedro, week of Monday 24 to Friday 28 August 2026.
+// Rebuilds /timesheet for Pedro, week of Saturday 29 August to Friday 4 September 2026.
 // Reads days.json (produced by compute.mjs from the live wk_calls log) and bakes
 // the finished page into api/lib/timesheet-html.ts, same convention as report-html.ts.
 // Exits non-zero if a long dash, curly quote or ellipsis ever creeps in.
 //
-// THE WINDOW THIS WEEK IS MONDAY TO FRIDAY, because Hugo is paying on the Friday.
-// Last week ran Monday to Saturday. So the comparison below uses Monday to Friday
-// on BOTH sides (17 to 21 against 24 to 28) and says so on the page. Comparing a
-// six day week against a five day one flatters whichever side has the extra day.
+// Paid on Saturday 5 September. Saturday 29 August was carried from last week's
+// Friday pay. Both sides of the comparison use the same five working days each.
 import fs from 'fs';
 import path from 'path';
 
@@ -14,32 +12,30 @@ const HERE = path.dirname(new URL(import.meta.url).pathname);
 const DAYS = JSON.parse(fs.readFileSync(path.join(HERE, 'days.json'), 'utf8'));
 const STYLE = fs.readFileSync(path.join(HERE, 'style.css'), 'utf8');
 
-const THIS_WEEK = ['2026-08-24', '2026-08-28'];
-const LAST_WEEK = ['2026-08-17', '2026-08-21'];
+const THIS_WEEK = ['2026-08-29', '2026-09-05'];
+const LAST_WEEK = ['2026-08-24', '2026-08-28'];
 const RATE = 2.5;
-const EXTRA_BREAK_H = 0; // nothing was granted on top this week; last week's 3 h was a one off
-const CUTOFF = '18:01'; // his last call at the moment this page was prepared
+const EXTRA_BREAK_H = 0;
+const CUTOFF = '18:06'; // his last call at the moment this page was prepared
 
-const NOTES = { '2026-08-17': 8, '2026-08-18': 29, '2026-08-19': 27, '2026-08-20': 10, '2026-08-21': 4,
-                '2026-08-24': 4, '2026-08-25': 2, '2026-08-26': 2, '2026-08-27': 1, '2026-08-28': 3 };
-const TEXTS = { '2026-08-17': 11, '2026-08-18': 33, '2026-08-19': 2, '2026-08-20': 3, '2026-08-21': 2,
-                '2026-08-24': 10, '2026-08-25': 3, '2026-08-26': 15, '2026-08-27': 7, '2026-08-28': 6 };
-const UNIQUE = { last: { dialled: 212, spoken: 145 }, this: { dialled: 196, spoken: 99 } };
+const NOTES = {};
+const TEXTS = { '2026-08-29': 1, '2026-09-01': 8, '2026-09-02': 9, '2026-09-03': 10, '2026-09-04': 2 };
+const UNIQUE = { last: { dialled: 196, spoken: 145 }, this: { dialled: 145, spoken: 95 } };
 // Every wk_calls row for his account in the window, by status. Nothing is filtered out.
 // [label, count, direction, did it connect]. The flags drive the sentences under
 // the table, so never infer them by reading the label text.
 const STATUSES = [
-  ['Calls you dialled that connected', 336, 'out', true],
-  ['Calls you dialled that failed to connect', 25, 'out', false],
-  ['Calls you dialled that rang out, nobody answered', 10, 'out', false],
-  ['Calls you dialled saved with no length recorded', 7, 'out', false],
-  ['Calls that came in to you and connected', 21, 'in', true],
-  ['Calls in to you saved with no length recorded', 29, 'in', false],
-  ['Calls in to you that rang out or failed', 13, 'in', false],
+  ['Calls you dialled that connected', 124, 'out', true],
+  ['Calls you dialled that failed to connect', 63, 'out', false],
+  ['Calls you dialled that rang out, nobody answered', 4, 'out', false],
+  ['Calls you dialled saved with no length recorded', 0, 'out', false],
+  ['Calls that came in to you and connected', 15, 'in', true],
+  ['Calls in to you saved with no length recorded', 0, 'in', false],
+  ['Calls in to you that rang out or failed', 18, 'in', false],
 ];
-const LAST_WEEK_PAID_H = 30.83; // what actually went out for 17 to 22 Aug, six days including Saturday
-const VOICEMAIL_SEC = 3220; // time spent reaching answerphones this week, all of it paid as work
-const NO_OUTCOME = 289; // calls with no outcome button pressed. A process note, never a pay deduction.
+const LAST_WEEK_PAID_H = 25.82; // what went out for 24 to 28 Aug
+const VOICEMAIL_SEC = 1161; // time spent reaching answerphones this week, all of it paid as work
+const NO_OUTCOME = 159; // calls with no outcome button pressed. A process note, never a pay deduction.
 
 const pick = ([a, b]) => DAYS.filter((d) => d.date >= a && d.date <= b);
 const sum = (sel, k) => sel.reduce((t, d) => t + d[k], 0);
@@ -133,7 +129,7 @@ const cmpRows = [
   cmpRow('Notes written on calls', A.notes, B.notes, delta(A.notes, B.notes)),
 ].join('\n            ');
 
-const OUTCOMES = ['Viewing booked', 'Ready for call 2', 'Discovery done, evaluating', 'Ballpark agreed', 'Follow up', 'Offer sent', 'Not interested', 'Voicemail', 'No pickup'];
+const OUTCOMES = ['Viewing booked', 'Ready for call 2', 'Discovery done, evaluating', 'Ballpark agreed', 'Follow up', 'Offer sent', 'Not interested', 'Voicemail', 'No pickup', 'Nurturing'];
 const outRows = OUTCOMES.map((k) => {
   const a = A.dispo[k] || 0;
   const b = B.dispo[k] || 0;
@@ -141,8 +137,15 @@ const outRows = OUTCOMES.map((k) => {
   return `<tr><td>${k}</td><td>${a}</td><td>${b}</td><td class="${delta(a, b, k === 'Not interested').cls}">${delta(a, b, k === 'Not interested').txt}</td></tr>`;
 }).filter(Boolean).join('\n            ');
 
+function dayShort(date) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short' }).format(new Date(date + 'T12:00:00Z'));
+}
+function dayLong(date) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'long' }).format(new Date(date + 'T12:00:00Z'));
+}
+
 // ---- summary table ---------------------------------------------------------
-const sumRows = rows.map((r) => `<tr><td>${r.label.replace(' Aug', '')}</td><td>${r.first}</td><td>${r.last}</td><td>${hm(r.span)}</td><td>${hm(r.idle)}</td><td>${hm(r.credit)}</td><td class="cut">${hm(r.deducted)}</td><td class="paid">${hm(r.paid)}</td></tr>`).join('\n            ');
+const sumRows = rows.map((r) => `<tr><td>${dayShort(r.date)}</td><td>${r.first}</td><td>${r.last}</td><td>${hm(r.span)}</td><td>${hm(r.idle)}</td><td>${hm(r.credit)}</td><td class="cut">${hm(r.deducted)}</td><td class="paid">${hm(r.paid)}</td></tr>`).join('\n            ');
 const totalRow = `<tr class="total"><td>Week</td><td></td><td></td><td>${hm(sum(rows, 'span'))}</td><td>${hm(sum(rows, 'idle'))}</td><td>${hm(rows.reduce((t, r) => t + r.credit, 0))}</td><td class="cut">${hm(rows.reduce((t, r) => t + r.deducted, 0))}</td><td class="paid">${hm(paidBeforeExtra)}</td></tr>`;
 
 // ---- day cards -------------------------------------------------------------
@@ -158,26 +161,25 @@ function pctL(sec) { return (((sec - WIN_START) / WIN) * 100).toFixed(3); }
 function pctW(sec) { return ((sec / WIN) * 100).toFixed(3); }
 
 const DAY_NOTES = {
-  '2026-08-24': [
-    { fair: true, text: '5 viewings booked, more than the whole of last week put together, and the longest call of the week sits here at 20 minutes.' },
-    { fair: false, text: 'Seven stops over 10 minutes, 3h 52m in total, and one of them ran 93 minutes from 13:25 to 14:59. The phone was on for 8h 06m and 4h 13m of it was working time.' },
+  '2026-08-29': [
+    { fair: false, text: 'Only three calls, all inside two hours, with two long stops totalling 2h 24m. This was the Saturday carried over from last week\'s Friday pay.' },
   ],
-  '2026-08-25': [
-    { fair: false, text: 'Fourteen separate stops, the most of any day this week, 6h 20m in total. Two of them were 72 and 54 minutes back to back in the afternoon.' },
-    { fair: true, text: 'You still finished at 19:01, the latest finish of the week, and booked 2 more viewings.' },
+  '2026-09-01': [
+    { fair: false, text: 'Fifteen stops over 10 minutes, 5h 46m in total. The day did not really start until 10:26 after a 65 minute stop from your first call.' },
+    { fair: true, text: '3 viewings booked and 72 calls made once the day got going.' },
   ],
-  '2026-08-26': [
-    { fair: true, text: 'Your best day this week. 118 calls, 5h 11m of working time and only six stops over 10 minutes. This is what a full day looks like.' },
-    { fair: true, text: '15 offices reached voicemail and 2 more viewings were booked.' },
+  '2026-09-02': [
+    { fair: false, text: 'Nine stops, 6h 29m idle, including 2h 31m from 17:28 to 19:59 after your last real burst of calls.' },
+    { fair: true, text: 'You still went until 20:00, the latest finish of the week.' },
   ],
-  '2026-08-27': [
-    { fair: false, text: 'Twelve stops over 10 minutes, 5h 08m in total, including 82 minutes from 13:01 to 14:23. Talk time was 1h 41m across 107 calls, so the calls were short.' },
-    { fair: true, text: 'You went until 19:06 and kept the volume up all day.' },
+  '2026-09-03': [
+    { fair: false, text: 'Eleven stops, 6h 38m idle. The morning had back to back stops of 92 and 44 minutes, and the afternoon had another 2h 03m from 14:05 to 16:08.' },
+    { fair: true, text: '2 more viewings booked despite only 59 minutes of talk time across 46 calls.' },
   ],
-  '2026-08-28': [
-    { fair: false, text: 'The day started slowly. A 53 minute stop straight after your first call at 09:38 and a 38 minute one after that, so the morning did not really begin until 11:10.' },
-    { fair: true, text: '3 more viewings booked, and 37 of the calls reached voicemail, which is bad numbers and not you.' },
-    { fair: true, text: `Counted up to your last call at ${CUTOFF} today. Anything you dial after that goes on next week's page, it is not lost.` },
+  '2026-09-04': [
+    { fair: false, text: 'Thirteen stops, 6h 00m idle. The morning did not begin until 10:43 after a 67 minute stop, then another 78 minutes straight after.' },
+    { fair: true, text: '3 viewings booked and your longest call of the week at 15 minutes.' },
+    { fair: true, text: `Counted up to your last call at ${CUTOFF} on Friday. Anything you dial today, Saturday, goes on next week's page. It is not lost.` },
   ],
 };
 
@@ -220,7 +222,7 @@ const dayCards = rows.map((r) => {
   return `      <article class="day">
         <div class="dayhead">
           <h3>${dayName}</h3>
-          <span class="date">${r.label.slice(4)}ust</span>
+          <span class="date">${dayLong(r.date)}</span>
           <span class="spacer"></span>
           <span class="pill">${hm(r.paid)} paid</span>
         </div>
@@ -246,7 +248,7 @@ const daysWorked = rows.length;
 const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Pedro Almedina, timesheet for 24 to 28 August 2026</title>
+<title>Pedro Almedina, timesheet for 29 August to 4 September 2026</title>
 ${STYLE.replace('</style>', `
   .up{color:var(--ok);font-weight:700}
   .down{color:var(--deduct)}
@@ -261,11 +263,11 @@ ${STYLE.replace('</style>', `
     <div class="who">
       <div class="eyebrow">Weekly timesheet and pay statement</div>
       <h1>Pedro Almedina</h1>
-      <div class="sub">Monday 24 August to Friday 28 August 2026</div>
+      <div class="sub">Saturday 29 August to Friday 4 September 2026</div>
     </div>
     <div class="headline">
       <div class="hstat"><div class="eyebrow">Hours paid</div><div class="val">${hm(paidTotal)}</div><div class="foot">Includes 1 hour of break on every day</div></div>
-      <div class="hstat"><div class="eyebrow">Days worked</div><div class="val">${daysWorked} days</div><div class="foot">Monday to Friday</div></div>
+      <div class="hstat"><div class="eyebrow">Days worked</div><div class="val">${daysWorked} days</div><div class="foot">Sat 29 Aug plus Tue to Fri</div></div>
       <div class="hstat"><div class="eyebrow">Calls made</div><div class="val">${B.calls}</div><div class="foot">${hm(B.talk)} of talk time</div></div>
       <div class="hstat pay"><div class="eyebrow">Pay due</div><div class="val">$${due}.00</div><div class="foot">${paidHours.toFixed(2)} hours at $${RATE.toFixed(2)}</div></div>
     </div>
@@ -274,16 +276,15 @@ ${STYLE.replace('</style>', `
   <section>
     <div class="sechead"><div class="eyebrow">The rules</div><h2>How this was worked out</h2></div>
     <div class="panel">
-      <p>Every figure on this page comes straight from the call system. Nothing is estimated and nothing is from memory. The rules are exactly the same ones used for your July, 10 to 14 August and 17 to 22 August timesheets.</p>
+      <p>Every figure on this page comes straight from the call system. Nothing is estimated and nothing is from memory. The rules are exactly the same ones used for your July and August timesheets.</p>
       <ol class="rule">
         <li><span><strong>The working day runs from your first call to your last call.</strong> Not from a clock in the office.</span></li>
         <li><span><strong>Short gaps between calls all count as work.</strong> Anything under 10 minutes between calls is paid working time, no questions asked. Voicemails and numbers that did not pick up still count as calls made.</span></li>
         <li><span><strong>A stop of more than 10 minutes counts as idle.</strong> Your normal pace is a call roughly every 30 seconds, so 10 minutes is 20 times slower than normal. It is a generous line, not a strict one.</span></li>
         <li><span><strong>You get 1 hour of break free, every day.</strong> The first hour of stops each day is paid and never deducted. You used the full hour on all five days this week.</span></li>
-        <li><span><strong>A day with no calls is not paid.</strong> This week that does not apply. You worked all five days.</span></li>
-        <li><span><strong>This week is Monday to Friday because you are being paid on the Friday.</strong> Last week ran to Saturday. If you work tomorrow it goes on next week's page and it is paid there, on the same rules. Nothing is lost by paying you today.</span></li>
+        <li><span><strong>A day with no calls is not paid.</strong> Monday 31 August had no calls and is not counted. Saturday 5 September is not counted yet either.</span></li>
+        <li><span><strong>You are being paid today, Saturday 5 September.</strong> Saturday 29 August was carried from last week's Friday pay. Anything you dial today goes on next week's page on the same rules. Nothing is lost.</span></li>
       </ol>
-      <div class="note">Last week 3 extra hours of stops were paid on top, because we had asked you to stop calling while the script and the system were being changed. That was a one off for that week. It is not on this page because we did not ask you to stop this week. If you think we did, say so and it gets added.</div>
     </div>
   </section>
 
@@ -307,8 +308,8 @@ ${STYLE.replace('</style>', `
       <div class="note fair"><strong>Calls that never connected still count.</strong> All ${STATUSES.filter(([, , , ok]) => !ok).reduce((t, [, v]) => t + v, 0)} of them are in your total and in your working time. A call that fails or rings out is still you doing the work.</div>
       <div class="note fair"><strong>Calls coming in to you count too.</strong> ${STATUSES.filter(([, , dir]) => dir === 'in').reduce((t, [, v]) => t + v, 0)} of this week's calls were people ringing your number back, and they are counted exactly the same as the ones you dialled.</div>
       <div class="note fair"><strong>One account, checked.</strong> Every call is read from your calling account, pedro at hostunico dot com. Your old sales account has zero calls this week, so nothing of yours is sitting somewhere unpaid.</div>
-      <div class="note fair"><strong>Sunday.</strong> There is one single call on your account on Sunday 23 August at 14:24, lasting under a minute. Sunday is not a working day and it is not counted here. If that was real work, tell us what you did and it will be paid.</div>
-      <div class="note"><strong>Today is counted up to ${CUTOFF}.</strong> That was your last call when this page was prepared. If you carry on this evening those calls go onto next week's page. They are not thrown away.</div>
+      <div class="note fair"><strong>Monday 31 August.</strong> There are zero calls on your account that day. It is not a working day on this page. If you were working and the system missed it, say so and it gets added.</div>
+      <div class="note"><strong>Counted up to ${CUTOFF} on Friday 4 September.</strong> That was your last call when this page was prepared. If you work this Saturday afternoon those calls go onto next week's page. They are not thrown away.</div>
     </div>
   </section>
 
@@ -331,12 +332,12 @@ ${STYLE.replace('</style>', `
     <div class="sechead">
       <div class="eyebrow">Comparison</div>
       <h2>Last week against this week</h2>
-      <p>Both sides are measured Monday to Friday, so it is like for like. Last week you also worked the Saturday and you were paid for it, but it is left out of this table on both sides, because a six day week against a five day week is not a fair comparison of anything.</p>
+      <p>Both sides are five working days, so it is like for like. Last week was Monday to Friday. This week is Saturday 29 August carried over, plus Tuesday to Friday.</p>
     </div>
     <div class="panel">
       <div class="tscroll">
         <table>
-          <thead><tr><th>What</th><th>17 to 21 Aug</th><th>24 to 28 Aug</th><th>Change</th></tr></thead>
+          <thead><tr><th>What</th><th>24 to 28 Aug</th><th>29 Aug to 4 Sep</th><th>Change</th></tr></thead>
           <tbody>
             ${cmpRows}
           </tbody>
@@ -347,7 +348,7 @@ ${STYLE.replace('</style>', `
       <h3>What the calls turned into</h3>
       <div class="tscroll">
         <table>
-          <thead><tr><th>Outcome</th><th>17 to 21 Aug</th><th>24 to 28 Aug</th><th>Change</th></tr></thead>
+          <thead><tr><th>Outcome</th><th>24 to 28 Aug</th><th>29 Aug to 4 Sep</th><th>Change</th></tr></thead>
           <tbody>
             ${outRows}
           </tbody>
@@ -357,9 +358,9 @@ ${STYLE.replace('</style>', `
     </div>
     <div class="panel flat">
       <h3>Put simply</h3>
-      <p><strong>${B.dispo['Viewing booked'] || 0} viewings booked, against ${A.dispo['Viewing booked'] || 0} last week.</strong> That is the number that matters and it is the best week you have had. You also made ${B.calls - A.calls} more calls than last week, on the same five days.</p>
-      <p>The honest other side of it. Your talk time went down from ${hm(A.talk)} to ${hm(B.talk)}, real conversations from ${A.conversations} to ${B.conversations}, and the offices you actually spoke to from ${A.unique.spoken} to ${B.unique.spoken}. You were on shift longer, ${hm(B.span)} against ${hm(A.span)}, but idle went from ${Math.round((100 * A.idle) / A.span)} percent of the shift to ${Math.round((100 * B.idle) / B.span)} percent. So this week was more dialling and less talking, with a better result at the end of it.</p>
-      <p>Where the idle sat: ${week.reduce((t, d) => t + d.gaps.length, 0)} separate stops over 10 minutes across the week, ${hm(sum(week, 'idle'))} in total. Tuesday had fourteen of them. Wednesday had six and was your strongest day, 118 calls and 5h 11m of working time. Wednesday is the day to copy.</p>
+      <p><strong>${B.dispo['Viewing booked'] || 0} viewings booked, against ${A.dispo['Viewing booked'] || 0} last week.</strong> You made ${A.calls - B.calls} fewer calls than last week on the same number of paid days, and your paid hours dropped from ${LAST_WEEK_PAID_H} to ${paidHours.toFixed(2)}.</p>
+      <p>The honest read. Talk time went from ${hm(A.talk)} to ${hm(B.talk)}, real conversations from ${A.conversations} to ${B.conversations}, and offices you actually spoke to from ${A.unique.spoken} to ${B.unique.spoken}. Idle went from ${Math.round((100 * A.idle) / A.span)} percent of the shift to ${Math.round((100 * B.idle) / B.span)} percent. This week had ${week.reduce((t, d) => t + d.gaps.length, 0)} separate stops over 10 minutes, ${hm(sum(week, 'idle'))} in total, against ${prev.reduce((t, d) => t + d.gaps.length, 0)} stops and ${hm(sum(prev, 'idle'))} last week.</p>
+      <p>Tuesday 1 September had the most calls at 72 but also fifteen stops. Wednesday 2 September finished latest at 20:00. Thursday 3 September had the worst idle share of the week. Cut the long stops and the same days pay more.</p>
     </div>
   </section>
 
@@ -391,8 +392,8 @@ ${dayCards}
     </div>
     <div class="panel flat">
       <h3>Against last week</h3>
-      <p>Last week you were paid ${LAST_WEEK_PAID_H} hours, $${(LAST_WEEK_PAID_H * RATE).toFixed(2)}. That week had six days in it, a Saturday you worked, and 3 hours of stops we paid you for because we had asked you to stop calling. Counted on the same Monday to Friday basis as this page, and without those 3 extra hours, last week was ${LAST_WEEK_MONFRI_PAID_H.toFixed(2)} hours.</p>
-      <p>This week is ${paidHours.toFixed(2)} hours on five days, which is ${Math.abs(paidHours - LAST_WEEK_MONFRI_PAID_H).toFixed(2)} hours ${paidHours >= LAST_WEEK_MONFRI_PAID_H ? 'more' : 'less'} than that like for like figure, so on hours the two weeks are almost identical. What moved underneath is that you were on shift ${hm(sum(week, 'span') - sum(prev, 'span'))} longer this week, and ${hm(sum(week, 'idle') - sum(prev, 'idle'))} more of it was stops over 10 minutes. The extra hours on shift and the extra idle cancelled each other out. Cut the stops and the same shift pays a good deal more.</p>
+      <p>Last week you were paid ${LAST_WEEK_PAID_H} hours, $${Math.ceil(LAST_WEEK_PAID_H * RATE)}.00. This week is ${paidHours.toFixed(2)} hours, $${due}.00, which is ${(LAST_WEEK_PAID_H - paidHours).toFixed(2)} hours less.</p>
+      <p>Most of that gap is idle. You were on shift ${hm(sum(week, 'span'))} against ${hm(sum(prev, 'span'))} last week, but ${hm(sum(week, 'idle'))} of this week was stops over 10 minutes against ${hm(sum(prev, 'idle'))} last week. Working time inside the shift was ${hm(sum(week, 'worked'))} against ${hm(sum(prev, 'worked'))}.</p>
     </div>
   </section>
 
@@ -403,12 +404,12 @@ ${dayCards}
       <div class="note fair"><strong>Short pauses are free.</strong> Anything under 10 minutes, writing a note, getting a drink, finishing a text, is all paid as working time. Most of your gaps are under 30 seconds and none of those are even looked at.</div>
       <div class="note fair"><strong>Running out of leads is not idle you caused.</strong> If the list ran dry and you were waiting on us for more offices to ring, that is our problem to fix and not a reason to dock you. Tell us the times it happened and those stops get paid.</div>
       <div class="note fair"><strong>Not pressing the outcome buttons costs you nothing here.</strong> ${NO_OUTCOME} calls this week have no outcome on them. Your pay is worked out from the calls themselves, not from the buttons.</div>
-      <div class="note fair"><strong>You are not judged on results here.</strong> This page is about hours. The ${B.dispo['Viewing booked'] || 0} viewings you booked this week are yours regardless of the pay figure, and they are the best week of viewings so far.</div>
+      <div class="note fair"><strong>You are not judged on results here.</strong> This page is about hours. The ${B.dispo['Viewing booked'] || 0} viewings you booked this week are yours regardless of the pay figure.</div>
     </div>
   </section>
 
   <footer>
-    <div>Prepared from the call system on Friday 28 August 2026, counting every call up to ${CUTOFF} that evening. Source: ${B.calls} call records, ${B.notes} call notes and ${B.texts} messages, timed to the second, Europe/London.</div>
+    <div>Prepared from the call system on Saturday 5 September 2026, counting every call up to ${CUTOFF} on Friday evening. Source: ${B.calls} call records and ${B.texts} messages, timed to the second, Europe/London.</div>
     <div>If you think any figure here is wrong, say so and it will be checked against the log.</div>
   </footer>
 

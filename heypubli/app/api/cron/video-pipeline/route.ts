@@ -44,6 +44,7 @@ import {
   enrollmentOffsets,
   pickColorFamily,
   postsInLocalDay,
+  postsCountingForward,
   rotationSlots,
 } from "@/lib/data/video-pipeline";
 import type {
@@ -83,6 +84,17 @@ export async function GET(request: NextRequest) {
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // THE STOP BUTTON. Hugo, 30 Aug 2026: "stop all the video posting, not today,
+  // not tomorrow, stop. Stop the machine."
+  //
+  // Checked before anything else touches the database, so a paused pipeline
+  // enrols nobody, queues nothing and schedules nothing. It is an environment
+  // variable rather than a code change so it can be lifted in two minutes
+  // without a deploy, and so that STOPPING never depends on a build succeeding.
+  if ((process.env.VIDEO_PIPELINE_PAUSED ?? "").trim() === "1") {
+    return NextResponse.json({ ok: true, paused: true, scheduled: 0 });
+  }
+
   const admin = createAdminClient();
   // The generated Database types have never matched this client (every table
   // resolves to `never`, which is why the whole repo casts its queries); one
@@ -258,22 +270,45 @@ export async function GET(request: NextRequest) {
   // Every pipeline post around today's window, per creator. Failed posts are
   // kept OUT of the day count (a failed publish must not eat one of the two
   // real posts) but their slot instants still block re-use of the same time.
+  // PAGED, for exactly the reason the render read above is paged. PostgREST
+  // caps a response at 1000 rows. This read is the ONLY thing that tells the
+  // scheduler how many posts an account already has, and unpaged it returned
+  // the first 1000 rows of a queue that had grown to 119,000. Every account
+  // looked empty, every tick added 120 more, and the queue grew by roughly
+  // 86,000 a day while every report said "ok". A quota that reads a truncated
+  // list is not a quota.
+  //
+  // The window is bounded on BOTH sides now. Open-ended, it re-read the entire
+  // backlog every two minutes forever.
   const since = new Date(now.getTime() - 36 * 3600_000).toISOString();
-  const { data: pipelinePosts } = await db.from("scheduled_posts")
-    .select("profile_id, scheduled_at, master_video_id, status")
-    .not("master_video_id", "is", null)
-    .gte("scheduled_at", since);
+  const until = new Date(now.getTime() + 36 * 3600_000).toISOString();
+  const pipelinePosts: Array<{
+    profile_id: string;
+    scheduled_at: string;
+    master_video_id: string | null;
+    status: string;
+  }> = [];
+  for (let fromRow = 0; ; fromRow += 1000) {
+    const { data: page } = await db
+      .from("scheduled_posts")
+      .select("profile_id, scheduled_at, master_video_id, status")
+      .not("master_video_id", "is", null)
+      .gte("scheduled_at", since)
+      .lt("scheduled_at", until)
+      .order("scheduled_at")
+      .range(fromRow, fromRow + 999);
+    pipelinePosts.push(...((page ?? []) as typeof pipelinePosts));
+    if (!page || page.length < 1000) break;
+    // A backlog this large means something else is wrong; read enough to make
+    // the quota correct and stop rather than paging through a hundred thousand.
+    if (pipelinePosts.length >= 40_000) break;
+  }
   const postsBy = new Map<string, Date[]>();
   const takenInstants = new Map<string, Set<number>>();
   // Which masters an account has ALREADY got queued. The cursor alone is not
   // enough to prevent repeats: see the note on recentMasters below.
   const recentMasters = new Map<string, Set<string>>();
-  for (const p of (pipelinePosts ?? []) as Array<{
-    profile_id: string;
-    scheduled_at: string;
-    status: string;
-    master_video_id: string | null;
-  }>) {
+  for (const p of pipelinePosts) {
     if (p.master_video_id) {
       const used = recentMasters.get(p.profile_id) ?? new Set<string>();
       used.add(p.master_video_id);
@@ -314,7 +349,10 @@ export async function GET(request: NextRequest) {
     // post, it just keep posting." Whatever is left of today's quota is spread
     // over the runway that actually remains, so an account never loses the part
     // of the day that had already gone by the time the dial was turned up.
-    const doneToday = postsInLocalDay(now, tz, mine);
+    // Counts forward from local midnight, so a slot that spilled past midnight
+    // still counts against the day that created it. Calendar-day counting let
+    // the quota refill all night.
+    const doneToday = postsCountingForward(now, tz, mine);
     const wanted = Math.max(0, postsPerDay - doneToday);
     const rotation = rotationSlots(now, tz, wanted, staggerSecondsFor(s.variant_idx));
     const open = (

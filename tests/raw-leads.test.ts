@@ -200,13 +200,17 @@ describe('the seven comparable rules reach the raw tab', () => {
   const SEVEN = ['street_first', 'recent_enough', 'photographs', 'condition',
     'sizes', 'own_street', 'on_market']
 
-  it('the assign script names all seven rules and refuses anything short', () => {
-    // The same discipline the discount already has: the pool file is not
-    // evidence, it is a file. A last gate that trusts its input is not a gate.
-    for (const rule of SEVEN) expect(disc).toContain(rule)
+  it('the assign script requires sold gold/strong evidence, not the photo rules', () => {
+    // Hugo 2026-08-31: the on-market photo checks cut 216 sold-standard
+    // branches to 72 and made 100 at 20% impossible. The call gate is now
+    // street/gold/strong plus the sold ticks (street_first, recent_enough,
+    // sizes). The raw tab still shows all seven.
     expect(disc).toMatch(/gatePassed/)
-    expect(disc).toMatch(/checks\.length !== SEVEN\.length/)
-    expect(disc).toMatch(/did not clear all seven/)
+    expect(disc).toMatch(/const REQUIRED = \['street_first', 'recent_enough', 'sizes'\]/)
+    expect(disc).toMatch(/const SHIPPABLE = \['street', 'gold', 'strong'\]/)
+    expect(disc).toContain('street_first')
+    expect(disc).toContain('recent_enough')
+    expect(disc).toContain('sizes')
   })
 
   it('an unchecked lead is refused, never waved through', () => {

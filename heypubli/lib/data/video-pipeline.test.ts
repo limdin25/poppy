@@ -28,6 +28,7 @@ import {
   libraryLapsCompleted,
   advanceToPlayable,
   rotationSlots,
+  postsCountingForward,
   todaySlots,
   todaySlotsWithKickoff,
   STAGGER_STEP_MIN,
@@ -272,6 +273,45 @@ describe("rotation fill", () => {
   it("asks for nothing when there is nothing left to give", () => {
     expect(rotationSlots(afternoon, "Asia/Kolkata", 0)).toEqual([]);
     expect(rotationSlots(afternoon, "Asia/Kolkata", -3)).toEqual([]);
+  });
+});
+
+describe("postsCountingForward", () => {
+  // 26 Aug 2026: accounts got 41, 55 and 118 posts against a quota of 10.
+  // rotationSlots can place a slot after local midnight when the evening window
+  // has closed; postsInLocalDay did not count those, so the quota never filled
+  // and a two-minute cron topped the account up all night.
+  const tz = "Asia/Kolkata";
+  const now = new Date("2026-08-26T17:00:00Z"); // 22:30 local, window closing
+
+  it("counts a slot that spilled past local midnight", () => {
+    const spilled = [new Date("2026-08-26T19:30:00Z")]; // 01:00 local NEXT day
+    expect(postsInLocalDay(now, tz, spilled)).toBe(0);
+    expect(postsCountingForward(now, tz, spilled)).toBe(1);
+  });
+
+  it("still counts everything from earlier the same local day", () => {
+    const earlier = [
+      new Date("2026-08-26T04:00:00Z"), // 09:30 local
+      new Date("2026-08-26T10:00:00Z"), // 15:30 local
+    ];
+    expect(postsCountingForward(now, tz, earlier)).toBe(2);
+  });
+
+  it("does NOT count yesterday", () => {
+    const yesterday = [new Date("2026-08-25T12:00:00Z")];
+    expect(postsCountingForward(now, tz, yesterday)).toBe(0);
+  });
+
+  it("fills the quota exactly once instead of all night", () => {
+    // ten slots from 19:00 UTC onward, which is after local midnight in Kolkata
+    const tenSpilled = Array.from(
+      { length: 10 },
+      (_, i) => new Date(Date.UTC(2026, 7, 26, 19, i * 15, 0)),
+    );
+    expect(postsCountingForward(now, tz, tenSpilled)).toBe(10);
+    // and the calendar-day counter, which is what caused the overrun, sees none
+    expect(postsInLocalDay(now, tz, tenSpilled)).toBe(0);
   });
 });
 

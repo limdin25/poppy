@@ -11,23 +11,14 @@
     "dispo": {}
   },
   "w2": {
-    "days": 5,
-    "calls": 400,
-    "span": 138914.57200000001,
-    "idle": 64616.111,
-    "worked": 74298.46100000001,
-    "talk": 56119.881,
-    "connected": 308,
-    "conversations": 218,
-    "dispo": {
-      "Not interested": 49,
-      "Follow up": 17,
-      "Discovery done, evaluating": 44,
-      "Voicemail": 174,
-      "No pickup": 10,
-      "Ready for call 2": 17,
-      "Ballpark agreed": 1,
-      "Viewing booked": 2
-    }
+    "days": 0,
+    "calls": 0,
+    "span": 0,
+    "idle": 0,
+    "worked": 0,
+    "talk": 0,
+    "connected": 0,
+    "conversations": 0,
+    "dispo": {}
   }
 }

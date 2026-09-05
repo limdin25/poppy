@@ -426,3 +426,18 @@ Rules for any AI agent working on this project — apply every task, every sessi
 **Don't reproduce internal reasoning in responses.** Don't write prompts or instructions that tell the model to echo or explain its internal reasoning as output text. Output should be the answer, not the working.
 
 **Self-verify on complex builds.** After finishing anything more than a small edit, check the work against what was asked before reporting done.
+
+## The WhatsApp number +447460035763 is gone (2026-08-31)
+
+Hugo's decision, recorded to avoid confusion: the WhatsApp sender
+`+447460035763` (used by the Maria persona, and before that the plumbing
+business; both businesses are closed) now belongs to **Lemlin**
+(`/Users/hugo/Whats/lemlin-stays`). Its inbound webhook was repointed on
+2026-08-31 from this project's Supabase function
+(`wk-sms-incoming` on `loggyxryrhqsbtqpteog`) to
+`https://lemlin-app.vercel.app/api/webhooks/twilio`.
+
+Do NOT send WhatsApp from this number out of Poppy, and do not repoint the
+webhook back. Poppy's WhatsApp channel is Unipile, not this Twilio sender.
+Inbound replies from old Poppy contacts now hit Lemlin, which drops them
+without creating anything (they never match a Lemlin reservation or thread).
