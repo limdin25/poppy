@@ -15,7 +15,8 @@ const PANE = read('src/features/crm/components/live-call/PropertiesPane.tsx');
 describe('AI_DEV_HOTKEY disposition', () => {
   it('migration adds the column on the property board only, idempotently', () => {
     expect(MIGRATION).toMatch(/name = 'AI_DEV_HOTKEY'/);
-    expect(MIGRATION).toMatch(/name = 'Voicemail'/);
+    expect(MIGRATION).toMatch(/name = 'Ballpark agreed'/);
+    expect(MIGRATION).toMatch(/name = 'Follow up'/);
     expect(MIGRATION).toMatch(/if exists/);
   });
 
