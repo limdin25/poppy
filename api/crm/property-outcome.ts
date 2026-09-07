@@ -53,7 +53,7 @@ const supabase = createClient(
  *  neither 'qualified' (worth pursuing, nobody waiting) nor 'callback' (nothing
  *  learned). It files the deal under a stage of its own so the ones needing
  *  Hugo's decision are not buried among the ones that do not. */
-const OUTCOMES = ['qualified', 'figure_obtained', 'deciding', 'follow_up', 'not_qualified', 'callback', 'no_answer'] as const;
+const OUTCOMES = ['qualified', 'figure_obtained', 'deciding', 'follow_up', 'ai_dev_hotkey', 'not_qualified', 'callback', 'no_answer'] as const;
 
 /** Which step of the deal process an outcome leaves the branch on.
  *
@@ -99,6 +99,7 @@ const BOARD_COLUMN_FOR: Partial<Record<Outcome, string>> = {
   figure_obtained: 'Ballpark agreed',
   deciding: 'Offer sent',
   follow_up: 'Follow up',
+  ai_dev_hotkey: 'AI_DEV_HOTKEY',
 };
 
 interface Body {

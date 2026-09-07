@@ -27,6 +27,14 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
+### 2026-09-07 — AI_DEV_HOTKEY disposition
+- **Added:** `supabase/migrations/20260907000001_ai_dev_hotkey_column.sql` inserts
+  `AI_DEV_HOTKEY` on the property CRM board (Interested + Voicemail gate).
+- **Wired:** `api/crm/property-outcome.ts` outcome `ai_dev_hotkey` maps to that
+  column; not a BRRR pipeline outcome. `PropertiesPane.tsx` button added.
+- **Guard:** `tests/ai-dev-hotkey-disposition.test.ts`, `property-no-ai-calls.test.ts`
+  OUTCOMES pin updated.
+
 ### 2026-07-20 — VM drop: adversarial-review fixes
 - **Fixed (major):** `dropVoicemail` stale-response race — the call ref is
   now captured BEFORE the await; a response landing after the call ended /
