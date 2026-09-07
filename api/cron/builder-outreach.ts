@@ -42,7 +42,7 @@ import { scrapeBuildersWidening, upsertScrapedBuilders } from '../lib/builder-sc
 import { raiseQuery } from '../lib/ops-query.js';
 import {
   loadOutreachSettings, draftOutreachForProperty, sendOutreachRow, sentToday,
-  VIEWING_BOOKED_COLUMN,
+  VIEWING_BOOKED_COLUMN, builderAutomationEnabled,
 } from '../lib/builder-outreach.js';
 import { notifyBuilderEvent, builderNotifyRecipients } from '../lib/builder-notify.js';
 
@@ -68,6 +68,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   try {
     const settings = await loadOutreachSettings(sb);
+    if (!builderAutomationEnabled(settings)) {
+      res.statusCode = 200;
+      res.end(JSON.stringify({ ...out, note: 'builder automation disabled' }));
+      return;
+    }
 
     // The property pipeline is found the way every reader finds it: by column
     // name. VIEWING_BOOKED_COLUMN rather than a second copy of the string,

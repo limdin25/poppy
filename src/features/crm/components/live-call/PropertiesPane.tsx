@@ -136,7 +136,7 @@ const OUTCOMES: Array<{ key: string; label: string; cls: string }> = [
   { key: 'qualified', label: 'Qualified', cls: 'bg-[#2E7D43] hover:bg-[#276b39]' },
   { key: 'deciding', label: 'Offer sent', cls: 'bg-[#7C5CBF] hover:bg-[#6a4ea8]' },
   { key: 'follow_up', label: 'Follow up', cls: 'bg-[#2F8F9D] hover:bg-[#297d8a]' },
-  { key: 'ai_dev_hotkey', label: 'AI_DEV_HOTKEY', cls: 'bg-[#6366F1] hover:bg-[#5558e3]' },
+  { key: 'offer_declined', label: 'Offer declined', cls: 'bg-[#BE123C] hover:bg-[#9f0f33]' },
   { key: 'callback', label: 'Call back', cls: 'bg-[#3C5A87] hover:bg-[#33507a]' },
   { key: 'not_qualified', label: 'Not for us', cls: 'bg-[#6B7280] hover:bg-[#5b626d]' },
   { key: 'no_answer', label: 'No answer', cls: 'bg-[#9CA3AF] hover:bg-[#8b919b]' },

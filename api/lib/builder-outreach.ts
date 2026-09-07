@@ -31,6 +31,8 @@ import { toGsm7, smsSegments } from './sms-charset.js';
 type Sb = SupabaseClient<any, any, any>;
 
 export interface OutreachSettings {
+  /** Master kill switch for builder crons (brain, outreach sweep, morning reminders). */
+  automation_enabled: boolean;
   auto_send: boolean;
   daily_cap: number;
   radius_m: number;
@@ -48,6 +50,7 @@ export interface OutreachSettings {
 }
 
 export const OUTREACH_DEFAULTS: OutreachSettings = {
+  automation_enabled: false,
   auto_send: false,
   daily_cap: 20,
   radius_m: 10_000,
@@ -73,6 +76,11 @@ export function loadOutreachSettingsFrom(raw: unknown): OutreachSettings {
   let parsed: Partial<OutreachSettings> = {};
   try { parsed = JSON.parse(String(raw ?? '{}')) as Partial<OutreachSettings>; } catch { /* defaults */ }
   return { ...OUTREACH_DEFAULTS, ...parsed };
+}
+
+/** When false, builder crons must not send WhatsApp or raise ops queries. */
+export function builderAutomationEnabled(settings: OutreachSettings): boolean {
+  return settings.automation_enabled === true;
 }
 
 export async function loadOutreachSettings(sb: Sb): Promise<OutreachSettings> {

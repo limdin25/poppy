@@ -236,6 +236,7 @@ describe('every road onto a house passes the same gate', () => {
 
 describe('settings', () => {
   it('defaults are manual-first with a daily cap: the auto/manual gate is a flag, not a fork', () => {
+    expect(OUTREACH_DEFAULTS.automation_enabled).toBe(false);
     expect(OUTREACH_DEFAULTS.auto_send).toBe(false);
     expect(OUTREACH_DEFAULTS.daily_cap).toBeGreaterThan(0);
   });

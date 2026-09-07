@@ -41,7 +41,7 @@ import {
   loadOutreachSettings, assignBuilderToProperty, viewingTimeLabel,
   builderFacingAddress, renderPreview, FOLLOWUP_TEMPLATE_TEXT,
   draftOutreachForProperty, sendOutreachRow, sentToday,
-  needsMoreBuilders, nextRadiusM,
+  needsMoreBuilders, nextRadiusM, builderAutomationEnabled,
 } from '../lib/builder-outreach.js';
 import {
   scrapeBuildersForOutcode, upsertScrapedBuilders, WIDENING_RADII_M,
@@ -162,6 +162,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   try {
     const settings = await loadOutreachSettings(sb);
+    if (!builderAutomationEnabled(settings)) {
+      res.statusCode = 200;
+      res.end(JSON.stringify({ ...out, note: 'builder automation disabled' }));
+      return;
+    }
     const ops = await loadOpsContacts(sb);
     const missing = unreachable(ops).map((c) => c.name);
     const admins = await builderNotifyRecipients(sb);

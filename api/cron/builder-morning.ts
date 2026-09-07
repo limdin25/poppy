@@ -11,7 +11,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
-import { sendMorningReminders } from '../lib/builder-outreach.js';
+import { sendMorningReminders, loadOutreachSettings, builderAutomationEnabled } from '../lib/builder-outreach.js';
 
 export const config = { maxDuration: 60 };
 
@@ -39,6 +39,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (ukHour !== 8 && url.searchParams.get('force') !== '1') {
       res.statusCode = 200;
       res.end(JSON.stringify({ skipped: 'not 8am UK', ukHour }));
+      return;
+    }
+
+    const settings = await loadOutreachSettings(sb);
+    if (!builderAutomationEnabled(settings)) {
+      res.statusCode = 200;
+      res.end(JSON.stringify({ skipped: 'builder automation disabled' }));
       return;
     }
 

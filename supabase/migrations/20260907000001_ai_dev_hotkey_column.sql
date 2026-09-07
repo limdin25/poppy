@@ -1,4 +1,4 @@
--- AI_DEV_HOTKEY disposition column (Hugo, 2026-09-07).
+-- Offer declined disposition column (Hugo, 2026-09-07).
 --
 -- A new post-call disposition and matching pipeline column on the property
 -- board (found as the pipeline that owns 'Ballpark agreed', same anchor as
@@ -24,7 +24,7 @@ begin
 
   if exists (
     select 1 from wk_pipeline_columns
-    where pipeline_id = v_pipeline and name = 'AI_DEV_HOTKEY'
+    where pipeline_id = v_pipeline and name = 'Offer declined'
   ) then
     return;
   end if;
@@ -57,7 +57,7 @@ begin
   insert into wk_pipeline_columns
     (pipeline_id, name, colour, position, sort_order, requires_followup, is_terminal, archived)
   values
-    (v_pipeline, 'AI_DEV_HOTKEY', '#6366F1', v_after + 1, v_sort + 1, false, false, false);
+    (v_pipeline, 'Offer declined', '#BE123C', v_after + 1, v_sort + 1, false, false, false);
 
   update wk_pipeline_columns
      set position = position - 999

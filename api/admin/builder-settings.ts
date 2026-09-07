@@ -39,6 +39,11 @@ const NUMBERS: Record<string, { min: number; max: number }> = {
 function validate(patch: Record<string, unknown>): { value?: Partial<OutreachSettings>; error?: string } {
   const out: Record<string, unknown> = {};
 
+  if ('automation_enabled' in patch) {
+    if (typeof patch.automation_enabled !== 'boolean') return { error: 'automation_enabled must be on or off.' };
+    out.automation_enabled = patch.automation_enabled;
+  }
+
   if ('auto_send' in patch) {
     if (typeof patch.auto_send !== 'boolean') return { error: 'auto_send must be on or off.' };
     out.auto_send = patch.auto_send;

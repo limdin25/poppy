@@ -107,7 +107,7 @@ describe('the human path is untouched by the removal', () => {
     // joined 2026-08-11 at Hugo's request for warm tracking states he can watch
     // on the board.
     expect(OUTCOME).toMatch(
-      /const OUTCOMES = \['qualified', 'figure_obtained', 'deciding', 'follow_up', 'ai_dev_hotkey', 'not_qualified', 'callback', 'no_answer'\]/)
+      /const OUTCOMES = \['qualified', 'figure_obtained', 'deciding', 'follow_up', 'offer_declined', 'not_qualified', 'callback', 'no_answer'\]/)
     // An allowlist, never the raw body value straight into the update.
     expect(OUTCOME).toMatch(/OUTCOMES\.includes\(outcome\)/)
   })
@@ -118,7 +118,7 @@ describe('the human path is untouched by the removal', () => {
     expect(OUTCOME).toMatch(/const PIPELINE_OUTCOMES: readonly Outcome\[\] = \['qualified', 'figure_obtained'\]/)
     expect(OUTCOME).toMatch(/deciding: 'Offer sent'/)
     expect(OUTCOME).toMatch(/follow_up: 'Follow up'/)
-    expect(OUTCOME).toMatch(/ai_dev_hotkey: 'AI_DEV_HOTKEY'/)
+    expect(OUTCOME).toMatch(/offer_declined: 'Offer declined'/)
   })
 
   it('a figure out of the agent files a deal and lands it in its own stage', () => {
