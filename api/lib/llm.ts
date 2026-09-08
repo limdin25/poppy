@@ -120,7 +120,9 @@ const AUTO_THINKING_ALLOWANCE = 1536;
  */
 export type LLMBlock =
   | { type: 'text'; text: string }
-  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  // URL form for the refurb estimator: Anthropic fetches the picture itself.
+  | { type: 'image'; source: { type: 'url'; url: string } };
 
 export interface LLMMessage {
   role: 'user' | 'assistant';

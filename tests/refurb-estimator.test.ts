@@ -16,6 +16,9 @@ import {
   estimate, builderBrief, parseReadResult, SECTIONS, composeTranscript,
   missingSections, type WorkItem,
 } from '@/features/crm/lib/refurbCard';
+import { smsSegments } from '../api/lib/sms-charset';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 /** RATE_CARD in refurb_model.py, materials and trade labour, verbatim. */
 const ENGINE_CARD: Record<string, [number, number]> = {
@@ -359,6 +362,8 @@ describe('the builder message', () => {
     const msg = builderBrief(lines, { address: '14 Test Road' });
     // Strip out before decorating, always. A quote in this order is a quote
     // somebody thought about.
+    // Lower-cased on the line now, because it reads as an instruction rather
+    // than a heading: "* strip the house out, ...".
     expect(msg.indexOf('Strip the house out')).toBeLessThan(msg.indexOf('Paint throughout'));
   });
 
@@ -366,6 +371,7 @@ describe('the builder message', () => {
     const msg = builderBrief(lines, { address: '14 Test Road', includeBudget: true, budget: 9500 });
     expect(msg).toContain('£9,500');
     expect(msg).toContain('materials included');
+    expect(msg).toContain('excluding VAT');
   });
 
   it('keeps our figure off it when the switch is turned off', () => {
@@ -373,16 +379,68 @@ describe('the builder message', () => {
     expect(msg).not.toMatch(/£/);
   });
 
-  it('asks for a price per item, which is the whole point of sending it', () => {
-    expect(builderBrief(lines, { address: '14 Test Road' })).toContain('item by item');
+  it('asks for itemised prices, which is the whole point of sending it', () => {
+    const msg = builderBrief(lines, { address: '14 Test Road' });
+    expect(msg).toContain('itemised prices');
+    expect(msg).toContain('only for work that is actually needed');
+    expect(msg).toContain('price it separately');
   });
 
-  it('tells the builder what the photos could not show', () => {
+  it('IS SHORT ENOUGH TO TEXT', () => {
+    // Hugo, 2026-08-25: "the report is too long to send via SMS to the builder."
+    // Measured on Whitworth Road the old one was 4,445 characters, THIRTY TWO
+    // texts, most of it the model's prose about photographs. His own example of
+    // what it should look like is about 700 characters, five texts.
     const msg = builderBrief(lines, {
       address: '14 Test Road',
-      unknowns: ['Whether the boiler actually works.'],
+      toConfirm: [{ where: 'Bathroom', label: 'Bathroom extractor fan', detail: 'No fan visible.' }],
+      toInspect: [{ where: 'Fuse board', label: '', detail: 'Check the type and age.' }],
     });
-    expect(msg).toContain('Whether the boiler actually works.');
+    expect(msg.length).toBeLessThan(900);
+    expect(smsSegments(msg)).toBeLessThanOrEqual(7);
+  });
+
+  it('keeps the model\'s prose about photographs OFF it', () => {
+    // `unknowns` are sentences like "not visible in any photograph", which is
+    // report language AND a hint that we have not been inside. They stay on
+    // Pedro's screen and never reach the builder.
+    const msg = builderBrief(lines, {
+      address: '14 Test Road',
+      unknowns: ['Fuse board type not visible in any photograph.'],
+    });
+    expect(msg).not.toContain('photograph');
+  });
+
+  it('never says the same thing twice on one line', () => {
+    // The model's detail is often the label said again: "Paint throughout,
+    // paint throughout." Repetition was one of the three things Hugo asked to
+    // cut out of it.
+    const msg = builderBrief(
+      estimate([item('decorate', { detail: 'Paint throughout.' })]).lines,
+      { address: '14 Test Road' },
+    );
+    expect(msg).toContain('Paint throughout.');
+    expect(msg).not.toMatch(/paint throughout, paint throughout/i);
+  });
+
+  it('turns a thing to look at into a thing to DO', () => {
+    // Hugo: "Turn observations into clear on-site actions." A named job asks
+    // whether it is really needed; a bare finding asks him to check it.
+    const named = builderBrief([], {
+      address: '14 Test Road',
+      toConfirm: [{ where: 'Bedrooms', label: 'Full replaster', detail: 'Blown plaster.' }],
+    });
+    expect(named).toContain('Bedrooms: check whether it needs full replaster, and price it only if it does.');
+    expect(named).toContain('*Please check:*');
+  });
+
+  it('never asks for the same check twice', () => {
+    const msg = builderBrief([], {
+      address: '14 Test Road',
+      toConfirm: [{ where: 'Bedrooms', label: 'Full replaster', detail: 'a' }],
+      toInspect: [{ where: 'Bedrooms', label: 'Full replaster', detail: 'b' }],
+    });
+    expect(msg.match(/full replaster/gi)?.length).toBe(1);
   });
 
   it('never writes a long dash anywhere it can be sent', () => {
@@ -391,5 +449,29 @@ describe('the builder message', () => {
       + cardVocabulary()
       + Object.values(CARD).map((l) => l.label + l.when).join('');
     expect(all).not.toMatch(/[—–…‘’“”]/);
+  });
+});
+
+describe('our own budget stays off the builder message', () => {
+  // Hugo, 2026-08-26: "we should not put our price in there any more. Let them
+  // quote us." The evidence is a recording: at 13:35 the builder was texted
+  // "our target budget is £2,479 + VAT", at 13:38 he read it back down the
+  // phone and said "there will be no business unfortunately between us". He had
+  // agreed to come at 13:12.
+  const lines = estimate([item('kitchen', { detail: 'New kitchen.' })]).lines;
+
+  it('says nothing about money unless somebody deliberately turns it on', () => {
+    expect(builderBrief(lines, { address: '14 Test Road' })).not.toMatch(/£/);
+  });
+
+  it('still asks him to quote, and to quote excluding VAT', () => {
+    const msg = builderBrief(lines, { address: '14 Test Road' });
+    expect(msg).toContain('itemised prices');
+    expect(msg).toContain('excluding VAT');
+  });
+
+  it('is OFF by default on the screen', () => {
+    const page = readFileSync(resolve(__dirname, '../src/features/crm/pages/RefurbEstimatorPage.tsx'), 'utf8');
+    expect(page).toMatch(/const \[anchor, setAnchor\] = useState\(false\)/);
   });
 });

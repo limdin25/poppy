@@ -220,6 +220,10 @@
       "schedule": "0 7,8 * * *"
     },
     {
+      "path": "/api/cron/refurb-read",
+      "schedule": "*/10 6-22 * * *"
+    },
+    {
       "path": "/api/cron/call-listener",
       "schedule": "*/5 6-21 * * *"
     },

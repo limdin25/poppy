@@ -452,6 +452,10 @@ export function estimate(
 
 export const gbp = (n: number) => `£${Math.round(n).toLocaleString('en-GB')}`;
 
+/** One line on the builder's message that we are NOT pricing: either a job only
+ *  one reader saw, or a part of the house somebody has to stand in. */
+export interface BriefAsk { label: string; detail: string; where?: string }
+
 export interface BriefOpts {
   address: string;
   /** Anchor him at our figure. ON by default: Hugo leans that way and the
@@ -460,12 +464,37 @@ export interface BriefOpts {
   includeBudget?: boolean;
   budget?: number;
   unknowns?: string[];
+  /** Work we think is there but will not price. He confirms it and prices it. */
+  toConfirm?: BriefAsk[];
+  /** Parts of the property that need looking at physically. */
+  toInspect?: BriefAsk[];
+  /** WHATSAPP GETS BOLD, SMS GETS PLAIN. The asterisks render as bold on
+   *  WhatsApp and as literal asterisks in a text message, which looks like a
+   *  mistake. Hugo, 2026-08-26: "make sure the message is customized for
+   *  WhatsApp and SMS, small friendly message." Defaults to WhatsApp because
+   *  that is where most builder threads live. */
+  channel?: 'whatsapp' | 'sms';
 }
 
 /** The message for the builder. Simple on purpose. Hugo: "you wanna simplify
  *  for the builder, you don't wanna scare the builder." So it is a list of
  *  jobs in the order a builder does them, no jargon, no internal figures
- *  beyond the one budget line, and it asks for a price per item. */
+ *  beyond the one budget line, and it asks for a price per item.
+ *
+ *  IT NEVER SAYS WE HAVE NOT SEEN THE HOUSE. Hugo, 2026-08-25: "Do NOT tell the
+ *  builder that we have not viewed the property. Instead, ask the builder to
+ *  physically confirm any flagged items and provide an estimate for those items
+ *  where necessary." A buyer who admits he is guessing off photographs invites
+ *  a padded quote, and it changes nothing about what we actually want from him,
+ *  which is a price for the certain work and a look at the uncertain work.
+ *
+ *  THREE GROUPS, KEPT APART ON PURPOSE, because they are three different asks:
+ *    1. the work we are sure of, priced      -> "price this"
+ *    2. the work we are not sure of          -> "confirm it, then price it"
+ *    3. the parts nobody has been inside     -> "look at this and tell us"
+ *
+ *  EVERY FIGURE IS EXCLUDING VAT and no VAT is added anywhere. Hugo, same day:
+ *  "Prices must be shown EXCLUDING VAT. Do not add VAT." */
 export function builderBrief(lines: EstimateLine[], opts: BriefOpts): string {
   // The order of works from the course's own schedule: strip out first, then
   // the wet and hidden trades, then plaster, then the fit out, then decorating,
@@ -486,25 +515,112 @@ export function builderBrief(lines: EstimateLine[], opts: BriefOpts): string {
   const ordered = [...lines].sort((a, b) => rank(a.key) - rank(b.key));
 
   const out: string[] = [];
-  out.push(`Hi, we are looking at ${opts.address || 'a property'} and we would like a price for the work.`);
-  out.push('');
-  out.push('This is what we think it needs:');
-  out.push('');
-  for (const l of ordered) {
-    const qty = l.units > 1 && Number.isInteger(l.units) ? ` (x${l.units})` : '';
-    out.push(`${ordered.indexOf(l) + 1}. ${l.label}${qty}. ${l.detail}`);
+  out.push(
+    `Hi, we are looking at ${opts.address || 'this property'}. `
+    + 'Please inspect it and give us *itemised prices, only for work that is actually needed*.',
+  );
+
+  if (ordered.length) {
+    out.push('');
+    out.push('*Please price:*');
+    out.push('');
+    for (const l of ordered) {
+      const qty = l.units > 1 && Number.isInteger(l.units) ? ` x${l.units}` : '';
+      const where = usefulWhere(l.where, l.label, l.key);
+      out.push(`* ${where ? `${where}: ` : ''}${l.label}${qty}${oneLine(l.detail, l.label)}`);
+    }
   }
-  out.push('');
+
   if (opts.includeBudget && opts.budget) {
-    out.push(`Our budget for this is around ${gbp(opts.budget)} plus VAT, materials included. Tell us what you can do inside that.`);
     out.push('');
+    out.push(`Our budget is around ${gbp(opts.budget)} excluding VAT, materials included.`);
   }
-  if (opts.unknowns?.length) {
-    out.push('We have only seen photographs so far, so these are the things we could not tell:');
-    for (const u of opts.unknowns) out.push(`  - ${u}`);
+
+  // The two uncertain groups become ONE list of on-site checks, because to the
+  // man standing in the house they are the same instruction: look at it, and
+  // price it only if it needs doing. Splitting them was our bookkeeping, not
+  // his job.
+  const named = opts.toConfirm ?? [];
+  // An area that already has a named job to check does NOT also get "check the
+  // condition generally": that is the same instruction twice.
+  const covered = new Set(named.map((a) => (a.where ?? '').toLowerCase()));
+  const general = (opts.toInspect ?? []).filter((a) => !covered.has((a.where ?? '').toLowerCase()));
+  const checks = [...named, ...general];
+  if (checks.length) {
     out.push('');
+    out.push('*Please check:*');
+    out.push('');
+    const seen = new Set<string>();
+    for (const a of checks) {
+      const key = `${a.where ?? ''}|${a.label}`.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const where = a.label ? usefulWhere(a.where, a.label) : a.where;
+      out.push(`* ${where ? `${where}: ` : ''}${checkAction(a)}`);
+    }
   }
-  out.push('Could you price it item by item rather than one figure for the lot, so we can see where the money goes?');
-  out.push('If we have missed anything or got something wrong, tell us, you know better than we do from photos.');
-  return out.join('\n');
+
+  out.push('');
+  out.push('If you find anything else that needs doing, *tell us and price it separately*.');
+  out.push('Please quote *excluding VAT*, with VAT shown separately if it applies.');
+  const text = out.join('\n');
+  // Bold on WhatsApp, plain in a text. The asterisks are emphasis markers, not
+  // punctuation, so a text message drops them entirely rather than showing them.
+  return opts.channel === 'sms' ? text.replace(/\*/g, '') : text;
+}
+
+/** Lower the first letter only, so "CO alarms" and "LVT" survive. */
+const lowerFirst = (t: string) => `${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+
+/** The room name, but only when it tells a builder something.
+ *
+ *  Three ways it does not, all seen on the first real message:
+ *  - a whole-house job filed under a room: "What is left inside: paint
+ *    throughout", five lines of it. That is our checklist, not a place.
+ *  - a room name already inside the job: "Kitchen: new kitchen".
+ *  - "What is left inside" at all, which is a heading on our screen and
+ *    nothing a man standing in a house would recognise. */
+function usefulWhere(where: string | undefined, label: string, key?: LineKey): string {
+  const w = (where ?? '').trim();
+  if (!w) return '';
+  if (key && CARD[key]?.scope === 'whole_house') return '';
+  const bare = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  if (bare(label).includes(bare(w))) return '';
+  if (bare(w) === 'what is left inside') return '';
+  return w;
+}
+
+/** One short sentence, or nothing.
+ *
+ *  THE LENGTH IS THE POINT. Hugo, 2026-08-25, on the first version: "the report
+ *  is too long to send via SMS to the builder." Measured on Whitworth Road it
+ *  was 4,445 characters, THIRTY TWO texts, most of it the model's own prose
+ *  about photographs. A builder needs the instruction, not the reasoning. */
+function oneLine(detail: string, label: string): string {
+  const first = String(detail ?? '').split(/(?<=[.!?])\s/)[0].trim().replace(/\.$/, '');
+  if (!first || first.length > 90) return '.';
+  // "Paint throughout, paint throughout." The model's detail is often the label
+  // said again, and repetition was one of the three things Hugo asked to cut.
+  const bare = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  if (bare(first) === bare(label) || bare(first).startsWith(bare(label))) return '.';
+  return `, ${lowerFirst(first)}.`;
+}
+
+/** Turn a finding into something to DO on site.
+ *
+ *  Hugo: "Turn observations into clear on-site actions: what to check, what to
+ *  confirm, and what to price." A line that reads "no photograph shows the fuse
+ *  board" tells a builder nothing and quietly admits we have not been inside;
+ *  "check the type and age and whether it needs upgrading" is the same fact as
+ *  an instruction. */
+function checkAction(a: BriefAsk): string {
+  const label = a.label.trim();
+  const detail = String(a.detail ?? '').trim();
+  // A named job from the rate card: he is being asked whether it is really
+  // needed, and to price it if it is.
+  if (label) return `check whether it needs ${lowerFirst(label)}, and price it only if it does.`;
+  const first = detail.split(/(?<=[.!?])\s/)[0].trim();
+  if (!first) return 'check the condition and tell us what it needs.';
+  const short = first.length > 110 ? 'check the condition and tell us what it needs' : first.replace(/\.$/, '');
+  return `${lowerFirst(short)}.`;
 }

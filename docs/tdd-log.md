@@ -27,7 +27,15 @@ How we keep Elsie launch-stable. Append a dated entry per cycle.
 
 ## Cycles
 
-### 2026-09-07 — Offer declined disposition + builder automations off
+### 2026-09-08 — Estimator property picker live on production
+- **Root cause:** production was still on the old manual-address estimator from
+  `main`; the property dropdown and `{ action: 'houses' }` API lived only on
+  `builders-sms-first` and were never deployed.
+- **Fix:** ported the estimator stack (page, assessment merge, refurb-read cron,
+  Rightmove listing fetch, viewing-houses query) from `builders-sms-first` onto
+  `main` and deployed.
+- **Guard:** `tests/refurb-assessment.test.ts`, `tests/refurb-estimator.test.ts`.
+
 - **Added:** `supabase/migrations/20260907000001_ai_dev_hotkey_column.sql` inserts
   `Offer declined` on the property CRM board (`Ballpark agreed` anchor, after `Follow up`).
 - **Renamed:** `20260907000002_rename_ai_dev_hotkey_to_offer_declined.sql` fixes live

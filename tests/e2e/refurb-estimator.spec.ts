@@ -1,115 +1,139 @@
-import { test, expect } from './helpers/auth'
+import { test, expect } from '@playwright/test'
 
-/**
- * The refurb estimator: one box per part of the property, each with a mic.
- *
- * Hugo, 2026-08-25: "It should be one box per room ... there's a button where he
- * can press the audio and he can speak ... now there are many sections of the
- * parts of the property, so he doesn't forget to look at anything."
- *
- * WHAT IS WORTH ASSERTING HERE. The arithmetic and the checklist are covered
- * exhaustively in tests/refurb-estimator.test.ts, which runs in milliseconds
- * with no browser and no model. So this file proves only what a unit test
- * cannot: that the URL Hugo circulated resolves, that all fourteen boxes render
- * with their own microphone, that the counter tracks what he has filled in, and
- * that a real generate press comes back priced rather than erroring.
- *
- * Needs a CRM login (E2E_OWNER_READY=1 + E2E_EMAIL/E2E_PASSWORD). The generate
- * test spends a real model call, so there is exactly one of them.
- */
-test.describe('Refurb estimator', () => {
-  test.skip(process.env.E2E_OWNER_READY !== '1', 'needs a CRM account (E2E_OWNER_READY=1)')
+// The refurb estimator, against the real thing.
+//
+// Hugo, 2026-08-25: "The estimator page should show properties that are booked
+// for viewing/inspection by the agent. The agent selects a property from a
+// dropdown, then sees property name, size, listing information, all relevant
+// property photos, and every property area requiring assessment. Every item
+// must require agent confirmation, even if the information came directly from
+// the listing or AI."
+//
+// So the two things worth proving in a browser are the two that no unit test
+// can: that choosing a house actually pulls the advert and its photographs off
+// Rightmove, and that the Generate button refuses to price anything until a
+// human has pressed Confirm on a part of the property.
+//
+// The AI reading itself is NOT run here. It costs money per press and it is
+// already covered where it belongs, in tests/refurb-assessment.test.ts, which
+// pins the merge that decides what any reading is allowed to turn into.
+//
+// Credentials come from env on purpose (this repo mirrors to a public one):
+//
+//   E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... \
+//   E2E_BASE_URL=https://app.heyelsie.com npx playwright test refurb-estimator
+//
+// Skips cleanly when they are not set.
 
-  test('opens on both the tidy URL and the one Hugo sent round', async ({ authedPage: page }) => {
+test.use({ storageState: { cookies: [], origins: [] } })
+
+const EMAIL = process.env.E2E_ADMIN_EMAIL
+const PASSWORD = process.env.E2E_ADMIN_PASSWORD
+
+test.describe('the refurb estimator', () => {
+  test.skip(!EMAIL || !PASSWORD, 'E2E_ADMIN_EMAIL / _PASSWORD not set')
+
+  test('picks a house booked for a viewing, pulls the advert, and prices nothing until confirmed', async ({ page }) => {
+    await page.goto('/login')
+    await page.locator('input[type="email"]').fill(EMAIL!)
+    await page.locator('input[type="password"]').fill(PASSWORD!)
+    await page.locator('button[type="submit"]').click()
+    await page.waitForURL(/\/admin|\/dashboard/, { timeout: 30_000 })
+
     await page.goto('/admin/crm/estimator')
-    await expect(page.getByTestId('section-bathroom')).toBeVisible({ timeout: 20000 })
+    const picker = page.getByTestId('estimator-property')
+    await expect(picker).toBeVisible({ timeout: 30_000 })
 
-    // `inbox` has no child routes, so without an explicit route this falls
-    // through the CRM catch-all and lands silently on the inbox, which looks
-    // exactly like the feature was never built. That is the regression this
-    // assertion exists to catch.
-    await page.goto('/admin/crm/inbox/estimator')
-    await expect(page.getByTestId('section-bathroom')).toBeVisible({ timeout: 20000 })
-  })
+    // The dropdown is the houses with a viewing booked. Option 0 is the
+    // "Choose a property" placeholder, which is on the page before the fetch
+    // has answered, so waiting for "more than none" waits for nothing at all.
+    // An empty list after the wait is a real state of the world (nobody has
+    // booked a viewing), not a failure.
+    const options = picker.locator('option')
+    await expect.poll(() => options.count(), { timeout: 30_000 }).toBeGreaterThan(1)
+      .catch(() => { /* really is empty, handled by the skip below */ })
+    const count = await options.count()
+    test.skip(count < 2, 'no properties are booked in for a viewing right now')
 
-  test('gives every part of the property its own box and its own microphone', async ({ authedPage: page, browserName }) => {
-    await page.goto('/admin/crm/estimator')
+    const value = await options.nth(1).getAttribute('value')
+    await picker.selectOption(value!)
 
-    // The parts Hugo named by name, plus the ones people forget on their own.
-    for (const id of ['front', 'roof', 'bathroom', 'bedrooms', 'garden', 'electrics', 'heating', 'damp']) {
-      await expect(page.getByTestId(`section-${id}`)).toBeVisible()
-      await expect(page.getByTestId(`text-${id}`)).toBeVisible()
+    // The advert, fetched server side while he waited.
+    const houseCard = page.getByTestId('house-card')
+    await expect(houseCard).toBeVisible({ timeout: 60_000 })
+
+    // THE BIG PICTURE, STUCK TO THE TOP. Hugo: "the way the photo is on Zoopla,
+    // big, and the photo is always displayed on top. The way you put now I have
+    // to click on the photos and then takes me to an outside page, it's not good."
+    const stage = page.getByTestId('stage-photo')
+    await expect(stage).toBeVisible({ timeout: 30_000 })
+    const firstSrc = await stage.getAttribute('src')
+
+    // Picking another one swaps the big picture. It does NOT leave the page.
+    await page.getByTestId('stage-thumb-2').click()
+    await expect.poll(() => stage.getAttribute('src')).not.toBe(firstSrc)
+    expect(page.url()).toContain('/admin/crm/estimator')
+
+    // And it expands INSIDE the app, over the whole window.
+    await stage.click()
+    const full = page.getByTestId('stage-fullscreen')
+    await expect(full).toBeVisible()
+    const box = await full.boundingBox()
+    const view = page.viewportSize()!
+    expect(box!.width).toBeGreaterThanOrEqual(view.width - 2)
+    expect(box!.height).toBeGreaterThanOrEqual(view.height - 2)
+    await full.click({ position: { x: 5, y: 5 } })
+    await expect(full).toBeHidden()
+
+    // SCROLLING TO A PART OF THE PROPERTY BRINGS ITS PHOTOGRAPH UP. Hugo: "we
+    // can scroll the website and then we can speak on the boxes or rewrite or
+    // confirm as we look on the photos." Only meaningful once a reading has put
+    // photographs against the sections, so it is skipped on an unread house.
+    await page.getByTestId('section-kitchen').scrollIntoViewIfNeeded()
+    const kitchenPhotos = await page.getByTestId('photos-kitchen').count()
+    if (kitchenPhotos > 0) {
+      await expect
+        .poll(() => stage.getAttribute('alt'), { timeout: 10_000 })
+        .toMatch(/Kitchen/i)
+      // And it is still stuck to the top of the window while he does it.
+      const stageBox = await stage.boundingBox()
+      expect(stageBox!.y).toBeLessThan(view.height / 2)
     }
 
-    // The microphone buttons are Chrome's Web Speech API, which Firefox does
-    // not implement at all. On a browser without it the page must hide the
-    // buttons and say so, rather than show a button that does nothing.
-    if (browserName === 'chromium') {
-      await expect(page.getByTestId('mic-bathroom')).toBeVisible()
-      await expect(page.getByTestId('mic-roof')).toBeVisible()
-    }
-  })
+    // Every part of the property is on the page, whether or not anything has
+    // read it. The checklist is the point: he can see what he has not looked at.
+    await expect(page.getByTestId('section-kitchen')).toBeVisible()
+    await expect(page.getByTestId('section-electrics')).toBeVisible()
+    await expect(page.getByTestId('section-damp')).toBeVisible()
 
-  test('counts what he has looked at, so nothing is missed quietly', async ({ authedPage: page }) => {
-    await page.goto('/admin/crm/estimator')
-    // Boxes persist to localStorage, so start from a known state.
-    await page.evaluate(() => localStorage.removeItem('elsie.refurb-estimator.v3'))
-    await page.reload()
-
+    // NOTHING IS PRICED UNTIL A HUMAN CONFIRMS IT. With nothing confirmed the
+    // button is dead, and that is the whole safety story of this screen.
     await expect(page.getByTestId('sections-done')).toHaveText('0')
-    await page.getByTestId('text-bathroom').fill('White suite, all matches, black mould above the bath and no fan.')
+    await expect(page.getByTestId('estimator-generate')).toBeDisabled()
+
+    // Confirm one part and it comes alive, counting confirmations rather than
+    // filled-in boxes.
+    await page.getByTestId('confirm-kitchen').click()
     await expect(page.getByTestId('sections-done')).toHaveText('1')
-    await page.getByTestId('text-roof').fill('Roof looks straight, two or three slates missing on the left.')
-    await expect(page.getByTestId('sections-done')).toHaveText('2')
-    await expect(page.getByText(/still to look at/)).toBeVisible()
-  })
-
-  test('reads the boxes and gives back costs and a builder message', async ({ authedPage: page }) => {
-    test.setTimeout(120_000)
-    await page.goto('/admin/crm/estimator')
-    await page.evaluate(() => localStorage.removeItem('elsie.refurb-estimator.v3'))
-    await page.reload()
-
-    await page.getByTestId('estimator-address').fill('14 Oundle Road, Birmingham B44')
-    await page.getByTestId('estimator-sqm').fill('88')
-
-    // A real walkthrough of a real kind of house, filled in part by part the way
-    // Pedro would speak it.
-    await page.getByTestId('text-front').fill('Brickwork looks fine, no cracks that I can see.')
-    await page.getByTestId('text-roof').fill('Roof looks straight but there are two or three slates missing on the left side.')
-    await page.getByTestId('text-gutters').fill('Gutter is full of grass and there is a green stain down the wall underneath it.')
-    await page.getByTestId('text-kitchen').fill('Kitchen is the old orange pine stuff, worktop is burnt by the cooker, no extractor. I would rip it out, nobody is renting that.')
-    await page.getByTestId('text-bathroom').fill('White suite, all matches, tiles are plain white. Black mould in the corner above the bath and I cannot see a fan anywhere.')
-    await page.getByTestId('text-living').fill('Walls have woodchip paper painted over and it is coming away by the door. Carpet is old and stained.')
-    await page.getByTestId('text-bedrooms').fill('Front one is a good double, magnolia walls, looks sound. Back one has flowery wallpaper peeling in the corners. Third is a box room.')
-    await page.getByTestId('text-electrics').fill('Fuse box is one of those old grey ones with the fuse wire, no trip switches at all.')
-    await page.getByTestId('text-garden').fill('Small yard, all concrete, weeds everywhere, and the fence on the left is flat on the floor.')
-    await page.getByTestId('text-contents').fill('Empty apart from a sofa and some bin bags in the back bedroom.')
-
     await expect(page.getByTestId('estimator-generate')).toBeEnabled()
+
+    // And a part he calls Nothing to do stays confirmed and carries no money.
+    await page.getByTestId('verdict-bathroom-nothing').click()
+    await page.getByTestId('confirm-bathroom').click()
+    await expect(page.getByTestId('sections-done')).toHaveText('2')
+
     await page.getByTestId('estimator-generate').click()
+    await expect(page.getByTestId('estimate-totals')).toBeVisible({ timeout: 60_000 })
 
-    // The model call runs up to 60 seconds.
-    await expect(page.getByTestId('estimate-totals')).toBeVisible({ timeout: 90_000 })
+    // Ex VAT everywhere, and no VAT added. Hugo: "Prices must be shown
+    // EXCLUDING VAT. Do not add VAT."
+    await expect(page.getByTestId('estimate-totals')).toContainText(/excluding VAT/i)
+    const brief = page.getByTestId('builder-brief')
+    await expect(brief).toBeVisible()
+    await expect(brief).toContainText(/excluding VAT/i)
 
-    // A real figure, not a zero and not a blank.
-    const budget = await page.getByTestId('estimate-budget').innerText()
-    expect(budget).toMatch(/^£[\d,]+$/)
-    expect(Number(budget.replace(/[£,]/g, ''))).toBeGreaterThan(1000)
-
-    // The kitchen is priced: the boxes above say in as many words that it gets
-    // ripped out, so its absence would mean the reader is not being listened to.
-    await expect(page.getByTestId('estimate-lines')).toContainText(/kitchen/i)
-
-    // The builder's message names the house and asks for itemised pricing.
-    const brief = await page.getByTestId('builder-brief').innerText()
-    expect(brief).toContain('14 Oundle Road')
-    expect(brief).toContain('item by item')
-
-    // The anchor switch is on by default, so our budget is on the message, and
-    // turning it off takes every pound sign away.
-    expect(brief).toContain('£')
-    await page.getByTestId('anchor-toggle').uncheck()
-    await expect(page.getByTestId('builder-brief')).not.toContainText('£')
+    // And it never admits we have not been inside. Hugo: "Do NOT tell the
+    // builder that we have not viewed the property."
+    await expect(brief).not.toContainText(/only seen photographs|not (yet )?(viewed|been inside|seen the property)/i)
   })
 })
