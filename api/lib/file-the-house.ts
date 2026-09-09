@@ -117,3 +117,88 @@ export function houseFromContact(contact: {
     status: 'new',
   };
 }
+
+/**
+ * File a house for every contact in the list that still has none.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM THE CALL-LISTENER. Pedro often books a
+ * viewing by dragging the card to Viewing booked and typing the time into
+ * Notes. That touches no call disposition, so the listener never sees it, and
+ * Find builders (and the estimator) only read `brrr_properties`. Measured on
+ * Julian Wadden, Stockport, 2026-09-09: card in Viewing booked, Pitt Street on
+ * the contact, Rightmove id in the URL, zero property rows, invisible forever
+ * until a human noticed. Filing here, on the same path that lists the houses,
+ * is the permanent heal: the next open of Find builders creates the row.
+ *
+ * Safe to call on every load. Already-filed contacts are skipped in one query.
+ * A contact another branch already owns by source_property_id is linked only
+ * when that row has no contact yet; never stolen from a live deal.
+ */
+export async function ensureHousesForContacts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  contactIds: string[],
+): Promise<Array<{ contactId: string; address: string; propertyId: string }>> {
+  const done: Array<{ contactId: string; address: string; propertyId: string }> = [];
+  if (!contactIds.length) return done;
+
+  const { data: have } = await sb
+    .from('brrr_properties')
+    .select('wk_contact_id')
+    .in('wk_contact_id', contactIds);
+  const has = new Set(
+    ((have ?? []) as Array<{ wk_contact_id: string | null }>)
+      .map((p) => p.wk_contact_id)
+      .filter(Boolean) as string[],
+  );
+  const missing = contactIds.filter((id) => !has.has(id));
+  if (!missing.length) return done;
+
+  const { data: contacts } = await sb
+    .from('wk_contacts')
+    .select('id, name, phone, custom_fields')
+    .in('id', missing);
+
+  for (const c of (contacts ?? []) as Array<{
+    id: string; name?: string | null; phone?: string | null;
+    custom_fields?: Record<string, string> | null;
+  }>) {
+    const house = houseFromContact(c);
+    if (!house) continue;
+
+    // Same listing already on file? Link it when orphaned; never take it off
+    // another branch's live card.
+    const { data: existing } = await sb
+      .from('brrr_properties')
+      .select('id, wk_contact_id')
+      .eq('source', house.source)
+      .eq('source_property_id', house.source_property_id)
+      .maybeSingle();
+    if (existing?.id) {
+      if (!existing.wk_contact_id) {
+        const { error } = await sb
+          .from('brrr_properties')
+          .update({ wk_contact_id: c.id, call_channel: 'human' })
+          .eq('id', existing.id);
+        if (error) {
+          console.warn('[file-the-house] could not link', c.id, error.message);
+          continue;
+        }
+        done.push({ contactId: c.id, address: house.address, propertyId: existing.id as string });
+      }
+      continue;
+    }
+
+    const { data: created, error } = await sb
+      .from('brrr_properties')
+      .insert(house)
+      .select('id')
+      .single();
+    if (error || !created?.id) {
+      console.warn('[file-the-house] could not file', c.id, error?.message);
+      continue;
+    }
+    done.push({ contactId: c.id, address: house.address, propertyId: created.id as string });
+  }
+  return done;
+}

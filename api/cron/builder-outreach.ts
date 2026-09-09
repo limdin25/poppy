@@ -45,6 +45,7 @@ import {
   VIEWING_BOOKED_COLUMN, builderAutomationEnabled,
 } from '../lib/builder-outreach.js';
 import { notifyBuilderEvent, builderNotifyRecipients } from '../lib/builder-notify.js';
+import { ensureHousesForContacts } from '../lib/file-the-house.js';
 
 export const config = { maxDuration: 60 };
 
@@ -92,6 +93,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       .from('wk_contacts').select('id').eq('pipeline_column_id', colId).limit(100);
     const contactIds = ((contacts ?? []) as Array<{ id: string }>).map((c) => c.id);
     out.contacts = contactIds.length;
+
+    // Discovery cards often reach Viewing booked with no brrr_properties row
+    // (Pedro dragged the stage, typed the time in Notes). File them before the
+    // scrape loop or this sweep walks past every one of them.
+    try {
+      await ensureHousesForContacts(sb, contactIds);
+    } catch (e) {
+      out.errors.push(`file houses: ${String(e).slice(0, 120)}`);
+    }
 
     const admins = await builderNotifyRecipients(sb);
 

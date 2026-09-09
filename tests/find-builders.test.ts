@@ -27,6 +27,13 @@ describe('who is allowed in', () => {
     expect(ROUTE).toMatch(/maxDuration/);
     expect(ROUTE).not.toMatch(/runtime: 'edge'/);
   });
+
+  it('lists houses through the shared loader that files missing discovery rows', () => {
+    // Julian Wadden, 2026-09-09: Viewing booked with no brrr_properties row.
+    // A private copy of the query here would skip the heal forever.
+    expect(ROUTE).toMatch(/loadViewingHouses</);
+    expect(ROUTE).not.toMatch(/\.eq\('name', VIEWING_BOOKED_COLUMN\)/);
+  });
 });
 
 describe('every road onto a house passes the same gate', () => {

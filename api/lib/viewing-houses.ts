@@ -10,8 +10,16 @@
 // obvious. Anything whose branch has reached the Viewing booked column but has
 // NO time on it yet is the house nobody has noticed, and it is invisible if you
 // only look at the diary. Same trigger the sweep uses (api/cron/builder-outreach.ts).
+//
+// BEFORE THE QUERY, FILE ANY MISSING HOUSE. Discovery contacts carry the house
+// on the card (address + Rightmove URL) and never create a `brrr_properties`
+// row. Pedro then drags them to Viewing booked. Without this step the list is
+// empty for that card forever, which is what happened to Julian Wadden on
+// 2026-09-09 and kept happening every time a discovery viewing was booked by
+// drag rather than by the call-listener's disposition path.
 
 import { VIEWING_BOOKED_COLUMN } from './builder-outreach.js';
+import { ensureHousesForContacts } from './file-the-house.js';
 
 /** Anything this can sort by. Callers pick their own columns beyond these. */
 interface Sortable {
@@ -29,6 +37,29 @@ interface Sortable {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function loadViewingHouses<T extends Sortable>(sb: any, columns: string): Promise<T[]> {
+  const { data: col } = await sb
+    .from('wk_pipeline_columns')
+    .select('id')
+    .eq('name', VIEWING_BOOKED_COLUMN)
+    .limit(5);
+  const columnIds = ((col ?? []) as Array<{ id: string }>).map((c) => c.id);
+  let contactIds: string[] = [];
+  if (columnIds.length) {
+    const { data: contacts } = await sb
+      .from('wk_contacts')
+      .select('id')
+      .in('pipeline_column_id', columnIds)
+      .limit(200);
+    contactIds = ((contacts ?? []) as Array<{ id: string }>).map((c) => c.id);
+    // Heal first: a Viewing booked card with no house becomes a house, then
+    // the query below can see it. Failure here must not blank the list.
+    try {
+      await ensureHousesForContacts(sb, contactIds);
+    } catch (e) {
+      console.warn('[viewing-houses] ensure failed', String(e).slice(0, 200));
+    }
+  }
+
   const byViewing = await sb
     .from('brrr_properties')
     .select(columns)
@@ -39,27 +70,13 @@ export async function loadViewingHouses<T extends Sortable>(sb: any, columns: st
   const seen = new Map<string, T>();
   for (const r of (byViewing.data ?? []) as T[]) seen.set(r.id, r);
 
-  const { data: col } = await sb
-    .from('wk_pipeline_columns')
-    .select('id')
-    .eq('name', VIEWING_BOOKED_COLUMN)
-    .limit(5);
-  const columnIds = ((col ?? []) as Array<{ id: string }>).map((c) => c.id);
-  if (columnIds.length) {
-    const { data: contacts } = await sb
-      .from('wk_contacts')
-      .select('id')
-      .in('pipeline_column_id', columnIds)
-      .limit(200);
-    const contactIds = ((contacts ?? []) as Array<{ id: string }>).map((c) => c.id);
-    if (contactIds.length) {
-      const { data: more } = await sb
-        .from('brrr_properties')
-        .select(columns)
-        .in('wk_contact_id', contactIds)
-        .limit(300);
-      for (const r of (more ?? []) as T[]) if (!seen.has(r.id)) seen.set(r.id, r);
-    }
+  if (contactIds.length) {
+    const { data: more } = await sb
+      .from('brrr_properties')
+      .select(columns)
+      .in('wk_contact_id', contactIds)
+      .limit(300);
+    for (const r of (more ?? []) as T[]) if (!seen.has(r.id)) seen.set(r.id, r);
   }
 
   return [...seen.values()].sort((a, b) => {

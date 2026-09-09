@@ -405,6 +405,20 @@ describe('the house the call leaves behind', () => {
     expect(fn).not.toMatch(/throw/)
   })
 
+  it('Viewing booked also files the house, not only a call disposition', () => {
+    // Julian Wadden, 2026-09-09: Pedro dragged the card and typed the time in
+    // Notes. No disposition path ran, Find builders stayed empty. The shared
+    // loader and the builder sweep both call ensureHousesForContacts so a
+    // drag is enough.
+    const VIEW = read('api/lib/viewing-houses.ts')
+    const SWEEP = read('api/cron/builder-outreach.ts')
+    const FILE = read('api/lib/file-the-house.ts')
+    expect(FILE).toMatch(/export async function ensureHousesForContacts/)
+    expect(VIEW).toMatch(/ensureHousesForContacts\(sb, contactIds\)/)
+    expect(SWEEP).toMatch(/ensureHousesForContacts\(sb, contactIds\)/)
+    expect(read('api/crm/find-builders.ts')).toMatch(/loadViewingHouses/)
+  })
+
   it('the scan is wide enough that reading one call cannot starve the rest', () => {
     // Reading a property touches its row, so the already-read ones sit at the
     // top of an updated_at sort. A narrow window fills with them and the older
