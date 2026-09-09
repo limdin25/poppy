@@ -202,6 +202,14 @@ describe('the outcode, for the calibration report', () => {
     expect(outcodeOf('Preston Old Road, Blackpool, Lancashire, FY3, FY3 9QX')).toBe('FY3')
   })
 
+  it('survives a trailing full stop after the postcode (Bensham Road, 2026-09-09)', () => {
+    // Pedro pressed Find builders and got "no postcode we can read" on
+    // "DL1 3DG." with a period Rightmove left on the end.
+    expect(outcodeOf('Bensham Road, Darlington, DL1 3DG.')).toBe('DL1')
+    expect(outcodeOf('40, Bensham Road, Darlington, DL1 3DG.')).toBe('DL1')
+    expect(outcodeOf('Pitt Street, Edgeley, Stockport, SK3 9EH!')).toBe('SK3')
+  })
+
   it('reads a postcode folded into the town part (found live 2026-08-19)', () => {
     // The first Ballpark-agreed deal: Rightmove wrote town and postcode as one
     // comma part, and the whole-part tests filed a real B44 under "unknown".

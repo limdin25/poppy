@@ -16,7 +16,7 @@
 // same agent-or-admin gate as the rest of his presses. Only the settings
 // sub-tab stays admin-only.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, HardHat, Loader2, RefreshCw, Search } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
@@ -28,6 +28,7 @@ import SendReviewDialog, { type SendChannel } from '../components/builders/SendR
 import OutreachSettingsPanel from '../components/builders/OutreachSettingsPanel';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useActiveCallCtx } from '../components/live-call/ActiveCallContext';
+import { ukInputToIso, ukLabel } from '../lib/ukTime';
 
 interface HouseDetail extends PickerProperty {
   builderFacingAddress: string;
@@ -98,6 +99,13 @@ export default function FindBuildersPage() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [draftKind, setDraftKind] = useState<'opener' | 'details'>('opener');
   const [calling, setCalling] = useState<string | null>(null);
+  const [viewingDueLocal, setViewingDueLocal] = useState('');
+  const [bookingTime, setBookingTime] = useState(false);
+  // Auto-search once per house open so Pedro does not have to discover the
+  // Find builders button. Bensham Road sat at 0 forever until he pressed it
+  // and then hit a postcode bug. The search is free of Meta and only costs a
+  // Places lookup the first time.
+  const autoScrapedFor = useRef<string | null>(null);
 
   // The softphone the whole CRM already uses, mounted by Smsv2Layout on every
   // page. Dialling through it rather than a tel: link is what puts the call in
@@ -183,6 +191,42 @@ export default function FindBuildersPage() {
       setError(e instanceof Error ? e.message : 'The search did not run.');
     } finally {
       setSearching(false);
+    }
+  };
+
+  // The moment a house lands with a readable postcode and nobody searched it
+  // yet, search it. Waiting for Pedro to notice a grey empty table is how
+  // Bensham Road sat at "0 builders cover this area" with the answer one press
+  // away.
+  useEffect(() => {
+    if (!bundle || !propertyId) return;
+    if (bundle.property.scrapedAt) return;
+    if (!bundle.property.outcode) return;
+    if (autoScrapedFor.current === propertyId) return;
+    autoScrapedFor.current = propertyId;
+    void findBuilders('scrape');
+    // findBuilders closes over searching/propertyId; we only want this when
+    // the loaded house identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bundle?.property.id, bundle?.property.scrapedAt, bundle?.property.outcode, propertyId]);
+
+  const bookViewingTime = async () => {
+    if (!propertyId || !viewingDueLocal || bookingTime) return;
+    setBookingTime(true);
+    setError(null);
+    try {
+      const iso = ukInputToIso(viewingDueLocal);
+      await call('/api/crm/book-viewing', {
+        method: 'POST',
+        body: JSON.stringify({ propertyId, at: iso }),
+      });
+      setNotice(`Viewing booked for ${ukLabel(iso)} UK. Invites can go out now.`);
+      setViewingDueLocal('');
+      await Promise.all([loadHouse(propertyId), loadList()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not book the viewing time.');
+    } finally {
+      setBookingTime(false);
     }
   };
 
@@ -428,6 +472,55 @@ export default function FindBuildersPage() {
                     {bundle.property.viewingLabel ?? 'No viewing time booked yet'}
                   </p>
                 </div>
+
+                {!bundle.property.outcode ? (
+                  <div
+                    data-testid="find-builders-no-outcode"
+                    className="flex items-start gap-2 rounded-[10px] border border-[#DC2626]/50 bg-[#FEF2F2] px-3 py-2.5"
+                  >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#DC2626]" />
+                    <div className="text-[12px] text-[#991B1B]">
+                      <div className="font-semibold">No postcode on this address, so we cannot find builders near it.</div>
+                      <div className="mt-0.5 text-[11.5px]">
+                        Fix the address on the contact so it ends with a UK postcode (for example DL1 3DG), then press
+                        Find builders again.
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!bundle.property.viewingAt ? (
+                  <div
+                    data-testid="find-builders-book-time"
+                    className="rounded-[10px] border border-[#F59E0B] bg-[#FFFBEB] px-3 py-2.5"
+                  >
+                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#B45309]">
+                      Book the viewing time (UK)
+                    </div>
+                    <p className="mb-2 text-[11.5px] text-[#92400E]">
+                      Invites stay locked until a time is on this house. Type it once here and it unlocks.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        type="datetime-local"
+                        value={viewingDueLocal}
+                        onChange={(e) => setViewingDueLocal(e.target.value)}
+                        data-testid="find-builders-viewing-when"
+                        className="min-w-0 flex-1 rounded-[8px] border border-[#F59E0B]/50 bg-white px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-[#B45309]/40"
+                      />
+                      <button
+                        type="button"
+                        data-testid="find-builders-book-viewing"
+                        disabled={!viewingDueLocal || bookingTime}
+                        onClick={() => void bookViewingTime()}
+                        className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#B45309] px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-40"
+                      >
+                        {bookingTime ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <HardHat className="h-3.5 w-3.5" />}
+                        Book it
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
                 <HouseNumberBar
                   known={bundle.property.houseNumberKnown}

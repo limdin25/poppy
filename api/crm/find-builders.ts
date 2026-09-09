@@ -203,7 +203,7 @@ async function handleWeb(req: Request): Promise<Response> {
     const builderNames = new Map(roster.map((b) => [b.id, b.name] as const));
 
     const summarise = (h: PropertyRow) => {
-      const oc = outcodeOf(h.address);
+      const oc = outcodeOf(h.viewing_address) || outcodeOf(h.address);
       const covering = oc ? matchBuildersForOutcode(roster, oc) : [];
       const rows = byProperty.get(h.id) ?? [];
       const facing = builderFacingAddress(toOutreachProperty(h, discounts.get(String(h.source_property_id ?? ''))));
@@ -714,15 +714,21 @@ async function runScrape(
   const settings = await loadOutreachSettings(sb);
   const { data: house } = await sb
     .from('brrr_properties')
-    .select('id, address, builder_scraped_at, builder_scrape_radius_m')
+    .select('id, address, viewing_address, builder_scraped_at, builder_scrape_radius_m')
     .eq('id', propertyId)
     .maybeSingle();
   if (!house) return Response.json({ error: 'That house is not on file.' }, { status: 404 });
 
-  const oc = outcodeOf(house.address);
+  // Prefer the builder-facing address: it is the one with the house number,
+  // and it is what Pedro is looking at. Fall back to the listing address.
+  const oc = outcodeOf(house.viewing_address) || outcodeOf(house.address);
   if (!oc) {
     return Response.json(
-      { error: 'This address has no postcode we can read, so there is nowhere to search around.' },
+      {
+        error: `This address has no postcode we can read, so there is nowhere to search around. Address on file: ${
+          String(house.viewing_address || house.address || 'none').slice(0, 120)
+        }`,
+      },
       { status: 400 },
     );
   }

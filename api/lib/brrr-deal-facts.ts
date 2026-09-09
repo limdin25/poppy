@@ -212,7 +212,11 @@ const OUTCODE_ONLY = /^[A-Z]{1,2}\d[A-Z\d]?$/;
 export function outcodeOf(address: string | null | undefined): string | null {
   const parts = String(address ?? '').split(',').map((p) => p.trim().toUpperCase());
   for (let i = parts.length - 1; i >= 0; i -= 1) {
-    const p = parts[i];
+    // Trailing punctuation is noise, not geography. Found live 2026-09-09 on
+    // Bensham Road: the address ended "DL1 3DG." and Find builders refused
+    // with "no postcode we can read" while Pedro stared at a perfectly good
+    // Darlington postcode. Strip only the junk AFTER the last letter/digit.
+    const p = parts[i].replace(/[^A-Z0-9]+$/g, '').trim();
     if (!p) continue;
     if (FULL_POSTCODE.test(p)) return p.replace(/\s+/g, '').slice(0, -3);
     if (OUTCODE_ONLY.test(p)) return p;

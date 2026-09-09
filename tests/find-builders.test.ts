@@ -34,6 +34,21 @@ describe('who is allowed in', () => {
     expect(ROUTE).toMatch(/loadViewingHouses</);
     expect(ROUTE).not.toMatch(/\.eq\('name', VIEWING_BOOKED_COLUMN\)/);
   });
+
+  it('reads the outcode from viewing_address first, and says the address when it fails', () => {
+    // Bensham Road ended "DL1 3DG." and the scrape only looked at address.
+    expect(ROUTE).toMatch(/outcodeOf\(house\.viewing_address\) \|\| outcodeOf\(house\.address\)/);
+    expect(ROUTE).toMatch(/Address on file:/);
+  });
+  it('books the viewing time on this page, and auto-searches an unsearched house', () => {
+    // Pedro should not have to leave Find builders to unlock invites, and he
+    // should not have to discover the Find button on a house that already has
+    // a postcode.
+    expect(PAGE).toMatch(/find-builders-book-time/);
+    expect(PAGE).toMatch(/\/api\/crm\/book-viewing/);
+    expect(PAGE).toMatch(/autoScrapedFor/);
+    expect(PAGE).toMatch(/find-builders-no-outcode/);
+  });
 });
 
 describe('every road onto a house passes the same gate', () => {
