@@ -5,6 +5,7 @@ dist
 .DS_Store
 .vercel
 .git-hidden
+.git.tmp
 tests/e2e/.auth
 playwright-report
 test-results
@@ -29,3 +30,8 @@ bridge
 # target does not exist inside the upload, and Vercel refuses the build on a
 # dangling symlink.
 /docs/BRRR_STRATEGY.md
+# Local experiment folders, never part of Elsie.
+/ugc
+/openrent-worker
+/tmp-unsold*
+/tmp-allsop*
