@@ -81,6 +81,11 @@ import { useHeypubliJourney } from '../hooks/useHeypubliJourney';
 import { nextTouch, dueLabel } from '@/core/heypubli/journey';
 import { useHeypubliBrain, describeBrainState } from '../hooks/useHeypubliBrain';
 import JourneyPanel from '../components/journey/JourneyPanel';
+import {
+  mailboxFilterLabel,
+  normalizeMailbox,
+  threadMatchesMailbox,
+} from '../../../../api/lib/inbox-mailbox';
 
 /** Did this lead come through the HeyPubli creator funnel?
  *
@@ -260,6 +265,9 @@ export default function InboxPage() {
   // Encoded as 'all' | 'p:<address>' | 'c:<campaignId>' so it is one string in
   // one <select> and one thing to put in the URL.
   const [campaignFilter, setCampaignFilter] = useState<string>('all');
+  // Which of our Resend mailboxes a thread used (pedro@ vs pedro.a@).
+  const [mailboxFilter, setMailboxFilter] = useState<string>('all');
+  const [emailMailboxes, setEmailMailboxes] = useState<Array<{ id: string; e164: string }>>([]);
 
   const renameContact = async (id: string, name: string) => {
     patchContact(id, { name });
@@ -394,6 +402,7 @@ export default function InboxPage() {
        *  useInboxThreads). Undefined on call rows, not looked up there. */
       campaignId?: string | null;
       campaignName?: string | null;
+      mailboxes?: string[];
     };
 
     const isCallFilter = filter === 'calls' || filter === 'voicemail' || filter === 'missed';
@@ -479,12 +488,16 @@ export default function InboxPage() {
           tags: c?.tags ?? [],
           campaignId: t.campaignId,
           campaignName: t.campaignName,
+          mailboxes: t.mailboxes,
         });
       }
       // 'sms' / 'whatsapp' / 'email' restrict to threads on that channel.
       rows = out;
       if (filter === 'sms' || filter === 'whatsapp' || filter === 'email') {
         rows = rows.filter((r) => r.lastChannel === filter || r.channelCounts[filter] > 0);
+      }
+      if (mailboxFilter !== 'all') {
+        rows = rows.filter((r) => threadMatchesMailbox(r.mailboxes ?? [], mailboxFilter));
       }
     }
 
@@ -508,7 +521,7 @@ export default function InboxPage() {
       });
     }
     return rows;
-  }, [inboxThreads, calls, contacts, filter, campaignFilter, searchQuery]);
+  }, [inboxThreads, calls, contacts, filter, campaignFilter, mailboxFilter, searchQuery]);
 
   // Every distinct campaign present in the current thread list, for the
   // filter dropdown. Recomputed from inboxThreads (not sidebarRows, which is
@@ -597,6 +610,29 @@ export default function InboxPage() {
   // TOLD the view is scoped, or an empty filter reads as a bug, and given a
   // one-click way OUT (hunting for the top-bar control cost Hugo ten minutes).
   const { viewAsId, viewAsName, setViewAs } = useViewAs();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData.user?.id ?? null;
+      const scopeId = isAdmin ? viewAsId : uid;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase.from('wk_numbers' as any) as any)
+        .select('id, e164, assigned_agent_id')
+        .eq('channel', 'email')
+        .eq('provider', 'resend')
+        .eq('is_active', true)
+        .order('e164', { ascending: true });
+      if (cancelled || !data) return;
+      const rows = data as Array<{ id: string; e164: string; assigned_agent_id: string | null }>;
+      const scoped = scopeId
+        ? rows.filter((r) => r.assigned_agent_id === scopeId)
+        : rows.filter((r) => normalizeMailbox(r.e164).endsWith('@hostunico.com'));
+      setEmailMailboxes(scoped.filter((r) => !!r.e164).map((r) => ({ id: r.id, e164: r.e164 })));
+    })();
+    return () => { cancelled = true; };
+  }, [isAdmin, viewAsId]);
 
   // One pass: decorate, drop what this filter hides, then order.
   //
@@ -1121,12 +1157,19 @@ export default function InboxPage() {
           body: { contact_id: activeContact.id, body: trimmedBody, attachment_url: attach, channel: 'whatsapp' },
         });
       } else if (replyChannel === 'email') {
+        const mailboxChannelId =
+          mailboxFilter !== 'all'
+            ? emailMailboxes.find(
+                (m) => normalizeMailbox(m.e164) === normalizeMailbox(mailboxFilter),
+              )?.id
+            : undefined;
         resp = await fn.invoke('wk-email-send', {
           body: {
             contact_id: activeContact.id,
             subject: replySubject.trim(),
             body: trimmedBody,
             attachment_url: attach,
+            channel_id: mailboxChannelId,
           },
         });
       } else {
@@ -1293,31 +1336,51 @@ export default function InboxPage() {
                 </>
               )}
             </div>
-            {(campaignOptions.length > 0 || propertyOptions.length > 0) && (
+            {(campaignOptions.length > 0 || propertyOptions.length > 0 || emailMailboxes.length >= 2) && (
               <div className="flex items-center gap-1 min-w-0">
-                <Megaphone style={{ width: 11, height: 11 }} className="text-[#9CA3AF] flex-shrink-0" />
-                <select
-                  data-testid="inbox-campaign-filter"
-                  value={campaignFilter}
-                  onChange={(e) => setCampaignFilter(e.target.value)}
-                  className="text-[10.5px] bg-[#F3F3EE] border-none rounded-full px-1.5 py-[3px] text-[#374151] font-medium max-w-[150px] truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
-                >
-                  <option value="all">All conversations</option>
-                  {propertyOptions.length > 0 && (
-                    <optgroup label="Property">
-                      {propertyOptions.map((p) => (
-                        <option key={p.full} value={`p:${p.full}`}>{p.label} ({p.count})</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {campaignOptions.length > 0 && (
-                    <optgroup label="Campaign">
-                      {campaignOptions.map((c) => (
-                        <option key={c.id} value={`c:${c.id}`}>{c.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
+                {emailMailboxes.length >= 2 && (
+                  <select
+                    data-testid="inbox-mailbox-filter"
+                    value={mailboxFilter}
+                    onChange={(e) => setMailboxFilter(e.target.value)}
+                    title="Show only threads on this mailbox"
+                    className="text-[10.5px] bg-[#F3F3EE] border-none rounded-full px-1.5 py-[3px] text-[#374151] font-medium max-w-[130px] truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
+                  >
+                    <option value="all">All mailboxes</option>
+                    {emailMailboxes.map((m) => (
+                      <option key={m.id} value={normalizeMailbox(m.e164)}>
+                        {mailboxFilterLabel(m.e164)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {(campaignOptions.length > 0 || propertyOptions.length > 0) && (
+                  <>
+                    <Megaphone style={{ width: 11, height: 11 }} className="text-[#9CA3AF] flex-shrink-0" />
+                    <select
+                      data-testid="inbox-campaign-filter"
+                      value={campaignFilter}
+                      onChange={(e) => setCampaignFilter(e.target.value)}
+                      className="text-[10.5px] bg-[#F3F3EE] border-none rounded-full px-1.5 py-[3px] text-[#374151] font-medium max-w-[150px] truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
+                    >
+                      <option value="all">All conversations</option>
+                      {propertyOptions.length > 0 && (
+                        <optgroup label="Property">
+                          {propertyOptions.map((p) => (
+                            <option key={p.full} value={`p:${p.full}`}>{p.label} ({p.count})</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {campaignOptions.length > 0 && (
+                        <optgroup label="Campaign">
+                          {campaignOptions.map((c) => (
+                            <option key={c.id} value={`c:${c.id}`}>{c.name}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </>
+                )}
               </div>
             )}
           </div>

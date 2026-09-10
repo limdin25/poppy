@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useViewAs } from '@/features/crm/lib/ViewAsContext';
+import { collectThreadMailboxes } from '../../../../api/lib/inbox-mailbox';
 
 export type ChannelKind = 'sms' | 'whatsapp' | 'email';
 
@@ -63,6 +64,8 @@ export interface InboxThread {
    *  the contact was never queued to a campaign — most hand-added contacts. */
   campaignId: string | null;
   campaignName: string | null;
+  /** Our mailboxes this thread has used (inbound To / outbound From). */
+  mailboxes: string[];
 }
 
 interface MessageRow {
@@ -74,6 +77,8 @@ interface MessageRow {
   created_at: string;
   channel: ChannelKind | null;
   status: string | null;
+  from_e164: string | null;
+  to_e164: string | null;
 }
 
 interface ContactRow {
@@ -181,7 +186,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
     // much larger message volumes this should move to a SECURITY DEFINER RPC.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const msgsRes = await (supabase.from('wk_sms_messages' as any) as any)
-      .select('id, contact_id, direction, body, created_at, channel, status, media_urls')
+      .select('id, contact_id, direction, body, created_at, channel, status, media_urls, from_e164, to_e164')
       .order('created_at', { ascending: false })
       .limit(1000);
     let msgs = (msgsRes.data ?? []) as MessageRow[];
@@ -229,6 +234,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
 
     // Per-contact channel counts (walk all 500 once).
     const counts = new Map<string, Record<ChannelKind, number>>();
+    const msgsByContact = new Map<string, MessageRow[]>();
     // Newest inbound / newest outbound per contact — the two timestamps the
     // unread rule compares. msgs is newest-first, so the FIRST one we meet in
     // each direction is the newest.
@@ -239,6 +245,9 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
       const ch: ChannelKind = (m.channel ?? 'sms') as ChannelKind;
       cur[ch] = (cur[ch] ?? 0) + 1;
       counts.set(m.contact_id, cur);
+      const list = msgsByContact.get(m.contact_id);
+      if (list) list.push(m);
+      else msgsByContact.set(m.contact_id, [m]);
       const bucket = m.direction === 'inbound' ? lastIn : lastOut;
       if (!bucket.has(m.contact_id)) bucket.set(m.contact_id, m.created_at);
     }
@@ -289,6 +298,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         inboundSinceReply: sinceReply.get(m.contact_id) ?? 0,
         campaignId: campaign?.id ?? null,
         campaignName: campaign?.name ?? null,
+        mailboxes: collectThreadMailboxes(msgsByContact.get(m.contact_id) ?? []),
       });
     }
     if (seq !== loadSeqRef.current) return; // superseded by a newer load
