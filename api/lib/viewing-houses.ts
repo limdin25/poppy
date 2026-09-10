@@ -20,6 +20,7 @@
 
 import { VIEWING_BOOKED_COLUMN } from './builder-outreach.js';
 import { ensureHousesForContacts } from './file-the-house.js';
+import { ensurePostcodesForHouses } from './property-postcode.js';
 
 /** Anything this can sort by. Callers pick their own columns beyond these. */
 interface Sortable {
@@ -79,10 +80,29 @@ export async function loadViewingHouses<T extends Sortable>(sb: any, columns: st
     for (const r of (more ?? []) as T[]) if (!seen.has(r.id)) seen.set(r.id, r);
   }
 
-  return [...seen.values()].sort((a, b) => {
+  const list = [...seen.values()].sort((a, b) => {
     if (a.viewing_at && b.viewing_at) return a.viewing_at.localeCompare(b.viewing_at);
     if (a.viewing_at) return -1;
     if (b.viewing_at) return 1;
     return String(a.address ?? '').localeCompare(String(b.address ?? ''));
   });
+
+  // Fartown, Pudsey, 2026-09-10: houses landed without a postcode and Find
+  // builders refused. Heal what we can before the desks read the list.
+  try {
+    await ensurePostcodesForHouses(
+      sb,
+      list as Array<{ id: string; address?: string | null; viewing_address?: string | null }>,
+    );
+  } catch (e) {
+    console.warn('[viewing-houses] postcode heal failed', String(e).slice(0, 200));
+  }
+
+  // Re-read healed rows so the outcode on the picker is real, not the bare street.
+  const ids = list.map((h) => h.id);
+  if (!ids.length) return list;
+  const { data: fresh } = await sb.from('brrr_properties').select(columns).in('id', ids);
+  if (!fresh?.length) return list;
+  const byId = new Map((fresh as T[]).map((r) => [r.id, r] as const));
+  return list.map((h) => byId.get(h.id) ?? h);
 }

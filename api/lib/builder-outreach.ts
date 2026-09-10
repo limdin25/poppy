@@ -358,9 +358,12 @@ export async function draftOutreachForProperty(
 
   const { data: roster } = await sb
     .from('brrr_builders')
-    .select('id, name, phone, email, coverage, active');
+    .select('id, name, phone, email, coverage, active, exclude_reason');
   const matches = matchBuildersForOutcode(((roster ?? []) as BuilderRow[]), oc)
-    .filter((b) => isUkMobile(b.phone));
+    .filter((b) => isUkMobile(b.phone))
+    // Forever-flagged builders stay on the roster for the flag, but never get
+    // a fresh invite drafted for the next house.
+    .filter((b) => !isGloballyExcluded(b as { exclude_reason?: string | null }));
   if (!matches.length) return { drafted: 0, matched: 0 };
 
   const admins = await builderNotifyRecipients(sb);
@@ -988,12 +991,40 @@ export const CALL_OUTCOMES: Array<{ id: string; label: string; prompts?: boolean
   { id: 'wants_details', label: 'Wants the details by text', prompts: true },
   { id: 'call_back', label: 'Call back later' },
   { id: 'no_answer', label: 'No answer' },
-  { id: 'not_interested', label: 'Not interested' },
+  { id: 'not_interested', label: 'Not interested (this house)' },
+  // Forever flags. Pedro, 2026-09-10: builders who already said no on another
+  // house, or who charge to view, were showing up again with no warning.
+  { id: 'not_interested_any', label: 'Not interested, any house' },
+  { id: 'charges_to_view', label: 'Charges to view' },
   { id: 'wrong_number', label: 'Wrong number' },
 ];
 
+/** Outcomes that ban this builder from every future house, not just this one. */
+export const GLOBAL_EXCLUDE_OUTCOMES = new Set([
+  'not_interested_any',
+  'charges_to_view',
+]);
+
 export function isCallOutcome(id: string): boolean {
   return CALL_OUTCOMES.some((o) => o.id === id);
+}
+
+export function isGloballyExcluded(
+  builder: { exclude_reason?: string | null } | null | undefined,
+): boolean {
+  return Boolean(String(builder?.exclude_reason ?? '').trim());
+}
+
+/** Short label for a forever flag, or null when the builder is still fair game. */
+export function excludeReasonLabel(
+  reason: string | null | undefined,
+): string | null {
+  const id = String(reason ?? '').trim();
+  if (!id) return null;
+  return CALL_OUTCOMES.find((o) => o.id === id)?.label
+    ?? (id === 'not_interested_any' ? 'Not interested, any house'
+      : id === 'charges_to_view' ? 'Charges to view'
+      : id);
 }
 
 /** The cold opener as a text. Same {{1}} {{2}} {{3}} as INVITE_TEMPLATE_TEXT
@@ -1224,7 +1255,10 @@ async function firstContactStamp(
 /** Record what happened on the phone. Deliberately the only writer of
  *  call_outcome, and deliberately not a status change: a builder who says he is
  *  coming still has no invite sent, and pretending otherwise on the row is how
- *  a house ends up with nobody actually told where to go. */
+ *  a house ends up with nobody actually told where to go.
+ *
+ *  Forever outcomes ALSO write brrr_builders.exclude_reason, so the next house
+ *  Pedro opens does not hand him the same number as a cold lead. */
 export async function recordCallOutcome(
   sb: Sb,
   rowId: string,
@@ -1232,14 +1266,36 @@ export async function recordCallOutcome(
   byEmail: string,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!isCallOutcome(outcome)) return { ok: false, error: 'That is not one of the outcomes.' };
+
+  const { data: row } = await sb
+    .from('brrr_builder_outreach')
+    .select('id, builder_id')
+    .eq('id', rowId)
+    .maybeSingle();
+  if (!row?.id) return { ok: false, error: 'That outreach row is gone.' };
+
+  const now = new Date().toISOString();
   const { error } = await (sb.from('brrr_builder_outreach') as any)
     .update({
       call_outcome: outcome,
-      call_outcome_at: new Date().toISOString(),
+      call_outcome_at: now,
       call_outcome_by: byEmail || 'crm',
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     })
     .eq('id', rowId);
   if (error) return { ok: false, error: error.message };
+
+  if (GLOBAL_EXCLUDE_OUTCOMES.has(outcome) && row.builder_id) {
+    const { error: banErr } = await (sb.from('brrr_builders') as any)
+      .update({
+        exclude_reason: outcome,
+        excluded_at: now,
+        updated_at: now,
+      })
+      .eq('id', row.builder_id);
+    if (banErr) {
+      console.warn('[builder-outreach] could not exclude builder', row.builder_id, banErr.message);
+    }
+  }
   return { ok: true };
 }

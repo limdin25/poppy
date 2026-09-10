@@ -101,6 +101,8 @@ export default function FindBuildersPage() {
   const [calling, setCalling] = useState<string | null>(null);
   const [viewingDueLocal, setViewingDueLocal] = useState('');
   const [bookingTime, setBookingTime] = useState(false);
+  const [postcodeDraft, setPostcodeDraft] = useState('');
+  const [savingPostcode, setSavingPostcode] = useState(false);
   // Auto-search once per house open so Pedro does not have to discover the
   // Find builders button. Bensham Road sat at 0 forever until he pressed it
   // and then hit a postcode bug. The search is free of Meta and only costs a
@@ -227,6 +229,29 @@ export default function FindBuildersPage() {
       setError(e instanceof Error ? e.message : 'Could not book the viewing time.');
     } finally {
       setBookingTime(false);
+    }
+  };
+
+  const savePostcode = async () => {
+    if (!propertyId || !postcodeDraft.trim() || savingPostcode) return;
+    setSavingPostcode(true);
+    setError(null);
+    try {
+      const json = await call('/api/crm/find-builders', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'set_postcode', property_id: propertyId, postcode: postcodeDraft.trim(),
+        }),
+      });
+      setNotice(String(json.message ?? 'Postcode saved.'));
+      setPostcodeDraft('');
+      await Promise.all([loadHouse(propertyId), loadList()]);
+      // Search straight away once we have somewhere to search around.
+      autoScrapedFor.current = null;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the postcode.');
+    } finally {
+      setSavingPostcode(false);
     }
   };
 
@@ -476,15 +501,32 @@ export default function FindBuildersPage() {
                 {!bundle.property.outcode ? (
                   <div
                     data-testid="find-builders-no-outcode"
-                    className="flex items-start gap-2 rounded-[10px] border border-[#DC2626]/50 bg-[#FEF2F2] px-3 py-2.5"
+                    className="flex flex-col gap-2 rounded-[10px] border border-[#DC2626]/50 bg-[#FEF2F2] px-3 py-2.5"
                   >
-                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#DC2626]" />
-                    <div className="text-[12px] text-[#991B1B]">
-                      <div className="font-semibold">No postcode on this address, so we cannot find builders near it.</div>
-                      <div className="mt-0.5 text-[11.5px]">
-                        Fix the address on the contact so it ends with a UK postcode (for example DL1 3DG), then press
-                        Find builders again.
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#DC2626]" />
+                      <div className="text-[12px] text-[#991B1B]">
+                        <div className="font-semibold">No postcode on this address, so we cannot find builders near it.</div>
+                        <div className="mt-0.5 text-[11.5px]">
+                          Type the postcode below (for example LS28 8LT). It is saved on the house and the search unlocks.
+                        </div>
                       </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2" data-testid="find-builders-set-postcode">
+                      <input
+                        value={postcodeDraft}
+                        onChange={(e) => setPostcodeDraft(e.target.value.toUpperCase())}
+                        placeholder="LS28 8LT"
+                        className="min-w-0 flex-1 rounded-[8px] border border-[#DC2626]/40 bg-white px-2 py-1.5 text-[12px] font-mono uppercase focus:outline-none focus:ring-1 focus:ring-[#DC2626]/40"
+                      />
+                      <button
+                        type="button"
+                        disabled={!postcodeDraft.trim() || savingPostcode}
+                        onClick={() => void savePostcode()}
+                        className="rounded-[8px] bg-[#DC2626] px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-40"
+                      >
+                        {savingPostcode ? 'Saving' : 'Save postcode'}
+                      </button>
                     </div>
                   </div>
                 ) : null}

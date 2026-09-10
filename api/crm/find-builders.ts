@@ -43,6 +43,8 @@ import {
   inviteVars,
   builderSmsBody,
   floorRefusalFor,
+  excludeReasonLabel,
+  isGloballyExcluded,
   type OutreachProperty,
   type OutreachSettings,
 } from '../lib/builder-outreach.js';
@@ -62,6 +64,12 @@ import { outcodeOf } from '../lib/brrr-deal-facts.js';
 import { addressIsExact, addressFromAnswer } from '../lib/builder-brain.js';
 import { answerQuery } from '../lib/ops-query.js';
 import { loadViewingHouses } from '../lib/viewing-houses.js';
+import {
+  ensurePropertyPostcode,
+  looksLikeUkPostcode,
+  normaliseUkPostcode,
+  withPostcode,
+} from '../lib/property-postcode.js';
 
 export const config = { maxDuration: 60 };
 
@@ -185,10 +193,12 @@ async function handleWeb(req: Request): Promise<Response> {
     const discounts = await loadDiscounts(sb, houses);
     const { data: rosterRows } = await sb
       .from('brrr_builders')
-      .select('id, name, phone, email, coverage, notes, active')
+      .select('id, name, phone, email, coverage, notes, active, exclude_reason')
       .eq('active', true)
       .order('name');
-    const roster = (rosterRows ?? []) as Array<BuilderRow & { notes: string | null; email: string | null }>;
+    const roster = (rosterRows ?? []) as Array<BuilderRow & {
+      notes: string | null; email: string | null; exclude_reason?: string | null;
+    }>;
 
     const { data: outreachRows } = await sb
       .from('brrr_builder_outreach')
@@ -205,6 +215,7 @@ async function handleWeb(req: Request): Promise<Response> {
     const summarise = (h: PropertyRow) => {
       const oc = outcodeOf(h.viewing_address) || outcodeOf(h.address);
       const covering = oc ? matchBuildersForOutcode(roster, oc) : [];
+      const live = covering.filter((b) => !isGloballyExcluded(b as { exclude_reason?: string | null }));
       const rows = byProperty.get(h.id) ?? [];
       const facing = builderFacingAddress(toOutreachProperty(h, discounts.get(String(h.source_property_id ?? ''))));
       return {
@@ -215,8 +226,8 @@ async function handleWeb(req: Request): Promise<Response> {
         viewingLabel: h.viewing_at ? viewingTimeLabel(h.viewing_at) : null,
         builderFacingAddress: facing,
         houseNumberKnown: addressIsExact(facing),
-        coveringCount: covering.length,
-        mobileCount: covering.filter((b) => isUkMobile(b.phone)).length,
+        coveringCount: live.length,
+        mobileCount: live.filter((b) => isUkMobile(b.phone)).length,
         invited: rows.filter((r) => LIVE_STATUSES.has(r.status)).length,
         replied: rows.filter((r) => r.replied_at).length,
         confirmed: rows.filter((r) => r.status === 'confirmed').length,
@@ -234,9 +245,23 @@ async function handleWeb(req: Request): Promise<Response> {
     const house = houses.find((h) => h.id === propertyId);
     if (!house) return Response.json({ error: 'That house is not on the builder list.' }, { status: 404 });
 
+    // Heal a missing postcode before we tell Pedro there is nowhere to search.
+    if (!(outcodeOf(house.viewing_address) || outcodeOf(house.address))) {
+      await ensurePropertyPostcode(sb, house.id);
+      const { data: healed } = await sb
+        .from('brrr_properties')
+        .select('address, viewing_address')
+        .eq('id', house.id)
+        .maybeSingle();
+      if (healed) {
+        house.address = healed.address ?? house.address;
+        house.viewing_address = healed.viewing_address ?? house.viewing_address;
+      }
+    }
+
     const discount = discounts.get(String(house.source_property_id ?? ''));
     const prop = toOutreachProperty(house, discount);
-    const oc = outcodeOf(house.address);
+    const oc = outcodeOf(house.viewing_address) || outcodeOf(house.address);
     const covering = oc ? matchBuildersForOutcode(roster, oc) : [];
     const rows = byProperty.get(house.id) ?? [];
     const rowByBuilder = new Map(rows.map((r) => [r.builder_id, r] as const));
@@ -261,8 +286,19 @@ async function handleWeb(req: Request): Promise<Response> {
         opener: builderSmsBody('opener', vars),
         details: builderSmsBody('details', vars),
       },
-      builders: covering.map((b) => {
+      builders: covering
+        .slice()
+        .sort((a, b) => {
+          // Forever-flagged builders sink to the bottom so Pedro sees live
+          // numbers first, with the reason still visible on the ones he must
+          // not ring again.
+          const ae = isGloballyExcluded(a as { exclude_reason?: string | null }) ? 1 : 0;
+          const be = isGloballyExcluded(b as { exclude_reason?: string | null }) ? 1 : 0;
+          return ae - be;
+        })
+        .map((b) => {
         const row = rowByBuilder.get(b.id);
+        const excludeReason = (b as { exclude_reason?: string | null }).exclude_reason ?? null;
         return {
           id: b.id,
           name: b.name,
@@ -270,6 +306,8 @@ async function handleWeb(req: Request): Promise<Response> {
           isMobile: isUkMobile(b.phone),
           coverage: b.coverage,
           notes: (b as { notes?: string | null }).notes ?? null,
+          excludeReason,
+          excludeLabel: excludeReasonLabel(excludeReason),
           outreachId: row?.id ?? null,
           status: row?.status ?? null,
           blockedReason: row?.blocked_reason ?? null,
@@ -293,7 +331,7 @@ async function handleWeb(req: Request): Promise<Response> {
 
   if (req.method === 'POST') {
     let body: {
-      action?: string; property_id?: string; number?: string;
+      action?: string; property_id?: string; number?: string; postcode?: string;
       builder_ids?: string[]; builder_id?: string; content_sid?: string;
       content_variables?: Record<string, string>;
       channel?: string; sms_body?: string; outcome?: string;
@@ -306,6 +344,9 @@ async function handleWeb(req: Request): Promise<Response> {
 
     if (body.action === 'set_house_number') {
       return setHouseNumber(sb, propertyId, body.number ?? '', who);
+    }
+    if (body.action === 'set_postcode') {
+      return setPostcode(sb, propertyId, body.postcode ?? body.number ?? '', who);
     }
     if (body.action === 'scrape' || body.action === 'widen') {
       return runScrape(sb, propertyId, body.action, who);
@@ -420,6 +461,60 @@ async function setHouseNumber(
     message: waiting
       ? `Saved. The ${waiting} builder${waiting === 1 ? '' : 's'} already invited will be told in the next couple of minutes.`
       : 'Saved. Every invite from now on carries it.',
+  });
+}
+
+/** Pedro typed the postcode himself when geocode could not fill it. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function setPostcode(
+  sb: any,
+  propertyId: string,
+  typed: string,
+  who: { id: string; email: string },
+): Promise<Response> {
+  const pc = normaliseUkPostcode(typed);
+  if (!pc || !looksLikeUkPostcode(pc)) {
+    return Response.json(
+      { error: 'That does not look like a UK postcode. Type it like LS28 8LT.' },
+      { status: 400 },
+    );
+  }
+
+  const { data: house } = await sb
+    .from('brrr_properties')
+    .select('id, address, viewing_address')
+    .eq('id', propertyId)
+    .maybeSingle();
+  if (!house) return Response.json({ error: 'That house is not on file.' }, { status: 404 });
+
+  const nextAddress = withPostcode(String(house.address ?? ''), pc);
+  const nextViewing = house.viewing_address
+    ? withPostcode(String(house.viewing_address), pc)
+    : null;
+  const { error } = await sb
+    .from('brrr_properties')
+    .update({
+      address: nextAddress,
+      ...(nextViewing ? { viewing_address: nextViewing } : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', propertyId);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  await sb.from('admin_audit_log').insert({
+    admin_email: who.email,
+    action: 'builder_set_postcode',
+    target_type: 'brrr_property',
+    metadata: { property_id: propertyId, postcode: pc, address: nextAddress },
+  });
+
+  const oc = outcodeOf(nextViewing || nextAddress);
+  return Response.json({
+    ok: true,
+    address: nextAddress,
+    viewingAddress: nextViewing,
+    outcode: oc,
+    message: `Postcode saved. Searching around ${oc}.`,
   });
 }
 
@@ -721,7 +816,21 @@ async function runScrape(
 
   // Prefer the builder-facing address: it is the one with the house number,
   // and it is what Pedro is looking at. Fall back to the listing address.
-  const oc = outcodeOf(house.viewing_address) || outcodeOf(house.address);
+  let oc = outcodeOf(house.viewing_address) || outcodeOf(house.address);
+  if (!oc) {
+    oc = await ensurePropertyPostcode(sb, propertyId);
+    if (oc) {
+      const { data: healed } = await sb
+        .from('brrr_properties')
+        .select('address, viewing_address')
+        .eq('id', propertyId)
+        .maybeSingle();
+      if (healed) {
+        house.address = healed.address ?? house.address;
+        house.viewing_address = healed.viewing_address ?? house.viewing_address;
+      }
+    }
+  }
   if (!oc) {
     return Response.json(
       {

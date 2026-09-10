@@ -29,6 +29,8 @@ export interface BuilderRow {
   isMobile: boolean;
   coverage: string[];
   notes: string | null;
+  excludeReason?: string | null;
+  excludeLabel?: string | null;
   outreachId: string | null;
   status: string | null;
   blockedReason: string | null;
@@ -51,7 +53,9 @@ export const CALL_OUTCOMES: Array<{ id: string; label: string; prompts?: boolean
   { id: 'wants_details', label: 'Wants the details by text', prompts: true },
   { id: 'call_back', label: 'Call back later' },
   { id: 'no_answer', label: 'No answer' },
-  { id: 'not_interested', label: 'Not interested' },
+  { id: 'not_interested', label: 'Not interested (this house)' },
+  { id: 'not_interested_any', label: 'Not interested, any house' },
+  { id: 'charges_to_view', label: 'Charges to view' },
   { id: 'wrong_number', label: 'Wrong number' },
 ];
 
@@ -92,7 +96,7 @@ const STATUS: Record<string, { text: string; cls: string }> = {
 const ALREADY_SENT = new Set(['sent', 'replied', 'confirmed', 'declined', 'skipped']);
 
 function canPick(b: BuilderRow): boolean {
-  return b.isMobile && !ALREADY_SENT.has(String(b.status ?? ''));
+  return b.isMobile && !b.excludeReason && !ALREADY_SENT.has(String(b.status ?? ''));
 }
 
 export default function BuilderTable({
@@ -157,6 +161,14 @@ export default function BuilderTable({
                 <td className="px-2 py-2">
                   <div className="text-[12.5px] font-medium text-[#1A1A1A]">{b.name}</div>
                   {reviews ? <div className="text-[10.5px] text-[#9CA3AF]">{reviews}</div> : null}
+                  {b.excludeLabel ? (
+                    <div
+                      data-testid="builder-excluded"
+                      className="mt-0.5 inline-block rounded-full border border-[#DC2626]/40 bg-[#FEF2F2] px-1.5 py-[1px] text-[9.5px] font-semibold text-[#DC2626]"
+                    >
+                      {b.excludeLabel}
+                    </div>
+                  ) : null}
                   <div className="mt-0.5 flex flex-wrap gap-1">
                     {b.whatsappSentAt ? <Tag tone="wa">WhatsApp sent</Tag> : null}
                     {b.smsSentAt ? <Tag tone="sms">Texted</Tag> : null}
@@ -168,17 +180,18 @@ export default function BuilderTable({
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button
                       data-testid="builder-call"
-                      disabled={!b.phone || busy}
+                      disabled={!b.phone || busy || !!b.excludeReason}
                       onClick={() => onCall(b)}
+                      title={b.excludeReason ? 'Marked so you do not call them again' : undefined}
                       className="inline-flex items-center gap-1 rounded-[7px] bg-[#3C5A87] px-2 py-1 text-[10.5px] font-bold text-white disabled:opacity-40"
                     >
                       <PhoneCall className="h-3 w-3" /> {busy ? 'Calling' : 'Call'}
                     </button>
                     <button
                       data-testid="builder-text"
-                      disabled={!b.isMobile}
+                      disabled={!b.isMobile || !!b.excludeReason}
                       onClick={() => onText(b, b.callOutcome ? 'details' : 'opener')}
-                      title={b.isMobile ? 'Text this builder' : 'A landline cannot receive a text'}
+                      title={b.excludeReason ? 'Marked so you do not text them again' : (b.isMobile ? 'Text this builder' : 'A landline cannot receive a text')}
                       className="inline-flex items-center gap-1 rounded-[7px] border border-[#E5E7EB] bg-white px-2 py-1 text-[10.5px] font-medium text-[#3C5A87] disabled:opacity-40"
                     >
                       <MessageSquare className="h-3 w-3" /> Text
