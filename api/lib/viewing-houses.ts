@@ -17,9 +17,15 @@
 // empty for that card forever, which is what happened to Julian Wadden on
 // 2026-09-09 and kept happening every time a discovery viewing was booked by
 // drag rather than by the call-listener's disposition path.
+//
+// AND BEFORE THAT, READ THE NOTES. A booking typed into a note with the wrong
+// outcome pressed (Dewhurst Avenue, Voicemail) or no outcome at all (Padeswood
+// Road North) touches neither the diary nor the column. 2026-09-14, the fifth
+// time Pedro reported a booked house missing. See api/lib/booking-from-note.ts.
 
 import { VIEWING_BOOKED_COLUMN } from './builder-outreach.js';
 import { ensureHousesForContacts } from './file-the-house.js';
+import { ensureViewingsFromNotes } from './booking-from-note.js';
 import { ensurePostcodesForHouses } from './property-postcode.js';
 
 /** Anything this can sort by. Callers pick their own columns beyond these. */
@@ -38,6 +44,14 @@ interface Sortable {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function loadViewingHouses<T extends Sortable>(sb: any, columns: string): Promise<T[]> {
+  // Notes first: a booking written down becomes viewing_at, so the query below
+  // sees it whatever button was pressed. Failure here must not blank the list.
+  try {
+    await ensureViewingsFromNotes(sb);
+  } catch (e) {
+    console.warn('[viewing-houses] notes heal failed', String(e).slice(0, 200));
+  }
+
   const { data: col } = await sb
     .from('wk_pipeline_columns')
     .select('id')
