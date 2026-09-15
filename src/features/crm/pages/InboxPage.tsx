@@ -10,6 +10,7 @@ import {
   Phone,
   Play,
   Pencil,
+  Link2,
   Send,
   Mail,
   Paperclip,
@@ -1874,6 +1875,24 @@ export default function InboxPage() {
             title="Edit lead"
           >
             <Pencil className="w-3.5 h-3.5" /> Edit
+          </button>
+          {/* Pedro, 2026-09-15: "how do i copy the URL that is specific like
+              this? when I copy from hey elsie this shows up .../crm/inbox".
+              The page strips ?contact= once a thread opens, so the address bar
+              never holds a link to one conversation. He pastes these into his
+              QUOTES RECEIVED spreadsheet so Hugo can open each builder's quote. */}
+          <button
+            onClick={() => {
+              const link = `${window.location.origin}/admin/crm/inbox?contact=${activeContact.id}`;
+              void navigator.clipboard.writeText(link)
+                .then(() => pushToast('Link copied. Paste it anywhere to open this conversation.', 'success'))
+                .catch(() => pushToast(`Copy this link: ${link}`, 'info'));
+            }}
+            data-testid="inbox-copy-link"
+            className="flex items-center gap-1.5 border border-[#E5E7EB] text-[#1A1A1A] text-[12px] font-medium px-3 py-1.5 rounded-[10px] hover:bg-[#F3F3EE]"
+            title="Copy a link to this conversation"
+          >
+            <Link2 className="w-3.5 h-3.5" /> Copy link
           </button>
           {/* Two-button stack: tiny "Call room" link above, primary
               "Call" button below. Hugo 2026-04-26 (PR 10): the agent
