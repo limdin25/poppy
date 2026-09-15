@@ -191,3 +191,42 @@ describe('the recipient is still the security boundary', () => {
     expect(HOOK).toMatch(/findOrCreateContact\(\s*supa, fromEmail, fromName, emailId, toEmail/);
   });
 });
+
+describe('a PDF on an inbound email is stored, not dropped', () => {
+  // Pedro, 2026-09-02: Haydon emailed a Quote PDF to pedro@hostunico.com.
+  // The webhook saved "Sent from Outlook for iOS" and media_urls: []. The
+  // file lived only at Resend, so the inbox had nothing to open.
+  it('lists Resend receiving attachments and uploads them to our bucket', () => {
+    expect(HOOK).toMatch(/emails\/receiving\/\$\{emailId\}\/attachments/);
+    expect(HOOK).toMatch(/crm-attachments/);
+    expect(HOOK).toMatch(/inbound-email\/\$\{emailId\}\//);
+    expect(HOOK).toMatch(/attachment_url: attachments\.first/);
+    expect(HOOK).toMatch(/media_urls: attachments\.urls/);
+  });
+
+  it('still saves the email if the file cannot be fetched', () => {
+    expect(HOOK).toMatch(/async function storeEmailAttachments/);
+    expect(HOOK).toMatch(/console\.warn\('storeEmailAttachments'/);
+    expect(HOOK).toMatch(/console\.warn\('resend attachments list'/);
+  });
+
+  it('waits and retries, because email.received fires before the file is listed', () => {
+    // Sycamore 13:15 UTC today: Resend already had the PDF, the first
+    // list call came back empty, and the inbox saved body-only. Same
+    // shape as Haydon. A single shot is not enough.
+    expect(HOOK).toMatch(/const waits = \[0, 1500, 3000, 6000\]/);
+    expect(HOOK).toMatch(/async function listResendAttachments/);
+    expect(HOOK).toMatch(/emails\/inbound\/\$\{emailId\}\/attachments/);
+  });
+
+  it('writes the file onto a row that was saved empty on the first try', () => {
+    expect(HOOK).toMatch(/duplicate email_id/);
+    expect(HOOK).toMatch(/attach patch failed/);
+    expect(HOOK).toMatch(/\.eq\('external_id', emailId\)/);
+  });
+
+  it('asks Resend to retry when the payload named files and we stored none', () => {
+    expect(HOOK).toMatch(/payload named files but none stored/);
+    expect(HOOK).toMatch(/status: 503/);
+  });
+});

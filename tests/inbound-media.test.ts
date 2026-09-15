@@ -53,12 +53,12 @@ describe('the media proxy refuses what it should', () => {
     // definition, so relaxing it in one place cannot leave the other pinned.
     expect(read('api/lib/twilio-media.ts')).toMatch(/TWILIO_MEDIA_HOST = 'api\.twilio\.com'/);
     expect(route).toMatch(/ALLOWED_HOST = TWILIO_MEDIA_HOST/);
-    // Reworded on 2026-08-07 when outbound got its own allowlist. The assertion
-    // it replaces was the literal `parsed.hostname !== ALLOWED_HOST`; what
-    // matters is unchanged, that an INBOUND url is compared against the Twilio
-    // pin and nothing else.
-    expect(route).toMatch(/:\s*parsed\.hostname === ALLOWED_HOST/);
+    expect(route).toMatch(/parsed\.hostname === ALLOWED_HOST/);
     expect(route).toMatch(/parsed\.protocol !== 'https:'/);
+    // Inbound files we ourselves stored (Resend quote PDFs on our bucket) have
+    // to pass as well. A webhook still cannot name an arbitrary host: that
+    // stays pinned to Twilio unless the host is one we publish to.
+    expect(route).toMatch(/ours \|\| \(!isOutbound && parsed\.hostname === ALLOWED_HOST\)/);
   });
 
   it('does not carry our Twilio credentials into the S3 redirect', () => {
@@ -130,7 +130,12 @@ describe('media we sent ourselves renders too', () => {
   // auth to a request at our own domain would be handing them out for nothing.
   it('does not send Twilio credentials to our own hosts', () => {
     expect(route).toMatch(/isOutbound/);
-    expect(route).toMatch(/isOutbound\s*\?\s*\{\}|!isOutbound/);
+    expect(route).toMatch(/ours \|\| isOutbound \? \{\}/);
+  });
+
+  it('lets an inbound quote PDF on our own bucket through without Twilio auth', () => {
+    expect(route).toMatch(/const ours = isOurOwnMediaHost\(parsed\.hostname\)/);
+    expect(route).toMatch(/if \(!ours && !isOutbound && \(!sid \|\| !authToken\)\)/);
   });
 });
 

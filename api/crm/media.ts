@@ -79,13 +79,12 @@ export default async function handler(req: Request): Promise<Response> {
 
   let parsed: URL;
   try { parsed = new URL(target); } catch { return json(400, { error: 'bad media url' }); }
-  const hostAllowed = isOutbound
-    ? isOurOwnMediaHost(parsed.hostname)
-    : parsed.hostname === ALLOWED_HOST;
+  const ours = isOurOwnMediaHost(parsed.hostname);
+  const hostAllowed = ours || (!isOutbound && parsed.hostname === ALLOWED_HOST);
   if (parsed.protocol !== 'https:' || !hostAllowed) {
     return json(400, {
       error: 'refused host',
-      allowed: isOutbound ? OUTBOUND_MEDIA_HOSTS : [ALLOWED_HOST],
+      allowed: isOutbound || ours ? OUTBOUND_MEDIA_HOSTS : [ALLOWED_HOST],
     });
   }
 
@@ -93,7 +92,7 @@ export default async function handler(req: Request): Promise<Response> {
   const authToken = process.env.TWILIO_AUTH_TOKEN || '';
   // Only Twilio's own media needs Twilio's credentials. Attaching them to a
   // request at our own domain would hand the account out for nothing in return.
-  if (!isOutbound && (!sid || !authToken)) {
+  if (!ours && !isOutbound && (!sid || !authToken)) {
     return json(500, { error: 'twilio credentials missing' });
   }
 
@@ -103,7 +102,7 @@ export default async function handler(req: Request): Promise<Response> {
   // header is dropped on the second request.
   const first = await fetch(parsed.toString(), {
     redirect: 'manual',
-    headers: isOutbound ? {} : { Authorization: `Basic ${btoa(`${sid}:${authToken}`)}` },
+    headers: ours || isOutbound ? {} : { Authorization: `Basic ${btoa(`${sid}:${authToken}`)}` },
   });
   let upstream = first;
   const location = first.headers.get('location');
@@ -114,6 +113,10 @@ export default async function handler(req: Request): Promise<Response> {
     return json(upstream.status === 404 ? 404 : 502, { error: 'media_fetch_failed', status: upstream.status });
   }
 
+  const fname = (() => {
+    try { return decodeURIComponent(parsed.pathname.split('/').pop() || ''); } catch { return ''; }
+  })();
+  const safeName = fname.replace(/["\\\r\n]/g, '');
   return new Response(upstream.body, {
     status: 200,
     headers: {
@@ -121,7 +124,7 @@ export default async function handler(req: Request): Promise<Response> {
       // Private: this is one lead's message, not a public asset. Cached in the
       // viewer's browser only, so scrolling the thread does not re-hit Twilio.
       'Cache-Control': 'private, max-age=3600',
-      'Content-Disposition': 'inline',
+      'Content-Disposition': safeName ? `inline; filename="${safeName}"` : 'inline',
     },
   });
 }
