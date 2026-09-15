@@ -15,7 +15,38 @@ import { SITE_DEMO_SMS } from '../../src/core/site-demo/messages.js';
 
 // Demo receptionist line: text the caller a recap after EVERY call (even hang-ups
 // / dead calls), done system-side so it never depends on the agent remembering.
-const CALLER_RECAP_BUSINESS_IDS = new Set(['f8b98eb2-192e-4c22-87fd-90c865123fe7']);
+// EMPTY, AND IT MUST STAY EMPTY. Hugo, 2026-08-26: "we need to turn off the AI
+// receptionist ASAP and also the text, very very important." And then: "make a
+// note everyone, turn off all text automation and receptionist."
+//
+// WHAT THIS SET USED TO DO. Every inbound call to the demo business fired two
+// automatic texts at whoever rang: a "Thanks for calling! Quick recap, this is
+// how I'll send you every lead..." message, and then a sales pitch, "P.S. If
+// you liked how that felt, I can set Elsie up to answer YOUR calls too."
+//
+// WHY IT IS OFF. Jordan Lee of JL Brickwork, a builder we had booked onto a
+// viewing, rang the number our own text told him to ring. It reached the Retell
+// receptionist, and he was then sent both messages, with his own mobile number
+// quoted back at him as a sales lead. He told Pedro at 15:40 on 2026-08-26:
+//
+//   "I tried phoning your number back and it sounded like a dodgy AI thing and
+//    I'm getting loads of weird text software... that just led us to believe
+//    it's not genuine."
+//
+// He nearly walked off a viewing he had already confirmed. Twenty six of those
+// pitches had gone to eight people who rang that line.
+//
+// The three numbers were also removed from the Retell SIP trunk the same day,
+// so no number reaches the receptionist at all. Both halves are off; putting an
+// id back in this set is only half a re-arm and would text people the AI never
+// even spoke to.
+//
+// 2026-09-15: this line was switched back ON by accident. The fix lived on the
+// builders-sms-first branch, which never reached main, and main was deployed to
+// production from 7 September. Restored.
+//
+// Pinned by tests/receptionist-off.test.ts.
+const CALLER_RECAP_BUSINESS_IDS = new Set<string>();
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
