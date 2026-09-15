@@ -74,6 +74,8 @@ interface ResendInboundEvent {
     text?: string;
     headers?: Array<{ name?: string; value?: string }> | Record<string, string>;
     created_at?: string;
+    /** Metadata only; the files themselves come from the attachments list. */
+    attachments?: unknown[];
   };
 }
 
@@ -496,6 +498,247 @@ async function matchByNamedHouse(
   return null;
 }
 
+// ── ATTACHMENTS ───────────────────────────────────────────────────────────
+//
+// Deployed 2026-09-02 (Haydon and Sycamore quotes arrived body-only) and never
+// committed. Recovered from the live bundle on 2026-09-15, because deploying
+// the repo copy without it would have silently stopped every quote file.
+
+// Signature logos and tracking pixels arrive as small inline files.
+const INLINE_SKIP_BYTES = 80_000;
+
+function safeFileName(name: string): string {
+  const base = name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return (base || 'attachment').slice(0, 120);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface ResendAttachment {
+  id: string;
+  filename?: string;
+  content_type?: string;
+  content_disposition?: string;
+  size?: number;
+  download_url?: string;
+}
+
+/** null means Resend answered with an error worth retrying. */
+async function listResendAttachments(emailId: string, resendKey: string): Promise<ResendAttachment[] | null> {
+  for (const path of [
+    `https://api.resend.com/emails/receiving/${emailId}/attachments`,
+    `https://api.resend.com/emails/inbound/${emailId}/attachments`,
+  ]) {
+    const listRes = await fetch(path, { headers: { Authorization: `Bearer ${resendKey}` } });
+    if (listRes.status === 404) continue;
+    if (!listRes.ok) {
+      console.warn('resend attachments list', listRes.status, path);
+      return null;
+    }
+    const list = await listRes.json() as { data?: ResendAttachment[] };
+    return list.data ?? [];
+  }
+  return [];
+}
+
+/** Pull Resend inbound files into crm-attachments so the inbox can open them.
+ *  Retry: email.received fires before the attachment list is populated, which
+ *  is how Haydon and the first Sycamore quote landed as body-only. */
+async function storeEmailAttachments(
+  supa: SupabaseClient,
+  emailId: string,
+  resendKey: string,
+): Promise<{ urls: string[]; first: string | null }> {
+  const urls: string[] = [];
+  try {
+    // 0 + 1.5s + 3s + 6s. Resend is usually ready on the second try.
+    const waits = [0, 1500, 3000, 6000];
+    let files: ResendAttachment[] = [];
+    for (const wait of waits) {
+      if (wait) await sleep(wait);
+      const listed = await listResendAttachments(emailId, resendKey);
+      if (listed === null) continue;
+      files = listed.filter((file) => {
+        const size = file.size ?? 0;
+        const inline = (file.content_disposition || '').toLowerCase() === 'inline';
+        if (inline && size > 0 && size < INLINE_SKIP_BYTES) return false;
+        return Boolean(file.download_url);
+      });
+      if (files.length > 0) break;
+    }
+    for (const file of files) {
+      if (!file.download_url) continue;
+      const bin = await fetch(file.download_url);
+      if (!bin.ok) {
+        console.warn('resend attach download', file.id, bin.status);
+        continue;
+      }
+      const bytes = new Uint8Array(await bin.arrayBuffer());
+      const name = safeFileName(file.filename || `${file.id}.bin`);
+      const path = `inbound-email/${emailId}/${name}`;
+      const { error } = await supa.storage.from('crm-attachments').upload(path, bytes, {
+        contentType: file.content_type || 'application/octet-stream',
+        upsert: true,
+      });
+      if (error) {
+        console.warn('attach upload', error.message);
+        continue;
+      }
+      const { data } = supa.storage.from('crm-attachments').getPublicUrl(path);
+      if (data?.publicUrl) urls.push(data.publicUrl);
+    }
+  } catch (e) {
+    console.warn('storeEmailAttachments', e);
+  }
+  return { urls, first: urls[0] ?? null };
+}
+
+// ── 2c. A BUILDER WE ALREADY MESSAGED ────────────────────────────────────
+//
+// VERBATIM TWIN of api/lib/builder-email-match.ts (between the twin markers).
+// tests/builder-email-match.test.ts fails the build if the two drift.
+//
+// Hugo, 2026-09-15: "we cant find quote this guys send again, those issues must
+// stop". C E Bettridge & Son Ltd, Sycamore Carpentry and Mehmood Builders all
+// emailed from outlook/hotmail/gmail. A builder card has a phone and no email,
+// and the branch rule above refuses free mail providers, so every quote was
+// filed on a new contact named after the address, away from the card Pedro
+// texts. The house was never lost; the thread was.
+// --- twin:start ---
+const TRADE_WORDS = new Set([
+  'builder', 'builders', 'building', 'buildings', 'build', 'built', 'construction',
+  'constructions', 'contractor', 'contractors', 'contracting', 'service', 'services',
+  'solution', 'solutions', 'property', 'properties', 'maintenance', 'development',
+  'developments', 'home', 'homes', 'improvement', 'improvements', 'carpentry',
+  'joinery', 'joiner', 'joiners', 'roofing', 'roofers', 'plumbing', 'heating',
+  'electrical', 'electrics', 'decorating', 'decorators', 'painting', 'plastering',
+  'brickwork', 'bricklaying', 'groundworks', 'landscaping', 'renovation',
+  'renovations', 'refurbishment', 'refurbishments', 'interiors', 'limited', 'group',
+  'projects', 'design', 'designs', 'kitchens', 'bathrooms', 'windows', 'lofts',
+  'extensions', 'damp', 'specialist', 'specialists', 'general', 'trade', 'trades',
+  'quality', 'master', 'premier', 'family', 'brothers', 'north', 'south', 'east',
+  'west', 'british', 'national', 'local', 'total', 'complete', 'modern', 'point',
+]);
+// A first name is not a trading name: "Steve McBride Walling" must key on
+// "mcbride", or every steve@ on earth is Steve McBride.
+const FIRST_NAMES = new Set([
+  'steve', 'steven', 'stephen', 'darren', 'james', 'jamie', 'jonathan', 'david',
+  'michael', 'peter', 'andrew', 'richard', 'robert', 'chris', 'christopher',
+  'daniel', 'danny', 'matthew', 'simon', 'craig', 'kevin', 'jason', 'wayne',
+  'shaun', 'lewis', 'thomas', 'anthony', 'martin', 'stuart', 'graham', 'colin',
+  'keith', 'barry', 'scott', 'gareth', 'philip', 'phillip', 'nicholas', 'joseph',
+  'samuel', 'benjamin', 'william', 'george', 'edward', 'charles', 'kieran',
+  'callum', 'connor', 'aaron', 'dean', 'derek', 'trevor', 'terry', 'jonny',
+  'johnny', 'bobby', 'billy', 'mohammed', 'muhammad', 'ahmed',
+]);
+const PUBLIC_MAIL = new Set([
+  'gmail', 'googlemail', 'outlook', 'hotmail', 'live', 'msn', 'yahoo', 'ymail',
+  'icloud', 'me', 'mac', 'aol', 'proton', 'protonmail', 'pm', 'gmx', 'zoho',
+  'btinternet', 'sky', 'talktalk', 'virginmedia', 'blueyonder', 'ntlworld',
+]);
+
+/** "C E Bettridge & Son Ltd" -> "bettridge". The first word of five or more
+ *  letters that is not a trade word. Towns come after the trading name on a
+ *  Google listing ("Gulliver Builders Blackpool"), so only the first counts. */
+export function builderKeyword(name: string | null | undefined): string | null {
+  const words = String(name ?? '').toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  for (const w of words) {
+    if (w.length >= 5 && !TRADE_WORDS.has(w) && !FIRST_NAMES.has(w)) return w;
+  }
+  return null;
+}
+
+/**
+ * Does this sender carry the builder's trading name?
+ *
+ * WHERE we look depends on the mailbox. At a free provider the address and the
+ * display name are the person's own choice, so a sole trader's name is in them
+ * (jon_bettridge@outlook.com). At a company domain the local part is an
+ * EMPLOYEE's name and says nothing about the company: helen.jackson@whitakers is
+ * an estate agent, not "Jackson's Builders". There only the domain counts.
+ */
+export function senderCarriesKeyword(
+  keyword: string | null,
+  email: string,
+  displayName: string | null | undefined,
+): boolean {
+  if (!keyword || keyword.length < 5) return false;
+  const [local = '', domain = ''] = String(email ?? '').toLowerCase().split('@');
+  const label = domain.split('.')[0] ?? '';
+  if (!label) return false;
+  if (!PUBLIC_MAIL.has(label)) {
+    // A company domain must BE the trading name, optionally followed by trade
+    // words: bettridgebuilders.co.uk yes, taylorsestate.agency no (that is an
+    // estate agent, and "sestate" is not a trade).
+    const squeezed = label.replace(/[^a-z]/g, '');
+    return squeezed.startsWith(keyword) && onlyFillerWords(squeezed.slice(keyword.length));
+  }
+  for (const place of [local, String(displayName ?? '').toLowerCase()]) {
+    if (place.split(/[^a-z]+/).includes(keyword)) return true;
+    const squeezed = place.replace(/[^a-z]/g, '');
+    if (keyword.length >= 6 && (squeezed.startsWith(keyword) || squeezed.endsWith(keyword))) return true;
+  }
+  return false;
+}
+
+const FILLER = new Set([...TRADE_WORDS, 'ltd', 'uk', 'and', 'son', 'sons', 'co', 'the', 's']);
+
+/** "builders", "andsonltd", "" -> true. "sestate", "bespoke" -> false. */
+function onlyFillerWords(rest: string): boolean {
+  if (!rest) return true;
+  if (rest.length > 40) return false;
+  for (let i = 1; i <= rest.length; i++) {
+    if (FILLER.has(rest.slice(0, i)) && onlyFillerWords(rest.slice(i))) return true;
+  }
+  return false;
+}
+// --- twin:end ---
+
+/**
+ * The builder card this sender belongs to, or null. Only a builder with no
+ * email yet, only one we have actually messaged (a builder we never contacted
+ * does not send us a quote), and never when two builders match.
+ */
+async function matchBuilderBySender(
+  supa: SupabaseClient,
+  email: string,
+  displayName: string,
+): Promise<string | null> {
+  try {
+    const { data } = await supa
+      .from('wk_contacts')
+      .select('id, name')
+      .eq('custom_fields->>lead_type', 'builder')
+      .is('email', null)
+      .limit(2000);
+    const named = ((data ?? []) as Array<{ id: string; name: string | null }>)
+      .filter((c) => senderCarriesKeyword(builderKeyword(c.name), email, displayName));
+    if (!named.length) return null;
+
+    const { data: sent } = await supa
+      .from('wk_sms_messages')
+      .select('contact_id')
+      .in('contact_id', named.map((c) => c.id))
+      .eq('direction', 'outbound')
+      .limit(500);
+    const messaged = new Set(((sent ?? []) as Array<{ contact_id: string }>).map((m) => m.contact_id));
+    const hits = named.filter((c) => messaged.has(c.id));
+
+    if (hits.length === 1) {
+      console.log(`[wk-email-webhook] matched ${email} to builder ${hits[0].name}`);
+      return hits[0].id;
+    }
+    if (hits.length > 1) {
+      console.log(`[wk-email-webhook] ${hits.length} builders match ${email}, refusing to guess`);
+    }
+  } catch (e) {
+    console.warn('[wk-email-webhook] builder match failed', String(e));
+  }
+  return null;
+}
+
 async function findOrCreateContact(
   supa: SupabaseClient,
   email: string,
@@ -585,6 +828,15 @@ async function findOrCreateContact(
     if (hits.length > 1) {
       console.log(`[wk-email-webhook] ${hits.length} contacts match "${label}" — creating a new one rather than guessing`);
     }
+  }
+
+  // 2c. A builder we messaged, writing from his own mailbox. BEFORE the house
+  //     rule on purpose: a builder's quote names the house, and the house rule
+  //     would file it on the ESTATE AGENT's card instead of the builder's.
+  const byBuilder = await matchBuilderBySender(supa, email, contactName);
+  if (byBuilder) {
+    await supa.from('wk_contacts').update({ email }).eq('id', byBuilder);
+    return byBuilder;
   }
 
   // 2b. They named one of our houses. Strongest evidence available, and the
@@ -972,6 +1224,10 @@ serve(async (req: Request) => {
   // PR 104: strip quoted history so the inbox shows only the new reply.
   const bodyText = stripReplyQuotes(rawBodyText);
 
+  const attachments = RESEND_API_KEY
+    ? await storeEmailAttachments(supa, emailId, RESEND_API_KEY)
+    : { urls: [] as string[], first: null as string | null };
+
   const contactId = await findOrCreateContact(
     supa, fromEmail, fromName, emailId, toEmail, `${subject ?? ''}\n${bodyText ?? ''}`);
   if (!contactId) return ok({ note: 'contact resolution failed' });
@@ -987,7 +1243,8 @@ serve(async (req: Request) => {
       subject,
       from_e164: fromEmail,
       to_e164: toAddr || null,
-      media_urls: [],
+      media_urls: attachments.urls,
+      attachment_url: attachments.first,
       status: 'received',
     });
 
@@ -995,6 +1252,15 @@ serve(async (req: Request) => {
     const code = (msgErr as { code?: string }).code;
     if (code === '23505') {
       console.log(`[wk-email-webhook] duplicate email_id=${emailId} — idempotent skip`);
+      // First delivery saved the body before Resend had the file. A retry
+      // that now has urls must write them on, or the quote stays missing.
+      if (attachments.urls.length > 0) {
+        const { error: patchErr } = await supa
+          .from('wk_sms_messages')
+          .update({ media_urls: attachments.urls, attachment_url: attachments.first })
+          .eq('external_id', emailId);
+        if (patchErr) console.error('[wk-email-webhook] attach patch failed', patchErr);
+      }
     } else {
       console.error('[wk-email-webhook] insert failed', msgErr);
     }
@@ -1011,5 +1277,16 @@ serve(async (req: Request) => {
     await grantRecipientAccess(supa, contactId, await ownerForRecipient(supa, toEmail));
   }
 
-  return ok({ saved: !msgErr, email_id: emailId });
+  // The payload said there were files and none were stored: 503 so Resend
+  // retries, and the duplicate branch above patches the files on.
+  const payloadSaidFiles = Array.isArray(d.attachments) && d.attachments.length > 0;
+  if (payloadSaidFiles && attachments.urls.length === 0) {
+    console.error(`[wk-email-webhook] payload named files but none stored email_id=${emailId}`);
+    return new Response(JSON.stringify({ error: 'attachments not ready', email_id: emailId }), {
+      status: 503,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  return ok({ saved: !msgErr, email_id: emailId, files: attachments.urls.length });
 });
