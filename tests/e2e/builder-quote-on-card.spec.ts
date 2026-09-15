@@ -31,6 +31,8 @@ test.describe('builder quotes', () => {
     await page.goto(`/admin/crm/inbox?contact=${BETTRIDGE_CARD}`)
     await expect(page.getByText('C E Bettridge & Son Ltd').first()).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText(/Bettridges Quotation 125 Shakespeare/i).first()).toBeVisible({ timeout: 30_000 })
+    // The file opens: the media proxy serves inbound files from our own bucket.
     await expect(page.getByText('Open attachment').first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('Attachment could not be loaded')).toHaveCount(0)
   })
 })
