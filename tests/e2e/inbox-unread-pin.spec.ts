@@ -98,21 +98,27 @@ test.describe('CRM inbox — unread / pin / archive', () => {
     }
   })
 
-  test('unread rows sort above read ones, however new the read ones are', async ({ authedPage: page }) => {
+  // REWRITTEN 2026-09-16. This test still asserted the 2026-07-28 rule, unread
+  // on top, which Hugo replaced on 2026-08-06: "just make a normal inbox, last
+  // communication is always on top... unless I press the filters" (commit
+  // 465b092, and src/features/crm/lib/inboxOrder.ts says the same in as many
+  // words). It had been failing on production ever since, which is exactly how
+  // a real inbox regression would have gone unnoticed. Pinned first is the half
+  // that survived, so that is what it checks now.
+  test('pinned rows sit at the top, the rest are newest first', async ({ authedPage: page }) => {
     await gotoInbox(page)
     const flags = await rows(page).evaluateAll((els) =>
-      els.map((el) => ({
-        unread: el.getAttribute('data-unread') === '1',
-        pinned: el.getAttribute('data-pinned') === '1',
-      })),
+      els.map((el) => el.getAttribute('data-pinned') === '1'),
     )
     test.skip(flags.length === 0, 'no conversations on this account [data-dependent]')
 
-    // Bands must appear in order: pinned, then unread, then the rest. Once a
-    // read row has been seen, no unread row may follow it.
-    const band = (f: { unread: boolean; pinned: boolean }) => (f.pinned ? 0 : f.unread ? 1 : 2)
-    const bands = flags.map(band)
-    expect(bands, `sidebar order was ${bands.join(',')}`).toEqual([...bands].sort((a, b) => a - b))
+    const firstUnpinned = flags.indexOf(false)
+    if (firstUnpinned >= 0) {
+      expect(
+        flags.slice(firstUnpinned).some(Boolean),
+        `pinned rows were not all at the top: ${flags.map((p) => (p ? 'P' : '.')).join('')}`,
+      ).toBe(false)
+    }
   })
 
   test('unread rows carry a count badge; UNREAD filter shows exactly them', async ({ authedPage: page }) => {

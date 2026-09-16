@@ -23,7 +23,15 @@ test.describe('inbox mailbox filter', () => {
     expect(joined).toMatch(/pedro\.a|pedro\.a@hostunico\.com/)
     expect(joined).toMatch(/pedro@hostunico\.com|pedro(?!\.a)/)
 
-    await select.selectOption({ label: /pedro\.a/i })
+    // selectOption takes a STRING label, never a regex: passing one threw
+    // "options[0].label: expected string, got object" and this test had been
+    // red on production since it shipped. Pick the real option value instead.
+    const values = await select.locator('option').evaluateAll((els) =>
+      els.map((el) => (el as HTMLOptionElement).value),
+    )
+    const pedroA = values.find((v) => /pedro\.a@hostunico\.com/i.test(v))
+    expect(pedroA, `mailbox options were ${values.join(', ')}`).toBeTruthy()
+    await select.selectOption(pedroA!)
     await expect(select).toHaveValue(/pedro\.a@hostunico\.com/i)
   })
 })
