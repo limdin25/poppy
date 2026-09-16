@@ -9,8 +9,9 @@
 //   - light mode only
 //
 // Figures come from the 16 Sep 2026 quote review. Colne 70,000 carries a
-// 10,000 allowance for the unpriced tree damage. Sunderland 61,000 opens and
-// must not go through 72,000. Southport 115,000 is Hugo's call on 16 Sep: it is
+// 10,000 allowance for the unpriced tree damage. Sunderland 60,000 opens and
+// must not go through 71,000 (Hugo added 19 Vale Street to the comps on 16 Sep,
+// value 138,500). Southport 115,000 is Hugo's call on 16 Sep: it is
 // the walk price, not the opener, and it leaves about 16,000 in the deal.
 
 interface Offer {
@@ -59,7 +60,7 @@ const OFFERS: Offer[] = [
       '',
       'Pedro here, we had our builder through 5 Hawarden Crescent and the quote is back.',
       '',
-      'We would like to offer GBP61,000 for 5 Hawarden Crescent, High Barnes, Sunderland SR4 7NQ, subject to contract. Cash purchase, no chain.',
+      'We would like to offer GBP60,000 for 5 Hawarden Crescent, High Barnes, Sunderland SR4 7NQ, subject to contract. Cash purchase, no chain.',
       '',
       'Please let me know',
       '',
