@@ -382,3 +382,27 @@ Rules for any AI agent working on this project — apply every task, every sessi
 **Don't reproduce internal reasoning in responses.** Don't write prompts or instructions that tell the model to echo or explain its internal reasoning as output text. Output should be the answer, not the working.
 
 **Self-verify on complex builds.** After finishing anything more than a small edit, check the work against what was asked before reporting done.
+
+---
+
+## The Lemlin number. Do not touch it.
+
+`+447460035763` belongs to **Lemlin** (`/Users/hugo/Whats/lemlin-react`). Decided by Hugo,
+2026-09-13. It is used there for SMS, WhatsApp and agentic calls, and it is registered with Meta
+as a WhatsApp Business sender.
+
+**The Twilio account is shared across Hugo's projects, so in the console this will look like a
+spare number. It is not.**
+
+Do not, from this project or any agent working in it:
+
+- send SMS or WhatsApp from it
+- release it, transfer it, or buy over it
+- re-register or reassign its WhatsApp sender
+- point a webhook, a messaging service or a SIP trunk at it
+- use its Twilio content templates for another product
+
+If this project genuinely needs a phone number, buy it a different one and say so in its handover.
+The whole point of this note is that a number is cheap and a burned sender reputation is not.
+
+Full detail: `/Users/hugo/Whats/lemlin-react/docs/TWILIO_AND_THE_LEMLIN_NUMBER.md`
