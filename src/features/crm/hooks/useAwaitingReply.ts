@@ -7,11 +7,11 @@
 // src/features/crm/lib/inboxOrder.ts and the migration
 // 20260822000001_reply_sla_attention.sql.
 //
-// WHY IT CANNOT JUST READ THE INBOX'S OWN ROWS. useInboxThreads pulls
-// `.limit(1000)` newest-first ACROSS THE WHOLE WORKSPACE and groups client-side.
-// A thread waiting since 8 August whose newest message is row 1001 is not in the
-// sidebar at all, so a pill computed from those rows would be a second, quieter
-// version of the same bug. The RPC sees every row; the UI unions the two.
+// WHY IT CANNOT JUST READ THE INBOX'S OWN ROWS. The sidebar is now
+// wk_inbox_thread_previews (one latest row per contact). This list is the
+// unanswered subset, oldest first, including threads an agent has not opened.
+// The two RPCs stay separate so a waiting pill cannot go missing just because
+// the list is filtered or the HeyPubli hide is on.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';

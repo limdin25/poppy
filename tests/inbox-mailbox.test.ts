@@ -119,10 +119,21 @@ describe('the inbox wires the mailbox filter', () => {
   const page = readFileSync(resolve(root, 'src/features/crm/pages/InboxPage.tsx'), 'utf8')
   const threads = readFileSync(resolve(root, 'src/features/crm/hooks/useInboxThreads.ts'), 'utf8')
 
-  it('loads from_e164 and to_e164 so the filter can see the mailbox', () => {
-    expect(threads).toMatch(/from_e164/)
-    expect(threads).toMatch(/to_e164/)
+  it('gets each thread mailbox from the list query, not a last-1000 slice', () => {
+    // 2026-09-16: the filter used to count mailboxes in the browser by walking
+    // the newest 1000 messages workspace-wide. That slice is gone (the list is
+    // wk_inbox_thread_previews, one row per contact), so the RPC works the
+    // mailboxes out instead, by the same rule as api/lib/inbox-mailbox.ts.
+    expect(threads).toMatch(/wk_inbox_thread_previews/)
     expect(threads).toMatch(/mailboxes/)
+    expect(threads).not.toMatch(/\.limit\(1000\)/)
+    const rpc = readFileSync(
+      resolve(root, 'supabase/migrations/20260916000001_inbox_previews_mailboxes.sql'),
+      'utf8',
+    )
+    expect(rpc).toMatch(/mailboxes\s+text\[\]/)
+    expect(rpc).toMatch(/when s\.direction = 'inbound' then s\.to_e164 else s\.from_e164 end/)
+    expect(rpc).toMatch(/where s\.channel = 'email'/)
   })
 
   it('exposes a mailbox select with a stable test id', () => {

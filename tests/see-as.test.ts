@@ -28,9 +28,9 @@ describe('See-as: admin impersonation', () => {
   it('the inbox scopes to the impersonated agent', () => {
     const hook = read('src/features/crm/hooks/useInboxThreads.ts')
     expect(hook).toMatch(/const scopeId: string \| null = isAdmin \? viewAsId : uid/)
-    // the participation set is built for scopeId, not hard-wired to uid
-    expect(hook).toMatch(/if \(scopeId\) \{/)
-    expect(hook).toMatch(/owner_agent_id', scopeId/)
+    // the RPC is asked for scopeId, not hard-wired to uid
+    expect(hook).toMatch(/wk_inbox_thread_previews/)
+    expect(hook).toMatch(/p_agent_id: scopeId/)
     // re-loads when the impersonation target changes
     expect(hook).toMatch(/\}, \[isAdmin, viewAsId\]\)/)
   })

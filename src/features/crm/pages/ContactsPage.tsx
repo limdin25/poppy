@@ -56,7 +56,7 @@ export default function ContactsPage() {
   // PR 83: which channel the modal opens with when an icon is clicked.
   // null = picker stays unselected (when clicking the generic Edit/Call buttons).
   const [smsChannel, setSmsChannel] = useState<'sms' | 'whatsapp' | 'email' | null>(null);
-  const { firstName: agentFirstName } = useCurrentAgent();
+  const { agent: currentAgent, firstName: agentFirstName } = useCurrentAgent();
 
   const startNewContact = () => {
     // Empty draft fed into the existing EditContactModal. Same UX, no
@@ -70,19 +70,20 @@ export default function ContactsPage() {
       isHot: false,
       customFields: {},
       pipelineColumnId: columns[0]?.id,
+      ownerAgentId: currentAgent?.id,
       createdAt: new Date().toISOString(),
     });
   };
 
-  const saveNewContact = async (draft: Contact) => {
+  const saveNewContact = async (draft: Contact): Promise<boolean> => {
     if (!draft.name.trim() || !draft.phone.trim()) {
       pushToast('Name and phone are required', 'error');
-      return;
+      return false;
     }
     const e164 = toE164(draft.phone);
     if (!e164) {
       pushToast('Invalid phone number', 'error');
-      return;
+      return false;
     }
     // Drop synthetic mock IDs (e.g. "a-hugo") — createContact will fall back
     // to the current user's auth.uid() when ownerAgentId is missing.
@@ -100,7 +101,7 @@ export default function ContactsPage() {
     });
     if (!result) {
       pushToast('Could not create contact', 'error');
-      return;
+      return false;
     }
     upsertContact({ ...draft, id: result.id, phone: e164 });
     setCreatingDraft(null);
@@ -110,6 +111,7 @@ export default function ContactsPage() {
         : 'Contact created',
       result.existed ? 'info' : 'success'
     );
+    return true;
   };
 
   const filtered = useMemo(() => {
@@ -582,7 +584,7 @@ export default function ContactsPage() {
         contact={creatingDraft}
         agents={agents}
         onClose={() => setCreatingDraft(null)}
-        onSave={(draft) => void saveNewContact(draft)}
+        onSave={saveNewContact}
       />
     </div>
   );

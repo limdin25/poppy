@@ -4,8 +4,8 @@
 // pending AI draft was visible ONLY once you opened the thread, which is how 15
 // inbound replies sat unanswered in July — nothing on the list said so.
 //
-// Deliberately NOT folded into useInboxThreads: that hook's message select is
-// limit(1000) newest-first, so a draft older than that window would be
+// Deliberately NOT folded into useInboxThreads: that hook lists one latest
+// real (non-draft) message per contact. A draft is not a thread preview, so
 // invisible — silently wrong on exactly the stale drafts that matter most.
 // Keyed by contact id, so the calls branch of the inbox list gets it too.
 //

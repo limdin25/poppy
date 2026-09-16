@@ -389,6 +389,8 @@ export default function InboxPage() {
       pipelineColumnId: string | undefined;
       ownerAgentId: string | undefined;
       lastMessageBody: string | null;
+      lastSubject?: string;
+      lastAttachmentName?: string;
       lastMessageAt: string | null;
       lastDirection: 'inbound' | 'outbound' | null;
       lastChannel: ChannelKindUI | null;
@@ -478,6 +480,8 @@ export default function InboxPage() {
           pipelineColumnId: c?.pipelineColumnId,
           ownerAgentId: c?.ownerAgentId,
           lastMessageBody: t.lastMessageBody,
+          lastSubject: t.lastSubject,
+          lastAttachmentName: t.lastAttachmentName,
           lastMessageAt: t.lastMessageAt,
           lastDirection: t.lastDirection,
           lastChannel: t.lastChannel,
@@ -513,11 +517,16 @@ export default function InboxPage() {
       rows = rows.filter((r) => r.campaignId === want);
     }
 
-    // PR 89: free-text search across name, phone, last message body.
+    // Name, phone, email, owner, last line, subject, and the file name.
+    // 2026-09-02: searching "Conway" or "1050" missed Sycamore because the
+    // house lived only on the PDF name and the subject was never searched.
     const q = searchQuery.trim().toLowerCase();
     if (q.length > 0) {
       rows = rows.filter((r) => {
-        const hay = `${r.name} ${r.phone} ${r.owner} ${r.website} ${r.lastMessageBody ?? ''}`.toLowerCase();
+        const hay = [
+          r.name, r.phone, r.email, r.owner, r.website,
+          r.lastMessageBody, r.lastSubject, r.lastAttachmentName,
+        ].join(' ').toLowerCase();
         return hay.includes(q);
       });
     }

@@ -129,11 +129,13 @@ describe('the email is readable by whoever it was addressed to', () => {
   });
 
   it('matches the status values the RLS function and the inbox both accept', () => {
-    // wk_agent_participates() and useInboxThreads.ts both read
+    // wk_agent_participates() and wk_inbox_thread_previews both read
     // status in ('assigned','in_progress'). A different word here would
     // insert a row that grants nothing.
     const INBOX = readFileSync(resolve(root, 'src/features/crm/hooks/useInboxThreads.ts'), 'utf8');
-    expect(INBOX).toMatch(/\['assigned', 'in_progress'\]/);
+    const RPC = readFileSync(resolve(root, 'supabase/migrations/20260902000001_inbox_thread_previews.sql'), 'utf8');
+    expect(INBOX).toMatch(/wk_inbox_thread_previews/);
+    expect(RPC).toMatch(/'assigned'::text, 'in_progress'::text/);
   });
 });
 

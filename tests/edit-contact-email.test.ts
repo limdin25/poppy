@@ -101,3 +101,21 @@ describe('the write actually lands', () => {
     expect(INBOX).toMatch(/email: updated\.email \?\? null/);
   });
 });
+
+describe('a failed create does not close the modal', () => {
+  // Pedro, 2026-09-02: added RW Design, closed the form, then could not find
+  // the lead. Save called onSave and closed immediately, so a missing phone
+  // toasted behind the already-gone modal and wrote nothing.
+  it('Save waits for onSave and stays open when it returns false', () => {
+    expect(MODAL).toMatch(/if \(result !== false\) onClose\(\)/);
+    expect(MODAL).toMatch(/Promise\.resolve\(onSave\(/);
+  });
+
+  it('creating a contact without a name or phone returns false', () => {
+    const contactsPage = read('src/features/crm/pages/ContactsPage.tsx');
+    expect(contactsPage).toMatch(/const saveNewContact = async \(draft: Contact\): Promise<boolean>/);
+    expect(contactsPage).toMatch(/pushToast\('Name and phone are required', 'error'\);/);
+    expect(contactsPage).toMatch(/return false;/);
+    expect(contactsPage).toMatch(/pushToast\('Invalid phone number', 'error'\);/);
+  });
+});

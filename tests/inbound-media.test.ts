@@ -33,8 +33,15 @@ describe('the column is actually read now', () => {
   });
 
   it('a caption-less photo no longer leaves the list row blank', () => {
-    expect(threads).toMatch(/select\('[^']*media_urls[^']*'\)/);
-    expect(threads).toMatch(/'Photo'/);
+    expect(threads).toMatch(/inboxListPreview/);
+    expect(threads).not.toMatch(/\.limit\(1000\)/);
+    expect(read('src/features/crm/lib/inboxPreview.ts')).toMatch(/'Photo'/);
+  });
+
+  it('lists one latest message per contact, not the last 1000 workspace rows', () => {
+    expect(threads).toMatch(/wk_inbox_thread_previews/);
+    expect(read('supabase/migrations/20260902000001_inbox_thread_previews.sql'))
+      .toMatch(/distinct on \(s\.contact_id\)/);
   });
 });
 

@@ -7,24 +7,15 @@
 // any INSERT into wk_sms_messages re-runs the load.
 //
 // PR 119 (Hugo 2026-04-28): per-agent inbox isolation.
-// Migration 20260430000018 (PR 52) deliberately opened up
-// wk_sms_messages SELECT to any CRM-eligible role with the comment
-// "per-contact filtering is done by the application — the sidebar
-// shows contacts the user owns; admins see all". That app-side
-// filter never landed, so logging in as an agent showed every
-// other agent's inbox. We now do that filter here:
-//   - Admins (hardcoded email OR profiles.workspace_role = 'admin')
-//     keep the whole-workspace view.
-//   - Agents see only contacts they own (wk_contacts.owner_agent_id)
-//     OR are actively assigned to (wk_lead_assignments status
-//     IN ('assigned','in_progress')) — the same predicate used by
-//     the wk_contacts RLS policy.
+// 2026-09-02: that filter is wk_inbox_thread_previews, one latest row
+// per contact the caller is allowed to see. The old last-1000 workspace
+// slice dropped builder quotes as soon as they aged out of the window.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useViewAs } from '@/features/crm/lib/ViewAsContext';
-import { collectThreadMailboxes } from '../../../../api/lib/inbox-mailbox';
+import { attachmentSearchToken, inboxListPreview } from '@/features/crm/lib/inboxPreview';
 
 export type ChannelKind = 'sms' | 'whatsapp' | 'email';
 
@@ -41,6 +32,10 @@ export interface InboxThread {
    *  that owner + website mean nothing for this person. */
   contactProduct: string;
   lastMessageBody: string;
+  /** Subject of the latest message, so search can hit "Quote" / the house. */
+  lastSubject: string;
+  /** File names on the latest message, so search can hit Conway / 1050. */
+  lastAttachmentName: string;
   lastMessageAt: string;
   lastDirection: 'inbound' | 'outbound';
   /** PR 78: channel of the latest message. Used by inbox filter
@@ -68,17 +63,25 @@ export interface InboxThread {
   mailboxes: string[];
 }
 
-interface MessageRow {
-  id: string;
+interface PreviewRow {
   contact_id: string;
-  direction: 'inbound' | 'outbound';
-  body: string;
-  media_urls: string[] | null;
-  created_at: string;
-  channel: ChannelKind | null;
-  status: string | null;
-  from_e164: string | null;
-  to_e164: string | null;
+  last_body: string | null;
+  last_at: string;
+  last_direction: 'inbound' | 'outbound';
+  last_channel: ChannelKind | null;
+  last_media_urls: string[] | null;
+  last_subject: string | null;
+  last_attachment_url: string | null;
+  last_inbound_at: string | null;
+  last_outbound_at: string | null;
+  inbound_since_reply: number;
+  sms_count: number;
+  whatsapp_count: number;
+  email_count: number;
+  /** Our mailboxes this thread used, worked out in the RPC. The mailbox filter
+   *  (10 Sep) counted them client-side off the last-1000 slice; the list no
+   *  longer reads that slice, so the RPC has to say. */
+  mailboxes: string[] | null;
 }
 
 interface ContactRow {
@@ -117,88 +120,28 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
 
     // Effective scope: a non-admin is always themselves; an admin sees the
     // whole workspace UNLESS they've picked "See as: <agent>", in which case
-    // they see exactly that agent's leads.
+    // they see exactly that agent's leads. The RPC owns participation
+    // (owner / assignment / created_by / called / their line). Do not rebuild
+    // that set here and then slice the last 1000 workspace rows: that is how
+    // a builder quote dropped off the sidebar.
     const scopeId: string | null = isAdmin ? viewAsId : uid;
 
-    // Build the allowed-contact set for non-admins. An agent sees a
-    // conversation for every lead they PARTICIPATED with (Hugo 2026-07-26):
-    // owner OR active assignment OR texted (wk_sms_messages.created_by) OR
-    // called (wk_calls.agent_id). The wk_contacts participation RLS policy
-    // (migration 20260726000002) lets them READ those leads' names.
-    let allowedSet: Set<string> | null = null;
-    if (scopeId) {
-      const [ownedRes, assignedRes, textedRes, calledRes] = await Promise.all([
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from('wk_contacts' as any) as any).select('id').eq('owner_agent_id', scopeId),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from('wk_lead_assignments' as any) as any)
-          .select('contact_id').eq('agent_id', scopeId).in('status', ['assigned', 'in_progress']),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from('wk_sms_messages' as any) as any).select('contact_id').eq('created_by', scopeId),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase.from('wk_calls' as any) as any).select('contact_id').eq('agent_id', scopeId),
-      ]);
-      const ids = new Set<string>();
-      for (const r of (ownedRes.data ?? []) as Array<{ id: string }>) ids.add(r.id);
-      for (const r of (assignedRes.data ?? []) as Array<{ contact_id: string }>) if (r.contact_id) ids.add(r.contact_id);
-      for (const r of (textedRes.data ?? []) as Array<{ contact_id: string }>) if (r.contact_id) ids.add(r.contact_id);
-      for (const r of (calledRes.data ?? []) as Array<{ contact_id: string | null }>) if (r.contact_id) ids.add(r.contact_id);
-
-      // Their line, their leads (Hugo 2026-08-03): any thread whose messages
-      // travelled over a number ASSIGNED to this agent is theirs, whoever
-      // created the contact. Without this, a lead who WhatsApps or texts the
-      // agent's own number cold was invisible to that agent and sat
-      // admin-only. DB twin: the 4th arm of wk_agent_participates
-      // (migration 20260803000001); keep the two in agreement.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: numRows } = await (supabase.from('wk_number_agents' as any) as any)
-        .select('wk_numbers(e164)')
-        .eq('agent_id', scopeId);
-      const myNums = (((numRows ?? []) as Array<{ wk_numbers: { e164: string } | null }>)
-        .map((r) => r.wk_numbers?.e164)
-        .filter(Boolean)) as string[];
-      if (myNums.length > 0) {
-        const inList = `(${myNums.map((n) => `"${n}"`).join(',')})`;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: lineRows } = await (supabase.from('wk_sms_messages' as any) as any)
-          .select('contact_id')
-          .or(`to_e164.in.${inList},from_e164.in.${inList}`);
-        for (const r of (lineRows ?? []) as Array<{ contact_id: string | null }>) {
-          if (r.contact_id) ids.add(r.contact_id);
-        }
-      }
-
-      allowedSet = ids;
-
-      // Participated in nothing → empty inbox. Skip the round-trip.
-      if (allowedSet.size === 0) {
-        if (seq !== loadSeqRef.current) return; // superseded by a newer load
-        setThreads([]);
-        setLoading(false);
-        return;
-      }
-    }
-
-    // Pull the last 1000 messages and group client-side, then filter to the
-    // agent's set IN MEMORY. We deliberately do NOT pass the set to `.in()` —
-    // an agent owning thousands of leads would blow the request URL length
-    // (that silent failure was making busy agents' inboxes look empty). At
-    // much larger message volumes this should move to a SECURITY DEFINER RPC.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const msgsRes = await (supabase.from('wk_sms_messages' as any) as any)
-      .select('id, contact_id, direction, body, created_at, channel, status, media_urls, from_e164, to_e164')
-      .order('created_at', { ascending: false })
-      .limit(1000);
-    let msgs = (msgsRes.data ?? []) as MessageRow[];
-    if (allowedSet) msgs = msgs.filter((m) => allowedSet!.has(m.contact_id));
-    // An unsent AI draft is not a message. It used to become the row's preview
-    // and its timestamp, so a thread where the lead said "Yeah sure" looked
-    // like we had already answered. Discarded rows are hidden in the thread
-    // view too, so they must not drive the list either.
-    msgs = msgs.filter((m) => m.status !== 'draft' && m.status !== 'discarded');
+    const { data: previewData, error: previewErr } = await (supabase.rpc as any)(
+      'wk_inbox_thread_previews',
+      { p_agent_id: scopeId },
+    );
+    if (previewErr) {
+      console.error('[useInboxThreads] wk_inbox_thread_previews', previewErr.message);
+      if (seq !== loadSeqRef.current) return;
+      setThreads([]);
+      setLoading(false);
+      return;
+    }
+    const previews = (previewData ?? []) as PreviewRow[];
 
     // Collect unique contact IDs from messages, then fetch just those.
-    const neededIds = Array.from(new Set(msgs.map((m) => m.contact_id)));
+    const neededIds = Array.from(new Set(previews.map((m) => m.contact_id)));
     const contactById = new Map<string, ContactRow>();
     if (neededIds.length > 0) {
       // Supabase .in() has a practical limit; batch in chunks of 200.
@@ -232,41 +175,8 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
       }
     }
 
-    // Per-contact channel counts (walk all 500 once).
-    const counts = new Map<string, Record<ChannelKind, number>>();
-    const msgsByContact = new Map<string, MessageRow[]>();
-    // Newest inbound / newest outbound per contact — the two timestamps the
-    // unread rule compares. msgs is newest-first, so the FIRST one we meet in
-    // each direction is the newest.
-    const lastIn = new Map<string, string>();
-    const lastOut = new Map<string, string>();
-    for (const m of msgs) {
-      const cur = counts.get(m.contact_id) ?? { sms: 0, whatsapp: 0, email: 0 };
-      const ch: ChannelKind = (m.channel ?? 'sms') as ChannelKind;
-      cur[ch] = (cur[ch] ?? 0) + 1;
-      counts.set(m.contact_id, cur);
-      const list = msgsByContact.get(m.contact_id);
-      if (list) list.push(m);
-      else msgsByContact.set(m.contact_id, [m]);
-      const bucket = m.direction === 'inbound' ? lastIn : lastOut;
-      if (!bucket.has(m.contact_id)) bucket.set(m.contact_id, m.created_at);
-    }
-
-    // How many of the lead's messages are still unanswered.
-    const sinceReply = new Map<string, number>();
-    for (const m of msgs) {
-      if (m.direction !== 'inbound') continue;
-      const ourLast = lastOut.get(m.contact_id);
-      if (ourLast && +new Date(ourLast) >= +new Date(m.created_at)) continue;
-      sinceReply.set(m.contact_id, (sinceReply.get(m.contact_id) ?? 0) + 1);
-    }
-
-    // Walk newest → oldest, take the first message we see per contact.
-    const seen = new Set<string>();
     const out: InboxThread[] = [];
-    for (const m of msgs) {
-      if (seen.has(m.contact_id)) continue;
-      seen.add(m.contact_id);
+    for (const m of previews) {
       const c = contactById.get(m.contact_id);
       // 2026-08-19: the Instagram funnel is retired and its number became the
       // builders and estate agents line, so creator threads are HIDDEN from
@@ -277,6 +187,9 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         && viewAsId !== HEYPUBLI_AGENT_ID
       ) continue;
       const campaign = campaignByContact.get(m.contact_id);
+      const media = Array.isArray(m.last_media_urls)
+        ? m.last_media_urls.filter((u): u is string => typeof u === 'string')
+        : [];
       out.push({
         contactId: m.contact_id,
         contactName: c?.name || c?.phone || 'Unknown',
@@ -284,21 +197,28 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
         contactOwner: c?.custom_fields?.owner_name ?? '',
         contactWebsite: c?.custom_fields?.website ?? '',
         contactProduct: c?.custom_fields?.product ?? '',
-        // An image with no caption used to leave the row's preview blank, which
-        // read as an empty or broken thread. Say what actually arrived.
-        lastMessageBody: m.body?.trim()
-          ? m.body
-          : (m.media_urls?.length ? (m.media_urls.length > 1 ? `${m.media_urls.length} photos` : 'Photo') : m.body),
-        lastMessageAt: m.created_at,
-        lastDirection: m.direction,
-        lastChannel: (m.channel ?? 'sms') as ChannelKind,
-        channelCounts: counts.get(m.contact_id) ?? { sms: 0, whatsapp: 0, email: 0 },
-        lastInboundAt: lastIn.get(m.contact_id) ?? null,
-        lastOutboundAt: lastOut.get(m.contact_id) ?? null,
-        inboundSinceReply: sinceReply.get(m.contact_id) ?? 0,
+        lastMessageBody: inboxListPreview({
+          body: m.last_body,
+          mediaUrls: media,
+          subject: m.last_subject,
+          attachmentUrl: m.last_attachment_url,
+        }),
+        lastSubject: (m.last_subject ?? '').trim(),
+        lastAttachmentName: attachmentSearchToken(media, m.last_attachment_url),
+        lastMessageAt: m.last_at,
+        lastDirection: m.last_direction,
+        lastChannel: (m.last_channel ?? 'sms') as ChannelKind,
+        channelCounts: {
+          sms: Number(m.sms_count) || 0,
+          whatsapp: Number(m.whatsapp_count) || 0,
+          email: Number(m.email_count) || 0,
+        },
+        lastInboundAt: m.last_inbound_at ?? null,
+        lastOutboundAt: m.last_outbound_at ?? null,
+        inboundSinceReply: Number(m.inbound_since_reply) || 0,
         campaignId: campaign?.id ?? null,
         campaignName: campaign?.name ?? null,
-        mailboxes: collectThreadMailboxes(msgsByContact.get(m.contact_id) ?? []),
+        mailboxes: Array.isArray(m.mailboxes) ? m.mailboxes : [],
       });
     }
     if (seq !== loadSeqRef.current) return; // superseded by a newer load

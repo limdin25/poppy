@@ -13,7 +13,7 @@ import { normalizeContactEmail } from '../../hooks/useContactPersistence';
 interface Props {
   contact: Contact | null;
   onClose: () => void;
-  onSave: (c: Contact) => void;
+  onSave: (c: Contact) => void | boolean | Promise<void | boolean>;
   /**
    * Optional override. Normally leave this off — the modal reads the real
    * roster itself. Kept only so a test can inject a fixed list.
@@ -513,8 +513,9 @@ export default function EditContactModal({
           <button
             onClick={() => {
               const email = normalizeContactEmail(draft.email);
-              onSave({ ...draft, email: email ?? undefined });
-              onClose();
+              void Promise.resolve(onSave({ ...draft, email: email ?? undefined })).then((result) => {
+                if (result !== false) onClose();
+              });
             }}
             className="bg-[#3C5A87] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"
           >
