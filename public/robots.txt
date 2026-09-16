@@ -10,6 +10,7 @@ Disallow: /pedro-training
 Disallow: /hugo-training
 Disallow: /script
 Disallow: /blueprint
+Disallow: /offers
 Disallow: /rank-frame
 Disallow: /admin
 Disallow: /super
